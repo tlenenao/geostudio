@@ -118,6 +118,7 @@ export type MapLayer =
       geometryKind?: "point" | "line" | "polygon";
       pkColumn?: string;
       popup?: PopupConfig;
+      symbology?: import("../builder/widgets/mapSymbology").LayerSymbology;
     }
   | {
       id: string;
@@ -136,6 +137,7 @@ export type MapLayer =
       paint?: Record<string, unknown>;
       renderAs?: "fill" | "circle" | "line";
       popup?: PopupConfig;
+      symbology?: import("../builder/widgets/mapSymbology").LayerSymbology;
     }
   | {
       id: string;

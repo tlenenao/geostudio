@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
-import { expect, test } from "vitest";
-import { buildLegend, buildMapPaint, detectGeometryKind } from "./mapSymbology";
+import { expect, test, vi } from "vitest";
+import {
+  buildLegend,
+  buildMapPaint,
+  computeColorDomain,
+  computeSizeDomain,
+  detectGeometryKind,
+  equalIntervalBreaks,
+  jenksBreaks,
+  quantileBreaksFromRow,
+  quantileMeasures,
+  symbologyToPaintInputs,
+} from "./mapSymbology";
+import type { LayerSymbology } from "./mapSymbology";
 
 test("detectGeometryKind maps GeoJSON types to a rendering kind", () => {
   expect(detectGeometryKind({ type: "Point" })).toBe("point");
@@ -205,5 +217,182 @@ test("buildLegend combines color and size sections when both encodings are activ
   expect(legend).toEqual({
     color: { kind: "categorical", field: "region", entries: [{ value: "Nord", color: "#2563eb" }] },
     size: { field: "montant", min: 0, max: 10, radiusMin: 4, radiusMax: 24 },
+  });
+});
+
+test("equalIntervalBreaks divides [min, max] into `classes` equal-width breaks", () => {
+  expect(equalIntervalBreaks(0, 100, 4)).toEqual([0, 25, 50, 75, 100]);
+  expect(equalIntervalBreaks(10, 10, 3)).toEqual([10, 10, 10, 10]);
+});
+
+test("quantileMeasures builds one min/max plus classes-1 percentile measures", () => {
+  expect(quantileMeasures("pop", 4)).toEqual([
+    { field: "pop", agg: "min", label: "min" },
+    { field: "pop", agg: "percentile", label: "q1", p: 25 },
+    { field: "pop", agg: "percentile", label: "q2", p: 50 },
+    { field: "pop", agg: "percentile", label: "q3", p: 75 },
+    { field: "pop", agg: "max", label: "max" },
+  ]);
+});
+
+test("quantileBreaksFromRow reads min/q1..qk-1/max in order", () => {
+  const row = { min: 0, q1: 10, q2: 20, q3: 30, max: 40 };
+  expect(quantileBreaksFromRow(row, 4)).toEqual([0, 10, 20, 30, 40]);
+});
+
+test("jenksBreaks finds the boundaries of three well-separated clusters", () => {
+  const sample = [1, 1, 2, 2, 50, 51, 52, 100, 101, 102];
+  expect(jenksBreaks(sample, 3)).toEqual([1, 2, 52, 102]);
+});
+
+test("jenksBreaks is invariant to input order", () => {
+  const sample = [102, 1, 51, 2, 100, 1, 52, 2, 50, 101];
+  expect(jenksBreaks(sample, 3)).toEqual([1, 2, 52, 102]);
+});
+
+test("computeColorDomain: categorical mode runs a groupBy statistics query", async () => {
+  const runStatistics = vi.fn().mockResolvedValue([
+    { id: "Nord", properties: {} },
+    { id: "Sud", properties: {} },
+  ]);
+  const domain = await computeColorDomain(
+    { field: "region", mode: "categorical" },
+    { runStatistics, sampleField: vi.fn() },
+  );
+  expect(domain).toEqual({ kind: "categorical", values: ["Nord", "Sud"] });
+  expect(runStatistics).toHaveBeenCalledWith({ groupBy: "region" });
+});
+
+test("computeColorDomain: numeric without classification runs min/max and returns a continuous domain", async () => {
+  const runStatistics = vi.fn().mockResolvedValue([{ id: "", properties: { min: 0, max: 100 } }]);
+  const domain = await computeColorDomain(
+    { field: "pop", mode: "numeric" },
+    { runStatistics, sampleField: vi.fn() },
+  );
+  expect(domain).toEqual({ kind: "numeric", min: 0, max: 100 });
+});
+
+test("computeColorDomain: equalInterval derives breaks from min/max client-side", async () => {
+  const runStatistics = vi.fn().mockResolvedValue([{ id: "", properties: { min: 0, max: 100 } }]);
+  const domain = await computeColorDomain(
+    { field: "pop", mode: "numeric", classification: { method: "equalInterval", classes: 4 } },
+    { runStatistics, sampleField: vi.fn() },
+  );
+  expect(domain).toEqual({ kind: "numeric-classed", breaks: [0, 25, 50, 75, 100] });
+});
+
+test("computeColorDomain: quantile issues one measures call and reads it back", async () => {
+  const runStatistics = vi
+    .fn()
+    .mockResolvedValue([{ id: "", properties: { min: 0, q1: 10, q2: 20, q3: 30, max: 40 } }]);
+  const domain = await computeColorDomain(
+    { field: "pop", mode: "numeric", classification: { method: "quantile", classes: 4 } },
+    { runStatistics, sampleField: vi.fn() },
+  );
+  expect(domain).toEqual({ kind: "numeric-classed", breaks: [0, 10, 20, 30, 40] });
+  expect(runStatistics).toHaveBeenCalledTimes(1);
+});
+
+test("computeColorDomain: jenks samples then classifies client-side", async () => {
+  const sampleField = vi.fn().mockResolvedValue([1, 1, 2, 2, 50, 51, 52, 100, 101, 102]);
+  const domain = await computeColorDomain(
+    { field: "pop", mode: "numeric", classification: { method: "jenks", classes: 3 } },
+    { runStatistics: vi.fn(), sampleField },
+  );
+  expect(domain).toEqual({ kind: "numeric-classed", breaks: [1, 2, 52, 102] });
+  expect(sampleField).toHaveBeenCalledWith("pop", 2000);
+});
+
+test("computeSizeDomain runs min/max and returns it", async () => {
+  const runStatistics = vi.fn().mockResolvedValue([{ id: "", properties: { min: 0, max: 50 } }]);
+  const domain = await computeSizeDomain("montant", { runStatistics });
+  expect(domain).toEqual({ min: 0, max: 50 });
+});
+
+test("buildMapPaint with a numeric-classed domain and a palette emits a step expression", () => {
+  const { paint } = buildMapPaint(
+    { color: { field: "pop", mode: "numeric" } },
+    { kind: "numeric-classed", breaks: [0, 10, 20, 30] },
+    null,
+    "polygon",
+    { kind: "sequential", low: "#000000", high: "#ffffff" },
+  );
+  expect(paint["fill-color"]).toEqual([
+    "step",
+    ["get", "pop"],
+    "#000000",
+    10,
+    "#808080",
+    20,
+    "#ffffff",
+  ]);
+});
+
+test("buildMapPaint categorical with an explicit palette uses its colors instead of the constants", () => {
+  const { paint } = buildMapPaint(
+    { color: { field: "region", mode: "categorical" } },
+    { kind: "categorical", values: ["Nord", "Sud"] },
+    null,
+    "polygon",
+    { kind: "categorical", colors: ["#111111", "#222222"] },
+  );
+  expect(paint["fill-color"]).toEqual([
+    "match",
+    ["get", "region"],
+    "Nord",
+    "#111111",
+    "Sud",
+    "#222222",
+    "#111111",
+  ]);
+});
+
+test("buildLegend with a numeric-classed domain returns one range per class", () => {
+  const legend = buildLegend(
+    { color: { field: "pop", mode: "numeric" } },
+    { kind: "numeric-classed", breaks: [0, 10, 20] },
+    null,
+    "polygon",
+    { kind: "sequential", low: "#000000", high: "#ffffff" },
+  );
+  expect(legend).toEqual({
+    color: {
+      kind: "classed",
+      field: "pop",
+      classes: [
+        { color: "#000000", from: 0, to: 10 },
+        { color: "#ffffff", from: 10, to: 20 },
+      ],
+    },
+  });
+});
+
+test("symbologyToPaintInputs maps a frozen LayerSymbology to buildMapPaint's inputs", () => {
+  const symbology: LayerSymbology = {
+    color: {
+      field: "pop",
+      mode: "numeric",
+      classification: { method: "quantile", classes: 2 },
+      palette: "sequential-blue",
+      domain: { kind: "numeric-classed", breaks: [0, 50, 100] },
+      computedAt: "2026-08-23T00:00:00Z",
+    },
+  };
+  const inputs = symbologyToPaintInputs(symbology, undefined);
+  expect(inputs.encodings).toEqual({
+    color: { field: "pop", mode: "numeric", classification: { method: "quantile", classes: 2 } },
+  });
+  expect(inputs.colorDomain).toEqual({ kind: "numeric-classed", breaks: [0, 50, 100] });
+  expect(inputs.sizeDomain).toBeNull();
+  expect(inputs.palette).toEqual({ kind: "sequential", low: "#dbeafe", high: "#1e3a8a" });
+});
+
+test("symbologyToPaintInputs on undefined symbology returns empty/null inputs", () => {
+  const inputs = symbologyToPaintInputs(undefined, undefined);
+  expect(inputs).toEqual({
+    encodings: {},
+    colorDomain: null,
+    sizeDomain: null,
+    palette: undefined,
   });
 });
