@@ -1121,13 +1121,11 @@ def test_sample_returns_bounded_values_for_the_field(tmp_path, conn):
     assert values.issubset(set(range(1, 21)))
 
 
-def test_sample_excludes_non_castable_values(tmp_path, conn):
+def test_sample_returns_everything_when_more_requested_than_available(tmp_path, conn):
     rows = [_row(1, "Nord", "2025", 10, lsn=1), _row(2, "Nord", "2025", 20, lsn=1)]
-    # pop is declared "integer" in TABLE_INFO but DuckDB will TRY_CAST a
-    # non-numeric string to NULL rather than raise — simulate that with a
-    # tombstoned row instead, since _row's pop is always an int: exercise
-    # the WHERE value IS NOT NULL clause via a collection with fewer than
-    # `sample` rows instead (the boundary that actually matters here).
+    # Sampling more rows than exist returns everything, not an error.
+    # This indirectly exercises the WHERE value IS NOT NULL clause
+    # (all rows pass the NOT NULL filter).
     _write_partition(tmp_path, rows=rows)
     request = AggregateRequestBody(field="pop", sample=100)
 
@@ -1140,7 +1138,6 @@ def test_sample_excludes_non_castable_values(tmp_path, conn):
         request=request,
     )
 
-    # Sampling more rows than exist returns everything, not an error.
     assert {r["value"] for r in result_rows} == {10, 20}
 
 
