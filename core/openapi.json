@@ -195,6 +195,17 @@
             ],
             "title": "P"
           },
+          "sample": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample"
+          },
           "split": {
             "anyOf": [
               {
@@ -2365,6 +2376,18 @@
               }
             ],
             "title": "Sourcelayer"
+          },
+          "symbology": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbology"
           },
           "tilesUrl": {
             "anyOf": [

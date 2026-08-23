@@ -1191,6 +1191,8 @@ export interface components {
             measures?: components["schemas"]["AggregateMeasure"][] | null;
             /** P */
             p?: number | null;
+            /** Sample */
+            sample?: number | null;
             /** Split */
             split?: string | null;
         };
@@ -1881,6 +1883,10 @@ export interface components {
             } | null;
             /** Sourcelayer */
             sourceLayer?: string | null;
+            /** Symbology */
+            symbology?: {
+                [key: string]: unknown;
+            } | null;
             /** Tilesurl */
             tilesUrl?: string | null;
             /** Title */
