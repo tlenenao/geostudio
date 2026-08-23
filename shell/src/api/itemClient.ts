@@ -78,6 +78,7 @@ type RawMapLayer = {
   collectionId?: string | null;
   geometryKind?: "point" | "line" | "polygon" | null;
   pkColumn?: string | null;
+  symbology?: import("../builder/widgets/mapSymbology").LayerSymbology | null;
 };
 
 function toFrontLayer(l: RawMapLayer): MapLayer {
@@ -94,6 +95,7 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
         ...(l.geometryKind ? { geometryKind: l.geometryKind } : {}),
         ...(l.pkColumn ? { pkColumn: l.pkColumn } : {}),
         ...(l.popup ? { popup: l.popup } : {}),
+        ...(l.symbology ? { symbology: l.symbology } : {}),
       };
     case "raster":
       return {
@@ -120,6 +122,7 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
         url: l.url ?? "",
         ...(l.paint ? { paint: l.paint } : {}),
         ...(l.popup ? { popup: l.popup } : {}),
+        ...(l.symbology ? { symbology: l.symbology } : {}),
       };
   }
 }
