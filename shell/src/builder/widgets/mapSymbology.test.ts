@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, vi } from "vitest";
+// Dépendance transitive de maplibre-gl (présente dans node_modules, cf.
+// package-lock.json), pas un ajout à shell/package.json — utilisée ici
+// uniquement pour prouver contre la vraie bibliothèque, comme le brief du
+// round 2 de C-new le demande explicitement, qu'une expression de peinture
+// produite est réellement valide pour MapLibre (et pas seulement conforme à
+// la forme qu'on s'attend à lui voir).
+import { createExpression } from "@maplibre/maplibre-gl-style-spec";
 import {
   buildLegend,
   buildMapPaint,
@@ -509,4 +516,85 @@ test("jenksBreaks on an empty sample returns [] rather than a run of undefined",
 
 test("jenksBreaks with more classes than data points returns [] rather than out-of-bounds reads", () => {
   expect(jenksBreaks([1, 2], 5)).toEqual([]);
+});
+
+// C-new de la re-revue finale SP-25 (round 2, boundary hole du fix C1 de
+// round 1) : normalizeDomain acceptait un domaine numérique dédupliqué à
+// exactement 2 breaks (1 seule classe) — le garde d'origine ne rejetait que
+// "< 2 breaks distincts". buildMapPaint transformait alors ce domaine en
+// expression MapLibre "step" à 2 arguments (["step", get, color0]), que
+// MapLibre rejette réellement ("Expected at least 4 arguments, but found
+// only 2.") : la couche entière disparaissait sans aucun signal, exactement
+// le symptôme d'origine de C1. Cas réaliste, pas un edge case : toute
+// colonne numérique où une bonne part des lignes partage le minimum
+// (comptage, note, beaucoup de zéros) produit ce genre de breaks dédupliqués
+// à 2 valeurs via quantile ou jenks.
+
+test("quantileBreaksFromRow on tied data dedups to exactly 2 breaks (the re-review's repro)", () => {
+  const breaks = quantileBreaksFromRow({ min: 0, q1: 0, q2: 0, q3: 0, max: 10 }, 4);
+  expect(breaks).toEqual([0, 0, 0, 0, 10]);
+});
+
+test("jenksBreaks on the same tied-data shape also dedups to exactly 2 breaks", () => {
+  expect(jenksBreaks([0, 0, 0, 0, 10], 3)).toEqual([0, 0, 0, 10]);
+});
+
+test("normalizeDomain now rejects a numeric-classed domain that dedups to exactly 2 breaks (1 class)", () => {
+  const breaks = quantileBreaksFromRow({ min: 0, q1: 0, q2: 0, q3: 0, max: 10 }, 4);
+  expect(normalizeDomain({ kind: "numeric-classed", breaks })).toBeNull();
+  expect(
+    normalizeDomain({ kind: "numeric-classed", breaks: jenksBreaks([0, 0, 0, 0, 10], 3) }),
+  ).toBeNull();
+});
+
+test("normalizeDomain still accepts a domain that dedups to exactly 3 breaks (2 classes)", () => {
+  expect(normalizeDomain({ kind: "numeric-classed", breaks: [0, 10, 20] })).toEqual({
+    kind: "numeric-classed",
+    breaks: [0, 10, 20],
+  });
+});
+
+test("buildMapPaint never emits a MapLibre-invalid step for tied-data breaks that dedup to 1 class", () => {
+  const breaks = quantileBreaksFromRow({ min: 0, q1: 0, q2: 0, q3: 0, max: 10 }, 4);
+  const { paint } = buildMapPaint(
+    { color: { field: "pop", mode: "numeric" } },
+    { kind: "numeric-classed", breaks },
+    null,
+    "polygon",
+  );
+  // Domaine traité comme non utilisable (pas de "fill-color"), pas comme un
+  // domaine à 1 classe rendu par une expression "step" mal formée.
+  expect(paint["fill-color"]).toBeUndefined();
+
+  // Preuve contre la vraie bibliothèque, pas seulement une assertion de
+  // forme : la forme que le code d'AVANT ce fix aurait produite pour ce
+  // domaine est effectivement rejetée par MapLibre (vérifié aussi via un
+  // one-liner node : `createExpression(["step", ["get","pop"], "#2563eb"])
+  // .result === "error"`, message "Expected at least 4 arguments, but
+  // found only 2.").
+  const preFixShape = ["step", ["get", "pop"], "#2563eb"];
+  const validated = createExpression(preFixShape);
+  expect(validated.result).toBe("error");
+});
+
+test("buildLegend shows no color section for a domain that dedups to exactly 2 breaks", () => {
+  const breaks = quantileBreaksFromRow({ min: 0, q1: 0, q2: 0, q3: 0, max: 10 }, 4);
+  const legend = buildLegend(
+    { color: { field: "pop", mode: "numeric" } },
+    { kind: "numeric-classed", breaks },
+    null,
+    "polygon",
+  );
+  expect(legend).toBeNull();
+});
+
+test("buildMapPaint's step expression for a usable (>= 2 classes) domain validates against the real MapLibre style spec", () => {
+  const { paint } = buildMapPaint(
+    { color: { field: "pop", mode: "numeric" } },
+    { kind: "numeric-classed", breaks: [0, 10, 20] },
+    null,
+    "polygon",
+  );
+  const validated = createExpression(paint["fill-color"]);
+  expect(validated.result).toBe("success");
 });
