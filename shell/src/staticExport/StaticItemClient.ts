@@ -105,6 +105,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async listLayerSources(..._args: unknown[]) {
       return unsupported();
     },
+    async sampleCollectionField(..._args: unknown[]) {
+      return unsupported();
+    },
     async listActiveExtensions(..._args: unknown[]) {
       return unsupported();
     },

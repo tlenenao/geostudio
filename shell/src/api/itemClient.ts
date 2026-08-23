@@ -142,6 +142,7 @@ const STAT_KEYS = new Set([
   "bbox",
   "bucket",
   "bins",
+  "sample",
   "p",
 ]);
 
@@ -161,6 +162,7 @@ function buildAggregateBody(query: Record<string, unknown>): Record<string, unkn
   if (query.field) body.field = String(query.field);
   if (query.bucket) body.bucket = String(query.bucket);
   if (query.bins) body.bins = Number(query.bins);
+  if (query.sample) body.sample = Number(query.sample);
   if (query.p !== undefined && query.p !== null) body.p = Number(query.p);
   if (Array.isArray(query.measures) && query.measures.length) {
     body.measures = (query.measures as StatMeasure[]).map((m) => ({
@@ -1305,6 +1307,19 @@ export function createItemClient(opts: {
         return data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row }));
       }
       return _fetchGeoJsonFeatures(buildFeaturesUrl(coreUrl, resolved));
+    },
+
+    async sampleCollectionField(
+      collectionId: string,
+      field: string,
+      limit: number,
+    ): Promise<number[]> {
+      const data = await request<{ categoryKey: string | string[]; rows: { value: number }[] }>(
+        "POST",
+        `/collections/${collectionId}/aggregate`,
+        { field, sample: limit },
+      );
+      return data.rows.map((r) => Number(r.value));
     },
 
     async exportDataSource(
