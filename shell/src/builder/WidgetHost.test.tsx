@@ -180,3 +180,26 @@ test("omits the breakpoint from the widget context when not provided", () => {
   render(<WidgetHost item={item("probe")} mode="runtime" />);
   expect(screen.getByText("bp:none")).toBeInTheDocument();
 });
+
+test("passes theme through to the widget's Component via ctx", () => {
+  const receivedThemes: (unknown | undefined)[] = [];
+  registerWidget({
+    type: "theme-ctx-probe",
+    label: "Probe",
+    defaultProps: {},
+    defaultSize: { w: 1, h: 1 },
+    PropsPanel: () => null,
+    Component: ({ ctx }) => {
+      receivedThemes.push(ctx.theme);
+      return null;
+    },
+  });
+  render(
+    <WidgetHost
+      item={{ id: "1", widget: "theme-ctx-probe", x: 0, y: 0, w: 1, h: 1, props: {} }}
+      mode="runtime"
+      theme={{ colors: { primary: "#2563eb" } }}
+    />,
+  );
+  expect(receivedThemes).toEqual([{ colors: { primary: "#2563eb" } }]);
+});
