@@ -1658,6 +1658,165 @@ deux (et un `--` côté entry).
     (seuil 88) ; `npm run build`/`tsc --noEmit`/lint verts ; OpenAPI/types TS
     inchangés (fix interne, aucune surface API modifiée) ; `uvx pre-commit
     run --all-files` 5/5 verts. **SP-24 clos pour de bon.**
+- **SP-25** — Symbologie dans l'éditeur de cartes (chantiers **4.2**
+  « Symbologie » et **4.3** « Classes et palettes » du plan d'action
+  `docs/vision/2026-08-20-revue-projet-et-plan-daction.md` §6, vague 4, lot
+  Carte, suite directe de SP-24 dont le `collectionId`/`geometryKind` posé
+  sur chaque couche tuilée est ce qui permet ici de calculer des bornes de
+  classes sans charger les features) : une couche carte (`LayersPanel` de
+  l'éditeur standalone **et** le widget carte des apps/dashboards/sites)
+  gagne une symbologie déclarative — couleur catégorielle/continue/classée
+  (quantile, intervalle égal, seuils naturels Jenks, 2 à 9 classes) et
+  taille continue —, compilée en paint MapLibre à l'affichage au lieu d'un
+  `paint` brut écrit à la main, avec palettes curatées + une palette dérivée
+  du thème (`theme-primary`, widget carte uniquement). **Élargissement de
+  périmètre assumé dès la spec** (§2, décision de session) : unification
+  des deux surfaces sur un seul type `LayerSymbology` et un seul composant
+  d'édition partagé plutôt que deux mécanismes parallèles — précédent
+  explicitement invoqué, l'écart I2 de la revue finale SP-23 (garde-fou
+  écrit sur une surface, jamais reporté sur sa jumelle).
+  - **Cœur** : capacité `sample` sur `AggregateRequestBody`/
+    `run_collection_aggregate` (`USING SAMPLE n ROWS`, 1-2000, exclusive de
+    `groupBy`/`bins`) — seule addition serveur nécessaire, le quantile et
+    l'intervalle égal se calculent avec les primitives déjà existantes ;
+    `MapLayer.symbology: dict | None` sur `configs/schemas.py`, même
+    précédent que `paint`/`popup` (SP-24).
+  - **Shell** : `builder/widgets/palette.ts` (palettes curatées + rampe
+    séquentielle dérivée du thème, lerp RGB maison) ; `ItemClient.
+    sampleCollectionField` ; `mapSymbology.ts` étendu (classification
+    quantile/intervalle égal côté client, Jenks par programmation dynamique
+    de Fisher, extension de `buildMapPaint`/`buildLegend` pour le cas
+    classé — expression MapLibre `step`) ; `MapSymbologyEditor.tsx`
+    (composant d'édition partagé, host-agnostic, même précédent que
+    `PopupEditor.tsx` SP-24) monté à la fois dans `LayersPanel.tsx`
+    (éditeur de carte standalone) et `mapWidget.tsx` (widget carte des
+    apps/dashboards, `PropsPanel`). **Changement cassant assumé** (spec §7,
+    même précédent que le retrait de Martin en SP-24) : `mapWidget.tsx`
+    abandonne `props.encodings`/`useNumericDomain`/ses deux `useQuery` de
+    domaine calculés à chaque rendu au profit du même champ `symbology`
+    figé à l'enregistrement — toute app déjà publiée avec une symbologie de
+    widget carte perd cette configuration au prochain chargement. Domaines
+    et bornes calculés une fois et figés dans la config à l'enregistrement,
+    jamais recalculés au rendu (y compris pour une carte publique anonyme,
+    cohérent avec la garde de coût I3/SP-24). Threading de `Theme` à travers
+    `WidgetDefinition["PropsPanel"]` (`AppBuilderPage` → `PropsPanel.tsx` →
+    `def.PropsPanel`), changement additif par typage structurel vérifié sur
+    les ~22 autres widgets (aucun ne déstructure `theme`, tous continuent de
+    compiler sans y toucher).
+  - **Déviation assumée vs. le texte littéral de la spec (§3.7)** : la
+    spec demandait « un bloc symbologie par couche vector/feature » dans
+    `LayersPanel` ; en pratique `LayerSymbologyEditor` retourne `null` sans
+    `collectionId` (`shell/src/map/LayersPanel.tsx:57`), qui n'existe que
+    pour les couches `kind: "vector"` — une couche `feature` (tuiles
+    externes, GeoJSON brut) n'a donc **aucun** éditeur de symbologie
+    fonctionnel dans l'éditeur standalone, contrairement au bloc popup
+    voisin qui, lui, fonctionne sans collection (saisie manuelle des noms
+    de champs). Documenté par le code lui-même comme une limite de
+    périmètre, pas une régression — nécessite une décision produit non
+    couverte par les Global Constraints du plan.
+  - **Déviation assumée sur le widget carte (Task 11)** : Jenks y est
+    proposé dans la spec au même titre que dans l'éditeur standalone, mais
+    `mapWidget.tsx`'s `sampleField` ne résout aucun `collectionId` réel pour
+    ce host (chemin distinct et non unifié avec `LayersPanel`, spec §1) —
+    l'option « Seuils naturels (Jenks) » y est donc masquée
+    (`jenksAvailable={false}` sur `MapSymbologyEditor`, plutôt que de
+    l'offrir puis échouer à l'usage). Trouvé et corrigé en revue finale de
+    branche (I5, cf. ci-dessous), pas anticipé par le texte littéral de la
+    spec.
+  - Exécution en subagent-driven-development, 11 tâches d'implémentation
+    (Tasks 1-11) + Task 12 (E2E) + revue finale de branche, revue par tâche
+    systématique (0 Critical/Important non résolu sur les 12 tâches).
+    **Task 12 a trouvé et corrigé 2 bugs réels hors de son propre
+    périmètre**, invisibles à
+    toute revue par tâche antérieure puisqu'elle est le premier point du
+    plan à faire tourner la suite E2E complète : (1) `toFrontLayer()`
+    (chemin de lecture `GET /configs/{id}` d'`itemClient.ts`) ne
+    round-trippait jamais `MapLayer.symbology` vers le front — même classe
+    de bug que le fix `popup` de SP-24 — corrigé en miroir exact du même
+    patron de spread conditionnel ; (2) régression préexistante dans
+    `analytics-context.spec.ts` (3 tests SP-14h) jamais rejoué contre le
+    changement cassant de la Task 11 (`props.encodings`→`props.symbology`,
+    domaine catégoriel `{values:[]}` sans clic explicite « Recalculer les
+    classes » → expression MapLibre dégénérée → couche silencieusement
+    absente) — corrigé en ajoutant les clics de recalcul manquants aux 3
+    tests (code de production intouché, séquence d'interaction E2E mise à
+    jour pour la nouvelle UX intentionnelle). Suite E2E complète restaurée
+    à 108 passed / 4 skipped / 0 failed (référence SP-24 107 + cette
+    nouvelle spec = 108).
+  - **Revue finale de branche** (opus) : 1 Critical (C1) + 6 Important
+    (I1-I6) + 11 Minor. **C1** — un domaine de symbologie jamais recalculé
+    ou dégénéré (catégoriel vide, champ vidé avec un domaine périmé, bornes
+    dupliquées issues de données à égalité/constantes) faisait émettre à
+    `buildMapPaint` une expression MapLibre invalide, qui lève à
+    `map.addLayer` — silencieusement avalée par le `try/catch` existant de
+    `MapView` : la couche entière disparaît, aucun signal utilisateur.
+    I1 — `quantileBreaksFromRow`/`jenksBreaks` produisaient des bornes
+    `NaN`/`undefined` sur une collection vide/trop petite, sérialisées en
+    silence en `null`. I2 — l'id du `datalist` de `MapSymbologyEditor` était
+    une constante globale, cassant l'autocomplétion de champ dès 2 couches
+    stylées (même classe que I2/SP-23 — un garde-fou écrit sur une surface,
+    jamais reporté sur sa jumelle, `PopupEditor` avait déjà `useId()`). I3 —
+    `recomputeSize` n'avait aucun `catch` (contrairement à `recomputeColor`).
+    I4 — `effectivePaint` calculait un seul objet paint par couche pour un
+    `geometryKind` deviné, donc une couche tuilée à géométrie mixte
+    (découpage 3 sous-couches de SP-24/I1) n'obtenait jamais que du paint
+    `fill-*` — les sous-couches `circle-`/`line-` restaient silencieusement
+    non stylées. I5 — `mapWidget`'s `runStatistics` codait en dur
+    `layer: ""` et n'avait aucun repli sans `datasetId` (source adossée à
+    une simple collection), plus Jenks proposé là où il ne peut pas
+    fonctionner (limite de périmètre sanctionnée par le plan, mais l'option
+    aurait dû être masquée — cf. déviation ci-dessus). I6 — un
+    `MapEditorPage.test.tsx` flaky à ~25 % (sans rapport avec SP-25,
+    préexistant, mais porte rouge sur le merge de cette branche).
+  - **Fix round 1** (commit `014bd04`) : C1+I1-I6 corrigés en une seule
+    passe TDD. `normalizeDomain` (nouvelle fonction pure, porte partagée
+    appelée par `buildMapPaint` **et** `buildLegend`) rejette un domaine
+    catégoriel vide, des bornes non finies, ou des bornes qui, après
+    dédoublonnage des égalités adjacentes, comptent moins de 2 valeurs
+    distinctes ou ne sont pas strictement croissantes — dégradation
+    gracieuse (moins de classes utilisables) plutôt que rejet total sur une
+    égalité partielle. 161 fichiers / 1454 tests (+27), E2E 108/4/0
+    (référence inchangée), preuve RED→GREEN pour C1 via `git stash` ciblé
+    (17 échecs avant fix → 0 après), I6 rejoué 10/10 vert en boucle.
+  - **Re-revue** (opus) : 6/7 fermés correctement (I1-I6). **C1 partiellement
+    fermé** — trou de bord trouvé dans le dédoublonnage du round 1 lui-même :
+    un domaine qui se réduit à exactement 2 bornes distinctes (1 classe)
+    passait encore la garde (seul « < 2 bornes » était rejeté, pas « < 3 »),
+    et `buildMapPaint` en tirait une expression `step` à 2 arguments — le
+    minimum MapLibre en exige 4 — reproduit empiriquement par le
+    re-reviewer contre le vrai parseur `@maplibre/maplibre-gl-style-spec`,
+    même symptôme original que C1 via son propre déclencheur n°3 (données à
+    égalité/constantes), atteignable par n'importe quelle colonne de
+    comptage/note avec assez de valeurs au minimum. 2 nouveaux Minor
+    signalés (N2, N3, cf. ci-dessous), non corrigés, même disposition que
+    la liste Minor de la première passe.
+  - **Fix round 2** (commit `cacddb9`, C-new seul) : seuil de dédoublonnage
+    de `normalizeDomain` relevé de `< 2` à `< 3` bornes distinctes (Option
+    A — la porte partagée déjà appelée par `buildMapPaint` et `buildLegend`,
+    donc le fix reste symétrique par construction sans toucher `buildLegend`
+    séparément). 161 fichiers / 1461 tests (+7), nouveaux tests validant
+    l'expression `step` produite/rejetée contre le vrai
+    `@maplibre/maplibre-gl-style-spec` (`createExpression`), pas seulement
+    une assertion de forme. E2E non rejoué pour ce fix pur de fonction
+    (aucune surface visible au DOM touchée), explicitement noté comme tel.
+    **0 Critical/Important ouvert à ce stade.**
+  - **Preuves de sortie finales** (Task 13, 2026-08-23) : core
+    `uv run pytest` (PostGIS réel) → **1878 passed, 5 skipped, 0 failed**
+    (référence exacte de fin de Task 3, 0 régression), couverture **93 %**
+    (seuil 85) ; `ruff check`/`ruff format --check`/`mypy --strict` (4
+    modules)/`lint-imports` verts. Shell `npx vitest run` → **161 fichiers /
+    1461 tests**, couverture **89,64 %** (seuil 88, mesurée après
+    nettoyage de `dist/`/`dist-export/`, piège documenté SP-22/23/24) ;
+    `npm run lint`/`format:check`/`build` verts ; `npm run e2e` → **108
+    passed, 4 skipped, 0 failed** (référence SP-24 107 + spec
+    `map-symbology.spec.ts` = 108, match exact). Garde-fou de déployabilité
+    (`test_deployability.py`) → **31/31 verts**, sans fix — ce plan n'ajoute
+    aucune variable d'env/service/bucket. `uvx pre-commit run --all-files` :
+    5/5 hooks verts. OpenAPI/types TS confirmés synchronisés (`git status
+    --porcelain` vide sur les deux, régénérés dès Task 3, rien n'a dérivé
+    depuis). **Liste Minor reportée en suivi non bloquant** (M1-M11 du
+    round 1 + N2/N3 de la re-revue) : cf. `### Suivis non bloquants ouverts`.
+    **SP-25 clos.**
 
 ### À venir
 
@@ -1713,11 +1872,17 @@ deux (et un `--` côté entry).
   d'egress sur l'appel LLM sortant (4e surface, les trois autres en ont
   une — vague 6.2).
 - **SP-24** — clos, chantier **4.1** du plan d'action fermé (cf. `### Fait`).
-  Le lot Carte continue en **SP-25** (chantiers **4.2/4.3**, symbologie —
-  bornes de classes calculées sur le `collectionId` désormais posé par
-  chaque couche tuilée) ; **4.4** et **4.5** (mesure et croquis) restent
-  hors périmètre de SP-24, non planifiés, non numérotés au-delà de leur
-  identifiant de plan d'action.
+- **SP-25** — clos, chantiers **4.2/4.3** du plan d'action fermés (cf.
+  `### Fait`). Le lot Carte du plan d'action §6 vague 4 s'arrête là :
+  **4.4** (mesure) et **4.5** (croquis) restent hors périmètre de SP-24/
+  SP-25, non planifiés, non numérotés au-delà de leur identifiant de plan
+  d'action. Reste ouvert dans le périmètre déjà livré, non planifié : un
+  éditeur de symbologie fonctionnel pour les couches `kind: "feature"`
+  dans `LayersPanel` (aujourd'hui `null` faute de `collectionId` — décision
+  produit non tranchée, cf. `### Suivis non bloquants ouverts`) ; Jenks sur
+  le widget carte des apps/dashboards (masqué faute de résolution
+  `collectionId` sur ce host, chemin distinct de `LayersPanel` par choix de
+  spec §1).
 
 ### Suivis non bloquants ouverts
 
@@ -2036,3 +2201,50 @@ deux (et un `--` côté entry).
   même commit que la preuve elle-même plutôt qu'en `fix(shell)` séparé —
   contraire au précédent explicitement consigné par SP-23 tâche 18, sans
   conséquence fonctionnelle.
+- SP-25, suivis non bloquants : **M7** — une couche `feature` (tuiles
+  externes, GeoJSON brut) n'a aucun éditeur de symbologie fonctionnel dans
+  `LayersPanel` (`LayerSymbologyEditor` retourne `null` sans
+  `collectionId`, qui n'existe que pour `kind: "vector"`) — déviation
+  réelle vis-à-vis du texte littéral de la spec §3.7 (« un bloc symbologie
+  par couche vector/feature »), nécessite une décision produit non couverte
+  par les Global Constraints du plan (le bloc popup voisin, lui, fonctionne
+  sans collection par saisie manuelle des noms de champs — rien n'empêche
+  en principe le même repli pour la symbologie, mais Jenks/quantile/
+  intervalle égal ont tous besoin d'un échantillon serveur qu'une couche
+  sans collection ne peut pas fournir). **M1** — la preuve E2E
+  (`map-symbology.spec.ts`) asserte le texte du panneau éditeur, pas le
+  paint MapLibre compilé — preuve plus faible que ce que son propre
+  docstring donne à penser, bien que `MapView.test.tsx` couvre séparément
+  le chemin de paint compilé au niveau unitaire. **M2** — aucune légende de
+  symbologie dans l'éditeur de carte standalone, seulement dans le widget
+  carte (asymétrie assumée, pas un défaut du plan). **M3** — aucun signal
+  de péremption quand champ/mode/méthode changent sans recalcul explicite :
+  domaine et métadonnées de classification peuvent silencieusement diverger
+  jusqu'au prochain clic « Recalculer ». **M4** — le type de retour de
+  `resolvePalette` promet un non-null mais retourne `undefined` pour un id
+  de palette inconnu — atteignable car `MapLayer.symbology` est un dict non
+  typé côté cœur. **M5** — le travail de `sample` est non borné bien que sa
+  sortie soit plafonnée à 2000 lignes — même forme adjacente-DoS que les
+  chemins préexistants `min`/`max`/`percentile` sur la même route (pas une
+  régression, une surface élargie). **M6** — `sample` combiné à
+  `split`/`measures` est silencieusement ignoré plutôt que rejeté, hérite
+  du laxisme déjà existant de `bins`. **M8** — `CHANGELOG.md` non mis à
+  jour malgré la demande de spec §7 de noter le changement cassant
+  `props.encodings`→`props.symbology` — habitude du dépôt entier, pas
+  spécifique à SP-25. **M9** — le copilote SP-20/`configSchema` n'a jamais
+  été étendu pour `symbology`, même résultat que l'omission délibérée de
+  `popup` en SP-24, mais ici par omission plutôt que décision explicite.
+  **M10** — `shell/src/api/types.ts` porte désormais un import type-only
+  depuis `builder/widgets/mapSymbology` — un module de contrat d'API qui
+  pointe vers un module de widget ; aucun cycle à l'exécution, mais à
+  nettoyer un jour. **M11** — `toFixed(1)` utilisé sans condition pour les
+  libellés de bornes/légende — peu lisible pour des valeurs très grandes ou
+  très petites. **N2** (re-revue) — un recalcul qui réussit mais produit un
+  résultat inutilisable (ex. échantillon Jenks trop court) efface quand
+  même l'indice « pas encore calculé », sans aucun autre signal à l'auteur.
+  **N3** (re-revue) — les domaines numériques continus, contrairement aux
+  domaines classés, contournent entièrement `normalizeDomain` : un min/max
+  `NaN` issu d'une collection vide produit une expression `interpolate`
+  **acceptée** par MapLibre qui se sérialise pourtant en `null` via
+  `JSON.stringify` — même classe de corruption silencieuse que I1, sur un
+  chemin de code différent, non corrigé.
