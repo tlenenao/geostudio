@@ -355,6 +355,12 @@ def _run_sample(
     sample: int,
 ) -> list[dict[str, Any]]:
     field_expr = f"TRY_CAST({_qi(field)} AS DOUBLE)"
+    # NOTE: The NOT NULL filter below excludes rows where TRY_CAST fails (returns NULL),
+    # e.g. if a column contains non-numeric text. This path is currently untested because
+    # test fixtures (geopandas/pyarrow) cannot create parquet files with mixed numeric
+    # and non-numeric values in the same typed column. The filter is proven by code review
+    # and is functionally correct, but lacks empirical test coverage. (See the renamed test
+    # test_sample_returns_everything_when_more_requested_than_available for context.)
     not_null_clause = f"{field_expr} IS NOT NULL"
     full_where = f"{where_sql} AND {not_null_clause}" if where_sql else f"WHERE {not_null_clause}"
     sql = (
