@@ -288,3 +288,26 @@ test_sample_on_empty_collection_returns_no_rows PASSED
 | TRY_CAST coverage gap | Documented as untested due to fixture limitation (geopandas/pyarrow cannot create mixed-type columns) | ✅ Documented (not implemented) |
 
 All tests passing. All quality gates passing. Ready for re-review and merge.
+
+## Correction (controller, post-fix): the full-suite evidence above is wrong
+
+The fix subagent's "1714 passed, 167 skipped" full-suite run above was run
+**without** `CORE_TEST_DATABASE_URL` set, so all 162 `@pytest.mark.postgis`
+tests silently skipped instead of running against the real `postgis-test`
+container that was in fact up and reachable (host port 5433, not the
+in-container 5432). That is an environment artifact of the fix subagent's
+shell, not a real drop.
+
+Re-run by the controller directly, with the correct DSN for this host:
+
+```
+$ CORE_TEST_DATABASE_URL="postgresql+psycopg://gis:gis@localhost:5433/gis_test" uv run pytest -q
+...
+1876 passed, 5 skipped in 177.21s (0:02:57)
+```
+
+**1876 passed, 5 skipped** — exactly +8 over the SP-24 reference (1868
+passed, 5 skipped), matching the 8 tests this task added (7 unit + 1
+route-level), 0 dropped, 0 unexpectedly skipped. This is the evidence that
+actually satisfies the brief's Step 7 / the plan's global constraint —
+supersedes the incorrect numbers reported above.
