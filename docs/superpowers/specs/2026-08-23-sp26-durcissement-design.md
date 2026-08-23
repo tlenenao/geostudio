@@ -100,7 +100,7 @@ prod (le scénario que C6 décrit).
 Suite de tests core (fixtures `conftest.py`) : `CORE_ENV=development` ajouté
 partout où `CORE_AUTH_MODE=mock` l'est déjà, même convention.
 
-### 3.2 — CSP, Permissions-Policy, compression (I3)
+### 3.3 — CSP, Permissions-Policy, compression (I3)
 
 Deux points d'application indépendants, les deux existent en prod :
 
@@ -137,7 +137,7 @@ widget carte, une extension tierce active), bascule en `Content-Security-
 Policy` (enforcing) avant la tâche de clôture — la preuve de sortie exige
 un header enforcing, pas report-only.
 
-### 3.3 — Rate limiting différencié (I4)
+### 3.4 — Rate limiting différencié (I4)
 
 Nouveau module `core/app/ratelimit/` (bas de la pile, pas de dépendance
 entrante d'un autre module métier — comparable à `app.analytics.egress`
@@ -157,12 +157,12 @@ affinés en tâche) :
 | Jobs asynchrones | `/export`, `/app-exports` | 15 / min |
 | Egress externe | `/harvest` | 10 / min |
 
-Dépassement → 429 avec `Retry-After` et corps RFC 7807 (§3.4). Limite
+Dépassement → 429 avec `Retry-After` et corps RFC 7807 (§3.5a). Limite
 assumée et documentée : compteur en mémoire, ne tient pas au-delà d'un seul
 process `core` (cohérent avec l'absence actuelle de `--workers`, C2/vague 0
 déjà close sur ce point précis).
 
-### 3.4 — Format d'erreur unique RFC 7807 (ARC-04)
+### 3.5a — Format d'erreur unique RFC 7807 (ARC-04)
 
 Handler d'exception global dans `core/app/main.py` (`app.exception_handler`
 sur `HTTPException` et sur `Exception` non gérée), `Content-Type:
@@ -180,7 +180,7 @@ vers un membre d'extension `errors` au premier niveau, à côté de
 un message humain pour tous les autres cas (`HTTPException(detail=...)`
 existant, ~40 sites, comportement inchangé).
 
-### 3.5 — Arrêt propre `cdc-worker` (I11)
+### 3.5b — Arrêt propre `cdc-worker` (I11)
 
 `core/app/cdc/main.py` : handler `signal.signal(signal.SIGTERM, ...)`
 positionnant un flag vérifié dans la boucle de consommation du slot de
@@ -190,7 +190,7 @@ procrastinate a déjà un mécanisme équivalent ailleurs dans le dépôt ; ce
 chantier ne le duplique pas, il comble le seul point qui en manque
 (`cdc-worker` tourne en dehors de procrastinate, boucle main() dédiée).
 
-### 3.6 — `ErrorBoundary` applicatif (I12)
+### 3.5c — `ErrorBoundary` applicatif (I12)
 
 Un `ErrorBoundary` React au niveau racine de l'app (`shell/src/App.tsx` ou
 équivalent, sous le routeur), distinct de celui déjà existant par widget
@@ -199,7 +199,7 @@ builder/pages/panels — aujourd'hui un écran blanc — et affiche un repli
 lisible (pas de tentative de "reprendre" l'état, juste un message +
 rechargement).
 
-### 3.7 — Conteneurs non-root (SEC-02)
+### 3.6 — Conteneurs non-root (SEC-02)
 
 `USER` ajouté à `core`, `deploy/export-worker`,
 `deploy/appexport-runtime-builder`, `deploy/appexport-standalone` (étage
@@ -253,7 +253,7 @@ est disponible, sinon vérification statique documentée comme telle —
 précédent SP-15d, ne pas prétendre à plus que ce qui est réellement
 exécuté) fonctionnent toujours.
 
-### 3.8 — Notifier les alertes SLO (I9)
+### 3.7 — Notifier les alertes SLO (I9)
 
 Nouveau fichier de provisioning Grafana
 `deploy/observability/grafana/provisioning/alerting/contactpoints.yaml` :
@@ -278,7 +278,7 @@ dit explicitement) — `isPaused: false` temporairement, observation d'une
 notification webhook réellement reçue, `isPaused: true` restauré. Pas une
 simulation : preuve de bout en bout comme les autres SP du dépôt l'exigent.
 
-### 3.9 — E2E sur OIDC réel (I13)
+### 3.8 — E2E sur OIDC réel (I13)
 
 Nouveau job CI (`shell-e2e-oidc` ou équivalent, `.github/workflows/ci.yml`),
 distinct du job `shell` existant (qui reste en mock, 108 specs). Services :
@@ -338,24 +338,24 @@ dépendance de données entre eux). Ordre proposé, du risque de régression le
 plus élevé au plus faible, pour que les tâches les plus susceptibles de
 révéler un problème d'intégration passent tôt :
 
-1. **3.7 — Conteneurs non-root** (le risque DuckDB/`postgis` est le plus
+1. **3.6 — Conteneurs non-root** (le risque DuckDB/`postgis` est le plus
    susceptible de faire dérailler le reste s'il révèle un problème
    d'architecture plus profond que prévu).
 2. **3.1 — Interdire le mode mock hors dev** (petit, indépendant, sert de
    échauffement).
-3. **3.4 — Format d'erreur RFC 7807** (touche un contrat existant côté
-   shell — le faire avant 3.3/tout ce qui pourrait vouloir réutiliser le
+3. **3.5a — Format d'erreur RFC 7807** (touche un contrat existant côté
+   shell — le faire avant 3.4/tout ce qui pourrait vouloir réutiliser le
    nouveau format d'erreur pour les 429 de rate limiting).
-4. **3.3 — Rate limiting différencié** (dépend du format d'erreur de
+4. **3.4 — Rate limiting différencié** (dépend du format d'erreur de
    l'étape précédente pour ses réponses 429).
-5. **3.5 — Arrêt propre `cdc-worker`** (isolé, aucune dépendance).
-6. **3.6 — `ErrorBoundary` applicatif** (isolé, shell seul).
-7. **3.2 — CSP/Permissions-Policy/compression** (bénéficie d'être fait
+5. **3.5b — Arrêt propre `cdc-worker`** (isolé, aucune dépendance).
+6. **3.5c — `ErrorBoundary` applicatif** (isolé, shell seul).
+7. **3.3 — CSP/Permissions-Policy/compression** (bénéficie d'être fait
    après que toutes les nouvelles surfaces shell/API du SP existent, pour
    n'avoir qu'une seule passe de vérification manuelle empirique).
-8. **3.8 — Notifications SLO** (isolé, infra Grafana seule).
-9. **3.9 — E2E OIDC réel** (en dernier — la preuve la plus longue à obtenir,
-   et elle peut exercer indirectement 3.1/3.4 en conditions réelles OIDC,
+8. **3.7 — Notifications SLO** (isolé, infra Grafana seule).
+9. **3.8 — E2E OIDC réel** (en dernier — la preuve la plus longue à obtenir,
+   et elle peut exercer indirectement 3.1/3.5a en conditions réelles OIDC,
    donc bénéficie de venir après leur implémentation).
 
 Puis revue finale de branche, fixes, re-revue — précédent constant du
@@ -363,15 +363,18 @@ dépôt.
 
 ## 6. Validation & preuves de sortie
 
-Reprend les preuves de sortie du plan d'action, par chantier :
+Reprend les preuves de sortie du plan d'action, par chantier (numérotation
+du document source — 3.5 y est un seul chantier bundlant ARC-04/I11/I12,
+scindé ici en 3.5a/3.5b/3.5c pour les trois lignes correspondantes) :
 
 | # | Preuve de sortie |
 |---|---|
 | 3.1 | Test : `CORE_AUTH_MODE=mock` sans `CORE_ENV=development` → refus de démarrage (`create_app()` lève) |
-| 3.2 | Test manuel + E2E `Report-Only` puis enforcing : un widget tiers légitime charge encore ; `curl -H 'Accept-Encoding: gzip'` renvoie du contenu compressé sur `shell` et via Traefik |
-| 3.3 | Test : un 4ᵉ `POST /analytics/sql` en moins d'une minute → 429 avec `Retry-After`, un `GET /health` concurrent passe |
-| 3.4 | Test : une exception non gérée renvoie `application/problem+json` conforme |
-| 3.5 | Test : `SIGTERM` sur `cdc-worker` referme proprement (flush LSN observé avant sortie) |
+| 3.3 | Test manuel + E2E `Report-Only` puis enforcing : un widget tiers légitime charge encore ; `curl -H 'Accept-Encoding: gzip'` renvoie du contenu compressé sur `shell` et via Traefik |
+| 3.4 | Test : un 4ᵉ `POST /analytics/sql` en moins d'une minute → 429 avec `Retry-After`, un `GET /health` concurrent passe |
+| 3.5a | Test : une exception non gérée renvoie `application/problem+json` conforme |
+| 3.5b | Test : `SIGTERM` sur `cdc-worker` referme proprement (flush LSN observé avant sortie) |
+| 3.5c | Une exception de rendu hors widget affiche le repli `AppErrorBoundary`, pas un écran blanc |
 | 3.6 | `docker run <image> id -u` ≠ 0 sur les images concernées ; `POST .../aggregate` fonctionne toujours hors ligne (pas de tentative réseau DuckDB) |
 | 3.7 | La règle `test-alert-do-not-keep-in-prod` délivre réellement une notification webhook observée |
 | 3.8 | La spec `auth-oidc.spec.ts` passe en CI avec un service Keycloak réel — exécution prouvée, pas seulement écrite |
@@ -394,7 +397,7 @@ capacités derrière un flag désactivé en CI : le handler d'erreur global et
 
 - **CSP calibrée empiriquement, pas garantie complète à l'écriture de cette
   spec** : MapLibre GL JS/deck.gl peuvent exiger des directives non listées
-  en §3.2 (ex. `style-src` avec un nonce plutôt que `'unsafe-inline'`). La
+  en §3.3 (ex. `style-src` avec un nonce plutôt que `'unsafe-inline'`). La
   tâche correspondante inclut une vérification manuelle des 4 surfaces
   citées avant de passer en enforcing.
 - **Rate limiting en mémoire ne survit pas à un `core` multi-réplique** —
