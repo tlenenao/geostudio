@@ -6,7 +6,20 @@
 # pouvoir COPY shell/ sans changer le contexte des autres services Node.
 FROM node:20-slim
 WORKDIR /build
-RUN groupadd --system builder && useradd --system --gid builder --create-home builder
+# uid/gid FIXE à 1001 (revue finale SP-26 round 2, N2) — même convention que
+# core/Dockerfile (`app`), deploy/qgis-worker/Dockerfile (`qgis`, C1) et
+# deploy/backup/Dockerfile (`backup`, N1) : donne au runbook de migration
+# non-root (docs/runbooks/2026-08-27-migration-conteneurs-non-root.md) un
+# nombre stable à documenter pour le volume nommé `appexport-runtime`,
+# plutôt qu'un uid laissé au hasard de l'allocation `--system` de Debian.
+# Pas de contrainte de convergence avec `app`/`qgis`/`backup` ici (aucun
+# volume partagé avec eux, `appexport-runtime` n'a que ce service en
+# écriture — `worker` le monte en lecture seule) — 1001 choisi seulement
+# pour la cohérence documentaire. Vérifié libre dans node:20-slim au moment
+# de ce correctif (`getent passwd 1001`/`getent group 1001` échouent tous
+# les deux ; `node` y occupe déjà 1000).
+RUN groupadd --system --gid 1001 builder \
+  && useradd --system --uid 1001 --gid builder --create-home builder
 COPY shell/package.json shell/package-lock.json ./
 RUN npm ci
 COPY shell/ .
