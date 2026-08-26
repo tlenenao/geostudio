@@ -72,9 +72,7 @@ test("une erreur SQL affiche le message du serveur et conserve le texte dans l'Ã
     await route.fulfill({
       status: 400,
       json: {
-        detail: {
-          errors: [{ field: "sql", code: "sql_error", message: "Parser Error: syntax error" }],
-        },
+        errors: [{ field: "sql", code: "sql_error", message: "Parser Error: syntax error" }],
       },
     });
   });
