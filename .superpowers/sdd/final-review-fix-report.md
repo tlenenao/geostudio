@@ -1,318 +1,278 @@
-# SP-25 final whole-branch review — fix report (C1 + I1..I6)
+# SP-26 — Fix pass sur la revue finale de branche (1 Critical + 6 Important)
 
-Status: **DONE**
+Session du 2026-08-27. Corrige les 7 findings (C1, I1-I6) de la revue finale
+d'intégration croisée de SP-26 « Durcissement avant v0.1 publique ». Les
+Minor (~8) sont explicitement hors périmètre, non touchés.
 
-Commit: `014bd04b0f8bb11cd5743c5a04d78690be891e9b`
-(`fix(shell): ferme C1/I1-I6 de la revue finale SP-25`, on `dev`, single
-commit)
+## C1 (Critical) — `/scratch` ownership + uid mismatch
 
-## Summary
+### Problème 1 : `/scratch` jamais créé/chowné dans `core/Dockerfile`
 
-All 7 findings from the brief (`.superpowers/sdd/final-review-fix-brief.md`)
-fixed in one commit, TDD (tests written alongside/before the fix for each
-finding, RED→GREEN evidence captured for C1 as required). No Minor findings
-touched.
+`docker-compose.yml` monte le volume nommé `etl-scratch:/scratch` sur le
+service `worker` (`build: ./core`, même image non-root que `core`).
+`core/app/pipelines/runtime.py` (`os.makedirs(scratch_dir, exist_ok=True)`,
+où `scratch_dir` est un sous-répertoire de `/scratch`) et
+`core/app/terrain3d/jobs.py` (`tempfile.mkdtemp(dir="/scratch", ...)`) y
+écrivent au runtime. `/scratch` n'existait pas dans l'image `core` : au
+premier démarrage, Docker crée le point de montage en `root:root`, et
+l'utilisateur non-root `app` échoue en `PermissionError`.
 
-## Per-finding fix + test mapping
+**Fix** : `core/Dockerfile` crée et chowne `/scratch` avant `USER app`,
+même patron que `deploy/qgis-worker/Dockerfile` (déjà correct pour son
+propre `/scratch`) et `deploy/backup/Dockerfile` (`/backup/archives`).
 
-### C1 (Critical) — degenerate/never-recomputed symbology domain silently vanished the layer
+### Problème 2 : uid mismatch entre `app` (core) et `qgis` (qgis-worker)
 
-- **Fix**: new pure `normalizeDomain(domain: ColorDomain | null): ColorDomain | null`
-  in `shell/src/builder/widgets/mapSymbology.ts`. Rejects (`null`) an empty
-  categorical domain, a numeric-classed domain with < 2 breaks, any
-  non-finite break, or breaks that (after deduping adjacent equal values)
-  have < 2 distinct values or aren't strictly ascending. Adjacent duplicate
-  breaks are collapsed rather than rejected outright (e.g.
-  `[0,10,10,20]` → usable 2-class `[0,10,20]`), so a partial tie in
-  quantile/jenks output degrades gracefully to fewer classes instead of
-  being thrown away. `buildMapPaint` and `buildLegend` both call
-  `normalizeDomain` on their `colorDomain` argument before branching, and
-  fall back to their pre-existing "no domain configured" behavior (no
-  color paint key / no legend.color) when it returns `null` — no new
-  fallback path invented.
-- **Authoring gaps closed** in `shell/src/map/MapSymbologyEditor.tsx`:
-  - Visible hint text ("Classes non calculées — cliquez sur « Recalculer
-    les classes »." / "Taille non calculée — …") whenever a field is
-    configured but `computedAt === ""`.
-  - "Retirer la couleur" / "Retirer la taille" buttons, the first real
-    `onChange` call sites that remove `color`/`size` from `LayerSymbology`
-    (falling back to `onChange(undefined)` when nothing remains active).
-- **Tests**:
-  - `mapSymbology.test.ts`: 9 new `normalizeDomain` unit tests (empty
-    categorical, non-empty categorical pass-through, continuous numeric
-    pass-through, single break, fully collapsed `equalIntervalBreaks(10,10,3)`,
-    non-finite break incl. `undefined`, non-ascending-after-dedup, adjacent
-    duplicate collapse, `null` input) + 4 integration tests
-    (`buildMapPaint`/`buildLegend` render unstyled/no-legend instead of
-    throwing on an empty categorical or collapsed-breaks domain).
-  - `MapSymbologyEditor.test.tsx`: hint-text tests for color and size,
-    "clear color keeps size" test, "clear only encoding → `onChange(undefined)`"
-    test.
-  - **RED→GREEN evidence**: `git stash push -- shell/src/builder/widgets/mapSymbology.ts`,
-    ran `npx vitest run src/builder/widgets/mapSymbology.test.ts` against
-    the pre-fix file → **17 failing** (the new `normalizeDomain` tests fail
-    on missing export; the 4 `quantileBreaksFromRow`/`jenksBreaks` I1 tests
-    also fail, since they share the same file/stash). `git stash pop`
-    restored the fix → all 48 tests pass. Confirms the new tests are load-bearing
-    against the pre-fix behavior, not vacuously true.
+`core/app/pipelines/runtime.py` (process `worker`, utilisateur `app`) écrit
+`in.gpkg` dans un sous-répertoire de scratch, puis appelle le sidecar
+`qgis-worker` (utilisateur `qgis`) en HTTP, qui doit écrire `out.gpkg` dans
+le MÊME répertoire. `core/Dockerfile` et `deploy/qgis-worker/Dockerfile`
+créaient chacun leur utilisateur via `useradd --system` SANS uid explicite,
+sur deux images de base différentes (Debian pour core, Ubuntu pour
+qgis-worker) — aucune garantie de convergence sur le même nombre.
 
-### I1 (Important) — `jenksBreaks`/`quantileBreaksFromRow` produced NaN/undefined on empty/small input
+**Fix** : les deux Dockerfiles fixent désormais `app`/`qgis` au MÊME
+uid/gid explicite, **1001**, choisi après vérification que ce nombre est
+libre dans les deux images de base :
 
-- **Fix**: `quantileBreaksFromRow` now guards every field read with `?? 0`
-  (mirroring the sibling min/max path), never emitting `NaN`. `jenksBreaks`
-  now returns `[]` immediately when `data.length === 0 || data.length < classes`,
-  before the out-of-bounds matrix reads that used to produce a run of
-  `undefined`. Both changes are defended a second time downstream by C1's
-  `normalizeDomain` (degenerate `[0,0,…]` or `[]` breaks are rejected/collapsed
-  there too) — both layers of defense present per the brief.
-- **Tests** (`mapSymbology.test.ts`): `quantileBreaksFromRow({}, 4)` → all
-  zeros; `quantileBreaksFromRow` with a partial row; `jenksBreaks([], 3)` → `[]`;
-  `jenksBreaks([1,2], 5)` (k > data.length) → `[]`.
+```
+docker run --rm python:3.12-slim getent passwd 1001   # exit 2 (libre)
+docker run --rm qgis/qgis:release-3_34 getent passwd 1001  # exit 2 (libre)
+```
 
-### I2 (Important) — global `datalist` id broke autocomplete with 2+ styled layers
+Aucun troisième consommateur de `/scratch` ou d'un volume similaire trouvé
+(`grep -n "/scratch" docker-compose.yml docker-compose.prod.yml` → seulement
+`worker` et `qgis-worker`, deux occurrences chacun — le montage et son
+commentaire).
 
-- **Fix**: `MapSymbologyEditor.tsx` now uses `const listId = useId();` and a
-  single `${listId}-fields` datalist shared by both the "Champ couleur" and
-  "Champ taille" inputs (same field-name universe, same precedent as
-  `PopupEditor.tsx`), instead of the hardcoded `map-symbology-fields` id.
-- **Test**: new `MapSymbologyEditor.test.tsx` test rendering two instances
-  side by side, asserting their `list=` attributes differ and each resolves
-  to a real `<datalist>` element.
+### Vérification empirique (build réel des deux images)
 
-### I3 (Important) — `recomputeSize` had no error handling
+```
+$ docker build -q -t geostudio-core-c1test -f core/Dockerfile core
+$ docker build -q -t geostudio-qgis-worker-c1test -f deploy/qgis-worker/Dockerfile deploy/qgis-worker
 
-- **Fix**: `recomputeSize` now mirrors `recomputeColor` exactly — `try { … }
-  catch (e) { setSizeError(...) } finally { setBusy(null) }`, with its own
-  `role="alert"` error paragraph (split into `colorError`/`sizeError` state
-  since the two recomputes are independent operations).
-- **Test**: new "a failing size recompute surfaces an error instead of an
-  unhandled rejection" test in `MapSymbologyEditor.test.tsx`, mirroring the
-  existing color-failure test.
+$ docker run --rm geostudio-core-c1test id
+uid=1001(app) gid=1001(app) groups=1001(app)
+$ docker run --rm geostudio-qgis-worker-c1test id
+uid=1001(qgis) gid=1001(qgis) groups=1001(qgis)
+```
 
-### I4 (Important) — mixed-geometry tiled layer only styled its polygon sublayer
+**RED (comportement pré-fix reproduit)** : Dockerfile minimal reproduisant
+l'ancien `useradd --system` sans `/scratch` créé dans l'image, volume nommé
+vierge monté :
 
-- **Fix**: `effectivePaint` in `MapView.tsx` now takes an explicit
-  `geometryKind: GeometryKind` parameter instead of deriving one internally
-  (which always fell back to `"polygon"` for a mixed/unknown-geometry
-  layer). `applyLayers` now calls `effectivePaint(layer, sub.suffix)` once
-  per `MIXED_GEOMETRY_SUBLAYERS` entry (point/line/polygon), so each
-  sublayer gets `buildMapPaint` output compiled for its own real geometry
-  kind, not a single polygon-scoped paint object filtered by prefix. The
-  `feature`-kind branch was updated the same way (explicit `renderAs`-derived
-  `geometryKind` passed in, same behavior as before, no regression). The
-  `paintFor` prefix filter is kept on the mixed-geometry path because the
-  manual (non-symbology) `layer.paint` object can still legitimately carry
-  keys for multiple prefixes at once (existing test covers this).
-- **Test**: new `MapView.test.tsx` test "a mixed-geometry symbologized
-  layer compiles distinct paint per sub-layer geometry, not just polygon" —
-  asserts `circle-color`/`line-color`/`fill-color` are all populated with
-  the compiled `match` expression on their respective sublayers.
+```
+$ docker run --rm -v scratch-red-test:/scratch c1red-core sh -c "ls -ld /scratch; touch /scratch/in.gpkg"
+drwxr-xr-x 2 root root 4096 ... /scratch
+touch: cannot touch '/scratch/in.gpkg': Permission denied
+exit code: 1
+```
 
-### I5 (Important) — map widget: recompute broken without `datasetId`; Jenks offered where it can't work
+**GREEN (image corrigée)** :
 
-- **Fix 1**: `mapWidget.tsx`'s `runStatistics` now passes
-  `layer: dataSource?.layer ?? ""` instead of a hardcoded `""`. Per
-  `itemClient.ts`'s `queryDataSource`, `source.layer` is exactly what's
-  used for `/collections/{layer}/aggregate` when `datasetId` is absent
-  (and is ignored in favor of the resolved dataset's `collectionId` when
-  `datasetId` is present), so this one-line change fixes the plain
-  collection-backed (`type: "features"`, no `datasetId`) source case
-  without touching the `datasetId` path.
-- **Fix 2**: `MapSymbologyEditor` gained an optional `jenksAvailable?: boolean`
-  prop (default `true`); the "Seuils naturels (Jenks)" `<option>` is
-  rendered only when it's not explicitly `false`. `mapWidget.tsx` passes
-  `jenksAvailable={false}` (this host's `sampleField` unconditionally
-  throws — scope intentionally not widened to wire up collectionId
-  resolution, per the brief). `LayersPanel.tsx`'s usage is untouched
-  (defaults to `true`, real `sampleField` there).
-- **Tests**:
-  - `mapWidget.test.tsx`: "Jenks option is absent from the widget's
-    PropsPanel classification select"; "recompute works for a plain
-    collection-backed source (no datasetId), via dataSource.layer" —
-    asserts `queryDataSource` is called with `layer: "communes"` and that
-    the resulting domain reaches `onChange`.
-  - Existing "choosing Jenks from the widget's PropsPanel surfaces an
-    error instead of hanging" test still passes unchanged (it exercises an
-    already-jenks-classified value directly, not the `<select>`, so hiding
-    the option doesn't affect it).
+```
+$ docker run --rm -v scratch-green-test:/scratch geostudio-core-c1test sh -c "ls -ld /scratch; touch /scratch/in.gpkg && echo WRITE_OK"
+drwxr-xr-x 2 app app 4096 ... /scratch
+WRITE_OK
+```
 
-### I6 (Important) — flaky `MapEditorPage.test.tsx` (~25% red)
+**Écriture croisée réelle, les deux ordres de démarrage possibles** (le
+volume nommé est seedé par la PREMIÈRE image qui le monte — l'ordre compte) :
 
-- **Fix**: `await waitFor(() => expect(mapInstances[0]).toBeDefined());`
-  inserted before `mapInstances[0].fire("idle")` in the
-  `exportRender=1 renders a nude chrome …` test.
-- **Verification**: ran `npx vitest run src/pages/MapEditorPage.test.tsx`
-  10x in a loop — **10/10 green**, no flakes observed (previously ~1 in 4
-  failed with `TypeError: Cannot read properties of undefined (reading
-  'fire')`).
+- Scénario A (`worker`/core démarre en premier, écrit `in.gpkg`, puis
+  `qgis-worker` mounte le même volume et écrit `out.gpkg` à côté) : succès,
+  les deux fichiers présents, propriétaire numérique 1001 des deux côtés.
+- Scénario B (ordre inverse, `qgis-worker` d'abord) : succès identique.
 
-## Verification contract results
+Les deux scénarios ont réellement été exécutés (deux `docker run`
+successifs partageant un volume nommé réel, pas une simulation) — sortie
+complète dans la transcription de session, `ls -la` confirmant les deux
+fichiers présents et accessibles en écriture des deux côtés dans les deux
+ordres.
 
-- **Shell unit suite**: `npx vitest run` → **161 files / 1454 tests passed**
-  (baseline 161/1427; +27 tests from this fix pass, no regressions, no
-  skips).
-- **`npx tsc --noEmit`**: clean.
-- **`npx eslint .`**: clean.
-- **`npx prettier --check .`**: clean (two new/edited test files needed
-  `prettier --write` after initial edits — applied, tests re-run green
-  after reformatting).
-- **`npm run build`**: succeeds (pre-existing chunk-size warnings and the
-  `MapView.tsx` dynamic-vs-static-import note are unrelated to this
-  change, present before it too).
-- **Full E2E suite**: `npm run e2e` → **108 passed, 4 skipped, 0 failed**
-  — exactly matches the baseline. Specifically checked:
-  `map-symbology.spec.ts` (1/1 passed, still clicks "Recalculer les
-  classes" as before — unaffected by the new hint/clear UI),
-  `analytics-context.spec.ts` (all ~35 sub-specs passed, including the
-  SP-14h map-symbology-legend ones), `map-popup.spec.ts` (2/2 passed),
-  `map-editor.spec.ts` (2/2 passed).
+Images/volumes de test nettoyés après vérification
+(`docker rmi`/`docker volume rm`).
 
-## Concerns / notes
+### Test statique de régression
 
-- None blocking. One judgment call worth flagging: for C1's
-  `normalizeDomain`, a duplicate break that is *not* at the very start/end
-  (e.g. a mid-range tie from `quantile`) is collapsed into fewer usable
-  classes rather than rejected outright — the brief's wording ("dedupe
-  adjacent equal breaks first; if fewer than 2 distinct breaks remain after
-  dedup, treat as unusable") supports this reading (a step expression
-  literally cannot be fed raw duplicate/non-ascending breaks, so the
-  "usable" result must already be the deduped array), but it's a
-  degrade-gracefully choice rather than an all-or-nothing reject — flagging
-  it explicitly in case a stricter "any duplicate at all ⇒ null" reading was
-  intended.
-- Per-task Minor findings (M1–M11) were left untouched as instructed.
-- Pre-existing unrelated changes in the working tree
-  (`.superpowers/sdd/*.md`, untracked `deploy/postgis/pg_hba.conf`) were
-  left alone — not part of this fix pass and not committed.
+`core/tests/test_deployability.py` :
+- `test_core_and_qgis_worker_pin_the_same_scratch_uid` — épingle que les
+  deux Dockerfiles déclarent le MÊME `--uid` numérique.
+- `test_core_dockerfile_creates_and_chowns_scratch_before_switching_user` —
+  épingle que `core/Dockerfile` crée+chowne `/scratch` avant `USER app`.
 
-## Round 2 (C-new)
+**Fichiers touchés** : `core/Dockerfile`, `deploy/qgis-worker/Dockerfile`,
+`core/tests/test_deployability.py`.
 
-Status: **DONE**
+## I1 (Important) — budget harvest tuait le sélecteur de couches externes
 
-Commit: `cacddb98573304d492247b2b0f03a2a691cb6020`
-(`fix(shell): ferme le trou de degat C1 (2 breaks -> step invalide)`, on
-`dev`, single commit)
+`_HARVEST_RE` couvrait TOUTES les routes `/harvest/*`, y compris
+`GET /harvest/layers`/`GET /harvest/feature-layers` (lectures pures,
+couches déjà enregistrées en base, aucun appel externe) que
+`LayerPicker.tsx` interroge à chaque frappe sans debounce.
 
-### Finding
+**Fix** : `route_group()` gagne un paramètre `method` ; le groupe `harvest`
+n'est retenu que pour les routes `/harvest/*` dont la méthode n'est PAS
+`GET` (les 4 routes à coût réel — create/patch/delete/run — sont toutes
+POST/PATCH/DELETE ; les 4 routes de lecture — list_sources, list_layers,
+list_feature_layers, get_source — sont toutes GET). Site d'appel unique
+(`core/app/main.py`) mis à jour pour passer `request.method`.
 
-Re-review of `014bd04` found a boundary hole in round 1's own C1 fix:
-`normalizeDomain` only rejected a numeric-classed domain with **< 2**
-distinct breaks after dedup. A domain that dedups to **exactly 2** breaks
-(1 class) was accepted, and `buildMapPaint` turned it into a MapLibre
-`step` expression with only 2 arguments (`["step", ["get","pop"],
-"#2563eb"]`) — MapLibre rejects this at parse time ("Expected at least 4
-arguments, but found only 2."), so `map.addLayer` throws, and the existing
-`try/catch` in `MapView.tsx` silently drops the source+layer. Same original
-symptom as C1 (layer vanishes, no signal), reached through a realistic
-tied-data column (e.g. `quantileBreaksFromRow({min:0,q1:0,q2:0,q3:0,max:10},
-4)` → `[0,0,0,0,10]` → dedups to `[0,10]`; same for `jenksBreaks([0,0,0,0,10],
-3)` → `[0,0,0,10]` → dedups to `[0,10]`).
+**Tests** (`core/tests/test_ratelimit.py`) :
+- `test_route_group_ignores_get_on_harvest_paths` (unitaire)
+- `test_route_group_covers_harvest_writes` (unitaire)
+- `test_harvest_read_routes_are_not_rate_limited` (HTTP, 15× GET sans 429)
+- `test_harvest_write_routes_stay_rate_limited` (HTTP, 11× POST → au moins
+  un 429)
 
-### Fix — Option A (tighten `normalizeDomain`)
+Shell non touché (portée du fix limitée à la regex serveur, comme demandé).
 
-Changed the dedup-length gate in `normalizeDomain`
-(`shell/src/builder/widgets/mapSymbology.ts`) from `deduped.length < 2` to
-`deduped.length < 3`: a numeric-classed domain now needs at least 3 distinct
-breaks (≥ 2 classes) to be considered usable. Below that it's rejected the
-same way a domain with 0/1 raw breaks already was — `buildMapPaint`/
-`buildLegend` both fall back to their pre-existing "no domain configured"
-behavior (no color paint key / no legend section).
+**Fichiers touchés** : `core/app/ratelimit/limiter.py`, `core/app/main.py`,
+`core/tests/test_ratelimit.py`.
 
-**Why Option A over Option B** (brief left the choice open): `normalizeDomain`
-is already the single shared gate both `buildMapPaint` and `buildLegend`
-call before branching on `colorDomain.kind`. Tightening it by one line keeps
-that symmetry for free — no new branch needed in either function, no new
-"1-class constant paint" concept to keep behaviorally consistent between
-paint and legend. Option B (emit a constant-color paint + single-class
-legend entry for a 1-class domain) is more informative in principle, but
-would have required mirroring new logic in both `buildMapPaint` and
-`buildLegend` for a real but narrow case (tied data collapsing to exactly 1
-class), for a fix pass explicitly scoped to closing the hole safely. Went
-with the smaller, safer, already-symmetric change.
+## I2 (Important) — le défaut compose désarmait la garde mock-mode
 
-Updated the block comment above `normalizeDomain` to document the new
-threshold and cite the C-new repro directly (so a future reader doesn't
-re-introduce the same off-by-one).
+`docker-compose.yml` câblait `CORE_AUTH_MODE: ${CORE_AUTH_MODE:-mock}` ET
+`CORE_ENV: ${CORE_ENV:-development}` — quiconque démarre le fichier de base
+sans `.env` obtient les deux par défaut, et
+`reject_mock_outside_development()` (qui ne refuse `mock` que si
+`CORE_ENV != "development"`) ne se déclenche jamais.
 
-### Test
+**Fix** : `CORE_ENV: ${CORE_ENV:-}` (défaut vide). Le flux documenté
+(`.env.example` → `scripts/bootstrap-env.sh` → `.env`) fixe toujours
+`CORE_ENV=development` explicitement et n'est pas affecté — vérifié :
+`.env.example:30` porte `CORE_ENV=development` en ligne active.
 
-Added to `shell/src/builder/widgets/mapSymbology.test.ts` (7 new tests,
-all in a new block after the existing C1 test section):
+**Test** (`core/tests/test_deployability.py`) :
+`test_core_env_default_cannot_silently_satisfy_the_mock_mode_guard` — lit
+la valeur brute de substitution `${CORE_ENV:-...}` du service `core` dans
+`docker-compose.yml` et vérifie qu'elle n'est plus `"development"`.
 
-- `quantileBreaksFromRow on tied data dedups to exactly 2 breaks (the
-  re-review's repro)` — reproduces the exact input from the brief.
-- `jenksBreaks on the same tied-data shape also dedups to exactly 2
-  breaks` — reproduces the brief's second repro path.
-- `normalizeDomain now rejects a numeric-classed domain that dedups to
-  exactly 2 breaks (1 class)` — both repro shapes → `null`.
-- `normalizeDomain still accepts a domain that dedups to exactly 3 breaks
-  (2 classes)` — regression guard at the new boundary.
-- `buildMapPaint never emits a MapLibre-invalid step for tied-data breaks
-  that dedup to 1 class` — asserts `paint["fill-color"]` is `undefined`
-  (not a broken `step`), **and** validates the pre-fix shape
-  (`["step", ["get","pop"], "#2563eb"]`) against the real
-  `@maplibre/maplibre-gl-style-spec` package's `createExpression`,
-  confirming `result.result === "error"` — i.e. proves the shape the old
-  code would have produced really is invalid per the real library, the
-  same way the re-reviewer found the bug, not just an assumption about the
-  spec.
-- `buildLegend shows no color section for a domain that dedups to exactly
-  2 breaks` — symmetry check on the legend side (comes for free from the
-  shared gate, verified explicitly anyway).
-- `buildMapPaint's step expression for a usable (>= 2 classes) domain
-  validates against the real MapLibre style spec` — positive-path check:
-  a genuinely usable 3-break domain still produces a `step` expression
-  `createExpression` accepts (`result.result === "success"`).
+**Re-runs demandés par le brief** :
+- `tests/test_deployability.py` → 34/34 (31 existants + 1 nouveau I2 + 2
+  nouveaux C1) — aucune régression sur le wiring existant.
+- `tests/test_mock_mode_guard.py` → 3/3 verts, inchangé — ces tests testent
+  le garde applicatif lui-même (`create_app()` + monkeypatch), indépendants
+  du défaut compose ; rien n'y supposait ce défaut.
 
-`@maplibre/maplibre-gl-style-spec` (v20.4.0) is present in `node_modules`
-as a transitive dependency of `maplibre-gl` (not a direct `shell/package.json`
-dependency) — used only in this test file, imported directly, no
-`package.json` change needed. Confirmed interactively before writing the
-test (`node -e 'import("@maplibre/maplibre-gl-style-spec").then(...)'`)
-that `createExpression(["step", ["get","pop"], "#2563eb"])` really does
-return `{result: "error", value: [{message: "Expected at least 4
-arguments, but found only 2."}]}` against the real library — matches the
-re-reviewer's empirical finding exactly.
+**Fichiers touchés** : `docker-compose.yml`, `core/tests/test_deployability.py`.
 
-### Verification
+## I3 (Important) — 403 lecture-seule en JSON plat, pas RFC 7807
 
-- `cd shell && npx vitest run` → **161 files / 1461 tests, 0 failed**
-  (baseline after round 1 was 161/1454 — +7 tests from this fix, 0
-  regressions).
-- `npx tsc --noEmit` → clean.
-- `npx eslint .` → clean.
-- `npm run build` → clean (`tsc --noEmit && vite build`, same pre-existing
-  chunk-size warnings as before, unrelated to this change).
-- `npm run e2e` — **not re-run**, per the brief's explicit permission to
-  skip when the change doesn't touch anything E2E specs depend on. This
-  fix only tightens a pure function's rejection threshold
-  (`normalizeDomain`) inside `mapSymbology.ts`; no component, prop, or
-  DOM-visible behavior touched, and no E2E spec exercises the specific
-  tied-data threshold this closes.
-- Confirmed no unrelated files were staged: `git status --porcelain
-  shell/` before commit showed only the two touched files
-  (`mapSymbology.ts`, `mapSymbology.test.ts`).
+`read_only_guard` (middleware, `core/app/main.py`) renvoyait
+`{"detail": "..."}` en `application/json` nu — forme antérieure à Task 3
+(RFC 7807), jamais mise à jour car Task 3 portait sur les exception
+handlers, pas ce middleware.
 
-### Not in scope (per brief)
+**Fix, inline (pas d'extraction de helper — choix conservateur demandé par
+le brief)** : même forme que `_http_exception_handler`/le 429 du rate
+limiter — `media_type="application/problem+json"`, corps
+`{"type": "about:blank", "title": HTTPStatus(403).phrase, "status": 403,
+"detail": "Mode démo : lecture seule, écritures désactivées."}`.
 
-N2 and N3 (Minor findings from the re-review) were left untouched, as
-instructed — noted here for the progress ledger:
+**Test** : `core/tests/test_read_only_mode.py`'s
+`test_read_only_mode_blocks_every_mutation_even_for_admin` mis à jour
+(TDD — RED confirmé en lisant l'ancienne assertion `{"detail": ...}` avant
+modification, GREEN après le fix) : vérifie désormais
+`content-type == "application/problem+json"` et le corps RFC 7807 complet
+(`type`/`title`/`status`/`detail`). Les autres tests du même fichier qui
+comparent au message `READ_ONLY_MESSAGE` par inégalité
+(`test_analytics_sql_is_exempt_from_read_only`) restent corrects sans
+changement. `test_mcp_read_only_mode.py` non affecté : `/mcp` est
+explicitement exempté de ce middleware, son message provient d'un chemin
+MCP distinct.
 
-- **N2**: a domain that recomputes successfully but yields something
-  unusable (e.g. jenks on too-short a sample) still sets `computedAt` and
-  clears the "not yet computed" hint from round 1, even though the result
-  is unusable — no signal to the author in that case either.
-- **N3**: continuous `numeric` domains bypass `normalizeDomain` entirely;
-  a `NaN` min/max (same root cause as I1, but on the continuous-domain path)
-  produces an `interpolate` expression MapLibre *accepts* but that
-  serializes as `null` via `JSON.stringify` — same silent-corruption class
-  as I1, different code path.
+**Fichiers touchés** : `core/app/main.py`, `core/tests/test_read_only_mode.py`.
 
-### Concerns
+## I4 (Important) — `_hits` croît sans borne sous rotation de jeton OIDC
 
-- None. The fix is a single-line threshold change plus a comment update;
-  behavior for every domain shape already covered by the round-1 test
-  suite is unchanged (verified: all pre-existing tests still pass
-  unmodified, including the round-1 "collapses to fewer, still-usable
-  classes" test at exactly the new 3-break boundary).
-- N2/N3 remain open, as scoped.
+`RateLimiter._hits` était clé sur l'en-tête `Authorization` brut (un JWT
+complet sous OIDC réel, qui tourne toutes les quelques minutes) et n'était
+jamais purgé au niveau du dict — seule la deque de la clé COURANTE était
+purgée à chaque appel ; une clé qui n'est plus jamais réutilisée après
+rotation restait dans `_hits` pour toujours. Le docstring affirmait à tort
+que cette croissance était « négligeable ».
+
+**Fix** : balayage périodique (`_sweep`, toutes les `_SWEEP_INTERVAL=50`
+requêtes, pas à chaque appel — coût O(n) borné plutôt que sur le chemin
+chaud de chaque requête) qui purge TOUTES les deques du dict et retire les
+entrées retombées à vide. Docstring corrigé : la limite réelle documentée
+est maintenant « pas de partage inter-répliques » (C2/vague 0), plus la
+fausse affirmation de croissance négligeable.
+
+**Test** (`core/tests/test_ratelimit.py`) :
+`test_expired_bucket_is_pruned_from_hits` — `time.monotonic` monkeypatché,
+une clé `"stale-caller"` appelée une fois puis jamais réutilisée ; après
+avance de temps > fenêtre + `_SWEEP_INTERVAL` appels d'une AUTRE clé,
+vérifie `("stale-caller", "harvest") not in limiter._hits` (comparaison
+d'appartenance au dict, pas juste un comportement observable équivalent).
+
+**Fichiers touchés** : `core/app/ratelimit/limiter.py`,
+`core/tests/test_ratelimit.py`.
+
+## I5 (Important, documentation seule) — 4 bloqueurs CSP avant enforcing
+
+Note ajoutée dans `docker-compose.prod.yml`, juste avant la ligne
+`Content-Security-Policy-Report-Only` : les 4 points listés dans le brief
+(img-src bloque WMS/WMTS+terrain externes ; connect-src bloque tileset 3D
+externe ; script-src 'self' bloque les widgets d'extension tiers ;
+`shell/nginx.conf`'s connect-src 'self' est spécifiquement faux pour le
+compose de base hors overlay prod). Aucun changement de code.
+
+**Fichiers touchés** : `docker-compose.prod.yml` (commentaire seul).
+
+## I6 (Important, documentation seule) — volumes nommés existants cassés à l'upgrade
+
+`docs/runbooks/` existe (un seul fichier, restauration de sauvegarde —
+scénario différent : machine neuve, volumes vierges, pas d'upgrade en
+place). Créé `docs/runbooks/2026-08-27-migration-conteneurs-non-root.md`
+(même convention de nommage daté que le runbook existant) : explique
+pourquoi un volume nommé déjà peuplé par d'anciennes images root reste
+`root:root` après upgrade (Docker ne fixe la propriété qu'à la première
+création du volume), et donne les commandes `docker run --rm -v <volume>:/v
+alpine chown -R <uid>:<gid> /v` pour `backup-archives` (`backup:backup`) et
+`etl-scratch` (`1001:1001`, les valeurs réelles choisies en C1).
+
+**Fichiers touchés** : `docs/runbooks/2026-08-27-migration-conteneurs-non-root.md`
+(nouveau).
+
+## Preuves de sortie finales (2026-08-27)
+
+- `cd core && CORE_TEST_DATABASE_URL=postgresql://gis:gis@localhost:5433/gis_test uv run pytest -q`
+  → **1895 passed, 5 skipped, 1 failed** (225.57s). L'échec est
+  `tests/test_features_rls.py::test_scope_preserves_original_sql_error` —
+  confirmé pré-existant et sans rapport avec cette branche (assertion sur le
+  message d'erreur SQL exact remonté par psycopg2 lors d'un `RESET ROLE`
+  après transaction avortée ; ne touche aucun fichier modifié par ce fix
+  pass). Dépasse le plancher attendu (1887+).
+- `uv run ruff check .` → All checks passed!
+- `uv run ruff format --check .` → 503 files already formatted
+- `uv run mypy --strict app/auth app/secrets app/analytics app/copilot` →
+  Success: no issues found in 21 source files
+- `uv run lint-imports` → Contracts: 1 kept, 0 broken.
+- `uv run pytest tests/test_deployability.py -q` → **34 passed** (31
+  d'origine + 3 nouveaux : I2 + 2×C1).
+
+## Auto-revue contre chaque finding
+
+- **C1** : fermé — `/scratch` créé+chowné dans `core/Dockerfile` ; uid/gid
+  1001 identiques et VÉRIFIÉS libres dans les deux images de base ; écriture
+  croisée réelle prouvée dans les DEUX ordres de démarrage (pas seulement
+  uid égal — le brief demandait explicitement de ne pas s'arrêter à
+  l'égalité des uid) ; aucun troisième consommateur de `/scratch`.
+- **I1** : fermé — seules les 4 routes à coût réel restent limitées ; shell
+  non touché comme demandé.
+- **I2** : fermé — défaut compose neutralisé, flux `.env.example` non
+  affecté, testé.
+- **I3** : fermé — forme RFC 7807 alignée sur les 3 autres sites existants,
+  fix inline conservateur (pas d'extraction de helper, comme suggéré en
+  option la plus sûre par le brief).
+- **I4** : fermé — croissance bornée par balayage périodique de TOUT le
+  dict (pas seulement la clé courante), docstring corrigé, test prouvant le
+  retrait effectif (pas juste l'absence de croissance immédiate).
+- **I5** : fermé — note concise (9 lignes utiles) au bon endroit, 4 points
+  du brief tous couverts, aucun code touché.
+- **I6** : fermé — runbook dédié créé (aucun autre document ne convenait
+  mieux), commandes concrètes avec les vraies valeurs uid/gid de C1.
+
+Minor du brief : non touchés, comme demandé explicitement (« Do NOT fix »).
