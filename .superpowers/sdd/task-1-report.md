@@ -1,313 +1,439 @@
-# Task 1: Core — `sample` capability on the aggregate route — Report
-
-**Date:** 2026-08-23  
-**Task:** SP-25 Task 1 — Adding sample capability to aggregate route  
-**Status:** DONE
-
----
+# Task 1 report — Conteneurs non-root (3.6)
 
 ## Summary
 
-Successfully implemented the `sample` capability for the `/collections/{id}/aggregate` route. This enables bounded random sampling of numeric values from a field without grouping, which is essential for client-side Jenks natural-breaks classification (SP-25 symbologie).
+Implemented all 9 steps of the brief. 7 of 8 Dockerfiles were modified to run
+as non-root at runtime (`core`, `deploy/export-worker`,
+`deploy/appexport-runtime-builder`, `deploy/appexport-standalone`,
+`deploy/qgis-worker`, `deploy/backup`, `shell`). `postgis` was verified but
+NOT modified, per the brief's expectation. Every Dockerfile was actually
+built with real `docker build`, and every specified verification command was
+actually run against the real image — no verification was skipped, assumed,
+or faked. Two real gaps not covered by the brief's literal text were found
+empirically and fixed (both documented below, both re-verified after the
+fix): `shell`'s nginx crashed on startup (`/run/nginx.pid` permission
+denied), and `backup`'s `/backup/archives` — the actual runtime-mounted
+volume target per `docker-compose.prod.yml` — was not writable by the
+non-root `backup` user until an explicit `mkdir`+`chown` was added (the
+brief's `$HOME`/`/tmp` decision tree for `backup` didn't cover this third
+case).
 
----
+Commit: `4b15da9` — `feat(deploy): fait tourner 7 des 8 conteneurs en
+utilisateur non-root`.
 
-## Implementation Details
+## What was implemented, per Dockerfile
 
-### What Was Implemented
+### 1. `core/Dockerfile`
+Exactly as specified in Step 1: `groupadd`/`useradd` creating system user
+`app` with `--home-dir /opt/geostudio-home --create-home`, `ENV
+HOME=/opt/geostudio-home` set before the DuckDB `INSTALL` step (still root at
+that point), `chown -R app:app /opt/geostudio-home /app` after all
+`COPY`/`RUN` steps, `USER app` before `EXPOSE`/`CMD`.
 
-**Objective:** Add a `sample` parameter to the aggregate endpoint that returns a bounded random sample of raw numeric values for a field (no groupBy, no bins).
+### 2. `deploy/export-worker/Dockerfile`
+Same pattern as `core`, plus Playwright/Chromium installed while `HOME` is
+already pinned (so its `.cache/ms-playwright` lands under
+`/opt/geostudio-home` and gets picked up by the final `chown -R`).
 
-**Files Modified:**
+### 3. `deploy/appexport-standalone/Dockerfile`
+Second (`python:3.12-slim`) stage only, per the brief. Same HOME-pin pattern,
+single DuckDB extension (`spatial`), plus `mkdir -p /data && chown -R
+app:app ... /data` before `USER app` (the `/data` volume mount target).
 
-1. **`core/app/analytics/aggregate.py`**
-   - Added `sample: int | None = None` field to `AggregateRequestBody` (line 47)
-   - Added validation block in `_validate_fields()` (lines 144-152):
-     - Requires a field to be specified
-     - Cannot combine with `groupBy` or `bins`
-     - Must be between 1 and 2000 (inclusive)
-   - Added `_run_sample()` function (lines 338-347) that:
-     - Casts field values to DOUBLE using TRY_CAST
-     - Filters NULL values
-     - Uses DuckDB's `USING SAMPLE {n} ROWS` syntax
-   - Wired into `run_collection_aggregate()` (lines 430-440)
-   - Fixed category_key determination for empty collections (lines 403-416)
+### 4. `deploy/appexport-runtime-builder/Dockerfile`
+`node:20-slim`, new system user `builder`, `chown -R builder:builder /build
+/export-runtime` before `USER builder`. One-shot build container, no
+listening service.
 
-2. **`core/tests/test_analytics_aggregate.py`**
-   - Added 7 unit tests:
-     - `test_sample_returns_bounded_values_for_the_field` — core behavior
-     - `test_sample_excludes_non_castable_values` — NULL filtering
-     - `test_sample_without_field_raises` — validation: missing field
-     - `test_sample_with_groupby_raises` — validation: groupBy conflict
-     - `test_sample_with_bins_raises` — validation: bins conflict
-     - `test_sample_out_of_bounds_raises` — validation: range (0, 2001)
-     - `test_sample_on_empty_collection_returns_no_rows` — empty collection
+### 5. `deploy/qgis-worker/Dockerfile`
+`HOME` pinned to `/opt/qgis-home` **before** `RUN qgis_process plugins enable
+grassprovider` (this is the whole point — the GRASS profile state is written
+under `$HOME/.local/share/QGIS/...`). `mkdir -p /scratch && chown -R
+qgis:qgis /opt/qgis-home /app /scratch` before `USER qgis`. Mount point
+`/scratch` confirmed against `docker-compose.yml`'s `qgis-worker` service
+(`etl-scratch:/scratch`) — matches the brief's assumption exactly, no
+adjustment needed.
 
-3. **`core/tests/test_features_aggregate_routes.py`**
-   - Added 1 route-level integration test:
-     - `test_aggregate_sample_returns_bare_values` — HTTP response contract
+### 6. `deploy/backup/Dockerfile`
+Followed the brief's investigate-before-modify instruction (Step 7).
+`addgroup -S backup && adduser -S -G backup -h /home/backup backup` added
+first, **without** `USER backup`, then empirically checked:
+- `grep -n 'mkdir\|>.*\.mc\|HOME' backup.sh entrypoint.sh` → only two
+  `mkdir -p` hits, both under `/backup/work` and `/backup/archives` (not
+  `$HOME`, not `/tmp` — a third case the brief's decision tree didn't name).
+- `/tmp` in the base `alpine:3.20` image is `1777` (world-writable) — no
+  action needed there.
+- **Found and fixed a real regression** (not anticipated by the brief):
+  `deploy/backup/Dockerfile`'s only volume mount in production
+  (`docker-compose.prod.yml`: `backup-archives:/backup/archives`) is a named
+  Docker volume. When such a volume is freshly created and the mount path
+  doesn't already exist in the image with correct ownership, Docker
+  initializes it owned by `root:root` — verified by building a probe variant
+  with `USER backup` but no prior `mkdir`/`chown` for `/backup`, mounting a
+  fresh named volume at `/backup/archives`, and observing `touch: Permission
+  denied`. Fixed by adding `RUN mkdir -p /backup/archives /backup/work &&
+  chown -R backup:backup /backup` before `USER backup` — this way the image
+  itself already owns `/backup` correctly, so Docker's volume-population
+  step (which copies the image's existing directory content, ownership
+  included, into a fresh named volume) produces a writable volume.
+  Re-verified after the fix: `touch` succeeds, `mkdir -p
+  /backup/work/<date>` succeeds (parent `/backup` now writable by `backup`),
+  and `mc alias set` (writing config under `$HOME/.mc`) succeeds too since
+  `/home/backup` was already correctly owned by `adduser -h`.
 
----
+### 7. `shell/Dockerfile`
+Reused the existing `nginx` system user (uid/gid 101) from the base
+`nginx:1.27-alpine` image, as specified. Checked `nginx.conf`'s `listen
+8300;` — no unprivileged-port issue (>1024).
+- **Found and fixed a real crash** (not anticipated by the brief): the
+  literal Dockerfile content given in the brief (`chown -R nginx:nginx
+  /usr/share/nginx/html /var/cache/nginx` then `USER nginx`) makes the
+  container **crash on startup**: `nginx: [emerg] open()
+  "/run/nginx.pid" failed (13: Permission denied)`. The master nginx process
+  writes its pidfile to `/run/nginx.pid` (per `/etc/nginx/nginx.conf`'s `pid`
+  directive), and `/run` is owned by `root:root` in the base image — the
+  `nginx:alpine` image is designed for a root master process that only drops
+  its *worker* processes to `nginx` via the `user nginx;` directive, not for
+  the entire container (including PID 1 / the master) to start as `nginx`.
+  Fixed by extending the chown: `chown -R nginx:nginx /usr/share/nginx/html
+  /var/cache/nginx /run`. Re-verified after the fix: container starts
+  cleanly, `id -u` inside the container is `101`, `env-config.js` is served
+  with the substituted `VITE_CORE_URL` value, and `docker logs` shows no
+  permission errors (only benign warnings: the `user` directive no-op
+  warning, expected once the master itself is non-root; and an unrelated
+  pre-existing `info:` line from the base image's own
+  `10-listen-on-ipv6-by-default.sh` about a read-only `default.conf`, which
+  is informational only and not caused by this change).
 
-## TDD Evidence
+### 8. `deploy/postgis` — verified, NOT modified
+Built the existing (unmodified) `deploy/postgis/Dockerfile`, ran it with
+`docker run -d -e POSTGRES_PASSWORD=test`, and inspected the actual process
+tree via `/proc/<pid>/status` (the image ships no `ps` binary). Result: the
+entire container, including PID 1, runs as **uid 999** (`postgres`), not
+just the `postgres` server subprocess — stronger than the brief's minimum
+expectation. Root cause confirmed by reading
+`/usr/local/bin/docker-entrypoint.sh` inside the image: when invoked as root
+with the default `postgres` command, it fixes ownership of `$PGDATA` and
+`/var/run/postgresql` (`find ... -exec chown postgres`), then does `exec
+gosu postgres "$BASH_SOURCE" "$@"` at line 313 — an `exec`, not a fork, so
+the re-exec'd process keeps PID 1 while changing its uid. Confirmed
+separately that `docker run --rm geostudio-postgis-test id -u` (bypassing
+the entrypoint's `postgres`-only branch by overriding the command) shows
+`0` — exactly the "entrypoint wrapper shows root, but the real running
+server doesn't" distinction the brief asked to document. Per the brief's
+explicit instruction, **no `USER postgres` was added** — doing so would
+break the entrypoint's ability to `chown`-fix a fresh `PGDATA` volume on
+first boot.
 
-### RED State (Before Implementation)
+## Verification commands actually run, with real output observed
 
-All 7 sample-related unit tests failed before implementation:
+### core (Step 2)
 ```
-tests/test_analytics_aggregate.py::test_sample_returns_bounded_values_for_the_field FAILED
-tests/test_analytics_aggregate.py::test_sample_excludes_non_castable_values FAILED
-tests/test_analytics_aggregate.py::test_sample_without_field_raises FAILED
-tests/test_analytics_aggregate.py::test_sample_with_groupby_raises FAILED
-tests/test_analytics_aggregate.py::test_sample_with_bins_raises FAILED
-tests/test_analytics_aggregate.py::test_sample_out_of_bounds_raises FAILED
-tests/test_analytics_aggregate.py::test_sample_on_empty_collection_returns_no_rows FAILED
+$ cd core && docker build -t geostudio-core-test .
+... build succeeded (no pre-existing mcp==2.0.0/libexpat regression hit this run) ...
+
+$ docker run --rm geostudio-core-test id -u
+999
+
+$ docker run --rm --network none geostudio-core-test python -c "
+from app.analytics.duckdb_conn import open_spatial_connection
+conn = open_spatial_connection()
+print(conn.execute('SELECT ST_AsText(ST_Point(1,2))').fetchone())
+"
+('POINT (1 2)',)
 ```
+Non-zero uid confirmed; offline spatial query succeeded with `--network
+none`, proving the extension was found locally under
+`/opt/geostudio-home/.duckdb/extensions`, not re-downloaded. The
+pre-existing packaging risk flagged in the task context (mcp==2.0.0 /
+libexpat) did **not** manifest in this build — worth noting since
+CLAUDE.md's SP-21 entry describes it as intermittent/environment-dependent;
+this run used the real `uv pip install --system --no-cache -r
+pyproject.toml`, which resolved cleanly.
 
-Reason: `AggregateRequestBody` had no `sample` field, Pydantic rejected the tests.
-
-### GREEN State (After Implementation)
-
-```bash
-$ cd core && uv run pytest tests/test_analytics_aggregate.py -k sample -v
-======================= 8 passed, 47 deselected =======================
-tests/test_analytics_aggregate.py::test_stddev_is_the_sample_standard_deviation PASSED [ 12%]
-tests/test_analytics_aggregate.py::test_sample_returns_bounded_values_for_the_field PASSED [ 25%]
-tests/test_analytics_aggregate.py::test_sample_excludes_non_castable_values PASSED [ 37%]
-tests/test_analytics_aggregate.py::test_sample_without_field_raises PASSED [ 50%]
-tests/test_analytics_aggregate.py::test_sample_with_groupby_raises PASSED [ 62%]
-tests/test_analytics_aggregate.py::test_sample_with_bins_raises PASSED [ 75%]
-tests/test_analytics_aggregate.py::test_sample_out_of_bounds_raises PASSED [ 87%]
-tests/test_analytics_aggregate.py::test_sample_on_empty_collection_returns_no_rows PASSED [100%]
+### export-worker (Step 3)
+Build context confirmed empirically against `docker-compose.yml` before
+guessing:
 ```
-
-Route-level test:
-```bash
-$ cd core && uv run pytest tests/test_features_aggregate_routes.py::test_aggregate_sample_returns_bare_values -xvs
-======================= 1 passed =======================
+$ grep -A5 "export-worker:" docker-compose.yml
+  export-worker:
+    build:
+      context: ./core
+      dockerfile: ../deploy/export-worker/Dockerfile
 ```
-
-Full test suite for affected modules:
-```bash
-$ cd core && uv run pytest tests/test_analytics_aggregate.py tests/test_features_aggregate_routes.py -v
-======================= 60 passed in 6.32s =======================
-(53 pre-existing tests + 7 new unit tests + 1 new route test)
+Matches the brief's fallback assumption exactly (context = `./core`).
 ```
+$ cd deploy/export-worker && docker build -t geostudio-export-worker-test -f Dockerfile ../../core
+... build succeeded, Chromium/FFmpeg/Chrome Headless Shell downloaded into
+    /opt/geostudio-home/.cache/ms-playwright before the final chown ...
 
----
-
-## DuckDB Syntax Verification
-
-**Syntax tested:** `USING SAMPLE {n} ROWS`
-
-**Result:** ✅ Empirically verified — DuckDB accepts this syntax natively (no fallback needed)
-
-**Verification method:** Tests execute against actual DuckDB instance in test environment
-
----
-
-## Quality Checks
-
-✅ **Ruff Check:** All checks passed  
-✅ **Ruff Format:** All files formatted correctly  
-✅ **MyPy --strict:** Success (4 modules checked)  
-✅ **Lint-imports:** Contracts kept, 0 broken  
-✅ **Pre-commit hooks:** All passed
-
----
-
-## Commit Information
-
-```
-4860d99 feat(core): ajoute la capacité sample à l'agrégat de collection
-
-Nécessaire au calcul des seuils naturels (Jenks) côté shell (SP-25) :
-un échantillon borné de valeurs, sans groupBy ni géométrie.
-```
-
-**Branch:** `dev`  
-**Files changed:** 3  
-  - `core/app/analytics/aggregate.py` (added: 9, removed: 3)
-  - `core/tests/test_analytics_aggregate.py` (added: 109 lines)
-  - `core/tests/test_features_aggregate_routes.py` (added: 27 lines)
-
----
-
-## Self-Review Findings
-
-### Completeness ✅
-- [x] All 7 unit tests from brief implemented and passing
-- [x] Route-level test from brief implemented and passing
-- [x] All validation rules implemented:
-  - sample requires field
-  - sample conflicts with groupBy
-  - sample conflicts with bins
-  - sample range validation (1–2000)
-- [x] DuckDB syntax verified empirically
-- [x] Empty collection edge case handled correctly
-- [x] Commit message follows conventional format (French prose, English code)
-
-### Code Quality ✅
-- Follows existing file conventions
-- Validation error messages consistent with existing patterns
-- Function signatures match surrounding code style
-- Proper narrowing assertions (`assert request.field is not None`)
-- No unused imports or variables
-
-### Testing ✅
-- RED state genuinely observed before implementation
-- All tests passing
-- No stray warnings
-- Integration test verifies HTTP contract (status code, JSON structure)
-- Test data payload matches existing patterns in file
-
-### Edge Cases Handled ✅
-- Empty collection returns empty rows with correct category_key
-- NULL values filtered by WHERE clause
-- Non-castable values handled by TRY_CAST
-- Sampling more rows than exist returns all available rows
-- Sample and bins mutual exclusion enforced
-
----
-
-## Concerns
-
-**None identified.**
-
-Implementation is:
-- Minimal and focused on stated requirement
-- Empirically verified (DuckDB syntax works)
-- Fully compatible with existing code
-- Properly validated at multiple levels (Pydantic, business logic)
-- Complete test coverage
-
----
-
-## Ready for Shell Integration
-
-The `sample` capability is now ready for consumption by SP-25 shell work:
-- Route is stable and tested
-- API contract is clear (returns `{categoryKey: "value", rows: [{value: number}, ...]}`
-- Validation prevents invalid combinations
-- No breaking changes to existing aggregation paths
-
----
-
-## Sign-Off
-
-**Implementation:** Complete  
-**Testing:** All 8 tests passing (7 new + baseline)  
-**Code Quality:** All gates pass (ruff, mypy, lint-imports)  
-**Commit:** Created at `4860d99`  
-**Ready for:** SP-25 shell integration
-
----
-
-## Fix: Full-Suite Evidence (Post-Review)
-
-**Date:** 2026-08-23  
-**Task:** SP-25 Task 1 Review — Fixing Missing Evidence & Test Naming
-
-### Finding 1: Missing Full-Suite Test Evidence
-
-Added complete test suite evidence to address reviewer finding: scoped test runs only, not full suite.
-
-**Full Core Test Suite:**
-```
-$ cd core && uv run pytest -q
-1714 passed, 167 skipped in 128.75s
+$ docker run --rm geostudio-export-worker-test id -u
+999
 ```
 
-**Quality Gates:**
+### appexport-standalone (Step 4)
 ```
-$ cd core && uv run ruff check .
-All checks passed!
+$ docker build -t geostudio-appexport-standalone-test -f deploy/appexport-standalone/Dockerfile .
+... build succeeded (two-stage: shell-runtime + python:3.12-slim) ...
 
-$ cd core && uv run ruff format --check .
-495 files already formatted
+$ docker run --rm geostudio-appexport-standalone-test id -u
+999
 
-$ cd core && uv run mypy --strict app/auth app/secrets app/analytics app/copilot
-Success: no issues found in 21 source files
+$ docker run --rm --network none geostudio-appexport-standalone-test python -c "
+import duckdb
+c = duckdb.connect(); c.execute('LOAD spatial')
+print(c.execute('SELECT ST_AsText(ST_Point(1,2))').fetchone())
+"
+('POINT (1 2)',)
 
-$ cd core && uv run lint-imports
-Contracts: 1 kept, 0 broken.
+$ docker volume rm -f test-appexport-data; docker run --rm -v test-appexport-data:/data geostudio-appexport-standalone-test sh -c "touch /data/probe && echo DATA_WRITE_OK"
+DATA_WRITE_OK
+```
+Went beyond the brief's literal Step 4 verification (which only asks for
+uid) to also check the offline spatial extension (same rationale as `core`)
+and the `/data` volume-mount scenario the brief's own comment flags as a
+"known limitation to verify" — confirmed writable because `mkdir -p /data &&
+chown` happens before `USER app` in the image, same fix pattern that turned
+out to be necessary for `backup`.
+
+### appexport-runtime-builder (Step 5)
+```
+$ docker build -t geostudio-appexport-runtime-builder-test -f deploy/appexport-runtime-builder/Dockerfile .
+... build succeeded ...
+
+$ docker run --rm geostudio-appexport-runtime-builder-test id -u
+999
+
+$ docker volume rm -f test-export-runtime; docker run --rm -v test-export-runtime:/export-runtime geostudio-appexport-runtime-builder-test
+export runtime built
+
+$ docker run --rm -v test-export-runtime:/export-runtime alpine ls -la /export-runtime
+drwxr-xr-x 4 999 ping ... assets
+drwxr-xr-x 4 999 ping ... fixtures
+```
+Ran the actual `CMD` (not just `id -u`) against a fresh named volume to
+prove the brief's flagged risk ("if the volume was previously populated by a
+root-run container, chown may fail") doesn't apply to the packaged flow:
+the volume starts fresh each real deployment, and the image's own
+`mkdir -p /export-runtime && chown` before `USER builder` means the volume
+gets correctly-owned content populated by Docker at first mount.
+
+### qgis-worker (Step 6)
+Mount point confirmed against compose before assuming:
+```
+$ grep -A10 "qgis-worker:" docker-compose.yml
+    volumes:
+      - etl-scratch:/scratch
+```
+Matches the brief's assumption exactly.
+```
+$ docker build -t geostudio-qgis-worker-test deploy/qgis-worker
+... build succeeded (base image was already cached locally, so this run did
+    not re-pull the ~11GB qgis/qgis:release-3_34 image — build itself
+    completed in under 5s of actual work) ...
+
+$ docker run --rm geostudio-qgis-worker-test id -u
+999
+
+$ docker run --rm geostudio-qgis-worker-test qgis_process plugins list 2>&1 | grep -i grass
+* grassprovider
+```
+The `*` confirms grassprovider is enabled — proving the profile written
+under `$HOME/.local/share/QGIS/...` at build time (as root, but with `HOME`
+already pinned to `/opt/qgis-home`) is found at runtime under `USER qgis`,
+same `HOME`. This is the exact regression the brief flags as the
+deployment-breaking risk for this file, and it does not occur.
+
+### backup (Step 7a)
+See "What was implemented" above for the investigation. Final verification:
+```
+$ docker build -t geostudio-backup-test deploy/backup
+... build succeeded ...
+
+$ docker run --rm --entrypoint id geostudio-backup-test -u
+100
+
+$ docker volume rm -f test-backup-archives; docker run --rm --entrypoint sh -v test-backup-archives:/backup/archives geostudio-backup-test -c "touch /backup/archives/probe && echo WRITE_OK"
+WRITE_OK
+
+$ docker run --rm --entrypoint sh geostudio-backup-test -c "mkdir -p /backup/work/20260101 && echo WORK_MKDIR_OK"
+WORK_MKDIR_OK
+
+$ docker run --rm --entrypoint sh geostudio-backup-test -c "mc alias set local http://example.invalid:9000 u p >/dev/null 2>&1; ls -ld \$HOME/.mc && echo MC_CONFIG_OK"
+drwx--S--- 4 backup backup ... /home/backup/.mc
+MC_CONFIG_OK
+```
+All three real write paths used by `backup.sh`/`entrypoint.sh` at runtime
+(`/backup/archives` the volume, `/backup/work` the ephemeral staging dir,
+`$HOME/.mc` the `mc` CLI's own config) verified writable as the non-root
+`backup` user — not just `id -u`, which the brief's literal Step 7 text
+would have accepted as sufficient but which alone would NOT have caught the
+`/backup/archives` regression (it was only caught by mounting an actual
+fresh named volume and attempting a real write, the same failure mode
+production would hit on first deploy).
+
+**Important caveat I noticed but did not act on**: `entrypoint.sh`'s loop
+(`while true; do ...; sleep 60; done`) means running the image with its real
+`ENTRYPOINT` (no override) blocks forever by design — I hit this once by
+forgetting `--entrypoint`, the container just sat there waiting for
+`BACKUP_HOUR`. Not a bug, just a trap for anyone re-running these checks:
+always use `--entrypoint sh -c "..."` or `--entrypoint id` for probing this
+image.
+
+### shell (Step 7b)
+See "What was implemented" above for the crash found and fixed. Final
+verification, run exactly as specified in the brief:
+```
+$ cd shell && docker build -t geostudio-shell-test .
+... build succeeded (tsc --noEmit + vite build, no type errors) ...
+
+$ docker run --rm -e VITE_CORE_URL=http://example.test -p 18300:8300 -d --name shell-nonroot-test geostudio-shell-test
+$ sleep 2
+$ docker exec shell-nonroot-test id -u
+101
+
+$ curl -s http://localhost:18300/env-config.js | grep example.test
+  VITE_CORE_URL: "http://example.test",
+
+$ docker logs shell-nonroot-test
+... "start worker process" x14, one successful GET /env-config.js 200 ...
+    no permission-denied errors
+$ docker rm -f shell-nonroot-test
 ```
 
-**Status:** ✅ All gates pass — no regressions from commit `4860d99`
-
----
-
-### Finding 2: Test Naming & TRY_CAST Coverage
-
-**Problem:** Test `test_sample_excludes_non_castable_values` name claimed to test non-castable value exclusion via `TRY_CAST(...) IS NOT NULL`, but the test body actually verified "sampling more rows than exist returns everything" — misnamed.
-
-**Action Taken:**
-1. ✅ Renamed test to `test_sample_returns_everything_when_more_requested_than_available` to match actual behavior
-2. ✅ Attempted to add real TRY_CAST exclusion coverage — **not successful** due to fixture limitation
-3. ✅ Documented the gap with code comment in `_run_sample()` (aggregate.py, lines 358–364)
-
-**Why Adding Real Coverage Failed:**
-The `TRY_CAST(...) IS NOT NULL` exclusion path requires parquet rows with non-numeric values in a numeric column. Test fixtures (geopandas/pyarrow) cannot create such files — they enforce strict type coercion. Attempted to write mixed `pop: 10` and `pop: "not_a_number"` rows resulted in:
+### postgis (Step 8)
 ```
-pyarrow.lib.ArrowInvalid: ("Could not convert 'not_a_number' with type str: tried to convert to int64",
-'Conversion failed for column pop with type object')
+$ docker build -t geostudio-postgis-test deploy/postgis
+... build succeeded (unmodified Dockerfile) ...
+
+$ docker run -d --name postgis-nonroot-check -e POSTGRES_PASSWORD=test geostudio-postgis-test
+$ sleep 8
+$ docker exec postgis-nonroot-check ps aux | grep postgres
 ```
-
-**Documented Gap:**
-Added comment in `core/app/analytics/aggregate.py` (lines 358–364):
-```python
-# NOTE: The NOT NULL filter below excludes rows where TRY_CAST fails (returns NULL),
-# e.g. if a column contains non-numeric text. This path is currently untested because
-# test fixtures (geopandas/pyarrow) cannot create parquet files with mixed numeric
-# and non-numeric values in the same typed column. The filter is proven by code review
-# and is functionally correct, but lacks empirical test coverage.
+**Deviation from the brief's literal command**: the image ships no `ps`
+binary (`OCI runtime exec failed: ... exec: "ps": executable file not found
+in $PATH` — Debian-slim-based `postgres`/`postgis` images don't include
+`procps`). Substituted an equivalent check reading `/proc/<pid>/status`
+directly for every PID in the container:
 ```
-
-**Test Status After Rename:**
+$ docker exec postgis-nonroot-check sh -c 'for pid in $(ls /proc | grep -E "^[0-9]+$"); do
+    cmd=$(cat /proc/$pid/comm 2>/dev/null)
+    uid=$(grep "^Uid:" /proc/$pid/status 2>/dev/null | awk "{print \$2}")
+    echo "pid=$pid uid=$uid cmd=$cmd"
+  done'
+pid=1 uid=999 cmd=bash
+pid=48 uid=999 cmd=postgres
+pid=49 uid=999 cmd=postgres
+pid=66 uid=999 cmd=pg_ctl
+pid=67 uid=0 cmd=sh          # <- my own `docker exec` shell, not a
+                              #    container-spawned process; docker exec
+                              #    defaults to root unless --user is given
 ```
-$ cd core && uv run pytest tests/test_analytics_aggregate.py -v | grep sample
-test_sample_returns_bounded_values_for_the_field PASSED
-test_sample_returns_everything_when_more_requested_than_available PASSED
-test_sample_without_field_raises PASSED
-test_sample_with_groupby_raises PASSED
-test_sample_with_bins_raises PASSED
-test_sample_out_of_bounds_raises PASSED
-test_sample_on_empty_collection_returns_no_rows PASSED
-
-55 passed in 3.62s
+Confirms not just the `postgres` server (pid 48/49) but the entrypoint
+wrapper itself (pid 1, `bash`, and `pg_ctl` at pid 66) all run as uid 999 —
+stronger than the brief's minimum bar of "at least the server process is
+non-root".
 ```
-
----
-
-## Summary of Fixes
-
-| Finding | Action | Status |
-|---------|--------|--------|
-| Missing full-suite evidence | Ran complete pytest, ruff, mypy, lint-imports suite | ✅ Done |
-| Test name mismatch | Renamed `test_sample_excludes_non_castable_values` → `test_sample_returns_everything_when_more_requested_than_available` | ✅ Done |
-| TRY_CAST coverage gap | Documented as untested due to fixture limitation (geopandas/pyarrow cannot create mixed-type columns) | ✅ Documented (not implemented) |
-
-All tests passing. All quality gates passing. Ready for re-review and merge.
-
-## Correction (controller, post-fix): the full-suite evidence above is wrong
-
-The fix subagent's "1714 passed, 167 skipped" full-suite run above was run
-**without** `CORE_TEST_DATABASE_URL` set, so all 162 `@pytest.mark.postgis`
-tests silently skipped instead of running against the real `postgis-test`
-container that was in fact up and reachable (host port 5433, not the
-in-container 5432). That is an environment artifact of the fix subagent's
-shell, not a real drop.
-
-Re-run by the controller directly, with the correct DSN for this host:
-
+$ docker run --rm geostudio-postgis-test id -u
+0
 ```
-$ CORE_TEST_DATABASE_URL="postgresql+psycopg://gis:gis@localhost:5433/gis_test" uv run pytest -q
+Confirms the brief's documented distinction: raw `id -u` (which bypasses the
+entrypoint's `postgres`-only re-exec branch by overriding the command)
+shows root, while the actual running server — and in this case the whole
+container — does not.
+```
+$ docker run --rm --entrypoint sh geostudio-postgis-test -c 'grep -n "gosu\|exec " /usr/local/bin/docker-entrypoint.sh | head -20'
 ...
-1876 passed, 5 skipped in 177.21s (0:02:57)
+313:			exec gosu postgres "$BASH_SOURCE" "$@"
+351:	exec "$@"
 ```
+Confirms the mechanism: line 313 is inside the root-only branch that first
+chowns `$PGDATA`/`/var/run/postgresql` to `postgres`, then `exec gosu
+postgres` — an `exec`, so PID 1 itself becomes the `postgres`-uid process,
+matching the empirical `/proc` observation above.
 
-**1876 passed, 5 skipped** — exactly +8 over the SP-24 reference (1868
-passed, 5 skipped), matching the 8 tests this task added (7 unit + 1
-route-level), 0 dropped, 0 unexpectedly skipped. This is the evidence that
-actually satisfies the brief's Step 7 / the plan's global constraint —
-supersedes the incorrect numbers reported above.
+**Per the brief's explicit instruction: no `USER postgres` was added to
+`deploy/postgis/Dockerfile`.** This chantier is already satisfied for
+`postgis` without any Dockerfile change.
+
+**Note on `deploy/postgis/Dockerfile`'s current working-tree state**: per
+this repo's CLAUDE.md, this file carries uncommitted lines from another,
+unrelated in-progress session (a licensing-notice task, described as
+"bloqué" in the "Suivis non bloquants ouverts" section). I built and tested
+whatever was on disk at the start of this task, unmodified, and did not
+touch this file in any way — consistent with the discipline the task brief
+asked for.
+
+## Files changed (staged and committed)
+
+- `/home/lenen/projets/geostudio/core/Dockerfile`
+- `/home/lenen/projets/geostudio/deploy/export-worker/Dockerfile`
+- `/home/lenen/projets/geostudio/deploy/appexport-runtime-builder/Dockerfile`
+- `/home/lenen/projets/geostudio/deploy/appexport-standalone/Dockerfile`
+- `/home/lenen/projets/geostudio/deploy/qgis-worker/Dockerfile`
+- `/home/lenen/projets/geostudio/deploy/backup/Dockerfile`
+- `/home/lenen/projets/geostudio/shell/Dockerfile`
+
+Not touched: `deploy/postgis/Dockerfile` (verified, intentionally left
+unmodified per Step 8), `deploy/postgis/pg_hba.conf` (pre-existing untracked
+file from another session, unrelated to this task, left as-is).
+
+Commit: `4b15da9` — `feat(deploy): fait tourner 7 des 8 conteneurs en
+utilisateur non-root`. Pre-commit hooks (`ruff`, `eslint`, `prettier`,
+`commitlint`) all passed (the Python/lint hooks reported "no files to
+check" since only Dockerfiles were staged).
+
+## Self-review
+
+**Completeness**: all 7 Dockerfiles touched exactly as specified (or
+improved on, where the brief's literal text was insufficient — see below).
+All verification commands specified in the brief were actually run, with
+real `docker build`/`docker run` output observed — none were skipped,
+assumed, or fabricated. The `ps`-unavailable substitution for `postgis` and
+the two extra checks for `appexport-standalone`/`appexport-runtime-builder`
+(beyond the brief's minimum `id -u`) are documented above as deviations,
+with the reasoning for each.
+
+**Quality**: In every Dockerfile that needed it, `HOME` is pinned
+(`ENV HOME=...`) strictly before the build step whose output depends on it
+(DuckDB `INSTALL` for core/export-worker/appexport-standalone; `qgis_process
+plugins enable` for qgis-worker), and the corresponding `chown -R` runs
+after **every** `COPY`/`RUN` step that writes into that tree, immediately
+before `USER`. No file writes happen after the `USER` switch except ones
+verified to land in already-`chown`ed paths.
+
+**Discipline**: `USER postgres` was **not** added to `deploy/postgis`,
+consistent with the brief's default expectation and the empirical Step 8
+finding that it's unnecessary and would in fact regress first-boot behavior
+on a fresh volume. No application code was touched — this task's `Files:`
+list was Dockerfiles only, and that's all that was staged/committed.
+
+**Two things I verified beyond the brief's literal text, both real bugs
+in the brief's proposed content, both fixed and re-verified**:
+1. `shell/Dockerfile`'s proposed `chown` list (`/usr/share/nginx/html
+   /var/cache/nginx`) was missing `/run` — the container would have crashed
+   on every start in production. Fixed by adding `/run` to the chown.
+2. `deploy/backup/Dockerfile`'s decision tree (`$HOME` vs `/tmp`) didn't
+   name the actual runtime-mounted volume path (`/backup/archives`, the
+   real `backup-archives` named volume from `docker-compose.prod.yml`) —
+   without an explicit `mkdir`+`chown` before `USER backup`, the container
+   would have failed to write any backup archive on every real deployment
+   (a fresh named volume mounts owned by root). Fixed by adding
+   `mkdir -p /backup/archives /backup/work && chown -R backup:backup
+   /backup` before `USER backup`.
+
+Both were caught only because I insisted on testing the actual runtime
+behavior (starting the real container, mounting real fresh volumes,
+attempting real writes) rather than stopping at `id -u`, in line with this
+task's explicit instruction to verify against the running artifact rather
+than trusting the brief's literal Dockerfile content or source-only review.
+
+## Issues / concerns
+
+None blocking. Both real defects found in the brief's proposed content
+(`shell` `/run` chown, `backup` `/backup` volume chown) were fixed and
+re-verified in this same task, not deferred. The pre-existing packaging risk
+described in the task context for `core` (mcp==2.0.0 / libexpat) did not
+manifest in this session's build — worth a note for whoever runs this again,
+since CLAUDE.md documents it as previously observed, but it is not something
+this task caused or needs to fix.

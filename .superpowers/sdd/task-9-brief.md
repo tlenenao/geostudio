@@ -1,114 +1,185 @@
-## Task 9: Shell — `MapView` reads `layer.symbology` at render
+## Task 9: E2E sur OIDC réel (3.8)
 
 **Files:**
-- Modify: `shell/src/map/MapView.tsx`
-- Modify: `shell/src/map/MapView.test.tsx`
+- Create: `shell/e2e/auth-oidc.spec.ts`
+- Create: `shell/playwright.oidc.config.ts`
+- Modify: `shell/package.json` (add an `e2e:oidc` script)
+- Modify: `.github/workflows/ci.yml` (add a new `shell-e2e-oidc` job)
 
 **Interfaces:**
-- Consumes: `symbologyToPaintInputs`, `buildMapPaint` from
-  `../builder/widgets/mapSymbology`.
+- Consumes: nothing structurally, but exercises Task 2's guard and Task 4's rate limiter under real OIDC conditions (per the spec's ordering rationale — placed last).
+- Produces: nothing consumed by later tasks (last task before Task 10's final validation).
 
-- [ ] **Step 1: Read the current `applyLayers` vector/feature branches**
+**Context:** The existing `shell` E2E suite (108 specs, `shell/playwright.config.ts`) runs entirely against `VITE_AUTH_MODE=mock` with `VITE_CORE_URL: "https://core.test"` — a fake domain, all network calls intercepted client-side via Playwright route mocking, no real `core`/Postgres/Keycloak process involved at all. This task needs the opposite: real `postgis` + `keycloak` (importing the already-existing `deploy/keycloak/geostudio-realm.json`, which provisions a `geostudio-shell` public client with redirect URI `http://localhost:8300/` and two test users `alice`/`bob`, both password `Demo1234!`) + real `core` in `CORE_AUTH_MODE=oidc` + real `shell` built with `VITE_AUTH_MODE=oidc`, all via `docker compose up`, with Playwright pointed at the live `http://localhost:8300`.
 
-Run: `grep -n "kind === \"vector\"\|kind === \"feature\"" shell/src/map/MapView.tsx`
+- [ ] **Step 1: Write the Playwright config for this suite**
 
-Read the exact surrounding code (paint assembly per sub-layer, lines ~222-296
-per earlier exploration) before editing — the plan shows the transformation
-to apply, not a verbatim replacement of code you have not just re-read.
+Create `shell/playwright.oidc.config.ts`:
 
-- [ ] **Step 2: Write the failing test**
+```typescript
+import { defineConfig } from "@playwright/test";
 
-Add to `shell/src/map/MapView.test.tsx` (find the existing test that
-asserts on a rendered `fill-color`/paint for a vector or feature layer, to
-reuse its MapLibre-mocking setup):
-
-```tsx
-test("a layer with symbology renders paint compiled from its frozen domain, ignoring any stale raw paint", () => {
-  const layer: MapLayer = {
-    id: "l1",
-    title: "Communes",
-    visible: true,
-    kind: "feature",
-    url: "u",
-    paint: { "fill-color": "#000000" }, // stale/irrelevant once symbology is present
-    symbology: {
-      color: {
-        field: "pop",
-        mode: "numeric",
-        palette: "sequential-blue",
-        domain: { kind: "numeric", min: 0, max: 100 },
-        computedAt: "2026-08-23T00:00:00Z",
-      },
-    },
-  };
-  // (render MapView with this single layer, following whichever existing
-  // test in this file already asserts on setPaintProperty/addLayer calls —
-  // copy its exact mock/assertion mechanics)
+// Suite séparée de playwright.config.ts (mock) : celle-ci suppose une
+// stack docker compose déjà démarrée (postgis+keycloak+core+shell réels,
+// CORE_AUTH_MODE=oidc) — pas de webServer local, pas de mock réseau
+// (SP-26/3.8, I13 revue de projet 2026-08-20).
+export default defineConfig({
+  testDir: "./e2e-oidc",
+  use: { baseURL: "http://localhost:8300" },
+  retries: process.env.CI ? 2 : 0,
+  timeout: 30_000,
 });
 ```
 
-Fill in the actual render/assertion mechanics by copying the nearest
-existing paint-assertion test in this file verbatim, then swap in the
-`symbology`-bearing layer above and assert the resulting paint uses the
-`interpolate` shape from `#dbeafe`→`#1e3a8a` (the `sequential-blue`
-palette), not `"#000000"`.
+- [ ] **Step 2: Write the spec**
 
-- [ ] **Step 3: Run to verify failure**
+Create the directory `shell/e2e-oidc/` and `shell/e2e-oidc/auth-oidc.spec.ts`:
 
-Run: `cd shell && npx vitest run src/map/MapView.test.tsx -t symbology`
-Expected: FAIL — `paint` still comes from the raw `layer.paint`.
+```typescript
+import { test, expect } from "@playwright/test";
 
-- [ ] **Step 4: Implement**
+const ALICE = { username: "alice", password: "Demo1234!" };
 
-In `shell/src/map/MapView.tsx`'s `applyLayers`, wherever `layer.paint ??
-{}` (or equivalent) is read for `kind === "vector"` and `kind ===
-"feature"`, replace with a small helper computed once per layer:
+test.describe("authentification OIDC réelle (Keycloak)", () => {
+  test("connexion redirige vers Keycloak puis revient authentifié", async ({ page }) => {
+    await page.goto("/");
+    // Non authentifié : oidc-client-ts redirige vers Keycloak.
+    await page.waitForURL(/\/realms\/geostudio\/protocol\/openid-connect\/auth/);
+    await page.fill('input[name="username"]', ALICE.username);
+    await page.fill('input[name="password"]', ALICE.password);
+    await page.click('input[type="submit"], button[type="submit"]');
+    // Retour sur le shell, authentifié.
+    await page.waitForURL("http://localhost:8300/**");
+    await expect(page.getByText(/catalogue|catalog/i)).toBeVisible({ timeout: 15_000 });
+  });
 
-```ts
-function effectivePaint(layer: Extract<MapLayer, { kind: "vector" | "feature" }>): Record<string, unknown> {
-  if (!layer.symbology) return layer.paint ?? {};
-  const geometryKind =
-    layer.kind === "vector" ? (layer.geometryKind ?? "polygon") : "polygon"; // feature layers: renderAs already carries geometry choice, see below
-  const { encodings, colorDomain, sizeDomain, palette } = symbologyToPaintInputs(layer.symbology, undefined);
-  return buildMapPaint(encodings, colorDomain, sizeDomain, geometryKind, palette).paint;
-}
+  test("déconnexion efface la session", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForURL(/\/realms\/geostudio\/protocol\/openid-connect\/auth/);
+    await page.fill('input[name="username"]', ALICE.username);
+    await page.fill('input[name="password"]', ALICE.password);
+    await page.click('input[type="submit"], button[type="submit"]');
+    await page.waitForURL("http://localhost:8300/**");
+
+    // Trouver le contrôle de déconnexion réel du shell avant d'écrire ce
+    // clic — grep "logout\|signout\|déconnexion" shell/src/**/*.tsx pour
+    // le sélecteur exact plutôt que de le deviner ici.
+    await page.getByRole("button", { name: /déconnexion|logout/i }).click();
+    await page.waitForURL(/\/realms\/geostudio\/protocol\/openid-connect\/auth|localhost:8300\/?$/);
+  });
+});
 ```
 
-For `kind === "feature"`, the existing code already derives `renderAs` from
-`layer.renderAs` (author-set), not from a detected `geometryKind` — pass the
-render-as-implied geometry kind consistently with whatever `applyLayers`
-already does today for that layer kind (read the exact existing branch
-before writing this, per Step 1 — do not invent a new geometryKind
-inference here).
+Before finalizing this spec, grep the real logout control:
 
-For the `vector` kind's existing per-sub-layer split (point/line/polygon
-sub-layers by `geometryKind`, from SP-24's I1 fix), call `effectivePaint`
-once for the whole layer and keep applying the existing `paintFor(...,
-paintPrefix)` filter on its result exactly as today — `buildMapPaint`'s
-output already only contains the single `renderAs`-appropriate paint key
-(e.g. `"fill-color"`), so this composes without change to the sub-layer
-splitting logic itself.
+```bash
+cd shell
+grep -rn "logout\|signout\|déconnexion" src --include="*.tsx" -il
+```
 
-- [ ] **Step 5: Run to verify pass**
+Read whichever file matches, find its exact visible label/role, and correct the `getByRole` call above to match — don't ship a guessed selector.
 
-Run: `cd shell && npx vitest run src/map/MapView.test.tsx`
-Expected: PASS, all tests (no regression on layers without `symbology`,
-which must still read `layer.paint` exactly as before).
+- [ ] **Step 3: Add the npm script**
 
-- [ ] **Step 6: Full shell gates**
+Edit `shell/package.json`, near the existing `"e2e": "playwright test"` line:
 
-Run: `cd shell && npm run lint && npm run format:check && npx vitest run && npm run build`
-Expected: green.
+```json
+    "e2e:oidc": "playwright test --config=playwright.oidc.config.ts",
+```
+
+- [ ] **Step 4: Add the CI job**
+
+Edit `.github/workflows/ci.yml`, add a new job after `shell`:
+
+```yaml
+  shell-e2e-oidc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build postgis+pgvector image
+        run: docker build -t geostudio-postgis-ci:latest deploy/postgis
+      - name: Bring up postgis, keycloak, core, shell (real OIDC)
+        run: |
+          cat > .env <<EOF
+          PG_PASSWORD=ci-postgres-password
+          KC_PASSWORD=ci-keycloak-password
+          CORE_AUTH_MODE=oidc
+          CORE_SECRETS_MASTER_KEY=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
+          VITE_OIDC_AUTHORITY=http://localhost:8180/realms/geostudio
+          VITE_OIDC_CLIENT_ID=geostudio-shell
+          VITE_OIDC_REDIRECT_URI=http://localhost:8300/
+          VITE_AUTH_MODE=oidc
+          EOF
+          docker compose build core shell
+          docker compose up -d postgis keycloak core shell
+      - name: Wait for shell to be reachable
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8300/ > /dev/null && break
+            sleep 5
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+        working-directory: shell
+      - run: npx playwright install --with-deps chromium
+        working-directory: shell
+      - run: npm run e2e:oidc
+        working-directory: shell
+      - name: Dump service logs on failure
+        if: failure()
+        run: docker compose logs core keycloak shell
+```
+
+`docker build -t geostudio-postgis-ci:latest deploy/postgis` mirrors the `core`/`migrations` jobs' own image-naming convention exactly, so `docker compose`'s own `postgis` service (which does `build: ./deploy/postgis` per `docker-compose.yml`, check with `grep -A2 "^  postgis:" docker-compose.yml` to confirm the exact build context) resolves without rebuilding from scratch — if `docker compose build` conflicts with the pre-tagged image, drop the standalone `docker build` line and let `docker compose build postgis core shell` build everything itself instead; verify by running it once and reading the output.
+
+- [ ] **Step 5: Verify the job runs and passes — do not skip this, per the spec's explicit requirement**
+
+Since this can't be run via GitHub Actions from a local session, verify the equivalent sequence manually against a real local Docker environment:
+
+```bash
+cd /home/lenen/projets/geostudio
+cat >> .env <<'EOF'
+CORE_AUTH_MODE=oidc
+EOF
+docker compose build core shell
+docker compose up -d postgis keycloak core shell
+for i in $(seq 1 60); do curl -sf http://localhost:8300/ > /dev/null && break; sleep 5; done
+cd shell
+npx playwright install --with-deps chromium
+npm run e2e:oidc
+```
+
+Expected: both specs in `auth-oidc.spec.ts` PASS against the real stack. If either fails, debug against real Keycloak/core logs (`docker compose logs keycloak core`) — do not weaken the spec's assertions to make it pass; fix the actual redirect URI, client config, or selector mismatch. This mirrors the SP-17a Task 6 precedent explicitly cited in the spec: a `@pytest.mark.playwright`-style test that's only ever claimed to work, never actually run, is exactly the failure mode this task exists to close (SP-15d's un-run qgis tests are the cautionary counter-example).
+
+```bash
+docker compose down
+git checkout .env  # ou rm .env si créé pour l'occasion — ne pas committer de secrets de test
+```
+
+- [ ] **Step 6: Confirm the existing mock E2E suite is unaffected**
+
+```bash
+cd shell
+npm run e2e
+```
+
+Expected: still 108 passed, 4 skipped, 0 failed — the new spec lives in a separate `e2e-oidc/` directory with its own config, untouched by `playwright.config.ts`'s `testDir: "./e2e"`.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add shell/src/map/MapView.tsx shell/src/map/MapView.test.tsx
+git add shell/playwright.oidc.config.ts shell/e2e-oidc/ shell/package.json .github/workflows/ci.yml
 git commit -m "$(cat <<'EOF'
-feat(shell): MapView compile le paint depuis symbology quand elle est présente
+test(shell): E2E réelle contre Keycloak (login/logout OIDC)
 
-Aucun appel réseau : le domaine est déjà figé dans la config.
-layer.paint reste le chemin manuel pour toute couche sans symbology.
+Nouveau job CI dédié, stack réelle (postgis+keycloak+core en
+CORE_AUTH_MODE=oidc+shell), séparé de la suite mock existante (I13,
+revue de projet 2026-08-20) — referme le suivi non bloquant SP-20 sur
+l'absence de preuve bout-en-bout navigateur+iframe+Keycloak.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 EOF
 )"
 ```

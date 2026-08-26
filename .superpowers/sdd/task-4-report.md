@@ -1,128 +1,203 @@
-## Task 4: Shell — `palette.ts` — COMPLETED
+# Task 4 report — Rate limiting différencié (3.4)
 
-**Status:** DONE
+## Ce qui a été implémenté
 
-### What Was Implemented
+Exactement les 7 étapes du brief, avec un écart assumé et documenté sur
+l'étape 1 (voir ci-dessous) :
 
-Created a new self-contained module for color palettes and interpolation utilities in `shell/src/builder/widgets/`:
+1. `core/app/ratelimit/__init__.py` — package vide (SPDX header seulement,
+   même convention que `app/secrets/__init__.py`/`app/alerts/__init__.py`).
+2. `core/app/ratelimit/limiter.py` — code du brief copié tel quel :
+   - `route_group(path, export_path_re) -> str | None` : classe un chemin
+     en `sql` (`^/analytics/sql$`), `llm` (`^/mcp$|^/copilot/turn$`),
+     `jobs` (réutilise `_EXPORT_PATH_RE` de `app.main` passé en paramètre,
+     pas redéfini) ou `harvest` (`^/harvest/`), sinon `None`.
+   - `RateLimiter` : compteur glissant en mémoire, `deque[float]` par
+     `(clé, groupe)`, fenêtre de 60s, budgets `sql=10, llm=20, jobs=15,
+     harvest=10`.
+3. `core/app/main.py` : import `from app.ratelimit.limiter import
+   RateLimiter, route_group` ; `rate_limiter = RateLimiter()` créé À
+   L'INTÉRIEUR de `create_app()`, juste après `read_only_guard` et avant
+   le bloc conditionnel `appexport_cors` ; middleware `rate_limit_guard`
+   (`@app.middleware("http")`) qui court-circuite en 429
+   `application/problem+json` avec `Retry-After: 60` quand le budget du
+   groupe est épuisé pour la clé (en-tête `Authorization` brut).
+4. `core/tests/test_ratelimit.py` — 3 tests du brief, avec un helper
+   `_client()` ajusté (voir "Écart vs. le brief" ci-dessous).
 
-1. **File created:** `shell/src/builder/widgets/palette.ts`
-   - Type exports:
-     - `PaletteId` — union type of 5 palette identifiers
-     - `ResolvedPalette` — discriminated union of categorical vs. sequential palettes
-   - Constant: `CURATED_PALETTES` — 4 curated palettes:
-     - `categorical-a`: 8-color array (default, unchanged from pre-SP-25)
-     - `categorical-b`: 8-color array (alternative)
-     - `sequential-blue`: light blue (#dbeafe) → dark blue (#1e3a8a)
-     - `sequential-warm`: light warm (#fef3c7) → dark brown (#7c2d12)
-   - Exported functions:
-     - `resolvePalette(id, themeColors)` — resolves palette by ID, derives sequential ramp from theme.primary for "theme-primary" ID
-     - `colorsForClasses(palette, n)` — generates n colors from a palette (repeats for categorical, RGB-interpolates for sequential)
-   - Helper functions (internal):
-     - `hexToRgb()` — converts hex color string to [r, g, b] triple
-     - `rgbToHex()` — converts [r, g, b] triple to hex color string
-     - `lerpColor()` — linear RGB interpolation between two colors
+## Écart vs. le texte littéral du brief (Step 1)
 
-2. **File created:** `shell/src/builder/widgets/palette.test.ts`
-   - 6 comprehensive tests covering:
-     - Curated palette retrieval by ID
-     - Theme-primary derivation (happy path + null cases)
-     - Categorical color wrapping/repetition
-     - Sequential RGB interpolation (normal and edge cases)
-   - All tests pass with green status
+Le code de test fourni par le brief pour `_client()` (`TestClient(create_app())`
+avec seulement `CORE_AUTH_MODE=mock`) **crashe** sur le premier
+`client.post("/analytics/sql", ...)` : en mode mock, l'utilisateur est
+toujours `bootstrap_analyst=True` (donc passe la garde `is_analyst` de
+`analytics_sql`), et l'exécution atteint `conn_factory()` →
+`get_duckdb_connection_factory()` → `os.environ["S3_ENDPOINT_URL"]` → `KeyError`
+non catchée hors de la stack docker (pas de valeur par défaut, aucun test
+existant du dépôt ne va nu sur cette route sans override). Starlette's
+`ServerErrorMiddleware` envoie bien une réponse 500 via le handler
+`Exception` (Task 3) mais **re-raise systématiquement après**
+("We always continue to raise the exception" — code source Starlette),
+donc `TestClient` (raise_server_exceptions=True par défaut) propage le
+`KeyError` et fait planter le test avant même la 11e requête, quel que
+soit l'état de l'implémentation du rate limiter.
 
-### TDD Evidence
+Fix appliqué (même patron que `tests/test_analytics_sql_routes.py`,
+déjà établi dans ce dépôt) : `_client()` override
+`features_routes.get_duckdb_connection_factory` sur l'app créée, pour
+retourner une factory in-memory DuckDB (`duckdb.connect(":memory:")`),
+sans extension supplémentaire — le SQL testé (`"select 1"`) ne référence
+aucune table, donc `run_analyst_sql` ne matérialise rien et n'a besoin ni
+de `spatial` ni de `httpfs`. Comportement des 3 tests inchangé par
+rapport à l'intention du brief ; seul le chemin d'exécution de l'endpoint
+`/analytics/sql` devient déterministe et sans dépendance à S3.
 
-**RED (module doesn't exist):**
-```
-$ cd shell && npx vitest run src/builder/widgets/palette.test.ts
-Error: Failed to resolve import "./palette" from "src/builder/widgets/palette.test.ts". 
-Does the file exist?
-```
+Aucun autre écart. La structure de `main.py` (imports, `_EXPORT_PATH_RE`
+ligne 56-58, `read_only_guard`, route `/health` ligne ~293-295, mount
+`/mcp` en dernier) correspondait exactement à ce que le brief décrivait.
 
-**GREEN (all 6 tests pass):**
-```
-✓ src/builder/widgets/palette.test.ts (6 tests) 10ms
+## TDD — RED puis GREEN
 
-Test Files  1 passed (1)
-     Tests  6 passed (6)
-```
-
-### Shell Gates Summary
-
-| Gate | Status | Details |
-|------|--------|---------|
-| `npm run lint` | ✓ PASS | ESLint green, no issues |
-| `npm run format:check` | ✓ PASS | Prettier reformatted type unions (cosmetic), then green |
-| `npx vitest run` | ✓ PASS | **1393 tests** (1387 existing + 6 new) across 160 files (159 existing + 1 new) |
-| `npm run build` | ✓ PASS | tsc --noEmit + vite build successful, 4202 modules transformed |
-
-### Test Count Progression
-
-- Before: 1387 tests across 159 files
-- After: 1393 tests across 160 files
-- Reference required: ≥1387 ✓ EXCEEDED
-
-### Files Changed
-
-| File | Action | Lines |
-|------|--------|-------|
-| `shell/src/builder/widgets/palette.ts` | Create | 79 |
-| `shell/src/builder/widgets/palette.test.ts` | Create | 40 |
-
-**Total new code:** 119 lines (pure utilities, zero dependencies beyond TypeScript type imports)
-
-### Commit
+RED (avant `app/ratelimit/`, seulement le test avec le fix de l'écart
+ci-dessus) :
 
 ```
-cef8385 feat(shell): ajoute le module de palettes de symbologie
+tests/test_ratelimit.py::test_sql_route_rate_limited_after_budget_exhausted FAILED
+  assert 200 == 429  # aucune limite n'existe encore
+tests/test_ratelimit.py::test_different_callers_have_independent_budgets PASSED  (vacuously)
+tests/test_ratelimit.py::test_health_endpoint_not_rate_limited_by_sql_budget PASSED  (vacuously)
+1 failed, 2 passed in 2.99s
 ```
 
-Commit message (exact from brief):
+GREEN (après implémentation) :
+
 ```
-feat(shell): ajoute le module de palettes de symbologie
-
-Palettes curatées + rampe dérivée du thème, aucune bibliothèque de
-couleur ajoutée (lerp RGB maison).
+tests/test_ratelimit.py::test_sql_route_rate_limited_after_budget_exhausted PASSED
+tests/test_ratelimit.py::test_different_callers_have_independent_budgets PASSED
+tests/test_ratelimit.py::test_health_endpoint_not_rate_limited_by_sql_budget PASSED
+3 passed in 2.96s
 ```
 
-Pre-commit hooks passed: eslint, prettier, commitlint.
+## Step 6 — sanity check `/mcp` (raison d'être du middleware)
 
-### Rounding Discrepancy Discovery & Resolution
+```
+$ uv run python -c "
+from app.ratelimit.limiter import route_group
+import re
+export_re = re.compile(r'^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?\$|^/export\$|^/app-exports\$')
+assert route_group('/mcp', export_re) == 'llm'
+assert route_group('/copilot/turn', export_re) == 'llm'
+assert route_group('/analytics/sql', export_re) == 'sql'
+assert route_group('/export', export_re) == 'jobs'
+assert route_group('/app-exports', export_re) == 'jobs'
+assert route_group('/harvest/sources', export_re) == 'harvest'
+assert route_group('/health', export_re) is None
+print('all route groups correct')
+"
+all route groups correct
+```
 
-**Issue found:** Brief's test expected `#7f7f7f` (127 in decimal) for the middle color of a black→white interpolation, but brief's implementation uses `Math.round()` which produces `#808080` (128).
+Les 7 assertions passent, y compris `/mcp` → `llm` — confirme que le
+routage par groupe fonctionne indépendamment de FastAPI (`route_group`
+est une fonction pure de chemin, aucun objet `Request`/DI impliqué), donc
+que le middleware couvre bien le mount ASGI brut de `/mcp`, qu'une
+dépendance de route ne pourrait jamais atteindre.
 
-**Root cause:** For sequential interpolation with n=3, the middle stop has t=0.5, producing RGB value 127.5. JavaScript's `Math.round(127.5)` uses banker's rounding, returning 128 (0x80 in hex).
+## Suite complète core (DB PostGIS réelle)
 
-**Resolution:** Fixed test to match implementation's correct output (`#808080`). Per brief's guidance, implementation code is authoritative; when test and implementation conflict, implementation wins. The brief explicitly permits test adjustments ("once you've confirmed the implementation's choice is deliberate"), and the white low-anchor choice is deliberate per brief's own comment.
+```
+$ CORE_TEST_DATABASE_URL=postgresql://gis:gis@localhost:5433/gis_test uv run pytest -q
+...
+=================================== FAILURES ===================================
+___________________ test_scope_preserves_original_sql_error ____________________
+[...]
+1 failed, 1886 passed, 5 skipped in 190.71s (0:03:10)
+```
 
-**Verification:** `node -e "Math.round(127.5)"` confirmed to return 128.
+Le seul échec est `tests/test_features_rls.py::test_scope_preserves_original_sql_error`
+— échec pré-existant, sans rapport avec ce chantier (assertion sur le
+message d'erreur SQL exact d'un `RESET ROLE` échoué après une violation
+RLS, dépendant du driver/version Postgres), confirmé comme étant le
+**seul** échec de toute la suite. Aucune régression introduite par ce
+chantier. +3 tests par rapport à la baseline mesurée par le contrôleur
+(1883+1 → 1886, cohérent avec les 3 nouveaux tests de ce fichier).
 
-**Impact:** No functional change; interpolation remains linear and mathematically correct with standard IEEE rounding.
+## Lint / type-check / import-contract
 
-### Self-Review Findings
+```
+$ uv run ruff check app/ratelimit/ app/main.py tests/test_ratelimit.py
+All checks passed!
+$ uv run ruff format --check app/ratelimit/ app/main.py tests/test_ratelimit.py
+4 files already formatted   # après une passe de `ruff format` sur test_ratelimit.py
+$ uv run mypy --strict app/ratelimit/
+Success: no issues found in 2 source files
+$ uv run lint-imports
+Contracts: 1 kept, 0 broken.
+```
 
-**Code Quality:**
-- Module is self-contained with zero external dependencies (only `ThemeColors` type from existing API)
-- No React, no network calls — pure utility functions
-- Follows existing `shell/src/builder/widgets/` conventions (SPDX header, TypeScript types, concise exports)
-- Prettier formatting applied (union type on single line) — cosmetic, no logic impact
+`app.ratelimit` n'est volontairement pas ajouté au contrat de couches
+import-linter : il n'importe aucun module `app.*` (seulement `re`,
+`time`, `collections`), donc n'a rien à violer ; le brief ne demandait
+pas cet ajout.
 
-**Test Coverage:**
-- All 6 tests execute and pass
-- All major code paths covered:
-  - ✓ Curated palette direct return
-  - ✓ Theme-primary palette derivation (happy + null cases)
-  - ✓ Categorical color repetition with wrapping
-  - ✓ Sequential RGB interpolation (3+ colors)
-  - ✓ Sequential edge case (n=1)
-- No gaps detected
+## Fichiers modifiés/créés
 
-**Discipline:**
-- No scope creep: exactly 2 files touched, no changes to existing code
-- Exports align with brief (PaletteId, ResolvedPalette, CURATED_PALETTES, resolvePalette, colorsForClasses)
-- Ready for consumption by SP-25 Tasks 5-11 (map symbology features)
+- `core/app/ratelimit/__init__.py` (nouveau)
+- `core/app/ratelimit/limiter.py` (nouveau)
+- `core/app/main.py` (modifié : import + middleware `rate_limit_guard`)
+- `core/tests/test_ratelimit.py` (nouveau)
 
-### No Blocking Issues
+## Self-review
 
-All gates green, test suite clean, module complete and ready for downstream tasks.
+**Complétude** :
+- 3 nouveaux tests passent — oui.
+- `/mcp` réellement couvert (Step 6) — oui, vérifié par sanity check
+  indépendant du serveur MCP réel (`route_group` pure).
+- Budgets exacts : `sql=10, llm=20, jobs=15, harvest=10`, fenêtre 60s —
+  vérifié dans `limiter.py` (`_BUDGETS`, `_WINDOW_SECONDS = 60.0`).
+
+**Qualité** :
+- `rate_limiter = RateLimiter()` est bien créé À L'INTÉRIEUR de
+  `create_app()` (ligne juste après `read_only_guard`, avant le bloc
+  `if is_appexport_enabled()`), pas au niveau module — vérifié par
+  lecture directe du diff. Un test antérieur qui épuiserait un budget ne
+  peut donc pas faire trébucher un test sans rapport plus tard dans la
+  suite (chaque `create_app()` — donc chaque test qui construit son
+  propre `TestClient` — repart avec un `RateLimiter` neuf). Cohérent avec
+  le mode d'échec explicitement à éviter d'après la consigne de la
+  tâche.
+- Forme de la réponse 429 cohérente avec les handlers RFC 7807 de la
+  Task 3 : mêmes clés top-level (`type`/`title`/`status`/`detail`),
+  même `media_type="application/problem+json"` — même si elle est
+  construite à la main dans le middleware (raison documentée dans le
+  contexte de la tâche : le middleware tourne hors du dispatch
+  route/exception-handler, donc ne peut pas lever `HTTPException` et
+  compter sur le handler existant).
+- `Retry-After: 60` présent sur la réponse 429 — vérifié par le test 1
+  et par lecture du code.
+
+**Discipline** :
+- Aucune persistance/Redis/thread de nettoyage ajouté au-delà de ce que
+  le brief spécifie — la docstring de `RateLimiter` documente
+  explicitement la limite (deque vide qui reste en mémoire indéfiniment
+  pour une clé inactive) comme acceptée, pas comme un bug à corriger.
+- Aucun fichier hors périmètre modifié — `git add` n'a pris que
+  `core/app/ratelimit/`, `core/app/main.py`, `core/tests/test_ratelimit.py`
+  (les fichiers `.superpowers/sdd/*.md` modifiés/`deploy/postgis/pg_hba.conf`
+  visibles dans `git status` au démarrage de la tâche sont pré-existants,
+  d'une autre session, non touchés ici).
+
+## Concerns / points d'attention
+
+- Le test 1 du brief tel que littéralement fourni ne fonctionne pas sans
+  l'override de `get_duckdb_connection_factory` (cf. section "Écart"
+  ci-dessus) — signalé explicitement pour que le contrôleur puisse
+  vérifier que cette déviation est bien celle qu'il attendait, plutôt que
+  de la découvrir en aval.
+- `route_group()` sur `/mcp` matche n'importe quelle sous-méthode/verbe
+  HTTP du protocole MCP (POST/GET/DELETE selon la session streamable-http) —
+  c'est le comportement voulu par le brief (budget `llm` unique pour tout
+  trafic `/mcp`), pas une lacune.
+- Comme documenté dans le docstring du module, la limite ne tient pas en
+  cas de multi-process (`--workers` uvicorn) — limite assumée par le
+  design SP-26 §3.4, pas un défaut de cette implémentation.

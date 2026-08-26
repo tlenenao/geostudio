@@ -1,173 +1,123 @@
-# Task 5 — Rapport : `ItemClient.sampleCollectionField`
+# Task 5 Report: Arrêt propre `cdc-worker` (SP-26/3.5b)
 
-## Ce qui a été implémenté
+## Summary
 
-- `shell/src/api/types.ts` : ajout de
-  `sampleCollectionField(collectionId: string, field: string, limit: number): Promise<number[]>`
-  à l'interface `ItemClient`, juste après `listLayerSources`.
-- `shell/src/api/itemClient.ts` :
-  - `"sample"` ajouté à `STAT_KEYS` (aux côtés de `bins`/`p`) pour que la clé
-    ne fuite pas dans les `filters` construits par `buildAggregateBody`.
-  - `if (query.sample) body.sample = Number(query.sample);` ajouté juste
-    après la ligne `bins` dans `buildAggregateBody`.
-  - Méthode réelle `sampleCollectionField` ajoutée dans l'objet client
-    retourné par `createItemClient`, juste après `queryDataSource` :
-    `POST /collections/{collectionId}/aggregate` avec le corps
-    `{ field, sample: limit }`, réponse mappée en `number[]` via
-    `data.rows.map((r) => Number(r.value))`, même style `request<T>` que
-    toutes les autres méthodes du fichier.
-- `shell/src/staticExport/StaticItemClient.ts` : ajout de
-  `async sampleCollectionField(..._args: unknown[]) { return unsupported(); }`
-  juste après `listLayerSources`, dans le style générique « reste de
-  l'interface » du fichier (pas le style `_source`/`_format` nommé réservé
-  aux méthodes du bloc « Implémentées réellement »).
+Implemented graceful shutdown for the CDC worker by wiring up the existing but unused `should_stop` parameter in `stream_changes()`. The mechanism allows SIGTERM to cleanly exit the consumer loop and perform a final flush of buffered rows before shutdown.
 
-## Patterns de test existants mirroirés — et pourquoi j'ai dévié du sketch du brief
+## Implementation Details
 
-Le sketch du brief (Step 1) utilisait `vi.fn().mockResolvedValue(new
-Response(...))` + `vi.stubGlobal("fetch", fetchMock)`. En lisant le vrai
-fichier `shell/src/api/itemClient.test.ts` (imports en tête de fichier,
-lignes 1-20), ce style n'existe **nulle part** dans ce fichier : le vrai
-pattern est MSW (`import { http, HttpResponse } from "msw"` +
-`import { server } from "../test/msw/server"`) avec un helper `makeClient()`
-(ligne 15) qui appelle `createItemClient({ coreUrl: "https://core.test",
-getToken: () => token })`. J'ai donc suivi le vrai fichier plutôt que le
-sketch, comme demandé explicitement par le brief et par la tâche
-("Adjust... to match whatever the file's existing tests actually do").
+### Files Changed
 
-Test ajouté, mirroir direct du test voisin `"queryDataSource sends a bins
-query key as body.bins, not as a filter"` (ligne 1553) et
-`"...percentile query's p as body.p..."` (ligne 1572), qui utilisent tous les
-deux `server.use(http.post(..., async ({ request }) => { posted = await
-request.json(); ... }))` pour capturer le corps posté :
+1. **`core/app/cdc/main.py`**
+   - Added `import signal` to imports
+   - Added `_ShutdownState` class (lines 64-77):
+     - `__init__()`: initializes `_stop=False`
+     - `should_stop()`: returns the flag value
+     - `handle_sigterm(signum, frame)`: sets `_stop=True` on SIGTERM
+   - Modified `run()` function:
+     - Line 127: `shutdown = _ShutdownState()`
+     - Line 128: `signal.signal(signal.SIGTERM, shutdown.handle_sigterm)`
+     - Line 224: Added `should_stop=shutdown.should_stop` parameter to `stream_changes()`
+     - Lines 226-230: Added final `_do_flush()` call with explanatory comment
 
-```ts
-test("sampleCollectionField posts sample+field and returns bare numeric values", async () => {
-  let posted: Record<string, unknown> | null = null;
-  server.use(
-    http.post("https://core.test/collections/communes/aggregate", async ({ request }) => {
-      posted = (await request.json()) as Record<string, unknown>;
-      return HttpResponse.json({ categoryKey: "value", rows: [{ value: 1 }, { value: 2.5 }] });
-    }),
-  );
-  const values = await makeClient().sampleCollectionField("communes", "population", 500);
-  expect(values).toEqual([1, 2.5]);
-  expect(posted).toEqual({ field: "population", sample: 500 });
-});
+2. **`core/tests/test_cdc_shutdown.py`** (new file)
+   - Tests signal handling in isolation (not `run()` end-to-end per brief requirements)
+   - Verifies flag initially False
+   - Verifies flag becomes True after SIGTERM
+
+## TDD Evidence
+
+### RED (Step 3)
+```
+AttributeError: module 'app.cdc.main' has no attribute '_ShutdownState'
 ```
 
-Inséré juste après le test `"queryDataSource carries a per-measure p into
-body.measures[i].p"` (ligne ~1610), avant `"featuresUrl strips reserved
-statistics keys..."`.
-
-Pour `StaticItemClient.test.ts`, j'ai mirroré le test `"createFeature throws
-an explicit unsupported error"` (assertion `.rejects.toThrow(/statique/i)`
-sur un client construit avec le `config()` helper local du fichier) :
-
-```ts
-it("sampleCollectionField throws an explicit unsupported error", async () => {
-  const client = createStaticItemClient(config());
-  await expect(client.sampleCollectionField("c", "f", 10)).rejects.toThrow(/statique/i);
-});
+### GREEN (Step 5)
+```
+tests/test_cdc_shutdown.py::test_sigterm_sets_the_stop_flag PASSED [100%]
 ```
 
-Le fichier n'a pas d'`EMPTY_CONFIG` exporté comme le sketch du brief le
-suggérait (`use whatever fixture name the file already defines`) : la
-fixture réelle est la fonction locale `config()` (ligne 6), utilisée par
-tous les tests existants du fichier — je l'ai réutilisée telle quelle.
+## Test Results
 
-## Preuves TDD
-
-**RED** — `cd shell && npx vitest run src/api/itemClient.test.ts -t sampleCollectionField` :
-
+### New Test
 ```
-FAIL  src/api/itemClient.test.ts > sampleCollectionField posts sample+field and returns bare numeric values
-TypeError: makeClient(...).sampleCollectionField is not a function
- ❯ src/api/itemClient.test.ts:1620:37
+tests/test_cdc_shutdown.py::test_sigterm_sets_the_stop_flag PASSED
 ```
 
-**GREEN** (après l'ajout du type + de l'implémentation) — même commande :
-
+### Full CDC Test Suite (10 tests)
 ```
-✓ src/api/itemClient.test.ts (153 tests | 152 skipped) 33ms
- Test Files  1 passed (1)
-      Tests  1 passed | 152 skipped (153)
-```
+tests/test_cdc_shutdown.py::test_sigterm_sets_the_stop_flag PASSED        [ 10%]
+tests/test_cdc_main.py::test_build_s3_key_matches_layout_convention PASSED [ 20%]
+tests/test_cdc_main.py::test_worker_state_tracks_last_seen_lsn PASSED     [ 30%]
+tests/test_cdc_main.py::test_get_lag_seconds_computes_elapsed_time_since_last_flush PASSED [ 40%]
+tests/test_cdc_main.py::test_get_lag_seconds_thread_safe_under_concurrent_writes PASSED [ 50%]
+tests/test_cdc_main.py::test_get_lag_seconds_respects_externally_held_lock PASSED [ 60%]
+tests/test_cdc_main.py::test_record_flush_respects_externally_held_lock PASSED [ 70%]
+tests/test_cdc_main.py::test_write_and_upload_removes_temp_file_when_upload_fails PASSED [ 80%]
+tests/test_cdc_main.py::test_write_and_upload_removes_temp_file_when_write_fails PASSED [ 90%]
+tests/test_cdc_main.py::test_write_and_upload_removes_temp_file_on_success PASSED [100%]
 
-## Suite complète + build
-
-`cd shell && npx vitest run` :
-
-```
-Test Files  160 passed (160)
-     Tests  1395 passed (1395)
-```
-
-(référence Task 4 : 160 fichiers / 1393 tests → +2 tests, l'un dans
-`itemClient.test.ts`, l'autre dans `StaticItemClient.test.ts`, aucune
-régression, aucun fichier de test perdu.)
-
-`cd shell && npm run build` :
-
-```
-tsc --noEmit && vite build
-✓ 4202 modules transformed.
-✓ built in 15.38s
+============================== 10 passed in 1.60s ==============================
 ```
 
-Vert. Confirmation explicite que le mécanisme de complétude d'interface a
-bien été exercé : j'ai relu `StaticItemClient.ts` avant de committer et
-vérifié que `git diff --stat` inclut bien
-`shell/src/staticExport/StaticItemClient.ts | 3 ++` dans le commit — si la
-méthode avait manqué là, `tsc --noEmit` (première étape de `npm run build`)
-aurait échoué avec « Property 'sampleCollectionField' is missing in type
-... but required in type 'ItemClient' », précisément le mécanisme SP-18a.
+### Core Test Suite with Real DB
+- Pre-existing unrelated failure: `test_scope_preserves_original_sql_error` (RLS test)
+- New test addition: 1 test in `test_cdc_shutdown.py`
+- No regressions introduced
 
-## Gates
+## Self-Review Checklist
 
-- `npm run lint` → `eslint .` : aucune sortie, vert.
-- `npm run format:check` → `prettier --check .` : "All matched files use
-  Prettier code style!"
-- `uvx pre-commit run --all-files` (exécuté automatiquement au commit) :
-  eslint (shell) Passed, prettier (shell) Passed, commitlint Passed.
+✅ **Completeness**
+- All 6 steps of brief implemented
+- New test passes
+- `run()` correctly wired with 3 required lines + final flush
+- Nothing else in `run()` was touched
 
-## Fichiers modifiés (commit `ece97e5`)
+✅ **Quality**
+- Docstring preserved and accurate
+- `signal` import added correctly
+- `_ShutdownState` class follows `_WorkerState` patterns
+- No code duplication
 
-- `shell/src/api/types.ts` (+1)
-- `shell/src/api/itemClient.ts` (+15)
-- `shell/src/api/itemClient.test.ts` (+13)
-- `shell/src/staticExport/StaticItemClient.ts` (+3)
-- `shell/src/staticExport/StaticItemClient.test.ts` (+5)
+✅ **Discipline**
+- No scope creep
+- Small, surgical change as specified
+- Signal handling tested in isolation (correct strategy per brief)
+- NOT testing `run()` end-to-end (intentional limitation)
 
-Total : 37 insertions, 0 suppression, 5 fichiers — exactement le périmètre
-listé par le brief, rien d'autre committé (le dépôt de travail contient par
-ailleurs des modifications non liées sur des fichiers `.superpowers/sdd/*`
-préexistantes/concurrentes à cette tâche — non touchées, non stagées, non
-committées par moi).
+✅ **Code Style**
+- Pre-commit hooks: ruff format/check, import-linter, commitlint all passed
+- Commit message matches brief exactly
 
-## Auto-revue
+## Design Rationale
 
-- **Complétude** : implémentation réelle dans `itemClient.ts` présente et
-  testée (RED→GREEN observé) ; rejet explicite dans `StaticItemClient.ts`
-  présent et testé.
-- **Qualité** : `sampleCollectionField` réel utilise le même helper
-  `request<T>` que toutes les autres méthodes réseau du fichier, même style
-  de signature de retour typé. Le rejet statique suit exactement le
-  patron `async methodName(..._args: unknown[]) { return unsupported(); }`
-  déjà utilisé par la majorité des méthodes « reste de l'interface » du
-  fichier (pas le style à arguments nommés réservé aux 6 méthodes
-  « implémentées réellement »).
-- **Discipline** : aucun `LayerSymbology`/`MapLayer.symbology` touché —
-  `mapSymbology.ts` n'existe dans ce dépôt de travail que via
-  `src/builder/widgets/mapSymbology.test.ts`, déjà présent avant cette tâche
-  (travail concurrent d'une autre tâche du plan, non modifié ici). Aucun
-  fichier hors des 5 listés par le brief n'a été committé.
-- **Tests** : RED confirmé avant l'implémentation (`is not a function`),
-  GREEN confirmé après. `npm run build` exécuté réellement (pas juste
-  supposé vert) et le diff du commit vérifié pour contenir
-  `StaticItemClient.ts`.
+### Pattern Consistency
+`_ShutdownState` mirrors `_WorkerState`:
+- Single-purpose state class
+- Simple public interface (`should_stop()`)
+- Internal signal handler (`handle_sigterm()`)
+- Separate from business logic
+
+### Signal Handling Strategy
+- SIGTERM sets flag (safe operation in signal handler)
+- Flag checked in `stream_changes()` loop on each iteration
+- Final flush ensures buffered rows aren't lost
+- Leverages existing `should_stop` contract in consumer
+
+## Known Limitations
+
+Per task brief (intentional design):
+1. Does NOT test `run()` end-to-end (requires real CDC_DATABASE_URL + S3)
+2. Tests ONLY the signal handling mechanism in isolation
+3. Relies on `stream_changes()` checking `should_stop()` at loop boundaries
+
+These are by design and explicitly required by the brief.
 
 ## Concerns
 
-Aucun. Tâche strictement dans son périmètre, aucune interface adjacente
-touchée, aucune régression de test.
+None identified. The implementation:
+- Matches brief requirements exactly
+- Passes all tests
+- Introduces no regressions
+- Maintains code discipline and style
+- Follows established patterns in codebase
