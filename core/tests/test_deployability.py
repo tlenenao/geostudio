@@ -684,3 +684,51 @@ def test_unpinned_reason_accepts_own_image_behind_substitution():
     """Miroir du cas précédent : une de nos propres images GHCR derrière une
     substitution reste exemptée, comme avant ce fix."""
     assert unpinned_reason("ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}") is None
+
+
+# Revue finale SP-26 (C1) : core/Dockerfile (service `worker`, même image que
+# `core`) et deploy/qgis-worker/Dockerfile se passent des fichiers via le
+# volume nommé `etl-scratch:/scratch` (docker-compose.yml) —
+# core/app/pipelines/runtime.py y écrit `in.gpkg` comme l'utilisateur `app`,
+# le sidecar QGIS y écrit `out.gpkg` comme l'utilisateur `qgis`. Ces deux
+# tests figent statiquement le correctif (vérifié empiriquement en session :
+# build réel des deux images, `id -u` comparé, écriture croisée réussie dans
+# les deux ordres de démarrage possibles) pour qu'une future modification de
+# l'un des deux Dockerfiles ne fasse pas diverger silencieusement les uid, ou
+# ne retire pas la création de /scratch.
+
+CORE_DOCKERFILE = REPO / "core" / "Dockerfile"
+QGIS_DOCKERFILE = REPO / "deploy" / "qgis-worker" / "Dockerfile"
+
+
+def _useradd_uid(dockerfile: pathlib.Path) -> str | None:
+    match = re.search(r"useradd\s+[^\n]*--uid[= ]+(\d+)", dockerfile.read_text())
+    return match.group(1) if match else None
+
+
+def test_core_and_qgis_worker_pin_the_same_scratch_uid():
+    core_uid = _useradd_uid(CORE_DOCKERFILE)
+    qgis_uid = _useradd_uid(QGIS_DOCKERFILE)
+    assert core_uid is not None, "core/Dockerfile doit fixer un --uid explicite pour `app`"
+    assert qgis_uid is not None, (
+        "deploy/qgis-worker/Dockerfile doit fixer un --uid explicite pour `qgis`"
+    )
+    assert core_uid == qgis_uid, (
+        f"uid divergents entre core/Dockerfile (app={core_uid}) et "
+        f"deploy/qgis-worker/Dockerfile (qgis={qgis_uid}) — le partage de "
+        "fichiers via etl-scratch échouera en PermissionError selon l'ordre "
+        "de démarrage des conteneurs."
+    )
+
+
+def test_core_dockerfile_creates_and_chowns_scratch_before_switching_user():
+    text = CORE_DOCKERFILE.read_text()
+    mkdir_pos = text.find("mkdir -p /scratch")
+    user_pos = text.find("\nUSER app")
+    assert mkdir_pos != -1, "core/Dockerfile doit créer /scratch avant USER app"
+    assert user_pos != -1, "core/Dockerfile doit passer USER app"
+    assert mkdir_pos < user_pos, "/scratch doit être créé avant le passage non-root"
+    chown_line = re.search(r"^RUN .*chown[^\n]*$", text, re.MULTILINE)
+    assert chown_line is not None and "/scratch" in chown_line.group(0), (
+        "core/Dockerfile doit chown /scratch vers l'utilisateur `app`"
+    )

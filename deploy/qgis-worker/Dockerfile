@@ -20,7 +20,22 @@ ENV QT_QPA_PLATFORM=offscreen
 # (non-root) le verrait désactivé, cassant silencieusement tous les
 # grass7:* de l'allowlist figée (core/app/pipelines/ops/
 # qgis_algorithms.json). Même mécanisme que core/Dockerfile pour DuckDB.
-RUN groupadd --system qgis && useradd --system --gid qgis --home-dir /opt/qgis-home --create-home qgis
+#
+# uid/gid FIXES à 1001 — MÊME nombre que l'utilisateur `app` de
+# core/Dockerfile (revue finale SP-26, C1). Ce sidecar et le service
+# `worker` (même image que `core`) se partagent le volume nommé
+# `etl-scratch:/scratch` : core/app/pipelines/runtime.py écrit `in.gpkg`
+# comme `app`, ce serveur écrit `out.gpkg` dans le même répertoire comme
+# `qgis` — sans uid identique, l'un des deux échoue en PermissionError
+# selon lequel des deux conteneurs a démarré (et donc peuplé le volume nommé)
+# en premier. `useradd --system` sans uid explicite laisse chaque image de
+# base allouer indépendamment le premier uid système libre ; rien ne
+# garantit qu'Ubuntu (cette image) et Debian (python:3.12-slim, core/
+# Dockerfile) convergent. 1001 vérifié libre dans les deux images de base au
+# moment de ce correctif (`getent passwd 1001` échoue dans les deux) ; à
+# revérifier si l'une des deux images de base change de distribution/version.
+RUN groupadd --system --gid 1001 qgis \
+  && useradd --system --uid 1001 --gid qgis --home-dir /opt/qgis-home --create-home qgis
 ENV HOME=/opt/qgis-home
 
 RUN qgis_process plugins enable grassprovider
