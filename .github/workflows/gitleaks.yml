@@ -33,7 +33,7 @@ jobs:
       # fichiers tels qu'ils existent à ce commit), jamais sur `git log` —
       # un clone superficiel (profondeur par défaut) suffit et clone moins
       # de données à chaque run.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Décision de planification n°6 : scanner l'arbre de travail, pas
       # l'historique — cf. docs/superpowers/plans/2026-08-20-sp22-filet-
