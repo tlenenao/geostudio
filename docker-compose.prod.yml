@@ -110,6 +110,18 @@ services:
       # bascule en enforcing (Step 5) une fois confirmée (SP-26/3.3). Les
       # valeurs ${GEOSTUDIO_PUBLIC_HOST}/keycloak reprennent les mêmes
       # variables que le reste de ce fichier.
+      #
+      # 4 blocages concrets à vérifier/autoriser AVANT bascule en enforcing
+      # (revue finale SP-26, I5), invisibles en Report-Only hors rapport de
+      # violation : (1) `img-src` bloque les tuiles raster WMS/WMTS
+      # moissonnées et le terrain raster-dem externes (hôte arbitraire par
+      # conception) ; (2) `connect-src` bloque les URL de tileset 3D
+      # externes (couche `tiles3d`, même raison) ; (3) `script-src 'self'`
+      # bloque les widgets d'extension tiers (SP-8c, JS depuis leur propre
+      # origine) ; (4) `shell/nginx.conf`'s `connect-src 'self'` est FAUX
+      # pour le compose de BASE (hors cet overlay) où `shell`/`core` sont
+      # deux origines distinctes — déjà correct ICI (Traefik prime, `core`
+      # same-origin `/api`), à corriger là-bas avant enforcing.
       - "traefik.http.middlewares.security-headers.headers.customResponseHeaders.Content-Security-Policy-Report-Only=default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://${GEOSTUDIO_PUBLIC_HOST}; img-src 'self' data: blob: https://${GEOSTUDIO_PUBLIC_HOST}; worker-src 'self' blob:; frame-src https://${GEOSTUDIO_PUBLIC_HOST}; object-src 'none'"
       - traefik.http.middlewares.security-headers.headers.customResponseHeaders.Permissions-Policy=camera=(), microphone=(), payment=(), usb=()
       - traefik.http.middlewares.rate-limit.ratelimit.average=100
