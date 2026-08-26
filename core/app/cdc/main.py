@@ -6,6 +6,7 @@ app/jobs.py (SP-10a) — quel que soit le process qui importe ce module EST le
 point d'entrée du worker."""
 
 import os
+import signal
 import threading
 import time
 import uuid
@@ -60,6 +61,22 @@ class _WorkerState:
             self.last_flush_ts[collection_id] = ts
 
 
+class _ShutdownState:
+    """État du signal SIGTERM (SP-26/3.5b) — séparé de _WorkerState (données
+    métier) : ce flag n'a qu'un rôle, dire à stream_changes() de sortir de
+    sa boucle proprement (cf. consumer.stream_changes's `should_stop`
+    param, déjà prévu pour ça mais jamais branché avant ce chantier)."""
+
+    def __init__(self) -> None:
+        self._stop = False
+
+    def should_stop(self) -> bool:
+        return self._stop
+
+    def handle_sigterm(self, signum, frame) -> None:
+        self._stop = True
+
+
 def build_s3_key(*, tenant_id: str, collection_id: str, dt: str) -> str:
     return (
         f"cdc/tenant_id={tenant_id}/collection_id={collection_id}/dt={dt}/"
@@ -107,6 +124,8 @@ def run() -> None:
     storage.ensure_cdc_bucket(s3_client, s3_bucket)
 
     state = _WorkerState()
+    shutdown = _ShutdownState()
+    signal.signal(signal.SIGTERM, shutdown.handle_sigterm)
     observability.register_cdc_lag_gauge(state.get_lag_seconds)
 
     consumer.ensure_replication_slot(raw_dsn)
@@ -202,7 +221,13 @@ def run() -> None:
         on_message=_on_message,
         is_flush_due=lambda: bool(buffer.tables_due_for_flush()),
         do_flush=_do_flush,
+        should_stop=shutdown.should_stop,
     )
+    # stream_changes() ne flushe que quand is_flush_due() est vrai PENDANT
+    # la boucle — un SIGTERM peut arriver avec des lignes déjà bufferisées
+    # mais pas encore dues à l'âge (30s). Flush final explicite avant
+    # sortie, même mécanisme que _do_flush, appelé une dernière fois.
+    _do_flush()
 
 
 if __name__ == "__main__":
