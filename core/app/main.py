@@ -43,6 +43,7 @@ from app.mcp.server import create_mcp_server
 from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
+from app.ratelimit.limiter import RateLimiter, route_group
 from app.reports import routes as reports_routes
 from app.schemas_routes import router as schemas_router
 from app.secrets import crypto as secrets_crypto
@@ -183,6 +184,31 @@ def create_app() -> FastAPI:
                 status_code=403,
                 content={"detail": "Mode démo : lecture seule, écritures désactivées."},
             )
+        return await call_next(request)
+
+    # Deliberately created here, not at module level: create_app() is called
+    # repeatedly by the test suite (same reasoning as mcp_server above) — a
+    # module-level RateLimiter singleton would leak rate-limit state across
+    # unrelated tests.
+    rate_limiter = RateLimiter()
+
+    @app.middleware("http")
+    async def rate_limit_guard(request: Request, call_next):
+        group = route_group(request.url.path, _EXPORT_PATH_RE)
+        if group is not None:
+            caller_key = request.headers.get("authorization", "")
+            if not rate_limiter.allow(caller_key, group):
+                return JSONResponse(
+                    status_code=429,
+                    media_type="application/problem+json",
+                    headers={"Retry-After": "60"},
+                    content={
+                        "type": "about:blank",
+                        "title": "Too Many Requests",
+                        "status": 429,
+                        "detail": f"rate limit exceeded for {group}",
+                    },
+                )
         return await call_next(request)
 
     if is_appexport_enabled():
