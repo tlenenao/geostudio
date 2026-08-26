@@ -18,6 +18,12 @@ from app.db import make_session_factory
 # explicitement (ex. test_secrets_crypto.py) reste maître de sa propre
 # valeur.
 os.environ.setdefault("CORE_SECRETS_MASTER_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
+# Même raison, même patron (SP-26/3.1) : create_app() refuse désormais de
+# démarrer en CORE_AUTH_MODE=mock (le défaut de _mock_mode() quand la
+# variable est absente) sans CORE_ENV=development. setdefault() : un test
+# qui monkeypatch.setenv("CORE_ENV", ...) explicitement reste maître de sa
+# propre valeur (ex. test_mock_mode_guard.py ci-dessus).
+os.environ.setdefault("CORE_ENV", "development")
 
 
 @pytest.fixture(scope="session")
