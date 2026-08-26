@@ -85,7 +85,16 @@ def test_read_only_mode_blocks_every_mutation_even_for_admin(env, monkeypatch, m
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     response = env.request(method, path, json={})
     assert response.status_code == 403
-    assert response.json() == {"detail": READ_ONLY_MESSAGE}
+    # RFC 7807 (SP-26 I3) : même forme que les exception handlers et le 429
+    # du rate limiter, plus application/problem+json — pas le vieux format
+    # plat {"detail": ...} qui précédait Task 3.
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Forbidden",
+        "status": 403,
+        "detail": READ_ONLY_MESSAGE,
+    }
 
 
 def test_read_only_mode_does_not_affect_reads(env, monkeypatch):

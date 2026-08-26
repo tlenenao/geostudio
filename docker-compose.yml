@@ -181,8 +181,15 @@ services:
       # docker-compose.prod.yml force déjà CORE_AUTH_MODE=oidc sans
       # indirection par variable — cette garde n'y a donc jamais l'occasion
       # de se déclencher, c'est un filet pour tout déploiement du fichier
-      # de base seul, sans l'overlay prod.
-      CORE_ENV: ${CORE_ENV:-development}
+      # de base seul, sans l'overlay prod. Défaut VIDE, pas "development"
+      # (revue finale SP-26, I2) : avec CORE_AUTH_MODE défaut à "mock" ET
+      # CORE_ENV défaut à "development" ici même, la garde ci-dessus ne se
+      # déclenchait JAMAIS pour quiconque démarre ce fichier sans .env — les
+      # deux défauts se satisfaisaient l'un l'autre, exactement le
+      # déploiement que la garde existe pour attraper. Le flux documenté
+      # (.env.example -> scripts/bootstrap-env.sh -> .env) fixe toujours
+      # CORE_ENV=development explicitement et n'est pas affecté.
+      CORE_ENV: ${CORE_ENV:-}
       CORE_OIDC_ISSUER: ${CORE_OIDC_ISSUER:-http://localhost:8180/realms/geostudio}
       CORE_OIDC_AUDIENCE: ${CORE_OIDC_AUDIENCE:-geostudio-core}
       CORE_OIDC_JWKS_URL: ${CORE_OIDC_JWKS_URL:-http://keycloak:8080/realms/geostudio/protocol/openid-connect/certs}

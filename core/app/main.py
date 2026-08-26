@@ -182,7 +182,13 @@ def create_app() -> FastAPI:
         ):
             return JSONResponse(
                 status_code=403,
-                content={"detail": "Mode démo : lecture seule, écritures désactivées."},
+                media_type="application/problem+json",
+                content={
+                    "type": "about:blank",
+                    "title": HTTPStatus(403).phrase,
+                    "status": 403,
+                    "detail": "Mode démo : lecture seule, écritures désactivées.",
+                },
             )
         return await call_next(request)
 
@@ -194,7 +200,7 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def rate_limit_guard(request: Request, call_next):
-        group = route_group(request.url.path, _EXPORT_PATH_RE)
+        group = route_group(request.url.path, request.method, _EXPORT_PATH_RE)
         if group is not None:
             caller_key = request.headers.get("authorization", "")
             if not rate_limiter.allow(caller_key, group):

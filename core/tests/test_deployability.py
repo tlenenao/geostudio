@@ -450,6 +450,44 @@ def test_every_documented_env_var_is_wired_or_declared_inert():
     )
 
 
+def _substitution_default(raw: str, var: str) -> str | None:
+    """Valeur par défaut (`${VAR:-défaut}`) d'une substitution `${VAR}` dans
+    une chaîne compose brute — `None` si `VAR` n'y a pas de défaut (ou n'y
+    apparaît pas)."""
+    match = re.search(rf"\$\{{{var}:-([^}}]*)\}}", raw)
+    return match.group(1) if match else None
+
+
+def test_core_env_default_cannot_silently_satisfy_the_mock_mode_guard():
+    """Revue finale SP-26 (I2) : le service `core` de docker-compose.yml
+    câblait CORE_AUTH_MODE avec un défaut "mock" ET CORE_ENV avec un défaut
+    "development" — quiconque démarre ce fichier sans `.env` obtenait donc
+    les deux par défaut, et la garde de démarrage
+    core/app/auth/dependency.py::reject_mock_outside_development() (qui ne
+    refuse `mock` que si CORE_ENV != "development") ne se déclenchait
+    jamais, exactement le déploiement qu'elle existe pour attraper. Épingle
+    que CORE_ENV n'a plus de défaut qui satisfasse la garde tant que
+    CORE_AUTH_MODE peut par défaut valoir "mock" — le flux documenté
+    (.env.example -> scripts/bootstrap-env.sh -> .env) reste inchangé, lui,
+    puisqu'il fixe CORE_ENV=development explicitement dans le `.env`
+    généré, jamais via ce défaut de compose."""
+    core_env = services(BASE)["core"]["environment"]
+    auth_mode_raw = core_env["CORE_AUTH_MODE"]
+    env_raw = core_env["CORE_ENV"]
+    auth_mode_default = _substitution_default(auth_mode_raw, "CORE_AUTH_MODE")
+    env_default = _substitution_default(env_raw, "CORE_ENV")
+    assert auth_mode_default == "mock", (
+        f"ce test suppose CORE_AUTH_MODE par défaut 'mock' (raw={auth_mode_raw!r}) "
+        "pour que le scénario testé (aucun .env fourni) soit réel."
+    )
+    assert env_default != "development", (
+        "CORE_ENV a de nouveau un défaut 'development' dans docker-compose.yml : "
+        "combiné au défaut 'mock' de CORE_AUTH_MODE ci-dessus, ceci désarme "
+        "silencieusement reject_mock_outside_development() pour quiconque "
+        "démarre le compose de base sans fournir de .env."
+    )
+
+
 CI = REPO / ".github/workflows/ci.yml"
 
 
