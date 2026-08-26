@@ -117,6 +117,47 @@ jobs:
       - run: npm run e2e
       - run: npm run build
 
+  shell-e2e-oidc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build postgis+pgvector image
+        run: docker build -t geostudio-postgis-ci:latest deploy/postgis
+      - name: Bring up postgis, keycloak, core, shell (real OIDC)
+        run: |
+          cat > .env <<EOF
+          PG_PASSWORD=ci-postgres-password
+          MINIO_USER=ci-minio-user
+          MINIO_PASSWORD=ci-minio-password
+          KC_PASSWORD=ci-keycloak-password
+          CORE_AUTH_MODE=oidc
+          CORE_SECRETS_MASTER_KEY=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
+          VITE_OIDC_AUTHORITY=http://localhost:8180/realms/geostudio
+          VITE_OIDC_CLIENT_ID=geostudio-shell
+          VITE_OIDC_REDIRECT_URI=http://localhost:8300/
+          VITE_AUTH_MODE=oidc
+          EOF
+          docker compose build core shell
+          docker compose up -d postgis keycloak core shell
+      - name: Wait for shell to be reachable
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8300/ > /dev/null && break
+            sleep 5
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+        working-directory: shell
+      - run: npx playwright install --with-deps chromium
+        working-directory: shell
+      - run: npm run e2e:oidc
+        working-directory: shell
+      - name: Dump service logs on failure
+        if: failure()
+        run: docker compose logs core keycloak shell
+
   shell-deps-audit:
     runs-on: ubuntu-latest
     defaults:
