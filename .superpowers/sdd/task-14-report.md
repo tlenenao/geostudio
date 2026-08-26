@@ -1,147 +1,134 @@
-# Task 14 Report: "Autoporté" button on `AppExportPanel`
+# Task 14 Report: `ItemClient` — révisions et rollback
 
-Date: 2026-08-15
-Repo: /home/lenen/projets/geostudio (branch: dev)
-Commit: `1a27847`
+## What I implemented
 
-## What was implemented
+- `shell/src/api/types.ts`: new exported type
+  `ConfigRevisionInfo = { version: number; createdAt: string }`, and two new
+  methods on the `ItemClient` interface, placed next to `saveMapConfig` (the
+  nearest generic "config" methods, since these two aren't specific to any
+  one resource kind):
+  ```ts
+  listConfigRevisions(pk: string): Promise<ConfigRevisionInfo[]>;
+  rollbackConfig(pk: string, version: number): Promise<void>;
+  ```
+- `shell/src/api/itemClient.ts` (`CoreItemClient`, inside `createItemClient`):
+  both methods resolve the item's `configId` via `GET /configs/by-item/{pk}`
+  (same pattern as ten existing call sites), then:
+  - `listConfigRevisions`: `GET /configs/{id}/revisions`, mapping
+    `created_at` → `createdAt`.
+  - `rollbackConfig`: `POST /configs/{id}/rollback` with `{ version }`.
+  Added `ConfigRevisionInfo` to the `./types` import list.
+- `shell/src/staticExport/StaticItemClient.ts`: both methods added to the
+  "reste de l'interface" block, each calling the existing `unsupported()`
+  helper (rejects with `"Non disponible dans un export statique (aucun
+  backend)."`, which matches the `/export statique/` test assertion).
 
-Added the third export mode button ("Autoporté") to the `AppExportPanel` component, completing SP-18c Task 14 (final task of 14 in the SP-18c plan).
+No other `ItemClient` implementation existed in the codebase — `npm run
+build` (`tsc --noEmit`) passed clean on the first try after the two
+implementations were added, meaning no test mocks or other structural
+implementers were missing the two new methods.
 
-### Changes made
+## What I tested and results
 
-**File 1: `shell/src/builder/appexport/AppExportPanel.tsx`**
+- `cd shell && npx vitest run src/api/itemClient.test.ts
+  src/staticExport/StaticItemClient.test.ts` — 153 passed (0 failed).
+- `cd shell && npm run build` — `tsc --noEmit && vite build` both green.
 
-Added a third button to the mode-selection dialog (lines 97-99):
-```tsx
-<Button type="button" size="sm" onClick={() => onChooseMode("standalone")}>
-  Autoporté
-</Button>
+## TDD Evidence
+
+### RED
+
+Command:
+```
+cd shell && npx vitest run src/api/itemClient.test.ts src/staticExport/StaticItemClient.test.ts
 ```
 
-The button:
-- Appears in the "Choisir le mode d'export" dialog alongside "Statique" and "Connecté"
-- Calls `onChooseMode("standalone")` (reuses existing mechanism)
-- Integrates with the existing `pendingWarningMode` guard (form-widget warning) via the already-generalized mechanism from SP-18b Task 8
+Output (relevant excerpt):
+```
+ × listConfigRevisions résout la config par item puis lit ses révisions 3ms
+   → client.listConfigRevisions is not a function
+ × rollbackConfig poste la version demandée sur la config résolue 2ms
+   → client.rollbackConfig is not a function
+ × rollbackConfig propage l'erreur quand le serveur refuse la version 1ms
+   → client.rollbackConfig is not a function
+ ...
+ FAIL  src/staticExport/StaticItemClient.test.ts > StaticItemClient > les révisions ne sont pas disponibles hors ligne
+ TypeError: client.listConfigRevisions is not a function
 
-**File 2: `shell/src/builder/appexport/AppExportPanel.test.tsx`**
+ Test Files  2 failed (2)
+      Tests  4 failed | 149 passed (153)
+```
+Why expected: the two methods didn't exist yet on either `ItemClient`
+implementation — `not a function` is the correct failure mode before adding
+the interface methods and their implementations.
 
-Added test at lines 87-103:
-```tsx
-it("triggers a standalone export and shows a download link once done", async () => {
-  const client = makeClient({
-    createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
-    getAppExportJob: vi.fn().mockResolvedValue({ id: "job1", status: "done", resultUrl: "https://x.test/bundle.zip", error: null }),
-  });
-  render(
-    <ItemClientProvider client={client}>
-      <AppExportPanel itemId="item1" config={config()} />
-    </ItemClientProvider>,
-  );
-  await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
-  await userEvent.click(screen.getByRole("button", { name: /autoport/i }));
-  await waitFor(() => expect(screen.getByRole("link", { name: /télécharger/i })).toBeInTheDocument());
-  expect(client.createAppExport).toHaveBeenCalledWith("item1", "standalone");
-});
+### GREEN
+
+Command:
+```
+cd shell && npx vitest run src/api/itemClient.test.ts src/staticExport/
 ```
 
-Verifies:
-- Button is rendered and clickable (regex `/autoport/i` matches "Autoporté")
-- Clicking triggers `createAppExport` with mode `"standalone"`
-- Download link appears once job completes
-- All with zero form-widget warnings (config has no form widgets)
-
-## Test results
-
-### Initial run (before implementation)
+Output (relevant excerpt):
 ```
-❯ src/builder/appexport/AppExportPanel.test.tsx (5 tests | 1 failed)
-  ✓ AppExportPanel > triggers export and shows a download link once done
-  ✓ AppExportPanel > warns before export when the config contains a form widget
-  ✓ AppExportPanel > triggers a connected export and shows a download link once done
-  ✓ AppExportPanel > confirms the write warning with the mode that actually triggered it
-  × AppExportPanel > triggers a standalone export and shows a download link once done
-    → Unable to find an accessible element with the role "button" and name `/autoport/i`
+ ✓ src/api/itemClient.test.ts (148 tests) 1115ms
+
+ Test Files  2 passed (2)
+      Tests  153 passed (153)
 ```
 
-**Result:** Test failed as expected — button did not exist yet.
+Note: two stderr lines about `GET https://core.test/harvest/layers` being an
+unhandled MSW request appear during this run, in *pre-existing* tests
+(`listLayerSources still returns one service when the other fails`,
+`listLayerSources passes q to /collections and filters Martin sources
+client-side`) that are unrelated to this task and unmodified by it — not new
+warnings introduced by this change.
 
-### After implementation
+`npm run build`:
 ```
-✓ src/builder/appexport/AppExportPanel.test.tsx (5 tests) 292ms
-
- Test Files  1 passed (1)
-      Tests  5 passed (5)
-   Start at  20:33:08
-   Duration  1.63s
-```
-
-**Result:** All 5 tests pass (1 new + 4 pre-existing).
-
-### Full shell test suite
-```
- Test Files  144 passed (144)
-      Tests  1188 passed (1188)
-   Start at  20:33:24
-   Duration  46.61s
+> tsc --noEmit && vite build
+...
+✓ built in 30.46s
 ```
 
-**Result:** 1188 tests pass, 0 failed. No regressions.
+## Files changed
 
-### TypeScript type check
-```
-npx tsc --noEmit
-(Bash completed with no output)
-```
+- `shell/src/api/types.ts` — `ConfigRevisionInfo` type + two `ItemClient`
+  interface methods.
+- `shell/src/api/itemClient.ts` — `ConfigRevisionInfo` import + two method
+  implementations on `CoreItemClient`.
+- `shell/src/api/itemClient.test.ts` — 3 new tests.
+- `shell/src/staticExport/StaticItemClient.ts` — two method implementations
+  rejecting via `unsupported()`.
+- `shell/src/staticExport/StaticItemClient.test.ts` — 1 new test (two
+  assertions).
 
-**Result:** 0 TypeScript errors.
+Commit: `3be2064` — `feat(shell): expose les révisions de config et le
+rollback sur ItemClient`
 
-## Deviations from the brief
+## Self-review findings
 
-None. Implementation follows the brief exactly:
-- Test code copied verbatim from Step 1 code block
-- Button code copied verbatim from Step 3 code block
-- Commit message exact match from Step 6
-- All steps executed in order (TDD discipline)
+- Both methods implemented on both `CoreItemClient` and `StaticItemClient` —
+  confirmed.
+- `StaticItemClient`'s rejection message contains "export statique" — the
+  shared `UNSUPPORTED` constant string is `"Non disponible dans un export
+  statique (aucun backend)."`, matches the test's `/export statique/` regex —
+  confirmed.
+- `ConfigRevisionInfo` exported from `shell/src/api/types.ts`, imported in
+  `shell/src/api/itemClient.ts` — confirmed.
+- Test output pristine for the new tests; the two pre-existing MSW stderr
+  warnings in unrelated tests are not new.
+- No overbuilding: exactly the two methods + one type from the brief, no
+  extra abstractions.
+- `npm run build` revealed no other `ItemClient`-implementing object needing
+  the new methods (this was the brief's Step 6 contingency, but it did not
+  trigger — the build passed on the first run after implementation).
 
-## Self-review notes
+## Issues or concerns
 
-**Design & correctness:**
-- Button reuses the existing `onChooseMode()` function with mode `"standalone"`
-- The `"standalone"` mode is already defined in `AppExportMode` union type (from SP-18 infrastructure)
-- No duplication of control flow — form-widget warnings handled via existing generalized `pendingWarningMode` mechanism
-- Button position (third, after "Connecté") follows dialog convention
-
-**Type safety:**
-- No TypeScript errors introduced
-- Mode type matches expected API
-- Test mocks align with component's actual `ItemClient` interface
-
-**Test coverage:**
-- New test covers the happy path (dialog open → click button → poll → download appears)
-- Pre-existing tests (4) all pass unchanged, confirming the button integrates seamlessly
-- Test assertions are specific (mode must be `"standalone"`, not just any truthy mode)
-
-**Minimal diff:**
-- 3 lines added to component (the button)
-- 16 lines added to test (new test function)
-- 0 lines removed or modified in existing logic
-- 0 breaking changes
-
-**No regressions:**
-- Full shell test suite: 1188/1188 passing
-- No TypeScript errors
-- All 4 pre-existing AppExportPanel tests still pass
-
-## Summary
-
-**Status: COMPLETE**
-
-The "Autoporté" button is now present in the `AppExportPanel` export-mode dialog, fully integrated with existing control flow (warning mechanism, polling, download). The component is ready for the backend's `POST /app-exports` route to accept and handle mode `"standalone"` (which will be implemented in the core service).
-
-**Commit details:**
-- Hash: `1a27847`
-- Message: `feat(shell): AppExportPanel gains an Autoporté button (SP-18c)`
-- Files: `shell/src/builder/appexport/AppExportPanel.tsx`, `shell/src/builder/appexport/AppExportPanel.test.tsx`
-
-**Test summary:** 1 new test passing + 4 pre-existing tests passing = 5/5 on component. Full suite: 1188/1188 passing.
+- None. Unrelated pre-existing modifications to
+  `.superpowers/sdd/task-13-brief.md`, `.superpowers/sdd/task-13-report.md`,
+  and `.superpowers/sdd/task-14-brief.md` were present in the working tree at
+  session start (task-ID reuse from a different, unrelated plan/session) and
+  were deliberately left unstaged/uncommitted — only the five files named in
+  the brief's Step 7 were staged and committed.
