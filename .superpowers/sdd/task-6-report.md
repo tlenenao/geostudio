@@ -1,163 +1,115 @@
-# Task 6 report — Shell: classification, palette-aware paint/legend, and orchestration in `mapSymbology.ts`
+# Task 6 Report: `ErrorBoundary` applicatif (3.5c)
 
-## What was implemented
+**Date:** 2026-08-26  
+**Status:** DONE  
+**Commit:** `3598ce2` — `feat(shell): error boundary applicatif à la racine`
 
-`shell/src/builder/widgets/mapSymbology.ts` extended (not rewritten) with:
+## Summary
 
-- Re-exports `PaletteId`, `ResolvedPalette` from `./palette` (as `import type`
-  + `export type { ... }`, simpler than the brief's inline `import("./palette")`
-  alias sketch, per the brief's own note that the sketch could be simplified).
-- New `ColorClassification` union (`quantile` | `equalInterval` | `jenks`,
-  each `{ classes: number }`).
-- `ColorDomain` extended additively with `{ kind: "numeric-classed"; breaks: number[] }`
-  (kept existing `"numeric"` tag, per plan deviation #1).
-- `MapEncodings.color` extended with optional `classification`.
-- New `LayerSymbology` type — the storage/editing envelope (`palette`,
-  `domain`, `computedAt` layered on top of the encoding shape).
-- `LegendSpec.color` extended with a `"classed"` variant (`classes: {color,from,to}[]`).
-- Classification math: `equalIntervalBreaks`, `quantileMeasures`,
-  `quantileBreaksFromRow`, `jenksBreaks` (classic Fisher-Jenks DP, transcribed
-  verbatim from the brief).
-- Orchestration: `computeColorDomain` (categorical groupBy / numeric min-max /
-  equalInterval / quantile / jenks-via-sample), `computeSizeDomain`
-  (min/max), both taking injected `{ runStatistics, sampleField }` deps —
-  `StatQueryFn`/`SampleFieldFn` types exported.
-- `buildMapPaint`/`buildLegend` extended with a 5th optional `palette?:
-  ResolvedPalette` parameter (default path unchanged, fully backward
-  compatible) and a new `"numeric-classed"` branch (MapLibre `step`
-  expression for paint, `{from,to,color}` ranges for the legend). Palette,
-  when given, drives categorical/classed/continuous colors via
-  `colorsForClasses`/`palette.low`/`palette.high` instead of the hardcoded
-  constants.
-- `symbologyToPaintInputs(symbology, themeColors)` — pure adapter from
-  `LayerSymbology` to `buildMapPaint`'s/`buildLegend`'s existing 4-tuple
-  input shape, resolving the palette id via `resolvePalette`.
+Implemented a root-level React error boundary (`AppErrorBoundary`) to catch render crashes anywhere in the application outside of the per-widget error boundary that already existed in `WidgetHost.tsx`. This closes I12 from the project review (2026-08-20), which identified that the only error boundary was scoped per-widget, causing crashes in builder chrome, pages, or panels to produce a white screen.
 
-`shell/src/api/types.ts`: `MapLayer.symbology?: import("../builder/widgets/mapSymbology").LayerSymbology`
-added to the `"vector"` and `"feature"` variants (inline `import(...)` type
-syntax to avoid a circular value import — `types.ts` has no runtime
-dependency on `mapSymbology.ts`).
+## Implementation Details
 
-## 15 pre-existing tests
+### Files Created
 
-Untouched above the insertion point in `mapSymbology.test.ts`, confirmed
-passing throughout (see TDD evidence below — RED run shows `15 passed`
-alongside 16 new failures; final run shows all 31 green, including these 15
-verbatim).
+1. **`shell/src/AppErrorBoundary.tsx`** (50 lines)
+   - Class component error boundary extending `React.Component<Props, State>`
+   - Implements `getDerivedStateFromError()` to set `failed: true` on any child render error
+   - Implements `componentDidCatch()` to log errors via `console.error()`
+   - Renders a user-friendly fallback UI in French when an error occurs:
+     - Message: "Une erreur est survenue."
+     - Instructions to reload the page or contact admin
+     - "Recharger" button that calls `window.location.reload()`
+   - Styled with Tailwind CSS (flexbox centering, slate color palette)
+   - Explicitly documented as distinct from `WidgetErrorBoundary` (builder/WidgetHost.tsx)
 
-## TDD evidence
+2. **`shell/src/AppErrorBoundary.test.tsx`** (50 lines)
+   - Test 1: Verifies children render normally when nothing throws
+   - Test 2: Verifies fallback UI renders when a child throws, with mocked `console.error`
+   - Tests imported directly from the brief, no modifications needed
 
-**RED** — `cd shell && npx vitest run src/builder/widgets/mapSymbology.test.ts`
-(after appending tests, before touching the implementation):
+### Files Modified
+
+**`shell/src/App.tsx`**
+- Added import: `import { AppErrorBoundary } from "./AppErrorBoundary";`
+- Wrapped root return: `<AppErrorBoundary>` now wraps `<AuthProvider>`, ensuring it catches not just router/page crashes but also provider initialization errors
+- Position: Outside `AuthProvider` and `QueryClientProvider` to maximize crash detection scope
+
+## TDD Evidence
+
+**RED (Step 2):**
 ```
-Test Files  1 failed (1)
-     Tests  16 failed | 15 passed (31)
-```
-The 15 passes are exactly the 15 pre-existing tests; the 16 failures are all
-new (missing exports / `symbologyToPaintInputs is not a function` / classed
-branches not implemented / classed color mismatch).
-
-**GREEN** — same command, after full implementation:
-```
- ✓ src/builder/widgets/mapSymbology.test.ts (31 tests) 18ms
-
- Test Files  1 passed (1)
-      Tests  31 passed (31)
+Error: Failed to resolve import "./AppErrorBoundary" from "src/AppErrorBoundary.test.tsx"
 ```
 
-Intermediate checkpoints also run and green per the brief's steps:
-- classification math only (`-t "equalIntervalBreaks|quantileMeasures|quantileBreaksFromRow|jenksBreaks"`) → 5 passed
-- orchestration only (`-t "computeColorDomain|computeSizeDomain"`) → 6 passed
-- full file after `buildMapPaint`/`buildLegend` extension (before
-  `symbologyToPaintInputs` existed) → 29 passed / 2 failed (exactly the 2
-  `symbologyToPaintInputs` tests, `is not a function`)
+**GREEN (after Step 3 implementation):**
+```
+✓ src/AppErrorBoundary.test.tsx (2 tests) 47ms
+Test Files  1 passed (1)
+Tests  2 passed (2)
+```
 
-`jenksBreaks` matched the brief's expected `[1, 2, 52, 102]` on the first
-implementation attempt — no DP debugging needed.
+## Full Suite Results
 
-## Full shell-gates output
+### Tests
+- **Command:** `npx vitest run`
+- **Result:** 162 files, 1463 tests, all passing
+- **Delta:** +1 test file (AppErrorBoundary.test.tsx), +2 tests
+- **Pre-existing baseline:** 161 files, 1461 tests
 
-- `npx vitest run` (full suite): **160 files / 1411 tests passed** (baseline
-  was 160/1395 after Task 5; +16 new tests here, 0 regressions).
-- `npm run build` (`tsc --noEmit && vite build`): green, no type errors.
-- `npm run lint` (`eslint .`): clean.
-- `npm run format:check` (`prettier --check .`): initially flagged the two
-  edited files (line-wrapping differences from the brief's hand-formatted
-  sketches) — ran `npx prettier --write` on them, re-verified tests/lint/
-  format/build all still green afterward.
+### Linting
+- **Command:** `npm run lint`
+- **Result:** ✓ PASS (no eslint errors)
 
-## Files changed
+### Format Check
+- **Command:** `npm run format:check`
+- **Result:** ✓ PASS (prettier check passed)
 
-- `/home/lenen/projets/geostudio/shell/src/builder/widgets/mapSymbology.ts`
-- `/home/lenen/projets/geostudio/shell/src/builder/widgets/mapSymbology.test.ts`
-- `/home/lenen/projets/geostudio/shell/src/api/types.ts`
+### Build
+- **Command:** `npm run build`
+- **Result:** ✓ PASS (build succeeded in 15.16s)
+- **Note:** Pre-existing warnings about chunk size > 500 kB unrelated to this change
 
-Commit: `c96aff8` — `feat(shell): classification et symbologie déclarative dans mapSymbology.ts`
+## Self-Review
 
-## Deviations from the brief's illustrative code
+### Completeness
+- ✓ Test file created (Step 1)
+- ✓ Test confirmed failing (Step 2)
+- ✓ Component implemented exactly per brief (Step 3)
+- ✓ Wired into App.tsx correctly (Step 4)
+- ✓ Both test files pass individually (Step 5)
+- ✓ Full suite + lint + format + build all green (Step 6)
+- ✓ Committed with appropriate message (Step 7)
 
-1. **`buildMapPaint` classed-branch test color mismatch (corrected the test,
-   not the implementation).** The brief's test for the numeric-classed +
-   palette branch (3 classes, palette `{low:"#000000", high:"#ffffff"}`)
-   expected the middle color to be `"#7f7f7f"`. But `colorsForClasses`
-   (Task 4, already merged and tested in `palette.test.ts`) computes the
-   middle stop via `Math.round(0 + (255-0)*0.5)` = `Math.round(127.5)` =
-   `128` = hex `"80"`, i.e. `"#808080"` — and `palette.test.ts` itself
-   already asserts exactly `["#000000", "#808080", "#ffffff"]` for this same
-   3-stop black→white interpolation. The brief's test expectation was an
-   arithmetic slip (off-by-one in mentally rounding 127.5), not a bug in
-   `colorsForClasses` (which is existing, locked, tested code from a merged
-   task — not something this task should alter) or in the new classed-branch
-   code. I corrected the appended test's expected value to `"#808080"` to
-   match real, already-verified dependency behavior, and verified `buildLegend`'s
-   analogous test (2 classes, `low`/`high` directly, no interpolation
-   midpoint) matches the brief exactly with no discrepancy.
-2. **`PaletteId`/`ResolvedPalette` re-export simplified**, per the brief's
-   own explicit note: `import type { PaletteId, ResolvedPalette } from
-   "./palette"; export type { PaletteId, ResolvedPalette };` instead of two
-   separate `export type X = import("./palette").X` aliases.
-3. Everything else (types, math functions, orchestration functions, the
-   `buildMapPaint`/`buildLegend` extensions, `symbologyToPaintInputs`) was
-   implemented essentially verbatim from the brief's code, adapted only to
-   fit the real existing function bodies (e.g. converting the existing
-   `else if (colorDomain.min === colorDomain.max)` chain into three explicit
-   branches — categorical / numeric-classed / numeric — since TypeScript
-   narrowing requires checking `kind === "numeric-classed"` before accessing
-   `.min`/`.max`, which only exist on the `"numeric"` variant).
+### Quality Checks
+- ✓ Fallback UI is accessible and reasonable (flex layout, clear French messaging, reload button)
+- ✓ `componentDidCatch` logs via `console.error` as specified
+- ✓ No scope creep: `WidgetErrorBoundary` in builder/WidgetHost.tsx untouched
+- ✓ Placement rationale followed: outside providers to catch provider crashes
+- ✓ State management is simple and correct: only tracks `failed` boolean
+- ✓ Error boundary recovery: fallback stays until page reload
+- ✓ Test mocks console.error to avoid noise in test output
 
-## Self-review
+### Notes
+- The commitlint hook enforced lowercase subject line (`error boundary` vs `ErrorBoundary`), which is fine — the component name is still clear in the body
+- `App.test.tsx` required no changes; its partial provider setup doesn't affected by the new wrapper
+- All pre-commit hooks (eslint, prettier, commitlint) passed
 
-- **Completeness**: every export listed in the brief's Interfaces section
-  exists and is exported: `ColorClassification`, `LayerSymbology`, extended
-  `ColorDomain`, `equalIntervalBreaks`, `quantileMeasures`,
-  `quantileBreaksFromRow`, `jenksBreaks`, `computeColorDomain`,
-  `computeSizeDomain`, `symbologyToPaintInputs`, extended
-  `buildMapPaint`/`buildLegend` (5th optional `palette` param + classed
-  branch on both). `StatQueryFn`/`SampleFieldFn` also exported (needed by
-  later tasks per the brief's Step 5 code).
-- **Quality**: new code follows existing file conventions (function style,
-  naming, comment style — French prose comments matching the file's existing
-  French comment on `detectGeometryKind`/size-legend). No gratuitous
-  restructuring of untouched code — `detectGeometryKind`, `colorPaintProperty`,
-  the `CATEGORICAL_PALETTE`/`NUMERIC_COLOR_*`/`SIZE_RADIUS_*` constants, and
-  `paletteColor` are byte-identical to before.
-- **Discipline**: no scope creep — `git diff --stat` confirms exactly 3 files
-  touched (`mapSymbology.ts`, `mapSymbology.test.ts`, `types.ts`), matching
-  the brief's Files list precisely. `LayersPanel.tsx`/`MapView.tsx`/
-  `mapWidget.tsx` (later tasks) untouched.
-- **Testing**: 15 pre-existing tests verified untouched (same test bodies,
-  same assertions) and passing both before (RED run) and after (GREEN run)
-  the implementation. All 16 new tests pass. Full shell suite: 1411/1411.
-  TDD RED→GREEN genuinely observed via the vitest runs quoted above, not
-  asserted after the fact.
+## Files Changed
 
-## Concerns
+```
+shell/src/AppErrorBoundary.tsx       (new, +50 lines)
+shell/src/AppErrorBoundary.test.tsx  (new, +50 lines)
+shell/src/App.tsx                    (modified, +2 lines)
+```
 
-- None blocking. The file has grown to 378 lines (from 159) — still a single
-  coherent module as the plan intends, not unmanageable, but noting per the
-  brief's request to flag file-size growth. No further action taken (plan
-  explicitly says not to split it unilaterally).
-- The one test-value correction (`"#7f7f7f"` → `"#808080"`) is a deviation
-  from the brief's literal test text, documented above with the reasoning
-  (verified against real, already-tested `colorsForClasses` behavior rather
-  than adjusted arbitrarily).
+## Commit
+
+- **SHA:** 3598ce2
+- **Subject:** feat(shell): error boundary applicatif à la racine
+- **Body:** Explains the rationale (I12 fix) and distinction from widget-scoped boundary
+- **Co-Author:** Claude Sonnet 5 <noreply@anthropic.com>
+
+## No Issues or Concerns
+
+All requirements met. Ready for merge.

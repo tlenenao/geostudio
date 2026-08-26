@@ -1,197 +1,215 @@
-# Task 8 Report: Shell — wire `LayersPanel.tsx`
+# Task 8 report — Notifier les alertes SLO (3.7)
 
-## What was implemented
+## Résumé
 
-`shell/src/map/LayersPanel.tsx`:
-- Imported `MapSymbologyEditor` from `./MapSymbologyEditor`.
-- Added `LayerSymbologyEditor`, a wrapper component mirroring the existing
-  `LayerPopupEditor` in the same file exactly: resolves `collectionId` from
-  a `vector`-kind layer, loads the collection schema via
-  `client.getCollectionSchema` (same `useQuery` pattern, same query key
-  convention `["collection-schema", collectionId]`), and returns `null`
-  when there is no `collectionId` (a `feature`-kind layer, or a `vector`
-  layer without one — scoped limitation from the brief, not touched
-  further).
-  - `runStatistics` calls `client.queryDataSource({ id, type: "statistics",
-    service: "core", layer: collectionId, query })`.
-  - `sampleField` calls `client.sampleCollectionField(collectionId, field,
-    limit)`.
-  - `onChange` writes `{ ...layer, symbology }` back through
-    `onChangeLayer`.
-  - `themeColors={undefined}` (no `Theme` on a standalone `MapConfig`).
-- Mounted `<LayerSymbologyEditor>` right after `<LayerPopupEditor>` inside
-  the existing `layer.kind === "vector" || layer.kind === "feature"`
-  `<div className="basis-full pl-2">` block, same `onChangeLayer` closure
-  shape as the popup editor's mount.
+Implémenté un point de contact webhook Grafana + une politique de routage pour
+le dossier SLO, avec preuve de bout en bout réelle (conteneur Docker,
+listener HTTP local, POST observé) via la règle `test-alert-do-not-keep-in-prod`
+déjà présente dans `rules.yaml`.
 
-This matches the brief's given code exactly (Step 3), byte for byte in
-structure.
-
-`shell/src/map/LayersPanel.test.tsx`: added the test from the brief's
-Step 1, **with one necessary adaptation** (see Deviations below): a small
-local `SymbologyHost` component that holds `layers` in `useState` and
-echoes `onChange` both into that state and into the test's `vi.fn()` spy —
-used only for this one new test, not for the four pre-existing ones (which
-keep using the file's existing `renderPanel` helper unchanged).
-
-## TDD evidence
-
-### RED
+## Étape 1 — vérification empirique de l'expansion `${VAR}`
 
 ```
-cd shell && npx vitest run src/map/LayersPanel.test.tsx -t "symbology editor"
+docker run --rm --entrypoint sh grafana/otel-lgtm:0.11.4 -c "/otel-lgtm/grafana/bin/grafana-server -v"
+→ Version 12.0.1
 ```
 
-```
- ❯ src/map/LayersPanel.test.tsx (6 tests | 1 failed | 5 skipped) 
-   × a vector layer with a collectionId exposes the symbology editor and can recompute a numeric domain
-     → Unable to find a label with the text of: Champ couleur
+Test empirique exact du brief : fichier `contactpoints.yaml` avec
+`url: ${TEST_WEBHOOK_URL}`, conteneur lancé avec
+`-e TEST_WEBHOOK_URL=https://example.test/hook`. Réponse de
+`GET /api/v1/provisioning/contact-points` :
 
- Test Files  1 failed (1)
-      Tests  1 failed | 5 skipped (6)
-```
-
-This was run against the test file with the new test added but
-`LayersPanel.tsx` still unmodified (no `LayerSymbologyEditor`, no import)
-— genuine RED, confirmed the symbology editor was not rendered yet.
-
-### GREEN
-
-After wiring `LayersPanel.tsx` per Step 3 **and** after fixing the test
-scaffolding issue described below:
-
-```
-cd shell && npx vitest run src/map/LayersPanel.test.tsx
+```json
+{"uid":"test-cp-webhook","name":"test-cp","type":"webhook",
+ "settings":{"url":"https://example.test/hook"}, "provenance":"file"}
 ```
 
+L'URL est résolue (littéral `example.test`, pas la chaîne brute
+`${TEST_WEBHOOK_URL}`) → **native expansion fonctionne sur Grafana 12.0.1**.
+**Branche 2a retenue.**
+
+## Étape 2a — fichiers créés
+
+- `deploy/observability/grafana/provisioning/alerting/contactpoints.yaml` —
+  contact point webhook `geostudio-webhook` avec
+  `url: ${GRAFANA_ALERT_WEBHOOK_URL}`.
+- `deploy/observability/grafana/provisioning/alerting/policies.yaml` —
+  policy racine `receiver: geostudio-webhook` + route explicite
+  `object_matchers: [["slo", "=~", ".+"]]` (texte du brief, verbatim).
+
+### Déviation par rapport au texte littéral du brief (trouvée empiriquement)
+
+Le brief propose `GRAFANA_ALERT_WEBHOOK_URL: ${GRAFANA_ALERT_WEBHOOK_URL:-}`
+dans `docker-compose.yml` (défaut **vide**). Testé empiriquement avant
+d'appliquer tel quel : une URL vide dans `contactpoints.yaml` fait échouer le
+provisioning alerting de Grafana au démarrage
+(`level=error msg="Failed to provision alerting" error="... required field
+'url' is not specified"`), **arrête le service Grafana** du conteneur
+entier (`api/health` reste inatteignable, `000`), et Grafana ne redémarre pas
+tout seul. C'est exactement la classe de bug documentée à répétition dans ce
+dépôt (SP-17a/SP-17b/tileset3d/`CORE_ETL_ENABLED`) : une capacité
+"documentée avec défaut vide = désactivée" qui casse en réalité le service
+dès que la variable n'est pas réglée — ici pire, puisque `otel-lgtm` sert
+aussi les dashboards/metrics/traces, pas seulement l'alerting.
+
+Testé aussi si Grafana supportait `${VAR:-default}` façon shell dans son
+expansion interne (`${TEST_WEBHOOK_URL:-http://localhost:65535/unconfigured}`)
+— non : Grafana traite tout après `${` jusqu'à `}` comme un seul nom de
+variable, n'a pas trouvé de variable portant ce nom exact, et a substitué
+une chaîne vide (même crash).
+
+**Fix retenu** : le défaut du `${GRAFANA_ALERT_WEBHOOK_URL:-...}` côté
+`docker-compose.yml` (résolu par Compose lui-même, avant même que Grafana
+voie la variable) pointe vers un localhost inatteignable syntaxiquement
+valide : `http://127.0.0.1:1/grafana-alert-webhook-not-configured`. Testé
+empiriquement : `api/health` → 200, contact point provisionné avec cette
+URL littérale, service démarre normalement. Documenté dans le commentaire
+du compose et dans `.env.example`.
+
+## docker-compose.yml
+
+```yaml
+  otel-lgtm:
+    image: grafana/otel-lgtm:0.11.4
+    profiles: ["observability"]
+    environment:
+      GRAFANA_ALERT_WEBHOOK_URL: ${GRAFANA_ALERT_WEBHOOK_URL:-http://127.0.0.1:1/grafana-alert-webhook-not-configured}
+    ports:
+      ...
 ```
- ✓ src/map/LayersPanel.test.tsx (6 tests) 337ms
 
- Test Files  1 passed (1)
-      Tests  6 passed (6)
+## Étape 3 — `.env.example`
+
+Nouvelle section `─── Observabilité (Grafana, profil compose observability) ───`
+juste après le bloc `CORE_HARVEST_EGRESS_ALLOWLIST` et avant le bloc coffre
+de secrets, documentant `GRAFANA_ALERT_WEBHOOK_URL=` (vide, avec le repli
+localhost expliqué dans le commentaire).
+
+## Étape 4 — garde-fou de déployabilité
+
+```
+cd core && uv run pytest tests/test_deployability.py -v
+→ 31 passed
 ```
 
-All 6 tests (5 pre-existing + 1 new) pass.
+`GRAFANA_ALERT_WEBHOOK_URL` apparaît bien comme substitution `${...}` dans
+`docker-compose.yml` ET comme ligne active dans `.env.example` — les deux
+sens de la règle (`test_every_compose_substitution_is_documented` +
+`test_every_documented_env_var_is_wired_or_declared_inert`) passent.
 
-## Deviation from the brief, and why
+## Étape 5 — preuve de bout en bout
 
-**The literal Step 1 test, run verbatim (`<LayersPanel layers={[vectorLayer]}
-onChange={onChange} />` with a bare `vi.fn()` for `onChange`), cannot pass
-against a correct, brief-compliant `LayerSymbologyEditor`/`LayersPanel`
-implementation.** This is not a defect in the wiring — it's a mechanical
-consequence of React's controlled-input value restoration.
+### Approches réseau testées
 
-`LayersPanel` (like `PopupEditor`/`LayerPopupEditor`, its established
-sibling pattern) is a pure controlled component: its displayed values come
-entirely from the `layers` prop, never from internal state. In the brief's
-literal test, `onChange` is a `vi.fn()` that does nothing — it never
-updates the `layers` array the component is rendered with. React's
-controlled-input machinery actively reverts any DOM value change on an
-`<input>` whose `value` prop doesn't change between renders (this is the
-documented mechanism that keeps a controlled input from silently going
-"uncontrolled" when a developer forgets to wire state — verified empirically:
-after `userEvent.type(... "pop")` against the bare-mock render, the DOM
-snapshot showed `value=""` on the "Champ couleur" input, and consequently
-"Type de couleur" — gated on `color?.field` being truthy — never appeared).
+1. `host.docker.internal` : `docker run --rm alpine sh -c "getent hosts
+   host.docker.internal"` → résout (`fdc4:f303:9324::254`). Testé
+   accessibilité HTTP réelle avec un `python3 -m http.server 9999 --bind
+   0.0.0.0` local + `docker run --rm alpine wget -qO-
+   http://host.docker.internal:9999/` → **200, contenu HTML reçu**, sans
+   même besoin de `--add-host` (résolution native dans cet environnement
+   Docker Desktop/WSL2). Approche retenue.
 
-I confirmed this is inherent to the mechanism, not specific to my
-implementation, by checking:
-- `MapSymbologyEditor.test.tsx` (Task 7, already merged): every test that
-  needs `color?.field` truthy either pre-seeds it directly via the `value`
-  prop, or uses an explicit `rerender(...)` between steps — none of its
-  tests type into "Champ couleur" and expect the mode selector to appear
-  without a prop update.
-- `PopupEditor.test.tsx`'s own multi-step tests either use a single
-  interaction per test, or an explicit `rerender(...)` for cases needing
-  a second prop-driven state (e.g. the "population" checkbox toggle test).
-- The existing `LayersPanel.test.tsx` tests (via `renderPanel`) all perform
-  exactly one interaction per test, which is why the bare `vi.fn()` was
-  sufficient there.
+### Déroulé réel
 
-Task 8's new test is the first one in this file to chain three sequential
-UI interactions (type field → select mode → click recompute) where each
-step's visibility depends on the previous step's committed state. That
-requires a real state round-trip, exactly as the real host page
-(`MapEditorPage`, holding `layers` in `draft.layers`) provides in
-production.
+- `export GRAFANA_ALERT_WEBHOOK_URL="http://host.docker.internal:9999/webhook-test"`
+- `docker compose --profile observability up -d otel-lgtm` — **a échoué** de
+  façon reproductible (`Error response from daemon: ports are not available:
+  exposing port TCP 0.0.0.0:3001 -> 127.0.0.1:0: /forwards/expose returned
+  unexpected status: 500`), un problème de forwarding de port WSL2/Docker
+  Desktop sans rapport avec cette tâche (port 3001 non occupé localement,
+  `ss -ltn` ne montre rien dessus ; retenté plusieurs fois, même échec).
+  Contourné en lançant le même conteneur via `docker run` directement
+  (mêmes volumes bind-mount, même réseau `geostudio_gis-net` créé par le
+  `up` précédent, même variable d'env, port hôte différent 13010 au lieu de
+  3001) — reproduit exactement la même config que le service compose
+  `otel-lgtm` verrait, seul le port de publication hôte diffère.
+- Conteneur up, `GET /api/health` → 200. `GET
+  /api/v1/provisioning/contact-points` confirme
+  `geostudio-webhook-receiver` avec `url:
+  "http://host.docker.internal:9999/webhook-test"` (résolue). `GET
+  /api/v1/provisioning/policies` confirme la politique
+  (`receiver: geostudio-webhook`, route `object_matchers: [["slo","=~",".+"]]`).
+  `GET /api/v1/provisioning/alert-rules` confirme les 4 règles SLO +
+  `test-alert-always-firing` avec `isPaused: true` — comportement par
+  défaut correct.
+- `isPaused: true → false` dans `rules.yaml` (fichier hôte, bind-mount).
+  `docker restart manual-otel-lgtm` pour forcer une relecture de
+  provisioning (délai de repoll non attendu). Après redémarrage,
+  `isPaused: false` confirmé côté API.
+- **Notification réellement observée** : le log du listener HTTP local
+  affiche `POST /webhook-test HTTP/1.1" 501 -` (501 = `http.server` stdlib
+  ne gère pas POST par défaut, sans rapport avec la livraison elle-même —
+  la requête est bien arrivée). `GET
+  /api/alertmanager/grafana/api/v2/alerts` confirme une alerte active
+  (`fingerprint 4b06ed1687fbba8e`, `status.state: "active"`,
+  `receivers: [{"name": "geostudio-webhook"}]`) — la résolution de route
+  (chute sur le receiver racine `geostudio-webhook`, la règle de test ne
+  porte pas de label `slo`) est celle attendue.
+- `isPaused: false → true` restauré dans `rules.yaml`. `docker restart` de
+  nouveau. Log du listener vidé avant redémarrage puis observé pendant
+  ~20s après : **aucune nouvelle requête**. `GET
+  /api/alertmanager/grafana/api/v2/alerts` → `[]` (plus d'alerte active).
+- `git diff deploy/observability/grafana/provisioning/alerting/rules.yaml` →
+  **vide** (confirmé, `isPaused` restauré à `true`, aucun changement non
+  voulu committé).
+- Nettoyage : `docker rm -f manual-otel-lgtm`, `docker compose --profile
+  observability down` (supprime le conteneur/réseau créés par la tentative
+  `up` initiale), listener Python local tué.
 
-**Fix applied**: added a small `SymbologyHost` component, local to the test
-file, that holds `layers` in `useState` and forwards `onChange` both into
-that state (so the controlled inputs genuinely update across the three
-steps) and into the test's `vi.fn()` spy (so the existing assertions —
-`expect(onChange).toHaveBeenCalledWith(...)` — still validate against the
-spy, unchanged from the brief). No other test in the file was touched or
-had its scaffolding changed. `LayersPanel.tsx` itself matches the brief's
-Step 3 code exactly — the fix is entirely test-side, not a change to the
-production component's contract or design.
+**Conclusion : livraison réelle observée de bout en bout**, pas seulement
+l'API de provisioning — un vrai POST HTTP est arrivé sur un process tiers
+totalement indépendant de Grafana, déclenché par le déblocage d'
+`isPaused`, et s'est arrêté au re-blocage.
 
-This was flagged as a "STOP and escalate" candidate per the task
-instructions ("if `MapSymbologyEditor`'s real props ... don't match what
-the brief assumes"), but on inspection `MapSymbologyEditor`'s props exactly
-match the brief — the mismatch is a test-scaffolding-only issue, mechanical
-and unambiguous (React's own controlled-input behavior), with a narrow,
-well-precedented fix (a local stateful host wrapper, a pattern already used
-elsewhere in the shell test suite for equivalent situations). Proceeded
-without stopping, per Auto Mode guidance to make the reasonable call on
-mechanical issues with an unambiguous fix.
+## Fichiers modifiés/créés
 
-## Full shell-gates output summary
+- `deploy/observability/grafana/provisioning/alerting/contactpoints.yaml`
+  (nouveau)
+- `deploy/observability/grafana/provisioning/alerting/policies.yaml`
+  (nouveau)
+- `docker-compose.yml` (bloc `environment:` sur le service `otel-lgtm`)
+- `.env.example` (nouvelle section observabilité, `GRAFANA_ALERT_WEBHOOK_URL`)
+- `deploy/observability/grafana/provisioning/alerting/rules.yaml` — édité
+  deux fois pendant Step 5 (isPaused false puis true), diff final vide,
+  rien à committer sur ce fichier.
 
-- `npm run lint` (eslint) — clean, no errors.
-- `npm run format:check` (prettier) — "All matched files use Prettier code
-  style!"
-- `npx vitest run` (full suite) — **161 files / 1420 tests passed** (0
-  failed), up from the reference 161 files / 1419 tests (net +1 test, the
-  new one; no other file's test count changed, no regressions).
-- `npm run build` (`tsc --noEmit && vite build`) — green. Pre-existing
-  warnings only (dynamic-vs-static import of `MapView.tsx`, chunk-size
-  warning on `EChart`/`index` bundles) — unrelated to this change, present
-  before it.
+## Auto-revue
 
-## Files changed
+- Complétude : contact point + policy créés, correctement scopés au dossier
+  SLO via `object_matchers`/`receiver`, `docker-compose.yml` câble bien la
+  variable sur `otel-lgtm`, `.env.example` la documente, garde-fou vert,
+  `isPaused` restauré à `true` dans l'état final committable.
+- Qualité : YAML validé syntaxiquement (`yaml.safe_load` sur les 3
+  fichiers). Contact point/policy repris du texte exact du brief (Step 2a),
+  sauf le défaut de `docker-compose.yml` (déviation documentée et testée
+  ci-dessus).
+- Discipline : rien de généré/rendu committé (branche 2a, pas de template
+  envsubst, pas d'entrée `.gitignore` nécessaire). `rules.yaml` n'a aucun
+  diff résiduel.
 
-- `/home/lenen/projets/geostudio/shell/src/map/LayersPanel.tsx` (+47 lines:
-  import, `LayerSymbologyEditor` wrapper, mount point)
-- `/home/lenen/projets/geostudio/shell/src/map/LayersPanel.test.tsx` (+76
-  lines: `SymbologyHost` helper + new test)
+## Points d'attention / suivis
 
-Commit: `d07c64e` — `feat(shell): branche MapSymbologyEditor sur les
-couches vector de l'éditeur de cartes`
-
-## Self-review findings
-
-- **Completeness**: symbology editor is mounted for both `vector` and
-  `feature`-kind layers (same conditional as `LayerPopupEditor`, `(layer.kind
-  === "vector" || layer.kind === "feature")`); `LayerSymbologyEditor`
-  itself returns `null` for a `feature`-kind layer (no `collectionId`, per
-  its type) and for a `vector` layer that happens to have no
-  `collectionId` (defensive `if (!collectionId) return null` — not directly
-  exercised by a dedicated test in this task, since the brief's scope
-  didn't ask for one and `vector` layers in this codebase's `MapLayer`
-  type always carry `collectionId` as a required field; the `feature`-kind
-  case is exercised by the pre-existing "a raster layer has no popup
-  editor" — no, that's raster, not feature — actually the pre-existing
-  `layers` fixture at the top of the file uses two `feature`-kind layers,
-  and the "toggles/removes/moves" tests render them without ever finding a
-  "Champ couleur" label, which is a passive confirmation the symbology
-  editor doesn't blow up or render for `feature` layers, though no test
-  asserts its absence explicitly — matches the brief, which didn't ask for
-  one either).
-- **Quality**: `LayerSymbologyEditor` matches `LayerPopupEditor`'s
-  established pattern exactly — same `useItemClient()`/`useQuery` shape,
-  same comment style, same `Extract<MapLayer, ...>` prop type, same
-  `onChangeLayer` closure at the mount site.
-- **Discipline**: no changes to `MapView.tsx`, `mapWidget.tsx`, or any
-  other file — only the two files listed in the brief's scope.
-- **Testing**: RED then GREEN genuinely observed (evidence above); all 6
-  tests in the file pass; full-suite and build output is clean.
-
-## Concerns
-
-- The one substantive concern is the test-scaffolding deviation documented
-  above. I'm confident it's correct and necessary (verified against React's
-  documented controlled-input behavior and against the precedent set by
-  `MapSymbologyEditor.test.tsx`'s own tests), but flagging it explicitly
-  since it changes the literal Step-1 test code from the brief, even though
-  the assertions and rendered tree under test are unchanged.
-- No other concerns.
+- **Déviation assumée vs. texte littéral du brief** : le défaut de
+  `GRAFANA_ALERT_WEBHOOK_URL` dans `docker-compose.yml` n'est PAS vide comme
+  suggéré par le brief (`${GRAFANA_ALERT_WEBHOOK_URL:-}`), mais un localhost
+  inatteignable syntaxiquement valide — testé et confirmé nécessaire pour
+  que le service `otel-lgtm` démarre du tout sans configuration opérateur.
+  Documenté dans le commentaire compose + `.env.example`. C'est un bug réel
+  du texte littéral du brief, corrigé sans repasser par l'utilisateur,
+  cohérent avec la pratique établie par les SP précédents documentée dans
+  CLAUDE.md (corriger une trouvaille contre le texte du plan sans
+  re-demander).
+- **Panne de forwarding de port WSL2/Docker Desktop non liée à cette
+  tâche** : `docker compose --profile observability up -d otel-lgtm` échoue
+  systématiquement sur `0.0.0.0:3001` dans cet environnement (`/forwards/
+  expose returned unexpected status: 500`). Contourné pour la preuve E2E via
+  un `docker run` manuel équivalent (mêmes volumes/réseau/env, port hôte
+  différent) — le comportement observé (contact point, policy, notification
+  réelle) est représentatif du service compose réel, seul le mécanisme de
+  publication de port hôte diffère. À signaler comme suivi non bloquant
+  distinct de SP-26/3.7 : quiconque tente `docker compose --profile
+  observability up` dans cet environnement WSL2 particulier rencontrera la
+  même erreur, sans rapport avec ce chantier.
+- Le fichier non commité `deploy/postgis/pg_hba.conf` vu en `git status` au
+  début de la session est pré-existant (documenté dans CLAUDE.md, section
+  Suivis non bloquants SP-20/21) et n'a pas été touché par cette tâche.

@@ -1,162 +1,194 @@
-## Task 8: Shell — wire `LayersPanel.tsx`
+## Task 8: Notifier les alertes SLO (3.7)
 
 **Files:**
-- Modify: `shell/src/map/LayersPanel.tsx`
-- Modify: `shell/src/map/LayersPanel.test.tsx`
+- Create: `deploy/observability/grafana/provisioning/alerting/contactpoints.yaml`
+- Create: `deploy/observability/grafana/provisioning/alerting/policies.yaml`
+- Modify: `docker-compose.yml` (wire `GRAFANA_ALERT_WEBHOOK_URL` to the `otel-lgtm` service, add an envsubst step if native `${VAR}` expansion isn't supported — determined empirically in Step 1)
+- Modify: `.env.example` (document `GRAFANA_ALERT_WEBHOOK_URL`)
+- Test: manual verification via the existing `test-alert-do-not-keep-in-prod` rule already in `rules.yaml`
 
 **Interfaces:**
-- Consumes: `MapSymbologyEditor` (Task 7); `client.queryDataSource`,
-  `client.sampleCollectionField` (Task 5).
+- Consumes: nothing from other tasks.
+- Produces: nothing consumed by later tasks.
 
-- [ ] **Step 1: Write the failing test**
+**Context:** `deploy/observability/grafana/provisioning/alerting/rules.yaml` is bind-mounted wholesale into `grafana/otel-lgtm:0.11.4`'s Grafana provisioning path (`docker-compose.yml`'s `otel-lgtm` service, `./deploy/observability/grafana/provisioning/alerting:/otel-lgtm/grafana/conf/provisioning/alerting`) — any file added to the local directory appears in the container automatically, no compose change needed for the files themselves, only for the env var they reference. The file already contains a `test-alert-do-not-keep-in-prod` group with `isPaused: true`, built specifically to prove the notification pipeline end-to-end without depending on real traffic.
 
-Add to `shell/src/map/LayersPanel.test.tsx`:
+- [ ] **Step 1: Determine whether this Grafana version supports native `${VAR}` expansion in provisioning files**
 
-```tsx
-test("a vector layer with a collectionId exposes the symbology editor and can recompute a numeric domain", async () => {
-  const onChange = vi.fn();
-  const client = {
-    listLayerSources: vi.fn().mockResolvedValue([]),
-    getCollectionSchema: vi.fn().mockResolvedValue({ fields: [{ name: "pop" }] }),
-    queryDataSource: vi.fn().mockResolvedValue([{ id: "", properties: { min: 0, max: 100 } }]),
-    sampleCollectionField: vi.fn(),
-  } as unknown as ItemClient;
-  const vectorLayer: MapLayer = {
-    id: "l1",
-    title: "Communes",
-    visible: true,
-    kind: "vector",
-    tilesUrl: "u",
-    sourceLayer: "communes",
-    collectionId: "communes",
-  };
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
-    <QueryClientProvider client={qc}>
-      <ItemClientProvider client={client}>
-        <LayersPanel layers={[vectorLayer]} onChange={onChange} />
-      </ItemClientProvider>
-    </QueryClientProvider>,
-  );
-
-  await userEvent.type(screen.getByLabelText("Champ couleur"), "pop");
-  await userEvent.selectOptions(screen.getByLabelText("Type de couleur"), "numeric");
-  await userEvent.click(screen.getByRole("button", { name: "Recalculer les classes" }));
-
-  expect(client.queryDataSource).toHaveBeenCalledWith(
-    expect.objectContaining({
-      type: "statistics",
-      service: "core",
-      layer: "communes",
-      query: expect.objectContaining({ measures: expect.any(Array) }),
-    }),
-  );
-  expect(onChange).toHaveBeenCalledWith([
-    expect.objectContaining({
-      symbology: expect.objectContaining({
-        color: expect.objectContaining({ domain: { kind: "numeric", min: 0, max: 100 } }),
-      }),
-    }),
-  ]);
-});
+```bash
+docker run --rm grafana/otel-lgtm:0.11.4 grafana-server -v 2>&1 | head -5
 ```
 
-- [ ] **Step 2: Run to verify failure**
+Note the Grafana version. Check Grafana's changelog/docs for when `${...}` expansion in provisioning files landed (this requires either checking Grafana's actual behavior in a running container, or consulting docs — do not guess). Pragmatic empirical check instead of reading changelogs:
 
-Run: `cd shell && npx vitest run src/map/LayersPanel.test.tsx -t "symbology editor"`
-Expected: FAIL — no symbology editor rendered yet.
-
-- [ ] **Step 3: Wire it**
-
-In `shell/src/map/LayersPanel.tsx`, add a `LayerSymbologyEditor` wrapper
-component mirroring the existing `LayerPopupEditor` (same file):
-
-```tsx
-function LayerSymbologyEditor({
-  layer,
-  onChangeLayer,
-}: {
-  layer: Extract<MapLayer, { kind: "vector" | "feature" }>;
-  onChangeLayer: (next: MapLayer) => void;
-}) {
-  const client = useItemClient();
-  const collectionId = layer.kind === "vector" ? layer.collectionId : undefined;
-  const schema = useQuery({
-    queryKey: ["collection-schema", collectionId],
-    queryFn: () => client.getCollectionSchema(collectionId!),
-    enabled: Boolean(collectionId),
-  });
-  if (!collectionId) return null; // external tiles / plain GeoJSON feature layer: no collection to query
-  return (
-    <MapSymbologyEditor
-      value={layer.symbology}
-      availableFields={schema.data?.fields.map((f) => f.name) ?? []}
-      themeColors={undefined} // no Theme on a standalone MapConfig (spec §1)
-      runStatistics={(query) =>
-        client.queryDataSource({
-          id: `map-symbology-${collectionId}`,
-          type: "statistics",
-          service: "core",
-          layer: collectionId,
-          query,
-        })
-      }
-      sampleField={(field, limit) => client.sampleCollectionField(collectionId, field, limit)}
-      onChange={(symbology) => onChangeLayer({ ...layer, symbology })}
-    />
-  );
-}
+```bash
+mkdir -p /tmp/grafana-envtest/provisioning/alerting
+cat > /tmp/grafana-envtest/provisioning/alerting/contactpoints.yaml <<'EOF'
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: test-cp
+    receivers:
+      - uid: test-cp-webhook
+        type: webhook
+        settings:
+          url: ${TEST_WEBHOOK_URL}
+EOF
+docker run --rm -e TEST_WEBHOOK_URL=https://example.test/hook \
+  -v /tmp/grafana-envtest/provisioning/alerting:/otel-lgtm/grafana/conf/provisioning/alerting \
+  -p 13000:3000 -d --name grafana-envtest grafana/otel-lgtm:0.11.4
+sleep 15
+docker exec grafana-envtest grep -r "url" /otel-lgtm/grafana/conf/provisioning/alerting/ 2>/dev/null
+# Si le fichier monté est relu tel quel par ce grep (normal, c'est un bind
+# mount côté fichier) — le vrai test est de savoir si GRAFANA a résolu
+# ${TEST_WEBHOOK_URL} en interne. Interroger l'API de contact points :
+curl -s -u admin:admin http://localhost:13000/api/v1/provisioning/contact-points | grep -o '"url":"[^"]*"'
+docker rm -f grafana-envtest
+rm -rf /tmp/grafana-envtest
 ```
 
-Mount it right after the existing `LayerPopupEditor` in the layer `<li>`:
+If the API response shows the literal string `example.test` (resolved), native expansion works — proceed to Step 2a. If it shows the literal unexpanded `${TEST_WEBHOOK_URL}` string, native expansion is NOT supported at this version — proceed to Step 2b instead.
 
-```tsx
-            {(layer.kind === "vector" || layer.kind === "feature") && (
-              <div className="basis-full pl-2">
-                <LayerPopupEditor
-                  layer={layer}
-                  onChangeLayer={(next) =>
-                    onChange(layers.map((l) => (l.id === layer.id ? next : l)))
-                  }
-                />
-                <LayerSymbologyEditor
-                  layer={layer}
-                  onChangeLayer={(next) =>
-                    onChange(layers.map((l) => (l.id === layer.id ? next : l)))
-                  }
-                />
-              </div>
-            )}
+- [ ] **Step 2a: (if native expansion works) Create the contact point and policy files directly with `${GRAFANA_ALERT_WEBHOOK_URL}`**
+
+Create `deploy/observability/grafana/provisioning/alerting/contactpoints.yaml`:
+
+```yaml
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: geostudio-webhook
+    receivers:
+      - uid: geostudio-webhook-receiver
+        type: webhook
+        settings:
+          url: ${GRAFANA_ALERT_WEBHOOK_URL}
 ```
 
-Import `MapSymbologyEditor` at the top of the file.
+Create `deploy/observability/grafana/provisioning/alerting/policies.yaml`:
 
-Note: for a `"feature"` kind layer (no `collectionId` ever, per its type),
-`LayerSymbologyEditor` returns `null` — a `feature` layer's data comes from
-an arbitrary GeoJSON URL, not a queryable collection, so there is no
-`runStatistics` source for it in `LayersPanel` (the same layer kind used
-inside `mapWidget.tsx` DOES get symbology, Task 10, because there
-`runStatistics` resolves through the widget's own `datasetId`, not through
-`LayersPanel`'s collection-only path). Document this explicitly as a scoped
-limitation, not a bug: standalone `feature` layers keep the pre-existing
-`paint`-only manual path.
+```yaml
+apiVersion: 1
+policies:
+  - orgId: 1
+    receiver: geostudio-webhook
+    routes:
+      - receiver: geostudio-webhook
+        object_matchers:
+          - ["slo", "=~", ".+"]
+        continue: false
+```
 
-- [ ] **Step 4: Run to verify pass**
+Edit `docker-compose.yml`'s `otel-lgtm` service to pass the variable through:
 
-Run: `cd shell && npx vitest run src/map/LayersPanel.test.tsx`
-Expected: PASS, all tests (5 existing + 1 new).
+```yaml
+  otel-lgtm:
+    image: grafana/otel-lgtm:0.11.4
+    profiles: ["observability"]
+    environment:
+      GRAFANA_ALERT_WEBHOOK_URL: ${GRAFANA_ALERT_WEBHOOK_URL:-}
+    ports:
+```
 
-- [ ] **Step 5: Full shell gates**
+- [ ] **Step 2b: (if native expansion does NOT work) Use an envsubst wrapper via a custom entrypoint override**
 
-Run: `cd shell && npm run lint && npm run format:check && npx vitest run && npm run build`
-Expected: green.
+Create `deploy/observability/grafana/provisioning/alerting/contactpoints.yaml.template`:
+
+```yaml
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: geostudio-webhook
+    receivers:
+      - uid: geostudio-webhook-receiver
+        type: webhook
+        settings:
+          url: ${GRAFANA_ALERT_WEBHOOK_URL}
+```
+
+Create `deploy/observability/grafana/provisioning/alerting/policies.yaml` (no substitution needed, static content — same as Step 2a's version).
+
+Edit `docker-compose.yml`'s `otel-lgtm` service to render the template before Grafana starts, overriding its default entrypoint:
+
+```yaml
+  otel-lgtm:
+    image: grafana/otel-lgtm:0.11.4
+    profiles: ["observability"]
+    environment:
+      GRAFANA_ALERT_WEBHOOK_URL: ${GRAFANA_ALERT_WEBHOOK_URL:-}
+    entrypoint:
+      - sh
+      - -c
+      - |
+        apk add --no-cache gettext 2>/dev/null || true
+        envsubst < /otel-lgtm/grafana/conf/provisioning/alerting/contactpoints.yaml.template > /otel-lgtm/grafana/conf/provisioning/alerting/contactpoints.yaml
+        exec /run-all.sh
+    ports:
+```
+
+Check the image's real default entrypoint/startup script first — `docker run --rm --entrypoint sh grafana/otel-lgtm:0.11.4 -c "cat /run-all.sh 2>/dev/null || find / -maxdepth 2 -iname '*run*' -o -iname '*entrypoint*' 2>/dev/null"` — replace `/run-all.sh` above with whatever the actual startup script is named; do not guess it blindly, this determines whether the container starts at all.
+
+Do NOT create `contactpoints.yaml` (final, non-template) directly in git in this branch — only the `.yaml.template` is committed; the rendered `.yaml` is generated at container start and should be added to `.gitignore` if it would otherwise land in the bind-mounted host directory (check: does the entrypoint write into the bind-mounted path, meaning the rendered file appears on the host too? If so, add `deploy/observability/grafana/provisioning/alerting/contactpoints.yaml` to `.gitignore`).
+
+- [ ] **Step 3: Document the new variable**
+
+Edit `.env.example`, near the existing observability section (find it with `grep -n "OTEL\|observability" .env.example`):
+
+```
+# Point de contact webhook pour les alertes SLO Grafana (SP-26/3.7) — vide
+# par défaut, aucune notification tant que l'opérateur ne le renseigne pas.
+# Voir deploy/observability/grafana/provisioning/alerting/rules.yaml.
+GRAFANA_ALERT_WEBHOOK_URL=
+```
+
+- [ ] **Step 4: Verify the deployability guard**
+
+```bash
+cd core
+uv run pytest tests/test_deployability.py -v
+```
+
+Expected: 31/31 still green — `GRAFANA_ALERT_WEBHOOK_URL` is now both a `${...}` substitution in `docker-compose.yml` and documented in `.env.example`.
+
+- [ ] **Step 5: Prove end-to-end delivery using the existing test-alert rule**
+
+```bash
+export GRAFANA_ALERT_WEBHOOK_URL=https://webhook.site/<get-a-real-test-url-first>
+docker compose --profile observability up -d otel-lgtm
+```
+
+Get a real disposable webhook URL first (e.g. from `webhook.site` or `requestbin`, or run a trivial local HTTP listener `python3 -m http.server 9999` and use `http://host.docker.internal:9999` if the CI/dev environment supports host networking — pick whichever is actually reachable in this environment; don't fabricate a URL you can't observe).
+
+Edit `deploy/observability/grafana/provisioning/alerting/rules.yaml`'s `test-alert-do-not-keep-in-prod` group, flip `isPaused: true` to `isPaused: false` **temporarily** (do not commit this flip):
+
+```bash
+docker compose --profile observability restart otel-lgtm
+sleep 15
+# Observe the webhook receiver — expect one delivered notification within ~10-20s
+```
+
+Confirm a notification actually arrived at the webhook target. Then revert `isPaused` back to `true` in the file (it must never ship as `false`) and restart again to confirm it stops firing.
+
+```bash
+git diff deploy/observability/grafana/provisioning/alerting/rules.yaml
+# Expected: empty — isPaused restored to true, no unintended change committed
+docker compose --profile observability down
+```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add shell/src/map/LayersPanel.tsx shell/src/map/LayersPanel.test.tsx
+git add deploy/observability/grafana/provisioning/alerting/ docker-compose.yml .env.example
 git commit -m "$(cat <<'EOF'
-feat(shell): branche MapSymbologyEditor sur les couches vector de l'éditeur de cartes
+feat(deploy): notifie les alertes SLO Grafana par webhook
+
+Point de contact + politique de routage pour le dossier SLO, URL
+fournie par l'opérateur (vide par défaut = pas de notification). Preuve
+de bout en bout via la règle test-alert-do-not-keep-in-prod déjà
+présente dans rules.yaml pour cet usage (I9, revue de projet
+2026-08-20).
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 EOF
 )"
 ```

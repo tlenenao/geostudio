@@ -1,471 +1,136 @@
-## Task 7: Shell — `MapSymbologyEditor`
+## Task 7: CSP, Permissions-Policy, compression (3.3)
 
 **Files:**
-- Create: `shell/src/map/MapSymbologyEditor.tsx`
-- Create: `shell/src/map/MapSymbologyEditor.test.tsx`
+- Modify: `docker-compose.prod.yml` (extend the existing `security-headers` Traefik middleware, add a `compress` middleware)
+- Modify: `shell/nginx.conf` (add the same headers + gzip, for the dev-served/standalone paths that bypass Traefik)
+- Test: manual verification against a real running stack (browser or `curl`) — no automated unit test framework covers Traefik label config or nginx directives in this repo
 
 **Interfaces:**
-- Consumes: `LayerSymbology`, `ColorClassification`, `PaletteId`,
-  `computeColorDomain`, `computeSizeDomain`, `StatQueryFn`, `SampleFieldFn`
-  from `../builder/widgets/mapSymbology`; `CURATED_PALETTES` from
-  `../builder/widgets/palette`; `ThemeColors` from `../api/types`.
-- Produces: `MapSymbologyEditor` component, mounted by `LayersPanel` (Task
-  8) and `mapWidget.tsx`'s `PropsPanel` (Task 10).
+- Consumes: nothing from other tasks structurally, but benefits from Tasks 1-6 being done first (per the spec's ordering rationale: verify the CSP against every new surface this SP adds in one pass, rather than twice).
+- Produces: nothing consumed by later tasks.
 
-- [ ] **Step 1: Write the failing tests**
+**Context:** `docker-compose.prod.yml:104-109` already defines a `security-headers` Traefik middleware (`stsSeconds`, `contentTypeNosniff`, `frameDeny`, `referrerPolicy`) chained into both the `core` router (line 101) and the `shell` router (line 153) via `traefik.http.routers.<name>.middlewares=security-headers@docker,rate-limit@docker[,strip-api@docker]`. Extend this same middleware rather than creating a new one — CSP/Permissions-Policy are just more `headers` middleware options. Traefik v3's `headers` middleware exposes arbitrary response headers via `customResponseHeaders.<HeaderName>=<value>` labels (used for headers with no dedicated named option, like `Content-Security-Policy`).
 
-Create `shell/src/map/MapSymbologyEditor.test.tsx`:
+- [ ] **Step 1: Add CSP + Permissions-Policy labels to the existing `security-headers` middleware, in Report-Only form first**
 
-```tsx
-// SPDX-License-Identifier: Apache-2.0
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { expect, test, vi } from "vitest";
-import { MapSymbologyEditor } from "./MapSymbologyEditor";
-import type { LayerSymbology } from "../builder/widgets/mapSymbology";
+Edit `docker-compose.prod.yml`, extending the block at (current) lines 104-109:
 
-test("no color field selected: shows the field picker only", () => {
-  render(
-    <MapSymbologyEditor
-      value={undefined}
-      availableFields={["population", "region"]}
-      themeColors={undefined}
-      runStatistics={vi.fn()}
-      sampleField={vi.fn()}
-      onChange={vi.fn()}
-    />,
-  );
-  expect(screen.getByLabelText("Champ couleur")).toBeInTheDocument();
-  expect(screen.queryByLabelText("Méthode de classification")).not.toBeInTheDocument();
-});
-
-test("theme-primary palette option is absent without a theme", () => {
-  render(
-    <MapSymbologyEditor
-      value={undefined}
-      availableFields={[]}
-      themeColors={undefined}
-      runStatistics={vi.fn()}
-      sampleField={vi.fn()}
-      onChange={vi.fn()}
-    />,
-  );
-  const select = screen.getByLabelText("Palette") as HTMLSelectElement;
-  expect(Array.from(select.options).some((o) => o.value === "theme-primary")).toBe(false);
-});
-
-test("theme-primary palette option is present with a theme", () => {
-  render(
-    <MapSymbologyEditor
-      value={undefined}
-      availableFields={[]}
-      themeColors={{ primary: "#2563eb" }}
-      runStatistics={vi.fn()}
-      sampleField={vi.fn()}
-      onChange={vi.fn()}
-    />,
-  );
-  const select = screen.getByLabelText("Palette") as HTMLSelectElement;
-  expect(Array.from(select.options).some((o) => o.value === "theme-primary")).toBe(true);
-});
-
-test("classification method selector is hidden in categorical mode and shown in numeric mode", async () => {
-  const onChange = vi.fn();
-  const { rerender } = render(
-    <MapSymbologyEditor
-      value={{ color: { field: "region", mode: "categorical", palette: "categorical-a", domain: { kind: "categorical", values: [] }, computedAt: "" } }}
-      availableFields={["region"]}
-      themeColors={undefined}
-      runStatistics={vi.fn()}
-      sampleField={vi.fn()}
-      onChange={onChange}
-    />,
-  );
-  expect(screen.queryByLabelText("Méthode de classification")).not.toBeInTheDocument();
-
-  rerender(
-    <MapSymbologyEditor
-      value={{ color: { field: "pop", mode: "numeric", palette: "sequential-blue", domain: { kind: "numeric", min: 0, max: 1 }, computedAt: "" } }}
-      availableFields={["pop"]}
-      themeColors={undefined}
-      runStatistics={vi.fn()}
-      sampleField={vi.fn()}
-      onChange={onChange}
-    />,
-  );
-  expect(screen.getByLabelText("Méthode de classification")).toBeInTheDocument();
-});
-
-test("class count selector is hidden when the method is continuous", () => {
-  render(
-    <MapSymbologyEditor
-      value={{ color: { field: "pop", mode: "numeric", palette: "sequential-blue", domain: { kind: "numeric", min: 0, max: 1 }, computedAt: "" } }}
-      availableFields={["pop"]}
-      themeColors={undefined}
-      runStatistics={vi.fn()}
-      sampleField={vi.fn()}
-      onChange={vi.fn()}
-    />,
-  );
-  expect(screen.queryByLabelText("Nombre de classes")).not.toBeInTheDocument();
-});
-
-test("recompute button calls runStatistics and writes domain + computedAt via onChange", async () => {
-  const runStatistics = vi.fn().mockResolvedValue([{ id: "", properties: { min: 0, max: 100 } }]);
-  const onChange = vi.fn();
-  render(
-    <MapSymbologyEditor
-      value={{ color: { field: "pop", mode: "numeric", palette: "sequential-blue", domain: { kind: "numeric", min: 0, max: 0 }, computedAt: "" } }}
-      availableFields={["pop"]}
-      themeColors={undefined}
-      runStatistics={runStatistics}
-      sampleField={vi.fn()}
-      onChange={onChange}
-    />,
-  );
-
-  await userEvent.click(screen.getByRole("button", { name: "Recalculer les classes" }));
-
-  expect(runStatistics).toHaveBeenCalled();
-  expect(onChange).toHaveBeenCalledWith(
-    expect.objectContaining({
-      color: expect.objectContaining({
-        domain: { kind: "numeric", min: 0, max: 100 },
-        computedAt: expect.any(String),
-      }),
-    }),
-  );
-});
-
-test("recompute button for the size field calls runStatistics and writes size domain", async () => {
-  const runStatistics = vi.fn().mockResolvedValue([{ id: "", properties: { min: 1, max: 9 } }]);
-  const onChange = vi.fn();
-  render(
-    <MapSymbologyEditor
-      value={{ size: { field: "montant", domain: { min: 0, max: 0 }, computedAt: "" } }}
-      availableFields={["montant"]}
-      themeColors={undefined}
-      runStatistics={runStatistics}
-      sampleField={vi.fn()}
-      onChange={onChange}
-    />,
-  );
-
-  await userEvent.click(screen.getByRole("button", { name: "Recalculer la taille" }));
-
-  expect(onChange).toHaveBeenCalledWith(
-    expect.objectContaining({
-      size: expect.objectContaining({ domain: { min: 1, max: 9 }, computedAt: expect.any(String) }),
-    }),
-  );
-});
-
-test("computed breaks are shown as text", () => {
-  render(
-    <MapSymbologyEditor
-      value={{
-        color: {
-          field: "pop",
-          mode: "numeric",
-          classification: { method: "quantile", classes: 2 },
-          palette: "sequential-blue",
-          domain: { kind: "numeric-classed", breaks: [0, 50, 100] },
-          computedAt: "2026-08-23T10:00:00Z",
-        },
-      }}
-      availableFields={["pop"]}
-      themeColors={undefined}
-      runStatistics={vi.fn()}
-      sampleField={vi.fn()}
-      onChange={vi.fn()}
-    />,
-  );
-  expect(screen.getByText(/0.*50.*100/)).toBeInTheDocument();
-});
+```yaml
+      - traefik.http.middlewares.security-headers.headers.stsSeconds=31536000
+      - traefik.http.middlewares.security-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.security-headers.headers.frameDeny=true
+      - traefik.http.middlewares.security-headers.headers.referrerPolicy=strict-origin-when-cross-origin
+      # CSP en Report-Only pendant la vérification empirique (Step 3-4
+      # ci-dessous) contre MapLibre/deck.gl/Keycloak/une extension tierce —
+      # bascule en enforcing (Step 5) une fois confirmée (SP-26/3.3). Les
+      # valeurs ${GEOSTUDIO_PUBLIC_HOST}/keycloak reprennent les mêmes
+      # variables que le reste de ce fichier.
+      - traefik.http.middlewares.security-headers.headers.customResponseHeaders.Content-Security-Policy-Report-Only=default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://${GEOSTUDIO_PUBLIC_HOST}; img-src 'self' data: blob: https://${GEOSTUDIO_PUBLIC_HOST}; worker-src 'self' blob:; frame-src https://${GEOSTUDIO_PUBLIC_HOST}; object-src 'none'
+      - traefik.http.middlewares.security-headers.headers.customResponseHeaders.Permissions-Policy=camera=(), microphone=(), payment=(), usb=()
+      - traefik.http.middlewares.rate-limit.ratelimit.average=100
+      - traefik.http.middlewares.rate-limit.ratelimit.burst=200
+      - traefik.http.middlewares.compress.compress=true
 ```
 
-- [ ] **Step 2: Run to verify failure**
+`connect-src`/`img-src`/`frame-src` all point at `${GEOSTUDIO_PUBLIC_HOST}` since, per the CDC/C3 fix from Vague 0, Traefik fronts both `core` (`/api` path prefix) and `keycloak` (`/auth` path prefix) on the SAME public host — verify this is still true by re-reading the router rules at (current) lines 67 and 98 before assuming; if Keycloak is on a different host in some deployments, this directive needs a second variable.
 
-Run: `cd shell && npx vitest run src/map/MapSymbologyEditor.test.tsx`
-Expected: FAIL — module does not exist.
+- [ ] **Step 2: Chain the new `compress` middleware into both routers**
 
-- [ ] **Step 3: Implement**
+Edit the `core` and `shell` router middleware lists (current lines 101 and 153):
 
-Create `shell/src/map/MapSymbologyEditor.tsx`:
+```yaml
+      - traefik.http.routers.core.middlewares=security-headers@docker,rate-limit@docker,compress@docker,strip-api@docker
+```
 
-```tsx
-// SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
-import {
-  computeColorDomain,
-  computeSizeDomain,
-  type ColorClassification,
-  type LayerSymbology,
-  type SampleFieldFn,
-  type StatQueryFn,
-} from "../builder/widgets/mapSymbology";
-import type { PaletteId } from "../builder/widgets/palette";
-import type { ThemeColors } from "../api/types";
+```yaml
+      - traefik.http.routers.shell.middlewares=security-headers@docker,rate-limit@docker,compress@docker
+```
 
-const labelCls = "flex flex-col gap-1";
-const inputCls = "h-8 rounded-md border border-slate-300 px-2 text-sm";
+- [ ] **Step 3: Add the equivalent headers + gzip to `shell/nginx.conf`**
 
-const PALETTE_OPTIONS: { id: Exclude<PaletteId, "theme-primary">; label: string }[] = [
-  { id: "categorical-a", label: "Catégorielle A" },
-  { id: "categorical-b", label: "Catégorielle B" },
-  { id: "sequential-blue", label: "Séquentielle bleue" },
-  { id: "sequential-warm", label: "Séquentielle chaude" },
-];
+Edit `shell/nginx.conf`:
 
-function formatDomain(domain: LayerSymbology["color"] extends infer C
-  ? C extends { domain: infer D }
-    ? D
-    : never
-  : never): string {
-  if (domain.kind === "categorical") return domain.values.join(", ");
-  if (domain.kind === "numeric-classed") return domain.breaks.map((b) => b.toFixed(1)).join(" – ");
-  return `${domain.min} – ${domain.max}`;
-}
+```nginx
+server {
+  listen 8300;
+  root /usr/share/nginx/html;
+  index index.html;
 
-// Éditeur partagé par les DEUX surfaces (éditeur de cartes et PropsPanel du
-// widget carte) — même précédent que PopupEditor.tsx (SP-24). Les deux
-// hôtes ne diffèrent que par comment `runStatistics`/`sampleField`
-// résolvent (collectionId direct vs datasetId), jamais par l'UI elle-même.
-export function MapSymbologyEditor({
-  value,
-  availableFields,
-  themeColors,
-  runStatistics,
-  sampleField,
-  onChange,
-}: {
-  value: LayerSymbology | undefined;
-  availableFields: string[];
-  themeColors: ThemeColors | undefined;
-  runStatistics: StatQueryFn;
-  sampleField: SampleFieldFn;
-  onChange: (value: LayerSymbology | undefined) => void;
-}) {
-  const [busy, setBusy] = useState<"color" | "size" | null>(null);
-  const color = value?.color;
-  const size = value?.size;
+  gzip on;
+  gzip_types text/css application/javascript application/json image/svg+xml;
+  gzip_min_length 1024;
 
-  function setColorField(patch: Partial<NonNullable<LayerSymbology["color"]>>) {
-    onChange({
-      ...value,
-      color: {
-        field: color?.field ?? "",
-        mode: color?.mode ?? "categorical",
-        classification: color?.classification,
-        palette: color?.palette ?? "categorical-a",
-        domain: color?.domain ?? { kind: "categorical", values: [] },
-        computedAt: color?.computedAt ?? "",
-        ...patch,
-      },
-    });
+  add_header X-Content-Type-Options nosniff always;
+  add_header Referrer-Policy strict-origin-when-cross-origin always;
+  add_header Permissions-Policy "camera=(), microphone=(), payment=(), usb=()" always;
+  add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'" always;
+
+  location / {
+    try_files $uri $uri/ /index.html;
   }
-
-  async function recomputeColor() {
-    if (!color?.field) return;
-    setBusy("color");
-    try {
-      const domain = await computeColorDomain(
-        { field: color.field, mode: color.mode, classification: color.classification },
-        { runStatistics, sampleField },
-      );
-      onChange({ ...value, color: { ...color, domain, computedAt: new Date().toISOString() } });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function recomputeSize() {
-    if (!size?.field) return;
-    setBusy("size");
-    try {
-      const domain = await computeSizeDomain(size.field, { runStatistics });
-      onChange({ ...value, size: { ...size, domain, computedAt: new Date().toISOString() } });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-2 text-sm">
-      <label className={labelCls}>
-        Champ couleur
-        <input
-          aria-label="Champ couleur"
-          list="map-symbology-fields"
-          className={inputCls}
-          value={color?.field ?? ""}
-          onChange={(e) => setColorField({ field: e.target.value })}
-        />
-      </label>
-      <datalist id="map-symbology-fields">
-        {availableFields.map((f) => (
-          <option key={f} value={f} />
-        ))}
-      </datalist>
-      {color?.field && (
-        <>
-          <label className={labelCls}>
-            Type de couleur
-            <select
-              aria-label="Type de couleur"
-              className={inputCls}
-              value={color.mode}
-              onChange={(e) =>
-                setColorField({
-                  mode: e.target.value as "categorical" | "numeric",
-                  classification: e.target.value === "categorical" ? undefined : color.classification,
-                })
-              }
-            >
-              <option value="categorical">Catégoriel</option>
-              <option value="numeric">Numérique</option>
-            </select>
-          </label>
-          {color.mode === "numeric" && (
-            <>
-              <label className={labelCls}>
-                Méthode de classification
-                <select
-                  aria-label="Méthode de classification"
-                  className={inputCls}
-                  value={color.classification?.method ?? "continuous"}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setColorField({
-                      classification:
-                        v === "continuous"
-                          ? undefined
-                          : ({ method: v, classes: color.classification?.classes ?? 5 } as ColorClassification),
-                    });
-                  }}
-                >
-                  <option value="continuous">Continu (dégradé)</option>
-                  <option value="quantile">Quantiles</option>
-                  <option value="equalInterval">Intervalles égaux</option>
-                  <option value="jenks">Seuils naturels (Jenks)</option>
-                </select>
-              </label>
-              {color.classification && (
-                <label className={labelCls}>
-                  Nombre de classes
-                  <input
-                    aria-label="Nombre de classes"
-                    type="number"
-                    min={2}
-                    max={9}
-                    className={inputCls}
-                    value={color.classification.classes}
-                    onChange={(e) =>
-                      setColorField({
-                        classification: {
-                          ...color.classification!,
-                          classes: Math.min(9, Math.max(2, Number(e.target.value) || 2)),
-                        },
-                      })
-                    }
-                  />
-                </label>
-              )}
-            </>
-          )}
-          <label className={labelCls}>
-            Palette
-            <select
-              aria-label="Palette"
-              className={inputCls}
-              value={color.palette}
-              onChange={(e) => setColorField({ palette: e.target.value as PaletteId })}
-            >
-              {PALETTE_OPTIONS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-              {themeColors?.primary && <option value="theme-primary">Thème du site</option>}
-            </select>
-          </label>
-          <button
-            type="button"
-            className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
-            disabled={busy === "color"}
-            onClick={() => void recomputeColor()}
-          >
-            {busy === "color" ? "Calcul…" : "Recalculer les classes"}
-          </button>
-          {color.computedAt && (
-            <p className="text-xs text-slate-500">
-              Classes calculées le {new Date(color.computedAt).toLocaleString()} : {formatDomain(color.domain)}
-            </p>
-          )}
-        </>
-      )}
-      <label className={labelCls}>
-        Champ taille
-        <input
-          aria-label="Champ taille"
-          list="map-symbology-fields"
-          className={inputCls}
-          value={size?.field ?? ""}
-          onChange={(e) =>
-            onChange({
-              ...value,
-              size: { field: e.target.value, domain: size?.domain ?? { min: 0, max: 0 }, computedAt: size?.computedAt ?? "" },
-            })
-          }
-        />
-      </label>
-      {size?.field && (
-        <>
-          <button
-            type="button"
-            className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
-            disabled={busy === "size"}
-            onClick={() => void recomputeSize()}
-          >
-            {busy === "size" ? "Calcul…" : "Recalculer la taille"}
-          </button>
-          {size.computedAt && (
-            <p className="text-xs text-slate-500">
-              Taille calculée le {new Date(size.computedAt).toLocaleString()} : {size.domain.min} – {size.domain.max}
-            </p>
-          )}
-        </>
-      )}
-    </div>
-  );
 }
 ```
 
-- [ ] **Step 4: Run to verify pass**
+`connect-src`/`img-src` here stay `'self'` without a hardcoded host: `nginx.conf` also serves the export/standalone bundles (SP-18a/c), which target whatever core URL is baked in at build/runtime via `env-config.js` — a fixed hostname would break those. Leave the widening to `connect-src 'self' <core-origin>` for Step 5 if empirical testing shows the mock/dev flow calling a cross-origin `core` needs it (check `VITE_CORE_URL` usage in dev — if `core` is same-origin behind Traefik in the deployments this file matters for, `'self'` may already suffice for `shell/nginx.conf`, unlike the Traefik-fronted `security-headers` middleware which explicitly needs the public host).
 
-Run: `cd shell && npx vitest run src/map/MapSymbologyEditor.test.tsx`
-Expected: PASS. If the `formatDomain` conditional type is rejected by
-`tsc`, replace it with a concrete union type
-(`ColorDomain` imported from `mapSymbology.ts`) instead of the derived
-`infer` gymnastics shown above — that inline type was written for
-readability of intent in this plan, not guaranteed to compile verbatim;
-prefer `import type { ColorDomain } from "../builder/widgets/mapSymbology";
-function formatDomain(domain: ColorDomain): string { ... }`.
-
-- [ ] **Step 5: Full shell gates**
-
-Run: `cd shell && npm run lint && npm run format:check && npx vitest run && npm run build`
-Expected: green, count ≥ previous + 9.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 4: Bring up a real stack and manually verify the 4 surfaces named in the spec**
 
 ```bash
-git add shell/src/map/MapSymbologyEditor.tsx shell/src/map/MapSymbologyEditor.test.tsx
-git commit -m "$(cat <<'EOF'
-feat(shell): éditeur de symbologie partagé (MapSymbologyEditor)
+docker compose up -d --build
+```
 
-Monté ensuite sur LayersPanel et le widget carte — même précédent que
-PopupEditor.tsx (SP-24).
+Wait for `core`/`shell` healthy (`docker compose ps`), then in a browser at `http://localhost:8300`:
+
+1. Open the map editor, add a vector layer, confirm it renders (MapLibre canvas visible, no CSP violations in DevTools console — since this is Report-Only, violations appear as console warnings, not blocked resources).
+2. Open the builder, add a map widget to an app/dashboard, confirm the widget carte renders identically.
+3. If an extension widget is registered (check `AdminExtensionsPage` — `shell/e2e/extension-widget.spec.ts` shows how one gets registered for tests, may need a real one registered manually via the admin UI for this manual check), confirm it still loads its JS and renders.
+4. Trigger a Keycloak silent-SSO check (if `VITE_AUTH_MODE=oidc` is configured for this manual run) — confirm the iframe isn't blocked.
+
+Record in the task's commit message or a scratch note exactly which console warnings appeared (if any) — these tell you which directive needs loosening before Step 5 flips to enforcing.
+
+- [ ] **Step 5: Flip Report-Only to enforcing once Step 4 shows no unexpected violations**
+
+Replace `Content-Security-Policy-Report-Only` with `Content-Security-Policy` in both `docker-compose.prod.yml` and `shell/nginx.conf` (same directive values, unless Step 4 required changes — apply those changes here, not by inventing new values speculatively).
+
+```bash
+docker compose up -d --build
+```
+
+Repeat the 4 manual checks from Step 4 — this time a real violation would actually block the resource (broken map, missing widget), not just warn. If anything breaks, loosen only the specific directive that Chrome/Firefox DevTools' console names as the blocker, don't broaden the whole policy.
+
+- [ ] **Step 6: Verify compression is actually applied**
+
+```bash
+curl -sI -H 'Accept-Encoding: gzip' http://localhost:8300/ | grep -i content-encoding
+```
+
+Expected: `content-encoding: gzip`. For the Traefik-fronted path, this needs the prod overlay running (not the dev compose alone) — if not feasible to stand up prod overlay locally, verify by reading `docker compose -f docker-compose.yml -f docker-compose.prod.yml config` and confirming the `compress@docker` middleware label resolves onto both routers, and note in the commit that live verification of the Traefik path specifically was config-only, not a live `curl` against Traefik (be honest about what was and wasn't actually run, per this repo's established discipline).
+
+- [ ] **Step 7: Run the deployability guard and full non-regression suite**
+
+```bash
+cd core
+uv run pytest tests/test_deployability.py -v
+cd ..
+docker compose down
+```
+
+Expected: 31/31 still green (no new env var substitution introduced by this task — CSP values are hardcoded except `${GEOSTUDIO_PUBLIC_HOST}`, already documented/wired from prior SPs).
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add docker-compose.prod.yml shell/nginx.conf
+git commit -m "$(cat <<'EOF'
+feat(deploy): CSP, Permissions-Policy et compression
+
+Étend le middleware security-headers Traefik existant (Report-Only
+vérifié empiriquement contre MapLibre/deck.gl/Keycloak/une extension
+avant bascule en enforcing) + mêmes en-têtes sur shell/nginx.conf, qui
+sert aussi les exports statiques/autoportés hors Traefik (I3, revue de
+projet 2026-08-20).
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 EOF
 )"
 ```

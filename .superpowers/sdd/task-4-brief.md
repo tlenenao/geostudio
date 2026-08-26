@@ -1,178 +1,227 @@
-## Task 4: Shell — `palette.ts`
+## Task 4: Rate limiting différencié (3.4)
 
 **Files:**
-- Create: `shell/src/builder/widgets/palette.ts`
-- Test: `shell/src/builder/widgets/palette.test.ts`
+- Create: `core/app/ratelimit/__init__.py`
+- Create: `core/app/ratelimit/limiter.py`
+- Modify: `core/app/main.py` (mount the middleware, define the 4 route-group regexes)
+- Test: `core/tests/test_ratelimit.py` (new)
 
 **Interfaces:**
-- Consumes: `ThemeColors` from `shell/src/api/types.ts` (already has
-  `primary?: string` etc.).
-- Produces: `PaletteId`, `ResolvedPalette`, `CURATED_PALETTES`,
-  `resolvePalette(id, themeColors)`, `colorsForClasses(palette, n)` — all
-  consumed by `mapSymbology.ts` in Task 6.
+- Consumes: `ValidationHTTPException`-style RFC 7807 shape from Task 3 for the 429 body (reuses the plain `HTTPException` path — a 429 isn't a validation error, so it goes through the `HTTPException` handler registered in Task 3, not `ValidationHTTPException`).
+- Produces: nothing consumed by later tasks.
 
-- [ ] **Step 1: Write the failing tests**
+**Context:** `core/app/main.py`'s existing `read_only_guard` (defined via `@app.middleware("http")` inside `create_app()`) proves the pattern needed here: a `@app.middleware("http")` function sees every request, including the `/mcp` ASGI mount (`app.mount("/", mcp_server.streamable_http_app())`), because Starlette middleware wraps the whole app before routing/mounting dispatch. `_EXPORT_PATH_RE` (`core/app/main.py:53-55`) already matches `/export`, `/app-exports`, `/collections/{id}/export(/items)?`, `/datasets/{id}/arcgis/export` — reuse it directly rather than redefining. Confirmed route literals: `/analytics/sql` (`features/routes.py:420`), `/copilot/turn` (`copilot/routes.py:183`), `/mcp` (mount root, matched exactly by `read_only_guard`'s own check), `/harvest/*` (6+ distinct literal paths in `harvest/routes.py`, no shared router prefix — match by `^/harvest/` prefix).
 
-Create `shell/src/builder/widgets/palette.test.ts`:
+- [ ] **Step 1: Write the failing test**
 
-```ts
-// SPDX-License-Identifier: Apache-2.0
-import { expect, test } from "vitest";
-import { CURATED_PALETTES, colorsForClasses, resolvePalette } from "./palette";
+Create `core/tests/test_ratelimit.py`:
 
-test("resolvePalette returns a curated palette by id, ignoring theme", () => {
-  const resolved = resolvePalette("categorical-a", undefined);
-  expect(resolved).toEqual(CURATED_PALETTES["categorical-a"]);
-});
+```python
+# SPDX-License-Identifier: Apache-2.0
+from fastapi.testclient import TestClient
 
-test("resolvePalette returns null for theme-primary without a theme", () => {
-  expect(resolvePalette("theme-primary", undefined)).toBeNull();
-  expect(resolvePalette("theme-primary", {})).toBeNull();
-});
+from app.main import create_app
 
-test("resolvePalette derives a sequential ramp from theme.primary", () => {
-  const resolved = resolvePalette("theme-primary", { primary: "#2563eb" });
-  expect(resolved).toEqual({ kind: "sequential", low: expect.any(String), high: "#2563eb" });
-});
 
-test("colorsForClasses on a categorical palette slices then repeats", () => {
-  const palette = CURATED_PALETTES["categorical-a"];
-  const three = colorsForClasses(palette, 3);
-  expect(three).toEqual(palette.kind === "categorical" ? palette.colors.slice(0, 3) : []);
-  const many = colorsForClasses(palette, (palette as { colors: string[] }).colors.length + 2);
-  expect(many[many.length - 1]).toBe((palette as { colors: string[] }).colors[1]); // wraps
-});
+def _client(monkeypatch):
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    return TestClient(create_app())
 
-test("colorsForClasses on a sequential palette interpolates n evenly-spaced RGB stops", () => {
-  const palette = { kind: "sequential" as const, low: "#000000", high: "#ffffff" };
-  const stops = colorsForClasses(palette, 3);
-  expect(stops).toEqual(["#000000", "#7f7f7f", "#ffffff"]);
-});
 
-test("colorsForClasses on a sequential palette with n=1 returns the low color", () => {
-  const palette = { kind: "sequential" as const, low: "#112233", high: "#445566" };
-  expect(colorsForClasses(palette, 1)).toEqual(["#112233"]);
-});
+def test_sql_route_rate_limited_after_budget_exhausted(monkeypatch):
+    client = _client(monkeypatch)
+    headers = {"Authorization": "Bearer same-caller-token"}
+    for _ in range(10):
+        client.post("/analytics/sql", json={"sql": "select 1"}, headers=headers)
+    response = client.post("/analytics/sql", json={"sql": "select 1"}, headers=headers)
+    assert response.status_code == 429
+    assert "retry-after" in {k.lower() for k in response.headers.keys()}
+    assert response.headers["content-type"] == "application/problem+json"
+
+
+def test_different_callers_have_independent_budgets(monkeypatch):
+    client = _client(monkeypatch)
+    for _ in range(10):
+        client.post(
+            "/analytics/sql",
+            json={"sql": "select 1"},
+            headers={"Authorization": "Bearer caller-a"},
+        )
+    # caller-a est épuisé, mais caller-b démarre avec un budget frais
+    response = client.post(
+        "/analytics/sql", json={"sql": "select 1"}, headers={"Authorization": "Bearer caller-b"}
+    )
+    assert response.status_code != 429
+
+
+def test_health_endpoint_not_rate_limited_by_sql_budget(monkeypatch):
+    client = _client(monkeypatch)
+    headers = {"Authorization": "Bearer same-caller-token"}
+    for _ in range(10):
+        client.post("/analytics/sql", json={"sql": "select 1"}, headers=headers)
+    response = client.get("/health", headers=headers)
+    assert response.status_code != 429
 ```
 
-- [ ] **Step 2: Run to verify failure**
+(Check `GET /health` actually exists first: `grep -n '"/health"' core/app/main.py` — if the route is named differently, use the real path.)
 
-Run: `cd shell && npx vitest run src/builder/widgets/palette.test.ts`
-Expected: FAIL — module `./palette` does not exist.
-
-- [ ] **Step 3: Implement**
-
-Create `shell/src/builder/widgets/palette.ts`:
-
-```ts
-// SPDX-License-Identifier: Apache-2.0
-import type { ThemeColors } from "../../api/types";
-
-export type PaletteId =
-  | "categorical-a"
-  | "categorical-b"
-  | "sequential-blue"
-  | "sequential-warm"
-  | "theme-primary";
-
-export type ResolvedPalette =
-  | { kind: "categorical"; colors: string[] }
-  | { kind: "sequential"; low: string; high: string };
-
-// "categorical-a" is mapSymbology.ts's existing CATEGORICAL_PALETTE,
-// unchanged — the default when an author picks no palette at all keeps
-// rendering identically to pre-SP-25 maps.
-export const CURATED_PALETTES: Record<Exclude<PaletteId, "theme-primary">, ResolvedPalette> = {
-  "categorical-a": {
-    kind: "categorical",
-    colors: [
-      "#2563eb",
-      "#dc2626",
-      "#16a34a",
-      "#d97706",
-      "#7c3aed",
-      "#0891b2",
-      "#db2777",
-      "#65a30d",
-    ],
-  },
-  "categorical-b": {
-    kind: "categorical",
-    colors: [
-      "#0f766e",
-      "#b45309",
-      "#4338ca",
-      "#be123c",
-      "#3f6212",
-      "#a21caf",
-      "#0369a1",
-      "#854d0e",
-    ],
-  },
-  "sequential-blue": { kind: "sequential", low: "#dbeafe", high: "#1e3a8a" },
-  "sequential-warm": { kind: "sequential", low: "#fef3c7", high: "#7c2d12" },
-};
-
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.replace("#", ""), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function rgbToHex([r, g, b]: [number, number, number]): string {
-  const c = (v: number) => Math.round(v).toString(16).padStart(2, "0");
-  return `#${c(r)}${c(g)}${c(b)}`;
-}
-
-function lerpColor(low: string, high: string, t: number): string {
-  const [r1, g1, b1] = hexToRgb(low);
-  const [r2, g2, b2] = hexToRgb(high);
-  return rgbToHex([r1 + (r2 - r1) * t, g1 + (g2 - g1) * t, b1 + (b2 - b1) * t]);
-}
-
-// Rampe séquentielle dérivée de theme.colors.primary : du blanc jusqu'à la
-// couleur primaire elle-même — pas de bibliothèque de teinte/luminosité,
-// une interpolation RGB simple suffit pour un "clair → primary".
-export function resolvePalette(id: PaletteId, themeColors: ThemeColors | undefined): ResolvedPalette | null {
-  if (id === "theme-primary") {
-    const primary = themeColors?.primary;
-    if (!primary) return null;
-    return { kind: "sequential", low: "#ffffff", high: primary };
-  }
-  return CURATED_PALETTES[id];
-}
-
-export function colorsForClasses(palette: ResolvedPalette, n: number): string[] {
-  if (n <= 0) return [];
-  if (palette.kind === "categorical") {
-    return Array.from({ length: n }, (_, i) => palette.colors[i % palette.colors.length]);
-  }
-  if (n === 1) return [palette.low];
-  return Array.from({ length: n }, (_, i) => lerpColor(palette.low, palette.high, i / (n - 1)));
-}
-```
-
-- [ ] **Step 4: Run to verify pass**
-
-Run: `cd shell && npx vitest run src/builder/widgets/palette.test.ts`
-Expected: PASS (6 tests). If the `theme-primary` test's exact `low` color
-assertion needs adjusting to match `"#ffffff"` literally, fix the test, not
-the implementation, once you've confirmed the implementation's choice is
-deliberate (white low-anchor is the simplest correct choice, per this step).
-
-- [ ] **Step 5: Full shell gates**
-
-Run: `cd shell && npm run lint && npm run format:check && npx vitest run && npm run build`
-Expected: all green, test count ≥ 1387 + 6.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-git add shell/src/builder/widgets/palette.ts shell/src/builder/widgets/palette.test.ts
-git commit -m "$(cat <<'EOF'
-feat(shell): ajoute le module de palettes de symbologie
+cd core
+uv run pytest tests/test_ratelimit.py -v
+```
 
-Palettes curatées + rampe dérivée du thème, aucune bibliothèque de
-couleur ajoutée (lerp RGB maison).
+Expected: `test_sql_route_rate_limited_after_budget_exhausted` FAILS (no 429 ever returned — no rate limiting exists yet). The other two currently pass vacuously (nothing to break).
+
+- [ ] **Step 3: Implement the limiter**
+
+Create `core/app/ratelimit/__init__.py` (empty, just makes it a package).
+
+Create `core/app/ratelimit/limiter.py`:
+
+```python
+# SPDX-License-Identifier: Apache-2.0
+"""Rate limiting en mémoire process, par (clé d'appelant, groupe de route)
+— design SP-26 §3.4. Clé d'appelant = l'en-tête Authorization brut, pas un
+user_id résolu : ce middleware tourne AVANT l'injection de dépendances
+FastAPI (donc avant get_current_user), et /mcp est un mount ASGI brut sans
+dépendances du tout — décoder/vérifier le JWT ici dupliquerait toute la
+logique de app.auth.dependency pour un usage qui n'a besoin que d'une clé
+stable, pas d'une identité vérifiée. Limite assumée : ne tient pas
+multi-process (pas de --workers aujourd'hui côté uvicorn, cf. C2/vague 0)."""
+
+import re
+import time
+from collections import defaultdict, deque
+
+_SQL_RE = re.compile(r"^/analytics/sql$")
+_LLM_RE = re.compile(r"^/mcp$|^/copilot/turn$")
+_HARVEST_RE = re.compile(r"^/harvest/")
+
+# Budgets par groupe de coût réel (requêtes / 60s). Réutilise _EXPORT_PATH_RE
+# de app.main pour le groupe "jobs" plutôt que de le redéfinir ici.
+_BUDGETS = {
+    "sql": 10,
+    "llm": 20,
+    "jobs": 15,
+    "harvest": 10,
+}
+_WINDOW_SECONDS = 60.0
+
+
+def route_group(path: str, export_path_re: re.Pattern[str]) -> str | None:
+    if _SQL_RE.match(path):
+        return "sql"
+    if _LLM_RE.match(path):
+        return "llm"
+    if export_path_re.match(path):
+        return "jobs"
+    if _HARVEST_RE.match(path):
+        return "harvest"
+    return None
+
+
+class RateLimiter:
+    """Compteur glissant par (clé, groupe) — deque d'horodatages, purgée à
+    chaque appel. Pas de nettoyage périodique en arrière-plan : une clé
+    inactive garde une deque vide en mémoire indéfiniment, coût négligeable
+    face au volume de callers distincts attendu (limite documentée, pas un
+    bug — cf. design §7)."""
+
+    def __init__(self) -> None:
+        self._hits: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+
+    def allow(self, key: str, group: str) -> bool:
+        budget = _BUDGETS[group]
+        now = time.monotonic()
+        bucket = self._hits[(key, group)]
+        while bucket and now - bucket[0] > _WINDOW_SECONDS:
+            bucket.popleft()
+        if len(bucket) >= budget:
+            return False
+        bucket.append(now)
+        return True
+```
+
+- [ ] **Step 4: Mount the middleware in `main.py`**
+
+Add the import near the top of `core/app/main.py`:
+
+```python
+from app.ratelimit.limiter import RateLimiter, route_group
+```
+
+Inside `create_app()`, after `app = FastAPI(...)` / `observability.instrument_app(app)` and before (or after — independent of) the `read_only_guard` middleware, add a new middleware and a module-level-per-app limiter instance:
+
+```python
+    rate_limiter = RateLimiter()
+
+    @app.middleware("http")
+    async def rate_limit_guard(request: Request, call_next):
+        group = route_group(request.url.path, _EXPORT_PATH_RE)
+        if group is not None:
+            caller_key = request.headers.get("authorization", "")
+            if not rate_limiter.allow(caller_key, group):
+                return JSONResponse(
+                    status_code=429,
+                    media_type="application/problem+json",
+                    headers={"Retry-After": "60"},
+                    content={
+                        "type": "about:blank",
+                        "title": "Too Many Requests",
+                        "status": 429,
+                        "detail": f"rate limit exceeded for {group}",
+                    },
+                )
+        return await call_next(request)
+```
+
+`rate_limiter = RateLimiter()` is created inside `create_app()`, not at module level — matches the existing pattern where per-app state (like `mcp_server`) is scoped to one `create_app()` call, since the test suite calls `create_app()` repeatedly per test and a module-level singleton would leak rate-limit state across unrelated tests (the exact same reasoning already documented in `main.py`'s comment about `mcp_server` not being memoized process-wide).
+
+- [ ] **Step 5: Run the new tests and the full suite**
+
+```bash
+cd core
+uv run pytest tests/test_ratelimit.py -v
+uv run pytest -x -q
+```
+
+Expected: 3 new tests pass; full suite count grows by 3, no other regressions.
+
+- [ ] **Step 6: Verify `/mcp` is actually covered (the reason this had to be middleware, not a route dependency)**
+
+```bash
+cd core
+uv run python -c "
+from app.ratelimit.limiter import route_group
+import re
+export_re = re.compile(r'^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?\$|^/export\$|^/app-exports\$')
+assert route_group('/mcp', export_re) == 'llm'
+assert route_group('/copilot/turn', export_re) == 'llm'
+assert route_group('/analytics/sql', export_re) == 'sql'
+assert route_group('/export', export_re) == 'jobs'
+assert route_group('/app-exports', export_re) == 'jobs'
+assert route_group('/harvest/sources', export_re) == 'harvest'
+assert route_group('/health', export_re) is None
+print('all route groups correct')
+"
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add core/app/ratelimit/ core/app/main.py core/tests/test_ratelimit.py
+git commit -m "$(cat <<'EOF'
+feat(core): rate limiting différencié par route sensible
+
+Middleware ASGI (couvre /mcp, un mount brut hors du routage FastAPI,
+comme le fait déjà read_only_guard) — compteur en mémoire par (en-tête
+Authorization, groupe de route), budgets distincts sql/llm/jobs/harvest
+(I4, revue de projet 2026-08-20). Limite assumée : par process, pas de
+Redis.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 EOF
 )"
 ```
