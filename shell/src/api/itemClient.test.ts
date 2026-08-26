@@ -1879,9 +1879,7 @@ test("createFeature throws FeatureValidationError with field errors on 400", asy
     http.post("https://core.test/collections/incidents/items", () =>
       HttpResponse.json(
         {
-          detail: {
-            errors: [{ field: "titre", code: "missing_required", message: "'titre' is required" }],
-          },
+          errors: [{ field: "titre", code: "missing_required", message: "'titre' is required" }],
         },
         { status: 400 },
       ),
@@ -2471,15 +2469,13 @@ test("runAnalyticsSql throws SqlQueryError with the server message on 400", asyn
     http.post("https://core.test/analytics/sql", () =>
       HttpResponse.json(
         {
-          detail: {
-            errors: [
-              {
-                field: "sql",
-                code: "sql_error",
-                message: "Binder Error: table 'x' does not exist",
-              },
-            ],
-          },
+          errors: [
+            {
+              field: "sql",
+              code: "sql_error",
+              message: "Binder Error: table 'x' does not exist",
+            },
+          ],
         },
         { status: 400 },
       ),

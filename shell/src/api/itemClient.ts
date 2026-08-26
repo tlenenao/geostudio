@@ -230,10 +230,8 @@ async function requestFeatureWrite<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (res.status === 400) {
-    const data = (await res.json().catch(() => null)) as {
-      detail?: { errors?: FieldError[] };
-    } | null;
-    throw new FeatureValidationError(data?.detail?.errors ?? []);
+    const data = (await res.json().catch(() => null)) as { errors?: FieldError[] } | null;
+    throw new FeatureValidationError(data?.errors ?? []);
   }
   if (!res.ok) {
     const data = (await res.json().catch(() => null)) as { detail?: unknown } | null;
@@ -285,9 +283,9 @@ async function requestAnalyticsSql(
   });
   if (res.status === 400) {
     const data = (await res.json().catch(() => null)) as {
-      detail?: { errors?: FieldError[] };
+      errors?: FieldError[];
     } | null;
-    throw new SqlQueryError(data?.detail?.errors?.[0]?.message ?? "Requête SQL invalide.");
+    throw new SqlQueryError(data?.errors?.[0]?.message ?? "Requête SQL invalide.");
   }
   if (!res.ok) {
     throw new Error(`Request failed: ${res.status} POST /analytics/sql`);

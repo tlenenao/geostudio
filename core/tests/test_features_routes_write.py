@@ -186,7 +186,7 @@ def test_validation_errors_are_structured_400(env):
         "/collections/incidents/items", json={"type": "Feature", "properties": {"inconnu": 1}}
     )
     assert r.status_code == 400
-    codes = {(e["field"], e["code"]) for e in r.json()["detail"]["errors"]}
+    codes = {(e["field"], e["code"]) for e in r.json()["errors"]}
     assert ("inconnu", "unknown_property") in codes and ("titre", "missing_required") in codes
 
 

@@ -34,6 +34,7 @@ from app.collections.introspection import TableNotFound
 from app.collections.repository import get_access_facts, list_visible_collections
 from app.collections.routes import get_introspector, get_readable_collection
 from app.db import get_session
+from app.errors import ValidationHTTPException
 from app.features.repository import FilterError
 from app.features.validation import validate_feature
 from app.sharing.authorization import can
@@ -105,7 +106,7 @@ def get_rls_scope():  # overridé en test SQLite
 
 
 def _validation_error(errors: list[dict], status: int = 400):
-    return HTTPException(status_code=status, detail={"errors": errors})
+    return ValidationHTTPException(errors=errors, status_code=status)
 
 
 def _parse_bbox(raw: str | None):
