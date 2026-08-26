@@ -21,6 +21,7 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.configs import repository as configs_repo
 from app.db import get_session
+from app.errors import ValidationHTTPException
 from app.harvest import live_query
 from app.harvest import repository as repo
 from app.harvest.connectors import get_connector
@@ -307,11 +308,9 @@ def get_dataset_arcgis_items(
             offset=offset,
         )
     except live_query.ArcgisQueryError as exc:
-        raise HTTPException(
+        raise ValidationHTTPException(
+            errors=[{"field": exc.field, "code": "invalid_filter", "message": exc.message}],
             status_code=400,
-            detail={
-                "errors": [{"field": exc.field, "code": "invalid_filter", "message": exc.message}]
-            },
         ) from exc
     try:
         raw = live_query.fetch_query(client, external_url, params)
@@ -357,13 +356,9 @@ def get_dataset_arcgis_aggregate(
             bbox=body.bbox,
         )
     except live_query.ArcgisQueryError as exc:
-        raise HTTPException(
+        raise ValidationHTTPException(
+            errors=[{"field": exc.field, "code": "invalid_aggregate", "message": exc.message}],
             status_code=400,
-            detail={
-                "errors": [
-                    {"field": exc.field, "code": "invalid_aggregate", "message": exc.message}
-                ]
-            },
         ) from exc
     try:
         raw = live_query.fetch_query(client, external_url, params)
@@ -390,17 +385,15 @@ def export_dataset_arcgis_aggregate(
     client: httpx.Client = Depends(get_arcgis_http_client),
 ):
     if format not in _EXPORT_FORMATS_AGGREGATE:
-        raise HTTPException(
+        raise ValidationHTTPException(
+            errors=[
+                {
+                    "field": "format",
+                    "code": "unsupported_format",
+                    "message": f"unsupported format '{format}'",
+                }
+            ],
             status_code=400,
-            detail={
-                "errors": [
-                    {
-                        "field": "format",
-                        "code": "unsupported_format",
-                        "message": f"unsupported format '{format}'",
-                    }
-                ]
-            },
         )
     if body.bucket is not None or body.split is not None or body.bins is not None:
         raise HTTPException(
@@ -419,13 +412,9 @@ def export_dataset_arcgis_aggregate(
             bbox=body.bbox,
         )
     except live_query.ArcgisQueryError as exc:
-        raise HTTPException(
+        raise ValidationHTTPException(
+            errors=[{"field": exc.field, "code": "invalid_aggregate", "message": exc.message}],
             status_code=400,
-            detail={
-                "errors": [
-                    {"field": exc.field, "code": "invalid_aggregate", "message": exc.message}
-                ]
-            },
         ) from exc
     try:
         raw = live_query.fetch_query(client, external_url, params)
@@ -471,17 +460,15 @@ def export_dataset_arcgis_items(
     client: httpx.Client = Depends(get_arcgis_http_client),
 ):
     if format not in _EXPORT_FORMATS_ITEMS:
-        raise HTTPException(
+        raise ValidationHTTPException(
+            errors=[
+                {
+                    "field": "format",
+                    "code": "unsupported_format",
+                    "message": f"unsupported format '{format}'",
+                }
+            ],
             status_code=400,
-            detail={
-                "errors": [
-                    {
-                        "field": "format",
-                        "code": "unsupported_format",
-                        "message": f"unsupported format '{format}'",
-                    }
-                ]
-            },
         )
     parsed_bbox = _parse_bbox(bbox)
     reserved = {"limit", "offset", "bbox", "format"}
@@ -518,11 +505,9 @@ def export_dataset_arcgis_items(
                 break
             offset += len(page_features)
     except live_query.ArcgisQueryError as exc:
-        raise HTTPException(
+        raise ValidationHTTPException(
+            errors=[{"field": exc.field, "code": "invalid_filter", "message": exc.message}],
             status_code=400,
-            detail={
-                "errors": [{"field": exc.field, "code": "invalid_filter", "message": exc.message}]
-            },
         ) from exc
     except EgressBlockedError as exc:
         raise HTTPException(status_code=502, detail="arcgis service unavailable") from exc

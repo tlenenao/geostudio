@@ -3,8 +3,9 @@ import contextlib
 import os
 import re
 from collections.abc import Iterator
+from http import HTTPStatus
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
@@ -28,6 +29,7 @@ from app.configs import routes as configs_routes
 from app.copilot import routes as copilot_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.dcat import routes as dcat_routes
+from app.errors import ValidationHTTPException
 from app.export import routes as export_routes
 from app.extensions import routes as extensions_routes
 from app.features import routes as features_routes
@@ -123,6 +125,49 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="GeoStudio Builder Service", version="0.1.0", lifespan=lifespan)
     observability.instrument_app(app)
+
+    @app.exception_handler(ValidationHTTPException)
+    async def _validation_exception_handler(request: Request, exc: ValidationHTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            media_type="application/problem+json",
+            content={
+                "type": "about:blank",
+                "title": HTTPStatus(exc.status_code).phrase,
+                "status": exc.status_code,
+                "detail": exc.detail,
+                "errors": exc.errors,
+            },
+        )
+
+    @app.exception_handler(HTTPException)
+    async def _http_exception_handler(request: Request, exc: HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            media_type="application/problem+json",
+            content={
+                "type": "about:blank",
+                "title": HTTPStatus(exc.status_code).phrase,
+                "status": exc.status_code,
+                "detail": exc.detail if isinstance(exc.detail, str) else "request failed",
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def _unhandled_exception_handler(request: Request, exc: Exception):
+        import logging
+
+        logging.getLogger("app.errors").exception("unhandled exception on %s", request.url.path)
+        return JSONResponse(
+            status_code=500,
+            media_type="application/problem+json",
+            content={
+                "type": "about:blank",
+                "title": HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
+                "status": 500,
+                "detail": "internal server error",
+            },
+        )
 
     @app.middleware("http")
     async def read_only_guard(request: Request, call_next):
