@@ -20,6 +20,8 @@ RUN mv dist-export/index.export.html dist-export/index.html
 
 FROM python:3.12-slim
 WORKDIR /app
+RUN groupadd --system app && useradd --system --gid app --home-dir /opt/geostudio-home --create-home app
+ENV HOME=/opt/geostudio-home
 # Dépendances volontairement minimales — PAS `uv sync`/pyproject.toml
 # complet (psycopg/psycopg2-binary/Keycloak/dlt/Playwright...) : le
 # mini-serveur ne parle jamais à Postgres/Keycloak/MinIO, seulement à
@@ -40,5 +42,7 @@ COPY core/app ./app
 COPY --from=shell-runtime /build/dist-export /runtime
 ENV APPEXPORT_STANDALONE_DATA_DIR=/data
 ENV APPEXPORT_STANDALONE_RUNTIME_DIR=/runtime
+RUN mkdir -p /data && chown -R app:app /opt/geostudio-home /app /data
+USER app
 EXPOSE 8000
 CMD ["uvicorn", "app.appexport.miniserver.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -13,6 +13,16 @@ ENV QT_QPA_PLATFORM=offscreen
 # vérifié en design (qgis_process plugins list). L'activer ici l'écrit dans
 # le profil QGIS gravé dans cette image ; l'activer au runtime ne
 # survivrait pas à un `docker run --rm` frais (design §2 point 6).
+#
+# HOME fixé avant l'activation du plugin GRASS (SP-26/3.6) : qgis_process
+# écrit l'état "grassprovider activé" dans un profil sous $HOME/.local/
+# share/QGIS/QGIS3/profiles/default — un HOME différent à l'exécution
+# (non-root) le verrait désactivé, cassant silencieusement tous les
+# grass7:* de l'allowlist figée (core/app/pipelines/ops/
+# qgis_algorithms.json). Même mécanisme que core/Dockerfile pour DuckDB.
+RUN groupadd --system qgis && useradd --system --gid qgis --home-dir /opt/qgis-home --create-home qgis
+ENV HOME=/opt/qgis-home
+
 RUN qgis_process plugins enable grassprovider
 
 COPY server.py /app/server.py
@@ -25,5 +35,8 @@ COPY LICENSE-QGIS.md /LICENSE-QGIS.md
 LABEL org.opencontainers.image.licenses="GPL-2.0-or-later AND Apache-2.0"
 LABEL org.opencontainers.image.source="https://github.com/tlenenao/geostudio"
 LABEL org.opencontainers.image.description="Sidecar QGIS Processing pour GeoStudio — contient QGIS et GRASS (GPL). Voir /LICENSE-QGIS.md."
+
+RUN mkdir -p /scratch && chown -R qgis:qgis /opt/qgis-home /app /scratch
+USER qgis
 
 CMD ["python3", "/app/server.py"]
