@@ -718,7 +718,8 @@
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "backchannel.logout.session.required": "true",
-        "backchannel.logout.revoke.offline.tokens": "false"
+        "backchannel.logout.revoke.offline.tokens": "false",
+        "post.logout.redirect.uris": "http://localhost:8300/##http://localhost:8300/*"
       },
       "authenticationFlowBindingOverrides": {},
       "fullScopeAllowed": true,
