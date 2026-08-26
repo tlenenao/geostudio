@@ -503,6 +503,19 @@ services:
   otel-lgtm:
     image: grafana/otel-lgtm:0.11.4
     profiles: ["observability"]
+    environment:
+      # Résolue nativement par Grafana dans les fichiers de provisioning
+      # (`${...}` dans contactpoints.yaml, confirmé empiriquement contre
+      # Grafana 12.0.1 — SP-26/3.7). PAS de défaut vide : vérifié
+      # empiriquement qu'une URL vide fait échouer le provisioning
+      # alerting au démarrage (« required field 'url' is not specified »)
+      # et arrête tout le service Grafana de ce conteneur — la classe même
+      # de bug que ce dépôt documente à répétition (SP-17a/SP-17b/
+      # tileset3d/CORE_ETL_ENABLED). Repli sur un localhost inatteignable :
+      # syntaxiquement valide pour Grafana (le service démarre), jamais
+      # livré nulle part si jamais une règle non liée au test se
+      # déclenchait avant configuration réelle par l'opérateur.
+      GRAFANA_ALERT_WEBHOOK_URL: ${GRAFANA_ALERT_WEBHOOK_URL:-http://127.0.0.1:1/grafana-alert-webhook-not-configured}
     ports:
       - "3001:3000"
       - "4317:4317"
