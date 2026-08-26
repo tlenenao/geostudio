@@ -12,6 +12,9 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir uv
 
+RUN groupadd --system app && useradd --system --gid app --home-dir /opt/geostudio-home --create-home app
+ENV HOME=/opt/geostudio-home
+
 COPY pyproject.toml ./
 RUN uv pip install --system --no-cache -r pyproject.toml
 RUN python -c "import duckdb; c = duckdb.connect(); c.execute('INSTALL httpfs'); c.execute('INSTALL spatial'); c.execute('INSTALL h3 FROM community')"
@@ -21,5 +24,12 @@ COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini
 COPY scripts ./scripts
+
+# Playwright/Chromium écrit son cache sous $HOME/.cache par défaut au
+# premier lancement si absent — installé ci-dessus alors que HOME est déjà
+# fixé, donc déjà sous /opt/geostudio-home. chown après tous les COPY/RUN
+# précédents pour couvrir le cache Chromium en plus des extensions DuckDB.
+RUN chown -R app:app /opt/geostudio-home /app
+USER app
 
 CMD ["python", "-m", "procrastinate", "--app", "app.jobs.app", "worker", "-q", "export"]

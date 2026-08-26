@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ReactNode } from "react";
-import type { DataSource, DataSourceState, Page, RenderMode } from "../api/types";
+import type { DataSource, DataSourceState, Page, RenderMode, Theme } from "../api/types";
 import type { Breakpoint } from "./grid";
 import type { ActionBus } from "./ActionBus";
 import type { WidgetPropDescriptor } from "./widgetPropSchema";
@@ -15,6 +15,7 @@ export type WidgetContext = {
   widgetId?: string;
   user?: { name: string };
   breakpoint?: Breakpoint;
+  theme?: Theme;
 };
 
 export type WidgetDefinition<P extends Record<string, unknown> = Record<string, unknown>> = {
@@ -34,6 +35,7 @@ export type WidgetDefinition<P extends Record<string, unknown> = Record<string, 
     props: P;
     onChange: (props: P) => void;
     dataSources: DataSource[];
+    theme?: Theme;
   }) => ReactNode;
   Component: (p: { props: P; ctx: WidgetContext }) => ReactNode;
 };

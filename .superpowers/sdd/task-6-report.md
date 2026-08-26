@@ -1,71 +1,115 @@
-# Task 6 Report: Core — docker-compose.yml + .env.example wiring
+# Task 6 Report: `ErrorBoundary` applicatif (3.5c)
 
-## What Was Implemented
+**Date:** 2026-08-26  
+**Status:** DONE  
+**Commit:** `3598ce2` — `feat(shell): error boundary applicatif à la racine`
 
-Wired the four LLM configuration environment variables (`CORE_LLM_PROVIDER`, `CORE_LLM_API_URL`, `CORE_LLM_API_KEY`, `CORE_LLM_MODEL`) into the packaged Docker Compose stack, preventing the same recurring bug class that affected `CORE_EMBEDDING_PROVIDER` (documented in CLAUDE.md as occurring 3-4 times across SP-17a/17b/tileset3d/appexport).
+## Summary
 
-### Step 1: docker-compose.yml
+Implemented a root-level React error boundary (`AppErrorBoundary`) to catch render crashes anywhere in the application outside of the per-widget error boundary that already existed in `WidgetHost.tsx`. This closes I12 from the project review (2026-08-20), which identified that the only error boundary was scoped per-widget, causing crashes in builder chrome, pages, or panels to produce a white screen.
 
-Inserted 4 lines after `CORE_BASE_URL` (line 134) in the `core:` service's `environment:` block:
-- `CORE_LLM_PROVIDER: ${CORE_LLM_PROVIDER:-}`
-- `CORE_LLM_API_URL: ${CORE_LLM_API_URL:-}`
-- `CORE_LLM_API_KEY: ${CORE_LLM_API_KEY:-}`
-- `CORE_LLM_MODEL: ${CORE_LLM_MODEL:-gpt-4o-mini}`
+## Implementation Details
 
-**Location verified:** Lines 135–138, right after `CORE_BASE_URL` (line 134), before `CORE_READ_ONLY_MODE` (line 139).
+### Files Created
 
-### Step 2: .env.example
+1. **`shell/src/AppErrorBoundary.tsx`** (50 lines)
+   - Class component error boundary extending `React.Component<Props, State>`
+   - Implements `getDerivedStateFromError()` to set `failed: true` on any child render error
+   - Implements `componentDidCatch()` to log errors via `console.error()`
+   - Renders a user-friendly fallback UI in French when an error occurs:
+     - Message: "Une erreur est survenue."
+     - Instructions to reload the page or contact admin
+     - "Recharger" button that calls `window.location.reload()`
+   - Styled with Tailwind CSS (flexbox centering, slate color palette)
+   - Explicitly documented as distinct from `WidgetErrorBoundary` (builder/WidgetHost.tsx)
 
-Inserted a new section (lines 40–50) immediately after `CORE_BASE_URL=http://localhost:8200` (line 38) and before the S3 storage section (line 51):
+2. **`shell/src/AppErrorBoundary.test.tsx`** (50 lines)
+   - Test 1: Verifies children render normally when nothing throws
+   - Test 2: Verifies fallback UI renders when a child throws, with mocked `console.error`
+   - Tests imported directly from the brief, no modifications needed
 
+### Files Modified
+
+**`shell/src/App.tsx`**
+- Added import: `import { AppErrorBoundary } from "./AppErrorBoundary";`
+- Wrapped root return: `<AppErrorBoundary>` now wraps `<AuthProvider>`, ensuring it catches not just router/page crashes but also provider initialization errors
+- Position: Outside `AuthProvider` and `QueryClientProvider` to maximize crash detection scope
+
+## TDD Evidence
+
+**RED (Step 2):**
 ```
-# ─── Cœur : copilote IA embarqué (SP-20) ─────────────────
-# Vide (défaut) : le copilote est désactivé, le routeur POST /copilot/turn
-# n'est pas monté, l'onglet n'apparaît pas dans le builder. "openai" active
-# le fournisseur HTTP compatible OpenAI (chat completions + tool calling
-# standard — vLLM/Ollama/LM Studio et la plupart des passerelles locales
-# l'exposent aussi).
-CORE_LLM_PROVIDER=
-CORE_LLM_API_URL=
-CORE_LLM_API_KEY=
-CORE_LLM_MODEL=gpt-4o-mini
-```
-
-**Location verified:** Inserted at the correct position between MCP section end (line 38) and S3 storage section start (line 51).
-
-## Verification
-
-### Compose File Parsing
-
-Command: `docker compose config --quiet`
-
-Result: **PASS** — No output, exit code 0. The docker-compose.yml file is syntactically valid.
-
-### Git Commit
-
-```
-Commit: a656a80 (short SHA)
-Subject: feat(deploy): variables du copilote IA dans la stack packagée (SP-20)
-Files changed: 2 (.env.example, docker-compose.yml)
-Insertions: +15
+Error: Failed to resolve import "./AppErrorBoundary" from "src/AppErrorBoundary.test.tsx"
 ```
 
-Commit created successfully with the exact message specified in the brief.
+**GREEN (after Step 3 implementation):**
+```
+✓ src/AppErrorBoundary.test.tsx (2 tests) 47ms
+Test Files  1 passed (1)
+Tests  2 passed (2)
+```
 
-## Files Changed
+## Full Suite Results
 
-1. **docker-compose.yml** — 4 new lines (135–138) in `core:` service environment block
-2. **.env.example** — 11 new lines (40–50) LLM configuration section with documentation
+### Tests
+- **Command:** `npx vitest run`
+- **Result:** 162 files, 1463 tests, all passing
+- **Delta:** +1 test file (AppErrorBoundary.test.tsx), +2 tests
+- **Pre-existing baseline:** 161 files, 1461 tests
+
+### Linting
+- **Command:** `npm run lint`
+- **Result:** ✓ PASS (no eslint errors)
+
+### Format Check
+- **Command:** `npm run format:check`
+- **Result:** ✓ PASS (prettier check passed)
+
+### Build
+- **Command:** `npm run build`
+- **Result:** ✓ PASS (build succeeded in 15.16s)
+- **Note:** Pre-existing warnings about chunk size > 500 kB unrelated to this change
 
 ## Self-Review
 
-**No issues found.** The implementation exactly matches the brief:
-- Insertion points verified against actual file content
-- Variables match exact names and default values from brief
-- Documentation string in .env.example matches the brief exactly (character-for-character)
-- Compose file validates after modification
-- Commit message is exact match to brief
-- Both edits are scoped correctly (no unrelated changes)
-- No accidental formatting or whitespace issues
+### Completeness
+- ✓ Test file created (Step 1)
+- ✓ Test confirmed failing (Step 2)
+- ✓ Component implemented exactly per brief (Step 3)
+- ✓ Wired into App.tsx correctly (Step 4)
+- ✓ Both test files pass individually (Step 5)
+- ✓ Full suite + lint + format + build all green (Step 6)
+- ✓ Committed with appropriate message (Step 7)
 
-This addresses the recurring bug class in the codebase where capability env vars are documented in `.env.example` but never forwarded in `docker-compose.yml`, making the feature silently inert in the packaged stack regardless of `.env` configuration.
+### Quality Checks
+- ✓ Fallback UI is accessible and reasonable (flex layout, clear French messaging, reload button)
+- ✓ `componentDidCatch` logs via `console.error` as specified
+- ✓ No scope creep: `WidgetErrorBoundary` in builder/WidgetHost.tsx untouched
+- ✓ Placement rationale followed: outside providers to catch provider crashes
+- ✓ State management is simple and correct: only tracks `failed` boolean
+- ✓ Error boundary recovery: fallback stays until page reload
+- ✓ Test mocks console.error to avoid noise in test output
+
+### Notes
+- The commitlint hook enforced lowercase subject line (`error boundary` vs `ErrorBoundary`), which is fine — the component name is still clear in the body
+- `App.test.tsx` required no changes; its partial provider setup doesn't affected by the new wrapper
+- All pre-commit hooks (eslint, prettier, commitlint) passed
+
+## Files Changed
+
+```
+shell/src/AppErrorBoundary.tsx       (new, +50 lines)
+shell/src/AppErrorBoundary.test.tsx  (new, +50 lines)
+shell/src/App.tsx                    (modified, +2 lines)
+```
+
+## Commit
+
+- **SHA:** 3598ce2
+- **Subject:** feat(shell): error boundary applicatif à la racine
+- **Body:** Explains the rationale (I12 fix) and distinction from widget-scoped boundary
+- **Co-Author:** Claude Sonnet 5 <noreply@anthropic.com>
+
+## No Issues or Concerns
+
+All requirements met. Ready for merge.

@@ -1097,3 +1097,118 @@ def test_bucket_groups_rows_by_hour(tmp_path, conn):
         {"annee": "2026-01-05 08:00:00", "value": 2},
         {"annee": "2026-01-05 09:00:00", "value": 1},
     ]
+
+
+def test_sample_returns_bounded_values_for_the_field(tmp_path, conn):
+    _write_partition(
+        tmp_path,
+        rows=[_row(i, "Nord", "2025", i, lsn=1) for i in range(1, 21)],
+    )
+    request = AggregateRequestBody(field="pop", sample=5)
+
+    category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert category_key == "value"
+    assert len(rows) == 5
+    values = {r["value"] for r in rows}
+    assert values.issubset(set(range(1, 21)))
+
+
+def test_sample_returns_everything_when_more_requested_than_available(tmp_path, conn):
+    rows = [_row(1, "Nord", "2025", 10, lsn=1), _row(2, "Nord", "2025", 20, lsn=1)]
+    # Sampling more rows than exist returns everything, not an error.
+    # This indirectly exercises the WHERE value IS NOT NULL clause
+    # (all rows pass the NOT NULL filter).
+    _write_partition(tmp_path, rows=rows)
+    request = AggregateRequestBody(field="pop", sample=100)
+
+    _category_key, result_rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert {r["value"] for r in result_rows} == {10, 20}
+
+
+def test_sample_without_field_raises(tmp_path, conn):
+    request = AggregateRequestBody(sample=10)
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn,
+            base_uri=str(tmp_path),
+            tenant_id="t1",
+            collection_id="villes",
+            table_info=TABLE_INFO,
+            request=request,
+        )
+    assert exc.value.field == "sample"
+
+
+def test_sample_with_groupby_raises(tmp_path, conn):
+    request = AggregateRequestBody(groupBy="region", field="pop", sample=10)
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn,
+            base_uri=str(tmp_path),
+            tenant_id="t1",
+            collection_id="villes",
+            table_info=TABLE_INFO,
+            request=request,
+        )
+    assert exc.value.field == "sample"
+
+
+def test_sample_with_bins_raises(tmp_path, conn):
+    request = AggregateRequestBody(field="pop", sample=10, bins=5)
+    with pytest.raises(UnknownAggregateField) as exc:
+        run_collection_aggregate(
+            conn,
+            base_uri=str(tmp_path),
+            tenant_id="t1",
+            collection_id="villes",
+            table_info=TABLE_INFO,
+            request=request,
+        )
+    assert exc.value.field == "sample"
+
+
+def test_sample_out_of_bounds_raises(tmp_path, conn):
+    for bad in (0, 2001):
+        request = AggregateRequestBody(field="pop", sample=bad)
+        with pytest.raises(UnknownAggregateField) as exc:
+            run_collection_aggregate(
+                conn,
+                base_uri=str(tmp_path),
+                tenant_id="t1",
+                collection_id="villes",
+                table_info=TABLE_INFO,
+                request=request,
+            )
+        assert exc.value.field == "sample"
+
+
+def test_sample_on_empty_collection_returns_no_rows(tmp_path, conn):
+    request = AggregateRequestBody(field="pop", sample=10)
+
+    category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert category_key == "value"
+    assert rows == []

@@ -136,7 +136,7 @@ def test_filters_forwarded_and_unknown_is_400(env):
     assert repo.calls["filters"] == {"titre": "a"}  # f/limit/offset/bbox réservés, exclus
     r = client.get("/collections/incidents/items?inconnu=x")
     assert r.status_code == 400
-    assert r.json()["detail"]["errors"][0]["code"] == "unknown_filter"
+    assert r.json()["errors"][0]["code"] == "unknown_filter"
 
 
 def test_bbox_parsing(env):
@@ -156,7 +156,7 @@ def test_geom_intersects_parsing(env):
     assert repo.calls["geom_intersects"] == geom
     r2 = client.get("/collections/incidents/items", params={"geom_intersects": "not-json"})
     assert r2.status_code == 400
-    assert r2.json()["detail"]["errors"][0]["code"] == "invalid_geom_intersects"
+    assert r2.json()["errors"][0]["code"] == "invalid_geom_intersects"
 
 
 def test_single_feature_and_404(env):

@@ -1,0 +1,9 @@
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: geostudio-webhook
+    receivers:
+      - uid: geostudio-webhook-receiver
+        type: webhook
+        settings:
+          url: ${GRAFANA_ALERT_WEBHOOK_URL}

@@ -1,274 +1,227 @@
-## Task 4: Core — `mcp_loopback.py` + `tools_allowlist.py`
+## Task 4: Rate limiting différencié (3.4)
 
 **Files:**
-- Create: `core/app/copilot/mcp_loopback.py`
-- Create: `core/app/copilot/tools_allowlist.py`
-- Create: `core/tests/test_copilot_mcp_loopback.py`
+- Create: `core/app/ratelimit/__init__.py`
+- Create: `core/app/ratelimit/limiter.py`
+- Modify: `core/app/main.py` (mount the middleware, define the 4 route-group regexes)
+- Test: `core/tests/test_ratelimit.py` (new)
 
 **Interfaces:**
-- Consumes: the app's own `/mcp` endpoint (mounted by `create_app()`, `core/app/main.py:236`), same JSON-RPC-over-HTTP handshake as `core/tests/test_mcp_routes.py` (`initialize` → `notifications/initialized` → `tools/list`/`tools/call`, SSE `data: ` line parsing).
-- Produces: `McpLoopbackSession(mcp_token, http_client=None)` with `async list_tools() -> list[dict]`, `async call_tool(name, arguments) -> ToolCallResult`, `async aclose()`; `McpLoopbackError`; `ALLOWED_MCP_TOOL_NAMES: frozenset[str]`. Consumed by Task 5's `routes.py`.
+- Consumes: `ValidationHTTPException`-style RFC 7807 shape from Task 3 for the 429 body (reuses the plain `HTTPException` path — a 429 isn't a validation error, so it goes through the `HTTPException` handler registered in Task 3, not `ValidationHTTPException`).
+- Produces: nothing consumed by later tasks.
 
-- [ ] **Step 1: Write the failing tests**
+**Context:** `core/app/main.py`'s existing `read_only_guard` (defined via `@app.middleware("http")` inside `create_app()`) proves the pattern needed here: a `@app.middleware("http")` function sees every request, including the `/mcp` ASGI mount (`app.mount("/", mcp_server.streamable_http_app())`), because Starlette middleware wraps the whole app before routing/mounting dispatch. `_EXPORT_PATH_RE` (`core/app/main.py:53-55`) already matches `/export`, `/app-exports`, `/collections/{id}/export(/items)?`, `/datasets/{id}/arcgis/export` — reuse it directly rather than redefining. Confirmed route literals: `/analytics/sql` (`features/routes.py:420`), `/copilot/turn` (`copilot/routes.py:183`), `/mcp` (mount root, matched exactly by `read_only_guard`'s own check), `/harvest/*` (6+ distinct literal paths in `harvest/routes.py`, no shared router prefix — match by `^/harvest/` prefix).
 
-Create `core/tests/test_copilot_mcp_loopback.py`, reusing the exact app-construction pattern from `core/tests/test_mcp_routes.py` (fresh `create_app()` + `sqlite` in-memory + `CORE_AUTH_MODE=mock`), but driving the loopback client through an ASGI-transport `httpx.AsyncClient` instead of the raw `TestClient`:
+- [ ] **Step 1: Write the failing test**
+
+Create `core/tests/test_ratelimit.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-import httpx
-import pytest
+from fastapi.testclient import TestClient
 
-from app import db
-from app.copilot.mcp_loopback import ALLOWED_MCP_TOOL_NAMES, McpLoopbackError, McpLoopbackSession
-from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
 
 
-@pytest.fixture()
-def app(monkeypatch):
+def _client(monkeypatch):
     monkeypatch.setenv("CORE_AUTH_MODE", "mock")
-    monkeypatch.setenv("CORE_BASE_URL", "http://test")
-    engine = make_engine("sqlite+pysqlite:///:memory:")
-    init_db(engine)
-    Session = make_session_factory(engine)
-    application = create_app()
-
-    def override_session():
-        with request_scoped_session(Session) as session:
-            yield session
-
-    application.dependency_overrides[db.get_session] = override_session
-    return application
+    return TestClient(create_app())
 
 
-@pytest.mark.asyncio
-async def test_list_tools_returns_full_catalog(app):
-    async with app.router.lifespan_context(app):
-        http_client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
-        session = McpLoopbackSession("anything", http_client=http_client)
-        try:
-            tools = await session.list_tools()
-        finally:
-            await session.aclose()
-        names = {t["name"] for t in tools}
-        assert ALLOWED_MCP_TOOL_NAMES <= names  # every allowlisted tool really exists server-side
+def test_sql_route_rate_limited_after_budget_exhausted(monkeypatch):
+    client = _client(monkeypatch)
+    headers = {"Authorization": "Bearer same-caller-token"}
+    for _ in range(10):
+        client.post("/analytics/sql", json={"sql": "select 1"}, headers=headers)
+    response = client.post("/analytics/sql", json={"sql": "select 1"}, headers=headers)
+    assert response.status_code == 429
+    assert "retry-after" in {k.lower() for k in response.headers.keys()}
+    assert response.headers["content-type"] == "application/problem+json"
 
 
-@pytest.mark.asyncio
-async def test_call_tool_returns_text_result(app):
-    async with app.router.lifespan_context(app):
-        http_client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
-        session = McpLoopbackSession("anything", http_client=http_client)
-        try:
-            result = await session.call_tool("whoami", {})
-        finally:
-            await session.aclose()
-        assert result.is_error is False
-        assert "mockuser" in result.text
+def test_different_callers_have_independent_budgets(monkeypatch):
+    client = _client(monkeypatch)
+    for _ in range(10):
+        client.post(
+            "/analytics/sql",
+            json={"sql": "select 1"},
+            headers={"Authorization": "Bearer caller-a"},
+        )
+    # caller-a est épuisé, mais caller-b démarre avec un budget frais
+    response = client.post(
+        "/analytics/sql", json={"sql": "select 1"}, headers={"Authorization": "Bearer caller-b"}
+    )
+    assert response.status_code != 429
 
 
-@pytest.mark.asyncio
-async def test_call_tool_surfaces_tool_execution_error_without_raising(app):
-    async with app.router.lifespan_context(app):
-        http_client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
-        session = McpLoopbackSession("anything", http_client=http_client)
-        try:
-            # get_item on a nonexistent id: the tool itself raises, MCP
-            # reports it as a tool-level error (isError), not a protocol
-            # failure — must not raise McpLoopbackError.
-            result = await session.call_tool("get_item", {"itemId": "does-not-exist"})
-        finally:
-            await session.aclose()
-        assert result.is_error is True
-
-
-@pytest.mark.asyncio
-async def test_call_tool_raises_on_unknown_tool_name(app):
-    async with app.router.lifespan_context(app):
-        http_client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
-        session = McpLoopbackSession("anything", http_client=http_client)
-        try:
-            with pytest.raises(McpLoopbackError):
-                await session.call_tool("not_a_real_tool", {})
-        finally:
-            await session.aclose()
+def test_health_endpoint_not_rate_limited_by_sql_budget(monkeypatch):
+    client = _client(monkeypatch)
+    headers = {"Authorization": "Bearer same-caller-token"}
+    for _ in range(10):
+        client.post("/analytics/sql", json={"sql": "select 1"}, headers=headers)
+    response = client.get("/health", headers=headers)
+    assert response.status_code != 429
 ```
 
-Note: check `core/pyproject.toml`'s `[tool.pytest.ini_options]` for `asyncio_mode` — if it's not `"auto"`, add `@pytest.mark.asyncio` is already present above and confirm `pytest-asyncio` is a dependency (it must be, since `core/tests/test_mcp_routes.py`'s own async paths and the app's async route handlers are already tested elsewhere in this suite — if `uv run pytest` errors with "async def functions are not natively supported", check `core/pyproject.toml` for the marker registration and add `asyncio_mode = "auto"` under `[tool.pytest.ini_options]` only if it's genuinely missing, matching whatever convention the rest of the suite already uses).
+(Check `GET /health` actually exists first: `grep -n '"/health"' core/app/main.py` — if the route is named differently, use the real path.)
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd core && uv run pytest tests/test_copilot_mcp_loopback.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'app.copilot.mcp_loopback'`.
+```bash
+cd core
+uv run pytest tests/test_ratelimit.py -v
+```
 
-- [ ] **Step 3: Implement**
+Expected: `test_sql_route_rate_limited_after_budget_exhausted` FAILS (no 429 ever returned — no rate limiting exists yet). The other two currently pass vacuously (nothing to break).
 
-Create `core/app/copilot/tools_allowlist.py`:
+- [ ] **Step 3: Implement the limiter**
+
+Create `core/app/ratelimit/__init__.py` (empty, just makes it a package).
+
+Create `core/app/ratelimit/limiter.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-"""Ensemble fermé des outils MCP que le copilote peut invoquer en loopback
-(SP-20). Exclut délibérément save_app_config/set_sharing : le copilote
-édite la config déjà ouverte dans le builder uniquement via des opérations
-côté client (clientOps, jamais écrites en base pendant la conversation) ;
-il peut CRÉER un nouvel item (create_item/create_form_app) via les mêmes
-outils qu'un agent MCP externe, jamais muter un item existant directement."""
+"""Rate limiting en mémoire process, par (clé d'appelant, groupe de route)
+— design SP-26 §3.4. Clé d'appelant = l'en-tête Authorization brut, pas un
+user_id résolu : ce middleware tourne AVANT l'injection de dépendances
+FastAPI (donc avant get_current_user), et /mcp est un mount ASGI brut sans
+dépendances du tout — décoder/vérifier le JWT ici dupliquerait toute la
+logique de app.auth.dependency pour un usage qui n'a besoin que d'une clé
+stable, pas d'une identité vérifiée. Limite assumée : ne tient pas
+multi-process (pas de --workers aujourd'hui côté uvicorn, cf. C2/vague 0)."""
 
-ALLOWED_MCP_TOOL_NAMES = frozenset({
-    "search_catalog",
-    "list_items",
-    "explain_dataset",
-    "run_analytics_query",
-    "create_item",
-    "create_form_app",
-})
+import re
+import time
+from collections import defaultdict, deque
+
+_SQL_RE = re.compile(r"^/analytics/sql$")
+_LLM_RE = re.compile(r"^/mcp$|^/copilot/turn$")
+_HARVEST_RE = re.compile(r"^/harvest/")
+
+# Budgets par groupe de coût réel (requêtes / 60s). Réutilise _EXPORT_PATH_RE
+# de app.main pour le groupe "jobs" plutôt que de le redéfinir ici.
+_BUDGETS = {
+    "sql": 10,
+    "llm": 20,
+    "jobs": 15,
+    "harvest": 10,
+}
+_WINDOW_SECONDS = 60.0
+
+
+def route_group(path: str, export_path_re: re.Pattern[str]) -> str | None:
+    if _SQL_RE.match(path):
+        return "sql"
+    if _LLM_RE.match(path):
+        return "llm"
+    if export_path_re.match(path):
+        return "jobs"
+    if _HARVEST_RE.match(path):
+        return "harvest"
+    return None
+
+
+class RateLimiter:
+    """Compteur glissant par (clé, groupe) — deque d'horodatages, purgée à
+    chaque appel. Pas de nettoyage périodique en arrière-plan : une clé
+    inactive garde une deque vide en mémoire indéfiniment, coût négligeable
+    face au volume de callers distincts attendu (limite documentée, pas un
+    bug — cf. design §7)."""
+
+    def __init__(self) -> None:
+        self._hits: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+
+    def allow(self, key: str, group: str) -> bool:
+        budget = _BUDGETS[group]
+        now = time.monotonic()
+        bucket = self._hits[(key, group)]
+        while bucket and now - bucket[0] > _WINDOW_SECONDS:
+            bucket.popleft()
+        if len(bucket) >= budget:
+            return False
+        bucket.append(now)
+        return True
 ```
 
-Create `core/app/copilot/mcp_loopback.py`:
+- [ ] **Step 4: Mount the middleware in `main.py`**
+
+Add the import near the top of `core/app/main.py`:
 
 ```python
-# SPDX-License-Identifier: Apache-2.0
-"""Client de rappel vers le serveur /mcp existant, pour la boucle
-d'outils du copilote (SP-20) — un vrai appel réseau (HTTP), pas une
-logique d'outil dupliquée. Réutilise le même protocole JSON-RPC-sur-HTTP
-déjà exercé par core/tests/test_mcp_routes.py (initialize ->
-notifications/initialized -> tools/list ou tools/call, réponse en SSE) :
-un httpx.AsyncClient brut suffit, pas besoin du SDK client `mcp` (deuxième
-dépendance client pour un seul appelant)."""
-import json
-import os
-import uuid
-
-import httpx
-
-
-class McpLoopbackError(Exception):
-    """Échec au niveau du protocole (poignée de main, HTTP, réponse
-    malformée) — distinct d'un outil qui s'exécute et lève une erreur
-    métier, renvoyée comme ToolCallResult(is_error=True) pour que le LLM
-    la voie et puisse réagir, plutôt que de faire planter tout le tour."""
-
-
-class ToolCallResult:
-    def __init__(self, text: str, is_error: bool):
-        self.text = text
-        self.is_error = is_error
-
-
-class McpLoopbackSession:
-    """Une session par requête POST /copilot/turn — la poignée de main
-    n'a lieu qu'une fois, paresseusement, au premier appel."""
-
-    def __init__(self, mcp_token: str, *, http_client: httpx.AsyncClient | None = None):
-        self._mcp_token = mcp_token
-        self._client = http_client or httpx.AsyncClient(
-            base_url=os.environ["CORE_BASE_URL"], timeout=15.0,
-        )
-        self._owns_client = http_client is None
-        self._session_id: str | None = None
-
-    async def aclose(self) -> None:
-        if self._owns_client:
-            await self._client.aclose()
-
-    def _headers(self) -> dict[str, str]:
-        headers = {
-            "Accept": "application/json, text/event-stream",
-            "Authorization": f"Bearer {self._mcp_token}",
-        }
-        if self._session_id:
-            headers["mcp-session-id"] = self._session_id
-        return headers
-
-    async def _ensure_initialized(self) -> None:
-        if self._session_id:
-            return
-        response = await self._client.post(
-            "/mcp",
-            json={
-                "jsonrpc": "2.0", "id": str(uuid.uuid4()), "method": "initialize",
-                "params": {
-                    "protocolVersion": "2025-06-18", "capabilities": {},
-                    "clientInfo": {"name": "geostudio-copilot", "version": "0"},
-                },
-            },
-            headers=self._headers(),
-        )
-        if response.status_code != 200:
-            raise McpLoopbackError(f"MCP initialize failed: {response.status_code}")
-        session_id = response.headers.get("mcp-session-id")
-        if not session_id:
-            raise McpLoopbackError("MCP initialize did not return a session id")
-        self._session_id = session_id
-        notify = await self._client.post(
-            "/mcp",
-            json={"jsonrpc": "2.0", "method": "notifications/initialized"},
-            headers=self._headers(),
-        )
-        if notify.status_code != 202:
-            raise McpLoopbackError(f"MCP notifications/initialized failed: {notify.status_code}")
-
-    def _parse_sse(self, response: httpx.Response) -> dict:
-        for line in response.text.splitlines():
-            if line.startswith("data: "):
-                return json.loads(line.removeprefix("data: "))
-        raise McpLoopbackError("no SSE data line in MCP response")
-
-    async def list_tools(self) -> list[dict]:
-        await self._ensure_initialized()
-        response = await self._client.post(
-            "/mcp",
-            json={"jsonrpc": "2.0", "id": str(uuid.uuid4()), "method": "tools/list", "params": {}},
-            headers=self._headers(),
-        )
-        if response.status_code != 200:
-            raise McpLoopbackError(f"MCP tools/list failed: {response.status_code}")
-        payload = self._parse_sse(response)
-        if "error" in payload:
-            raise McpLoopbackError(f"MCP tools/list error: {payload['error']}")
-        return payload["result"]["tools"]
-
-    async def call_tool(self, name: str, arguments: dict) -> ToolCallResult:
-        await self._ensure_initialized()
-        response = await self._client.post(
-            "/mcp",
-            json={
-                "jsonrpc": "2.0", "id": str(uuid.uuid4()), "method": "tools/call",
-                "params": {"name": name, "arguments": arguments},
-            },
-            headers=self._headers(),
-        )
-        if response.status_code == 401:
-            raise McpLoopbackError("MCP token rejected (expired or wrong audience)")
-        if response.status_code != 200:
-            raise McpLoopbackError(f"MCP tools/call failed: {response.status_code}")
-        payload = self._parse_sse(response)
-        if "error" in payload:
-            # Erreur JSON-RPC de protocole (ex. nom d'outil inconnu) —
-            # distincte d'un outil qui s'exécute et lève, cf. isError ci-dessous.
-            raise McpLoopbackError(f"MCP tools/call error: {payload['error']}")
-        result = payload["result"]
-        content = result.get("content") or []
-        text = content[0]["text"] if content else ""
-        return ToolCallResult(text=text, is_error=bool(result.get("isError", False)))
+from app.ratelimit.limiter import RateLimiter, route_group
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+Inside `create_app()`, after `app = FastAPI(...)` / `observability.instrument_app(app)` and before (or after — independent of) the `read_only_guard` middleware, add a new middleware and a module-level-per-app limiter instance:
 
-Run: `cd core && uv run pytest tests/test_copilot_mcp_loopback.py -v`
-Expected: PASS (all 4). If `test_call_tool_surfaces_tool_execution_error_without_raising` fails because `get_item` isn't a real registered tool name, run `uv run pytest tests/test_copilot_mcp_loopback.py::test_list_tools_returns_full_catalog -v -s` and print `tools` to find any real registered tool that raises a `ValueError`-style "not found" on a bad id (check `core/app/mcp/tools.py` for one — `explain_dataset`/`run_analytics_query` on a bad `datasetId` are documented in SP-14o/SP-16b's own text as doing exactly this), and substitute that tool name/argument instead of `get_item`.
+```python
+    rate_limiter = RateLimiter()
 
-- [ ] **Step 5: Commit**
+    @app.middleware("http")
+    async def rate_limit_guard(request: Request, call_next):
+        group = route_group(request.url.path, _EXPORT_PATH_RE)
+        if group is not None:
+            caller_key = request.headers.get("authorization", "")
+            if not rate_limiter.allow(caller_key, group):
+                return JSONResponse(
+                    status_code=429,
+                    media_type="application/problem+json",
+                    headers={"Retry-After": "60"},
+                    content={
+                        "type": "about:blank",
+                        "title": "Too Many Requests",
+                        "status": 429,
+                        "detail": f"rate limit exceeded for {group}",
+                    },
+                )
+        return await call_next(request)
+```
+
+`rate_limiter = RateLimiter()` is created inside `create_app()`, not at module level — matches the existing pattern where per-app state (like `mcp_server`) is scoped to one `create_app()` call, since the test suite calls `create_app()` repeatedly per test and a module-level singleton would leak rate-limit state across unrelated tests (the exact same reasoning already documented in `main.py`'s comment about `mcp_server` not being memoized process-wide).
+
+- [ ] **Step 5: Run the new tests and the full suite**
 
 ```bash
-git add core/app/copilot/mcp_loopback.py core/app/copilot/tools_allowlist.py core/tests/test_copilot_mcp_loopback.py
-git commit -m "$(cat <<'EOF'
-feat(core): client de rappel MCP + allowlist d'outils pour le copilote (SP-20)
+cd core
+uv run pytest tests/test_ratelimit.py -v
+uv run pytest -x -q
+```
 
-McpLoopbackSession parle JSON-RPC-sur-HTTP à /mcp, le même protocole déjà
-exercé par test_mcp_routes.py — un vrai appel réseau, aucune logique
-d'outil dupliquée. ALLOWED_MCP_TOOL_NAMES fixe les 6 outils accessibles au
-copilote (jamais save_app_config/set_sharing).
+Expected: 3 new tests pass; full suite count grows by 3, no other regressions.
+
+- [ ] **Step 6: Verify `/mcp` is actually covered (the reason this had to be middleware, not a route dependency)**
+
+```bash
+cd core
+uv run python -c "
+from app.ratelimit.limiter import route_group
+import re
+export_re = re.compile(r'^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?\$|^/export\$|^/app-exports\$')
+assert route_group('/mcp', export_re) == 'llm'
+assert route_group('/copilot/turn', export_re) == 'llm'
+assert route_group('/analytics/sql', export_re) == 'sql'
+assert route_group('/export', export_re) == 'jobs'
+assert route_group('/app-exports', export_re) == 'jobs'
+assert route_group('/harvest/sources', export_re) == 'harvest'
+assert route_group('/health', export_re) is None
+print('all route groups correct')
+"
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add core/app/ratelimit/ core/app/main.py core/tests/test_ratelimit.py
+git commit -m "$(cat <<'EOF'
+feat(core): rate limiting différencié par route sensible
+
+Middleware ASGI (couvre /mcp, un mount brut hors du routage FastAPI,
+comme le fait déjà read_only_guard) — compteur en mémoire par (en-tête
+Authorization, groupe de route), budgets distincts sql/llm/jobs/harvest
+(I4, revue de projet 2026-08-20). Limite assumée : par process, pas de
+Redis.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 EOF
 )"
 ```

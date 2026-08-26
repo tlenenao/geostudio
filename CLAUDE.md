@@ -1658,6 +1658,350 @@ deux (et un `--` côté entry).
     (seuil 88) ; `npm run build`/`tsc --noEmit`/lint verts ; OpenAPI/types TS
     inchangés (fix interne, aucune surface API modifiée) ; `uvx pre-commit
     run --all-files` 5/5 verts. **SP-24 clos pour de bon.**
+- **SP-25** — Symbologie dans l'éditeur de cartes (chantiers **4.2**
+  « Symbologie » et **4.3** « Classes et palettes » du plan d'action
+  `docs/vision/2026-08-20-revue-projet-et-plan-daction.md` §6, vague 4, lot
+  Carte, suite directe de SP-24 dont le `collectionId`/`geometryKind` posé
+  sur chaque couche tuilée est ce qui permet ici de calculer des bornes de
+  classes sans charger les features) : une couche carte (`LayersPanel` de
+  l'éditeur standalone **et** le widget carte des apps/dashboards/sites)
+  gagne une symbologie déclarative — couleur catégorielle/continue/classée
+  (quantile, intervalle égal, seuils naturels Jenks, 2 à 9 classes) et
+  taille continue —, compilée en paint MapLibre à l'affichage au lieu d'un
+  `paint` brut écrit à la main, avec palettes curatées + une palette dérivée
+  du thème (`theme-primary`, widget carte uniquement). **Élargissement de
+  périmètre assumé dès la spec** (§2, décision de session) : unification
+  des deux surfaces sur un seul type `LayerSymbology` et un seul composant
+  d'édition partagé plutôt que deux mécanismes parallèles — précédent
+  explicitement invoqué, l'écart I2 de la revue finale SP-23 (garde-fou
+  écrit sur une surface, jamais reporté sur sa jumelle).
+  - **Cœur** : capacité `sample` sur `AggregateRequestBody`/
+    `run_collection_aggregate` (`USING SAMPLE n ROWS`, 1-2000, exclusive de
+    `groupBy`/`bins`) — seule addition serveur nécessaire, le quantile et
+    l'intervalle égal se calculent avec les primitives déjà existantes ;
+    `MapLayer.symbology: dict | None` sur `configs/schemas.py`, même
+    précédent que `paint`/`popup` (SP-24).
+  - **Shell** : `builder/widgets/palette.ts` (palettes curatées + rampe
+    séquentielle dérivée du thème, lerp RGB maison) ; `ItemClient.
+    sampleCollectionField` ; `mapSymbology.ts` étendu (classification
+    quantile/intervalle égal côté client, Jenks par programmation dynamique
+    de Fisher, extension de `buildMapPaint`/`buildLegend` pour le cas
+    classé — expression MapLibre `step`) ; `MapSymbologyEditor.tsx`
+    (composant d'édition partagé, host-agnostic, même précédent que
+    `PopupEditor.tsx` SP-24) monté à la fois dans `LayersPanel.tsx`
+    (éditeur de carte standalone) et `mapWidget.tsx` (widget carte des
+    apps/dashboards, `PropsPanel`). **Changement cassant assumé** (spec §7,
+    même précédent que le retrait de Martin en SP-24) : `mapWidget.tsx`
+    abandonne `props.encodings`/`useNumericDomain`/ses deux `useQuery` de
+    domaine calculés à chaque rendu au profit du même champ `symbology`
+    figé à l'enregistrement — toute app déjà publiée avec une symbologie de
+    widget carte perd cette configuration au prochain chargement. Domaines
+    et bornes calculés une fois et figés dans la config à l'enregistrement,
+    jamais recalculés au rendu (y compris pour une carte publique anonyme,
+    cohérent avec la garde de coût I3/SP-24). Threading de `Theme` à travers
+    `WidgetDefinition["PropsPanel"]` (`AppBuilderPage` → `PropsPanel.tsx` →
+    `def.PropsPanel`), changement additif par typage structurel vérifié sur
+    les ~22 autres widgets (aucun ne déstructure `theme`, tous continuent de
+    compiler sans y toucher).
+  - **Déviation assumée vs. le texte littéral de la spec (§3.7)** : la
+    spec demandait « un bloc symbologie par couche vector/feature » dans
+    `LayersPanel` ; en pratique `LayerSymbologyEditor` retourne `null` sans
+    `collectionId` (`shell/src/map/LayersPanel.tsx:57`), qui n'existe que
+    pour les couches `kind: "vector"` — une couche `feature` (tuiles
+    externes, GeoJSON brut) n'a donc **aucun** éditeur de symbologie
+    fonctionnel dans l'éditeur standalone, contrairement au bloc popup
+    voisin qui, lui, fonctionne sans collection (saisie manuelle des noms
+    de champs). Documenté par le code lui-même comme une limite de
+    périmètre, pas une régression — nécessite une décision produit non
+    couverte par les Global Constraints du plan.
+  - **Déviation assumée sur le widget carte (Task 11)** : Jenks y est
+    proposé dans la spec au même titre que dans l'éditeur standalone, mais
+    `mapWidget.tsx`'s `sampleField` ne résout aucun `collectionId` réel pour
+    ce host (chemin distinct et non unifié avec `LayersPanel`, spec §1) —
+    l'option « Seuils naturels (Jenks) » y est donc masquée
+    (`jenksAvailable={false}` sur `MapSymbologyEditor`, plutôt que de
+    l'offrir puis échouer à l'usage). Trouvé et corrigé en revue finale de
+    branche (I5, cf. ci-dessous), pas anticipé par le texte littéral de la
+    spec.
+  - Exécution en subagent-driven-development, 11 tâches d'implémentation
+    (Tasks 1-11) + Task 12 (E2E) + revue finale de branche, revue par tâche
+    systématique (0 Critical/Important non résolu sur les 12 tâches).
+    **Task 12 a trouvé et corrigé 2 bugs réels hors de son propre
+    périmètre**, invisibles à
+    toute revue par tâche antérieure puisqu'elle est le premier point du
+    plan à faire tourner la suite E2E complète : (1) `toFrontLayer()`
+    (chemin de lecture `GET /configs/{id}` d'`itemClient.ts`) ne
+    round-trippait jamais `MapLayer.symbology` vers le front — même classe
+    de bug que le fix `popup` de SP-24 — corrigé en miroir exact du même
+    patron de spread conditionnel ; (2) régression préexistante dans
+    `analytics-context.spec.ts` (3 tests SP-14h) jamais rejoué contre le
+    changement cassant de la Task 11 (`props.encodings`→`props.symbology`,
+    domaine catégoriel `{values:[]}` sans clic explicite « Recalculer les
+    classes » → expression MapLibre dégénérée → couche silencieusement
+    absente) — corrigé en ajoutant les clics de recalcul manquants aux 3
+    tests (code de production intouché, séquence d'interaction E2E mise à
+    jour pour la nouvelle UX intentionnelle). Suite E2E complète restaurée
+    à 108 passed / 4 skipped / 0 failed (référence SP-24 107 + cette
+    nouvelle spec = 108).
+  - **Revue finale de branche** (opus) : 1 Critical (C1) + 6 Important
+    (I1-I6) + 11 Minor. **C1** — un domaine de symbologie jamais recalculé
+    ou dégénéré (catégoriel vide, champ vidé avec un domaine périmé, bornes
+    dupliquées issues de données à égalité/constantes) faisait émettre à
+    `buildMapPaint` une expression MapLibre invalide, qui lève à
+    `map.addLayer` — silencieusement avalée par le `try/catch` existant de
+    `MapView` : la couche entière disparaît, aucun signal utilisateur.
+    I1 — `quantileBreaksFromRow`/`jenksBreaks` produisaient des bornes
+    `NaN`/`undefined` sur une collection vide/trop petite, sérialisées en
+    silence en `null`. I2 — l'id du `datalist` de `MapSymbologyEditor` était
+    une constante globale, cassant l'autocomplétion de champ dès 2 couches
+    stylées (même classe que I2/SP-23 — un garde-fou écrit sur une surface,
+    jamais reporté sur sa jumelle, `PopupEditor` avait déjà `useId()`). I3 —
+    `recomputeSize` n'avait aucun `catch` (contrairement à `recomputeColor`).
+    I4 — `effectivePaint` calculait un seul objet paint par couche pour un
+    `geometryKind` deviné, donc une couche tuilée à géométrie mixte
+    (découpage 3 sous-couches de SP-24/I1) n'obtenait jamais que du paint
+    `fill-*` — les sous-couches `circle-`/`line-` restaient silencieusement
+    non stylées. I5 — `mapWidget`'s `runStatistics` codait en dur
+    `layer: ""` et n'avait aucun repli sans `datasetId` (source adossée à
+    une simple collection), plus Jenks proposé là où il ne peut pas
+    fonctionner (limite de périmètre sanctionnée par le plan, mais l'option
+    aurait dû être masquée — cf. déviation ci-dessus). I6 — un
+    `MapEditorPage.test.tsx` flaky à ~25 % (sans rapport avec SP-25,
+    préexistant, mais porte rouge sur le merge de cette branche).
+  - **Fix round 1** (commit `014bd04`) : C1+I1-I6 corrigés en une seule
+    passe TDD. `normalizeDomain` (nouvelle fonction pure, porte partagée
+    appelée par `buildMapPaint` **et** `buildLegend`) rejette un domaine
+    catégoriel vide, des bornes non finies, ou des bornes qui, après
+    dédoublonnage des égalités adjacentes, comptent moins de 2 valeurs
+    distinctes ou ne sont pas strictement croissantes — dégradation
+    gracieuse (moins de classes utilisables) plutôt que rejet total sur une
+    égalité partielle. 161 fichiers / 1454 tests (+27), E2E 108/4/0
+    (référence inchangée), preuve RED→GREEN pour C1 via `git stash` ciblé
+    (17 échecs avant fix → 0 après), I6 rejoué 10/10 vert en boucle.
+  - **Re-revue** (opus) : 6/7 fermés correctement (I1-I6). **C1 partiellement
+    fermé** — trou de bord trouvé dans le dédoublonnage du round 1 lui-même :
+    un domaine qui se réduit à exactement 2 bornes distinctes (1 classe)
+    passait encore la garde (seul « < 2 bornes » était rejeté, pas « < 3 »),
+    et `buildMapPaint` en tirait une expression `step` à 2 arguments — le
+    minimum MapLibre en exige 4 — reproduit empiriquement par le
+    re-reviewer contre le vrai parseur `@maplibre/maplibre-gl-style-spec`,
+    même symptôme original que C1 via son propre déclencheur n°3 (données à
+    égalité/constantes), atteignable par n'importe quelle colonne de
+    comptage/note avec assez de valeurs au minimum. 2 nouveaux Minor
+    signalés (N2, N3, cf. ci-dessous), non corrigés, même disposition que
+    la liste Minor de la première passe.
+  - **Fix round 2** (commit `cacddb9`, C-new seul) : seuil de dédoublonnage
+    de `normalizeDomain` relevé de `< 2` à `< 3` bornes distinctes (Option
+    A — la porte partagée déjà appelée par `buildMapPaint` et `buildLegend`,
+    donc le fix reste symétrique par construction sans toucher `buildLegend`
+    séparément). 161 fichiers / 1461 tests (+7), nouveaux tests validant
+    l'expression `step` produite/rejetée contre le vrai
+    `@maplibre/maplibre-gl-style-spec` (`createExpression`), pas seulement
+    une assertion de forme. E2E non rejoué pour ce fix pur de fonction
+    (aucune surface visible au DOM touchée), explicitement noté comme tel.
+    **0 Critical/Important ouvert à ce stade.**
+  - **Preuves de sortie finales** (Task 13, 2026-08-23) : core
+    `uv run pytest` (PostGIS réel) → **1878 passed, 5 skipped, 0 failed**
+    (référence exacte de fin de Task 3, 0 régression), couverture **93 %**
+    (seuil 85) ; `ruff check`/`ruff format --check`/`mypy --strict` (4
+    modules)/`lint-imports` verts. Shell `npx vitest run` → **161 fichiers /
+    1461 tests**, couverture **89,64 %** (seuil 88, mesurée après
+    nettoyage de `dist/`/`dist-export/`, piège documenté SP-22/23/24) ;
+    `npm run lint`/`format:check`/`build` verts ; `npm run e2e` → **108
+    passed, 4 skipped, 0 failed** (référence SP-24 107 + spec
+    `map-symbology.spec.ts` = 108, match exact). Garde-fou de déployabilité
+    (`test_deployability.py`) → **31/31 verts**, sans fix — ce plan n'ajoute
+    aucune variable d'env/service/bucket. `uvx pre-commit run --all-files` :
+    5/5 hooks verts. OpenAPI/types TS confirmés synchronisés (`git status
+    --porcelain` vide sur les deux, régénérés dès Task 3, rien n'a dérivé
+    depuis). **Liste Minor reportée en suivi non bloquant** (M1-M11 du
+    round 1 + N2/N3 de la re-revue) : cf. `### Suivis non bloquants ouverts`.
+    **SP-25 clos.**
+- **SP-26** — Durcissement avant v0.1 publique (vague 3 du plan d'action
+  `docs/vision/2026-08-20-revue-projet-et-plan-daction.md` §6) : ferme les 7
+  chantiers restants de cette vague (3.2, clé maître au démarrage, déjà
+  fait avant SP-26, non retouché) — renumérotés par la spec en 3.1, 3.3,
+  3.4, 3.5a/3.5b/3.5c (3.5 bundlait 3 mécanismes indépendants), 3.6, 3.7,
+  3.8.
+  - **3.6, conteneurs non-root** : 7 des 8 images (core, export-worker,
+    appexport-standalone, appexport-runtime-builder, qgis-worker, backup,
+    shell) passées en utilisateur non-root, `HOME` pinné avant les étapes
+    de build DuckDB/GRASS/Playwright partout où nécessaire (même
+    précédent que SP-15d/SP-17a pour la survie du cache local) ;
+    `postgis` vérifié déjà non-root au niveau process serveur (`gosu` de
+    l'entrypoint officiel), non modifié. 2 bugs réels trouvés et corrigés
+    en tâche, invisibles au texte littéral du plan : `shell` (nginx)
+    plantait au démarrage (`/run/nginx.pid` permission denied) ;
+    `backup`'s vrai point de montage runtime `/backup/archives` était
+    root-owned et non inscriptible.
+  - **3.1, mode mock interdit hors dev** : `CORE_AUTH_MODE=mock` (qui
+    donnait `bootstrap_admin=True` à tout Bearer non vide sans aucune
+    vérification d'environnement, C6 de la revue de projet 2026-08-20)
+    refuse désormais de démarrer sans `CORE_ENV=development` explicite —
+    garde fail-fast au boot, même emplacement/patron que
+    `load_master_key()`.
+  - **3.5a, format d'erreur RFC 7807 unique** : `application/problem+json`
+    sur toute l'API via 3 handlers d'exception globaux
+    (`ValidationHTTPException`/`HTTPException`/`Exception` bare), nouveau
+    module `core/app/errors.py` hors contrat de couches (précédent
+    `app.db`/`app.observability`). Erreurs de validation structurées
+    migrées vers un membre d'extension `errors` au premier niveau — plus
+    jamais imbriquées sous `detail`, qui reste une chaîne partout
+    (changement cassant scopé à 2 sites shell). Diff OpenAPI/TS **vide**,
+    vérifié correct et non un oubli : aucune route de ce dépôt ne déclare
+    `responses=` explicite, donc aucun handler d'exception global ne peut
+    apparaître dans le schéma documenté.
+  - **3.4, rate limiting différencié** : middleware ASGI en mémoire par
+    process, clé = en-tête `Authorization` brut (pas d'identité vérifiée
+    — tourne avant l'injection de dépendances FastAPI, et `/mcp` est un
+    mount ASGI brut sans DI du tout), 4 groupes de budget (sql=10/llm=20/
+    jobs=15/harvest, initialement toutes routes puis resserré en revue
+    finale aux seules routes d'écriture — cf. ci-dessous), fenêtre
+    glissante 60s. Referme le suivi non bloquant SP-20 sur l'absence de
+    rate limiting applicatif sur `/copilot/turn` (désormais dans le
+    groupe `llm`, avec `/mcp`).
+  - **3.5b, arrêt propre `cdc-worker`** : `stream_changes()` acceptait
+    déjà un paramètre `should_stop`, jamais branché — SIGTERM positionne
+    un flag vérifié à chaque itération, puis un flush final avant sortie
+    pour ne pas perdre les lignes bufferisées non encore dues à l'âge
+    (I11, revue de projet 2026-08-20).
+  - **3.5c, `ErrorBoundary` applicatif** : nouveau boundary racine
+    (`shell/src/AppErrorBoundary.tsx`), distinct du `WidgetErrorBoundary`
+    scopé par widget (`WidgetHost.tsx`, non touché) — toute exception de
+    rendu ailleurs (chrome builder, pages, panneaux) produisait un écran
+    blanc (I12, revue de projet 2026-08-20). Posé autour
+    d'`AuthProvider`/`QueryClientProvider`, pas à l'intérieur, pour
+    attraper aussi un crash d'initialisation des providers eux-mêmes.
+  - **3.3, CSP/Permissions-Policy/compression** : étend le middleware
+    `security-headers` Traefik existant (pas un nouveau) +
+    `shell/nginx.conf` (sert aussi les exports statiques/autoportés hors
+    Traefik). **CSP livrée en Report-Only, jamais basculée en
+    enforcing** — repli explicitement sanctionné par le plan : aucun
+    binaire Chromium disponible dans cet environnement pour la
+    vérification empirique préalable requise (Playwright et
+    chrome-devtools-mcp ont échoué au lancement). 1 bug YAML réel corrigé
+    dans le texte littéral du brief (guillemets manquants sur la valeur
+    CSP, `data: blob:` casse le parse YAML). 4 bloqueurs concrets déjà
+    identifiés pour la bascule enforcing, documentés en commentaire
+    (`docker-compose.prod.yml` + renvoi depuis `shell/nginx.conf`) plutôt
+    que laissés à redécouvrir : tuiles WMS/WMTS et terrain externes
+    bloquées par `img-src`, tileset 3D externe bloqué par `connect-src`,
+    widgets d'extension tiers bloqués par `script-src 'self'`,
+    `nginx.conf`'s `connect-src 'self'` faux hors overlay prod (shell/core
+    sur des origines différentes sur le compose de base).
+  - **3.7, notification des alertes SLO** : point de contact webhook +
+    politique de routage (dossier SLO), Step 1 du brief empiriquement
+    vérifié contre l'image réelle (`grafana/otel-lgtm:0.11.4`, Grafana
+    12.0.1) — expansion `${VAR}` native confirmée. **Déviation réelle et
+    vérifiée par rapport au texte littéral du brief** : le défaut
+    `${GRAFANA_ALERT_WEBHOOK_URL:-}` (chaîne vide) proposé fait planter
+    tout le conteneur au démarrage (Grafana exige une URL non vide même
+    pour un contact point censé rester inerte) — corrigé par un défaut
+    syntaxiquement valide mais délibérément inatteignable
+    (`http://127.0.0.1:1/grafana-alert-webhook-not-configured`).
+    **Preuve de bout en bout réellement observée** : POST réel reçu par
+    un listener HTTP local via `host.docker.internal` après dépause
+    temporaire de la règle `test-alert-do-not-keep-in-prod` déjà présente
+    dans `rules.yaml` pour cet usage, alerte passée `active` dans l'API
+    Alertmanager puis arrêtée après repause, `git diff` sur `rules.yaml`
+    confirmé vide.
+  - **3.8, E2E sur OIDC réel** : nouvelle suite `shell/e2e-oidc/` contre
+    une vraie stack (postgis+keycloak+core en `CORE_AUTH_MODE=oidc`+shell,
+    nouveau job CI dédié) — **preuve de bout en bout réellement obtenue**,
+    pas seulement affirmée : 2 specs (login+logout) passées 4 fois de
+    suite en local, 0 échec. Referme le suivi non bloquant SP-20 sur
+    l'absence de preuve bout-en-bout navigateur+iframe+Keycloak, et le
+    précédent SP-15d/SP-17a-Task-6 (un test jamais réellement exécuté).
+    **Bug produit réel trouvé et corrigé en cours de route** : la
+    déconnexion Keycloak laissait l'utilisateur sur la page nue « vous
+    êtes déconnecté » faute de `post_logout_redirect_uri`
+    (`AuthProvider.tsx` + `deploy/keycloak/geostudio-realm.json`,
+    propagation prod vérifiée via le mécanisme de `sed` déjà existant de
+    `docker-compose.prod.yml`). **Régression découverte, sans rapport
+    avec OIDC** : le changement cassant RFC 7807 de 3.5a avait laissé un
+    mock E2E (`shell/e2e/sql-lab.spec.ts`) sur l'ancienne forme imbriquée
+    — première exécution de la suite E2E complète depuis ce commit,
+    précédent SP-23 Task 18/SP-25 Task 12 (régression cross-tâche
+    invisible tant que personne ne relance la suite complète) — corrigée
+    dans un commit séparé, baseline E2E restaurée à 108/4/0.
+  - **Décision de scope actée, précédent très établi de ce dépôt (au
+    moins 5 occurrences antérieures documentées)** : le bug préexistant
+    `core/Dockerfile`/résolution `mcp==2.0.0` cassant `fastmcp` (CLAUDE.md
+    SP-21, confirmé toujours présent par 3.8) N'A PAS été corrigé dans
+    SP-26 — hors périmètre. Conséquence directe à surveiller : le nouveau
+    job CI `shell-e2e-oidc` est le premier job de ce dépôt à faire
+    `docker compose build core` (les jobs `core`/`shell`/`api-types-drift`
+    existants utilisent `uv sync`, respectent `uv.lock`, ne buildent
+    jamais l'image Docker) — **attendu rouge de façon déterministe à son
+    premier run GitHub Actions réel**, tant que ce bug n'est pas corrigé
+    séparément.
+  - **Revue finale de branche (opus, 2026-08-27)** : 1 Critical + 6
+    Important, tous invisibles à une revue par tâche. **C1** — `/scratch`
+    jamais créé/chowné dans `core/Dockerfile` (le service `worker` partage
+    la même image core non-root et monte `etl-scratch:/scratch` pour les
+    jobs pipeline/terrain3d) **plus** un uid mismatch entre `app` (core) et
+    `qgis` (qgis-worker) — deux images de base différentes, chacune
+    `useradd --system` sans uid explicite — cassant la remise de fichier
+    pipeline→sidecar QGIS à travers ce même répertoire partagé. Corrigé
+    par uid/gid 1001 fixé identique dans les deux Dockerfiles (vérifié
+    libre dans les deux images de base) + création/chown de `/scratch`
+    dans `core/Dockerfile`, **écriture croisée réelle prouvée dans les
+    deux ordres de démarrage possibles du volume nommé** (pas seulement
+    égalité d'uid — précédent explicitement suivi). **I1** — budget
+    rate-limit harvest (10/min, `_HARVEST_RE` couvrant alors TOUTES les
+    routes `/harvest/*`) tuait silencieusement les couches externes du
+    sélecteur de couches (recherche sans debounce dans `LayerPicker.tsx`,
+    échecs avalés par `Promise.allSettled`) — corrigé en resserrant le
+    groupe harvest aux seules routes d'écriture (4 sur 8, les 4 lectures
+    exemptées). **I2** — défaut compose
+    `CORE_ENV: ${CORE_ENV:-development}` désarmait la garde mock-mode de
+    3.1 exactement dans le scénario qu'elle visait (compose de base sans
+    `.env`) — corrigé (défaut vidé), flux `.env.example`→
+    `bootstrap-env.sh` non affecté. **I3** — 403 démo lecture-seule encore
+    en JSON plat, angle mort de 3.5a (middleware, pas exception handler)
+    — aligné sur les 3 autres sites RFC 7807. **I4** — `RateLimiter._hits`
+    clé sur le JWT brut (rotation OIDC toutes les quelques minutes)
+    croissait sans borne, docstring affirmant à tort une croissance
+    négligeable — balayage périodique (toutes les 50 requêtes) retirant
+    réellement les entrées vides du dict, docstring corrigé. **I5/I6** —
+    documentation seule (checklist CSP avant enforcing, runbook de
+    migration non-root). Une passe de fix (7/7) puis **re-revue** (opus) :
+    6/7 fermés correctement et vérifiés indépendamment ; **I6
+    partiellement fermé** — 2 Important supplémentaires trouvés : le
+    runbook contenait une commande `chown backup:backup` qui échoue
+    réellement (le nom `backup` n'existe pas dans l'image `alpine`
+    générique utilisée pour la commande, et l'uid de
+    `deploy/backup/Dockerfile` n'était de toute façon pas fixé), et
+    omettait un 3e volume nommé cassé par le même changement non-root
+    (`appexport-runtime`, `deploy/appexport-runtime-builder/Dockerfile`).
+    **2e passe de fix** : `backup`/`builder` fixés eux aussi à uid/gid
+    1001 (vérifié libre dans leurs images de base respectives — sans
+    contrainte de convergence avec `app`/`qgis`, aucun volume partagé
+    avec eux), runbook corrigé (chown numérique, pas par nom) et complété,
+    vérifié empiriquement dans les deux sens (ancienne commande échoue
+    réellement, nouvelle réussit). Plus 2 des 4 Minor de la re-revue
+    fermés au passage (tests I2/C1 renforcés — valeur résolue plutôt que
+    seulement la syntaxe de défaut ; `qgis-worker` couvert en plus de
+    `core`) et 1 pointeur documentaire ajouté (`shell/nginx.conf` renvoie
+    vers la checklist CSP de `docker-compose.prod.yml`). **0
+    Critical/Important non résolu au merge.**
+  - **Preuves de sortie finales** (2026-08-27) : core `uv run pytest`
+    (PostGIS réel) → **1896 passed, 5 skipped, 1 failed** — l'échec est
+    `tests/test_features_rls.py::test_scope_preserves_original_sql_error`,
+    confirmé **préexistant et sans rapport avec SP-26** (reproduit à
+    l'identique dans un worktree jetable au commit juste avant le début de
+    ce plan, indépendamment 3 fois au cours de cette exécution — dérive
+    psycopg2/gestion de transaction non encore diagnostiquée, hors
+    périmètre) ; couverture **92,96 %** (seuil 85) ; `ruff check`/`ruff
+    format --check`/`mypy --strict` (4 modules)/`lint-imports` verts.
+    Garde-fou de déployabilité (`test_deployability.py`) → **35/35**
+    (31 d'origine + 4 nouveaux : C1×2, I2×1, puis les renforcements de la
+    re-revue). Shell `npx vitest run` → **162 fichiers / 1463 tests**
+    (mesurée après nettoyage `dist/`/`dist-export/`, même piège documenté
+    SP-22-25), couverture **89,57 %** (seuil 88) ; `npm run lint`/
+    `format:check`/`build` verts ; `npm run e2e` → **108 passed, 4
+    skipped, 0 failed**. `uvx pre-commit run --all-files` : 5/5 hooks
+    verts. **SP-26 clos.**
 
 ### À venir
 
@@ -1706,18 +2050,31 @@ deux (et un `--` côté entry).
   504 arrivait donc en retard — **c'est faux, mesuré** (504 rendu à
   l'échéance à 0,01 s près ; l'annulation asyncio traverse
   `anyio.to_thread.run_sync` malgré `abandon_on_cancel=False`). Le défaut
-  réel était le thread abandonné, pas la latence de réponse. Restent hors
-  périmètre livré, non planifiés : rate limiting applicatif par
-  utilisateur/tenant sur `/copilot/turn` (aujourd'hui seul le
-  `ratelimit` uniforme de Traefik — vague 3.4 du plan d'action) ; garde
-  d'egress sur l'appel LLM sortant (4e surface, les trois autres en ont
-  une — vague 6.2).
+  réel était le thread abandonné, pas la latence de réponse. **Fermé par
+  SP-26/3.4** : rate limiting applicatif sur `/copilot/turn` (groupe
+  `llm`, avec `/mcp`, 20/min — clé sur l'en-tête `Authorization` brut,
+  pas une identité vérifiée par utilisateur/tenant, cf. SP-26). Reste hors
+  périmètre livré, non planifié : garde d'egress sur l'appel LLM sortant
+  (4e surface, les trois autres en ont une — vague 6.2).
 - **SP-24** — clos, chantier **4.1** du plan d'action fermé (cf. `### Fait`).
-  Le lot Carte continue en **SP-25** (chantiers **4.2/4.3**, symbologie —
-  bornes de classes calculées sur le `collectionId` désormais posé par
-  chaque couche tuilée) ; **4.4** et **4.5** (mesure et croquis) restent
-  hors périmètre de SP-24, non planifiés, non numérotés au-delà de leur
-  identifiant de plan d'action.
+- **SP-25** — clos, chantiers **4.2/4.3** du plan d'action fermés (cf.
+  `### Fait`). Le lot Carte du plan d'action §6 vague 4 s'arrête là :
+  **4.4** (mesure) et **4.5** (croquis) restent hors périmètre de SP-24/
+  SP-25, non planifiés, non numérotés au-delà de leur identifiant de plan
+  d'action. Reste ouvert dans le périmètre déjà livré, non planifié : un
+  éditeur de symbologie fonctionnel pour les couches `kind: "feature"`
+  dans `LayersPanel` (aujourd'hui `null` faute de `collectionId` — décision
+  produit non tranchée, cf. `### Suivis non bloquants ouverts`) ; Jenks sur
+  le widget carte des apps/dashboards (masqué faute de résolution
+  `collectionId` sur ce host, chemin distinct de `LayersPanel` par choix de
+  spec §1).
+- **SP-26** — clos, vague 3 du plan d'action (durcissement avant v0.1
+  publique) fermée (cf. `### Fait`) : les 7 chantiers restants (3.1, 3.3,
+  3.4, 3.5a/3.5b/3.5c, 3.6, 3.7, 3.8) sont livrés. Le nouveau job CI
+  `shell-e2e-oidc` (3.8) est attendu rouge à son premier run réel tant que
+  le bug préexistant `core/Dockerfile`/`mcp==2.0.0` (documenté SP-21,
+  toujours présent) n'est pas corrigé — hors périmètre de SP-26 par
+  décision de scope explicite, cf. `### Suivis non bloquants ouverts`.
 
 ### Suivis non bloquants ouverts
 
@@ -2036,3 +2393,88 @@ deux (et un `--` côté entry).
   même commit que la preuve elle-même plutôt qu'en `fix(shell)` séparé —
   contraire au précédent explicitement consigné par SP-23 tâche 18, sans
   conséquence fonctionnelle.
+- SP-25, suivis non bloquants : **M7** — une couche `feature` (tuiles
+  externes, GeoJSON brut) n'a aucun éditeur de symbologie fonctionnel dans
+  `LayersPanel` (`LayerSymbologyEditor` retourne `null` sans
+  `collectionId`, qui n'existe que pour `kind: "vector"`) — déviation
+  réelle vis-à-vis du texte littéral de la spec §3.7 (« un bloc symbologie
+  par couche vector/feature »), nécessite une décision produit non couverte
+  par les Global Constraints du plan (le bloc popup voisin, lui, fonctionne
+  sans collection par saisie manuelle des noms de champs — rien n'empêche
+  en principe le même repli pour la symbologie, mais Jenks/quantile/
+  intervalle égal ont tous besoin d'un échantillon serveur qu'une couche
+  sans collection ne peut pas fournir). **M1** — la preuve E2E
+  (`map-symbology.spec.ts`) asserte le texte du panneau éditeur, pas le
+  paint MapLibre compilé — preuve plus faible que ce que son propre
+  docstring donne à penser, bien que `MapView.test.tsx` couvre séparément
+  le chemin de paint compilé au niveau unitaire. **M2** — aucune légende de
+  symbologie dans l'éditeur de carte standalone, seulement dans le widget
+  carte (asymétrie assumée, pas un défaut du plan). **M3** — aucun signal
+  de péremption quand champ/mode/méthode changent sans recalcul explicite :
+  domaine et métadonnées de classification peuvent silencieusement diverger
+  jusqu'au prochain clic « Recalculer ». **M4** — le type de retour de
+  `resolvePalette` promet un non-null mais retourne `undefined` pour un id
+  de palette inconnu — atteignable car `MapLayer.symbology` est un dict non
+  typé côté cœur. **M5** — le travail de `sample` est non borné bien que sa
+  sortie soit plafonnée à 2000 lignes — même forme adjacente-DoS que les
+  chemins préexistants `min`/`max`/`percentile` sur la même route (pas une
+  régression, une surface élargie). **M6** — `sample` combiné à
+  `split`/`measures` est silencieusement ignoré plutôt que rejeté, hérite
+  du laxisme déjà existant de `bins`. **M8** — `CHANGELOG.md` non mis à
+  jour malgré la demande de spec §7 de noter le changement cassant
+  `props.encodings`→`props.symbology` — habitude du dépôt entier, pas
+  spécifique à SP-25. **M9** — le copilote SP-20/`configSchema` n'a jamais
+  été étendu pour `symbology`, même résultat que l'omission délibérée de
+  `popup` en SP-24, mais ici par omission plutôt que décision explicite.
+  **M10** — `shell/src/api/types.ts` porte désormais un import type-only
+  depuis `builder/widgets/mapSymbology` — un module de contrat d'API qui
+  pointe vers un module de widget ; aucun cycle à l'exécution, mais à
+  nettoyer un jour. **M11** — `toFixed(1)` utilisé sans condition pour les
+  libellés de bornes/légende — peu lisible pour des valeurs très grandes ou
+  très petites. **N2** (re-revue) — un recalcul qui réussit mais produit un
+  résultat inutilisable (ex. échantillon Jenks trop court) efface quand
+  même l'indice « pas encore calculé », sans aucun autre signal à l'auteur.
+  **N3** (re-revue) — les domaines numériques continus, contrairement aux
+  domaines classés, contournent entièrement `normalizeDomain` : un min/max
+  `NaN` issu d'une collection vide produit une expression `interpolate`
+  **acceptée** par MapLibre qui se sérialise pourtant en `null` via
+  `JSON.stringify` — même classe de corruption silencieuse que I1, sur un
+  chemin de code différent, non corrigé.
+- SP-26, suivis non bloquants : le bug préexistant
+  `core/Dockerfile`/résolution `mcp==2.0.0` cassant `fastmcp` (documenté
+  SP-21, confirmé toujours présent par 3.8) laisse le nouveau job CI
+  `shell-e2e-oidc` attendu rouge à son premier run réel — c'est le premier
+  job de ce dépôt à faire `docker compose build core` (les jobs
+  `core`/`shell`/`api-types-drift` existants utilisent `uv sync`, respectent
+  `uv.lock`, ne buildent jamais l'image Docker) — décision de scope
+  explicite de ne pas le corriger dans SP-26 (précédent très établi de ce
+  dépôt, cf. `### Fait`). CSP toujours en Report-Only (3.3), jamais
+  vérifiée en conditions réelles (aucun Chromium disponible dans cet
+  environnement) — 4 bloqueurs concrets déjà identifiés et documentés en
+  commentaire pour la bascule enforcing (cf. `### Fait`), pas encore
+  résolus. Rate limiter (3.4) clé sur le JWT brut, donc le budget d'un
+  appelant se réinitialise à chaque rafraîchissement de jeton OIDC (toutes
+  les quelques minutes) — limite du choix de conception documenté (clé sur
+  l'en-tête brut, pas une identité vérifiée), pas un bug, mais un budget
+  « par jeton » plutôt que réellement « par minute » sous OIDC réel.
+  Minor non corrigés de la revue finale de branche (~8 + 2 résiduels de la
+  re-revue) : `HTTPStatus(...).phrase` lève `ValueError` sur un code non
+  standard dans un handler d'exception (aucun site actuel n'utilise un code
+  non standard, piège latent) ; `import logging` en corps de handler plutôt
+  qu'en tête de module ; un 500 est désormais loggé deux fois (une fois par
+  le handler, une fois par `ServerErrorMiddleware` de Starlette) ; le tag
+  `docker build -t geostudio-postgis-ci` du nouveau job CI OIDC n'est
+  consommé par aucune étape suivante (buildé deux fois, coût CI gaspillé
+  seulement) ; `docker-compose.prod.yml` n'affiche pas `CORE_ENV: production`
+  explicitement (inerte aujourd'hui, `CORE_AUTH_MODE: oidc` y est déjà en
+  dur) ; `AppErrorBoundary` ne couvre pas un crash de `loadConfig()` en
+  portée module (avant tout rendu React) ni ne se réinitialise au
+  changement de route ; la politique Grafana racine route TOUTES les
+  alertes vers le webhook, pas seulement celles du dossier SLO (le
+  commentaire `.env.example` sous-estime la portée réelle) ; `cdc-worker`
+  gère SIGTERM mais pas SIGINT (`docker stop` envoie SIGTERM, donc le
+  chemin de production est couvert ; un `Ctrl-C` local reste un arrêt dur
+  avec lignes bufferisées non flushées) ; classification I1 par « pas GET »
+  plutôt que « est une écriture » (un `OPTIONS`/`HEAD` sur `/harvest/*`
+  tomberait techniquement dans le budget harvest, inatteignable aujourd'hui
+  — aucun CORS preflight n'est répondu sur ce chemin).

@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 import { lazy, Suspense, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { useBusAction } from "../ActionBusContext";
 import { useSetCrossFilter, useSetExtent } from "../AnalyticsContext";
 import { useItemClient } from "../../api/ItemClientProvider";
-import { buildLegend, buildMapPaint, detectGeometryKind } from "./mapSymbology";
-import type { ColorDomain, LegendSpec, MapEncodings, SizeDomain } from "./mapSymbology";
-import type { ItemClient, MapConfig, PopupConfig } from "../../api/types";
+import {
+  buildLegend,
+  buildMapPaint,
+  detectGeometryKind,
+  symbologyToPaintInputs,
+} from "./mapSymbology";
+import type { LayerSymbology, LegendSpec } from "./mapSymbology";
+import type { MapConfig, PopupConfig } from "../../api/types";
 import type { MapViewHandle } from "../../map/MapView";
 import { ExplorerMenu } from "./ExplorerMenu";
 import { PopupEditor } from "../../map/PopupEditor";
+import { MapSymbologyEditor } from "../../map/MapSymbologyEditor";
 
 const MapView = lazy(() => import("../../map/MapView").then((m) => ({ default: m.MapView })));
 const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
-
-const labelCls = "flex flex-col gap-1";
-const inputCls = "h-9 rounded-md border border-slate-300 px-2";
 
 function centerFromPayload(p: unknown): [number, number] | null {
   const rec = p as
@@ -33,38 +35,6 @@ function geometryFromPayload(p: unknown): unknown | null {
   return (p as { geometry?: unknown } | undefined)?.geometry ?? null;
 }
 
-// Bornes min/max d'un champ numérique, interrogées séparément de la
-// DataSource "features" qui alimente le rendu — même patron que
-// sliderFilter.tsx (measures min/max sur une source "statistics").
-function useNumericDomain(
-  client: ItemClient,
-  datasetId: string | undefined,
-  field: string,
-  active: boolean,
-) {
-  return useQuery({
-    queryKey: ["map-numeric-domain", datasetId, field],
-    queryFn: async (): Promise<SizeDomain> => {
-      const rows = await client.queryDataSource({
-        id: `map-domain-${datasetId}-${field}`,
-        type: "statistics",
-        service: "core",
-        layer: "",
-        datasetId,
-        query: {
-          measures: [
-            { field, agg: "min", label: "min" },
-            { field, agg: "max", label: "max" },
-          ],
-        },
-      });
-      const properties = rows[0]?.properties ?? {};
-      return { min: Number(properties.min ?? 0), max: Number(properties.max ?? 0) };
-    },
-    enabled: active && Boolean(datasetId && field),
-  });
-}
-
 function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
   return (
     <div className="absolute bottom-2 right-2 z-10 flex flex-col gap-2 rounded-md bg-white/90 p-2 text-xs shadow">
@@ -77,6 +47,19 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
                 style={{ backgroundColor: e.color }}
               />
               {e.value}
+            </li>
+          ))}
+        </ul>
+      )}
+      {legend.color?.kind === "classed" && (
+        <ul>
+          {legend.color.classes.map((c, i) => (
+            <li key={i} className="flex items-center gap-1">
+              <span
+                className="inline-block h-3 w-3 rounded-sm"
+                style={{ backgroundColor: c.color }}
+              />
+              {c.from.toFixed(1)} – {c.to.toFixed(1)}
             </li>
           ))}
         </ul>
@@ -124,64 +107,55 @@ export function registerMapWidget(): void {
     ],
     events: ["extentChanged", "itemSelected"],
     actions: ["flyTo", "highlight"],
-    PropsPanel: ({ props, onChange, dataSources }) => {
-      const encodings = (props.encodings as MapEncodings | undefined) ?? {};
-      const setEncodings = (patch: MapEncodings) =>
-        onChange({ ...props, encodings: { ...encodings, ...patch } });
+    PropsPanel: ({ props, onChange, dataSources, theme }) => {
+      const client = useItemClient();
+      const dataSourceId = String(props.dataSourceId ?? "");
+      const dataSource = dataSources.find((d) => d.id === dataSourceId);
+      const datasetId = dataSource?.datasetId;
       return (
         <div className="flex flex-col gap-2 text-sm">
           <DataSourceSelect
-            value={String(props.dataSourceId ?? "")}
+            value={dataSourceId}
             dataSources={dataSources.filter((s) => s.type === "features")}
             onChange={(id) => onChange({ ...props, dataSourceId: id })}
           />
-          <label className={labelCls}>
-            Champ couleur
-            <input
-              aria-label="Champ couleur"
-              className={inputCls}
-              value={String(encodings.color?.field ?? "")}
-              onChange={(e) =>
-                setEncodings({
-                  color: { field: e.target.value, mode: encodings.color?.mode ?? "categorical" },
-                })
-              }
-            />
-          </label>
-          <label className={labelCls}>
-            Type de couleur
-            <select
-              aria-label="Type de couleur"
-              className={inputCls}
-              value={encodings.color?.mode ?? "categorical"}
-              onChange={(e) =>
-                setEncodings({
-                  color: {
-                    field: encodings.color?.field ?? "",
-                    mode: e.target.value as "categorical" | "numeric",
-                  },
-                })
-              }
-            >
-              <option value="categorical">Catégoriel</option>
-              <option value="numeric">Numérique</option>
-            </select>
-          </label>
-          <label className={labelCls}>
-            Champ taille
-            <input
-              aria-label="Champ taille"
-              className={inputCls}
-              value={String(encodings.size?.field ?? "")}
-              onChange={(e) => setEncodings({ size: { field: e.target.value } })}
-            />
-          </label>
+          <MapSymbologyEditor
+            value={props.symbology as LayerSymbology | undefined}
+            availableFields={[]} // PropsPanel has no schema (registry.ts) — same PopupEditor precedent
+            themeColors={theme?.colors}
+            runStatistics={(query) =>
+              client.queryDataSource({
+                id: `map-domain-${datasetId}`,
+                type: "statistics",
+                service: "core",
+                // `datasetId` se résout automatiquement côté queryDataSource
+                // (types.ts:438) ; sans lui (source "features" branchée
+                // directement sur une collection, cas valide et
+                // sélectionnable — DataSourceSelect ne filtre que sur
+                // `type === "features"`), c'est `dataSource.layer` qui porte
+                // l'id de collection. Le hardcode précédent à "" produisait
+                // un POST vers `/collections//aggregate` (I5 de la revue
+                // finale SP-25) — la garde `enabled: Boolean(datasetId &&
+                // field)` d'avant SP-25 avait été retirée sans repli.
+                layer: dataSource?.layer ?? "",
+                datasetId,
+                query,
+              })
+            }
+            // Jenks a besoin d'un collectionId résolu pour échantillonner un
+            // champ ; ce host n'en a pas (portée volontairement non
+            // élargie ici, cf. brief I5) — l'option est masquée plutôt que
+            // de laisser l'auteur la choisir puis échouer au clic.
+            jenksAvailable={false}
+            sampleField={async () => {
+              throw new Error(
+                "Jenks sur le widget carte nécessite un collectionId résolu — non câblé",
+              );
+            }}
+            onChange={(symbology) => onChange({ ...props, symbology })}
+          />
           <PopupEditor
             value={props.popup as PopupConfig | undefined}
-            // PropsPanel ne reçoit ni schéma ni enregistrements
-            // (registry.ts:33-37) : la liste proposée est vide et l'auteur
-            // saisit les noms de champs, exactement comme pour « Champ
-            // couleur » juste au-dessus. Aucun appel réseau ajouté ici.
             availableFields={[]}
             onChange={(popup) => onChange({ ...props, popup })}
           />
@@ -201,51 +175,23 @@ export function registerMapWidget(): void {
         handle.current?.highlight(geometryFromPayload(payload));
       });
 
-      const encodings = (props.encodings as MapEncodings | undefined) ?? {};
-      const datasetId = ctx.data?.datasetId;
-      const colorField = encodings.color?.field ?? "";
-      const colorMode = encodings.color?.mode ?? "categorical";
-      const sizeField = encodings.size?.field ?? "";
-
-      const categoricalQuery = useQuery({
-        queryKey: ["map-categorical-domain", datasetId, colorField],
-        queryFn: async (): Promise<string[]> => {
-          const rows = await client.queryDataSource({
-            id: `map-domain-${datasetId}-${colorField}`,
-            type: "statistics",
-            service: "core",
-            layer: "",
-            datasetId,
-            query: { groupBy: colorField },
-          });
-          return rows.map((r) => String(r.id));
-        },
-        enabled: Boolean(datasetId && colorField && colorMode === "categorical"),
-      });
-      const numericColorQuery = useNumericDomain(
-        client,
-        datasetId,
-        colorField,
-        colorMode === "numeric",
-      );
-      const sizeQuery = useNumericDomain(client, datasetId, sizeField, true);
-
       if (ctx.data?.error) return <p className="text-xs text-red-600">Erreur de données</p>;
       const url = ctx.data?.url;
 
-      const colorDomain: ColorDomain | null = !colorField
-        ? null
-        : colorMode === "categorical"
-          ? categoricalQuery.data
-            ? { kind: "categorical", values: categoricalQuery.data }
-            : null
-          : numericColorQuery.data
-            ? { kind: "numeric", ...numericColorQuery.data }
-            : null;
-      const sizeDomain: SizeDomain | null = sizeField && sizeQuery.data ? sizeQuery.data : null;
+      const symbology = props.symbology as LayerSymbology | undefined;
+      const { encodings, colorDomain, sizeDomain, palette } = symbologyToPaintInputs(
+        symbology,
+        ctx.theme?.colors,
+      );
       const geometryKind = detectGeometryKind(ctx.data?.records?.[0]?.geometry);
-      const { renderAs, paint } = buildMapPaint(encodings, colorDomain, sizeDomain, geometryKind);
-      const legend = buildLegend(encodings, colorDomain, sizeDomain, geometryKind);
+      const { renderAs, paint } = buildMapPaint(
+        encodings,
+        colorDomain,
+        sizeDomain,
+        geometryKind,
+        palette,
+      );
+      const legend = buildLegend(encodings, colorDomain, sizeDomain, geometryKind, palette);
 
       const config: MapConfig = {
         basemap: { style: DEFAULT_STYLE },

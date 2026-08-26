@@ -118,6 +118,7 @@ export type MapLayer =
       geometryKind?: "point" | "line" | "polygon";
       pkColumn?: string;
       popup?: PopupConfig;
+      symbology?: import("../builder/widgets/mapSymbology").LayerSymbology;
     }
   | {
       id: string;
@@ -136,6 +137,7 @@ export type MapLayer =
       paint?: Record<string, unknown>;
       renderAs?: "fill" | "circle" | "line";
       popup?: PopupConfig;
+      symbology?: import("../builder/widgets/mapSymbology").LayerSymbology;
     }
   | {
       id: string;
@@ -253,6 +255,7 @@ export interface ItemClient {
   getSharing(pk: string): Promise<Sharing>;
   setSharing(pk: string, sharing: Sharing): Promise<void>;
   listLayerSources(params?: { q?: string }): Promise<LayerSource[]>;
+  sampleCollectionField(collectionId: string, field: string, limit: number): Promise<number[]>;
   listActiveExtensions(): Promise<ExtensionManifest[]>;
   listAllExtensions(): Promise<AdminExtension[]>;
   setExtensionEnabled(id: string, enabled: boolean): Promise<void>;

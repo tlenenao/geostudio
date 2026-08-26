@@ -78,6 +78,7 @@ type RawMapLayer = {
   collectionId?: string | null;
   geometryKind?: "point" | "line" | "polygon" | null;
   pkColumn?: string | null;
+  symbology?: import("../builder/widgets/mapSymbology").LayerSymbology | null;
 };
 
 function toFrontLayer(l: RawMapLayer): MapLayer {
@@ -94,6 +95,7 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
         ...(l.geometryKind ? { geometryKind: l.geometryKind } : {}),
         ...(l.pkColumn ? { pkColumn: l.pkColumn } : {}),
         ...(l.popup ? { popup: l.popup } : {}),
+        ...(l.symbology ? { symbology: l.symbology } : {}),
       };
     case "raster":
       return {
@@ -120,6 +122,7 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
         url: l.url ?? "",
         ...(l.paint ? { paint: l.paint } : {}),
         ...(l.popup ? { popup: l.popup } : {}),
+        ...(l.symbology ? { symbology: l.symbology } : {}),
       };
   }
 }
@@ -142,6 +145,7 @@ const STAT_KEYS = new Set([
   "bbox",
   "bucket",
   "bins",
+  "sample",
   "p",
 ]);
 
@@ -161,6 +165,7 @@ function buildAggregateBody(query: Record<string, unknown>): Record<string, unkn
   if (query.field) body.field = String(query.field);
   if (query.bucket) body.bucket = String(query.bucket);
   if (query.bins) body.bins = Number(query.bins);
+  if (query.sample) body.sample = Number(query.sample);
   if (query.p !== undefined && query.p !== null) body.p = Number(query.p);
   if (Array.isArray(query.measures) && query.measures.length) {
     body.measures = (query.measures as StatMeasure[]).map((m) => ({
@@ -225,10 +230,8 @@ async function requestFeatureWrite<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (res.status === 400) {
-    const data = (await res.json().catch(() => null)) as {
-      detail?: { errors?: FieldError[] };
-    } | null;
-    throw new FeatureValidationError(data?.detail?.errors ?? []);
+    const data = (await res.json().catch(() => null)) as { errors?: FieldError[] } | null;
+    throw new FeatureValidationError(data?.errors ?? []);
   }
   if (!res.ok) {
     const data = (await res.json().catch(() => null)) as { detail?: unknown } | null;
@@ -280,9 +283,9 @@ async function requestAnalyticsSql(
   });
   if (res.status === 400) {
     const data = (await res.json().catch(() => null)) as {
-      detail?: { errors?: FieldError[] };
+      errors?: FieldError[];
     } | null;
-    throw new SqlQueryError(data?.detail?.errors?.[0]?.message ?? "Requête SQL invalide.");
+    throw new SqlQueryError(data?.errors?.[0]?.message ?? "Requête SQL invalide.");
   }
   if (!res.ok) {
     throw new Error(`Request failed: ${res.status} POST /analytics/sql`);
@@ -1305,6 +1308,19 @@ export function createItemClient(opts: {
         return data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row }));
       }
       return _fetchGeoJsonFeatures(buildFeaturesUrl(coreUrl, resolved));
+    },
+
+    async sampleCollectionField(
+      collectionId: string,
+      field: string,
+      limit: number,
+    ): Promise<number[]> {
+      const data = await request<{ categoryKey: string | string[]; rows: { value: number }[] }>(
+        "POST",
+        `/collections/${collectionId}/aggregate`,
+        { field, sample: limit },
+      );
+      return data.rows.map((r) => Number(r.value));
     },
 
     async exportDataSource(

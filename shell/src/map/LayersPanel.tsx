@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { MapLayer } from "../api/types";
 import { LayerPicker } from "./LayerPicker";
+import { MapSymbologyEditor } from "./MapSymbologyEditor";
 import { PopupEditor } from "./PopupEditor";
 
 // Charge le schéma de la collection sous-jacente pour offrir la liste des
@@ -30,6 +31,46 @@ function LayerPopupEditor({
       // gère les deux cas avec le même contrôle.
       availableFields={schema.data?.fields.map((f) => f.name) ?? []}
       onChange={(popup) => onChangeLayer({ ...layer, popup })}
+    />
+  );
+}
+
+// Même patron que LayerPopupEditor ci-dessus. Sans collectionId (tuiles
+// externes, couche GeoJSON "feature"), il n'y a pas de collection
+// interrogeable pour runStatistics ici : la couche "feature" du widget
+// carte (mapWidget.tsx, Task 10) résout à travers son propre datasetId,
+// chemin distinct et non unifié avec celui-ci (spec §1).
+function LayerSymbologyEditor({
+  layer,
+  onChangeLayer,
+}: {
+  layer: Extract<MapLayer, { kind: "vector" | "feature" }>;
+  onChangeLayer: (next: MapLayer) => void;
+}) {
+  const client = useItemClient();
+  const collectionId = layer.kind === "vector" ? layer.collectionId : undefined;
+  const schema = useQuery({
+    queryKey: ["collection-schema", collectionId],
+    queryFn: () => client.getCollectionSchema(collectionId!),
+    enabled: Boolean(collectionId),
+  });
+  if (!collectionId) return null; // external tiles / plain GeoJSON feature layer: no collection to query
+  return (
+    <MapSymbologyEditor
+      value={layer.symbology}
+      availableFields={schema.data?.fields.map((f) => f.name) ?? []}
+      themeColors={undefined} // no Theme on a standalone MapConfig (spec §1)
+      runStatistics={(query) =>
+        client.queryDataSource({
+          id: `map-symbology-${collectionId}`,
+          type: "statistics",
+          service: "core",
+          layer: collectionId,
+          query,
+        })
+      }
+      sampleField={(field, limit) => client.sampleCollectionField(collectionId, field, limit)}
+      onChange={(symbology) => onChangeLayer({ ...layer, symbology })}
     />
   );
 }
@@ -97,6 +138,12 @@ export function LayersPanel({
             {(layer.kind === "vector" || layer.kind === "feature") && (
               <div className="basis-full pl-2">
                 <LayerPopupEditor
+                  layer={layer}
+                  onChangeLayer={(next) =>
+                    onChange(layers.map((l) => (l.id === layer.id ? next : l)))
+                  }
+                />
+                <LayerSymbologyEditor
                   layer={layer}
                   onChangeLayer={(next) =>
                     onChange(layers.map((l) => (l.id === layer.id ? next : l)))

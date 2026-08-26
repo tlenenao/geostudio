@@ -1,209 +1,185 @@
-## Task 9: Shell — `applyClientOp.ts`
+## Task 9: E2E sur OIDC réel (3.8)
 
 **Files:**
-- Create: `shell/src/builder/copilot/applyClientOp.ts`
-- Create: `shell/src/builder/copilot/applyClientOp.test.ts`
+- Create: `shell/e2e/auth-oidc.spec.ts`
+- Create: `shell/playwright.oidc.config.ts`
+- Modify: `shell/package.json` (add an `e2e:oidc` script)
+- Modify: `.github/workflows/ci.yml` (add a new `shell-e2e-oidc` job)
 
 **Interfaces:**
-- Consumes: `getWidget` (`../registry`), `getPageLayout`/`setPageLayout` (`../pages`), `nextFreePosition` (`../grid`), `AppConfig`/`DataSource`/`WidgetItem` (`../../api/types`).
-- Produces: `RawClientOp` type, `applyClientOp(raw: RawClientOp, config: AppConfig, activePageId: string): AppConfig` (pure). Consumed by Task 13 (`CopilotPanel.tsx`).
+- Consumes: nothing structurally, but exercises Task 2's guard and Task 4's rate limiter under real OIDC conditions (per the spec's ordering rationale — placed last).
+- Produces: nothing consumed by later tasks (last task before Task 10's final validation).
 
-- [ ] **Step 1: Write the failing tests**
+**Context:** The existing `shell` E2E suite (108 specs, `shell/playwright.config.ts`) runs entirely against `VITE_AUTH_MODE=mock` with `VITE_CORE_URL: "https://core.test"` — a fake domain, all network calls intercepted client-side via Playwright route mocking, no real `core`/Postgres/Keycloak process involved at all. This task needs the opposite: real `postgis` + `keycloak` (importing the already-existing `deploy/keycloak/geostudio-realm.json`, which provisions a `geostudio-shell` public client with redirect URI `http://localhost:8300/` and two test users `alice`/`bob`, both password `Demo1234!`) + real `core` in `CORE_AUTH_MODE=oidc` + real `shell` built with `VITE_AUTH_MODE=oidc`, all via `docker compose up`, with Playwright pointed at the live `http://localhost:8300`.
 
-Create `shell/src/builder/copilot/applyClientOp.test.ts`:
+- [ ] **Step 1: Write the Playwright config for this suite**
 
-```ts
-// SPDX-License-Identifier: Apache-2.0
-import { describe, expect, it, beforeEach } from "vitest";
-import type { AppConfig } from "../../api/types";
-import { _resetRegistry } from "../registry";
-import { registerBuiltinWidgets } from "../widgets";
-import { applyClientOp } from "./applyClientOp";
+Create `shell/playwright.oidc.config.ts`:
 
-function emptyConfig(): AppConfig {
-  return {
-    kind: "app", theme: {} as AppConfig["theme"], dataSources: [], messages: [],
-    layout: { type: "grid", breakpoints: {}, items: [] },
-  };
-}
+```typescript
+import { defineConfig } from "@playwright/test";
 
-describe("applyClientOp", () => {
-  beforeEach(() => {
-    _resetRegistry();
-    registerBuiltinWidgets();
+// Suite séparée de playwright.config.ts (mock) : celle-ci suppose une
+// stack docker compose déjà démarrée (postgis+keycloak+core+shell réels,
+// CORE_AUTH_MODE=oidc) — pas de webServer local, pas de mock réseau
+// (SP-26/3.8, I13 revue de projet 2026-08-20).
+export default defineConfig({
+  testDir: "./e2e-oidc",
+  use: { baseURL: "http://localhost:8300" },
+  retries: process.env.CI ? 2 : 0,
+  timeout: 30_000,
+});
+```
+
+- [ ] **Step 2: Write the spec**
+
+Create the directory `shell/e2e-oidc/` and `shell/e2e-oidc/auth-oidc.spec.ts`:
+
+```typescript
+import { test, expect } from "@playwright/test";
+
+const ALICE = { username: "alice", password: "Demo1234!" };
+
+test.describe("authentification OIDC réelle (Keycloak)", () => {
+  test("connexion redirige vers Keycloak puis revient authentifié", async ({ page }) => {
+    await page.goto("/");
+    // Non authentifié : oidc-client-ts redirige vers Keycloak.
+    await page.waitForURL(/\/realms\/geostudio\/protocol\/openid-connect\/auth/);
+    await page.fill('input[name="username"]', ALICE.username);
+    await page.fill('input[name="password"]', ALICE.password);
+    await page.click('input[type="submit"], button[type="submit"]');
+    // Retour sur le shell, authentifié.
+    await page.waitForURL("http://localhost:8300/**");
+    await expect(page.getByText(/catalogue|catalog/i)).toBeVisible({ timeout: 15_000 });
   });
 
-  it("addWidget adds an item with the widget's default props/size", () => {
-    const config = applyClientOp({ op: "addWidget", args: { type: "text" } }, emptyConfig(), "page-1");
-    expect(config.layout.items).toHaveLength(1);
-    expect(config.layout.items[0].widget).toBe("text");
-    expect(config.layout.items[0].props).toEqual({ text: "Nouveau texte", dataSourceId: "" });
-  });
+  test("déconnexion efface la session", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForURL(/\/realms\/geostudio\/protocol\/openid-connect\/auth/);
+    await page.fill('input[name="username"]', ALICE.username);
+    await page.fill('input[name="password"]', ALICE.password);
+    await page.click('input[type="submit"], button[type="submit"]');
+    await page.waitForURL("http://localhost:8300/**");
 
-  it("addWidget with an unknown type is a no-op", () => {
-    const config = applyClientOp({ op: "addWidget", args: { type: "not-a-real-widget" } }, emptyConfig(), "page-1");
-    expect(config.layout.items).toHaveLength(0);
-  });
-
-  it("updateWidgetProps merges only keys present in configSchema, coerced by type", () => {
-    let config = applyClientOp({ op: "addWidget", args: { type: "indicator" } }, emptyConfig(), "page-1");
-    const widgetId = config.layout.items[0].id;
-    config = applyClientOp(
-      { op: "updateWidgetProps", args: { widgetId, props: { label: "Incidents ouverts", agg: 42, notARealProp: "x" } } },
-      config, "page-1",
-    );
-    expect(config.layout.items[0].props).toEqual({
-      dataSourceId: "", label: "Incidents ouverts", agg: "42", field: "",
-    });
-  });
-
-  it("removeWidget removes the item by id", () => {
-    let config = applyClientOp({ op: "addWidget", args: { type: "text" } }, emptyConfig(), "page-1");
-    const widgetId = config.layout.items[0].id;
-    config = applyClientOp({ op: "removeWidget", args: { widgetId } }, config, "page-1");
-    expect(config.layout.items).toHaveLength(0);
-  });
-
-  it("addDataSource appends a new source, ignoring a duplicate id", () => {
-    let config = applyClientOp(
-      { op: "addDataSource", args: { id: "ds1", type: "features", service: "ogc", layer: "incidents" } },
-      emptyConfig(), "page-1",
-    );
-    expect(config.dataSources).toEqual([{ id: "ds1", type: "features", service: "ogc", layer: "incidents", query: {} }]);
-    config = applyClientOp(
-      { op: "addDataSource", args: { id: "ds1", type: "features", service: "ogc", layer: "other" } },
-      config, "page-1",
-    );
-    expect(config.dataSources).toHaveLength(1); // duplicate id ignored
-  });
-
-  it("setFilter updates an existing source's query", () => {
-    let config = applyClientOp(
-      { op: "addDataSource", args: { id: "ds1", type: "features", service: "ogc", layer: "incidents" } },
-      emptyConfig(), "page-1",
-    );
-    config = applyClientOp(
-      { op: "setFilter", args: { dataSourceId: "ds1", query: { status: "open" } } },
-      config, "page-1",
-    );
-    expect(config.dataSources[0].query).toEqual({ status: "open" });
-  });
-
-  it("an unknown op name is a no-op, never throws", () => {
-    const config = emptyConfig();
-    const result = applyClientOp({ op: "deleteEverything", args: {} }, config, "page-1");
-    expect(result).toBe(config);
+    // Trouver le contrôle de déconnexion réel du shell avant d'écrire ce
+    // clic — grep "logout\|signout\|déconnexion" shell/src/**/*.tsx pour
+    // le sélecteur exact plutôt que de le deviner ici.
+    await page.getByRole("button", { name: /déconnexion|logout/i }).click();
+    await page.waitForURL(/\/realms\/geostudio\/protocol\/openid-connect\/auth|localhost:8300\/?$/);
   });
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `cd shell && npx vitest run src/builder/copilot/applyClientOp.test.ts`
-Expected: FAIL — `Cannot find module './applyClientOp'`.
-
-- [ ] **Step 3: Implement**
-
-Create `shell/src/builder/copilot/applyClientOp.ts`:
-
-```ts
-// SPDX-License-Identifier: Apache-2.0
-// Exécute une opération "client" proposée par le copilote (SP-20) en
-// réutilisant les mêmes fonctions pures que la palette/PropsPanel
-// (grid.ts/pages.ts) — toute opération traverse donc le même chemin que
-// l'UI manuelle. Pure : le résultat passe par setDraft (undo SP-19) côté
-// appelant (CopilotPanel), jamais ici.
-import type { AppConfig, DataSource, WidgetItem } from "../../api/types";
-import { nextFreePosition } from "../grid";
-import { getPageLayout, setPageLayout } from "../pages";
-import { getWidget } from "../registry";
-
-// Forme brute reçue du cœur (Pydantic ClientOp côté serveur, JSON opaque) —
-// peut être n'importe quel nom d'outil que le LLM a proposé, y compris un
-// nom halluciné qui ne correspond à aucun des 5 op ci-dessous : voir le
-// `default` du switch plus bas.
-export type RawClientOp = { op: string; args: Record<string, unknown> };
-
-function coerceProp(value: unknown, type: "string" | "number" | "boolean" | "dataSource"): unknown {
-  if (type === "number") return Number(value);
-  if (type === "boolean") return Boolean(value);
-  return String(value ?? ""); // "string" | "dataSource"
-}
-
-export function applyClientOp(raw: RawClientOp, config: AppConfig, activePageId: string): AppConfig {
-  const layout = getPageLayout(config, activePageId);
-
-  switch (raw.op) {
-    case "addWidget": {
-      const type = String(raw.args.type ?? "");
-      const def = getWidget(type);
-      if (!def) return config;
-      const { x, y } = nextFreePosition(layout.items);
-      const item: WidgetItem = {
-        id: crypto.randomUUID(), widget: type, x, y,
-        w: def.defaultSize.w, h: def.defaultSize.h, props: { ...def.defaultProps },
-      };
-      return setPageLayout(config, activePageId, { ...layout, items: [...layout.items, item] });
-    }
-    case "updateWidgetProps": {
-      const widgetId = String(raw.args.widgetId ?? "");
-      const patch = (raw.args.props ?? {}) as Record<string, unknown>;
-      const item = layout.items.find((i) => i.id === widgetId);
-      if (!item) return config;
-      const schema = getWidget(item.widget)?.configSchema ?? [];
-      const allowed = new Map(schema.map((p) => [p.name, p.type]));
-      const safePatch: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(patch)) {
-        const type = allowed.get(key);
-        if (!type) continue; // clé hors configSchema : jamais fusionnée telle quelle
-        safePatch[key] = coerceProp(value, type);
-      }
-      return setPageLayout(config, activePageId, {
-        ...layout,
-        items: layout.items.map((i) => (i.id === widgetId ? { ...i, props: { ...i.props, ...safePatch } } : i)),
-      });
-    }
-    case "removeWidget": {
-      const widgetId = String(raw.args.widgetId ?? "");
-      return setPageLayout(config, activePageId, {
-        ...layout, items: layout.items.filter((i) => i.id !== widgetId),
-      });
-    }
-    case "addDataSource": {
-      const { id, type, service, layer } = raw.args as { id: string; type: DataSource["type"]; service: string; layer: string };
-      if (!id || config.dataSources.some((s) => s.id === id)) return config;
-      const source: DataSource = { id, type, service, layer, query: {} };
-      return { ...config, dataSources: [...config.dataSources, source] };
-    }
-    case "setFilter": {
-      const dataSourceId = String(raw.args.dataSourceId ?? "");
-      const query = (raw.args.query ?? {}) as Record<string, unknown>;
-      return {
-        ...config,
-        dataSources: config.dataSources.map((s) => (s.id === dataSourceId ? { ...s, query } : s)),
-      };
-    }
-    default:
-      return config;
-  }
-}
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `cd shell && npx vitest run src/builder/copilot/applyClientOp.test.ts`
-Expected: PASS (all 7).
-
-- [ ] **Step 5: Commit**
+Before finalizing this spec, grep the real logout control:
 
 ```bash
-git add shell/src/builder/copilot/applyClientOp.ts shell/src/builder/copilot/applyClientOp.test.ts
-git commit -m "$(cat <<'EOF'
-feat(shell): applyClientOp.ts — exécute les opérations du copilote (SP-20)
+cd shell
+grep -rn "logout\|signout\|déconnexion" src --include="*.tsx" -il
+```
 
-Pure, réutilise nextFreePosition/getPageLayout/setPageLayout — même
-chemin que la palette/PropsPanel. updateWidgetProps filtre et coerce par
-configSchema (jamais un merge opaque) ; un op au nom inconnu est un no-op.
+Read whichever file matches, find its exact visible label/role, and correct the `getByRole` call above to match — don't ship a guessed selector.
+
+- [ ] **Step 3: Add the npm script**
+
+Edit `shell/package.json`, near the existing `"e2e": "playwright test"` line:
+
+```json
+    "e2e:oidc": "playwright test --config=playwright.oidc.config.ts",
+```
+
+- [ ] **Step 4: Add the CI job**
+
+Edit `.github/workflows/ci.yml`, add a new job after `shell`:
+
+```yaml
+  shell-e2e-oidc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build postgis+pgvector image
+        run: docker build -t geostudio-postgis-ci:latest deploy/postgis
+      - name: Bring up postgis, keycloak, core, shell (real OIDC)
+        run: |
+          cat > .env <<EOF
+          PG_PASSWORD=ci-postgres-password
+          KC_PASSWORD=ci-keycloak-password
+          CORE_AUTH_MODE=oidc
+          CORE_SECRETS_MASTER_KEY=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
+          VITE_OIDC_AUTHORITY=http://localhost:8180/realms/geostudio
+          VITE_OIDC_CLIENT_ID=geostudio-shell
+          VITE_OIDC_REDIRECT_URI=http://localhost:8300/
+          VITE_AUTH_MODE=oidc
+          EOF
+          docker compose build core shell
+          docker compose up -d postgis keycloak core shell
+      - name: Wait for shell to be reachable
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8300/ > /dev/null && break
+            sleep 5
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+        working-directory: shell
+      - run: npx playwright install --with-deps chromium
+        working-directory: shell
+      - run: npm run e2e:oidc
+        working-directory: shell
+      - name: Dump service logs on failure
+        if: failure()
+        run: docker compose logs core keycloak shell
+```
+
+`docker build -t geostudio-postgis-ci:latest deploy/postgis` mirrors the `core`/`migrations` jobs' own image-naming convention exactly, so `docker compose`'s own `postgis` service (which does `build: ./deploy/postgis` per `docker-compose.yml`, check with `grep -A2 "^  postgis:" docker-compose.yml` to confirm the exact build context) resolves without rebuilding from scratch — if `docker compose build` conflicts with the pre-tagged image, drop the standalone `docker build` line and let `docker compose build postgis core shell` build everything itself instead; verify by running it once and reading the output.
+
+- [ ] **Step 5: Verify the job runs and passes — do not skip this, per the spec's explicit requirement**
+
+Since this can't be run via GitHub Actions from a local session, verify the equivalent sequence manually against a real local Docker environment:
+
+```bash
+cd /home/lenen/projets/geostudio
+cat >> .env <<'EOF'
+CORE_AUTH_MODE=oidc
+EOF
+docker compose build core shell
+docker compose up -d postgis keycloak core shell
+for i in $(seq 1 60); do curl -sf http://localhost:8300/ > /dev/null && break; sleep 5; done
+cd shell
+npx playwright install --with-deps chromium
+npm run e2e:oidc
+```
+
+Expected: both specs in `auth-oidc.spec.ts` PASS against the real stack. If either fails, debug against real Keycloak/core logs (`docker compose logs keycloak core`) — do not weaken the spec's assertions to make it pass; fix the actual redirect URI, client config, or selector mismatch. This mirrors the SP-17a Task 6 precedent explicitly cited in the spec: a `@pytest.mark.playwright`-style test that's only ever claimed to work, never actually run, is exactly the failure mode this task exists to close (SP-15d's un-run qgis tests are the cautionary counter-example).
+
+```bash
+docker compose down
+git checkout .env  # ou rm .env si créé pour l'occasion — ne pas committer de secrets de test
+```
+
+- [ ] **Step 6: Confirm the existing mock E2E suite is unaffected**
+
+```bash
+cd shell
+npm run e2e
+```
+
+Expected: still 108 passed, 4 skipped, 0 failed — the new spec lives in a separate `e2e-oidc/` directory with its own config, untouched by `playwright.config.ts`'s `testDir: "./e2e"`.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add shell/playwright.oidc.config.ts shell/e2e-oidc/ shell/package.json .github/workflows/ci.yml
+git commit -m "$(cat <<'EOF'
+test(shell): E2E réelle contre Keycloak (login/logout OIDC)
+
+Nouveau job CI dédié, stack réelle (postgis+keycloak+core en
+CORE_AUTH_MODE=oidc+shell), séparé de la suite mock existante (I13,
+revue de projet 2026-08-20) — referme le suivi non bloquant SP-20 sur
+l'absence de preuve bout-en-bout navigateur+iframe+Keycloak.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 EOF
 )"
 ```

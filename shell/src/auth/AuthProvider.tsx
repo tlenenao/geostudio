@@ -40,6 +40,16 @@ export function AuthProvider({
       authority={config.oidcAuthority}
       client_id={config.oidcClientId}
       redirect_uri={config.oidcRedirectUri}
+      // Sans cette prop, oidc-client-ts n'envoie aucun
+      // post_logout_redirect_uri à l'endpoint de déconnexion de Keycloak :
+      // l'utilisateur reste bloqué sur la page "You are logged out" nue de
+      // Keycloak au lieu de revenir sur le shell (trouvé par la suite E2E
+      // OIDC réelle, SP-26/3.8 — le mode mock ne pouvait pas le révéler).
+      // Réutilise la même URI déjà whitelistée côté Keycloak
+      // (redirect_uri), enregistrée aussi comme post-logout redirect URI
+      // valide sur le client geostudio-shell (deploy/keycloak/
+      // geostudio-realm.json).
+      post_logout_redirect_uri={config.oidcRedirectUri}
       response_type="code"
       scope="openid profile email"
       // In-memory store: nothing persisted to localStorage.

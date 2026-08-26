@@ -186,7 +186,12 @@ test("exportRender=1 renders a nude chrome (no builder aside/save button) and ma
   expect(screen.getByText("Couche A")).toBeInTheDocument(); // showLegend
   expect(screen.getByText("GeoStudio © 2026")).toBeInTheDocument();
   // The map fires "idle" synchronously on mount in the MockMap harness — the
-  // export-ready DOM signal (Task 6's contract) must follow.
+  // export-ready DOM signal (Task 6's contract) must follow. But mounting
+  // the mocked MapLibre instance still happens inside MapView's effect, one
+  // tick after this test's own render/findByText resolve — indexing
+  // mapInstances[0] without waiting was a ~25% flake on this branch's merge
+  // (I6 de la revue finale SP-25), not caused by SP-25 itself.
+  await waitFor(() => expect(mapInstances[0]).toBeDefined());
   mapInstances[0].fire("idle");
   expect(document.body.getAttribute("data-export-ready")).toBe("true");
 });

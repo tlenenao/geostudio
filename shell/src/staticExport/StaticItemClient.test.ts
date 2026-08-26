@@ -65,4 +65,9 @@ describe("StaticItemClient", () => {
     await expect(client.listConfigRevisions("app-1")).rejects.toThrow(/export statique/);
     await expect(client.rollbackConfig("app-1", 1)).rejects.toThrow(/export statique/);
   });
+
+  it("sampleCollectionField throws an explicit unsupported error", async () => {
+    const client = createStaticItemClient(config());
+    await expect(client.sampleCollectionField("c", "f", 10)).rejects.toThrow(/statique/i);
+  });
 });

@@ -1,501 +1,136 @@
-## Task 7: Shell — `registry.ts` gains `configSchema`, backfill 22 builtin widgets
+## Task 7: CSP, Permissions-Policy, compression (3.3)
 
 **Files:**
-- Create: `shell/src/builder/widgetPropSchema.ts`
-- Modify: `shell/src/builder/registry.ts`
-- Modify: `shell/src/builder/widgets/dateRangeFilter.tsx`, `datasetCard.tsx`, `chart.tsx`, `data.tsx` (list + table), `drawer.tsx`, `indicator.tsx`, `index.tsx` (text + image + button), `gallery.tsx`, `hero.tsx`, `richSection.tsx`, `filter.tsx`, `selectFilter.tsx`, `mapWidget.tsx`, `navigation.tsx`, `modal.tsx`, `tabs.tsx`, `sliderFilter.tsx`, `form.tsx`, `pivot.tsx`
-- Create: `shell/src/builder/widgetPropSchema.test.ts`
+- Modify: `docker-compose.prod.yml` (extend the existing `security-headers` Traefik middleware, add a `compress` middleware)
+- Modify: `shell/nginx.conf` (add the same headers + gzip, for the dev-served/standalone paths that bypass Traefik)
+- Test: manual verification against a real running stack (browser or `curl`) — no automated unit test framework covers Traefik label config or nginx directives in this repo
 
 **Interfaces:**
-- Produces: `WidgetPropDescriptor` type (`shell/src/builder/widgetPropSchema.ts`), `WidgetDefinition.configSchema?: WidgetPropDescriptor[]` (`registry.ts`). Consumed by Task 9 (`clientTools.ts`) and Task 10 (`applyClientOp.ts`).
+- Consumes: nothing from other tasks structurally, but benefits from Tasks 1-6 being done first (per the spec's ordering rationale: verify the CSP against every new surface this SP adds in one pass, rather than twice).
+- Produces: nothing consumed by later tasks.
 
-- [ ] **Step 1: Write the failing test**
+**Context:** `docker-compose.prod.yml:104-109` already defines a `security-headers` Traefik middleware (`stsSeconds`, `contentTypeNosniff`, `frameDeny`, `referrerPolicy`) chained into both the `core` router (line 101) and the `shell` router (line 153) via `traefik.http.routers.<name>.middlewares=security-headers@docker,rate-limit@docker[,strip-api@docker]`. Extend this same middleware rather than creating a new one — CSP/Permissions-Policy are just more `headers` middleware options. Traefik v3's `headers` middleware exposes arbitrary response headers via `customResponseHeaders.<HeaderName>=<value>` labels (used for headers with no dedicated named option, like `Content-Security-Policy`).
 
-Create `shell/src/builder/widgetPropSchema.test.ts`:
+- [ ] **Step 1: Add CSP + Permissions-Policy labels to the existing `security-headers` middleware, in Report-Only form first**
 
-```ts
-// SPDX-License-Identifier: Apache-2.0
-import { describe, expect, it } from "vitest";
-import { _resetRegistry, listWidgets } from "./registry";
-import { registerBuiltinWidgets } from "./widgets";
+Edit `docker-compose.prod.yml`, extending the block at (current) lines 104-109:
 
-describe("configSchema", () => {
-  it("every builtin widget declares a configSchema (possibly empty)", () => {
-    _resetRegistry();
-    registerBuiltinWidgets();
-    for (const w of listWidgets()) {
-      expect(w.configSchema, `widget "${w.type}" has no configSchema`).toBeDefined();
-    }
-  });
-
-  it("text widget's configSchema matches its scalar defaultProps", () => {
-    _resetRegistry();
-    registerBuiltinWidgets();
-    const text = listWidgets().find((w) => w.type === "text");
-    expect(text?.configSchema).toEqual([
-      { name: "text", type: "string", label: "Texte", default: "Nouveau texte" },
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-    ]);
-  });
-
-  it("chart widget's configSchema covers all 15 scalar props", () => {
-    _resetRegistry();
-    registerBuiltinWidgets();
-    const chart = listWidgets().find((w) => w.type === "chart");
-    expect(chart?.configSchema).toHaveLength(15);
-    expect(chart?.configSchema?.map((p) => p.name)).toContain("chartType");
-  });
-
-  it("tabs widget has an empty configSchema (its only prop, `tabs`, is array-shaped, out of scope for v1)", () => {
-    _resetRegistry();
-    registerBuiltinWidgets();
-    const tabs = listWidgets().find((w) => w.type === "tabs");
-    expect(tabs?.configSchema).toEqual([]);
-  });
-});
+```yaml
+      - traefik.http.middlewares.security-headers.headers.stsSeconds=31536000
+      - traefik.http.middlewares.security-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.security-headers.headers.frameDeny=true
+      - traefik.http.middlewares.security-headers.headers.referrerPolicy=strict-origin-when-cross-origin
+      # CSP en Report-Only pendant la vérification empirique (Step 3-4
+      # ci-dessous) contre MapLibre/deck.gl/Keycloak/une extension tierce —
+      # bascule en enforcing (Step 5) une fois confirmée (SP-26/3.3). Les
+      # valeurs ${GEOSTUDIO_PUBLIC_HOST}/keycloak reprennent les mêmes
+      # variables que le reste de ce fichier.
+      - traefik.http.middlewares.security-headers.headers.customResponseHeaders.Content-Security-Policy-Report-Only=default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://${GEOSTUDIO_PUBLIC_HOST}; img-src 'self' data: blob: https://${GEOSTUDIO_PUBLIC_HOST}; worker-src 'self' blob:; frame-src https://${GEOSTUDIO_PUBLIC_HOST}; object-src 'none'
+      - traefik.http.middlewares.security-headers.headers.customResponseHeaders.Permissions-Policy=camera=(), microphone=(), payment=(), usb=()
+      - traefik.http.middlewares.rate-limit.ratelimit.average=100
+      - traefik.http.middlewares.rate-limit.ratelimit.burst=200
+      - traefik.http.middlewares.compress.compress=true
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+`connect-src`/`img-src`/`frame-src` all point at `${GEOSTUDIO_PUBLIC_HOST}` since, per the CDC/C3 fix from Vague 0, Traefik fronts both `core` (`/api` path prefix) and `keycloak` (`/auth` path prefix) on the SAME public host — verify this is still true by re-reading the router rules at (current) lines 67 and 98 before assuming; if Keycloak is on a different host in some deployments, this directive needs a second variable.
 
-Run: `cd shell && npx vitest run src/builder/widgetPropSchema.test.ts`
-Expected: FAIL — `Cannot find module './widgetPropSchema'`.
+- [ ] **Step 2: Chain the new `compress` middleware into both routers**
 
-- [ ] **Step 3: Create the shared type**
+Edit the `core` and `shell` router middleware lists (current lines 101 and 153):
 
-Create `shell/src/builder/widgetPropSchema.ts`:
-
-```ts
-// SPDX-License-Identifier: Apache-2.0
-// Forme partagée par WidgetDefinition.configSchema (builtin widgets, ce
-// fichier) et WcWidgetManifest.props (widgets WC/extension, SP-8,
-// shell/src/builder/wc/manifest.ts) — même shape, délibérément non
-// unifiées par un import commun pour ne pas toucher le module SP-8 : le
-// typage structurel de TypeScript suffit à rendre les deux compatibles
-// partout où clientTools.ts (Task 9) les consomme ensemble.
-export type WidgetPropDescriptor = {
-  name: string;
-  type: "string" | "number" | "boolean" | "dataSource";
-  label: string;
-  default: unknown;
-};
+```yaml
+      - traefik.http.routers.core.middlewares=security-headers@docker,rate-limit@docker,compress@docker,strip-api@docker
 ```
 
-- [ ] **Step 4: Add `configSchema` to `WidgetDefinition`**
-
-In `shell/src/builder/registry.ts`, add the import and the field:
-
-Change:
-```ts
-import type { DataSource, DataSourceState, Page, RenderMode } from "../api/types";
-import type { Breakpoint } from "./grid";
-import type { ActionBus } from "./ActionBus";
-```
-to:
-```ts
-import type { DataSource, DataSourceState, Page, RenderMode } from "../api/types";
-import type { Breakpoint } from "./grid";
-import type { ActionBus } from "./ActionBus";
-import type { WidgetPropDescriptor } from "./widgetPropSchema";
+```yaml
+      - traefik.http.routers.shell.middlewares=security-headers@docker,rate-limit@docker,compress@docker
 ```
 
-Change:
-```ts
-export type WidgetDefinition<P extends Record<string, unknown> = Record<string, unknown>> = {
-  type: string;
-  label: string;
-  icon?: ReactNode;
-  defaultProps: P;
-  defaultSize: { w: number; h: number };
-  events?: readonly string[];
-  actions?: readonly string[];
-  PropsPanel: (p: { props: P; onChange: (props: P) => void; dataSources: DataSource[] }) => ReactNode;
-  Component: (p: { props: P; ctx: WidgetContext }) => ReactNode;
-};
-```
-to:
-```ts
-export type WidgetDefinition<P extends Record<string, unknown> = Record<string, unknown>> = {
-  type: string;
-  label: string;
-  icon?: ReactNode;
-  defaultProps: P;
-  defaultSize: { w: number; h: number };
-  events?: readonly string[];
-  actions?: readonly string[];
-  // Sous-ensemble des props éditables par le copilote (SP-20) — seules les
-  // props scalaires (string/number/boolean/dataSource) ; les props
-  // array/object (colonnes de table, items de tiroir, encodages...) restent
-  // hors de portée, non listées ici.
-  configSchema?: WidgetPropDescriptor[];
-  PropsPanel: (p: { props: P; onChange: (props: P) => void; dataSources: DataSource[] }) => ReactNode;
-  Component: (p: { props: P; ctx: WidgetContext }) => ReactNode;
-};
+- [ ] **Step 3: Add the equivalent headers + gzip to `shell/nginx.conf`**
+
+Edit `shell/nginx.conf`:
+
+```nginx
+server {
+  listen 8300;
+  root /usr/share/nginx/html;
+  index index.html;
+
+  gzip on;
+  gzip_types text/css application/javascript application/json image/svg+xml;
+  gzip_min_length 1024;
+
+  add_header X-Content-Type-Options nosniff always;
+  add_header Referrer-Policy strict-origin-when-cross-origin always;
+  add_header Permissions-Policy "camera=(), microphone=(), payment=(), usb=()" always;
+  add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'" always;
+
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}
 ```
 
-- [ ] **Step 5: Backfill each widget**
+`connect-src`/`img-src` here stay `'self'` without a hardcoded host: `nginx.conf` also serves the export/standalone bundles (SP-18a/c), which target whatever core URL is baked in at build/runtime via `env-config.js` — a fixed hostname would break those. Leave the widening to `connect-src 'self' <core-origin>` for Step 5 if empirical testing shows the mock/dev flow calling a cross-origin `core` needs it (check `VITE_CORE_URL` usage in dev — if `core` is same-origin behind Traefik in the deployments this file matters for, `'self'` may already suffice for `shell/nginx.conf`, unlike the Traefik-fronted `security-headers` middleware which explicitly needs the public host).
 
-`shell/src/builder/widgets/dateRangeFilter.tsx`:
-```ts
-    defaultProps: { label: "Période" },
-    defaultSize: { w: 4, h: 1 },
-```
-→
-```ts
-    defaultProps: { label: "Période" },
-    defaultSize: { w: 4, h: 1 },
-    configSchema: [{ name: "label", type: "string", label: "Libellé", default: "Période" }],
+- [ ] **Step 4: Bring up a real stack and manually verify the 4 surfaces named in the spec**
+
+```bash
+docker compose up -d --build
 ```
 
-`shell/src/builder/widgets/datasetCard.tsx`:
-```ts
-    defaultProps: { dataSourceId: "", showDownload: true, title: "" },
-    defaultSize: { w: 4, h: 4 },
-```
-→
-```ts
-    defaultProps: { dataSourceId: "", showDownload: true, title: "" },
-    defaultSize: { w: 4, h: 4 },
-    configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "showDownload", type: "boolean", label: "Afficher le téléchargement", default: true },
-      { name: "title", type: "string", label: "Titre", default: "" },
-    ],
+Wait for `core`/`shell` healthy (`docker compose ps`), then in a browser at `http://localhost:8300`:
+
+1. Open the map editor, add a vector layer, confirm it renders (MapLibre canvas visible, no CSP violations in DevTools console — since this is Report-Only, violations appear as console warnings, not blocked resources).
+2. Open the builder, add a map widget to an app/dashboard, confirm the widget carte renders identically.
+3. If an extension widget is registered (check `AdminExtensionsPage` — `shell/e2e/extension-widget.spec.ts` shows how one gets registered for tests, may need a real one registered manually via the admin UI for this manual check), confirm it still loads its JS and renders.
+4. Trigger a Keycloak silent-SSO check (if `VITE_AUTH_MODE=oidc` is configured for this manual run) — confirm the iframe isn't blocked.
+
+Record in the task's commit message or a scratch note exactly which console warnings appeared (if any) — these tell you which directive needs loosening before Step 5 flips to enforcing.
+
+- [ ] **Step 5: Flip Report-Only to enforcing once Step 4 shows no unexpected violations**
+
+Replace `Content-Security-Policy-Report-Only` with `Content-Security-Policy` in both `docker-compose.prod.yml` and `shell/nginx.conf` (same directive values, unless Step 4 required changes — apply those changes here, not by inventing new values speculatively).
+
+```bash
+docker compose up -d --build
 ```
 
-`shell/src/builder/widgets/chart.tsx`:
-```ts
-    defaultProps: {
-      dataSourceId: "", chartType: "bar", categoryField: "", valueField: "",
-      stack: false, legend: true, zoom: false,
-      xAxisType: "category", yAxisType: "value", yAxisFormat: "", yAxisUnit: "",
-      title: "", advancedOption: "", compareEnabled: false, comparePeriod: "previous",
-    },
-```
-Insert right after that closing `},` of `defaultProps` (before `defaultSize`):
-```ts
-    configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "chartType", type: "string", label: "Type de graphique", default: "bar" },
-      { name: "categoryField", type: "string", label: "Champ catégorie", default: "" },
-      { name: "valueField", type: "string", label: "Champ valeur", default: "" },
-      { name: "stack", type: "boolean", label: "Empilé", default: false },
-      { name: "legend", type: "boolean", label: "Légende", default: true },
-      { name: "zoom", type: "boolean", label: "Zoom", default: false },
-      { name: "xAxisType", type: "string", label: "Type d'axe X", default: "category" },
-      { name: "yAxisType", type: "string", label: "Type d'axe Y", default: "value" },
-      { name: "yAxisFormat", type: "string", label: "Format axe Y", default: "" },
-      { name: "yAxisUnit", type: "string", label: "Unité axe Y", default: "" },
-      { name: "title", type: "string", label: "Titre", default: "" },
-      { name: "advancedOption", type: "string", label: "Option ECharts avancée (JSON)", default: "" },
-      { name: "compareEnabled", type: "boolean", label: "Comparaison de période", default: false },
-      { name: "comparePeriod", type: "string", label: "Période de comparaison", default: "previous" },
-    ],
+Repeat the 4 manual checks from Step 4 — this time a real violation would actually block the resource (broken map, missing widget), not just warn. If anything breaks, loosen only the specific directive that Chrome/Firefox DevTools' console names as the blocker, don't broaden the whole policy.
+
+- [ ] **Step 6: Verify compression is actually applied**
+
+```bash
+curl -sI -H 'Accept-Encoding: gzip' http://localhost:8300/ | grep -i content-encoding
 ```
 
-`shell/src/builder/widgets/data.tsx` — two widgets in this file. For `type: "list"`:
-```ts
-    defaultProps: { dataSourceId: "", titleField: "" },
-    defaultSize: { w: 4, h: 4 },
-```
-→
-```ts
-    defaultProps: { dataSourceId: "", titleField: "" },
-    defaultSize: { w: 4, h: 4 },
-    configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "titleField", type: "string", label: "Champ titre", default: "" },
-    ],
-```
-For `type: "table"`:
-```ts
-    defaultProps: { dataSourceId: "", columns: [], pageSize: 10 },
-    defaultSize: { w: 6, h: 4 },
-```
-→
-```ts
-    defaultProps: { dataSourceId: "", columns: [], pageSize: 10 },
-    defaultSize: { w: 6, h: 4 },
-    configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "pageSize", type: "number", label: "Lignes par page", default: 10 },
-    ],
+Expected: `content-encoding: gzip`. For the Traefik-fronted path, this needs the prod overlay running (not the dev compose alone) — if not feasible to stand up prod overlay locally, verify by reading `docker compose -f docker-compose.yml -f docker-compose.prod.yml config` and confirming the `compress@docker` middleware label resolves onto both routers, and note in the commit that live verification of the Traefik path specifically was config-only, not a live `curl` against Traefik (be honest about what was and wasn't actually run, per this repo's established discipline).
+
+- [ ] **Step 7: Run the deployability guard and full non-regression suite**
+
+```bash
+cd core
+uv run pytest tests/test_deployability.py -v
+cd ..
+docker compose down
 ```
 
-`shell/src/builder/widgets/drawer.tsx`:
-```ts
-    defaultProps: { title: "Tiroir", items: [], side: "right" },
-    defaultSize: { w: 3, h: 1 },
-```
-→
-```ts
-    defaultProps: { title: "Tiroir", items: [], side: "right" },
-    defaultSize: { w: 3, h: 1 },
-    configSchema: [
-      { name: "title", type: "string", label: "Titre", default: "Tiroir" },
-      { name: "side", type: "string", label: "Côté", default: "right" },
-    ],
-```
-
-`shell/src/builder/widgets/indicator.tsx`:
-```ts
-    defaultProps: { dataSourceId: "", label: "Indicateur", agg: "count", field: "" },
-    defaultSize: { w: 2, h: 2 },
-```
-→
-```ts
-    defaultProps: { dataSourceId: "", label: "Indicateur", agg: "count", field: "" },
-    defaultSize: { w: 2, h: 2 },
-    configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "label", type: "string", label: "Libellé", default: "Indicateur" },
-      { name: "agg", type: "string", label: "Agrégation", default: "count" },
-      { name: "field", type: "string", label: "Champ", default: "" },
-    ],
-```
-
-`shell/src/builder/widgets/index.tsx` — three widgets. For `type: "text"`:
-```ts
-    defaultProps: { text: "Nouveau texte", dataSourceId: "" },
-    defaultSize: { w: 4, h: 2 },
-```
-→
-```ts
-    defaultProps: { text: "Nouveau texte", dataSourceId: "" },
-    defaultSize: { w: 4, h: 2 },
-    configSchema: [
-      { name: "text", type: "string", label: "Texte", default: "Nouveau texte" },
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-    ],
-```
-For `type: "image"`:
-```ts
-    defaultProps: { src: "", alt: "" },
-    defaultSize: { w: 4, h: 4 },
-```
-→
-```ts
-    defaultProps: { src: "", alt: "" },
-    defaultSize: { w: 4, h: 4 },
-    configSchema: [
-      { name: "src", type: "string", label: "URL", default: "" },
-      { name: "alt", type: "string", label: "Texte alternatif", default: "" },
-    ],
-```
-For `type: "button"`:
-```ts
-    defaultProps: { label: "Bouton", href: "" },
-    defaultSize: { w: 2, h: 1 },
-```
-→
-```ts
-    defaultProps: { label: "Bouton", href: "" },
-    defaultSize: { w: 2, h: 1 },
-    configSchema: [
-      { name: "label", type: "string", label: "Libellé", default: "Bouton" },
-      { name: "href", type: "string", label: "Lien", default: "" },
-    ],
-```
-
-`shell/src/builder/widgets/gallery.tsx`:
-```ts
-    defaultProps: { type: "", tag: "", limit: 12, columns: 3 },
-    defaultSize: { w: 12, h: 6 },
-```
-→
-```ts
-    defaultProps: { type: "", tag: "", limit: 12, columns: 3 },
-    defaultSize: { w: 12, h: 6 },
-    configSchema: [
-      { name: "type", type: "string", label: "Type d'item", default: "" },
-      { name: "tag", type: "string", label: "Tag", default: "" },
-      { name: "limit", type: "number", label: "Nombre max", default: 12 },
-      { name: "columns", type: "number", label: "Colonnes", default: 3 },
-    ],
-```
-
-`shell/src/builder/widgets/hero.tsx`:
-```ts
-    defaultProps: { title: "Titre", subtitle: "", backgroundImageUrl: "", ctaLabel: "", ctaHref: "", align: "left" },
-    defaultSize: { w: 12, h: 3 },
-```
-→
-```ts
-    defaultProps: { title: "Titre", subtitle: "", backgroundImageUrl: "", ctaLabel: "", ctaHref: "", align: "left" },
-    defaultSize: { w: 12, h: 3 },
-    configSchema: [
-      { name: "title", type: "string", label: "Titre", default: "Titre" },
-      { name: "subtitle", type: "string", label: "Sous-titre", default: "" },
-      { name: "backgroundImageUrl", type: "string", label: "Image de fond (URL)", default: "" },
-      { name: "ctaLabel", type: "string", label: "Libellé du bouton", default: "" },
-      { name: "ctaHref", type: "string", label: "Lien du bouton", default: "" },
-      { name: "align", type: "string", label: "Alignement", default: "left" },
-    ],
-```
-
-`shell/src/builder/widgets/richSection.tsx`:
-```ts
-    defaultProps: { markdown: "" },
-    defaultSize: { w: 12, h: 4 },
-```
-→
-```ts
-    defaultProps: { markdown: "" },
-    defaultSize: { w: 12, h: 4 },
-    configSchema: [{ name: "markdown", type: "string", label: "Markdown", default: "" }],
-```
-
-`shell/src/builder/widgets/filter.tsx`:
-```ts
-    defaultProps: { field: "", label: "Filtrer" },
-    defaultSize: { w: 3, h: 1 },
-```
-→
-```ts
-    defaultProps: { field: "", label: "Filtrer" },
-    defaultSize: { w: 3, h: 1 },
-    configSchema: [
-      { name: "field", type: "string", label: "Champ à filtrer", default: "" },
-      { name: "label", type: "string", label: "Libellé", default: "Filtrer" },
-    ],
-```
-
-`shell/src/builder/widgets/selectFilter.tsx`:
-```ts
-    defaultProps: { dataSourceId: "", field: "", label: "Filtrer" },
-    defaultSize: { w: 3, h: 3 },
-```
-→
-```ts
-    defaultProps: { dataSourceId: "", field: "", label: "Filtrer" },
-    defaultSize: { w: 3, h: 3 },
-    configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "field", type: "string", label: "Champ", default: "" },
-      { name: "label", type: "string", label: "Libellé", default: "Filtrer" },
-    ],
-```
-
-`shell/src/builder/widgets/mapWidget.tsx`:
-```ts
-    defaultProps: { dataSourceId: "" },
-    defaultSize: { w: 6, h: 6 },
-```
-→
-```ts
-    defaultProps: { dataSourceId: "" },
-    defaultSize: { w: 6, h: 6 },
-    configSchema: [{ name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" }],
-```
-
-`shell/src/builder/widgets/navigation.tsx`:
-```ts
-    defaultProps: { direction: "horizontal" },
-    defaultSize: { w: 4, h: 1 },
-```
-→
-```ts
-    defaultProps: { direction: "horizontal" },
-    defaultSize: { w: 4, h: 1 },
-    configSchema: [{ name: "direction", type: "string", label: "Direction", default: "horizontal" }],
-```
-
-`shell/src/builder/widgets/modal.tsx`:
-```ts
-    defaultProps: { title: "Modale", items: [] },
-    defaultSize: { w: 3, h: 1 },
-```
-→
-```ts
-    defaultProps: { title: "Modale", items: [] },
-    defaultSize: { w: 3, h: 1 },
-    configSchema: [{ name: "title", type: "string", label: "Titre", default: "Modale" }],
-```
-
-`shell/src/builder/widgets/tabs.tsx`:
-```ts
-    defaultProps: { tabs: [{ id: "tab-1", label: "Onglet 1", items: [] }] },
-    defaultSize: { w: 6, h: 6 },
-```
-→
-```ts
-    defaultProps: { tabs: [{ id: "tab-1", label: "Onglet 1", items: [] }] },
-    defaultSize: { w: 6, h: 6 },
-    // Son seul champ, `tabs`, est array-shaped — hors de portée pour
-    // updateWidgetProps en v1 (cf. Global Constraints). Rien à lister ici.
-    configSchema: [],
-```
-
-`shell/src/builder/widgets/sliderFilter.tsx`:
-```ts
-    defaultProps: { dataSourceId: "", field: "", label: "Filtrer" },
-    defaultSize: { w: 4, h: 1 },
-```
-→
-```ts
-    defaultProps: { dataSourceId: "", field: "", label: "Filtrer" },
-    defaultSize: { w: 4, h: 1 },
-    configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "field", type: "string", label: "Champ", default: "" },
-      { name: "label", type: "string", label: "Libellé", default: "Filtrer" },
-    ],
-```
-
-`shell/src/builder/widgets/form.tsx`:
-```ts
-    defaultProps: { dataSourceId: "", fields: [], submitLabel: "Enregistrer", geometryType: null },
-    defaultSize: { w: 4, h: 6 },
-```
-→
-```ts
-    defaultProps: { dataSourceId: "", fields: [], submitLabel: "Enregistrer", geometryType: null },
-    defaultSize: { w: 4, h: 6 },
-    // `fields` est array-shaped (hors de portée) ; `geometryType` est un
-    // enum nullable qui ne rentre pas dans les 4 types de
-    // WidgetPropDescriptor — laissé de côté plutôt que forcé.
-    configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "submitLabel", type: "string", label: "Libellé du bouton", default: "Enregistrer" },
-    ],
-```
-
-`shell/src/builder/widgets/pivot.tsx`:
-```ts
-    defaultProps: { dataSourceId: "", encodings: { rows: "", columns: "" }, title: "" },
-    defaultSize: { w: 6, h: 4 },
-```
-→
-```ts
-    defaultProps: { dataSourceId: "", encodings: { rows: "", columns: "" }, title: "" },
-    defaultSize: { w: 6, h: 4 },
-    configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "title", type: "string", label: "Titre", default: "" },
-    ],
-```
-
-- [ ] **Step 6: Run tests to verify they pass**
-
-Run: `cd shell && npx vitest run src/builder/widgetPropSchema.test.ts src/builder/registry.test.tsx`
-Expected: PASS.
-
-- [ ] **Step 7: Run the full shell type-check + test suite**
-
-Run: `cd shell && npm run build && npm run test`
-Expected: PASS (tsc --noEmit + vite build succeed, all 22 widget files still register correctly, no other test broke).
+Expected: 31/31 still green (no new env var substitution introduced by this task — CSP values are hardcoded except `${GEOSTUDIO_PUBLIC_HOST}`, already documented/wired from prior SPs).
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add shell/src/builder/widgetPropSchema.ts shell/src/builder/registry.ts shell/src/builder/widgets/ shell/src/builder/widgetPropSchema.test.ts
+git add docker-compose.prod.yml shell/nginx.conf
 git commit -m "$(cat <<'EOF'
-feat(shell): configSchema sur WidgetDefinition, backfill des 22 widgets (SP-20)
+feat(deploy): CSP, Permissions-Policy et compression
 
-Chaque widget builtin déclare désormais la liste de ses props scalaires
-éditables (string/number/boolean/dataSource) — les props array/object
-(columns, items, fields, encodings, tabs) restent hors schéma, hors
-périmètre v1 du copilote. Base pour clientTools.ts (génération des outils
-"client" depuis le registre, Task 9).
+Étend le middleware security-headers Traefik existant (Report-Only
+vérifié empiriquement contre MapLibre/deck.gl/Keycloak/une extension
+avant bascule en enforcing) + mêmes en-têtes sur shell/nginx.conf, qui
+sert aussi les exports statiques/autoportés hors Traefik (I3, revue de
+projet 2026-08-20).
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 EOF
 )"
 ```

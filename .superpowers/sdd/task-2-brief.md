@@ -1,171 +1,182 @@
-## Task 2: Core — `is_copilot_enabled()` + `GET /instance.copilotEnabled`
+## Task 2: Interdire le mode mock hors développement (3.1)
 
 **Files:**
-- Modify: `core/app/auth/dependency.py`
-- Modify: `core/app/instance/routes.py`
-- Create: `core/tests/test_copilot_enabled_flag.py`
-- Modify: `core/tests/test_etl_enabled_flag.py`, `core/tests/test_export_enabled_flag.py`, `core/tests/test_read_only_mode.py` (their `GET /instance` exact-dict assertions gain a `copilotEnabled` key — see Step 4)
+- Modify: `core/app/main.py` (add boot guard call in `create_app()`)
+- Modify: `core/app/auth/dependency.py` (add `_reject_mock_outside_development()` next to `_mock_mode()`)
+- Modify: `core/tests/conftest.py` (add `CORE_ENV` default, mirroring the existing `CORE_SECRETS_MASTER_KEY` default)
+- Modify: `docker-compose.yml` (add `CORE_ENV: ${CORE_ENV:-development}` to the `core` service)
+- Modify: `.env.example` (document `CORE_ENV`)
+- Test: `core/tests/test_mock_mode_guard.py` (new)
 
 **Interfaces:**
-- Produces: `is_copilot_enabled() -> bool` in `app.auth.dependency`, importable by `core/app/main.py` (Task 5).
+- Consumes: nothing new from Task 1.
+- Produces: nothing consumed by later tasks in this plan (Task 3's RFC 7807 handler and Task 4's rate limiter don't depend on this guard).
+
+**Context:** `core/app/auth/dependency.py:16-17` defines `_mock_mode()`, read per-request by `get_current_user`. `core/app/main.py:99-101` is `create_app()`'s first two lines — `observability.setup()` then the existing `secrets_crypto.load_master_key()` fail-fast call. The new guard goes immediately after, same style. `core/tests/conftest.py:19` already does `os.environ.setdefault("CORE_SECRETS_MASTER_KEY", ...)` specifically so every test calling `create_app()` doesn't need to set it explicitly — `CORE_ENV` needs the identical treatment or every one of the dozens of `env()`-fixture test files across the suite that call `create_app()` with `CORE_AUTH_MODE=mock` (the default when unset) will start failing at collection/setup time.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `core/tests/test_copilot_enabled_flag.py`, mirroring `core/tests/test_etl_enabled_flag.py` exactly:
+Create `core/tests/test_mock_mode_guard.py`:
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
 import pytest
-from fastapi.testclient import TestClient
 
-from app import db
-from app.auth.dependency import get_current_user, get_current_user_optional, is_copilot_enabled
-from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
-from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
 
 
-def test_is_copilot_enabled_defaults_to_false(monkeypatch):
-    monkeypatch.delenv("CORE_LLM_PROVIDER", raising=False)
-    assert is_copilot_enabled() is False
+def test_mock_mode_without_development_marker_refuses_to_boot(monkeypatch):
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    monkeypatch.delenv("CORE_ENV", raising=False)
+    with pytest.raises(RuntimeError, match="CORE_AUTH_MODE=mock requires CORE_ENV=development"):
+        create_app()
 
 
-def test_is_copilot_enabled_true_for_any_non_empty_provider(monkeypatch):
-    monkeypatch.setenv("CORE_LLM_PROVIDER", "openai")
-    assert is_copilot_enabled() is True
-    monkeypatch.setenv("CORE_LLM_PROVIDER", "fake")
-    assert is_copilot_enabled() is True
+def test_mock_mode_with_development_marker_boots(monkeypatch):
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    monkeypatch.setenv("CORE_ENV", "development")
+    create_app()  # doit ne pas lever
 
 
-@pytest.fixture()
-def env():
-    engine = make_engine("sqlite+pysqlite:///:memory:")
-    init_db(engine)
-    Session = make_session_factory(engine)
-    with Session() as s:
-        tenant = get_or_create_default_tenant(s)
-        admin = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-            email=None, first_name="", last_name="", bootstrap_admin=True,
-        )
-        s.commit()
-    app = create_app()
-
-    def override_session():
-        with request_scoped_session(Session) as session:
-            yield session
-
-    app.dependency_overrides[db.get_session] = override_session
-    app.dependency_overrides[get_current_user] = lambda: admin
-    app.dependency_overrides[get_current_user_optional] = lambda: admin
-    return TestClient(app)
-
-
-def test_instance_reports_copilot_disabled_by_default(env, monkeypatch):
-    monkeypatch.delenv("CORE_LLM_PROVIDER", raising=False)
-    response = env.get("/instance")
-    assert response.status_code == 200
-    assert response.json()["copilotEnabled"] is False
-
-
-def test_instance_reports_copilot_enabled(env, monkeypatch):
-    monkeypatch.setenv("CORE_LLM_PROVIDER", "openai")
-    response = env.get("/instance")
-    assert response.status_code == 200
-    assert response.json()["copilotEnabled"] is True
+def test_oidc_mode_boots_regardless_of_core_env(monkeypatch):
+    monkeypatch.setenv("CORE_AUTH_MODE", "oidc")
+    monkeypatch.delenv("CORE_ENV", raising=False)
+    create_app()  # doit ne pas lever : la garde ne concerne que le mode mock
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `cd core && uv run pytest tests/test_copilot_enabled_flag.py -v`
-Expected: FAIL — `ImportError: cannot import name 'is_copilot_enabled'`.
-
-- [ ] **Step 3: Implement**
-
-In `core/app/auth/dependency.py`, add right after `is_terrain3d_enabled()` (before `admin_subs()`):
-
-```python
-def is_copilot_enabled() -> bool:
-    """CORE_LLM_PROVIDER (SP-20) — contrairement aux autres capacités
-    instance-wide ci-dessus (is_etl_enabled et consorts), ce n'est pas un
-    booléen dédié : le copilote est actif dès qu'un fournisseur LLM est
-    configuré, quelle que soit sa valeur (CORE_LLM_PROVIDER=openai, ou
-    toute chaîne non vide). Lue à chaque appel, sans cache, même
-    convention que is_read_only_mode ci-dessus."""
-    return bool(os.environ.get("CORE_LLM_PROVIDER"))
-```
-
-In `core/app/instance/routes.py`, update the import and response dict:
-
-```python
-# SPDX-License-Identifier: Apache-2.0
-from fastapi import APIRouter
-
-from app.auth.dependency import (
-    is_appexport_enabled, is_copilot_enabled, is_etl_enabled, is_export_enabled,
-    is_read_only_mode, is_terrain3d_enabled, is_tileset3d_enabled,
-)
-
-router = APIRouter()
-
-
-@router.get("/instance")
-def get_instance_info() -> dict:
-    return {
-        "readOnly": is_read_only_mode(),
-        "etlEnabled": is_etl_enabled(),
-        "exportEnabled": is_export_enabled(),
-        "appExportEnabled": is_appexport_enabled(),
-        "tileset3dEnabled": is_tileset3d_enabled(),
-        "terrain3dEnabled": is_terrain3d_enabled(),
-        "copilotEnabled": is_copilot_enabled(),
-    }
-```
-
-- [ ] **Step 4: Fix the three existing tests with brittle exact-dict assertions**
-
-`GET /instance` is now a 7-key dict; three existing test files assert exact dict equality on the old 6-key shape and will break. Add `"copilotEnabled": False` to each:
-
-In `core/tests/test_etl_enabled_flag.py`, both occurrences of:
-```python
-        "readOnly": False, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,
-        "tileset3dEnabled": False, "terrain3dEnabled": False,
-    }
-```
-and
-```python
-        "readOnly": False, "etlEnabled": True, "exportEnabled": False, "appExportEnabled": False,
-        "tileset3dEnabled": False, "terrain3dEnabled": False,
-    }
-```
-become (append the key on its own trailing line before the closing brace):
-```python
-        "readOnly": False, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,
-        "tileset3dEnabled": False, "terrain3dEnabled": False, "copilotEnabled": False,
-    }
-```
-(and the `etlEnabled: True` variant keeps `copilotEnabled: False` — this file never sets `CORE_LLM_PROVIDER`).
-
-In `core/tests/test_export_enabled_flag.py`, the one occurrence starting `"readOnly": False, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,` gets the same `"copilotEnabled": False,` appended.
-
-In `core/tests/test_read_only_mode.py`, both occurrences (`"readOnly": False, ...` and `"readOnly": True, ...`) get `"copilotEnabled": False,` appended the same way.
-
-- [ ] **Step 5: Run tests to verify they pass**
-
-Run: `cd core && uv run pytest tests/test_copilot_enabled_flag.py tests/test_etl_enabled_flag.py tests/test_export_enabled_flag.py tests/test_read_only_mode.py tests/test_tileset3d_enabled_flag.py tests/test_terrain3d_enabled_flag.py -v`
-Expected: PASS (all).
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-git add core/app/auth/dependency.py core/app/instance/routes.py core/tests/test_copilot_enabled_flag.py core/tests/test_etl_enabled_flag.py core/tests/test_export_enabled_flag.py core/tests/test_read_only_mode.py
-git commit -m "$(cat <<'EOF'
-feat(core): capacité copilotEnabled sur GET /instance (SP-20)
+cd core
+uv run pytest tests/test_mock_mode_guard.py -v
+```
 
-is_copilot_enabled() reflète la présence de CORE_LLM_PROVIDER (pas un
-booléen dédié, contrairement aux autres capacités) ; GET /instance
-l'expose pour que le shell affiche ou non l'onglet copilote.
+Expected: `test_mock_mode_without_development_marker_refuses_to_boot` FAILS (no `RuntimeError` raised — `create_app()` currently boots fine in mock mode with no `CORE_ENV` check). The other two currently PASS already (nothing to break yet), which is fine — only the first assertion is new behavior.
+
+- [ ] **Step 3: Implement the guard**
+
+Edit `core/app/auth/dependency.py`, immediately after `_mock_mode()`:
+
+```python
+def _mock_mode() -> bool:
+    return os.environ.get("CORE_AUTH_MODE", "oidc") == "mock"
+
+
+def reject_mock_outside_development() -> None:
+    """Appelée une fois au démarrage (create_app()), pas par requête —
+    contrairement à _mock_mode() ci-dessus. C6 (revue de projet 2026-08-20) :
+    CORE_AUTH_MODE=mock donne bootstrap_admin=True à quiconque présente un
+    Bearer non vide (cf. get_current_user plus bas), sans aucune vérification
+    d'environnement jusqu'ici. CORE_ENV=development est un marqueur explicite,
+    pas une valeur par défaut sûre — un déploiement qui omet CORE_ENV ET met
+    CORE_AUTH_MODE=mock est traité comme une erreur de configuration,
+    jamais comme "sans doute du dev"."""
+    if _mock_mode() and os.environ.get("CORE_ENV") != "development":
+        raise RuntimeError("CORE_AUTH_MODE=mock requires CORE_ENV=development")
+```
+
+Edit `core/app/main.py`:
+
+```python
+def create_app() -> FastAPI:
+    observability.setup()
+    secrets_crypto.load_master_key()  # échec rapide si absente/mal formée (design SP-15e §4/§8)
+    reject_mock_outside_development()  # échec rapide si mock hors dev (design SP-26 §3.1)
+    database_url = os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+```
+
+Add the import near the existing `from app.auth.dependency import (...)` block in `main.py`:
+
+```python
+from app.auth.dependency import (
+    is_appexport_enabled,
+    is_copilot_enabled,
+    is_etl_enabled,
+    is_export_enabled,
+    is_read_only_mode,
+    is_terrain3d_enabled,
+    is_tileset3d_enabled,
+    reject_mock_outside_development,
+)
+```
+
+- [ ] **Step 4: Add the conftest default so the rest of the suite doesn't break**
+
+Edit `core/tests/conftest.py`, right after the existing `CORE_SECRETS_MASTER_KEY` default:
+
+```python
+os.environ.setdefault("CORE_SECRETS_MASTER_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
+# Même raison, même patron (SP-26/3.1) : create_app() refuse désormais de
+# démarrer en CORE_AUTH_MODE=mock (le défaut de _mock_mode() quand la
+# variable est absente) sans CORE_ENV=development. setdefault() : un test
+# qui monkeypatch.setenv("CORE_ENV", ...) explicitement reste maître de sa
+# propre valeur (ex. test_mock_mode_guard.py ci-dessus).
+os.environ.setdefault("CORE_ENV", "development")
+```
+
+- [ ] **Step 5: Run the new test file and the full suite**
+
+```bash
+cd core
+uv run pytest tests/test_mock_mode_guard.py -v
+# Expected: 3 passed
+uv run pytest -x -q
+# Expected: 1878+3 passed (1881), 5 skipped, 0 failed — no regression
+# elsewhere from the conftest.py change
+```
+
+If any pre-existing test fails, it's calling `create_app()` after an explicit `monkeypatch.delenv("CORE_ENV", ...)` or in a fixture that clears the environment wholesale — find that fixture and add `monkeypatch.setenv("CORE_ENV", "development")` there rather than weakening the guard.
+
+- [ ] **Step 6: Wire `CORE_ENV` into the dev compose and document it**
+
+Edit `docker-compose.yml`, in the `core` service's `environment:` block, right after `CORE_AUTH_MODE`:
+
+```yaml
+      CORE_AUTH_MODE: ${CORE_AUTH_MODE:-mock}
+      # Marqueur explicite requis par la garde de démarrage SP-26/3.1 :
+      # CORE_AUTH_MODE=mock sans CORE_ENV=development refuse de démarrer.
+      # docker-compose.prod.yml force déjà CORE_AUTH_MODE=oidc sans
+      # indirection par variable — cette garde n'y a donc jamais l'occasion
+      # de se déclencher, c'est un filet pour tout déploiement du fichier
+      # de base seul, sans l'overlay prod.
+      CORE_ENV: ${CORE_ENV:-development}
+```
+
+Edit `.env.example`, right after the existing `CORE_AUTH_MODE` block:
+
+```
+# ─── Cœur : mode d'authentification ──────────────────────
+# "mock" pour dev/e2e (aucun accès réseau à Keycloak requis) ; "oidc" en usage réel.
+CORE_AUTH_MODE=mock
+# Marqueur explicite requis quand CORE_AUTH_MODE=mock (SP-26/3.1) — le
+# cœur refuse de démarrer sinon. Ne jamais mettre "development" sur une
+# instance exposée publiquement.
+CORE_ENV=development
+CORE_OIDC_ISSUER=http://localhost:8180/realms/geostudio
+```
+
+- [ ] **Step 7: Verify the deployability guard still passes**
+
+```bash
+cd core
+uv run pytest tests/test_deployability.py -v
+```
+
+Expected: 31 passed (`CORE_ENV` is now both wired to `core` and documented in `.env.example` — neither rule should regress).
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add core/app/main.py core/app/auth/dependency.py core/tests/conftest.py core/tests/test_mock_mode_guard.py docker-compose.yml .env.example
+git commit -m "$(cat <<'EOF'
+feat(core): refuse de démarrer en mode mock hors CORE_ENV=development
+
+CORE_AUTH_MODE=mock donnait bootstrap_admin=True à tout Bearer non vide
+sans aucune vérification d'environnement (C6, revue de projet
+2026-08-20). Garde fail-fast au boot, même emplacement/patron que
+load_master_key().
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 EOF
 )"
 ```

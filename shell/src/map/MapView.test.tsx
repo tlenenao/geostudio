@@ -204,6 +204,35 @@ test("defaults a feature layer to fill when renderAs is not set", () => {
   expect(mapInstances[0].getLayer("poly")).toMatchObject({ type: "fill", source: "poly" });
 });
 
+test("a layer with symbology renders paint compiled from its frozen domain, ignoring any stale raw paint", () => {
+  const layer: MapLayer = {
+    id: "l1",
+    title: "Communes",
+    visible: true,
+    kind: "feature",
+    url: "u",
+    paint: { "fill-color": "#000000" }, // stale/irrelevant once symbology is present
+    symbology: {
+      color: {
+        field: "pop",
+        mode: "numeric",
+        palette: "sequential-blue",
+        domain: { kind: "numeric", min: 0, max: 100 },
+        computedAt: "2026-08-23T00:00:00Z",
+      },
+    },
+  };
+  const cfg: MapConfig = { ...config, layers: [layer] };
+  render(<MapView config={cfg} />);
+  expect(mapInstances[0].getLayer("l1")).toMatchObject({
+    type: "fill",
+    source: "l1",
+    paint: {
+      "fill-color": ["interpolate", ["linear"], ["get", "pop"], 0, "#dbeafe", 100, "#1e3a8a"],
+    },
+  });
+});
+
 test("reports view changes on moveend", () => {
   const onViewChange = vi.fn();
   render(<MapView config={config} onViewChange={onViewChange} />);
@@ -1015,6 +1044,40 @@ test("clicking a mixed-geometry sub-layer opens the popup declared on the layer,
   act(() => mapInstances[0].fireOnLayer("click", "communes__polygon", clickPayload));
   expect(screen.getByRole("dialog")).toBeInTheDocument();
   expect(screen.getByText("Tulle")).toBeInTheDocument();
+});
+
+// I4 de la revue finale SP-25 : `effectivePaint` calculait un seul paint
+// pour "polygon" puis le filtrait par préfixe — les sous-couches
+// point/ligne d'une géométrie mixte/inconnue recevaient donc un paint vide
+// (non stylé) au lieu de leur propre expression compilée pour LEUR
+// géométrie réelle.
+test("a mixed-geometry symbologized layer compiles distinct paint per sub-layer geometry, not just polygon", () => {
+  render(
+    <MapView
+      config={tiled({
+        symbology: {
+          color: {
+            field: "categorie",
+            mode: "categorical",
+            palette: "categorical-a",
+            domain: { kind: "categorical", values: ["A", "B"] },
+            computedAt: "2026-08-23T00:00:00Z",
+          },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  const expectedMatch = ["match", ["get", "categorie"], "A", "#2563eb", "B", "#dc2626", "#2563eb"];
+  expect(map.getLayer("communes__point")).toMatchObject({
+    paint: { "circle-color": expectedMatch },
+  });
+  expect(map.getLayer("communes__line")).toMatchObject({
+    paint: { "line-color": expectedMatch },
+  });
+  expect(map.getLayer("communes__polygon")).toMatchObject({
+    paint: { "fill-color": expectedMatch },
+  });
 });
 
 test("removing a mixed-geometry layer detaches all three sub-layer click handlers", () => {

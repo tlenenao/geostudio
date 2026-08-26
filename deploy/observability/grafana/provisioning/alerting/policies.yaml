@@ -1,0 +1,9 @@
+apiVersion: 1
+policies:
+  - orgId: 1
+    receiver: geostudio-webhook
+    routes:
+      - receiver: geostudio-webhook
+        object_matchers:
+          - ["slo", "=~", ".+"]
+        continue: false

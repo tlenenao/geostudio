@@ -1,340 +1,370 @@
-# SP-20 — Copilote IA embarqué dans le builder — Progress Ledger
+# SP-26 — Durcissement avant v0.1 publique (Vague 3) — Progress Ledger
 
-Plan: docs/superpowers/plans/2026-08-16-sp20-copilote-embarque.md
-Spec: docs/superpowers/specs/2026-08-05-copilote-embarque-design.md
+Plan: docs/superpowers/plans/2026-08-23-sp26-durcissement.md
+Spec: docs/superpowers/specs/2026-08-23-sp26-durcissement-design.md
 Workspace: checkout principal, branche `dev` (convention établie, pas de worktree).
 
 ## Note de reprise
 
-Trouvé au démarrage : ledger de SP-19 (4/4 tâches + revue finale, clos,
-déjà committé). Repartant de zéro pour SP-20.
-
-Avant dispatch : committé (8f45d95) la correction de spec (CopilotPanel
-reçoit undo/redo en props depuis AppBuilderPage, pas de UndoContext) + le
-fichier de plan, présents non commités au démarrage de session.
+Ledger précédent trouvé au démarrage : SP-25 (clos, CLAUDE.md déjà à jour),
+mais son ledger/briefs/rapports n'avaient jamais été commités — commité
+tel quel (f1cb51e, `docs(sp25): ledger de session`) avant de repartir de
+zéro pour SP-26. `deploy/postgis/pg_hba.conf` non suivi trouvé dans l'arbre
+de travail : connu et documenté inerte par CLAUDE.md (suivi SP-20), laissé
+tel quel.
 
 ## Pre-flight plan review
 
-13 tâches, code complet à chaque étape. Le seul point notable — Task 5's
-test file contient un placeholder intentionnellement signalé puis corrigé
-inline dans le texte du plan lui-même (`test_allowlisted_mcp_tool_call_is_executed_via_loopback`)
-— pas une contradiction, déjà résolu par le plan ; l'implémenteur doit
-écrire la version corrigée, pas le premier brouillon. Aucune autre
-contradiction interne trouvée.
+10 tâches (9 chantiers + clôture). Numérotation de la spec (3.1, 3.3, 3.4,
+3.5a/b/c, 3.6, 3.7, 3.8) correspond exactement aux Tasks 1-9 ; 3.2 (clé
+maître) déjà fait, non retouché. Aucune contradiction interne trouvée entre
+tâches ou avec les Global Constraints. Risque d'exécution documenté par
+CLAUDE.md à surveiller (pas une contradiction du plan lui-même) : pannes de
+packaging Docker pré-existantes pour `core`/`worker` (résolution `mcp==2.0.0`
+ignorant `uv.lock`, `libexpat.so.1` manquant pour `defusedxml`) pourraient
+gêner la vérification `docker build`/`docker run` de Task 1 et de Task 10 —
+hors périmètre de ce plan à corriger si rencontré, à documenter comme tel
+plutôt qu'à contourner en modifiant le Dockerfile au-delà de ce que le plan
+demande.
 
 ## Tâches
-Task 1: complete (commit 1a52d45, review clean — 0 Critical/Important, 2
-⚠️ trust-gap résolus indépendamment par le contrôleur : commit body relu
-au complet via `git log`, et vérification du token MCP reproduite en
-direct contre le vrai conteneur Keycloak toujours up — `aud: ['geostudio-mcp',
-'geostudio-core']`, confirmé). `deploy/keycloak/geostudio-realm.json` :
-`geostudio-mcp-audience` ajouté à `optionalClientScopes` de
-`geostudio-shell`, édition minimale (1 ligne), rien d'autre touché dans
-le realm.
-Task 2: complete (commit f572c62, review clean — 0 Critical/Important/Minor).
-`is_copilot_enabled()` (`core/app/auth/dependency.py`) + `copilotEnabled`
-sur `GET /instance` (`core/app/instance/routes.py`), 4 tests neufs +
-3 fichiers de tests existants corrigés (assertions exact-dict, 5
-occurrences au total). Transcription verbatim du brief, TDD RED→GREEN
-vérifié.
 
-Task 3: complete (commit c3da6d2, review clean — 0 Critical/Important, 2
-Minor notés non bloquants : `KeyError` non gardé sur une réponse OpenAI
-malformée manquant `arguments`/`id`/`name` — code exact du brief, à
-durcir si besoin quand un vrai fournisseur tiers sera branché ; pas de
-docstring de classe sur `OpenAICompatibleLLMProvider`, cosmétique).
-`core/app/copilot/llm_provider.py` : `LLMProvider`/`LLMTurn`/`ToolCall`/
-`FakeLLMProvider`/`OpenAICompatibleLLMProvider`/`get_llm_provider()`,
-transcription verbatim du brief, 5/5 tests TDD RED→GREEN vérifiés.
+Task 1: complete (commit 4b15da9, review clean — 0 Critical/Important, 3
+Minor non bloquants : `chown -R` sur `/run` plus large que nécessaire dans
+`shell/Dockerfile` ; scénario de volume nommé frais non testé
+explicitement pour `/scratch` de `qgis-worker` — même classe de risque que
+`/data`/`backup/archives`, testée ailleurs mais pas ici ; corps de commit
+non visible dans le paquet de revue). 7 des 8 conteneurs (core,
+export-worker, appexport-standalone, appexport-runtime-builder,
+qgis-worker, backup, shell) passés en utilisateur non-root, `HOME` pinné
+avant les étapes de build DuckDB/GRASS partout où nécessaire, `postgis`
+vérifié déjà non-root au niveau process serveur (gosu à l'entrypoint),
+non modifié. 2 bugs réels trouvés et corrigés par l'implémenteur au-delà
+du contenu Dockerfile littéral du brief (vérifiés indépendamment par le
+reviewer) : `shell` (nginx) plantait au démarrage (`/run/nginx.pid`
+permission denied, `chown` étendu à `/run`) ; `backup`'s vrai point de
+montage runtime `/backup/archives` (`docker-compose.prod.yml`) était
+root-owned et non inscriptible par l'utilisateur non-root — cas non
+couvert par l'arbre de décision `$HOME`/`/tmp` du brief lui-même.
 
-Task 4: complete (commit 308e97d, review clean — 0 Critical/Important, 2
-Minor notés). Le brief lui-même ne correspondait pas au protocole réel
-`/mcp` sur 4 points — l'implémenteur a corrigé empiriquement (vérifié
-indépendamment par le reviewer contre le code source réel du SDK MCP,
-pas seulement pris sur parole) : (1) convention `anyio`/`@pytest.mark.anyio`
-au lieu de `pytest-asyncio` (repo n'a pas cette dépendance) ; (2) garde
-anti-DNS-rebinding de FastMCP (`TransportSecuritySettings`,
-`allowed_hosts=["127.0.0.1:*","localhost:*",...]`) rejette
-`base_url="http://test"` avec 421 — remplacé par `http://localhost:8200`
-partout, y compris `CORE_BASE_URL` ; (3) un nom d'outil inconnu renvoie
-`200 OK` + `isError: true`, jamais un `"error"` JSON-RPC top-level, dans
-cette version du SDK — test 4 du brief réécrit en conséquence
-(`test_call_tool_surfaces_unknown_tool_name_as_tool_error`), 5e test
-ajouté pour couvrir le vrai cas d'échec protocolaire (421) ; (4)
-`ALLOWED_MCP_TOOL_NAMES` réexporté depuis `mcp_loopback.py` (le test du
-brief l'importe de là, incohérence interne du brief). 5/5 tests + 17/17
-suites MCP/copilot voisines sans régression. Minor notés (non bloquants) :
-`McpLoopbackSession.__init__` lève un `KeyError` brut (pas
-`McpLoopbackError`) si `CORE_BASE_URL` est absent sans `http_client`
-injecté — **Task 5 doit construire la session uniquement là où
-`CORE_BASE_URL` est garanti défini** ; claim import-linter non
-re-vérifiable depuis ce diff seul (risque faible, changement purement
-additif).
+Task 2: complete (commit 0062182, review clean — 0 Critical, 1 Important
+(qualité de rapport, pas un défaut de code, cf. ci-dessous), 1 Minor
+cosmétique). `reject_mock_outside_development()` dans
+`core/app/auth/dependency.py`, appelée dans `create_app()` juste après
+`load_master_key()` — même patron. `CORE_ENV` : `setdefault` dans
+`conftest.py`, câblé dans `docker-compose.yml`, documenté dans
+`.env.example`, garde-fou de déployabilité vert (31/31). **Même classe de
+lacune d'évidence que SP-25 Task 1** : le rapport de l'implémenteur a
+rejoué la suite complète sans `CORE_TEST_DATABASE_URL`, skippant en
+silence les ~162 tests `@postgis` (1719 passed, 167 skipped rapportés) —
+contrôleur a rejoué la suite en direct contre `postgis-test`
+(`localhost:5433`) : **1880 passed, 5 skipped, 1 failed**
+(`tests/test_features_rls.py::test_scope_preserves_original_sql_error`).
+Échec confirmé **préexistant, sans rapport avec Task 2** — reproduit à
+l'identique dans un worktree jetable au commit 4b15da9 (juste avant cette
+tâche), et le diff de Task 2 ne touche rien à RLS/RESET ROLE/gestion de
+transaction. **Point à investiguer hors SP-26** (pas une régression de ce
+plan) : cet échec préexiste sur ce dépôt indépendamment de SP-26 —
+probablement une dérive psycopg2/gestion de transaction, non encore
+diagnostiquée. **Vraie référence de suite pour la suite de cette
+exécution : 1880 passed, 5 skipped, 1 failed pré-existant (pas
+1878/5/0).**
 
-Task 5: complete (commit 796b2fc, review clean — 0 Critical, 1 Important
-inhérent au brief (arbitré avec Tanguy, laissé tel quel — cf. suivi
-ci-dessous), 2 Minor non bloquants). `core/app/copilot/routes.py` :
-`POST /copilot/turn`, boucle d'outils 6 itérations max, filtre
-`ALLOWED_MCP_TOOL_NAMES`, exécution loopback réelle pour les outils
-allowlistés, `clientOps` pour tout le reste (jamais exécuté côté
-serveur), timeout 30s, session toujours fermée en `finally`. `main.py` :
-import + exemption `read_only_guard` + montage conditionnel
-(`is_copilot_enabled()`) — vérifié que `create_item`/`create_form_app`
-se gardent eux-mêmes contre `is_read_only_mode()` (lu directement dans
-`app/mcp/tools.py`, pas supposé). `pyproject.toml` : `app.copilot` inséré
-sous `app.mcp` dans le contrat de couches. 6/6 tests neufs + suite
-complète 1583 passed/153 skipped + import-linter clean + diff OpenAPI
-vide (confirmés). Seule déviation : fixture de test (pas de code
-production) — `CORE_BASE_URL=http://test` du brief ne résout jamais en
-DNS, `McpLoopbackSession` construit avec un `http_client` réel via
-`httpx.ASGITransport(app=app)` (même patron que Task 4) + `TestClient`
-en context manager pour le lifespan.
+Task 3: complete (commit 2dafc5b, review clean — 0 Critical/Important,
+2 Minor à reporter à la revue finale de branche). Format RFC 7807 unique
+(`application/problem+json`) via 3 handlers d'exception (`ValidationHTTPException`/
+`HTTPException`/`Exception` bare) dans `core/app/main.py`, nouveau module
+`core/app/errors.py` (hors contrat de couches import-linter, précédent
+`app.db`/`app.observability`, vérifié : absent de `[tool.importlinter]`).
+`_validation_error` (features/routes.py) et les 6 sites inline de
+harvest/routes.py convertis, chacun son propre contenu `errors` préservé
+(vérifié site par site par le reviewer). 2 sites shell (`requestFeatureWrite`/
+`requestAnalyticsSql`) mis à jour pour lire `errors` au premier niveau.
+Diff OpenAPI/TS **vide** — vérifié correct, pas un oubli : aucune route de
+ce dépôt ne déclare `responses=` explicite (`grep -rln "responses=" core/app/`
+→ rien), donc aucun handler d'exception global ne peut jamais apparaître
+dans le schéma documenté, prédiction du brief factuellement fausse sur ce
+point précis, pas un défaut de l'implémenteur. 3 fixtures de test hors
+périmètre nommé du brief corrigées en cours de route (2 core + 1 shell,
+toutes mécaniques : `["detail"]["errors"]` → `["errors"]`, rien d'autre
+changé) — conséquence directe et inévitable du changement cassant, pas du
+scope creep. Suite complète (avec la vraie base PostGIS) : 1883 passed, 5
+skipped, 1 failed (le même échec préexistant de Task 2, confirmé toujours
+sans rapport). Shell : 161 fichiers / 1461 tests, tout vert.
 
-**Décision explicite avec Tanguy (Task 5)** : le reviewer a trouvé qu'un
-nom d'outil `clientTools` qui entrerait en collision avec
-`ALLOWED_MCP_TOOL_NAMES` (ex. `create_item`/`create_form_app`, des
-outils d'écriture) s'exécuterait côté serveur au lieu d'être renvoyé
-comme `clientOp` — code hérité verbatim du brief, aucune garde
-structurelle. Non exploitable aujourd'hui : les 5 noms d'outils client
-fixés par Task 8 (`addWidget`/`updateWidgetProps`/`removeWidget`/
-`addDataSource`/`setFilter`) ne recoupent jamais les 6 noms d'outils MCP.
-**Laissé tel quel** (pas de fix) — à surveiller si le vocabulaire des
-outils client devient un jour dynamique/extensible (ex. futurs widgets
-tiers exposant leurs propres outils copilote).
+**2 Minor reportés à la revue finale de branche** : (1)
+`core/app/appexport/miniserver/main.py:173-179` (mini-serveur standalone
+SP-18c, sa propre app FastAPI, hors périmètre nommé de ce brief) émet
+toujours l'ancienne forme imbriquée sur son propre `/collections/{id}/aggregate`
+— inconsistance d'API réelle mais actuellement inerte (le shell ne parse
+pas structurellement `errors` sur ce chemin d'appel) ; (2) le
+`RequestValidationError` natif de FastAPI (422 pydantic sur body/query)
+n'est touché par aucun des 3 handlers et continue de répondre en
+`application/json` classique, pas encore RFC 7807 — non nommé par le
+brief, pas une régression, mais l'API ne parle pas encore RFC 7807
+partout au sens strict.
 
-Task 6: complete (commit a656a80, review clean — 0 issues). Variables
-`CORE_LLM_PROVIDER`/`CORE_LLM_API_URL`/`CORE_LLM_API_KEY`/`CORE_LLM_MODEL`
-transmises au service `core` de `docker-compose.yml` + documentées dans
-`.env.example`, off-by-default. `docker compose config --quiet` valide.
+Task 4: complete (commit 24a8294, review clean — 0 Critical/Important, 2
+Minor : incohérence FR/EN sur le message du 429 vs. `read_only_guard`
+(le dépôt est déjà incohérent ailleurs, pas une régression de cette
+tâche) ; croissance non bornée de `RateLimiter._hits` — déjà documentée
+comme limite assumée). `core/app/ratelimit/limiter.py` (`RateLimiter`
+en mémoire, budgets sql=10/llm=20/jobs=15/harvest=10 par 60s,
+`route_group()`), middleware câblé dans `create_app()` — `RateLimiter()`
+bien instanciée À L'INTÉRIEUR de `create_app()` (pas au niveau module,
+vérifié explicitement), `/mcp` couvert (mount ASGI brut, middleware
+tourne avant tout routage). 429 en `application/problem+json`, cohérent
+avec la forme RFC 7807 de Task 3 bien que construit directement (pas via
+`raise HTTPException`, middleware hors dispatch route/handler — correct
+par construction, pas un raccourci). 1 déviation auto-signalée par
+l'implémenteur et vérifiée indépendante par le reviewer : le test
+littéral du brief plante (`KeyError` sur `S3_ENDPOINT_URL`, l'utilisateur
+mock est toujours `is_analyst` donc atteint toujours le vrai
+`conn_factory()`) — corrigé par le même override de
+`get_duckdb_connection_factory` que `test_analytics_sql_routes.py`
+préexistant, vérifié nécessaire/non-affaiblissant/bien scopé. Suite
+complète : 1886 passed, 5 skipped, 1 failed (même échec RLS préexistant,
+toujours sans rapport).
 
-Task 7: complete (commit a7817e5, review clean — 0 Critical/Important/Minor
-sur 22 widgets vérifiés un par un par le reviewer contre le brief). Un
-premier essai a été interrompu par une limite d'usage hebdomadaire avant
-tout fichier écrit/commité — relancé proprement une fois la limite
-réinitialisée (aucun travail perdu). `shell/src/builder/widgetPropSchema.ts`
-(nouveau type `WidgetPropDescriptor`) + `registry.ts` (`configSchema?`
-sur `WidgetDefinition`) + backfill des 22 définitions de widgets (19
-fichiers) — aucune prop array/object (`columns`/`items`/`tabs`/`fields`/
-`encodings`) n'a fuité dans un `configSchema`, les 3 schémas
-intentionnellement réduits (tabs `[]`, form, pivot) sont corrects.
-1215 tests + build passent.
+Task 5: complete (commit 1ba0952, review clean — 0 Critical/Important/Minor).
+`_ShutdownState` (core/app/cdc/main.py) — SIGTERM positionne un flag,
+branché sur le paramètre `should_stop` déjà accepté par `stream_changes()`
+mais jamais câblé, flush final après sortie de boucle. Test isolé
+(`test_cdc_shutdown.py`), pas de test sur `run()` lui-même (exige DB/S3
+réels, comme documenté). Aucune restructuration des closures existantes.
+Suite complète : 1887 passed, 5 skipped, 1 failed (même échec RLS
+préexistant).
 
-Task 8: complete (commit 477ce89, review clean — 0 issues).
-`shell/src/builder/copilot/clientTools.ts` : `buildClientToolSchemas()`
-génère les 5 outils client (`addWidget`/`updateWidgetProps`/`removeWidget`/
-`addDataSource`/`setFilter`) depuis `listWidgets()`/`configSchema`
-(Task 7), pur/framework-free. 3/3 tests, transcription verbatim.
+Task 6: complete (commit 3598ce2, review clean — 0 Critical/Important/Minor).
+`AppErrorBoundary` (shell/src/AppErrorBoundary.tsx) — nouveau boundary
+racine, distinct de `WidgetErrorBoundary` (WidgetHost.tsx, non touché),
+posé autour d'`AuthProvider`/`QueryClientProvider` dans `App.tsx` (pas à
+l'intérieur, pour attraper aussi un crash d'initialisation des providers
+eux-mêmes). 2 tests, `console.error` correctement mocké/restauré. Shell :
+162 fichiers / 1463 tests, lint/format/build verts.
 
-Task 9: complete (commit e87f01a, review clean — 0 Critical/Important, 2
-Minor non bloquants notés : `getPageLayout` appelé inconditionnellement
-même pour les ops qui n'en ont pas besoin, coût négligeable ; cas
-`activePageId` invalide non spécifié par le brief — comportement de repli
-existant (`pages.ts`, code pré-existant) vérifié sûr mais à garder en tête
-pour le câblage Task 12/13). `shell/src/builder/copilot/applyClientOp.ts` :
-5 ops + no-op par défaut, pur, réutilise `nextFreePosition`/
-`getPageLayout`/`setPageLayout`/`getWidget` — propriété de sécurité
-vérifiée réelle (filtrage par `configSchema` avant tout merge, jamais un
-patch opaque, un nom de prop halluciné est silencieusement rejeté).
-7/7 tests, transcription verbatim.
+Task 7: complete (commit 36ac18c, review clean — 0 Critical/Important, 1
+Minor cosmétique : commentaire inline référençant les numéros d'étape du
+brief plutôt que de décrire l'état directement). CSP (Report-Only)/
+Permissions-Policy ajoutées au middleware `security-headers` Traefik
+EXISTANT (pas un nouveau), nouveau middleware `compress` chaîné sur
+`core` et `shell` ; mêmes en-têtes + gzip sur `shell/nginx.conf`
+(`connect-src`/`img-src` restent `'self'` sans host en dur, car ce
+fichier sert aussi les bundles d'export). **Bascule en enforcing (Step
+5) délibérément NON faite** — repli explicitement sanctionné par le
+brief lui-même : aucun binaire Chromium disponible dans cet
+environnement (Playwright et chrome-devtools-mcp ont échoué au
+lancement), séparé du bug de packaging préexistant `core`/`mcp==2.0.0`
+(reproduit, confirmé sans rapport, non corrigé — hors périmètre).
+Vérification réelle : curl direct contre le conteneur `shell` nginx réel
+(en-têtes présents, gzip appliqué au bundle JS, absent sur le petit
+`index.html` sous le seuil `gzip_min_length`) ; chemin Traefik vérifié
+config-only (`docker compose ... config`, résolu et reparsé
+indépendamment par le reviewer). 1 bug YAML réel trouvé et corrigé dans
+le texte littéral du brief (guillemets manquants sur la valeur CSP,
+`data: blob:` casse le parse YAML) — reproduit indépendamment par le
+reviewer (PyYAML), substitution `${GEOSTUDIO_PUBLIC_HOST}` confirmée
+préservée. Mésaventure git auto-corrigée en cours de tâche (`--amend` a
+brièvement fusionné avec le commit de Task 6, récupéré par `git reset
+--soft`) — historique vérifié intact des deux côtés par le reviewer.
+Garde-fou de déployabilité : 31/31.
 
-Task 10: complete (commit f5b5e77, review clean — 0 Critical/Important/Minor).
-`isMockMode()` (`useAuth.ts`) + `shell/src/builder/copilot/useMcpToken.ts`
-(second `signinSilent({scope: "...geostudio-mcp-audience"})` via
-`react-oidc-context` direct, jeton en mémoire uniquement via `useRef`,
-jamais `localStorage`) — code production transcrit verbatim, vérifié
-ligne à ligne par le reviewer. Deux bugs réels dans le texte du brief
-(pas l'implémenteur) trouvés et corrigés, confinés aux fichiers de
-test : `vi.resetModules()` cassait l'isolation mock/OIDC (import statique
-vs `import()` dynamique après reset — bug classique Vitest, retiré,
-inutile avec un seul test dans le fichier) ; import `waitFor` mort dans
-les deux fichiers de test (jamais utilisé, faisait échouer
-`noUnusedLocals`). 3/3 tests + suite complète 1228/1228 + tsc clean.
+Task 8: complete (commit 4e2e7d0, review clean — 0 Critical/Important, 2
+Minor cosmétiques : en-tête `.env.example` avec des backticks, seule
+section sur ~15 à le faire ; nom du contact point sans référence SP).
+Point de contact webhook + politique de routage (dossier SLO,
+`object_matchers` sur `slo`), Step 1 empiriquement vérifié contre l'image
+réelle (Grafana 12.0.1 dans `grafana/otel-lgtm:0.11.4`) — expansion
+`${VAR}` native confirmée fonctionner, branche 2a retenue (pas de
+`.template`/envsubst). **Déviation réelle et vérifiée par rapport au
+texte littéral du brief** : le défaut `${GRAFANA_ALERT_WEBHOOK_URL:-}`
+(chaîne vide) proposé par le brief fait planter tout le conteneur au
+démarrage (`required field 'url' is not specified` — Grafana exige une
+URL non vide même pour un contact point censé rester inerte) — corrigé
+par un défaut syntaxiquement valide mais délibérément inatteignable
+(`http://127.0.0.1:1/grafana-alert-webhook-not-configured`), vérifié
+sain indépendamment par le reviewer (port tcpmux, loopback, jamais de
+livraison accidentelle). **Preuve de bout en bout réellement observée** :
+POST réel reçu par un listener HTTP local via `host.docker.internal`
+après dépause temporaire de `test-alert-do-not-keep-in-prod`, alerte
+passée `active` dans l'API Alertmanager puis arrêtée après repause,
+`git diff` sur `rules.yaml` confirmé vide (vérifié indépendamment par le
+reviewer). Contournement d'un problème de port-forwarding WSL2/Docker
+Desktop sans rapport (docker run au lieu de docker compose up pour la
+preuve E2E) — jugé plausible et hors périmètre par le reviewer. Garde-fou
+de déployabilité : 31/31 (re-exécuté indépendamment par le reviewer).
 
-Task 11: complete (commit 82c64bc, review clean — 0 issues). Types
-`CopilotMessage`/`CopilotClientOp`/`CopilotTurnResult`/`CopilotToolSchema`
-+ `InstanceInfo.copilotEnabled` + `ItemClient.copilotTurn()` +
-implémentation dans `createItemClient` (`itemClient.ts`). Ajout hors
-liste explicite du brief mais nécessaire et correctement patterné,
-confirmé par le reviewer : `StaticItemClient.copilotTurn()` (rejette via
-`unsupported()`, même patron que 20+ méthodes sœurs) — sinon l'élargissement
-de l'interface `ItemClient` aurait cassé cette implémentation. `tsc
---noEmit`/`npm run build` clean.
+Task 9: complete (commits f338f0a..5284a7f, review « Needs fixes » sur le
+rapport uniquement — le code lui-même est approuvé sans réserve, corrigé
+par édition directe du rapport plutôt qu'une passe de fix/re-revue
+complète, cf. ci-dessous). `shell/playwright.oidc.config.ts` +
+`shell/e2e-oidc/auth-oidc.spec.ts` (login+logout), stack réelle
+(postgis+keycloak+core en `CORE_AUTH_MODE=oidc`+shell) — **preuve de
+bout en bout réellement obtenue** : 2 specs passées 4 fois de suite en
+local, 0 échec, sélecteur de déconnexion vérifié contre le vrai code
+(`AppLayout.tsx`) et re-vérifié indépendamment par le reviewer. **Bug
+produit réel trouvé et corrigé** (2 commits séparés, précédent SP-23
+tâche 18) : la déconnexion Keycloak laissait l'utilisateur sur la page
+nue "vous êtes déconnecté" faute de `post_logout_redirect_uri` —
+`AuthProvider.tsx` + `deploy/keycloak/geostudio-realm.json` (`post.logout.redirect.uris`
+sur `geostudio-shell`), vérifié indépendamment par le reviewer contre
+`react-oidc-context`/`oidc-client-ts` réels et le mécanisme de sed déjà
+existant de `docker-compose.prod.yml`. Contournement local temporaire du
+bug préexistant `mcp==2.0.0`/`fastmcp` (CLAUDE.md SP-21) intégralement
+annulé avant tout commit — vérifié absent des deux diffs.
 
-Task 12: complete (commit d06b5fa, review clean — 0 Critical/Important,
-1 Minor cosmétique : `lastOpsSummary` non réinitialisé au début d'un
-nouvel envoi, reste affiché à côté d'une erreur d'un tour suivant en
-échec — sans impact fonctionnel). `shell/src/builder/copilot/CopilotPanel.tsx` :
-props exactement `{itemId, config, activePageId, setDraft}`, **aucun
-bouton Annuler dédié** (contrainte de design vérifiée — réutilise le
-bouton Annuler/Rétablir existant de la barre d'outils SP-19), `history`
-envoyé sans dupliquer le message venant d'être tapé, `clientOps` appliqués
-en un seul `setDraft`/`reduce` (une seule entrée undo par tour, vérifié),
-erreur réseau affichée via `role="alert"` sans crash, opération inconnue
-dégradée proprement. Câblage `AppBuilderPage.tsx` gated sur
-`copilotEnabled`. 3/3 tests + suite complète 1231/1231 + build clean.
+**Régression réelle découverte, PAS causée par Task 9, sans rapport avec
+OIDC** : `shell/e2e/sql-lab.spec.ts` échoue sur `dev` HEAD (107 passed, 4
+skipped, 1 failed — pas 108/4/0), tracée au commit `2dafc5b` (Task 3, RFC
+7807) qui a mis à jour `itemClient.ts` et ses tests unitaires mais jamais
+le mock E2E de ce fichier (toujours l'ancienne forme imbriquée). Root
+cause confirmée indépendamment par le reviewer (lecture directe
+d'`itemClient.ts`/`sql-lab.spec.ts`, commit `2dafc5b`). **Premier run de
+la suite E2E complète depuis Task 3** — précédent SP-23 Task 18/SP-25
+Task 12 (régression cross-tâche invisible tant que personne ne relance
+la suite complète). **À corriger avant Task 10** (baseline réelle
+actuelle : 107 passed, 4 skipped, 1 failed, pas 108/4/0).
 
-Task 13: complete (commit 5463c2a, review clean — 0 Critical/Important,
-2 Minor : ⚠️ exécution Playwright non re-jouable par le reviewer
-(pas de navigateur dans son environnement) — **résolu indépendamment par
-le contrôleur, re-exécuté en direct : 2/2 passent (36.4s)** ; mock de
-discrimination par sous-chaîne, acceptable vu le périmètre étroit du
-test). `shell/e2e/copilot.spec.ts` : absence du panneau sans
-`copilotEnabled`, prompt d'explication sans changement de canevas, ajout
-de widget visible puis annulable via le bouton "Annuler" existant de la
-barre d'outils SP-19 (pas de bouton dédié — vérifié que c'est bien le
-même `setDraft`/`undo` partagé). Transcription verbatim, sélecteurs
-vérifiés contre le code source réel (pas de convention inventée). Suite
-E2E complète 107/107 (rapportée par l'implémenteur, note du brief "19
-specs" obsolète — dérive pré-existante, sans rapport avec cette tâche).
+**Correction apportée après revue** (édition directe du rapport, pas de
+re-dispatch d'implémenteur — le code était déjà approuvé) : le rapport
+minimisait le risque du nouveau job CI `shell-e2e-oidc` (« jamais tourné
+sur GHA, fidélité par comparaison ligne à ligne ») alors que le
+contournement local qui a permis les 4/4 n'existe pas dans l'état
+committé — ce nouveau job est le PREMIER job CI de ce dépôt à faire
+`docker compose build core` (les jobs `core`/`shell`/`api-types-drift`
+existants utilisent `uv sync`, respectent `uv.lock`, ne buildent jamais
+l'image Docker) — **attendu rouge de façon déterministe au premier run
+GHA réel**, tant que le bug `core/Dockerfile`/`mcp==2.0.0` (CLAUDE.md
+SP-21) n'est pas corrigé séparément (hors périmètre de Task 9, brief
+littéral). Reportée clairement pour Task 10. 2 Minor supplémentaires
+(inexactitude mineure sur la liste des fichiers exclus du `git stash`
+d'investigation ; `docker build -t geostudio-postgis-ci` non consommé par
+`docker compose build`, buildé deux fois — non testé par le Step 5 réel,
+coût CI gaspillé mais pas un bug de correction).
 
-**SP-20 : 13/13 tâches complètes, 0 Critical/Important non résolu sur
-les 13 revues de tâche.**
+Fix (hors numérotation de tâche, entre Task 9 et Task 10) : commit
+d3086eb — `shell/e2e/sql-lab.spec.ts` mis à jour vers la forme RFC 7807
+top-level (`errors` au lieu de `detail.errors`), fixant la régression
+Task 3 découverte par Task 9. Vérifié directement par le contrôleur (diff
+de 4 lignes, chirurgical, rien d'autre touché). Baseline E2E réellement
+restaurée : **108 passed, 4 skipped, 0 failed**. Vitest : 162 fichiers /
+1463 tests, 0 régression.
 
-## Revue finale de branche
+**Décision de scope actée** (précédent CLAUDE.md très établi, pas
+re-questionné) : le bug préexistant `core/Dockerfile`/`mcp==2.0.0` cassant
+`fastmcp` (documenté CLAUDE.md SP-21, confirmé toujours présent par Task
+9) N'EST PAS corrigé dans SP-26 — hors périmètre, comme toutes les
+occurrences précédentes de cette classe de bug dans ce dépôt. Conséquence
+directe et significative à documenter clairement dans la clôture Task 10 :
+le nouveau job CI `shell-e2e-oidc` (Task 9) est le premier job de ce dépôt
+à faire `docker compose build core`, et est donc attendu ROUGE de façon
+déterministe à son premier run GitHub Actions réel, tant que ce bug
+préexistant n'est pas corrigé séparément.
 
-Diff `8abb52e..5463c2a` (14 commits, 13 tâches). **3 Critical + 2 Important
-+ 6 Minor** — invisibles à la revue par tâche (chaque tâche testait avec
-`FakeLLMProvider`/mocks qui masquaient exactement les points cassés) :
+## Task 10 : revue finale de branche et clôture
 
-- **C1** : schémas d'outils envoyés au LLM en forme MCP (`inputSchema`) au
-  lieu de la forme OpenAI (`parameters`) — `llm_provider.py:54`. Tout tour
-  contre un vrai fournisseur OpenAI échoue en 400/500. Présent verbatim
-  dans le texte du plan (ligne 431) — un implémenteur plan-littéral ne
-  pouvait pas l'éviter.
-- **C2** : `tool_calls[].function.arguments` renvoyé au LLM comme un dict
-  Python au lieu d'une chaîne JSON (`routes.py:82`) — casse la 2e
-  itération de toute boucle utilisant un outil MCP, même après fix C1.
-- **C3** : `signinSilent({scope})` (`useMcpToken.ts:34`) — `oidc-client-ts`
-  ignore silencieusement `scope` sur la branche refresh-token (toujours
-  empruntée en pratique, `geostudio-shell` étant un client public avec
-  refresh token) : le jeton "MCP" n'a jamais l'audience `geostudio-mcp`
-  en mode OIDC réel. La vérification Task 1 (curl ROPC direct) n'exerçait
-  pas ce chemin de la librairie cliente — angle mort spécifique au test.
-- **I1** : `provider.chat()` synchrone (`httpx.post`) appelé depuis une
-  route `async def` (`routes.py:74`) — bloque toute la event loop du
-  cœur pendant l'appel LLM (jusqu'à 30s × 6 itérations), et rend le
-  timeout `asyncio.wait_for` inopérant contre un appel bloquant.
-- **I2** : jeton MCP mis en cache indéfiniment (`useMcpToken.ts:18`),
-  jamais invalidé sur expiration/401 — le copilote se bloque
-  silencieusement après ~5min (durée de vie par défaut du token
-  Keycloak), rechargement de page seul remède.
-- **M1** : widgets d'extension (SP-8, WC tiers) n'ont jamais de
-  `configSchema` (`registerExtensionWidget.ts`) — contredit le principe
-  affiché de `clientTools.ts` ; `updateWidgetProps` no-ope silencieusement
-  dessus tout en affichant "Widget modifié".
-- **M2** : `activePageId` capturé dans la fermeture au moment de l'envoi
-  (`CopilotPanel.tsx:61`) — un changement de page pendant qu'un tour est
-  en vol applique les ops à la mauvaise page (même famille que le C2 de
-  la revue finale SP-19, ici déclenché par l'asynchronie plutôt que
-  l'undo).
-- **M3** (non bloquant, documenté) : `CORE_LLM_PROVIDER` non vide mais
-  invalide (valeur inconnue, `CORE_LLM_API_URL` absent) active le
-  panneau et le routeur sans échec au démarrage — échoue seulement par
-  message, en 500. Contraste avec `CORE_SECRETS_MASTER_KEY` (fail-fast
-  au boot). Laissé non bloquant — validerait au démarrage nécessiterait
-  une décision de conception plus large.
-- **M4** (non bloquant, documenté) : le `signinSilent` du copilote
-  remplace l'utilisateur OIDC stocké de toute la session shell —
-  inoffensif sur le realm actuel (mapper d'audience `geostudio-core`
-  au niveau client, pas par scope) mais fragile sur un realm différent.
-  Lié à C3 ; pas re-testé séparément après le fix C3.
-- **M5** (non bloquant, documenté) : `configSchema` n'a pas de validation
-  par valeurs autorisées (enum) — le copilote peut écrire des valeurs
-  qu'aucun `<select>` de l'UI manuelle ne peut produire (ex. `chartType`
-  invalide). Hors périmètre v1 (aucune exigence d'enum dans le plan).
-- **M6** : prompt système interpole la config via `repr()` Python
-  (guillemets simples, `True`/`False`/`None`) tout en affirmant "JSON"
-  (`routes.py:53`) — trompe le LLM sur le format réel.
+**Étape 1 (suite complète, contrôleur)** : core `uv run pytest` (PostGIS
+réel) → 1887 passed, 5 skipped, 1 failed (même échec RLS préexistant,
+confirmé une 3e fois indépendant de SP-26 via worktree jetable) ;
+couverture 92,94% (seuil 85) ; ruff/ruff format/mypy --strict (4
+modules)/lint-imports verts ; garde-fou de déployabilité 31/31. Shell :
+162 fichiers / 1463 tests (après nettoyage `dist/`/`dist-export/`, même
+piège documenté SP-22-25) ; couverture 89,57% (seuil 88) ; lint/format/
+build verts ; E2E 108 passed, 4 skipped, 0 failed (baseline restaurée par
+le fix interstitiel de sql-lab.spec.ts). `uvx pre-commit run --all-files` :
+5/5.
 
-**Vérifié propre** (aucune trouvaille) : prédiction de diff OpenAPI vide
-confirmée, câblage `docker-compose.yml`/`.env.example` complet et correct
-(4/4 variables, noms exacts), off-by-default de bout en bout, garde
-lecture-seule (exemption `/copilot/turn` sûre car `create_item`/
-`create_form_app` s'auto-gardent), intégrité de l'allowlist (6 outils
-réels, jamais `save_app_config`/`set_sharing`), intégration undo-stack
-(un seul `setDraft`/tour, pas de régression classe SP-19-C2 sur
-`activePageId` lui-même), contrat import-linter.
+**Étape 2 (revue finale de branche, opus, f1cb51e..d3086eb)** : 1 Critical
+(C1) + 6 Important (I1-I6). **C1** — `/scratch` jamais créé/chowné dans
+`core/Dockerfile` (le service `worker` partage la même image core non-root
+et monte `etl-scratch:/scratch` pour les jobs pipeline/terrain3d) + uid
+mismatch entre `app` (core) et `qgis` (qgis-worker), deux images de base
+différentes, chacune `useradd --system` sans uid explicite — casse la
+remise de fichier pipeline→sidecar QGIS à travers ce même répertoire
+partagé. **I1** — budget rate-limit harvest (10/min, `_HARVEST_RE`
+couvrant TOUTES les routes) tue silencieusement les couches externes du
+sélecteur de couches (recherche sans debounce, échecs avalés par
+`Promise.allSettled`). **I2** — défaut compose `CORE_ENV: ${CORE_ENV:-development}`
+désarme la garde mock-mode de Task 2 exactement dans le scénario qu'elle
+visait (compose de base sans `.env`). **I3** — 403 démo lecture-seule
+encore en JSON plat, pas RFC 7807 (angle mort de Task 3, middleware pas
+exception handler). **I4** — `RateLimiter._hits` clé sur le JWT brut
+(rotation OIDC) croît sans borne, docstring affirmant à tort une
+croissance négligeable. **I5** — CSP Report-Only a 4 bloqueurs concrets
+déjà identifiés pour la bascule enforcing (tuiles WMS/WMTS/terrain
+externes, tileset 3D externe, widgets d'extension tiers, `nginx.conf`
+faux hors overlay prod) — documentation seule. **I6** — volumes nommés
+déjà peuplés (déploiement pré-SP-26) resteront `root:root` à l'upgrade —
+documentation seule. Les 3 risques d'intégration cross-tâches
+explicitement nommés par le brief de Task 10 (429/RFC7807, non-root ×
+Tasks 2-4, CSP × `AppErrorBoundary`) tous vérifiés propres. Aucune régression
+trouvée sur le fond des 9 tâches individuelles.
 
-**Décision de correction** : fix C1/C2/C3/I1/I2 (bloquants) + M1/M2/M6
-(gains élevés, coût faible) en une seule passe. M3/M4/M5 laissés non
-bloquants, documentés ci-dessus (matches convention CLAUDE.md des SP
-précédents).
+**Fix round 1** (commits 6acf4bb/5714e16/de778e4) : les 7 findings
+corrigés en une passe. C1 : uid/gid 1001 fixé identique dans
+`core/Dockerfile`/`deploy/qgis-worker/Dockerfile` (vérifié libre dans les
+deux images de base), `/scratch` créé+chowné dans `core/Dockerfile`,
+**écriture croisée réelle prouvée dans les deux ordres de démarrage
+possibles du volume nommé** (pas seulement égalité d'uid), RED→GREEN
+Docker réel. I1 : `route_group()` gagne un paramètre `method`, le groupe
+harvest ne retient que les 4 routes non-GET (écriture/coût réel), 4
+routes de lecture (list_sources/list_layers/list_feature_layers/
+get_source) exemptées. I2 : défaut compose vidé (`${CORE_ENV:-}`), flux
+`.env.example`→`bootstrap-env.sh` non affecté. I3 : 403 aligné sur les 3
+autres sites RFC 7807 existants, fix inline conservateur. I4 : balayage
+périodique (toutes les 50 requêtes) retire réellement les entrées vides
+du dict, docstring corrigé. I5/I6 : notes ajoutées (commentaire CSP dans
+`docker-compose.prod.yml`, nouveau runbook
+`docs/runbooks/2026-08-27-migration-conteneurs-non-root.md`). Suite
+complète : 1895 passed, 5 skipped, 1 failed (même échec préexistant).
+Garde-fou de déployabilité : 34/34 (+3 : 1 pour I2, 2 pour C1).
 
-**Suivi non bloquant découvert (hors périmètre de cette tâche, laissé non
-commité)** : Postgres 16 packagé par `deploy/postgis/Dockerfile` ne
-démarrait pas dans la stack docker compose par défaut (config
-`wal2json`/authentification incompatible) — l'implémenteur a dû créer
-`deploy/postgis/pg_hba.conf` + une modification du Dockerfile pour faire
-tourner un vrai Keycloak et vérifier ce Task. Ces deux fichiers restent
-non commités (scope creep hors Task 1, pas dans les Files: de la
-tâche) — présents dans le répertoire de travail pour référence future,
-mais pas nécessaires aux tâches suivantes du plan (aucune autre tâche
-SP-20 ne requiert un vrai conteneur docker). À signaler dans le suivi
-CLAUDE.md si l'utilisateur veut corriger la stack par défaut séparément.
+**Re-revue** (opus) : 6/7 fermés correctement et vérifiés indépendamment
+(C1 par relecture statique + tests non-vacueux prouvés par revert simulé ;
+I1 par exhaustivité du découpage GET/non-GET relu dans le code réel ; I2
+par simulation de régression sur le test ; I3 par comparaison octet-à-octet
+avec les 3 autres sites ; I4 par lecture du mécanisme de retrait réel du
+dict). **I6 partiellement fermé** — 2 Important supplémentaires trouvés :
+N1 (la commande `chown backup:backup` du runbook échoue réellement — le
+nom `backup` n'existe pas dans l'image `alpine` générique utilisée pour la
+commande, et l'uid de `deploy/backup/Dockerfile` n'était de toute façon pas
+fixé) ; N2 (un 3e volume nommé cassé par le même changement non-root,
+`appexport-runtime` — `deploy/appexport-runtime-builder/Dockerfile`, absent
+du runbook). Plus 4 Minor (test I2 ne couvre qu'une direction de
+régression ; test C1 ne pin que `core/Dockerfile`, pas
+`qgis-worker/Dockerfile` ; classification I1 par "pas GET" plutôt que "est
+une écriture" — inatteignable aujourd'hui ; bloqueur CSP #4 documenté
+seulement dans `docker-compose.prod.yml`, pas près de `shell/nginx.conf`).
 
-## Clôture (2026-08-20, session « termine sp20 »)
+**Fix round 2** (commits 64d36d6/2f7ff0f/2c3c9cc/9e3b278) : N1/N2/M1/M2/M4
+fermés (M3 explicitement non touché, inatteignable aujourd'hui, reporté en
+suivi non bloquant). `deploy/backup/Dockerfile`/
+`deploy/appexport-runtime-builder/Dockerfile` fixent désormais leur
+utilisateur à uid/gid 1001 (vérifié libre dans leurs images de base
+respectives — pas de contrainte de convergence avec `app`/`qgis`, aucun
+volume partagé avec eux, 1001 choisi par cohérence documentaire
+seulement). Runbook corrigé (chown numérique, pas par nom) et complété
+(3e volume `appexport-runtime`) — vérifié empiriquement dans les deux
+sens (ancienne commande échoue réellement, nouvelle réussit). Tests I2/C1
+renforcés (valeur résolue plutôt que seulement la syntaxe de défaut ;
+`qgis-worker` couvert en plus de `core`), RED→GREEN prouvé. Commentaire
+de renvoi ajouté dans `shell/nginx.conf`. Suite complète : 1896 passed, 5
+skipped, 1 failed (même échec préexistant). Garde-fou de déployabilité :
+35/35. **0 Critical/Important ouvert à ce stade — vérifié directement par
+le contrôleur (lecture des 3 diffs de fichiers Dockerfile/runbook/nginx.conf),
+sans re-dispatcher de revue complète, jugé proportionné pour une passe de
+suivi de cette taille.**
 
-État trouvé : 13/13 tâches + revue finale de branche + passe de fix
-(`d03bee4`) + redesign C3 (`f583249`), mais **aucune re-revue** de cette
-passe enregistrée, et CLAUDE.md non backfillé.
-
-### Re-revue de la passe de fix (`5463c2a..f583249`)
-
-**0 Critical/Important.** Les 8 fixes sont réels et couverts par des tests
-qui ont des dents (mutation vérifiée sur `forceIframeAuth` par
-l'implémenteur, sur la garde d'identité par le contrôleur). Vérifié :
-`clientTools.ts` émet bien `inputSchema`, donc le mapping C1 couvre aussi
-les outils client ; `tools/list` MCP renvoie bien cette même forme ;
-`manifest.props` a bien la forme de `configSchema` (M1) ; aucun reste de
-la tentative n°2 (appel direct au endpoint de token) dans le code.
-Minor relevés : `anyio.to_thread.run_sync` n'abandonne pas le thread à
-l'annulation, donc `asyncio.wait_for` ne coupe pas l'appel LLM en vol
-(borné par le timeout httpx de 30 s) — le blocage de la boucle
-d'événements, lui, est bien fermé ; `anyio` non déclaré dans
-`pyproject.toml` (transitif Starlette).
-
-### Vérifications (état trouvé, avant toute modification)
-
-| Commande | Résultat |
-|---|---|
-| `core: uv run pytest -q` | 1588 passed, 153 skipped |
-| `core: uv run lint-imports` | layered architecture KEPT |
-| `shell: npm run build` | tsc + vite OK |
-| `shell: npm run test` | 152 fichiers / 1235 tests |
-| `shell: playwright test` (suite complète) | 107 passed |
-| job CI `api-types-drift` reproduit à l'identique | **aucune dérive** |
-
-### Croisement avec la revue de projet 2026-08-20
-
-`docs/vision/2026-08-20-revue-projet-et-plan-daction.md` (session
-parallèle, audit sur `a7817e5`) portait 3 Critique + 2 Important sur le
-copilote, avec la recommandation explicite de ne pas merger avant.
-Chacun re-vérifié contre le code réel avant d'agir (C2 déjà fermé par le
-fix I1 de la revue de branche). Périmètre de correction arbitré avec
-Tanguy : **C1 + C3 + I6 + I7**.
-
-- `2773fa4` — C1, confused deputy : `app/copilot/mcp_token.py`,
-  `sub` du jeton MCP == `user.oidc_sub` exigé (403), audience MCP
-  obligatoire, 401 si illisible. 6 tests unitaires sur vraie paire RSA +
-  2 tests de route ; garde mutée pour prouver que le test 403 a des dents.
-- `113cca8` — C3, non-déployabilité : `CORE_INTERNAL_BASE_URL`,
-  `loopback_base_url()`, repli sur `CORE_BASE_URL`. Câblage vérifié **par
-  valeur** sur `docker compose config` (base **et** overlay prod).
-- `d13aebb` — I6 + I7 : bornes Pydantic sur tous les champs + taille
-  sérialisée de `currentConfig`, `role` d'historique borné à
-  `user`/`assistant`, copilote éteint en mode démo (double verrou),
-  bloc de config délimité par un marqueur à nonce avec consigne
-  anti-injection. Test avec config hostile tentant l'évasion du bloc,
-  test garde-fou qu'un tour réaliste passe toujours.
-- `ee2a1cf` — hors périmètre, trouvé en route : dé-flake d'un test
-  SP-17b (`test_list_due_reports_respects_cron_cadence_against_last_run`,
-  ~20 % d'échec quand la suite traverse une frontière de 5 minutes).
-
-### Points laissés ouverts (documentés dans CLAUDE.md)
-
-Budget de temps global au tour, rate limiting applicatif sur
-`/copilot/turn`, garde d'egress sur l'appel LLM sortant (constats I4/I6 de
-la revue de projet, hors périmètre arbitré) ; chemin OIDC réel de
-`useMcpToken` non vérifié de bout en bout ; M3/M4/M5 de la revue de
-branche ; `deploy/postgis/*` non commités et **inertes** (Postgres lit
-`$PGDATA/pg_hba.conf`, prouvé par sonde sur l'image réelle).
+Minor reportés en suivi non bloquant (jamais corrigés, disposition
+identique aux autres SP) : classification I1 par "pas GET" plutôt que
+"est une écriture" (OPTIONS/HEAD sur `/harvest/*` techniquement dans le
+budget harvest, inatteignable aujourd'hui — aucun CORS preflight répondu
+sur ce chemin) ; ~8 Minor de la revue finale round 1, explicitement non
+touchés (voir le rapport de revue pour le détail : `HTTPStatus(...).phrase`
+ValueError latent sur un code non standard, `import logging` en corps de
+handler, double-log sur un 500, tag `geostudio-postgis-ci` du job CI OIDC
+non consommé, `docker-compose.prod.yml` n'affiche pas `CORE_ENV: production`
+explicitement, `AppErrorBoundary` ne couvre pas le crash de `loadConfig()`
+en portée module ni ne se réinitialise au changement de route, la police
+Grafana racine route TOUTES les alertes pas seulement SLO, `cdc-worker` ne
+gère pas SIGINT).

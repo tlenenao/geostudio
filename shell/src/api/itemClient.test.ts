@@ -432,6 +432,66 @@ test("getMapConfig reads popup/collectionId/geometryKind/pkColumn on a vector la
   });
 });
 
+// SP-25 Task 12 regression: same class of bug as the popup one above
+// (SP-24 Task 16) — toFrontLayer never read symbology off the raw server
+// JSON either, so a map saved with a configured symbology silently lost it
+// back to empty/default on reload.
+test("getMapConfig reads symbology on a vector layer", async () => {
+  const symbology = {
+    color: {
+      field: "population",
+      mode: "numeric" as const,
+      classification: { method: "quantile" as const, classes: 5 },
+      palette: "sequential-blue" as const,
+      domain: { kind: "numeric-classed" as const, breaks: [10, 20, 30, 40, 50] },
+      computedAt: "2026-08-23T00:00:00.000Z",
+    },
+  };
+  server.use(
+    http.get("https://core.test/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1",
+        itemId: "77",
+        kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://demo/s.json" },
+            view: { center: [1, 47], zoom: 8 },
+            layers: [
+              {
+                id: "communes",
+                title: "Communes",
+                visible: true,
+                kind: "vector",
+                tilesUrl: "https://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
+                sourceLayer: "communes",
+                collectionId: "communes",
+                geometryKind: "polygon",
+                pkColumn: "id",
+                symbology,
+              },
+            ],
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getMapConfig("77");
+  expect(cfg.layers[0]).toEqual({
+    id: "communes",
+    title: "Communes",
+    visible: true,
+    kind: "vector",
+    tilesUrl: "https://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
+    sourceLayer: "communes",
+    collectionId: "communes",
+    geometryKind: "polygon",
+    pkColumn: "id",
+    symbology,
+  });
+});
+
 test("getMapConfig reads popup on a feature (GeoJSON) layer", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/77", () =>
@@ -1609,6 +1669,19 @@ test("queryDataSource carries a per-measure p into body.measures[i].p", async ()
   expect(posted!.measures).toEqual([{ field: "pop", agg: "percentile", label: undefined, p: 90 }]);
 });
 
+test("sampleCollectionField posts sample+field and returns bare numeric values", async () => {
+  let posted: Record<string, unknown> | null = null;
+  server.use(
+    http.post("https://core.test/collections/communes/aggregate", async ({ request }) => {
+      posted = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ categoryKey: "value", rows: [{ value: 1 }, { value: 2.5 }] });
+    }),
+  );
+  const values = await makeClient().sampleCollectionField("communes", "population", 500);
+  expect(values).toEqual([1, 2.5]);
+  expect(posted).toEqual({ field: "population", sample: 500 });
+});
+
 test("featuresUrl strips reserved statistics keys but keeps filter params", () => {
   const url = makeClient().featuresUrl({
     id: "s",
@@ -1806,9 +1879,7 @@ test("createFeature throws FeatureValidationError with field errors on 400", asy
     http.post("https://core.test/collections/incidents/items", () =>
       HttpResponse.json(
         {
-          detail: {
-            errors: [{ field: "titre", code: "missing_required", message: "'titre' is required" }],
-          },
+          errors: [{ field: "titre", code: "missing_required", message: "'titre' is required" }],
         },
         { status: 400 },
       ),
@@ -2398,15 +2469,13 @@ test("runAnalyticsSql throws SqlQueryError with the server message on 400", asyn
     http.post("https://core.test/analytics/sql", () =>
       HttpResponse.json(
         {
-          detail: {
-            errors: [
-              {
-                field: "sql",
-                code: "sql_error",
-                message: "Binder Error: table 'x' does not exist",
-              },
-            ],
-          },
+          errors: [
+            {
+              field: "sql",
+              code: "sql_error",
+              message: "Binder Error: table 'x' does not exist",
+            },
+          ],
         },
         { status: 400 },
       ),

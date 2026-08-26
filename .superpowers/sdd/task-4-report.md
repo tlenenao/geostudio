@@ -1,171 +1,203 @@
-# Task 4 report — `mcp_loopback.py` + `tools_allowlist.py`
+# Task 4 report — Rate limiting différencié (3.4)
 
-## What was implemented
+## Ce qui a été implémenté
 
-- `core/app/copilot/tools_allowlist.py` — `ALLOWED_MCP_TOOL_NAMES` frozenset
-  (6 tools: `search_catalog`, `list_items`, `explain_dataset`,
-  `run_analytics_query`, `create_item`, `create_form_app`), verbatim from the
-  brief. Verified all 6 are real `@server.tool()`-registered functions in
-  `core/app/mcp/tools.py`.
-- `core/app/copilot/mcp_loopback.py` — `McpLoopbackSession`
-  (`list_tools()`, `call_tool(name, arguments)`, `aclose()`),
-  `McpLoopbackError`, `ToolCallResult`, verbatim from the brief, with two
-  fixes (see Deviations): re-exports `ALLOWED_MCP_TOOL_NAMES` from
-  `tools_allowlist`, and a corrected comment about what actually triggers a
-  JSON-RPC `"error"` field vs. a tool-level `isError` result.
-- `core/tests/test_copilot_mcp_loopback.py` — 5 tests (brief specified 4;
-  see Deviations for why a 5th was added) driving the real `/mcp` endpoint
-  via `httpx.AsyncClient(transport=httpx.ASGITransport(app=app))`, no mocks.
+Exactement les 7 étapes du brief, avec un écart assumé et documenté sur
+l'étape 1 (voir ci-dessous) :
 
-## TDD evidence
+1. `core/app/ratelimit/__init__.py` — package vide (SPDX header seulement,
+   même convention que `app/secrets/__init__.py`/`app/alerts/__init__.py`).
+2. `core/app/ratelimit/limiter.py` — code du brief copié tel quel :
+   - `route_group(path, export_path_re) -> str | None` : classe un chemin
+     en `sql` (`^/analytics/sql$`), `llm` (`^/mcp$|^/copilot/turn$`),
+     `jobs` (réutilise `_EXPORT_PATH_RE` de `app.main` passé en paramètre,
+     pas redéfini) ou `harvest` (`^/harvest/`), sinon `None`.
+   - `RateLimiter` : compteur glissant en mémoire, `deque[float]` par
+     `(clé, groupe)`, fenêtre de 60s, budgets `sql=10, llm=20, jobs=15,
+     harvest=10`.
+3. `core/app/main.py` : import `from app.ratelimit.limiter import
+   RateLimiter, route_group` ; `rate_limiter = RateLimiter()` créé À
+   L'INTÉRIEUR de `create_app()`, juste après `read_only_guard` et avant
+   le bloc conditionnel `appexport_cors` ; middleware `rate_limit_guard`
+   (`@app.middleware("http")`) qui court-circuite en 429
+   `application/problem+json` avec `Retry-After: 60` quand le budget du
+   groupe est épuisé pour la clé (en-tête `Authorization` brut).
+4. `core/tests/test_ratelimit.py` — 3 tests du brief, avec un helper
+   `_client()` ajusté (voir "Écart vs. le brief" ci-dessous).
 
-### RED
+## Écart vs. le texte littéral du brief (Step 1)
+
+Le code de test fourni par le brief pour `_client()` (`TestClient(create_app())`
+avec seulement `CORE_AUTH_MODE=mock`) **crashe** sur le premier
+`client.post("/analytics/sql", ...)` : en mode mock, l'utilisateur est
+toujours `bootstrap_analyst=True` (donc passe la garde `is_analyst` de
+`analytics_sql`), et l'exécution atteint `conn_factory()` →
+`get_duckdb_connection_factory()` → `os.environ["S3_ENDPOINT_URL"]` → `KeyError`
+non catchée hors de la stack docker (pas de valeur par défaut, aucun test
+existant du dépôt ne va nu sur cette route sans override). Starlette's
+`ServerErrorMiddleware` envoie bien une réponse 500 via le handler
+`Exception` (Task 3) mais **re-raise systématiquement après**
+("We always continue to raise the exception" — code source Starlette),
+donc `TestClient` (raise_server_exceptions=True par défaut) propage le
+`KeyError` et fait planter le test avant même la 11e requête, quel que
+soit l'état de l'implémentation du rate limiter.
+
+Fix appliqué (même patron que `tests/test_analytics_sql_routes.py`,
+déjà établi dans ce dépôt) : `_client()` override
+`features_routes.get_duckdb_connection_factory` sur l'app créée, pour
+retourner une factory in-memory DuckDB (`duckdb.connect(":memory:")`),
+sans extension supplémentaire — le SQL testé (`"select 1"`) ne référence
+aucune table, donc `run_analyst_sql` ne matérialise rien et n'a besoin ni
+de `spatial` ni de `httpfs`. Comportement des 3 tests inchangé par
+rapport à l'intention du brief ; seul le chemin d'exécution de l'endpoint
+`/analytics/sql` devient déterministe et sans dépendance à S3.
+
+Aucun autre écart. La structure de `main.py` (imports, `_EXPORT_PATH_RE`
+ligne 56-58, `read_only_guard`, route `/health` ligne ~293-295, mount
+`/mcp` en dernier) correspondait exactement à ce que le brief décrivait.
+
+## TDD — RED puis GREEN
+
+RED (avant `app/ratelimit/`, seulement le test avec le fix de l'écart
+ci-dessus) :
 
 ```
-cd core && uv run pytest tests/test_copilot_mcp_loopback.py -v
-```
-```
-ERROR collecting tests/test_copilot_mcp_loopback.py
-E   ModuleNotFoundError: No module named 'app.copilot.mcp_loopback'
-=========================== short test summary info ============================
-ERROR tests/test_copilot_mcp_loopback.py
-!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
-=============================== 1 error in 0.16s ===============================
-```
-Failed for the expected reason (module doesn't exist yet).
-
-### GREEN
-
-```
-cd core && uv run pytest tests/test_copilot_mcp_loopback.py -v
-```
-```
-collected 5 items
-
-tests/test_copilot_mcp_loopback.py::test_list_tools_returns_full_catalog PASSED [ 20%]
-tests/test_copilot_mcp_loopback.py::test_call_tool_returns_text_result PASSED [ 40%]
-tests/test_copilot_mcp_loopback.py::test_call_tool_surfaces_tool_execution_error_without_raising PASSED [ 60%]
-tests/test_copilot_mcp_loopback.py::test_call_tool_surfaces_unknown_tool_name_as_tool_error PASSED [ 80%]
-tests/test_copilot_mcp_loopback.py::test_call_tool_raises_on_genuine_protocol_level_failure PASSED [100%]
-
-============================== 5 passed in 2.59s ===============================
+tests/test_ratelimit.py::test_sql_route_rate_limited_after_budget_exhausted FAILED
+  assert 200 == 429  # aucune limite n'existe encore
+tests/test_ratelimit.py::test_different_callers_have_independent_budgets PASSED  (vacuously)
+tests/test_ratelimit.py::test_health_endpoint_not_rate_limited_by_sql_budget PASSED  (vacuously)
+1 failed, 2 passed in 2.99s
 ```
 
-Also re-ran the surrounding MCP/copilot suites for regressions — all pass
-(17/17): `test_mcp_routes.py`, `test_mcp_auth.py`, `test_copilot_llm_provider.py`,
-`test_copilot_enabled_flag.py`.
+GREEN (après implémentation) :
 
-Also ran `uv run lint-imports`: "layered architecture KEPT — 1 kept, 0 broken"
-(app.copilot doesn't import anything that would violate the layer contract;
-it's a pure HTTP client with no dependency on other app.* internals).
+```
+tests/test_ratelimit.py::test_sql_route_rate_limited_after_budget_exhausted PASSED
+tests/test_ratelimit.py::test_different_callers_have_independent_budgets PASSED
+tests/test_ratelimit.py::test_health_endpoint_not_rate_limited_by_sql_budget PASSED
+3 passed in 2.96s
+```
 
-## Deviations from the brief (and why)
+## Step 6 — sanity check `/mcp` (raison d'être du middleware)
 
-The brief's Step 1 test file and Step 3 `mcp_loopback.py` code are given
-verbatim, but three things in the brief didn't match the real system. All
-three were resolved by testing against the real `/mcp` endpoint rather than
-guessing, per the task's "ask before proceeding rather than guessing"
-instruction interpreted as "resolve by empirical substitution when possible,
-escalate only if unresolvable" (the brief itself pre-authorizes exactly this
-kind of substitution for the `get_item` test).
+```
+$ uv run python -c "
+from app.ratelimit.limiter import route_group
+import re
+export_re = re.compile(r'^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?\$|^/export\$|^/app-exports\$')
+assert route_group('/mcp', export_re) == 'llm'
+assert route_group('/copilot/turn', export_re) == 'llm'
+assert route_group('/analytics/sql', export_re) == 'sql'
+assert route_group('/export', export_re) == 'jobs'
+assert route_group('/app-exports', export_re) == 'jobs'
+assert route_group('/harvest/sources', export_re) == 'harvest'
+assert route_group('/health', export_re) is None
+print('all route groups correct')
+"
+all route groups correct
+```
 
-1. **`asyncio_mode` / `pytest.mark.asyncio` doesn't apply to this repo.**
-   `pytest-asyncio` is not a dependency at all — `pyproject.toml`'s
-   `[tool.pytest.ini_options]` has no `asyncio_mode` key, and there's no
-   `asyncio` marker registered. The repo's actual convention (confirmed in
-   `tests/test_mcp_auth.py`, `tests/test_jobs_observability.py`) is the
-   `anyio` pytest plugin: `@pytest.mark.anyio` plus a per-file
-   `anyio_backend` fixture returning `"asyncio"`. I used that convention
-   instead of `@pytest.mark.asyncio` / `asyncio_mode = "auto"` — did **not**
-   touch `pyproject.toml`, since the setting the brief worried about isn't
-   applicable here (`anyio`'s plugin is auto-active via `pytest-anyio`
-   dependency of `httpx`/`anyio`, no ini config needed).
+Les 7 assertions passent, y compris `/mcp` → `llm` — confirme que le
+routage par groupe fonctionne indépendamment de FastAPI (`route_group`
+est une fonction pure de chemin, aucun objet `Request`/DI impliqué), donc
+que le middleware couvre bien le mount ASGI brut de `/mcp`, qu'une
+dépendance de route ne pourrait jamais atteindre.
 
-2. **`base_url="http://test"` is rejected by DNS-rebinding host-header
-   protection.** FastMCP auto-enables `TransportSecuritySettings` with
-   `allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*"]` whenever its
-   `host` constructor arg (default `"127.0.0.1"`, never overridden in
-   `create_mcp_server`) is a loopback value — which it always is here. A
-   client presenting `Host: test` gets a genuine `421 Misdirected Request`
-   before the handshake even starts. Changed both the `CORE_BASE_URL` env
-   var and the `httpx.AsyncClient(base_url=...)` in every test from
-   `http://test` to `http://localhost:8200` (matching the already-working
-   pattern in `test_mcp_routes.py`). This is orthogonal to `CORE_BASE_URL`'s
-   own value — the allowlist is fixed to loopback hostnames regardless.
+## Suite complète core (DB PostGIS réelle)
 
-3. **An unknown tool name is *not* a JSON-RPC protocol-level error in this
-   MCP SDK version.** The brief's 4th test
-   (`test_call_tool_raises_on_unknown_tool_name`) assumed
-   `session.call_tool("not_a_real_tool", {})` would produce a top-level
-   JSON-RPC `"error"` field, causing `McpLoopbackError` to be raised.
-   Empirically (confirmed with a standalone repro script hitting the real
-   `/mcp` endpoint), the server instead returns `200 OK` with
-   `{"result": {"content": [...], "isError": true}}` — the exact same shape
-   as a tool that raises internally (e.g. `get_item` on a bad id). So
-   `call_tool`'s existing logic (as given in the brief, unchanged) correctly
-   does **not** raise for this case — the brief's test expectation, not the
-   implementation, was wrong.
-   - Renamed/rewrote that test to
-     `test_call_tool_surfaces_unknown_tool_name_as_tool_error`, asserting
-     `result.is_error is True` instead of `pytest.raises`.
-   - Since that removed the only exercised path proving `McpLoopbackError`
-     really gets raised for a *genuine* protocol failure, I added a 5th
-     test, `test_call_tool_raises_on_genuine_protocol_level_failure`, using
-     the real DNS-rebinding 421 from finding #2 above as the trigger (an
-     `httpx.AsyncClient` pointed at `http://unrecognized-host`). This keeps
-     the interface contract ("raises only on protocol failure, never on
-     tool-level errors") actually covered by a real, reproducible case
-     instead of an imagined one.
-   - Corrected the misleading inline comment in `mcp_loopback.py`'s
-     `call_tool` (previously listed "nom d'outil inconnu" as an example of
-     a protocol-level error — it isn't) to reflect this.
+```
+$ CORE_TEST_DATABASE_URL=postgresql://gis:gis@localhost:5433/gis_test uv run pytest -q
+...
+=================================== FAILURES ===================================
+___________________ test_scope_preserves_original_sql_error ____________________
+[...]
+1 failed, 1886 passed, 5 skipped in 190.71s (0:03:10)
+```
 
-4. **`ALLOWED_MCP_TOOL_NAMES` re-export.** The brief's own test file (given
-   verbatim in Step 1) imports `ALLOWED_MCP_TOOL_NAMES` from
-   `app.copilot.mcp_loopback`, but Step 3's `mcp_loopback.py` code doesn't
-   import it from `tools_allowlist.py` — an internal inconsistency in the
-   brief. Added `from app.copilot.tools_allowlist import
-   ALLOWED_MCP_TOOL_NAMES` plus an `__all__` to `mcp_loopback.py` so both
-   import paths work, matching what the brief's own test expects.
+Le seul échec est `tests/test_features_rls.py::test_scope_preserves_original_sql_error`
+— échec pré-existant, sans rapport avec ce chantier (assertion sur le
+message d'erreur SQL exact d'un `RESET ROLE` échoué après une violation
+RLS, dépendant du driver/version Postgres), confirmé comme étant le
+**seul** échec de toute la suite. Aucune régression introduite par ce
+chantier. +3 tests par rapport à la baseline mesurée par le contrôleur
+(1883+1 → 1886, cohérent avec les 3 nouveaux tests de ce fichier).
 
-No changes were needed to `get_item`/Step 4's documented fallback — `get_item`
-on a nonexistent id really does raise via `_require_access`
-(`core/app/mcp/tools.py:69-79`, `raise ValueError("item not found")`), which
-the MCP SDK turns into `isError=true`, exactly as the brief predicted for the
-happy case.
+## Lint / type-check / import-contract
 
-## Files changed
+```
+$ uv run ruff check app/ratelimit/ app/main.py tests/test_ratelimit.py
+All checks passed!
+$ uv run ruff format --check app/ratelimit/ app/main.py tests/test_ratelimit.py
+4 files already formatted   # après une passe de `ruff format` sur test_ratelimit.py
+$ uv run mypy --strict app/ratelimit/
+Success: no issues found in 2 source files
+$ uv run lint-imports
+Contracts: 1 kept, 0 broken.
+```
 
-- `core/app/copilot/mcp_loopback.py` (new)
-- `core/app/copilot/tools_allowlist.py` (new)
-- `core/tests/test_copilot_mcp_loopback.py` (new)
+`app.ratelimit` n'est volontairement pas ajouté au contrat de couches
+import-linter : il n'importe aucun module `app.*` (seulement `re`,
+`time`, `collections`), donc n'a rien à violer ; le brief ne demandait
+pas cet ajout.
 
-Commit: `308e97d` — `feat(core): client de rappel MCP + allowlist d'outils
-pour le copilote (SP-20)` (exact message from the brief).
+## Fichiers modifiés/créés
 
-## Self-review findings
+- `core/app/ratelimit/__init__.py` (nouveau)
+- `core/app/ratelimit/limiter.py` (nouveau)
+- `core/app/main.py` (modifié : import + middleware `rate_limit_guard`)
+- `core/tests/test_ratelimit.py` (nouveau)
 
-- Confirmed via `uv run lint-imports` that `app.copilot` doesn't break the
-  layered-architecture import-linter contract.
-- Confirmed the 6 allowlisted tool names are all real, currently-registered
-  MCP tools (not just plausible-sounding names) by grepping
-  `core/app/mcp/tools.py`.
-- Confirmed no regression in the 4 directly-related existing test files
-  (17/17 pass) plus the new file (5/5 pass).
-- `McpLoopbackSession.__init__` raises `KeyError` if `CORE_BASE_URL` is unset
-  and no `http_client` is injected — this is deliberate (brief's own code,
-  unchanged), consistent with this repo's "fail fast on missing required
-  env var" convention (e.g. `CORE_SECRETS_MASTER_KEY`). Flagging only for
-  Task 5's awareness: whatever constructs `McpLoopbackSession` in
-  `routes.py` must ensure `CORE_BASE_URL` is set in every deployment path
-  (it already is per `app/main.py`'s own default-handling, so this should be
-  a non-issue in practice).
+## Self-review
 
-## Issues or concerns
+**Complétude** :
+- 3 nouveaux tests passent — oui.
+- `/mcp` réellement couvert (Step 6) — oui, vérifié par sanity check
+  indépendant du serveur MCP réel (`route_group` pure).
+- Budgets exacts : `sql=10, llm=20, jobs=15, harvest=10`, fenêtre 60s —
+  vérifié dans `limiter.py` (`_BUDGETS`, `_WINDOW_SECONDS = 60.0`).
 
-None blocking. The three empirical corrections above (asyncio/anyio
-convention, Host-header allowlist, unknown-tool-name behavior) are the kind
-of thing that would have caused Task 5's `routes.py` to be built against a
-false mental model of `call_tool`'s failure modes if left uncorrected — worth
-a quick read by whoever picks up Task 5, since it consumes exactly this
-`McpLoopbackSession`/`McpLoopbackError`/`ToolCallResult` interface.
+**Qualité** :
+- `rate_limiter = RateLimiter()` est bien créé À L'INTÉRIEUR de
+  `create_app()` (ligne juste après `read_only_guard`, avant le bloc
+  `if is_appexport_enabled()`), pas au niveau module — vérifié par
+  lecture directe du diff. Un test antérieur qui épuiserait un budget ne
+  peut donc pas faire trébucher un test sans rapport plus tard dans la
+  suite (chaque `create_app()` — donc chaque test qui construit son
+  propre `TestClient` — repart avec un `RateLimiter` neuf). Cohérent avec
+  le mode d'échec explicitement à éviter d'après la consigne de la
+  tâche.
+- Forme de la réponse 429 cohérente avec les handlers RFC 7807 de la
+  Task 3 : mêmes clés top-level (`type`/`title`/`status`/`detail`),
+  même `media_type="application/problem+json"` — même si elle est
+  construite à la main dans le middleware (raison documentée dans le
+  contexte de la tâche : le middleware tourne hors du dispatch
+  route/exception-handler, donc ne peut pas lever `HTTPException` et
+  compter sur le handler existant).
+- `Retry-After: 60` présent sur la réponse 429 — vérifié par le test 1
+  et par lecture du code.
+
+**Discipline** :
+- Aucune persistance/Redis/thread de nettoyage ajouté au-delà de ce que
+  le brief spécifie — la docstring de `RateLimiter` documente
+  explicitement la limite (deque vide qui reste en mémoire indéfiniment
+  pour une clé inactive) comme acceptée, pas comme un bug à corriger.
+- Aucun fichier hors périmètre modifié — `git add` n'a pris que
+  `core/app/ratelimit/`, `core/app/main.py`, `core/tests/test_ratelimit.py`
+  (les fichiers `.superpowers/sdd/*.md` modifiés/`deploy/postgis/pg_hba.conf`
+  visibles dans `git status` au démarrage de la tâche sont pré-existants,
+  d'une autre session, non touchés ici).
+
+## Concerns / points d'attention
+
+- Le test 1 du brief tel que littéralement fourni ne fonctionne pas sans
+  l'override de `get_duckdb_connection_factory` (cf. section "Écart"
+  ci-dessus) — signalé explicitement pour que le contrôleur puisse
+  vérifier que cette déviation est bien celle qu'il attendait, plutôt que
+  de la découvrir en aval.
+- `route_group()` sur `/mcp` matche n'importe quelle sous-méthode/verbe
+  HTTP du protocole MCP (POST/GET/DELETE selon la session streamable-http) —
+  c'est le comportement voulu par le brief (budget `llm` unique pour tout
+  trafic `/mcp`), pas une lacune.
+- Comme documenté dans le docstring du module, la limite ne tient pas en
+  cas de multi-process (`--workers` uvicorn) — limite assumée par le
+  design SP-26 §3.4, pas un défaut de cette implémentation.

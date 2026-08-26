@@ -91,9 +91,7 @@ test("shows the server error message and keeps the SQL text on failure", async (
     http.post("https://core.test/analytics/sql", () =>
       HttpResponse.json(
         {
-          detail: {
-            errors: [{ field: "sql", code: "sql_error", message: "Parser Error: syntax error" }],
-          },
+          errors: [{ field: "sql", code: "sql_error", message: "Parser Error: syntax error" }],
         },
         { status: 400 },
       ),

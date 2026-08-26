@@ -4,7 +4,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
-import { _resetRegistry } from "./registry";
+import { registerWidget, _resetRegistry } from "./registry";
 import { registerBuiltinWidgets } from "./widgets";
 import { PropsPanel } from "./PropsPanel";
 import { ItemClientProvider } from "../api/ItemClientProvider";
@@ -92,4 +92,30 @@ test("shows a validation error for an invalid visibleWhen", () => {
     { wrapper },
   );
   expect(screen.getByRole("alert")).toBeInTheDocument();
+});
+
+test("passes theme through to the widget's PropsPanel", () => {
+  const receivedThemes: (unknown | undefined)[] = [];
+  registerWidget({
+    type: "theme-probe",
+    label: "Probe",
+    defaultProps: {},
+    defaultSize: { w: 1, h: 1 },
+    PropsPanel: ({ theme }) => {
+      receivedThemes.push(theme);
+      return null;
+    },
+    Component: () => null,
+  });
+  render(
+    <PropsPanel
+      item={{ id: "1", widget: "theme-probe", x: 0, y: 0, w: 1, h: 1, props: {} }}
+      dataSources={[]}
+      theme={{ colors: { primary: "#2563eb" } }}
+      onChange={vi.fn()}
+      onVisibleWhenChange={vi.fn()}
+    />,
+    { wrapper },
+  );
+  expect(receivedThemes).toEqual([{ colors: { primary: "#2563eb" } }]);
 });

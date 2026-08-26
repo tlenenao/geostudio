@@ -101,6 +101,7 @@ class MapLayer(BaseModel):
     paint: dict | None = None
     props: dict | None = None
     popup: PopupConfig | None = None
+    symbology: dict | None = None
     # Lien vers la collection servie en tuiles par le cœur : c'est lui qui
     # donne au shell le schéma des champs (popup) et, plus tard, le domaine
     # des valeurs (symbologie SP-25).

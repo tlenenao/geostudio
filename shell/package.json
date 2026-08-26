@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
+    "e2e:oidc": "playwright test --config=playwright.oidc.config.ts",
     "gen:api-types": "openapi-typescript ../core/openapi.json -o src/api/generated/core-schema.d.ts",
     "build:export-runtime": "vite build --config vite.export.config.ts",
     "lint": "eslint .",

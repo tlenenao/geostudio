@@ -1,159 +1,195 @@
-# Task 10 report — Shell `useMcpToken.ts`
+# Task 10 report — Shell : thread `theme` through both the editor and the render path
 
-## What was implemented
+## What I found in the 7 real files before editing
 
-1. **`shell/src/auth/useAuth.ts`** — added `isMockMode(): boolean`, a simple
-   getter for the existing module-level `mockMode` flag, right after
-   `enableMockAuth`. Verified the real file matches the brief's assumption
-   exactly (same `let mockMode = false;` / `enableMockAuth()` shape, same
-   `// eslint-disable-next-line react-hooks/rules-of-hooks` pattern already
-   used by `useAuth()` itself).
+- `shell/src/builder/registry.ts` — matched the brief's assumed shape almost
+  verbatim: `WidgetContext` (mode/navigate/pages/variables/data/bus/widgetId/
+  user/breakpoint) and `WidgetDefinition.PropsPanel` (props/onChange/
+  dataSources) with no `theme` field yet.
+- `shell/src/builder/PropsPanel.tsx` — the wrapper matched the brief exactly:
+  destructures `item`/`dataSources`/`onChange`/`onVisibleWhenChange`, renders
+  `<Panel props={item.props} dataSources={dataSources} onChange={...} />`.
+- `shell/src/builder/WidgetHost.tsx` — matched the brief: destructures
+  `item`/`mode`/`pages`/`navigate`/`breakpoint`, builds `ctx` inline in the
+  `<Widget ctx={{ mode, data, bus, widgetId, pages, navigate, variables,
+  user, breakpoint }} />` JSX.
+- `shell/src/builder/AppRenderer.tsx` — the one `<WidgetHost>` call site is
+  at line 210 (as the brief predicted, "around line 210"), inside
+  `GridCanvas`'s `renderItem`, passing `item`/`mode`/`pages`/`navigate`/
+  `breakpoint`. `config.theme` is available in scope (used a few lines above
+  for `themeToCssVars(config.theme)`).
+- `shell/src/pages/AppBuilderPage.tsx` — the one `<PropsPanel>` call site
+  (line 441) passes `item={selected}`/`dataSources={draft.dataSources}`/
+  `onChange`/`onVisibleWhenChange`. `draft.theme` already exists and is used
+  elsewhere in the file (`ThemePanel theme={draft.theme}`).
+- `PropsPanel.test.tsx` / `WidgetHost.test.tsx` — both matched the brief's
+  assumptions about existing imports/helpers (`registerWidget`/
+  `_resetRegistry` from `./registry`, a `wrapper` providing
+  `QueryClientProvider`+`ItemClientProvider` for `PropsPanel.test.tsx`, an
+  `item()` helper + `vi.mock("../auth/useAuth")` for `WidgetHost.test.tsx`).
 
-2. **`shell/src/builder/copilot/useMcpToken.ts`** — created verbatim from the
-   brief (Step 4). `useMcpToken(): () => Promise<string>`:
-   - Mock mode (`isMockMode()`): returns a `useCallback` resolving to the
-     fixed string `"mock-mcp-token"`.
-   - Real mode: calls `useAuth as useOidcAuth` from `react-oidc-context`
-     directly (bypassing the app's own `useAuth()`, which doesn't expose
-     `signinSilent`), requests `scope: "openid profile email
-     geostudio-mcp-audience"`, caches the resulting `access_token` in a
-     `useRef` for the panel's session lifetime (never localStorage), and
-     throws a French, readable error if `signinSilent` resolves without a
-     token.
+No divergence from the brief's assumed signatures — proceeded without
+escalating.
 
-3. **Two test files**, per the brief's isolation strategy (mock-mode flag
-   has no reset function, so mock and real-OIDC behavior must live in
-   separate files that each dynamically `import()` the hook under test):
-   - `shell/src/builder/copilot/useMcpToken.test.tsx` (mock mode, 1 test)
-   - `shell/src/builder/copilot/useMcpTokenOidc.test.tsx` (real OIDC mode,
-     2 tests)
+Also verified: `Theme`/`ThemeColors` types already exist in
+`shell/src/api/types.ts` (lines 624-635), and `AppConfig.theme: Theme` is
+non-optional (line 642), so `config.theme` at the `AppRenderer` call site is
+always a valid `Theme` value.
 
-## Deviations from the brief's literal test code (both found via TDD, both fixed)
+## What I implemented
 
-The brief's code was followed exactly for `useAuth.ts` and `useMcpToken.ts`
-(Steps 1 and 4, verbatim). Two defects surfaced in the brief's literal test
-code while running Steps 3/5 — both are pre-existing bugs in the plan text,
-not something introduced by me, and both were fixed rather than "worked
-around":
+### Path 1 — Editor time (`AppBuilderPage.tsx` → `PropsPanel` → `def.PropsPanel`)
 
-1. **`vi.resetModules()` in `useMcpToken.test.tsx`'s `beforeEach` broke the
-   very test it was meant to protect.** Confirmed empirically (see RED/GREEN
-   below): `enableMockAuth` is imported *statically* at the top of the test
-   file, resolved once at module-load time. `vi.resetModules()` then clears
-   Vitest's module registry, so the later `await import("./useMcpToken")`
-   gets a **fresh** copy of `../../auth/useAuth` with `mockMode` reset back
-   to `false` — while the statically-imported `enableMockAuth()` binding
-   used inside the test still points at the *old* module instance. Result:
-   `isMockMode()` inside the freshly-loaded `useMcpToken.ts` sees `false`,
-   and the hook falls through to the real-OIDC branch, returning
-   `"real-mcp-token"` instead of `"mock-mcp-token"`.
-   Fix: removed `beforeEach(() => vi.resetModules())` — this file has only
-   one test, so it was never needed for intra-file isolation, and
-   cross-file isolation from `useMcpTokenOidc.test.tsx` (the actual reason
-   the brief split into two files) is already guaranteed by Vitest running
-   each test file in its own module context. Added a comment explaining
-   why, in case a second test is ever added to this file.
-2. **Unused `waitFor` import** in both test files (present in the brief's
-   literal code, never called) failed `tsc --noEmit` under this repo's
-   `noUnusedLocals` — which is part of `npm run build` per CLAUDE.md.
-   Fixed by removing the unused import from both files.
+- `registry.ts`: `WidgetDefinition["PropsPanel"]` gains `theme?: Theme`.
+- `PropsPanel.tsx`: wrapper gains `theme?: Theme` prop, forwards it to
+  `<Panel theme={theme} ... />`.
+- `AppBuilderPage.tsx`: its one `<PropsPanel>` call site now passes
+  `theme={draft.theme}`.
 
-Neither `useAuth.ts` nor `useMcpToken.ts` (the two files the brief asked to
-be followed "exactly", including the rules-of-hooks eslint-disable pattern)
-needed any change — implemented verbatim.
+### Path 2 — Render time (`AppRenderer.tsx` → `WidgetHost` → `WidgetContext.theme` → `def.Component`)
+
+- `registry.ts`: `WidgetContext` gains `theme?: Theme`.
+- `WidgetHost.tsx`: gains `theme?: Theme` prop, forwards it into the `ctx`
+  object passed to `def.Component`.
+- `AppRenderer.tsx`: its one `<WidgetHost>` call site now passes
+  `theme={config.theme}`.
+
+### Deliberate scope limit (verified, not touched)
+
+`tabs.tsx`, `drawer.tsx`, `modal.tsx`, `LayoutEditor.tsx` were **not**
+modified — `git diff --stat` on those four files after the whole task shows
+no changes.
 
 ## TDD evidence
 
-### RED
+### Path 1 (editor) — RED
+
+Added the test from the brief to `PropsPanel.test.tsx` (plus importing
+`registerWidget` alongside the already-imported `_resetRegistry`).
 
 ```
-cd shell && npx vitest run src/builder/copilot/useMcpToken.test.tsx src/builder/copilot/useMcpTokenOidc.test.tsx
-```
-```
-FAIL  src/builder/copilot/useMcpToken.test.tsx [ src/builder/copilot/useMcpToken.test.tsx ]
-Error: Failed to resolve import "./useMcpToken" from "src/builder/copilot/useMcpToken.test.tsx". Does the file exist?
-FAIL  src/builder/copilot/useMcpTokenOidc.test.tsx [ src/builder/copilot/useMcpTokenOidc.test.tsx ]
-Error: Failed to resolve import "./useMcpToken" from "src/builder/copilot/useMcpTokenOidc.test.tsx". Does the file exist?
-
- Test Files  2 failed (2)
-      Tests  no tests
-```
-Matches the brief's expected failure exactly.
-
-After implementing `useMcpToken.ts` (Step 4) but before removing
-`vi.resetModules()`, a second RED was observed for the wrong reason (not
-"module not found" but an assertion failure) — this is the
-`vi.resetModules()` bug described above:
-```
- ❯ src/builder/copilot/useMcpToken.test.tsx (1 test | 1 failed) 34ms
-   × useMcpToken > returns a fixed mock token synchronously in mock mode
-     → expected 'real-mcp-token' to be 'mock-mcp-token'
- ✓ src/builder/copilot/useMcpTokenOidc.test.tsx (2 tests) 43ms
-
- Test Files  1 failed | 1 passed (2)
-      Tests  1 failed | 2 passed (3)
-```
-Diagnosed via an isolated probe test proving the module-instance split (see
-report body above), then fixed by removing the unnecessary
-`vi.resetModules()` call.
-
-### GREEN
-
-```
-cd shell && npx vitest run src/builder/copilot/useMcpToken.test.tsx src/builder/copilot/useMcpTokenOidc.test.tsx
-```
-```
- ✓ src/builder/copilot/useMcpToken.test.tsx (1 test) 27ms
- ✓ src/builder/copilot/useMcpTokenOidc.test.tsx (2 tests) 41ms
-
- Test Files  2 passed (2)
-      Tests  3 passed (3)
+$ npx vitest run src/builder/PropsPanel.test.tsx -t "theme through"
+ × passes theme through to the widget's PropsPanel 35ms
+   → expected [ undefined ] to deeply equal [ { colors: { primary: '#2563eb' } } ]
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 skipped (6)
 ```
 
-Additional verification:
-- `npx tsc --noEmit` — clean (0 errors) after removing the unused `waitFor`
-  imports.
-- `npx vitest run src/builder/copilot src/auth` — 6 files / 20 tests pass
-  (nothing else in these two directories broke).
-- Full suite: `npx vitest run` — **151 test files, 1228 tests, all pass.**
+### Path 1 (editor) — GREEN
+
+After implementing registry.ts / PropsPanel.tsx / AppBuilderPage.tsx:
+
+```
+$ npx vitest run src/builder/PropsPanel.test.tsx
+ ✓ src/builder/PropsPanel.test.tsx (6 tests) 195ms
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+```
+
+### Path 2 (render) — RED
+
+Added the test from the brief to `WidgetHost.test.tsx`.
+
+```
+$ npx vitest run src/builder/WidgetHost.test.tsx -t "theme through to the widget's Component"
+ × passes theme through to the widget's Component via ctx 23ms
+   → expected [ undefined ] to deeply equal [ { colors: { primary: '#2563eb' } } ]
+ Test Files  1 failed (1)
+      Tests  1 failed | 12 skipped (13)
+```
+
+### Path 2 (render) — GREEN
+
+After implementing registry.ts / WidgetHost.tsx / AppRenderer.tsx:
+
+```
+$ npx vitest run src/builder/WidgetHost.test.tsx
+ ✓ src/builder/WidgetHost.test.tsx (13 tests) 70ms
+ Test Files  1 passed (1)
+      Tests  13 passed (13)
+```
+
+## Scope-limit grep check
+
+```
+$ grep -rn "<WidgetHost" src/ --include="*.tsx" | grep -v test
+src/builder/AppRenderer.tsx:210:                      <WidgetHost      ← theme threaded
+src/builder/widgets/modal.tsx:79:                <WidgetHost           ← untouched
+src/builder/LayoutEditor.tsx:69:          renderItem={(item) => <WidgetHost item={item} mode="edit" />}   ← untouched
+src/builder/widgets/drawer.tsx:106:                  <WidgetHost       ← untouched
+src/builder/widgets/tabs.tsx:171:                <WidgetHost           ← untouched
+
+$ grep -rn "<PropsPanel" src/ --include="*.tsx" | grep -v test
+src/builder/LayoutEditor.tsx:72:      <PropsPanel                      ← untouched
+src/pages/AppBuilderPage.tsx:441:              <PropsPanel             ← theme threaded
+
+$ git diff --stat -- src/builder/widgets/modal.tsx src/builder/widgets/drawer.tsx src/builder/widgets/tabs.tsx src/builder/LayoutEditor.tsx
+(no output — zero diff, confirmed untouched)
+```
+
+Confirmed: only the two named top-level call sites (`AppRenderer.tsx`'s
+`<WidgetHost>`, `AppBuilderPage.tsx`'s `<PropsPanel>`) got `theme` threaded.
+
+## Full shell-gates output
+
+- `npm run lint` → clean (`eslint .`, no output/errors).
+- `npm run format:check` → `All matched files use Prettier code style!`
+- `npx vitest run` (full suite) →
+  - 1st run: **1 flaky failure**, unrelated to this task:
+    `src/pages/MapEditorPage.test.tsx > exportRender=1 renders a nude
+    chrome...` (`TypeError: Cannot read properties of undefined (reading
+    'fire')`). Verified pre-existing / order-dependent, not a regression:
+    (a) passes in isolation both before (`git stash`) and after my changes;
+    (b) a 2nd full-suite run passed cleanly.
+  - 2nd run (full suite): **161 files passed (161), 1423 tests passed
+    (1423)** — matches the reference count of 161 files / 1421 tests + the
+    2 new tests this task adds (1 in `PropsPanel.test.tsx`, 1 in
+    `WidgetHost.test.tsx`) = 1423. No regression.
+- `npm run build` → green (`tsc --noEmit && vite build` succeeded, 4204
+  modules transformed; only pre-existing chunk-size warnings, unrelated).
 
 ## Files changed
 
-- `/home/lenen/projets/geostudio/shell/src/auth/useAuth.ts` (modified —
-  added `isMockMode()`)
-- `/home/lenen/projets/geostudio/shell/src/builder/copilot/useMcpToken.ts`
-  (created, verbatim from brief)
-- `/home/lenen/projets/geostudio/shell/src/builder/copilot/useMcpToken.test.tsx`
-  (created — brief's code minus the removed `vi.resetModules()` and unused
-  `waitFor` import)
-- `/home/lenen/projets/geostudio/shell/src/builder/copilot/useMcpTokenOidc.test.tsx`
-  (created — brief's code minus the unused `waitFor` import)
+- `shell/src/builder/registry.ts`
+- `shell/src/builder/PropsPanel.tsx`
+- `shell/src/builder/PropsPanel.test.tsx`
+- `shell/src/builder/WidgetHost.tsx`
+- `shell/src/builder/WidgetHost.test.tsx`
+- `shell/src/builder/AppRenderer.tsx`
+- `shell/src/pages/AppBuilderPage.tsx`
 
-Commit: `f5b5e77` — `feat(shell): useMcpToken — second signinSilent pour
-l'audience MCP (SP-20)`, exact message from the brief, only the 4 files
-above staged (other unrelated working-tree changes from prior/parallel
-tasks were left untouched).
+Exactly the 7 files the brief lists — confirmed via `git status --porcelain`
+on those paths before commit, and nothing else was staged.
+
+## Deviations from the brief
+
+None. Implementation matches the brief's code snippets verbatim (down to
+the exact JSX prop ordering in `WidgetHost`'s `ctx` object and
+`AppRenderer`'s `<WidgetHost>` call). The only addition beyond the brief's
+literal test snippet was wrapping the new `PropsPanel.test.tsx` test in the
+file's existing `{ wrapper }` (providing `QueryClientProvider` +
+`ItemClientProvider`), matching the convention every other test in that
+file already uses — harmless since the probe widget doesn't need it, but
+keeps the test consistent with its neighbors.
 
 ## Self-review findings
 
-- No `console.*` left in the hook or tests.
-- No `any` types introduced.
-- `useMcpToken.ts` matches the brief's code byte-for-byte (comments
-  included) — nothing was "fixed" there, per instructions.
-- The two test-file bugs above are pre-existing defects in the plan's
-  literal test code, not introduced by my implementation; both are narrow,
-  mechanical fixes (drop one unneeded `beforeEach`, drop two unused
-  imports) that don't change what either test verifies.
-- Cross-file isolation between `useMcpToken.test.tsx` (mock mode) and
-  `useMcpTokenOidc.test.tsx` (real mode) was explicitly re-verified by
-  running both together in the same `vitest run` invocation (shown above) —
-  no leakage of the `mockMode` flag observed.
+- **Completeness**: both paths threaded and independently proven RED→GREEN.
+- **Quality**: matches existing prop-threading conventions exactly (same
+  destructuring style, same optional-prop pattern as `breakpoint`).
+- **Discipline**: scope limit verified by grep + `git diff --stat` showing
+  zero changes to `tabs.tsx`/`drawer.tsx`/`modal.tsx`/`LayoutEditor.tsx`.
+- **Testing**: RED genuinely observed for both paths (ran the exact `-t`
+  filtered commands from the brief before implementing), GREEN confirmed
+  after. No regression: full suite test count matches reference + 2 new
+  tests. The one failure seen on the first full-suite run was verified as a
+  pre-existing flake unrelated to this task (passes in isolation on both
+  sides of my diff, and a repeat full run was clean).
 
-## Issues or concerns
+## Concerns
 
-None blocking. Two minor plan-text bugs found and fixed as documented
-above (both are the kind of defect the brief's own TDD instructions (Step
-3 "confirm they fail for the expected reason", Step 5 "confirm all 3
-pass") are designed to catch). Task 12/13 (`CopilotPanel.tsx`) can consume
-`useMcpToken()` as specified — its public signature
-(`(): () => Promise<string>`) is unchanged from the brief.
+None blocking. Note for whoever runs the full suite next: the
+`MapEditorPage.test.tsx > exportRender=1 ...` test appears to be flaky
+under full-suite ordering (unrelated to `theme`/builder files) — worth a
+look if it recurs, but out of this task's scope (not in the 7-file list,
+and untouched by this diff).

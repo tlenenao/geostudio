@@ -98,15 +98,35 @@ services:
       - traefik.http.routers.core.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/api`)
       - traefik.http.routers.core.entrypoints=web
       - traefik.http.routers.core.priority=10
-      - traefik.http.routers.core.middlewares=security-headers@docker,rate-limit@docker,strip-api@docker
+      - traefik.http.routers.core.middlewares=security-headers@docker,rate-limit@docker,compress@docker,strip-api@docker
       - traefik.http.services.core.loadbalancer.server.port=8200
       - traefik.http.middlewares.strip-api.stripprefix.prefixes=/api
       - traefik.http.middlewares.security-headers.headers.stsSeconds=31536000
       - traefik.http.middlewares.security-headers.headers.contentTypeNosniff=true
       - traefik.http.middlewares.security-headers.headers.frameDeny=true
       - traefik.http.middlewares.security-headers.headers.referrerPolicy=strict-origin-when-cross-origin
+      # CSP en Report-Only pendant la vérification empirique (Step 3-4
+      # ci-dessous) contre MapLibre/deck.gl/Keycloak/une extension tierce —
+      # bascule en enforcing (Step 5) une fois confirmée (SP-26/3.3). Les
+      # valeurs ${GEOSTUDIO_PUBLIC_HOST}/keycloak reprennent les mêmes
+      # variables que le reste de ce fichier.
+      #
+      # 4 blocages concrets à vérifier/autoriser AVANT bascule en enforcing
+      # (revue finale SP-26, I5), invisibles en Report-Only hors rapport de
+      # violation : (1) `img-src` bloque les tuiles raster WMS/WMTS
+      # moissonnées et le terrain raster-dem externes (hôte arbitraire par
+      # conception) ; (2) `connect-src` bloque les URL de tileset 3D
+      # externes (couche `tiles3d`, même raison) ; (3) `script-src 'self'`
+      # bloque les widgets d'extension tiers (SP-8c, JS depuis leur propre
+      # origine) ; (4) `shell/nginx.conf`'s `connect-src 'self'` est FAUX
+      # pour le compose de BASE (hors cet overlay) où `shell`/`core` sont
+      # deux origines distinctes — déjà correct ICI (Traefik prime, `core`
+      # same-origin `/api`), à corriger là-bas avant enforcing.
+      - "traefik.http.middlewares.security-headers.headers.customResponseHeaders.Content-Security-Policy-Report-Only=default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://${GEOSTUDIO_PUBLIC_HOST}; img-src 'self' data: blob: https://${GEOSTUDIO_PUBLIC_HOST}; worker-src 'self' blob:; frame-src https://${GEOSTUDIO_PUBLIC_HOST}; object-src 'none'"
+      - traefik.http.middlewares.security-headers.headers.customResponseHeaders.Permissions-Policy=camera=(), microphone=(), payment=(), usb=()
       - traefik.http.middlewares.rate-limit.ratelimit.average=100
       - traefik.http.middlewares.rate-limit.ratelimit.burst=200
+      - traefik.http.middlewares.compress.compress=true
 
   # worker/cdc-worker sont la MÊME image que core (docker-compose.yml:
   # `build: ./core` pour les trois, processus séparés par `command:`) —
@@ -150,7 +170,7 @@ services:
       - traefik.http.routers.shell.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`)
       - traefik.http.routers.shell.entrypoints=web
       - traefik.http.routers.shell.priority=1
-      - traefik.http.routers.shell.middlewares=security-headers@docker,rate-limit@docker
+      - traefik.http.routers.shell.middlewares=security-headers@docker,rate-limit@docker,compress@docker
       - traefik.http.services.shell.loadbalancer.server.port=8300
 
   traefik:

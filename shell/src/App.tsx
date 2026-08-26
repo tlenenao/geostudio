@@ -9,6 +9,7 @@ import { buildExportAwareToken } from "./auth/exportAwareToken";
 import { createItemClient } from "./api/itemClient";
 import { ItemClientProvider } from "./api/ItemClientProvider";
 import { AppRoutes } from "./shell/routes";
+import { AppErrorBoundary } from "./AppErrorBoundary";
 
 const runtimeEnv = (window as unknown as { __GEOSTUDIO_ENV__?: Record<string, string | undefined> })
   .__GEOSTUDIO_ENV__;
@@ -39,10 +40,12 @@ function AppShell() {
 
 export default function App() {
   return (
-    <AuthProvider config={config}>
-      <QueryClientProvider client={queryClient}>
-        <AppShell />
-      </QueryClientProvider>
-    </AuthProvider>
+    <AppErrorBoundary>
+      <AuthProvider config={config}>
+        <QueryClientProvider client={queryClient}>
+          <AppShell />
+        </QueryClientProvider>
+      </AuthProvider>
+    </AppErrorBoundary>
   );
 }

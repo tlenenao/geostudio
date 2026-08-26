@@ -3,8 +3,9 @@ import contextlib
 import os
 import re
 from collections.abc import Iterator
+from http import HTTPStatus
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,7 @@ from app.auth.dependency import (
     is_read_only_mode,
     is_terrain3d_enabled,
     is_tileset3d_enabled,
+    reject_mock_outside_development,
 )
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
 from app.collections import routes as collections_routes
@@ -27,6 +29,7 @@ from app.configs import routes as configs_routes
 from app.copilot import routes as copilot_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.dcat import routes as dcat_routes
+from app.errors import ValidationHTTPException
 from app.export import routes as export_routes
 from app.extensions import routes as extensions_routes
 from app.features import routes as features_routes
@@ -40,6 +43,7 @@ from app.mcp.server import create_mcp_server
 from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
+from app.ratelimit.limiter import RateLimiter, route_group
 from app.reports import routes as reports_routes
 from app.schemas_routes import router as schemas_router
 from app.secrets import crypto as secrets_crypto
@@ -99,6 +103,7 @@ _APPEXPORT_CORS_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
 def create_app() -> FastAPI:
     observability.setup()
     secrets_crypto.load_master_key()  # échec rapide si absente/mal formée (design SP-15e §4/§8)
+    reject_mock_outside_development()  # échec rapide si mock hors dev (design SP-26 §3.1)
     database_url = os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     engine = make_engine(database_url)
     observability.instrument_engine(engine)
@@ -122,6 +127,49 @@ def create_app() -> FastAPI:
     app = FastAPI(title="GeoStudio Builder Service", version="0.1.0", lifespan=lifespan)
     observability.instrument_app(app)
 
+    @app.exception_handler(ValidationHTTPException)
+    async def _validation_exception_handler(request: Request, exc: ValidationHTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            media_type="application/problem+json",
+            content={
+                "type": "about:blank",
+                "title": HTTPStatus(exc.status_code).phrase,
+                "status": exc.status_code,
+                "detail": exc.detail,
+                "errors": exc.errors,
+            },
+        )
+
+    @app.exception_handler(HTTPException)
+    async def _http_exception_handler(request: Request, exc: HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            media_type="application/problem+json",
+            content={
+                "type": "about:blank",
+                "title": HTTPStatus(exc.status_code).phrase,
+                "status": exc.status_code,
+                "detail": exc.detail if isinstance(exc.detail, str) else "request failed",
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def _unhandled_exception_handler(request: Request, exc: Exception):
+        import logging
+
+        logging.getLogger("app.errors").exception("unhandled exception on %s", request.url.path)
+        return JSONResponse(
+            status_code=500,
+            media_type="application/problem+json",
+            content={
+                "type": "about:blank",
+                "title": HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
+                "status": 500,
+                "detail": "internal server error",
+            },
+        )
+
     @app.middleware("http")
     async def read_only_guard(request: Request, call_next):
         if (
@@ -134,8 +182,39 @@ def create_app() -> FastAPI:
         ):
             return JSONResponse(
                 status_code=403,
-                content={"detail": "Mode démo : lecture seule, écritures désactivées."},
+                media_type="application/problem+json",
+                content={
+                    "type": "about:blank",
+                    "title": HTTPStatus(403).phrase,
+                    "status": 403,
+                    "detail": "Mode démo : lecture seule, écritures désactivées.",
+                },
             )
+        return await call_next(request)
+
+    # Deliberately created here, not at module level: create_app() is called
+    # repeatedly by the test suite (same reasoning as mcp_server above) — a
+    # module-level RateLimiter singleton would leak rate-limit state across
+    # unrelated tests.
+    rate_limiter = RateLimiter()
+
+    @app.middleware("http")
+    async def rate_limit_guard(request: Request, call_next):
+        group = route_group(request.url.path, request.method, _EXPORT_PATH_RE)
+        if group is not None:
+            caller_key = request.headers.get("authorization", "")
+            if not rate_limiter.allow(caller_key, group):
+                return JSONResponse(
+                    status_code=429,
+                    media_type="application/problem+json",
+                    headers={"Retry-After": "60"},
+                    content={
+                        "type": "about:blank",
+                        "title": "Too Many Requests",
+                        "status": 429,
+                        "detail": f"rate limit exceeded for {group}",
+                    },
+                )
         return await call_next(request)
 
     if is_appexport_enabled():

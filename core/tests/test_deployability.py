@@ -450,6 +450,64 @@ def test_every_documented_env_var_is_wired_or_declared_inert():
     )
 
 
+def _resolve_effective_value(raw: str, var: str) -> str:
+    """Valeur que le service `core` recevrait pour `var` si aucune variable
+    d'environnement n'était positionnée (aucun `.env` fourni) — c'est-à-dire
+    la valeur *résolue*, pas seulement la syntaxe de substitution.
+
+    Gère `${VAR}`/`${VAR:-défaut}` (résout au défaut, `""` s'il n'y en a
+    pas) ET le cas où la valeur est écrite en dur dans le compose sans
+    passer par aucune substitution (`CORE_ENV: development` littéral) — un
+    grep ciblant uniquement `${VAR:-...}` laisserait passer ce second cas en
+    silence. Revue finale SP-26 round 2 (M1) : c'est exactement cette
+    seconde forme de régression que l'ancienne version de ce test (basée sur
+    `_substitution_default`, qui ne reconnaissait que `${VAR:-...}`) ne
+    pouvait pas attraper — un `CORE_ENV: development` codé en dur aurait
+    fait retourner `None` à l'ancien extracteur, et `None != "development"`
+    passait le test."""
+    match = re.fullmatch(rf"\$\{{{var}(:-(?P<default>[^}}]*))?\}}", raw)
+    if match:
+        return match.group("default") or ""
+    return raw
+
+
+def test_core_env_default_cannot_silently_satisfy_the_mock_mode_guard():
+    """Revue finale SP-26 (I2) : le service `core` de docker-compose.yml
+    câblait CORE_AUTH_MODE avec un défaut "mock" ET CORE_ENV avec un défaut
+    "development" — quiconque démarre ce fichier sans `.env` obtenait donc
+    les deux par défaut, et la garde de démarrage
+    core/app/auth/dependency.py::reject_mock_outside_development() (qui ne
+    refuse `mock` que si CORE_ENV != "development") ne se déclenchait
+    jamais, exactement le déploiement qu'elle existe pour attraper. Épingle
+    que CORE_ENV ne résout plus à une valeur qui satisfasse la garde tant
+    que CORE_AUTH_MODE peut par défaut valoir "mock" — le flux documenté
+    (.env.example -> scripts/bootstrap-env.sh -> .env) reste inchangé, lui,
+    puisqu'il fixe CORE_ENV=development explicitement dans le `.env`
+    généré, jamais via ce défaut de compose.
+
+    Assertion sur la valeur RÉSOLUE (`_resolve_effective_value`), pas
+    seulement sur la syntaxe `${CORE_ENV:-...}` — sans quoi un
+    `CORE_ENV: development` codé en dur directement dans docker-compose.yml
+    (au lieu d'une substitution) rouvrirait exactement le défaut d'origine
+    sans faire échouer ce test (M1, revue finale SP-26 round 2)."""
+    core_env = services(BASE)["core"]["environment"]
+    auth_mode_raw = core_env["CORE_AUTH_MODE"]
+    env_raw = core_env["CORE_ENV"]
+    auth_mode_effective = _resolve_effective_value(auth_mode_raw, "CORE_AUTH_MODE")
+    env_effective = _resolve_effective_value(env_raw, "CORE_ENV")
+    assert auth_mode_effective == "mock", (
+        f"ce test suppose CORE_AUTH_MODE résolu à 'mock' (raw={auth_mode_raw!r}) "
+        "pour que le scénario testé (aucun .env fourni) soit réel."
+    )
+    assert env_effective != "development", (
+        "CORE_ENV résout à 'development' pour le service `core` quand aucun "
+        ".env n'est fourni (que ce soit via un défaut de substitution "
+        "${CORE_ENV:-...} ou une valeur littérale codée en dur) : combiné au "
+        "défaut 'mock' de CORE_AUTH_MODE ci-dessus, ceci désarme "
+        "silencieusement reject_mock_outside_development()."
+    )
+
+
 CI = REPO / ".github/workflows/ci.yml"
 
 
@@ -684,3 +742,64 @@ def test_unpinned_reason_accepts_own_image_behind_substitution():
     """Miroir du cas précédent : une de nos propres images GHCR derrière une
     substitution reste exemptée, comme avant ce fix."""
     assert unpinned_reason("ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}") is None
+
+
+# Revue finale SP-26 (C1) : core/Dockerfile (service `worker`, même image que
+# `core`) et deploy/qgis-worker/Dockerfile se passent des fichiers via le
+# volume nommé `etl-scratch:/scratch` (docker-compose.yml) —
+# core/app/pipelines/runtime.py y écrit `in.gpkg` comme l'utilisateur `app`,
+# le sidecar QGIS y écrit `out.gpkg` comme l'utilisateur `qgis`. Ces deux
+# tests figent statiquement le correctif (vérifié empiriquement en session :
+# build réel des deux images, `id -u` comparé, écriture croisée réussie dans
+# les deux ordres de démarrage possibles) pour qu'une future modification de
+# l'un des deux Dockerfiles ne fasse pas diverger silencieusement les uid, ou
+# ne retire pas la création de /scratch.
+
+CORE_DOCKERFILE = REPO / "core" / "Dockerfile"
+QGIS_DOCKERFILE = REPO / "deploy" / "qgis-worker" / "Dockerfile"
+
+
+def _useradd_uid(dockerfile: pathlib.Path) -> str | None:
+    match = re.search(r"useradd\s+[^\n]*--uid[= ]+(\d+)", dockerfile.read_text())
+    return match.group(1) if match else None
+
+
+def test_core_and_qgis_worker_pin_the_same_scratch_uid():
+    core_uid = _useradd_uid(CORE_DOCKERFILE)
+    qgis_uid = _useradd_uid(QGIS_DOCKERFILE)
+    assert core_uid is not None, "core/Dockerfile doit fixer un --uid explicite pour `app`"
+    assert qgis_uid is not None, (
+        "deploy/qgis-worker/Dockerfile doit fixer un --uid explicite pour `qgis`"
+    )
+    assert core_uid == qgis_uid, (
+        f"uid divergents entre core/Dockerfile (app={core_uid}) et "
+        f"deploy/qgis-worker/Dockerfile (qgis={qgis_uid}) — le partage de "
+        "fichiers via etl-scratch échouera en PermissionError selon l'ordre "
+        "de démarrage des conteneurs."
+    )
+
+
+SCRATCH_DOCKERFILES = [
+    pytest.param(CORE_DOCKERFILE, "app", id="core"),
+    pytest.param(QGIS_DOCKERFILE, "qgis", id="qgis-worker"),
+]
+
+
+@pytest.mark.parametrize("dockerfile,user_name", SCRATCH_DOCKERFILES)
+def test_dockerfile_creates_and_chowns_scratch_before_switching_user(dockerfile, user_name):
+    """Généralisé en revue finale SP-26 round 2 (M2) : à l'origine, seul
+    core/Dockerfile était épinglé ici — deploy/qgis-worker/Dockerfile porte
+    exactement le même mkdir+chown de /scratch, tout aussi structurant pour
+    le partage `etl-scratch` (test_core_and_qgis_worker_pin_the_same_scratch_uid
+    juste au-dessus vérifie que les DEUX uid convergent, mais rien ne
+    vérifiait jusqu'ici que le mkdir+chown de qgis-worker existe encore)."""
+    text = dockerfile.read_text()
+    mkdir_pos = text.find("mkdir -p /scratch")
+    user_pos = text.find(f"\nUSER {user_name}")
+    assert mkdir_pos != -1, f"{dockerfile} doit créer /scratch avant USER {user_name}"
+    assert user_pos != -1, f"{dockerfile} doit passer USER {user_name}"
+    assert mkdir_pos < user_pos, "/scratch doit être créé avant le passage non-root"
+    chown_line = re.search(r"^RUN .*chown[^\n]*$", text, re.MULTILINE)
+    assert chown_line is not None and "/scratch" in chown_line.group(0), (
+        f"{dockerfile} doit chown /scratch vers l'utilisateur `{user_name}`"
+    )
