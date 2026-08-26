@@ -14,7 +14,7 @@ jobs:
     env:
       DATABASE_URL: postgresql+psycopg://gis:gis@localhost:5432/gis
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build postgis+pgvector image
         run: docker build -t geostudio-postgis-ci:latest ../deploy/postgis
       - name: Start Postgres
@@ -39,7 +39,7 @@ jobs:
     env:
       CORE_TEST_DATABASE_URL: postgresql+psycopg://gis:gis@localhost:5432/gis_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build postgis+pgvector image
         run: docker build -t geostudio-postgis-ci:latest ../deploy/postgis
       - name: Start Postgres
@@ -70,7 +70,7 @@ jobs:
       run:
         working-directory: core
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v3
       - run: uv sync
       - run: uv run pip-audit --strict
@@ -79,7 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: core
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v3
       - uses: actions/setup-node@v4
         with:
@@ -103,7 +103,7 @@ jobs:
       run:
         working-directory: shell
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -120,7 +120,7 @@ jobs:
   shell-e2e-oidc:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build postgis+pgvector image
         run: docker build -t geostudio-postgis-ci:latest deploy/postgis
       - name: Bring up postgis, keycloak, core, shell (real OIDC)
@@ -164,7 +164,7 @@ jobs:
       run:
         working-directory: shell
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 20
