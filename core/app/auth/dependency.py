@@ -17,6 +17,19 @@ def _mock_mode() -> bool:
     return os.environ.get("CORE_AUTH_MODE", "oidc") == "mock"
 
 
+def reject_mock_outside_development() -> None:
+    """Appelée une fois au démarrage (create_app()), pas par requête —
+    contrairement à _mock_mode() ci-dessus. C6 (revue de projet 2026-08-20) :
+    CORE_AUTH_MODE=mock donne bootstrap_admin=True à quiconque présente un
+    Bearer non vide (cf. get_current_user plus bas), sans aucune vérification
+    d'environnement jusqu'ici. CORE_ENV=development est un marqueur explicite,
+    pas une valeur par défaut sûre — un déploiement qui omet CORE_ENV ET met
+    CORE_AUTH_MODE=mock est traité comme une erreur de configuration,
+    jamais comme "sans doute du dev"."""
+    if _mock_mode() and os.environ.get("CORE_ENV") != "development":
+        raise RuntimeError("CORE_AUTH_MODE=mock requires CORE_ENV=development")
+
+
 def is_read_only_mode() -> bool:
     """CORE_READ_ONLY_MODE (mode démo, SP-9) — lu à chaque appel, sans cache,
     même convention que _mock_mode() ci-dessus : les tests basculent le mode

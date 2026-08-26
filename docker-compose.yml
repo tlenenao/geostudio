@@ -176,6 +176,13 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       CORE_AUTH_MODE: ${CORE_AUTH_MODE:-mock}
+      # Marqueur explicite requis par la garde de démarrage SP-26/3.1 :
+      # CORE_AUTH_MODE=mock sans CORE_ENV=development refuse de démarrer.
+      # docker-compose.prod.yml force déjà CORE_AUTH_MODE=oidc sans
+      # indirection par variable — cette garde n'y a donc jamais l'occasion
+      # de se déclencher, c'est un filet pour tout déploiement du fichier
+      # de base seul, sans l'overlay prod.
+      CORE_ENV: ${CORE_ENV:-development}
       CORE_OIDC_ISSUER: ${CORE_OIDC_ISSUER:-http://localhost:8180/realms/geostudio}
       CORE_OIDC_AUDIENCE: ${CORE_OIDC_AUDIENCE:-geostudio-core}
       CORE_OIDC_JWKS_URL: ${CORE_OIDC_JWKS_URL:-http://keycloak:8080/realms/geostudio/protocol/openid-connect/certs}
