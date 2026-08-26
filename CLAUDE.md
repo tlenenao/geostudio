@@ -1817,6 +1817,191 @@ deux (et un `--` côté entry).
     depuis). **Liste Minor reportée en suivi non bloquant** (M1-M11 du
     round 1 + N2/N3 de la re-revue) : cf. `### Suivis non bloquants ouverts`.
     **SP-25 clos.**
+- **SP-26** — Durcissement avant v0.1 publique (vague 3 du plan d'action
+  `docs/vision/2026-08-20-revue-projet-et-plan-daction.md` §6) : ferme les 7
+  chantiers restants de cette vague (3.2, clé maître au démarrage, déjà
+  fait avant SP-26, non retouché) — renumérotés par la spec en 3.1, 3.3,
+  3.4, 3.5a/3.5b/3.5c (3.5 bundlait 3 mécanismes indépendants), 3.6, 3.7,
+  3.8.
+  - **3.6, conteneurs non-root** : 7 des 8 images (core, export-worker,
+    appexport-standalone, appexport-runtime-builder, qgis-worker, backup,
+    shell) passées en utilisateur non-root, `HOME` pinné avant les étapes
+    de build DuckDB/GRASS/Playwright partout où nécessaire (même
+    précédent que SP-15d/SP-17a pour la survie du cache local) ;
+    `postgis` vérifié déjà non-root au niveau process serveur (`gosu` de
+    l'entrypoint officiel), non modifié. 2 bugs réels trouvés et corrigés
+    en tâche, invisibles au texte littéral du plan : `shell` (nginx)
+    plantait au démarrage (`/run/nginx.pid` permission denied) ;
+    `backup`'s vrai point de montage runtime `/backup/archives` était
+    root-owned et non inscriptible.
+  - **3.1, mode mock interdit hors dev** : `CORE_AUTH_MODE=mock` (qui
+    donnait `bootstrap_admin=True` à tout Bearer non vide sans aucune
+    vérification d'environnement, C6 de la revue de projet 2026-08-20)
+    refuse désormais de démarrer sans `CORE_ENV=development` explicite —
+    garde fail-fast au boot, même emplacement/patron que
+    `load_master_key()`.
+  - **3.5a, format d'erreur RFC 7807 unique** : `application/problem+json`
+    sur toute l'API via 3 handlers d'exception globaux
+    (`ValidationHTTPException`/`HTTPException`/`Exception` bare), nouveau
+    module `core/app/errors.py` hors contrat de couches (précédent
+    `app.db`/`app.observability`). Erreurs de validation structurées
+    migrées vers un membre d'extension `errors` au premier niveau — plus
+    jamais imbriquées sous `detail`, qui reste une chaîne partout
+    (changement cassant scopé à 2 sites shell). Diff OpenAPI/TS **vide**,
+    vérifié correct et non un oubli : aucune route de ce dépôt ne déclare
+    `responses=` explicite, donc aucun handler d'exception global ne peut
+    apparaître dans le schéma documenté.
+  - **3.4, rate limiting différencié** : middleware ASGI en mémoire par
+    process, clé = en-tête `Authorization` brut (pas d'identité vérifiée
+    — tourne avant l'injection de dépendances FastAPI, et `/mcp` est un
+    mount ASGI brut sans DI du tout), 4 groupes de budget (sql=10/llm=20/
+    jobs=15/harvest, initialement toutes routes puis resserré en revue
+    finale aux seules routes d'écriture — cf. ci-dessous), fenêtre
+    glissante 60s. Referme le suivi non bloquant SP-20 sur l'absence de
+    rate limiting applicatif sur `/copilot/turn` (désormais dans le
+    groupe `llm`, avec `/mcp`).
+  - **3.5b, arrêt propre `cdc-worker`** : `stream_changes()` acceptait
+    déjà un paramètre `should_stop`, jamais branché — SIGTERM positionne
+    un flag vérifié à chaque itération, puis un flush final avant sortie
+    pour ne pas perdre les lignes bufferisées non encore dues à l'âge
+    (I11, revue de projet 2026-08-20).
+  - **3.5c, `ErrorBoundary` applicatif** : nouveau boundary racine
+    (`shell/src/AppErrorBoundary.tsx`), distinct du `WidgetErrorBoundary`
+    scopé par widget (`WidgetHost.tsx`, non touché) — toute exception de
+    rendu ailleurs (chrome builder, pages, panneaux) produisait un écran
+    blanc (I12, revue de projet 2026-08-20). Posé autour
+    d'`AuthProvider`/`QueryClientProvider`, pas à l'intérieur, pour
+    attraper aussi un crash d'initialisation des providers eux-mêmes.
+  - **3.3, CSP/Permissions-Policy/compression** : étend le middleware
+    `security-headers` Traefik existant (pas un nouveau) +
+    `shell/nginx.conf` (sert aussi les exports statiques/autoportés hors
+    Traefik). **CSP livrée en Report-Only, jamais basculée en
+    enforcing** — repli explicitement sanctionné par le plan : aucun
+    binaire Chromium disponible dans cet environnement pour la
+    vérification empirique préalable requise (Playwright et
+    chrome-devtools-mcp ont échoué au lancement). 1 bug YAML réel corrigé
+    dans le texte littéral du brief (guillemets manquants sur la valeur
+    CSP, `data: blob:` casse le parse YAML). 4 bloqueurs concrets déjà
+    identifiés pour la bascule enforcing, documentés en commentaire
+    (`docker-compose.prod.yml` + renvoi depuis `shell/nginx.conf`) plutôt
+    que laissés à redécouvrir : tuiles WMS/WMTS et terrain externes
+    bloquées par `img-src`, tileset 3D externe bloqué par `connect-src`,
+    widgets d'extension tiers bloqués par `script-src 'self'`,
+    `nginx.conf`'s `connect-src 'self'` faux hors overlay prod (shell/core
+    sur des origines différentes sur le compose de base).
+  - **3.7, notification des alertes SLO** : point de contact webhook +
+    politique de routage (dossier SLO), Step 1 du brief empiriquement
+    vérifié contre l'image réelle (`grafana/otel-lgtm:0.11.4`, Grafana
+    12.0.1) — expansion `${VAR}` native confirmée. **Déviation réelle et
+    vérifiée par rapport au texte littéral du brief** : le défaut
+    `${GRAFANA_ALERT_WEBHOOK_URL:-}` (chaîne vide) proposé fait planter
+    tout le conteneur au démarrage (Grafana exige une URL non vide même
+    pour un contact point censé rester inerte) — corrigé par un défaut
+    syntaxiquement valide mais délibérément inatteignable
+    (`http://127.0.0.1:1/grafana-alert-webhook-not-configured`).
+    **Preuve de bout en bout réellement observée** : POST réel reçu par
+    un listener HTTP local via `host.docker.internal` après dépause
+    temporaire de la règle `test-alert-do-not-keep-in-prod` déjà présente
+    dans `rules.yaml` pour cet usage, alerte passée `active` dans l'API
+    Alertmanager puis arrêtée après repause, `git diff` sur `rules.yaml`
+    confirmé vide.
+  - **3.8, E2E sur OIDC réel** : nouvelle suite `shell/e2e-oidc/` contre
+    une vraie stack (postgis+keycloak+core en `CORE_AUTH_MODE=oidc`+shell,
+    nouveau job CI dédié) — **preuve de bout en bout réellement obtenue**,
+    pas seulement affirmée : 2 specs (login+logout) passées 4 fois de
+    suite en local, 0 échec. Referme le suivi non bloquant SP-20 sur
+    l'absence de preuve bout-en-bout navigateur+iframe+Keycloak, et le
+    précédent SP-15d/SP-17a-Task-6 (un test jamais réellement exécuté).
+    **Bug produit réel trouvé et corrigé en cours de route** : la
+    déconnexion Keycloak laissait l'utilisateur sur la page nue « vous
+    êtes déconnecté » faute de `post_logout_redirect_uri`
+    (`AuthProvider.tsx` + `deploy/keycloak/geostudio-realm.json`,
+    propagation prod vérifiée via le mécanisme de `sed` déjà existant de
+    `docker-compose.prod.yml`). **Régression découverte, sans rapport
+    avec OIDC** : le changement cassant RFC 7807 de 3.5a avait laissé un
+    mock E2E (`shell/e2e/sql-lab.spec.ts`) sur l'ancienne forme imbriquée
+    — première exécution de la suite E2E complète depuis ce commit,
+    précédent SP-23 Task 18/SP-25 Task 12 (régression cross-tâche
+    invisible tant que personne ne relance la suite complète) — corrigée
+    dans un commit séparé, baseline E2E restaurée à 108/4/0.
+  - **Décision de scope actée, précédent très établi de ce dépôt (au
+    moins 5 occurrences antérieures documentées)** : le bug préexistant
+    `core/Dockerfile`/résolution `mcp==2.0.0` cassant `fastmcp` (CLAUDE.md
+    SP-21, confirmé toujours présent par 3.8) N'A PAS été corrigé dans
+    SP-26 — hors périmètre. Conséquence directe à surveiller : le nouveau
+    job CI `shell-e2e-oidc` est le premier job de ce dépôt à faire
+    `docker compose build core` (les jobs `core`/`shell`/`api-types-drift`
+    existants utilisent `uv sync`, respectent `uv.lock`, ne buildent
+    jamais l'image Docker) — **attendu rouge de façon déterministe à son
+    premier run GitHub Actions réel**, tant que ce bug n'est pas corrigé
+    séparément.
+  - **Revue finale de branche (opus, 2026-08-27)** : 1 Critical + 6
+    Important, tous invisibles à une revue par tâche. **C1** — `/scratch`
+    jamais créé/chowné dans `core/Dockerfile` (le service `worker` partage
+    la même image core non-root et monte `etl-scratch:/scratch` pour les
+    jobs pipeline/terrain3d) **plus** un uid mismatch entre `app` (core) et
+    `qgis` (qgis-worker) — deux images de base différentes, chacune
+    `useradd --system` sans uid explicite — cassant la remise de fichier
+    pipeline→sidecar QGIS à travers ce même répertoire partagé. Corrigé
+    par uid/gid 1001 fixé identique dans les deux Dockerfiles (vérifié
+    libre dans les deux images de base) + création/chown de `/scratch`
+    dans `core/Dockerfile`, **écriture croisée réelle prouvée dans les
+    deux ordres de démarrage possibles du volume nommé** (pas seulement
+    égalité d'uid — précédent explicitement suivi). **I1** — budget
+    rate-limit harvest (10/min, `_HARVEST_RE` couvrant alors TOUTES les
+    routes `/harvest/*`) tuait silencieusement les couches externes du
+    sélecteur de couches (recherche sans debounce dans `LayerPicker.tsx`,
+    échecs avalés par `Promise.allSettled`) — corrigé en resserrant le
+    groupe harvest aux seules routes d'écriture (4 sur 8, les 4 lectures
+    exemptées). **I2** — défaut compose
+    `CORE_ENV: ${CORE_ENV:-development}` désarmait la garde mock-mode de
+    3.1 exactement dans le scénario qu'elle visait (compose de base sans
+    `.env`) — corrigé (défaut vidé), flux `.env.example`→
+    `bootstrap-env.sh` non affecté. **I3** — 403 démo lecture-seule encore
+    en JSON plat, angle mort de 3.5a (middleware, pas exception handler)
+    — aligné sur les 3 autres sites RFC 7807. **I4** — `RateLimiter._hits`
+    clé sur le JWT brut (rotation OIDC toutes les quelques minutes)
+    croissait sans borne, docstring affirmant à tort une croissance
+    négligeable — balayage périodique (toutes les 50 requêtes) retirant
+    réellement les entrées vides du dict, docstring corrigé. **I5/I6** —
+    documentation seule (checklist CSP avant enforcing, runbook de
+    migration non-root). Une passe de fix (7/7) puis **re-revue** (opus) :
+    6/7 fermés correctement et vérifiés indépendamment ; **I6
+    partiellement fermé** — 2 Important supplémentaires trouvés : le
+    runbook contenait une commande `chown backup:backup` qui échoue
+    réellement (le nom `backup` n'existe pas dans l'image `alpine`
+    générique utilisée pour la commande, et l'uid de
+    `deploy/backup/Dockerfile` n'était de toute façon pas fixé), et
+    omettait un 3e volume nommé cassé par le même changement non-root
+    (`appexport-runtime`, `deploy/appexport-runtime-builder/Dockerfile`).
+    **2e passe de fix** : `backup`/`builder` fixés eux aussi à uid/gid
+    1001 (vérifié libre dans leurs images de base respectives — sans
+    contrainte de convergence avec `app`/`qgis`, aucun volume partagé
+    avec eux), runbook corrigé (chown numérique, pas par nom) et complété,
+    vérifié empiriquement dans les deux sens (ancienne commande échoue
+    réellement, nouvelle réussit). Plus 2 des 4 Minor de la re-revue
+    fermés au passage (tests I2/C1 renforcés — valeur résolue plutôt que
+    seulement la syntaxe de défaut ; `qgis-worker` couvert en plus de
+    `core`) et 1 pointeur documentaire ajouté (`shell/nginx.conf` renvoie
+    vers la checklist CSP de `docker-compose.prod.yml`). **0
+    Critical/Important non résolu au merge.**
+  - **Preuves de sortie finales** (2026-08-27) : core `uv run pytest`
+    (PostGIS réel) → **1896 passed, 5 skipped, 1 failed** — l'échec est
+    `tests/test_features_rls.py::test_scope_preserves_original_sql_error`,
+    confirmé **préexistant et sans rapport avec SP-26** (reproduit à
+    l'identique dans un worktree jetable au commit juste avant le début de
+    ce plan, indépendamment 3 fois au cours de cette exécution — dérive
+    psycopg2/gestion de transaction non encore diagnostiquée, hors
+    périmètre) ; couverture **92,96 %** (seuil 85) ; `ruff check`/`ruff
+    format --check`/`mypy --strict` (4 modules)/`lint-imports` verts.
+    Garde-fou de déployabilité (`test_deployability.py`) → **35/35**
+    (31 d'origine + 4 nouveaux : C1×2, I2×1, puis les renforcements de la
+    re-revue). Shell `npx vitest run` → **162 fichiers / 1463 tests**
+    (mesurée après nettoyage `dist/`/`dist-export/`, même piège documenté
+    SP-22-25), couverture **89,57 %** (seuil 88) ; `npm run lint`/
+    `format:check`/`build` verts ; `npm run e2e` → **108 passed, 4
+    skipped, 0 failed**. `uvx pre-commit run --all-files` : 5/5 hooks
+    verts. **SP-26 clos.**
 
 ### À venir
 
@@ -1865,12 +2050,12 @@ deux (et un `--` côté entry).
   504 arrivait donc en retard — **c'est faux, mesuré** (504 rendu à
   l'échéance à 0,01 s près ; l'annulation asyncio traverse
   `anyio.to_thread.run_sync` malgré `abandon_on_cancel=False`). Le défaut
-  réel était le thread abandonné, pas la latence de réponse. Restent hors
-  périmètre livré, non planifiés : rate limiting applicatif par
-  utilisateur/tenant sur `/copilot/turn` (aujourd'hui seul le
-  `ratelimit` uniforme de Traefik — vague 3.4 du plan d'action) ; garde
-  d'egress sur l'appel LLM sortant (4e surface, les trois autres en ont
-  une — vague 6.2).
+  réel était le thread abandonné, pas la latence de réponse. **Fermé par
+  SP-26/3.4** : rate limiting applicatif sur `/copilot/turn` (groupe
+  `llm`, avec `/mcp`, 20/min — clé sur l'en-tête `Authorization` brut,
+  pas une identité vérifiée par utilisateur/tenant, cf. SP-26). Reste hors
+  périmètre livré, non planifié : garde d'egress sur l'appel LLM sortant
+  (4e surface, les trois autres en ont une — vague 6.2).
 - **SP-24** — clos, chantier **4.1** du plan d'action fermé (cf. `### Fait`).
 - **SP-25** — clos, chantiers **4.2/4.3** du plan d'action fermés (cf.
   `### Fait`). Le lot Carte du plan d'action §6 vague 4 s'arrête là :
@@ -1883,6 +2068,13 @@ deux (et un `--` côté entry).
   le widget carte des apps/dashboards (masqué faute de résolution
   `collectionId` sur ce host, chemin distinct de `LayersPanel` par choix de
   spec §1).
+- **SP-26** — clos, vague 3 du plan d'action (durcissement avant v0.1
+  publique) fermée (cf. `### Fait`) : les 7 chantiers restants (3.1, 3.3,
+  3.4, 3.5a/3.5b/3.5c, 3.6, 3.7, 3.8) sont livrés. Le nouveau job CI
+  `shell-e2e-oidc` (3.8) est attendu rouge à son premier run réel tant que
+  le bug préexistant `core/Dockerfile`/`mcp==2.0.0` (documenté SP-21,
+  toujours présent) n'est pas corrigé — hors périmètre de SP-26 par
+  décision de scope explicite, cf. `### Suivis non bloquants ouverts`.
 
 ### Suivis non bloquants ouverts
 
@@ -2248,3 +2440,41 @@ deux (et un `--` côté entry).
   **acceptée** par MapLibre qui se sérialise pourtant en `null` via
   `JSON.stringify` — même classe de corruption silencieuse que I1, sur un
   chemin de code différent, non corrigé.
+- SP-26, suivis non bloquants : le bug préexistant
+  `core/Dockerfile`/résolution `mcp==2.0.0` cassant `fastmcp` (documenté
+  SP-21, confirmé toujours présent par 3.8) laisse le nouveau job CI
+  `shell-e2e-oidc` attendu rouge à son premier run réel — c'est le premier
+  job de ce dépôt à faire `docker compose build core` (les jobs
+  `core`/`shell`/`api-types-drift` existants utilisent `uv sync`, respectent
+  `uv.lock`, ne buildent jamais l'image Docker) — décision de scope
+  explicite de ne pas le corriger dans SP-26 (précédent très établi de ce
+  dépôt, cf. `### Fait`). CSP toujours en Report-Only (3.3), jamais
+  vérifiée en conditions réelles (aucun Chromium disponible dans cet
+  environnement) — 4 bloqueurs concrets déjà identifiés et documentés en
+  commentaire pour la bascule enforcing (cf. `### Fait`), pas encore
+  résolus. Rate limiter (3.4) clé sur le JWT brut, donc le budget d'un
+  appelant se réinitialise à chaque rafraîchissement de jeton OIDC (toutes
+  les quelques minutes) — limite du choix de conception documenté (clé sur
+  l'en-tête brut, pas une identité vérifiée), pas un bug, mais un budget
+  « par jeton » plutôt que réellement « par minute » sous OIDC réel.
+  Minor non corrigés de la revue finale de branche (~8 + 2 résiduels de la
+  re-revue) : `HTTPStatus(...).phrase` lève `ValueError` sur un code non
+  standard dans un handler d'exception (aucun site actuel n'utilise un code
+  non standard, piège latent) ; `import logging` en corps de handler plutôt
+  qu'en tête de module ; un 500 est désormais loggé deux fois (une fois par
+  le handler, une fois par `ServerErrorMiddleware` de Starlette) ; le tag
+  `docker build -t geostudio-postgis-ci` du nouveau job CI OIDC n'est
+  consommé par aucune étape suivante (buildé deux fois, coût CI gaspillé
+  seulement) ; `docker-compose.prod.yml` n'affiche pas `CORE_ENV: production`
+  explicitement (inerte aujourd'hui, `CORE_AUTH_MODE: oidc` y est déjà en
+  dur) ; `AppErrorBoundary` ne couvre pas un crash de `loadConfig()` en
+  portée module (avant tout rendu React) ni ne se réinitialise au
+  changement de route ; la politique Grafana racine route TOUTES les
+  alertes vers le webhook, pas seulement celles du dossier SLO (le
+  commentaire `.env.example` sous-estime la portée réelle) ; `cdc-worker`
+  gère SIGTERM mais pas SIGINT (`docker stop` envoie SIGTERM, donc le
+  chemin de production est couvert ; un `Ctrl-C` local reste un arrêt dur
+  avec lignes bufferisées non flushées) ; classification I1 par « pas GET »
+  plutôt que « est une écriture » (un `OPTIONS`/`HEAD` sur `/harvest/*`
+  tomberait techniquement dans le budget harvest, inatteignable aujourd'hui
+  — aucun CORS preflight n'est répondu sur ce chemin).
