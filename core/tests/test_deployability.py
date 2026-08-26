@@ -450,12 +450,25 @@ def test_every_documented_env_var_is_wired_or_declared_inert():
     )
 
 
-def _substitution_default(raw: str, var: str) -> str | None:
-    """Valeur par défaut (`${VAR:-défaut}`) d'une substitution `${VAR}` dans
-    une chaîne compose brute — `None` si `VAR` n'y a pas de défaut (ou n'y
-    apparaît pas)."""
-    match = re.search(rf"\$\{{{var}:-([^}}]*)\}}", raw)
-    return match.group(1) if match else None
+def _resolve_effective_value(raw: str, var: str) -> str:
+    """Valeur que le service `core` recevrait pour `var` si aucune variable
+    d'environnement n'était positionnée (aucun `.env` fourni) — c'est-à-dire
+    la valeur *résolue*, pas seulement la syntaxe de substitution.
+
+    Gère `${VAR}`/`${VAR:-défaut}` (résout au défaut, `""` s'il n'y en a
+    pas) ET le cas où la valeur est écrite en dur dans le compose sans
+    passer par aucune substitution (`CORE_ENV: development` littéral) — un
+    grep ciblant uniquement `${VAR:-...}` laisserait passer ce second cas en
+    silence. Revue finale SP-26 round 2 (M1) : c'est exactement cette
+    seconde forme de régression que l'ancienne version de ce test (basée sur
+    `_substitution_default`, qui ne reconnaissait que `${VAR:-...}`) ne
+    pouvait pas attraper — un `CORE_ENV: development` codé en dur aurait
+    fait retourner `None` à l'ancien extracteur, et `None != "development"`
+    passait le test."""
+    match = re.fullmatch(rf"\$\{{{var}(:-(?P<default>[^}}]*))?\}}", raw)
+    if match:
+        return match.group("default") or ""
+    return raw
 
 
 def test_core_env_default_cannot_silently_satisfy_the_mock_mode_guard():
@@ -466,25 +479,32 @@ def test_core_env_default_cannot_silently_satisfy_the_mock_mode_guard():
     core/app/auth/dependency.py::reject_mock_outside_development() (qui ne
     refuse `mock` que si CORE_ENV != "development") ne se déclenchait
     jamais, exactement le déploiement qu'elle existe pour attraper. Épingle
-    que CORE_ENV n'a plus de défaut qui satisfasse la garde tant que
-    CORE_AUTH_MODE peut par défaut valoir "mock" — le flux documenté
+    que CORE_ENV ne résout plus à une valeur qui satisfasse la garde tant
+    que CORE_AUTH_MODE peut par défaut valoir "mock" — le flux documenté
     (.env.example -> scripts/bootstrap-env.sh -> .env) reste inchangé, lui,
     puisqu'il fixe CORE_ENV=development explicitement dans le `.env`
-    généré, jamais via ce défaut de compose."""
+    généré, jamais via ce défaut de compose.
+
+    Assertion sur la valeur RÉSOLUE (`_resolve_effective_value`), pas
+    seulement sur la syntaxe `${CORE_ENV:-...}` — sans quoi un
+    `CORE_ENV: development` codé en dur directement dans docker-compose.yml
+    (au lieu d'une substitution) rouvrirait exactement le défaut d'origine
+    sans faire échouer ce test (M1, revue finale SP-26 round 2)."""
     core_env = services(BASE)["core"]["environment"]
     auth_mode_raw = core_env["CORE_AUTH_MODE"]
     env_raw = core_env["CORE_ENV"]
-    auth_mode_default = _substitution_default(auth_mode_raw, "CORE_AUTH_MODE")
-    env_default = _substitution_default(env_raw, "CORE_ENV")
-    assert auth_mode_default == "mock", (
-        f"ce test suppose CORE_AUTH_MODE par défaut 'mock' (raw={auth_mode_raw!r}) "
+    auth_mode_effective = _resolve_effective_value(auth_mode_raw, "CORE_AUTH_MODE")
+    env_effective = _resolve_effective_value(env_raw, "CORE_ENV")
+    assert auth_mode_effective == "mock", (
+        f"ce test suppose CORE_AUTH_MODE résolu à 'mock' (raw={auth_mode_raw!r}) "
         "pour que le scénario testé (aucun .env fourni) soit réel."
     )
-    assert env_default != "development", (
-        "CORE_ENV a de nouveau un défaut 'development' dans docker-compose.yml : "
-        "combiné au défaut 'mock' de CORE_AUTH_MODE ci-dessus, ceci désarme "
-        "silencieusement reject_mock_outside_development() pour quiconque "
-        "démarre le compose de base sans fournir de .env."
+    assert env_effective != "development", (
+        "CORE_ENV résout à 'development' pour le service `core` quand aucun "
+        ".env n'est fourni (que ce soit via un défaut de substitution "
+        "${CORE_ENV:-...} ou une valeur littérale codée en dur) : combiné au "
+        "défaut 'mock' de CORE_AUTH_MODE ci-dessus, ceci désarme "
+        "silencieusement reject_mock_outside_development()."
     )
 
 
@@ -759,14 +779,27 @@ def test_core_and_qgis_worker_pin_the_same_scratch_uid():
     )
 
 
-def test_core_dockerfile_creates_and_chowns_scratch_before_switching_user():
-    text = CORE_DOCKERFILE.read_text()
+SCRATCH_DOCKERFILES = [
+    pytest.param(CORE_DOCKERFILE, "app", id="core"),
+    pytest.param(QGIS_DOCKERFILE, "qgis", id="qgis-worker"),
+]
+
+
+@pytest.mark.parametrize("dockerfile,user_name", SCRATCH_DOCKERFILES)
+def test_dockerfile_creates_and_chowns_scratch_before_switching_user(dockerfile, user_name):
+    """Généralisé en revue finale SP-26 round 2 (M2) : à l'origine, seul
+    core/Dockerfile était épinglé ici — deploy/qgis-worker/Dockerfile porte
+    exactement le même mkdir+chown de /scratch, tout aussi structurant pour
+    le partage `etl-scratch` (test_core_and_qgis_worker_pin_the_same_scratch_uid
+    juste au-dessus vérifie que les DEUX uid convergent, mais rien ne
+    vérifiait jusqu'ici que le mkdir+chown de qgis-worker existe encore)."""
+    text = dockerfile.read_text()
     mkdir_pos = text.find("mkdir -p /scratch")
-    user_pos = text.find("\nUSER app")
-    assert mkdir_pos != -1, "core/Dockerfile doit créer /scratch avant USER app"
-    assert user_pos != -1, "core/Dockerfile doit passer USER app"
+    user_pos = text.find(f"\nUSER {user_name}")
+    assert mkdir_pos != -1, f"{dockerfile} doit créer /scratch avant USER {user_name}"
+    assert user_pos != -1, f"{dockerfile} doit passer USER {user_name}"
     assert mkdir_pos < user_pos, "/scratch doit être créé avant le passage non-root"
     chown_line = re.search(r"^RUN .*chown[^\n]*$", text, re.MULTILINE)
     assert chown_line is not None and "/scratch" in chown_line.group(0), (
-        "core/Dockerfile doit chown /scratch vers l'utilisateur `app`"
+        f"{dockerfile} doit chown /scratch vers l'utilisateur `{user_name}`"
     )
