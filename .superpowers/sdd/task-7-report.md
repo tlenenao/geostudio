@@ -1,148 +1,169 @@
-# Task 7 Report — Shell: `registry.ts` gains `configSchema`, backfill 22 builtin widgets
+# Task 7 — Shell : `MapSymbologyEditor`
 
-## What was implemented
+## Résumé
 
-1. New shared type `shell/src/builder/widgetPropSchema.ts` exporting
-   `WidgetPropDescriptor` (`{ name, type: "string"|"number"|"boolean"|"dataSource", label, default }`).
-2. `WidgetDefinition` in `shell/src/builder/registry.ts` gains an optional
-   `configSchema?: WidgetPropDescriptor[]` field (with the doc comment from
-   the brief explaining scope: scalar props only, array/object props out of
-   scope for v1).
-3. Backfilled `configSchema` on all 22 builtin widget definitions across 19
-   widget files, exactly per the brief's per-file snippets:
-   - `dateRangeFilter.tsx` (dateRangeFilter)
-   - `datasetCard.tsx` (datasetCard)
-   - `chart.tsx` (chart — 15 scalar props)
-   - `data.tsx` (list, table — two widgets)
-   - `drawer.tsx` (drawer)
-   - `indicator.tsx` (indicator)
-   - `index.tsx` (text, image, button — three widgets)
-   - `gallery.tsx` (gallery)
-   - `hero.tsx` (hero)
-   - `richSection.tsx` (richSection)
-   - `filter.tsx` (filter)
-   - `selectFilter.tsx` (selectFilter)
-   - `mapWidget.tsx` (map)
-   - `navigation.tsx` (nav)
-   - `modal.tsx` (modal)
-   - `tabs.tsx` (tabs — empty `configSchema: []`, only prop `tabs` is array-shaped)
-   - `sliderFilter.tsx` (sliderFilter)
-   - `form.tsx` (form — only `dataSourceId`/`submitLabel`, `fields` array and
-     `geometryType` nullable enum excluded per brief)
-   - `pivot.tsx` (pivot — `encodings` object excluded per brief)
-4. New test file `shell/src/builder/widgetPropSchema.test.ts`, verbatim from
-   the brief.
+Implémenté `shell/src/map/MapSymbologyEditor.tsx` (composant React partagé,
+host-agnostic) + `shell/src/map/MapSymbologyEditor.test.tsx` (8 tests), tel
+que décrit dans `.superpowers/sdd/task-7-brief.md`. Commit unique.
 
-No widget runtime behavior changed — purely additive static metadata.
-
-## Pre-flight check
-
-Before editing, verified every one of the brief's "Change:"/"to:" snippets
-against the actual current file contents (`registry.ts` imports/type, and
-every `defaultProps`/`defaultSize` block in all 19 widget files) via `grep`
-and targeted `Read`. All matched exactly — no deviations, no need to escalate.
-
-## TDD evidence
+## TDD — preuve RED puis GREEN
 
 ### RED
 
-Command: `cd shell && npx vitest run src/builder/widgetPropSchema.test.ts`
-
-Result: 4/4 tests failed. (Note: the failure was "expected undefined" for
-`configSchema`, not literally "Cannot find module" as the brief's Step 2
-predicted — because the test file itself doesn't import from
-`./widgetPropSchema` directly, only `registry`/`widgets`. The failure reason
-is correct either way: the feature doesn't exist yet.)
+```
+cd shell && npx vitest run src/map/MapSymbologyEditor.test.tsx
+```
 
 ```
-FAIL  src/builder/widgetPropSchema.test.ts > configSchema > tabs widget has an empty configSchema...
-AssertionError: expected undefined to deeply equal []
+ RUN  v3.2.7 /home/lenen/projets/geostudio/shell
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/map/MapSymbologyEditor.test.tsx [ src/map/MapSymbologyEditor.test.tsx ]
+Error: Failed to resolve import "./MapSymbologyEditor" from "src/map/MapSymbologyEditor.test.tsx". Does the file exist?
+...
  Test Files  1 failed (1)
-      Tests  4 failed (4)
+      Tests  no tests
 ```
 
-### GREEN
+Module inexistant, comme attendu.
 
-Command: `cd shell && npx vitest run src/builder/widgetPropSchema.test.ts src/builder/registry.test.tsx`
+### GREEN (après implémentation + un ajustement, cf. déviation ci-dessous)
 
 ```
-✓ src/builder/widgetPropSchema.test.ts (4 tests) 17ms
-✓ src/builder/registry.test.tsx (4 tests) 134ms
+cd shell && npx vitest run src/map/MapSymbologyEditor.test.tsx
+```
 
- Test Files  2 passed (2)
+```
+ RUN  v3.2.7 /home/lenen/projets/geostudio/shell
+
+ ✓ src/map/MapSymbologyEditor.test.tsx (8 tests) 190ms
+
+ Test Files  1 passed (1)
       Tests  8 passed (8)
 ```
 
-## Full verification
+Les 8 tests du brief passent, aucun renommé, aucun `test.skip`.
 
-- `cd shell && npm run build` → `tsc --noEmit && vite build` — PASS (build
-  succeeded, only pre-existing chunk-size warnings, unrelated to this change).
-- `cd shell && npm run test` → **147 test files passed, 1215 tests passed**,
-  0 failed. (Stderr showed some `CelParseError` output during the run — this
-  is expected console noise from `exprBindings.test.ts`'s own error-path
-  test, which itself passed.)
+## Déviation par rapport au code illustratif du brief (justifiée)
 
-## Confirmation: all 22 widgets covered
+### 1. `formatDomain` : union concrète plutôt que le type conditionnel dérivé
 
-Verified programmatically (not just by eye):
-- `grep -rc "defaultProps:" *.tsx` sums to **22** across the widget files.
-- `grep -rc "configSchema:" *.tsx` sums to **22** — one `configSchema` per
-  `defaultProps`, no widget skipped.
-- The test `"every builtin widget declares a configSchema (possibly empty)"`
-  iterates `listWidgets()` (the full runtime registry after
-  `registerBuiltinWidgets()`) and asserts each has a defined `configSchema` —
-  this passed, which is the strongest form of confirmation since it goes
-  through actual widget registration rather than static grep.
+Suivi le repli explicitement recommandé par le brief lui-même (Step 4) :
+au lieu du type `LayerSymbology["color"] extends infer C ? ... : never`,
+utilisé directement `ColorDomain` (déjà exporté par `mapSymbology.ts`,
+vérifié avant d'écrire le code) :
 
-All 22 widget types: dateRangeFilter, datasetCard, chart, list, table,
-drawer, indicator, text, image, button, gallery, hero, richSection, filter,
-selectFilter, map, nav, modal, tabs, sliderFilter, form, pivot.
+```ts
+import { ..., type ColorDomain, ... } from "../builder/widgets/mapSymbology";
 
-## Files changed
+function formatDomain(domain: ColorDomain): string { ... }
+```
 
-- `shell/src/builder/widgetPropSchema.ts` (new)
-- `shell/src/builder/widgetPropSchema.test.ts` (new)
-- `shell/src/builder/registry.ts`
-- `shell/src/builder/widgets/chart.tsx`
-- `shell/src/builder/widgets/data.tsx`
-- `shell/src/builder/widgets/datasetCard.tsx`
-- `shell/src/builder/widgets/dateRangeFilter.tsx`
-- `shell/src/builder/widgets/drawer.tsx`
-- `shell/src/builder/widgets/filter.tsx`
-- `shell/src/builder/widgets/form.tsx`
-- `shell/src/builder/widgets/gallery.tsx`
-- `shell/src/builder/widgets/hero.tsx`
-- `shell/src/builder/widgets/index.tsx`
-- `shell/src/builder/widgets/indicator.tsx`
-- `shell/src/builder/widgets/mapWidget.tsx`
-- `shell/src/builder/widgets/modal.tsx`
-- `shell/src/builder/widgets/navigation.tsx`
-- `shell/src/builder/widgets/pivot.tsx`
-- `shell/src/builder/widgets/richSection.tsx`
-- `shell/src/builder/widgets/selectFilter.tsx`
-- `shell/src/builder/widgets/sliderFilter.tsx`
-- `shell/src/builder/widgets/tabs.tsx`
+Ce n'est pas une déviation à proprement parler : le brief anticipait
+explicitement ce remplacement comme son choix préféré, pas une exception à
+justifier.
 
-22 files total (matches `git commit` output: "22 files changed, 157
-insertions(+)").
+### 2. Sélecteur « Palette » déplacé hors du bloc conditionné par `color?.field`
 
-## Self-review findings
+**Ceci est une vraie divergence par rapport au JSX donné verbatim par le
+brief**, nécessaire pour faire passer ses propres tests. Dans le code du
+brief, le `<select aria-label="Palette">` est imbriqué dans le bloc
+`{color?.field && (...)}`. Or les tests 2 et 3 (« theme-primary palette
+option is absent/present ») rendent le composant avec `value={undefined}`
+(donc `color` entièrement `undefined`, aucun champ sélectionné) et
+s'attendent à trouver `screen.getByLabelText("Palette")` quand même — ce
+qui est impossible si le select est gardé par `color?.field`.
 
-No deviations from the brief were needed. All snippets matched the live
-files exactly on first read. No issues found in self-review:
-- Every `configSchema` array's entries match the corresponding
-  `defaultProps` key/value for `default`, in the same declared order as the
-  brief.
-- `tabs.tsx` correctly gets `configSchema: []` (not omitted), matching the
-  explicit test for it.
-- `form.tsx` and `pivot.tsx` correctly exclude their array/object-shaped
-  props (`fields`/`geometryType`, `encodings`) with the exact explanatory
-  comments from the brief.
-- Commit only staged the intended files (`widgetPropSchema.ts`,
-  `registry.ts`, `widgets/`, `widgetPropSchema.test.ts`) — pre-existing
-  unrelated unstaged changes in the working tree (`.superpowers/sdd/*`,
-  `deploy/postgis/*`) were left untouched, not part of this task.
+Vérifié empiriquement : avec le JSX donné tel quel, ces deux tests
+échouent avec `Unable to find a label with the text of: Palette` (capture
+DOM confirmant que seuls « Champ couleur » et « Champ taille » sont
+rendus quand `value` est `undefined`).
 
-## Issues or concerns
+Correction : le sélecteur Palette est maintenant rendu **inconditionnellement**
+(juste après le champ « Champ couleur »/`datalist`), sa valeur retombant
+sur `color?.palette ?? "categorical-a"`, son `onChange` réutilisant
+`setColorField` (donc créant/complétant un objet `color` avec `field: ""`
+si aucun champ n'était encore choisi — comportement cohérent avec le
+motif déjà présent dans `setColorField`, inchangé). Le reste du bloc
+conditionné par `color?.field` (Type de couleur, Méthode de
+classification, Nombre de classes, bouton Recalculer, texte des classes
+calculées) reste identique au brief. Un commentaire dans le code documente
+ce choix (pourquoi la palette est visible indépendamment d'un champ
+choisi, contrairement à la classification).
 
-None. Task complete as specified, no scope creep, no ambiguity encountered.
+Rien d'autre du JSX/logique donné n'a été modifié.
+
+## Résultat des gates shell complètes
+
+```
+cd shell && npm run lint            # eslint . → OK, aucune violation
+cd shell && npm run format:check    # prettier --check . → OK (après --write initial)
+cd shell && npx vitest run          # 161 files passed (161), 1419 tests passed (1419)
+cd shell && npm run build           # tsc --noEmit + vite build → succès (warnings taille de bundle pré-existants seulement)
+```
+
+Référence avant la tâche : 160 fichiers / 1411 tests. Après : 161 / 1419
+(+1 fichier, +8 tests — la note du brief « count ≥ previous + 9 » à l'étape
+5 ne correspond pas au nombre réel de tests qu'il liste lui-même (8) ;
+signalé comme incohérence du brief, pas une omission de ma part — les 8
+tests exacts listés au Step 1 sont bien tous présents et verts).
+
+`uvx pre-commit run --all-files` n'a pas été relancé séparément ; le hook
+`eslint`/`prettier`/`commitlint` s'est exécuté avec succès au moment du
+commit (voir sortie du commit ci-dessous).
+
+## Commit
+
+```
+fc2808a feat(shell): éditeur de symbologie partagé (MapSymbologyEditor)
+```
+
+Fichiers modifiés/ajoutés (uniquement les deux prévus par le brief) :
+- `shell/src/map/MapSymbologyEditor.tsx` (nouveau)
+- `shell/src/map/MapSymbologyEditor.test.tsx` (nouveau)
+
+Aucun autre fichier touché (les modifications présentes dans le working
+tree sous `.superpowers/sdd/*.md` et `deploy/postgis/pg_hba.conf` sont
+pré-existantes/hors périmètre de cette tâche, non commitées ici).
+
+## Self-review
+
+- **Complétude** : les 8 tests du brief passent tels quels (aucun
+  renommage, aucune assertion affaiblie). Toutes les props de l'interface
+  (`value`, `availableFields`, `themeColors`, `runStatistics`,
+  `sampleField`, `onChange`) sont présentes avec les types exacts attendus
+  par les tests (vérifiés contre les vraies signatures de
+  `computeColorDomain`/`computeSizeDomain`/`StatQueryFn`/`SampleFieldFn`
+  dans `mapSymbology.ts`, lues avant d'écrire le composant — elles
+  correspondent verbatim à ce que le brief suppose, aucune escalade
+  nécessaire).
+- **Qualité** : conventions alignées sur `PopupEditor.tsx` (mêmes
+  `labelCls`/`inputCls`, mêmes commentaires en français expliquant le
+  partage entre les deux hôtes, mêmes patrons `aria-label` + `<datalist>`
+  pour un champ texte avec suggestions).
+- **Discipline** : aucun appel direct à `ItemClient`/`useQuery`/réseau
+  dans le composant — seuls les callbacks injectés (`runStatistics`,
+  `sampleField`, `onChange`) sont utilisés ; le composant reste
+  entièrement host-agnostic, prêt à être monté par `LayersPanel` (Task 8)
+  et `PropsPanel` du widget carte (Task 11 selon le brief lui-même, appelé
+  « Task 10 » dans sa section Interfaces — incohérence mineure du texte du
+  plan, sans conséquence sur ce livrable).
+- **Tests** : RED puis GREEN réellement observés (capture ci-dessus), pas
+  simulés. Tous les `aria-label`/noms de bouton (« Champ couleur »,
+  « Champ taille », « Type de couleur », « Méthode de classification »,
+  « Nombre de classes », « Palette », « Recalculer les classes »,
+  « Recalculer la taille ») matchent le texte du brief au caractère près,
+  puisque les Tasks 8 et 11 écriront leurs propres tests contre les mêmes
+  libellés.
+
+## Préoccupations
+
+- La divergence documentée ci-dessus (position du sélecteur Palette) est
+  la seule modification substantielle par rapport au JSX donné par le
+  brief. Elle est nécessaire à la cohérence interne du brief lui-même (son
+  propre test contredisait son propre JSX) — signalée explicitement pour
+  que Task 8/Task 11 (qui monteront ce composant) sachent que la Palette
+  est toujours visible, pas conditionnée à un champ couleur choisi.
+- Aucune autre incohérence trouvée entre le brief et le code réel de
+  Task 6 (`mapSymbology.ts`) / Task 4 (`palette.ts`).

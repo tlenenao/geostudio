@@ -1,137 +1,102 @@
-# Task 3 Report: Core — `llm_provider.py`
+# Task 3: OpenAPI + TS Regeneration — Report
+
+**Date:** 2026-08-23
 
 ## Summary
+Regenerated `core/openapi.json` and `shell/src/api/generated/core-schema.d.ts` following changes to `AggregateRequestBody` (added `sample` field) and `MapLayer` (added `symbology` field) from SP-25 tasks 1–2.
 
-Successfully implemented the pluggable LLM provider abstraction for SP-20 copilote embarqué following TDD discipline. All 5 tests pass. Implementation follows the exact same architectural pattern as `app.search.providers.EmbeddingProvider` (SP-7).
+## Execution
 
-## Implementation Details
+### Step 1: Regenerate OpenAPI and TS types
 
-### Files Created
-
-1. **`core/app/copilot/__init__.py`** — Empty module marker
-2. **`core/app/copilot/llm_provider.py`** — Main implementation (84 lines)
-   - `ToolCall` (dataclass): id, name, arguments
-   - `LLMTurn` (dataclass): text response + tool_calls list
-   - `LLMProvider` (Protocol): Interface with single `chat(messages, tools) -> LLMTurn` method
-   - `FakeLLMProvider`: Scriptable, deterministic provider for tests/dev (no network)
-     - Cycles through responses in order
-     - Repeats last response once exhausted
-   - `OpenAICompatibleLLMProvider`: Production HTTP provider
-     - Calls OpenAI-compatible API via httpx
-     - Parses tool_calls from OpenAI message format
-   - `get_llm_provider()`: Factory function
-     - Defaults to `FakeLLMProvider` when `CORE_LLM_PROVIDER` unset or "fake"
-     - Returns `OpenAICompatibleLLMProvider` when `CORE_LLM_PROVIDER=openai`
-     - Raises `ValueError` on unknown provider kind
-
-3. **`core/tests/test_copilot_llm_provider.py`** — 5 test cases (66 lines)
-
-### TDD Evidence
-
-#### RED Phase
+**OpenAPI regeneration:**
+```bash
+cd /home/lenen/projets/geostudio/core && \
+  PYTHONPATH=. \
+  CORE_SECRETS_MASTER_KEY=$(openssl rand -base64 32) \
+  uv run python scripts/export_openapi.py openapi.json
 ```
-$ cd core && uv run pytest tests/test_copilot_llm_provider.py -v
+✓ Completed successfully
 
-ERROR collecting tests/test_copilot_llm_provider.py
-...
-ModuleNotFoundError: No module named 'app.copilot'
+**TypeScript types regeneration:**
+```bash
+cd /home/lenen/projets/geostudio/shell && npm run gen:api-types
 ```
-
-Confirmed module did not exist before implementation.
-
-#### GREEN Phase
+Output:
 ```
-$ cd core && uv run pytest tests/test_copilot_llm_provider.py -v
+✨ openapi-typescript 7.13.0
+🚀 ../core/openapi.json → src/api/generated/core-schema.d.ts [212.8ms]
+```
+✓ Completed successfully
 
-tests/test_copilot_llm_provider.py::test_fake_provider_returns_scripted_responses_in_order PASSED [ 20%]
-tests/test_copilot_llm_provider.py::test_fake_provider_repeats_last_response_once_exhausted PASSED [ 40%]
-tests/test_copilot_llm_provider.py::test_get_llm_provider_defaults_to_fake PASSED [ 60%]
-tests/test_copilot_llm_provider.py::test_get_llm_provider_rejects_unknown_kind PASSED [ 80%]
-tests/test_copilot_llm_provider.py::test_openai_compatible_provider_parses_tool_calls PASSED [100%]
+### Step 2: Verify the diff
 
-============================== 5 passed in 0.07s ===============================
+**OpenAPI changes in `core/openapi.json`:**
+- Added `sample` field to `AggregateRequestBody` schema (integer or null)
+- Added `symbology` field to `MapLayer` schema (object or null)
+
+**TypeScript changes in `shell/src/api/generated/core-schema.d.ts`:**
+- Added `sample?: number | null;` to AggregateRequestBody interface
+- Added `symbology?: { [key: string]: unknown; } | null;` to MapLayer interface
+
+**Diff verification:**
+```
+git diff --stat
+ core/openapi.json                        |  23 ++
+ shell/src/api/generated/core-schema.d.ts |   6 +
 ```
 
-All tests pass on first implementation.
+**Detailed inspection:** ✓ Confirmed only the two expected schemas changed. No unrelated fields moved or modified.
 
-### Test Coverage
+**Untracked/unstaged files:**
+- `.superpowers/sdd/` files had staged changes from previous work — reset to working tree only
+- `deploy/postgis/pg_hba.conf` — untracked, left untouched
+- Only committed: `core/openapi.json` and `shell/src/api/generated/core-schema.d.ts`
 
-1. **test_fake_provider_returns_scripted_responses_in_order**
-   - Verifies responses consumed in order
-   - Tests both tool_calls and text responses
+### Step 3: Test suites
 
-2. **test_fake_provider_repeats_last_response_once_exhausted**
-   - Ensures last response repeats indefinitely (not IndexError)
-
-3. **test_get_llm_provider_defaults_to_fake**
-   - Confirms default behavior when env var unset
-
-4. **test_get_llm_provider_rejects_unknown_kind**
-   - Verifies ValueError on invalid provider kind
-   - Monkeypatch ensures env isolation
-
-5. **test_openai_compatible_provider_parses_tool_calls**
-   - Mocks httpx.post to verify API call format
-   - Verifies Bearer token, model, and message format
-   - Tests tool_call parsing from OpenAI response format
-   - Tests JSON argument deserialization
-
-### Architectural Alignment
-
-- Follows same pattern as `app.search.providers.EmbeddingProvider` (SP-7)
-- No database dependencies
-- No authentication/authorization dependencies  
-- Pure backend logic consumed by Task 5's routes.py
-- French documentation aligns with CLAUDE.md language rules
-- Dataclasses for structured data (following project conventions)
-- Protocol for provider interface (duck-typing support)
-- Environment-based factory configuration (os.environ)
-
-### Commit Information
-
-**SHA:** `c3da6d2`  
-**Message:** `feat(core): fournisseur LLM enfichable pour le copilote (SP-20)`
-
+**Core tests:**
+```bash
+cd /home/lenen/projets/geostudio/core && \
+  CORE_TEST_DATABASE_URL="postgresql+psycopg://gis:gis@localhost:5433/gis_test" \
+  uv run pytest -q
 ```
-LLMProvider (Protocol) + FakeLLMProvider (scriptable, tests/mock) +
-OpenAICompatibleLLMProvider (CORE_LLM_PROVIDER=openai), même patron que
-app.search.providers.EmbeddingProvider (SP-7).
+Result: **1878 passed, 5 skipped** (matches expected reference exactly)
+- ✓ No regression
+- Exit code: 0
+
+**Shell build:**
+```bash
+cd /home/lenen/projets/geostudio/shell && npm run build
+```
+Result: **✓ built in 16.63s**
+- ✓ TypeScript type checking passed (no errors)
+- ✓ Vite bundle successful
+- Exit code: 0
+
+### Step 4: Commit
+
+```bash
+git add core/openapi.json shell/src/api/generated/core-schema.d.ts
+git commit -m "chore(api): régénère OpenAPI et les types TS (sample, symbology)"
 ```
 
-## Self-Review Findings
+**Commit created:**
+- SHA: `6fc47cd`
+- Subject: `chore(api): régénère OpenAPI et les types TS (sample, symbology)`
+- Files changed: 2 (29 insertions)
+- Pre-commit hooks: ✓ All passed (eslint, prettier, commitlint)
 
-### Code Quality
-✓ All code matches brief exactly — character-for-character  
-✓ French comments and docstrings appropriate per CLAUDE.md  
-✓ SPDX license headers present on all files  
-✓ Type hints complete and correct (Python 3.10+ syntax)  
-✓ Dataclass defaults properly implemented (`field(default_factory=list)`)  
-✓ No type: ignore comments needed  
+## Verification Summary
 
-### Testing
-✓ Test file imports work correctly  
-✓ Monkeypatch usage correct (setenv/delenv)  
-✓ Mock httpx.post captures all required headers/JSON  
-✓ JSON parsing tested (arguments field)  
-✓ Error message matching correct (regex match)  
+| Check | Status | Evidence |
+|-------|--------|----------|
+| OpenAPI regenerated | ✓ PASS | Script executed, output written to `core/openapi.json` |
+| TS types regenerated | ✓ PASS | `openapi-typescript` completed successfully |
+| Diff is clean | ✓ PASS | Only `sample` and `symbology` fields added, no unrelated changes |
+| Core tests green | ✓ PASS | 1878 passed, 5 skipped (exact reference match) |
+| Shell build green | ✓ PASS | Built successfully in 16.63s |
+| Commit created | ✓ PASS | Conventional message, pre-commit hooks passed |
 
-### Architecture
-✓ No integration dependencies (httpx imported only in OpenAI provider)  
-✓ Defaults sensible (FakeLLMProvider for dev, OpenAI for prod)  
-✓ Factory pattern clean and extensible  
-✓ Protocol allows duck-typing if new providers added later  
-✓ No circular imports possible  
-
-### No Issues Found
-
-Code is production-ready. Implementation complete per brief specification.
-
-## Files Changed
-
-- Created: `core/app/copilot/__init__.py`
-- Created: `core/app/copilot/llm_provider.py`
-- Created: `core/tests/test_copilot_llm_provider.py`
-
-## Next Steps
-
-Task 3 complete. The LLM provider module is now available for Task 5's routes.py to consume via `from app.copilot.llm_provider import get_llm_provider`.
+## Concerns
+None. All checks passed. The regeneration is clean and complete.

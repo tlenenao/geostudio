@@ -1,120 +1,147 @@
-### Task 14: "Autoporté" button on `AppExportPanel`
+### Task 14: `ItemClient` — révisions et rollback
 
 **Files:**
-- Modify: `shell/src/builder/appexport/AppExportPanel.tsx`
-- Modify: `shell/src/builder/appexport/AppExportPanel.test.tsx`
+- Modify: `shell/src/api/types.ts` (interface `ItemClient`),
+  `shell/src/api/itemClient.ts`,
+  `shell/src/staticExport/StaticItemClient.ts`
+- Test: `shell/src/api/itemClient.test.ts`,
+  `shell/src/staticExport/StaticItemClient.test.ts`
 
 **Interfaces:**
-- Produces: same public component signature — a third dialog button next to
-  Statique/Connecté. Reuses the `pendingWarningMode: AppExportMode | null`
-  mechanism SP-18b already fixed (Task 8 of the SP-18b plan) — no new bug
-  class here, `pendingWarningMode` was already generalized past a single
-  hardcoded mode.
+- Consumes: Task 13.
+- Produces, sur `ItemClient` :
 
-- [ ] **Step 1: Write the failing test**
-
-Append to `shell/src/builder/appexport/AppExportPanel.test.tsx`:
-
-```tsx
-
-
-  it("triggers a standalone export and shows a download link once done", async () => {
-    const client = makeClient({
-      createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
-      getAppExportJob: vi.fn().mockResolvedValue({ id: "job1", status: "done", resultUrl: "https://x.test/bundle.zip", error: null }),
-    });
-    render(
-      <ItemClientProvider client={client}>
-        <AppExportPanel itemId="item1" config={config()} />
-      </ItemClientProvider>,
-    );
-    await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
-    await userEvent.click(screen.getByRole("button", { name: /autoport/i }));
-    await waitFor(() => expect(screen.getByRole("link", { name: /télécharger/i })).toBeInTheDocument());
-    expect(client.createAppExport).toHaveBeenCalledWith("item1", "standalone");
-  });
+```ts
+  listConfigRevisions(pk: string): Promise<ConfigRevisionInfo[]>;
+  rollbackConfig(pk: string, version: number): Promise<void>;
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+  avec `export type ConfigRevisionInfo = { version: number; createdAt: string };`
+  dans `shell/src/api/types.ts`.
 
-Run: `cd shell && npx vitest run src/builder/appexport/AppExportPanel.test.tsx`
-Expected: FAIL — no "Autoporté" button exists yet.
+> **Clé par `pk` d'item, pas par `configId`** : aucun des cinq éditeurs ne
+> connaît son `configId` (vérifié). `CoreItemClient` résout par
+> `GET /configs/by-item/{pk}`, déjà la monnaie courante du client (dix
+> appels existants), plutôt que d'ajouter deux routes `by-item` au serveur.
 
-- [ ] **Step 3: Add the button in `AppExportPanel.tsx`**
+- [ ] **Step 1: Write the failing tests**
 
-In `shell/src/builder/appexport/AppExportPanel.tsx`, replace the dialog's
-button row:
+Ajouter à `shell/src/api/itemClient.test.ts` (en suivant le patron `msw` du
+fichier — lire un test voisin qui intercepte `/configs/by-item/…`) :
 
-```tsx
-        <div className="flex justify-end gap-2">
-          <Button type="button" size="sm" onClick={() => onChooseMode("static")}>
-            Statique
-          </Button>
-          <Button type="button" size="sm" onClick={() => onChooseMode("connected")}>
-            Connecté
-          </Button>
-        </div>
+```ts
+test("listConfigRevisions résout la config par item puis lit ses révisions", async () => {
+  // GET /configs/by-item/app-1 -> { id: "cfg-1", … }
+  // GET /configs/cfg-1/revisions -> [{ version: 1, created_at: "2026-08-01T10:00:00" },
+  //                                  { version: 2, created_at: "2026-08-02T11:00:00" }]
+  const client = createItemClient({ coreUrl: CORE_URL, getToken: () => "t" });
+
+  expect(await client.listConfigRevisions("app-1")).toEqual([
+    { version: 1, createdAt: "2026-08-01T10:00:00" },
+    { version: 2, createdAt: "2026-08-02T11:00:00" },
+  ]);
+});
+
+test("rollbackConfig poste la version demandée sur la config résolue", async () => {
+  let posted: { version: number } | null = null;
+  // GET /configs/by-item/app-1 -> { id: "cfg-1" }
+  // POST /configs/cfg-1/rollback -> capture le corps, renvoie 200 {}
+  const client = createItemClient({ coreUrl: CORE_URL, getToken: () => "t" });
+
+  await client.rollbackConfig("app-1", 3);
+
+  expect(posted).toEqual({ version: 3 });
+});
+
+test("rollbackConfig propage l'erreur quand le serveur refuse la version", async () => {
+  // POST /configs/cfg-1/rollback -> 422
+  const client = createItemClient({ coreUrl: CORE_URL, getToken: () => "t" });
+
+  await expect(client.rollbackConfig("app-1", 1)).rejects.toThrow();
+});
 ```
 
-with:
+Ajouter à `shell/src/staticExport/StaticItemClient.test.ts` :
 
-```tsx
-        <div className="flex justify-end gap-2">
-          <Button type="button" size="sm" onClick={() => onChooseMode("static")}>
-            Statique
-          </Button>
-          <Button type="button" size="sm" onClick={() => onChooseMode("connected")}>
-            Connecté
-          </Button>
-          <Button type="button" size="sm" onClick={() => onChooseMode("standalone")}>
-            Autoporté
-          </Button>
-        </div>
+```ts
+test("les révisions ne sont pas disponibles hors ligne", async () => {
+  const client = createStaticItemClient(CONFIG);
+  await expect(client.listConfigRevisions("app-1")).rejects.toThrow(/export statique/);
+  await expect(client.rollbackConfig("app-1", 1)).rejects.toThrow(/export statique/);
+});
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `cd shell && npx vitest run src/builder/appexport/AppExportPanel.test.tsx`
-Expected: PASS (5 tests)
+Run: `cd shell && npx vitest run src/api/itemClient.test.ts src/staticExport/StaticItemClient.test.ts`
 
-- [ ] **Step 5: Run the shell's full check suite**
+Expected: FAIL — `listConfigRevisions` n'existe pas sur `ItemClient`.
 
-Run: `cd shell && npm run test && npx tsc --noEmit`
-Expected: PASS, no regressions.
+- [ ] **Step 3: Extend the interface**
 
-- [ ] **Step 6: Commit**
+Dans `shell/src/api/types.ts`, ajouter le type et les deux signatures dans
+l'interface `ItemClient` (à côté des autres méthodes de config) :
+
+```ts
+export type ConfigRevisionInfo = { version: number; createdAt: string };
+```
+
+```ts
+  // Historique de versions (SP-23, chantier 4.18). Clés par `pk` d'item et
+  // non par `configId` : aucun éditeur du shell ne connaît son configId.
+  listConfigRevisions(pk: string): Promise<ConfigRevisionInfo[]>;
+  rollbackConfig(pk: string, version: number): Promise<void>;
+```
+
+- [ ] **Step 4: Implement in `CoreItemClient`**
+
+Dans `shell/src/api/itemClient.ts`, à l'intérieur de `createItemClient`,
+ajouter à l'objet retourné :
+
+```ts
+    async listConfigRevisions(pk: string): Promise<ConfigRevisionInfo[]> {
+      const { id } = await request<{ id: string }>("GET", `/configs/by-item/${pk}`);
+      const rows = await request<{ version: number; created_at: string }[]>(
+        "GET",
+        `/configs/${id}/revisions`,
+      );
+      return rows.map((r) => ({ version: r.version, createdAt: r.created_at }));
+    },
+    async rollbackConfig(pk: string, version: number): Promise<void> {
+      const { id } = await request<{ id: string }>("GET", `/configs/by-item/${pk}`);
+      await request<unknown>("POST", `/configs/${id}/rollback`, { version });
+    },
+```
+
+Importer `ConfigRevisionInfo` depuis `./types`.
+
+- [ ] **Step 5: Implement in `StaticItemClient`**
+
+Dans `shell/src/staticExport/StaticItemClient.ts`, ajouter aux méthodes non
+supportées :
+
+```ts
+    async listConfigRevisions(..._args: unknown[]) {
+      return unsupported();
+    },
+    async rollbackConfig(..._args: unknown[]) {
+      return unsupported();
+    },
+```
+
+- [ ] **Step 6: Run the tests and the type check**
+
+Run: `cd shell && npx vitest run src/api/itemClient.test.ts src/staticExport/ && npm run build`
+
+Expected: PASS et build vert. Si `npm run build` échoue sur une autre
+implémentation d'`ItemClient` (mocks de test), l'y ajouter aussi.
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add shell/src/builder/appexport/AppExportPanel.tsx shell/src/builder/appexport/AppExportPanel.test.tsx
-git commit -m "feat(shell): AppExportPanel gains an Autoporté button (SP-18c)"
+git add shell/src/api/types.ts shell/src/api/itemClient.ts shell/src/api/itemClient.test.ts shell/src/staticExport/StaticItemClient.ts shell/src/staticExport/StaticItemClient.test.ts
+git commit -m "feat(shell): expose les révisions de config et le rollback sur ItemClient"
 ```
 
 ---
 
-## Self-review notes
-
-- **Spec coverage:** design §3.1 (snapshot production, CDC-compatible
-  layout) → Task 4. §3.2 (mini-server, same CORS-enumerated path allowlist,
-  serves the shell bundle from the same origin) → Tasks 5/6. §3.3 (guard:
-  connected-style `is_public` leniency + static-style widget allowlist) →
-  Task 1. §3.4 (ghcr.io distribution, `:latest`, documented unverified-pull
-  gap, E2E builds locally) → Tasks 10/11/12 + Global Constraints. §3.5
-  (artifact shape: data/ + generated compose + README) → Task 7. §4 (no
-  writes, no auto-refresh, no third-party widgets) → enforced by Task 1's
-  guard and the mini-server never exposing a write route (Task 6). §5 (real
-  E2E, cold container, no Postgres/Keycloak/MinIO in the generated compose)
-  → Task 12.
-- **Placeholder scan:** none found — every step has complete, runnable code
-  or an exact command with an expected result.
-- **Type consistency:** `CollectionSnapshotEntry` defined once in Task 3's
-  `manifest.py`, constructed identically in Task 4 (`snapshot.py`) and
-  consumed identically in Task 6 (`main.py`, via `read_manifest`) — same
-  field names (`id`, `tenant_id`, `collection_json`, `schema_json`,
-  `table_info`) throughout. `select_features`/`get_feature`'s
-  `(conn, *, base_uri, tenant_id, collection_id, table_info, ...)` signature
-  from Task 5 is called identically in Task 6. `build_standalone_bundle_zip(config,
-  *, snapshot_dir)` defined in Task 7, called identically in Task 8 and
-  Task 12. `AppExportMode` widened in Task 13, used identically in Task 14
-  (`onChooseMode("standalone")`) — no shell code elsewhere hardcodes the
-  two-mode union (verified against SP-18b's Task 6/8, which already
-  generalized `pendingWarningMode` past a single mode).

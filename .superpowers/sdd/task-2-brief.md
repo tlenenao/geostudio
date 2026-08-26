@@ -1,171 +1,120 @@
-## Task 2: Core — `is_copilot_enabled()` + `GET /instance.copilotEnabled`
+## Task 2: Core — `symbology` field on `MapLayer`
 
 **Files:**
-- Modify: `core/app/auth/dependency.py`
-- Modify: `core/app/instance/routes.py`
-- Create: `core/tests/test_copilot_enabled_flag.py`
-- Modify: `core/tests/test_etl_enabled_flag.py`, `core/tests/test_export_enabled_flag.py`, `core/tests/test_read_only_mode.py` (their `GET /instance` exact-dict assertions gain a `copilotEnabled` key — see Step 4)
+- Modify: `core/app/configs/schemas.py`
+- Test: `core/tests/test_configs_map_symbology.py` (create)
 
 **Interfaces:**
-- Produces: `is_copilot_enabled() -> bool` in `app.auth.dependency`, importable by `core/app/main.py` (Task 5).
+- Produces: `MapLayer.symbology: dict | None = None` (untyped, mirrors
+  `paint: dict | None` and `props: dict | None` on the same model — this
+  model validates coarse shape only, exactly like its two neighbors).
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Find the existing round-trip test pattern for `MapLayer`**
 
-Create `core/tests/test_copilot_enabled_flag.py`, mirroring `core/tests/test_etl_enabled_flag.py` exactly:
+Run: `grep -rn "popup" core/tests/test_configs*.py`
 
-```python
-# SPDX-License-Identifier: Apache-2.0
-import pytest
-from fastapi.testclient import TestClient
+Read whichever file that finds (it exercises `MapLayer.popup` round-trip
+through `POST /configs` or `PUT /configs/{id}` — SP-24 added it) to copy its
+exact request/assertion shape for the new test below.
 
-from app import db
-from app.auth.dependency import get_current_user, get_current_user_optional, is_copilot_enabled
-from app.db import init_db, make_engine, make_session_factory, request_scoped_session
-from app.main import create_app
-from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
+- [ ] **Step 2: Write the failing test**
 
-
-def test_is_copilot_enabled_defaults_to_false(monkeypatch):
-    monkeypatch.delenv("CORE_LLM_PROVIDER", raising=False)
-    assert is_copilot_enabled() is False
-
-
-def test_is_copilot_enabled_true_for_any_non_empty_provider(monkeypatch):
-    monkeypatch.setenv("CORE_LLM_PROVIDER", "openai")
-    assert is_copilot_enabled() is True
-    monkeypatch.setenv("CORE_LLM_PROVIDER", "fake")
-    assert is_copilot_enabled() is True
-
-
-@pytest.fixture()
-def env():
-    engine = make_engine("sqlite+pysqlite:///:memory:")
-    init_db(engine)
-    Session = make_session_factory(engine)
-    with Session() as s:
-        tenant = get_or_create_default_tenant(s)
-        admin = get_or_create_user(
-            s, tenant_id=tenant.id, oidc_sub="a", username="admin",
-            email=None, first_name="", last_name="", bootstrap_admin=True,
-        )
-        s.commit()
-    app = create_app()
-
-    def override_session():
-        with request_scoped_session(Session) as session:
-            yield session
-
-    app.dependency_overrides[db.get_session] = override_session
-    app.dependency_overrides[get_current_user] = lambda: admin
-    app.dependency_overrides[get_current_user_optional] = lambda: admin
-    return TestClient(app)
-
-
-def test_instance_reports_copilot_disabled_by_default(env, monkeypatch):
-    monkeypatch.delenv("CORE_LLM_PROVIDER", raising=False)
-    response = env.get("/instance")
-    assert response.status_code == 200
-    assert response.json()["copilotEnabled"] is False
-
-
-def test_instance_reports_copilot_enabled(env, monkeypatch):
-    monkeypatch.setenv("CORE_LLM_PROVIDER", "openai")
-    response = env.get("/instance")
-    assert response.status_code == 200
-    assert response.json()["copilotEnabled"] is True
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `cd core && uv run pytest tests/test_copilot_enabled_flag.py -v`
-Expected: FAIL — `ImportError: cannot import name 'is_copilot_enabled'`.
-
-- [ ] **Step 3: Implement**
-
-In `core/app/auth/dependency.py`, add right after `is_terrain3d_enabled()` (before `admin_subs()`):
-
-```python
-def is_copilot_enabled() -> bool:
-    """CORE_LLM_PROVIDER (SP-20) — contrairement aux autres capacités
-    instance-wide ci-dessus (is_etl_enabled et consorts), ce n'est pas un
-    booléen dédié : le copilote est actif dès qu'un fournisseur LLM est
-    configuré, quelle que soit sa valeur (CORE_LLM_PROVIDER=openai, ou
-    toute chaîne non vide). Lue à chaque appel, sans cache, même
-    convention que is_read_only_mode ci-dessus."""
-    return bool(os.environ.get("CORE_LLM_PROVIDER"))
-```
-
-In `core/app/instance/routes.py`, update the import and response dict:
+Create `core/tests/test_configs_map_symbology.py`, mirroring the file found
+in Step 1 (same fixtures, same route, same auth setup — copy them, don't
+invent new ones):
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
-from fastapi import APIRouter
+"""symbology (SP-25) round-trips through MapConfig exactly like paint/popup
+(SP-24) — an untyped dict on MapLayer, same precedent."""
 
-from app.auth.dependency import (
-    is_appexport_enabled, is_copilot_enabled, is_etl_enabled, is_export_enabled,
-    is_read_only_mode, is_terrain3d_enabled, is_tileset3d_enabled,
-)
-
-router = APIRouter()
+# (imports and fixtures: copy verbatim from the file found in Task 2 Step 1)
 
 
-@router.get("/instance")
-def get_instance_info() -> dict:
-    return {
-        "readOnly": is_read_only_mode(),
-        "etlEnabled": is_etl_enabled(),
-        "exportEnabled": is_export_enabled(),
-        "appExportEnabled": is_appexport_enabled(),
-        "tileset3dEnabled": is_tileset3d_enabled(),
-        "terrain3dEnabled": is_terrain3d_enabled(),
-        "copilotEnabled": is_copilot_enabled(),
+def test_map_layer_symbology_round_trips(client):
+    payload = {
+        "kind": "map",
+        "title": "Carte test",
+        "owner": "u1",
     }
+    item = client.post("/configs", json=payload).json()
+
+    map_config = {
+        "basemap": {"style": "https://example.test/style.json"},
+        "view": {"center": [0, 0], "zoom": 5},
+        "layers": [
+            {
+                "id": "l1",
+                "title": "Communes",
+                "visible": True,
+                "kind": "vector",
+                "tilesUrl": "https://example.test/tiles/{z}/{x}/{y}.mvt",
+                "sourceLayer": "communes",
+                "collectionId": "communes",
+                "symbology": {
+                    "color": {
+                        "field": "population",
+                        "mode": "numeric",
+                        "classification": {"method": "quantile", "classes": 5},
+                        "palette": "sequential-blue",
+                        "domain": {"kind": "numeric-classed", "breaks": [0, 10, 20, 30, 40, 50]},
+                        "computedAt": "2026-08-23T00:00:00Z",
+                    }
+                },
+            }
+        ],
+    }
+    response = client.put(f"/configs/{item['id']}", json={"config": map_config})
+    assert response.status_code == 200
+
+    got = client.get(f"/configs/{item['id']}").json()
+    assert got["config"]["layers"][0]["symbology"] == map_config["layers"][0]["symbology"]
 ```
 
-- [ ] **Step 4: Fix the three existing tests with brittle exact-dict assertions**
+Adjust the exact route paths/payload envelope (`POST /configs` vs a
+different creation route, `PUT` vs `PATCH`, whether `config` is nested or
+top-level) to match precisely what the file found in Step 1 actually uses —
+this sketch shows the shape of the assertion, not a guaranteed-correct route
+contract.
 
-`GET /instance` is now a 7-key dict; three existing test files assert exact dict equality on the old 6-key shape and will break. Add `"copilotEnabled": False` to each:
+- [ ] **Step 3: Run it to verify it fails**
 
-In `core/tests/test_etl_enabled_flag.py`, both occurrences of:
+Run: `cd core && uv run pytest tests/test_configs_map_symbology.py -v`
+Expected: FAIL — `symbology` stripped from the round-tripped config (Pydantic
+drops unknown fields silently by default) or a 422 if `MapLayer` is
+constructed with `extra="forbid"` (check `class Config` / `model_config` on
+`MapLayer` first — if it forbids extra fields, this test fails loudly
+instead of silently, which is the RED state either way).
+
+- [ ] **Step 4: Add the field**
+
+In `core/app/configs/schemas.py`, in `MapLayer` (right after `popup:
+PopupConfig | None = None`):
+
 ```python
-        "readOnly": False, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,
-        "tileset3dEnabled": False, "terrain3dEnabled": False,
-    }
+    popup: PopupConfig | None = None
+    symbology: dict | None = None
 ```
-and
-```python
-        "readOnly": False, "etlEnabled": True, "exportEnabled": False, "appExportEnabled": False,
-        "tileset3dEnabled": False, "terrain3dEnabled": False,
-    }
-```
-become (append the key on its own trailing line before the closing brace):
-```python
-        "readOnly": False, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,
-        "tileset3dEnabled": False, "terrain3dEnabled": False, "copilotEnabled": False,
-    }
-```
-(and the `etlEnabled: True` variant keeps `copilotEnabled: False` — this file never sets `CORE_LLM_PROVIDER`).
 
-In `core/tests/test_export_enabled_flag.py`, the one occurrence starting `"readOnly": False, "etlEnabled": False, "exportEnabled": False, "appExportEnabled": False,` gets the same `"copilotEnabled": False,` appended.
+- [ ] **Step 5: Run it to verify it passes**
 
-In `core/tests/test_read_only_mode.py`, both occurrences (`"readOnly": False, ...` and `"readOnly": True, ...`) get `"copilotEnabled": False,` appended the same way.
+Run: `cd core && uv run pytest tests/test_configs_map_symbology.py -v`
+Expected: PASS.
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 6: Run the full core suite + gates**
 
-Run: `cd core && uv run pytest tests/test_copilot_enabled_flag.py tests/test_etl_enabled_flag.py tests/test_export_enabled_flag.py tests/test_read_only_mode.py tests/test_tileset3d_enabled_flag.py tests/test_terrain3d_enabled_flag.py -v`
-Expected: PASS (all).
+Run: `cd core && uv run pytest -v && ruff check . && ruff format --check . && uv run mypy --strict app/auth app/secrets app/analytics app/copilot && lint-imports`
+Expected: all green, count ≥ previous + 1.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add core/app/auth/dependency.py core/app/instance/routes.py core/tests/test_copilot_enabled_flag.py core/tests/test_etl_enabled_flag.py core/tests/test_export_enabled_flag.py core/tests/test_read_only_mode.py
+git add core/app/configs/schemas.py core/tests/test_configs_map_symbology.py
 git commit -m "$(cat <<'EOF'
-feat(core): capacité copilotEnabled sur GET /instance (SP-20)
+feat(core): ajoute symbology à MapLayer
 
-is_copilot_enabled() reflète la présence de CORE_LLM_PROVIDER (pas un
-booléen dédié, contrairement aux autres capacités) ; GET /instance
-l'expose pour que le shell affiche ou non l'onglet copilote.
+Champ non typé, même précédent que paint/props — le shell (SP-25) y
+écrit la symbologie déclarative d'une couche.
 EOF
 )"
 ```
