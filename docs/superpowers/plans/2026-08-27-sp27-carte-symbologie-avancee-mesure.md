@@ -61,11 +61,11 @@ presign helpers and `app.ingestion.routes.get_s3_client`).
   `skipIfNoBuild()`). This plan adds **3** tests in 2 files → the expected
   final count is **111 passed, 4 skipped, 0 failed**. Playwright counts
   tests, not files.
-- OpenAPI/TS regeneration: the task that adds FastAPI routes (Task 8) does
-  **not** regenerate; **Task 9 is mandatory and must be the very next
+- OpenAPI/TS regeneration: the task that adds FastAPI routes (Task 9) does
+  **not** regenerate; **Task 10 is mandatory and must be the very next
   commit**, as a dedicated `chore(api):` commit. This is a deliberate
   exception to the repo's "same task regenerates" habit, written here so a
-  per-task reviewer of Task 8 does not flag it. Command (verified working):
+  per-task reviewer of Task 9 does not flag it. Command (verified working):
   `cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY=$(openssl rand -base64 32)
   uv run python scripts/export_openapi.py`, then `cd ../shell && npm run
   gen:api-types`.
@@ -139,9 +139,9 @@ presign helpers and `app.ingestion.routes.get_s3_client`).
      `symbology`, so `effectivePaint`'s `if (!layer.symbology) return
      layer.paint ?? {}` branch fired and **no** SP-27 mechanic (outline
      layer, icons, labels, opacity) ever reached an app or a dashboard —
-     while Task 11 was adding the icon editor to the widget's `PropsPanel`.
+     while Task 12 was adding the icon editor to the widget's `PropsPanel`.
      Decision: `mapWidget.tsx` stops compiling paint and passes `symbology`
-     (and `themeColors`) to `MapView`, which compiles. Task 18 does this,
+     (and `themeColors`) to `MapView`, which compiles. Task 19 does this,
      including the non-regression proof for the existing `paint` path.
   5. `LayerSymbology.stroke.color` persists a **`palette: PaletteId`**
      (an identifier), never a `ResolvedPalette`. Reason: `LayerSymbology` is
@@ -168,14 +168,12 @@ presign helpers and `app.ingestion.routes.get_s3_client`).
      `ImageBitmap` produced from an SVG or a PNG is ordinary RGBA, and
      interpreting it as an SDF renders garbage. This plan never uses
      `icon-color`, so `sdf` buys nothing on either path.
-  9. Custom uploaded icons are restricted to **`image/png` only** (no
-     `image/svg+xml`). Reasons, both real: (a) an SVG served with
-     `media_type: image/svg+xml` from the core's own origin is a stored-XSS
-     vector (SVG can carry `<script>`) and the repo's CSP is Report-Only;
-     (b) `createImageBitmap()` on an SVG blob is not reliably supported
-     across browsers. Lucide icons are SVG but are **bundled** into the
-     shell by a build-time script and never travel through the core, so they
-     are unaffected.
+  9. ~~Custom uploaded icons are restricted to `image/png` only.~~
+     **Renversée par la décision D4 (déviation 13) le 2026-08-27** : le SVG
+     téléversable est conservé, et le XSS stocké est réglé par un
+     assainissement côté cœur. Cette entrée est laissée en place, barrée,
+     parce qu'elle a été écrite puis annulée dans la même journée et qu'un
+     relecteur du plan doit voir l'arbitrage, pas seulement son résultat.
  10. The curated Lucide catalogue is materialised by a **committed
      generation script** (`shell/scripts/gen-lucide-icons.mjs`) that writes a
      `Record<string, string>` of the 140 raw SVG strings into
@@ -199,6 +197,48 @@ presign helpers and `app.ingestion.routes.get_s3_client`).
      (verified in the bundle: it walks `getRenderableIds()`), and `idle` is
      precisely "nothing is loading right now". `sourcedata`/`moveend` add
      churn without adding coverage.
+ 13. **D4 — le SVG téléversable est conservé et assaini par le cœur**
+     (décision de Tanguy, 2026-08-27, renverse la déviation 9).
+     `ALLOWED_CONTENT_TYPES` vaut `{"image/png", "image/svg+xml"}`. Un SVG
+     est **assaini à l'écriture** par `app/mapicons/svg.py` et c'est la
+     version assainie qui est stockée dans S3 ; la lecture ne réassainit
+     jamais (une seule passe, un seul endroit où la garde peut manquer).
+     L'assainisseur parse avec `defusedxml` — **déjà dépendance directe
+     déclarée** du cœur (`core/pyproject.toml` : `"defusedxml>=0.7"  # SP-12e`,
+     résolue en **0.7.1** dans `uv.lock`, seul usage actuel :
+     `app/harvest/connectors/ows.py`) : **aucune nouvelle dépendance**. Il
+     re-sérialise depuis l'arbre parsé, jamais par filtrage d'expression
+     régulière sur le texte source. Un SVG non parsable, ou vidé de tout
+     contenu graphique par l'assainissement, produit une erreur RFC 7807
+     explicite à l'upload — jamais un fichier vide stocké.
+     `X-Content-Type-Options: nosniff` et `Content-Disposition: attachment`
+     sont **conservés** (décision prise) : c'est une **première** dans
+     `core/app/` (`grep -rn 'X-Content-Type-Options' core/app/` → vide ; ni
+     `app/tileset3d` ni `app/terrain3d` ne posent de `Content-Disposition`),
+     assumée parce que c'est la première route du cœur à servir un fichier
+     téléversé par un utilisateur non-admin. Côté shell, les icônes SVG
+     (Lucide comme personnalisées) sont décodées par
+     `HTMLImageElement` + `URL.createObjectURL`, **pas** par
+     `createImageBitmap` : `map.addImage` accepte
+     `HTMLImageElement | ImageBitmap | ImageData | …` (signature vérifiée
+     dans `maplibre-gl@4.7.1`), et `createImageBitmap` sur un blob SVG n'est
+     pas fiable d'un navigateur à l'autre. La règle déjà posée tient : une
+     icône qui échoue à charger n'empêche jamais `applyLayers`.
+ 14. **D5 — le contour data-driven devient éditable depuis l'UI** (décision de
+     Tanguy, 2026-08-27, renverse le retrait noté en Task 4). Task 5
+     **extrait** un sous-éditeur `FieldClassificationPicker` de l'UI
+     couleur — qui est **inline** dans `MapSymbologyEditor.tsx` (lignes
+     141-280) : contrairement à ce que supposait le brief de cette passe, ce
+     composant **n'existait pas** (`grep -rn 'FieldClassificationPicker'
+     shell/src/ docs/` ne trouvait que deux mentions, toutes deux dans ce
+     plan). Piège n° 3 de `CLAUDE.md`, corrigé sans re-demander. Les libellés
+     du composant sont **injectés** : l'usage couleur passe les chaînes
+     historiques au caractère près, donc les **16** tests existants de
+     `MapSymbologyEditor.test.tsx` et la preuve E2E SP-25 restent verts sans
+     être modifiés — c'est la couverture de non-régression exigée, nommée
+     test par test dans Task 5. `StrokeColorEncoding` gagne `computedAt` :
+     l'invariant SP-25 « domaines figés à l'enregistrement » vaut aussi pour
+     le contour.
 
 ---
 
@@ -207,49 +247,53 @@ presign helpers and `app.ingestion.routes.get_s3_client`).
 | File | Responsibility |
 |---|---|
 | `shell/src/test/MockMaplibreMap.ts` | **Modify (Task 1).** `MockMap` gains `addImage`/`hasImage`/`removeImage`/`listImages`/`getStyle`/`querySourceFeatures`/`getCanvas`, a payload-carrying `fire(event, payload)`, and `images`/`glyphs`/`sourceFeatures` inspection fields. |
-| `shell/src/test/createImageBitmapStub.ts` | **Create (Task 1).** `installCreateImageBitmapStub()` — jsdom has no `createImageBitmap`. |
-| `shell/src/builder/widgets/mapSymbology.ts` | **Modify (Tasks 2, 6, 12).** `StrokeStyle`, `LayerStroke`, `LayerSymbology.stroke`/`.opacity`/`.label`/`.icon`, `IconRef`, `LayerIcon`, `LayerLabel`, `renderAsFor`, `iconImageId`, extended `MapPaintResult`/`LegendSpec`, options-object parameter on `buildMapPaint`/`buildLegend`, `stroke` in `symbologyToPaintInputs`. |
-| `shell/src/builder/widgets/mapSymbology.test.ts` | **Modify (Tasks 2, 6, 12).** |
-| `shell/src/map/MapView.tsx` | **Modify (Tasks 3, 7, 11, 13, 15, 18).** `themeColors` prop; outline line-layer; opacity; `map.on("error")` reporting; icon image loading + paired `symbol` layer; `__labels` GeoJSON source + `__label` symbol layer + `idle` refresh; mounts the measure/sketch toolbar behind `interactiveTools`. |
+| `shell/src/test/imageDecodeStub.ts` | **Create (Task 1).** `installImageDecodeStub()` — jsdom has no `URL.createObjectURL` and never loads an `Image`. |
+| `shell/src/builder/widgets/mapSymbology.ts` | **Modify (Tasks 2, 7, 13).** `StrokeStyle`, `LayerStroke`, `LayerSymbology.stroke`/`.opacity`/`.label`/`.icon`, `IconRef`, `LayerIcon`, `LayerLabel`, `renderAsFor`, `iconImageId`, extended `MapPaintResult`/`LegendSpec`, options-object parameter on `buildMapPaint`/`buildLegend`, `stroke` in `symbologyToPaintInputs`. |
+| `shell/src/builder/widgets/mapSymbology.test.ts` | **Modify (Tasks 2, 7, 13).** |
+| `shell/src/map/MapView.tsx` | **Modify (Tasks 3, 8, 12, 14, 16, 19).** `themeColors` prop; outline line-layer; opacity; `map.on("error")` reporting; icon image loading + paired `symbol` layer; `__labels` GeoJSON source + `__label` symbol layer + `idle` refresh; mounts the measure/sketch toolbar behind `interactiveTools`. |
 | `shell/src/map/MapView.test.tsx` | **Modify (same tasks).** |
-| `shell/src/map/MapSymbologyEditor.tsx` | **Modify (Tasks 4, 11, 13).** Fixes `clearColor`/`clearSize`; contour, opacité, icône, étiquette UI blocks. |
+| `shell/src/map/MapSymbologyEditor.tsx` | **Modify (Tasks 4, 5, 12, 14).** Fixes `clearColor`/`clearSize`; contour (fixe puis classé), opacité, icône, étiquette UI blocks; délègue la classification au picker extrait. |
+| `shell/src/map/FieldClassificationPicker.tsx` | **Create (Task 5).** Sous-éditeur « champ + palette + mode + classification + recalcul », extrait de l'UI couleur inline et partagé avec `stroke.color` (D5). Libellés injectés. |
+| `shell/src/map/FieldClassificationPicker.test.tsx` | **Create (Task 5).** |
 | `shell/src/map/MapSymbologyEditor.test.tsx` | **Modify (same tasks).** |
-| `shell/src/map/LayersPanel.tsx` | **Modify (Task 11).** Passes the three optional custom-icon props. |
-| `shell/src/builder/widgets/mapWidget.tsx` | **Modify (Tasks 3, 7, 18).** `MapSymbologyLegend` gains stroke + icon entries; `Component` stops calling `buildMapPaint`, passes `symbology`/`themeColors`/`interactiveTools` to `MapView`. |
-| `shell/src/builder/widgets/mapWidget.test.tsx` | **Modify (Tasks 3, 7, 18).** |
-| `shell/scripts/gen-lucide-icons.mjs` | **Create (Task 5).** Reads the 140 curated names, writes the generated SVG map. |
-| `shell/src/builder/widgets/lucideIconSvgs.generated.ts` | **Create (Task 5, generated + committed).** 140 raw SVG strings, ISC notice in the header. |
-| `shell/src/builder/widgets/iconLibrary.ts` | **Create (Task 5).** `IconCategory`, `LUCIDE_ICONS` (140), `rasterizeLucideIcon`. |
-| `shell/src/builder/widgets/iconLibrary.test.ts` | **Create (Task 5).** |
-| `shell/src/map/labelSource.ts` | **Create (Task 12).** Pure: features + CEL template → a deduplicated GeoJSON `FeatureCollection` carrying a `label` property. |
-| `shell/src/map/labelSource.test.ts` | **Create (Task 12).** |
-| `shell/src/map/measureSketch.ts` | **Create (Task 14).** Pure: haversine distance, spherical polygon area, unit formatting, `shapeToGeoJSONFeature`. |
-| `shell/src/map/measureSketch.test.ts` | **Create (Task 14).** |
-| `shell/src/map/MapMeasureSketchToolbar.tsx` | **Create (Task 15), modified (Tasks 16, 17).** The mounted overlay: measure UI, sketch tools, GeoJSON overlay sync. |
-| `shell/src/map/MapMeasureSketchToolbar.test.tsx` | **Create (Task 15), modified (Tasks 16, 17).** |
-| `shell/src/api/types.ts` | **Modify (Task 10).** `ItemClient` gains 5 map-icon methods + `MapIconOut`. |
-| `shell/src/api/itemClient.ts` | **Modify (Task 10).** Real implementations, including the authenticated `fetchMapIconBlob`. |
-| `shell/src/api/itemClient.test.ts` | **Modify (Task 10).** |
-| `shell/src/staticExport/StaticItemClient.ts` | **Modify (Task 10).** `unsupported()` for the 5 new methods. |
-| `shell/src/staticExport/StaticItemClient.test.ts` | **Modify (Task 10).** |
-| `shell/package.json` / `package-lock.json` | **Modify (Task 5).** `lucide-static` as a **devDependency** + `gen:lucide-icons` script. |
-| `shell/e2e/map-symbology-advanced.spec.ts` | **Create (Task 19).** 4.4 proof (1 test). |
-| `shell/e2e/map-measure-sketch.spec.ts` | **Create (Task 19).** 4.5 proof (2 tests). |
-| `core/app/mapicons/__init__.py` | **Create (Task 8).** Empty. |
-| `core/app/mapicons/models.py` | **Create (Task 8).** `MapIcon` SQLAlchemy model. |
-| `core/app/mapicons/repository.py` | **Create (Task 8).** `create_icon`/`list_icons`/`get_icon`/`delete_icon`. |
-| `core/app/mapicons/schemas.py` | **Create (Task 8).** Schemas + the single `ALLOWED_CONTENT_TYPES`/`MAX_ICON_BYTES` constants. |
-| `core/app/mapicons/routes.py` | **Create (Task 8).** 5 REST routes. |
-| `core/alembic/versions/0029_map_icons.py` | **Create (Task 8).** |
-| `core/tests/test_mapicons_routes.py` | **Create (Task 8).** |
-| `core/app/db.py` | **Modify (Task 8).** `core_table_names()` gains the lazy import of `app.mapicons.models` — without it the table is never created by `init_db` **and** `map_icons` is absent from the collections registry denylist. |
-| `core/app/main.py` | **Modify (Task 8).** Import + unconditional `include_router`. |
-| `core/pyproject.toml` | **Modify (Task 8).** Import-linter: `app.mapicons` layer + `app.db -> app.mapicons.models` exemption. |
-| `docker-compose.yml` | **Modify (Task 8).** `core:` service gains `S3_MAPICONS_BUCKET: geostudio-mapicons`. |
-| `docker-compose.prod.yml` | **Modify (Task 8).** `backup:` service gains the same bucket. |
-| `deploy/backup/backup.sh` | **Modify (Task 8).** Bucket loop gains `S3_MAPICONS_BUCKET`. |
-| `.env.example` | **Modify (Task 8).** Documents the hardcoded bucket (commented line), same convention as `S3_TILESET3D_BUCKET`. |
-| `core/openapi.json` / `shell/src/api/generated/core-schema.d.ts` | **Modify (Task 9).** |
+| `shell/src/map/LayersPanel.tsx` | **Modify (Task 12).** Passes the three optional custom-icon props. |
+| `shell/src/builder/widgets/mapWidget.tsx` | **Modify (Tasks 3, 8, 19).** `MapSymbologyLegend` gains stroke + icon entries; `Component` stops calling `buildMapPaint`, passes `symbology`/`themeColors`/`interactiveTools` to `MapView`. |
+| `shell/src/builder/widgets/mapWidget.test.tsx` | **Modify (Tasks 3, 8, 19).** |
+| `shell/scripts/gen-lucide-icons.mjs` | **Create (Task 6).** Reads the 140 curated names, writes the generated SVG map. |
+| `shell/src/builder/widgets/lucideIconSvgs.generated.ts` | **Create (Task 6, generated + committed).** 140 raw SVG strings, ISC notice in the header. |
+| `shell/src/builder/widgets/iconLibrary.ts` | **Create (Task 6).** `IconCategory`, `LUCIDE_ICONS` (140), `rasterizeLucideIcon`, `decodeIconImage` (Blob → `HTMLImageElement`). |
+| `shell/src/builder/widgets/iconLibrary.test.ts` | **Create (Task 6).** |
+| `shell/src/map/labelSource.ts` | **Create (Task 13).** Pure: features + CEL template → a deduplicated GeoJSON `FeatureCollection` carrying a `label` property. |
+| `shell/src/map/labelSource.test.ts` | **Create (Task 13).** |
+| `shell/src/map/measureSketch.ts` | **Create (Task 15).** Pure: haversine distance, spherical polygon area, unit formatting, `shapeToGeoJSONFeature`. |
+| `shell/src/map/measureSketch.test.ts` | **Create (Task 15).** |
+| `shell/src/map/MapMeasureSketchToolbar.tsx` | **Create (Task 16), modified (Tasks 17, 18).** The mounted overlay: measure UI, sketch tools, GeoJSON overlay sync. |
+| `shell/src/map/MapMeasureSketchToolbar.test.tsx` | **Create (Task 16), modified (Tasks 17, 18).** |
+| `shell/src/api/types.ts` | **Modify (Task 11).** `ItemClient` gains 5 map-icon methods + `MapIconOut`. |
+| `shell/src/api/itemClient.ts` | **Modify (Task 11).** Real implementations, including the authenticated `fetchMapIconBlob`. |
+| `shell/src/api/itemClient.test.ts` | **Modify (Task 11).** |
+| `shell/src/staticExport/StaticItemClient.ts` | **Modify (Task 11).** `unsupported()` for the 5 new methods. |
+| `shell/src/staticExport/StaticItemClient.test.ts` | **Modify (Task 11).** |
+| `shell/package.json` / `package-lock.json` | **Modify (Task 6).** `lucide-static` as a **devDependency** + `gen:lucide-icons` script. |
+| `shell/e2e/map-symbology-advanced.spec.ts` | **Create (Task 20).** 4.4 proof (1 test). |
+| `shell/e2e/map-measure-sketch.spec.ts` | **Create (Task 20).** 4.5 proof (2 tests). |
+| `core/app/mapicons/__init__.py` | **Create (Task 9).** Empty. |
+| `core/app/mapicons/models.py` | **Create (Task 9).** `MapIcon` SQLAlchemy model. |
+| `core/app/mapicons/repository.py` | **Create (Task 9).** `create_icon`/`list_icons`/`get_icon`/`delete_icon`. |
+| `core/app/mapicons/schemas.py` | **Create (Task 9).** Schemas + the single `ALLOWED_CONTENT_TYPES`/`MAX_ICON_BYTES` constants. |
+| `core/app/mapicons/svg.py` | **Create (Task 9).** `sanitize_svg`, `sniff_content_type`, `SvgRejected` — allowlist + re-sérialisation depuis l'arbre parsé (D4). |
+| `core/tests/test_mapicons_svg.py` | **Create (Task 9).** 15 tests purs de l'assainisseur. |
+| `core/app/mapicons/routes.py` | **Create (Task 9).** 5 REST routes. |
+| `core/alembic/versions/0029_map_icons.py` | **Create (Task 9).** |
+| `core/tests/test_mapicons_routes.py` | **Create (Task 9).** |
+| `core/app/db.py` | **Modify (Task 9).** `core_table_names()` gains the lazy import of `app.mapicons.models` — without it the table is never created by `init_db` **and** `map_icons` is absent from the collections registry denylist. |
+| `core/app/main.py` | **Modify (Task 9).** Import + unconditional `include_router`. |
+| `core/pyproject.toml` | **Modify (Task 9).** Import-linter: `app.mapicons` layer + `app.db -> app.mapicons.models` exemption. |
+| `docker-compose.yml` | **Modify (Task 9).** `core:` service gains `S3_MAPICONS_BUCKET: geostudio-mapicons`. |
+| `docker-compose.prod.yml` | **Modify (Task 9).** `backup:` service gains the same bucket. |
+| `deploy/backup/backup.sh` | **Modify (Task 9).** Bucket loop gains `S3_MAPICONS_BUCKET`. |
+| `.env.example` | **Modify (Task 9).** Documents the hardcoded bucket (commented line), same convention as `S3_TILESET3D_BUCKET`. |
+| `core/openapi.json` / `shell/src/api/generated/core-schema.d.ts` | **Modify (Task 10).** |
 
 ---
 
@@ -257,7 +301,7 @@ presign helpers and `app.ingestion.routes.get_s3_client`).
 
 **Files:**
 - Modify: `shell/src/test/MockMaplibreMap.ts`
-- Create: `shell/src/test/createImageBitmapStub.ts`
+- Create: `shell/src/test/imageDecodeStub.ts`
 - Modify: `shell/src/map/MapView.test.tsx` (one new test only)
 
 **Why this is Task 1:** every later task's tests call MapLibre methods the
@@ -276,8 +320,8 @@ function". All assertions in this plan therefore inspect recorded state
 `MapView.test.tsx`.
 
 **Interfaces:**
-- Produces: the extended `MockMap` surface (consumed by Tasks 3, 7, 11, 13,
-  18), and `installCreateImageBitmapStub()` (consumed by Tasks 5, 7, 11).
+- Produces: the extended `MockMap` surface (consumed by Tasks 3, 8, 12, 14,
+  18), et `installImageDecodeStub()` (consommé par Tasks 6, 8, 12).
 
 - [ ] **Step 1: Extend `MockMap`**
 
@@ -356,34 +400,70 @@ which is assignable to `(e?: unknown) => void`; if `tsc` complains at a call
 site inside the mock (`if (event === "load") arg2();`), keep that call
 argument-less — it is correct, `load` carries nothing this repo reads.
 
-- [ ] **Step 2: Create the `createImageBitmap` stub**
+- [ ] **Step 2: Create the image-decode test double**
 
-jsdom does **not** implement `createImageBitmap` (verified: `typeof
-createImageBitmap === "undefined"` in this environment). Create
-`shell/src/test/createImageBitmapStub.ts`:
+Create `shell/src/test/imageDecodeStub.ts`. Mesuré dans cet
+environnement jsdom (sonde exécutée, pas supposée) : `typeof Image ===
+"function"`, mais `URL.createObjectURL`, `URL.revokeObjectURL`,
+`createImageBitmap` et `HTMLImageElement.prototype.decode` sont **tous
+`undefined`**, et jsdom ne charge jamais une ressource — un `img.src = …` ne
+déclenche donc ni `onload` ni `onerror`. Le chemin de décodage SVG (déviation
+13) a besoin des trois :
 
 ```ts
 // SPDX-License-Identifier: Apache-2.0
 import { vi } from "vitest";
 
-// jsdom n'implémente pas createImageBitmap (et Node non plus) : toute
-// rasterisation d'icône (iconLibrary.ts, MapView.loadIconImages) a besoin de
-// ce double. Renvoie un objet minimal qui satisfait les seules propriétés
-// lues par le code testé (width/height), jamais un vrai bitmap.
-export function installCreateImageBitmapStub(size = 24): ReturnType<typeof vi.fn> {
-  const stub = vi.fn(async (_source: unknown) => ({
-    width: size,
-    height: size,
-    close: () => {},
-  }));
-  vi.stubGlobal("createImageBitmap", stub);
-  return stub;
+// jsdom : Image existe mais ne charge RIEN (aucun onload/onerror), et
+// URL.createObjectURL / URL.revokeObjectURL / HTMLImageElement.decode sont
+// absents (mesuré). Ce double rend `decodeIconImage` testable : chaque
+// affectation de `src` résout de façon synchrone-ish (microtâche), sauf pour
+// les URLs de la liste `failing`.
+export function installImageDecodeStub(options: { failing?: string[] } = {}) {
+  const created: string[] = [];
+  const revoked: string[] = [];
+  let counter = 0;
+  vi.stubGlobal("URL", {
+    ...URL,
+    createObjectURL: vi.fn((_blob: Blob) => {
+      const url = `blob:stub/${(counter += 1)}`;
+      created.push(url);
+      return url;
+    }),
+    revokeObjectURL: vi.fn((url: string) => {
+      revoked.push(url);
+    }),
+  });
+  class StubImage {
+    onload: (() => void) | null = null;
+    onerror: ((e?: unknown) => void) | null = null;
+    width = 24;
+    height = 24;
+    crossOrigin: string | null = null;
+    #src = "";
+    get src() {
+      return this.#src;
+    }
+    set src(value: string) {
+      this.#src = value;
+      queueMicrotask(() => {
+        if (options.failing?.some((f) => value.includes(f))) this.onerror?.(new Error("stub"));
+        else this.onload?.();
+      });
+    }
+  }
+  vi.stubGlobal("Image", StubImage);
+  return { created, revoked };
 }
 ```
 
-Any test file using it must call `vi.unstubAllGlobals()` in an `afterEach`
-(or rely on the file-scoped isolation Vitest already gives — prefer the
-explicit `afterEach`).
+Note : `vi.stubGlobal("URL", { ...URL, … })` remplace l'objet entier ; si un
+test du même fichier a besoin du constructeur `URL` réel, l'étaler ainsi le
+conserve. Vérifier au premier usage (Task 6) et, si l'étalement ne suffit
+pas, ne stubber que les deux méthodes par
+`vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL }))`
+— **marqué comme non vérifié** : la sonde a mesuré l'absence des méthodes,
+pas le comportement de `stubGlobal` sur un objet natif.
 
 - [ ] **Step 3: Write one regression test for the widened `fire`**
 
@@ -419,7 +499,7 @@ widened `fire` signature must not have broken the ~15 existing
 
 Run: `cd shell && npm run lint && npm run format:check && npx vitest run && npm run build`
 Expected: green, **1463 + 1 = 1464 tests**, 162 files (no new test file:
-`createImageBitmapStub.ts` has no test of its own — it is test
+`imageDecodeStub.ts` has no test of its own — it is test
 infrastructure, and Vitest's coverage config already excludes nothing under
 `src/test/`; if the coverage gate drops below 88 because of it, add
 `src/test/**` to `vite.config.ts`'s `coverage.exclude` list in this same
@@ -428,14 +508,17 @@ commit and say so in the commit body).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add shell/src/test/MockMaplibreMap.ts shell/src/test/createImageBitmapStub.ts shell/src/map/MapView.test.tsx
+git add shell/src/test/MockMaplibreMap.ts shell/src/test/imageDecodeStub.ts shell/src/map/MapView.test.tsx
 git commit -m "$(cat <<'EOF'
 test(shell): étend le double MapLibre pour SP-27
 
 addImage/hasImage/removeImage/listImages, getStyle (glyphs),
 querySourceFeatures, getCanvas, et fire(event, payload) — la classe
 MockMap n'avait aucune de ces surfaces, et fire() ne transportait rien.
-Ajoute aussi un stub createImageBitmap (absent de jsdom).
+Ajoute un double mesuré des surfaces absentes de jsdom :
+URL.createObjectURL/revokeObjectURL et un Image qui déclenche réellement
+onload — le décodage des icônes SVG passe par HTMLImageElement, pas par
+createImageBitmap, dont la prise en charge d'un blob SVG varie.
 EOF
 )"
 ```
@@ -456,7 +539,7 @@ EOF
   `LayerSymbology.stroke`/`.opacity`, `renderAsFor`, the widened
   `MapPaintResult`, `LegendSpec.stroke`, and the new trailing options
   parameter of `buildMapPaint`/`buildLegend` (consumed by Task 3's
-  `MapView.tsx`, Task 4's editor, Task 18's widget).
+  `MapView.tsx`, Task 4's editor, Task 19's widget).
 
 **Key facts verified for this task** (do not re-derive):
 - `fill-outline-width` does **not** exist in the installed style-spec;
@@ -658,7 +741,7 @@ export type StrokePaintInput = {
 ```
 
 Extend `LayerSymbology` (existing type, two new optional fields — `label`
-and `icon` arrive in Tasks 12 and 6, do not add them here):
+and `icon` arrive in Tasks 13 and 6, do not add them here):
 
 ```ts
 export type LayerSymbology = {
@@ -671,7 +754,7 @@ export type LayerSymbology = {
 
 Widen `MapPaintResult` to its **final** shape now, so it never has an
 intermediate half-shape across tasks (`iconLayout`/`iconImages` are
-populated by Task 6, but declared and initialised here):
+populated by Task 7, but declared and initialised here):
 
 ```ts
 export type MapPaintResult = {
@@ -685,9 +768,9 @@ export type MapPaintResult = {
   // aucune largeur stylable). Absent quand il n'y a pas de contour.
   outlinePaint?: Record<string, unknown>;
   // Ids d'images MapLibre référencées par iconLayout ; l'appelant doit les
-  // charger via map.addImage (Task 7). Toujours présent, vide sans icône.
+  // charger via map.addImage (Task 8). Toujours présent, vide sans icône.
   iconImages: string[];
-  // Layout de la couche `symbol` appariée (Task 6/7). Absent sans icône.
+  // Layout de la couche `symbol` appariée (Task 7/7). Absent sans icône.
   iconLayout?: Record<string, unknown>;
 };
 ```
@@ -698,7 +781,7 @@ Add to `LegendSpec`:
   stroke?: { kind: "categorical"; field: string; entries: { value: string; color: string }[] };
 ```
 
-And export the small helper that `mapWidget.tsx` (Task 18) needs so it no
+And export the small helper that `mapWidget.tsx` (Task 19) needs so it no
 longer has to call `buildMapPaint` just to learn the layer type:
 
 ```ts
@@ -717,7 +800,7 @@ Signature — **one** new trailing parameter (déviation 6):
 export type PaintExtras = {
   stroke?: StrokePaintInput;
   opacity?: number; // 0-100
-  icon?: LayerIcon; // Task 6 — declared here, unused until then
+  icon?: LayerIcon; // Task 7 — declared here, unused until then
 };
 
 export function buildMapPaint(
@@ -731,7 +814,7 @@ export function buildMapPaint(
 ```
 
 `LayerIcon` does not exist yet at this point in the plan: in **this** task
-declare `PaintExtras` with only `stroke` and `opacity`, and Task 6 adds the
+declare `PaintExtras` with only `stroke` and `opacity`, and Task 7 adds the
 `icon` field. Do not forward-declare a type that does not compile.
 
 Body changes, in order:
@@ -956,9 +1039,9 @@ EOF
   (now returning `stroke`), `PaintExtras` from Task 2; the extended `MockMap`
   from Task 1.
 - Produces: `applyLayers` adds a `${layer.id}__outline` `line` layer for a
-  polygon with a stroke; a shared `SUBLAYER_SUFFIXES` constant that Tasks 7
+  polygon with a stroke; a shared `SUBLAYER_SUFFIXES` constant that Tasks 8
   and 13 extend; `MapView`'s new `themeColors?: ThemeColors` prop (consumed
-  by Task 18).
+  by Task 19).
 
 **Exact current shape of the code you are changing** (verified — do not
 re-read from memory):
@@ -1136,8 +1219,8 @@ function effectivePaint(
 }
 ```
 
-Note for Tasks 7 and 13: this function gains `icon: layer.symbology.icon`
-inside the `extras` object in Task 7. Do **not** add it here —
+Note for Tasks 8 and 13: this function gains `icon: layer.symbology.icon`
+inside the `extras` object in Task 8. Do **not** add it here —
 `LayerSymbology.icon` does not exist yet and this task's `npm run build`
 must pass on its own.
 
@@ -1160,7 +1243,7 @@ Right after `MIXED_GEOMETRY_SUBLAYERS`, add:
 const SUBLAYER_SUFFIXES = ["__point", "__line", "__polygon", "__outline"] as const;
 ```
 
-Tasks 7 and 13 append `"__icon"` and `"__label"` to this array. Task 13 also
+Tasks 8 and 13 append `"__icon"` and `"__label"` to this array. Task 14 also
 adds the `__labels` **source** id to the cleanup — see that task.
 
 Right after `addTypedLayer`, add:
@@ -1408,7 +1491,7 @@ test("shows a stroke legend entry from a data-driven stroke color", async () => 
 ```
 
 Note: this test only exercises the legend, which `mapWidget.tsx` already
-computes from `props.symbology`. It passes **before** Task 18 rewires the
+computes from `props.symbology`. It passes **before** Task 19 rewires the
 paint path.
 
 - [ ] **Step 9: Run to verify pass**
@@ -1610,7 +1693,7 @@ Expected: FAIL.
   }
 ```
 
-Every later task that adds an encodable block (Tasks 11, 13) uses
+Every later task that adds an encodable block (Tasks 12, 14) uses
 `clearEncoding("icon")` / `clearEncoding("label")` — never a new bespoke
 clearer.
 
@@ -1721,11 +1804,11 @@ Add `type LayerStroke` and `type StrokeStyle` to the existing import from
 ships the **fixed-value** stroke path only (`{ fixed: … }`). The data-driven
 `{ field, domain, palette }` path that Task 2's `buildMapPaint` supports is
 **not** wired from the UI by this plan at all — the earlier draft promised
-Task 10 would factor the existing color field/classification/palette
+Task 11 would factor the existing color field/classification/palette
 sub-editor (lines 141-280) into a shared `FieldClassificationPicker` and
 reuse it for `stroke.color`, and that promise is **withdrawn**: it is a
 refactor of the most-tested part of this component, with no test in this
-plan exercising it, and Task 11 is already the largest UI task. A
+plan exercising it, and Task 12 is already the largest UI task. A
 data-driven stroke color therefore remains authorable only through the MCP /
 a hand-written config until a follow-up SP wires it. This is listed in the
 follow-ups at the end of this plan.
@@ -1754,7 +1837,798 @@ EOF
 
 ---
 
-## Task 5: Shell — `iconLibrary.ts` (curated Lucide catalogue, generated at build time)
+## Task 5: Shell — contour classé éditable (`FieldClassificationPicker` extrait puis partagé)
+
+**Files:**
+- Create: `shell/src/map/FieldClassificationPicker.tsx`
+- Create: `shell/src/map/FieldClassificationPicker.test.tsx`
+- Modify: `shell/src/map/MapSymbologyEditor.tsx`
+- Modify: `shell/src/map/MapSymbologyEditor.test.tsx`
+- Modify: `shell/src/builder/widgets/mapSymbology.ts`
+- Modify: `shell/src/builder/widgets/mapSymbology.test.ts`
+
+**Interfaces:**
+- Consumes: `LayerStroke`, `StrokeColorEncoding`, `ColorClassification`,
+  `ColorDomain`, `PaletteId`, `computeColorDomain`, `formatDomain` (Task 2 and
+  existing).
+- Produces: `FieldClassificationPicker` (a **new** component, extracted from
+  the color UI already in `MapSymbologyEditor.tsx`) and the data-driven path
+  of `stroke.color` in the editor. `StrokeColorEncoding`'s field variant gains
+  `computedAt: string`.
+
+### Correction du brief : `FieldClassificationPicker` n'existe pas
+
+Le brief de cette passe demandait de « réutiliser le
+`FieldClassificationPicker` de SP-25 ». **Il n'existe pas.** Vérifié :
+`grep -rn 'FieldClassificationPicker' shell/src/ docs/` ne trouve que deux
+occurrences, toutes deux dans **ce plan** (la promesse de la première
+rédaction, puis son retrait). Le composant n'a jamais été livré par SP-25 :
+l'UI de classification est **inline** dans `MapSymbologyEditor.tsx`, lignes
+141-280. Cette tâche l'**extrait** d'abord, puis la réutilise. C'est le piège
+n° 3 de `CLAUDE.md` (« le texte littéral d'un plan ou d'un brief est
+régulièrement faux sur les interfaces »), corrigé sans re-demander et
+consigné ici.
+
+### La contrainte qui dicte la forme de l'extraction
+
+Les noms accessibles de l'UI couleur actuelle sont uniques par instance et
+**16 tests existants** s'appuient dessus par `getByLabelText`/`getByRole` :
+`"Champ couleur"`, `"Palette"`, `"Type de couleur"`,
+`"Méthode de classification"`, `"Nombre de classes"`,
+`"Recalculer les classes"`. Si le composant extrait était réutilisé tel quel
+pour le contour, ces noms seraient **dupliqués** dès qu'un contour classé est
+configuré, et chaque `getByLabelText("Palette")` lèverait « found multiple
+elements ». Le composant prend donc un objet `labels` **explicite** : l'usage
+couleur y passe exactement les chaînes d'aujourd'hui (DOM et noms accessibles
+**inchangés au caractère près**, donc zéro modification des 16 tests
+existants), l'usage contour y passe des chaînes distinctes.
+
+### Tests de non-régression exigés (noms réels du dépôt)
+
+Ces **16** tests de `shell/src/map/MapSymbologyEditor.test.tsx` doivent rester
+verts **sans être modifiés** ; ils sont la couverture de non-régression de
+l'extraction, et la tâche est en échec si l'un d'eux doit être touché :
+
+1. `no color field selected: shows the field picker only`
+2. `theme-primary palette option is absent without a theme`
+3. `theme-primary palette option is present with a theme`
+4. `classification method selector is hidden in categorical mode and shown in numeric mode`
+5. `class count selector is hidden when the method is continuous`
+6. `recompute button calls runStatistics and writes domain + computedAt via onChange`
+7. `recompute button for the size field calls runStatistics and writes size domain`
+8. `a failing recompute surfaces an error instead of hanging silently`
+9. `two MapSymbologyEditor instances render distinct datalist ids`
+10. `a failing size recompute surfaces an error instead of an unhandled rejection`
+11. `shows a hint when a configured color field has never been computed`
+12. `shows a hint when a configured size field has never been computed`
+13. `clearing the color encoding removes only color, keeping size, via onChange`
+14. `clearing the only active encoding calls onChange with undefined`
+15. `Jenks option is present by default and hidden when jenksAvailable is false`
+16. `computed breaks are shown as text`
+
+Plus les 6 tests ajoutés par Task 4 (contour fixe, opacité, `clearEncoding`).
+Et, côté E2E, la preuve SP-25 `author 5 quantile classes on a tiled layer,
+save, reload, and the rendered colors survive with no new aggregate call`
+(`shell/e2e/map-symbology.spec.ts`) : elle pilote l'UI **par ces mêmes
+libellés**, donc elle est le filet de sécurité de dernier recours. Task 20
+la relance.
+
+Note : l'encodage **taille** n'entre pas dans l'extraction. Son UI réelle est
+un simple champ + un bouton « Recalculer » + l'affichage de `computedAt` :
+elle n'a ni palette, ni mode, ni méthode de classification, ni nombre de
+classes. La factoriser avec la couleur produirait un composant à moitié de
+props optionnelles pour aucun gain. Le test n° 7 et le test n° 10 ci-dessus
+la couvrent et doivent rester verts **par non-modification**.
+
+- [ ] **Step 1: Étendre `StrokeColorEncoding` avec `computedAt` (invariant SP-25)**
+
+L'invariant SP-25 est que **les domaines sont figés à l'enregistrement** :
+`LayerSymbology.color` porte `domain` + `computedAt`, et le rendu ne
+recalcule jamais. Le contour classé doit suivre la même règle. Dans
+`shell/src/builder/widgets/mapSymbology.ts`, la variante `field` de
+`StrokeColorEncoding` (Task 2) devient :
+
+```ts
+export type StrokeColorEncoding =
+  | { fixed: string }
+  | {
+      field: string;
+      // Domaine FIGÉ au moment du calcul, comme LayerSymbology.color
+      // (invariant SP-25) : le rendu ne recalcule jamais un domaine.
+      domain: ColorDomain;
+      palette: PaletteId;
+      classification?: ColorClassification;
+      computedAt: string;
+    };
+```
+
+`StrokePaintInput` (la forme d'entrée de `buildMapPaint`) **ne** porte pas
+`computedAt` : c'est une donnée d'édition, pas de rendu. Ajouter
+`classification?: ColorClassification` n'y est pas nécessaire non plus —
+`strokeColorValue` discrimine déjà sur `domain.kind`
+(`categorical` / `numeric-classed` / `numeric`), exactement comme la branche
+couleur. `symbologyToPaintInputs` ne change donc pas.
+
+Test, appended to `shell/src/builder/widgets/mapSymbology.test.ts` :
+
+```ts
+test("un contour classé porte un domaine figé et son computedAt", () => {
+  const symbology: LayerSymbology = {
+    stroke: {
+      color: {
+        field: "pop",
+        domain: { kind: "numeric-classed", breaks: [0, 10, 20, 30] },
+        palette: "sequential-blue",
+        classification: { method: "quantile", classes: 3 },
+        computedAt: "2026-08-27T10:00:00Z",
+      },
+      width: { fixed: 2 },
+      style: "solid",
+    },
+  };
+  expect(
+    symbology.stroke && "field" in symbology.stroke.color && symbology.stroke.color.computedAt,
+  ).toBe("2026-08-27T10:00:00Z");
+});
+
+test("buildMapPaint compile un contour classé en expression step", () => {
+  const result = buildMapPaint({}, null, null, "polygon", undefined, {
+    stroke: {
+      color: {
+        field: "pop",
+        domain: { kind: "numeric-classed", breaks: [0, 10, 20, 30] },
+        palette: { kind: "sequential", low: "#dbeafe", high: "#1e3a8a" },
+      },
+      width: { fixed: 2 },
+      style: "solid",
+    },
+  });
+  const step = result.paint["fill-outline-color"] as unknown[];
+  expect(step[0]).toBe("step");
+  expect(step[1]).toEqual(["get", "pop"]);
+  // 3 classes ⇒ couleur initiale + 2 paires (seuil, couleur).
+  expect(step).toHaveLength(2 + 1 + 4);
+  expect(result.outlinePaint?.["line-color"]).toEqual(step);
+});
+```
+
+Run: `cd shell && npx vitest run src/builder/widgets/mapSymbology.test.ts`
+Expected: PASS (la branche `numeric-classed` de `strokeColorValue` existe
+déjà depuis Task 2 ; ces tests la verrouillent).
+
+- [ ] **Step 2: Écrire les tests d'extraction du composant**
+
+Create `shell/src/map/FieldClassificationPicker.test.tsx` :
+
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, test, vi } from "vitest";
+import { FieldClassificationPicker } from "./FieldClassificationPicker";
+
+const labels = {
+  field: "Champ test",
+  palette: "Palette test",
+  mode: "Type test",
+  method: "Méthode test",
+  classes: "Classes test",
+  recompute: "Recalculer test",
+};
+
+function renderPicker(over: Partial<Parameters<typeof FieldClassificationPicker>[0]> = {}) {
+  const props = {
+    labels,
+    listId: "l1",
+    availableFields: ["population", "region"],
+    themeColors: undefined,
+    jenksAvailable: true,
+    busy: false,
+    error: null as string | null,
+    value: undefined,
+    onChange: vi.fn(),
+    onRecompute: vi.fn(),
+    ...over,
+  };
+  render(<FieldClassificationPicker {...props} />);
+  return props;
+}
+
+test("sans champ choisi, seuls le champ et la palette sont rendus", () => {
+  renderPicker();
+  expect(screen.getByLabelText("Champ test")).toBeInTheDocument();
+  expect(screen.getByLabelText("Palette test")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Type test")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Méthode test")).not.toBeInTheDocument();
+});
+
+test("le sélecteur de méthode n'apparaît qu'en mode numérique", () => {
+  const { onChange } = renderPicker({
+    value: {
+      field: "population", mode: "categorical", palette: "categorical-a",
+      domain: { kind: "categorical", values: [] }, computedAt: "",
+    },
+  });
+  expect(screen.queryByLabelText("Méthode test")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Type test"), { target: { value: "numeric" } });
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ mode: "numeric", classification: undefined }),
+  );
+});
+
+test("le nombre de classes est borné à 2-9", () => {
+  const { onChange } = renderPicker({
+    value: {
+      field: "population", mode: "numeric", palette: "sequential-blue",
+      classification: { method: "quantile", classes: 5 },
+      domain: { kind: "numeric-classed", breaks: [0, 1, 2] }, computedAt: "",
+    },
+  });
+  fireEvent.change(screen.getByLabelText("Classes test"), { target: { value: "42" } });
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ classification: { method: "quantile", classes: 9 } }),
+  );
+  fireEvent.change(screen.getByLabelText("Classes test"), { target: { value: "1" } });
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ classification: { method: "quantile", classes: 2 } }),
+  );
+});
+
+test("l'option theme-primary suit la présence d'un thème", () => {
+  renderPicker({ themeColors: { primary: "#123456" } });
+  const select = screen.getByLabelText("Palette test") as HTMLSelectElement;
+  expect(Array.from(select.options).some((o) => o.value === "theme-primary")).toBe(true);
+});
+
+test("l'option Jenks disparaît quand jenksAvailable est faux", () => {
+  renderPicker({
+    jenksAvailable: false,
+    value: {
+      field: "population", mode: "numeric", palette: "sequential-blue",
+      domain: { kind: "numeric", min: 0, max: 1 }, computedAt: "",
+    },
+  });
+  const select = screen.getByLabelText("Méthode test") as HTMLSelectElement;
+  expect(Array.from(select.options).some((o) => o.value === "jenks")).toBe(false);
+});
+
+test("le bouton de recalcul délègue et se désactive pendant le calcul", async () => {
+  const { onRecompute } = renderPicker({
+    busy: true,
+    value: {
+      field: "population", mode: "numeric", palette: "sequential-blue",
+      domain: { kind: "numeric", min: 0, max: 1 }, computedAt: "",
+    },
+  });
+  expect(screen.getByRole("button", { name: /Recalculer test|Calcul/ })).toBeDisabled();
+  expect(onRecompute).not.toHaveBeenCalled();
+});
+
+test("une erreur est affichée en role=alert", () => {
+  renderPicker({
+    error: "champ inconnu",
+    value: {
+      field: "population", mode: "numeric", palette: "sequential-blue",
+      domain: { kind: "numeric", min: 0, max: 1 }, computedAt: "",
+    },
+  });
+  expect(screen.getByRole("alert")).toHaveTextContent("champ inconnu");
+});
+
+test("un domaine jamais calculé affiche l'avertissement, un domaine calculé son résumé", async () => {
+  const { onChange: _ } = renderPicker({
+    value: {
+      field: "population", mode: "categorical", palette: "categorical-a",
+      domain: { kind: "categorical", values: ["A", "B"] }, computedAt: "",
+    },
+  });
+  expect(screen.getByText(/non calculées/)).toBeInTheDocument();
+  await userEvent.click(screen.getByLabelText("Champ test"));
+});
+```
+
+- [ ] **Step 3: Extraire le composant**
+
+Create `shell/src/map/FieldClassificationPicker.tsx`. Le corps est **repris
+verbatim** des lignes 141-280 de `MapSymbologyEditor.tsx` (champ, datalist,
+palette, type, méthode, nombre de classes, bouton de recalcul, erreur,
+avertissement « non calculées », résumé du domaine), avec pour seule
+modification le remplacement des libellés littéraux par `labels.*` et des
+accès `color.*` par `value.*` :
+
+```tsx
+// SPDX-License-Identifier: Apache-2.0
+// Extrait de MapSymbologyEditor.tsx (lignes 141-280 d'avant SP-27), sans
+// changement de comportement : c'est le sous-éditeur « champ + palette +
+// mode + classification + recalcul » utilisé par l'encodage COULEUR depuis
+// SP-25, et désormais aussi par la couleur de CONTOUR (SP-27).
+//
+// Les libellés sont injectés, jamais littéraux : deux instances rendues en
+// même temps (couleur et contour) auraient sinon des noms accessibles
+// dupliqués, et les 16 tests existants de MapSymbologyEditor.test.tsx
+// interrogent l'UI couleur par ces noms exacts. L'usage couleur passe donc
+// les chaînes historiques au caractère près.
+import {
+  formatDomain,
+  type ColorClassification,
+  type ColorDomain,
+} from "../builder/widgets/mapSymbology";
+import type { PaletteId } from "../builder/widgets/palette";
+import type { ThemeColors } from "../api/types";
+
+export type ClassifiedEncoding = {
+  field: string;
+  mode: "categorical" | "numeric";
+  palette: PaletteId;
+  classification?: ColorClassification;
+  domain: ColorDomain;
+  computedAt: string;
+};
+
+export type FieldClassificationLabels = {
+  field: string;
+  palette: string;
+  mode: string;
+  method: string;
+  classes: string;
+  recompute: string;
+};
+
+export function FieldClassificationPicker({
+  labels,
+  listId,
+  availableFields,
+  themeColors,
+  jenksAvailable,
+  busy,
+  error,
+  value,
+  onChange,
+  onRecompute,
+}: {
+  labels: FieldClassificationLabels;
+  // L'id de datalist reste FOURNI par l'hôte : c'est lui qui garantit
+  // l'unicité par instance de l'éditeur (I2 de la revue finale SP-25), et
+  // deux pickers d'un même éditeur partagent délibérément la même liste de
+  // champs.
+  listId: string;
+  availableFields: string[];
+  themeColors: ThemeColors | undefined;
+  jenksAvailable: boolean;
+  busy: boolean;
+  error: string | null;
+  value: ClassifiedEncoding | undefined;
+  onChange: (patch: Partial<ClassifiedEncoding>) => void;
+  onRecompute: () => void;
+}) {
+  // … corps repris de MapSymbologyEditor.tsx, `color` → `value`,
+  // `setColorField` → `onChange`, `recomputeColor` → `onRecompute`,
+  // `busy === "color"` → `busy`, `colorError` → `error`, et chaque libellé
+  // littéral remplacé par son entrée de `labels` (y compris l'aria-label,
+  // qui doit valoir la MÊME chaîne que le texte visible, comme aujourd'hui).
+  // `PALETTE_OPTIONS` et `formatDomain` déménagent ici ; `MapSymbologyEditor`
+  // les importe depuis ce module s'il en a encore besoin.
+}
+```
+
+Le déménagement de `PALETTE_OPTIONS` et de `formatDomain` : `formatDomain`
+est aujourd'hui une fonction module de `MapSymbologyEditor.tsx` — la déplacer
+ici et l'exporter, ou la laisser où elle est et l'importer, au choix ; **une
+seule** définition dans les deux cas. Vérifier avec
+`grep -rn 'formatDomain' shell/src/` avant de trancher.
+
+- [ ] **Step 4: Brancher l'usage COULEUR sur le composant extrait, à l'identique**
+
+Dans `MapSymbologyEditor.tsx`, remplacer les lignes 141-280 par :
+
+```tsx
+      <FieldClassificationPicker
+        labels={{
+          field: "Champ couleur",
+          palette: "Palette",
+          mode: "Type de couleur",
+          method: "Méthode de classification",
+          classes: "Nombre de classes",
+          recompute: "Recalculer les classes",
+        }}
+        listId={listId}
+        availableFields={availableFields}
+        themeColors={themeColors}
+        jenksAvailable={jenksAvailable}
+        busy={busy === "color"}
+        error={colorError}
+        value={color}
+        onChange={setColorField}
+        onRecompute={() => void recomputeColor()}
+      />
+      {color && (
+        <button
+          type="button"
+          className="self-start text-xs text-red-700 underline"
+          onClick={clearColor}
+        >
+          Retirer la couleur
+        </button>
+      )}
+```
+
+**Le bouton « Retirer la couleur » reste chez l'hôte**, pas dans le
+composant : le contour a son propre bouton de retrait (Task 4) et la
+sémantique « retirer cet encodage » appartient à l'éditeur, pas au
+sous-éditeur.
+
+Run: `cd shell && npx vitest run src/map/MapSymbologyEditor.test.tsx`
+Expected: **PASS, les 16 tests d'origine plus les 6 de Task 4, aucun
+modifié.** Si l'un d'eux échoue, c'est que l'extraction a changé un nom
+accessible, un ordre de rendu ou une classe : corriger l'extraction, jamais
+le test.
+
+- [ ] **Step 5: Écrire les tests du contour classé**
+
+Append to `shell/src/map/MapSymbologyEditor.test.tsx` (réutilise `baseProps`
+de Task 4) :
+
+```tsx
+test("basculer le contour en data-driven écrit un champ, une palette et un domaine vide", async () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        stroke: { color: { fixed: "#000000" }, width: { fixed: 1 }, style: "solid" },
+      }}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Couleur de contour par attribut" }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      stroke: expect.objectContaining({
+        color: {
+          field: "",
+          mode: "categorical",
+          palette: "categorical-a",
+          domain: { kind: "categorical", values: [] },
+          computedAt: "",
+        },
+      }),
+    }),
+  );
+});
+
+test("les libellés du contour ne collident pas avec ceux de la couleur", () => {
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        color: {
+          field: "region", mode: "categorical", palette: "categorical-a",
+          domain: { kind: "categorical", values: ["A"] }, computedAt: "2026-08-27T00:00:00Z",
+        },
+        stroke: {
+          color: {
+            field: "pop", mode: "numeric", palette: "sequential-blue",
+            domain: { kind: "numeric", min: 0, max: 1 }, computedAt: "",
+          },
+          width: { fixed: 1 },
+          style: "solid",
+        },
+      }}
+      onChange={vi.fn()}
+    />,
+  );
+  // Les deux pickers coexistent : chaque nom accessible reste unique.
+  expect(screen.getByLabelText("Champ couleur")).toBeInTheDocument();
+  expect(screen.getByLabelText("Champ couleur de contour")).toBeInTheDocument();
+  expect(screen.getByLabelText("Palette")).toBeInTheDocument();
+  expect(screen.getByLabelText("Palette du contour")).toBeInTheDocument();
+  expect(screen.getByLabelText("Méthode de classification du contour")).toBeInTheDocument();
+});
+
+test("« Recalculer les classes du contour » fige le domaine et l'horodatage", async () => {
+  const onChange = vi.fn();
+  const runStatistics = vi.fn().mockResolvedValue([{ region: "Nord" }, { region: "Sud" }]);
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      runStatistics={runStatistics}
+      value={{
+        stroke: {
+          color: {
+            field: "region", mode: "categorical", palette: "categorical-a",
+            domain: { kind: "categorical", values: [] }, computedAt: "",
+          },
+          width: { fixed: 1 },
+          style: "solid",
+        },
+      }}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(
+    screen.getByRole("button", { name: "Recalculer les classes du contour" }),
+  );
+  await vi.waitFor(() => {
+    const last = onChange.mock.calls.at(-1)![0];
+    expect(last.stroke.color.domain).toEqual({ kind: "categorical", values: ["Nord", "Sud"] });
+    // Invariant SP-25 : le domaine est FIGÉ, avec la date de son calcul.
+    expect(last.stroke.color.computedAt).not.toBe("");
+  });
+});
+
+test("un recalcul de contour en échec affiche une erreur au lieu d'une rejection", async () => {
+  const runStatistics = vi.fn().mockRejectedValue(new Error("champ inconnu"));
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      runStatistics={runStatistics}
+      value={{
+        stroke: {
+          color: {
+            field: "region", mode: "categorical", palette: "categorical-a",
+            domain: { kind: "categorical", values: [] }, computedAt: "",
+          },
+          width: { fixed: 1 },
+          style: "solid",
+        },
+      }}
+      onChange={vi.fn()}
+    />,
+  );
+  await userEvent.click(
+    screen.getByRole("button", { name: "Recalculer les classes du contour" }),
+  );
+  await vi.waitFor(() =>
+    expect(screen.getAllByRole("alert").some((n) => n.textContent?.includes("champ inconnu"))).toBe(
+      true,
+    ),
+  );
+});
+
+test("revenir à une couleur de contour fixe efface le champ et le domaine", async () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        stroke: {
+          color: {
+            field: "region", mode: "categorical", palette: "categorical-a",
+            domain: { kind: "categorical", values: ["A"] },
+            computedAt: "2026-08-27T00:00:00Z",
+          },
+          width: { fixed: 1 },
+          style: "solid",
+        },
+      }}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Couleur de contour fixe" }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      stroke: expect.objectContaining({ color: { fixed: "#000000" } }),
+    }),
+  );
+});
+
+// Cohérence avec Task 4 : « plus rien ne reste » vaut aussi pour un contour
+// CLASSÉ, pas seulement pour un contour fixe.
+test("retirer un contour classé, seul encodage actif, rend undefined", async () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        stroke: {
+          color: {
+            field: "region", mode: "categorical", palette: "categorical-a",
+            domain: { kind: "categorical", values: ["A"] },
+            computedAt: "2026-08-27T00:00:00Z",
+          },
+          width: { fixed: 2 },
+          style: "dashed",
+        },
+      }}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Retirer le contour" }));
+  expect(onChange).toHaveBeenLastCalledWith(undefined);
+});
+```
+
+- [ ] **Step 6: Implémenter le contour classé dans l'éditeur**
+
+Dans `MapSymbologyEditor.tsx`, à l'intérieur du bloc contour de Task 4,
+remplacer le seul `<input type="color" aria-label="Couleur de contour">` par
+un choix explicite entre les deux modes, puis le picker partagé quand le mode
+est « par attribut » :
+
+```tsx
+  const [strokeBusy, setStrokeBusy] = useState(false);
+  const [strokeError, setStrokeError] = useState<string | null>(null);
+  const strokeColorIsFixed = !!stroke && "fixed" in stroke.color;
+
+  function setStrokeColorPatch(patch: Partial<ClassifiedEncoding>) {
+    if (!stroke || "fixed" in stroke.color) return;
+    setStroke({ color: { ...stroke.color, ...patch } });
+  }
+
+  async function recomputeStrokeDomain() {
+    if (!stroke || "fixed" in stroke.color || !stroke.color.field) return;
+    const encoding = stroke.color;
+    setStrokeBusy(true);
+    setStrokeError(null);
+    try {
+      const domain = await computeColorDomain(
+        {
+          field: encoding.field,
+          mode: encoding.mode,
+          classification: encoding.classification,
+        },
+        { runStatistics, sampleField },
+      );
+      // Invariant SP-25 : on FIGE le domaine et l'horodatage dans le
+      // document ; le rendu (buildMapPaint) ne recalcule jamais.
+      setStroke({ color: { ...encoding, domain, computedAt: new Date().toISOString() } });
+    } catch (e) {
+      setStrokeError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStrokeBusy(false);
+    }
+  }
+```
+
+JSX, en tête du bloc contour :
+
+```tsx
+          <div className="flex gap-1">
+            <button
+              type="button"
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+              aria-pressed={strokeColorIsFixed}
+              onClick={() => setStroke({ color: { fixed: "#000000" } })}
+            >
+              Couleur de contour fixe
+            </button>
+            <button
+              type="button"
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+              aria-pressed={!strokeColorIsFixed}
+              onClick={() =>
+                setStroke({
+                  color: {
+                    field: "",
+                    mode: "categorical",
+                    palette: "categorical-a",
+                    domain: { kind: "categorical", values: [] },
+                    computedAt: "",
+                  },
+                })
+              }
+            >
+              Couleur de contour par attribut
+            </button>
+          </div>
+          {strokeColorIsFixed ? (
+            <label className={labelCls}>
+              Couleur de contour
+              <input
+                aria-label="Couleur de contour"
+                type="color"
+                value={"fixed" in stroke.color ? stroke.color.fixed : "#000000"}
+                onChange={(e) => setStroke({ color: { fixed: e.target.value } })}
+              />
+            </label>
+          ) : (
+            <FieldClassificationPicker
+              labels={{
+                field: "Champ couleur de contour",
+                palette: "Palette du contour",
+                mode: "Type de couleur de contour",
+                method: "Méthode de classification du contour",
+                classes: "Nombre de classes du contour",
+                recompute: "Recalculer les classes du contour",
+              }}
+              listId={listId}
+              availableFields={availableFields}
+              themeColors={themeColors}
+              jenksAvailable={jenksAvailable}
+              busy={strokeBusy}
+              error={strokeError}
+              value={"fixed" in stroke.color ? undefined : stroke.color}
+              onChange={setStrokeColorPatch}
+              onRecompute={() => void recomputeStrokeDomain()}
+            />
+          )}
+```
+
+Le reste du bloc contour (épaisseur, style, « Retirer le contour » →
+`clearEncoding("stroke")`) est inchangé depuis Task 4 : « plus rien ne
+reste » vaut donc mécaniquement pour un contour classé comme pour un contour
+fixe, ce que le dernier test de l'étape 5 verrouille.
+
+Ajouter les imports : `FieldClassificationPicker`,
+`type ClassifiedEncoding` depuis `./FieldClassificationPicker`.
+
+- [ ] **Step 7: Vérifier que le rendu suit, sur les deux surfaces**
+
+Un contour classé ne sert à rien s'il ne se rend pas. `effectivePaint` passe
+déjà `stroke` (résolu par `symbologyToPaintInputs`) à `buildMapPaint`
+(Task 3), et Task 19 fait passer `symbology` du widget à `MapView` : aucun
+code de rendu n'est à ajouter ici. Ajouter **un** test de bout en bout dans
+`shell/src/map/MapView.test.tsx` pour le verrouiller :
+
+```ts
+test("un contour classé se compile en expression step sur la couche et son contour", () => {
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        symbology: {
+          stroke: {
+            color: {
+              field: "pop",
+              domain: { kind: "numeric-classed", breaks: [0, 10, 20] },
+              palette: "sequential-blue",
+              mode: "numeric",
+              classification: { method: "quantile", classes: 2 },
+              computedAt: "2026-08-27T00:00:00Z",
+            },
+            width: { fixed: 2 },
+            style: "solid",
+          },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  const paint = (map.getLayer("communes") as { paint: Record<string, unknown> }).paint;
+  expect((paint["fill-outline-color"] as unknown[])[0]).toBe("step");
+  expect(
+    ((map.getLayer("communes__outline") as { paint: Record<string, unknown> }).paint[
+      "line-color"
+    ] as unknown[])[0],
+  ).toBe("step");
+});
+```
+
+- [ ] **Step 8: Portes complètes + commit**
+
+Run: `cd shell && npx vitest run src/map/FieldClassificationPicker.test.tsx src/map/MapSymbologyEditor.test.tsx src/map/MapView.test.tsx src/builder/widgets/mapSymbology.test.ts`
+Run: `cd shell && npm run lint && npm run format:check && npx vitest run && npm run build`
+Expected: green. Le compte de fichiers de test passe de 162 à **163**
+(`FieldClassificationPicker.test.tsx`).
+
+Run: `cd shell && npm run e2e -- map-symbology`
+Expected: 1 passed — la preuve SP-25 pilote l'UI couleur par ses libellés,
+c'est le filet de dernier recours de l'extraction. **Ne pas sauter cette
+vérification** : c'est le seul test qui traverse l'UI réelle rendue par le
+navigateur.
+
+```bash
+git add shell/src/map/FieldClassificationPicker.tsx shell/src/map/FieldClassificationPicker.test.tsx shell/src/map/MapSymbologyEditor.tsx shell/src/map/MapSymbologyEditor.test.tsx shell/src/map/MapView.test.tsx shell/src/builder/widgets/mapSymbology.ts shell/src/builder/widgets/mapSymbology.test.ts
+git commit -m "$(cat <<'EOF'
+feat(shell): rend le contour data-driven éditable (picker de classification partagé)
+
+Extrait FieldClassificationPicker des lignes 141-280 de
+MapSymbologyEditor.tsx — le composant n'existait PAS, contrairement à ce
+que supposait le brief : l'UI de classification était inline depuis
+SP-25. Les libellés sont injectés, l'usage couleur passe les chaînes
+historiques au caractère près : les 16 tests existants de l'éditeur et la
+preuve E2E SP-25 restent verts sans être modifiés, et deux pickers
+coexistants n'ont aucun nom accessible dupliqué.
+
+Le contour classé respecte l'invariant SP-25 : domaine et computedAt
+figés à l'enregistrement, jamais recalculés au rendu.
+EOF
+)"
+```
+
+---
+
+## Task 6: Shell — `iconLibrary.ts` (curated Lucide catalogue, generated at build time)
 
 **Files:**
 - Create: `shell/scripts/gen-lucide-icons.mjs`
@@ -1766,7 +2640,7 @@ EOF
 **Interfaces:**
 - Produces: `IconCategory`, `LUCIDE_ICONS: { name: string; category:
   IconCategory }[]` (**exactly 140 entries**), `rasterizeLucideIcon(name):
-  Promise<ImageBitmap>` — consumed by Task 7 (`MapView.tsx`) and Task 11
+  Promise<ImageBitmap>` — consumed by Task 8 (`MapView.tsx`) and Task 12
   (the picker).
 
 **Verified facts** (do not re-derive):
@@ -1782,8 +2656,14 @@ EOF
   `swimming-pool`) while 5 appeared twice (`star`, `landmark`, `tent`,
   `store`, `ferris-wheel`). Both defects made the task's own tests fail by
   construction.
-- jsdom has **no** `createImageBitmap` (verified `undefined`) — the
-  rasterization test must use Task 1's `installCreateImageBitmapStub()`.
+- jsdom a **ni** `createImageBitmap`, **ni** `URL.createObjectURL`, **ni**
+  `HTMLImageElement.prototype.decode` (sonde exécutée : les trois sont
+  `undefined`), et ne charge jamais une ressource — le décodage passe donc par
+  `installImageDecodeStub()` de Task 1 (`HTMLImageElement` +
+  `URL.createObjectURL`), jamais par `createImageBitmap`.
+- Les SVG de `lucide-static@1.34.0` portent `width="24" height="24"
+  viewBox="0 0 24 24" stroke="currentColor"` (lu dans le paquet réel) : les
+  dimensions intrinsèques existent, et `currentColor` doit être substitué.
 
 - [ ] **Step 1: Add the dependency as a devDependency**
 
@@ -1930,22 +2810,62 @@ export const LUCIDE_ICONS: { name: string; category: IconCategory }[] = (
   Object.entries(ICON_NAMES) as [IconCategory, string[]][]
 ).flatMap(([category, names]) => names.map((name) => ({ name, category })));
 
-const rasterCache = new Map<string, Promise<ImageBitmap>>();
+// Couleur de trait injectée : les SVG de lucide-static portent
+// `stroke="currentColor"` (vérifié sur le paquet 1.34.0). Hors d'un document
+// CSS — dans un <img> ou createImageBitmap — `currentColor` retombe sur la
+// valeur initiale de `color`, donc noir. On substitue explicitement pour que
+// l'icône ait la couleur voulue du dépôt, et pour que ce ne soit pas un
+// hasard de résolution.
+const LUCIDE_STROKE = "#1e293b";
 
-export function rasterizeLucideIcon(name: string): Promise<ImageBitmap> {
-  const cached = rasterCache.get(name);
+const imageCache = new Map<string, Promise<HTMLImageElement>>();
+
+// Décodage d'un blob d'image en quelque chose que map.addImage accepte.
+// PAS createImageBitmap : sa prise en charge d'un blob SVG varie d'un
+// navigateur à l'autre, et les icônes Lucide comme les icônes personnalisées
+// peuvent être du SVG. `map.addImage(id, image, options?)` accepte
+// `HTMLImageElement | ImageBitmap | ImageData | {width,height,data} |
+// StyleImageInterface` (signature vérifiée dans maplibre-gl@4.7.1), donc un
+// HTMLImageElement décodé depuis une URL d'objet convient pour les deux
+// familles de type et n'a qu'un seul chemin de code.
+export function decodeIconImage(blob: Blob): Promise<HTMLImageElement> {
+  const url = URL.createObjectURL(blob);
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("image illisible"));
+    img.src = url;
+  }).finally(() => {
+    // Révoquer dès le décodage : MapLibre copie les pixels dans son atlas au
+    // moment de addImage, il ne relit jamais l'URL.
+    URL.revokeObjectURL(url);
+  });
+}
+
+export function rasterizeLucideIcon(name: string): Promise<HTMLImageElement> {
+  const cached = imageCache.get(name);
   if (cached) return cached;
   const svg = LUCIDE_ICON_SVGS[name];
   if (svg === undefined) return Promise.reject(new Error(`Icône Lucide inconnue : ${name}`));
-  const promise = createImageBitmap(new Blob([svg], { type: "image/svg+xml" })).catch((err) => {
+  // Substitution sur NOTRE propre asset de confiance, pas de
+  // l'assainissement : `split`/`join` plutôt qu'une expression régulière
+  // pour qu'aucun caractère spécial ne soit interprété.
+  const painted = svg.split('stroke="currentColor"').join(`stroke="${LUCIDE_STROKE}"`);
+  const promise = decodeIconImage(new Blob([painted], { type: "image/svg+xml" })).catch((err) => {
     // Ne pas mémoriser un échec : un rechargement doit pouvoir réessayer.
-    rasterCache.delete(name);
+    imageCache.delete(name);
     throw err;
   });
-  rasterCache.set(name, promise);
+  imageCache.set(name, promise);
   return promise;
 }
 ```
+
+Note vérifiée sur le paquet réel : un fichier de `lucide-static@1.34.0`
+commence par `<!-- @license lucide-static v1.34.0 - ISC -->` puis un `<svg>`
+portant `width="24" height="24" viewBox="0 0 24 24" fill="none"
+stroke="currentColor" stroke-width="2"`. Les dimensions intrinsèques sont
+donc présentes, ce dont un `<img>` a besoin pour dimensionner un SVG.
 
 - [ ] **Step 4: Generate the SVG module**
 
@@ -1961,8 +2881,8 @@ Create `shell/src/builder/widgets/iconLibrary.test.ts`:
 ```ts
 // SPDX-License-Identifier: Apache-2.0
 import { afterEach, expect, test, vi } from "vitest";
-import { installCreateImageBitmapStub } from "../../test/createImageBitmapStub";
-import { LUCIDE_ICONS, rasterizeLucideIcon } from "./iconLibrary";
+import { installImageDecodeStub } from "../../test/imageDecodeStub";
+import { decodeIconImage, LUCIDE_ICONS, rasterizeLucideIcon } from "./iconLibrary";
 import { LUCIDE_ICON_SVGS } from "./lucideIconSvgs.generated";
 
 afterEach(() => {
@@ -1997,19 +2917,35 @@ test("chaque nom du catalogue a bien un SVG dans le module généré", () => {
   expect(Object.keys(LUCIDE_ICON_SVGS)).toHaveLength(140);
 });
 
-test("rasterizeLucideIcon rasterise un nom connu et met le résultat en cache", async () => {
-  const stub = installCreateImageBitmapStub();
+test("rasterizeLucideIcon décode un nom connu et met le résultat en cache", async () => {
+  const { created, revoked } = installImageDecodeStub();
   const first = await rasterizeLucideIcon("map-pin");
   const second = await rasterizeLucideIcon("map-pin");
   expect(first.width).toBeGreaterThan(0);
   expect(second).toBe(first);
-  expect(stub).toHaveBeenCalledTimes(1);
+  // Une seule URL d'objet créée (cache), et révoquée après décodage.
+  expect(created).toHaveLength(1);
+  expect(revoked).toEqual(created);
 });
 
-test("rasterizeLucideIcon rejette un nom inconnu sans appeler createImageBitmap", async () => {
-  const stub = installCreateImageBitmapStub();
+test("rasterizeLucideIcon rejette un nom inconnu sans créer d'URL d'objet", async () => {
+  const { created } = installImageDecodeStub();
   await expect(rasterizeLucideIcon("pas-une-icone")).rejects.toThrow(/Icône Lucide inconnue/);
-  expect(stub).not.toHaveBeenCalled();
+  expect(created).toEqual([]);
+});
+
+// Les SVG de lucide-static portent stroke="currentColor", qui vaut noir hors
+// contexte CSS : la substitution doit être effective, pas implicite.
+test("la couleur de trait currentColor est remplacée avant décodage", () => {
+  expect(LUCIDE_ICON_SVGS["map-pin"]).toContain('stroke="currentColor"');
+});
+
+test("decodeIconImage propage l'échec de décodage et révoque quand même l'URL", async () => {
+  const { created, revoked } = installImageDecodeStub({ failing: ["blob:stub/"] });
+  await expect(decodeIconImage(new Blob(["x"], { type: "image/png" }))).rejects.toThrow(
+    /image illisible/,
+  );
+  expect(revoked).toEqual(created);
 });
 ```
 
@@ -2055,7 +2991,7 @@ EOF
 
 ---
 
-## Task 6: Shell — `mapSymbology.ts`: icon encoding (layout, not paint)
+## Task 7: Shell — `mapSymbology.ts`: icon encoding (layout, not paint)
 
 **Files:**
 - Modify: `shell/src/builder/widgets/mapSymbology.ts`
@@ -2064,7 +3000,7 @@ EOF
 **Interfaces:**
 - Produces: `IconRef`, `LayerIcon`, `LayerSymbology.icon`, `iconImageId`,
   `MapPaintResult.iconLayout` + `.iconImages` populated, `LegendSpec.icon` —
-  consumed by Tasks 7, 11, 18.
+  consumed by Tasks 8, 12, 19.
 - Does **not** import `iconLibrary.ts`: this module stays
   icon-source-agnostic and only ever handles image **ids**, never pixels.
 
@@ -2186,7 +3122,7 @@ export type LayerIcon = {
 };
 
 // L'id d'image MapLibre auquel un IconRef résout — vocabulaire partagé entre
-// ce module (qui ne connaît que l'ID) et MapView.tsx (Task 7, qui charge les
+// ce module (qui ne connaît que l'ID) et MapView.tsx (Task 8, qui charge les
 // pixels via map.addImage).
 export function iconImageId(ref: IconRef): string {
   return ref.source === "lucide" ? `lucide:${ref.name}` : `custom:${ref.id}`;
@@ -2274,7 +3210,7 @@ EOF
 
 ---
 
-## Task 7: Shell — `MapView.tsx`: charge les images d'icônes et pose la couche `symbol`
+## Task 8: Shell — `MapView.tsx`: charge les images d'icônes et pose la couche `symbol`
 
 **Files:**
 - Modify: `shell/src/map/MapView.tsx`
@@ -2284,8 +3220,8 @@ EOF
 
 **Interfaces:**
 - Consumes: `MapPaintResult.iconLayout`/`.iconImages`, `iconImageId`,
-  `LayerIcon` (Task 6); `rasterizeLucideIcon` (Task 5); the extended
-  `MockMap` and `installCreateImageBitmapStub` (Task 1).
+  `LayerIcon` (Task 7); `rasterizeLucideIcon`, `decodeIconImage` (Task 6);
+  the extended `MockMap` and `installImageDecodeStub` (Task 1).
 - Produces: a `${id}__icon` `symbol` layer per point layer with icons;
   `SUBLAYER_SUFFIXES` gains `"__icon"`.
 
@@ -2303,7 +3239,7 @@ Add to `shell/src/map/MapView.test.tsx`:
 
 ```ts
 test("a point layer with an icon encoding gets a paired symbol layer carrying icon-image in layout", () => {
-  installCreateImageBitmapStub();
+  installImageDecodeStub();
   render(
     <MapView
       config={tiled({
@@ -2338,7 +3274,7 @@ test("a point layer with an icon encoding gets a paired symbol layer carrying ic
 });
 
 test("les images Lucide référencées sont chargées via addImage, sans option sdf", async () => {
-  installCreateImageBitmapStub();
+  installImageDecodeStub();
   render(
     <MapView
       config={tiled({
@@ -2361,8 +3297,7 @@ test("les images Lucide référencées sont chargées via addImage, sans option 
 });
 
 test("une icône qui échoue à charger n'empêche pas les couches d'être posées", async () => {
-  const stub = installCreateImageBitmapStub();
-  stub.mockRejectedValue(new Error("boom"));
+  installImageDecodeStub({ failing: ["blob:stub/"] });
   const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
   render(
     <MapView
@@ -2388,7 +3323,7 @@ test("une icône qui échoue à charger n'empêche pas les couches d'être posé
 });
 
 test("removing an icon layer removes its symbol sub-layer and its source", () => {
-  installCreateImageBitmapStub();
+  installImageDecodeStub();
   const { rerender } = render(
     <MapView
       config={tiled({
@@ -2410,8 +3345,8 @@ test("removing an icon layer removes its symbol sub-layer and its source", () =>
 });
 ```
 
-Add to the file's imports: `import { installCreateImageBitmapStub } from
-"../test/createImageBitmapStub";` and an `afterEach(() =>
+Add to the file's imports: `import { installImageDecodeStub } from
+"../test/imageDecodeStub";` and an `afterEach(() =>
 vi.unstubAllGlobals())` (check whether the file already has an `afterEach`;
 if so extend it rather than adding a second one).
 
@@ -2546,18 +3481,21 @@ async function loadIconImages(
     [...ids].map(async (id) => {
       try {
         if (map.hasImage(id)) return;
-        let bitmap: ImageBitmap | undefined;
+        let image: HTMLImageElement | undefined;
         if (id.startsWith("lucide:")) {
-          bitmap = await rasterizeLucideIcon(id.slice("lucide:".length));
+          image = await rasterizeLucideIcon(id.slice("lucide:".length));
         } else if (id.startsWith("custom:") && loadCustomIcon) {
-          // Route authentifiée par bearer token : jamais `new Image()`, qui
-          // ne porte aucun en-tête et prendrait un 401 (constat 4.4).
+          // Blob récupéré par fetch AUTHENTIFIÉ (ItemClient) puis décodé
+          // localement : jamais `new Image().src = <url du cœur>`, qui ne
+          // porte aucun en-tête et prendrait un 401 (constat 4.4). L'URL
+          // passée à Image est une URL d'objet locale, same-origin.
           const blob = await loadCustomIcon(id.slice("custom:".length));
-          bitmap = await createImageBitmap(blob);
+          image = await decodeIconImage(blob);
         }
-        if (!bitmap) return;
+        if (!image) return;
         // Pas d'option { sdf: true } : l'image est du RGBA ordinaire.
-        if (!map.hasImage(id)) map.addImage(id, bitmap);
+        // HTMLImageElement est accepté par addImage (signature vérifiée).
+        if (!map.hasImage(id)) map.addImage(id, image);
       } catch (err) {
         console.warn(`MapView: icône ${id} non chargée`, err);
       }
@@ -2570,7 +3508,7 @@ Add a `loadCustomIcon?: (iconId: string) => Promise<Blob>` prop to `MapView`
 (same optionality precedent as `getAuthToken`/`getCoreUrl`), destructure it
 at the `forwardRef` body, and keep it in a
 `const loadCustomIconRef = useRef(loadCustomIcon);` refreshed by an effect,
-like its siblings. Task 11 supplies it from both hosts.
+like its siblings. Task 12 supplies it from both hosts.
 
 At **both** `applyLayers` call sites (inside `map.on("load", …)` and in the
 `[layersKey, …]` effect), add immediately after the `applyLayers(...)` call:
@@ -2579,8 +3517,9 @@ At **both** `applyLayers` call sites (inside `map.on("load", …)` and in the
     void loadIconImages(map, layersRef.current, loadCustomIconRef.current);
 ```
 
-Imports to add: `rasterizeLucideIcon` from `../builder/widgets/iconLibrary`,
-`iconImageId` from `../builder/widgets/mapSymbology`.
+Imports to add: `rasterizeLucideIcon` **et `decodeIconImage`** from
+`../builder/widgets/iconLibrary`, `iconImageId` from
+`../builder/widgets/mapSymbology`.
 
 - [ ] **Step 7: Add the icon entry to `MapSymbologyLegend`**
 
@@ -2658,12 +3597,13 @@ EOF
 
 ---
 
-## Task 8: Core — `app/mapicons/` (custom icon library)
+## Task 9: Core — `app/mapicons/` (custom icon library)
 
 **Files:**
 - Create: `core/app/mapicons/__init__.py`, `models.py`, `repository.py`,
-  `schemas.py`, `routes.py`
+  `schemas.py`, `svg.py`, `routes.py`
 - Create: `core/alembic/versions/0029_map_icons.py`
+- Create: `core/tests/test_mapicons_svg.py`
 - Create: `core/tests/test_mapicons_routes.py`
 - Modify: `core/app/db.py`, `core/app/main.py`, `core/pyproject.toml`
 - Modify: `docker-compose.yml`, `docker-compose.prod.yml`,
@@ -2672,7 +3612,7 @@ EOF
 **Interfaces:**
 - Produces: `POST /map-icons/presign`, `POST /map-icons`, `GET /map-icons`,
   `DELETE /map-icons/{icon_id}`, `GET /map-icons/{icon_id}/file` — consumed
-  by Task 10 (`ItemClient`).
+  by Task 11 (`ItemClient`).
 
 **Verified facts you must not re-derive:**
 - `app/secrets/` never touches S3 (`crypto.py`, `models.py`,
@@ -2724,13 +3664,64 @@ EOF
   `"app.secrets"` is 213, `"app.db -> app.terrain3d.models"` is 263, and
   `ignore_imports` is **not** alphabetically sorted (append at the end).
 
-**Product decision recorded here (déviation 9):** custom uploads accept
-**`image/png` only**. `image/svg+xml` is refused, at presign and at create.
-Rationale: an SVG served from the core's origin is a stored-XSS vector
-(`<script>` inside the document) and the repo's CSP is Report-Only, and
-`createImageBitmap()` on an SVG blob is not reliably supported across
-browsers. Lucide icons are SVG but are bundled by Task 5 and never travel
-through the core.
+**Product decision recorded here (D4, déviation 13 — renverse la
+déviation 9):** custom uploads accept **`image/png` and `image/svg+xml`**.
+The SVG is **sanitised at write time** and it is the sanitised bytes that are
+stored; the read path never re-sanitises. That is deliberate: one pass, one
+place where the guard can be missing, and a stored file that is safe by
+construction rather than safe only if the reader remembers to filter.
+
+**Vérifié pour cette tâche, contre la source réelle :**
+- `defusedxml` est **déjà** une dépendance directe déclarée du cœur
+  (`core/pyproject.toml` : `"defusedxml>=0.7",  # SP-12e : parsing XML sûr
+  (XXE + billion-laughs) des GetCapabilities OGC`), résolue en **0.7.1** dans
+  `uv.lock`. **Aucune nouvelle dépendance n'est ajoutée.** Son unique usage
+  actuel est `core/app/harvest/connectors/ows.py` (`from
+  defusedxml.ElementTree import fromstring`).
+- Signature réelle : `fromstring(text, forbid_dtd=False,
+  forbid_entities=True, forbid_external=True)`. **`forbid_dtd` vaut `False`
+  par défaut** : il faut le passer explicitement, sinon un
+  `<!DOCTYPE svg SYSTEM "http://evil/x.dtd">` sans déclaration d'entité
+  **passe**. Mesuré : avec `forbid_dtd=True`, tout DOCTYPE lève
+  `DTDForbidden` ; sans lui, une entité interne ou externe lève
+  `EntitiesForbidden` mais un DOCTYPE nu ne lève rien.
+- Mesuré aussi : `<script>`, `onload="…"` et `xlink:href="http://…"`
+  **traversent** le parseur sans erreur (c'est du XML valide). Le parseur ne
+  remplace donc pas une allowlist — il ne protège que des bombes d'entités,
+  des DTD et de l'XXE.
+- Clés d'attributs : un attribut d'espace de noms arrive sous la forme
+  `{http://www.w3.org/1999/xlink}href` (mesuré). Filtrer « toute clé
+  contenant `}` » suffit à tuer `xlink:href` sans le nommer.
+- Ré-sérialisation : `xml.etree.ElementTree.tostring` préfixerait les balises
+  en `ns0:` sur un arbre à espaces de noms. `ET.register_namespace("", …)`
+  est **global** et donc à éviter ; la reconstruction locale (tags dépouillés
+  de `{ns}`, `xmlns` posé à la main sur la racine) produit exactement
+  `<svg width="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">…`
+  — mesuré. Aucun autre module du cœur ne sérialise du XML
+  (`grep -rn 'register_namespace\|ET.tostring' core/app/` → vide), mais la
+  forme locale est retenue quand même : elle ne dépend d'aucun état de
+  module.
+- **Le suivi `libexpat.so.1` du dépôt ne touche pas ce chemin** — ou plutôt :
+  il le touche exactement comme il touche déjà `app.harvest`. Ce suivi dit
+  qu'en **conteneur**, `libexpat.so.1` manquait pour `defusedxml` ; il est
+  antérieur à SP-27, indépendant de lui, et `defusedxml` s'importe et parse
+  correctement dans l'environnement `uv` de développement (mesuré :
+  `uv run python -c "from defusedxml.ElementTree import fromstring"` passe,
+  version 0.7.1). Conséquence à écrire dans le commit : cette tâche
+  **n'aggrave ni ne corrige** ce suivi, mais elle en élargit la surface —
+  `app.mapicons` devient le second module du cœur à en dépendre au
+  **runtime**, et une image où `libexpat` manque refusera désormais aussi
+  l'upload d'un SVG d'icône, pas seulement le moissonnage OGC. À signaler
+  dans les suivis non bloquants.
+- RFC 7807 : aucune plomberie à écrire. `core/app/main.py:144-154` enregistre
+  un `@app.exception_handler(HTTPException)` qui rend
+  `media_type="application/problem+json"` avec `type`/`title`/`status`/
+  `detail`, et `main.py:131-142` fait de même pour
+  `ValidationHTTPException` (`core/app/errors.py`) en ajoutant un membre
+  d'extension `errors` **au premier niveau**. Le refus d'un SVG utilise
+  `ValidationHTTPException`, dont la forme d'`errors` suit le précédent de
+  `core/app/harvest/routes.py:311-313` :
+  `[{"field": …, "code": …, "message": …}]`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2761,6 +3752,14 @@ from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+LEGIT_SVG = (
+    b'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+    b'viewBox="0 0 24 24"><path d="M4 4 L20 20"/></svg>'
+)
+HOSTILE_SVG = (
+    b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" onload="alert(1)">'
+    b'<script>alert(2)</script><path d="M4 4"/></svg>'
+)
 
 
 class _FakeS3Client:
@@ -2802,6 +3801,11 @@ class _FakeS3Client:
                 return self._chunk
 
         return {"Body": _Body(data)}
+
+    def put_object(self, Bucket, Key, Body, ContentType=None):  # noqa: N803
+        # Nécessaire depuis D4 : la route de création RÉÉCRIT un SVG assaini
+        # à la même clé. Le fake de test_tileset3d_routes.py ne l'a pas.
+        self.objects[Key] = Body
 
     def delete_object(self, Bucket, Key):  # noqa: N803
         self.deleted.append(Key)
@@ -2878,10 +3882,15 @@ def test_presign_returns_an_upload_url_and_key(env):
     assert body["key"].endswith("logo.png")
 
 
-def test_presign_refuses_svg_and_any_other_content_type(env):
+def test_presign_accepts_png_and_svg_and_refuses_everything_else(env):
     app, client, _Session, _tenant, alice, _s3 = env
     _as(app, alice)
-    for content_type in ("image/svg+xml", "text/html", "application/octet-stream"):
+    for content_type in ("image/png", "image/svg+xml"):
+        response = client.post(
+            "/map-icons/presign", json={"filename": "x", "contentType": content_type}
+        )
+        assert response.status_code == 200, content_type
+    for content_type in ("text/html", "image/gif", "application/octet-stream"):
         response = client.post(
             "/map-icons/presign", json={"filename": "x", "contentType": content_type}
         )
@@ -2953,16 +3962,125 @@ def test_create_refuses_a_missing_object_and_an_oversized_one(env):
     assert oversized.status_code == 413
 
 
-def test_create_refuses_bytes_that_are_not_a_png(env):
+def test_create_refuses_bytes_that_contradict_the_declared_type(env):
     app, client, _Session, tenant, alice, fake_s3 = env
     _as(app, alice)
     key = f"{tenant.id}/fake.png"
-    _upload(fake_s3, key, b"<svg xmlns='http://www.w3.org/2000/svg'><script/></svg>")
+    _upload(fake_s3, key, LEGIT_SVG)  # déclaré PNG, réellement SVG
     response = client.post(
         "/map-icons",
         json={"title": "Faux", "category": "generic", "s3Key": key, "contentType": "image/png"},
     )
     assert response.status_code == 400
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["errors"][0]["code"] == "content_type_mismatch"
+
+
+def test_create_refuses_a_payload_that_is_neither_png_nor_svg(env):
+    app, client, _Session, tenant, alice, fake_s3 = env
+    _as(app, alice)
+    key = f"{tenant.id}/x.png"
+    _upload(fake_s3, key, b"GIF89a" + b"0" * 32)
+    response = client.post(
+        "/map-icons",
+        json={"title": "Gif", "category": "generic", "s3Key": key, "contentType": "image/png"},
+    )
+    assert response.status_code == 400
+
+
+def test_an_svg_is_sanitized_before_being_stored_and_served(env):
+    app, client, _Session, tenant, alice, fake_s3 = env
+    _as(app, alice)
+    key = f"{tenant.id}/logo.svg"
+    _upload(fake_s3, key, HOSTILE_SVG)
+    created = client.post(
+        "/map-icons",
+        json={
+            "title": "Logo",
+            "category": "generic",
+            "s3Key": key,
+            "contentType": "image/svg+xml",
+        },
+    )
+    assert created.status_code == 201
+    # L'objet STOCKÉ est la version assainie : la garde est à l'écriture, la
+    # lecture ne réassainit pas.
+    stored = fake_s3.objects[key]
+    assert b"script" not in stored
+    assert b"onload" not in stored
+    assert b'd="M4 4"' in stored
+
+    served = client.get(f"/map-icons/{created.json()['id']}/file")
+    assert served.status_code == 200
+    assert served.content == stored
+    assert served.headers["content-type"].startswith("image/svg+xml")
+    assert served.headers["x-content-type-options"] == "nosniff"
+
+
+def test_an_svg_emptied_by_sanitization_is_refused_with_a_problem_json(env):
+    app, client, _Session, tenant, alice, fake_s3 = env
+    _as(app, alice)
+    key = f"{tenant.id}/vide.svg"
+    _upload(
+        fake_s3,
+        key,
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+        b"<script>alert(1)</script></svg>",
+    )
+    response = client.post(
+        "/map-icons",
+        json={
+            "title": "Vide",
+            "category": "generic",
+            "s3Key": key,
+            "contentType": "image/svg+xml",
+        },
+    )
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith("application/problem+json")
+    body = response.json()
+    assert body["errors"][0]["code"] == "svg_no_graphics"
+    # Contrat explicite de D4 : rien n'est enregistré, et l'objet n'est pas
+    # remplacé par une version vide.
+    assert client.get("/map-icons").json() == []
+    assert b"script" in fake_s3.objects[key]
+
+
+def test_a_hostile_dtd_svg_is_refused(env):
+    app, client, _Session, tenant, alice, fake_s3 = env
+    _as(app, alice)
+    key = f"{tenant.id}/dtd.svg"
+    _upload(
+        fake_s3,
+        key,
+        b'<?xml version="1.0"?><!DOCTYPE s [<!ENTITY a SYSTEM "file:///etc/passwd">]>'
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">&a;</svg>',
+    )
+    response = client.post(
+        "/map-icons",
+        json={
+            "title": "DTD",
+            "category": "generic",
+            "s3Key": key,
+            "contentType": "image/svg+xml",
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["errors"][0]["code"] in {"svg_dtd_forbidden", "svg_unparsable"}
+
+
+def test_a_valid_png_is_stored_untouched(env):
+    app, client, _Session, tenant, alice, fake_s3 = env
+    _as(app, alice)
+    key = f"{tenant.id}/ok.png"
+    _upload(fake_s3, key, PNG_BYTES)
+    created = client.post(
+        "/map-icons",
+        json={"title": "PNG", "category": "generic", "s3Key": key, "contentType": "image/png"},
+    )
+    assert created.status_code == 201
+    # Aucun put_object sur le chemin PNG : les octets ne sont pas réécrits.
+    assert fake_s3.objects[key] == PNG_BYTES
 
 
 def test_list_and_read_are_tenant_scoped(env):
@@ -3197,15 +4315,14 @@ def delete_icon(session: Session, icon: MapIcon) -> None:
 from pydantic import BaseModel
 
 # Une seule définition, importée par routes.py — jamais dupliquée.
-# PNG uniquement : un SVG servi depuis l'origine du cœur est un vecteur de
-# XSS stocké (la CSP du dépôt est en Report-Only), et createImageBitmap sur
-# un blob SVG n'est pas fiable selon les navigateurs. Les icônes Lucide sont
-# du SVG mais sont embarquées dans le shell, elles ne passent jamais ici.
-ALLOWED_CONTENT_TYPES = frozenset({"image/png"})
+# PNG et SVG (D4). Un SVG est ASSAINI à l'écriture par app.mapicons.svg et
+# c'est la version assainie qui est stockée : la lecture ne réassainit pas.
+ALLOWED_CONTENT_TYPES = frozenset({"image/png", "image/svg+xml"})
 # Borne réelle, vérifiée par head_object APRÈS l'upload : le presign émis par
 # generate_presigned_put_url ne porte aucune condition de taille.
 MAX_ICON_BYTES = 200_000
-PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+# La signature PNG et la détection de type vivent dans svg.py
+# (sniff_content_type) : une seule définition, à côté de l'assainisseur.
 
 
 class MapIconPresignRequest(BaseModel):
@@ -3232,6 +4349,379 @@ class MapIconOut(BaseModel):
     contentType: str
     createdAt: str
 ```
+
+- [ ] **Step 6b: Create `svg.py` — l'assainisseur (le cœur de D4)**
+
+Tests first. Create `core/tests/test_mapicons_svg.py` — un test pur, sans
+FastAPI ni S3, pour que l'assainisseur soit vérifiable seul :
+
+```python
+# SPDX-License-Identifier: Apache-2.0
+"""Assainissement des SVG d'icônes (SP-27, D4)."""
+
+import pytest
+
+from app.mapicons.svg import SvgRejected, sanitize_svg, sniff_content_type
+
+LEGIT = (
+    b'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+    b'viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="2">'
+    b'<g><path d="M4 4 L20 20"/><circle cx="12" cy="12" r="3"/></g></svg>'
+)
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+
+
+def test_a_legitimate_svg_keeps_its_graphics_and_geometry():
+    out = sanitize_svg(LEGIT).decode()
+    assert out.startswith("<svg")
+    assert 'xmlns="http://www.w3.org/2000/svg"' in out
+    assert 'viewBox="0 0 24 24"' in out
+    # Les éléments graphiques et leurs géométries survivent INTACTS.
+    assert 'd="M4 4 L20 20"' in out
+    assert "<circle" in out and 'r="3"' in out
+    assert 'stroke="#1e293b"' in out
+
+
+def test_script_element_is_removed_with_its_subtree():
+    hostile = (
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+        b'<script>alert(1)</script><path d="M0 0"/></svg>'
+    )
+    out = sanitize_svg(hostile).decode()
+    assert "script" not in out
+    assert "alert" not in out
+    assert 'd="M0 0"' in out
+
+
+def test_event_handler_attributes_are_removed():
+    hostile = (
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" onload="alert(1)">'
+        b'<circle cx="1" cy="1" r="1" onclick="alert(2)"/></svg>'
+    )
+    out = sanitize_svg(hostile).decode()
+    assert "onload" not in out
+    assert "onclick" not in out
+    assert "alert" not in out
+    assert "<circle" in out
+
+
+def test_external_and_javascript_hrefs_are_removed():
+    hostile = (
+        b'<svg xmlns="http://www.w3.org/2000/svg" '
+        b'xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24">'
+        b'<image xlink:href="http://evil.test/x.png"/>'
+        b'<a href="javascript:alert(1)"><path d="M0 0"/></a></svg>'
+    )
+    out = sanitize_svg(hostile).decode()
+    assert "evil.test" not in out
+    assert "javascript" not in out
+    assert "xlink" not in out
+    # <image> et <a> ne sont pas dans l'allowlist : ils partent entièrement.
+    assert "<image" not in out
+    assert 'd="M0 0"' not in out
+
+
+def test_foreign_object_is_removed():
+    hostile = (
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+        b'<foreignObject><body xmlns="http://www.w3.org/1999/xhtml">'
+        b"<img src=x onerror=alert(1)></body></foreignObject>"
+        b'<path d="M1 1"/></svg>'
+    )
+    out = sanitize_svg(hostile).decode()
+    assert "foreignObject" not in out
+    assert "onerror" not in out
+    assert 'd="M1 1"' in out
+
+
+def test_url_and_scheme_bearing_attribute_values_are_removed():
+    hostile = (
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+        b'<path d="M3 3" fill="url(http://evil.test/x)"/>'
+        b'<rect x="0" y="0" width="4" height="4" stroke="url(#grad)"/>'
+        b'<circle cx="1" cy="1" r="1" fill="data:image/png;base64,AAAA"/></svg>'
+    )
+    out = sanitize_svg(hostile).decode()
+    assert "evil.test" not in out
+    assert "url(" not in out
+    assert "data:" not in out
+    # Les éléments et leurs géométries restent, seules les valeurs partent.
+    assert 'd="M3 3"' in out
+    assert "<rect" in out and 'width="4"' in out
+
+
+def test_style_attribute_and_style_element_are_removed():
+    hostile = (
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+        b'<style>* { background: url(javascript:alert(1)) }</style>'
+        b'<path d="M2 2" style="fill:url(#x)"/></svg>'
+    )
+    out = sanitize_svg(hostile).decode()
+    assert "style" not in out
+    assert "javascript" not in out
+    assert 'd="M2 2"' in out
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b'<!DOCTYPE svg SYSTEM "http://evil.test/x.dtd"><svg xmlns="http://www.w3.org/2000/svg"/>',
+        b'<!DOCTYPE s [<!ENTITY a "b">]><svg xmlns="http://www.w3.org/2000/svg">&a;</svg>',
+        b'<!DOCTYPE s [<!ENTITY a SYSTEM "file:///etc/passwd">]>'
+        b'<svg xmlns="http://www.w3.org/2000/svg">&a;</svg>',
+    ],
+)
+def test_dtd_and_entities_are_refused_outright(payload):
+    # forbid_dtd=True est OBLIGATOIRE : le défaut de defusedxml est False, et
+    # un DOCTYPE nu (sans déclaration d'entité) passerait sinon (mesuré).
+    with pytest.raises(SvgRejected) as exc:
+        sanitize_svg(payload)
+    assert exc.value.code in {"svg_dtd_forbidden", "svg_unparsable"}
+
+
+def test_a_non_xml_payload_is_refused():
+    with pytest.raises(SvgRejected) as exc:
+        sanitize_svg(b"\x00\x01 pas du xml")
+    assert exc.value.code == "svg_unparsable"
+
+
+def test_a_non_svg_root_is_refused():
+    with pytest.raises(SvgRejected) as exc:
+        sanitize_svg(b'<html xmlns="http://www.w3.org/1999/xhtml"><body/></html>')
+    assert exc.value.code == "svg_not_svg_root"
+
+
+def test_an_svg_emptied_of_all_graphics_is_refused_not_stored_empty():
+    with pytest.raises(SvgRejected) as exc:
+        sanitize_svg(
+            b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+            b"<script>alert(1)</script></svg>"
+        )
+    assert exc.value.code == "svg_no_graphics"
+
+
+def test_missing_dimensions_are_derived_from_viewbox():
+    out = sanitize_svg(
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 32">'
+        b'<path d="M0 0"/></svg>'
+    ).decode()
+    # Un <img> a besoin de dimensions intrinsèques pour dimensionner un SVG.
+    assert 'width="48"' in out
+    assert 'height="32"' in out
+
+
+def test_an_svg_without_viewbox_or_dimensions_is_refused():
+    with pytest.raises(SvgRejected) as exc:
+        sanitize_svg(
+            b'<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>'
+        )
+    assert exc.value.code == "svg_no_dimensions"
+
+
+def test_sniff_content_type_recognises_png_svg_and_nothing_else():
+    assert sniff_content_type(PNG) == "image/png"
+    assert sniff_content_type(LEGIT) == "image/svg+xml"
+    assert sniff_content_type(b'<?xml version="1.0"?><svg xmlns="x"/>') == "image/svg+xml"
+    assert sniff_content_type(b"GIF89a") is None
+    assert sniff_content_type(b"") is None
+```
+
+Run: `cd core && uv run pytest tests/test_mapicons_svg.py -v` → FAIL (module
+absent).
+
+Then create `core/app/mapicons/svg.py`:
+
+```python
+# SPDX-License-Identifier: Apache-2.0
+"""Assainissement des SVG d'icônes personnalisées (SP-27, D4).
+
+Appliqué à l'ÉCRITURE : ce sont les octets assainis qui sont stockés dans S3,
+et la lecture ne réassainit jamais. Un seul endroit où la garde peut manquer,
+et un fichier stocké sûr par construction.
+
+Deux couches distinctes, parce qu'elles protègent de choses différentes :
+1. `defusedxml` (déjà dépendance directe du cœur, SP-12e) neutralise les
+   bombes d'entités, les DTD et l'XXE. Mesuré : il ne fait RIEN contre
+   <script>, onload= ou xlink:href — c'est du XML parfaitement valide.
+2. Une allowlist stricte d'éléments et d'attributs, appliquée sur l'arbre
+   parsé, puis une RE-SÉRIALISATION depuis cet arbre. Jamais de filtrage par
+   expression régulière sur le texte source : un filtre textuel se contourne
+   par encodage, un arbre reconstruit ne contient que ce qu'on y a remis.
+"""
+
+import xml.etree.ElementTree as ET
+
+from defusedxml.ElementTree import fromstring
+
+SVG_NS = "http://www.w3.org/2000/svg"
+
+# Allowlist d'éléments : primitives géométriques et regroupement, rien qui
+# puisse charger, exécuter ou référencer quoi que ce soit. Absents et donc
+# supprimés AVEC leur sous-arbre : script, style, foreignObject, image, a,
+# use, animate*, set, filter, pattern, mask, clipPath, marker, switch,
+# metadata, title, desc, symbol, text (text tirerait des polices), et tout
+# élément d'un autre espace de noms.
+_ALLOWED_ELEMENTS = frozenset(
+    {
+        "svg",
+        "g",
+        "path",
+        "circle",
+        "ellipse",
+        "line",
+        "polyline",
+        "polygon",
+        "rect",
+    }
+)
+
+# Éléments qui comptent comme « contenu graphique » : si aucun ne survit,
+# l'icône est vide et on la refuse plutôt que de stocker un fichier inerte.
+_GRAPHIC_ELEMENTS = _ALLOWED_ELEMENTS - {"svg", "g"}
+
+# Allowlist d'attributs. `style` en est ABSENT : une déclaration CSS peut
+# porter une url() et il n'y a pas de façon sûre et courte de la contraindre.
+# `href` en est absent aussi, sous toutes ses formes. Les attributs de
+# présentation gardés sont ceux qui décrivent une géométrie ou une couleur.
+_ALLOWED_ATTRS = frozenset(
+    {
+        # géométrie
+        "d", "points", "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r",
+        "rx", "ry", "width", "height", "viewBox", "transform",
+        # présentation
+        "fill", "fill-rule", "fill-opacity", "stroke", "stroke-width",
+        "stroke-linecap", "stroke-linejoin", "stroke-dasharray",
+        "stroke-opacity", "stroke-miterlimit", "opacity",
+    }
+)
+
+_MAX_SANITIZED_BYTES = 200_000
+_MAX_DEPTH = 20
+
+
+class SvgRejected(Exception):
+    """SVG refusé à l'upload. `code` part dans le membre `errors` de la
+    réponse RFC 7807 ; `message` est destiné à l'auteur."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def _local(tag: object) -> str:
+    if not isinstance(tag, str):  # commentaire ou instruction de traitement
+        return ""
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+def _namespace(tag: str) -> str | None:
+    return tag[1:].split("}", 1)[0] if tag.startswith("{") else None
+
+
+def _clean(element: ET.Element, depth: int) -> ET.Element | None:
+    if depth > _MAX_DEPTH:
+        return None
+    tag = element.tag
+    if not isinstance(tag, str):
+        return None  # commentaires, PI : rien à garder
+    ns = _namespace(tag)
+    if ns is not None and ns != SVG_NS:
+        return None  # élément d'un autre espace de noms (XHTML, MathML…)
+    name = _local(tag)
+    if name not in _ALLOWED_ELEMENTS:
+        return None  # supprimé AVEC son sous-arbre
+    out = ET.Element(name)
+    for key, value in element.attrib.items():
+        # Tout attribut d'espace de noms part : c'est ce qui tue
+        # xlink:href, sans avoir à le nommer (clé mesurée :
+        # "{http://www.w3.org/1999/xlink}href").
+        if "}" in key or ":" in key:
+            continue
+        if key.lower().startswith("on"):
+            continue
+        if key not in _ALLOWED_ATTRS:
+            continue
+        # L'allowlist porte sur le NOM ; la VALEUR doit l'être aussi.
+        # `fill`/`stroke` acceptent une fonction `url(...)` en SVG : sans
+        # cette garde, `fill="url(http://evil.test/x)"` ferait une requête
+        # sortante au rendu, et `fill="url(javascript:...)"` serait pire.
+        # Aucun élément de l'allowlist ne peut être la CIBLE d'un url()
+        # (ni defs, ni gradient, ni pattern n'y figurent), donc refuser
+        # url() en bloc ne retire aucune capacité utilisable ici.
+        lowered = value.lower()
+        if "url(" in lowered or "javascript:" in lowered or "data:" in lowered:
+            continue
+        out.set(key, value)
+    for child in element:
+        cleaned = _clean(child, depth + 1)
+        if cleaned is not None:
+            out.append(cleaned)
+    return out
+
+
+def _has_graphics(element: ET.Element) -> bool:
+    return any(_local(e.tag) in _GRAPHIC_ELEMENTS for e in element.iter())
+
+
+def sanitize_svg(raw: bytes) -> bytes:
+    try:
+        # forbid_dtd=True est indispensable : le défaut de defusedxml est
+        # False, et un <!DOCTYPE svg SYSTEM "http://evil/x.dtd"> sans
+        # déclaration d'entité passerait (mesuré).
+        parsed = fromstring(raw, forbid_dtd=True)
+    except Exception as exc:  # ParseError, DTDForbidden, EntitiesForbidden…
+        code = "svg_dtd_forbidden" if "Forbidden" in type(exc).__name__ else "svg_unparsable"
+        raise SvgRejected(code, "SVG illisible ou hostile (DTD, entités, XML invalide).") from exc
+
+    if _local(parsed.tag) != "svg" or _namespace(parsed.tag) not in (None, SVG_NS):
+        raise SvgRejected("svg_not_svg_root", "La racine du document n'est pas un <svg>.")
+
+    cleaned = _clean(parsed, 0)
+    if cleaned is None or not _has_graphics(cleaned):
+        raise SvgRejected(
+            "svg_no_graphics",
+            "Après assainissement, ce SVG ne contient plus aucun élément graphique.",
+        )
+
+    # Dimensions intrinsèques : un <img> en a besoin pour dimensionner un
+    # SVG, et c'est le chemin de décodage retenu côté shell (déviation 13).
+    view_box = cleaned.get("viewBox")
+    if not cleaned.get("width") or not cleaned.get("height"):
+        parts = (view_box or "").replace(",", " ").split()
+        if len(parts) == 4:
+            cleaned.set("width", parts[2])
+            cleaned.set("height", parts[3])
+        else:
+            raise SvgRejected(
+                "svg_no_dimensions",
+                "Ce SVG n'a ni width/height ni viewBox exploitable.",
+            )
+
+    # `xmlns` posé à la main sur une racine aux balises dépouillées : évite
+    # ET.register_namespace, qui est un état GLOBAL du module ElementTree.
+    cleaned.set("xmlns", SVG_NS)
+    out = ET.tostring(cleaned, encoding="utf-8")
+    if len(out) > _MAX_SANITIZED_BYTES:
+        raise SvgRejected("svg_too_large", "SVG trop volumineux après assainissement.")
+    return out
+
+
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def sniff_content_type(head: bytes) -> str | None:
+    """Type réel des octets, indépendamment du contentType déclaré."""
+    if head.startswith(_PNG_MAGIC):
+        return "image/png"
+    prefix = head.lstrip()[:512].lower()
+    if prefix.startswith(b"<svg") or prefix.startswith(b"<?xml"):
+        return "image/svg+xml"
+    return None
+```
+
+Run: `cd core && uv run pytest tests/test_mapicons_svg.py -v`
+Expected: PASS (15 tests, les 3 paramétrages de DTD compris).
 
 - [ ] **Step 7: Create `routes.py`**
 
@@ -3262,6 +4752,7 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.db import get_session
+from app.errors import ValidationHTTPException
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_put_url
 from app.mapicons import repository as repo
@@ -3269,12 +4760,12 @@ from app.mapicons.models import MapIcon
 from app.mapicons.schemas import (
     ALLOWED_CONTENT_TYPES,
     MAX_ICON_BYTES,
-    PNG_MAGIC,
     MapIconCreate,
     MapIconOut,
     MapIconPresignRequest,
     MapIconPresignResponse,
 )
+from app.mapicons.svg import SvgRejected, sanitize_svg, sniff_content_type
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -3338,13 +4829,44 @@ def create_map_icon(
         raise HTTPException(status_code=400, detail="uploaded object not found") from exc
     if int(head.get("ContentLength", 0)) > MAX_ICON_BYTES:
         raise HTTPException(status_code=413, detail="icon too large")
-    # Garde posée à l'ÉCRITURE et à la LECTURE : le contentType déclaré ne
-    # prouve rien sur les octets réellement téléversés.
-    magic = s3_client.get_object(
-        Bucket=bucket, Key=body.s3Key, Range=f"bytes=0-{len(PNG_MAGIC) - 1}"
-    )["Body"].read()
-    if magic != PNG_MAGIC:
-        raise HTTPException(status_code=400, detail="uploaded object is not a PNG")
+
+    # Le contentType DÉCLARÉ ne prouve rien sur les octets téléversés : on
+    # relit l'objet et on tranche sur son contenu réel.
+    raw = s3_client.get_object(Bucket=bucket, Key=body.s3Key)["Body"].read()
+    sniffed = sniff_content_type(raw)
+    if sniffed is None or sniffed != body.contentType:
+        raise ValidationHTTPException(
+            errors=[
+                {
+                    "field": "s3Key",
+                    "code": "content_type_mismatch",
+                    "message": (
+                        "Les octets téléversés ne correspondent pas au type déclaré "
+                        f"({body.contentType})."
+                    ),
+                }
+            ],
+            status_code=400,
+        )
+
+    stored_content_type = sniffed
+    if sniffed == "image/svg+xml":
+        # ASSAINISSEMENT À L'ÉCRITURE (D4) : on réécrit l'objet avec la
+        # version assainie, et c'est elle qui sera servie. La lecture ne
+        # réassainit pas — un seul endroit où la garde peut manquer.
+        try:
+            sanitized = sanitize_svg(raw)
+        except SvgRejected as exc:
+            raise ValidationHTTPException(
+                errors=[{"field": "s3Key", "code": exc.code, "message": exc.message}],
+                status_code=400,
+            ) from exc
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=body.s3Key,
+            Body=sanitized,
+            ContentType="image/svg+xml",
+        )
 
     icon = repo.create_icon(
         session,
@@ -3353,7 +4875,7 @@ def create_map_icon(
         title=body.title,
         category=body.category,
         s3_key=body.s3Key,
-        content_type=body.contentType,
+        content_type=stored_content_type,
     )
     write_audit(
         session,
@@ -3430,11 +4952,18 @@ def read_map_icon_file(
             # authentifiées (app.tileset3d, app.terrain3d).
             "Cache-Control": "private, max-age=3600",
             # nosniff + attachment : le shell ne consomme ces octets QUE par
-            # fetch authentifié + createImageBitmap, jamais dans un contexte
-            # de document. Ces deux en-têtes n'ont pas de précédent dans
-            # core/app/ (vérifié) : pratique nouvelle, assumée ici parce que
-            # c'est la première route du cœur à servir un fichier téléversé
-            # par un utilisateur non-admin.
+            # fetch authentifié puis décodage local (URL d'objet +
+            # HTMLImageElement), jamais dans un contexte de document. Ces
+            # deux en-têtes n'ont AUCUN précédent dans core/app/ (vérifié :
+            # grep X-Content-Type-Options → vide, ni tileset3d ni terrain3d
+            # ne posent de Content-Disposition) : pratique nouvelle, décidée
+            # explicitement (D4), parce que c'est la première route du cœur à
+            # servir un fichier téléversé par un utilisateur non-admin.
+            #
+            # On NE réassainit PAS ici : les octets stockés sont déjà la
+            # version assainie (create_map_icon). Réassainir à chaque lecture
+            # ajouterait un second endroit où la garde peut manquer, et ferait
+            # payer un parse XML à chaque affichage de carte.
             "X-Content-Type-Options": "nosniff",
             "Content-Disposition": "attachment",
         },
@@ -3549,14 +5078,14 @@ silently skipping the check — the omission is what trap #8 is about.
 - [ ] **Step 13: Run the tests and the gates**
 
 Run: `cd core && uv run pytest tests/test_mapicons_routes.py -v`
-Expected: PASS (12 tests).
+Expected: PASS (17 tests, dont les paramétrages).
 
 Run: `cd core && uv run pytest tests/test_deployability.py -v`
 Expected: PASS, still **35/35** — the rule counts buckets in a loop, it does
 not add a test per bucket.
 
 Run: `cd core && uv run pytest -q`
-Expected: 1896 + 12 passed, 5 skipped, the 1 known pre-existing failure.
+Expected: 1896 + 17 (routes) + 15 (assainisseur) passed, 5 skipped, the 1 known pre-existing failure.
 
 Run: `cd core && uv run ruff check . && uv run ruff format --check . && uv run mypy --strict app/auth app/secrets app/analytics app/copilot && uv run lint-imports`
 Expected: all green. **`app/mapicons` is deliberately NOT added to the
@@ -3567,7 +5096,7 @@ therefore *not* strictly typed — a future session must not assume it is.
 - [ ] **Step 14: Commit**
 
 ```bash
-git add core/app/mapicons core/alembic/versions/0029_map_icons.py core/tests/test_mapicons_routes.py core/app/db.py core/app/main.py core/pyproject.toml docker-compose.yml docker-compose.prod.yml deploy/backup/backup.sh .env.example
+git add core/app/mapicons core/alembic/versions/0029_map_icons.py core/tests/test_mapicons_routes.py core/tests/test_mapicons_svg.py core/app/db.py core/app/main.py core/pyproject.toml docker-compose.yml docker-compose.prod.yml deploy/backup/backup.sh .env.example
 git commit -m "$(cat <<'EOF'
 feat(core): ajoute la bibliothèque d'icônes personnalisées tenant-scoped
 
@@ -3577,11 +5106,25 @@ pas app.secrets (qui ne touche jamais S3 et est admin-only). Ouvert à
 tout utilisateur authentifié du tenant : arbitrage assumé, une icône est
 du matériel de présentation, pas un secret.
 
-PNG uniquement (un SVG servi depuis l'origine du cœur est un XSS stocké,
-CSP en Report-Only), taille réellement bornée par head_object après
-upload — le presign ne porte aucune condition de taille —, octets
-vérifiés contre la signature PNG, en-têtes nosniff + attachment.
-Suppression en base d'abord, S3 ensuite en best-effort.
+PNG et SVG. Le SVG est ASSAINI à l'écriture (app/mapicons/svg.py) et ce
+sont les octets assainis qui sont stockés : allowlist stricte d'éléments
+et d'attributs appliquée sur l'arbre parsé puis re-sérialisée, jamais un
+filtrage d'expression régulière sur le texte source. defusedxml était
+déjà dépendance directe (SP-12e) — aucune dépendance ajoutée — mais
+forbid_dtd doit être passé explicitement : son défaut est False et un
+DOCTYPE nu passait. Un SVG illisible ou vidé de tout contenu graphique
+est refusé en RFC 7807 avec un code, jamais stocké vide.
+
+Type réel des octets vérifié contre le contentType déclaré, taille
+bornée par head_object après upload (le presign ne porte aucune
+condition de taille), en-têtes nosniff + attachment — une première dans
+core/app/, assumée. Suppression en base d'abord, S3 ensuite en
+best-effort.
+
+app.mapicons devient le second module du cœur à dépendre de defusedxml
+au runtime : le suivi préexistant « libexpat.so.1 manquant en
+conteneur » voit donc sa surface s'élargir, sans être ni aggravé ni
+corrigé ici.
 
 app/db.py enregistre le module models : sans lui la table n'est pas créée
 par init_db ET map_icons manque à la denylist du registre de collections.
@@ -3592,7 +5135,7 @@ EOF
 
 ---
 
-## Task 9: OpenAPI + TS regeneration
+## Task 10: OpenAPI + TS regeneration
 
 **Files:**
 - Modify: `core/openapi.json`
@@ -3600,7 +5143,7 @@ EOF
 
 This is the repo's most frequent class of omission (≥5 occurrences,
 `CLAUDE.md` trap #1). It is a task of its own on purpose, and it must be the
-commit immediately after Task 8.
+commit immediately after Task 9.
 
 - [ ] **Step 1: Regenerate both sides**
 
@@ -3638,7 +5181,7 @@ EOF
 
 ---
 
-## Task 10: Shell — `ItemClient` map-icon methods
+## Task 11: Shell — `ItemClient` map-icon methods
 
 **Files:**
 - Modify: `shell/src/api/types.ts`
@@ -3650,7 +5193,7 @@ EOF
 **Interfaces:**
 - Produces: `ItemClient.presignMapIconUpload`, `.createMapIcon`,
   `.listMapIcons`, `.deleteMapIcon`, **`.fetchMapIconBlob`** — consumed by
-  Task 11.
+  Task 12.
 
 **Design decision, and why there is no `mapIconFileUrl`:** `GET
 /map-icons/{id}/file` is guarded by `Depends(get_current_user)` and the
@@ -3658,7 +5201,7 @@ shell authenticates with a **bearer token** (`itemClient.ts:330-334`:
 `if (token) headers.Authorization = \`Bearer ${token}\``). A URL handed to
 `new Image().src` carries no custom header and would take a 401. The client
 therefore exposes `fetchMapIconBlob(iconId): Promise<Blob>` — the token
-never leaves `itemClient.ts`, and `MapView` (Task 7) turns the blob into an
+never leaves `itemClient.ts`, and `MapView` (Task 8) turns the blob into an
 `ImageBitmap`. There are exactly **two** `ItemClient` implementations
 (`itemClient.ts`, `StaticItemClient.ts`), so `npm run build` proves
 completeness.
@@ -3874,7 +5417,7 @@ EOF
 
 ---
 
-## Task 11: Shell — icon picker UI (Lucide grid + custom library) and custom icon rendering
+## Task 12: Shell — icon picker UI (Lucide grid + custom library) and custom icon rendering
 
 **Files:**
 - Modify: `shell/src/map/MapSymbologyEditor.tsx`
@@ -3884,9 +5427,9 @@ EOF
 - Modify: `shell/src/builder/widgets/mapWidget.test.tsx`
 
 **Interfaces:**
-- Consumes: `LUCIDE_ICONS`, `IconCategory` (Task 5); `IconRef`, `LayerIcon`
-  (Task 6); `listMapIcons`/`presignMapIconUpload`/`createMapIcon`/
-  `deleteMapIcon`/`fetchMapIconBlob` (Task 10); `computeColorDomain`
+- Consumes: `LUCIDE_ICONS`, `IconCategory` (Task 6); `IconRef`, `LayerIcon`
+  (Task 7); `listMapIcons`/`presignMapIconUpload`/`createMapIcon`/
+  `deleteMapIcon`/`fetchMapIconBlob` (Task 11); `computeColorDomain`
   (existing).
 - Produces: three **optional** props on `MapSymbologyEditor`
   (`listCustomIcons`, `uploadCustomIcon`, `deleteCustomIcon`) and the
@@ -4270,11 +5813,11 @@ JSX, appended after the stroke block from Task 4:
 
           {uploadCustomIcon && (
             <label className={labelCls}>
-              Ajouter une icône PNG au tenant
+              Ajouter une icône au tenant (PNG ou SVG)
               <input
-                aria-label="Ajouter une icône PNG au tenant"
+                aria-label="Ajouter une icône au tenant (PNG ou SVG)"
                 type="file"
-                accept="image/png"
+                accept="image/png,image/svg+xml"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
@@ -4311,8 +5854,11 @@ JSX, appended after the stroke block from Task 4:
       )}
 ```
 
-Note: the upload input accepts `image/png` only — the core refuses anything
-else (Task 8, déviation 9).
+Note: the upload input accepts `image/png` **and** `image/svg+xml` — the
+core accepts both and **assainit** the SVG at write time (Task 9,
+déviation 13). `setIconError` already renders the RFC 7807 `detail` returned
+when a hostile or empty SVG is refused, so a rejected upload is visible to
+the author instead of silently producing an unusable icon.
 
 - [ ] **Step 5: Wire the two hosts**
 
@@ -4338,7 +5884,7 @@ re-reading that effect.
 - [ ] **Step 6: Wire `loadCustomIcon` into `MapView` at both hosts**
 
 `MapView` gained the optional `loadCustomIcon?: (iconId: string) =>
-Promise<Blob>` prop in Task 7. Pass it wherever `MapView` is rendered with a
+Promise<Blob>` prop in Task 8. Pass it wherever `MapView` is rendered with a
 `client` in scope:
 
 - `shell/src/builder/widgets/mapWidget.tsx`'s `Component`:
@@ -4383,14 +5929,14 @@ la rendre par valeur produisait 140 × N boutons et des aria-label
 dupliqués. Les trois props de bibliothèque sont OPTIONNELLES (18 rendus
 inline dans les tests) et le chargement passe par une ref, sinon une
 flèche inline chez l'hôte en dépendance d'effet bouclait à l'infini.
-Upload PNG uniquement, cohérent avec la garde du cœur.
+Upload PNG ou SVG, cohérent avec la garde d'assainissement du cœur.
 EOF
 )"
 ```
 
 ---
 
-## Task 12: Shell — `labelSource.ts` (pure) et `LayerSymbology.label`
+## Task 13: Shell — `labelSource.ts` (pure) et `LayerSymbology.label`
 
 **Files:**
 - Create: `shell/src/map/labelSource.ts`
@@ -4404,7 +5950,7 @@ EOF
   MapLibre draws plain text.
 - Produces: `LayerLabel`, `LayerSymbology.label`,
   `buildLabelFeatureCollection(features, template, pkColumn?)` — consumed by
-  Task 13.
+  Task 14.
 
 **The one fact that broke two tests of the earlier draft:** this repo's CEL
 template vocabulary is **`${record.champ}`**, not `${champ}`. `ExprContext`
@@ -4655,7 +6201,7 @@ EOF
 
 ---
 
-## Task 13: Shell — `MapView.tsx`: source et couche d'étiquettes, plus le bloc éditeur
+## Task 14: Shell — `MapView.tsx`: source et couche d'étiquettes, plus le bloc éditeur
 
 **Files:**
 - Modify: `shell/src/map/MapView.tsx`
@@ -4664,7 +6210,7 @@ EOF
 - Modify: `shell/src/map/MapSymbologyEditor.test.tsx`
 
 **Interfaces:**
-- Consumes: `buildLabelFeatureCollection` (Task 12); the extended `MockMap`
+- Consumes: `buildLabelFeatureCollection` (Task 13); the extended `MockMap`
   (Task 1).
 - Produces: a `${layer.id}__labels` GeoJSON source + a `${layer.id}__label`
   `symbol` layer per labelled layer, refreshed on `idle`;
@@ -4998,7 +6544,7 @@ and clear it in the same effect's teardown, next to the existing cleanup:
 
 Also call `refreshLabelSources(map, layersRef.current)` immediately after
 **both** `applyLayers(...)` calls (right next to the
-`void loadIconImages(...)` line added in Task 7) — a config change must not
+`void loadIconImages(...)` line added in Task 8) — a config change must not
 wait for the next `idle` to repopulate the labels of a layer that already has
 its tiles.
 
@@ -5067,7 +6613,7 @@ test("« Retirer l'étiquette » n'efface que l'étiquette", async () => {
 });
 ```
 
-Implementation, appended after the icon block from Task 11:
+Implementation, appended after the icon block from Task 12:
 
 ```tsx
       {!value?.label && (
@@ -5173,7 +6719,7 @@ EOF
 
 ---
 
-## Task 14: Shell — `measureSketch.ts` (pure geodesic math + shape → GeoJSON)
+## Task 15: Shell — `measureSketch.ts` (pure geodesic math + shape → GeoJSON)
 
 **Files:**
 - Create: `shell/src/map/measureSketch.ts`
@@ -5183,7 +6729,7 @@ EOF
 - Produces: `LngLat`, `SketchShape`, `haversineDistanceMeters`,
   `lineDistanceMeters`, `sphericalPolygonAreaSquareMeters`,
   `formatDistance`, `formatArea`, `shapeToGeoJSONFeature` — consumed by
-  Tasks 15, 16, 17.
+  Tasks 16, 17, 18.
 
 **Verified facts:**
 - The maths sketched in the earlier draft are **correct**: haversine over 1°
@@ -5514,7 +7060,7 @@ EOF
 
 ---
 
-## Task 15: Shell — `MapMeasureSketchToolbar.tsx` (mesure) et son montage
+## Task 16: Shell — `MapMeasureSketchToolbar.tsx` (mesure) et son montage
 
 **Files:**
 - Create: `shell/src/map/MapMeasureSketchToolbar.tsx`
@@ -5524,7 +7070,7 @@ EOF
 
 **Interfaces:**
 - Consumes: `lineDistanceMeters`, `sphericalPolygonAreaSquareMeters`,
-  `formatDistance`, `formatArea`, `LngLat` (Task 14).
+  `formatDistance`, `formatArea`, `LngLat` (Task 15).
 - Produces: `MapMeasureSketchToolbar`; `MapView`'s new
   `interactiveTools?: boolean` prop (default `false`).
 
@@ -5666,7 +7212,7 @@ test("le démontage retire les écouteurs de la carte", () => {
 });
 ```
 
-`makeMapStub` is exported so Tasks 16 and 17 can extend the same helper
+`makeMapStub` is exported so Tasks 17 and 17 can extend the same helper
 without a second definition.
 
 Add to `shell/src/map/MapView.test.tsx`:
@@ -5841,13 +7387,13 @@ EOF
 
 ---
 
-## Task 16: Shell — croquis (tracé libre, formes, texte, couleur)
+## Task 17: Shell — croquis (tracé libre, formes, texte, couleur)
 
 **Files:**
 - Modify: `shell/src/map/MapMeasureSketchToolbar.tsx`
 - Modify: `shell/src/map/MapMeasureSketchToolbar.test.tsx`
 
-**Interfaces:** consumes `SketchShape`, `LngLat` (Task 14); extends the same
+**Interfaces:** consumes `SketchShape`, `LngLat` (Task 15); extends the same
 component's state. No new exports.
 
 **Two defects of the earlier draft this task must not reproduce:**
@@ -5866,7 +7412,7 @@ component's state. No new exports.
 - [ ] **Step 1: Write the failing tests**
 
 Append to `shell/src/map/MapMeasureSketchToolbar.test.tsx` (reuse
-`makeMapStub` from Task 15):
+`makeMapStub` from Task 16):
 
 ```tsx
 test("le tracé libre enregistre une forme au relâchement", () => {
@@ -5983,7 +7529,7 @@ test("la couleur du croquis est appliquée aux formes créées ensuite", () => {
   map.emit("click", { lngLat: { lng: 0, lat: 0 } });
   map.emit("click", { lngLat: { lng: 1, lat: 1 } });
   // Le compteur prouve l'enregistrement ; la couleur est vérifiée sur la
-  // source GeoJSON en Task 17, où les formes atteignent la carte.
+  // source GeoJSON en Task 18, où les formes atteignent la carte.
   expect(screen.getByText("1 rectangle")).toBeInTheDocument();
 });
 ```
@@ -6031,7 +7577,7 @@ const SHAPE_ORDER: SketchShape["kind"][] = ["freehand", "rect", "circle", "polyg
   colorRef.current = color;
 ```
 
-Replace the `onClick` handler of Task 15 with the extended version, in the
+Replace the `onClick` handler of Task 16 with the extended version, in the
 **same** effect (one `click` listener, not two):
 
 ```tsx
@@ -6119,7 +7665,7 @@ call `setShapes` and `setFreehandPoints` as two ordinary calls. **Prefer this
 second form** — it has no scheduling subtlety at all; the first is written
 here only to show what must not happen (a `setShapes` inside an updater).
 
-`clearAll` (from Task 15) gains the sketch state:
+`clearAll` (from Task 16) gains the sketch state:
 
 ```tsx
   function clearAll() {
@@ -6223,7 +7769,7 @@ Import `type SketchShape` from `./measureSketch`.
 - [ ] **Step 4: Run + gates + commit**
 
 Run: `cd shell && npx vitest run src/map/MapMeasureSketchToolbar.test.tsx`
-Expected: PASS (the 6 tests from Task 15 + the 10 new ones).
+Expected: PASS (the 6 tests from Task 16 + the 10 new ones).
 
 Run: `cd shell && npm run lint && npm run format:check && npx vitest run && npm run build`
 
@@ -6243,13 +7789,13 @@ EOF
 
 ---
 
-## Task 17: Shell — rendu des formes de croquis sur la carte (source GeoJSON `__sketch__`)
+## Task 18: Shell — rendu des formes de croquis sur la carte (source GeoJSON `__sketch__`)
 
 **Files:**
 - Modify: `shell/src/map/MapMeasureSketchToolbar.tsx`
 - Modify: `shell/src/map/MapMeasureSketchToolbar.test.tsx`
 
-**Interfaces:** consumes `shapeToGeoJSONFeature` (Task 14). No new exports.
+**Interfaces:** consumes `shapeToGeoJSONFeature` (Task 15). No new exports.
 
 **Why this is a task and not a step of the E2E task:** the earlier draft
 folded this into the E2E task and mandated an effect with three real defects:
@@ -6453,7 +7999,7 @@ half-drawn ring rendered as a filled polygon flickers as the user clicks.
 - [ ] **Step 4: Run + gates + commit**
 
 Run: `cd shell && npx vitest run src/map/MapMeasureSketchToolbar.test.tsx`
-Expected: PASS — the 6 tests of Task 15, the 10 of Task 16, and these 6.
+Expected: PASS — the 6 tests of Task 16, the 10 of Task 17, and these 6.
 
 Run: `cd shell && npm run lint && npm run format:check && npx vitest run && npm run build`
 
@@ -6472,14 +8018,14 @@ EOF
 
 ---
 
-## Task 18: Shell — câble le widget carte sur `symbology` (périmètre élargi, D2)
+## Task 19: Shell — câble le widget carte sur `symbology` (périmètre élargi, D2)
 
 **Files:**
 - Modify: `shell/src/builder/widgets/mapWidget.tsx`
 - Modify: `shell/src/builder/widgets/mapWidget.test.tsx`
 
 **Interfaces:** consumes `renderAsFor`, `symbologyToPaintInputs`,
-`buildLegend` (Tasks 2, 6); `MapView`'s `symbology`-driven paint (Tasks 3, 7,
+`buildLegend` (Tasks 2, 7); `MapView`'s `symbology`-driven paint (Tasks 3, 8,
 13) and its `themeColors`/`interactiveTools`/`loadCustomIcon` props.
 
 **What is wrong today, verbatim** (`mapWidget.tsx:181-213`): the widget calls
@@ -6502,7 +8048,7 @@ itself and builds
 — a layer carrying `paint` and **never `symbology`**. `effectivePaint`
 therefore takes its `if (!layer.symbology) return layer.paint ?? {}` branch,
 and no SP-27 mechanic (outline layer, icons, labels, opacity) reaches an app,
-a dashboard, or a `/sites/{slug}` page. Task 11 meanwhile added the icon
+a dashboard, or a `/sites/{slug}` page. Task 12 meanwhile added the icon
 picker to this widget's `PropsPanel`, so an author would configure symbology
 the widget cannot render.
 
@@ -6769,7 +8315,7 @@ every expected artefact:
 
 ```ts
 test("une couche feature portant les quatre nouveaux encodages produit toutes ses sous-couches", () => {
-  installCreateImageBitmapStub();
+  installImageDecodeStub();
   const layer: MapLayer = {
     id: "ds-1", title: "Données", visible: true, kind: "feature", url: "u", renderAs: "circle",
     symbology: {
@@ -6824,7 +8370,7 @@ EOF
 
 ---
 
-## Task 19: E2E proofs (4.4 et 4.5) + vérification finale
+## Task 20: E2E proofs (4.4 et 4.5) + vérification finale
 
 **Files:**
 - Create: `shell/e2e/map-symbology-advanced.spec.ts` (1 test)
@@ -6900,7 +8446,7 @@ the earlier draft asserted:**
 proof below asserts **persistence and round-trip through the editor**, never
 rendered glyph pixels. Rendering a label requires the basemap style to serve
 `glyphs` from `demotiles.maplibre.org`, a network resource this suite must
-not depend on. Task 13 already makes a missing `glyphs` a warned,
+not depend on. Task 14 already makes a missing `glyphs` a warned,
 non-catastrophic skip, and its unit test covers that branch.
 
 - [ ] **Step 1: Write the 4.4 proof**
@@ -6947,7 +8493,7 @@ test("un contour, une opacité et une étiquette survivent à l'enregistrement e
   //
   // C'est la preuve du chantier 4.4 : la symbologie avancée est persistée et
   // relue. Le rendu des glyphes n'est PAS asserté ici — il dépend du service
-  // de glyphes du fond de carte (ressource réseau), et Task 13 couvre déjà en
+  // de glyphes du fond de carte (ressource réseau), et Task 14 couvre déjà en
   // unitaire le cas « style sans glyphs ».
   await expect(page.getByLabel("Gabarit d'étiquette")).toHaveValue("${record.nom}");
 });
@@ -7036,7 +8582,7 @@ test("le croquis pose une forme comptabilisée dans la barre d'outils", async ({
   // n'expose l'instance MapLibre au contexte de page et Global Constraints
   // interdit d'ajouter un global de test au code de production : la preuve
   // observable est le compteur de la barre d'outils, couvert côté source
-  // GeoJSON par les tests unitaires de la tâche 17.
+  // GeoJSON par les tests unitaires de la tâche 18.
   expect(writes).toEqual([]);
 });
 ```
@@ -7058,8 +8604,8 @@ pattern — the siblings are ground truth, this plan's sketch of them is not.
 Run: `cd shell && npm run e2e`
 Expected: **111 passed, 4 skipped, 0 failed** (108 baseline + 3 new tests).
 If a pre-existing spec now fails, this is the cross-task regression class
-`CLAUDE.md` trap #6 warns about — most plausibly Task 18's widget rewiring
-(a layer that used to carry `paint` now carries `symbology`) or Task 15's
+`CLAUDE.md` trap #6 warns about — most plausibly Task 19's widget rewiring
+(a layer that used to carry `paint` now carries `symbology`) or Task 16's
 toolbar appearing over a canvas some other spec clicks. Investigate and fix
 in a **separate commit** before proceeding; do not fold an unrelated
 regression fix into this task's commit.
@@ -7077,7 +8623,7 @@ cd ../shell && rm -rf dist dist-export
 cd ../shell && npm run lint && npm run format:check && npx vitest run --coverage && npm run build
 cd ../shell && node scripts/check-coverage.mjs coverage/coverage-summary.json .coverage-threshold
 ```
-Expected: core 1896 + 12 passed, 5 skipped, 1 known pre-existing failure,
+Expected: core 1896 + 32 passed, 5 skipped, 1 known pre-existing failure,
 coverage ≥ 85; deployability **35/35**; shell ≥ 1463 + the tests added by
 Tasks 1-18, coverage ≥ 88 — measured **after** removing `dist/` and
 `dist-export/`, which this repo's `vitest` config otherwise counts as
@@ -7091,7 +8637,7 @@ cd core && PYTHONPATH=. CORE_SECRETS_MASTER_KEY="AAECAwQFBgcICQoLDA0ODxAREhMUFRY
 cd ../shell && npm run gen:api-types
 git diff --stat core/openapi.json shell/src/api/generated/core-schema.d.ts
 ```
-Expected: **empty** — Task 9 already committed the regeneration and no task
+Expected: **empty** — Task 10 already committed the regeneration and no task
 after it touched a route or a schema. A non-empty diff here means a later
 task changed the core API without saying so; commit the regeneration
 separately and note what changed.
@@ -7133,109 +8679,112 @@ laissé silencieux.
 
 | # | Gravité | Traitement |
 |---|---|---|
-| 1.1 | Bloquant | **Corrigé** — Task 5 : le catalogue compte exactement **140** entrées et le test asserte `toHaveLength(140)` + 20 par catégorie. L'annonce « ≥ 150 » disparaît, y compris du message de commit. |
-| 1.2 | Bloquant | **Corrigé** — Task 5 : catalogue reconstruit, **140 noms uniques** vérifiés programmatiquement contre le tarball 1.34.0 (`star`→generic, `landmark`→buildings, `store`→services, `tent`/`ferris-wheel`→leisure ; slots libérés remplis par `map-pinned` et `tram-front`). Le test « aucun doublon » passe désormais par construction. |
-| 1.3 | Bloquant | **Corrigé** — **D2**, déviation 4 + **Task 18** entière : `mapWidget.tsx` cesse d'appeler `buildMapPaint` et transmet `symbology` + `themeColors` à `MapView`. Task 3 ajoute la prop `themeColors` à `MapView` précisément pour ça. Non-régression du chemin `paint` exigée et testée (Task 18, Step 1, dernier test). |
-| 1.4 | Important | **Corrigé** — déviation 1 réécrite : la mention « mirroring `app/secrets/routes.py` exactly » est retirée et remplacée par l'arbitrage explicite « **délibérément pas admin-only**, contrairement à `app/secrets` qui l'est (`_require_admin`, lignes 22-24, appelé sur ses trois routes) », avec la raison produit. Le docstring de `routes.py` (Task 8, Step 7) dit la même chose. |
-| 1.5 | Important | **Corrigé** — Architecture + Task 8 : le précédent nommé est `app/tileset3d/`/`app/terrain3d/` (`from app.ingestion.routes import get_s3_client`), et il est écrit noir sur blanc qu'`app/secrets/` ne touche jamais S3. |
+| 1.1 | Bloquant | **Corrigé** — Task 6 : le catalogue compte exactement **140** entrées et le test asserte `toHaveLength(140)` + 20 par catégorie. L'annonce « ≥ 150 » disparaît, y compris du message de commit. |
+| 1.2 | Bloquant | **Corrigé** — Task 6 : catalogue reconstruit, **140 noms uniques** vérifiés programmatiquement contre le tarball 1.34.0 (`star`→generic, `landmark`→buildings, `store`→services, `tent`/`ferris-wheel`→leisure ; slots libérés remplis par `map-pinned` et `tram-front`). Le test « aucun doublon » passe désormais par construction. |
+| 1.3 | Bloquant | **Corrigé** — **D2**, déviation 4 + **Task 19** entière : `mapWidget.tsx` cesse d'appeler `buildMapPaint` et transmet `symbology` + `themeColors` à `MapView`. Task 3 ajoute la prop `themeColors` à `MapView` précisément pour ça. Non-régression du chemin `paint` exigée et testée (Task 19, Step 1, dernier test). |
+| 1.4 | Important | **Corrigé** — déviation 1 réécrite : la mention « mirroring `app/secrets/routes.py` exactly » est retirée et remplacée par l'arbitrage explicite « **délibérément pas admin-only**, contrairement à `app/secrets` qui l'est (`_require_admin`, lignes 22-24, appelé sur ses trois routes) », avec la raison produit. Le docstring de `routes.py` (Task 9, Step 7) dit la même chose. |
+| 1.5 | Important | **Corrigé** — Architecture + Task 9 : le précédent nommé est `app/tileset3d/`/`app/terrain3d/` (`from app.ingestion.routes import get_s3_client`), et il est écrit noir sur blanc qu'`app/secrets/` ne touche jamais S3. |
 | 1.6 | Important | **Corrigé** — Task 3, Step 8 : `MapSymbologyLegend` reçoit un bloc `{legend.stroke && …}` avec son test. Il est aussi écrit que `MapLegend.tsx` (le composant utilisé hors widget) ne rend aucune légende de symbologie et reste volontairement intouché. |
 | 1.7 | Important | **Corrigé** — déviation 5 + Task 2 : la forme **persistée** `StrokeColorEncoding` porte `palette: PaletteId` ; `symbologyToPaintInputs` la résout en `ResolvedPalette` (nouveau champ de retour `stroke`), et `buildMapPaint` consomme `StrokePaintInput`. Un test couvre la résolution de `theme-primary` pour le contour. |
-| 1.8 | Mineur | **Corrigé** — Global Constraints : la contrainte n'est plus absolue. Elle dit désormais que Task 8 **ne** régénère pas et que Task 9 est obligatoire et doit être le commit immédiatement suivant, « écrit ici pour qu'un relecteur par tâche ne le signale pas ». |
-| 1.9 | Mineur | **Corrigé** — arithmétique refaite sur la source réelle : 57 fichiers, **112** `test()`, 4 `skip` au runtime ⇒ 108 passed. Ce plan ajoute **3** tests ⇒ **111 passed / 4 skipped**, écrit dans Global Constraints et dans Task 19. |
+| 1.8 | Mineur | **Corrigé** — Global Constraints : la contrainte n'est plus absolue. Elle dit désormais que Task 9 **ne** régénère pas et que Task 10 est obligatoire et doit être le commit immédiatement suivant, « écrit ici pour qu'un relecteur par tâche ne le signale pas ». |
+| 1.9 | Mineur | **Corrigé** — arithmétique refaite sur la source réelle : 57 fichiers, **112** `test()`, 4 `skip` au runtime ⇒ 108 passed. Ce plan ajoute **3** tests ⇒ **111 passed / 4 skipped**, écrit dans Global Constraints et dans Task 20. |
 
 ### Catégorie 2 — erreurs factuelles (tiers / code réel)
 
 | # | Gravité | Traitement |
 |---|---|---|
-| 2.1 | Bloquant | **Corrigé** — **D1**, déviation 3 : `feature-state` disparaît entièrement. Mécanisme retenu : source GeoJSON `<layerId>__labels` calculée côté client + `text-field: ["get","label"]`. Message du validateur reproduit verbatim dans la déviation et dans l'en-tête de `labelSource.ts`. Tasks 12 et 13 réécrites ; `labelFeatureState.ts` renommé `labelSource.ts` dans la table « File Structure ». |
-| 2.2 | Important | **Corrigé** — Task 13 : `addLabelLayer` lit `map.getStyle().glyphs` et, absent, **ne pose pas la couche** et `console.warn`. Un test couvre cette branche. Task 19 n'asserte jamais un glyphe rendu : la preuve 4.4 porte sur la persistance, explicitement pour ne pas dépendre de `demotiles.maplibre.org`. |
-| 2.3 | Bloquant | **Corrigé** — déviation 7 + Task 2 (`MapPaintResult.iconLayout`, séparé de `paint`) + Task 6 (`icon-image` écrit **uniquement** dans `iconLayout`) + Task 7 (`addIconLayer` pose un `symbol` dédié). Le mode de panne est rendu visible de deux façons : un test « `buildMapPaint` never writes a layout-only property into paint », et l'écoute de `map.on("error")` ajoutée en Task 3 (avec son test), puisque `Style.addLayer` fait `if (this._validate(...)) return;` — vérifié dans le bundle installé. |
-| 2.4 | Bloquant | **Corrigé par disparition** — `setFeatureState` n'est plus utilisé (D1). La contrainte est néanmoins conservée et documentée là où elle s'applique encore : Task 13 exige `sourceLayer` sur `querySourceFeatures` pour une source **vecteur** (sinon la requête renvoie zéro entité, en silence — implémentation vérifiée : `params.sourceLayer ? … : ""` puis `layers._geojsonTileLayer \|\| layers[""]`) et son **absence** pour du GeoJSON, avec un test par cas. |
-| 2.5 | Important | **Corrigé** — déviation 8 + Task 7 : `map.addImage(id, bitmap)` sans options, et un test asserte `map.images.get("lucide:school")?.options` **undefined**. Raison écrite (l'image n'est pas un SDF ; `icon-color` n'est jamais utilisé). |
-| 2.6 | Mineur (info) | **Conservé** — les cinq constats corrects sont réaffirmés dans « Key facts verified for this task » de Task 2 (`fill-outline-width` absent, `fill-outline-color` data-driven, `circle-stroke-*` data-driven, `line-dasharray` cross-faded donc constante valide) et de Task 17 (`filter: ["==", ["geometry-type"], "LineString"]` validé sans erreur). `promoteId` n'est plus utilisé (D1) et n'est donc plus mentionné. |
-| 2.7 | Bloquant | **Corrigé** — Task 5 : les 6 noms inexistants (`garage`, `bridge`, `stairs`, `elevator`, `first-aid-kit`, `swimming-pool`) sont remplacés par des noms vérifiés (`radio-tower`, `school`, `library`, `university`, `brick-wall`, `thermometer`, `shield-check`, `medal`…). Les 140 noms ont été testés un à un contre `package/icons/<name>.svg` du tarball 1.34.0 : 0 manquant. |
-| 2.8 | Mineur (info) | **Corrigé** — Task 5 : le décompte réel (**2035** fichiers) remplace « ~1500 » dans le commentaire du module et dans les faits de la tâche. Licence ISC confirmée et l'attribution part dans l'en-tête du fichier généré. |
-| 2.9 | Mineur (incertitude) | **Supprimé, pas contourné** — déviation 10 : ni le `import()` templaté ni `import.meta.glob("/node_modules/…")` ne sont utilisés. Task 5 matérialise les SVG par un script committé (`scripts/gen-lucide-icons.mjs` → `lucideIconSvgs.generated.ts`), ce qui élimine toute dépendance au comportement du bundler et évite d'émettre ~2035 assets. |
+| 2.1 | Bloquant | **Corrigé** — **D1**, déviation 3 : `feature-state` disparaît entièrement. Mécanisme retenu : source GeoJSON `<layerId>__labels` calculée côté client + `text-field: ["get","label"]`. Message du validateur reproduit verbatim dans la déviation et dans l'en-tête de `labelSource.ts`. Tasks 13 et 14 réécrites ; `labelFeatureState.ts` renommé `labelSource.ts` dans la table « File Structure ». |
+| 2.2 | Important | **Corrigé** — Task 14 : `addLabelLayer` lit `map.getStyle().glyphs` et, absent, **ne pose pas la couche** et `console.warn`. Un test couvre cette branche. Task 20 n'asserte jamais un glyphe rendu : la preuve 4.4 porte sur la persistance, explicitement pour ne pas dépendre de `demotiles.maplibre.org`. |
+| 2.3 | Bloquant | **Corrigé** — déviation 7 + Task 2 (`MapPaintResult.iconLayout`, séparé de `paint`) + Task 7 (`icon-image` écrit **uniquement** dans `iconLayout`) + Task 8 (`addIconLayer` pose un `symbol` dédié). Le mode de panne est rendu visible de deux façons : un test « `buildMapPaint` never writes a layout-only property into paint », et l'écoute de `map.on("error")` ajoutée en Task 3 (avec son test), puisque `Style.addLayer` fait `if (this._validate(...)) return;` — vérifié dans le bundle installé. |
+| 2.4 | Bloquant | **Corrigé par disparition** — `setFeatureState` n'est plus utilisé (D1). La contrainte est néanmoins conservée et documentée là où elle s'applique encore : Task 14 exige `sourceLayer` sur `querySourceFeatures` pour une source **vecteur** (sinon la requête renvoie zéro entité, en silence — implémentation vérifiée : `params.sourceLayer ? … : ""` puis `layers._geojsonTileLayer \|\| layers[""]`) et son **absence** pour du GeoJSON, avec un test par cas. |
+| 2.5 | Important | **Corrigé** — déviation 8 + Task 8 : `map.addImage(id, bitmap)` sans options, et un test asserte `map.images.get("lucide:school")?.options` **undefined**. Raison écrite (l'image n'est pas un SDF ; `icon-color` n'est jamais utilisé). |
+| 2.6 | Mineur (info) | **Conservé** — les cinq constats corrects sont réaffirmés dans « Key facts verified for this task » de Task 2 (`fill-outline-width` absent, `fill-outline-color` data-driven, `circle-stroke-*` data-driven, `line-dasharray` cross-faded donc constante valide) et de Task 18 (`filter: ["==", ["geometry-type"], "LineString"]` validé sans erreur). `promoteId` n'est plus utilisé (D1) et n'est donc plus mentionné. |
+| 2.7 | Bloquant | **Corrigé** — Task 6 : les 6 noms inexistants (`garage`, `bridge`, `stairs`, `elevator`, `first-aid-kit`, `swimming-pool`) sont remplacés par des noms vérifiés (`radio-tower`, `school`, `library`, `university`, `brick-wall`, `thermometer`, `shield-check`, `medal`…). Les 140 noms ont été testés un à un contre `package/icons/<name>.svg` du tarball 1.34.0 : 0 manquant. |
+| 2.8 | Mineur (info) | **Corrigé** — Task 6 : le décompte réel (**2035** fichiers) remplace « ~1500 » dans le commentaire du module et dans les faits de la tâche. Licence ISC confirmée et l'attribution part dans l'en-tête du fichier généré. |
+| 2.9 | Mineur (incertitude) | **Supprimé, pas contourné** — déviation 10 : ni le `import()` templaté ni `import.meta.glob("/node_modules/…")` ne sont utilisés. Task 6 matérialise les SVG par un script committé (`scripts/gen-lucide-icons.mjs` → `lucideIconSvgs.generated.ts`), ce qui élimine toute dépendance au comportement du bundler et évite d'émettre ~2035 assets. |
 | 2.10 | Bloquant | **Corrigé** — Task 1 (nouvelle) + toutes les tâches de rendu : `renderMapView`, `emit` et `flushPromises` n'existent pas et ne sont plus invoqués. Le harnais réel est nommé explicitement (`render(<MapView config={cfg} />)` puis `mapInstances[0]`, les helpers `tiled()` ligne 965 et `clickPayload` ligne 1208), et **toutes** les assertions passent par l'état enregistré (`map.getLayer(id)` + `toMatchObject`), jamais par `toHaveBeenCalledWith` sur une méthode de `MockMap` — qui est une classe, pas un spy. |
 | 2.11 ≡ 4.2 | Bloquant | **Corrigé** — **Task 1** étend `MockMaplibreMap.ts` : `addImage`/`hasImage`/`removeImage`/`listImages`, `getStyle()` (avec un champ `glyphs` pilotable), `querySourceFeatures` (+ `sourceFeatures` et `querySourceFeaturesCalls`), `getCanvas`, et `fire(event, payload?)` de façon **additive** pour ne pas casser les ~15 appels `fire("moveend")`/`fire("idle")` existants. Le fichier entre dans « File Structure ». Task 1 est placée **avant** toute tâche qui en dépend. |
-| 2.12 | Important | **Corrigé** — Task 3 documente la forme **réelle** des trois sites d'appel (aucune variable `spec`, la branche `feature` n'a ni `id`, ni `layerIds`, ni `sourceLayer`, ni `filter`) et donne le code exact à écrire à chacun, avec un `decorativeIds` distinct de `layerIds`. Tasks 7 et 13 s'y adossent sans réaffirmer « les trois sites ont la même forme ». |
-| 2.13 | Bloquant | **Corrigé** — Task 12 : tous les gabarits sont en `${record.champ}` (tests, implémentation), avec la raison (`ExprContext` = `{ vars, record?, user, ctx? }`, résolution à la racine) ; Task 13 met la même syntaxe dans le texte d'aide de l'UI **et** ajoute un test qui asserte que l'aide affiche `${record.nom}` ; Task 19 utilise `"${record.nom}"` dans la preuve E2E. |
-| 2.14 | Bloquant | **Corrigé** — Task 4, Step 3 : `clearColor`/`clearSize` sont remplacés par un `clearEncoding(key)` générique, avec deux tests (retirer la couleur préserve `opacity`+`stroke` ; retirer le dernier encodage rend `undefined`). Tasks 11 et 13 utilisent `clearEncoding("icon")`/`clearEncoding("label")`, et un commentaire interdit explicitement de réintroduire un test nommant un encodage. |
-| 2.15 | Bloquant | **Corrigé** — Task 15, Step 4 : montage gaté sur un **état** (`readyMap`, posé depuis `map.on("load")`), pas sur `mapRef.current`. La raison est écrite (un `useRef` assigné dans un effet ne provoque aucun rendu ; `MapPopup` est gaté sur deux `useState`, lignes 539/544). Deux tests `MapView` couvrent présence et absence. |
-| 2.16 | Bloquant | **Corrigé** — Task 11, Step 4 : la prop est lue par une **ref** et l'effet dépend de `[]` ; un test rerend le composant avec une nouvelle identité de callback trois fois et asserte **un seul** appel. Les props restent inline chez les hôtes, avec un commentaire disant pourquoi c'est sûr. |
+| 2.12 | Important | **Corrigé** — Task 3 documente la forme **réelle** des trois sites d'appel (aucune variable `spec`, la branche `feature` n'a ni `id`, ni `layerIds`, ni `sourceLayer`, ni `filter`) et donne le code exact à écrire à chacun, avec un `decorativeIds` distinct de `layerIds`. Tasks 8 et 14 s'y adossent sans réaffirmer « les trois sites ont la même forme ». |
+| 2.13 | Bloquant | **Corrigé** — Task 13 : tous les gabarits sont en `${record.champ}` (tests, implémentation), avec la raison (`ExprContext` = `{ vars, record?, user, ctx? }`, résolution à la racine) ; Task 14 met la même syntaxe dans le texte d'aide de l'UI **et** ajoute un test qui asserte que l'aide affiche `${record.nom}` ; Task 20 utilise `"${record.nom}"` dans la preuve E2E. |
+| 2.14 | Bloquant | **Corrigé** — Task 4, Step 3 : `clearColor`/`clearSize` sont remplacés par un `clearEncoding(key)` générique, avec deux tests (retirer la couleur préserve `opacity`+`stroke` ; retirer le dernier encodage rend `undefined`). Tasks 12 et 14 utilisent `clearEncoding("icon")`/`clearEncoding("label")`, et un commentaire interdit explicitement de réintroduire un test nommant un encodage. |
+| 2.15 | Bloquant | **Corrigé** — Task 16, Step 4 : montage gaté sur un **état** (`readyMap`, posé depuis `map.on("load")`), pas sur `mapRef.current`. La raison est écrite (un `useRef` assigné dans un effet ne provoque aucun rendu ; `MapPopup` est gaté sur deux `useState`, lignes 539/544). Deux tests `MapView` couvrent présence et absence. |
+| 2.16 | Bloquant | **Corrigé** — Task 12, Step 4 : la prop est lue par une **ref** et l'effet dépend de `[]` ; un test rerend le composant avec une nouvelle identité de callback trois fois et asserte **un seul** appel. Les props restent inline chez les hôtes, avec un commentaire disant pourquoi c'est sûr. |
 | 2.17 | Important | **Corrigé** — Task 4 : il est écrit que le fichier n'a **aucun** helper, que ses **18** tests rendent le composant inline, et que `fireEvent` n'est pas importé (à ajouter). Un objet `baseProps` local est introduit par les nouveaux tests, sans toucher aux 18 existants. |
-| 2.18 | Mineur | **Corrigé** — Task 18 : `renderMapWidget` n'est plus cité. Les helpers réels sont nommés (`renderPropsPanel` ligne 110, `renderWidget` ligne 133) et le patron réel des tests de mode (`render(withClient(<Map props={…} ctx={…} />))`, `getWidget("map")!.Component`, `lastConfig`) est celui utilisé. |
-| 2.19 | Important | **Corrigé** — Task 14 : `expect(formatArea(5000)).toBe("5 000 m²")` avec l'échappement ` ` écrit explicitement, et la raison en commentaire (le séparateur de milliers de `fr-FR` est U+202F NARROW NO-BREAK SPACE). |
-| 2.20 | Mineur (info) | **Conservé** — les vérifications numériques (111 194,9 m ; erreur relative 5,1 × 10⁻⁹ ; 0 sous 3 points) sont reprises dans les « Verified facts » de Task 14 pour éviter de les refaire. |
-| 2.21 | Mineur (info) | **Corrigé** — la dérive signalée est corrigée : Task 3 et Task 7 parlent des **deux** appels réels à `applyLayers` (dans `map.on("load", …)` et dans l'effet `[layersKey, …]`) sans citer de numéro de ligne faux. Les autres emplacements cités exacts sont conservés. |
+| 2.18 | Mineur | **Corrigé** — Task 19 : `renderMapWidget` n'est plus cité. Les helpers réels sont nommés (`renderPropsPanel` ligne 110, `renderWidget` ligne 133) et le patron réel des tests de mode (`render(withClient(<Map props={…} ctx={…} />))`, `getWidget("map")!.Component`, `lastConfig`) est celui utilisé. |
+| 2.19 | Important | **Corrigé** — Task 15 : `expect(formatArea(5000)).toBe("5 000 m²")` avec l'échappement ` ` écrit explicitement, et la raison en commentaire (le séparateur de milliers de `fr-FR` est U+202F NARROW NO-BREAK SPACE). |
+| 2.20 | Mineur (info) | **Conservé** — les vérifications numériques (111 194,9 m ; erreur relative 5,1 × 10⁻⁹ ; 0 sous 3 points) sont reprises dans les « Verified facts » de Task 15 pour éviter de les refaire. |
+| 2.21 | Mineur (info) | **Corrigé** — la dérive signalée est corrigée : Task 3 et Task 8 parlent des **deux** appels réels à `applyLayers` (dans `map.on("load", …)` et dans l'effet `[layersKey, …]`) sans citer de numéro de ligne faux. Les autres emplacements cités exacts sont conservés. |
 | 2.22 | Mineur (info) | **Explicité** — `toFrontLayer` recopie `symbology` en bloc (`...(l.symbology ? { symbology: l.symbology } : {})`) et `app/configs/schemas.py:104` déclare `symbology: dict \| None = None` : le piège n°5 de `CLAUDE.md` ne s'applique pas, **aucune action**. C'est désormais écrit dans les suivis en fin de plan pour qu'une session future ne le « corrige » pas par réflexe. |
-| 2.23 ≡ 4.1 | Bloquant | **Corrigé** — Task 8, Step 8 : édition exacte de `core/app/db.py` (ligne insérée entre `app.items` et `app.pipelines`, alias sans underscore, conforme à isort), `core/app/db.py` entre dans « File Structure » et dans le `git add`, et un test dédié (`test_map_icons_cannot_be_registered_as_a_business_collection`) asserte `"map_icons" in core_table_names()`. Les deux conséquences (table absente sous SQLite, trou dans la denylist du registre de collections) sont écrites. |
-| 2.24 | Important | **Corrigé** — Task 8, Step 1 : le harnais est **écrit intégralement** dans la tâche (fixture `env` locale, helper `_as` surchargeant `get_current_user` **et** `get_current_user_optional`, helper `_second_tenant_user` reprenant `Tenant(id=uuid.uuid4().hex, slug="other", name="Other")` de `test_extensions_routes.py:114-134`). Il est écrit que `conftest.py` ne fournit aucune de ces fixtures et que le dépôt garde ses fixtures SQLite locales par fichier. |
-| 2.25 ≡ 4.5 | Important | **Corrigé** — Task 8 : la tâche définit son propre `_FakeS3Client` (avec `head_object`, `get_object(Range=…)` **et** `delete_object`) et surcharge `ingestion_routes.get_s3_client`. Il est écrit que le fake de `test_tileset3d_routes.py` n'a ni `put_object` ni `delete_object`, et que `get_s3_client` lève par défaut. Aucun `moto`. |
-| 2.26 | Mineur (info) | **Conservé** — les signatures exactes (`ensure_uploads_bucket(client, bucket)` positionnel, `generate_presigned_put_url(client, *, bucket, key, content_type, expires_in=900)`, `write_audit(...)`) sont reprises dans les « Verified facts » de Task 8, avec **un ajout** que le rapport ne pouvait pas deviner : ce presign **ne porte aucune condition de taille**, d'où le contrôle `head_object` après upload. |
+| 2.23 ≡ 4.1 | Bloquant | **Corrigé** — Task 9, Step 8 : édition exacte de `core/app/db.py` (ligne insérée entre `app.items` et `app.pipelines`, alias sans underscore, conforme à isort), `core/app/db.py` entre dans « File Structure » et dans le `git add`, et un test dédié (`test_map_icons_cannot_be_registered_as_a_business_collection`) asserte `"map_icons" in core_table_names()`. Les deux conséquences (table absente sous SQLite, trou dans la denylist du registre de collections) sont écrites. |
+| 2.24 | Important | **Corrigé** — Task 9, Step 1 : le harnais est **écrit intégralement** dans la tâche (fixture `env` locale, helper `_as` surchargeant `get_current_user` **et** `get_current_user_optional`, helper `_second_tenant_user` reprenant `Tenant(id=uuid.uuid4().hex, slug="other", name="Other")` de `test_extensions_routes.py:114-134`). Il est écrit que `conftest.py` ne fournit aucune de ces fixtures et que le dépôt garde ses fixtures SQLite locales par fichier. |
+| 2.25 ≡ 4.5 | Important | **Corrigé** — Task 9 : la tâche définit son propre `_FakeS3Client` (avec `head_object`, `get_object(Range=…)` **et** `delete_object`) et surcharge `ingestion_routes.get_s3_client`. Il est écrit que le fake de `test_tileset3d_routes.py` n'a ni `put_object` ni `delete_object`, et que `get_s3_client` lève par défaut. Aucun `moto`. |
+| 2.26 | Mineur (info) | **Conservé** — les signatures exactes (`ensure_uploads_bucket(client, bucket)` positionnel, `generate_presigned_put_url(client, *, bucket, key, content_type, expires_in=900)`, `write_audit(...)`) sont reprises dans les « Verified facts » de Task 9, avec **un ajout** que le rapport ne pouvait pas deviner : ce presign **ne porte aucune condition de taille**, d'où le contrôle `head_object` après upload. |
 
 ### Catégorie 3 — défauts mandatés par le plan
 
 | # | Gravité | Traitement |
 |---|---|---|
 | 3.1 | Important | **Corrigé** — Task 2 : le test devient « stroke on a line geometry is a no-op and never overwrites the color encoding » et asserte que `line-color` vaut l'expression de l'encodage `color`, que `line-width`/`line-dasharray` sont absents et que `outlinePaint` est `undefined`. La clé fantôme `"stroke-color"` disparaît. |
-| 3.2 | Important | **Corrigé** — Task 15 : le test `Function.length` est supprimé et remplacé par un test réel — `fetch` **et** `XMLHttpRequest` espionnés sur un scénario complet mesure + surface + effacement, puis `expect(spy).not.toHaveBeenCalled()`. |
-| 3.3 | Important | **Corrigé** — Task 8 : `ALLOWED_CONTENT_TYPES` et `MAX_ICON_BYTES` vivent **uniquement** dans `schemas.py` et sont importés par `routes.py`. `MAX_ICON_BYTES` est réellement appliqué (`head_object` après upload, 413), avec l'explication que `generate_presigned_put_url` ne peut pas le faire. Le message de commit ne parle plus de « bornés au presign ». |
-| 3.4 | Important | **Corrigé, par réduction du périmètre** — déviation 9 : `image/svg+xml` est **refusé** (PNG uniquement), un test asserte le 422 pour SVG/HTML/octet-stream, les octets sont vérifiés contre la signature PNG à la création (400 sinon), et la réponse porte `X-Content-Type-Options: nosniff` + `Content-Disposition: attachment` + `Cache-Control: private, max-age=3600`. Il est écrit que `nosniff` n'a **aucun** précédent dans `core/app/` (pratique nouvelle, assumée). |
-| 3.5 | Important | **Corrigé** — (a) Task 3 pose `addOutlineLayer` **sans** handler de clic, avec un test asserant `layerHandlers["click:communes__outline"]` vide ; idem `__icon` (Task 7) et `__label` (Task 13). Un `decorativeIds` séparé de `layerIds` matérialise la distinction. (b) Le rollback du `catch` énumère `SUBLAYER_SUFFIXES` (les 3 historiques + `__outline` + `__icon` + `__label`, plus la passe imbriquée pour `…__polygon__outline`) et `SUBSOURCE_SUFFIXES` pour `__labels`. Un test « a failing outline sub-layer rolls back its parent » couvre la fuite. |
-| 3.6 | Important | **Corrigé** — Task 16 : `pendingCornerRef` est lu **avant** les setters, aucun `setShapes` dans un updater. La raison est écrite (`<StrictMode>` dans `shell/src/main.tsx` invoque les updaters deux fois) et un test asserte qu'un rectangle n'est enregistré **qu'une fois**. La forme freehand a la même consigne, avec la variante à préférer nommée explicitement. |
-| 3.7 | Important | **Corrigé** — Task 11 : un booléen dédié `iconDraft` remplace `iconField !== undefined` (toujours vrai avec `useState("")`), et un test asserte que le bloc est **fermé** par défaut puis s'ouvre au clic. |
-| 3.8 | Important | **Corrigé** — Task 11 : **une seule** grille, rendue uniquement pour la valeur en cours d'édition (`editingValue`), avec `aria-label={li.name}` désormais unique (catalogue sans doublon) et un bouton `Choisir l'icône de <valeur>` par valeur de domaine. Deux tests couvrent « pas de grille au départ » et « un seul bouton nommé school ». |
-| 3.9 | Important | **Corrigé** — **Task 17** (extraite de l'ancienne tâche E2E) : garde réelle `map.isStyleLoaded()` (et non l'existence de la méthode `getSource`), effet de montage **avec** fonction de nettoyage qui retire les trois couches puis la source, et effet de synchronisation séparé. Six tests, dont « le démontage retire les trois couches et la source » et « un style non chargé ne fait rien lever ». |
-| 3.10 | Mineur | **Corrigé** — Task 4 : il n'y a plus **qu'une** convention, `clearEncoding` (`Object.keys(rest).length > 0 ? rest : undefined`), et les anciennes formes `rest.size`/`rest.color` sont supprimées. C'est le même correctif que 2.14. |
+| 3.2 | Important | **Corrigé** — Task 16 : le test `Function.length` est supprimé et remplacé par un test réel — `fetch` **et** `XMLHttpRequest` espionnés sur un scénario complet mesure + surface + effacement, puis `expect(spy).not.toHaveBeenCalled()`. |
+| 3.3 | Important | **Corrigé** — Task 9 : `ALLOWED_CONTENT_TYPES` et `MAX_ICON_BYTES` vivent **uniquement** dans `schemas.py` et sont importés par `routes.py`. `MAX_ICON_BYTES` est réellement appliqué (`head_object` après upload, 413), avec l'explication que `generate_presigned_put_url` ne peut pas le faire. Le message de commit ne parle plus de « bornés au presign ». |
+| 3.4 | Important | **Corrigé — solution changée en deuxième passe.** ~~Première passe : `image/svg+xml` refusé (PNG uniquement).~~ **D4 (déviation 13)** : le SVG est conservé et **assaini à l'écriture** par `core/app/mapicons/svg.py` (allowlist d'éléments et d'attributs appliquée sur l'arbre parsé, `defusedxml` avec `forbid_dtd=True`, re-sérialisation depuis l'arbre — jamais de filtrage d'expression régulière), et ce sont les octets assainis qui sont stockés ; la lecture ne réassainit pas. Le type **réel** des octets est vérifié contre le `contentType` déclaré. Un SVG illisible ou vidé de tout graphique est refusé en RFC 7807 avec un `code` (`svg_unparsable`, `svg_dtd_forbidden`, `svg_no_graphics`, `svg_no_dimensions`, `svg_too_large`), jamais stocké vide. `X-Content-Type-Options: nosniff` + `Content-Disposition: attachment` + `Cache-Control: private, max-age=3600` sont **conservés** (décision), et il reste écrit que les deux premiers sont une **première** dans `core/app/`. 15 tests purs (`test_mapicons_svg.py`) + 6 tests de route couvrent : `<script>`, `onload=`, `xlink:href` externe, `javascript:`, `url()`/`data:` en valeur d'attribut, `foreignObject`, `style`, DTD/entité externe, PNG valide, charge ni PNG ni SVG, et un SVG légitime dont la partie graphique survit intacte. |
+| 3.5 | Important | **Corrigé** — (a) Task 3 pose `addOutlineLayer` **sans** handler de clic, avec un test asserant `layerHandlers["click:communes__outline"]` vide ; idem `__icon` (Task 8) et `__label` (Task 14). Un `decorativeIds` séparé de `layerIds` matérialise la distinction. (b) Le rollback du `catch` énumère `SUBLAYER_SUFFIXES` (les 3 historiques + `__outline` + `__icon` + `__label`, plus la passe imbriquée pour `…__polygon__outline`) et `SUBSOURCE_SUFFIXES` pour `__labels`. Un test « a failing outline sub-layer rolls back its parent » couvre la fuite. |
+| 3.6 | Important | **Corrigé** — Task 17 : `pendingCornerRef` est lu **avant** les setters, aucun `setShapes` dans un updater. La raison est écrite (`<StrictMode>` dans `shell/src/main.tsx` invoque les updaters deux fois) et un test asserte qu'un rectangle n'est enregistré **qu'une fois**. La forme freehand a la même consigne, avec la variante à préférer nommée explicitement. |
+| 3.7 | Important | **Corrigé** — Task 12 : un booléen dédié `iconDraft` remplace `iconField !== undefined` (toujours vrai avec `useState("")`), et un test asserte que le bloc est **fermé** par défaut puis s'ouvre au clic. |
+| 3.8 | Important | **Corrigé** — Task 12 : **une seule** grille, rendue uniquement pour la valeur en cours d'édition (`editingValue`), avec `aria-label={li.name}` désormais unique (catalogue sans doublon) et un bouton `Choisir l'icône de <valeur>` par valeur de domaine. Deux tests couvrent « pas de grille au départ » et « un seul bouton nommé school ». |
+| 3.9 | Important | **Corrigé** — **Task 18** (extraite de l'ancienne tâche E2E de la première passe) : garde réelle `map.isStyleLoaded()` (et non l'existence de la méthode `getSource`), effet de montage **avec** fonction de nettoyage qui retire les trois couches puis la source, et effet de synchronisation séparé. Six tests, dont « le démontage retire les trois couches et la source » et « un style non chargé ne fait rien lever ». |
+| 3.10 | Mineur | **Corrigé** — Task 4 : il n'y a plus **qu'une** convention, `clearEncoding` (`Object.keys(rest).length > 0 ? rest : undefined`), et les anciennes formes `rest.size`/`rest.color` sont supprimées. C'est le même correctif que 2.14. Task 5 vérifie que « plus rien ne reste » vaut aussi pour un contour **classé** (dernier test de son étape 5). |
 | 3.11 | Mineur | **Corrigé** — Task 2 : `outlinePaint["line-opacity"]` reçoit l'opacité, avec un test dédié. |
-| 3.12 | Mineur | **Corrigé** — Task 16 : les intitulés de tests correspondent aux gestes et aux textes réellement rendus (« le tracé libre enregistre une forme au relâchement », « le rectangle se ferme au second clic »…), et le mot « rectangle » est bien rendu par le résumé. Plus aucune regex à moitié morte. |
-| 3.13 | Mineur | **Corrigé** — Task 16 : `SHAPE_LABELS` + `SHAPE_ORDER` donnent un compteur pluralisé pour **les cinq** types de forme ; deux tests couvrent le singulier et le pluriel. |
-| 3.14 | Mineur | **Corrigé** — Task 8, Step 7 : suppression en base + audit d'abord, `delete_object` ensuite dans un `try/except ClientError` journalisé, avec la raison écrite (la transaction reste ouverte jusqu'à la fin de la requête). Un test asserte qu'un `delete_object` en échec ne perd pas la suppression en base. |
+| 3.12 | Mineur | **Corrigé** — Task 17 : les intitulés de tests correspondent aux gestes et aux textes réellement rendus (« le tracé libre enregistre une forme au relâchement », « le rectangle se ferme au second clic »…), et le mot « rectangle » est bien rendu par le résumé. Plus aucune regex à moitié morte. |
+| 3.13 | Mineur | **Corrigé** — Task 17 : `SHAPE_LABELS` + `SHAPE_ORDER` donnent un compteur pluralisé pour **les cinq** types de forme ; deux tests couvrent le singulier et le pluriel. |
+| 3.14 | Mineur | **Corrigé** — Task 9, Step 7 : suppression en base + audit d'abord, `delete_object` ensuite dans un `try/except ClientError` journalisé, avec la raison écrite (la transaction reste ouverte jusqu'à la fin de la requête). Un test asserte qu'un `delete_object` en échec ne perd pas la suppression en base. |
 
 ### Catégorie 4 — prérequis manquants / ordre de dépendance
 
 | # | Gravité | Traitement |
 |---|---|---|
-| 4.1 ≡ 2.23 | Bloquant | **Corrigé** — cf. 2.23 : `core/app/db.py` dans « File Structure », dans Task 8 Step 8, dans son `git add`, et couvert par un test. |
+| 4.1 ≡ 2.23 | Bloquant | **Corrigé** — cf. 2.23 : `core/app/db.py` dans « File Structure », dans Task 9 Step 8, dans son `git add`, et couvert par un test. |
 | 4.2 ≡ 2.11 | Bloquant | **Corrigé** — cf. 2.11 : **Task 1** est créée pour ça et placée en premier. |
-| 4.3 | Bloquant | **Corrigé** — Task 19 : plus aucun `page.evaluate` sur l'instance MapLibre. Il est écrit que `map-popup.spec.ts` n'en contient aucun, que le patron invoqué n'existait pas, et que rien n'expose l'instance au contexte de page ; Global Constraints interdit d'ajouter un global de test au code de production. Les assertions portent sur l'UI visible (compteur « 1 rectangle », chaîne de distance) et sur le trafic réseau ; le contenu de la source `__sketch__` est couvert en unitaire (Task 17). |
-| 4.4 | Bloquant | **Corrigé** — Task 10 : `mapIconFileUrl` est remplacé par `fetchMapIconBlob(iconId): Promise<Blob>` (fetch authentifié, jeton confiné dans `itemClient.ts`, deux tests dont un sur l'en-tête `Authorization`) ; Task 7 fait `createImageBitmap(blob)` dans un `Promise.allSettled` **avec try/catch par id**, et un test prouve qu'une icône en échec n'empêche **aucune** couche d'être posée. |
+| 4.3 | Bloquant | **Corrigé** — Task 20 : plus aucun `page.evaluate` sur l'instance MapLibre. Il est écrit que `map-popup.spec.ts` n'en contient aucun, que le patron invoqué n'existait pas, et que rien n'expose l'instance au contexte de page ; Global Constraints interdit d'ajouter un global de test au code de production. Les assertions portent sur l'UI visible (compteur « 1 rectangle », chaîne de distance) et sur le trafic réseau ; le contenu de la source `__sketch__` est couvert en unitaire (Task 18). |
+| 4.4 | Bloquant | **Corrigé** — Task 11 : `mapIconFileUrl` est remplacé par `fetchMapIconBlob(iconId): Promise<Blob>` (fetch authentifié, jeton confiné dans `itemClient.ts`, deux tests dont un sur l'en-tête `Authorization`) ; Task 8 fait `createImageBitmap(blob)` dans un `Promise.allSettled` **avec try/catch par id**, et un test prouve qu'une icône en échec n'empêche **aucune** couche d'être posée. |
 | 4.5 ≡ 2.25 | Important | **Corrigé** — cf. 2.25 : `_FakeS3Client` local + `app.dependency_overrides[ingestion_routes.get_s3_client]`. L'étape « si la signature de `get_s3_client` demandait un autre câblage, corriger `routes.py` » disparaît : le problème était côté test. |
-| 4.6 | Important | **Corrigé** — Task 11, Step 3 : les trois props sont **optionnelles**, avec la raison écrite (18 rendus inline + 2 sites de production). Aucun des 18 tests existants n'est à modifier. |
+| 4.6 | Important | **Corrigé** — Task 12, Step 3 : les trois props sont **optionnelles**, avec la raison écrite (18 rendus inline + 2 sites de production). Aucun des 18 tests existants n'est à modifier. |
 | 4.7 ≡ 2.2 | Important | **Corrigé** — cf. 2.2 : prérequis `glyphs` nommé, comportement défini (couche non posée + avertissement), test unitaire dédié, et preuve E2E délibérément indépendante du service de glyphes. |
-| 4.8 | Important | **Corrigé** — Task 19 : il est écrit que `page.on("request")`/`waitForRequest` n'apparaissent dans **aucune** des 57 specs et que `sql-lab.spec.ts` ne contient aucune assertion d'écriture. Le helper `recordWrites` est présenté comme **nouveau**, avec son idiome emprunté au comptage de `/aggregate` de `map-symbology.spec.ts`, et son unique exemption (`/aggregate`, chemin de données préexistant du widget) justifiée par écrit. |
-| 4.9 | Mineur | **Corrigé** — Task 15, Step 4 : la déstructuration du `forwardRef` est donnée en entier, `interactiveTools` compris (« sans ça la variable n'existe pas »). Même traitement pour `themeColors` (Task 3) et `loadCustomIcon` (Task 7). |
-| 4.10 | Mineur | **Corrigé** — Task 8, Step 3 : la migration `0029_map_icons.py` commence par `# SPDX-License-Identifier: Apache-2.0`, puis le docstring avec `Revision ID:`/`Revises:`/`Create Date:`, conformément à `0028_collection_spatial_index.py`. |
-| 4.11 | Mineur | **Accepté, consigné** — Task 8, Step 13 : `app/mapicons` n'entre **pas** dans la porte `mypy --strict`. Raison : élargir la porte est une décision distincte, avec son propre coût, que ce plan ne prend pas. La conséquence est écrite noir sur blanc dans la tâche (« le module n'est donc *pas* typé strictement — une session future ne doit pas le supposer ») et reprise dans les suivis. |
-| 4.12 | Mineur | **Corrigé** — Task 8, Step 12 : vérification `upgrade`/`downgrade` **sur base non vide** (insertion d'une ligne entre les deux), avec la consigne d'écrire l'omission dans le message de commit si aucun conteneur `postgis-test` n'est disponible plutôt que de sauter la vérification en silence. |
+| 4.8 | Important | **Corrigé** — Task 20 : il est écrit que `page.on("request")`/`waitForRequest` n'apparaissent dans **aucune** des 57 specs et que `sql-lab.spec.ts` ne contient aucune assertion d'écriture. Le helper `recordWrites` est présenté comme **nouveau**, avec son idiome emprunté au comptage de `/aggregate` de `map-symbology.spec.ts`, et son unique exemption (`/aggregate`, chemin de données préexistant du widget) justifiée par écrit. |
+| 4.9 | Mineur | **Corrigé** — Task 16, Step 4 : la déstructuration du `forwardRef` est donnée en entier, `interactiveTools` compris (« sans ça la variable n'existe pas »). Même traitement pour `themeColors` (Task 3) et `loadCustomIcon` (Task 8). |
+| 4.10 | Mineur | **Corrigé** — Task 9, Step 3 : la migration `0029_map_icons.py` commence par `# SPDX-License-Identifier: Apache-2.0`, puis le docstring avec `Revision ID:`/`Revises:`/`Create Date:`, conformément à `0028_collection_spatial_index.py`. |
+| 4.11 | Mineur | **Accepté, consigné** — Task 9, Step 13 : `app/mapicons` n'entre **pas** dans la porte `mypy --strict`. Raison : élargir la porte est une décision distincte, avec son propre coût, que ce plan ne prend pas. La conséquence est écrite noir sur blanc dans la tâche (« le module n'est donc *pas* typé strictement — une session future ne doit pas le supposer ») et reprise dans les suivis. |
+| 4.12 | Mineur | **Corrigé** — Task 9, Step 12 : vérification `upgrade`/`downgrade` **sur base non vide** (insertion d'une ligne entre les deux), avec la consigne d'écrire l'omission dans le message de commit si aucun conteneur `postgis-test` n'est disponible plutôt que de sauter la vérification en silence. |
 
 ### Catégorie 5 — vérifications de réalité (informatif, non compté dans les 61)
 
 | # | Résultat du rapport | Traitement dans ce plan |
 |---|---|---|
-| 5.1 | `0029` libre, format d'id confirmé | Repris tel quel dans Task 8 (revision `"0029"`, down_revision `"0028"`). |
-| 5.2 | `test_deployability.py` : 35/35 | Attente « toujours 35/35 » conservée (Task 8 Step 13, Task 19 Step 5). |
-| 5.3 | Les règles couvrent ce que le plan promet | Câblage bucket + ligne commentée de `.env.example` conservés à l'identique ; la raison (`documented_env_vars(include_commented=True)` vs la variante stricte) est réécrite dans Task 8, Step 11. |
-| 5.4 | La commande de régénération marche | Task 9 utilise l'incantation de `CLAUDE.md` (clé fixe + `openapi.json` explicite) et **nomme** `npm run gen:api-types`, que le rapport signalait comme évitablement vague. |
+| 5.1 | `0029` libre, format d'id confirmé | Repris tel quel dans Task 9 (revision `"0029"`, down_revision `"0028"`). |
+| 5.2 | `test_deployability.py` : 35/35 | Attente « toujours 35/35 » conservée (Task 9 Step 13, Task 20 Step 5). |
+| 5.3 | Les règles couvrent ce que le plan promet | Câblage bucket + ligne commentée de `.env.example` conservés à l'identique ; la raison (`documented_env_vars(include_commented=True)` vs la variante stricte) est réécrite dans Task 9, Step 11. |
+| 5.4 | La commande de régénération marche | Task 10 utilise l'incantation de `CLAUDE.md` (clé fixe + `openapi.json` explicite) et **nomme** `npm run gen:api-types`, que le rapport signalait comme évitablement vague. |
 | 5.5 | 162 fichiers / 1463 tests confirmés | Référence conservée dans Global Constraints ; Task 1 annonce 1464 après son unique test. |
 | 5.6 | Compte cœur non re-mesuré | Conservé tel quel, avec la même mise en garde : à prendre pour acquis, pas pour vérifié. |
 | 5.7 | Compte E2E non re-mesuré | **Recalculé** depuis la source (57 fichiers, 112 `test()`, 4 skips runtime) : 108 passed confirmé par construction, 111 attendus après ce plan. Les 4 specs modèles et la fixture `world-tile.mvt` existent bien. |
-| 5.8 | `lucide-static@1.34.0`, 2035 SVG, ISC, pas d'`exports` | Repris dans Task 5, avec la version **épinglée exactement** (`lucide-static@1.34.0`) parce que le fichier généré en dépend. |
+| 5.8 | `lucide-static@1.34.0`, 2035 SVG, ISC, pas d'`exports` | Repris dans Task 6, avec la version **épinglée exactement** (`lucide-static@1.34.0`) parce que le fichier généré en dépend. |
 
 ### Constats mineurs restants et suivis créés par cette révision
 
 Aucun constat n'est laissé sans traitement ; ce qui suit est ce que la
 révision **ajoute** à la liste des suivis non bloquants du dépôt.
 
-1. **Contour data-driven non éditable depuis l'UI.** `buildMapPaint` sait
-   compiler un `stroke.color` `{field, domain, palette}` (Task 2, testé),
-   mais l'éditeur n'expose que le chemin `{fixed}` (Task 4, Step 5). La
-   promesse initiale d'un `FieldClassificationPicker` partagé est retirée :
-   c'est un refactor de la partie la plus testée du composant, sans test
-   dans ce plan pour le couvrir.
+1. ~~Contour data-driven non éditable depuis l'UI.~~ **Levé par D5
+   (déviation 14)** : Task 5 extrait `FieldClassificationPicker` de l'UI
+   couleur inline et le partage avec `stroke.color`. Ce qui **reste** un
+   suivi : l'encodage **taille** n'entre pas dans l'extraction (son UI n'a ni
+   palette, ni mode, ni classification — la factoriser produirait un
+   composant à moitié de props optionnelles), et le composant extrait n'a
+   **pas** de test de rendu visuel : sa non-régression repose sur les 16
+   tests existants de `MapSymbologyEditor.test.tsx` et sur la preuve E2E
+   SP-25.
 2. **`haloColor`/`haloWidth` d'étiquette non exposés** dans l'UI (défauts
-   blanc / 1 px). Task 13, Step 6.
+   blanc / 1 px). Task 14, Step 6.
 3. **Légende : glyphes neutres.** `MapSymbologyLegend` affiche `◈` pour une
    entrée d'icône et un carré bordé pour une entrée de contour, pas l'icône
    ni le tiret réels.
@@ -7247,7 +8796,7 @@ révision **ajoute** à la liste des suivis non bloquants du dépôt.
    défaut du style-spec est vérifié, le **rendu** ne l'est pas visuellement
    dans cette passe. Marqué **non vérifié**.
 7. **Croissance du bundle** due aux 140 SVG embarqués : ordre de grandeur
-   attendu 60-85 Ko brut, à mesurer et consigner en Task 5, Step 7. Aucun
+   attendu 60-85 Ko brut, à mesurer et consigner en Task 6, Step 7. Aucun
    travail de chargement paresseux n'est au périmètre.
 8. **`toFrontLayer` : rien à faire** (constat 2.22) — `symbology` est
    recopié en bloc et `app/configs/schemas.py` l'accepte en `dict`. Écrit ici
@@ -7256,37 +8805,88 @@ révision **ajoute** à la liste des suivis non bloquants du dépôt.
    listé dans `core_table_names()` : l'oubli reste silencieux pour le
    prochain module. Un tel test serait une amélioration réelle, hors
    périmètre ici.
+10. **Surface du suivi `libexpat.so.1` élargie** (D4) : `app.mapicons`
+   devient le **second** module du cœur à dépendre de `defusedxml` au
+   runtime, après `app.harvest`. Dans une image où `libexpat.so.1` manque —
+   panne de packaging préexistante, documentée depuis SP-21 et hors périmètre
+   ici — l'upload d'une icône **SVG** échouera désormais aussi, pas seulement
+   le moissonnage OGC. Ni aggravé ni corrigé par SP-27 ; l'upload PNG n'est
+   pas concerné (aucun parse XML).
+11. **L'allowlist SVG refuse les dégradés et le texte** (`defs`,
+   `linearGradient`, `radialGradient`, `stop`, `text`, `use`, `symbol`,
+   `mask`, `pattern`) : un logo légitime en dégradé sera rejeté en
+   `svg_no_graphics`. Les élargir est faisable sans rouvrir le XSS — aucun de
+   ces éléments ne charge ni n'exécute — mais demande de réautoriser
+   `fill="url(#id)"`, donc de **contraindre la valeur** à une référence
+   locale `#id` : aujourd'hui l'assainisseur refuse en bloc toute valeur
+   contenant `url(`, `javascript:` ou `data:`, ce qui est le bon défaut tant
+   qu'aucune cible d'`url()` n'est dans l'allowlist d'éléments.
+12. **`sniff_content_type` est une heuristique de préfixe**, pas un
+   décodeur : un PNG est reconnu par sa signature de 8 octets (fiable), un
+   SVG par un préfixe `<svg`/`<?xml` après `lstrip()` (suffisant pour
+   distinguer les deux types autorisés, insuffisant pour prouver qu'un
+   document est un SVG bien formé — c'est `sanitize_svg` qui le prouve, en
+   parsant).
+13. **Substitution de `currentColor`** dans les SVG Lucide : faite à la
+   rasterisation, par `split`/`join` sur `stroke="currentColor"`. Si une
+   version future de `lucide-static` change cette forme (guillemets simples,
+   attribut réordonné), la substitution devient un no-op **silencieux** et
+   les icônes retomberont sur le noir par défaut. Le test « la couleur de
+   trait currentColor est remplacée avant décodage » (Task 6) verrouille la
+   forme attendue dans le module généré, ce qui fera échouer la
+   régénération plutôt que le rendu.
 
 ---
 
 ## Self-Review Notes (for the plan author, not a task)
 
-- **Couverture de la spec** : §3.1 (modèle de données) → Tasks 2, 6, 12 ;
-  §3.2 (paint/légende) → Tasks 2, 3, 6, 7 ; §3.3 (étiquettes) → Tasks 12,
-  13 ; §3.4 (icônes, Lucide et personnalisées) → Tasks 5, 6, 7, 8, 9, 10,
-  11 ; §3.5 (éditeur) → Tasks 4, 11, 13 ; le périmètre 4.5 (mesure +
-  croquis, monté hors mode édition) → Tasks 14, 15, 16, 17, 18 ; preuves →
-  Task 19. Task 1 est une tâche d'outillage de test que la spec ne prévoyait
+- **Couverture de la spec** : §3.1 (modèle de données) → Tasks 2, 7, 13 ;
+  §3.2 (paint/légende) → Tasks 2, 3, 7, 8 ; §3.3 (étiquettes) → Tasks 13,
+  13 ; §3.4 (icônes, Lucide et personnalisées) → Tasks 6, 7, 8, 9, 10, 11,
+  11 ; §3.5 (éditeur) → Tasks 4, 5, 12, 14 ; le périmètre 4.5 (mesure +
+  croquis, monté hors mode édition) → Tasks 15, 16, 17, 18, 19 ; preuves →
+  Task 20. Task 1 est une tâche d'outillage de test que la spec ne prévoyait
   pas et sans laquelle rien de ce qui précède n'est testable.
-- **Ce que la révision de pré-vol a changé structurellement** : 17 tâches →
-  **19**. Task 1 (double MapLibre) est nouvelle ; l'ancienne tâche 17 est
-  scindée en Task 17 (rendu du croquis, avec ses gardes et son nettoyage) et
-  Task 19 (preuves E2E + vérification finale) ; l'ancienne tâche 16 devient
-  Task 18 et absorbe le câblage complet du widget (D2) au lieu du seul
+- **Ce que les deux révisions ont changé structurellement** : 17 tâches →
+  **20**. Première passe : Task 1 (double MapLibre) est nouvelle ; l'ancienne
+  tâche 17 (E2E) est scindée en un rendu du croquis avec ses gardes et son
+  nettoyage, et une tâche de preuves E2E + vérification finale ; l'ancienne
+  tâche 16 absorbe le câblage complet du widget (D2) au lieu du seul
   `interactiveTools` ; l'ancienne tâche 11 (`labelFeatureState.ts`) devient
-  Task 12 (`labelSource.ts`) avec un mécanisme entièrement différent (D1).
+  `labelSource.ts` avec un mécanisme entièrement différent (D1). Deuxième
+  passe : **Task 5** (contour classé + extraction de
+  `FieldClassificationPicker`) est insérée juste après Task 4, et les
+  anciennes tâches 5 à 19 sont décalées en 6 à 20.
 - **Un relecteur de Task 2 seule ne voit pas toute l'histoire du contour**
   (c'est Task 3) : c'est un dimensionnement voulu, pas un manque. Les tests
   de Task 2 exercent entièrement la sortie pure de
   `buildMapPaint`/`buildLegend`.
-- **Deux tâches sont plus grosses que la moyenne** et c'est assumé : Task 8
-  (module du cœur complet + 4 fichiers d'infrastructure, parce que le
-  découper laisserait `lint-imports` ou la garde de déployabilité rouge entre
-  deux commits) et Task 11 (l'UI d'icônes, parce que le picker et son
-  câblage aux deux hôtes n'ont aucun sens séparés).
-- **Le point de fragilité résiduel le plus probable** est Task 19 : deux
-  specs E2E dont les détails d'interaction (chemin d'ouverture de l'éditeur,
-  présence d'un widget carte sur `/apps/9`, persistance de la config par
-  `mocks.ts`) sont décrits d'après les specs voisines mais n'ont pas été
-  exécutés. La tâche dit explicitement que les specs voisines sont la vérité
-  et ce plan seulement une esquisse d'elles.
+- **Trois tâches sont plus grosses que la moyenne** et c'est assumé : Task 9
+  (module du cœur complet + assainisseur + 4 fichiers d'infrastructure, parce
+  que le découper laisserait `lint-imports` ou la garde de déployabilité
+  rouge entre deux commits), Task 12 (l'UI d'icônes, parce que le picker et
+  son câblage aux deux hôtes n'ont aucun sens séparés) et Task 5 (extraction
+  d'un composant livré **puis** son second usage : les séparer laisserait un
+  commit intermédiaire où le composant extrait n'a qu'un seul appelant et où
+  la raison d'être de ses libellés injectés est invérifiable).
+- **Les deux points de fragilité résiduels les plus probables** sont
+  Task 20 — deux specs E2E dont les détails d'interaction (chemin d'ouverture
+  de l'éditeur, présence d'un widget carte sur `/apps/9`, persistance de la
+  config par `mocks.ts`) sont décrits d'après les specs voisines mais n'ont
+  pas été exécutés ; la tâche dit explicitement que les specs voisines sont
+  la vérité et ce plan seulement une esquisse d'elles — et **Task 5**, dont
+  l'extraction doit reproduire au caractère près le DOM et les noms
+  accessibles d'un composant couvert par 16 tests et une preuve E2E. La
+  tâche fixe le critère d'échec sans ambiguïté : si l'un de ces 16 tests doit
+  être **modifié**, l'extraction est fausse.
+- **Ce que la deuxième passe a changé, hors D4/D5** : le chemin de décodage
+  des images côté shell passe de `createImageBitmap` à
+  `HTMLImageElement` + `URL.createObjectURL`, pour **toutes** les icônes,
+  parce que Lucide livre du SVG et que `createImageBitmap` sur un blob SVG
+  n'est pas fiable d'un navigateur à l'autre. Conséquence :
+  `createImageBitmapStub.ts` disparaît du plan (il n'avait plus d'appelant —
+  une infrastructure de test morte est un défaut, pas un reste inoffensif) et
+  `imageDecodeStub.ts` le remplace, dimensionné sur une **sonde jsdom
+  exécutée** : `Image` existe, `URL.createObjectURL`,
+  `URL.revokeObjectURL`, `createImageBitmap` et
+  `HTMLImageElement.prototype.decode` sont tous `undefined`.
