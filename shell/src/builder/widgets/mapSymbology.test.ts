@@ -705,6 +705,15 @@ test("buildMapPaint applies fixed opacity per geometry, outline included", () =>
   expect(withOutline.outlinePaint?.["line-opacity"]).toBe(0.3);
 });
 
+test("buildMapPaint emits an opacity of 0 rather than omitting it", () => {
+  // Cas limite : `extras?.opacity !== undefined` (pas `if (extras?.opacity)`)
+  // doit laisser passer une opacité de 0 — une couche invisible mais
+  // présente, distincte d'une couche sans opacity configurée du tout.
+  const result = buildMapPaint({}, null, null, "polygon", undefined, { opacity: 0 });
+  expect(result.paint["fill-opacity"]).toBe(0);
+  expect("fill-opacity" in result.paint).toBe(true);
+});
+
 test("buildMapPaint never writes a layout-only property into paint", () => {
   const LAYOUT_ONLY = ["icon-image", "icon-size", "icon-allow-overlap", "text-field", "text-size"];
   const result = buildMapPaint({}, null, null, "point", undefined, {

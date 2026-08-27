@@ -149,41 +149,48 @@ function colorPaintProperty(renderAs: "fill" | "circle" | "line"): string {
 const STROKE_WIDTH_MIN = 1;
 const STROKE_WIDTH_MAX = 8;
 
+// Cœur commun aux deux sites qui construisent une expression MapLibre de
+// couleur data-driven — le bloc `color` de buildMapPaint et strokeColorValue
+// ci-dessous (constat Important de la revue Task 2, tranché par Tanguy en
+// faveur de la factorisation). `domain` DOIT déjà être passé par
+// `normalizeDomain` par l'appelant : cette fonction ne fait plus ce garde,
+// elle suppose un domaine utilisable (comme le faisaient déjà les deux sites
+// une fois leur propre normalisation faite).
+function colorExpression(
+  field: string,
+  domain: ColorDomain,
+  palette: ResolvedPalette | undefined,
+): unknown {
+  if (domain.kind === "categorical") {
+    const colors = palette
+      ? colorsForClasses(palette, domain.values.length)
+      : domain.values.map((_, i) => paletteColor(i));
+    const match: unknown[] = ["match", ["get", field]];
+    domain.values.forEach((v, i) => match.push(v, colors[i % colors.length]));
+    match.push(colors[0]);
+    return match;
+  }
+  if (domain.kind === "numeric-classed") {
+    const nClasses = domain.breaks.length - 1;
+    const colors = palette
+      ? colorsForClasses(palette, nClasses)
+      : Array.from({ length: nClasses }, (_, i) => paletteColor(i));
+    const step: unknown[] = ["step", ["get", field], colors[0]];
+    for (let i = 1; i < nClasses; i++) step.push(domain.breaks[i], colors[i]);
+    return step;
+  }
+  // numeric continu : même interpolation que fill-color/circle-color.
+  const low = palette?.kind === "sequential" ? palette.low : NUMERIC_COLOR_LOW;
+  const high = palette?.kind === "sequential" ? palette.high : NUMERIC_COLOR_HIGH;
+  if (domain.min === domain.max) return low;
+  return ["interpolate", ["linear"], ["get", field], domain.min, low, domain.max, high];
+}
+
 function strokeColorValue(color: StrokePaintInput["color"]): unknown {
   if ("fixed" in color) return color.fixed;
   const normalized = normalizeDomain(color.domain);
   if (!normalized) return undefined;
-  if (normalized.kind === "categorical") {
-    const colors = color.palette
-      ? colorsForClasses(color.palette, normalized.values.length)
-      : normalized.values.map((_, i) => paletteColor(i));
-    const match: unknown[] = ["match", ["get", color.field]];
-    normalized.values.forEach((v, i) => match.push(v, colors[i % colors.length]));
-    match.push(colors[0]);
-    return match;
-  }
-  if (normalized.kind === "numeric-classed") {
-    const nClasses = normalized.breaks.length - 1;
-    const colors = color.palette
-      ? colorsForClasses(color.palette, nClasses)
-      : Array.from({ length: nClasses }, (_, i) => paletteColor(i));
-    const step: unknown[] = ["step", ["get", color.field], colors[0]];
-    for (let i = 1; i < nClasses; i++) step.push(normalized.breaks[i], colors[i]);
-    return step;
-  }
-  // numeric continu : même interpolation que fill-color/circle-color.
-  const low = color.palette?.kind === "sequential" ? color.palette.low : NUMERIC_COLOR_LOW;
-  const high = color.palette?.kind === "sequential" ? color.palette.high : NUMERIC_COLOR_HIGH;
-  if (normalized.min === normalized.max) return low;
-  return [
-    "interpolate",
-    ["linear"],
-    ["get", color.field],
-    normalized.min,
-    low,
-    normalized.max,
-    high,
-  ];
+  return colorExpression(color.field, normalized, color.palette);
 }
 
 function strokeWidthValue(width: StrokeWidthEncoding): unknown {
@@ -412,39 +419,8 @@ export function buildMapPaint(
   const normalizedColorDomain = normalizeDomain(colorDomain);
 
   if (encodings?.color && normalizedColorDomain) {
-    const colorDomain = normalizedColorDomain;
     const prop = colorPaintProperty(renderAs);
-    if (colorDomain.kind === "categorical") {
-      const colors = palette
-        ? colorsForClasses(palette, colorDomain.values.length)
-        : colorDomain.values.map((_, i) => paletteColor(i));
-      const match: unknown[] = ["match", ["get", encodings.color.field]];
-      colorDomain.values.forEach((value, i) => match.push(value, colors[i]));
-      match.push(colors[0]); // default color for a value outside the observed domain
-      paint[prop] = match;
-    } else if (colorDomain.kind === "numeric-classed") {
-      const nClasses = colorDomain.breaks.length - 1;
-      const colors = palette
-        ? colorsForClasses(palette, nClasses)
-        : Array.from({ length: nClasses }, (_, i) => paletteColor(i));
-      const step: unknown[] = ["step", ["get", encodings.color.field], colors[0]];
-      for (let i = 1; i < nClasses; i++) step.push(colorDomain.breaks[i], colors[i]);
-      paint[prop] = step;
-    } else if (colorDomain.min === colorDomain.max) {
-      paint[prop] = palette?.kind === "sequential" ? palette.low : NUMERIC_COLOR_LOW;
-    } else {
-      const low = palette?.kind === "sequential" ? palette.low : NUMERIC_COLOR_LOW;
-      const high = palette?.kind === "sequential" ? palette.high : NUMERIC_COLOR_HIGH;
-      paint[prop] = [
-        "interpolate",
-        ["linear"],
-        ["get", encodings.color.field],
-        colorDomain.min,
-        low,
-        colorDomain.max,
-        high,
-      ];
-    }
+    paint[prop] = colorExpression(encodings.color.field, normalizedColorDomain, palette);
   }
 
   if (encodings?.size && sizeDomain && renderAs === "circle") {
