@@ -1372,3 +1372,18 @@ test("editing a layer's geometry-relevant property does still rebuild its MapLib
   rerender(<MapView config={tiled({ geometryKind: "polygon" })} />);
   expect(addSource).toHaveBeenCalledTimes(1);
 });
+
+test("le mock MapLibre transporte un payload d'événement et enregistre les images", () => {
+  render(<MapView config={config} />);
+  const map = mapInstances[0];
+  const seen: unknown[] = [];
+  map.on("error", (e?: unknown) => seen.push(e));
+  map.fire("error", { error: { message: "boom" } });
+  expect(seen).toEqual([{ error: { message: "boom" } }]);
+
+  map.addImage("x", { width: 1 }, { pixelRatio: 1 });
+  expect(map.hasImage("x")).toBe(true);
+  expect(map.listImages()).toEqual(["x"]);
+  expect(map.getStyle().glyphs).toBe("https://glyphs.test/{fontstack}/{range}.pbf");
+  expect(map.querySourceFeatures("nope")).toEqual([]);
+});
