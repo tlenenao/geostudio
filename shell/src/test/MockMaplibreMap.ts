@@ -15,7 +15,7 @@ export class MockMap {
       resourceType?: string,
     ) => { url: string; headers?: Record<string, string> };
   };
-  handlers: Record<string, Array<() => void>> = {};
+  handlers: Record<string, Array<(e?: unknown) => void>> = {};
   layerHandlers: Record<string, Array<(e: unknown) => void>> = {};
   sources: Recorded[] = [];
   layers: { id: string; [k: string]: unknown }[] = [];
@@ -29,6 +29,18 @@ export class MockMap {
     [0, 0],
   ];
   terrain: unknown = null;
+  // Images ajoutées par map.addImage (SP-27 icônes). La valeur enregistrée
+  // est le second argument tel quel : les tests n'inspectent que la présence
+  // et l'éventuel objet d'options, jamais les pixels.
+  images = new Map<string, { image: unknown; options?: unknown }>();
+  // `glyphs` du style actif : `text-field` exige que le style en déclare un
+  // (vérifié contre le validateur du style-spec installé). MapView refuse de
+  // poser une couche d'étiquettes sans lui ; les tests le pilotent d'ici.
+  glyphs: string | undefined = "https://glyphs.test/{fontstack}/{range}.pbf";
+  // Réponses de querySourceFeatures, par id de source. Un test d'étiquettes
+  // pose ici les entités que la carte est censée avoir chargées.
+  sourceFeatures: Record<string, unknown[]> = {};
+  querySourceFeaturesCalls: { sourceId: string; params?: unknown }[] = [];
 
   constructor(opts: MockMap["opts"]) {
     this.opts = opts;
@@ -62,10 +74,10 @@ export class MockMap {
     (this.handlers[event] ??= []).push(wrapped);
     return this;
   }
-  fire(event: string) {
+  fire(event: string, payload?: unknown) {
     // Iterate a snapshot: `once` handlers mutate this.handlers[event] while
     // firing, which would otherwise desync a live forEach mid-iteration.
-    [...(this.handlers[event] ?? [])].forEach((cb) => cb());
+    [...(this.handlers[event] ?? [])].forEach((cb) => (cb as (e?: unknown) => void)(payload));
   }
   fireOnLayer(event: string, layerId: string, payload: unknown) {
     this.layerHandlers[`${event}:${layerId}`]?.forEach((cb) => cb(payload));
@@ -76,6 +88,16 @@ export class MockMap {
       rec.spec = { ...(rec.spec as object), data: d };
     };
     this.sources.push(rec);
+  }
+  addImage(id: string, image: unknown, options?: unknown) {
+    this.images.set(id, { image, options });
+    return this;
+  }
+  hasImage(id: string) {
+    return this.images.has(id);
+  }
+  listImages() {
+    return [...this.images.keys()];
   }
   flyTo(opts: unknown) {
     this.flyToArgs.push(opts);
@@ -129,10 +151,21 @@ export class MockMap {
   isStyleLoaded() {
     return this.styleSettled;
   }
+  getStyle() {
+    return { glyphs: this.glyphs };
+  }
   // MapView projette le point cliqué pour positionner le popup ; la valeur
   // exacte n'a pas de sens en test, seule sa propagation compte.
   project(lngLat: { lng: number; lat: number }) {
     return { x: Math.round(lngLat.lng), y: Math.round(lngLat.lat) };
+  }
+  querySourceFeatures(sourceId: string, params?: unknown) {
+    this.querySourceFeaturesCalls.push({ sourceId, params });
+    return this.sourceFeatures[sourceId] ?? [];
+  }
+  getCanvas() {
+    // MapMeasureSketchToolbar ne lit que `style.cursor`.
+    return { style: {} as Record<string, string> };
   }
   addControl(control: unknown) {
     this.controls.push(control);
