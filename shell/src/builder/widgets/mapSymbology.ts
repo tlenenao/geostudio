@@ -19,6 +19,34 @@ export type ColorDomain =
 
 export type SizeDomain = { min: number; max: number };
 
+export type StrokeStyle = "solid" | "dashed" | "dotted";
+
+// Forme PERSISTÉE : la palette est un identifiant, jamais des couleurs
+// résolues — même règle que LayerSymbology.color (cf. déviation 5 du plan).
+// Task 5 élargit la variante `field` à { mode, classification?, computedAt }
+// pour que le contour classé soit éditable ; ne PAS anticiper ici, cette
+// tâche doit compiler seule.
+export type StrokeColorEncoding =
+  { fixed: string } | { field: string; domain: ColorDomain; palette: PaletteId };
+
+export type StrokeWidthEncoding = { fixed: number } | { field: string; domain: SizeDomain };
+
+export type LayerStroke = {
+  color: StrokeColorEncoding;
+  width: StrokeWidthEncoding;
+  style: StrokeStyle;
+};
+
+// Forme d'ENTRÉE de buildMapPaint/buildLegend : palette déjà résolue par
+// symbologyToPaintInputs, exactement comme le paramètre `palette` existant.
+export type StrokePaintInput = {
+  color:
+    | { fixed: string }
+    | { field: string; domain: ColorDomain; palette: ResolvedPalette | undefined };
+  width: StrokeWidthEncoding;
+  style: StrokeStyle;
+};
+
 export type MapEncodings = {
   color?: { field: string; mode: "categorical" | "numeric"; classification?: ColorClassification };
   size?: { field: string };
@@ -35,11 +63,25 @@ export type LayerSymbology = {
     computedAt: string;
   };
   size?: NonNullable<MapEncodings["size"]> & { domain: SizeDomain; computedAt: string };
+  stroke?: LayerStroke;
+  opacity?: number; // 0-100
 };
 
 export type MapPaintResult = {
   renderAs: "fill" | "circle" | "line";
+  // JAMAIS une propriété layout : `icon-image`/`text-field` sont layout-only
+  // dans le style-spec, et Style.addLayer fait `if (this._validate(...))
+  // return;` — une clé layout posée ici ferait disparaître la couche
+  // ENTIÈRE, silencieusement, sans exception pour le try/catch d'applyLayers.
   paint: Record<string, unknown>;
+  // Contour de polygone : seconde couche `line` (fill-outline-color n'a
+  // aucune largeur stylable). Absent quand il n'y a pas de contour.
+  outlinePaint?: Record<string, unknown>;
+  // Ids d'images MapLibre référencées par iconLayout ; l'appelant doit les
+  // charger via map.addImage (Task 8). Toujours présent, vide sans icône.
+  iconImages: string[];
+  // Layout de la couche `symbol` appariée (Task 7/7). Absent sans icône.
+  iconLayout?: Record<string, unknown>;
 };
 
 export type LegendSpec = {
@@ -55,6 +97,7 @@ export type LegendSpec = {
         colorHigh: string;
       };
   size?: { field: string; min: number; max: number; radiusMin: number; radiusMax: number };
+  stroke?: { kind: "categorical"; field: string; entries: { value: string; color: string }[] };
 };
 
 const CATEGORICAL_PALETTE = [
@@ -88,10 +131,73 @@ export function detectGeometryKind(geometry: unknown): GeometryKind {
   return "polygon";
 }
 
+// Même table que `renderAs` dans buildMapPaint : un seul endroit où
+// "géométrie → type de couche MapLibre" est écrit.
+export function renderAsFor(geometryKind: GeometryKind): "fill" | "circle" | "line" {
+  return geometryKind === "point" ? "circle" : geometryKind === "line" ? "line" : "fill";
+}
+
 function colorPaintProperty(renderAs: "fill" | "circle" | "line"): string {
   if (renderAs === "circle") return "circle-color";
   if (renderAs === "line") return "line-color";
   return "fill-color";
+}
+
+// Largeurs de contour : 1 px à 8 px sur le domaine, distinctes des rayons de
+// cercle (SIZE_RADIUS_MIN/MAX = 4/24) — un contour de 24 px mangerait le
+// polygone. Constantes locales, pas de réutilisation trompeuse.
+const STROKE_WIDTH_MIN = 1;
+const STROKE_WIDTH_MAX = 8;
+
+function strokeColorValue(color: StrokePaintInput["color"]): unknown {
+  if ("fixed" in color) return color.fixed;
+  const normalized = normalizeDomain(color.domain);
+  if (!normalized) return undefined;
+  if (normalized.kind === "categorical") {
+    const colors = color.palette
+      ? colorsForClasses(color.palette, normalized.values.length)
+      : normalized.values.map((_, i) => paletteColor(i));
+    const match: unknown[] = ["match", ["get", color.field]];
+    normalized.values.forEach((v, i) => match.push(v, colors[i % colors.length]));
+    match.push(colors[0]);
+    return match;
+  }
+  if (normalized.kind === "numeric-classed") {
+    const nClasses = normalized.breaks.length - 1;
+    const colors = color.palette
+      ? colorsForClasses(color.palette, nClasses)
+      : Array.from({ length: nClasses }, (_, i) => paletteColor(i));
+    const step: unknown[] = ["step", ["get", color.field], colors[0]];
+    for (let i = 1; i < nClasses; i++) step.push(normalized.breaks[i], colors[i]);
+    return step;
+  }
+  // numeric continu : même interpolation que fill-color/circle-color.
+  const low = color.palette?.kind === "sequential" ? color.palette.low : NUMERIC_COLOR_LOW;
+  const high = color.palette?.kind === "sequential" ? color.palette.high : NUMERIC_COLOR_HIGH;
+  if (normalized.min === normalized.max) return low;
+  return [
+    "interpolate",
+    ["linear"],
+    ["get", color.field],
+    normalized.min,
+    low,
+    normalized.max,
+    high,
+  ];
+}
+
+function strokeWidthValue(width: StrokeWidthEncoding): unknown {
+  if ("fixed" in width) return width.fixed;
+  if (width.domain.min === width.domain.max) return STROKE_WIDTH_MIN;
+  return [
+    "interpolate",
+    ["linear"],
+    ["get", width.field],
+    width.domain.min,
+    STROKE_WIDTH_MIN,
+    width.domain.max,
+    STROKE_WIDTH_MAX,
+  ];
 }
 
 export function equalIntervalBreaks(min: number, max: number, classes: number): number[] {
@@ -287,16 +393,22 @@ export function normalizeDomain(domain: ColorDomain | null): ColorDomain | null 
   return { kind: "numeric-classed", breaks: deduped };
 }
 
+export type PaintExtras = {
+  stroke?: StrokePaintInput;
+  opacity?: number; // 0-100
+};
+
 export function buildMapPaint(
   encodings: MapEncodings | undefined,
   colorDomain: ColorDomain | null,
   sizeDomain: SizeDomain | null,
   geometryKind: GeometryKind,
   palette?: ResolvedPalette,
+  extras?: PaintExtras,
 ): MapPaintResult {
-  const renderAs: "fill" | "circle" | "line" =
-    geometryKind === "point" ? "circle" : geometryKind === "line" ? "line" : "fill";
+  const renderAs = renderAsFor(geometryKind);
   const paint: Record<string, unknown> = {};
+  const result: MapPaintResult = { renderAs, paint, iconImages: [] };
   const normalizedColorDomain = normalizeDomain(colorDomain);
 
   if (encodings?.color && normalizedColorDomain) {
@@ -350,7 +462,57 @@ export function buildMapPaint(
           ];
   }
 
-  return { renderAs, paint };
+  const stroke = extras?.stroke;
+  if (stroke) {
+    const colorValue = strokeColorValue(stroke.color);
+    const widthValue = strokeWidthValue(stroke.width);
+    const dasharray =
+      stroke.style === "dashed" ? [2, 2] : stroke.style === "dotted" ? [1, 2] : undefined;
+
+    if (geometryKind === "point" && colorValue !== undefined) {
+      paint["circle-stroke-color"] = colorValue;
+      paint["circle-stroke-width"] = widthValue;
+      // `line-dasharray` n'a pas d'équivalent sur un cercle : le style est
+      // volontairement ignoré pour les points (aucune propriété MapLibre).
+    } else if (geometryKind === "polygon" && colorValue !== undefined) {
+      // Les DEUX sont posés à dessein, et c'est un arbitrage assumé (constat
+      // N7 du 2026-08-28, gravité Mineur) : `fill-outline-color` dessine un
+      // filet de 1 px soumis à `fill-opacity` (v8.paint_fill exige
+      // `fill-antialias: true`, qui est le défaut), donc à `opacity: 30` on
+      // superpose un filet à α=0,3 et la couche `line` à α=0,3 — une couture
+      // d'1 px sensiblement plus sombre à l'intérieur du contour. Purement
+      // cosmétique. On le garde parce que c'est le seul contour qui survive
+      // si `addOutlineLayer` échoue (le rollback de Task 3 retire la couche
+      // `line`, pas la peinture du remplissage) et parce que les assertions
+      // data-driven de cette tâche et de Task 5 portent dessus. Consigné dans
+      // les suivis non bloquants.
+      paint["fill-outline-color"] = colorValue;
+      result.outlinePaint = {
+        "line-color": colorValue,
+        "line-width": widthValue,
+        ...(dasharray ? { "line-dasharray": dasharray } : {}),
+      };
+    }
+    // geometryKind === "line" : no-op délibéré (déviation 2). Une ligne a
+    // déjà line-color/line-width via les encodages color/size ; un second
+    // contour sur une ligne n'a aucun sens cartographique.
+  }
+
+  if (extras?.opacity !== undefined) {
+    const alpha = extras.opacity / 100;
+    paint[
+      renderAs === "circle"
+        ? "circle-opacity"
+        : renderAs === "line"
+          ? "line-opacity"
+          : "fill-opacity"
+    ] = alpha;
+    // Le contour est une couche à part : sans ça, un polygone à 30 %
+    // gardait un contour parfaitement opaque (constat 3.11 du pré-vol).
+    if (result.outlinePaint) result.outlinePaint["line-opacity"] = alpha;
+  }
+
+  return result;
 }
 
 export function buildLegend(
@@ -359,6 +521,7 @@ export function buildLegend(
   sizeDomain: SizeDomain | null,
   geometryKind: GeometryKind,
   palette?: ResolvedPalette,
+  extras?: PaintExtras,
 ): LegendSpec | null {
   const legend: LegendSpec = {};
   const normalizedColorDomain = normalizeDomain(colorDomain);
@@ -411,7 +574,22 @@ export function buildLegend(
     };
   }
 
-  return legend.color || legend.size ? legend : null;
+  const stroke = extras?.stroke;
+  if (stroke && "field" in stroke.color) {
+    const normalized = normalizeDomain(stroke.color.domain);
+    if (normalized?.kind === "categorical") {
+      const colors = stroke.color.palette
+        ? colorsForClasses(stroke.color.palette, normalized.values.length)
+        : normalized.values.map((_, i) => paletteColor(i));
+      legend.stroke = {
+        kind: "categorical",
+        field: stroke.color.field,
+        entries: normalized.values.map((v, i) => ({ value: v, color: colors[i % colors.length] })),
+      };
+    }
+  }
+
+  return legend.color || legend.size || legend.stroke ? legend : null;
 }
 
 // Adaptateur pur : `LayerSymbology` est l'enveloppe de stockage/édition
@@ -426,8 +604,16 @@ export function symbologyToPaintInputs(
   colorDomain: ColorDomain | null;
   sizeDomain: SizeDomain | null;
   palette: ResolvedPalette | undefined;
+  stroke: StrokePaintInput | undefined;
 } {
-  if (!symbology) return { encodings: {}, colorDomain: null, sizeDomain: null, palette: undefined };
+  if (!symbology)
+    return {
+      encodings: {},
+      colorDomain: null,
+      sizeDomain: null,
+      palette: undefined,
+      stroke: undefined,
+    };
   const encodings: MapEncodings = {};
   let colorDomain: ColorDomain | null = null;
   let palette: ResolvedPalette | undefined;
@@ -442,5 +628,18 @@ export function symbologyToPaintInputs(
   }
   if (symbology.size) encodings.size = { field: symbology.size.field };
   const sizeDomain = symbology.size?.domain ?? null;
-  return { encodings, colorDomain, sizeDomain, palette };
+  const stroke: StrokePaintInput | undefined = symbology.stroke
+    ? {
+        ...symbology.stroke,
+        color:
+          "fixed" in symbology.stroke.color
+            ? symbology.stroke.color
+            : {
+                field: symbology.stroke.color.field,
+                domain: symbology.stroke.color.domain,
+                palette: resolvePalette(symbology.stroke.color.palette, themeColors) ?? undefined,
+              },
+      }
+    : undefined;
+  return { encodings, colorDomain, sizeDomain, palette, stroke };
 }

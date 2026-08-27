@@ -18,6 +18,7 @@ import {
   normalizeDomain,
   quantileBreaksFromRow,
   quantileMeasures,
+  renderAsFor,
   symbologyToPaintInputs,
 } from "./mapSymbology";
 import type { ColorDomain, LayerSymbology } from "./mapSymbology";
@@ -597,4 +598,164 @@ test("buildMapPaint's step expression for a usable (>= 2 classes) domain validat
   );
   const validated = createExpression(paint["fill-color"]);
   expect(validated.result).toBe("success");
+});
+
+test("buildMapPaint emits circle-stroke-* for a point layer with a fixed stroke color/width", () => {
+  const { paint } = buildMapPaint({}, null, null, "point", undefined, {
+    stroke: { color: { fixed: "#111111" }, width: { fixed: 2 }, style: "solid" },
+  });
+  expect(paint["circle-stroke-color"]).toBe("#111111");
+  expect(paint["circle-stroke-width"]).toBe(2);
+});
+
+test("buildMapPaint emits fill-outline-color plus an outline line-paint for a polygon with stroke", () => {
+  const result = buildMapPaint({}, null, null, "polygon", undefined, {
+    stroke: { color: { fixed: "#222222" }, width: { fixed: 3 }, style: "dashed" },
+  });
+  expect(result.paint["fill-outline-color"]).toBe("#222222");
+  expect(result.outlinePaint).toEqual({
+    "line-color": "#222222",
+    "line-width": 3,
+    "line-dasharray": [2, 2],
+  });
+});
+
+test("stroke on a line geometry is a no-op and never overwrites the color encoding", () => {
+  const result = buildMapPaint(
+    { color: { field: "region", mode: "categorical" } },
+    { kind: "categorical", values: ["Nord", "Sud"] },
+    null,
+    "line",
+    undefined,
+    { stroke: { color: { fixed: "#333333" }, width: { fixed: 7 }, style: "dotted" } },
+  );
+  // The `color` encoding owns line-color; the stroke must not touch it…
+  expect(result.paint["line-color"]).toEqual([
+    "match",
+    ["get", "region"],
+    "Nord",
+    "#2563eb",
+    "Sud",
+    "#dc2626",
+    "#2563eb",
+  ]);
+  // …nor introduce a width, a dash, or a second layer.
+  expect(result.paint["line-width"]).toBeUndefined();
+  expect(result.paint["line-dasharray"]).toBeUndefined();
+  expect(result.outlinePaint).toBeUndefined();
+});
+
+test("buildMapPaint applies data-driven stroke color from a categorical domain", () => {
+  const result = buildMapPaint({}, null, null, "polygon", undefined, {
+    stroke: {
+      color: {
+        field: "region",
+        domain: { kind: "categorical", values: ["Nord", "Sud"] },
+        palette: { kind: "categorical", colors: ["#aaaaaa", "#bbbbbb"] },
+      },
+      width: { fixed: 1 },
+      style: "solid",
+    },
+  });
+  expect(result.paint["fill-outline-color"]).toEqual([
+    "match",
+    ["get", "region"],
+    "Nord",
+    "#aaaaaa",
+    "Sud",
+    "#bbbbbb",
+    "#aaaaaa",
+  ]);
+});
+
+test("buildMapPaint applies data-driven stroke width from a numeric domain", () => {
+  const result = buildMapPaint({}, null, null, "polygon", undefined, {
+    stroke: {
+      color: { fixed: "#000000" },
+      width: { field: "pop", domain: { min: 0, max: 100 } },
+      style: "solid",
+    },
+  });
+  expect(result.outlinePaint?.["line-width"]).toEqual([
+    "interpolate",
+    ["linear"],
+    ["get", "pop"],
+    0,
+    1,
+    100,
+    8,
+  ]);
+});
+
+test("buildMapPaint applies fixed opacity per geometry, outline included", () => {
+  expect(
+    buildMapPaint({}, null, null, "polygon", undefined, { opacity: 50 }).paint["fill-opacity"],
+  ).toBe(0.5);
+  expect(
+    buildMapPaint({}, null, null, "point", undefined, { opacity: 25 }).paint["circle-opacity"],
+  ).toBe(0.25);
+  expect(
+    buildMapPaint({}, null, null, "line", undefined, { opacity: 100 }).paint["line-opacity"],
+  ).toBe(1);
+  // I3.11 du pré-vol : un polygone à 30 % gardait un contour opaque.
+  const withOutline = buildMapPaint({}, null, null, "polygon", undefined, {
+    opacity: 30,
+    stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "solid" },
+  });
+  expect(withOutline.outlinePaint?.["line-opacity"]).toBe(0.3);
+});
+
+test("buildMapPaint never writes a layout-only property into paint", () => {
+  const LAYOUT_ONLY = ["icon-image", "icon-size", "icon-allow-overlap", "text-field", "text-size"];
+  const result = buildMapPaint({}, null, null, "point", undefined, {
+    opacity: 40,
+    stroke: { color: { fixed: "#000000" }, width: { fixed: 1 }, style: "solid" },
+  });
+  for (const key of LAYOUT_ONLY) expect(result.paint[key]).toBeUndefined();
+});
+
+test("buildLegend includes a stroke entry for a data-driven stroke color", () => {
+  const legend = buildLegend({}, null, null, "polygon", undefined, {
+    stroke: {
+      color: {
+        field: "region",
+        domain: { kind: "categorical", values: ["Nord"] },
+        palette: { kind: "categorical", colors: ["#aaaaaa"] },
+      },
+      width: { fixed: 1 },
+      style: "solid",
+    },
+  });
+  expect(legend?.stroke).toEqual({
+    kind: "categorical",
+    field: "region",
+    entries: [{ value: "Nord", color: "#aaaaaa" }],
+  });
+});
+
+test("symbologyToPaintInputs resolves stroke.color.palette from an id, like color", () => {
+  const inputs = symbologyToPaintInputs(
+    {
+      stroke: {
+        color: {
+          field: "region",
+          domain: { kind: "categorical", values: ["A"] },
+          palette: "theme-primary",
+        },
+        width: { fixed: 1 },
+        style: "solid",
+      },
+    },
+    { primary: "#123456" },
+  );
+  expect(inputs.stroke).toBeDefined();
+  expect(inputs.stroke && "field" in inputs.stroke.color && inputs.stroke.color.palette).toEqual(
+    expect.objectContaining({ kind: expect.any(String) }),
+  );
+});
+
+test("renderAsFor maps a geometry kind to the MapLibre layer type", () => {
+  expect(renderAsFor("point")).toBe("circle");
+  expect(renderAsFor("line")).toBe("line");
+  expect(renderAsFor("polygon")).toBe("fill");
 });
