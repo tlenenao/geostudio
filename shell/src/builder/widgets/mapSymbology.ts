@@ -555,7 +555,11 @@ export function buildMapPaint(
           "icon-size": 1,
           "icon-allow-overlap": true,
         };
-        result.iconImages = images;
+        // Dédoublonné : deux catégories peuvent pointer vers la même icône
+        // (constat 2 de la revue Task 7, SP-27) — `Set` préserve l'ordre de
+        // première apparition, donc l'invariant "valeurs mappées puis
+        // fallback" ci-dessus reste respecté.
+        result.iconImages = Array.from(new Set(images));
       }
     }
   }
@@ -637,8 +641,12 @@ export function buildLegend(
     }
   }
 
+  // Garde symétrique à celui de buildMapPaint (`geometryKind === "point"`) :
+  // sans lui, une couche non ponctuelle ne peint aucune icône (correct) mais
+  // affichait quand même une entrée de légende icône — une légende qui
+  // promet un rendu inexistant (constat 1 de la revue Task 7, SP-27).
   const icon = extras?.icon;
-  if (icon) {
+  if (icon && geometryKind === "point") {
     const normalized = normalizeDomain(icon.domain);
     if (normalized?.kind === "categorical") {
       const entries = normalized.values
