@@ -7,8 +7,8 @@ import { useSetCrossFilter, useSetExtent } from "../AnalyticsContext";
 import { useItemClient } from "../../api/ItemClientProvider";
 import {
   buildLegend,
-  buildMapPaint,
   detectGeometryKind,
+  renderAsFor,
   symbologyToPaintInputs,
 } from "./mapSymbology";
 import type { LayerSymbology, LegendSpec } from "./mapSymbology";
@@ -219,17 +219,16 @@ export function registerMapWidget(): void {
       const url = ctx.data?.url;
 
       const symbology = props.symbology as LayerSymbology | undefined;
+      const geometryKind = detectGeometryKind(ctx.data?.records?.[0]?.geometry);
+      // Le widget ne compile PLUS la peinture : il transmet la symbologie et
+      // les couleurs de thème, et MapView compile — c'est le seul chemin qui
+      // fait bénéficier les apps/dashboards du contour, des icônes, des
+      // étiquettes et de l'opacité (SP-27). `renderAs` reste ici : c'est un
+      // champ de la couche `feature`, et MapView en dérive sa géométrie.
+      const renderAs = renderAsFor(geometryKind);
       const { encodings, colorDomain, sizeDomain, palette, stroke } = symbologyToPaintInputs(
         symbology,
         ctx.theme?.colors,
-      );
-      const geometryKind = detectGeometryKind(ctx.data?.records?.[0]?.geometry);
-      const { renderAs, paint } = buildMapPaint(
-        encodings,
-        colorDomain,
-        sizeDomain,
-        geometryKind,
-        palette,
       );
       const legend = buildLegend(encodings, colorDomain, sizeDomain, geometryKind, palette, {
         stroke,
@@ -248,7 +247,7 @@ export function registerMapWidget(): void {
                 kind: "feature",
                 url,
                 renderAs,
-                paint,
+                ...(symbology ? { symbology } : {}),
                 popup: props.popup as PopupConfig | undefined,
               },
             ]
@@ -266,6 +265,8 @@ export function registerMapWidget(): void {
             <MapView
               ref={handle}
               config={config}
+              themeColors={ctx.theme?.colors}
+              interactiveTools={ctx.mode !== "edit"}
               getAuthToken={client.getAuthToken}
               getCoreUrl={client.getCoreUrl}
               loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}

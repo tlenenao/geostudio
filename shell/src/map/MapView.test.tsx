@@ -8,6 +8,11 @@ import { mapInstances } from "../test/MockMaplibreMap";
 import { overlayInstances } from "../test/MockDeckgl";
 import { installImageDecodeStub } from "../test/imageDecodeStub";
 import type { MapViewHandle } from "./MapView";
+// Dépendance transitive de maplibre-gl (précédent : mapSymbology.test.ts:9),
+// pas un ajout à shell/package.json — utilisée pour prouver contre le vrai
+// validateur MapLibre que les couches produites par MapView (et pas
+// seulement les entrées pures de buildMapPaint) sont un style valide.
+import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 
 vi.mock("maplibre-gl", async () => {
   const { MockMap } = await import("../test/MockMaplibreMap");
@@ -1948,4 +1953,77 @@ test("la popup est suspendue pendant une mesure", async () => {
   // …mais plus une fois la mesure activée.
   await userEvent.click(screen.getByRole("button", { name: "Mesurer" }));
   expect(screen.queryByText("Tulle")).not.toBeInTheDocument();
+});
+
+// Task 19 : le widget carte transmet désormais `symbology` tel quel à
+// MapView (il ne compile plus rien lui-même) — ces deux tests ferment la
+// boucle de bout en bout que ce câblage introduit, pour une couche `feature`
+// portant les quatre encodages à la fois (opacité, contour, icône, étiquette).
+const fourEncodingsLayer: MapLayer = {
+  id: "ds-1",
+  title: "Données",
+  visible: true,
+  kind: "feature",
+  url: "u",
+  renderAs: "circle",
+  symbology: {
+    opacity: 60,
+    stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "solid" },
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["ecole"] },
+      mapping: { ecole: { source: "lucide", name: "school" } },
+    },
+    label: {
+      template: "${record.nom}",
+      size: 12,
+      color: "#1e293b",
+      haloColor: "#ffffff",
+      haloWidth: 1,
+    },
+  },
+};
+
+test("une couche feature portant les quatre nouveaux encodages produit toutes ses sous-couches", () => {
+  installImageDecodeStub();
+  render(<MapView config={{ ...config, layers: [fourEncodingsLayer] }} />);
+  const map = mapInstances[0];
+  expect(map.getLayer("ds-1")).toMatchObject({
+    type: "circle",
+    paint: { "circle-opacity": 0.6, "circle-stroke-color": "#000000", "circle-stroke-width": 2 },
+  });
+  // renderAs "circle" ⇒ géométrie "point" ⇒ pas de contour en seconde couche.
+  expect(map.getLayer("ds-1__outline")).toBeUndefined();
+  expect(map.getLayer("ds-1__icon")).toMatchObject({ type: "symbol" });
+  expect(map.getLayer("ds-1__label")).toMatchObject({ type: "symbol", source: "ds-1__labels" });
+});
+
+// Constat N6 (Important) : le plan rend le mode de panne « clé layout posée
+// dans paint » observable (le listener `map.on("error")` de Task 3) mais pas
+// impossible — aucun test jusqu'ici ne passait les couches produites par
+// MapView au VRAI validateur de style MapLibre ; toutes les assertions
+// passent par MockMap, qui n'exécute aucun validateur. Ce test l'étend à
+// `validateStyleMin`, comme `createExpression` l'était déjà dans
+// `mapSymbology.test.ts:591` pour les entrées pures de `buildMapPaint`.
+test("les couches produites par MapView valident contre le vrai style-spec MapLibre", () => {
+  installImageDecodeStub();
+  render(<MapView config={{ ...config, layers: [fourEncodingsLayer] }} />);
+  const map = mapInstances[0];
+  // Style minimal réel : les sources et le glyphs que les couches exigent
+  // (l'étiquette pose un text-field, qui requiert un endpoint glyphs déclaré).
+  const style = {
+    version: 8 as const,
+    glyphs: "https://glyphs.test/{fontstack}/{range}.pbf",
+    sources: Object.fromEntries(
+      map.sources.map((s) => [
+        s.id,
+        { type: "geojson" as const, data: { type: "FeatureCollection" as const, features: [] } },
+      ]),
+    ),
+    layers: map.layers,
+  };
+  // Zéro erreur, pas « peu d'erreurs » : une clé layout posée dans paint, un
+  // text-field sans glyphs ou un ["feature-state", …] en layout sortent tous
+  // ici, alors que Style.addLayer les avalerait en faisant `return`.
+  expect(validateStyleMin(style as never)).toEqual([]);
 });
