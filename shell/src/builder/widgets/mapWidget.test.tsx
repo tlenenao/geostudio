@@ -632,3 +632,37 @@ test("no popup configured means no popup on the layer", async () => {
   await screen.findByTestId("mapview");
   expect((lastMapConfig().layers[0] as any).popup).toBeUndefined();
 });
+
+test("shows a stroke legend entry from a data-driven stroke color", async () => {
+  const Map = getWidget("map")!.Component;
+  render(
+    withClient(
+      <Map
+        props={{
+          dataSourceId: "d",
+          symbology: {
+            stroke: {
+              color: {
+                field: "region",
+                domain: { kind: "categorical", values: ["Nord"] },
+                palette: "categorical-a",
+              },
+              width: { fixed: 1 },
+              style: "solid",
+            },
+          },
+        }}
+        ctx={
+          {
+            mode: "runtime",
+            data: state({
+              url: "https://fs/communes/items.json",
+              records: [{ id: 1, properties: {}, geometry: { type: "Polygon", coordinates: [] } }],
+            }),
+          } as WidgetContext
+        }
+      />,
+    ),
+  );
+  expect(await screen.findByText("Nord")).toBeInTheDocument();
+});

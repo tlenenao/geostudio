@@ -1387,3 +1387,145 @@ test("le mock MapLibre transporte un payload d'événement et enregistre les ima
   expect(map.getStyle().glyphs).toBe("https://glyphs.test/{fontstack}/{range}.pbf");
   expect(map.querySourceFeatures("nope")).toEqual([]);
 });
+
+test("a polygon layer with a stroke width adds a second outline line-layer sharing its source", () => {
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        symbology: {
+          stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "dashed" },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  expect(map.getLayer("communes")).toMatchObject({
+    type: "fill",
+    paint: { "fill-outline-color": "#000000" },
+  });
+  expect(map.getLayer("communes__outline")).toMatchObject({
+    type: "line",
+    source: "communes",
+    "source-layer": "communes",
+    paint: { "line-color": "#000000", "line-width": 2, "line-dasharray": [2, 2] },
+  });
+});
+
+test("the outline sub-layer gets no click handler of its own (one popup per click)", () => {
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        popup: { titleField: "nom" },
+        symbology: { stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "solid" } },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  expect(map.layerHandlers["click:communes"] ?? []).toHaveLength(1);
+  expect(map.layerHandlers["click:communes__outline"] ?? []).toHaveLength(0);
+});
+
+test("removing a stroked layer removes its outline sub-layer and its source", () => {
+  const { rerender } = render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        symbology: { stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "solid" } },
+      })}
+    />,
+  );
+  rerender(<MapView config={config} />);
+  const map = mapInstances[0];
+  expect(map.getLayer("communes__outline")).toBeUndefined();
+  expect(map.getLayer("communes")).toBeUndefined();
+  expect(map.getSource("communes")).toBeUndefined();
+});
+
+test("a failing outline sub-layer rolls back its parent instead of orphaning the source", () => {
+  const good: MapLayer = { id: "ok", title: "OK", visible: true, kind: "feature", url: "u1" };
+  const { rerender } = render(<MapView config={{ ...config, layers: [good] }} />);
+  const map = mapInstances[0];
+  map.throwOnAddLayer.add("communes__outline");
+  rerender(
+    <MapView
+      config={{
+        ...config,
+        layers: [
+          good,
+          ...tiled({
+            geometryKind: "polygon",
+            symbology: {
+              stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "solid" },
+            },
+          }).layers,
+        ],
+      }}
+    />,
+  );
+  expect(map.getLayer("communes")).toBeUndefined();
+  expect(map.getLayer("communes__outline")).toBeUndefined();
+  expect(map.getSource("communes")).toBeUndefined();
+  expect(map.getLayer("ok")).toBeDefined();
+});
+
+test("a feature layer's opacity reaches its paint", () => {
+  const layer: MapLayer = {
+    id: "l1",
+    title: "Zones",
+    visible: true,
+    kind: "feature",
+    url: "u",
+    symbology: { opacity: 40 },
+  };
+  render(<MapView config={{ ...config, layers: [layer] }} />);
+  expect(mapInstances[0].getLayer("l1")).toMatchObject({
+    type: "fill",
+    paint: { "fill-opacity": 0.4 },
+  });
+});
+
+test("themeColors reaches the paint compilation (theme-primary resolves)", () => {
+  const layer: MapLayer = {
+    id: "l1",
+    title: "Zones",
+    visible: true,
+    kind: "feature",
+    url: "u",
+    symbology: {
+      color: {
+        field: "valeur",
+        mode: "numeric",
+        palette: "theme-primary",
+        domain: { kind: "numeric", min: 0, max: 100 },
+        computedAt: "2026-08-27T00:00:00Z",
+      },
+    },
+  };
+  render(<MapView config={{ ...config, layers: [layer] }} themeColors={{ primary: "#123456" }} />);
+  expect(JSON.stringify(mapInstances[0].getLayer("l1"))).toContain("#123456");
+});
+
+test("a MapLibre error event is reported instead of vanishing", () => {
+  const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+  render(<MapView config={config} />);
+  mapInstances[0].fire("error", {
+    error: { message: "layers[0].paint.icon-image: unknown property" },
+  });
+  expect(spy).toHaveBeenCalledWith(
+    "MapView: MapLibre a signalé une erreur",
+    expect.objectContaining({ error: expect.anything() }),
+  );
+  spy.mockRestore();
+});
+
+// Constat N13 : sans filtre, ce listener journalise chaque tuile 404 et
+// chaque sprite manquant, donc noie le signal qu'il existe pour produire.
+test("an ordinary MapLibre error (a 404 tile) is not reported", () => {
+  const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+  render(<MapView config={config} />);
+  mapInstances[0].fire("error", { error: { message: "AJAXError: Not Found (404)" } });
+  expect(spy).not.toHaveBeenCalled();
+  spy.mockRestore();
+});
