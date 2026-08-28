@@ -108,6 +108,18 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async sampleCollectionField(..._args: unknown[]) {
       return unsupported();
     },
+    async uploadMapIcon(..._args: unknown[]) {
+      return unsupported();
+    },
+    async listMapIcons() {
+      return unsupported();
+    },
+    async deleteMapIcon(..._args: unknown[]) {
+      return unsupported();
+    },
+    async fetchMapIconBlob(..._args: unknown[]) {
+      return unsupported();
+    },
     async listActiveExtensions(..._args: unknown[]) {
       return unsupported();
     },

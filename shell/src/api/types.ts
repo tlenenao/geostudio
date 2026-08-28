@@ -219,6 +219,14 @@ export type GeoJSONFeatureInput = {
 
 export type ConfigRevisionInfo = { version: number; createdAt: string };
 
+export type MapIconOut = {
+  id: string;
+  title: string;
+  category: string;
+  contentType: string;
+  createdAt: string;
+};
+
 export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItem(pk: string): Promise<Item>;
@@ -256,6 +264,14 @@ export interface ItemClient {
   setSharing(pk: string, sharing: Sharing): Promise<void>;
   listLayerSources(params?: { q?: string }): Promise<LayerSource[]>;
   sampleCollectionField(collectionId: string, field: string, limit: number): Promise<number[]>;
+  // Un SEUL appel : le cœur reçoit les octets (D7). Pas de presign, donc pas
+  // de séquence presign → PUT → POST à orchestrer côté client.
+  uploadMapIcon(file: File, title: string, category: string): Promise<MapIconOut>;
+  listMapIcons(): Promise<MapIconOut[]>;
+  deleteMapIcon(iconId: string): Promise<void>;
+  // Blob, pas URL : la route est gardée par bearer token, qu'une balise
+  // <img> ne porterait pas. Le jeton ne sort jamais d'itemClient.ts.
+  fetchMapIconBlob(iconId: string): Promise<Blob>;
   listActiveExtensions(): Promise<ExtensionManifest[]>;
   listAllExtensions(): Promise<AdminExtension[]>;
   setExtensionEnabled(id: string, enabled: boolean): Promise<void>;

@@ -42,6 +42,7 @@ import type {
   LayerSource,
   ListItemsParams,
   MapConfig,
+  MapIconOut,
   MapLayer,
   Me,
   Page,
@@ -1321,6 +1322,60 @@ export function createItemClient(opts: {
         { field, sample: limit },
       );
       return data.rows.map((r) => Number(r.value));
+    },
+
+    async uploadMapIcon(file: File, title: string, category: string) {
+      // Multipart, patron copié de uploadThumbnail (itemClient.ts:600-612) :
+      // `request()` sérialise en JSON, donc fetch direct. On ne pose PAS
+      // Content-Type à la main — la plateforme ajoute le boundary.
+      const token = getToken();
+      const form = new FormData();
+      form.append("file", file);
+      form.append("title", title);
+      form.append("category", category);
+      const res = await fetch(`${coreUrl}/map-icons`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!res.ok) {
+        // Le cœur répond en RFC 7807 avec un membre `errors` de premier
+        // niveau quand un SVG est refusé : remonter le message pour que
+        // l'auteur voie POURQUOI, au lieu d'un code nu.
+        let detail = "";
+        try {
+          const problem = (await res.json()) as {
+            detail?: string;
+            errors?: { message?: string }[];
+          };
+          detail = problem.errors?.[0]?.message ?? problem.detail ?? "";
+        } catch {
+          detail = "";
+        }
+        throw new Error(
+          `Request failed: ${res.status} POST /map-icons${detail ? ` — ${detail}` : ""}`,
+        );
+      }
+      return (await res.json()) as MapIconOut;
+    },
+
+    async listMapIcons() {
+      return request<MapIconOut[]>("GET", "/map-icons");
+    },
+
+    async deleteMapIcon(iconId: string) {
+      await request<void>("DELETE", `/map-icons/${encodeURIComponent(iconId)}`);
+    },
+
+    async fetchMapIconBlob(iconId: string) {
+      // `request()` fait toujours res.json() : cette route renvoie des
+      // octets, donc fetch direct, avec le même en-tête d'autorisation.
+      const token = getToken();
+      const res = await fetch(`${coreUrl}/map-icons/${encodeURIComponent(iconId)}/file`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Request failed: ${res.status} GET /map-icons/${iconId}/file`);
+      return res.blob();
     },
 
     async exportDataSource(
