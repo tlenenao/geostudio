@@ -65,7 +65,16 @@ export type StrokePaintInput = {
 };
 
 export type MapEncodings = {
-  color?: { field: string; mode: "categorical" | "numeric"; classification?: ColorClassification };
+  // Dérivé de `ClassifiedColorEncoding` (pas redéclaré) : la version d'avant
+  // ce resserrage déclarait ces trois champs une seconde fois, sans relation
+  // de type avec le contrat classé — un champ ajouté à l'un ne cassait pas
+  // l'autre, ils pouvaient diverger silencieusement (constat B de la revue
+  // finale Task 5, SP-27 — la même classe de défaut que l'unification à six
+  // champs visait à éliminer, simplement déplacée sur cette intersection à
+  // trois). `Pick` garde le même type effectif (vérifié : aucun site
+  // d'affectation n'a changé de forme) tout en forçant le compilateur à
+  // signaler toute divergence future.
+  color?: Pick<ClassifiedColorEncoding, "field" | "mode" | "classification">;
   size?: { field: string };
 };
 

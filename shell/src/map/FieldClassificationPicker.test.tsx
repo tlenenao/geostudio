@@ -2,7 +2,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
-import { FieldClassificationPicker, formatDomain } from "./FieldClassificationPicker";
+import {
+  FieldClassificationPicker,
+  formatDomain,
+  type ClassifiedEncoding,
+} from "./FieldClassificationPicker";
 
 const labels = {
   field: "Champ test",
@@ -75,6 +79,51 @@ test("le sélecteur de méthode n'apparaît qu'en mode numérique", () => {
   expect(onChange).toHaveBeenLastCalledWith(
     expect.objectContaining({ mode: "numeric", classification: undefined }),
   );
+});
+
+// Constat C de la revue finale Task 5 (SP-27) : `mode` est obligatoire sur
+// `ClassifiedColorEncoding`, mais un document écrit à la main ou par le MCP
+// peut porter un contour data-driven sans `mode` (aucune UI ne pouvait
+// produire cette forme avant SP-27). Sans le repli `?? "categorical"` à la
+// lecture, `value={value.mode}` vaut `undefined` : React ne pilote alors
+// plus jamais l'option sélectionnée de ce <select> (vérifié dans la source
+// de react-dom — contrairement à <input>, <select> n'émet pas
+// l'avertissement console "changing an uncontrolled input to be
+// controlled" ; le défaut est silencieux, seul le DOM diverge du modèle).
+// Ce test constate cette divergence : sans le repli, une interaction native
+// laisse le <select> afficher une valeur que le modèle ne reflète plus au
+// rendu suivant ; avec le repli, le <select> est TOUJOURS piloté par React et
+// se resynchronise à chaque rendu.
+test("un encodage sans mode garde le <select> synchronisé avec le modèle après une interaction native", () => {
+  const valueWithoutMode = {
+    field: "population",
+    palette: "categorical-a",
+    domain: { kind: "categorical", values: [] },
+    computedAt: "",
+  } as unknown as ClassifiedEncoding;
+  const props = {
+    labels,
+    listId: "l1",
+    themeColors: undefined,
+    jenksAvailable: true,
+    busy: false,
+    error: null as string | null,
+    onChange: vi.fn(),
+    onRecompute: vi.fn(),
+  };
+  const { rerender } = render(<FieldClassificationPicker {...props} value={valueWithoutMode} />);
+  const select = screen.getByLabelText("Type test") as HTMLSelectElement;
+  expect(select.value).toBe("categorical");
+
+  // Interaction native qui déplace le DOM sans passer par un changement de
+  // props (simule ce qu'un <select> non contrôlé laisse arriver).
+  fireEvent.change(select, { target: { value: "numeric" } });
+
+  // Re-rendu avec un modèle TOUJOURS sans mode : un <select> réellement
+  // piloté par React réaffirme "categorical" à chaque rendu ; un <select>
+  // non contrôlé (sans le repli) laisse le DOM sur "numeric".
+  rerender(<FieldClassificationPicker {...props} value={{ ...valueWithoutMode }} />);
+  expect(select.value).toBe("categorical");
 });
 
 test("le nombre de classes est borné à 2-9", () => {

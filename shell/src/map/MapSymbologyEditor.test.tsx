@@ -564,19 +564,53 @@ test("les libellés du contour ne collident pas avec ceux de la couleur", () => 
   );
   // Les deux pickers coexistent : chaque nom accessible reste unique.
   expect(screen.getByLabelText("Champ couleur")).toBeInTheDocument();
-  expect(screen.getByLabelText("Champ couleur de contour")).toBeInTheDocument();
+  expect(screen.getByLabelText("Champ du contour")).toBeInTheDocument();
   expect(screen.getByLabelText("Palette")).toBeInTheDocument();
-  expect(screen.getByLabelText("Palette du contour")).toBeInTheDocument();
-  expect(screen.getByLabelText("Méthode de classification du contour")).toBeInTheDocument();
+  expect(screen.getByLabelText("Couleurs du contour")).toBeInTheDocument();
+  expect(screen.getByLabelText("Type de valeurs du contour")).toBeInTheDocument();
+  expect(screen.getByLabelText("Méthode de répartition du contour")).toBeInTheDocument();
   // Un SEUL <datalist> pour les deux pickers et le champ taille : rendre
   // l'élément dans le picker dupliquerait son id DOM (constat I4).
   expect(document.querySelectorAll("datalist")).toHaveLength(1);
+
+  // Constat A de la revue finale Task 5 (SP-27) : `getByLabelText` de Testing
+  // Library matche EXACT, ce qui laissait passer des libellés de contour
+  // sur-chaînes stricts de ceux de la couleur (« Champ couleur de contour »
+  // ⊃ « Champ couleur ») — invisible ici, mais une violation de mode strict
+  // pour `getByLabel`/`getByRole({ name })` de Playwright, qui matchent en
+  // sous-chaîne insensible à la casse par défaut. On vérifie donc la relation
+  // mécaniquement, dans les deux sens, plutôt que par lecture visuelle des
+  // libellés.
+  const colorLabels = [
+    "Champ couleur",
+    "Palette",
+    "Type de couleur",
+    "Méthode de classification",
+    "Nombre de classes",
+    "Recalculer les classes",
+  ];
+  const strokeLabels = [
+    "Champ du contour",
+    "Couleurs du contour",
+    "Type de valeurs du contour",
+    "Méthode de répartition du contour",
+    "Nombre de tranches du contour",
+    "Recalculer le contour",
+  ];
+  for (const c of colorLabels) {
+    for (const s of strokeLabels) {
+      const cLower = c.toLowerCase();
+      const sLower = s.toLowerCase();
+      expect(sLower.includes(cLower)).toBe(false);
+      expect(cLower.includes(sLower)).toBe(false);
+    }
+  }
 });
 
 // `computeColorDomain` en mode catégoriel fait `rows.map((r) => String(r.id))` :
 // le mock doit avoir la forme réelle d'un `DataRecord` (`{ id, properties }`),
 // pas `{ region: … }` — sinon le domaine vaudrait `["undefined", …]`.
-test("« Recalculer les classes du contour » fige le domaine et l'horodatage", async () => {
+test("« Recalculer le contour » fige le domaine et l'horodatage", async () => {
   const onChange = vi.fn();
   const runStatistics = vi.fn().mockResolvedValue([
     { id: "Nord", properties: {} },
@@ -602,7 +636,7 @@ test("« Recalculer les classes du contour » fige le domaine et l'horodatage", 
       onChange={onChange}
     />,
   );
-  await userEvent.click(screen.getByRole("button", { name: "Recalculer les classes du contour" }));
+  await userEvent.click(screen.getByRole("button", { name: "Recalculer le contour" }));
   await vi.waitFor(() => {
     const last = onChange.mock.calls.at(-1)![0];
     expect(last.stroke.color.domain).toEqual({ kind: "categorical", values: ["Nord", "Sud"] });
@@ -633,7 +667,7 @@ test("un recalcul de contour en échec affiche une erreur au lieu d'une rejectio
       onChange={vi.fn()}
     />,
   );
-  await userEvent.click(screen.getByRole("button", { name: "Recalculer les classes du contour" }));
+  await userEvent.click(screen.getByRole("button", { name: "Recalculer le contour" }));
   await vi.waitFor(() =>
     expect(screen.getAllByRole("alert").some((n) => n.textContent?.includes("champ inconnu"))).toBe(
       true,
@@ -766,7 +800,7 @@ test("changer la palette du contour écrit stroke.color.palette, jamais color.pa
       onChange={onChange}
     />,
   );
-  fireEvent.change(screen.getByLabelText("Palette du contour"), {
+  fireEvent.change(screen.getByLabelText("Couleurs du contour"), {
     target: { value: "sequential-warm" },
   });
   const call = onChange.mock.calls.at(-1)![0];
