@@ -1757,3 +1757,140 @@ test("removing an icon layer removes its symbol sub-layer and its source", () =>
   expect(map.getLayer("communes__icon")).toBeUndefined();
   expect(map.getSource("communes")).toBeUndefined();
 });
+
+const labelSymbology = {
+  label: {
+    template: "${record.nom}",
+    size: 12,
+    color: "#1e293b",
+    haloColor: "#ffffff",
+    haloWidth: 1,
+  },
+};
+
+test("une couche étiquetée pose une source GeoJSON dédiée et une couche symbol", () => {
+  render(<MapView config={tiled({ geometryKind: "polygon", symbology: labelSymbology })} />);
+  const map = mapInstances[0];
+  expect(map.getSource("communes__labels")).toMatchObject({
+    spec: { type: "geojson" },
+  });
+  expect(map.getLayer("communes__label")).toMatchObject({
+    type: "symbol",
+    source: "communes__labels",
+    layout: { "text-field": ["get", "label"], "text-size": 12 },
+    paint: {
+      "text-color": "#1e293b",
+      "text-halo-color": "#ffffff",
+      "text-halo-width": 1,
+    },
+  });
+  // Aucune source-layer, aucun filtre : la source est du GeoJSON local.
+  expect(map.getLayer("communes__label")).not.toHaveProperty("source-layer");
+  // Aucun handler de clic : la couche est posée sur les mêmes entités.
+  expect(map.layerHandlers["click:communes__label"] ?? []).toHaveLength(0);
+});
+
+test("idle recalcule les étiquettes depuis querySourceFeatures", async () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", pkColumn: "code", symbology: labelSymbology })}
+    />,
+  );
+  const map = mapInstances[0];
+  map.sourceFeatures["communes"] = [
+    { id: 19108, properties: { nom: "Tulle" }, geometry: { type: "Point", coordinates: [1, 2] } },
+    { id: 19031, properties: { nom: "Brive" }, geometry: { type: "Point", coordinates: [3, 4] } },
+  ];
+  act(() => map.fire("idle"));
+  await vi.waitFor(() => {
+    const src = map.getSource("communes__labels") as { spec: { data?: unknown } };
+    expect(
+      (src.spec.data as { features: { properties: { label: string } }[] }).features.map(
+        (f) => f.properties.label,
+      ),
+    ).toEqual(["Tulle", "Brive"]);
+  });
+  // Source vecteur : sourceLayer est OBLIGATOIRE, sinon la requête ne
+  // renvoie rien, en silence.
+  expect(map.querySourceFeaturesCalls).toEqual(
+    expect.arrayContaining([{ sourceId: "communes", params: { sourceLayer: "communes" } }]),
+  );
+});
+
+test("une couche feature interroge sa source GeoJSON sans sourceLayer", async () => {
+  const layer: MapLayer = {
+    id: "l1",
+    title: "Zones",
+    visible: true,
+    kind: "feature",
+    url: "u",
+    symbology: labelSymbology,
+  };
+  render(<MapView config={{ ...config, layers: [layer] }} />);
+  const map = mapInstances[0];
+  map.sourceFeatures["l1"] = [
+    { id: 1, properties: { nom: "A" }, geometry: { type: "Point", coordinates: [0, 0] } },
+  ];
+  act(() => map.fire("idle"));
+  await vi.waitFor(() =>
+    expect(map.querySourceFeaturesCalls).toEqual(
+      expect.arrayContaining([{ sourceId: "l1", params: undefined }]),
+    ),
+  );
+});
+
+// Le style de MockMap déclare des glyphs par défaut. Pour tester le refus il
+// faut donc une carte dont le style n'en déclare pas AU MOMENT d'appliquer les
+// couches : MapView lit `map.getStyle().glyphs` à chaque `applyLayers`, donc un
+// premier rendu sans étiquette, `map.glyphs = undefined`, puis un rerender avec
+// étiquette suffit.
+test("une carte dont le style ne déclare pas de glyphs ne pose aucune couche d'étiquettes", () => {
+  const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const { rerender } = render(<MapView config={config} />);
+  const map = mapInstances[0];
+  map.glyphs = undefined;
+  rerender(<MapView config={tiled({ geometryKind: "polygon", symbology: labelSymbology })} />);
+  expect(map.getLayer("communes__label")).toBeUndefined();
+  expect(map.getSource("communes__labels")).toBeUndefined();
+  expect(spy).toHaveBeenCalledWith(expect.stringContaining("glyphs"));
+  spy.mockRestore();
+});
+
+test("retirer une couche étiquetée retire sa couche ET sa source d'étiquettes", () => {
+  const { rerender } = render(
+    <MapView config={tiled({ geometryKind: "polygon", symbology: labelSymbology })} />,
+  );
+  rerender(<MapView config={config} />);
+  const map = mapInstances[0];
+  expect(map.getLayer("communes__label")).toBeUndefined();
+  expect(map.getSource("communes__labels")).toBeUndefined();
+  expect(map.getSource("communes")).toBeUndefined();
+});
+
+test("deux idle consécutifs sans changement d'entités ne reposent pas la source", async () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", pkColumn: "code", symbology: labelSymbology })}
+    />,
+  );
+  const map = mapInstances[0];
+  map.sourceFeatures["communes"] = [
+    { id: 19108, properties: { nom: "Tulle" }, geometry: { type: "Point", coordinates: [1, 2] } },
+  ];
+  const source = map.getSource("communes__labels") as { setDataCalls: number };
+  act(() => map.fire("idle"));
+  await vi.waitFor(() => expect(source.setDataCalls).toBeGreaterThan(0));
+  const after = source.setDataCalls;
+  act(() => map.fire("idle"));
+  await new Promise((r) => setTimeout(r, 200)); // au-delà du debounce de 150 ms
+  // Sans garde d'idempotence, `idle` → setData → « content » → reload →
+  // repaint → `idle` s'auto-entretient à ~6 Hz (constat N3).
+  expect(source.setDataCalls).toBe(after);
+
+  // Un vrai changement d'entités, en revanche, doit repasser.
+  map.sourceFeatures["communes"] = [
+    { id: 19031, properties: { nom: "Brive" }, geometry: { type: "Point", coordinates: [3, 4] } },
+  ];
+  act(() => map.fire("idle"));
+  await vi.waitFor(() => expect(source.setDataCalls).toBe(after + 1));
+});
