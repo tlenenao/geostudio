@@ -507,3 +507,192 @@ test("retirer le dernier encodage repasse la symbologie à undefined", async () 
   await userEvent.click(screen.getByRole("button", { name: "Retirer le contour" }));
   expect(onChange).toHaveBeenLastCalledWith(undefined);
 });
+
+test("basculer le contour en data-driven écrit un champ, une palette et un domaine vide", async () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        stroke: { color: { fixed: "#000000" }, width: { fixed: 1 }, style: "solid" },
+      }}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Couleur de contour par attribut" }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      stroke: expect.objectContaining({
+        color: {
+          field: "",
+          mode: "categorical",
+          palette: "categorical-a",
+          domain: { kind: "categorical", values: [] },
+          computedAt: "",
+        },
+      }),
+    }),
+  );
+});
+
+test("les libellés du contour ne collident pas avec ceux de la couleur", () => {
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        color: {
+          field: "region",
+          mode: "categorical",
+          palette: "categorical-a",
+          domain: { kind: "categorical", values: ["A"] },
+          computedAt: "2026-08-27T00:00:00Z",
+        },
+        stroke: {
+          color: {
+            field: "pop",
+            mode: "numeric",
+            palette: "sequential-blue",
+            domain: { kind: "numeric", min: 0, max: 1 },
+            computedAt: "",
+          },
+          width: { fixed: 1 },
+          style: "solid",
+        },
+      }}
+      onChange={vi.fn()}
+    />,
+  );
+  // Les deux pickers coexistent : chaque nom accessible reste unique.
+  expect(screen.getByLabelText("Champ couleur")).toBeInTheDocument();
+  expect(screen.getByLabelText("Champ couleur de contour")).toBeInTheDocument();
+  expect(screen.getByLabelText("Palette")).toBeInTheDocument();
+  expect(screen.getByLabelText("Palette du contour")).toBeInTheDocument();
+  expect(screen.getByLabelText("Méthode de classification du contour")).toBeInTheDocument();
+  // Un SEUL <datalist> pour les deux pickers et le champ taille : rendre
+  // l'élément dans le picker dupliquerait son id DOM (constat I4).
+  expect(document.querySelectorAll("datalist")).toHaveLength(1);
+});
+
+// `computeColorDomain` en mode catégoriel fait `rows.map((r) => String(r.id))` :
+// le mock doit avoir la forme réelle d'un `DataRecord` (`{ id, properties }`),
+// pas `{ region: … }` — sinon le domaine vaudrait `["undefined", …]`.
+test("« Recalculer les classes du contour » fige le domaine et l'horodatage", async () => {
+  const onChange = vi.fn();
+  const runStatistics = vi.fn().mockResolvedValue([
+    { id: "Nord", properties: {} },
+    { id: "Sud", properties: {} },
+  ]);
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      runStatistics={runStatistics}
+      value={{
+        stroke: {
+          color: {
+            field: "region",
+            mode: "categorical",
+            palette: "categorical-a",
+            domain: { kind: "categorical", values: [] },
+            computedAt: "",
+          },
+          width: { fixed: 1 },
+          style: "solid",
+        },
+      }}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Recalculer les classes du contour" }));
+  await vi.waitFor(() => {
+    const last = onChange.mock.calls.at(-1)![0];
+    expect(last.stroke.color.domain).toEqual({ kind: "categorical", values: ["Nord", "Sud"] });
+    // Invariant SP-25 : le domaine est FIGÉ, avec la date de son calcul.
+    expect(last.stroke.color.computedAt).not.toBe("");
+  });
+});
+
+test("un recalcul de contour en échec affiche une erreur au lieu d'une rejection", async () => {
+  const runStatistics = vi.fn().mockRejectedValue(new Error("champ inconnu"));
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      runStatistics={runStatistics}
+      value={{
+        stroke: {
+          color: {
+            field: "region",
+            mode: "categorical",
+            palette: "categorical-a",
+            domain: { kind: "categorical", values: [] },
+            computedAt: "",
+          },
+          width: { fixed: 1 },
+          style: "solid",
+        },
+      }}
+      onChange={vi.fn()}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Recalculer les classes du contour" }));
+  await vi.waitFor(() =>
+    expect(screen.getAllByRole("alert").some((n) => n.textContent?.includes("champ inconnu"))).toBe(
+      true,
+    ),
+  );
+});
+
+test("revenir à une couleur de contour fixe efface le champ et le domaine", async () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        stroke: {
+          color: {
+            field: "region",
+            mode: "categorical",
+            palette: "categorical-a",
+            domain: { kind: "categorical", values: ["A"] },
+            computedAt: "2026-08-27T00:00:00Z",
+          },
+          width: { fixed: 1 },
+          style: "solid",
+        },
+      }}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Couleur de contour fixe" }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      stroke: expect.objectContaining({ color: { fixed: "#000000" } }),
+    }),
+  );
+});
+
+// Cohérence avec Task 4 : « plus rien ne reste » vaut aussi pour un contour
+// CLASSÉ, pas seulement pour un contour fixe. `clearEncoding` reste générique.
+test("retirer un contour classé, seul encodage actif, rend undefined", async () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        stroke: {
+          color: {
+            field: "region",
+            mode: "categorical",
+            palette: "categorical-a",
+            domain: { kind: "categorical", values: ["A"] },
+            computedAt: "2026-08-27T00:00:00Z",
+          },
+          width: { fixed: 2 },
+          style: "dashed",
+        },
+      }}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Retirer le contour" }));
+  expect(onChange).toHaveBeenLastCalledWith(undefined);
+});

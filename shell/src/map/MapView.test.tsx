@@ -1600,3 +1600,36 @@ test("an ordinary MapLibre error (a 404 tile) is not reported", () => {
   expect(spy).not.toHaveBeenCalled();
   spy.mockRestore();
 });
+
+// Redondant à dessein avec le test pur de buildMapPaint (mapSymbology.test.ts) :
+// celui-ci prouve que MapView pose bien l'expression sur les DEUX couches — la
+// principale et son sous-calque `__outline` —, ce qui traverse effectivePaint +
+// symbologyToPaintInputs + addOutlineLayer.
+test("un contour classé se compile en expression step sur la couche et son contour", () => {
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        symbology: {
+          stroke: {
+            color: {
+              field: "pop",
+              domain: { kind: "numeric-classed", breaks: [0, 10, 20] },
+              palette: "sequential-blue",
+              mode: "numeric",
+              classification: { method: "quantile", classes: 2 },
+              computedAt: "2026-08-27T00:00:00Z",
+            },
+            width: { fixed: 2 },
+            style: "solid",
+          },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  const paint = map.getLayer("communes")!.paint as Record<string, unknown>;
+  expect((paint["fill-outline-color"] as unknown[])[0]).toBe("step");
+  const outlinePaint = map.getLayer("communes__outline")!.paint as Record<string, unknown>;
+  expect((outlinePaint["line-color"] as unknown[])[0]).toBe("step");
+});

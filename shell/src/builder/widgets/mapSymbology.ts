@@ -23,11 +23,21 @@ export type StrokeStyle = "solid" | "dashed" | "dotted";
 
 // Forme PERSISTÉE : la palette est un identifiant, jamais des couleurs
 // résolues — même règle que LayerSymbology.color (cf. déviation 5 du plan).
-// Task 5 élargit la variante `field` à { mode, classification?, computedAt }
-// pour que le contour classé soit éditable ; ne PAS anticiper ici, cette
-// tâche doit compiler seule.
 export type StrokeColorEncoding =
-  { fixed: string } | { field: string; domain: ColorDomain; palette: PaletteId };
+  | { fixed: string }
+  | {
+      field: string;
+      // Même union que LayerSymbology.color : `mode` distingue la
+      // classification catégorielle de la numérique, et l'éditeur en a besoin
+      // pour savoir quel domaine recalculer.
+      mode: "categorical" | "numeric";
+      // Domaine FIGÉ au moment du calcul, comme LayerSymbology.color
+      // (invariant SP-25) : le rendu ne recalcule jamais un domaine.
+      domain: ColorDomain;
+      palette: PaletteId;
+      classification?: ColorClassification;
+      computedAt: string;
+    };
 
 export type StrokeWidthEncoding = { fixed: number } | { field: string; domain: SizeDomain };
 
