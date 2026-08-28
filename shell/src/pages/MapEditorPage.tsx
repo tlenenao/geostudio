@@ -79,6 +79,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
           hideLegend
           getAuthToken={client.getAuthToken}
           getCoreUrl={client.getCoreUrl}
+          loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
         />
         {draft.printLayout?.title && (
           <div className="absolute left-2 top-2 rounded bg-white/90 px-2 py-1 text-sm font-medium">
@@ -142,6 +143,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
           onViewChange={setView}
           getAuthToken={client.getAuthToken}
           getCoreUrl={client.getCoreUrl}
+          loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
         />
       </div>
     </div>
