@@ -92,6 +92,19 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
           </span>
         </div>
       )}
+      {legend.stroke && (
+        <ul aria-label="Contour">
+          {legend.stroke.entries.map((e) => (
+            <li key={e.value} className="flex items-center gap-1">
+              <span
+                className="inline-block h-3 w-3 rounded-sm border-2"
+                style={{ borderColor: e.color }}
+              />
+              {e.value}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -179,7 +192,7 @@ export function registerMapWidget(): void {
       const url = ctx.data?.url;
 
       const symbology = props.symbology as LayerSymbology | undefined;
-      const { encodings, colorDomain, sizeDomain, palette } = symbologyToPaintInputs(
+      const { encodings, colorDomain, sizeDomain, palette, stroke } = symbologyToPaintInputs(
         symbology,
         ctx.theme?.colors,
       );
@@ -191,7 +204,9 @@ export function registerMapWidget(): void {
         geometryKind,
         palette,
       );
-      const legend = buildLegend(encodings, colorDomain, sizeDomain, geometryKind, palette);
+      const legend = buildLegend(encodings, colorDomain, sizeDomain, geometryKind, palette, {
+        stroke,
+      });
 
       const config: MapConfig = {
         basemap: { style: DEFAULT_STYLE },

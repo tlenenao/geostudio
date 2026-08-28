@@ -15,14 +15,16 @@ import { HeatmapLayer, HexagonLayer } from "@deck.gl/aggregation-layers";
 import { ColumnLayer } from "@deck.gl/layers";
 import { Tile3DLayer } from "@deck.gl/geo-layers";
 import { Tiles3DLoader } from "@loaders.gl/3d-tiles";
-import type { DataRecord, MapConfig, MapLayer } from "../api/types";
+import type { DataRecord, MapConfig, MapLayer, ThemeColors } from "../api/types";
 import { MapLegend } from "./MapLegend";
 import { MapPopup } from "./MapPopup";
 import { resolvePopupContent } from "./popupContent";
 import {
   buildMapPaint,
+  renderAsFor,
   symbologyToPaintInputs,
   type GeometryKind,
+  type MapPaintResult,
 } from "../builder/widgets/mapSymbology";
 
 const HIGHLIGHT_ID = "__highlight__";
@@ -123,6 +125,14 @@ const MIXED_GEOMETRY_SUBLAYERS = [
   },
 ] as const;
 
+// Tous les suffixes de sous-couche que `applyLayers` peut poser sur une
+// couche : les trois de la géométrie mixte, plus les couches décoratives de
+// SP-27. Une seule liste, utilisée par le rollback du catch ET par le suivi
+// dans `applied` — le rollback codait auparavant en dur les trois suffixes
+// de MIXED_GEOMETRY_SUBLAYERS, et toute nouvelle sous-couche fuyait, laissant
+// la source référencée donc non supprimable (constat 3.5 du pré-vol).
+const SUBLAYER_SUFFIXES = ["__point", "__line", "__polygon", "__outline"] as const;
+
 // Le `paint` de l'auteur est typé pour UNE géométrie : poser un "fill-color"
 // sur un layer "circle" fait lever MapLibre, et la garde par couche
 // d'applyLayers avalerait alors toute la couche. On ne transmet à chaque
@@ -158,13 +168,18 @@ function paintFor(paint: Record<string, unknown> | undefined, prefix: string) {
 function effectivePaint(
   layer: Extract<MapLayer, { kind: "vector" | "feature" }>,
   geometryKind: GeometryKind,
-): Record<string, unknown> {
-  if (!layer.symbology) return layer.paint ?? {};
-  const { encodings, colorDomain, sizeDomain, palette } = symbologyToPaintInputs(
+  themeColors: ThemeColors | undefined,
+): MapPaintResult {
+  if (!layer.symbology)
+    return { renderAs: renderAsFor(geometryKind), paint: layer.paint ?? {}, iconImages: [] };
+  const { encodings, colorDomain, sizeDomain, palette, stroke } = symbologyToPaintInputs(
     layer.symbology,
-    undefined,
+    themeColors,
   );
-  return buildMapPaint(encodings, colorDomain, sizeDomain, geometryKind, palette).paint;
+  return buildMapPaint(encodings, colorDomain, sizeDomain, geometryKind, palette, {
+    stroke,
+    opacity: layer.symbology.opacity,
+  });
 }
 
 // `AddLayerObject` est une union discriminée par `type` : un `type` calculé ne
@@ -199,6 +214,32 @@ function addTypedLayer(
       map.addLayer({ ...common, type: "fill" });
       break;
   }
+}
+
+// Le contour d'un polygone a besoin d'une vraie couche `line` : MapLibre n'a
+// pas de fill-outline-width (déviation 2 du plan). Partage la source, la
+// source-layer et le filtre de la couche de remplissage qu'elle décore.
+// Volontairement SANS handler de clic : deux couches superposées sur la même
+// source déclenchent le handler deux fois pour un seul clic (popup ouvert
+// deux fois, cross-filter émis deux fois).
+function addOutlineLayer(
+  map: maplibregl.Map,
+  spec: {
+    parentId: string;
+    source: string;
+    sourceLayer?: string;
+    filter?: FilterSpecification;
+    paint: Record<string, unknown>;
+  },
+) {
+  map.addLayer({
+    id: `${spec.parentId}__outline`,
+    type: "line",
+    source: spec.source,
+    ...(spec.sourceLayer !== undefined ? { "source-layer": spec.sourceLayer } : {}),
+    ...(spec.filter !== undefined ? { filter: spec.filter } : {}),
+    paint: spec.paint,
+  });
 }
 
 // Partagé par les couches tuilées et GeoJSON : une seule définition du "que
@@ -239,6 +280,7 @@ function applyLayers(
     properties: Record<string, unknown>,
     lngLat: { lng: number; lat: number },
   ) => void,
+  themeColors: ThemeColors | undefined,
 ) {
   // Deux passes : tous les layers, PUIS toutes les sources. Une couche de
   // géométrie mixte pose plusieurs layers sur une seule source (cf.
@@ -265,6 +307,9 @@ function applyLayers(
         // Une couche = une source, mais pas forcément un seul layer : une
         // géométrie inconnue/mixte en pose trois (MIXED_GEOMETRY_SUBLAYERS).
         const layerIds: string[] = [];
+        // Couches décoratives (contour, ...) : jamais de handler de clic,
+        // seulement suivies dans `applied` pour le nettoyage.
+        const decorativeIds: string[] = [];
         if (layer.geometryKind === undefined) {
           // Un paint par sous-couche, calculé pour SA géométrie réelle (I4
           // de la revue finale SP-25) — jamais un unique `vectorPaint`
@@ -276,25 +321,46 @@ function applyLayers(
           // prefix").
           for (const sub of MIXED_GEOMETRY_SUBLAYERS) {
             const id = `${layer.id}__${sub.suffix}`;
+            const result = effectivePaint(layer, sub.suffix, themeColors);
             addTypedLayer(map, {
               id,
               type: sub.type,
               source: layer.id,
               sourceLayer: layer.sourceLayer,
               filter: ["match", ["geometry-type"], [...sub.geometries], true, false],
-              paint: paintFor(effectivePaint(layer, sub.suffix), sub.paintPrefix),
+              paint: paintFor(result.paint, sub.paintPrefix),
             });
             layerIds.push(id);
+            if (sub.suffix === "polygon" && result.outlinePaint) {
+              addOutlineLayer(map, {
+                parentId: id,
+                source: layer.id,
+                sourceLayer: layer.sourceLayer,
+                filter: ["match", ["geometry-type"], [...sub.geometries], true, false],
+                paint: result.outlinePaint,
+              });
+              decorativeIds.push(`${id}__outline`);
+            }
           }
         } else {
+          const result = effectivePaint(layer, layer.geometryKind, themeColors);
           addTypedLayer(map, {
             id: layer.id,
             type: layerTypeFor(layer.geometryKind),
             source: layer.id,
             sourceLayer: layer.sourceLayer,
-            paint: effectivePaint(layer, layer.geometryKind),
+            paint: result.paint,
           });
           layerIds.push(layer.id);
+          if (layer.geometryKind === "polygon" && result.outlinePaint) {
+            addOutlineLayer(map, {
+              parentId: layer.id,
+              source: layer.id,
+              sourceLayer: layer.sourceLayer,
+              paint: result.outlinePaint,
+            });
+            decorativeIds.push(`${layer.id}__outline`);
+          }
         }
         for (const id of layerIds) {
           const handler = makeFeatureClickHandler(
@@ -309,6 +375,7 @@ function applyLayers(
           clickHandlers.set(id, handler);
           applied.add(id);
         }
+        for (const id of decorativeIds) applied.add(id);
       } else if (layer.kind === "raster") {
         map.addSource(layer.id, { type: "raster", tiles: [layer.tilesUrl], tileSize: 256 });
         map.addLayer({
@@ -321,14 +388,14 @@ function applyLayers(
         map.addSource(layer.id, { type: "geojson", data: layer.url });
         const featureGeometryKind: GeometryKind =
           layer.renderAs === "circle" ? "point" : layer.renderAs === "line" ? "line" : "polygon";
-        const featurePaint = effectivePaint(layer, featureGeometryKind);
+        const featureResult = effectivePaint(layer, featureGeometryKind, themeColors);
         switch (layer.renderAs ?? "fill") {
           case "circle":
             map.addLayer({
               id: layer.id,
               type: "circle",
               source: layer.id,
-              paint: featurePaint,
+              paint: featureResult.paint,
             });
             break;
           case "line":
@@ -336,7 +403,7 @@ function applyLayers(
               id: layer.id,
               type: "line",
               source: layer.id,
-              paint: featurePaint,
+              paint: featureResult.paint,
             });
             break;
           default:
@@ -344,9 +411,17 @@ function applyLayers(
               id: layer.id,
               type: "fill",
               source: layer.id,
-              paint: featurePaint,
+              paint: featureResult.paint,
             });
             break;
+        }
+        if (featureGeometryKind === "polygon" && featureResult.outlinePaint) {
+          addOutlineLayer(map, {
+            parentId: layer.id,
+            source: layer.id,
+            paint: featureResult.outlinePaint,
+          });
+          applied.add(`${layer.id}__outline`);
         }
         const handler = makeFeatureClickHandler(undefined, onFeatureClick, (properties, lngLat) =>
           onPopup(layer.id, properties, lngLat),
@@ -362,10 +437,17 @@ function applyLayers(
       // déjà dans `applied`, donc la prochaine passe de nettoyage les prendra,
       // mais on les retire tout de suite pour ne pas laisser la source
       // référencée (et donc non supprimable) derrière nous.
-      for (const sub of MIXED_GEOMETRY_SUBLAYERS) {
-        const id = `${layer.id}__${sub.suffix}`;
+      for (const suffix of SUBLAYER_SUFFIXES) {
+        const id = `${layer.id}${suffix}`;
         if (map.getLayer(id)) map.removeLayer(id);
         applied.delete(id);
+        // Le contour d'une sous-couche de géométrie mixte porte un double
+        // suffixe (ex. "communes__polygon__outline").
+        for (const inner of SUBLAYER_SUFFIXES) {
+          const nested = `${id}${inner}`;
+          if (map.getLayer(nested)) map.removeLayer(nested);
+          applied.delete(nested);
+        }
       }
       if (map.getLayer(layer.id)) map.removeLayer(layer.id);
       if (map.getSource(layer.id)) map.removeSource(layer.id);
@@ -493,6 +575,10 @@ export const MapView = forwardRef<
     // hide the legend from a capture (this MapLegend would still render
     // underneath it, and both would duplicate when showLegend is true).
     hideLegend?: boolean;
+    // Couleurs de thème résolvant `palette: "theme-primary"` dans la
+    // symbologie (Task 6/19) — sans elle, cette palette dégrade sur son
+    // repli neutre.
+    themeColors?: ThemeColors;
     // Authenticates Tile3DLayer requests against a hosted (design
     // /tileset3d/) tileset's proxy route — never sent for external tileset
     // URLs (see HOSTED_TILESET3D_PATH check in buildTiles3DLayer). Absent by
@@ -512,7 +598,16 @@ export const MapView = forwardRef<
   // l'ExprContext de l'ActionBus au rendu. Une capacité annoncée par
   // l'éditeur et vide à l'exécution est pire que pas de capacité.
 >(function MapView(
-  { config, onViewChange, onFeatureClick, onReady, hideLegend, getAuthToken, getCoreUrl },
+  {
+    config,
+    onViewChange,
+    onFeatureClick,
+    onReady,
+    hideLegend,
+    themeColors,
+    getAuthToken,
+    getCoreUrl,
+  },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -549,6 +644,7 @@ export const MapView = forwardRef<
   const onReadyRef = useRef(onReady);
   const getAuthTokenRef = useRef(getAuthToken);
   const getCoreUrlRef = useRef(getCoreUrl);
+  const themeColorsRef = useRef(themeColors);
   const layersRef = useRef(config.layers);
   const terrainRef = useRef(config.terrain);
   useEffect(() => {
@@ -566,6 +662,9 @@ export const MapView = forwardRef<
   useEffect(() => {
     getCoreUrlRef.current = getCoreUrl;
   }, [getCoreUrl]);
+  useEffect(() => {
+    themeColorsRef.current = themeColors;
+  }, [themeColors]);
   useEffect(() => {
     layersRef.current = config.layers;
   });
@@ -655,6 +754,7 @@ export const MapView = forwardRef<
         clickHandlersRef.current,
         (r) => onFeatureClickRef.current?.(r),
         handlePopup,
+        themeColorsRef.current,
       );
       applyDeckLayers(
         overlay,
@@ -687,6 +787,26 @@ export const MapView = forwardRef<
         bearing: map.getBearing(),
       });
     });
+    // Style.addLayer/addSource valident et font `return` : l'erreur part sur
+    // l'event `error`, JAMAIS en exception — le try/catch d'applyLayers ne
+    // voit rien et la couche disparaît en silence. Ce listener est la seule
+    // chose qui rend ce mode de panne observable.
+    //
+    // FILTRÉ (constat N13) : MapLibre fire `error` pour toute défaillance
+    // ordinaire — tuile 404, sprite manquant, style partiellement
+    // inaccessible. Journaliser tout produirait un bruit permanent sur
+    // demotiles.maplibre.org ou sur une collection non publique, ce qui
+    // détruirait précisément la valeur de signal cherchée ici. Les erreurs du
+    // validateur de style sont reconnaissables : leur message commence par
+    // `layers.` / `layers[` / `sources.` / `sources[` (préfixe posé par
+    // Style._validate via `layers.${id}`).
+    map.on("error", (e: unknown) => {
+      const message = String(
+        (e as { error?: { message?: unknown } } | undefined)?.error?.message ?? "",
+      );
+      if (!/^(layers|sources)[.[]/.test(message)) return;
+      console.error("MapView: MapLibre a signalé une erreur", e);
+    });
     return () => {
       map.removeControl(overlay);
       map.remove();
@@ -716,8 +836,8 @@ export const MapView = forwardRef<
   // complet du GeoJSON /items pour une couche `feature` (I5 de la revue
   // finale SP-24).
   const layersKey = useMemo(
-    () => JSON.stringify(config.layers.map(mapRelevantLayer)),
-    [config.layers],
+    () => JSON.stringify({ layers: config.layers.map(mapRelevantLayer), themeColors }),
+    [config.layers, themeColors],
   );
 
   useEffect(() => {
@@ -735,6 +855,7 @@ export const MapView = forwardRef<
       clickHandlersRef.current,
       (r) => onFeatureClickRef.current?.(r),
       handlePopup,
+      themeColorsRef.current,
     );
     applyDeckLayers(
       overlay,
