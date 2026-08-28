@@ -5,12 +5,30 @@ import {
   formatArea,
   formatDistance,
   lineDistanceMeters,
+  shapeToGeoJSONFeature,
   sphericalPolygonAreaSquareMeters,
   type LngLat,
   type SketchShape,
 } from "./measureSketch";
 
 export type ToolbarMode = "idle" | "measure-distance" | "measure-area" | "sketch";
+
+const SKETCH_SOURCE_ID = "__sketch__";
+const SKETCH_LAYER_IDS = [
+  `${SKETCH_SOURCE_ID}line`,
+  `${SKETCH_SOURCE_ID}fill`,
+  `${SKETCH_SOURCE_ID}point`,
+  // QUATRIÈME couche : le TEXTE des annotations. Constat I13 (Important) du
+  // 2026-08-28 — sans elle, `shapeToGeoJSONFeature` produit bien un Point
+  // portant `properties.text` pour `kind: "text"`, mais aucune couche ne le
+  // dessine : sur la carte une annotation texte n'apparaît que comme un point
+  // de 5 px, et le texte n'est lisible que dans la liste de la barre d'outils.
+  // Le chantier 4.5 demande explicitement le croquis « texte » ; ce trou
+  // n'était signalé NULLE PART (ni en déviation, ni en suivi), alors que la
+  // dépendance `glyphs` qui l'explique est, elle, traitée explicitement pour
+  // les étiquettes (Task 14).
+  `${SKETCH_SOURCE_ID}text`,
+] as const;
 
 type SketchTool = "freehand" | "rect" | "circle" | "polygon" | "text" | null;
 
@@ -59,11 +77,10 @@ export function MapMeasureSketchToolbar({
   const [sketchTool, setSketchTool] = useState<SketchTool>(null);
   const [shapes, setShapes] = useState<SketchShape[]>([]);
   const [color, setColor] = useState("#dc2626");
-  // La valeur lue (`_freehandPoints`) n'a pas encore de consommateur : elle
-  // sert à l'aperçu du tracé en cours, rendu par Task 18. Préfixe `_` = la
-  // convention déjà en usage dans ce dépôt pour un `no-unused-vars`
-  // délibéré (cf. `eslint.config.js`), pas une valeur au rebut.
-  const [_freehandPoints, setFreehandPoints] = useState<LngLat[]>([]);
+  // Aperçu du tracé libre en cours : lu par l'effet de synchronisation de
+  // Task 18 ci-dessous, pour que le geste soit visible sur la carte avant
+  // `mouseup`.
+  const [freehandPoints, setFreehandPoints] = useState<LngLat[]>([]);
   const [polygonPoints, setPolygonPoints] = useState<LngLat[]>([]);
   const drawingRef = useRef(false);
   // Coin en attente d'un rectangle/cercle : une REF, pas un état lu depuis un
@@ -104,6 +121,140 @@ export function MapMeasureSketchToolbar({
   useEffect(() => {
     colorRef.current = color;
   }, [color]);
+
+  // Posé au montage, retiré au démontage. `isStyleLoaded()` est la garde
+  // réelle : addSource/addLayer avant le chargement du style lèvent
+  // « Style is not done loading. ». Tester l'existence de la MÉTHODE
+  // getSource ne prouve rien (elle existe toujours) : la garde ci-dessous
+  // teste la présence de la SOURCE elle-même.
+  useEffect(() => {
+    if (!map.isStyleLoaded()) return;
+    if (map.getSource(SKETCH_SOURCE_ID)) return;
+    map.addSource(SKETCH_SOURCE_ID, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+    map.addLayer({
+      id: SKETCH_LAYER_IDS[0],
+      type: "line",
+      source: SKETCH_SOURCE_ID,
+      filter: ["==", ["geometry-type"], "LineString"],
+      paint: { "line-color": ["get", "color"], "line-width": 2 },
+    } as never);
+    map.addLayer({
+      id: SKETCH_LAYER_IDS[1],
+      type: "fill",
+      source: SKETCH_SOURCE_ID,
+      filter: ["==", ["geometry-type"], "Polygon"],
+      paint: { "fill-color": ["get", "color"], "fill-opacity": 0.3 },
+    } as never);
+    map.addLayer({
+      id: SKETCH_LAYER_IDS[2],
+      type: "circle",
+      source: SKETCH_SOURCE_ID,
+      filter: ["==", ["geometry-type"], "Point"],
+      paint: { "circle-color": ["get", "color"], "circle-radius": 5 },
+    } as never);
+    // Couche de TEXTE (constat I13). `text-field` exige que le STYLE déclare
+    // `glyphs` — même contrainte que les étiquettes de Task 14, et même
+    // traitement : sans glyphs on ne pose PAS la couche et on avertit une
+    // fois, au lieu de la laisser rejeter en silence par le validateur.
+    // (Constat Mineur 9 : la garde `if (!source?.setData) return;` de l'effet
+    // de synchronisation ci-dessous avale silencieusement une source absente,
+    // là où la branche jumelle de Task 14 fait console.warn — garde posée sur
+    // une surface et pas sur sa jumelle. Ici les deux avertissent.)
+    const style = map.getStyle() as { glyphs?: string } | undefined;
+    if (style?.glyphs) {
+      map.addLayer({
+        id: SKETCH_LAYER_IDS[3],
+        type: "symbol",
+        source: SKETCH_SOURCE_ID,
+        filter: ["==", ["geometry-type"], "Point"],
+        // Pas de `text-font` : le défaut du style-spec est
+        // ["Open Sans Regular", "Arial Unicode MS Regular"], et nommer une
+        // police absente du jeu de glyphes est un échec silencieux (Task 14).
+        layout: {
+          "text-field": ["get", "text"],
+          "text-size": 12,
+          "text-anchor": "top",
+          "text-offset": [0, 0.6],
+        },
+        paint: {
+          "text-color": ["get", "color"],
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 1,
+        },
+      } as never);
+    } else {
+      console.warn(
+        'MapMeasureSketchToolbar: texte de croquis non rendu sur la carte — le style du fond de carte ne déclare pas de "glyphs" (text-field l\'exige). Les formes et les mesures restent affichées.',
+      );
+    }
+    return () => {
+      // Les couches d'abord : MapLibre refuse de retirer une source encore
+      // référencée (même règle que les deux passes d'applyLayers). Le
+      // `getLayer` couvre le cas où la couche de texte n'a pas été posée
+      // (style sans glyphs).
+      for (const id of SKETCH_LAYER_IDS) if (map.getLayer(id)) map.removeLayer(id);
+      if (map.getSource(SKETCH_SOURCE_ID)) map.removeSource(SKETCH_SOURCE_ID);
+    };
+  }, [map]);
+
+  // Synchronise la source GeoJSON `__sketch__` avec l'état : les formes déjà
+  // enregistrées, ET les tracés/formes en cours (mesure, tracé libre,
+  // polygone en construction) — le retour visuel doit être visible avant la
+  // fin du geste. Le polygone en cours est dessiné en LineString OUVERTE
+  // volontairement : un anneau à moitié tracé rendu en polygone REMPLI
+  // clignoterait à chaque clic.
+  useEffect(() => {
+    const source = map.getSource(SKETCH_SOURCE_ID) as
+      { setData?: (d: unknown) => void } | undefined;
+    // Retour silencieux ASSUMÉ ici (constat Mineur 9) : la seule façon
+    // d'arriver là sans source est un style non chargé au montage, cas où
+    // l'effet de montage n'a rien posé. L'avertissement appartient donc à
+    // l'effet de montage, qui le fait, et non à cet effet, qui s'exécute à
+    // chaque changement d'état et noierait la console.
+    if (!source?.setData) return;
+    const inProgress =
+      points.length >= 2
+        ? [
+            shapeToGeoJSONFeature(
+              mode === "measure-area"
+                ? { kind: "polygon", points, color: colorRef.current }
+                : { kind: "freehand", points, color: colorRef.current },
+            ),
+          ]
+        : [];
+    const drawing =
+      freehandPoints.length >= 2
+        ? [
+            shapeToGeoJSONFeature({
+              kind: "freehand",
+              points: freehandPoints,
+              color: colorRef.current,
+            }),
+          ]
+        : [];
+    const pendingPolygon =
+      polygonPoints.length >= 2
+        ? [
+            shapeToGeoJSONFeature({
+              kind: "freehand",
+              points: polygonPoints,
+              color: colorRef.current,
+            }),
+          ]
+        : [];
+    source.setData({
+      type: "FeatureCollection",
+      features: [
+        ...shapes.map(shapeToGeoJSONFeature),
+        ...inProgress,
+        ...drawing,
+        ...pendingPolygon,
+      ],
+    });
+  }, [map, shapes, points, mode, freehandPoints, polygonPoints]);
 
   // Le mode actif change le curseur : c'est le seul retour visuel qui dit à
   // l'utilisateur que son prochain clic sera capté par la barre et non par la

@@ -38,7 +38,9 @@ function makeMapStub() {
     // Task 18 pose une couche `symbol` pour le texte de croquis, qui exige que
     // le style déclare des `glyphs` : le stub en déclare, et un test le retire
     // pour couvrir la branche de refus.
-    getStyle: () => ({ glyphs: "https://glyphs.test/{fontstack}/{range}.pbf" }),
+    getStyle: (): { glyphs?: string } => ({
+      glyphs: "https://glyphs.test/{fontstack}/{range}.pbf",
+    }),
     isStyleLoaded: () => true,
     getSource: vi.fn((id: string) => sources.get(id)),
     addSource: vi.fn((id: string, spec: unknown) => {
@@ -289,4 +291,121 @@ test("le sélecteur de couleur du croquis est réglable et n'empêche pas l'enre
   act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
   act(() => map.emit("click", { lngLat: { lng: 1, lat: 1 } }));
   expect(screen.getByText("1 rectangle")).toBeInTheDocument();
+});
+
+function sketchData(map: ReturnType<typeof makeMapStub>) {
+  const src = map.sources.get("__sketch__") as { data?: unknown } | undefined;
+  return src?.data as
+    { type: "FeatureCollection"; features: { properties: Record<string, unknown> }[] } | undefined;
+}
+
+test("les quatre couches d'overlay et la source sont posées une seule fois", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  expect(map.addSource).toHaveBeenCalledTimes(1);
+  expect(map.layers.map((l) => l.id)).toEqual([
+    "__sketch__line",
+    "__sketch__fill",
+    "__sketch__point",
+    "__sketch__text",
+  ]);
+
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Rectangle" }));
+  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+  act(() => map.emit("click", { lngLat: { lng: 1, lat: 1 } }));
+  // Mise à jour par setData, jamais un second addSource.
+  expect(map.addSource).toHaveBeenCalledTimes(1);
+});
+
+test("une forme de croquis atteint la source GeoJSON avec sa couleur", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.change(screen.getByLabelText("Couleur du croquis"), {
+    target: { value: "#00ff00" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Rectangle" }));
+  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+  act(() => map.emit("click", { lngLat: { lng: 1, lat: 1 } }));
+
+  const data = sketchData(map);
+  expect(data?.features).toHaveLength(1);
+  expect(data?.features[0].properties.color).toBe("#00ff00");
+});
+
+test("la mesure en cours est visible sur la carte avant d'être terminée", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Mesurer" }));
+  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+  act(() => map.emit("click", { lngLat: { lng: 1, lat: 0 } }));
+  const data = sketchData(map);
+  expect(data?.features).toHaveLength(1);
+});
+
+test("« Effacer tout » vide la source", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Rectangle" }));
+  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+  act(() => map.emit("click", { lngLat: { lng: 1, lat: 1 } }));
+  fireEvent.click(screen.getByRole("button", { name: "Effacer tout" }));
+  expect(sketchData(map)?.features).toEqual([]);
+});
+
+test("le démontage retire les quatre couches et la source", () => {
+  const map = makeMapStub();
+  const { unmount } = render(<MapMeasureSketchToolbar map={map as never} />);
+  unmount();
+  expect(map.layers).toEqual([]);
+  expect(map.sources.has("__sketch__")).toBe(false);
+});
+
+// Constat I12 (Important) du 2026-08-28 : le titre précédent promettait « et
+// l'overlay est posé ensuite ». Il n'y a AUCUNE reprise : l'effet de montage
+// est `if (!map.isStyleLoaded()) return;` avec dépendance `[map]` et aucun
+// écouteur `load`/`styledata` pour réessayer. En pratique cela ne se produit
+// pas — Task 16 monte la barre depuis `map.on("load")`, donc le style EST
+// chargé — ce qui est une raison de plus pour que le titre ne promette pas une
+// reprise inexistante. Titre corrigé, et l'assertion complétée par la seule
+// autre propriété réellement vérifiable ici : aucune couche non plus.
+test("un style non chargé ne fait rien lever et ne pose aucune couche", () => {
+  const map = makeMapStub();
+  map.isStyleLoaded = () => false;
+  expect(() => render(<MapMeasureSketchToolbar map={map as never} />)).not.toThrow();
+  expect(map.addSource).not.toHaveBeenCalled();
+  expect(map.layers).toEqual([]);
+});
+
+// Constat I13 : le texte de croquis doit atteindre la carte, pas seulement la
+// liste de la barre d'outils.
+test("une annotation texte atteint la source avec son texte, et sa couche est posée", () => {
+  const map = makeMapStub();
+  vi.stubGlobal("prompt", vi.fn().mockReturnValue("Rendez-vous"));
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  expect(map.layers.map((l) => l.id)).toContain("__sketch__text");
+
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Texte" }));
+  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+
+  const data = sketchData(map);
+  expect(data?.features).toHaveLength(1);
+  expect(data?.features[0].properties.text).toBe("Rendez-vous");
+});
+
+test("sans glyphs dans le style, la couche de texte n'est pas posée et l'auteur est averti", () => {
+  const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const map = makeMapStub();
+  map.getStyle = () => ({});
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  expect(map.layers.map((l) => l.id)).toEqual([
+    "__sketch__line",
+    "__sketch__fill",
+    "__sketch__point",
+  ]);
+  expect(spy).toHaveBeenCalledWith(expect.stringContaining("glyphs"));
+  spy.mockRestore();
 });
