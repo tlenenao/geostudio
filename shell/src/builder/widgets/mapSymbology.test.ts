@@ -6,7 +6,8 @@ import { expect, test, vi } from "vitest";
 // round 2 de C-new le demande explicitement, qu'une expression de peinture
 // produite est réellement valide pour MapLibre (et pas seulement conforme à
 // la forme qu'on s'attend à lui voir).
-import { createExpression } from "@maplibre/maplibre-gl-style-spec";
+import { createExpression, validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
+import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import {
   buildLegend,
   buildMapPaint,
@@ -905,4 +906,81 @@ test("buildLegend includes an icon entry per mapped value", () => {
     field: "categorie",
     entries: [{ value: "ecole", imageId: "lucide:school" }],
   });
+});
+
+// Jumelle du garde de buildMapPaint (« buildMapPaint icon on a non-point
+// geometry is a no-op ») : sans le même garde côté légende, une couche non
+// ponctuelle configurée avec un encodage icon ne peint toujours rien (correct
+// — no-op dans buildMapPaint) mais afficherait quand même une entrée de
+// légende icône, promettant un rendu qui n'existe pas sur la carte (constat 1
+// de la revue Task 7, SP-27 — classe de défaut n°4 de CLAUDE.md : garde posé
+// sur une surface, oublié sur sa jumelle).
+test("buildLegend icon on a non-point geometry produces no icon entry", () => {
+  const legend = buildLegend({}, null, null, "polygon", undefined, {
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["a"] },
+      mapping: { a: { source: "lucide", name: "star" } },
+    },
+  });
+  expect(legend).toBeNull();
+});
+
+// Constat 2 de la revue Task 7, SP-27 : le fallback est dédoublonné
+// (`if (!images.includes(fallbackId))`) mais deux valeurs mappées vers la
+// même icône ne l'étaient pas. Impact nul au rendu (Task 8 charge l'image une
+// seule fois), mais la sortie de la fonction doit être propre.
+test("iconImages est dédoublonné quand deux catégories partagent la même icône", () => {
+  const result = buildMapPaint({}, null, null, "point", undefined, {
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["ecole", "college"] },
+      mapping: {
+        ecole: { source: "lucide", name: "school" },
+        college: { source: "lucide", name: "school" },
+      },
+    },
+  });
+  expect(result.iconImages).toEqual(["lucide:school"]);
+});
+
+// Constat 3 de la revue Task 7, SP-27 : la preuve que `iconLayout` (issu de
+// la sortie RÉELLE de buildMapPaint, pas d'une couche recopiée à la main) est
+// un layout MapLibre valide n'existait que dans un rapport, donc ne protégeait
+// rien dans le temps. Rejouée ici contre le vrai validateur du paquet
+// installé (`validateStyleMin`, pas une simple vérification de forme) : deux
+// propriétés ont déjà fini du mauvais côté de la frontière paint/layout dans
+// ce plan, dont une qui faisait disparaître une couche entière SANS lever
+// d'exception (`Style.addLayer` fait `if (this._validate(...)) return;`).
+test("l'iconLayout produit par buildMapPaint est un layout MapLibre valide (jamais paint)", () => {
+  const result = buildMapPaint({}, null, null, "point", undefined, {
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["ecole", "commerce"] },
+      mapping: {
+        ecole: { source: "lucide", name: "school" },
+        commerce: { source: "lucide", name: "shopping-cart" },
+      },
+      fallback: { source: "lucide", name: "map-pin" },
+    },
+  });
+  expect(result.iconLayout).toBeDefined();
+  const style = {
+    version: 8,
+    sources: { test: { type: "geojson", data: { type: "FeatureCollection", features: [] } } },
+    layers: [
+      {
+        id: "icons",
+        type: "symbol",
+        source: "test",
+        layout: result.iconLayout,
+        // `result.paint`, pas `{}` : si une future régression repose
+        // `icon-image` dans paint (au lieu de l'enlever de iconLayout), ce
+        // test doit le voir — sinon il ne prouve que la moitié de la
+        // frontière paint/layout.
+        paint: result.paint,
+      },
+    ],
+  } as unknown as StyleSpecification;
+  expect(validateStyleMin(style)).toEqual([]);
 });
