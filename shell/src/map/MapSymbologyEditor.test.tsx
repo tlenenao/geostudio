@@ -696,3 +696,80 @@ test("retirer un contour classé, seul encodage actif, rend undefined", async ()
   await userEvent.click(screen.getByRole("button", { name: "Retirer le contour" }));
   expect(onChange).toHaveBeenLastCalledWith(undefined);
 });
+
+// Important de la revue finale Task 5, SP-27 : les deux boutons de mode du
+// contour étaient inconditionnels — un reclic sur le mode déjà actif
+// écrasait une couleur fixe choisie par l'utilisateur, ou un champ/palette/
+// domaine déjà calculés, par la valeur par défaut.
+test("recliquer « Couleur de contour fixe » alors qu'elle est déjà active est un no-op", async () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        stroke: { color: { fixed: "#ff0000" }, width: { fixed: 1 }, style: "solid" },
+      }}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Couleur de contour fixe" }));
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+test("recliquer « Couleur de contour par attribut » alors qu'elle est déjà active est un no-op", async () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        stroke: {
+          color: {
+            field: "region",
+            mode: "categorical",
+            palette: "categorical-a",
+            domain: { kind: "categorical", values: ["A"] },
+            computedAt: "2026-08-27T00:00:00Z",
+          },
+          width: { fixed: 1 },
+          style: "solid",
+        },
+      }}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Couleur de contour par attribut" }));
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+// Constat 4 de la revue finale Task 5 : seul recomputeStrokeDomain était
+// couvert côté hôte. Une inversion de cible dans setStrokeColorPatch
+// (écrire dans value.color au lieu de value.stroke.color) sur un changement
+// de palette du contour serait passée inaperçue.
+test("changer la palette du contour écrit stroke.color.palette, jamais color.palette", () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        stroke: {
+          color: {
+            field: "region",
+            mode: "categorical",
+            palette: "categorical-a",
+            domain: { kind: "categorical", values: ["A"] },
+            computedAt: "2026-08-27T00:00:00Z",
+          },
+          width: { fixed: 1 },
+          style: "solid",
+        },
+      }}
+      onChange={onChange}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Palette du contour"), {
+    target: { value: "sequential-warm" },
+  });
+  const call = onChange.mock.calls.at(-1)![0];
+  expect(call.stroke.color.palette).toBe("sequential-warm");
+  expect(call.color).toBeUndefined();
+});

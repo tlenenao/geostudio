@@ -292,17 +292,38 @@ export function MapSymbologyEditor({
           <div className="flex gap-1">
             <button
               type="button"
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+              className={`rounded-md border border-slate-300 px-2 py-1 text-xs ${
+                strokeColorIsFixed ? "bg-slate-200" : ""
+              }`}
               aria-pressed={strokeColorIsFixed}
-              onClick={() => setStroke({ color: { fixed: "#000000" } })}
+              onClick={() => {
+                // Reclic sur le mode déjà actif : no-op. Sans ce garde, une
+                // couleur fixe choisie par l'utilisateur (ex. #ff0000) était
+                // écrasée par la valeur par défaut à chaque reclic (Important
+                // de la revue finale Task 5, SP-27).
+                if (strokeColorIsFixed) return;
+                // Miroir du reset de colorError/sizeError sur les chemins
+                // d'écriture voisins : sans lui, une erreur de recalcul du
+                // contour survivait au passage en mode fixe et réapparaissait
+                // telle quelle au retour en mode « par attribut ».
+                setStrokeError(null);
+                setStroke({ color: { fixed: "#000000" } });
+              }}
             >
               Couleur de contour fixe
             </button>
             <button
               type="button"
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+              className={`rounded-md border border-slate-300 px-2 py-1 text-xs ${
+                !strokeColorIsFixed ? "bg-slate-200" : ""
+              }`}
               aria-pressed={!strokeColorIsFixed}
-              onClick={() =>
+              onClick={() => {
+                // Reclic sur le mode déjà actif : no-op. Sans ce garde, un
+                // champ/palette/classification déjà choisis — et surtout un
+                // domaine déjà calculé via `runStatistics` — étaient perdus à
+                // chaque reclic (Important de la revue finale Task 5, SP-27).
+                if (!strokeColorIsFixed) return;
                 setStroke({
                   color: {
                     field: "",
@@ -311,8 +332,8 @@ export function MapSymbologyEditor({
                     domain: { kind: "categorical", values: [] },
                     computedAt: "",
                   },
-                })
-              }
+                });
+              }}
             >
               Couleur de contour par attribut
             </button>
