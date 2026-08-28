@@ -926,3 +926,62 @@ test("« Retirer les icônes » n'efface que l'encodage icône", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Retirer les icônes" }));
   expect(onChange).toHaveBeenLastCalledWith({ opacity: 60 });
 });
+
+test("« Ajouter une étiquette » crée un gabarit vide avec des réglages par défaut", async () => {
+  const onChange = vi.fn();
+  render(<MapSymbologyEditor {...baseProps} value={undefined} onChange={onChange} />);
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une étiquette" }));
+  expect(onChange).toHaveBeenLastCalledWith({
+    label: {
+      template: "",
+      size: 12,
+      color: "#1e293b",
+      haloColor: "#ffffff",
+      haloWidth: 1,
+    },
+  });
+});
+
+test("le gabarit d'étiquette est écrit tel quel et l'aide montre la syntaxe record.*", () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        label: { template: "", size: 12, color: "#1e293b", haloColor: "#ffffff", haloWidth: 1 },
+      }}
+      onChange={onChange}
+    />,
+  );
+  // La seule syntaxe valide du dépôt : ${record.champ}. Un exemple en
+  // ${nom} enseignerait un gabarit qui rend une chaîne vide.
+  expect(screen.getByText(/\$\{record\.nom\}/)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Gabarit d'étiquette"), {
+    target: { value: "${record.nom}" },
+  });
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ label: expect.objectContaining({ template: "${record.nom}" }) }),
+  );
+});
+
+test("« Retirer l'étiquette » n'efface que l'étiquette", async () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        opacity: 90,
+        label: {
+          template: "${record.nom}",
+          size: 12,
+          color: "#1e293b",
+          haloColor: "#ffffff",
+          haloWidth: 1,
+        },
+      }}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Retirer l'étiquette" }));
+  expect(onChange).toHaveBeenLastCalledWith({ opacity: 90 });
+});

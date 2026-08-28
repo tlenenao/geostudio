@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-export type Recorded = { id: string; spec: unknown };
+// `setDataCalls` (SP-27 étiquettes) : compteur d'appels réels à `setData`,
+// posé par `addSource` sur chaque source enregistrée — optionnel dans ce type
+// exporté puisque seules les sources créées via `addSource` le portent.
+export type Recorded = { id: string; spec: unknown; setDataCalls?: number };
 
 export const mapInstances: MockMap[] = [];
 
@@ -83,9 +86,18 @@ export class MockMap {
     this.layerHandlers[`${event}:${layerId}`]?.forEach((cb) => cb(payload));
   }
   addSource(id: string, spec: unknown) {
-    const rec: Recorded & { setData?: (d: unknown) => void } = { id, spec };
+    // `setDataCalls` (SP-27 étiquettes) : compteur d'appels réels à `setData`
+    // sur CETTE source — c'est ce que le test du garde d'idempotence de
+    // `refreshLabelSources` (constat N3) observe pour prouver qu'un `idle`
+    // sans changement d'entités ne repose pas la source.
+    const rec: Recorded & { setData?: (d: unknown) => void; setDataCalls: number } = {
+      id,
+      spec,
+      setDataCalls: 0,
+    };
     rec.setData = (d: unknown) => {
       rec.spec = { ...(rec.spec as object), data: d };
+      rec.setDataCalls += 1;
     };
     this.sources.push(rec);
   }

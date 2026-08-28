@@ -25,9 +25,11 @@ import {
   renderAsFor,
   symbologyToPaintInputs,
   type GeometryKind,
+  type LayerLabel,
   type MapPaintResult,
 } from "../builder/widgets/mapSymbology";
 import { decodeIconImage, rasterizeLucideIcon } from "../builder/widgets/iconLibrary";
+import { buildLabelFeatureCollection } from "./labelSource";
 
 const HIGHLIGHT_ID = "__highlight__";
 const TERRAIN_SOURCE_ID = "__terrain__";
@@ -133,7 +135,18 @@ const MIXED_GEOMETRY_SUBLAYERS = [
 // dans `applied` — le rollback codait auparavant en dur les trois suffixes
 // de MIXED_GEOMETRY_SUBLAYERS, et toute nouvelle sous-couche fuyait, laissant
 // la source référencée donc non supprimable (constat 3.5 du pré-vol).
-const SUBLAYER_SUFFIXES = ["__point", "__line", "__polygon", "__outline", "__icon"] as const;
+const SUBLAYER_SUFFIXES = [
+  "__point",
+  "__line",
+  "__polygon",
+  "__outline",
+  "__icon",
+  "__label",
+] as const;
+
+// Les sources auxiliaires posées par applyLayers, à retirer avec la couche.
+// (`__labels` est une SOURCE, `__label` la couche qui la consomme.)
+const SUBSOURCE_SUFFIXES = ["__labels"] as const;
 
 // Le `paint` de l'auteur est typé pour UNE géométrie : poser un "fill-color"
 // sur un layer "circle" fait lever MapLibre, et la garde par couche
@@ -273,6 +286,82 @@ function addIconLayer(
   } as maplibregl.AddLayerObject);
 }
 
+// Charge initiale d'une source d'étiquettes, partagée par addLabelLayer (pour
+// `addSource`) et le garde d'idempotence de refreshLabelSources (pour amorcer
+// `lastLabelPayloads`) : les deux DOIVENT produire la même sérialisation, sous
+// peine de reposer inutilement cette charge vide au tout premier `idle`.
+const EMPTY_LABEL_COLLECTION = { type: "FeatureCollection" as const, features: [] };
+
+// Étiquettes : source GeoJSON dédiée, calculée côté client (déviation 3).
+// `text-field` ne peut PAS être ["feature-state", …] — c'est une propriété
+// layout, et le validateur le refuse ; il lit donc une vraie propriété
+// `label` de la source. Cette source est vide à la pose : elle est remplie
+// par refreshLabelSources dès que des tuiles sont chargées.
+//
+// `text-field` exige par ailleurs que le STYLE déclare `glyphs`. Sans lui, la
+// couche serait rejetée par le validateur et disparaîtrait sans erreur : on
+// préfère ne pas la poser du tout et le dire.
+function addLabelLayer(
+  map: maplibregl.Map,
+  spec: { parentId: string; label: LayerLabel },
+): boolean {
+  // L'optional chaining est NÉCESSAIRE et non défensif : Map.getStyle() fait
+  // `if (this.style) return this.style.serialize();` et Style.serialize()
+  // commence par `if (!this._loaded) return;` (dist/maplibre-gl-dev.js:
+  // 45157-45163) — sur un style non encore chargé, getStyle() vaut undefined.
+  //
+  // Le message ne doit donc PAS affirmer une cause qu'il ne connaît pas
+  // (constat N10) : « le style ne déclare pas de glyphs » est faux quand le
+  // style n'est simplement pas encore chargé. Deux messages distincts.
+  const style = map.getStyle() as { glyphs?: string } | undefined;
+  if (style === undefined) {
+    console.warn(
+      `MapView: étiquettes ignorées pour ${spec.parentId} — le style du fond de carte n'est pas encore chargé.`,
+    );
+    return false;
+  }
+  if (!style.glyphs) {
+    console.warn(
+      `MapView: étiquettes ignorées pour ${spec.parentId} — le style du fond de carte ne déclare pas de "glyphs" (text-field l'exige).`,
+    );
+    return false;
+  }
+  // Coût assumé (seconde moitié du constat N10) : serialize() sérialise TOUT
+  // le style — sources et couches comprises via _serializeByIds — et
+  // addLabelLayer est appelé une fois par couche étiquetée à chaque
+  // applyLayers. Lire getStyle() une seule fois par passe et le passer en
+  // argument serait plus économe ; ce n'est pas fait parce que applyLayers a
+  // déjà huit paramètres et que le nombre de couches ÉTIQUETÉES par carte est
+  // de l'ordre de 1 à 3. Consigné dans les suivis.
+  const sourceId = `${spec.parentId}__labels`;
+  map.addSource(sourceId, {
+    type: "geojson",
+    data: EMPTY_LABEL_COLLECTION,
+  });
+  // Amorce le garde d'idempotence (constat N3) sur cet état initial : le
+  // premier `refreshLabelSources`, appelé juste après `applyLayers` alors
+  // qu'aucune tuile n'est encore chargée, calculerait lui aussi une
+  // FeatureCollection vide — sans cette amorce, il la reposerait via
+  // `setData` une fois pour rien (un aller-retour worker + repaint gratuit,
+  // exactement le coût que le garde existe pour éviter).
+  lastLabelPayloads.set(sourceId, JSON.stringify(EMPTY_LABEL_COLLECTION));
+  map.addLayer({
+    id: `${spec.parentId}__label`,
+    type: "symbol",
+    source: sourceId,
+    // Pas de `text-font` : le défaut du style-spec est
+    // ["Open Sans Regular", "Arial Unicode MS Regular"], et nommer une police
+    // absente du jeu de glyphes est un autre échec silencieux.
+    layout: { "text-field": ["get", "label"], "text-size": spec.label.size },
+    paint: {
+      "text-color": spec.label.color,
+      "text-halo-color": spec.label.haloColor,
+      "text-halo-width": spec.label.haloWidth,
+    },
+  } as maplibregl.AddLayerObject);
+  return true;
+}
+
 function makeFeatureClickHandler(
   pkColumn: string | undefined,
   onFeatureClick: (record: DataRecord) => void,
@@ -324,6 +413,12 @@ function applyLayers(
   });
   applied.forEach((id) => {
     if (map.getSource(id)) map.removeSource(id);
+    // Purge la dernière charge mémorisée (garde d'idempotence du constat
+    // N3) : sans cela, un cycle retrait → ré-ajout de la même couche
+    // d'étiquettes avec les mêmes entités ne reposerait jamais la source, la
+    // source neuve étant alors vide alors que le garde croit que rien n'a
+    // changé. No-op pour tout id qui n'est pas une source d'étiquettes.
+    lastLabelPayloads.delete(id);
   });
   applied.clear();
 
@@ -423,6 +518,11 @@ function applyLayers(
           applied.add(id);
         }
         for (const id of decorativeIds) applied.add(id);
+        const label = layer.symbology?.label;
+        if (label && addLabelLayer(map, { parentId: layer.id, label })) {
+          applied.add(`${layer.id}__label`);
+          applied.add(`${layer.id}__labels`);
+        }
       } else if (layer.kind === "raster") {
         map.addSource(layer.id, { type: "raster", tiles: [layer.tilesUrl], tileSize: 256 });
         map.addLayer({
@@ -478,6 +578,11 @@ function applyLayers(
           });
           applied.add(`${layer.id}__icon`);
         }
+        const featureLabel = layer.symbology?.label;
+        if (featureLabel && addLabelLayer(map, { parentId: layer.id, label: featureLabel })) {
+          applied.add(`${layer.id}__label`);
+          applied.add(`${layer.id}__labels`);
+        }
         const handler = makeFeatureClickHandler(undefined, onFeatureClick, (properties, lngLat) =>
           onPopup(layer.id, properties, lngLat),
         );
@@ -503,6 +608,15 @@ function applyLayers(
           if (map.getLayer(nested)) map.removeLayer(nested);
           applied.delete(nested);
         }
+      }
+      // Un `__labels` (source) qu'un `__label` (couche) n'a jamais atteint —
+      // ex. addLayer a levé après que addSource ait réussi — fuirait sinon :
+      // la boucle SUBLAYER_SUFFIXES ci-dessus ne retire que des LAYERS.
+      for (const suffix of SUBSOURCE_SUFFIXES) {
+        const id = `${layer.id}${suffix}`;
+        if (map.getSource(id)) map.removeSource(id);
+        applied.delete(id);
+        lastLabelPayloads.delete(id);
       }
       if (map.getLayer(layer.id)) map.removeLayer(layer.id);
       if (map.getSource(layer.id)) map.removeSource(layer.id);
@@ -559,6 +673,59 @@ async function loadIconImages(
       }
     }),
   );
+}
+
+// Dernière charge POSÉE par source, pour ne jamais rappeler setData avec un
+// contenu identique. C'est le garde du constat N3 : sans lui, `idle` →
+// setData → événement « content » → reload de tuiles → repaint → `idle`
+// s'auto-entretient à ~6 Hz, indéfiniment, sur toute carte étiquetée. Vidé
+// avec le reste à la destruction de la carte (voir le teardown de l'effet de
+// montage). Une WeakMap n'irait pas : la clé est un id de source, pas un objet.
+const lastLabelPayloads = new Map<string, string>();
+
+// Remplit les sources d'étiquettes depuis les entités RÉELLEMENT chargées.
+// Déclenché sur `idle` : querySourceFeatures ne parcourt que les tuiles
+// rendables (getRenderableIds), donc l'appeler plus tôt renvoie du vide.
+function refreshLabelSources(map: maplibregl.Map, layers: MapConfig["layers"]) {
+  for (const layer of layers) {
+    if (!layer.visible) continue;
+    if (layer.kind !== "vector" && layer.kind !== "feature") continue;
+    const label = layer.symbology?.label;
+    if (!label) continue;
+    const sourceId = `${layer.id}__labels`;
+    const source = map.getSource(sourceId) as { setData?: (d: unknown) => void } | undefined;
+    if (!source?.setData) {
+      // Couche d'étiquettes non posée (glyphs absents) : ce n'est PAS une
+      // anomalie ici, addLabelLayer a déjà averti une fois. Ne pas journaliser
+      // à chaque `idle`.
+      continue;
+    }
+    // sourceLayer est OBLIGATOIRE sur une source vecteur (sinon la requête
+    // renvoie zéro entité, sans erreur) et doit être ABSENT sur du GeoJSON.
+    const features =
+      layer.kind === "vector"
+        ? map.querySourceFeatures(layer.id, { sourceLayer: layer.sourceLayer })
+        : map.querySourceFeatures(layer.id);
+    const collection = buildLabelFeatureCollection(
+      features.map((f) => ({
+        id: f.id,
+        properties: (f.properties ?? {}) as Record<string, unknown>,
+        geometry: f.geometry,
+      })),
+      label.template,
+      { pkColumn: layer.kind === "vector" ? layer.pkColumn : undefined },
+    );
+    // GARDE D'IDEMPOTENCE (constat N3). Le JSON.stringify est le même travail
+    // que celui que _updateWorkerData ferait de toute façon derrière setData :
+    // il ne coûte donc rien de plus dans le cas « ça a changé », et il évite
+    // TOUT le reste (aller-retour worker + re-tuilage + repaint + nouvel idle)
+    // dans le cas « rien n'a changé », qui est le cas de tous les idle
+    // consécutifs sur une carte immobile.
+    const serialized = JSON.stringify(collection);
+    if (lastLabelPayloads.get(sourceId) === serialized) continue;
+    lastLabelPayloads.set(sourceId, serialized);
+    source.setData(collection);
+  }
 }
 
 // Projection d'une couche sur ce que MapLibre/deck.gl en consomment : `popup`
@@ -871,6 +1038,9 @@ export const MapView = forwardRef<
         themeColorsRef.current,
       );
       void loadIconImages(map, layersRef.current, loadCustomIconRef.current);
+      // Un changement de config ne doit pas attendre le prochain `idle` pour
+      // repeupler les étiquettes d'une couche dont les tuiles sont déjà là.
+      refreshLabelSources(map, layersRef.current);
       applyDeckLayers(
         overlay,
         layersRef.current,
@@ -889,6 +1059,17 @@ export const MapView = forwardRef<
         maybeFireReady();
       });
     });
+    // Rafraîchissement des étiquettes (constat N3) : débouncé à 150 ms ET
+    // mémoïsé par source (lastLabelPayloads, dans refreshLabelSources) — les
+    // deux sont nécessaires. Le debounce seul ne casserait pas la boucle
+    // idle → setData → « content » → reload → repaint → idle, il ne ferait
+    // que la cadencer à ~6 Hz au lieu de la fréquence de repaint brute.
+    let labelDebounce: ReturnType<typeof setTimeout> | undefined;
+    const scheduleLabelRefresh = () => {
+      clearTimeout(labelDebounce);
+      labelDebounce = setTimeout(() => refreshLabelSources(map, layersRef.current), 150);
+    };
+    map.on("idle", scheduleLabelRefresh);
     map.on("moveend", () => {
       const cb = onViewChangeRef.current;
       if (!cb) return;
@@ -923,9 +1104,12 @@ export const MapView = forwardRef<
       console.error("MapView: MapLibre a signalé une erreur", e);
     });
     return () => {
+      clearTimeout(labelDebounce);
+      map.off("idle", scheduleLabelRefresh);
       map.removeControl(overlay);
       map.remove();
       mapRef.current = null;
+      lastLabelPayloads.clear();
       overlayRef.current = null;
       styleLoadedRef.current = false;
       idleRef.current = false;
@@ -973,6 +1157,9 @@ export const MapView = forwardRef<
       themeColorsRef.current,
     );
     void loadIconImages(map, layers, loadCustomIconRef.current);
+    // Un changement de config ne doit pas attendre le prochain `idle` pour
+    // repeupler les étiquettes d'une couche dont les tuiles sont déjà là.
+    refreshLabelSources(map, layers);
     applyDeckLayers(
       overlay,
       layers,

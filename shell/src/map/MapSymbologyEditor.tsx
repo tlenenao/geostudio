@@ -670,6 +670,81 @@ export function MapSymbologyEditor({
           )}
         </div>
       )}
+
+      {!value?.label && (
+        <button
+          type="button"
+          className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs"
+          onClick={() =>
+            onChange({
+              ...value,
+              label: {
+                template: "",
+                size: 12,
+                color: "#1e293b",
+                haloColor: "#ffffff",
+                haloWidth: 1,
+              },
+            })
+          }
+        >
+          Ajouter une étiquette
+        </button>
+      )}
+      {value?.label && (
+        <div className="flex flex-col gap-2 border-l-2 border-slate-200 pl-2">
+          <label className={labelCls}>
+            Gabarit d'étiquette
+            <textarea
+              aria-label="Gabarit d'étiquette"
+              className={inputCls}
+              rows={2}
+              value={value.label.template}
+              onChange={(e) =>
+                onChange({ ...value, label: { ...value.label!, template: e.target.value } })
+              }
+            />
+          </label>
+          <p className="text-xs text-slate-500">
+            {'Syntaxe : ${record.nom}, ${record.pop > 10000 ? "ville" : "commune"}'}
+          </p>
+          <label className={labelCls}>
+            Taille du texte (px)
+            <input
+              aria-label="Taille du texte (px)"
+              type="number"
+              min={8}
+              max={32}
+              className={inputCls}
+              value={value.label.size}
+              onChange={(e) =>
+                onChange({
+                  ...value,
+                  label: { ...value.label!, size: Number(e.target.value) },
+                })
+              }
+            />
+          </label>
+          <label className={labelCls}>
+            Couleur du texte
+            <input
+              aria-label="Couleur du texte"
+              type="color"
+              value={value.label.color}
+              onChange={(e) =>
+                onChange({ ...value, label: { ...value.label!, color: e.target.value } })
+              }
+            />
+          </label>
+          <button
+            type="button"
+            className="self-start text-xs text-red-700 underline"
+            onClick={() => clearEncoding("label")}
+          >
+            Retirer l'étiquette
+          </button>
+        </div>
+      )}
     </div>
   );
 }
