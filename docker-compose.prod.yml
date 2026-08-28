@@ -210,6 +210,7 @@ services:
       S3_UPLOADS_BUCKET: geostudio-uploads
       S3_CDC_BUCKET: geostudio-cdc
       S3_TILESET3D_BUCKET: geostudio-tileset3d
+      S3_MAPICONS_BUCKET: geostudio-mapicons
       S3_TERRAIN3D_BUCKET: geostudio-terrain3d
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KC_PASSWORD}
