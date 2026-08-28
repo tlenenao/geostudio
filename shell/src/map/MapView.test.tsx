@@ -1894,3 +1894,31 @@ test("deux idle consécutifs sans changement d'entités ne reposent pas la sourc
   act(() => map.fire("idle"));
   await vi.waitFor(() => expect(source.setDataCalls).toBe(after + 1));
 });
+
+test("deux instances de MapView partageant un layer.id ne partagent pas leur garde d'étiquettes", async () => {
+  // Scénario du correctif post-revue de Task 14 : `lastLabelPayloads` vivait
+  // à portée module, donc deux <MapView> montées en même temps et partageant
+  // un `layer.id` (deux widgets carte affichant la même collection)
+  // partageaient la même entrée de garde. Ici les deux instances calculent la
+  // MÊME sérialisation d'étiquettes : avant le correctif, la première à
+  // passer par `idle` primait le garde partagé et la seconde le voyait
+  // « inchangé », sautant son propre `setData` alors que sa source MapLibre —
+  // un objet distinct — n'avait jamais été peuplée.
+  const cfg = tiled({ geometryKind: "polygon", pkColumn: "code", symbology: labelSymbology });
+  render(<MapView config={cfg} />);
+  render(<MapView config={cfg} />);
+  const [mapA, mapB] = mapInstances;
+  const sameFeatures = [
+    { id: 19108, properties: { nom: "Tulle" }, geometry: { type: "Point", coordinates: [1, 2] } },
+  ];
+  mapA.sourceFeatures["communes"] = sameFeatures;
+  mapB.sourceFeatures["communes"] = sameFeatures;
+
+  const sourceA = mapA.getSource("communes__labels") as { setDataCalls: number };
+  act(() => mapA.fire("idle"));
+  await vi.waitFor(() => expect(sourceA.setDataCalls).toBe(1));
+
+  const sourceB = mapB.getSource("communes__labels") as { setDataCalls: number };
+  act(() => mapB.fire("idle"));
+  await vi.waitFor(() => expect(sourceB.setDataCalls).toBe(1));
+});
