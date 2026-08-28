@@ -117,7 +117,20 @@ export function FieldClassificationPicker({
             <select
               aria-label={labels.mode}
               className={inputCls}
-              value={value.mode}
+              // Repli sur "categorical" : `mode` est obligatoire dans
+              // `ClassifiedColorEncoding`, mais un document écrit à la main
+              // ou par le MCP peut porter un contour data-driven sans ce
+              // champ (constat C de la revue finale Task 5, SP-27). Sans ce
+              // repli, `value.mode` vaut `undefined` et ce <select> devient
+              // non contrôlé. Contrairement à <input>, react-dom n'émet
+              // aucun avertissement console pour un <select> qui bascule
+              // ainsi (vérifié dans sa source : le check "changing an
+              // uncontrolled input to be controlled" n'existe que dans la
+              // branche `case "input"`, pas `case "select"`) — le défaut est
+              // silencieux : React cesse simplement de piloter l'option
+              // sélectionnée, qui peut diverger du modèle après toute
+              // interaction native.
+              value={value.mode ?? "categorical"}
               onChange={(e) =>
                 onChange({
                   mode: e.target.value as "categorical" | "numeric",

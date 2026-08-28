@@ -774,7 +774,7 @@ test("renderAsFor maps a geometry kind to the MapLibre layer type", () => {
 // Le comportement (domaine figé, computedAt propagé jusqu'au rendu) est
 // vérifié par le test qui suit (« buildMapPaint compile un contour classé en
 // expression step »). Un test séparé qui ne faisait que relire au runtime le
-// littéral `LayerSymbology` qu'il venait d'écrire était supprimé ici (constat
+// littéral `LayerSymbology` qu'il venait d'écrire a été supprimé ici (constat
 // de revue Task 5, SP-27) : son assertion ne pouvait jamais échouer — sa
 // seule valeur réelle était une vérification de TYPE (compile sous tsc),
 // déjà couverte par `npm run build` / `tsc --noEmit`, mais sa forme de test

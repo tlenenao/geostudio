@@ -322,6 +322,11 @@ export function MapSymbologyEditor({
                 // domaine déjà calculé via `runStatistics` — étaient perdus à
                 // chaque reclic (Important de la revue finale Task 5, SP-27).
                 if (!strokeColorIsFixed) return;
+                // Même reset qu'au passage en mode fixe (constat D de la
+                // revue finale Task 5, SP-27) : sans lui, le chemin erreur de
+                // recalcul → « Retirer le contour » → « Ajouter un contour »
+                // → « par attribut » faisait réapparaître une erreur périmée.
+                setStrokeError(null);
                 setStroke({
                   color: {
                     field: "",
@@ -348,13 +353,21 @@ export function MapSymbologyEditor({
             </label>
           ) : (
             <FieldClassificationPicker
+              // Libellés structurellement distincts de ceux de l'usage
+              // couleur (constat A de la revue finale Task 5, SP-27) : aucun
+              // des six ne doit contenir un libellé couleur comme
+              // sous-chaîne, ni l'inverse — `getByLabel`/`getByRole({ name })`
+              // de Playwright matchent en sous-chaîne (et insensible à la
+              // casse) par défaut, contrairement à `getByLabelText` de
+              // Testing Library qui matche exact. Vérifié mécaniquement
+              // (cf. rapport de tâche), pas seulement à l'œil.
               labels={{
-                field: "Champ couleur de contour",
-                palette: "Palette du contour",
-                mode: "Type de couleur de contour",
-                method: "Méthode de classification du contour",
-                classes: "Nombre de classes du contour",
-                recompute: "Recalculer les classes du contour",
+                field: "Champ du contour",
+                palette: "Couleurs du contour",
+                mode: "Type de valeurs du contour",
+                method: "Méthode de répartition du contour",
+                classes: "Nombre de tranches du contour",
+                recompute: "Recalculer le contour",
               }}
               listId={listId}
               themeColors={themeColors}
