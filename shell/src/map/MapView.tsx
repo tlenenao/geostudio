@@ -17,6 +17,7 @@ import { Tile3DLayer } from "@deck.gl/geo-layers";
 import { Tiles3DLoader } from "@loaders.gl/3d-tiles";
 import type { DataRecord, MapConfig, MapLayer, ThemeColors } from "../api/types";
 import { MapLegend } from "./MapLegend";
+import { MapMeasureSketchToolbar } from "./MapMeasureSketchToolbar";
 import { MapPopup } from "./MapPopup";
 import { resolvePopupContent } from "./popupContent";
 import {
@@ -862,6 +863,9 @@ export const MapView = forwardRef<
     // symbologie (Task 6/19) — sans elle, cette palette dégrade sur son
     // repli neutre.
     themeColors?: ThemeColors;
+    // Monte la barre d'outils mesure/croquis (Task 16 de SP-27) : jamais
+    // câblé par défaut, aucun site de montage existant ne le passe encore.
+    interactiveTools?: boolean;
     // Authenticates Tile3DLayer requests against a hosted (design
     // /tileset3d/) tileset's proxy route — never sent for external tileset
     // URLs (see HOSTED_TILESET3D_PATH check in buildTiles3DLayer). Absent by
@@ -893,6 +897,7 @@ export const MapView = forwardRef<
     onReady,
     hideLegend,
     themeColors,
+    interactiveTools,
     getAuthToken,
     getCoreUrl,
     loadCustomIcon,
@@ -951,6 +956,17 @@ export const MapView = forwardRef<
     lngLat: { lng: number; lat: number };
   } | null>(null);
   const [popupPoint, setPopupPoint] = useState<{ x: number; y: number } | null>(null);
+  // Un `useRef` assigné dans un effet ne provoque AUCUN rendu : la barre
+  // d'outils conditionnée à `mapRef.current` ne se monterait jamais au
+  // premier rendu. On garde donc l'instance dans un état, posé depuis le
+  // handler `load` — même raison que popup/popupPoint pour MapPopup.
+  const [readyMap, setReadyMap] = useState<maplibregl.Map | null>(null);
+  // Mesure/croquis actif : suspend les popups de MapView. Sans cela un clic de
+  // mesure sur une entité ouvre AUSSI la popup — `applyLayers` enregistre un
+  // handler de clic par couche, et la popup (z-20, MapPopup.tsx:34) recouvre la
+  // barre d'outils (z-10) et le texte même que les preuves E2E 4.5 de Task 20
+  // asserteront. Constat I16.
+  const [toolsActive, setToolsActive] = useState(false);
   // Keep the latest callback/layers reachable from the mount-time closures so
   // the async "load" and "moveend" handlers never read stale values.
   const onViewChangeRef = useRef(onViewChange);
@@ -1055,6 +1071,7 @@ export const MapView = forwardRef<
     map.addControl(overlay);
     map.on("load", () => {
       styleLoadedRef.current = true;
+      setReadyMap(map);
       map.addSource(HIGHLIGHT_ID, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -1150,6 +1167,7 @@ export const MapView = forwardRef<
       map.removeControl(overlay);
       map.remove();
       mapRef.current = null;
+      setReadyMap(null);
       overlayRef.current = null;
       styleLoadedRef.current = false;
       idleRef.current = false;
@@ -1282,13 +1300,16 @@ export const MapView = forwardRef<
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" data-testid="map-container" />
       {!hideLegend && <MapLegend layers={config.layers} />}
-      {popup && popupPoint && (
+      {popup && popupPoint && !toolsActive && (
         <MapPopup
           content={resolvePopupContent(popupConfig, popup.properties)}
           x={popupPoint.x}
           y={popupPoint.y}
           onClose={() => setPopup(null)}
         />
+      )}
+      {interactiveTools && readyMap && (
+        <MapMeasureSketchToolbar map={readyMap} onActiveChange={setToolsActive} />
       )}
     </div>
   );

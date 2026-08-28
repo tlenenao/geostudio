@@ -1922,3 +1922,30 @@ test("deux instances de MapView partageant un layer.id ne partagent pas leur gar
   act(() => mapB.fire("idle"));
   await vi.waitFor(() => expect(sourceB.setDataCalls).toBe(1));
 });
+
+test("la barre mesure/croquis est montée quand interactiveTools est vrai", () => {
+  render(<MapView config={config} interactiveTools />);
+  expect(screen.getByRole("button", { name: "Mesurer" })).toBeInTheDocument();
+});
+
+test("la barre mesure/croquis est absente par défaut", () => {
+  render(<MapView config={config} />);
+  expect(screen.queryByRole("button", { name: "Mesurer" })).not.toBeInTheDocument();
+});
+
+test("la popup est suspendue pendant une mesure", async () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", popup: { titleField: "nom" } })}
+      interactiveTools
+    />,
+  );
+  const map = mapInstances[0];
+  // Un clic d'entité ouvre la popup en mode normal…
+  act(() => map.fireOnLayer("click", "communes", clickPayload));
+  expect(await screen.findByText("Tulle")).toBeInTheDocument();
+
+  // …mais plus une fois la mesure activée.
+  await userEvent.click(screen.getByRole("button", { name: "Mesurer" }));
+  expect(screen.queryByText("Tulle")).not.toBeInTheDocument();
+});
