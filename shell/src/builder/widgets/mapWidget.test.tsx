@@ -24,6 +24,7 @@ vi.mock("../../map/MapView", () => ({
         config,
         onViewChange,
         onFeatureClick,
+        loadCustomIcon,
       }: {
         config: MapConfig;
         onViewChange?: (v: {
@@ -36,6 +37,7 @@ vi.mock("../../map/MapView", () => ({
           properties: Record<string, unknown>;
           geometry?: unknown;
         }) => void;
+        loadCustomIcon?: (iconId: string) => Promise<Blob>;
       },
       ref: React.Ref<{ flyTo: unknown; highlight: unknown }>,
     ) => {
@@ -53,7 +55,8 @@ vi.mock("../../map/MapView", () => ({
           data-testid="mapview"
           onClick={() => onViewChange?.({ center: [1, 2], zoom: 9, bbox: [10, 20, 30, 40] })}
         >
-          layers:{config.layers.length} url:{url} renderAs:{renderAs} paint:{paint}
+          layers:{config.layers.length} url:{url} renderAs:{renderAs} paint:{paint} loader:
+          {typeof loadCustomIcon}
           <button
             type="button"
             data-testid="feature"
@@ -697,4 +700,25 @@ test("shows an icon legend entry per mapped value", async () => {
     ),
   );
   expect(await screen.findByText("ecole")).toBeInTheDocument();
+});
+
+// Le mock de MapView de ce fichier (lignes 20-75) ne déstructure que
+// config/onViewChange/onFeatureClick/loadCustomIcon/ref : cette tâche (Task 12)
+// est celle qui ajoute loadCustomIcon au mock et au texte rendu — Task 19 y
+// ajoutera symbology/themeColors/tools plus tard, de façon additive sur le
+// même return. `client.fetchMapIconBlob` n'a pas besoin d'être défini sur le
+// client du test : le composant passe toujours une flèche inline à MapView,
+// donc `typeof loadCustomIcon` vaut "function" qu'elle soit jamais appelée
+// ou non — ce test ne vérifie que le câblage, pas l'appel.
+test("le widget carte fournit le chargeur d'icônes personnalisées à MapView", async () => {
+  const Map = getWidget("map")!.Component;
+  render(
+    withClient(
+      <Map
+        props={{ dataSourceId: "d" }}
+        ctx={{ mode: "runtime", data: state() } as WidgetContext}
+      />,
+    ),
+  );
+  expect(await screen.findByText(/loader:function/)).toBeInTheDocument();
 });

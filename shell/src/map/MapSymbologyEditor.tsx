@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   computeColorDomain,
   computeSizeDomain,
+  type IconRef,
   type LayerStroke,
   type LayerSymbology,
   type SampleFieldFn,
   type StatQueryFn,
   type StrokeStyle,
 } from "../builder/widgets/mapSymbology";
+import { LUCIDE_ICONS, type IconCategory } from "../builder/widgets/iconLibrary";
 import { FieldClassificationPicker, type ClassifiedEncoding } from "./FieldClassificationPicker";
 import { labelCls, inputCls } from "./formFieldStyles";
 import type { ThemeColors } from "../api/types";
@@ -24,6 +26,9 @@ export function MapSymbologyEditor({
   runStatistics,
   sampleField,
   jenksAvailable = true,
+  listCustomIcons,
+  uploadCustomIcon,
+  deleteCustomIcon,
   onChange,
 }: {
   value: LayerSymbology | undefined;
@@ -38,6 +43,13 @@ export function MapSymbologyEditor({
   // n'offre pas une méthode vouée à l'échec plutôt que de laisser l'auteur
   // la découvrir en cliquant "Recalculer" (I5 de la revue finale SP-25).
   jenksAvailable?: boolean;
+  // Optionnelles : ce composant est rendu inline dans 18 tests et à deux
+  // sites de production ; les rendre obligatoires ferait échouer
+  // `tsc --noEmit` partout. Absentes ⇒ la section « icônes personnalisées »
+  // n'est simplement pas proposée.
+  listCustomIcons?: () => Promise<{ id: string; title: string; category: string }[]>;
+  uploadCustomIcon?: (file: File, title: string, category: string) => Promise<{ id: string }>;
+  deleteCustomIcon?: (id: string) => Promise<void>;
   onChange: (value: LayerSymbology | undefined) => void;
 }) {
   const [busy, setBusy] = useState<"color" | "size" | null>(null);
@@ -166,6 +178,89 @@ export function MapSymbologyEditor({
     } finally {
       setBusy(null);
     }
+  }
+
+  const icon = value?.icon;
+  // Booléen dédié : `useState("")` + `iconField !== undefined` était
+  // toujours vrai, donc le bloc s'affichait en permanence et le bouton
+  // « Ajouter des icônes » n'avait aucun effet observable.
+  const [iconDraft, setIconDraft] = useState(false);
+  const [iconField, setIconField] = useState(icon?.field ?? "");
+  const [iconBusy, setIconBusy] = useState(false);
+  const [iconError, setIconError] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState<string | null>(null);
+  const [customIcons, setCustomIcons] = useState<{ id: string; title: string; category: string }[]>(
+    [],
+  );
+
+  // La prop peut être une flèche inline recréée à chaque rendu de l'hôte
+  // (c'est le style des autres props fonction de ce composant) : la lire par
+  // ref et ne dépendre de rien évite la boucle « effet → setState → nouvelle
+  // identité → effet ».
+  const listCustomIconsRef = useRef(listCustomIcons);
+  useEffect(() => {
+    listCustomIconsRef.current = listCustomIcons;
+  }, [listCustomIcons]);
+  useEffect(() => {
+    const fn = listCustomIconsRef.current;
+    if (!fn) return;
+    let cancelled = false;
+    // try/catch OBLIGATOIRE autour de l'appel lui-même : `fn` peut LEVER
+    // SYNCHRONIQUEMENT (un hôte dont le client est partiel — voir le défaut
+    // n° 5 de l'en-tête de cette tâche, mesuré). Un `.catch()` seul
+    // n'attraperait rien, parce qu'il n'y a pas encore de promesse quand
+    // l'exception part, et l'exception sortirait du callback d'effet en
+    // faisant échouer le rendu.
+    try {
+      void fn()
+        .then((icons) => {
+          if (!cancelled) setCustomIcons(icons);
+        })
+        .catch(() => {
+          // Bibliothèque indisponible : la grille Lucide reste utilisable.
+          if (!cancelled) setCustomIcons([]);
+        });
+    } catch {
+      setCustomIcons([]);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function recomputeIconDomain() {
+    if (!iconField) return;
+    setIconBusy(true);
+    setIconError(null);
+    try {
+      const domain = await computeColorDomain(
+        { field: iconField, mode: "categorical" },
+        { runStatistics, sampleField },
+      );
+      if (domain.kind !== "categorical") {
+        setIconError("Ce champ n'a pas de valeurs catégorielles exploitables.");
+        return;
+      }
+      onChange({
+        ...value,
+        icon: {
+          field: iconField,
+          domain,
+          mapping: icon?.mapping ?? {},
+          ...(icon?.fallback ? { fallback: icon.fallback } : {}),
+        },
+      });
+    } catch (e) {
+      setIconError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIconBusy(false);
+    }
+  }
+
+  function assignIcon(forValue: string, ref: IconRef) {
+    if (!icon) return;
+    onChange({ ...value, icon: { ...icon, mapping: { ...icon.mapping, [forValue]: ref } } });
+    setEditingValue(null);
   }
 
   return (
@@ -411,6 +506,168 @@ export function MapSymbologyEditor({
           >
             Retirer le contour
           </button>
+        </div>
+      )}
+      {!icon && !iconDraft && (
+        <button
+          type="button"
+          className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs"
+          onClick={() => setIconDraft(true)}
+        >
+          Ajouter des icônes
+        </button>
+      )}
+      {(icon || iconDraft) && (
+        <div className="flex flex-col gap-2 border-l-2 border-slate-200 pl-2">
+          <label className={labelCls}>
+            Champ icône
+            <input
+              aria-label="Champ icône"
+              list={`${listId}-fields`}
+              className={inputCls}
+              value={iconField}
+              onChange={(e) => setIconField(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
+            disabled={iconBusy || !iconField}
+            onClick={() => void recomputeIconDomain()}
+          >
+            {iconBusy ? "Calcul…" : "Recalculer les valeurs"}
+          </button>
+          {iconError && <p className="text-xs text-red-700">{iconError}</p>}
+
+          {icon?.domain.values.map((v) => {
+            const assigned = icon.mapping[v];
+            return (
+              <div key={v} className="flex items-center gap-2">
+                <span className="text-xs font-medium">{v}</span>
+                <button
+                  type="button"
+                  aria-label={`Choisir l'icône de ${v}`}
+                  className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                  onClick={() => setEditingValue(editingValue === v ? null : v)}
+                >
+                  {assigned
+                    ? assigned.source === "lucide"
+                      ? assigned.name
+                      : (customIcons.find((c) => c.id === assigned.id)?.title ?? "icône")
+                    : "Aucune"}
+                </button>
+              </div>
+            );
+          })}
+
+          {/* UNE seule grille, pour la seule valeur en cours d'édition : la
+              rendre par valeur de domaine produisait 140 × N boutons et des
+              noms accessibles dupliqués, donc un getByRole ambigu. */}
+          {editingValue !== null && (
+            <div className="flex flex-col gap-1" data-testid="icon-grid">
+              <p className="text-xs">Icône pour « {editingValue} »</p>
+              {(
+                [
+                  "generic",
+                  "buildings",
+                  "nature",
+                  "transport",
+                  "services",
+                  "safety-health",
+                  "leisure",
+                ] as IconCategory[]
+              ).map((category) => (
+                <div key={category} className="flex flex-col gap-1">
+                  <h4 className="text-[10px] uppercase text-slate-500">{category}</h4>
+                  <div className="flex flex-wrap gap-1">
+                    {LUCIDE_ICONS.filter((li) => li.category === category).map((li) => (
+                      <button
+                        key={li.name}
+                        type="button"
+                        role="img"
+                        aria-label={li.name}
+                        title={li.name}
+                        className="h-6 w-6 rounded border border-slate-200"
+                        onClick={() =>
+                          assignIcon(editingValue, { source: "lucide", name: li.name })
+                        }
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {customIcons.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  <h4 className="text-[10px] uppercase text-slate-500">Bibliothèque du tenant</h4>
+                  <div className="flex flex-wrap gap-1">
+                    {customIcons.map((ci) => (
+                      <span key={ci.id} className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          role="img"
+                          aria-label={ci.title}
+                          className="h-6 w-6 rounded border border-slate-200"
+                          onClick={() => assignIcon(editingValue, { source: "custom", id: ci.id })}
+                        />
+                        {deleteCustomIcon && (
+                          <button
+                            type="button"
+                            aria-label={`Supprimer l'icône ${ci.title}`}
+                            className="text-[10px] text-red-700 underline"
+                            onClick={() => {
+                              void deleteCustomIcon(ci.id).then(() =>
+                                setCustomIcons((prev) => prev.filter((c) => c.id !== ci.id)),
+                              );
+                            }}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {uploadCustomIcon && (
+            <label className={labelCls}>
+              Ajouter une icône au tenant (PNG ou SVG)
+              <input
+                aria-label="Ajouter une icône au tenant (PNG ou SVG)"
+                type="file"
+                accept="image/png,image/svg+xml"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setIconError(null);
+                  void uploadCustomIcon(file, file.name, "generic")
+                    .then((created) =>
+                      setCustomIcons((prev) => [
+                        ...prev,
+                        { id: created.id, title: file.name, category: "generic" },
+                      ]),
+                    )
+                    .catch((err) => setIconError(err instanceof Error ? err.message : String(err)));
+                }}
+              />
+            </label>
+          )}
+
+          {icon && (
+            <button
+              type="button"
+              className="self-start text-xs text-red-700 underline"
+              onClick={() => {
+                setIconDraft(false);
+                setEditingValue(null);
+                clearEncoding("icon");
+              }}
+            >
+              Retirer les icônes
+            </button>
+          )}
         </div>
       )}
     </div>

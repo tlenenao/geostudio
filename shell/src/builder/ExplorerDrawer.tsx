@@ -125,6 +125,7 @@ export function ExplorerDrawer() {
             config={mapConfig}
             getAuthToken={client.getAuthToken}
             getCoreUrl={client.getCoreUrl}
+            loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
           />
         </Suspense>
       </div>

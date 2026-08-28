@@ -807,3 +807,122 @@ test("changer la palette du contour écrit stroke.color.palette, jamais color.pa
   expect(call.stroke.color.palette).toBe("sequential-warm");
   expect(call.color).toBeUndefined();
 });
+
+const iconValue = {
+  icon: {
+    field: "categorie",
+    domain: { kind: "categorical" as const, values: ["ecole", "commerce"] },
+    mapping: {},
+  },
+};
+
+test("« Ajouter des icônes » ouvre le bloc, qui est fermé par défaut", async () => {
+  render(<MapSymbologyEditor {...baseProps} value={undefined} onChange={vi.fn()} />);
+  expect(screen.queryByLabelText("Champ icône")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter des icônes" }));
+  expect(screen.getByLabelText("Champ icône")).toBeInTheDocument();
+});
+
+test("la grille d'icônes n'apparaît que pour la valeur en cours d'édition", async () => {
+  render(<MapSymbologyEditor {...baseProps} value={iconValue} onChange={vi.fn()} />);
+  // Aucune grille au départ : seulement un bouton par valeur du domaine.
+  expect(screen.queryByRole("img", { name: "school" })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Choisir l'icône de ecole" }));
+  // Une seule grille, donc un seul bouton nommé "school".
+  expect(screen.getByRole("img", { name: "school" })).toBeInTheDocument();
+});
+
+test("choisir une icône Lucide écrit icon.mapping pour cette valeur", async () => {
+  const onChange = vi.fn();
+  render(<MapSymbologyEditor {...baseProps} value={iconValue} onChange={onChange} />);
+  await userEvent.click(screen.getByRole("button", { name: "Choisir l'icône de commerce" }));
+  await userEvent.click(screen.getByRole("img", { name: "shopping-cart" }));
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      icon: expect.objectContaining({
+        mapping: { commerce: { source: "lucide", name: "shopping-cart" } },
+      }),
+    }),
+  );
+});
+
+// Constat 11 du rapport cœur (Important) : le mock de la version précédente
+// était `[{ categorie: "ecole" }, { categorie: "commerce" }]`. FAUX, et
+// mesuré : `computeColorDomain` en mode catégoriel fait
+// `rows.map((r) => String(r.id))` (`mapSymbology.ts:194-197`) — il lit `r.id`,
+// jamais `r.categorie`, donc le domaine valait `["undefined","undefined"]` et
+// l'assertion échouait. La forme réelle est `DataRecord` = `{ id, properties }`
+// (`types.ts:593-597`). Le garde-fou de la version précédente (« read the
+// file's existing categorical-color test and copy its mock verbatim »)
+// renvoyait dans le vide : `MapSymbologyEditor.test.tsx` ne contient que DEUX
+// `mockResolvedValue`, tous deux numériques (lignes 118 et 153) — il n'existe
+// aucun test catégoriel dont copier un mock.
+test("« Recalculer les valeurs » remplit le domaine depuis runStatistics", async () => {
+  const onChange = vi.fn();
+  const runStatistics = vi.fn().mockResolvedValue([
+    { id: "ecole", properties: {} },
+    { id: "commerce", properties: {} },
+  ]);
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      runStatistics={runStatistics}
+      value={undefined}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter des icônes" }));
+  await userEvent.type(screen.getByLabelText("Champ icône"), "categorie");
+  await userEvent.click(screen.getByRole("button", { name: "Recalculer les valeurs" }));
+  expect(runStatistics).toHaveBeenCalled();
+  await vi.waitFor(() =>
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        icon: expect.objectContaining({
+          field: "categorie",
+          domain: { kind: "categorical", values: ["ecole", "commerce"] },
+        }),
+      }),
+    ),
+  );
+});
+
+test("l'effet de chargement des icônes personnalisées ne boucle pas", async () => {
+  const listCustomIcons = vi.fn().mockResolvedValue([]);
+  const { rerender } = render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={undefined}
+      onChange={vi.fn()}
+      listCustomIcons={listCustomIcons}
+    />,
+  );
+  // Une nouvelle identité de callback à chaque rendu, comme un `() =>
+  // client.listMapIcons()` inline chez l'hôte : l'effet ne doit PAS repartir.
+  rerender(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={undefined}
+      onChange={vi.fn()}
+      listCustomIcons={vi.fn().mockResolvedValue([])}
+    />,
+  );
+  rerender(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={undefined}
+      onChange={vi.fn()}
+      listCustomIcons={vi.fn().mockResolvedValue([])}
+    />,
+  );
+  await vi.waitFor(() => expect(listCustomIcons).toHaveBeenCalledTimes(1));
+});
+
+test("« Retirer les icônes » n'efface que l'encodage icône", async () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor {...baseProps} value={{ ...iconValue, opacity: 60 }} onChange={onChange} />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Retirer les icônes" }));
+  expect(onChange).toHaveBeenLastCalledWith({ opacity: 60 });
+});

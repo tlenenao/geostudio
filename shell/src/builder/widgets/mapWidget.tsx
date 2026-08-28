@@ -177,6 +177,21 @@ export function registerMapWidget(): void {
                 "Jenks sur le widget carte nécessite un collectionId résolu — non câblé",
               );
             }}
+            // `?.()` OBLIGATOIRE, pas cosmétique (défaut n° 5 de la brief
+            // Task 12) : ce PropsPanel est rendu inconditionnellement, et
+            // `renderPropsPanel` (mapWidget.test.tsx:126) le monte avec
+            // `client={{} as unknown as ItemClient}` — un client entièrement
+            // vide. Sans `?.`, `client.listMapIcons()` lève SYNCHRONIQUEMENT
+            // dans le callback d'effet et fait échouer le rendu de tous les
+            // tests passant par `renderPropsPanel` — le `.catch()` de
+            // l'effet n'attrape rien, il n'y a pas encore de promesse.
+            listCustomIcons={() => client.listMapIcons?.() ?? Promise.resolve([])}
+            uploadCustomIcon={(file, title, category) =>
+              // UN SEUL appel (D7) : plus de presign → PUT → POST. Le cœur
+              // reçoit les octets, choisit la clé S3, assainit, puis écrit.
+              client.uploadMapIcon(file, title, category)
+            }
+            deleteCustomIcon={(id) => client.deleteMapIcon(id)}
             onChange={(symbology) => onChange({ ...props, symbology })}
           />
           <PopupEditor
@@ -253,6 +268,7 @@ export function registerMapWidget(): void {
               config={config}
               getAuthToken={client.getAuthToken}
               getCoreUrl={client.getCoreUrl}
+              loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
               onViewChange={(v) => {
                 ctx.bus?.emit(ctx.widgetId ?? "", "extentChanged", v);
                 setExtent(v.bbox);
