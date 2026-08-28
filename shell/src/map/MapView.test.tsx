@@ -1472,13 +1472,14 @@ test("a failing outline sub-layer rolls back its parent instead of orphaning the
 
 // Constat 1 (correctif de revue SP-27 Task 3) : le test ci-dessus ne passe
 // que par le chemin "geometryKind connu" (site 2), qui pose un contour à
-// suffixe simple ("communes__outline"). Le catch d'applyLayers boucle sur
-// SUBLAYER_SUFFIXES avec une boucle IMBRIQUÉE spécifiquement pour retirer le
-// double suffixe du contour d'une sous-couche de géométrie mixte
-// ("communes__polygon__outline") — jamais exercée par le test ci-dessus.
-// `tiled()` sans `geometryKind` passe par le chemin de géométrie mixte
-// (site 1) : sa sous-couche "polygon" (communes__polygon) porte le contour
-// à double suffixe.
+// suffixe simple ("communes__outline"). `tiled()` sans `geometryKind` passe
+// par le chemin de géométrie mixte (site 1) : sa sous-couche "polygon"
+// (communes__polygon) porte un contour à double suffixe
+// ("communes__polygon__outline"). La levée survient AVANT que ce double
+// suffixe soit posé, donc la boucle externe le retire en supprimant
+// "communes__polygon", et la boucle imbriquée s'exécute en no-op (le double
+// suffixe n'a jamais existé). Elle reste comme filet de sécurité pour une
+// passe future où une sous-couche décorative serait posée séparément.
 test("a failing double-suffixed outline (mixed-geometry polygon sub-layer) rolls back its parent and the source", () => {
   const good: MapLayer = { id: "ok", title: "OK", visible: true, kind: "feature", url: "u1" };
   const { rerender } = render(<MapView config={{ ...config, layers: [good] }} />);
