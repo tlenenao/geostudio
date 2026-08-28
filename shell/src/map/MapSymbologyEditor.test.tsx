@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { MapSymbologyEditor } from "./MapSymbologyEditor";
@@ -402,4 +402,108 @@ test("computed breaks are shown as text", () => {
     />,
   );
   expect(screen.getByText(/0.*50.*100/)).toBeInTheDocument();
+});
+
+const baseProps = {
+  availableFields: ["population", "region"],
+  themeColors: undefined,
+  runStatistics: vi.fn(),
+  sampleField: vi.fn(),
+};
+
+test("l'opacité écrit une valeur fixe 0-100", () => {
+  const onChange = vi.fn();
+  render(<MapSymbologyEditor {...baseProps} value={undefined} onChange={onChange} />);
+  fireEvent.change(screen.getByLabelText("Opacité"), { target: { value: "60" } });
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ opacity: 60 }));
+});
+
+test("« Ajouter un contour » crée un contour fixe par défaut", async () => {
+  const onChange = vi.fn();
+  render(<MapSymbologyEditor {...baseProps} value={undefined} onChange={onChange} />);
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter un contour" }));
+  expect(onChange).toHaveBeenLastCalledWith({
+    stroke: { color: { fixed: "#000000" }, width: { fixed: 1 }, style: "solid" },
+  });
+});
+
+test("changer la couleur, l'épaisseur et le style du contour écrit stroke", () => {
+  const onChange = vi.fn();
+  const value = {
+    stroke: { color: { fixed: "#000000" as const }, width: { fixed: 1 }, style: "solid" as const },
+  };
+  render(<MapSymbologyEditor {...baseProps} value={value} onChange={onChange} />);
+  fireEvent.change(screen.getByLabelText("Couleur de contour"), {
+    target: { value: "#123456" },
+  });
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ stroke: expect.objectContaining({ color: { fixed: "#123456" } }) }),
+  );
+  fireEvent.change(screen.getByLabelText("Épaisseur de contour (px)"), { target: { value: "3" } });
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ stroke: expect.objectContaining({ width: { fixed: 3 } }) }),
+  );
+  fireEvent.change(screen.getByLabelText("Style de contour"), { target: { value: "dashed" } });
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ stroke: expect.objectContaining({ style: "dashed" }) }),
+  );
+});
+
+test("« Retirer le contour » n'efface que le contour", async () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        opacity: 80,
+        stroke: { color: { fixed: "#000000" }, width: { fixed: 1 }, style: "solid" },
+      }}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Retirer le contour" }));
+  expect(onChange).toHaveBeenLastCalledWith({ opacity: 80 });
+});
+
+// C1 de la revue finale SP-25, réintroduit par SP-27 : clearColor/clearSize
+// ne regardaient que l'AUTRE des deux encodages historiques.
+test("retirer la couleur préserve tous les autres encodages", async () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        color: {
+          field: "region",
+          mode: "categorical",
+          palette: "categorical-a",
+          domain: { kind: "categorical", values: ["A"] },
+          computedAt: "2026-08-27T00:00:00Z",
+        },
+        opacity: 70,
+        stroke: { color: { fixed: "#000000" }, width: { fixed: 1 }, style: "solid" },
+      }}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Retirer la couleur" }));
+  expect(onChange).toHaveBeenLastCalledWith({
+    opacity: 70,
+    stroke: { color: { fixed: "#000000" }, width: { fixed: 1 }, style: "solid" },
+  });
+});
+
+test("retirer le dernier encodage repasse la symbologie à undefined", async () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        stroke: { color: { fixed: "#000000" }, width: { fixed: 1 }, style: "solid" },
+      }}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Retirer le contour" }));
+  expect(onChange).toHaveBeenLastCalledWith(undefined);
 });

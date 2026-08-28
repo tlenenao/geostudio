@@ -5,9 +5,11 @@ import {
   computeSizeDomain,
   type ColorClassification,
   type ColorDomain,
+  type LayerStroke,
   type LayerSymbology,
   type SampleFieldFn,
   type StatQueryFn,
+  type StrokeStyle,
 } from "../builder/widgets/mapSymbology";
 import type { PaletteId } from "../builder/widgets/palette";
 import type { ThemeColors } from "../api/types";
@@ -85,20 +87,37 @@ export function MapSymbologyEditor({
     });
   }
 
-  // Seul chemin qui retire complètement l'encodage couleur — avant ce fix,
-  // aucun code n'appelait jamais `onChange` avec `color` absent : vider le
-  // champ texte laissait un objet `color` orphelin (`field: ""`) avec un
-  // domaine périmé (C1 de la revue finale SP-25, déclencheur 2). Repasse
-  // `symbology` à `undefined` plutôt qu'à `{}` si plus aucun encodage
-  // n'est actif.
+  // Un seul chemin de retrait pour TOUS les encodages : la version
+  // précédente testait « reste-t-il l'AUTRE encodage historique ? »
+  // (rest.size / rest.color), ce qui détruisait silencieusement stroke,
+  // opacity, label et icon (piège n°4 de CLAUDE.md, régression C1 de
+  // SP-25). Ne jamais réintroduire de test nommant un encodage précis.
+  function clearEncoding(key: keyof LayerSymbology) {
+    const rest = { ...(value ?? {}) };
+    delete rest[key];
+    onChange(Object.keys(rest).length > 0 ? rest : undefined);
+  }
+
   function clearColor() {
-    const { color: _color, ...rest } = value ?? {};
-    onChange(rest.size ? rest : undefined);
+    clearEncoding("color");
   }
 
   function clearSize() {
-    const { size: _size, ...rest } = value ?? {};
-    onChange(rest.color ? rest : undefined);
+    clearEncoding("size");
+  }
+
+  const stroke = value?.stroke;
+
+  function setStroke(patch: Partial<LayerStroke>) {
+    onChange({
+      ...value,
+      stroke: {
+        color: stroke?.color ?? { fixed: "#000000" },
+        width: stroke?.width ?? { fixed: 1 },
+        style: stroke?.style ?? "solid",
+        ...patch,
+      },
+    });
   }
 
   async function recomputeColor() {
@@ -333,6 +352,73 @@ export function MapSymbologyEditor({
             </p>
           )}
         </>
+      )}
+      <label className={labelCls}>
+        Opacité
+        <input
+          aria-label="Opacité"
+          type="range"
+          min={0}
+          max={100}
+          step={5}
+          className="w-full"
+          value={value?.opacity ?? 100}
+          onChange={(e) => onChange({ ...value, opacity: Number(e.target.value) })}
+        />
+      </label>
+      {!stroke && (
+        <button
+          type="button"
+          className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs"
+          onClick={() => setStroke({})}
+        >
+          Ajouter un contour
+        </button>
+      )}
+      {stroke && (
+        <div className="flex flex-col gap-2 border-l-2 border-slate-200 pl-2">
+          <label className={labelCls}>
+            Couleur de contour
+            <input
+              aria-label="Couleur de contour"
+              type="color"
+              value={"fixed" in stroke.color ? stroke.color.fixed : "#000000"}
+              onChange={(e) => setStroke({ color: { fixed: e.target.value } })}
+            />
+          </label>
+          <label className={labelCls}>
+            Épaisseur de contour (px)
+            <input
+              aria-label="Épaisseur de contour (px)"
+              type="number"
+              min={0}
+              max={20}
+              className={inputCls}
+              value={"fixed" in stroke.width ? stroke.width.fixed : 1}
+              onChange={(e) => setStroke({ width: { fixed: Number(e.target.value) } })}
+            />
+          </label>
+          <label className={labelCls}>
+            Style de contour
+            <select
+              aria-label="Style de contour"
+              className={inputCls}
+              value={stroke.style}
+              onChange={(e) => setStroke({ style: e.target.value as StrokeStyle })}
+            >
+              <option value="solid">Plein</option>
+              <option value="dashed">Tirets</option>
+              <option value="dotted">Pointillés</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className="self-start text-xs text-red-700 underline"
+            onClick={() => clearEncoding("stroke")}
+          >
+            Retirer le contour
+          </button>
+        </div>
       )}
     </div>
   );
