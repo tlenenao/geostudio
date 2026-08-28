@@ -1470,6 +1470,76 @@ test("a failing outline sub-layer rolls back its parent instead of orphaning the
   expect(map.getLayer("ok")).toBeDefined();
 });
 
+// Constat 1 (correctif de revue SP-27 Task 3) : le test ci-dessus ne passe
+// que par le chemin "geometryKind connu" (site 2), qui pose un contour à
+// suffixe simple ("communes__outline"). Le catch d'applyLayers boucle sur
+// SUBLAYER_SUFFIXES avec une boucle IMBRIQUÉE spécifiquement pour retirer le
+// double suffixe du contour d'une sous-couche de géométrie mixte
+// ("communes__polygon__outline") — jamais exercée par le test ci-dessus.
+// `tiled()` sans `geometryKind` passe par le chemin de géométrie mixte
+// (site 1) : sa sous-couche "polygon" (communes__polygon) porte le contour
+// à double suffixe.
+test("a failing double-suffixed outline (mixed-geometry polygon sub-layer) rolls back its parent and the source", () => {
+  const good: MapLayer = { id: "ok", title: "OK", visible: true, kind: "feature", url: "u1" };
+  const { rerender } = render(<MapView config={{ ...config, layers: [good] }} />);
+  const map = mapInstances[0];
+  map.throwOnAddLayer.add("communes__polygon__outline");
+  rerender(
+    <MapView
+      config={{
+        ...config,
+        layers: [
+          good,
+          ...tiled({
+            symbology: {
+              stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "solid" },
+            },
+          }).layers,
+        ],
+      }}
+    />,
+  );
+  expect(map.getLayer("communes__polygon")).toBeUndefined();
+  expect(map.getLayer("communes__polygon__outline")).toBeUndefined();
+  expect(map.getSource("communes")).toBeUndefined();
+  expect(map.getLayer("ok")).toBeDefined();
+});
+
+// Constat 2 (correctif de revue SP-27 Task 3) : le brief exige qu'un stroke
+// sur une géométrie "line" soit un no-op (une ligne a déjà sa propre couleur
+// via l'encodage `color` ; un second contour sur une ligne n'a pas de sens
+// cartographique). Trois gardes le garantissent par construction
+// (buildMapPaint ne pose l'outlinePaint que pour "point"/"polygon", et le
+// site d'appel ne pose addOutlineLayer que pour "polygon") mais rien ne le
+// prouvait par une assertion directe.
+test("a stroke on a line geometry is a no-op: no outline sub-layer, line color stays the color encoding's", () => {
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "line",
+        symbology: {
+          color: {
+            field: "categorie",
+            mode: "categorical",
+            palette: "categorical-a",
+            domain: { kind: "categorical", values: ["A", "B"] },
+            computedAt: "2026-08-23T00:00:00Z",
+          },
+          stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "solid" },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  expect(map.getLayer("communes__outline")).toBeUndefined();
+  expect(map.getLayer("communes")).toMatchObject({
+    type: "line",
+    paint: {
+      "line-color": ["match", ["get", "categorie"], "A", "#2563eb", "B", "#dc2626", "#2563eb"],
+    },
+  });
+});
+
 test("a feature layer's opacity reaches its paint", () => {
   const layer: MapLayer = {
     id: "l1",
