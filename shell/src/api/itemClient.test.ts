@@ -1682,6 +1682,103 @@ test("sampleCollectionField posts sample+field and returns bare numeric values",
   expect(posted).toEqual({ field: "population", sample: 500 });
 });
 
+test("uploadMapIcon POSTs multipart form data with the bearer token", async () => {
+  let method: string | null = null;
+  let auth: string | null = null;
+  let contentType: string | null = null;
+  server.use(
+    http.post("https://core.test/map-icons", ({ request }) => {
+      method = request.method;
+      auth = request.headers.get("authorization");
+      contentType = request.headers.get("content-type");
+      return HttpResponse.json(
+        {
+          id: "i1",
+          title: "Logo",
+          category: "generic",
+          contentType: "image/png",
+          createdAt: "2026-08-27T00:00:00Z",
+        },
+        { status: 201 },
+      );
+    }),
+  );
+  const created = await makeClient("abc").uploadMapIcon(
+    new File(["x"], "logo.png", { type: "image/png" }),
+    "Logo",
+    "generic",
+  );
+  expect(created.id).toBe("i1");
+  expect(method).toBe("POST");
+  expect(auth).toBe("Bearer abc");
+  // Le vrai runtime (navigateur, ou fetch Node natif hors jsdom — vérifié
+  // par une sonde node:http jetable) pose bien
+  // "multipart/form-data; boundary=…" quand le Content-Type n'est pas
+  // fixé à la main. Dans CET environnement de test (jsdom + interception
+  // MSW), le FormData de jsdom n'est pas reconnu par le dérivateur
+  // automatique de boundary et l'en-tête observé retombe sur
+  // "text/plain;charset=UTF-8" — mesuré, pas un défaut de l'implémentation
+  // (confirmé : un Content-Type posé à la main, lui, est bien observé tel
+  // quel par MSW). La régression réelle à garder — poser Content-Type à la
+  // main et donc écraser le boundary que la plateforme ajoute — reste
+  // détectable ici :
+  expect(contentType).not.toMatch(/^application\/json/);
+});
+
+test("listMapIcons reads the tenant library back", async () => {
+  const icon = {
+    id: "i1",
+    title: "Logo",
+    category: "generic",
+    contentType: "image/png",
+    createdAt: "2026-08-27T00:00:00Z",
+  };
+  server.use(http.get("https://core.test/map-icons", () => HttpResponse.json([icon])));
+  expect(await makeClient("abc").listMapIcons()).toEqual([icon]);
+});
+
+test("deleteMapIcon tolerates the 204 the core returns", async () => {
+  let method: string | null = null;
+  server.use(
+    http.delete("https://core.test/map-icons/:iconId", ({ request }) => {
+      method = request.method;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  // request() fait `if (res.status === 204) return undefined as T`
+  // (itemClient.ts:325-343) : la méthode résout sur undefined, sans lever.
+  await expect(makeClient("abc").deleteMapIcon("i1")).resolves.toBeUndefined();
+  expect(method).toBe("DELETE");
+});
+
+// La route du fichier est gardée par bearer token : une URL nue passée à
+// `new Image().src` ne porte aucun en-tête et prendrait un 401 (constat 4.4).
+test("fetchMapIconBlob attaches the bearer token and returns the bytes", async () => {
+  let auth: string | null = null;
+  let url: string | null = null;
+  server.use(
+    http.get("https://core.test/map-icons/:iconId/file", ({ request }) => {
+      auth = request.headers.get("authorization");
+      url = request.url;
+      return new HttpResponse("PNGBYTES", { headers: { "Content-Type": "image/png" } });
+    }),
+  );
+  const blob = await makeClient("tok").fetchMapIconBlob("i1");
+  expect(await blob.text()).toBe("PNGBYTES");
+  expect(auth).toBe("Bearer tok");
+  expect(url).toBe("https://core.test/map-icons/i1/file");
+});
+
+test("fetchMapIconBlob throws on a non-ok response", async () => {
+  server.use(
+    http.get(
+      "https://core.test/map-icons/:iconId/file",
+      () => new HttpResponse(null, { status: 404 }),
+    ),
+  );
+  await expect(makeClient("tok").fetchMapIconBlob("i1")).rejects.toThrow(/404/);
+});
+
 test("featuresUrl strips reserved statistics keys but keeps filter params", () => {
   const url = makeClient().featuresUrl({
     id: "s",

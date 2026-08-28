@@ -70,4 +70,14 @@ describe("StaticItemClient", () => {
     const client = createStaticItemClient(config());
     await expect(client.sampleCollectionField("c", "f", 10)).rejects.toThrow(/statique/i);
   });
+
+  it("the four map-icon methods all throw an explicit unsupported error", async () => {
+    const client = createStaticItemClient(config());
+    await expect(
+      client.uploadMapIcon(new File(["x"], "logo.png", { type: "image/png" }), "Logo", "generic"),
+    ).rejects.toThrow(/statique/i);
+    await expect(client.listMapIcons()).rejects.toThrow(/statique/i);
+    await expect(client.deleteMapIcon("i1")).rejects.toThrow(/statique/i);
+    await expect(client.fetchMapIconBlob("i1")).rejects.toThrow(/statique/i);
+  });
 });
