@@ -134,8 +134,44 @@ _LOCAL_URL_RE = re.compile(
 # (e.g. `fill="\75 rl(http://evil.test/x)"` is CSS-equivalent to
 # `fill="url(http://evil.test/x)"`). Whitelisting the value SHAPE closes this
 # generally, instead of chasing individual escaped substrings.
+#
+# The first cut of this whitelist (keyword/hex/local-url only) was narrower
+# than the value set it replaced: it silently dropped legitimate, common
+# paint values (CSS named colors, rgb()/rgba()/hsl()/hsla() notations)
+# instead of rejecting the upload — the attribute just vanished, the icon
+# still got stored, and it rendered with the wrong (default) color with no
+# error surfaced. `_KEYWORD_COLOR_RE` and `_FUNCTIONAL_COLOR_RE` below close
+# that gap with two more whitelist SHAPES, not a blacklist and not a curated
+# list of the ~148 real CSS color names:
+#   - `_KEYWORD_COLOR_RE`: pure `[A-Za-z]+`. Structurally cannot contain "(",
+#     ":" or "\", so it cannot form a url(...) token, a URI scheme, or a CSS
+#     escape — safe by construction. It does not validate the keyword is a
+#     *real* CSS color name; an invalid one (e.g. "notarealcolor") just
+#     renders as nothing/black, the same failure mode as today, not a new
+#     one.
+#   - `_FUNCTIONAL_COLOR_RE`: `rgb|rgba|hsl|hsla` followed by a parenthesised
+#     run of only digits/`.`/`%`/`,`/`/`/horizontal-whitespace. That
+#     character class admits no further "(", so it cannot nest another
+#     function call, and no ":" or "\" either — safe on its own merits, not
+#     merely because the separate backslash check below happens to catch it
+#     too.
+# Both patterns tolerate incidental leading/trailing horizontal whitespace
+# ([ \t], NOT \s) by anchoring it INSIDE the pattern itself between `^`/`\Z`
+# and the value — never via a `.strip()` call before matching, which would
+# silently discard a smuggled trailing `\n` (reachable via `&#10;`) before
+# the `\Z` anchor from 5cf150d ever saw it. `\t`/space are chosen over `\s`
+# specifically so an embedded/trailing newline still cannot ride along
+# disguised as "whitespace" — see the dedicated newline tests. `_HEX_COLOR_RE`
+# gets the same [ \t] tolerance for the same reason (" #fff" with incidental
+# leading whitespace was accepted pre-5cf150d and silently dropped after).
 _PAINT_ATTRS = frozenset({"fill", "stroke", "stop-color"})
-_HEX_COLOR_RE = re.compile(r"^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})\Z")
+_HEX_COLOR_RE = re.compile(
+    r"^[ \t]*#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})[ \t]*\Z"
+)
+_KEYWORD_COLOR_RE = re.compile(r"^[ \t]*[A-Za-z]+[ \t]*\Z")
+_FUNCTIONAL_COLOR_RE = re.compile(
+    r"^[ \t]*(?:rgb|rgba|hsl|hsla)\([ \t0-9.%,/]+\)[ \t]*\Z", re.IGNORECASE
+)
 _PAINT_KEYWORDS = frozenset({"none", "currentcolor"})
 
 
@@ -159,12 +195,17 @@ def _namespace(tag: str) -> str | None:
 def _paint_value_is_allowed(value: str) -> bool:
     # No `.strip()` here: stripping would undo the `\Z` anchor fix above by
     # silently discarding a trailing `\n` (reachable via `&#10;`) before the
-    # regex ever sees it. None of the accepted shapes carry outer whitespace.
+    # regex ever sees it. Whichever accepted shapes tolerate outer whitespace
+    # do so via `[ \t]*` inside their own pattern (see the block above).
     if value.lower() in _PAINT_KEYWORDS:
         return True
     if _HEX_COLOR_RE.match(value):
         return True
-    return bool(_LOCAL_URL_RE.match(value))
+    if _LOCAL_URL_RE.match(value):
+        return True
+    if _KEYWORD_COLOR_RE.match(value):
+        return True
+    return bool(_FUNCTIONAL_COLOR_RE.match(value))
 
 
 def _attr_value_is_allowed(key: str, value: str) -> bool:

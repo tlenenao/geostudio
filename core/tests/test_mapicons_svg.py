@@ -232,6 +232,89 @@ def test_local_url_references_are_accepted_only_in_their_exact_form(value, kept)
 
 
 @pytest.mark.parametrize(
+    ("attr", "value"),
+    [
+        ("fill", "red"),
+        ("fill", "rgb(255,0,0)"),
+        ("fill", "rgba(255,0,0,0.5)"),
+        ("stroke", "hsl(0,100%,50%)"),
+        ("stroke", "hsla(0,100%,50%,0.5)"),
+        ("fill", "rebeccapurple"),
+        ("stop-color", "transparent"),
+    ],
+)
+def test_named_colors_and_functional_notations_survive_sanitization(attr, value):
+    # Regression coverage: 5cf150d's whitelist (keyword/hex/local-url only)
+    # silently dropped these previously-accepted, commonly-used paint values
+    # instead of rejecting the upload — the icon was stored but rendered with
+    # the wrong (default, black) color. The attribute value must survive
+    # byte-for-byte, not merely "be present somewhere".
+    payload = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+        f'<path d="M0 0" {attr}="{value}"/></svg>'
+    ).encode()
+    out = sanitize_svg(payload).decode()
+    path = out.split("<path")[1].split("/>")[0]
+    assert f'{attr}="{value}"' in path
+
+
+def test_a_pure_alphabetic_keyword_does_not_need_to_be_a_real_css_color_name():
+    # The security property of the keyword whitelist is structural (no "(",
+    # ":" or "\" can appear in `[A-Za-z]+`), not "is a real CSS color name".
+    # An invalid keyword just renders as nothing/black — the same failure
+    # mode as today, not a new one — so it is accepted rather than requiring
+    # an enumerated list of the ~148 CSS named colors.
+    out = sanitize_svg(
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+        b'<path d="M0 0" fill="notarealcolor"/></svg>'
+    ).decode()
+    path = out.split("<path")[1].split("/>")[0]
+    assert 'fill="notarealcolor"' in path
+
+
+def test_incidental_leading_or_trailing_horizontal_whitespace_is_tolerated():
+    # Confirmed regressed by the re-review: a hex color with incidental
+    # leading whitespace (" #fff") was accepted before 5cf150d (which
+    # stripped) and silently dropped after (no more .strip()). Tolerate
+    # ordinary horizontal whitespace by anchoring it INSIDE the regex
+    # patterns themselves, never via .strip() on the value before matching.
+    payload = (
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+        b'<path d="M0 0" fill=" #fff"/>'
+        b'<circle cx="1" cy="1" r="1" fill="red "/>'
+        b'<rect x="0" y="0" width="4" height="4" stroke=" rgb(1,2,3) "/></svg>'
+    )
+    out = sanitize_svg(payload).decode()
+    assert 'fill=" #fff"' in out.split("<path")[1].split("/>")[0]
+    assert 'fill="red "' in out.split("<circle")[1].split("/>")[0]
+    assert 'stroke=" rgb(1,2,3) "' in out.split("<rect")[1].split("/>")[0]
+
+
+@pytest.mark.parametrize(
+    ("attr", "value"),
+    [
+        ("fill", "red&#10;"),
+        ("fill", "rgb(1,2,3)&#10;"),
+        ("fill", "&#10;red"),
+    ],
+)
+def test_a_trailing_or_leading_newline_defeats_the_widened_whitelist_too(attr, value):
+    # Same `\Z`-anchor-honesty property as the existing id/local-url newline
+    # tests: the widened whitelist tolerates ordinary horizontal whitespace
+    # ([ \t]) inside its patterns, but a newline (reachable via `&#10;`,
+    # which the XML parser does not collapse the way it does a literal
+    # source newline) must still be rejected, not silently swallowed as
+    # "whitespace".
+    payload = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+        f'<path d="M0 0" {attr}="{value}"/></svg>'
+    ).encode()
+    out = sanitize_svg(payload).decode()
+    path = out.split("<path")[1].split("/>")[0]
+    assert f"{attr}=" not in path
+
+
+@pytest.mark.parametrize(
     ("value", "kept"),
     [("g", True), ("ok-1.2", True), ("a b", False), ("0bad", False)],
 )
