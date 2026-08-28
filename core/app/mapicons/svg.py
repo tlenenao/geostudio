@@ -25,6 +25,7 @@ attributs par défaut dans l'arbre (mesuré), et c'est l'allowlist d'attributs
 qui les écarte. Ne jamais désactiver l'une en gardant l'autre.
 """
 
+import math
 import re
 import xml.etree.ElementTree as ET
 
@@ -113,10 +114,29 @@ _MAX_SANITIZED_BYTES = 200_000
 _MAX_DEPTH = 20
 _MAX_DIMENSION = 4096
 
-_ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
+# `\Z` (not `$`) on both regexes: `$` in Python also matches immediately before
+# a single trailing "\n", so a value ending in a literal newline (reachable via
+# a `&#10;` character reference, which the XML parser does NOT collapse to a
+# space the way it does a literal source newline) would otherwise slip past an
+# anchor meant to bind the whole value. These two regexes ARE the security
+# contract of D6(c) — keep both ends genuinely anchored.
+_ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*\Z")
 _LOCAL_URL_RE = re.compile(
-    r"""^url\(\s*(?:"|')?\#([A-Za-z_][A-Za-z0-9_.-]*)(?:"|')?\s*\)$""", re.IGNORECASE
+    r"""^url\(\s*(?:"|')?\#([A-Za-z_][A-Za-z0-9_.-]*)(?:"|')?\s*\)\Z""", re.IGNORECASE
 )
+
+# Paint-bearing attributes (SVG <paint> / <color> value syntax). Browsers parse
+# these with the CSS value grammar, whose tokenizer resolves CSS escapes
+# (`\XX ` = hex codepoint, optionally space-terminated) BEFORE forming tokens
+# such as `url(...)`. A substring blacklist on the raw attribute text (looking
+# for "url(", "javascript:", "data:") is therefore bypassable: the raw string
+# never contains the forbidden substring, yet the browser's decoded value does
+# (e.g. `fill="\75 rl(http://evil.test/x)"` is CSS-equivalent to
+# `fill="url(http://evil.test/x)"`). Whitelisting the value SHAPE closes this
+# generally, instead of chasing individual escaped substrings.
+_PAINT_ATTRS = frozenset({"fill", "stroke", "stop-color"})
+_HEX_COLOR_RE = re.compile(r"^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})\Z")
+_PAINT_KEYWORDS = frozenset({"none", "currentcolor"})
 
 
 class SvgRejected(Exception):
@@ -136,14 +156,33 @@ def _namespace(tag: str) -> str | None:
     return tag[1:].split("}", 1)[0] if tag.startswith("{") else None
 
 
+def _paint_value_is_allowed(value: str) -> bool:
+    # No `.strip()` here: stripping would undo the `\Z` anchor fix above by
+    # silently discarding a trailing `\n` (reachable via `&#10;`) before the
+    # regex ever sees it. None of the accepted shapes carry outer whitespace.
+    if value.lower() in _PAINT_KEYWORDS:
+        return True
+    if _HEX_COLOR_RE.match(value):
+        return True
+    return bool(_LOCAL_URL_RE.match(value))
+
+
 def _attr_value_is_allowed(key: str, value: str) -> bool:
-    lowered = value.lower()
-    if "javascript:" in lowered or "data:" in lowered:
+    # A backslash never belongs in any of these values legitimately, and it is
+    # the one character that lets the CSS tokenizer rewrite the value into
+    # something a raw-substring check never sees. Reject it outright, for
+    # every attribute, before any other check runs.
+    if "\\" in value:
         return False
     if key == "id":
         return bool(_ID_RE.match(value))
+    if key in _PAINT_ATTRS:
+        return _paint_value_is_allowed(value)
+    lowered = value.lower()
+    if "javascript:" in lowered or "data:" in lowered:
+        return False
     if "url(" in lowered:
-        return bool(_LOCAL_URL_RE.match(value.strip()))
+        return bool(_LOCAL_URL_RE.match(value))
     return True
 
 
@@ -202,7 +241,7 @@ def _dimension(raw: str | None) -> float | None:
         value = float(raw.strip().removesuffix("px"))
     except ValueError:
         return None
-    if value <= 0 or value > _MAX_DIMENSION:
+    if not math.isfinite(value) or value <= 0 or value > _MAX_DIMENSION:
         return None
     return value
 

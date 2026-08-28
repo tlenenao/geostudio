@@ -437,6 +437,55 @@ def test_an_svg_without_viewbox_or_dimensions_is_refused():
     assert exc.value.code == "svg_no_dimensions"
 
 
+def test_css_escapes_defeat_the_url_and_scheme_blacklists_are_blocked():
+    # \75 is the CSS escape for "u" and \64 the CSS escape for "d": the browser's
+    # CSS value tokenizer decodes these BEFORE forming the url(...)/data: token,
+    # so a raw substring test for "url(" / "data:" never sees them.
+    out = sanitize_svg(
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+        b'<path d="M0 0" fill="\\75 rl(http://evil.test/x)"/>'
+        b'<rect x="0" y="0" width="4" height="4" '
+        b'fill="\\64 ata:image/png;base64,AAAA"/></svg>'
+    ).decode()
+    assert "evil.test" not in out
+    assert "\\75" not in out and "\\64" not in out
+    assert "fill=" not in out.split("<path")[1].split("/>")[0]
+    assert "fill=" not in out.split("<rect")[1].split("/>")[0]
+    assert 'd="M0 0"' in out
+    assert "<rect" in out and 'width="4"' in out
+
+
+def test_nan_dimensions_fall_back_to_viewbox_like_missing_dimensions():
+    out = sanitize_svg(
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" '
+        b'width="nan" height="NaN"><path d="M0 0"/></svg>'
+    ).decode()
+    assert 'width="24"' in out
+    assert 'height="24"' in out
+
+
+def test_a_trailing_newline_after_an_id_defeats_dollar_anchor_is_rejected():
+    out = sanitize_svg(
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+        b'<defs><linearGradient id="g&#10;">'
+        b'<stop offset="0" stop-color="#f00"/></linearGradient></defs>'
+        b'<path d="M0 0"/></svg>'
+    ).decode()
+    gradient = out.split("<linearGradient")[1].split(">")[0]
+    assert "id=" not in gradient
+
+
+def test_a_trailing_newline_after_a_local_url_defeats_dollar_anchor_is_rejected():
+    out = sanitize_svg(
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+        b'<defs><linearGradient id="g"><stop offset="0" stop-color="#f00"/>'
+        b"</linearGradient></defs>"
+        b'<rect width="4" height="4" fill="url(#g)&#10;"/></svg>'
+    ).decode()
+    rect = out.split("<rect")[1].split("/>")[0]
+    assert "fill=" not in rect
+
+
 def test_sniff_content_type_recognises_png_svg_and_nothing_else():
     assert sniff_content_type(PNG) == "image/png"
     assert sniff_content_type(LEGIT) == "image/svg+xml"
