@@ -25,6 +25,8 @@ vi.mock("../../map/MapView", () => ({
         onViewChange,
         onFeatureClick,
         loadCustomIcon,
+        themeColors,
+        interactiveTools,
       }: {
         config: MapConfig;
         onViewChange?: (v: {
@@ -38,6 +40,8 @@ vi.mock("../../map/MapView", () => ({
           geometry?: unknown;
         }) => void;
         loadCustomIcon?: (iconId: string) => Promise<Blob>;
+        themeColors?: unknown;
+        interactiveTools?: boolean;
       },
       ref: React.Ref<{ flyTo: unknown; highlight: unknown }>,
     ) => {
@@ -50,13 +54,16 @@ vi.mock("../../map/MapView", () => ({
       const renderAs = layer && "renderAs" in layer ? ((layer as any).renderAs ?? "") : "";
 
       const paint = layer && "paint" in layer ? JSON.stringify((layer as any).paint ?? {}) : "{}";
+      const symbology =
+        layer && "symbology" in layer ? JSON.stringify((layer as any).symbology ?? null) : "null";
       return (
         <div
           data-testid="mapview"
           onClick={() => onViewChange?.({ center: [1, 2], zoom: 9, bbox: [10, 20, 30, 40] })}
         >
-          layers:{config.layers.length} url:{url} renderAs:{renderAs} paint:{paint} loader:
-          {typeof loadCustomIcon}
+          layers:{config.layers.length} url:{url} renderAs:{renderAs} paint:{paint} symbology:
+          {symbology} themeColors:{JSON.stringify(themeColors ?? null)} tools:
+          {String(!!interactiveTools)} loader:{typeof loadCustomIcon}
           <button
             type="button"
             data-testid="feature"
@@ -439,53 +446,45 @@ test("shows an explorer menu when bound to a dataset and interactions are auto",
   expect(await screen.findByLabelText("Explorer")).toBeInTheDocument();
 });
 
-test("Component renders paint from frozen props.symbology, without querying any domain", async () => {
+test("le widget transmet la symbologie figée à MapView, sans requête de domaine", async () => {
   const queryDataSource = vi.fn();
-  const ctx = {
-    mode: "runtime",
-    data: state({
-      url: "https://fs/communes/items.json",
-      records: [{ id: 1, properties: {}, geometry: { type: "Polygon", coordinates: [] } }],
-    }),
-  } as WidgetContext;
+  const symbology = {
+    color: {
+      field: "region",
+      mode: "categorical",
+      palette: "categorical-a",
+      domain: { kind: "categorical", values: ["Nord", "Sud"] },
+      computedAt: "2026-08-23T10:00:00Z",
+    },
+  };
   const Map = getWidget("map")!.Component;
   render(
     withClient(
       <Map
-        props={{
-          dataSourceId: "d",
-          symbology: {
-            color: {
-              field: "region",
-              mode: "categorical",
-              palette: "categorical-a",
-              domain: { kind: "categorical", values: ["Nord", "Sud"] },
-              computedAt: "2026-08-23T10:00:00Z",
-            },
-          },
-        }}
-        ctx={ctx}
+        props={{ dataSourceId: "d", symbology }}
+        ctx={
+          {
+            mode: "runtime",
+            data: state({
+              url: "https://fs/communes/items.json",
+              records: [{ id: 1, properties: {}, geometry: { type: "Polygon", coordinates: [] } }],
+            }),
+          } as WidgetContext
+        }
       />,
       queryDataSource,
     ),
   );
   const view = await screen.findByTestId("mapview");
-  expect(view.textContent).toContain('"fill-color"');
   expect(view.textContent).toContain("renderAs:fill");
-  expect(view.textContent).toContain("#2563eb");
-  expect(view.textContent).toContain("#dc2626");
+  expect(view.textContent).toContain('"field":"region"');
+  expect(view.textContent).toContain('"palette":"categorical-a"');
+  // Plus aucun `paint` compilé par le widget : c'est MapView qui compile.
+  expect(view.textContent).toContain("paint:{}");
   expect(queryDataSource).not.toHaveBeenCalled();
 });
 
-test("colors and sizes point features from frozen size/color symbology, without querying any domain", async () => {
-  const queryDataSource = vi.fn();
-  const ctx = {
-    mode: "runtime",
-    data: state({
-      url: "https://fs/points/items.json",
-      records: [{ id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 2] } }],
-    }),
-  } as WidgetContext;
+test("un point avec taille et couleur donne renderAs:circle et la symbologie complète", async () => {
   const Map = getWidget("map")!.Component;
   render(
     withClient(
@@ -507,27 +506,42 @@ test("colors and sizes point features from frozen size/color symbology, without 
             },
           },
         }}
-        ctx={ctx}
+        ctx={
+          {
+            mode: "runtime",
+            data: state({
+              url: "https://fs/points/items.json",
+              records: [
+                { id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 2] } },
+              ],
+            }),
+          } as WidgetContext
+        }
       />,
-      queryDataSource,
     ),
   );
   const view = await screen.findByTestId("mapview");
-  expect(view.textContent).toContain('"circle-radius"');
-  expect(view.textContent).toContain('"circle-color"');
   expect(view.textContent).toContain("renderAs:circle");
-  expect(queryDataSource).not.toHaveBeenCalled();
+  expect(view.textContent).toContain('"field":"montant"');
 });
 
-test("Component resolves the theme-primary palette from ctx.theme at render time", async () => {
-  const ctx = {
-    mode: "runtime",
-    theme: { colors: { primary: "#2563eb" } },
-    data: state({
-      url: "https://fs/points/items.json",
-      records: [{ id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 2] } }],
-    }),
-  } as WidgetContext;
+// La palette de thème n'est plus résolue par le widget mais par MapView :
+// ce qui doit être prouvé ici est que ctx.theme.colors LUI PARVIENT. Sans
+// cela, une palette theme-primary rendrait silencieusement les mauvaises
+// couleurs (le bug que l'ancienne version de ce test attrapait).
+//
+// À consigner (constat N14, informatif) : le test existant assertait DEUX
+// choses — `toContain('"#2563eb"]}')` **et** `not.toContain("#1e3a8a")`,
+// c'est-à-dire « la couleur résolue du thème apparaît, ET PAS la valeur par
+// défaut de sequential-blue / NUMERIC_COLOR_HIGH ». Cette assertion NÉGATIVE
+// est précisément celle qui avait attrapé le bug d'origine, et elle
+// disparaît de ce fichier. La propriété de bout en bout reste couverte,
+// mais par un AUTRE fichier :
+// `MapView.test.tsx` ("themeColors reaches the paint compilation
+// (theme-primary resolves)") prouve déjà que `themeColors` atteint la
+// compilation réelle du paint. Acceptable, et écrit ici pour qu'une revue ne
+// le prenne pas pour une perte silencieuse de couverture.
+test("ctx.theme.colors est transmis à MapView pour résoudre theme-primary", async () => {
   const Map = getWidget("map")!.Component;
   render(
     withClient(
@@ -544,19 +558,70 @@ test("Component resolves the theme-primary palette from ctx.theme at render time
             },
           },
         }}
-        ctx={ctx}
+        ctx={
+          {
+            mode: "runtime",
+            theme: { colors: { primary: "#2563eb" } },
+            data: state({
+              url: "https://fs/points/items.json",
+              records: [
+                { id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 2] } },
+              ],
+            }),
+          } as WidgetContext
+        }
       />,
     ),
   );
   const view = await screen.findByTestId("mapview");
-  // The interpolate expression's high stop must be the resolved
-  // theme-primary color, not one of the hardcoded palette defaults
-  // (sequential-blue's "#1e3a8a" or the raw NUMERIC_COLOR_HIGH default) —
-  // this is exactly the bug this plan's Task 10 self-review caught: without
-  // ctx.theme threaded through symbologyToPaintInputs, this would silently
-  // render the wrong colors instead.
-  expect(view.textContent).toContain('"#2563eb"]}');
-  expect(view.textContent).not.toContain("#1e3a8a");
+  expect(view.textContent).toContain('themeColors:{"primary":"#2563eb"}');
+  expect(view.textContent).toContain('"palette":"theme-primary"');
+});
+
+// Non-régression du chemin historique : une couche sans symbologie doit
+// arriver chez MapView exactement comme avant (paint vide, renderAs dérivé
+// de la géométrie), et MapView la peint par sa branche `layer.paint ?? {}`.
+test("sans symbologie, la couche transmise est inchangée", async () => {
+  const Map = getWidget("map")!.Component;
+  render(
+    withClient(
+      <Map
+        props={{ dataSourceId: "d" }}
+        ctx={
+          {
+            mode: "runtime",
+            data: state({
+              url: "https://fs/communes/items.json",
+              records: [{ id: 1, properties: {}, geometry: { type: "Polygon", coordinates: [] } }],
+            }),
+          } as WidgetContext
+        }
+      />,
+    ),
+  );
+  const view = await screen.findByTestId("mapview");
+  expect(view.textContent).toContain("renderAs:fill");
+  expect(view.textContent).toContain("symbology:null");
+  expect(view.textContent).toContain("paint:{}");
+});
+
+test("la barre mesure/croquis n'est active qu'en dehors du mode édition", async () => {
+  const Map = getWidget("map")!.Component;
+  const data = state({
+    url: "https://fs/communes/items.json",
+    records: [{ id: 1, properties: {}, geometry: { type: "Polygon", coordinates: [] } }],
+  });
+  const { rerender } = render(
+    withClient(<Map props={{ dataSourceId: "d" }} ctx={{ mode: "edit", data } as WidgetContext} />),
+  );
+  expect((await screen.findByTestId("mapview")).textContent).toContain("tools:false");
+
+  rerender(
+    withClient(
+      <Map props={{ dataSourceId: "d" }} ctx={{ mode: "runtime", data } as WidgetContext} />,
+    ),
+  );
+  expect((await screen.findByTestId("mapview")).textContent).toContain("tools:true");
 });
 
 test("shows no symbology legend when no encoding is configured", () => {
