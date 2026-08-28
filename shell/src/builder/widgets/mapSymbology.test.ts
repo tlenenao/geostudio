@@ -14,6 +14,7 @@ import {
   computeSizeDomain,
   detectGeometryKind,
   equalIntervalBreaks,
+  iconImageId,
   jenksBreaks,
   normalizeDomain,
   quantileBreaksFromRow,
@@ -818,4 +819,90 @@ test("un contour classé jamais recalculé ne peint aucun contour au lieu d'une 
   });
   expect(result.paint["fill-outline-color"]).toBeUndefined();
   expect(result.outlinePaint).toBeUndefined();
+});
+
+test("buildMapPaint on a point layer with a categorical icon emits iconLayout, never paint", () => {
+  const result = buildMapPaint({}, null, null, "point", undefined, {
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["ecole", "commerce"] },
+      mapping: {
+        ecole: { source: "lucide", name: "school" },
+        commerce: { source: "lucide", name: "shopping-cart" },
+      },
+      fallback: { source: "lucide", name: "map-pin" },
+    },
+  });
+  expect(result.iconLayout).toEqual({
+    "icon-image": [
+      "match",
+      ["get", "categorie"],
+      "ecole",
+      "lucide:school",
+      "commerce",
+      "lucide:shopping-cart",
+      "lucide:map-pin",
+    ],
+    "icon-size": 1,
+    "icon-allow-overlap": true,
+  });
+  expect(result.paint["icon-image"]).toBeUndefined();
+  expect(result.iconImages).toEqual(["lucide:school", "lucide:shopping-cart", "lucide:map-pin"]);
+});
+
+test("without an explicit fallback the match default is the first mapped icon", () => {
+  const result = buildMapPaint({}, null, null, "point", undefined, {
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["a"] },
+      mapping: { a: { source: "lucide", name: "star" } },
+    },
+  });
+  expect(result.iconLayout?.["icon-image"]).toEqual([
+    "match",
+    ["get", "categorie"],
+    "a",
+    "lucide:star",
+    "lucide:star",
+  ]);
+  expect(result.iconImages).toEqual(["lucide:star"]);
+});
+
+test("an icon encoding with no mapped value produces no icon layer at all", () => {
+  const result = buildMapPaint({}, null, null, "point", undefined, {
+    icon: { field: "categorie", domain: { kind: "categorical", values: ["a"] }, mapping: {} },
+  });
+  expect(result.iconLayout).toBeUndefined();
+  expect(result.iconImages).toEqual([]);
+});
+
+test("buildMapPaint icon on a non-point geometry is a no-op", () => {
+  const result = buildMapPaint({}, null, null, "polygon", undefined, {
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["a"] },
+      mapping: { a: { source: "lucide", name: "star" } },
+    },
+  });
+  expect(result.iconLayout).toBeUndefined();
+  expect(result.iconImages).toEqual([]);
+});
+
+test("iconImageId distinguishes lucide from custom refs", () => {
+  expect(iconImageId({ source: "lucide", name: "school" })).toBe("lucide:school");
+  expect(iconImageId({ source: "custom", id: "abc123" })).toBe("custom:abc123");
+});
+
+test("buildLegend includes an icon entry per mapped value", () => {
+  const legend = buildLegend({}, null, null, "point", undefined, {
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["ecole", "jamais-mappe"] },
+      mapping: { ecole: { source: "lucide", name: "school" } },
+    },
+  });
+  expect(legend?.icon).toEqual({
+    field: "categorie",
+    entries: [{ value: "ecole", imageId: "lucide:school" }],
+  });
 });
