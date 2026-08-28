@@ -748,8 +748,10 @@ test("symbologyToPaintInputs resolves stroke.color.palette from an id, like colo
       stroke: {
         color: {
           field: "region",
+          mode: "categorical",
           domain: { kind: "categorical", values: ["A"] },
           palette: "theme-primary",
+          computedAt: "2026-08-27T00:00:00Z",
         },
         width: { fixed: 1 },
         style: "solid",
@@ -767,4 +769,66 @@ test("renderAsFor maps a geometry kind to the MapLibre layer type", () => {
   expect(renderAsFor("point")).toBe("circle");
   expect(renderAsFor("line")).toBe("line");
   expect(renderAsFor("polygon")).toBe("fill");
+});
+
+// Invariant SP-25 étendu au contour : le domaine est FIGÉ à l'enregistrement,
+// avec l'horodatage de son calcul, et le rendu ne le recalcule jamais.
+test("un contour classé porte un domaine figé et son computedAt", () => {
+  const symbology: LayerSymbology = {
+    stroke: {
+      color: {
+        field: "pop",
+        mode: "numeric",
+        domain: { kind: "numeric-classed", breaks: [0, 10, 20, 30] },
+        palette: "sequential-blue",
+        classification: { method: "quantile", classes: 3 },
+        computedAt: "2026-08-27T10:00:00Z",
+      },
+      width: { fixed: 2 },
+      style: "solid",
+    },
+  };
+  expect(
+    symbology.stroke && "field" in symbology.stroke.color && symbology.stroke.color.computedAt,
+  ).toBe("2026-08-27T10:00:00Z");
+});
+
+test("buildMapPaint compile un contour classé en expression step", () => {
+  const result = buildMapPaint({}, null, null, "polygon", undefined, {
+    stroke: {
+      color: {
+        field: "pop",
+        domain: { kind: "numeric-classed", breaks: [0, 10, 20, 30] },
+        palette: { kind: "sequential", low: "#dbeafe", high: "#1e3a8a" },
+      },
+      width: { fixed: 2 },
+      style: "solid",
+    },
+  });
+  const step = result.paint["fill-outline-color"] as unknown[];
+  expect(step[0]).toBe("step");
+  expect(step[1]).toEqual(["get", "pop"]);
+  // 3 classes ⇒ couleur initiale + 2 paires (seuil, couleur).
+  expect(step).toHaveLength(2 + 1 + 4);
+  expect(result.outlinePaint?.["line-color"]).toEqual(step);
+});
+
+// Miroir du garde côté couleur : c'est exactement l'état que produit le
+// bouton « Couleur de contour par attribut » avant tout recalcul (champ vide,
+// `values: []`). Sans ce garde, `match` n'aurait pas assez d'arguments et
+// MapLibre ferait disparaître la couche ENTIÈRE, silencieusement.
+test("un contour classé jamais recalculé ne peint aucun contour au lieu d'une expression cassée", () => {
+  const result = buildMapPaint({}, null, null, "polygon", undefined, {
+    stroke: {
+      color: {
+        field: "",
+        domain: { kind: "categorical", values: [] },
+        palette: undefined,
+      },
+      width: { fixed: 2 },
+      style: "solid",
+    },
+  });
+  expect(result.paint["fill-outline-color"]).toBeUndefined();
+  expect(result.outlinePaint).toBeUndefined();
 });

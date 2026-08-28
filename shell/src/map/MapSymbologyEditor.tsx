@@ -9,7 +9,7 @@ import {
   type StatQueryFn,
   type StrokeStyle,
 } from "../builder/widgets/mapSymbology";
-import { FieldClassificationPicker } from "./FieldClassificationPicker";
+import { FieldClassificationPicker, type ClassifiedEncoding } from "./FieldClassificationPicker";
 import type { ThemeColors } from "../api/types";
 
 const labelCls = "flex flex-col gap-1";
@@ -100,6 +100,39 @@ export function MapSymbologyEditor({
         ...patch,
       },
     });
+  }
+
+  const [strokeBusy, setStrokeBusy] = useState(false);
+  const [strokeError, setStrokeError] = useState<string | null>(null);
+  const strokeColorIsFixed = !!stroke && "fixed" in stroke.color;
+
+  function setStrokeColorPatch(patch: Partial<ClassifiedEncoding>) {
+    if (!stroke || "fixed" in stroke.color) return;
+    setStroke({ color: { ...stroke.color, ...patch } });
+  }
+
+  async function recomputeStrokeDomain() {
+    if (!stroke || "fixed" in stroke.color || !stroke.color.field) return;
+    const encoding = stroke.color;
+    setStrokeBusy(true);
+    setStrokeError(null);
+    try {
+      const domain = await computeColorDomain(
+        {
+          field: encoding.field,
+          mode: encoding.mode,
+          classification: encoding.classification,
+        },
+        { runStatistics, sampleField },
+      );
+      // Invariant SP-25 : on FIGE le domaine et l'horodatage dans le
+      // document ; le rendu (buildMapPaint) ne recalcule jamais.
+      setStroke({ color: { ...encoding, domain, computedAt: new Date().toISOString() } });
+    } catch (e) {
+      setStrokeError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStrokeBusy(false);
+    }
   }
 
   async function recomputeColor() {
@@ -256,15 +289,64 @@ export function MapSymbologyEditor({
       )}
       {stroke && (
         <div className="flex flex-col gap-2 border-l-2 border-slate-200 pl-2">
-          <label className={labelCls}>
-            Couleur de contour
-            <input
-              aria-label="Couleur de contour"
-              type="color"
-              value={"fixed" in stroke.color ? stroke.color.fixed : "#000000"}
-              onChange={(e) => setStroke({ color: { fixed: e.target.value } })}
+          <div className="flex gap-1">
+            <button
+              type="button"
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+              aria-pressed={strokeColorIsFixed}
+              onClick={() => setStroke({ color: { fixed: "#000000" } })}
+            >
+              Couleur de contour fixe
+            </button>
+            <button
+              type="button"
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+              aria-pressed={!strokeColorIsFixed}
+              onClick={() =>
+                setStroke({
+                  color: {
+                    field: "",
+                    mode: "categorical",
+                    palette: "categorical-a",
+                    domain: { kind: "categorical", values: [] },
+                    computedAt: "",
+                  },
+                })
+              }
+            >
+              Couleur de contour par attribut
+            </button>
+          </div>
+          {strokeColorIsFixed ? (
+            <label className={labelCls}>
+              Couleur de contour
+              <input
+                aria-label="Couleur de contour"
+                type="color"
+                value={"fixed" in stroke.color ? stroke.color.fixed : "#000000"}
+                onChange={(e) => setStroke({ color: { fixed: e.target.value } })}
+              />
+            </label>
+          ) : (
+            <FieldClassificationPicker
+              labels={{
+                field: "Champ couleur de contour",
+                palette: "Palette du contour",
+                mode: "Type de couleur de contour",
+                method: "Méthode de classification du contour",
+                classes: "Nombre de classes du contour",
+                recompute: "Recalculer les classes du contour",
+              }}
+              listId={listId}
+              themeColors={themeColors}
+              jenksAvailable={jenksAvailable}
+              busy={strokeBusy}
+              error={strokeError}
+              value={"fixed" in stroke.color ? undefined : stroke.color}
+              onChange={setStrokeColorPatch}
+              onRecompute={() => void recomputeStrokeDomain()}
             />
-          </label>
+          )}
           <label className={labelCls}>
             Épaisseur de contour (px)
             <input

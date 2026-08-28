@@ -38,6 +38,19 @@ test("sans champ choisi, seuls le champ et la palette sont rendus", () => {
   expect(screen.queryByLabelText("Méthode test")).not.toBeInTheDocument();
 });
 
+// Le picker ne construit jamais l'encodage lui-même : il émet un patch et
+// laisse l'hôte matérialiser les valeurs par défaut, exactement comme le
+// faisait `setColorField` avant l'extraction.
+test("le champ et la palette émettent un patch même sans encodage existant", () => {
+  const { onChange } = renderPicker();
+  fireEvent.change(screen.getByLabelText("Champ test"), { target: { value: "population" } });
+  expect(onChange).toHaveBeenLastCalledWith({ field: "population" });
+  fireEvent.change(screen.getByLabelText("Palette test"), {
+    target: { value: "sequential-warm" },
+  });
+  expect(onChange).toHaveBeenLastCalledWith({ palette: "sequential-warm" });
+});
+
 // L'ÉLÉMENT <datalist> appartient à l'hôte (un seul par éditeur, partagé par
 // les deux pickers et par le champ « taille ») : le picker ne fait que le
 // référencer. Cf. constat I4 du brief de Task 5.
