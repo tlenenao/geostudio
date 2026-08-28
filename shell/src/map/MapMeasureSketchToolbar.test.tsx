@@ -166,3 +166,127 @@ test("le démontage retire les écouteurs de la carte", () => {
   unmount();
   expect(map.handlerCount("click")).toBe(0);
 });
+
+test("le tracé libre enregistre une forme au relâchement", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Tracé libre" }));
+  act(() => map.emit("mousedown", { lngLat: { lng: 0, lat: 0 } }));
+  act(() => map.emit("mousemove", { lngLat: { lng: 0.001, lat: 0 } }));
+  act(() => map.emit("mouseup", { lngLat: { lng: 0.001, lat: 0 } }));
+
+  expect(screen.getByText("1 tracé")).toBeInTheDocument();
+});
+
+test("deux tracés libres affichent un pluriel", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Tracé libre" }));
+  for (const offset of [0, 1]) {
+    act(() => map.emit("mousedown", { lngLat: { lng: offset, lat: 0 } }));
+    act(() => map.emit("mousemove", { lngLat: { lng: offset + 0.001, lat: 0 } }));
+    act(() => map.emit("mouseup", { lngLat: { lng: offset + 0.001, lat: 0 } }));
+  }
+  expect(screen.getByText("2 tracés")).toBeInTheDocument();
+});
+
+test("le rectangle se ferme au second clic et n'est enregistré qu'une fois", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Rectangle" }));
+  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+  expect(screen.queryByText(/rectangle/)).not.toBeInTheDocument();
+  act(() => map.emit("click", { lngLat: { lng: 1, lat: 1 } }));
+  expect(screen.getByText("1 rectangle")).toBeInTheDocument();
+});
+
+test("le cercle se ferme au second clic", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cercle" }));
+  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+  act(() => map.emit("click", { lngLat: { lng: 0.1, lat: 0 } }));
+  expect(screen.getByText("1 cercle")).toBeInTheDocument();
+});
+
+test("le polygone s'accumule puis se termine par « Terminer le polygone »", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Polygone" }));
+  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+  act(() => map.emit("click", { lngLat: { lng: 1, lat: 0 } }));
+  act(() => map.emit("click", { lngLat: { lng: 1, lat: 1 } }));
+  fireEvent.click(screen.getByRole("button", { name: "Terminer le polygone" }));
+  expect(screen.getByText("1 polygone")).toBeInTheDocument();
+});
+
+test("« Terminer le polygone » n'apparaît qu'avec au moins trois sommets", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Polygone" }));
+  expect(screen.queryByRole("button", { name: "Terminer le polygone" })).not.toBeInTheDocument();
+  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+  act(() => map.emit("click", { lngLat: { lng: 1, lat: 0 } }));
+  expect(screen.queryByRole("button", { name: "Terminer le polygone" })).not.toBeInTheDocument();
+  act(() => map.emit("click", { lngLat: { lng: 1, lat: 1 } }));
+  expect(screen.getByRole("button", { name: "Terminer le polygone" })).toBeInTheDocument();
+});
+
+test("l'outil Texte demande le texte et l'affiche", () => {
+  const map = makeMapStub();
+  vi.stubGlobal("prompt", vi.fn().mockReturnValue("Point de rendez-vous"));
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Texte" }));
+  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+  expect(screen.getByText("Point de rendez-vous")).toBeInTheDocument();
+});
+
+test("un texte annulé n'enregistre rien", () => {
+  const map = makeMapStub();
+  vi.stubGlobal("prompt", vi.fn().mockReturnValue(null));
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Texte" }));
+  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+  expect(screen.queryByText(/texte/)).not.toBeInTheDocument();
+});
+
+test("« Effacer tout » efface aussi les formes de croquis", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Rectangle" }));
+  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+  act(() => map.emit("click", { lngLat: { lng: 1, lat: 1 } }));
+  fireEvent.click(screen.getByRole("button", { name: "Effacer tout" }));
+  expect(screen.queryByText("1 rectangle")).not.toBeInTheDocument();
+});
+
+// Constat I11 (Important) du 2026-08-28 : la version précédente titrait « la
+// couleur du croquis est appliquée » et n'assertait QUE `getByText("1
+// rectangle")` — le titre affirmait une propriété que le test ne pouvait pas
+// faire échouer. Ce qui est réellement vérifiable ICI est le geste (le sélecteur
+// de couleur existe, est réglable, et une forme s'enregistre après) ; la couleur
+// effectivement portée par la forme est asserée sur la source GeoJSON en
+// Task 18, dont le test s'appelle « une forme de croquis atteint la source
+// GeoJSON avec sa couleur ». Titre corrigé pour dire ce qui est prouvé.
+test("le sélecteur de couleur du croquis est réglable et n'empêche pas l'enregistrement", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  const picker = screen.getByLabelText("Couleur du croquis") as HTMLInputElement;
+  fireEvent.change(picker, { target: { value: "#00ff00" } });
+  expect(picker.value).toBe("#00ff00");
+  fireEvent.click(screen.getByRole("button", { name: "Rectangle" }));
+  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+  act(() => map.emit("click", { lngLat: { lng: 1, lat: 1 } }));
+  expect(screen.getByText("1 rectangle")).toBeInTheDocument();
+});
