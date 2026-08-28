@@ -19,6 +19,22 @@ export type ColorDomain =
 
 export type SizeDomain = { min: number; max: number };
 
+export type IconRef = { source: "lucide"; name: string } | { source: "custom"; id: string };
+
+export type LayerIcon = {
+  field: string;
+  domain: { kind: "categorical"; values: string[] };
+  mapping: Record<string, IconRef>;
+  fallback?: IconRef;
+};
+
+// L'id d'image MapLibre auquel un IconRef résout — vocabulaire partagé entre
+// ce module (qui ne connaît que l'ID) et MapView.tsx (Task 8, qui charge les
+// pixels via map.addImage).
+export function iconImageId(ref: IconRef): string {
+  return ref.source === "lucide" ? `lucide:${ref.name}` : `custom:${ref.id}`;
+}
+
 export type StrokeStyle = "solid" | "dashed" | "dotted";
 
 // Contrat commun à TOUT encodage couleur classé — couleur de remplissage et
@@ -87,6 +103,7 @@ export type LayerSymbology = {
   size?: NonNullable<MapEncodings["size"]> & { domain: SizeDomain; computedAt: string };
   stroke?: LayerStroke;
   opacity?: number; // 0-100
+  icon?: LayerIcon;
 };
 
 export type MapPaintResult = {
@@ -120,6 +137,7 @@ export type LegendSpec = {
       };
   size?: { field: string; min: number; max: number; radiusMin: number; radiusMax: number };
   stroke?: { kind: "categorical"; field: string; entries: { value: string; color: string }[] };
+  icon?: { field: string; entries: { value: string; imageId: string }[] };
 };
 
 const CATEGORICAL_PALETTE = [
@@ -425,6 +443,7 @@ export function normalizeDomain(domain: ColorDomain | null): ColorDomain | null 
 export type PaintExtras = {
   stroke?: StrokePaintInput;
   opacity?: number; // 0-100
+  icon?: LayerIcon;
 };
 
 export function buildMapPaint(
@@ -510,6 +529,37 @@ export function buildMapPaint(
     if (result.outlinePaint) result.outlinePaint["line-opacity"] = alpha;
   }
 
+  const icon = extras?.icon;
+  if (icon && geometryKind === "point") {
+    const normalized = normalizeDomain(icon.domain);
+    if (normalized?.kind === "categorical") {
+      const match: unknown[] = ["match", ["get", icon.field]];
+      const images: string[] = [];
+      for (const value of normalized.values) {
+        const ref = icon.mapping[value];
+        if (!ref) continue;
+        const id = iconImageId(ref);
+        match.push(value, id);
+        images.push(id);
+      }
+      if (images.length > 0) {
+        // `match` exige un défaut. L'ordre de `iconImages` est significatif :
+        // valeurs mappées puis fallback (les tests l'asserent).
+        const fallbackId = icon.fallback ? iconImageId(icon.fallback) : images[0];
+        match.push(fallbackId);
+        if (!images.includes(fallbackId)) images.push(fallbackId);
+        // icon-image est LAYOUT : jamais dans `paint`, sous peine de voir la
+        // couche entière rejetée par le validateur, en silence.
+        result.iconLayout = {
+          "icon-image": match,
+          "icon-size": 1,
+          "icon-allow-overlap": true,
+        };
+        result.iconImages = images;
+      }
+    }
+  }
+
   return result;
 }
 
@@ -587,7 +637,18 @@ export function buildLegend(
     }
   }
 
-  return legend.color || legend.size || legend.stroke ? legend : null;
+  const icon = extras?.icon;
+  if (icon) {
+    const normalized = normalizeDomain(icon.domain);
+    if (normalized?.kind === "categorical") {
+      const entries = normalized.values
+        .filter((v) => icon.mapping[v])
+        .map((v) => ({ value: v, imageId: iconImageId(icon.mapping[v]) }));
+      if (entries.length > 0) legend.icon = { field: icon.field, entries };
+    }
+  }
+
+  return legend.color || legend.size || legend.stroke || legend.icon ? legend : null;
 }
 
 // Adaptateur pur : `LayerSymbology` est l'enveloppe de stockage/édition
