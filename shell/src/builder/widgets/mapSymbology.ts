@@ -70,6 +70,15 @@ export type LayerStroke = {
   style: StrokeStyle;
 };
 
+export type LayerLabel = {
+  // Gabarit CEL, vocabulaire `record.*` — même moteur que le popup (SP-24).
+  template: string;
+  size: number;
+  color: string;
+  haloColor: string;
+  haloWidth: number;
+};
+
 // Forme d'ENTRÉE de buildMapPaint/buildLegend : palette déjà résolue par
 // symbologyToPaintInputs, exactement comme le paramètre `palette` existant.
 export type StrokePaintInput = {
@@ -104,6 +113,7 @@ export type LayerSymbology = {
   stroke?: LayerStroke;
   opacity?: number; // 0-100
   icon?: LayerIcon;
+  label?: LayerLabel;
 };
 
 export type MapPaintResult = {

@@ -984,3 +984,16 @@ test("l'iconLayout produit par buildMapPaint est un layout MapLibre valide (jama
   } as unknown as StyleSpecification;
   expect(validateStyleMin(style)).toEqual([]);
 });
+
+test("LayerSymbology.label porte le gabarit et les réglages de rendu", () => {
+  const symbology: LayerSymbology = {
+    label: {
+      template: "${record.nom}",
+      size: 12,
+      color: "#1e293b",
+      haloColor: "#ffffff",
+      haloWidth: 1,
+    },
+  };
+  expect(symbology.label?.template).toBe("${record.nom}");
+});
