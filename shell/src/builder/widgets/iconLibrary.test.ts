@@ -103,3 +103,53 @@ test("decodeIconImage propage l'échec de décodage et révoque quand même l'UR
   );
   expect(revoked).toEqual(created);
 });
+
+// Trou 1 (revue du 2026-08-28) : le seul test touchant à la substitution de
+// couleur lisait `LUCIDE_ICON_SVGS["map-pin"]` DIRECTEMENT (cf. le test
+// ci-dessus, qui asserte volontairement la forme NON substituée du module
+// généré) — il ne passe jamais par `rasterizeLucideIcon`. Si le
+// `split`/`join` de `rasterizeLucideIcon` devenait un no-op silencieux, rien
+// ne le détecterait : les icônes retomberaient toutes sur `currentColor`
+// (donc noir hors CSS), en silence. Ce test lit le texte RÉEL du Blob
+// effectivement passé à `decodeIconImage` (capturé par le double via son
+// `.text()`), donc ce qui a vraiment traversé la fonction sous test.
+// Nom d'icône dédié ("flag"), distinct de "map-pin" déjà utilisé plus haut :
+// `imageCache` est un `Map` de portée module, partagé par tous les tests de
+// ce fichier (aucun reset entre tests) — réutiliser "map-pin" ferait
+// retomber sur l'entrée déjà résolue et mise en cache par le test "décode un
+// nom connu…", sans jamais rappeler `decodeIconImage`.
+test('rasterizeLucideIcon substitue réellement stroke="currentColor" par une couleur concrète', async () => {
+  stub = installImageDecodeStub();
+  await rasterizeLucideIcon("flag");
+  expect(stub.contents).toHaveLength(1);
+  const painted = await stub.contents[0];
+  expect(painted).not.toContain('stroke="currentColor"');
+  // Couleur concrète documentée par `LUCIDE_STROKE` dans iconLibrary.ts —
+  // non exportée (constante privée du module), donc dupliquée ici sciemment.
+  expect(painted).toContain('stroke="#1e293b"');
+});
+
+// Trou 2 (revue du 2026-08-28) : la branche `catch` de `rasterizeLucideIcon`
+// (lignes 221-227) évince l'entrée de cache après un échec de décodage puis
+// relance l'erreur — c'est la seule garantie que le mécanisme est réparable.
+// Rien ne prouvait qu'un second appel après un échec relance vraiment un
+// nouveau décodage plutôt que de rester bloqué sur la promesse rejetée mise
+// en cache. `failing: ["star"]` fait échouer le décodage sur la base du
+// contenu réel du SVG (attribut `class="lucide lucide-star"`), pas de l'URL
+// opaque — donc un nom connu du catalogue, précisément le cas visé. Nom
+// dédié ("star"), pour la même raison de cache partagé que le test
+// précédent.
+test("rasterizeLucideIcon évince le cache après un échec et relance un nouveau décodage", async () => {
+  stub = installImageDecodeStub({ failing: ["star"] });
+  const { created } = stub;
+  await expect(rasterizeLucideIcon("star")).rejects.toThrow(/image illisible/);
+  expect(created).toHaveLength(1);
+  // Un nouvel appel après l'échec doit relancer un nouveau décodage — donc
+  // créer une seconde URL d'objet — et non rester bloqué sur la promesse
+  // rejetée précédemment mise en cache.
+  stub.restore();
+  stub = installImageDecodeStub();
+  const image = await rasterizeLucideIcon("star");
+  expect(image.width).toBeGreaterThan(0);
+  expect(stub.created).toHaveLength(1);
+});
