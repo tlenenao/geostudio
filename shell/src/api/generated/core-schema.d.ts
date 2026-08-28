@@ -755,6 +755,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/map-icons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Map Icons */
+        get: operations["list_map_icons_map_icons_get"];
+        put?: never;
+        /** Create Map Icon */
+        post: operations["create_map_icon_map_icons_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/map-icons/{icon_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Map Icon */
+        delete: operations["delete_map_icon_map_icons__icon_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/map-icons/{icon_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Map Icon File */
+        get: operations["read_map_icon_file_map_icons__icon_id__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me": {
         parameters: {
             query?: never;
@@ -1298,6 +1350,15 @@ export interface components {
             kind: "bearer_token";
             /** Token */
             token: string;
+        };
+        /** Body_create_map_icon_map_icons_post */
+        Body_create_map_icon_map_icons_post: {
+            /** Category */
+            category: string;
+            /** File */
+            file: string;
+            /** Title */
+            title: string;
         };
         /** Body_upload_thumbnail_items__item_id__thumbnail_post */
         Body_upload_thumbnail_items__item_id__thumbnail_post: {
@@ -1850,6 +1911,19 @@ export interface components {
             layers?: components["schemas"]["MapLayer"][];
             terrain?: components["schemas"]["MapTerrain"] | null;
             view: components["schemas"]["MapView"];
+        };
+        /** MapIconOut */
+        MapIconOut: {
+            /** Category */
+            category: string;
+            /** Contenttype */
+            contentType: string;
+            /** Createdat */
+            createdAt: string;
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
         };
         /** MapLayer */
         MapLayer: {
@@ -4409,6 +4483,136 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_map_icons_map_icons_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapIconOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_map_icon_map_icons_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_create_map_icon_map_icons_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapIconOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_map_icon_map_icons__icon_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                icon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_map_icon_file_map_icons__icon_id__file_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                icon_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
             /** @description Validation Error */
             422: {
