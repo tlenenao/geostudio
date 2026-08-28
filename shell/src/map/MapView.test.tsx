@@ -2,10 +2,11 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { MapConfig, MapLayer } from "../api/types";
 import { mapInstances } from "../test/MockMaplibreMap";
 import { overlayInstances } from "../test/MockDeckgl";
+import { installImageDecodeStub } from "../test/imageDecodeStub";
 import type { MapViewHandle } from "./MapView";
 
 vi.mock("maplibre-gl", async () => {
@@ -39,6 +40,13 @@ const { MapView } = await import("./MapView");
 beforeEach(() => {
   mapInstances.length = 0;
   overlayInstances.length = 0;
+});
+
+let imageStub: ReturnType<typeof installImageDecodeStub> | undefined;
+afterEach(() => {
+  imageStub?.restore();
+  imageStub = undefined;
+  vi.unstubAllGlobals();
 });
 
 const config: MapConfig = {
@@ -1632,4 +1640,120 @@ test("un contour classé se compile en expression step sur la couche et son cont
   expect((paint["fill-outline-color"] as unknown[])[0]).toBe("step");
   const outlinePaint = map.getLayer("communes__outline")!.paint as Record<string, unknown>;
   expect((outlinePaint["line-color"] as unknown[])[0]).toBe("step");
+});
+
+test("a point layer with an icon encoding gets a paired symbol layer carrying icon-image in layout", () => {
+  imageStub = installImageDecodeStub();
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "point",
+        symbology: {
+          icon: {
+            field: "categorie",
+            domain: { kind: "categorical", values: ["ecole"] },
+            mapping: { ecole: { source: "lucide", name: "school" } },
+          },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  // La couche principale reste un cercle, sans aucune clé layout dans paint.
+  expect(map.getLayer("communes")).toMatchObject({ type: "circle" });
+  expect(
+    (map.getLayer("communes")!.paint as Record<string, unknown>)["icon-image"],
+  ).toBeUndefined();
+  expect(map.getLayer("communes__icon")).toMatchObject({
+    type: "symbol",
+    source: "communes",
+    "source-layer": "communes",
+    layout: {
+      "icon-image": ["match", ["get", "categorie"], "ecole", "lucide:school", "lucide:school"],
+      "icon-size": 1,
+      "icon-allow-overlap": true,
+    },
+  });
+  // Pas de handler de clic sur la couche d'icônes : sinon un clic ouvrirait
+  // deux popups (elle est posée exactement sur les points).
+  expect(map.layerHandlers["click:communes__icon"] ?? []).toHaveLength(0);
+});
+
+test("les images Lucide référencées sont chargées via addImage, sans option sdf", async () => {
+  imageStub = installImageDecodeStub();
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "point",
+        symbology: {
+          icon: {
+            field: "categorie",
+            domain: { kind: "categorical", values: ["ecole"] },
+            mapping: { ecole: { source: "lucide", name: "school" } },
+          },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  await vi.waitFor(() => expect(map.hasImage("lucide:school")).toBe(true));
+  // sdf: true déclarerait que l'image EST un signed distance field, ce
+  // qu'un ImageBitmap RGBA n'est pas — et rien ici n'utilise icon-color.
+  expect(map.images.get("lucide:school")?.options).toBeUndefined();
+});
+
+test("une icône qui échoue à charger n'empêche pas les couches d'être posées", async () => {
+  imageStub = installImageDecodeStub({ failing: ["blob:stub/"] });
+  const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "point",
+        symbology: {
+          icon: {
+            field: "categorie",
+            domain: { kind: "categorical", values: ["ecole"] },
+            // Nom d'icône dédié ("hospital"), distinct de "school" utilisé
+            // par les deux autres tests d'icônes de ce fichier :
+            // `rasterizeLucideIcon` met son résultat en cache à la portée du
+            // MODULE (`imageCache`, iconLibrary.ts), non réinitialisé entre
+            // les tests d'un même fichier (même précédent que iconLibrary.
+            // test.ts, trou 1/2 de sa revue). Réutiliser "school" ferait
+            // retomber sur l'entrée déjà résolue avec succès par le test
+            // précédent, et ce test-ci ne verrait jamais l'échec attendu.
+            mapping: { ecole: { source: "lucide", name: "hospital" } },
+          },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  // Les couches sont posées SYNCHRONEMENT, avant tout chargement d'image.
+  expect(map.getLayer("communes")).toBeDefined();
+  expect(map.getLayer("communes__icon")).toBeDefined();
+  await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+  expect(map.hasImage("lucide:hospital")).toBe(false);
+  spy.mockRestore();
+});
+
+test("removing an icon layer removes its symbol sub-layer and its source", () => {
+  imageStub = installImageDecodeStub();
+  const { rerender } = render(
+    <MapView
+      config={tiled({
+        geometryKind: "point",
+        symbology: {
+          icon: {
+            field: "categorie",
+            domain: { kind: "categorical", values: ["ecole"] },
+            mapping: { ecole: { source: "lucide", name: "school" } },
+          },
+        },
+      })}
+    />,
+  );
+  rerender(<MapView config={config} />);
+  const map = mapInstances[0];
+  expect(map.getLayer("communes__icon")).toBeUndefined();
+  expect(map.getSource("communes")).toBeUndefined();
 });

@@ -105,6 +105,18 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
           ))}
         </ul>
       )}
+      {legend.icon && (
+        <ul aria-label="Icônes">
+          {legend.icon.entries.map((e) => (
+            <li key={e.value} className="flex items-center gap-1">
+              <span aria-hidden="true" className="text-base">
+                ◈
+              </span>
+              {e.value}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -206,6 +218,7 @@ export function registerMapWidget(): void {
       );
       const legend = buildLegend(encodings, colorDomain, sizeDomain, geometryKind, palette, {
         stroke,
+        icon: symbology?.icon,
       });
 
       const config: MapConfig = {

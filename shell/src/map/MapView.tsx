@@ -21,11 +21,13 @@ import { MapPopup } from "./MapPopup";
 import { resolvePopupContent } from "./popupContent";
 import {
   buildMapPaint,
+  iconImageId,
   renderAsFor,
   symbologyToPaintInputs,
   type GeometryKind,
   type MapPaintResult,
 } from "../builder/widgets/mapSymbology";
+import { decodeIconImage, rasterizeLucideIcon } from "../builder/widgets/iconLibrary";
 
 const HIGHLIGHT_ID = "__highlight__";
 const TERRAIN_SOURCE_ID = "__terrain__";
@@ -131,7 +133,7 @@ const MIXED_GEOMETRY_SUBLAYERS = [
 // dans `applied` — le rollback codait auparavant en dur les trois suffixes
 // de MIXED_GEOMETRY_SUBLAYERS, et toute nouvelle sous-couche fuyait, laissant
 // la source référencée donc non supprimable (constat 3.5 du pré-vol).
-const SUBLAYER_SUFFIXES = ["__point", "__line", "__polygon", "__outline"] as const;
+const SUBLAYER_SUFFIXES = ["__point", "__line", "__polygon", "__outline", "__icon"] as const;
 
 // Le `paint` de l'auteur est typé pour UNE géométrie : poser un "fill-color"
 // sur un layer "circle" fait lever MapLibre, et la garde par couche
@@ -179,6 +181,7 @@ function effectivePaint(
   return buildMapPaint(encodings, colorDomain, sizeDomain, geometryKind, palette, {
     stroke,
     opacity: layer.symbology.opacity,
+    icon: layer.symbology.icon,
   });
 }
 
@@ -245,6 +248,31 @@ function addOutlineLayer(
 // Partagé par les couches tuilées et GeoJSON : une seule définition du "que
 // vaut l'identité d'une entité cliquée". ST_AsMVT ne pose un feature id que
 // sur une PK entière, d'où le repli sur la propriété de PK.
+// Les icônes catégorielles vivent sur une couche `symbol` appariée : le
+// `icon-image` est une propriété LAYOUT, qu'un layer `circle` n'accepte pas
+// (le validateur rejetterait la couche entière, en silence). Sans handler de
+// clic, comme le contour : la couche est posée exactement sur les points, et
+// un handler y ferait doubler chaque clic.
+function addIconLayer(
+  map: maplibregl.Map,
+  spec: {
+    parentId: string;
+    source: string;
+    sourceLayer?: string;
+    filter?: FilterSpecification;
+    layout: Record<string, unknown>;
+  },
+) {
+  map.addLayer({
+    id: `${spec.parentId}__icon`,
+    type: "symbol",
+    source: spec.source,
+    ...(spec.sourceLayer !== undefined ? { "source-layer": spec.sourceLayer } : {}),
+    ...(spec.filter !== undefined ? { filter: spec.filter } : {}),
+    layout: spec.layout,
+  } as maplibregl.AddLayerObject);
+}
+
 function makeFeatureClickHandler(
   pkColumn: string | undefined,
   onFeatureClick: (record: DataRecord) => void,
@@ -331,6 +359,16 @@ function applyLayers(
               paint: paintFor(result.paint, sub.paintPrefix),
             });
             layerIds.push(id);
+            if (sub.suffix === "point" && result.iconLayout) {
+              addIconLayer(map, {
+                parentId: id,
+                source: layer.id,
+                sourceLayer: layer.sourceLayer,
+                filter: ["match", ["geometry-type"], [...sub.geometries], true, false],
+                layout: result.iconLayout,
+              });
+              decorativeIds.push(`${id}__icon`);
+            }
             if (sub.suffix === "polygon" && result.outlinePaint) {
               addOutlineLayer(map, {
                 parentId: id,
@@ -352,6 +390,15 @@ function applyLayers(
             paint: result.paint,
           });
           layerIds.push(layer.id);
+          if (layer.geometryKind === "point" && result.iconLayout) {
+            addIconLayer(map, {
+              parentId: layer.id,
+              source: layer.id,
+              sourceLayer: layer.sourceLayer,
+              layout: result.iconLayout,
+            });
+            decorativeIds.push(`${layer.id}__icon`);
+          }
           if (layer.geometryKind === "polygon" && result.outlinePaint) {
             addOutlineLayer(map, {
               parentId: layer.id,
@@ -423,6 +470,14 @@ function applyLayers(
           });
           applied.add(`${layer.id}__outline`);
         }
+        if (featureGeometryKind === "point" && featureResult.iconLayout) {
+          addIconLayer(map, {
+            parentId: layer.id,
+            source: layer.id,
+            layout: featureResult.iconLayout,
+          });
+          applied.add(`${layer.id}__icon`);
+        }
         const handler = makeFeatureClickHandler(undefined, onFeatureClick, (properties, lngLat) =>
           onPopup(layer.id, properties, lngLat),
         );
@@ -455,6 +510,55 @@ function applyLayers(
       console.error(`MapView: skipping layer ${layer.id}`, err);
     }
   }
+}
+
+// map.addImage doit finir par arriver pour que la couche `symbol` affiche
+// quelque chose — mais PAS avant addLayer : Style.addImage appelle
+// _afterImageUpdated(id), qui marque l'image changée et fait repeindre les
+// couches symbol qui la référencent. On pose donc les couches
+// synchroniquement (aucun test existant ne casse) et on charge les images
+// après, en tâche de fond.
+//
+// allSettled + try/catch par id : une seule icône illisible ne doit jamais
+// faire échouer les autres, ni remonter en rejection non gérée.
+async function loadIconImages(
+  map: maplibregl.Map,
+  layers: MapConfig["layers"],
+  loadCustomIcon: ((iconId: string) => Promise<Blob>) | undefined,
+) {
+  const ids = new Set<string>();
+  for (const layer of layers) {
+    if (!layer.visible) continue;
+    if (layer.kind !== "vector" && layer.kind !== "feature") continue;
+    const icon = layer.symbology?.icon;
+    if (!icon) continue;
+    for (const ref of Object.values(icon.mapping)) ids.add(iconImageId(ref));
+    if (icon.fallback) ids.add(iconImageId(icon.fallback));
+  }
+  await Promise.allSettled(
+    [...ids].map(async (id) => {
+      try {
+        if (map.hasImage(id)) return;
+        let image: HTMLImageElement | undefined;
+        if (id.startsWith("lucide:")) {
+          image = await rasterizeLucideIcon(id.slice("lucide:".length));
+        } else if (id.startsWith("custom:") && loadCustomIcon) {
+          // Blob récupéré par fetch AUTHENTIFIÉ (ItemClient) puis décodé
+          // localement : jamais `new Image().src = <url du cœur>`, qui ne
+          // porte aucun en-tête et prendrait un 401 (constat 4.4). L'URL
+          // passée à Image est une URL d'objet locale, same-origin.
+          const blob = await loadCustomIcon(id.slice("custom:".length));
+          image = await decodeIconImage(blob);
+        }
+        if (!image) return;
+        // Pas d'option { sdf: true } : l'image est du RGBA ordinaire.
+        // HTMLImageElement est accepté par addImage (signature vérifiée).
+        if (!map.hasImage(id)) map.addImage(id, image);
+      } catch (err) {
+        console.warn(`MapView: icône ${id} non chargée`, err);
+      }
+    }),
+  );
 }
 
 // Projection d'une couche sur ce que MapLibre/deck.gl en consomment : `popup`
@@ -589,6 +693,11 @@ export const MapView = forwardRef<
     // (origin+path check) before attaching a bearer token — see
     // isHostedTilesetUrl. Absent by default, same as getAuthToken.
     getCoreUrl?: () => string;
+    // Récupère un blob d'icône personnalisée (fetch authentifié via
+    // ItemClient), passé à `decodeIconImage` par `loadIconImages`. Absent par
+    // défaut : un MapView sans icône personnalisée n'a besoin d'aucun
+    // câblage (Task 12 le fournit depuis les deux hôtes).
+    loadCustomIcon?: (iconId: string) => Promise<Blob>;
   }
   // Il n'y a délibérément pas de prop `exprContext` : le gabarit de popup
   // n'a qu'un seul vocabulaire, `record.*` (cf. popupContent.ts). La prop
@@ -607,6 +716,7 @@ export const MapView = forwardRef<
     themeColors,
     getAuthToken,
     getCoreUrl,
+    loadCustomIcon,
   },
   ref,
 ) {
@@ -644,6 +754,7 @@ export const MapView = forwardRef<
   const onReadyRef = useRef(onReady);
   const getAuthTokenRef = useRef(getAuthToken);
   const getCoreUrlRef = useRef(getCoreUrl);
+  const loadCustomIconRef = useRef(loadCustomIcon);
   const themeColorsRef = useRef(themeColors);
   const layersRef = useRef(config.layers);
   const terrainRef = useRef(config.terrain);
@@ -662,6 +773,9 @@ export const MapView = forwardRef<
   useEffect(() => {
     getCoreUrlRef.current = getCoreUrl;
   }, [getCoreUrl]);
+  useEffect(() => {
+    loadCustomIconRef.current = loadCustomIcon;
+  }, [loadCustomIcon]);
   useEffect(() => {
     themeColorsRef.current = themeColors;
   }, [themeColors]);
@@ -756,6 +870,7 @@ export const MapView = forwardRef<
         handlePopup,
         themeColorsRef.current,
       );
+      void loadIconImages(map, layersRef.current, loadCustomIconRef.current);
       applyDeckLayers(
         overlay,
         layersRef.current,
@@ -857,6 +972,7 @@ export const MapView = forwardRef<
       handlePopup,
       themeColorsRef.current,
     );
+    void loadIconImages(map, layers, loadCustomIconRef.current);
     applyDeckLayers(
       overlay,
       layers,

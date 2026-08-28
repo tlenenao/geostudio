@@ -666,3 +666,35 @@ test("shows a stroke legend entry from a data-driven stroke color", async () => 
   );
   expect(await screen.findByText("Nord")).toBeInTheDocument();
 });
+
+test("shows an icon legend entry per mapped value", async () => {
+  const Map = getWidget("map")!.Component;
+  render(
+    withClient(
+      <Map
+        props={{
+          dataSourceId: "d",
+          symbology: {
+            icon: {
+              field: "categorie",
+              domain: { kind: "categorical", values: ["ecole"] },
+              mapping: { ecole: { source: "lucide", name: "school" } },
+            },
+          },
+        }}
+        ctx={
+          {
+            mode: "runtime",
+            data: state({
+              url: "https://fs/poi/items.json",
+              records: [
+                { id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 2] } },
+              ],
+            }),
+          } as WidgetContext
+        }
+      />,
+    ),
+  );
+  expect(await screen.findByText("ecole")).toBeInTheDocument();
+});
