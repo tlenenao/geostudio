@@ -771,27 +771,14 @@ test("renderAsFor maps a geometry kind to the MapLibre layer type", () => {
   expect(renderAsFor("polygon")).toBe("fill");
 });
 
-// Invariant SP-25 étendu au contour : le domaine est FIGÉ à l'enregistrement,
-// avec l'horodatage de son calcul, et le rendu ne le recalcule jamais.
-test("un contour classé porte un domaine figé et son computedAt", () => {
-  const symbology: LayerSymbology = {
-    stroke: {
-      color: {
-        field: "pop",
-        mode: "numeric",
-        domain: { kind: "numeric-classed", breaks: [0, 10, 20, 30] },
-        palette: "sequential-blue",
-        classification: { method: "quantile", classes: 3 },
-        computedAt: "2026-08-27T10:00:00Z",
-      },
-      width: { fixed: 2 },
-      style: "solid",
-    },
-  };
-  expect(
-    symbology.stroke && "field" in symbology.stroke.color && symbology.stroke.color.computedAt,
-  ).toBe("2026-08-27T10:00:00Z");
-});
+// Le comportement (domaine figé, computedAt propagé jusqu'au rendu) est
+// vérifié par le test qui suit (« buildMapPaint compile un contour classé en
+// expression step »). Un test séparé qui ne faisait que relire au runtime le
+// littéral `LayerSymbology` qu'il venait d'écrire était supprimé ici (constat
+// de revue Task 5, SP-27) : son assertion ne pouvait jamais échouer — sa
+// seule valeur réelle était une vérification de TYPE (compile sous tsc),
+// déjà couverte par `npm run build` / `tsc --noEmit`, mais sa forme de test
+// Vitest faisait croire à une vérification de comportement.
 
 test("buildMapPaint compile un contour classé en expression step", () => {
   const result = buildMapPaint({}, null, null, "polygon", undefined, {

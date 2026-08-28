@@ -12,15 +12,14 @@
 // `formatDomain` est DÉFINIE ici (déplacée depuis MapSymbologyEditor.tsx:30,
 // où elle était module-privée) et exportée. Elle n'a jamais existé dans
 // mapSymbology.ts (vérifié : grep → 2 occurrences, les deux dans l'éditeur).
-import type { ColorClassification, ColorDomain } from "../builder/widgets/mapSymbology";
+import type {
+  ClassifiedColorEncoding,
+  ColorClassification,
+  ColorDomain,
+} from "../builder/widgets/mapSymbology";
 import type { PaletteId } from "../builder/widgets/palette";
 import type { ThemeColors } from "../api/types";
-
-// Mêmes classes utilitaires que l'hôte. Volontairement redéfinies ici plutôt
-// qu'exportées depuis MapSymbologyEditor.tsx : l'hôte importe ce module, donc
-// l'inverse créerait un cycle d'imports pour deux chaînes Tailwind.
-const labelCls = "flex flex-col gap-1";
-const inputCls = "h-8 rounded-md border border-slate-300 px-2 text-sm";
+import { labelCls, inputCls } from "./formFieldStyles";
 
 const PALETTE_OPTIONS: { id: Exclude<PaletteId, "theme-primary">; label: string }[] = [
   { id: "categorical-a", label: "Catégorielle A" },
@@ -29,27 +28,19 @@ const PALETTE_OPTIONS: { id: Exclude<PaletteId, "theme-primary">; label: string 
   { id: "sequential-warm", label: "Séquentielle chaude" },
 ];
 
-// Union concrète plutôt que la gymnastique de type conditionnel dérivé de
-// LayerSymbology["color"] — plus lisible et garantie de compiler sous tsc
-// (repli explicitement prévu par le plan, cf. task-7-brief.md Step 4).
 export function formatDomain(domain: ColorDomain): string {
   if (domain.kind === "categorical") return domain.values.join(", ");
   if (domain.kind === "numeric-classed") return domain.breaks.map((b) => b.toFixed(1)).join(" – ");
   return `${domain.min} – ${domain.max}`;
 }
 
-// Forme commune à `LayerSymbology.color` et à la variante `field` de
-// `StrokeColorEncoding` : un champ, un mode, une palette persistée, une
-// classification facultative, et le domaine FIGÉ avec son horodatage
-// (invariant SP-25 — le rendu ne recalcule jamais un domaine).
-export type ClassifiedEncoding = {
-  field: string;
-  mode: "categorical" | "numeric";
-  palette: PaletteId;
-  classification?: ColorClassification;
-  domain: ColorDomain;
-  computedAt: string;
-};
+// Alias local : le contrat canonique (`ClassifiedColorEncoding`, un champ,
+// un mode, une palette persistée, une classification facultative, et le
+// domaine FIGÉ avec son horodatage — invariant SP-25) est déclaré une seule
+// fois dans mapSymbology.ts et référencé ici sous ce nom historique, plutôt
+// que redéclaré (constat de revue Task 5, SP-27 : ce contrat existait avant
+// en trois exemplaires qui divergeaient silencieusement).
+export type ClassifiedEncoding = ClassifiedColorEncoding;
 
 export type FieldClassificationLabels = {
   field: string;

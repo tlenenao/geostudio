@@ -21,23 +21,30 @@ export type SizeDomain = { min: number; max: number };
 
 export type StrokeStyle = "solid" | "dashed" | "dotted";
 
+// Contrat commun à TOUT encodage couleur classé — couleur de remplissage et
+// couleur de contour : un champ, un mode, une palette persistée (un
+// identifiant, jamais des couleurs résolues), une classification facultative,
+// et le domaine FIGÉ avec son horodatage (invariant SP-25 — le rendu ne
+// recalcule jamais un domaine). Union concrète plutôt que la gymnastique de
+// type conditionnel dérivé de `LayerSymbology["color"]` — plus lisible et
+// garantie de compiler sous tsc. Déclarée UNE SEULE fois ici (constat de
+// revue Task 5, SP-27 : ce contrat existait avant en trois exemplaires —
+// `LayerSymbology["color"]`, la variante `field` de `StrokeColorEncoding` et
+// `ClassifiedEncoding` dans FieldClassificationPicker.tsx — qui divergeaient
+// silencieusement plutôt que d'échouer à la compilation) ; les trois la
+// référencent désormais au lieu de la redéclarer.
+export type ClassifiedColorEncoding = {
+  field: string;
+  mode: "categorical" | "numeric";
+  palette: PaletteId;
+  classification?: ColorClassification;
+  domain: ColorDomain;
+  computedAt: string;
+};
+
 // Forme PERSISTÉE : la palette est un identifiant, jamais des couleurs
 // résolues — même règle que LayerSymbology.color (cf. déviation 5 du plan).
-export type StrokeColorEncoding =
-  | { fixed: string }
-  | {
-      field: string;
-      // Même union que LayerSymbology.color : `mode` distingue la
-      // classification catégorielle de la numérique, et l'éditeur en a besoin
-      // pour savoir quel domaine recalculer.
-      mode: "categorical" | "numeric";
-      // Domaine FIGÉ au moment du calcul, comme LayerSymbology.color
-      // (invariant SP-25) : le rendu ne recalcule jamais un domaine.
-      domain: ColorDomain;
-      palette: PaletteId;
-      classification?: ColorClassification;
-      computedAt: string;
-    };
+export type StrokeColorEncoding = { fixed: string } | ClassifiedColorEncoding;
 
 export type StrokeWidthEncoding = { fixed: number } | { field: string; domain: SizeDomain };
 
@@ -67,11 +74,7 @@ export type MapEncodings = {
 // futur affichage "recalculer ?") que `symbologyToPaintInputs` adapte vers
 // les entrées existantes de `buildMapPaint`/`buildLegend`.
 export type LayerSymbology = {
-  color?: NonNullable<MapEncodings["color"]> & {
-    palette: PaletteId;
-    domain: ColorDomain;
-    computedAt: string;
-  };
+  color?: ClassifiedColorEncoding;
   size?: NonNullable<MapEncodings["size"]> & { domain: SizeDomain; computedAt: string };
   stroke?: LayerStroke;
   opacity?: number; // 0-100
