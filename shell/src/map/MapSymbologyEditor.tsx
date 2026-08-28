@@ -10,10 +10,8 @@ import {
   type StrokeStyle,
 } from "../builder/widgets/mapSymbology";
 import { FieldClassificationPicker, type ClassifiedEncoding } from "./FieldClassificationPicker";
+import { labelCls, inputCls } from "./formFieldStyles";
 import type { ThemeColors } from "../api/types";
-
-const labelCls = "flex flex-col gap-1";
-const inputCls = "h-8 rounded-md border border-slate-300 px-2 text-sm";
 
 // Éditeur partagé par les DEUX surfaces (éditeur de cartes et PropsPanel du
 // widget carte) — même précédent que PopupEditor.tsx (SP-24). Les deux
@@ -45,6 +43,8 @@ export function MapSymbologyEditor({
   const [busy, setBusy] = useState<"color" | "size" | null>(null);
   const [colorError, setColorError] = useState<string | null>(null);
   const [sizeError, setSizeError] = useState<string | null>(null);
+  const [strokeBusy, setStrokeBusy] = useState(false);
+  const [strokeError, setStrokeError] = useState<string | null>(null);
   // Id de datalist unique par instance : avec un id global, deux couches
   // stylées sur la même carte partageaient le même <datalist>, et le
   // navigateur résolvait toujours le `list=` de la 2e+ instance contre les
@@ -102,8 +102,6 @@ export function MapSymbologyEditor({
     });
   }
 
-  const [strokeBusy, setStrokeBusy] = useState(false);
-  const [strokeError, setStrokeError] = useState<string | null>(null);
   const strokeColorIsFixed = !!stroke && "fixed" in stroke.color;
 
   function setStrokeColorPatch(patch: Partial<ClassifiedEncoding>) {

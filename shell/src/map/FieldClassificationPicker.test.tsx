@@ -2,7 +2,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
-import { FieldClassificationPicker } from "./FieldClassificationPicker";
+import { FieldClassificationPicker, formatDomain } from "./FieldClassificationPicker";
 
 const labels = {
   field: "Champ test",
@@ -218,8 +218,7 @@ test("l'avertissement nomme le bouton de recalcul injecté", () => {
   ).toBeInTheDocument();
 });
 
-test("formatDomain rend chaque forme de domaine", async () => {
-  const { formatDomain } = await import("./FieldClassificationPicker");
+test("formatDomain rend chaque forme de domaine", () => {
   expect(formatDomain({ kind: "categorical", values: ["A", "B"] })).toBe("A, B");
   expect(formatDomain({ kind: "numeric-classed", breaks: [0, 50, 100] })).toBe(
     "0.0 – 50.0 – 100.0",
