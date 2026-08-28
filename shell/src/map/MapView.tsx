@@ -304,6 +304,11 @@ const EMPTY_LABEL_COLLECTION = { type: "FeatureCollection" as const, features: [
 function addLabelLayer(
   map: maplibregl.Map,
   spec: { parentId: string; label: LayerLabel },
+  // Ref-backed Map appartenant à l'instance de MapView appelante (voir sa
+  // déclaration dans le composant) — jamais un Map de portée module, sous
+  // peine de partager cette bookkeeping entre deux <MapView> montés en même
+  // temps (revue post-Task 14, cf. commentaire sur lastLabelPayloadsRef).
+  lastLabelPayloads: Map<string, string>,
 ): boolean {
   // L'optional chaining est NÉCESSAIRE et non défensif : Map.getStyle() fait
   // `if (this.style) return this.style.serialize();` et Style.serialize()
@@ -391,6 +396,8 @@ function applyLayers(
   layers: MapConfig["layers"],
   applied: Set<string>,
   clickHandlers: Map<string, (e: maplibregl.MapLayerMouseEvent) => void>,
+  // Ref-backed, par instance de MapView — voir lastLabelPayloadsRef.
+  lastLabelPayloads: Map<string, string>,
   onFeatureClick: (record: DataRecord) => void,
   onPopup: (
     layerId: string,
@@ -519,7 +526,7 @@ function applyLayers(
         }
         for (const id of decorativeIds) applied.add(id);
         const label = layer.symbology?.label;
-        if (label && addLabelLayer(map, { parentId: layer.id, label })) {
+        if (label && addLabelLayer(map, { parentId: layer.id, label }, lastLabelPayloads)) {
           applied.add(`${layer.id}__label`);
           applied.add(`${layer.id}__labels`);
         }
@@ -579,7 +586,10 @@ function applyLayers(
           applied.add(`${layer.id}__icon`);
         }
         const featureLabel = layer.symbology?.label;
-        if (featureLabel && addLabelLayer(map, { parentId: layer.id, label: featureLabel })) {
+        if (
+          featureLabel &&
+          addLabelLayer(map, { parentId: layer.id, label: featureLabel }, lastLabelPayloads)
+        ) {
           applied.add(`${layer.id}__label`);
           applied.add(`${layer.id}__labels`);
         }
@@ -675,18 +685,20 @@ async function loadIconImages(
   );
 }
 
-// Dernière charge POSÉE par source, pour ne jamais rappeler setData avec un
-// contenu identique. C'est le garde du constat N3 : sans lui, `idle` →
-// setData → événement « content » → reload de tuiles → repaint → `idle`
-// s'auto-entretient à ~6 Hz, indéfiniment, sur toute carte étiquetée. Vidé
-// avec le reste à la destruction de la carte (voir le teardown de l'effet de
-// montage). Une WeakMap n'irait pas : la clé est un id de source, pas un objet.
-const lastLabelPayloads = new Map<string, string>();
-
 // Remplit les sources d'étiquettes depuis les entités RÉELLEMENT chargées.
 // Déclenché sur `idle` : querySourceFeatures ne parcourt que les tuiles
 // rendables (getRenderableIds), donc l'appeler plus tôt renvoie du vide.
-function refreshLabelSources(map: maplibregl.Map, layers: MapConfig["layers"]) {
+function refreshLabelSources(
+  map: maplibregl.Map,
+  layers: MapConfig["layers"],
+  // Ref-backed, par instance de MapView — voir lastLabelPayloadsRef. Passé
+  // en paramètre plutôt que fermé sur une variable de portée module : deux
+  // <MapView> peuvent partager un `layer.id` (deux widgets carte sur le même
+  // tableau de bord affichant la même collection), et un Map de portée
+  // module aurait alors partagé cette même entrée de garde entre les deux
+  // instances (revue post-Task 14).
+  lastLabelPayloads: Map<string, string>,
+) {
   for (const layer of layers) {
     if (!layer.visible) continue;
     if (layer.kind !== "vector" && layer.kind !== "feature") continue;
@@ -894,6 +906,31 @@ export const MapView = forwardRef<
   const clickHandlersRef = useRef<Map<string, (e: maplibregl.MapLayerMouseEvent) => void>>(
     new Map(),
   );
+  // Dernière charge POSÉE par source d'étiquettes, pour ne jamais rappeler
+  // setData avec un contenu identique. C'est le garde du constat N3 : sans
+  // lui, `idle` → setData → événement « content » → reload de tuiles →
+  // repaint → `idle` s'auto-entretient à ~6 Hz, indéfiniment, sur toute carte
+  // étiquetée.
+  //
+  // Ref d'instance, PAS un Map de portée module (correctif post-revue de
+  // Task 14) : `appliedRef`/`clickHandlersRef` ci-dessus le sont déjà pour la
+  // même raison — rien dans ce dépôt ne garantit l'unicité d'un `layer.id`
+  // entre deux <MapView> montés en même temps (ex. deux widgets carte d'un
+  // même tableau de bord affichant la même collection, cf. mapWidget.tsx).
+  // Avec un Map de portée module, deux instances partageant un `layer.id`
+  // partageaient la même entrée de garde : si l'une postait une charge, et
+  // que l'autre calculait plus tard une sérialisation identique (plausible
+  // quand les deux affichent la même collection), la seconde voyait
+  // « inchangé » et sautait son propre setData — alors que sa source MapLibre
+  // sous-jacente, un objet distinct, n'avait jamais été peuplée. Étiquettes
+  // silencieusement absentes sur une des deux cartes.
+  //
+  // Passée en paramètre aux fonctions de portée module qui la lisent/l'écrivent
+  // (addLabelLayer, applyLayers, refreshLabelSources), jamais fermée dessus,
+  // même patron que `applied`/`clickHandlers` ci-dessus. Vidée avec le reste à
+  // la destruction de la carte (voir le teardown de l'effet de montage). Une
+  // WeakMap n'irait pas : la clé est un id de source, pas un objet.
+  const lastLabelPayloadsRef = useRef<Map<string, string>>(new Map());
   // The style's *initial* load — the only real precondition of addSource /
   // addLayer / setTerrain. `map.isStyleLoaded()` was used here before and is a
   // different question ("is nothing loading right now?"): a single in-flight
@@ -1033,6 +1070,7 @@ export const MapView = forwardRef<
         layersRef.current,
         appliedRef.current,
         clickHandlersRef.current,
+        lastLabelPayloadsRef.current,
         (r) => onFeatureClickRef.current?.(r),
         handlePopup,
         themeColorsRef.current,
@@ -1040,7 +1078,7 @@ export const MapView = forwardRef<
       void loadIconImages(map, layersRef.current, loadCustomIconRef.current);
       // Un changement de config ne doit pas attendre le prochain `idle` pour
       // repeupler les étiquettes d'une couche dont les tuiles sont déjà là.
-      refreshLabelSources(map, layersRef.current);
+      refreshLabelSources(map, layersRef.current, lastLabelPayloadsRef.current);
       applyDeckLayers(
         overlay,
         layersRef.current,
@@ -1067,7 +1105,10 @@ export const MapView = forwardRef<
     let labelDebounce: ReturnType<typeof setTimeout> | undefined;
     const scheduleLabelRefresh = () => {
       clearTimeout(labelDebounce);
-      labelDebounce = setTimeout(() => refreshLabelSources(map, layersRef.current), 150);
+      labelDebounce = setTimeout(
+        () => refreshLabelSources(map, layersRef.current, lastLabelPayloadsRef.current),
+        150,
+      );
     };
     map.on("idle", scheduleLabelRefresh);
     map.on("moveend", () => {
@@ -1109,7 +1150,6 @@ export const MapView = forwardRef<
       map.removeControl(overlay);
       map.remove();
       mapRef.current = null;
-      lastLabelPayloads.clear();
       overlayRef.current = null;
       styleLoadedRef.current = false;
       idleRef.current = false;
@@ -1119,9 +1159,12 @@ export const MapView = forwardRef<
       // précisément le comportement voulu ici : cet effet ne monte/démonte
       // qu'une fois (cf. dépendances [] ci-dessous), et on veut vider
       // l'ensemble accumulé sur toute la durée de vie du composant, pas un
-      // instantané pris au montage.
+      // instantané pris au montage. Même raisonnement pour
+      // lastLabelPayloadsRef, ajoutée ici pour la même raison.
       // eslint-disable-next-line react-hooks/exhaustive-deps
       loadedTilesetsRef.current.clear();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      lastLabelPayloadsRef.current.clear();
     };
     // Initialize once; style/view changes are out of scope for this phase.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1152,6 +1195,7 @@ export const MapView = forwardRef<
       layers,
       appliedRef.current,
       clickHandlersRef.current,
+      lastLabelPayloadsRef.current,
       (r) => onFeatureClickRef.current?.(r),
       handlePopup,
       themeColorsRef.current,
@@ -1159,7 +1203,7 @@ export const MapView = forwardRef<
     void loadIconImages(map, layers, loadCustomIconRef.current);
     // Un changement de config ne doit pas attendre le prochain `idle` pour
     // repeupler les étiquettes d'une couche dont les tuiles sont déjà là.
-    refreshLabelSources(map, layers);
+    refreshLabelSources(map, layers, lastLabelPayloadsRef.current);
     applyDeckLayers(
       overlay,
       layers,
