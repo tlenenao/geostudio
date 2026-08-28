@@ -39,6 +39,7 @@ from app.harvest import routes as harvest_routes
 from app.ingestion import routes as ingestion_routes
 from app.instance import routes as instance_routes
 from app.items import routes as items_routes
+from app.mapicons import routes as mapicons_routes
 from app.mcp.server import create_mcp_server
 from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
 from app.pipelines import routes as pipelines_routes
@@ -251,6 +252,7 @@ def create_app() -> FastAPI:
     app.include_router(configs_routes.router)
     app.include_router(extensions_routes.router)
     app.include_router(secrets_routes.router)
+    app.include_router(mapicons_routes.router)
     app.include_router(instance_routes.router)
     app.include_router(items_routes.router)
     app.include_router(auth_routes.router)
