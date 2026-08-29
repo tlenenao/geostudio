@@ -272,6 +272,46 @@ test("« Effacer tout » efface aussi les formes de croquis", () => {
   expect(screen.queryByText("1 rectangle")).not.toBeInTheDocument();
 });
 
+// Fix M2 de la revue finale SP-27 : MapLibre ne déclenche pas `mouseup`
+// quand le bouton de la souris est relâché hors du canvas — `drawingRef`
+// restait alors bloqué à `true`, et « Effacer tout » (le geste naturel d'un
+// utilisateur ainsi bloqué) ne le réinitialisait pas. Deux `mousemove`
+// (nécessaires pour atteindre les 2 points requis par `shapeToGeoJSONFeature`)
+// après le clic sur « Effacer tout » : sans le correctif, `drawingRef` est
+// encore `true`, ils s'accumulent normalement et le `mouseup` qui suit
+// enregistre une forme fantôme.
+test("« Effacer tout » réinitialise un tracé libre bloqué (mousedown sans mouseup)", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Tracé libre" }));
+  act(() => map.emit("mousedown", { lngLat: { lng: 0, lat: 0 } }));
+  // Le bouton est relâché hors du canvas : mouseup n'arrive jamais ici.
+  fireEvent.click(screen.getByRole("button", { name: "Effacer tout" }));
+  act(() => map.emit("mousemove", { lngLat: { lng: 5, lat: 5 } }));
+  act(() => map.emit("mousemove", { lngLat: { lng: 6, lat: 5 } }));
+  act(() => map.emit("mouseup", { lngLat: { lng: 6, lat: 5 } }));
+  expect(screen.queryByText(/tracé/)).not.toBeInTheDocument();
+});
+
+// Fix M7 de la revue finale SP-27 : `startMode` (appelée par « Mesurer » et
+// « Surface ») ne réinitialisait ni `polygonPoints` ni le coin en attente
+// d'un rectangle/cercle — leur résumé n'est conditionné nulle part sur
+// `mode === "sketch"`, seulement sur ces états eux-mêmes, donc un polygone
+// à moitié tracé restait affiché après avoir changé de mode.
+test("changer de mode pendant un polygone en cours efface son résumé", () => {
+  const map = makeMapStub();
+  render(<MapMeasureSketchToolbar map={map as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "Croquis" }));
+  fireEvent.click(screen.getByRole("button", { name: "Polygone" }));
+  act(() => map.emit("click", { lngLat: { lng: 0, lat: 0 } }));
+  act(() => map.emit("click", { lngLat: { lng: 1, lat: 0 } }));
+  act(() => map.emit("click", { lngLat: { lng: 1, lat: 1 } }));
+  expect(screen.getByRole("button", { name: "Terminer le polygone" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Mesurer" }));
+  expect(screen.queryByRole("button", { name: "Terminer le polygone" })).not.toBeInTheDocument();
+});
+
 // Constat I11 (Important) du 2026-08-28 : la version précédente titrait « la
 // couleur du croquis est appliquée » et n'assertait QUE `getByText("1
 // rectangle")` — le titre affirmait une propriété que le test ne pouvait pas
