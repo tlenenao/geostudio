@@ -88,6 +88,7 @@ def update_item(
             keywords=patch.keywords,
             is_published=patch.isPublished,
             slug=patch.slug,
+            current_user_id=user.id,
         )
     except SlugCollisionError as err:
         raise HTTPException(status_code=409, detail=str(err)) from err

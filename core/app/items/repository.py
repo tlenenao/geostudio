@@ -391,6 +391,7 @@ def update_item(
     keywords: list[str] | None,
     is_published: bool | None,
     slug: str | None = None,
+    current_user_id: str | None = None,
 ) -> ItemRead | None:
     item = session.execute(
         select(Item).where(Item.id == item_id, Item.tenant_id == tenant_id)
@@ -417,7 +418,12 @@ def update_item(
     session.refresh(item)
     owner_username = session.scalar(select(User.username).where(User.id == item.owner_id)) or ""
     _enqueue_embedding(item.id, tenant_id)
-    return _to_read(item, owner_username)
+    if current_user_id is None:
+        return _to_read(item, owner_username)
+    permissions = _permissions_by_id(
+        session, tenant_id=tenant_id, current_user_id=current_user_id, items=[item]
+    )[item.id]
+    return _to_read(item, owner_username, permissions)
 
 
 def get_published_item(session: Session, *, item_id: str) -> ItemRead | None:

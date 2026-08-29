@@ -201,12 +201,13 @@ def test_viewer_only_cannot_write_even_if_editor_share_exists(session, actors):
 
 
 def test_cross_tenant_isolation_prevents_unauthorized_access(session, actors):
-    """Test that tenant_id filtering in has_group_role prevents cross-tenant leaks.
+    """Test that tenant_id filtering in roles_for_items (used by can()/decide())
+    prevents cross-tenant leaks.
 
     Scenario: A shared group exists in both tenants with the same id. A user in
     tenant2 is a member of that group (in tenant2). An item in tenant1 is shared
     to that same group id (in tenant1). The tenant2 user should NOT be able to
-    access the tenant1 item, because has_group_role must filter by tenant_id
+    access the tenant1 item, because roles_for_items must filter by tenant_id
     on both ItemShare and GroupMember.
     """
     # Create a second tenant
@@ -262,7 +263,7 @@ def test_cross_tenant_isolation_prevents_unauthorized_access(session, actors):
 
     # Now the critical test: tenant2_user is in group "shared-xgroup" in tenant2,
     # and item_in_tenant1 is shared to group "shared-xgroup" in tenant1.
-    # Without tenant_id filtering in has_group_role, the JOIN would succeed and
+    # Without tenant_id filtering in roles_for_items, the JOIN would succeed and
     # the user would incorrectly get access. The tenant_id filter should prevent this.
     assert can(session, user_id=user_in_tenant2.id, action="read", item=item_in_tenant1) is False
     assert can(session, user_id=user_in_tenant2.id, action="write", item=item_in_tenant1) is False
