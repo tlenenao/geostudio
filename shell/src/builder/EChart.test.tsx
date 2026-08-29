@@ -54,15 +54,18 @@ vi.mock("echarts/renderers", () => ({
 // AppRenderer.tsx which relies on jsdom's lack of ResizeObserver to keep its
 // breakpoint auto-detection at "lg" during tests. Stub it locally to this file
 // only, so we don't flip that guard for the rest of the suite.
+//
+// A `class`, not `vi.fn().mockImplementation(() => ({...}))`: an arrow
+// function can never be a valid constructor, and `new ResizeObserver(...)`
+// now throws under it (silently tolerated before a vitest major bump).
+class NoopResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
 beforeEach(() => {
-  vi.stubGlobal(
-    "ResizeObserver",
-    vi.fn().mockImplementation(() => ({
-      observe: vi.fn(),
-      unobserve: vi.fn(),
-      disconnect: vi.fn(),
-    })),
-  );
+  vi.stubGlobal("ResizeObserver", NoopResizeObserver);
 });
 
 afterEach(() => {
