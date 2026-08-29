@@ -7,12 +7,40 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user
+from app.auth.dependency import (
+    get_current_user,
+    is_appexport_enabled,
+    is_copilot_enabled,
+    is_etl_enabled,
+    is_export_enabled,
+    is_read_only_mode,
+    is_terrain3d_enabled,
+    is_tileset3d_enabled,
+)
 from app.db import get_session
 from app.users.models import User
 from app.users.repository import count_admins, list_users, set_admin, set_analyst
 
 router = APIRouter()
+
+
+class MeCapabilities(BaseModel):
+    """Les capacités du déploiement, servies avec le profil.
+
+    Même contenu que `GET /instance`, qui reste servi sans authentification
+    (page de connexion, mode démo). Le doublon est délibéré : le shell dérive
+    l'état de ses domaines d'un profil unique (spec §6.6) au lieu de croiser
+    deux requêtes dans chaque écran. `tests/test_auth_me_capabilities.py`
+    interdit aux deux routes de diverger.
+    """
+
+    readOnly: bool
+    etlEnabled: bool
+    exportEnabled: bool
+    appExportEnabled: bool
+    tileset3dEnabled: bool
+    terrain3dEnabled: bool
+    copilotEnabled: bool
 
 
 class MeResponse(BaseModel):
@@ -24,6 +52,7 @@ class MeResponse(BaseModel):
     lastName: str
     isAdmin: bool
     isAnalyst: bool
+    capabilities: MeCapabilities
 
 
 @router.get("/me", response_model=MeResponse)
@@ -37,6 +66,15 @@ def get_me(user: User = Depends(get_current_user)) -> MeResponse:
         lastName=user.last_name,
         isAdmin=user.is_admin,
         isAnalyst=user.is_analyst,
+        capabilities=MeCapabilities(
+            readOnly=is_read_only_mode(),
+            etlEnabled=is_etl_enabled(),
+            exportEnabled=is_export_enabled(),
+            appExportEnabled=is_appexport_enabled(),
+            tileset3dEnabled=is_tileset3d_enabled(),
+            terrain3dEnabled=is_terrain3d_enabled(),
+            copilotEnabled=is_copilot_enabled(),
+        ),
     )
 
 
