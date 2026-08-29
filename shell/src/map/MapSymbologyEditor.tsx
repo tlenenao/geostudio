@@ -615,9 +615,35 @@ export function MapSymbologyEditor({
                             aria-label={`Supprimer l'icône ${ci.title}`}
                             className="text-[10px] text-red-700 underline"
                             onClick={() => {
-                              void deleteCustomIcon(ci.id).then(() =>
-                                setCustomIcons((prev) => prev.filter((c) => c.id !== ci.id)),
-                              );
+                              // Fix I3 (Part B) de la revue finale SP-27 : le cœur ne fait
+                              // AUCUN comptage de références — supprimer une icône laisse
+                              // toute entrée `symbology.icon.mapping` qui la référençait
+                              // encore (`{source: "custom", id}`) pointer dans le vide.
+                              // `loadIconImages`/`fetchMapIconBlob` avalent alors le 404
+                              // dans un `console.warn` (MapView.tsx) : la catégorie
+                              // affectée perd silencieusement son icône sur TOUTE carte qui
+                              // l'utilisait, sans rien qui l'explique dans cet éditeur. Un
+                              // comptage de références ou une tombe côté cœur est hors
+                              // périmètre de ce correctif (suivi non bloquant) — seule cette
+                              // confirmation, qui nomme la conséquence, est demandée ici.
+                              if (
+                                !window.confirm(
+                                  `Cette icône est peut-être utilisée par des cartes existantes ; la supprimer la fera disparaître sans avertissement sur ces cartes. Supprimer « ${ci.title} » ?`,
+                                )
+                              )
+                                return;
+                              // Fix I3 (Part A) : même convention d'erreur que le champ
+                              // d'import juste en dessous — sans elle, un échec (404,
+                              // réseau, session révoquée) devenait une rejection non gérée
+                              // et l'icône restait affichée comme si de rien n'était.
+                              setIconError(null);
+                              void deleteCustomIcon(ci.id)
+                                .then(() =>
+                                  setCustomIcons((prev) => prev.filter((c) => c.id !== ci.id)),
+                                )
+                                .catch((err) =>
+                                  setIconError(err instanceof Error ? err.message : String(err)),
+                                );
                             }}
                           >
                             ×
