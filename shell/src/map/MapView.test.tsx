@@ -1741,6 +1741,77 @@ test("une icône qui échoue à charger n'empêche pas les couches d'être posé
   spy.mockRestore();
 });
 
+// Fix I1 de la revue finale SP-27 : `loadIconImages` dérivait auparavant ses
+// propres ids d'image depuis `layer.symbology.icon.mapping`, sans jamais
+// regarder `geometryKind` — une couche non ponctuelle portant un encodage
+// icône (résidu d'un ancien encodage, ou copié-collé de config) déclenchait
+// quand même le chargement de l'icône, alors qu'aucune couche `symbol` ne
+// pouvait jamais l'afficher (buildMapPaint ne pose `iconLayout` que pour
+// "point"). `loadIconImages` consomme désormais `iconImages`, le retour
+// d'`applyLayers`, qui hérite du même garde que `buildMapPaint`.
+test("a non-point layer with an icon encoding does not fetch any icon", async () => {
+  imageStub = installImageDecodeStub();
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        symbology: {
+          icon: {
+            field: "categorie",
+            domain: { kind: "categorical", values: ["ecole"] },
+            mapping: { ecole: { source: "lucide", name: "school" } },
+          },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  // Aucune couche `symbol` d'icône n'est posée pour une géométrie non
+  // ponctuelle (garde déjà présent dans buildMapPaint).
+  expect(map.getLayer("communes__icon")).toBeUndefined();
+  // Laisse largement le temps à un éventuel chargement asynchrone erroné de
+  // se produire avant d'affirmer qu'il n'a pas eu lieu — le pipeline réel
+  // (FileReader jsdom + plusieurs sauts de microtâches, cf.
+  // imageDecodeStub.ts) prend plus qu'un simple `setTimeout(0)`, comme
+  // mesuré : un délai trop court laisse passer ce test même sans le correctif.
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(map.hasImage("lucide:school")).toBe(false);
+});
+
+// Fix I1 (suite) : `Object.values(icon.mapping)` itérait TOUTE la mise en
+// correspondance, y compris une entrée que "Recalculer les valeurs"
+// (MapSymbologyEditor.tsx, ~244-252) a laissée dans `mapping` après avoir
+// remplacé `domain` par un domaine plus étroit qui ne la contient plus.
+// `buildMapPaint` ne construit `iconImages` qu'à partir des valeurs
+// RÉELLEMENT présentes dans le domaine figé — cette entrée orpheline ne doit
+// donc plus jamais être fetchée.
+test("a mapping entry outside the frozen domain is not fetched", async () => {
+  imageStub = installImageDecodeStub();
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "point",
+        symbology: {
+          icon: {
+            field: "categorie",
+            domain: { kind: "categorical", values: ["ecole"] },
+            mapping: {
+              ecole: { source: "lucide", name: "school" },
+              // Reste dans `mapping` après un recalcul de domaine qui ne
+              // conserve plus que "ecole" — hors domaine, jamais rendue.
+              mairie: { source: "lucide", name: "landmark" },
+            },
+          },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  await vi.waitFor(() => expect(map.hasImage("lucide:school")).toBe(true));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(map.hasImage("lucide:landmark")).toBe(false);
+});
+
 test("removing an icon layer removes its symbol sub-layer and its source", () => {
   imageStub = installImageDecodeStub();
   const { rerender } = render(

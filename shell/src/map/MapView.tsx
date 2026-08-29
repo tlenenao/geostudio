@@ -22,7 +22,6 @@ import { MapPopup } from "./MapPopup";
 import { resolvePopupContent } from "./popupContent";
 import {
   buildMapPaint,
-  iconImageId,
   renderAsFor,
   symbologyToPaintInputs,
   type GeometryKind,
@@ -406,7 +405,16 @@ function applyLayers(
     lngLat: { lng: number; lat: number },
   ) => void,
   themeColors: ThemeColors | undefined,
-) {
+  // Rempli par CETTE passe : les ids d'image résolus par `effectivePaint`
+  // (déjà filtrés au domaine figé, dédoublonnés, ordre valeurs-puis-repli —
+  // cf. buildMapPaint) pour chaque sous-couche réellement posée. Fix I1 de la
+  // revue finale SP-27 : `loadIconImages` consommait auparavant
+  // `layer.symbology.icon.mapping` directement, sans garde de géométrie ni
+  // filtre de domaine — une seconde copie de la logique que `effectivePaint`
+  // calcule déjà ICI, dans la même passe. On la retourne au lieu de la
+  // recalculer.
+): string[] {
+  const iconImages = new Set<string>();
   // Deux passes : tous les layers, PUIS toutes les sources. Une couche de
   // géométrie mixte pose plusieurs layers sur une seule source (cf.
   // MIXED_GEOMETRY_SUBLAYERS) et MapLibre refuse de retirer une source encore
@@ -453,6 +461,7 @@ function applyLayers(
           for (const sub of MIXED_GEOMETRY_SUBLAYERS) {
             const id = `${layer.id}__${sub.suffix}`;
             const result = effectivePaint(layer, sub.suffix, themeColors);
+            for (const imageId of result.iconImages) iconImages.add(imageId);
             addTypedLayer(map, {
               id,
               type: sub.type,
@@ -485,6 +494,7 @@ function applyLayers(
           }
         } else {
           const result = effectivePaint(layer, layer.geometryKind, themeColors);
+          for (const imageId of result.iconImages) iconImages.add(imageId);
           addTypedLayer(map, {
             id: layer.id,
             type: layerTypeFor(layer.geometryKind),
@@ -544,6 +554,7 @@ function applyLayers(
         const featureGeometryKind: GeometryKind =
           layer.renderAs === "circle" ? "point" : layer.renderAs === "line" ? "line" : "polygon";
         const featureResult = effectivePaint(layer, featureGeometryKind, themeColors);
+        for (const imageId of featureResult.iconImages) iconImages.add(imageId);
         switch (layer.renderAs ?? "fill") {
           case "circle":
             map.addLayer({
@@ -635,6 +646,7 @@ function applyLayers(
       console.error(`MapView: skipping layer ${layer.id}`, err);
     }
   }
+  return [...iconImages];
 }
 
 // map.addImage doit finir par arriver pour que la couche `symbol` affiche
@@ -646,22 +658,19 @@ function applyLayers(
 //
 // allSettled + try/catch par id : une seule icône illisible ne doit jamais
 // faire échouer les autres, ni remonter en rejection non gérée.
+// `iconImageIds` vient de `applyLayers` (son retour, la même passe) : déjà
+// filtré au `geometryKind === "point"` et au domaine figé par `buildMapPaint`
+// (fix I1 de la revue finale SP-27 — cette fonction dérivait auparavant ses
+// propres ids depuis `layer.symbology.icon.mapping`, sans garde de géométrie
+// ni filtre de domaine, chargeant des icônes pour des couches polygone/ligne
+// et des valeurs de mapping oubliées par un recalcul de domaine).
 async function loadIconImages(
   map: maplibregl.Map,
-  layers: MapConfig["layers"],
+  iconImageIds: readonly string[],
   loadCustomIcon: ((iconId: string) => Promise<Blob>) | undefined,
 ) {
-  const ids = new Set<string>();
-  for (const layer of layers) {
-    if (!layer.visible) continue;
-    if (layer.kind !== "vector" && layer.kind !== "feature") continue;
-    const icon = layer.symbology?.icon;
-    if (!icon) continue;
-    for (const ref of Object.values(icon.mapping)) ids.add(iconImageId(ref));
-    if (icon.fallback) ids.add(iconImageId(icon.fallback));
-  }
   await Promise.allSettled(
-    [...ids].map(async (id) => {
+    [...new Set(iconImageIds)].map(async (id) => {
       try {
         if (map.hasImage(id)) return;
         let image: HTMLImageElement | undefined;
@@ -1082,7 +1091,7 @@ export const MapView = forwardRef<
         source: HIGHLIGHT_ID,
         paint: { "line-color": "#ef4444", "line-width": 3 },
       });
-      applyLayers(
+      const iconImageIds = applyLayers(
         map,
         layersRef.current,
         appliedRef.current,
@@ -1092,7 +1101,7 @@ export const MapView = forwardRef<
         handlePopup,
         themeColorsRef.current,
       );
-      void loadIconImages(map, layersRef.current, loadCustomIconRef.current);
+      void loadIconImages(map, iconImageIds, loadCustomIconRef.current);
       // Un changement de config ne doit pas attendre le prochain `idle` pour
       // repeupler les étiquettes d'une couche dont les tuiles sont déjà là.
       refreshLabelSources(map, layersRef.current, lastLabelPayloadsRef.current);
@@ -1208,7 +1217,7 @@ export const MapView = forwardRef<
     // `layersKey`, mais doit appliquer les couches courantes (la ref est
     // rafraîchie par un effet déclaré plus haut, donc exécuté avant celui-ci).
     const layers = layersRef.current;
-    applyLayers(
+    const iconImageIds = applyLayers(
       map,
       layers,
       appliedRef.current,
@@ -1218,7 +1227,7 @@ export const MapView = forwardRef<
       handlePopup,
       themeColorsRef.current,
     );
-    void loadIconImages(map, layers, loadCustomIconRef.current);
+    void loadIconImages(map, iconImageIds, loadCustomIconRef.current);
     // Un changement de config ne doit pas attendre le prochain `idle` pour
     // repeupler les étiquettes d'une couche dont les tuiles sont déjà là.
     refreshLabelSources(map, layers, lastLabelPayloadsRef.current);
