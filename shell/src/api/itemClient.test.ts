@@ -530,6 +530,48 @@ test("getMapConfig reads popup on a feature (GeoJSON) layer", async () => {
   });
 });
 
+// SP-28 Task 3 regression: same class of bug as popup (SP-24 Task 16) and
+// symbology (SP-25 Task 12) above — toFrontLayer never read renderAs off the
+// raw server JSON either, so a point layer styled as "circle" fell back to
+// MapView's default "fill" on reload and rendered nothing visible.
+test("getMapConfig reads renderAs on a feature (GeoJSON) layer", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1",
+        itemId: "77",
+        kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://demo/s.json" },
+            view: { center: [1, 47], zoom: 8 },
+            layers: [
+              {
+                id: "a",
+                title: "A",
+                visible: true,
+                kind: "feature",
+                url: "https://fs/a",
+                renderAs: "circle",
+              },
+            ],
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getMapConfig("77");
+  expect(cfg.layers[0]).toEqual({
+    id: "a",
+    title: "A",
+    visible: true,
+    kind: "feature",
+    url: "https://fs/a",
+    renderAs: "circle",
+  });
+});
+
 test("getMapConfig throws when the config has no map payload", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/77", () =>

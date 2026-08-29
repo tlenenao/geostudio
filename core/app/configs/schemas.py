@@ -108,6 +108,7 @@ class MapLayer(BaseModel):
     collectionId: str | None = None
     geometryKind: Literal["point", "line", "polygon"] | None = None
     pkColumn: str | None = None
+    renderAs: Literal["fill", "circle", "line"] | None = None
 
 
 class MapTerrain(BaseModel):

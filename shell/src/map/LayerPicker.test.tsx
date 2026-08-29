@@ -2,10 +2,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import type { ItemClient, LayerSource, MapLayer } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { LayerPicker } from "./LayerPicker";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const sources: LayerSource[] = [
   {
@@ -225,4 +229,97 @@ test("clears the tiles3d form after adding", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Ajouter le tileset 3D" }));
   expect(titleInput.value).toBe("");
   expect(urlInput.value).toBe("");
+});
+
+test("adds a feature layer from the manual GeoJSON URL form, with renderAs detected from its geometry", async () => {
+  const onAdd = vi.fn();
+  const fc = {
+    type: "FeatureCollection",
+    features: [
+      { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [1, 2] } },
+    ],
+  };
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => fc }));
+  renderPicker(onAdd);
+  await userEvent.type(screen.getByLabelText("Titre de la couche GeoJSON"), "Points d'intérêt");
+  await userEvent.type(
+    screen.getByLabelText("URL du GeoJSON"),
+    "https://external.test/poi.geojson",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter la couche" }));
+  await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(1));
+  const layer = onAdd.mock.calls[0][0] as MapLayer;
+  expect(layer).toMatchObject({
+    kind: "feature",
+    title: "Points d'intérêt",
+    visible: true,
+    url: "https://external.test/poi.geojson",
+    renderAs: "circle",
+  });
+});
+
+test("adds the layer even when the GeoJSON probe fails, without a renderAs, and shows an inline warning", async () => {
+  const onAdd = vi.fn();
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("CORS")));
+  renderPicker(onAdd);
+  await userEvent.type(screen.getByLabelText("Titre de la couche GeoJSON"), "Zones");
+  await userEvent.type(
+    screen.getByLabelText("URL du GeoJSON"),
+    "https://external.test/zones.geojson",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter la couche" }));
+  await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(1));
+  const layer = onAdd.mock.calls[0][0] as MapLayer;
+  expect(layer).toMatchObject({
+    kind: "feature",
+    title: "Zones",
+    url: "https://external.test/zones.geojson",
+  });
+  expect(layer).not.toHaveProperty("renderAs");
+  expect(screen.getByRole("alert")).toHaveTextContent(/n'a pas pu être vérifié/);
+});
+
+test("disables the GeoJSON URL add button until both title and URL are filled", async () => {
+  const onAdd = vi.fn();
+  renderPicker(onAdd);
+  const button = screen.getByRole("button", { name: "Ajouter la couche" });
+  expect(button).toBeDisabled();
+  await userEvent.type(screen.getByLabelText("Titre de la couche GeoJSON"), "Zones");
+  expect(button).toBeDisabled();
+  await userEvent.type(
+    screen.getByLabelText("URL du GeoJSON"),
+    "https://external.test/zones.geojson",
+  );
+  expect(button).toBeEnabled();
+});
+
+test("clears the GeoJSON URL form after adding and primes the introspection cache for that URL", async () => {
+  const onAdd = vi.fn();
+  const fc = {
+    type: "FeatureCollection",
+    features: [
+      { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [1, 2] } },
+    ],
+  };
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => fc });
+  vi.stubGlobal("fetch", fetchMock);
+  const client = { listLayerSources: vi.fn().mockResolvedValue(sources) } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <LayerPicker onAdd={onAdd} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  const titleInput = screen.getByLabelText("Titre de la couche GeoJSON") as HTMLInputElement;
+  const urlInput = screen.getByLabelText("URL du GeoJSON") as HTMLInputElement;
+  await userEvent.type(titleInput, "Points");
+  await userEvent.type(urlInput, "https://external.test/points.geojson");
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter la couche" }));
+  await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(1));
+  expect(titleInput.value).toBe("");
+  expect(urlInput.value).toBe("");
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(qc.getQueryData(["feature-geojson", "https://external.test/points.geojson"])).toEqual(fc);
 });

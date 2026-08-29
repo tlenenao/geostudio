@@ -2,9 +2,29 @@
 import { useQuery } from "@tanstack/react-query";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { MapLayer } from "../api/types";
+import {
+  fetchFeatureCollection,
+  listFields,
+  makeSampleFieldFn,
+  makeStatQueryFn,
+} from "./geojsonIntrospect";
 import { LayerPicker } from "./LayerPicker";
 import { MapSymbologyEditor } from "./MapSymbologyEditor";
 import { PopupEditor } from "./PopupEditor";
+
+// Une couche "feature" n'a pas de collection interrogeable : son schéma vient
+// du GeoJSON qu'elle pointe elle-même. Une seule requête partagée par les
+// deux éditeurs ci-dessous (react-query dédoublonne par clé — un seul fetch
+// réseau même si popup et symbologie sont montés en même temps, ce qui est
+// le cas ici).
+function useFeatureLayerGeoJson(layer: Extract<MapLayer, { kind: "vector" | "feature" }>) {
+  const url = layer.kind === "feature" ? layer.url : undefined;
+  return useQuery({
+    queryKey: ["feature-geojson", url],
+    queryFn: () => fetchFeatureCollection(url!),
+    enabled: Boolean(url),
+  });
+}
 
 // Charge le schéma de la collection sous-jacente pour offrir la liste des
 // champs à l'auteur — patron déjà établi par CrossFilterLinkEditor.tsx:28-34
@@ -23,23 +43,34 @@ function LayerPopupEditor({
     queryFn: () => client.getCollectionSchema(collectionId!),
     enabled: Boolean(collectionId),
   });
+  const featureGeojson = useFeatureLayerGeoJson(layer);
   return (
     <PopupEditor
       value={layer.popup}
-      // Sans collectionId (tuiles externes, couche GeoJSON), la liste est
-      // vide et l'auteur saisit les noms de champs à la main : PopupEditor
-      // gère les deux cas avec le même contrôle.
-      availableFields={schema.data?.fields.map((f) => f.name) ?? []}
+      // Sans collectionId : couche "feature" (URL GeoJSON), les champs
+      // viennent de l'introspection côté client (geojsonIntrospect.ts,
+      // Task 2 SP-28) une fois son fetch résolu ; avant ça, liste vide comme
+      // pour une collection dont le schéma charge encore.
+      availableFields={
+        collectionId
+          ? (schema.data?.fields.map((f) => f.name) ?? [])
+          : featureGeojson.data
+            ? listFields(featureGeojson.data)
+            : []
+      }
       onChange={(popup) => onChangeLayer({ ...layer, popup })}
     />
   );
 }
 
-// Même patron que LayerPopupEditor ci-dessus. Sans collectionId (tuiles
-// externes, couche GeoJSON "feature"), il n'y a pas de collection
-// interrogeable pour runStatistics ici : la couche "feature" du widget
-// carte (mapWidget.tsx, Task 10) résout à travers son propre datasetId,
-// chemin distinct et non unifié avec celui-ci (spec §1).
+// Même patron que LayerPopupEditor ci-dessus. Sans collectionId (couche
+// "feature", URL GeoJSON) : les trois fonctions que MapSymbologyEditor
+// attend (availableFields/runStatistics/sampleField) sont dérivées du
+// GeoJSON introspecté côté client (Task 2, SP-28) au lieu d'une requête au
+// cœur — jenksAvailable reste à son défaut `true` : contrairement à la
+// couche "feature" du widget carte (mapWidget.tsx, adossée à un DataSource
+// distant sans valeurs brutes disponibles), ici les valeurs sont locales et
+// Jenks fonctionne réellement.
 function LayerSymbologyEditor({
   layer,
   onChangeLayer,
@@ -54,22 +85,39 @@ function LayerSymbologyEditor({
     queryFn: () => client.getCollectionSchema(collectionId!),
     enabled: Boolean(collectionId),
   });
-  if (!collectionId) return null; // external tiles / plain GeoJSON feature layer: no collection to query
+  const featureGeojson = useFeatureLayerGeoJson(layer);
+  const fc = featureGeojson.data;
+  const notReady = async (): Promise<never> => {
+    throw new Error("La couche GeoJSON n'est pas encore chargée");
+  };
   return (
     <MapSymbologyEditor
       value={layer.symbology}
-      availableFields={schema.data?.fields.map((f) => f.name) ?? []}
-      themeColors={undefined} // no Theme on a standalone MapConfig (spec §1)
-      runStatistics={(query) =>
-        client.queryDataSource({
-          id: `map-symbology-${collectionId}`,
-          type: "statistics",
-          service: "core",
-          layer: collectionId,
-          query,
-        })
+      availableFields={
+        collectionId ? (schema.data?.fields.map((f) => f.name) ?? []) : fc ? listFields(fc) : []
       }
-      sampleField={(field, limit) => client.sampleCollectionField(collectionId, field, limit)}
+      themeColors={undefined} // no Theme on a standalone MapConfig (spec §1)
+      runStatistics={
+        collectionId
+          ? (query) =>
+              client.queryDataSource({
+                id: `map-symbology-${collectionId}`,
+                type: "statistics",
+                service: "core",
+                layer: collectionId,
+                query,
+              })
+          : fc
+            ? makeStatQueryFn(fc)
+            : notReady
+      }
+      sampleField={
+        collectionId
+          ? (field, limit) => client.sampleCollectionField(collectionId, field, limit)
+          : fc
+            ? makeSampleFieldFn(fc)
+            : notReady
+      }
       // `?.()` OBLIGATOIRE, pas cosmétique (défaut n° 5 de la brief Task 12) :
       // ce hôte est rendu dans des tests existants avec des ItemClient
       // PARTIELS (LayersPanel.test.tsx:48 et :103). Sans `?.`,
