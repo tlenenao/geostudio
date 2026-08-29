@@ -8,3 +8,6 @@
 export { Button, type ButtonProps } from "./Button";
 export { IconButton, type IconButtonProps } from "./IconButton";
 export { Gate } from "../../auth/Gate";
+export { Field } from "./Field";
+export { Input } from "./Input";
+export { Textarea } from "./Textarea";
