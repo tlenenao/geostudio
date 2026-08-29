@@ -64,6 +64,12 @@ def test_the_collection_binding_round_trips():
     )
 
 
+def test_render_as_round_trips_on_a_feature_layer():
+    layer = _layer(kind="feature", renderAs="circle")
+    assert layer.renderAs == "circle"
+    assert layer.model_dump(by_alias=True)["renderAs"] == "circle"
+
+
 def test_an_unknown_geometry_kind_is_rejected():
     import pytest
     from pydantic import ValidationError
