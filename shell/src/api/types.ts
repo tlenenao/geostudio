@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+import type { ItemPermissions } from "../auth/permissions";
+
 export type ResourceType =
   | "app"
   | "dashboard"
@@ -27,6 +29,7 @@ export type Item = {
   isPublished: boolean;
   slug?: string;
   keywords?: string[];
+  permissions: ItemPermissions;
 };
 
 export type ItemPage = {

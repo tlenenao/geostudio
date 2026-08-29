@@ -8,6 +8,7 @@ import type { AppConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRuntimePage } from "./AppRuntimePage";
 import type { AuthState } from "../auth/useAuth";
+import { OWNER_PERMISSIONS } from "../auth/permissions";
 import { EXTENT_DEBOUNCE_MS, useAnalyticsContext } from "../builder/AnalyticsContext";
 import { decodeAnalyticsContext, encodeAnalyticsContext } from "../lib/analyticsContextUrl";
 import { getWidget, registerWidget } from "../builder/registry";
@@ -108,6 +109,7 @@ const okItem: Item = {
   date: "",
   configId: null,
   isPublished: true,
+  permissions: OWNER_PERMISSIONS,
 };
 
 test("navigate() percent-encodes pk and the target pageId", async () => {

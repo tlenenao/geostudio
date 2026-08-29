@@ -6,6 +6,7 @@ import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { Item, ItemClient } from "../../api/types";
+import { OWNER_PERMISSIONS } from "../../auth/permissions";
 
 beforeEach(() => {
   _resetRegistry();
@@ -40,6 +41,7 @@ const publishedItem: Item = {
   configId: null,
   isPublished: true,
   keywords: ["risques"],
+  permissions: OWNER_PERMISSIONS,
 };
 
 test("gallery calls listPublicItems with the author's fixed filter props", () => {

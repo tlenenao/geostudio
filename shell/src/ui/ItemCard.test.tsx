@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import type { Item } from "../api/types";
 import { ItemCard } from "./ItemCard";
+import { OWNER_PERMISSIONS } from "../auth/permissions";
 
 const item: Item = {
   pk: "42",
@@ -15,6 +16,7 @@ const item: Item = {
   date: "2026-01-01T00:00:00Z",
   configId: null,
   isPublished: false,
+  permissions: OWNER_PERMISSIONS,
 };
 
 test("renders title and type", () => {

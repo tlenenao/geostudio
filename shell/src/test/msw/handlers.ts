@@ -14,6 +14,7 @@ function item(pk: string, type = "app", title = `Item ${pk}`) {
     date: "2026-01-01T00:00:00Z",
     configId: null,
     isPublished: false,
+    permissions: { read: true, write: true, delete: true, share: true },
   };
 }
 
