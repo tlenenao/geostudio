@@ -4,7 +4,7 @@ from typing import Literal
 
 from sqlalchemy.orm import Session
 
-from app.sharing.repository import has_collection_group_role, has_group_role
+from app.sharing.repository import roles_for_collections, roles_for_items
 
 Action = Literal["read", "write", "delete", "share"]
 ObjectKind = Literal["item", "collection"]
@@ -27,6 +27,38 @@ class AccessFacts:
 ItemAccessFacts = AccessFacts
 
 
+def decide(
+    *,
+    action: Action,
+    kind: ObjectKind,
+    is_owner: bool,
+    is_public: bool,
+    is_published: bool,
+    roles: frozenset[str],
+    actor_is_admin: bool,
+) -> bool:
+    """La règle d'autorisation, sans accès à la base.
+
+    Deux appelants : `can()` ci-dessous (une ligne, une requête de rôles) et
+    `app.items.repository._permissions()` (douze lignes, une requête de rôles
+    pour toutes). Ils doivent conclure pareil — `tests/test_sharing_decide.py`
+    le prouve sur le produit cartésien complet des situations.
+    """
+    # Le rôle admin ne court-circuite QUE les collections (spec SP-3 §2) :
+    # la sémantique de partage des items (SP-1, testée) ne bouge pas.
+    if kind == "collection" and actor_is_admin:
+        return True
+    if is_owner:
+        return True
+    if action == "read":
+        if is_public or is_published:
+            return True
+        return bool(roles & {"viewer", "editor"})
+    if action in ("write", "delete", "share"):
+        return "editor" in roles
+    return False
+
+
 def can(
     session: Session,
     *,
@@ -36,34 +68,31 @@ def can(
     kind: ObjectKind = "item",
     actor_is_admin: bool = False,
 ) -> bool:
-    # Le rôle admin ne court-circuite QUE les collections (spec SP-3 §2) :
-    # la sémantique de partage des items (SP-1, testée) ne bouge pas.
+    # Court-circuits conservés à l'identique : ils évitent une requête de
+    # rôles quand la décision est déjà acquise. Sans eux, ce chemin ferait une
+    # requête là où l'ancien code n'en faisait aucune.
     if kind == "collection" and actor_is_admin:
         return True
     if item.owner_id == user_id:
         return True
+    if action == "read" and (item.is_public or item.is_published):
+        return True
 
-    def role_check(roles: set[str]) -> bool:
-        if kind == "item":
-            return has_group_role(
-                session,
-                tenant_id=item.tenant_id,
-                item_id=item.id,
-                user_id=user_id,
-                roles=roles,
-            )
-        return has_collection_group_role(
-            session,
-            tenant_id=item.tenant_id,
-            collection_id=item.id,
-            user_id=user_id,
-            roles=roles,
-        )
+    if kind == "item":
+        roles = roles_for_items(
+            session, tenant_id=item.tenant_id, user_id=user_id, item_ids=[item.id]
+        ).get(item.id, frozenset())
+    else:
+        roles = roles_for_collections(
+            session, tenant_id=item.tenant_id, user_id=user_id, collection_ids=[item.id]
+        ).get(item.id, frozenset())
 
-    if action == "read":
-        if item.is_public or item.is_published:
-            return True
-        return role_check({"viewer", "editor"})
-    if action in ("write", "delete", "share"):
-        return role_check({"editor"})
-    return False
+    return decide(
+        action=action,
+        kind=kind,
+        is_owner=False,
+        is_public=item.is_public,
+        is_published=item.is_published,
+        roles=roles,
+        actor_is_admin=actor_is_admin,
+    )
