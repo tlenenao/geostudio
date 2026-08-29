@@ -735,6 +735,45 @@ test("shows a stroke legend entry from a data-driven stroke color", async () => 
   expect(await screen.findByText("Nord")).toBeInTheDocument();
 });
 
+// Fix I2 de la revue finale SP-27 : miroir du test ci-dessus, mais pour un
+// contour CLASSÉ (quantile/equalInterval/Jenks) — `legend.stroke` était
+// jusqu'ici typé catégoriel-seul, alors que le sélecteur de contour (Task 5)
+// et le rendu (buildMapPaint) traitent déjà ce cas.
+test("shows a classed stroke legend entry from a data-driven stroke color", async () => {
+  const Map = getWidget("map")!.Component;
+  render(
+    withClient(
+      <Map
+        props={{
+          dataSourceId: "d",
+          symbology: {
+            stroke: {
+              color: {
+                field: "pop",
+                domain: { kind: "numeric-classed", breaks: [0, 10, 20] },
+                palette: "sequential-blue",
+              },
+              width: { fixed: 1 },
+              style: "solid",
+            },
+          },
+        }}
+        ctx={
+          {
+            mode: "runtime",
+            data: state({
+              url: "https://fs/communes/items.json",
+              records: [{ id: 1, properties: {}, geometry: { type: "Polygon", coordinates: [] } }],
+            }),
+          } as WidgetContext
+        }
+      />,
+    ),
+  );
+  expect(await screen.findByText("0.0 – 10.0")).toBeInTheDocument();
+  expect(screen.getByText("10.0 – 20.0")).toBeInTheDocument();
+});
+
 test("shows an icon legend entry per mapped value", async () => {
   const Map = getWidget("map")!.Component;
   render(

@@ -146,7 +146,23 @@ export type LegendSpec = {
         colorHigh: string;
       };
   size?: { field: string; min: number; max: number; radiusMin: number; radiusMax: number };
-  stroke?: { kind: "categorical"; field: string; entries: { value: string; color: string }[] };
+  // Même union à trois variantes que `color` ci-dessus (fix I2 de la revue
+  // finale SP-27) : le contour a rejoint le remplissage sur la classification
+  // numérique côté éditeur (déviation D5, Task 5) et côté rendu
+  // (`buildMapPaint`, branche `step`/`interpolate` du contour), mais la
+  // légende n'avait jamais suivi — un contour classé ou continu se peignait
+  // correctement et n'apparaissait jamais dans la légende.
+  stroke?:
+    | { kind: "categorical"; field: string; entries: { value: string; color: string }[] }
+    | { kind: "classed"; field: string; classes: { color: string; from: number; to: number }[] }
+    | {
+        kind: "numeric";
+        field: string;
+        min: number;
+        max: number;
+        colorLow: string;
+        colorHigh: string;
+      };
   icon?: { field: string; entries: { value: string; imageId: string }[] };
 };
 
@@ -647,6 +663,39 @@ export function buildLegend(
         kind: "categorical",
         field: stroke.color.field,
         entries: normalized.values.map((v, i) => ({ value: v, color: colors[i % colors.length] })),
+      };
+    } else if (normalized?.kind === "numeric-classed") {
+      // Miroir de la branche `classed` de `legend.color` ci-dessus : mêmes
+      // classes/couleurs, calculées sur le domaine du CONTOUR (sa propre
+      // palette, potentiellement distincte de celle du remplissage).
+      const nClasses = normalized.breaks.length - 1;
+      const colors = stroke.color.palette
+        ? colorsForClasses(stroke.color.palette, nClasses)
+        : Array.from({ length: nClasses }, (_, i) => paletteColor(i));
+      legend.stroke = {
+        kind: "classed",
+        field: stroke.color.field,
+        classes: Array.from({ length: nClasses }, (_, i) => ({
+          color: colors[i],
+          from: normalized.breaks[i],
+          to: normalized.breaks[i + 1],
+        })),
+      };
+    } else if (normalized?.kind === "numeric") {
+      // Miroir de la branche `numeric` (continu) de `legend.color`.
+      legend.stroke = {
+        kind: "numeric",
+        field: stroke.color.field,
+        min: normalized.min,
+        max: normalized.max,
+        colorLow:
+          stroke.color.palette?.kind === "sequential"
+            ? stroke.color.palette.low
+            : NUMERIC_COLOR_LOW,
+        colorHigh:
+          stroke.color.palette?.kind === "sequential"
+            ? stroke.color.palette.high
+            : NUMERIC_COLOR_HIGH,
       };
     }
   }

@@ -92,7 +92,7 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
           </span>
         </div>
       )}
-      {legend.stroke && (
+      {legend.stroke?.kind === "categorical" && (
         <ul aria-label="Contour">
           {legend.stroke.entries.map((e) => (
             <li key={e.value} className="flex items-center gap-1">
@@ -104,6 +104,38 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
             </li>
           ))}
         </ul>
+      )}
+      {/* Fix I2 de la revue finale SP-27 : un contour classé/continu se
+          compile correctement (buildMapPaint, expression step/interpolate
+          sur fill-outline-color) depuis que Task 5 a rendu le sélecteur de
+          couleur de contour symétrique du remplissage, mais la légende ne
+          savait décrire que le cas catégoriel — miroir exact des blocs
+          legend.color juste au-dessus. */}
+      {legend.stroke?.kind === "classed" && (
+        <ul aria-label="Contour">
+          {legend.stroke.classes.map((c, i) => (
+            <li key={i} className="flex items-center gap-1">
+              <span
+                className="inline-block h-3 w-3 rounded-sm border-2"
+                style={{ borderColor: c.color }}
+              />
+              {c.from.toFixed(1)} – {c.to.toFixed(1)}
+            </li>
+          ))}
+        </ul>
+      )}
+      {legend.stroke?.kind === "numeric" && (
+        <div aria-label="Contour">
+          <div
+            className="h-2 w-24 rounded border-2"
+            style={{
+              background: `linear-gradient(to right, ${legend.stroke.colorLow}, ${legend.stroke.colorHigh})`,
+            }}
+          />
+          <span>
+            {legend.stroke.min} – {legend.stroke.max}
+          </span>
+        </div>
       )}
       {legend.icon && (
         <ul aria-label="Icônes">
