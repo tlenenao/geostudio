@@ -15,9 +15,9 @@ def roles_for_items(
     """Les rôles de groupe de `user_id` sur chacun des `item_ids`, en **une**
     requête.
 
-    Remplace l'ancien `has_group_role()` (une requête par item et par jeu de
-    rôles) : la sérialisation d'une page de catalogue a besoin des rôles de
-    douze items à la fois, et le faire ligne par ligne était le N+1 que
+    Élimine le pattern N+1 d'une requête par item et par jeu de rôles : la
+    sérialisation d'une page de catalogue a besoin des rôles de douze items
+    à la fois, et le faire ligne par ligne était le N+1 que
     `tests/test_items_no_nplus1.py` interdit désormais.
 
     Une clé absente du résultat signifie « aucun rôle » — les appelants
@@ -61,31 +61,6 @@ def roles_for_collections(
     for collection_id, role in rows:
         out.setdefault(collection_id, set()).add(role)
     return {k: frozenset(v) for k, v in out.items()}
-
-
-def has_group_role(
-    session: Session, *, tenant_id: str, item_id: str, user_id: str, roles: set[str]
-) -> bool:
-    """Wrapper pour rétro-compatibilité — préférer roles_for_items pour les lots."""
-    result = roles_for_items(session, tenant_id=tenant_id, user_id=user_id, item_ids=[item_id])
-    item_roles = result.get(item_id, frozenset())
-    return bool(item_roles & roles)
-
-
-def has_collection_group_role(
-    session: Session,
-    *,
-    tenant_id: str,
-    collection_id: str,
-    user_id: str,
-    roles: set[str],
-) -> bool:
-    """Wrapper pour rétro-compatibilité — préférer roles_for_collections pour les lots."""
-    result = roles_for_collections(
-        session, tenant_id=tenant_id, user_id=user_id, collection_ids=[collection_id]
-    )
-    collection_roles = result.get(collection_id, frozenset())
-    return bool(collection_roles & roles)
 
 
 def create_group(session: Session, *, tenant_id: str, name: str, created_by: str) -> Group:
