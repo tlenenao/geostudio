@@ -72,6 +72,12 @@ describe("contrat des tokens", () => {
     }
   });
 
+  it("expose les tokens d'élévation", () => {
+    for (const name of ["shadow-sm", "shadow-md", "shadow-lg"]) {
+      expect(LIGHT.has(name), `token d'élévation absent : --gs-${name}`).toBe(true);
+    }
+  });
+
   it("ne déclare aucune couleur en dur hors des trois blocs d'ambiance", () => {
     const outside = css
       .replace(block(":root {"), "")

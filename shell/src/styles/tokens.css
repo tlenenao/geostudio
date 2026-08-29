@@ -67,6 +67,11 @@
   --gs-map-alt: #dce7e3;
   --gs-map-water: #bbd8dc;
   --gs-map-road: #ffffff;
+
+  /* Élévation — Task 1 SP-29b */
+  --gs-shadow-sm: 0 1px 2px rgba(14, 26, 32, 0.08);
+  --gs-shadow-md: 0 4px 12px rgba(14, 26, 32, 0.12);
+  --gs-shadow-lg: 0 12px 32px rgba(14, 26, 32, 0.18);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -106,6 +111,10 @@
     --gs-map-alt: #1b2c31;
     --gs-map-water: #1d3a42;
     --gs-map-road: #2c4148;
+
+    --gs-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --gs-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --gs-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
   }
 }
 
@@ -145,6 +154,10 @@
   --gs-map-alt: #1b2c31;
   --gs-map-water: #1d3a42;
   --gs-map-road: #2c4148;
+
+  --gs-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --gs-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --gs-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
 }
 
 /* Exposition à Tailwind v4. `inline` est ce qui rend les tokens commutables :
@@ -188,4 +201,8 @@
   --radius-sm: 2px;
   --radius-md: 4px;
   --radius-lg: 8px;
+
+  --shadow-sm: var(--gs-shadow-sm);
+  --shadow-md: var(--gs-shadow-md);
+  --shadow-lg: var(--gs-shadow-lg);
 }
