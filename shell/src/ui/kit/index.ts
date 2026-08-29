@@ -5,4 +5,6 @@
 // (existants, intouchés) : ce sont deux systèmes distincts tant que SP-30
 // n'a pas basculé les points d'appel.
 
+export { Button, type ButtonProps } from "./Button";
+export { IconButton, type IconButtonProps } from "./IconButton";
 export { Gate } from "../../auth/Gate";
