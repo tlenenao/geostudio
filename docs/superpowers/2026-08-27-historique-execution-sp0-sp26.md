@@ -2372,3 +2372,98 @@ deux (et un `--` côté entry).
   plutôt que « est une écriture » (un `OPTIONS`/`HEAD` sur `/harvest/*`
   tomberait techniquement dans le budget harvest, inatteignable aujourd'hui
   — aucun CORS preflight n'est répondu sur ce chemin).
+- **SP-27** (20 tâches, chantiers 4.4/4.5) — symbologie avancée de la carte :
+  contour data-driven (fixe puis classé, `FieldClassificationPicker` extrait
+  et partagé avec la couleur), opacité, icônes catégorielles (catalogue
+  Lucide curaté de 140 icônes générées à la build + bibliothèque d'icônes
+  personnalisées tenant-scoped, `app/mapicons/` au cœur), étiquettes CEL
+  multi-champs (`${record.champ}`, source GeoJSON dédiée car `feature-state`
+  est rejeté par le validateur style-spec), et un outil de mesure/croquis
+  éphémère (distance/aire, tracé libre/rectangle/cercle/polygone/texte),
+  câblés à la fois dans l'éditeur de carte **et** le widget carte (D2,
+  périmètre élargi — le widget ne compilait jamais `symbology`, seul
+  `paint`, donc rien de SP-27 n'atteignait une app/dashboard réelle avant
+  Task 19). E2E complet passé de 108/4/0 à **111/4/0**.
+  Trois passes de révision du plan (16 bloquants + 27 important trouvés par
+  trois audits parallèles disjoints avant exécution), 20 tâches toutes en
+  subagent-driven-development avec revue indépendante par tâche, plus une
+  revue finale de branche sur opus.
+  **Assainisseur SVG (`app/mapicons/svg.py`, D4/D6/D7) — le point le plus
+  sensible du plan** : upload multipart (jamais présigné, D7 — un second
+  `PUT` sur une URL présignée aurait restauré un SVG hostile après
+  assainissement, invariant de D4 faux tel que rédigé initialement),
+  assainissement à l'écriture par allowlist XML (`defusedxml`,
+  re-sérialisation depuis l'arbre parsé, jamais un filtre regex), octets
+  assainis seuls stockés sous une clé choisie par le cœur. **Trois tours de
+  revue/correctif sur ce seul fichier** : (1) un contournement par
+  échappement CSS (`fill="\75 rl(http://evil.test/x)"`) défaisait le filtre
+  `url()` **et** les listes noires `javascript:`/`data:`, fermé en
+  remplaçant la liste noire par une liste blanche de forme (mot-clé
+  purement alphabétique + notation fonctionnelle ancrée, aucune ne pouvant
+  former un jeton `url()` ni un schéma) plutôt qu'en patchant le payload
+  précis ; (2) cette liste blanche s'est révélée trop étroite et supprimait
+  silencieusement des couleurs nommées/`rgb()`/`hsl()` légitimes (icône
+  stockée mais rendue avec la mauvaise couleur, aucune erreur à l'upload),
+  élargie sans réintroduire de liste noire.
+  **Piège central de Task 14 (étiquettes)** : un `setData` inconditionnel
+  sur `idle` s'auto-entretient indéfiniment (`setData` → événement
+  `content` → `SourceCache.reload()` → repaint → nouvel `idle`, ~6 Hz,
+  gel d'onglet potentiel) — fermé par une mémoïsation par charge postée,
+  **par instance de `MapView`** (un `Important` de revue de tâche a
+  d'abord trouvé le cache à portée module, partagé entre `MapView`
+  co-montées affichant la même couche — corrigé en `useRef`).
+  **Revue finale de branche (807f7c8..dfaf6a7, 33 commits) : 0 Critique,
+  4 Important, 13 Mineur, tous les 16 déviations documentées du plan
+  vérifiées individuellement contre le code, aucun écart non documenté** —
+  la relectrice a elle-même rejoué les portes de qualité (tsc, ruff,
+  lint-imports, `test_deployability` 35/35, `test_mapicons_*` 88/88,
+  arithmétique E2E) plutôt que de se fier au rapport. Les 4 Important sont
+  tous des défauts d'interaction croisée entre tâches, invisibles à une
+  revue par tâche seule (piège n°4 de `CLAUDE.md`) : `loadIconImages`
+  (Task 8) était un 3e consommateur de `symbology.icon` jamais symétrisé
+  avec la garde de géométrie/le filtre de domaine de Task 7 — fermé en
+  consommant `MapPaintResult.iconImages` déjà calculé par `effectivePaint`
+  au lieu de re-dériver ; un contour classé se rendait correctement mais ne
+  pouvait jamais apparaître dans la légende (`LegendSpec.stroke` resté
+  catégoriel-seul quand Task 5 a rendu le sélecteur de contour symétrique à
+  la couleur) — légende élargie à l'union à trois variantes de la couleur ;
+  suppression d'icône personnalisée sans `.catch()` (son jumeau, l'upload,
+  en a un) ni nettoyage de référence — `.catch()` ajouté + confirmation
+  nommant la conséquence (le référencement pendant lui-même reste un suivi,
+  corriger côté cœur est hors périmètre) ; `iconField` (état local de
+  `MapSymbologyEditor`) ne se resynchronisait jamais avec
+  `value.icon.field`, désynchronisé par un undo/redo SP-19 — corrigé par un
+  effet dépendant du seul champ committé (`[icon?.field]`, pas `[icon]`
+  ni `[value]`, pour ne jamais écraser une saisie en cours). Fix wave
+  vérifiée par une re-revue indépendante de la même relectrice : les quatre
+  Important fermés pour de vrai (payloads d'attaque et scénarios rejoués en
+  direct, pas seulement le rapport cru sur parole), aucun n'en a rouvert
+  un autre. **Verdict final : Ready to merge — Yes.**
+  Suivis non bloquants ouverts par la revue finale (aucun n'est un
+  correctif requis avant la clôture) : icônes personnalisées absentes des
+  exports statiques (`StaticItemClient.fetchMapIconBlob` renvoie
+  `unsupported()`, prescrit par le plan mais jamais consigné en suivi) ;
+  référencement pendant après suppression d'icône (le référencement lui-même
+  n'est jamais nettoyé côté cœur, seule une confirmation en avertit
+  l'auteur) ; le rationnel du suivi `ImageManager` (jamais purgé,
+  « borné par le catalogue, 140×16 Ko ») est devenu faux depuis que Task 12
+  a rendu la bibliothèque téléversable par tenant — borne réelle
+  désormais la taille de la bibliothèque du tenant, pas une constante ;
+  `_has_graphics` de l'assainisseur SVG ignore le texte porté par
+  `tspan` (rejette un icône Illustrator texte-seul légitime, pas une
+  faille de sécurité) ; aucun quota/rate-limit sur `POST /map-icons`
+  (cohérent avec la posture existante du dépôt sur `thumbnail`/
+  `ingestion`, mais `/map-icons` est le seul des trois à créer un nombre
+  non borné de lignes+objets S3) ; le bucket d'icônes reçoit une politique
+  CORS `AllowedOrigins: ["*"]` à chaque upload, héritée de la présignation
+  que D7 retire pourtant de cette surface (hygiène, pas une brèche) ;
+  `computedAt` (invariant SP-25 « domaines figés ») n'est jamais remis à
+  zéro quand `field`/`mode` change sans recalcul explicite — le résumé de
+  classification affiche alors la date/les classes de l'**ancien** champ
+  jusqu'au prochain clic « Recalculer » (hérité de SP-25, désormais
+  dupliqué sur le contour par D5) ; le mode tracé libre du croquis peut
+  encore être laissé bloqué (relâchement de souris hors canevas) même si
+  « Effacer tout » le corrige maintenant (recovery existe, la cause racine
+  reste atteignable) ; la source `__sketch__` peut se retrouver sous une
+  couche de données après un `applyLayers` ultérieur (ex. changement de
+  source de données par un cross-filter) — cosmétique, pas fonctionnel.
