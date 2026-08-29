@@ -353,6 +353,7 @@ def test_map_config_round_trips_tiles3d_layer_terrain_and_camera(client):
         "collectionId": None,
         "geometryKind": None,
         "pkColumn": None,
+        "renderAs": None,
     }
     assert body["terrain"] == {
         "tilesUrl": "https://example.test/dem/{z}/{x}/{y}.png",
