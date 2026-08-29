@@ -261,14 +261,21 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   RFC 7807 partout, rate limiting différencié, arrêt propre `cdc-worker`,
   `AppErrorBoundary` racine, CSP/Permissions-Policy (Report-Only), alertes SLO
   notifiées, suite E2E sur OIDC réel (`shell/e2e-oidc/`).
+- **SP-27** (20 tâches, chantiers 4.4/4.5) — symbologie avancée de la carte :
+  contour data-driven (fixe puis classé), opacité, icônes catégorielles
+  (catalogue Lucide curaté + bibliothèque d'icônes personnalisées tenant-scoped,
+  `app/mapicons/` au cœur, assainissement SVG côté serveur), étiquettes CEL
+  multi-champs (source GeoJSON dédiée), outil de mesure/croquis éphémère —
+  câblés dans l'éditeur de carte **et** le widget carte (D2, périmètre élargi).
+  E2E 108/4/0 → **111/4/0**. Revue finale de branche : 0 Critique, 4 Important
+  (tous des défauts d'interaction croisée entre tâches, tous fermés et
+  re-vérifiés) — **Ready to merge**.
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
 
 ### À venir
 
-- **SP-27** — spec + plan écrits (2026-08-27) : symbologie avancée + mesure/
-  croquis, chantiers **4.4/4.5** du plan d'action. Non exécuté.
 - Reste **SP-15** : événements/déclencheurs durables au-delà du cron (non
   planifié) ; exposition MCP des noms de secrets (non planifiée) ; **exécuter
   réellement les 5 tests `@pytest.mark.qgis` de SP-15d** avant d'activer
@@ -280,8 +287,10 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   surface sortante, les trois autres en ont une.
 - Reste lot **Carte** : éditeur de symbologie pour les couches
   `kind: "feature"` dans `LayersPanel` (aujourd'hui `null` faute de
-  `collectionId` — décision produit non tranchée) ; Jenks sur le widget carte
-  des apps/dashboards.
+  `collectionId` — décision produit non tranchée). *Jenks sur le widget
+  carte des apps/dashboards résolu par SP-27/Task 19 : le widget délègue
+  désormais toute la compilation de peinture à `MapView`, même pipeline que
+  l'éditeur.*
 - Questions produit ouvertes (comparatif §8) : **Q2** (premiers utilisateurs
   réels — la seule qui puisse réordonner le phasage), Q10 (temps réel), Q11
   (offline).
