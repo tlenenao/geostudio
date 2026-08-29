@@ -39,10 +39,15 @@ const { MapEditorPage } = await import("./MapEditorPage");
 beforeEach(() => {
   mapInstances.length = 0;
   overlayInstances.length = 0;
+  // La couche "feature" de `config` (ci-dessous) déclenche désormais un
+  // fetch de son `url` au montage de LayersPanel (Task 2, SP-28) — MSW
+  // (onUnhandledRequest: "error") ferait échouer ces tests sans ce repli.
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("not mocked in this test")));
 });
 
 afterEach(() => {
   delete document.body.dataset.exportReady;
+  vi.unstubAllGlobals();
 });
 
 const config: MapConfig = {
