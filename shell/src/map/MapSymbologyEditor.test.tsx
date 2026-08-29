@@ -927,6 +927,70 @@ test("« Retirer les icônes » n'efface que l'encodage icône", async () => {
   expect(onChange).toHaveBeenLastCalledWith({ opacity: 60 });
 });
 
+// Fix I3 de la revue finale SP-27 : la suppression d'une icône personnalisée
+// n'avait ni confirmation (elle laisse des références `symbology.icon.mapping`
+// pointer dans le vide sur toute carte qui l'utilisait) ni garde d'erreur
+// (contrairement à son jumeau, l'import, quelques lignes plus bas dans le
+// fichier).
+async function openCustomIconDeleteButton(props: {
+  listCustomIcons: () => Promise<{ id: string; title: string; category: string }[]>;
+  deleteCustomIcon: (id: string) => Promise<void>;
+  onChange: (value: unknown) => void;
+}) {
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={iconValue}
+      onChange={props.onChange}
+      listCustomIcons={props.listCustomIcons}
+      deleteCustomIcon={props.deleteCustomIcon}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Choisir l'icône de ecole" }));
+  await screen.findByRole("img", { name: "Logo" });
+  return screen.getByRole("button", { name: "Supprimer l'icône Logo" });
+}
+
+test("décliner la confirmation de suppression n'appelle pas deleteCustomIcon", async () => {
+  const listCustomIcons = vi
+    .fn()
+    .mockResolvedValue([{ id: "c1", title: "Logo", category: "generic" }]);
+  const deleteCustomIcon = vi.fn().mockResolvedValue(undefined);
+  const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+  const deleteButton = await openCustomIconDeleteButton({
+    listCustomIcons,
+    deleteCustomIcon,
+    onChange: vi.fn(),
+  });
+  await userEvent.click(deleteButton);
+  // La confirmation nomme la conséquence (constat I3 Part B) plutôt qu'une
+  // question générique : sans ce texte, l'auteur clique sans comprendre ce
+  // qu'il risque de casser sur d'autres cartes.
+  expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining("sans avertissement"));
+  expect(deleteCustomIcon).not.toHaveBeenCalled();
+  confirmSpy.mockRestore();
+});
+
+test("un échec de suppression d'icône personnalisée affiche une erreur", async () => {
+  const listCustomIcons = vi
+    .fn()
+    .mockResolvedValue([{ id: "c1", title: "Logo", category: "generic" }]);
+  const deleteCustomIcon = vi.fn().mockRejectedValue(new Error("Icône introuvable (404)"));
+  const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+  const deleteButton = await openCustomIconDeleteButton({
+    listCustomIcons,
+    deleteCustomIcon,
+    onChange: vi.fn(),
+  });
+  await userEvent.click(deleteButton);
+  expect(deleteCustomIcon).toHaveBeenCalledWith("c1");
+  await screen.findByText("Icône introuvable (404)");
+  // L'icône reste listée : la suppression a échoué, l'état ne doit pas
+  // prétendre le contraire.
+  expect(screen.getByRole("img", { name: "Logo" })).toBeInTheDocument();
+  confirmSpy.mockRestore();
+});
+
 test("« Ajouter une étiquette » crée un gabarit vide avec des réglages par défaut", async () => {
   const onChange = vi.fn();
   render(<MapSymbologyEditor {...baseProps} value={undefined} onChange={onChange} />);
