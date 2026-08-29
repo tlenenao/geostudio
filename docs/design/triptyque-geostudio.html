@@ -1,0 +1,1252 @@
+<title>Triptyque GeoStudio</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Archivo+Narrow:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+:root{
+  --paper:#EFF2F1;--sheet:#FBFCFB;--sunk:#E4E9E7;--raise:#FFFFFF;
+  --ink:#0E1A20;--ink2:#3B4C54;--ink3:#6E8087;
+  --rule:#CFD8D6;--rule2:#E2E8E6;
+  --accent:#0B6E77;--accent-soft:#D9EBEC;--accent-ink:#07545B;
+  --revision:#6A4C93;--revision-soft:#EAE3F4;
+  --amber:#8E6410;--amber-soft:#F7EBD1;
+  --crimson:#9A2C45;--crimson-soft:#F7E1E6;
+  --green:#2A6A50;--green-soft:#DDEEE5;
+  --map1:#E8EFEA;--map2:#DCE7E3;--water:#BBD8DC;--road:#FFFFFF;
+  --sh1:0 1px 2px rgba(14,26,32,.07);--sh2:0 2px 6px rgba(14,26,32,.09),0 12px 32px -16px rgba(14,26,32,.28);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0A1316;--sheet:#101A1E;--sunk:#16232A;--raise:#182629;
+  --ink:#E7EEEC;--ink2:#AFC0C2;--ink3:#7C8F94;
+  --rule:#243339;--rule2:#1A272C;
+  --accent:#4FB3BC;--accent-soft:#0F3238;--accent-ink:#7FD2D9;
+  --revision:#AB8FD4;--revision-soft:#241A33;
+  --amber:#D9A441;--amber-soft:#2C2311;
+  --crimson:#E58098;--crimson-soft:#2F161C;
+  --green:#63C295;--green-soft:#11291F;
+  --map1:#16242A;--map2:#1B2C31;--water:#1D3A42;--road:#2C4148;
+  --sh1:0 1px 2px rgba(0,0,0,.5);--sh2:0 2px 6px rgba(0,0,0,.5),0 12px 32px -16px rgba(0,0,0,.8);
+}}
+:root[data-theme="dark"]{
+  --paper:#0A1316;--sheet:#101A1E;--sunk:#16232A;--raise:#182629;
+  --ink:#E7EEEC;--ink2:#AFC0C2;--ink3:#7C8F94;
+  --rule:#243339;--rule2:#1A272C;
+  --accent:#4FB3BC;--accent-soft:#0F3238;--accent-ink:#7FD2D9;
+  --revision:#AB8FD4;--revision-soft:#241A33;
+  --amber:#D9A441;--amber-soft:#2C2311;
+  --crimson:#E58098;--crimson-soft:#2F161C;
+  --green:#63C295;--green-soft:#11291F;
+  --map1:#16242A;--map2:#1B2C31;--water:#1D3A42;--road:#2C4148;
+  --sh1:0 1px 2px rgba(0,0,0,.5);--sh2:0 2px 6px rgba(0,0,0,.5),0 12px 32px -16px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:Archivo,system-ui,sans-serif;font-size:16px;line-height:1.6}
+.wrap{max-width:1260px;margin:0 auto;padding:0 clamp(16px,3.5vw,40px) 90px}
+h1,h2,h3,h4{margin:0;text-wrap:balance}
+.lbl{font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.13em;font-weight:700;font-size:11px;color:var(--ink3)}
+code{font-family:"IBM Plex Mono",monospace;font-size:.85em;background:var(--sunk);padding:.1em .35em;border-radius:2px}
+header.top{border-bottom:1px solid var(--rule);background:
+  linear-gradient(to right,var(--rule2) 1px,transparent 1px) 0 0/34px 34px,
+  linear-gradient(to bottom,var(--rule2) 1px,transparent 1px) 0 0/34px 34px,var(--sheet);margin-bottom:40px}
+header.top .wrap{padding-top:34px;padding-bottom:26px}
+h1{font-size:clamp(28px,4.4vw,46px);font-weight:800;letter-spacing:-.03em;line-height:1.05}
+.dek{font-family:"Source Serif 4",serif;font-size:clamp(16px,1.6vw,19px);color:var(--ink2);max-width:64ch;margin-top:12px}
+section{margin-top:58px}
+.shead{display:flex;align-items:baseline;gap:14px;border-bottom:2px solid var(--ink);padding-bottom:8px}
+.shead h2{font-size:clamp(19px,2.2vw,25px);font-weight:700;letter-spacing:-.02em}
+.shead .lbl{margin-left:auto}
+.intro{font-family:"Source Serif 4",serif;color:var(--ink2);max-width:70ch;margin:16px 0 26px}
+.intro strong{color:var(--ink);font-weight:600}
+
+/* loi */
+.law{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:0;border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:var(--sheet);box-shadow:var(--sh1)}
+.law>div{padding:18px 20px;border-right:1px solid var(--rule2)}
+.law>div:last-child{border-right:0}
+.law h4{font-size:15px;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:9px}
+.law h4 span{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent);border:1px solid var(--accent);border-radius:2px;width:19px;height:19px;display:grid;place-items:center;font-weight:500}
+.law p{margin:9px 0 0;font-family:"Source Serif 4",serif;font-size:14px;color:var(--ink2);line-height:1.55}
+.law em{display:block;margin-top:9px;font-style:normal;font-size:12.5px;color:var(--ink3);border-left:2px solid var(--rule);padding-left:9px}
+
+/* carte du produit */
+.mapt{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px}
+.mapt th{text-align:left;font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.1em;font-size:10px;color:var(--ink3);padding:8px 12px;border-bottom:1px solid var(--ink);white-space:nowrap}
+.mapt td{padding:11px 12px;border-bottom:1px solid var(--rule2);vertical-align:top;color:var(--ink2);font-family:"Source Serif 4",serif;line-height:1.45}
+.mapt td:first-child{font-family:Archivo,sans-serif;font-weight:700;color:var(--ink);white-space:nowrap}
+.mapt tr:hover td{background:var(--sheet)}
+.new{display:inline-block;font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.09em;font-size:9px;font-weight:700;color:var(--crimson);background:var(--crimson-soft);border:1px solid var(--crimson);border-radius:2px;padding:1px 5px;margin-left:5px;vertical-align:1px}
+.tw{overflow-x:auto}
+
+/* blocs maquette */
+.mock{margin-top:30px;border:1px solid var(--rule);border-radius:5px;background:var(--sheet);overflow:hidden;box-shadow:var(--sh2)}
+.mock>.mh{display:flex;align-items:flex-start;gap:13px;padding:15px 18px;border-bottom:1px solid var(--rule)}
+.mock>.mh .k{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent);border:1px solid var(--accent);border-radius:2px;padding:2px 6px;font-weight:500;white-space:nowrap;margin-top:2px}
+.mock>.mh h3{font-size:17.5px;font-weight:800;letter-spacing:-.02em}
+.mock>.mh p{margin:4px 0 0;font-family:"Source Serif 4",serif;font-size:14px;color:var(--ink2);max-width:78ch}
+.stage{padding:18px;background:var(--sunk);overflow-x:auto}
+.note{padding:12px 18px;border-top:1px solid var(--rule);font-family:"Source Serif 4",serif;font-size:13.5px;color:var(--ink2)}
+.note b{font-family:Archivo,sans-serif;font-weight:700;color:var(--ink);font-size:12.5px}
+
+/* ==== chrome applicatif ==== */
+.app{width:920px;min-width:920px;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;display:flex;flex-direction:column;overflow:hidden;font-size:11px;box-shadow:var(--sh1)}
+.tbar{height:34px;flex:0 0 34px;display:flex;align-items:center;gap:10px;padding:0 10px;border-bottom:1px solid var(--rule);background:var(--raise)}
+.brand{display:flex;align-items:center;gap:6px;font-weight:800;letter-spacing:-.02em;font-size:12px}
+.brand .glyph{width:16px;height:16px;border-radius:3px;background:var(--accent);position:relative}
+.brand .glyph::after{content:"";position:absolute;top:4px;right:4px;width:4px;height:4px;border-radius:50%;background:var(--sheet)}
+.omni{flex:1;max-width:330px;margin:0 auto;height:21px;border:1px solid var(--rule);border-radius:11px;background:var(--sunk);display:flex;align-items:center;gap:6px;padding:0 9px;color:var(--ink3);font-size:10px}
+.omni kbd{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:9px;border:1px solid var(--rule);border-radius:3px;padding:0 3px;background:var(--sheet)}
+.av{width:19px;height:19px;border-radius:50%;background:var(--revision-soft);border:1px solid var(--revision);color:var(--revision);display:grid;place-items:center;font-size:8.5px;font-weight:700}
+.dbar{height:27px;flex:0 0 27px;display:flex;align-items:stretch;gap:0;padding:0 10px;border-bottom:1px solid var(--rule);background:var(--sheet)}
+.dbar a{display:flex;align-items:center;padding:0 10px;font-size:10.5px;color:var(--ink3);text-decoration:none;font-weight:500;white-space:nowrap}
+.dbar a.on{color:var(--accent);font-weight:700;box-shadow:inset 0 -2px 0 var(--accent)}
+.dbar .r{margin-left:auto;display:flex}
+.body{flex:1;display:flex;min-height:0}
+/* volets */
+.v{display:flex;flex-direction:column;min-width:0;background:var(--sheet)}
+.v1{width:214px;flex:0 0 214px;border-right:1px solid var(--rule)}
+.v2{flex:1}
+.v3{width:238px;flex:0 0 238px;border-left:1px solid var(--rule)}
+.vh{height:26px;flex:0 0 26px;display:flex;align-items:stretch;border-bottom:1px solid var(--rule2);background:var(--sheet)}
+.vh .t{display:flex;align-items:center;padding:0 9px;font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.1em;font-size:9.5px;font-weight:700;color:var(--ink3);white-space:nowrap}
+.vh .t.on{color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
+.vh .t.cat{gap:4px}
+.vh .sp{flex:1}
+.vh .ic{display:grid;place-items:center;width:24px;color:var(--ink3)}
+.vb{flex:1;padding:8px;overflow:hidden;display:flex;flex-direction:column;gap:7px}
+.vb.p0{padding:0}
+.srch{height:22px;border:1px solid var(--rule);border-radius:3px;background:var(--sunk);display:flex;align-items:center;gap:5px;padding:0 7px;color:var(--ink3);font-size:10px;flex:0 0 auto}
+.srch .ai{margin-left:auto;font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.08em;font-size:8px;font-weight:700;color:var(--revision);background:var(--revision-soft);border:1px solid var(--revision);border-radius:2px;padding:0 4px}
+.grp{font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.11em;font-size:9px;font-weight:700;color:var(--ink3);margin:4px 0 2px}
+.fac{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--ink2);padding:1.5px 0}
+.fac .cb{width:11px;height:11px;border:1px solid var(--rule);border-radius:2px;background:var(--raise);flex:0 0 11px;position:relative}
+.fac .cb.on{background:var(--accent);border-color:var(--accent)}
+.fac .cb.on::after{content:"";position:absolute;left:3px;top:1px;width:3px;height:6px;border:solid #fff;border-width:0 1.5px 1.5px 0;transform:rotate(42deg)}
+.fac .n{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:9px;color:var(--ink3)}
+.tree{display:flex;flex-direction:column;gap:1px}
+.tree a{display:flex;align-items:center;gap:6px;padding:3.5px 6px;border-radius:3px;color:var(--ink2);text-decoration:none;font-size:10.5px;white-space:nowrap;overflow:hidden}
+.tree a.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+.tree a .n{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:9px;color:var(--ink3)}
+.tree a.ind{padding-left:18px}
+/* barre d'outils du volet central */
+.v2h{height:28px;flex:0 0 28px;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--rule2);background:var(--sheet)}
+.v2h .ttl{font-weight:700;font-size:11.5px;letter-spacing:-.01em}
+.v2h .cnt{font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--ink3)}
+.vsw{display:flex;border:1px solid var(--rule);border-radius:3px;overflow:hidden;margin-left:auto}
+.vsw span{width:24px;height:19px;display:grid;place-items:center;color:var(--ink3);border-right:1px solid var(--rule)}
+.vsw span:last-child{border-right:0}
+.vsw span.on{background:var(--accent);color:#fff}
+.mini{height:19px;border:1px solid var(--rule);border-radius:3px;background:var(--raise);display:flex;align-items:center;gap:4px;padding:0 7px;font-size:9.5px;color:var(--ink2)}
+.mini::after{content:"▾";color:var(--ink3)}
+/* tables */
+.tbl{width:100%;border-collapse:collapse;font-size:10px}
+.tbl th{text-align:left;font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.09em;font-size:8.5px;color:var(--ink3);padding:5px 9px;border-bottom:1px solid var(--rule);background:var(--sheet);font-weight:700;position:sticky;top:0}
+.tbl td{padding:5.5px 9px;border-bottom:1px solid var(--rule2);color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tbl tr.on td{background:var(--accent-soft);color:var(--accent-ink)}
+.tbl td.ttl{color:var(--ink);font-weight:600}
+.tbl td.num{font-family:"IBM Plex Mono",monospace;font-size:9.5px;text-align:right}
+.tbl td.mono{font-family:"IBM Plex Mono",monospace;font-size:9.5px}
+.ty{display:inline-flex;align-items:center;gap:5px;color:var(--ink3);font-size:9.5px}
+.st{display:inline-flex;align-items:center;gap:5px;font-size:9.5px}
+.st i{width:6px;height:6px;border-radius:50%;display:block}
+.st.ok i{background:var(--green)} .st.ok{color:var(--green)}
+.st.wa i{background:var(--amber)} .st.wa{color:var(--amber)}
+.st.er i{background:var(--crimson)} .st.er{color:var(--crimson)}
+.st.nu i{background:var(--ink3)} .st.nu{color:var(--ink3)}
+.prog{width:60px;height:5px;border-radius:3px;background:var(--rule);overflow:hidden;display:inline-block;vertical-align:middle}
+.prog i{display:block;height:100%;background:var(--accent)}
+/* inspecteur */
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:10px}
+.kv dt{color:var(--ink3);white-space:nowrap}
+.kv dd{margin:0;color:var(--ink);text-align:right;font-family:"IBM Plex Mono",monospace;font-size:9.5px;overflow:hidden;text-overflow:ellipsis}
+.isec{border-top:1px solid var(--rule2);padding-top:8px}
+.isec .h{display:flex;align-items:center;font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.11em;font-size:9px;font-weight:700;color:var(--ink3);margin-bottom:6px}
+.isec .h::after{content:"▾";margin-left:auto;font-size:9px}
+.fld{display:flex;flex-direction:column;gap:3px}
+.fld label{font-size:9.5px;color:var(--ink3);font-weight:600}
+.ctl{height:22px;border:1px solid var(--rule);border-radius:3px;background:var(--raise);display:flex;align-items:center;padding:0 7px;font-size:10px;color:var(--ink);gap:6px}
+.ctl.sel::after{content:"▾";margin-left:auto;color:var(--ink3)}
+.ctl.ta{height:auto;padding:5px 7px;font-family:"IBM Plex Mono",monospace;font-size:9.5px;line-height:1.5;display:block;color:var(--ink2)}
+.seg{display:flex;border:1px solid var(--rule);border-radius:3px;overflow:hidden}
+.seg span{flex:1;text-align:center;padding:3px 0;font-size:9.5px;color:var(--ink3)}
+.seg span.on{background:var(--accent);color:#fff;font-weight:600}
+.ramp{display:flex;height:15px;border-radius:3px;overflow:hidden;border:1px solid var(--rule)}
+.ramp i{flex:1}
+.sw2{display:flex;gap:5px}
+.sw2 i{width:22px;height:22px;border-radius:3px;border:1px solid var(--rule);display:block}
+.slider{height:15px;display:flex;align-items:center}
+.slider .track{flex:1;height:3px;border-radius:2px;background:var(--rule);position:relative}
+.slider .track::after{content:"";position:absolute;left:0;top:0;bottom:0;width:70%;background:var(--accent);border-radius:2px}
+.slider .knob{width:11px;height:11px;border-radius:50%;background:var(--raise);border:2px solid var(--accent);margin-left:-6px;position:relative;left:70%}
+.acts{display:flex;flex-wrap:wrap;gap:5px}
+.btn{height:22px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;padding:0 9px;font-size:10px;font-weight:600;gap:5px}
+.btn.p{background:var(--accent);color:#fff}
+.btn.s{border:1px solid var(--rule);background:var(--raise);color:var(--ink2)}
+.btn.d{border:1px solid var(--crimson);background:transparent;color:var(--crimson)}
+.btn.f{flex:1}
+.thumb{height:66px;border-radius:3px;border:1px solid var(--rule);overflow:hidden;position:relative;background:var(--map1)}
+.thumb svg{position:absolute;inset:0;width:100%;height:100%}
+/* canvas carte */
+.canvas{flex:1;position:relative;min-width:0;background:var(--map1);overflow:hidden}
+.canvas svg.map{position:absolute;inset:0;width:100%;height:100%}
+.float{position:absolute;background:var(--raise);border:1px solid var(--rule);border-radius:4px;box-shadow:var(--sh1)}
+.float.tools{top:8px;right:8px;display:flex;flex-direction:column;padding:3px;gap:2px}
+.float.tools i{width:22px;height:22px;border-radius:3px;display:grid;place-items:center;color:var(--ink2)}
+.float.tools i.on{background:var(--accent-soft);color:var(--accent)}
+.float.scale{bottom:8px;left:8px;padding:3px 7px;font-family:"IBM Plex Mono",monospace;font-size:9px;color:var(--ink2)}
+.float.legend{bottom:8px;right:8px;padding:6px 8px;display:flex;flex-direction:column;gap:3px;font-size:9px;color:var(--ink2)}
+.float.legend b{font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.1em;font-size:8.5px;color:var(--ink3);font-weight:700}
+.float.legend span{display:flex;align-items:center;gap:5px}
+.float.legend em{width:9px;height:9px;border-radius:2px;display:block}
+/* statut */
+.statusbar{height:21px;flex:0 0 21px;border-top:1px solid var(--rule);background:var(--raise);display:flex;align-items:center;gap:13px;padding:0 10px;font-family:"IBM Plex Mono",monospace;font-size:9px;color:var(--ink3)}
+.statusbar .job{display:flex;align-items:center;gap:5px;color:var(--accent-ink)}
+.statusbar .job .d{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--accent);border-top-color:transparent}
+.statusbar .r{margin-left:auto}
+/* DAG */
+.dag{flex:1;position:relative;background:
+  radial-gradient(circle,var(--rule2) 1px,transparent 1px) 0 0/13px 13px,var(--paper);overflow:hidden}
+.node{position:absolute;background:var(--raise);border:1px solid var(--rule);border-radius:4px;padding:6px 8px;min-width:96px;box-shadow:var(--sh1)}
+.node.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft),var(--sh1)}
+.node b{display:block;font-size:10px;font-weight:700}
+.node small{display:block;font-family:"IBM Plex Mono",monospace;font-size:8.5px;color:var(--ink3);margin-top:1px}
+.node .p{position:absolute;width:6px;height:6px;border-radius:50%;background:var(--sheet);border:1.5px solid var(--ink3);top:50%;margin-top:-3px}
+.node .p.l{left:-4px}.node .p.r{right:-4px}
+/* SQL */
+.sql{flex:1;display:flex;flex-direction:column;min-height:0}
+.sqled{flex:0 0 118px;background:var(--raise);border-bottom:1px solid var(--rule);padding:9px 11px;font-family:"IBM Plex Mono",monospace;font-size:10px;line-height:1.75;color:var(--ink2);overflow:hidden}
+.sqled .kw{color:var(--revision);font-weight:500}
+.sqled .fn{color:var(--accent-ink)}
+.sqled .str{color:var(--green)}
+.sqled .cm{color:var(--ink3)}
+.sqlres{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.sqlbar{height:24px;flex:0 0 24px;display:flex;align-items:center;gap:9px;padding:0 10px;border-bottom:1px solid var(--rule2);font-family:"IBM Plex Mono",monospace;font-size:9px;color:var(--ink3)}
+/* form paramétrage */
+.form{flex:1;padding:14px 18px;overflow:hidden;display:flex;flex-direction:column;gap:12px}
+.form h5{font-size:12.5px;font-weight:800;letter-spacing:-.01em;margin:0}
+.form .sub{font-size:10px;color:var(--ink3);margin:-8px 0 0}
+.frow{display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:center;padding:7px 0;border-bottom:1px solid var(--rule2)}
+.frow .lb{font-size:10.5px;font-weight:600}
+.frow .lb small{display:block;font-weight:400;color:var(--ink3);font-size:9.5px;margin-top:1px}
+.tgl{width:30px;height:17px;border-radius:9px;background:var(--rule);position:relative;flex:0 0 30px}
+.tgl.on{background:var(--accent)}
+.tgl::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff}
+.tgl.on::after{left:15px}
+/* mobile */
+.phones{display:flex;gap:16px;overflow-x:auto;padding:18px;background:var(--sunk)}
+.phone{width:238px;flex:0 0 238px;height:440px;background:var(--sheet);border:1px solid var(--rule);border-radius:16px;display:flex;flex-direction:column;overflow:hidden;font-size:11px;box-shadow:var(--sh1)}
+.mtop{height:36px;flex:0 0 36px;display:flex;align-items:center;gap:8px;padding:0 11px;border-bottom:1px solid var(--rule);background:var(--raise);font-weight:700;font-size:11.5px}
+.mtabs{height:30px;flex:0 0 30px;display:flex;border-bottom:1px solid var(--rule);background:var(--raise)}
+.mtabs span{flex:1;display:grid;place-items:center;font-size:9.5px;color:var(--ink3);font-weight:600}
+.mtabs span.on{color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
+.mnav{height:44px;flex:0 0 44px;display:flex;border-top:1px solid var(--rule);background:var(--raise)}
+.mnav span{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:8.5px;color:var(--ink3)}
+.mnav span.on{color:var(--accent)}
+.mcard{background:var(--sheet);border:1px solid var(--rule);border-radius:5px;padding:8px 9px}
+.mcard.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.mcard b{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700}
+.mcard small{display:block;font-size:9px;color:var(--ink3);margin-top:2px;font-family:"IBM Plex Mono",monospace}
+.capt{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink3);text-align:center;padding:0 0 14px}
+svg.i{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+svg.i.sm{width:11px;height:11px}
+svg.i.xs{width:10px;height:10px}
+/* ==== droits ==== */
+.doct{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:0;border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:var(--sheet);box-shadow:var(--sh1)}
+.doct>div{padding:16px 18px;border-right:1px solid var(--rule2)}
+.doct>div:last-child{border-right:0}
+.doct h4{font-size:14.5px;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+.doct h4 i{width:9px;height:9px;border-radius:2px;display:block;flex:0 0 9px}
+.doct p{margin:8px 0 0;font-family:"Source Serif 4",serif;font-size:13.5px;color:var(--ink2);line-height:1.5}
+.doct .r{display:block;margin-top:9px;font-size:11.5px;color:var(--ink3);border-left:2px solid var(--rule);padding-left:9px;font-family:Archivo,sans-serif}
+.flow{display:flex;align-items:stretch;gap:0;margin-top:8px;border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:var(--sheet);flex-wrap:wrap}
+.flow>div{flex:1;min-width:200px;padding:14px 16px;border-right:1px solid var(--rule2);position:relative}
+.flow>div:last-child{border-right:0}
+.flow .n{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--accent);border:1px solid var(--accent);border-radius:2px;padding:1px 5px;display:inline-block;margin-bottom:7px}
+.flow b{display:block;font-size:13px;font-weight:700;letter-spacing:-.01em}
+.flow code{display:block;margin-top:6px;font-size:10.5px;background:var(--sunk);padding:6px 8px;border-radius:3px;color:var(--ink2);line-height:1.6;white-space:pre-wrap}
+.flow p{margin:7px 0 0;font-family:"Source Serif 4",serif;font-size:12.5px;color:var(--ink3);line-height:1.45}
+.strips{display:flex;flex-direction:column;gap:12px;margin-top:8px}
+.strip{border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:var(--sheet);box-shadow:var(--sh1)}
+.strip .pl{display:flex;align-items:center;gap:9px;padding:8px 12px;border-bottom:1px solid var(--rule2);background:var(--sunk)}
+.strip .pl b{font-size:12px;font-weight:800;letter-spacing:-.01em}
+.strip .pl small{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink3)}
+.strip .pl .cnt{margin-left:auto;font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.1em;font-size:9.5px;font-weight:700;color:var(--ink3)}
+.strip .dbar{border-bottom:0;overflow-x:auto}
+.insp3{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:14px;margin-top:8px}
+.insp3 .c{border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:var(--sheet);box-shadow:var(--sh1);display:flex;flex-direction:column}
+.insp3 .c>.t{display:flex;align-items:center;gap:8px;padding:8px 11px;border-bottom:1px solid var(--rule2);background:var(--sunk)}
+.insp3 .c>.t b{font-size:11.5px;font-weight:800}
+.insp3 .c>.t small{font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--ink3);margin-left:auto}
+.insp3 .v3{width:auto;flex:1;border-left:0}
+.lockrow{display:flex;align-items:center;gap:6px;font-size:9.5px;color:var(--ink3);background:var(--sunk);border:1px dashed var(--rule);border-radius:3px;padding:5px 7px;line-height:1.35}
+.btn.lk{border:1px solid var(--rule);background:var(--sunk);color:var(--ink3);opacity:.75}
+.banner{display:flex;align-items:center;gap:8px;padding:5px 10px;font-size:10px;background:var(--amber-soft);color:var(--amber);border-bottom:1px solid var(--amber)}
+.banner.info{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent)}
+.mtx{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+.mtx th{text-align:left;font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.1em;font-size:10px;color:var(--ink3);padding:8px 10px;border-bottom:1px solid var(--ink);white-space:nowrap}
+.mtx th:not(:first-child){text-align:center}
+.mtx td{padding:8px 10px;border-bottom:1px solid var(--rule2);color:var(--ink2);text-align:center;white-space:nowrap}
+.mtx td:first-child{text-align:left;font-family:Archivo,sans-serif;font-weight:700;color:var(--ink)}
+.mtx .y{color:var(--green);font-weight:700}
+.mtx .n{color:var(--ink3)}
+.mtx .l{color:var(--amber);font-weight:700}
+.mtx tr:hover td{background:var(--sheet)}
+
+footer{margin-top:62px;padding-top:18px;border-top:1px solid var(--rule);color:var(--ink3);font-size:13px;font-family:"Source Serif 4",serif}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+
+<header class="top"><div class="wrap">
+  <p class="lbl">Socle B, affiné · neuf domaines, un seul gabarit</p>
+  <h1>Triptyque GeoStudio</h1>
+  <p class="dek">Un gabarit unique — parcourir, travailler, inspecter — appliqué sans exception à la totalité du produit : catalogue, cartes, données, apps, automatisation, analytique, tâches, administration, paramètres. Le catalogue promu colonne vertébrale, présent dans le volet gauche de chaque écran. Et un gabarit qui s'adapte à deux choses avant tout : <strong>les droits de la personne</strong>, puis la largeur de son écran.</p>
+</div></header>
+
+<div class="wrap">
+
+<section>
+  <div class="shead"><h2>La loi</h2><span class="lbl">Trois volets, aucune exception</span></div>
+  <p class="intro">La faiblesse du triptyque, relevée quand je te l'ai proposé, c'était le volet droit vide sur les écrans qui n'ont rien à inspecter. La règle ci-dessous la supprime : <strong>l'inspecteur n'est jamais vide</strong>, parce qu'en l'absence de sélection il inspecte l'objet courant lui-même. C'est ce qui rend la loi applicable à SQL Lab, au journal d'audit et aux paramètres.</p>
+  <div class="law">
+    <div><h4><span>1</span>Parcourir</h4>
+      <p>Le navigateur. Deux onglets courts : <strong>la source locale</strong> — couches, étapes, schémas, utilisateurs — et <strong>le Catalogue</strong>, toujours accessible, jamais à plus d'un clic. Recherche en tête, facettes en dessous.</p>
+      <em>Repliable en un raccourci. Sur écran étroit, devient un onglet.</em></div>
+    <div><h4><span>2</span>Travailler</h4>
+      <p>La surface propre à l'objet : une carte, un canevas d'app, un graphe de pipeline, un éditeur SQL, un tableau, un formulaire. C'est le seul volet dont la nature change d'un écran à l'autre.</p>
+      <em>Toujours le plus large. Aucune barre d'outils flottante ailleurs qu'ici.</em></div>
+    <div><h4><span>3</span>Inspecter</h4>
+      <p>La sélection courante — une couche, un widget, une ligne, un nœud, une colonne de résultat. <strong>Sans sélection : l'objet lui-même</strong>, ses métadonnées, ses partages, ses versions, son lignage.</p>
+      <em>Un seul conteneur de configuration dans tout le produit. Zéro boîte de dialogue.</em></div>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><h2>La carte du produit</h2><span class="lbl">Absolument tout</span></div>
+  <p class="intro">Neuf domaines dans la barre supérieure, et pour chacun ce que contiennent les trois volets. Les mentions <span class="new">nouveau</span> désignent les surfaces qui n'ont aujourd'hui <strong>aucun écran</strong> et qui entrent au périmètre.</p>
+  <div class="tw"><table class="mapt">
+    <thead><tr><th>Domaine</th><th>Parcourir</th><th>Travailler</th><th>Inspecter</th></tr></thead>
+    <tbody>
+      <tr><td>Catalogue</td>
+        <td>Recherche texte et sémantique<span class="new">nouveau</span>, facettes sur les 12 types, portée, collection, propriétaire, date, source</td>
+        <td>Grille · Tableau · Carte<span class="new">nouveau</span> · Lignage<span class="new">nouveau</span> — tri, sélection multiple, actions groupées</td>
+        <td>Fiche complète : miniature, métadonnées, partages, versions, objets liés, actions</td></tr>
+      <tr><td>Cartes</td>
+        <td>Couches · Catalogue — ajout d'une couche sans quitter l'écran</td>
+        <td>Carte plein volet, mesure, croquis, fond de carte, terrain, tuiles 3D</td>
+        <td>Symbologie, étiquettes, popup, opacité, contour, icônes</td></tr>
+      <tr><td>Données</td>
+        <td>Collections · Catalogue — schéma des champs dépliable</td>
+        <td>Table des entités, aperçu carte, requête visuelle, imports</td>
+        <td>Champ sélectionné : type, valeurs distinctes, nulls, RLS, `canWrite`</td></tr>
+      <tr><td>Apps &amp; sites</td>
+        <td>Structure des pages · Palette de widgets · Catalogue</td>
+        <td>Canevas d'app en édition, aperçu, mode narratif, pages du site</td>
+        <td>Propriétés du widget, liaisons CEL, variables, thème, impression, export</td></tr>
+      <tr><td>Automatisation</td>
+        <td>Étapes du pipeline · Catalogue · Connecteurs</td>
+        <td>Graphe DAG, planification cron, règles d'alerte, rapports planifiés</td>
+        <td>Nœud sélectionné : paramètres, aperçu de sortie, secrets utilisés<span class="new">nouveau</span></td></tr>
+      <tr><td>Analytique</td>
+        <td>Schémas et tables · Vues enregistrées · Catalogue</td>
+        <td>SQL Lab, requête visuelle, agrégats, cross-filter</td>
+        <td>Colonne de résultat : distribution, type, nulls — ou la requête elle-même</td></tr>
+      <tr><td>Tâches<span class="new">nouveau</span></td>
+        <td>Filtres : en cours, en échec, terminées, par type, par objet</td>
+        <td>File d'exécution : imports, moissonnages, pipelines, exports, rapports</td>
+        <td>Tâche sélectionnée : objet lié, durée, tentatives, journal, relance</td></tr>
+      <tr><td>Administration<span class="new">nouveau</span></td>
+        <td>Sections : utilisateurs, groupes, collections, extensions, moissonnage, audit</td>
+        <td>Tableau de la section, journal d'audit filtrable, sources moissonnées</td>
+        <td>Entrée sélectionnée : rôles, appartenances, ou le diff d'une écriture auditée</td></tr>
+      <tr><td>Paramètres<span class="new">nouveau</span></td>
+        <td>Instance, marque &amp; thème, apparence, langue, capacités, sauvegarde</td>
+        <td>Formulaire de la section — un seul écran par sujet, pas de dialogue</td>
+        <td>Aperçu en direct, et la liste de ce que le réglage affecte</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <div class="shead"><h2>Le catalogue, colonne vertébrale</h2><span class="lbl">Écran clé</span></div>
+  <p class="intro">Le catalogue n'est plus une page d'accueil qu'on quitte : c'est <strong>le second onglet du volet gauche de chaque écran du produit</strong>. On ajoute une couche à une carte, une source à un pipeline, un dataset à un widget — sans jamais changer d'écran. Sa forme pleine, ci-dessous, est l'écran par lequel on navigue dans les douze types d'items.</p>
+
+  <div class="mock">
+    <div class="mh"><span class="k">Domaine · Catalogue</span>
+      <div><h3>Naviguer dans les douze types</h3>
+      <p>Recherche sémantique (SP-7, aujourd'hui sans interface), facettes sur les douze types, quatre vues — grille, tableau, <strong>carte</strong> pour situer les items géographiquement, <strong>lignage</strong> pour remonter d'une app jusqu'à la donnée source. Sélection multiple et actions groupées.</p></div>
+    </div>
+    <div class="stage">
+      <div class="app">
+        <div class="tbar"><span class="brand"><span class="glyph"></span>GeoStudio</span>
+          <span class="omni"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Rechercher ou lancer une action<kbd>⌘K</kbd></span>
+          <span class="av">TL</span></div>
+        <div class="dbar">
+          <a class="on">Catalogue</a><a>Cartes</a><a>Données</a><a>Apps &amp; sites</a><a>Automatisation</a><a>Analytique</a><a>Tâches</a>
+          <span class="r"><a>Administration</a><a>Paramètres</a></span>
+        </div>
+        <div class="body" style="height:410px">
+          <div class="v v1">
+            <div class="vh"><span class="t on">Parcourir</span><span class="sp"></span><span class="ic"><svg class="i sm" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></span></div>
+            <div class="vb">
+              <div class="srch"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>réseau eau potable<span class="ai">sémantique</span></div>
+              <div>
+                <div class="grp">Type · 12</div>
+                <div class="fac"><span class="cb on"></span>Carte<span class="n">8</span></div>
+                <div class="fac"><span class="cb on"></span>Dataset<span class="n">23</span></div>
+                <div class="fac"><span class="cb"></span>App<span class="n">5</span></div>
+                <div class="fac"><span class="cb"></span>Dashboard<span class="n">3</span></div>
+                <div class="fac"><span class="cb"></span>Site<span class="n">2</span></div>
+                <div class="fac"><span class="cb"></span>Pipeline<span class="n">7</span></div>
+                <div class="fac"><span class="cb"></span>Vue enregistrée<span class="n">11</span></div>
+                <div class="fac"><span class="cb"></span>Alerte<span class="n">4</span></div>
+                <div class="fac"><span class="cb"></span>Rapport<span class="n">2</span></div>
+                <div class="fac"><span class="cb"></span>Tuiles 3D<span class="n">1</span></div>
+                <div class="fac"><span class="cb"></span>Terrain 3D<span class="n">1</span></div>
+                <div class="fac"><span class="cb"></span>Externe<span class="n">312</span></div>
+              </div>
+              <div>
+                <div class="grp">Portée</div>
+                <div class="fac"><span class="cb on"></span>Mes éléments<span class="n">31</span></div>
+                <div class="fac"><span class="cb"></span>Partagés avec moi<span class="n">14</span></div>
+                <div class="fac"><span class="cb"></span>Publics<span class="n">23</span></div>
+              </div>
+              <div>
+                <div class="grp">Collection</div>
+                <div class="fac"><span class="cb"></span>eau_potable<span class="n">12</span></div>
+                <div class="fac"><span class="cb"></span>voirie<span class="n">9</span></div>
+                <div class="fac"><span class="cb"></span>urbanisme<span class="n">6</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="v v2">
+            <div class="v2h"><span class="ttl">Catalogue</span><span class="cnt">68 éléments · 2 sélectionnés</span>
+              <span class="mini">Modifié récemment</span>
+              <span class="vsw">
+                <span><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span>
+                <span class="on"><svg class="i xs" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg></span>
+                <span><svg class="i xs" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/></svg></span>
+                <span><svg class="i xs" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="12" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8.5 7 15.5 11M8.5 17 15.5 13"/></svg></span>
+              </span>
+            </div>
+            <div class="vb p0" style="overflow:hidden">
+              <table class="tbl">
+                <thead><tr><th style="width:16px"></th><th>Titre</th><th>Type</th><th>Propriétaire</th><th>Modifié</th><th>Partage</th><th style="text-align:right">Entités</th></tr></thead>
+                <tbody>
+                  <tr class="on"><td><span class="fac"><span class="cb on"></span></span></td><td class="ttl">Réseau d'eau potable</td><td><span class="ty"><svg class="i xs" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/></svg>Carte</span></td><td>tanguy</td><td class="mono">il y a 2 h</td><td><span class="st ok"><i></i>2 groupes</span></td><td class="num">4 326</td></tr>
+                  <tr><td><span class="fac"><span class="cb on"></span></span></td><td class="ttl">Conduites AEP 2026</td><td><span class="ty"><svg class="i xs" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg>Dataset</span></td><td>tanguy</td><td class="mono">hier</td><td><span class="st nu"><i></i>Privé</span></td><td class="num">4 326</td></tr>
+                  <tr><td><span class="fac"><span class="cb"></span></span></td><td class="ttl">Points de captage</td><td><span class="ty"><svg class="i xs" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg>Dataset</span></td><td>m.durand</td><td class="mono">il y a 3 j</td><td><span class="st ok"><i></i>Public</span></td><td class="num">87</td></tr>
+                  <tr><td><span class="fac"><span class="cb"></span></span></td><td class="ttl">Portail eau — grand public</td><td><span class="ty"><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>Site</span></td><td>tanguy</td><td class="mono">il y a 5 j</td><td><span class="st ok"><i></i>Public</span></td><td class="num">—</td></tr>
+                  <tr><td><span class="fac"><span class="cb"></span></span></td><td class="ttl">Import IGN — BD TOPO</td><td><span class="ty"><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="15" width="6" height="5" rx="1"/><path d="M9 6.5h6M9 6.5v11h6"/></svg>Pipeline</span></td><td>tanguy</td><td class="mono">il y a 6 j</td><td><span class="st nu"><i></i>Privé</span></td><td class="num">—</td></tr>
+                  <tr><td><span class="fac"><span class="cb"></span></span></td><td class="ttl">Casses réseau &gt; 5 / mois</td><td><span class="ty"><svg class="i xs" viewBox="0 0 24 24"><path d="M10.3 3.6 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>Alerte</span></td><td>m.durand</td><td class="mono">il y a 8 j</td><td><span class="st wa"><i></i>Déclenchée</span></td><td class="num">—</td></tr>
+                  <tr><td><span class="fac"><span class="cb"></span></span></td><td class="ttl">Bilan mensuel AEP</td><td><span class="ty"><svg class="i xs" viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/></svg>Rapport</span></td><td>tanguy</td><td class="mono">il y a 9 j</td><td><span class="st ok"><i></i>1 groupe</span></td><td class="num">—</td></tr>
+                  <tr><td><span class="fac"><span class="cb"></span></span></td><td class="ttl">Maillage 3D — bourg</td><td><span class="ty"><svg class="i xs" viewBox="0 0 24 24"><path d="m12 2 9 5v10l-9 5-9-5V7z"/><path d="M12 12 21 7M12 12v10M12 12 3 7"/></svg>Tuiles 3D</span></td><td>tanguy</td><td class="mono">il y a 12 j</td><td><span class="st nu"><i></i>Privé</span></td><td class="num">—</td></tr>
+                  <tr><td><span class="fac"><span class="cb"></span></span></td><td class="ttl">Géoservices IGN — WFS</td><td><span class="ty"><svg class="i xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>Externe</span></td><td>moissonné</td><td class="mono">il y a 14 j</td><td><span class="st ok"><i></i>Public</span></td><td class="num">—</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="v v3">
+            <div class="vh"><span class="t on">Inspecter</span><span class="sp"></span><span class="ic"><svg class="i sm" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span></div>
+            <div class="vb">
+              <div class="thumb"><svg viewBox="0 0 220 100" preserveAspectRatio="none">
+                <rect width="220" height="100" fill="var(--map1)"/>
+                <g stroke="var(--water)" stroke-width="5" fill="none"><path d="M-5 40c40 18 60-6 100 12s60 20 130 4"/></g>
+                <g stroke="var(--road)" stroke-width="2" fill="none"><path d="M30 100V52l30-22h60l38 28v42"/><path d="M20 74h180"/></g>
+                <g stroke="var(--accent)" stroke-width="2" fill="none"><path d="M14 94c30-30 55-20 80-46s60-22 116-14"/></g>
+                <circle cx="94" cy="48" r="4" fill="var(--accent)" stroke="var(--sheet)" stroke-width="1.6"/>
+              </svg></div>
+              <div style="font-size:12px;font-weight:800;letter-spacing:-.01em">Réseau d'eau potable</div>
+              <dl class="kv">
+                <dt>Type</dt><dd>Carte</dd>
+                <dt>Propriétaire</dt><dd>tanguy</dd>
+                <dt>Collection</dt><dd>eau_potable</dd>
+                <dt>Entités</dt><dd>4 326</dd>
+                <dt>Projection</dt><dd>EPSG:2154</dd>
+                <dt>Modifié</dt><dd>il y a 2 h</dd>
+                <dt>Version</dt><dd>v12</dd>
+              </dl>
+              <div class="isec"><div class="h">Partage</div>
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:10px;color:var(--ink2)">
+                  <span class="st ok"><i></i>SIG — lecture &amp; écriture</span>
+                  <span class="st ok"><i></i>Services techniques — lecture</span>
+                </div>
+              </div>
+              <div class="isec"><div class="h">Lignage — 3 objets</div>
+                <div class="tree">
+                  <a><svg class="i xs" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg>Conduites AEP 2026</a>
+                  <a class="ind"><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="15" width="6" height="5" rx="1"/><path d="M9 6.5h6M9 6.5v11h6"/></svg>Import IGN</a>
+                  <a><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>Portail eau</a>
+                </div>
+              </div>
+              <div class="acts" style="margin-top:auto">
+                <span class="btn p f">Ouvrir</span><span class="btn s">Partager</span><span class="btn s">Exporter</span><span class="btn s">Dupliquer</span><span class="btn d">Supprimer</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="statusbar"><span class="job"><span class="d"></span>Moissonnage IGN — 62 %</span><span>2 tâches en file</span><span class="r">v0.1.0 · corrèze</span></div>
+      </div>
+    </div>
+    <div class="note"><b>À noter —</b> les quatre vues du commutateur en haut à droite sont le même jeu de données : la vue <em>Carte</em> situe les items ayant une emprise, la vue <em>Lignage</em> affiche le graphe donnée → pipeline → dataset → carte → app. C'est la seule concession faite à la direction « toile infinie » : elle devient une vue du catalogue, pas un socle.</div>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><h2>Le même gabarit, huit fois</h2><span class="lbl">La preuve</span></div>
+  <p class="intro">Chaque écran ci-dessous a <strong>exactement la même ossature</strong> : deux onglets à gauche dont le Catalogue, une surface au centre, un inspecteur à droite qui n'est jamais vide. Seul le volet central change de nature.</p>
+
+  <!-- CARTE -->
+  <div class="mock">
+    <div class="mh"><span class="k">Domaine · Cartes</span><div><h3>Éditeur de carte</h3>
+      <p>Le volet gauche bascule entre les couches et le catalogue : ajouter une couche, c'est cliquer sur <em>Catalogue</em>, filtrer, glisser. L'inspecteur porte toute la symbologie SP-25/SP-27 — aujourd'hui répartie sur six panneaux empilés.</p></div></div>
+    <div class="stage"><div class="app">
+      <div class="tbar"><span class="brand"><span class="glyph"></span>GeoStudio</span><span class="omni"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Rechercher ou lancer une action<kbd>⌘K</kbd></span><span class="av">TL</span></div>
+      <div class="dbar"><a>Catalogue</a><a class="on">Cartes</a><a>Données</a><a>Apps &amp; sites</a><a>Automatisation</a><a>Analytique</a><a>Tâches</a><span class="r"><a>Administration</a><a>Paramètres</a></span></div>
+      <div class="body" style="height:342px">
+        <div class="v v1">
+          <div class="vh"><span class="t on">Couches</span><span class="t cat"><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Catalogue</span></div>
+          <div class="vb"><div class="tree">
+            <a class="on"><svg class="i xs" viewBox="0 0 24 24"><path d="M3 12h18M3 6h18M3 18h18"/></svg>Conduites</a>
+            <a><svg class="i xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>Vannes</a>
+            <a><svg class="i xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>Captages</a>
+            <a><svg class="i xs" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14"/></svg>Réservoirs</a>
+            <div class="grp">Fond &amp; terrain</div>
+            <a><svg class="i xs" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/></svg>Plan IGN</a>
+            <a><svg class="i xs" viewBox="0 0 24 24"><path d="m3 18 6-8 4 5 3-4 5 7z"/></svg>Terrain — RGE Alti</a>
+          </div>
+          <span class="btn s" style="margin-top:6px"><svg class="i xs" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Ajouter depuis le catalogue</span>
+          </div>
+        </div>
+        <div class="v v2">
+          <div class="v2h"><span class="ttl">Réseau d'eau potable</span><span class="cnt">4 couches · non enregistré</span><span class="vsw" style="margin-left:auto"><span class="on"><svg class="i xs" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/></svg></span><span><svg class="i xs" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg></span><span><svg class="i xs" viewBox="0 0 24 24"><path d="m12 2 9 5v10l-9 5-9-5V7z"/></svg></span></span></div>
+          <div class="canvas">
+            <svg class="map" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid slice">
+              <rect width="600" height="400" fill="var(--map1)"/>
+              <g stroke="var(--map2)" stroke-width="18" fill="none"><path d="M-20 300C120 280 180 200 320 210s220-40 320-70"/></g>
+              <g stroke="var(--water)" stroke-width="9" fill="none" stroke-linecap="round"><path d="M-10 120c90 40 150-10 250 30s180 90 380 40"/></g>
+              <g stroke="var(--road)" stroke-width="3.4" fill="none" stroke-linecap="round"><path d="M60 400V230l90-70h180l120 90v150"/><path d="M150 160V20"/><path d="M330 160l150-120"/><path d="M60 300h380"/></g>
+              <g stroke="var(--accent)" stroke-width="2.6" fill="none" stroke-linecap="round"><path d="M40 380c60-90 120-60 170-140s150-90 250-70"/><path d="M210 240 150 90"/><path d="M330 190l130 40"/></g>
+              <circle cx="210" cy="240" r="7" fill="var(--accent)" stroke="var(--sheet)" stroke-width="2.5"/>
+              <circle cx="150" cy="90" r="5.5" fill="#9A2C45" stroke="var(--sheet)" stroke-width="2.5"/>
+              <circle cx="460" cy="230" r="6" fill="#8E6410" stroke="var(--sheet)" stroke-width="2.5"/>
+            </svg>
+            <div class="float tools">
+              <i class="on"><svg class="i sm" viewBox="0 0 24 24"><path d="m4 3 7 17 2.5-6.5L20 11z"/></svg></i>
+              <i><svg class="i sm" viewBox="0 0 24 24"><rect x="2" y="9" width="20" height="6" rx="1"/><path d="M7 9v3M12 9v4M17 9v3"/></svg></i>
+              <i><svg class="i sm" viewBox="0 0 24 24"><path d="M12 19l7-7-4-4-7 7-1 5z"/><path d="M3 21h6"/></svg></i>
+              <i><svg class="i sm" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg></i>
+            </div>
+            <div class="float scale">1 : 12 000 · EPSG:2154</div>
+            <div class="float legend"><b>Conduites — Ø mm</b><span><em style="background:#0B6E77"></em>≥ 200</span><span><em style="background:#4FA0A8"></em>100 – 200</span><span><em style="background:#9FC8CB"></em>&lt; 100</span></div>
+          </div>
+        </div>
+        <div class="v v3">
+          <div class="vh"><span class="t on">Conduites</span><span class="sp"></span><span class="ic"><svg class="i sm" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span></div>
+          <div class="vb">
+            <div class="fld"><label>Symbologie</label><div class="ctl sel">Classé</div></div>
+            <div class="fld"><label>Champ</label><div class="ctl sel">diametre_mm</div></div>
+            <div class="fld"><label>Méthode · 3 classes</label><div class="seg"><span>Quantile</span><span class="on">Jenks</span><span>Égal</span></div></div>
+            <div class="fld"><label>Palette</label><div class="ramp"><i style="background:#9FC8CB"></i><i style="background:#4FA0A8"></i><i style="background:#0B6E77"></i></div></div>
+            <div class="fld"><label>Opacité — 70 %</label><div class="slider"><span class="track"></span><span class="knob"></span></div></div>
+            <div class="isec"><div class="h">Contour</div></div>
+            <div class="isec"><div class="h">Étiquettes — CEL</div></div>
+            <div class="isec"><div class="h">Popup</div></div>
+            <div class="acts" style="margin-top:auto"><span class="btn p f">Enregistrer</span><span class="btn s">Annuler</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="statusbar"><span class="job"><span class="d"></span>Moissonnage IGN — 62 %</span><span class="r">v0.1.0 · corrèze</span></div>
+    </div></div>
+  </div>
+
+  <!-- BUILDER -->
+  <div class="mock">
+    <div class="mh"><span class="k">Domaine · Apps &amp; sites</span><div><h3>Builder d'app</h3>
+      <p>C'est ici que le gain est le plus fort : les <strong>treize panneaux empilés dans 192 px</strong> se répartissent en trois. Structure et widgets à gauche, canevas au centre, propriétés du widget sélectionné à droite. Thème, variables, impression et export deviennent des sections de l'inspecteur quand rien n'est sélectionné — c'est l'app elle-même qu'on inspecte.</p></div></div>
+    <div class="stage"><div class="app">
+      <div class="tbar"><span class="brand"><span class="glyph"></span>GeoStudio</span><span class="omni"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Rechercher ou lancer une action<kbd>⌘K</kbd></span><span class="av">TL</span></div>
+      <div class="dbar"><a>Catalogue</a><a>Cartes</a><a>Données</a><a class="on">Apps &amp; sites</a><a>Automatisation</a><a>Analytique</a><a>Tâches</a><span class="r"><a>Administration</a><a>Paramètres</a></span></div>
+      <div class="body" style="height:342px">
+        <div class="v v1">
+          <div class="vh"><span class="t on">Structure</span><span class="t cat"><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Catalogue</span></div>
+          <div class="vb">
+            <div class="grp">Pages · 3</div>
+            <div class="tree">
+              <a class="on"><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/></svg>Vue d'ensemble</a>
+              <a class="ind"><svg class="i xs" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/></svg>Carte réseau</a>
+              <a class="ind"><svg class="i xs" viewBox="0 0 24 24"><path d="M3 20h18M6 20v-6M11 20V7M16 20v-9"/></svg>Casses / mois</a>
+              <a class="ind"><svg class="i xs" viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h13"/></svg>Table interventions</a>
+              <a><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/></svg>Interventions</a>
+              <a><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/></svg>Qualité</a>
+            </div>
+            <div class="grp">Widgets</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+              <span class="btn s" style="height:26px;font-size:9px">Carte</span><span class="btn s" style="height:26px;font-size:9px">Graphique</span>
+              <span class="btn s" style="height:26px;font-size:9px">Table</span><span class="btn s" style="height:26px;font-size:9px">Indicateur</span>
+              <span class="btn s" style="height:26px;font-size:9px">Formulaire</span><span class="btn s" style="height:26px;font-size:9px">Texte</span>
+            </div>
+          </div>
+        </div>
+        <div class="v v2">
+          <div class="v2h"><span class="ttl">Suivi des travaux</span>
+            <span class="seg" style="width:132px"><span class="on">Édition</span><span>Aperçu</span></span>
+            <span class="mini" style="margin-left:auto">Bureau</span>
+            <span class="vsw"><span><svg class="i xs" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/></svg></span><span><svg class="i xs" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h1"/></svg></span></span>
+          </div>
+          <div class="vb" style="background:var(--paper);gap:6px;padding:9px">
+            <div style="display:flex;gap:6px">
+              <div style="flex:1;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:8px"><div style="font-size:8.5px;color:var(--ink3);font-family:'Archivo Narrow';text-transform:uppercase;letter-spacing:.1em">Linéaire total</div><div style="font-size:19px;font-weight:800;letter-spacing:-.02em;font-family:'IBM Plex Mono'">412 km</div></div>
+              <div style="flex:1;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:8px"><div style="font-size:8.5px;color:var(--ink3);font-family:'Archivo Narrow';text-transform:uppercase;letter-spacing:.1em">Casses 2026</div><div style="font-size:19px;font-weight:800;letter-spacing:-.02em;font-family:'IBM Plex Mono';color:var(--crimson)">37</div></div>
+              <div style="flex:1;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:8px"><div style="font-size:8.5px;color:var(--ink3);font-family:'Archivo Narrow';text-transform:uppercase;letter-spacing:.1em">Rendement</div><div style="font-size:19px;font-weight:800;letter-spacing:-.02em;font-family:'IBM Plex Mono';color:var(--green)">78 %</div></div>
+            </div>
+            <div style="display:flex;gap:6px;flex:1;min-height:0">
+              <div style="flex:1.5;border:2px solid var(--accent);border-radius:4px;overflow:hidden;position:relative;box-shadow:0 0 0 2px var(--accent-soft)">
+                <svg viewBox="0 0 300 200" preserveAspectRatio="xMidYMid slice" style="position:absolute;inset:0;width:100%;height:100%">
+                  <rect width="300" height="200" fill="var(--map1)"/>
+                  <g stroke="var(--water)" stroke-width="6" fill="none"><path d="M-5 60c50 22 80-6 130 14s70 26 180 6"/></g>
+                  <g stroke="var(--road)" stroke-width="2.4" fill="none"><path d="M30 200V110l45-32h90l58 42v80"/><path d="M20 150h260"/></g>
+                  <g stroke="var(--accent)" stroke-width="2.2" fill="none"><path d="M14 190c45-45 82-30 120-70s90-33 174-21"/></g>
+                  <circle cx="134" cy="120" r="5" fill="var(--accent)" stroke="var(--sheet)" stroke-width="2"/>
+                </svg>
+                <span style="position:absolute;top:4px;left:4px;background:var(--accent);color:#fff;font-size:8px;font-family:'Archivo Narrow';text-transform:uppercase;letter-spacing:.1em;padding:2px 5px;border-radius:2px;font-weight:700">Carte · sélectionné</span>
+              </div>
+              <div style="flex:1;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:8px;display:flex;flex-direction:column">
+                <div style="font-size:8.5px;color:var(--ink3);font-family:'Archivo Narrow';text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Casses par mois</div>
+                <svg viewBox="0 0 200 90" style="flex:1;width:100%">
+                  <g fill="var(--accent)">
+                    <rect x="6" y="46" width="18" height="44" rx="1"/><rect x="30" y="34" width="18" height="56" rx="1"/><rect x="54" y="56" width="18" height="34" rx="1"/><rect x="78" y="24" width="18" height="66" rx="1"/><rect x="102" y="40" width="18" height="50" rx="1"/><rect x="126" y="62" width="18" height="28" rx="1"/><rect x="150" y="16" width="18" height="74" rx="1" fill="var(--crimson)"/><rect x="174" y="50" width="18" height="40" rx="1"/>
+                  </g>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="v v3">
+          <div class="vh"><span class="t on">Widget Carte</span><span class="sp"></span><span class="ic"><svg class="i sm" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span></div>
+          <div class="vb">
+            <div class="fld"><label>Source de données</label><div class="ctl sel">Conduites AEP 2026</div></div>
+            <div class="fld"><label>Emprise initiale</label><div class="ctl sel">Emprise du contexte</div></div>
+            <div class="fld"><label>Visible si — CEL</label><div class="ctl ta">vars.commune != "" &amp;&amp;<br>user.hasRole("agent")</div></div>
+            <div class="fld"><label>Cross-filter</label><div class="seg"><span class="on">Auto</span><span>Manuel</span></div></div>
+            <div class="isec"><div class="h">Symbologie</div><div class="ramp"><i style="background:#9FC8CB"></i><i style="background:#4FA0A8"></i><i style="background:#0B6E77"></i></div></div>
+            <div class="isec"><div class="h">Actions déclenchées</div></div>
+            <div class="acts" style="margin-top:auto"><span class="btn p f">Enregistrer</span><span class="btn s">Aperçu</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="statusbar"><span>Annuler ⌘Z · Rétablir ⇧⌘Z — 8 étapes</span><span class="r">v0.1.0 · corrèze</span></div>
+    </div></div>
+    <div class="note"><b>Quand rien n'est sélectionné —</b> l'inspecteur affiche l'app elle-même : thème, variables, navigation, interactions, mise en page d'impression, export standalone, historique de versions et copilote. Les treize panneaux sont tous là, mais ils ne sont plus <em>tous là en même temps</em>.</div>
+  </div>
+
+  <!-- SQL LAB -->
+  <div class="mock">
+    <div class="mh"><span class="k">Domaine · Analytique</span><div><h3>SQL Lab</h3>
+      <p>L'écran qui devait poser problème au triptyque, et qui le valide : à gauche les schémas <em>et</em> le catalogue, au centre l'éditeur et ses résultats, à droite <strong>la colonne de résultat sélectionnée</strong> — type, valeurs distinctes, nulls, distribution. Sans sélection, l'inspecteur montre la requête : limite, délai, plan, historique.</p></div></div>
+    <div class="stage"><div class="app">
+      <div class="tbar"><span class="brand"><span class="glyph"></span>GeoStudio</span><span class="omni"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Rechercher ou lancer une action<kbd>⌘K</kbd></span><span class="av">TL</span></div>
+      <div class="dbar"><a>Catalogue</a><a>Cartes</a><a>Données</a><a>Apps &amp; sites</a><a>Automatisation</a><a class="on">Analytique</a><a>Tâches</a><span class="r"><a>Administration</a><a>Paramètres</a></span></div>
+      <div class="body" style="height:342px">
+        <div class="v v1">
+          <div class="vh"><span class="t on">Schémas</span><span class="t cat"><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Catalogue</span></div>
+          <div class="vb">
+            <div class="srch"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Filtrer les tables…</div>
+            <div class="tree">
+              <div class="grp">lakehouse</div>
+              <a class="on"><svg class="i xs" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>conduites_aep<span class="n">4 326</span></a>
+              <a class="ind"><svg class="i xs" viewBox="0 0 24 24"><path d="M12 5v14"/></svg>id<span class="n">int</span></a>
+              <a class="ind"><svg class="i xs" viewBox="0 0 24 24"><path d="M12 5v14"/></svg>diametre_mm<span class="n">int</span></a>
+              <a class="ind"><svg class="i xs" viewBox="0 0 24 24"><path d="M12 5v14"/></svg>materiau<span class="n">text</span></a>
+              <a class="ind"><svg class="i xs" viewBox="0 0 24 24"><path d="M12 5v14"/></svg>pose_annee<span class="n">int</span></a>
+              <a class="ind"><svg class="i xs" viewBox="0 0 24 24"><path d="M12 5v14"/></svg>geom<span class="n">geom</span></a>
+              <a><svg class="i xs" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>interventions<span class="n">1 208</span></a>
+              <a><svg class="i xs" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>captages<span class="n">87</span></a>
+            </div>
+          </div>
+        </div>
+        <div class="v v2">
+          <div class="v2h"><span class="ttl">Requête sans titre</span><span class="cnt">lecture seule · rôle analyste</span>
+            <span class="btn p" style="margin-left:auto"><svg class="i xs" viewBox="0 0 24 24"><path d="m5 3 14 9-14 9z"/></svg>Exécuter ⌘⏎</span>
+            <span class="btn s">Enregistrer comme dataset</span>
+          </div>
+          <div class="sql">
+            <div class="sqled">
+<span class="cm">-- Linéaire par matériau et tranche de pose</span><br>
+<span class="kw">SELECT</span> materiau,<br>
+&nbsp;&nbsp;<span class="fn">width_bucket</span>(pose_annee, 1950, 2030, 8) <span class="kw">AS</span> tranche,<br>
+&nbsp;&nbsp;<span class="fn">round</span>(<span class="fn">sum</span>(<span class="fn">ST_Length</span>(geom)) / 1000, 1) <span class="kw">AS</span> km<br>
+<span class="kw">FROM</span> conduites_aep<br>
+<span class="kw">WHERE</span> diametre_mm &gt;= <span class="str">100</span><br>
+<span class="kw">GROUP BY</span> 1, 2 <span class="kw">ORDER BY</span> km <span class="kw">DESC</span>;
+            </div>
+            <div class="sqlres">
+              <div class="sqlbar"><span>42 lignes</span><span>·</span><span>0,34 s</span><span>·</span><span>DuckDB — sandbox lecture seule</span><span style="margin-left:auto" class="st ok"><i></i>Succès</span></div>
+              <table class="tbl">
+                <thead><tr><th>materiau</th><th style="color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)">tranche</th><th style="text-align:right">km</th><th style="text-align:right">nb</th></tr></thead>
+                <tbody>
+                  <tr><td>Fonte grise</td><td class="mono">3</td><td class="num">86,4</td><td class="num">912</td></tr>
+                  <tr><td>PVC</td><td class="mono">5</td><td class="num">74,1</td><td class="num">1 204</td></tr>
+                  <tr><td>Fonte ductile</td><td class="mono">6</td><td class="num">61,9</td><td class="num">843</td></tr>
+                  <tr><td>PEHD</td><td class="mono">7</td><td class="num">48,2</td><td class="num">701</td></tr>
+                  <tr><td>Amiante-ciment</td><td class="mono">2</td><td class="num">39,7</td><td class="num">388</td></tr>
+                  <tr><td>Acier</td><td class="mono">4</td><td class="num">21,3</td><td class="num">156</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="v v3">
+          <div class="vh"><span class="t on">Colonne · tranche</span><span class="sp"></span><span class="ic"><svg class="i sm" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span></div>
+          <div class="vb">
+            <dl class="kv"><dt>Type</dt><dd>INTEGER</dd><dt>Distinctes</dt><dd>8</dd><dt>Nulls</dt><dd>0</dd><dt>Min / Max</dt><dd>1 / 8</dd><dt>Médiane</dt><dd>5</dd></dl>
+            <div class="isec"><div class="h">Distribution</div>
+              <svg viewBox="0 0 200 60" style="width:100%"><g fill="var(--accent)"><rect x="4" y="40" width="20" height="20" rx="1"/><rect x="28" y="28" width="20" height="32" rx="1"/><rect x="52" y="12" width="20" height="48" rx="1"/><rect x="76" y="22" width="20" height="38" rx="1"/><rect x="100" y="6" width="20" height="54" rx="1"/><rect x="124" y="30" width="20" height="30" rx="1"/><rect x="148" y="44" width="20" height="16" rx="1"/><rect x="172" y="52" width="20" height="8" rx="1"/></g></svg>
+            </div>
+            <div class="isec"><div class="h">Requête</div>
+              <dl class="kv"><dt>Limite</dt><dd>10 000</dd><dt>Délai max</dt><dd>30 s</dd><dt>Moteur</dt><dd>DuckDB</dd></dl>
+            </div>
+            <div class="isec"><div class="h">Historique — 12</div>
+              <div class="tree"><a>Linéaire par matériau</a><a>Casses / commune 2026</a><a>Captages hors norme</a></div>
+            </div>
+            <div class="acts" style="margin-top:auto"><span class="btn p f">Créer un dataset</span><span class="btn s">CSV</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="statusbar"><span class="job"><span class="d"></span>Moissonnage IGN — 62 %</span><span class="r">v0.1.0 · corrèze</span></div>
+    </div></div>
+  </div>
+
+  <!-- PIPELINE -->
+  <div class="mock">
+    <div class="mh"><span class="k">Domaine · Automatisation</span><div><h3>Pipeline, alertes, rapports, secrets</h3>
+      <p>Le graphe DAG au centre, l'inspecteur porte les paramètres du nœud sélectionné. Le coffre de secrets — trois routes du cœur, aujourd'hui sans aucune interface — devient une section du volet gauche et un sélecteur dans les nœuds qui en consomment.</p></div></div>
+    <div class="stage"><div class="app">
+      <div class="tbar"><span class="brand"><span class="glyph"></span>GeoStudio</span><span class="omni"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Rechercher ou lancer une action<kbd>⌘K</kbd></span><span class="av">TL</span></div>
+      <div class="dbar"><a>Catalogue</a><a>Cartes</a><a>Données</a><a>Apps &amp; sites</a><a class="on">Automatisation</a><a>Analytique</a><a>Tâches</a><span class="r"><a>Administration</a><a>Paramètres</a></span></div>
+      <div class="body" style="height:320px">
+        <div class="v v1">
+          <div class="vh"><span class="t on">Étapes</span><span class="t cat"><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Catalogue</span></div>
+          <div class="vb">
+            <div class="grp">Ce pipeline · 5</div>
+            <div class="tree">
+              <a><svg class="i xs" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Lire — WFS IGN</a>
+              <a><svg class="i xs" viewBox="0 0 24 24"><path d="M4 7h16M7 12h10M10 17h4"/></svg>Filtrer</a>
+              <a class="on"><svg class="i xs" viewBox="0 0 24 24"><path d="m3 18 6-8 4 5 3-4 5 7z"/></svg>Reprojeter — QGIS</a>
+              <a><svg class="i xs" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Joindre</a>
+              <a><svg class="i xs" viewBox="0 0 24 24"><path d="M12 21V9M7 14l5 5 5-5M5 3h14"/></svg>Écrire — collection</a>
+            </div>
+            <div class="grp">Bibliothèque</div>
+            <div class="tree"><a>Lecteurs · 6</a><a>Transformations · 50</a><a>Écrivains · 4</a></div>
+            <div class="grp">Coffre de secrets<span class="new" style="margin-left:5px">nouveau</span></div>
+            <div class="tree"><a><svg class="i xs" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>ign_api_key</a><a><svg class="i xs" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>pg_readonly</a></div>
+          </div>
+        </div>
+        <div class="v v2">
+          <div class="v2h"><span class="ttl">Import IGN — BD TOPO</span><span class="cnt">cron · tous les lundis 03:00</span>
+            <span class="btn p" style="margin-left:auto"><svg class="i xs" viewBox="0 0 24 24"><path d="m5 3 14 9-14 9z"/></svg>Exécuter</span><span class="btn s">Planifier</span></div>
+          <div class="dag">
+            <div class="node" style="left:22px;top:34px"><b>Lire</b><small>WFS IGN</small><span class="p r"></span></div>
+            <div class="node" style="left:168px;top:34px"><b>Filtrer</b><small>emprise + type</small><span class="p l"></span><span class="p r"></span></div>
+            <div class="node on" style="left:314px;top:34px"><b>Reprojeter</b><small>qgis:reprojectlayer</small><span class="p l"></span><span class="p r"></span></div>
+            <div class="node" style="left:168px;top:150px"><b>Lire</b><small>voirie.csv</small><span class="p r"></span></div>
+            <div class="node" style="left:314px;top:150px"><b>Joindre</b><small>par code_insee</small><span class="p l"></span><span class="p r"></span></div>
+            <div class="node" style="left:466px;top:92px"><b>Écrire</b><small>collection eau_potable</small><span class="p l"></span></div>
+            <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" fill="none" stroke="var(--ink3)" stroke-width="1.4">
+              <path d="M126 52h38"/><path d="M272 52h38"/><path d="M418 52h20c6 0 10 4 10 10v26c0 6 4 10 10 10h4"/><path d="M272 168h38"/><path d="M418 168h20c6 0 10-4 10-10v-46c0-6 4-10 10-10h4"/>
+            </svg>
+          </div>
+        </div>
+        <div class="v v3">
+          <div class="vh"><span class="t on">Nœud · Reprojeter</span><span class="sp"></span><span class="ic"><svg class="i sm" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span></div>
+          <div class="vb">
+            <div class="fld"><label>Algorithme</label><div class="ctl sel">qgis:reprojectlayer</div></div>
+            <div class="fld"><label>SCR cible</label><div class="ctl sel">EPSG:2154 — Lambert 93</div></div>
+            <div class="fld"><label>Colonne géométrie</label><div class="ctl sel">geom</div></div>
+            <div class="fld"><label>Secret utilisé</label><div class="ctl sel"><svg class="i xs" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>ign_api_key</div><div class="lockrow" style="margin-top:4px">Visible parce que vous êtes administrateur — un créateur lit « configuré par un administrateur ».</div></div>
+            <div class="isec"><div class="h">Aperçu de sortie</div>
+              <table class="tbl"><thead><tr><th>id</th><th>type</th><th style="text-align:right">long_m</th></tr></thead><tbody>
+                <tr><td class="mono">1042</td><td>conduite</td><td class="num">183,4</td></tr>
+                <tr><td class="mono">1043</td><td>conduite</td><td class="num">96,1</td></tr>
+                <tr><td class="mono">1044</td><td>branchement</td><td class="num">12,8</td></tr>
+              </tbody></table>
+            </div>
+            <div class="acts" style="margin-top:auto"><span class="btn p f">Enregistrer</span><span class="btn s">Tester l'étape</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="statusbar"><span class="job"><span class="d"></span>Moissonnage IGN — 62 %</span><span class="r">v0.1.0 · corrèze</span></div>
+    </div></div>
+  </div>
+
+  <!-- TACHES -->
+  <div class="mock">
+    <div class="mh"><span class="k">Domaine · Tâches<span class="new">nouveau</span></span><div><h3>Centre de tâches</h3>
+      <p>La file <code>procrastinate</code> n'a aujourd'hui aucune interface : imports, moissonnages, pipelines, exports et rapports planifiés s'exécutent en aveugle. Ici, ils ont un tableau, un état, un journal et un bouton de relance — et un rappel permanent dans la barre d'état de tous les écrans.</p></div></div>
+    <div class="stage"><div class="app">
+      <div class="tbar"><span class="brand"><span class="glyph"></span>GeoStudio</span><span class="omni"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Rechercher ou lancer une action<kbd>⌘K</kbd></span><span class="av">TL</span></div>
+      <div class="dbar"><a>Catalogue</a><a>Cartes</a><a>Données</a><a>Apps &amp; sites</a><a>Automatisation</a><a>Analytique</a><a class="on">Tâches</a><span class="r"><a>Administration</a><a>Paramètres</a></span></div>
+      <div class="body" style="height:300px">
+        <div class="v v1">
+          <div class="vh"><span class="t on">Filtrer</span><span class="t cat"><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Catalogue</span></div>
+          <div class="vb">
+            <div class="grp">État</div>
+            <div class="fac"><span class="cb on"></span>En cours<span class="n">2</span></div>
+            <div class="fac"><span class="cb on"></span>En file<span class="n">2</span></div>
+            <div class="fac"><span class="cb on"></span>En échec<span class="n">1</span></div>
+            <div class="fac"><span class="cb"></span>Terminées<span class="n">248</span></div>
+            <div class="grp">Type</div>
+            <div class="fac"><span class="cb"></span>Import<span class="n">64</span></div>
+            <div class="fac"><span class="cb"></span>Moissonnage<span class="n">31</span></div>
+            <div class="fac"><span class="cb"></span>Pipeline<span class="n">98</span></div>
+            <div class="fac"><span class="cb"></span>Export PDF<span class="n">42</span></div>
+            <div class="fac"><span class="cb"></span>Rapport planifié<span class="n">18</span></div>
+            <div class="grp">Période</div>
+            <div class="ctl sel">7 derniers jours</div>
+          </div>
+        </div>
+        <div class="v v2">
+          <div class="v2h"><span class="ttl">File d'exécution</span><span class="cnt">5 tâches actives · 248 terminées</span><span class="btn s" style="margin-left:auto">Tout relancer les échecs</span></div>
+          <div class="vb p0">
+            <table class="tbl">
+              <thead><tr><th>Tâche</th><th>Objet</th><th>Déclenché par</th><th>Démarré</th><th style="width:100px">Avancement</th><th>État</th></tr></thead>
+              <tbody>
+                <tr class="on"><td class="ttl">Moissonnage — Géoservices IGN</td><td>Géoservices IGN — WFS</td><td>cron</td><td class="mono">03:00</td><td><span class="prog"><i style="width:62%"></i></span> <span class="mono">62 %</span></td><td><span class="st ok"><i></i>En cours</span></td></tr>
+                <tr><td class="ttl">Pipeline — Import IGN BD TOPO</td><td>Import IGN — BD TOPO</td><td>tanguy</td><td class="mono">09:14</td><td><span class="prog"><i style="width:28%"></i></span> <span class="mono">28 %</span></td><td><span class="st ok"><i></i>En cours</span></td></tr>
+                <tr><td class="ttl">Export PDF — Bilan mensuel AEP</td><td>Bilan mensuel AEP</td><td>cron</td><td class="mono">—</td><td><span class="mono" style="color:var(--ink3)">en file</span></td><td><span class="st nu"><i></i>En file</span></td></tr>
+                <tr><td class="ttl">Import — voirie_2026.gpkg</td><td>Voirie communale</td><td>m.durand</td><td class="mono">—</td><td><span class="mono" style="color:var(--ink3)">en file</span></td><td><span class="st nu"><i></i>En file</span></td></tr>
+                <tr><td class="ttl">Moissonnage — CKAN data.gouv</td><td>data.gouv.fr</td><td>cron</td><td class="mono">hier 03:00</td><td><span class="mono" style="color:var(--crimson)">tentative 3/3</span></td><td><span class="st er"><i></i>Échec</span></td></tr>
+                <tr><td class="ttl">Pipeline — Qualité captages</td><td>Qualité captages</td><td>cron</td><td class="mono">hier 02:00</td><td><span class="prog"><i style="width:100%;background:var(--green)"></i></span></td><td><span class="st ok"><i></i>Terminé</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="v v3">
+          <div class="vh"><span class="t on">Tâche</span><span class="sp"></span><span class="ic"><svg class="i sm" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span></div>
+          <div class="vb">
+            <div style="font-size:11.5px;font-weight:800;letter-spacing:-.01em">Moissonnage — Géoservices IGN</div>
+            <dl class="kv"><dt>Objet</dt><dd>Géoservices IGN</dd><dt>Connecteur</dt><dd>GetCapabilities</dd><dt>Démarré</dt><dd>03:00:12</dd><dt>Durée</dt><dd>4 min 38 s</dd><dt>Tentative</dt><dd>1 / 3</dd><dt>Fiches</dt><dd>194 / 312</dd></dl>
+            <div class="isec"><div class="h">Journal</div>
+              <div class="ctl ta" style="font-size:8.5px;line-height:1.65">03:00:12 démarrage<br>03:01:04 GetCapabilities OK — 312 couches<br>03:02:41 194 fiches indexées<br>03:03:10 egress: 1 hôte refusé<br><span style="color:var(--amber)">03:03:10 avertissement SSRF</span></div>
+            </div>
+            <div class="acts" style="margin-top:auto"><span class="btn s f">Ouvrir la source</span><span class="btn d">Annuler</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="statusbar"><span class="job"><span class="d"></span>Moissonnage IGN — 62 %</span><span class="st er"><i></i>1 échec</span><span class="r">v0.1.0 · corrèze</span></div>
+    </div></div>
+  </div>
+
+  <!-- ADMIN / AUDIT -->
+  <div class="mock">
+    <div class="mh"><span class="k">Domaine · Administration<span class="new">nouveau</span></span><div><h3>Utilisateurs, groupes, collections, audit</h3>
+      <p>Quatre écrans d'administration qui n'existent pas aujourd'hui, plus les trois qui existent déjà (collections, moissonnage, extensions), tous dans le même gabarit. Le <strong>journal d'audit</strong> — écrit à chaque écriture depuis la première migration, jamais lu par une interface — devient consultable, filtrable, et son inspecteur montre le diff de l'écriture.</p></div></div>
+    <div class="stage"><div class="app">
+      <div class="tbar"><span class="brand"><span class="glyph"></span>GeoStudio</span><span class="omni"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Rechercher ou lancer une action<kbd>⌘K</kbd></span><span class="av">TL</span></div>
+      <div class="dbar"><a>Catalogue</a><a>Cartes</a><a>Données</a><a>Apps &amp; sites</a><a>Automatisation</a><a>Analytique</a><a>Tâches</a><span class="r"><a class="on">Administration</a><a>Paramètres</a></span></div>
+      <div class="body" style="height:300px">
+        <div class="v v1">
+          <div class="vh"><span class="t on">Sections</span><span class="t cat"><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Catalogue</span></div>
+          <div class="vb"><div class="tree">
+            <a><svg class="i xs" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>Utilisateurs<span class="n">24</span></a>
+            <a><svg class="i xs" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2.5"/><path d="M3 20c0-3.5 2.7-5 6-5s6 1.5 6 5"/></svg>Groupes<span class="n">6</span></a>
+            <a><svg class="i xs" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg>Collections<span class="n">12</span></a>
+            <a><svg class="i xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>Moissonnage<span class="n">5</span></a>
+            <a><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><path d="M14 7h7M17.5 3.5v7"/></svg>Extensions<span class="n">3</span></a>
+            <a class="on"><svg class="i xs" viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><path d="M9 12h7M9 16h5"/></svg>Journal d'audit</a>
+            <a><svg class="i xs" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Secrets<span class="n">2</span></a>
+          </div>
+          <div class="grp">Filtres du journal</div>
+          <div class="fac"><span class="cb on"></span>Écritures<span class="n">1 402</span></div>
+          <div class="fac"><span class="cb"></span>Partages<span class="n">86</span></div>
+          <div class="fac"><span class="cb"></span>Suppressions<span class="n">31</span></div>
+          </div>
+        </div>
+        <div class="v v2">
+          <div class="v2h"><span class="ttl">Journal d'audit</span><span class="cnt">1 519 entrées · 7 derniers jours</span><span class="mini" style="margin-left:auto">Tous les acteurs</span><span class="btn s">Exporter CSV</span></div>
+          <div class="vb p0">
+            <table class="tbl">
+              <thead><tr><th>Horodatage</th><th>Acteur</th><th>Action</th><th>Objet</th><th>Origine</th></tr></thead>
+              <tbody>
+                <tr class="on"><td class="mono">09:41:22</td><td>tanguy</td><td class="ttl">config.update</td><td>Réseau d'eau potable</td><td class="mono">192.168.1.24</td></tr>
+                <tr><td class="mono">09:38:10</td><td>tanguy</td><td class="ttl">item.share</td><td>Conduites AEP 2026</td><td class="mono">192.168.1.24</td></tr>
+                <tr><td class="mono">09:12:03</td><td>m.durand</td><td class="ttl">feature.insert</td><td>interventions · 4 lignes</td><td class="mono">192.168.1.51</td></tr>
+                <tr><td class="mono">08:55:47</td><td>système</td><td class="ttl">harvest.run</td><td>Géoservices IGN</td><td class="mono">worker</td></tr>
+                <tr><td class="mono">08:02:19</td><td>copilote</td><td class="ttl">config.update</td><td>Suivi des travaux</td><td class="mono">mcp · tanguy</td></tr>
+                <tr><td class="mono">hier 17:40</td><td>tanguy</td><td class="ttl">collection.rls.set</td><td>eau_potable</td><td class="mono">192.168.1.24</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="v v3">
+          <div class="vh"><span class="t on">Entrée</span><span class="sp"></span><span class="ic"><svg class="i sm" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span></div>
+          <div class="vb">
+            <dl class="kv"><dt>Action</dt><dd>config.update</dd><dt>Acteur</dt><dd>tanguy</dd><dt>Objet</dt><dd>map / 4f2a…</dd><dt>Version</dt><dd>v11 → v12</dd><dt>Tenant</dt><dd>corrèze</dd></dl>
+            <div class="isec"><div class="h">Différence</div>
+              <div class="ctl ta" style="font-size:8.5px;line-height:1.7">
+                <span style="color:var(--crimson)">− layers[0].symbology.method: "quantile"</span><br>
+                <span style="color:var(--green)">+ layers[0].symbology.method: "jenks"</span><br>
+                <span style="color:var(--crimson)">− layers[0].symbology.classes: 5</span><br>
+                <span style="color:var(--green)">+ layers[0].symbology.classes: 3</span>
+              </div>
+            </div>
+            <div class="acts" style="margin-top:auto"><span class="btn s f">Ouvrir l'objet</span><span class="btn s">Restaurer v11</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="statusbar"><span class="job"><span class="d"></span>Moissonnage IGN — 62 %</span><span class="r">v0.1.0 · corrèze</span></div>
+    </div></div>
+  </div>
+
+  <!-- PARAMETRES -->
+  <div class="mock">
+    <div class="mh"><span class="k">Domaine · Paramètres<span class="new">nouveau</span></span><div><h3>Paramétrage de l'instance et marque blanche</h3>
+      <p>Tout ce qui se règle aujourd'hui par variable d'environnement ou pas du tout : capacités du cœur, apparence, langue, sauvegarde — et la <strong>marque blanche</strong> que tu as choisie : le tenant redéfinit les tokens du studio comme il redéfinit déjà le thème de ses apps. L'inspecteur montre l'aperçu en direct et ce que le réglage affecte.</p></div></div>
+    <div class="stage"><div class="app">
+      <div class="tbar"><span class="brand"><span class="glyph"></span>GeoStudio</span><span class="omni"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Rechercher ou lancer une action<kbd>⌘K</kbd></span><span class="av">TL</span></div>
+      <div class="dbar"><a>Catalogue</a><a>Cartes</a><a>Données</a><a>Apps &amp; sites</a><a>Automatisation</a><a>Analytique</a><a>Tâches</a><span class="r"><a>Administration</a><a class="on">Paramètres</a></span></div>
+      <div class="body" style="height:318px">
+        <div class="v v1">
+          <div class="vh"><span class="t on">Sections</span><span class="t cat"><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Catalogue</span></div>
+          <div class="vb"><div class="tree">
+            <a><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>Instance</a>
+            <a class="on"><svg class="i xs" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="19" cy="13" r="2.5"/><circle cx="6" cy="12" r="2.5"/><path d="M12 22a10 10 0 1 1 0-20"/></svg>Marque &amp; thème</a>
+            <a><svg class="i xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/></svg>Apparence</a>
+            <a><svg class="i xs" viewBox="0 0 24 24"><path d="M5 8h11M9 4v4M4 20l6-12 6 12M7 16h6"/></svg>Langue</a>
+            <a><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 12h4M15 12h2"/></svg>Capacités</a>
+            <a><svg class="i xs" viewBox="0 0 24 24"><path d="M3 20h18M6 20v-6M11 20V7M16 20v-9"/></svg>Observabilité</a>
+            <a><svg class="i xs" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Sauvegarde</a>
+          </div></div>
+        </div>
+        <div class="v v2">
+          <div class="v2h"><span class="ttl">Marque &amp; thème</span><span class="cnt">tenant · corrèze</span><span class="btn p" style="margin-left:auto">Appliquer</span><span class="btn s">Réinitialiser</span></div>
+          <div class="form">
+            <div>
+              <h5>Identité du tenant</h5>
+              <p class="sub">Remplace l'identité GeoStudio dans le studio et dans les pages publiques de ce tenant.</p>
+            </div>
+            <div class="frow"><span class="lb">Nom affiché<small>En-tête, onglet, exports</small></span><div class="ctl">Corrèze — Géoportail</div></div>
+            <div class="frow"><span class="lb">Logo<small>SVG ou PNG, 512 px max</small></span><div style="display:flex;align-items:center;gap:9px"><span style="width:34px;height:34px;border-radius:4px;background:var(--accent);display:grid;place-items:center;color:#fff;font-weight:800;font-size:13px">C</span><span class="btn s">Remplacer</span><span class="btn s">Retirer</span></div></div>
+            <div class="frow"><span class="lb">Couleur d'accent<small>Boutons, sélection, liens</small></span><div class="sw2"><i style="background:#0B6E77;box-shadow:0 0 0 2px var(--accent-soft)"></i><i style="background:#1B5E8A"></i><i style="background:#6A4C93"></i><i style="background:#2A6A50"></i><i style="background:#9A2C45"></i><i style="background:#8E6410"></i><span class="btn s" style="height:22px">Personnalisé</span></div></div>
+            <div class="frow"><span class="lb">Rayon des angles</span><div class="seg" style="max-width:250px"><span>Carré</span><span class="on">Léger</span><span>Standard</span><span>Arrondi</span></div></div>
+            <div class="frow"><span class="lb">Appliquer aux apps<small>Thème par défaut des nouvelles apps</small></span><span class="tgl on"></span></div>
+          </div>
+        </div>
+        <div class="v v3">
+          <div class="vh"><span class="t on">Aperçu</span><span class="sp"></span><span class="ic"><svg class="i sm" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span></div>
+          <div class="vb">
+            <div style="border:1px solid var(--rule);border-radius:4px;overflow:hidden">
+              <div style="height:22px;display:flex;align-items:center;gap:5px;padding:0 7px;border-bottom:1px solid var(--rule2);background:var(--raise);font-size:9.5px;font-weight:800"><span style="width:12px;height:12px;border-radius:2px;background:var(--accent);display:grid;place-items:center;color:#fff;font-size:7px">C</span>Corrèze — Géoportail</div>
+              <div style="padding:8px;display:flex;flex-direction:column;gap:6px">
+                <div style="height:6px;width:70%;background:var(--rule);border-radius:2px"></div>
+                <div style="height:6px;width:50%;background:var(--rule);border-radius:2px"></div>
+                <div style="display:flex;gap:5px"><span class="btn p" style="height:19px;font-size:9px">Ouvrir</span><span class="btn s" style="height:19px;font-size:9px">Partager</span></div>
+              </div>
+            </div>
+            <div class="isec"><div class="h">Contraste</div>
+              <div style="display:flex;flex-direction:column;gap:4px;font-size:10px">
+                <span class="st ok"><i></i>Accent sur fond clair — 6,4:1</span>
+                <span class="st ok"><i></i>Accent sur fond sombre — 5,1:1</span>
+                <span class="st ok"><i></i>Texte sur accent — 8,9:1</span>
+              </div>
+            </div>
+            <div class="isec"><div class="h">Ce réglage affecte</div>
+              <div class="tree"><a>Studio — tous les écrans</a><a>Pages publiques du tenant</a><a>5 apps utilisant le thème par défaut</a><a>Exports PDF et standalone</a></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="statusbar"><span class="job"><span class="d"></span>Moissonnage IGN — 62 %</span><span class="r">v0.1.0 · corrèze</span></div>
+    </div></div>
+    <div class="note"><b>Contrôle de contraste intégré —</b> puisque le tenant choisit sa couleur, l'inspecteur vérifie en direct les ratios WCAG AA sur les deux thèmes et refuse d'appliquer une combinaison illisible. C'est le prix d'une marque blanche honnête.</div>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><h2>Le gabarit s'adapte aux droits</h2><span class="lbl">Avant même la largeur</span></div>
+  <p class="intro">Un triptyque n'a d'intérêt que si les trois volets disent la vérité sur ce que l'utilisateur peut faire. Aujourd'hui ce n'est pas le cas : <code>ItemActions</code> affiche <strong>Modifier, Partager, Publier et Supprimer sur chaque item du catalogue</strong>, y compris ceux que l'on ne peut que lire — c'est l'API qui renvoie 403 après le clic. Le payload <code>Item</code> ne porte aucune permission, le shell n'a donc rien pour décider. Cette section corrige la doctrine <strong>et</strong> le contrat d'API.</p>
+
+  <h3 style="font-size:16px;font-weight:800;letter-spacing:-.01em;margin:26px 0 8px">Trois traitements, et quand appliquer chacun</h3>
+  <div class="doct">
+    <div><h4><i style="background:var(--ink3)"></i>Absent</h4>
+      <p>La surface n'existe pas pour ce compte : elle ne figure ni dans la barre de domaines, ni dans ⌘K, ni dans les volets. L'utilisateur n'apprend pas son existence.</p>
+      <span class="r">Quand l'accès supposerait un changement de rôle : Administration pour un non-admin, SQL Lab pour un non-analyste.</span></div>
+    <div><h4><i style="background:var(--amber)"></i>Verrouillé et expliqué</h4>
+      <p>Le contrôle reste visible, désactivé, avec <strong>la raison et la voie de recours</strong> — « Écriture réservée au groupe SIG ». Jamais un cadenas muet.</p>
+      <span class="r">Quand l'utilisateur peut légitimement se demander pourquoi, ou pourrait obtenir le droit : écriture sur un item partagé, capacité coupée par l'instance.</span></div>
+    <div><h4><i style="background:var(--accent)"></i>Lecture seule</h4>
+      <p>La même surface, sans ses contrôles d'écriture. L'inspecteur cesse d'être un formulaire et devient une fiche : mêmes informations, aucun champ modifiable.</p>
+      <span class="r">Quand <code>read</code> est accordé et <code>write</code> refusé — le cas le plus fréquent, et celui qui est aujourd'hui le plus mal traité.</span></div>
+  </div>
+  <p class="intro" style="margin-top:18px"><strong>Et une anti-règle :</strong> aucun contrôle de l'interface ne doit produire un 403. Si le cœur va refuser, l'UI le savait avant le clic. Réciproquement, le rendu conditionnel n'est <em>jamais</em> une frontière de sécurité — le cœur reste seul juge, comme il l'est déjà.</p>
+
+  <h3 style="font-size:16px;font-weight:800;letter-spacing:-.01em;margin:34px 0 8px">Le mécanisme : une seule porte, des deux côtés</h3>
+  <p class="intro" style="margin-bottom:14px">Le cœur a déjà sa règle d'or — une seule porte <code>can(user, action, object)</code>. L'UI doit avoir la sienne, et elle doit lire la première plutôt que la réinventer. Trois changements, tous dans SP-29.</p>
+  <div class="flow">
+    <div><span class="n">1 · cœur</span><b>Le serveur calcule</b>
+      <code>ItemOut.permissions = {
+  read, write, delete, share
+}</code>
+      <p>Dérivé de <code>can()</code> sur la ligne déjà chargée — aucun appel supplémentaire, aucune règle dupliquée. Même chose pour les collections (<code>canWrite</code> existe déjà) et pour <code>/me</code>, qui gagne les capacités d'instance.</p></div>
+    <div><span class="n">2 · client</span><b>Le shell lit, ne déduit pas</b>
+      <code>&lt;Gate on={item} can="write"
+      fallback="lock"&gt;
+  &lt;Button&gt;Modifier&lt;/Button&gt;
+&lt;/Gate&gt;</code>
+      <p>Un composant unique, trois modes : <code>hide</code>, <code>lock</code> (avec sa raison), <code>readonly</code>. Interdiction d'écrire <code>item.owner === me</code> ailleurs : la règle vit à un seul endroit, testable.</p></div>
+    <div><span class="n">3 · surface</span><b>Les domaines se dérivent</b>
+      <code>domains = ALL.filter(d =&gt;
+  d.requires(me, instance))</code>
+      <p>La barre de domaines, ⌘K, les onglets du volet gauche et les sections de l'inspecteur se calculent depuis la même source. Un rôle retiré fait disparaître le domaine <em>et</em> ses commandes de la palette, sans code de plus.</p></div>
+  </div>
+
+  <h3 style="font-size:16px;font-weight:800;letter-spacing:-.01em;margin:34px 0 8px">Ce que chaque profil voit en haut de l'écran</h3>
+  <p class="intro" style="margin-bottom:14px">La barre de domaines est le premier endroit où les droits se lisent. Trois comptes, le même produit.</p>
+  <div class="strips">
+
+    <div class="strip">
+      <div class="pl"><b>Administrateur</b><small>isAdmin · propriétaire de 31 items</small><span class="cnt">9 domaines</span></div>
+      <div class="dbar"><a class="on">Catalogue</a><a>Cartes</a><a>Données</a><a>Apps &amp; sites</a><a>Automatisation</a><a>Analytique</a><a>Tâches</a><span class="r"><a>Administration</a><a>Paramètres</a></span></div>
+    </div>
+
+    <div class="strip">
+      <div class="pl"><b>Créateur</b><small>compte standard · éditeur sur 2 groupes</small><span class="cnt">6 domaines · Administration absente</span></div>
+      <div class="dbar"><a class="on">Catalogue</a><a>Cartes</a><a>Données</a><a>Apps &amp; sites</a><a>Automatisation</a><a>Tâches</a><span class="r"><a>Préférences</a></span></div>
+    </div>
+
+    <div class="strip">
+      <div class="pl"><b>Analyste</b><small>isAnalyst · lecteur sur 14 items</small><span class="cnt">4 domaines · Analytique déverrouillée</span></div>
+      <div class="dbar"><a class="on">Catalogue</a><a>Cartes</a><a>Analytique</a><a>Tâches</a><span class="r"><a>Préférences</a></span></div>
+    </div>
+
+    <div class="strip">
+      <div class="pl"><b>Lecteur</b><small>viewer · aucun item en propre</small><span class="cnt">2 domaines · aucune écriture</span></div>
+      <div class="dbar"><a class="on">Catalogue</a><a>Cartes</a><span class="r"><a>Préférences</a></span></div>
+    </div>
+
+    <div class="strip">
+      <div class="pl"><b>Créateur, capacités ETL et export coupées</b><small>etlEnabled=false · exportEnabled=false</small><span class="cnt">Automatisation verrouillée, pas masquée</span></div>
+      <div class="dbar"><a class="on">Catalogue</a><a>Cartes</a><a>Données</a><a>Apps &amp; sites</a><a style="opacity:.45"><svg class="i xs" viewBox="0 0 24 24" style="margin-right:5px"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Automatisation</a><a>Tâches</a><span class="r"><a>Préférences</a></span></div>
+    </div>
+
+    <div class="strip">
+      <div class="pl"><b>Mode démo — lecture seule</b><small>readOnly=true · instance publique</small><span class="cnt">Tous les domaines, aucune écriture</span></div>
+      <div class="banner"><svg class="i sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>Démonstration — vous pouvez tout explorer, rien n'est enregistré. Les commandes d'écriture sont désactivées.</div>
+      <div class="dbar"><a class="on">Catalogue</a><a>Cartes</a><a>Données</a><a>Apps &amp; sites</a><a>Automatisation</a><a>Analytique</a><a>Tâches</a><span class="r"><a>Administration</a><a>Paramètres</a></span></div>
+    </div>
+
+  </div>
+  <p class="intro" style="margin-top:16px"><strong>Une distinction que je te propose de trancher :</strong> un rôle manquant <em>masque</em> le domaine — l'utilisateur n'a pas à savoir que SQL Lab existe. Une capacité coupée par l'instance le <em>verrouille</em> sans le masquer — c'est une information sur le déploiement, pas sur la personne, et un administrateur doit pouvoir comprendre pourquoi c'est éteint. C'est la question que je t'avais posée sans réponse ; j'ai tranché ainsi, dis-moi si tu préfères l'inverse.</p>
+
+  <h3 style="font-size:16px;font-weight:800;letter-spacing:-.01em;margin:34px 0 8px">Le même item, trois inspecteurs</h3>
+  <p class="intro" style="margin-bottom:14px">La carte « Réseau d'eau potable », inspectée par trois comptes différents. Le volet ne change pas de place ni de structure — il change de nature.</p>
+  <div class="insp3">
+
+    <div class="c"><div class="t"><b>Propriétaire</b><small>read write delete share</small></div>
+      <div class="v v3">
+        <div class="vb">
+          <div style="font-size:12px;font-weight:800;letter-spacing:-.01em">Réseau d'eau potable</div>
+          <dl class="kv"><dt>Propriétaire</dt><dd>vous</dd><dt>Entités</dt><dd>4 326</dd><dt>Version</dt><dd>v12</dd></dl>
+          <div class="isec"><div class="h">Métadonnées</div>
+            <div class="fld"><label>Titre</label><div class="ctl">Réseau d'eau potable</div></div>
+            <div class="fld" style="margin-top:6px"><label>Publication</label><div class="seg"><span class="on">Privé</span><span>Publié</span></div></div>
+          </div>
+          <div class="isec"><div class="h">Partage — 2 groupes</div>
+            <div style="display:flex;flex-direction:column;gap:4px;font-size:10px;color:var(--ink2)">
+              <span class="st ok"><i></i>SIG — éditeur</span><span class="st ok"><i></i>Services techniques — lecteur</span>
+            </div>
+            <span class="btn s" style="margin-top:6px;height:20px;font-size:9.5px">Gérer le partage</span>
+          </div>
+          <div class="acts" style="margin-top:auto"><span class="btn p f">Ouvrir</span><span class="btn s">Partager</span><span class="btn s">Dupliquer</span><span class="btn d">Supprimer</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="c"><div class="t"><b>Éditeur du groupe SIG</b><small>read write · pas de delete/share</small></div>
+      <div class="v v3">
+        <div class="vb">
+          <div style="font-size:12px;font-weight:800;letter-spacing:-.01em">Réseau d'eau potable</div>
+          <dl class="kv"><dt>Propriétaire</dt><dd>tanguy</dd><dt>Entités</dt><dd>4 326</dd><dt>Version</dt><dd>v12</dd></dl>
+          <div class="isec"><div class="h">Métadonnées</div>
+            <div class="fld"><label>Titre</label><div class="ctl">Réseau d'eau potable</div></div>
+            <div class="fld" style="margin-top:6px"><label>Publication</label>
+              <div class="lockrow"><svg class="i xs" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Publier est réservé au propriétaire</div></div>
+          </div>
+          <div class="isec"><div class="h">Partage — 2 groupes</div>
+            <div style="display:flex;flex-direction:column;gap:4px;font-size:10px;color:var(--ink2)">
+              <span class="st ok"><i></i>SIG — éditeur (vous)</span><span class="st ok"><i></i>Services techniques — lecteur</span>
+            </div>
+          </div>
+          <div class="acts" style="margin-top:auto"><span class="btn p f">Ouvrir</span><span class="btn s">Dupliquer</span><span class="btn lk"><svg class="i xs" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Supprimer</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="c"><div class="t"><b>Lecteur</b><small>read seul</small></div>
+      <div class="v v3">
+        <div class="vb">
+          <div class="banner info" style="margin:-8px -8px 0;border-radius:0"><svg class="i sm" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Lecture seule — partagé par tanguy</div>
+          <div style="font-size:12px;font-weight:800;letter-spacing:-.01em;margin-top:6px">Réseau d'eau potable</div>
+          <dl class="kv"><dt>Propriétaire</dt><dd>tanguy</dd><dt>Collection</dt><dd>eau_potable</dd><dt>Entités</dt><dd>4 326</dd><dt>Projection</dt><dd>EPSG:2154</dd><dt>Modifié</dt><dd>il y a 2 h</dd></dl>
+          <div class="isec"><div class="h">Description</div>
+            <p style="margin:0;font-family:'Source Serif 4',serif;font-size:10.5px;color:var(--ink2);line-height:1.5">Réseau d'adduction d'eau potable du syndicat, conduites et ouvrages, mis à jour mensuellement.</p>
+          </div>
+          <div class="isec"><div class="h">Lignage — 3 objets</div>
+            <div class="tree"><a>Conduites AEP 2026</a><a>Portail eau</a></div>
+          </div>
+          <div class="lockrow" style="margin-top:6px">Vous avez un accès en lecture via le groupe <b style="color:var(--ink2)">Services techniques</b>. Pour modifier cette carte, demandez le rôle éditeur à tanguy.</div>
+          <div class="acts" style="margin-top:auto"><span class="btn p f">Ouvrir</span><span class="btn s">Exporter</span><span class="btn s">Dupliquer chez moi</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <p class="intro" style="margin-top:16px">Trois choses à relever. Le lecteur ne voit <strong>aucun contrôle grisé inutile</strong> : la fiche est complète, elle n'est simplement pas un formulaire. Il garde <strong>« Dupliquer chez moi »</strong> — l'issue positive : on ne lui dit pas seulement ce qu'il ne peut pas faire. Et le verrou de l'éditeur nomme <strong>qui</strong> détient le droit, ce qui transforme une impasse en démarche.</p>
+
+  <h3 style="font-size:16px;font-weight:800;letter-spacing:-.01em;margin:34px 0 8px">Le catalogue, vu par un lecteur</h3>
+  <p class="intro" style="margin-bottom:14px">L'écran clé sous le profil le plus contraint : mêmes trois volets, moins de facettes, moins de colonnes, aucune sélection multiple, et un inspecteur en fiche.</p>
+  <div class="mock">
+    <div class="stage"><div class="app">
+      <div class="tbar"><span class="brand"><span class="glyph"></span>GeoStudio</span><span class="omni"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Rechercher<kbd>⌘K</kbd></span><span class="av">MD</span></div>
+      <div class="dbar"><a class="on">Catalogue</a><a>Cartes</a><span class="r"><a>Préférences</a></span></div>
+      <div class="body" style="height:322px">
+        <div class="v v1">
+          <div class="vh"><span class="t on">Parcourir</span><span class="sp"></span></div>
+          <div class="vb">
+            <div class="srch"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Rechercher<span class="ai">sémantique</span></div>
+            <div class="grp">Type · 5 accessibles</div>
+            <div class="fac"><span class="cb on"></span>Carte<span class="n">4</span></div>
+            <div class="fac"><span class="cb on"></span>Dataset<span class="n">9</span></div>
+            <div class="fac"><span class="cb"></span>App<span class="n">2</span></div>
+            <div class="fac"><span class="cb"></span>Site<span class="n">2</span></div>
+            <div class="fac"><span class="cb"></span>Externe<span class="n">312</span></div>
+            <div class="grp">Portée</div>
+            <div class="fac"><span class="cb on"></span>Partagés avec moi<span class="n">14</span></div>
+            <div class="fac"><span class="cb"></span>Publics<span class="n">23</span></div>
+            <div class="lockrow" style="margin-top:8px">« Mes éléments » apparaîtra dès que vous serez propriétaire d'un objet.</div>
+          </div>
+        </div>
+        <div class="v v2">
+          <div class="v2h"><span class="ttl">Catalogue</span><span class="cnt">14 éléments accessibles</span>
+            <span class="mini" style="margin-left:auto">Modifié récemment</span>
+            <span class="vsw"><span><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span><span class="on"><svg class="i xs" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg></span><span><svg class="i xs" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/></svg></span></span>
+          </div>
+          <div class="vb p0">
+            <table class="tbl">
+              <thead><tr><th>Titre</th><th>Type</th><th>Propriétaire</th><th>Modifié</th><th>Votre accès</th></tr></thead>
+              <tbody>
+                <tr class="on"><td class="ttl">Réseau d'eau potable</td><td><span class="ty"><svg class="i xs" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/></svg>Carte</span></td><td>tanguy</td><td class="mono">il y a 2 h</td><td><span class="st nu"><i></i>Lecture</span></td></tr>
+                <tr><td class="ttl">Interventions 2026</td><td><span class="ty"><svg class="i xs" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg>Dataset</span></td><td>tanguy</td><td class="mono">hier</td><td><span class="st ok"><i></i>Écriture</span></td></tr>
+                <tr><td class="ttl">Points de captage</td><td><span class="ty"><svg class="i xs" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg>Dataset</span></td><td>m.durand</td><td class="mono">il y a 3 j</td><td><span class="st nu"><i></i>Lecture</span></td></tr>
+                <tr><td class="ttl">Portail eau — grand public</td><td><span class="ty"><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>Site</span></td><td>tanguy</td><td class="mono">il y a 5 j</td><td><span class="st nu"><i></i>Public</span></td></tr>
+                <tr><td class="ttl">Suivi des travaux</td><td><span class="ty"><svg class="i xs" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>App</span></td><td>tanguy</td><td class="mono">il y a 7 j</td><td><span class="st nu"><i></i>Lecture</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="v v3">
+          <div class="vh"><span class="t on">Fiche</span><span class="sp"></span></div>
+          <div class="vb">
+            <div class="banner info" style="margin:-8px -8px 0;border-radius:0"><svg class="i sm" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Lecture seule — partagé par tanguy</div>
+            <div class="thumb" style="margin-top:6px"><svg viewBox="0 0 220 100" preserveAspectRatio="none">
+              <rect width="220" height="100" fill="var(--map1)"/>
+              <g stroke="var(--water)" stroke-width="5" fill="none"><path d="M-5 40c40 18 60-6 100 12s60 20 130 4"/></g>
+              <g stroke="var(--road)" stroke-width="2" fill="none"><path d="M30 100V52l30-22h60l38 28v42"/><path d="M20 74h180"/></g>
+              <g stroke="var(--accent)" stroke-width="2" fill="none"><path d="M14 94c30-30 55-20 80-46s60-22 116-14"/></g>
+            </svg></div>
+            <div style="font-size:12px;font-weight:800;letter-spacing:-.01em">Réseau d'eau potable</div>
+            <dl class="kv"><dt>Propriétaire</dt><dd>tanguy</dd><dt>Collection</dt><dd>eau_potable</dd><dt>Entités</dt><dd>4 326</dd><dt>Modifié</dt><dd>il y a 2 h</dd></dl>
+            <div class="lockrow">Accès en lecture via le groupe <b style="color:var(--ink2)">Services techniques</b>.</div>
+            <div class="acts" style="margin-top:auto"><span class="btn p f">Ouvrir</span><span class="btn s">Exporter</span><span class="btn s">Dupliquer chez moi</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="statusbar"><span>Aucune tâche</span><span class="r">v0.1.0 · corrèze</span></div>
+    </div></div>
+    <div class="note"><b>Colonne « Votre accès » —</b> elle n'existe que parce que le payload porte désormais les permissions. Elle répond à la question la plus fréquente d'un utilisateur devant un catalogue partagé : <em>qu'est-ce que j'ai le droit de faire avec ça ?</em> — sans avoir à cliquer pour découvrir un refus.</div>
+  </div>
+
+  <h3 style="font-size:16px;font-weight:800;letter-spacing:-.01em;margin:34px 0 8px">La matrice</h3>
+  <p class="intro" style="margin-bottom:8px">Neuf domaines × quatre profils. <span class="mtx" style="display:inline"><span class="y">●</span> complet</span> · <span class="l">◐</span> partiel ou verrouillé · <span style="color:var(--ink3)">○</span> absent. Le mode démo se superpose à n'importe quelle colonne : il retire toute écriture sans rien masquer.</p>
+  <div class="tw"><table class="mtx">
+    <thead><tr><th>Domaine</th><th>Administrateur</th><th>Créateur</th><th>Analyste</th><th>Lecteur</th></tr></thead>
+    <tbody>
+      <tr><td>Catalogue</td><td class="y">●</td><td class="y">●</td><td class="l">◐ lecture</td><td class="l">◐ lecture</td></tr>
+      <tr><td>Cartes</td><td class="y">●</td><td class="y">●</td><td class="l">◐ lecture</td><td class="l">◐ lecture</td></tr>
+      <tr><td>Données</td><td class="y">●</td><td class="l">◐ collections partagées</td><td class="l">◐ lecture</td><td class="n">○</td></tr>
+      <tr><td>Apps &amp; sites</td><td class="y">●</td><td class="y">●</td><td class="n">○</td><td class="n">○</td></tr>
+      <tr><td>Automatisation</td><td class="y">●</td><td class="l">◐ ses pipelines · aucun secret</td><td class="n">○</td><td class="n">○</td></tr>
+      <tr><td>Analytique</td><td class="y">●</td><td class="l">◐ sans SQL Lab</td><td class="y">● SQL Lab compris</td><td class="n">○</td></tr>
+      <tr><td>Tâches</td><td class="y">● toutes</td><td class="l">◐ celles qu'il a créées</td><td class="l">◐ celles qu'il a créées</td><td class="n">○</td></tr>
+      <tr><td>Administration</td><td class="y">●</td><td class="n">○</td><td class="n">○</td><td class="n">○</td></tr>
+      <tr><td>Paramètres</td><td class="y">● instance &amp; tenant</td><td class="l">◐ préférences</td><td class="l">◐ préférences</td><td class="l">◐ préférences</td></tr>
+    </tbody>
+  </table></div>
+  <p class="intro" style="margin-top:16px"><strong>Deux points tranchés le 29 août.</strong> <em>Une tâche appartient à qui l'a créée</em> — y compris une exécution planifiée : c'est le créateur du cron qui la voit dans son domaine Tâches, pas l'administrateur, lequel les voit toutes en plus des siennes. <em>Les noms de secrets ne sont visibles que des administrateurs</em> : ni la valeur, ni la référence n'apparaissent à un créateur. Conséquence assumée, traitée dans la spec — un nœud de pipeline consommant un secret affiche « configuré par un administrateur » et n'est recâblable que par eux ; un créateur peut exécuter le pipeline, pas changer son secret.</p>
+</section>
+
+<section>
+  <div class="shead"><h2>Sur écran étroit</h2><span class="lbl">390 px, sans casse</span></div>
+  <p class="intro">Après les droits, la largeur. La dégradation du triptyque est sa meilleure propriété : <strong>un volet devient un onglet</strong>. Aucune composition à réinventer, aucune exception à écrire — la même règle produit le mobile de tous les écrans. La barre de domaines devient la barre de navigation du bas ; le reste passe dans « Plus ».</p>
+  <div class="mock"><div class="phones">
+
+    <div class="phone">
+      <div class="mtop"><svg class="i" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>Catalogue<svg class="i" viewBox="0 0 24 24" style="margin-left:auto"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div>
+      <div class="mtabs"><span class="on">Parcourir</span><span>Résultats</span><span>Fiche</span></div>
+      <div style="flex:1;padding:9px;display:flex;flex-direction:column;gap:8px;overflow:hidden">
+        <div class="srch"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>réseau eau<span class="ai">sémantique</span></div>
+        <div class="grp">Type</div>
+        <div class="fac"><span class="cb on"></span>Carte<span class="n">8</span></div>
+        <div class="fac"><span class="cb on"></span>Dataset<span class="n">23</span></div>
+        <div class="fac"><span class="cb"></span>App<span class="n">5</span></div>
+        <div class="fac"><span class="cb"></span>Pipeline<span class="n">7</span></div>
+        <div class="grp">Portée</div>
+        <div class="fac"><span class="cb on"></span>Mes éléments<span class="n">31</span></div>
+        <div class="fac"><span class="cb"></span>Partagés<span class="n">14</span></div>
+        <span class="btn p" style="margin-top:auto;height:30px">Voir les 31 résultats</span>
+      </div>
+      <div class="mnav">
+        <span class="on"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Catalogue</span>
+        <span><svg class="i" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/></svg>Cartes</span>
+        <span><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Tâches</span>
+        <span><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Plus</span>
+      </div>
+    </div>
+
+    <div class="phone">
+      <div class="mtop"><svg class="i" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Réseau d'eau</div>
+      <div class="mtabs"><span>Couches</span><span class="on">Carte</span><span>Inspecter</span></div>
+      <div class="canvas" style="flex:1">
+        <svg class="map" viewBox="0 0 240 300" preserveAspectRatio="xMidYMid slice">
+          <rect width="240" height="300" fill="var(--map1)"/>
+          <g stroke="var(--water)" stroke-width="8" fill="none"><path d="M-10 90c50 30 80-10 130 20s60 40 140 10"/></g>
+          <g stroke="var(--road)" stroke-width="3" fill="none"><path d="M30 300V160l50-40h80l50 40v140"/><path d="M20 210h200"/></g>
+          <g stroke="var(--accent)" stroke-width="2.6" fill="none"><path d="M20 270c40-60 70-40 100-90s70-40 130-30"/></g>
+          <circle cx="105" cy="170" r="6" fill="var(--accent)" stroke="var(--sheet)" stroke-width="2.5"/>
+          <circle cx="175" cy="105" r="5" fill="#8E6410" stroke="var(--sheet)" stroke-width="2.5"/>
+        </svg>
+        <div class="float tools" style="top:7px;right:7px"><i class="on"><svg class="i sm" viewBox="0 0 24 24"><path d="m4 3 7 17 2.5-6.5L20 11z"/></svg></i><i><svg class="i sm" viewBox="0 0 24 24"><rect x="2" y="9" width="20" height="6" rx="1"/><path d="M7 9v3M12 9v4M17 9v3"/></svg></i><i><svg class="i sm" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/></svg></i></div>
+        <div class="float scale" style="bottom:7px;left:7px">1 : 12 000</div>
+        <div class="float legend" style="bottom:7px;right:7px"><b>Ø mm</b><span><em style="background:#0B6E77"></em>≥ 200</span><span><em style="background:#9FC8CB"></em>&lt; 100</span></div>
+      </div>
+      <div class="mnav"><span><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Catalogue</span><span class="on"><svg class="i" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/></svg>Cartes</span><span><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Tâches</span><span><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Plus</span></div>
+    </div>
+
+    <div class="phone">
+      <div class="mtop"><svg class="i" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>Tâches</div>
+      <div class="mtabs"><span>Filtrer</span><span class="on">File</span><span>Détail</span></div>
+      <div style="flex:1;padding:9px;display:flex;flex-direction:column;gap:7px;background:var(--sunk);overflow:hidden">
+        <div class="mcard on"><b><svg class="i sm" viewBox="0 0 24 24" style="color:var(--accent)"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/></svg>Moissonnage IGN</b><small>en cours · 62 % · 4 min 38 s</small><span class="prog" style="width:100%;margin-top:6px"><i style="width:62%"></i></span></div>
+        <div class="mcard"><b><svg class="i sm" viewBox="0 0 24 24" style="color:var(--ink3)"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="15" width="6" height="5" rx="1"/><path d="M9 6.5h6M9 6.5v11h6"/></svg>Import IGN BD TOPO</b><small>en cours · 28 %</small><span class="prog" style="width:100%;margin-top:6px"><i style="width:28%"></i></span></div>
+        <div class="mcard"><b><svg class="i sm" viewBox="0 0 24 24" style="color:var(--crimson)"><path d="M10.3 3.6 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>CKAN data.gouv<span style="margin-left:auto;width:7px;height:7px;border-radius:50%;background:var(--crimson)"></span></b><small style="color:var(--crimson)">échec · tentative 3/3</small></div>
+        <div class="mcard"><b><svg class="i sm" viewBox="0 0 24 24" style="color:var(--ink3)"><path d="M6 2h9l5 5v15H6z"/></svg>Export PDF — Bilan AEP</b><small>en file</small></div>
+      </div>
+      <div class="mnav"><span><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Catalogue</span><span><svg class="i" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/></svg>Cartes</span><span class="on"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Tâches</span><span><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Plus</span></div>
+    </div>
+
+  </div>
+  <div class="capt">Catalogue · Éditeur de carte · Centre de tâches — 390 px</div>
+  </div>
+</section>
+
+<footer>
+  <p>Socle B affiné, 29 août 2026. Neuf domaines, un gabarit, aucune boîte de dialogue, un inspecteur qui n'est jamais vide, le catalogue à un clic depuis chaque écran, et une interface qui dit la vérité sur ce que la personne a le droit de faire. Prochaine étape si tu valides : la spec SP-29 — tokens partagés avec le <code>Theme</code> des apps, primitives headless, kit de composants, <strong>et le contrat de permissions dans le payload</strong> — puis SP-30, la bascule du shell existant d'un bloc — 16 pages, 20 routes.</p>
+</footer>
+
+</div>

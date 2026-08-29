@@ -1,0 +1,641 @@
+<title>Maquettes GeoStudio</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Archivo+Narrow:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+:root{
+  --paper:#EFF2F1;--sheet:#FBFCFB;--sunk:#E4E9E7;--raise:#FFFFFF;
+  --ink:#0E1A20;--ink2:#3B4C54;--ink3:#6E8087;
+  --rule:#CFD8D6;--rule2:#E2E8E6;
+  --accent:#0B6E77;--accent2:#0E8892;--accent-soft:#D9EBEC;--accent-ink:#07545B;
+  --revision:#6A4C93;--revision-soft:#EAE3F4;
+  --amber:#8E6410;--amber-soft:#F7EBD1;
+  --crimson:#9A2C45;--crimson-soft:#F7E1E6;
+  --green:#2A6A50;--green-soft:#DDEEE5;
+  --map1:#E8EFEA;--map2:#DCE7E3;--water:#BBD8DC;--road:#FFFFFF;
+  --sh1:0 1px 2px rgba(14,26,32,.07);--sh2:0 2px 6px rgba(14,26,32,.09),0 12px 32px -16px rgba(14,26,32,.28);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0A1316;--sheet:#101A1E;--sunk:#16232A;--raise:#182629;
+  --ink:#E7EEEC;--ink2:#AFC0C2;--ink3:#7C8F94;
+  --rule:#243339;--rule2:#1A272C;
+  --accent:#4FB3BC;--accent2:#6BC8D0;--accent-soft:#0F3238;--accent-ink:#7FD2D9;
+  --revision:#AB8FD4;--revision-soft:#241A33;
+  --amber:#D9A441;--amber-soft:#2C2311;
+  --crimson:#E58098;--crimson-soft:#2F161C;
+  --green:#63C295;--green-soft:#11291F;
+  --map1:#16242A;--map2:#1B2C31;--water:#1D3A42;--road:#2C4148;
+  --sh1:0 1px 2px rgba(0,0,0,.5);--sh2:0 2px 6px rgba(0,0,0,.5),0 12px 32px -16px rgba(0,0,0,.8);
+}}
+:root[data-theme="dark"]{
+  --paper:#0A1316;--sheet:#101A1E;--sunk:#16232A;--raise:#182629;
+  --ink:#E7EEEC;--ink2:#AFC0C2;--ink3:#7C8F94;
+  --rule:#243339;--rule2:#1A272C;
+  --accent:#4FB3BC;--accent2:#6BC8D0;--accent-soft:#0F3238;--accent-ink:#7FD2D9;
+  --revision:#AB8FD4;--revision-soft:#241A33;
+  --amber:#D9A441;--amber-soft:#2C2311;
+  --crimson:#E58098;--crimson-soft:#2F161C;
+  --green:#63C295;--green-soft:#11291F;
+  --map1:#16242A;--map2:#1B2C31;--water:#1D3A42;--road:#2C4148;
+  --sh1:0 1px 2px rgba(0,0,0,.5);--sh2:0 2px 6px rgba(0,0,0,.5),0 12px 32px -16px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:Archivo,system-ui,sans-serif;font-size:16px;line-height:1.6}
+.wrap{max-width:1240px;margin:0 auto;padding:0 clamp(16px,3.5vw,40px) 90px}
+h1,h2,h3,h4{margin:0;text-wrap:balance}
+.serif{font-family:"Source Serif 4",Georgia,serif}
+.lbl{font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.13em;font-weight:700;font-size:11px;color:var(--ink3)}
+code{font-family:"IBM Plex Mono",monospace;font-size:.85em;background:var(--sunk);padding:.1em .35em;border-radius:2px}
+
+header.top{border-bottom:1px solid var(--rule);background:
+  linear-gradient(to right,var(--rule2) 1px,transparent 1px) 0 0/34px 34px,
+  linear-gradient(to bottom,var(--rule2) 1px,transparent 1px) 0 0/34px 34px,var(--sheet);margin-bottom:40px}
+header.top .wrap{padding-top:34px;padding-bottom:26px}
+h1{font-size:clamp(28px,4.4vw,46px);font-weight:800;letter-spacing:-.03em;line-height:1.05}
+.dek{font-family:"Source Serif 4",serif;font-size:clamp(16px,1.6vw,19px);color:var(--ink2);max-width:62ch;margin-top:12px}
+
+section{margin-top:56px}
+.shead{display:flex;align-items:baseline;gap:14px;border-bottom:2px solid var(--ink);padding-bottom:8px}
+.shead h2{font-size:clamp(19px,2.2vw,25px);font-weight:700;letter-spacing:-.02em}
+.shead .lbl{margin-left:auto}
+.intro{font-family:"Source Serif 4",serif;color:var(--ink2);max-width:68ch;margin:16px 0 26px}
+.intro strong{color:var(--ink);font-weight:600}
+
+/* ============ identité ============ */
+.idgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
+.idcard{background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:18px;box-shadow:var(--sh1)}
+.idcard h4{font-size:14px;font-weight:700;margin-bottom:12px}
+.sw{display:flex;flex-wrap:wrap;gap:8px}
+.sw div{width:64px}
+.sw i{display:block;height:40px;border-radius:3px;border:1px solid rgba(0,0,0,.08)}
+.sw b{display:block;font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--ink3);margin-top:5px;font-weight:400}
+.typ p{margin:0 0 10px}
+.typ .d{font-size:26px;font-weight:800;letter-spacing:-.03em}
+.typ .b{font-size:14px;color:var(--ink2)}
+.typ .m{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent-ink)}
+.typ .n{font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.13em;font-weight:700;font-size:11px;color:var(--ink3)}
+
+/* ============ maquettes ============ */
+.mock-block{margin-top:34px;border:1px solid var(--rule);border-radius:5px;background:var(--sheet);overflow:hidden;box-shadow:var(--sh2)}
+.mock-head{display:flex;align-items:flex-start;gap:14px;padding:16px 18px;border-bottom:1px solid var(--rule)}
+.mock-head .k{font-family:"IBM Plex Mono",monospace;font-size:22px;font-weight:500;color:var(--accent);line-height:1}
+.mock-head h3{font-size:19px;font-weight:800;letter-spacing:-.02em}
+.mock-head p{margin:4px 0 0;font-family:"Source Serif 4",serif;font-size:14.5px;color:var(--ink2);max-width:70ch}
+.mock-head .pick{margin-left:auto;font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.1em;font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent);padding:4px 8px;border-radius:2px;white-space:nowrap}
+.stage{padding:20px;background:var(--sunk);display:flex;gap:18px;align-items:flex-start;overflow-x:auto}
+.mock-foot{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0;border-top:1px solid var(--rule)}
+.mock-foot div{padding:13px 18px;border-right:1px solid var(--rule2)}
+.mock-foot div:last-child{border-right:0}
+.mock-foot .lbl{display:block;margin-bottom:4px}
+.mock-foot p{margin:0;font-family:"Source Serif 4",serif;font-size:13.5px;color:var(--ink2);line-height:1.5}
+
+/* ---- chrome commun des maquettes ---- */
+.app{width:880px;flex:0 0 880px;height:470px;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;display:flex;flex-direction:column;overflow:hidden;font-size:11px;box-shadow:var(--sh1)}
+.phone{width:250px;flex:0 0 250px;height:470px;background:var(--sheet);border:1px solid var(--rule);border-radius:16px;display:flex;flex-direction:column;overflow:hidden;font-size:11px;box-shadow:var(--sh1)}
+.tbar{height:34px;flex:0 0 34px;display:flex;align-items:center;gap:10px;padding:0 10px;border-bottom:1px solid var(--rule);background:var(--raise)}
+.brand{display:flex;align-items:center;gap:6px;font-weight:800;letter-spacing:-.02em;font-size:12px}
+.brand .glyph{width:16px;height:16px;border-radius:3px;background:var(--accent);position:relative}
+.brand .glyph::after{content:"";position:absolute;inset:4px 4px auto auto;width:4px;height:4px;border-radius:50%;background:var(--sheet)}
+.omni{flex:1;max-width:300px;margin:0 auto;height:21px;border:1px solid var(--rule);border-radius:11px;background:var(--sunk);display:flex;align-items:center;gap:6px;padding:0 9px;color:var(--ink3);font-size:10px}
+.omni kbd{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:9px;border:1px solid var(--rule);border-radius:3px;padding:0 3px;background:var(--sheet)}
+.av{width:19px;height:19px;border-radius:50%;background:var(--revision-soft);border:1px solid var(--revision);color:var(--revision);display:grid;place-items:center;font-size:8.5px;font-weight:700}
+.body{flex:1;display:flex;min-height:0}
+.rail{width:40px;flex:0 0 40px;border-right:1px solid var(--rule);background:var(--raise);display:flex;flex-direction:column;align-items:center;padding:7px 0;gap:5px}
+.rail i{width:26px;height:26px;border-radius:4px;display:grid;place-items:center;color:var(--ink3)}
+.rail i.on{background:var(--accent-soft);color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.rail .sp{flex:1}
+.pane{border-right:1px solid var(--rule);background:var(--sheet);display:flex;flex-direction:column;min-width:0}
+.pane .ph{height:26px;flex:0 0 26px;display:flex;align-items:center;padding:0 9px;border-bottom:1px solid var(--rule2);font-weight:700;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3)}
+.pane .pb{flex:1;overflow:hidden;padding:7px}
+.srch{height:22px;border:1px solid var(--rule);border-radius:3px;background:var(--sunk);display:flex;align-items:center;padding:0 7px;color:var(--ink3);font-size:10px;margin-bottom:7px}
+.tree{display:flex;flex-direction:column;gap:1px}
+.tree a{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:3px;color:var(--ink2);text-decoration:none;font-size:10.5px}
+.tree a.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+.tree a .dot{width:6px;height:6px;border-radius:1px;background:var(--ink3);flex:0 0 6px}
+.tree a.on .dot{background:var(--accent)}
+.tree .grp{margin:7px 0 3px;font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.11em;font-size:9px;font-weight:700;color:var(--ink3);padding-left:6px}
+.tabs{height:27px;flex:0 0 27px;display:flex;align-items:flex-end;gap:2px;padding:0 7px;border-bottom:1px solid var(--rule);background:var(--sunk)}
+.tab{height:22px;display:flex;align-items:center;gap:6px;padding:0 9px;border:1px solid var(--rule);border-bottom:0;border-radius:3px 3px 0 0;background:var(--sunk);color:var(--ink3);font-size:10px;white-space:nowrap}
+.tab.on{background:var(--sheet);color:var(--ink);font-weight:600}
+.tab .x{opacity:.5;font-size:11px}
+.canvas{flex:1;position:relative;min-width:0;background:var(--map1);overflow:hidden}
+.canvas svg{position:absolute;inset:0;width:100%;height:100%}
+.float{position:absolute;background:var(--raise);border:1px solid var(--rule);border-radius:4px;box-shadow:var(--sh1)}
+.float.tools{top:8px;right:8px;display:flex;flex-direction:column;padding:3px;gap:2px}
+.float.tools i{width:22px;height:22px;border-radius:3px;display:grid;place-items:center;color:var(--ink2)}
+.float.tools i.on{background:var(--accent-soft);color:var(--accent)}
+.float.scale{bottom:8px;left:8px;padding:3px 7px;font-family:"IBM Plex Mono",monospace;font-size:9px;color:var(--ink2)}
+.float.legend{bottom:8px;right:8px;padding:6px 8px;display:flex;flex-direction:column;gap:3px;font-size:9px;color:var(--ink2)}
+.float.legend b{font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.1em;font-size:8.5px;color:var(--ink3);font-weight:700}
+.float.legend span{display:flex;align-items:center;gap:5px}
+.float.legend em{width:9px;height:9px;border-radius:2px;display:block}
+.insp{width:216px;flex:0 0 216px;border-left:1px solid var(--rule);background:var(--sheet);display:flex;flex-direction:column}
+.insp .ih{height:26px;flex:0 0 26px;display:flex;align-items:center;gap:6px;padding:0 9px;border-bottom:1px solid var(--rule2)}
+.insp .ih b{font-size:10.5px;font-weight:700}
+.insp .ih .t{margin-left:auto;font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.1em;font-size:8.5px;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent);border-radius:2px;padding:1px 5px;font-weight:700}
+.insp .ib{flex:1;padding:9px;display:flex;flex-direction:column;gap:9px;overflow:hidden}
+.fld{display:flex;flex-direction:column;gap:3px}
+.fld label{font-size:9.5px;color:var(--ink3);font-weight:600}
+.ctl{height:22px;border:1px solid var(--rule);border-radius:3px;background:var(--raise);display:flex;align-items:center;padding:0 7px;font-size:10px;color:var(--ink)}
+.ctl.sel::after{content:"▾";margin-left:auto;color:var(--ink3)}
+.seg{display:flex;border:1px solid var(--rule);border-radius:3px;overflow:hidden}
+.seg span{flex:1;text-align:center;padding:3px 0;font-size:9.5px;color:var(--ink3)}
+.seg span.on{background:var(--accent);color:#fff;font-weight:600}
+.ramp{display:flex;height:16px;border-radius:3px;overflow:hidden;border:1px solid var(--rule)}
+.ramp i{flex:1}
+.slider{height:16px;display:flex;align-items:center}
+.slider .track{flex:1;height:3px;border-radius:2px;background:var(--rule);position:relative}
+.slider .track::after{content:"";position:absolute;left:0;top:0;bottom:0;width:70%;background:var(--accent);border-radius:2px}
+.slider .knob{width:11px;height:11px;border-radius:50%;background:var(--raise);border:2px solid var(--accent);margin-left:-6px;position:relative;left:70%}
+.sect{border-top:1px solid var(--rule2);padding-top:8px;margin-top:2px}
+.sect .st{display:flex;align-items:center;gap:5px;font-family:"Archivo Narrow",sans-serif;text-transform:uppercase;letter-spacing:.11em;font-size:9px;font-weight:700;color:var(--ink3);margin-bottom:6px}
+.sect .st::after{content:"▾";margin-left:auto;font-size:9px}
+.btnrow{display:flex;gap:5px;margin-top:auto}
+.btn{height:22px;border-radius:3px;display:flex;align-items:center;justify-content:center;padding:0 10px;font-size:10px;font-weight:600}
+.btn.p{background:var(--accent);color:#fff;flex:1}
+.btn.s{border:1px solid var(--rule);background:var(--raise);color:var(--ink2)}
+.statusbar{height:20px;flex:0 0 20px;border-top:1px solid var(--rule);background:var(--raise);display:flex;align-items:center;gap:12px;padding:0 10px;font-family:"IBM Plex Mono",monospace;font-size:9px;color:var(--ink3)}
+.statusbar .job{display:flex;align-items:center;gap:5px;color:var(--accent-ink)}
+.statusbar .job .sp{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--accent);border-top-color:transparent}
+.statusbar .r{margin-left:auto}
+/* triptyque */
+.col3{flex:1;display:flex;min-width:0}
+.facets{display:flex;flex-direction:column;gap:7px}
+.facets .f{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--ink2)}
+.facets .f .cb{width:11px;height:11px;border:1px solid var(--rule);border-radius:2px;background:var(--raise)}
+.facets .f .cb.on{background:var(--accent);border-color:var(--accent)}
+.facets .f .n{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:9px;color:var(--ink3)}
+/* mobile */
+.mtop{height:38px;flex:0 0 38px;display:flex;align-items:center;gap:8px;padding:0 11px;border-bottom:1px solid var(--rule);background:var(--raise);font-weight:700;font-size:12px}
+.mtop .ic{width:20px;height:20px;display:grid;place-items:center;color:var(--ink2)}
+.sheet-h{height:26px;display:flex;align-items:center;gap:7px;padding:0 11px;border-bottom:1px solid var(--rule2)}
+.sheet-h .grab{position:absolute;top:5px;left:50%;transform:translateX(-50%);width:30px;height:3px;border-radius:2px;background:var(--rule)}
+.bsheet{position:relative;border-top:1px solid var(--rule);background:var(--sheet);border-radius:12px 12px 0 0;box-shadow:0 -6px 20px -10px rgba(0,0,0,.3);padding-top:11px}
+.mtabs{height:32px;flex:0 0 32px;display:flex;border-bottom:1px solid var(--rule);background:var(--raise)}
+.mtabs span{flex:1;display:grid;place-items:center;font-size:10px;color:var(--ink3);font-weight:600}
+.mtabs span.on{color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
+.mnav{height:44px;flex:0 0 44px;display:flex;border-top:1px solid var(--rule);background:var(--raise)}
+.mnav span{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:8.5px;color:var(--ink3)}
+.mnav span.on{color:var(--accent)}
+.capt{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink3);text-align:center;margin-top:8px}
+svg.i{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+svg.i.sm{width:12px;height:12px}
+
+/* recap 15 */
+.recap{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px;margin-top:8px}
+.recap figure{margin:0;background:var(--sheet);border:1px solid var(--rule);border-radius:3px;padding:9px}
+.recap figcaption{font-size:11.5px;font-weight:700;margin-top:7px;letter-spacing:-.01em}
+.recap small{display:block;font-family:"Source Serif 4",serif;font-size:11px;color:var(--ink3);line-height:1.4;margin-top:2px}
+.recap .wf{width:100%;height:auto;display:block;border:1px solid var(--rule2);border-radius:2px;background:var(--paper)}
+.recap .wf rect{stroke:var(--rule);stroke-width:.7}
+.recap .wf .p{fill:var(--sheet)}.recap .wf .m{fill:var(--rule);stroke:none}
+.recap .wf .a{fill:var(--accent-soft);stroke:var(--accent);stroke-width:.8}
+.recap .wf .k{fill:var(--accent);stroke:none}
+.recap .wf .n{fill:none;stroke:var(--rule);stroke-width:.7}
+.recap .wf .g{fill:none;stroke:var(--rule2);stroke-width:.6}
+.recap .wf circle{fill:var(--accent);stroke:none}
+.recap figure.out{opacity:.5}
+.recap figure.out figcaption::after{content:" — écarté";font-weight:400;color:var(--ink3);font-size:10px}
+
+footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--rule);color:var(--ink3);font-size:13px;font-family:"Source Serif 4",serif}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:640px){.stage{padding:12px}}
+</style>
+
+<header class="top"><div class="wrap">
+  <p class="lbl">Trois socles candidats · identité proposée</p>
+  <h1>Maquettes GeoStudio</h1>
+  <p class="dek">Même écran — l'éditeur de carte, symbologie ouverte — dessiné trois fois selon trois organisations différentes, en bureau et en mobile. Ce sont des maquettes de structure et d'identité, pas des captures : elles servent à trancher.</p>
+</div></header>
+
+<div class="wrap">
+
+<section>
+  <div class="shead"><h2>Identité proposée</h2><span class="lbl">À valider ou à rejeter</span></div>
+  <p class="intro">Tu as choisi <strong>identité GeoStudio propre, avec marque blanche par tenant</strong>. Voici la proposition : une palette empruntée aux planches topographiques — le bleu-vert de l'hydrographie comme accent, le violet de révision réservé à ce qui vient de l'IA — et une grotesque technique qui tient à 10 px dans un inspecteur. Chaque valeur ci-dessous est un token surchargeable par un tenant. <em>Bascule le thème de ton système pour voir la déclinaison sombre : toute la page suit.</em></p>
+  <div class="idgrid">
+    <div class="idcard"><h4>Palette — accent &amp; sémantique</h4>
+      <div class="sw">
+        <div><i style="background:var(--accent)"></i><b>accent</b></div>
+        <div><i style="background:var(--accent-soft)"></i><b>accent-soft</b></div>
+        <div><i style="background:var(--revision)"></i><b>ia</b></div>
+        <div><i style="background:var(--green)"></i><b>succès</b></div>
+        <div><i style="background:var(--amber)"></i><b>attention</b></div>
+        <div><i style="background:var(--crimson)"></i><b>critique</b></div>
+      </div>
+      <p style="font-family:'Source Serif 4',serif;font-size:13px;color:var(--ink2);margin:12px 0 0">Un seul accent, le bleu-vert d'hydrographie. Le violet ne sert qu'aux surfaces du copilote : l'utilisateur voit d'un coup d'œil ce qui a été fait par l'IA.</p>
+    </div>
+    <div class="idcard"><h4>Palette — neutres &amp; carte</h4>
+      <div class="sw">
+        <div><i style="background:var(--paper)"></i><b>paper</b></div>
+        <div><i style="background:var(--sheet)"></i><b>sheet</b></div>
+        <div><i style="background:var(--sunk)"></i><b>sunk</b></div>
+        <div><i style="background:var(--rule)"></i><b>rule</b></div>
+        <div><i style="background:var(--ink3)"></i><b>ink3</b></div>
+        <div><i style="background:var(--ink)"></i><b>ink</b></div>
+      </div>
+      <p style="font-family:'Source Serif 4',serif;font-size:13px;color:var(--ink2);margin:12px 0 0">Neutres légèrement biaisés vers le bleu-vert, jamais un gris pur. Les fonds de carte ont leurs propres tokens, déclinés en clair et en sombre.</p>
+    </div>
+    <div class="idcard typ"><h4>Typographie</h4>
+      <p class="d">Éditeur de carte</p>
+      <p class="n">Symbologie · Couches · Sources</p>
+      <p class="b">Archivo pour l'interface : grotesque technique, variable, très lisible à 10&nbsp;px dans un inspecteur dense.</p>
+      <p class="m">4 326 entités · 12,4 Mo · EPSG:2154</p>
+      <p style="font-family:'Source Serif 4',serif;font-size:13px;color:var(--ink2);margin:0">IBM Plex Mono pour les chiffres, les identifiants et le SQL. Source Serif pour les textes longs — documentation, descriptions.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><h2>Socle A — Atelier + Console</h2><span class="lbl">Recommandé</span></div>
+
+  <div class="mock-block">
+    <div class="mock-head">
+      <span class="k">A</span>
+      <div><h3>Atelier + Console</h3>
+      <p>Rail d'activités permanent, panneau de navigation contextuel, documents en onglets au centre, et <strong>un inspecteur unique à droite</strong> qui remplace les treize panneaux empilés d'aujourd'hui. Barre d'état en bas : les tâches en cours du cœur y sont enfin visibles.</p></div>
+      <span class="pick">Mon choix</span>
+    </div>
+    <div class="stage">
+
+      <div class="app">
+        <div class="tbar">
+          <span class="brand"><span class="glyph"></span>GeoStudio</span>
+          <span class="omni"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Rechercher ou lancer une action<kbd>⌘K</kbd></span>
+          <span class="av">TL</span>
+        </div>
+        <div class="body">
+          <div class="rail">
+            <i class="on" title="Catalogue"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></i>
+            <i title="Données"><svg class="i" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></i>
+            <i title="Pipelines"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="15" width="6" height="5" rx="1"/><rect x="15" y="4" width="6" height="5" rx="1"/><path d="M9 6.5h6M9 6.5v11h6"/></svg></i>
+            <i title="Analytique"><svg class="i" viewBox="0 0 24 24"><path d="M3 20h18"/><path d="M6 20v-6M11 20V7M16 20v-9M21 20V4"/></svg></i>
+            <i title="Tâches"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></i>
+            <span class="sp"></span>
+            <i title="Administration"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></i>
+          </div>
+          <div class="pane" style="width:176px;flex:0 0 176px">
+            <div class="ph">Catalogue</div>
+            <div class="pb">
+              <div class="srch"><svg class="i sm" viewBox="0 0 24 24" style="margin-right:5px"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Filtrer…</div>
+              <div class="tree">
+                <div class="grp">Cartes · 8</div>
+                <a class="on"><span class="dot"></span>Réseau d'eau potable</a>
+                <a><span class="dot"></span>Assainissement 2026</a>
+                <a><span class="dot"></span>Zonage PLUi</a>
+                <div class="grp">Datasets · 23</div>
+                <a><span class="dot"></span>Voirie communale</a>
+                <a><span class="dot"></span>Points de captage</a>
+                <a><span class="dot"></span>Interventions 2026</a>
+                <div class="grp">Apps · 5</div>
+                <a><span class="dot"></span>Suivi des travaux</a>
+                <a><span class="dot"></span>Portail eau</a>
+              </div>
+            </div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+            <div class="tabs">
+              <span class="tab on"><svg class="i sm" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></svg>Réseau d'eau potable<span class="x">×</span></span>
+              <span class="tab"><svg class="i sm" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg>Voirie communale<span class="x">×</span></span>
+            </div>
+            <div class="canvas">
+              <svg viewBox="0 0 600 400" preserveAspectRatio="xMidYMid slice">
+                <rect width="600" height="400" fill="var(--map1)"/>
+                <path d="M0 0h600v400H0z" fill="none"/>
+                <g stroke="var(--map2)" stroke-width="18" fill="none">
+                  <path d="M-20 300C120 280 180 200 320 210s220-40 320-70"/>
+                </g>
+                <g stroke="var(--water)" stroke-width="9" fill="none" stroke-linecap="round">
+                  <path d="M-10 120c90 40 150-10 250 30s180 90 380 40"/>
+                </g>
+                <g stroke="var(--road)" stroke-width="3.4" fill="none" stroke-linecap="round" opacity=".95">
+                  <path d="M60 400V230l90-70h180l120 90v150"/><path d="M150 160V20"/><path d="M330 160l150-120"/><path d="M60 300h380"/>
+                </g>
+                <g stroke="var(--accent)" stroke-width="2.6" fill="none" stroke-linecap="round">
+                  <path d="M40 380c60-90 120-60 170-140s150-90 250-70"/>
+                  <path d="M210 240 150 90"/><path d="M330 190l130 40"/>
+                </g>
+                <g>
+                  <circle cx="210" cy="240" r="7" fill="var(--accent)" stroke="var(--sheet)" stroke-width="2.5"/>
+                  <circle cx="150" cy="90" r="5.5" fill="#9A2C45" stroke="var(--sheet)" stroke-width="2.5"/>
+                  <circle cx="460" cy="230" r="6" fill="#8E6410" stroke="var(--sheet)" stroke-width="2.5"/>
+                  <circle cx="380" cy="120" r="5" fill="var(--accent)" stroke="var(--sheet)" stroke-width="2.5"/>
+                </g>
+              </svg>
+              <div class="float tools">
+                <i class="on" title="Sélection"><svg class="i sm" viewBox="0 0 24 24"><path d="m4 3 7 17 2.5-6.5L20 11z"/></svg></i>
+                <i title="Mesure"><svg class="i sm" viewBox="0 0 24 24"><rect x="2" y="9" width="20" height="6" rx="1"/><path d="M7 9v3M12 9v4M17 9v3"/></svg></i>
+                <i title="Croquis"><svg class="i sm" viewBox="0 0 24 24"><path d="M12 19l7-7-4-4-7 7-1 5z"/><path d="M3 21h6"/></svg></i>
+                <i title="Fond de carte"><svg class="i sm" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg></i>
+              </div>
+              <div class="float scale">1 : 12 000 &nbsp;·&nbsp; EPSG:2154</div>
+              <div class="float legend"><b>Conduites — Ø mm</b>
+                <span><em style="background:#0B6E77"></em>≥ 200</span>
+                <span><em style="background:#4FA0A8"></em>100 – 200</span>
+                <span><em style="background:#9FC8CB"></em>&lt; 100</span>
+              </div>
+            </div>
+          </div>
+          <div class="insp">
+            <div class="ih"><b>Conduites</b><span class="t">Couche</span></div>
+            <div class="ib">
+              <div class="sect" style="border-top:0;padding-top:0">
+                <div class="st">Symbologie</div>
+                <div class="fld"><label>Type</label><div class="ctl sel">Classé</div></div>
+                <div class="fld" style="margin-top:7px"><label>Champ</label><div class="ctl sel">diametre_mm</div></div>
+                <div class="fld" style="margin-top:7px"><label>Méthode</label><div class="seg"><span>Quantile</span><span class="on">Jenks</span><span>Égal</span></div></div>
+                <div class="fld" style="margin-top:7px"><label>Palette — 3 classes</label><div class="ramp"><i style="background:#9FC8CB"></i><i style="background:#4FA0A8"></i><i style="background:#0B6E77"></i></div></div>
+                <div class="fld" style="margin-top:7px"><label>Opacité — 70 %</label><div class="slider"><span class="track"></span><span class="knob"></span></div></div>
+              </div>
+              <div class="sect"><div class="st">Étiquettes</div></div>
+              <div class="sect"><div class="st">Popup</div></div>
+              <div class="btnrow"><span class="btn p">Enregistrer</span><span class="btn s">Annuler</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="statusbar">
+          <span class="job"><span class="sp"></span>Moissonnage IGN — 62 %</span>
+          <span>2 tâches en file</span>
+          <span class="r">v0.1.0 · corrèze</span>
+        </div>
+      </div>
+
+      <div class="phone">
+        <div class="mtop"><span class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg></span>Réseau d'eau<span class="ic" style="margin-left:auto"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span></div>
+        <div class="canvas" style="flex:1">
+          <svg viewBox="0 0 250 260" preserveAspectRatio="xMidYMid slice">
+            <rect width="250" height="260" fill="var(--map1)"/>
+            <g stroke="var(--water)" stroke-width="8" fill="none"><path d="M-10 80c50 30 80-10 130 20s60 40 140 10"/></g>
+            <g stroke="var(--road)" stroke-width="3" fill="none"><path d="M30 260V140l50-40h80l50 40v120"/><path d="M30 190h180"/></g>
+            <g stroke="var(--accent)" stroke-width="2.6" fill="none"><path d="M20 240c40-60 70-40 100-90s70-40 130-30"/></g>
+            <circle cx="105" cy="150" r="6" fill="var(--accent)" stroke="var(--sheet)" stroke-width="2.5"/>
+            <circle cx="180" cy="95" r="5" fill="#8E6410" stroke="var(--sheet)" stroke-width="2.5"/>
+          </svg>
+          <div class="float tools" style="top:6px;right:6px"><i class="on"><svg class="i sm" viewBox="0 0 24 24"><path d="m4 3 7 17 2.5-6.5L20 11z"/></svg></i><i><svg class="i sm" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg></i></div>
+        </div>
+        <div class="bsheet"><span class="grab"></span>
+          <div class="sheet-h"><b style="font-size:11px">Conduites</b><span style="font-family:'Archivo Narrow';text-transform:uppercase;letter-spacing:.1em;font-size:8.5px;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent);border-radius:2px;padding:1px 5px;font-weight:700">Couche</span></div>
+          <div style="padding:9px 11px;display:flex;flex-direction:column;gap:8px">
+            <div class="fld"><label>Symbologie</label><div class="ctl sel">Classé — diametre_mm</div></div>
+            <div class="fld"><label>Palette — 3 classes</label><div class="ramp"><i style="background:#9FC8CB"></i><i style="background:#4FA0A8"></i><i style="background:#0B6E77"></i></div></div>
+            <span class="btn p" style="height:26px">Enregistrer</span>
+          </div>
+        </div>
+        <div class="mnav">
+          <span class="on"><svg class="i" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/></svg>Cartes</span>
+          <span><svg class="i" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg>Données</span>
+          <span><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Tâches</span>
+          <span><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>Moi</span>
+        </div>
+      </div>
+
+    </div>
+    <div class="mock-foot">
+      <div><span class="lbl">Ce que ça règle</span><p>Les 13 panneaux du builder deviennent le contenu d'un seul inspecteur contextuel. Les tâches du cœur sortent de l'invisible via la barre d'état. ⌘K rend les 40 écrans atteignables.</p></div>
+      <div><span class="lbl">Ce que ça coûte</span><p>Le mobile n'est pas une réduction du bureau : c'est une seconde composition, où l'inspecteur devient feuille du bas et le rail devient barre de navigation. Deux compositions à tenir.</p></div>
+      <div><span class="lbl">Le pari</span><p>Que des analystes SIG préfèrent un outil qui ressemble à QGIS et à VS Code plutôt qu'à un back-office web.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><h2>Socle B — Triptyque universel</h2><span class="lbl">Le plus simple à tenir</span></div>
+
+  <div class="mock-block">
+    <div class="mock-head">
+      <span class="k">B</span>
+      <div><h3>Triptyque universel</h3>
+      <p>Un seul gabarit pour <strong>la totalité</strong> du produit : parcourir à gauche, travailler au centre, inspecter à droite. Le catalogue, l'éditeur de carte, le builder, SQL Lab, le journal d'audit — même squelette, seul le volet central change de nature.</p></div>
+    </div>
+    <div class="stage">
+
+      <div class="app">
+        <div class="tbar">
+          <span class="brand"><span class="glyph"></span>GeoStudio</span>
+          <span class="omni"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Rechercher ou lancer une action<kbd>⌘K</kbd></span>
+          <span class="av">TL</span>
+        </div>
+        <div style="height:28px;flex:0 0 28px;display:flex;align-items:center;gap:14px;padding:0 14px;border-bottom:1px solid var(--rule);background:var(--sheet);font-size:10.5px;color:var(--ink3)">
+          <span style="color:var(--accent);font-weight:700;box-shadow:inset 0 -2px 0 var(--accent);padding:6px 0">Cartes</span>
+          <span>Données</span><span>Apps &amp; sites</span><span>Automatisation</span><span>Analytique</span><span>Tâches</span><span style="margin-left:auto">Administration</span>
+        </div>
+        <div class="col3">
+          <div class="pane" style="width:190px;flex:0 0 190px">
+            <div class="ph">Parcourir</div>
+            <div class="pb">
+              <div class="srch"><svg class="i sm" viewBox="0 0 24 24" style="margin-right:5px"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Rechercher une carte…</div>
+              <div class="facets">
+                <div class="f"><span class="cb on"></span>Mes éléments<span class="n">8</span></div>
+                <div class="f"><span class="cb"></span>Partagés avec moi<span class="n">14</span></div>
+                <div class="f"><span class="cb"></span>Publics<span class="n">31</span></div>
+              </div>
+              <div class="tree" style="margin-top:9px">
+                <div class="grp">Résultats · 8</div>
+                <a class="on"><span class="dot"></span>Réseau d'eau potable</a>
+                <a><span class="dot"></span>Assainissement 2026</a>
+                <a><span class="dot"></span>Zonage PLUi</a>
+                <a><span class="dot"></span>Défense incendie</a>
+                <a><span class="dot"></span>Voirie — état 2026</a>
+              </div>
+            </div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+            <div class="ph" style="height:26px;flex:0 0 26px;display:flex;align-items:center;padding:0 11px;border-bottom:1px solid var(--rule2);font-weight:700;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3)">Travailler — Réseau d'eau potable</div>
+            <div class="canvas">
+              <svg viewBox="0 0 600 400" preserveAspectRatio="xMidYMid slice">
+                <rect width="600" height="400" fill="var(--map1)"/>
+                <g stroke="var(--map2)" stroke-width="18" fill="none"><path d="M-20 300C120 280 180 200 320 210s220-40 320-70"/></g>
+                <g stroke="var(--water)" stroke-width="9" fill="none" stroke-linecap="round"><path d="M-10 120c90 40 150-10 250 30s180 90 380 40"/></g>
+                <g stroke="var(--road)" stroke-width="3.4" fill="none" stroke-linecap="round"><path d="M60 400V230l90-70h180l120 90v150"/><path d="M150 160V20"/><path d="M330 160l150-120"/><path d="M60 300h380"/></g>
+                <g stroke="var(--accent)" stroke-width="2.6" fill="none" stroke-linecap="round"><path d="M40 380c60-90 120-60 170-140s150-90 250-70"/><path d="M210 240 150 90"/><path d="M330 190l130 40"/></g>
+                <circle cx="210" cy="240" r="7" fill="var(--accent)" stroke="var(--sheet)" stroke-width="2.5"/>
+                <circle cx="150" cy="90" r="5.5" fill="#9A2C45" stroke="var(--sheet)" stroke-width="2.5"/>
+                <circle cx="460" cy="230" r="6" fill="#8E6410" stroke="var(--sheet)" stroke-width="2.5"/>
+              </svg>
+              <div class="float scale">1 : 12 000 · EPSG:2154</div>
+              <div class="float tools"><i class="on"><svg class="i sm" viewBox="0 0 24 24"><path d="m4 3 7 17 2.5-6.5L20 11z"/></svg></i><i><svg class="i sm" viewBox="0 0 24 24"><rect x="2" y="9" width="20" height="6" rx="1"/><path d="M7 9v3M12 9v4M17 9v3"/></svg></i></div>
+            </div>
+          </div>
+          <div class="insp" style="width:198px;flex:0 0 198px">
+            <div class="ih"><b>Inspecter</b><span class="t">Couche</span></div>
+            <div class="ib">
+              <div class="fld"><label>Symbologie</label><div class="ctl sel">Classé</div></div>
+              <div class="fld"><label>Champ</label><div class="ctl sel">diametre_mm</div></div>
+              <div class="fld"><label>Méthode</label><div class="seg"><span>Quantile</span><span class="on">Jenks</span><span>Égal</span></div></div>
+              <div class="fld"><label>Palette — 3 classes</label><div class="ramp"><i style="background:#9FC8CB"></i><i style="background:#4FA0A8"></i><i style="background:#0B6E77"></i></div></div>
+              <div class="btnrow"><span class="btn p">Enregistrer</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="statusbar"><span class="job"><span class="sp"></span>Moissonnage IGN — 62 %</span><span class="r">v0.1.0 · corrèze</span></div>
+      </div>
+
+      <div class="phone">
+        <div class="mtop"><span class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></span>Réseau d'eau</div>
+        <div class="mtabs"><span>Parcourir</span><span class="on">Travailler</span><span>Inspecter</span></div>
+        <div class="canvas" style="flex:1">
+          <svg viewBox="0 0 250 300" preserveAspectRatio="xMidYMid slice">
+            <rect width="250" height="300" fill="var(--map1)"/>
+            <g stroke="var(--water)" stroke-width="8" fill="none"><path d="M-10 90c50 30 80-10 130 20s60 40 140 10"/></g>
+            <g stroke="var(--road)" stroke-width="3" fill="none"><path d="M30 300V160l50-40h80l50 40v140"/><path d="M30 210h180"/></g>
+            <g stroke="var(--accent)" stroke-width="2.6" fill="none"><path d="M20 270c40-60 70-40 100-90s70-40 130-30"/></g>
+            <circle cx="105" cy="170" r="6" fill="var(--accent)" stroke="var(--sheet)" stroke-width="2.5"/>
+          </svg>
+          <div class="float scale" style="bottom:6px;left:6px">1 : 12 000</div>
+        </div>
+        <div class="mnav"><span>Cartes</span><span class="on">Données</span><span>Apps</span><span>Plus</span></div>
+      </div>
+
+    </div>
+    <div class="mock-foot">
+      <div><span class="lbl">Ce que ça règle</span><p>La cohérence devient structurelle, pas disciplinaire. Un seul layout à rendre responsive, à tester et à rendre accessible — et sur mobile la dégradation est triviale : un volet devient un onglet.</p></div>
+      <div><span class="lbl">Ce que ça coûte</span><p>Corsette les écrans qui n'ont rien à inspecter — SQL Lab, journal d'audit, centre de tâches — et force soit du vide à droite, soit une exception au gabarit dès le premier écran.</p></div>
+      <div><span class="lbl">Le pari</span><p>Qu'un gabarit unique appliqué sans exception vaut mieux qu'un gabarit optimal par écran. C'est le choix le moins cher à maintenir sur dix SP.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><h2>Socle C — Atelier multi-documents</h2><span class="lbl">Le plus puissant, le plus cher</span></div>
+
+  <div class="mock-block">
+    <div class="mock-head">
+      <span class="k">C</span>
+      <div><h3>Atelier multi-documents</h3>
+      <p>Comme A, mais chaque objet ouvert est un <strong>document persistant</strong> qui garde son état, sa pile d'annulation SP-19 et son défilement. Construire une app suppose d'aller-retourner entre une carte, un dataset, un pipeline et une requête : ici on ne reperd rien à chaque bascule.</p></div>
+    </div>
+    <div class="stage">
+
+      <div class="app">
+        <div class="tbar">
+          <span class="brand"><span class="glyph"></span>GeoStudio</span>
+          <span class="omni"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Rechercher ou lancer une action<kbd>⌘K</kbd></span>
+          <span class="av">TL</span>
+        </div>
+        <div class="body">
+          <div class="rail">
+            <i class="on"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></i>
+            <i><svg class="i" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg></i>
+            <i><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="15" width="6" height="5" rx="1"/><rect x="15" y="4" width="6" height="5" rx="1"/><path d="M9 6.5h6M9 6.5v11h6"/></svg></i>
+            <i><svg class="i" viewBox="0 0 24 24"><path d="M3 20h18"/><path d="M6 20v-6M11 20V7M16 20v-9M21 20V4"/></svg></i>
+            <span class="sp"></span>
+            <i><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></i>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+            <div class="tabs" style="height:29px;flex:0 0 29px">
+              <span class="tab on"><svg class="i sm" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/></svg>Réseau d'eau<span class="x">×</span></span>
+              <span class="tab"><svg class="i sm" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg>Voirie<span class="x">•</span></span>
+              <span class="tab"><svg class="i sm" viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="15" width="6" height="5" rx="1"/><path d="M9 6.5h6M9 6.5v11h6"/></svg>Import IGN<span class="x">×</span></span>
+              <span class="tab"><svg class="i sm" viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h13"/></svg>SQL<span class="x">×</span></span>
+              <span style="align-self:center;color:var(--ink3);padding:0 6px">+</span>
+            </div>
+            <div style="flex:1;display:flex;min-height:0">
+              <div class="pane" style="width:150px;flex:0 0 150px">
+                <div class="ph">Couches</div>
+                <div class="pb"><div class="tree">
+                  <a class="on"><span class="dot"></span>Conduites</a>
+                  <a><span class="dot"></span>Vannes</a>
+                  <a><span class="dot"></span>Captages</a>
+                  <a><span class="dot"></span>Réservoirs</a>
+                  <div class="grp">Fond</div>
+                  <a><span class="dot"></span>Plan IGN</a>
+                </div></div>
+              </div>
+              <div class="canvas">
+                <svg viewBox="0 0 600 400" preserveAspectRatio="xMidYMid slice">
+                  <rect width="600" height="400" fill="var(--map1)"/>
+                  <g stroke="var(--map2)" stroke-width="18" fill="none"><path d="M-20 300C120 280 180 200 320 210s220-40 320-70"/></g>
+                  <g stroke="var(--water)" stroke-width="9" fill="none" stroke-linecap="round"><path d="M-10 120c90 40 150-10 250 30s180 90 380 40"/></g>
+                  <g stroke="var(--road)" stroke-width="3.4" fill="none" stroke-linecap="round"><path d="M60 400V230l90-70h180l120 90v150"/><path d="M150 160V20"/><path d="M330 160l150-120"/></g>
+                  <g stroke="var(--accent)" stroke-width="2.6" fill="none" stroke-linecap="round"><path d="M40 380c60-90 120-60 170-140s150-90 250-70"/><path d="M210 240 150 90"/></g>
+                  <circle cx="210" cy="240" r="7" fill="var(--accent)" stroke="var(--sheet)" stroke-width="2.5"/>
+                  <circle cx="150" cy="90" r="5.5" fill="#9A2C45" stroke="var(--sheet)" stroke-width="2.5"/>
+                </svg>
+                <div class="float scale">1 : 12 000</div>
+                <div class="float tools"><i class="on"><svg class="i sm" viewBox="0 0 24 24"><path d="m4 3 7 17 2.5-6.5L20 11z"/></svg></i><i><svg class="i sm" viewBox="0 0 24 24"><rect x="2" y="9" width="20" height="6" rx="1"/><path d="M7 9v3M12 9v4M17 9v3"/></svg></i></div>
+              </div>
+              <div class="insp" style="width:180px;flex:0 0 180px">
+                <div class="ih"><b>Conduites</b><span class="t">Couche</span></div>
+                <div class="ib">
+                  <div class="fld"><label>Symbologie</label><div class="ctl sel">Classé</div></div>
+                  <div class="fld"><label>Champ</label><div class="ctl sel">diametre_mm</div></div>
+                  <div class="fld"><label>Palette</label><div class="ramp"><i style="background:#9FC8CB"></i><i style="background:#4FA0A8"></i><i style="background:#0B6E77"></i></div></div>
+                  <div class="btnrow"><span class="btn p">Enregistrer</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="statusbar"><span class="job"><span class="sp"></span>Import IGN — 62 %</span><span>Voirie · modifié non enregistré</span><span class="r">4 documents ouverts</span></div>
+      </div>
+
+      <div class="phone">
+        <div class="mtop"><span class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg></span>4 documents</div>
+        <div style="padding:9px;display:flex;flex-direction:column;gap:7px;flex:1;background:var(--sunk)">
+          <div style="background:var(--sheet);border:1px solid var(--accent);border-radius:5px;padding:9px;box-shadow:var(--sh1)">
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700"><svg class="i sm" viewBox="0 0 24 24" style="color:var(--accent)"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/></svg>Réseau d'eau</div>
+            <div style="font-size:9.5px;color:var(--ink3);margin-top:3px">Carte · 4 couches · ouvert</div>
+          </div>
+          <div style="background:var(--sheet);border:1px solid var(--rule);border-radius:5px;padding:9px">
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700"><svg class="i sm" viewBox="0 0 24 24" style="color:var(--ink3)"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/></svg>Voirie<span style="margin-left:auto;width:6px;height:6px;border-radius:50%;background:var(--amber)"></span></div>
+            <div style="font-size:9.5px;color:var(--ink3);margin-top:3px">Dataset · modifié non enregistré</div>
+          </div>
+          <div style="background:var(--sheet);border:1px solid var(--rule);border-radius:5px;padding:9px">
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700"><svg class="i sm" viewBox="0 0 24 24" style="color:var(--ink3)"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="15" width="6" height="5" rx="1"/><path d="M9 6.5h6M9 6.5v11h6"/></svg>Import IGN</div>
+            <div style="font-size:9.5px;color:var(--accent-ink);margin-top:3px">Pipeline · en cours 62 %</div>
+          </div>
+        </div>
+        <div class="mnav"><span class="on">Documents</span><span>Catalogue</span><span>Tâches</span><span>Moi</span></div>
+      </div>
+
+    </div>
+    <div class="mock-foot">
+      <div><span class="lbl">Ce que ça règle</span><p>Le vrai flux de travail d'un analyste : quatre objets ouverts en parallèle, aucun état reperdu, l'annulation propre à chaque document.</p></div>
+      <div><span class="lbl">Ce que ça coûte</span><p>État global lourd — pile d'undo par onglet, sauvegardes concurrentes, mémoire cartographique à libérer à la fermeture. Sur mobile, la métaphore d'onglets ne tient pas : elle devient une liste de documents.</p></div>
+      <div><span class="lbl">Le pari</span><p>Que le gain de flux justifie une classe entière de bugs d'état concurrent — sur un dépôt où les défauts de croisement sont déjà le piège n°4 documenté.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><h2>Les quinze, et pourquoi douze sont écartées</h2><span class="lbl">Rappel</span></div>
+  <p class="intro">Tes réponses — <strong>analystes SIG</strong>, <strong>WCAG AA sans audit</strong>, <strong>studio seulement</strong>, <strong>bascule d'un bloc</strong> — ont éliminé douze des quinze directions. Les quatre encadrées en accent ne sont pas des socles : ce sont des <strong>règles transversales déjà intégrées</strong> aux trois maquettes ci-dessus.</p>
+  <div class="recap">
+
+    <figure><svg class="wf" viewBox="0 0 160 100"><rect class="p" x="0" y="0" width="160" height="12"/><rect class="k" x="6" y="4" width="17" height="4"/><rect class="p" x="0" y="12" width="34" height="88"/><rect class="m" x="6" y="20" width="20" height="3"/><rect class="a" x="4" y="27" width="26" height="7"/><rect class="m" x="6" y="40" width="22" height="3"/><rect class="m" x="6" y="48" width="16" height="3"/><rect class="n" x="42" y="20" width="110" height="20"/><rect class="n" x="42" y="46" width="110" height="22"/><rect class="n" x="42" y="74" width="110" height="18"/></svg><figcaption>Console</figcaption><small>Retenue — moitié « gestion » du socle A.</small></figure>
+
+    <figure><svg class="wf" viewBox="0 0 160 100"><rect class="p" x="0" y="0" width="12" height="100"/><rect class="a" x="2.5" y="6" width="7" height="7"/><rect class="m" x="3" y="20" width="6" height="6"/><rect class="m" x="3" y="31" width="6" height="6"/><rect class="p" x="12" y="0" width="34" height="100"/><rect class="m" x="17" y="8" width="22" height="3"/><rect class="m" x="17" y="16" width="18" height="3"/><rect class="p" x="46" y="0" width="114" height="10"/><rect class="a" x="49" y="1.5" width="26" height="7"/><rect class="n" x="77" y="1.5" width="26" height="7"/><rect class="n" x="50" y="14" width="106" height="58"/><rect class="p" x="46" y="76" width="114" height="24"/><rect class="m" x="51" y="82" width="60" height="3"/></svg><figcaption>Atelier</figcaption><small>Retenue — moitié « édition » du socle A.</small></figure>
+
+    <figure><svg class="wf" viewBox="0 0 160 100"><rect class="p" x="0" y="0" width="40" height="100"/><rect class="m" x="6" y="10" width="26" height="3"/><rect class="a" x="4" y="18" width="32" height="7"/><rect class="m" x="6" y="31" width="22" height="3"/><rect class="n" x="46" y="8" width="66" height="84"/><rect class="m" x="52" y="16" width="40" height="4"/><rect class="p" x="120" y="0" width="40" height="100"/><rect class="n" x="125" y="18" width="30" height="8"/><rect class="n" x="125" y="30" width="30" height="8"/></svg><figcaption>Triptyque</figcaption><small>Retenue — socle B ci-dessus.</small></figure>
+
+    <figure><svg class="wf" viewBox="0 0 160 100"><rect class="p" x="0" y="0" width="16" height="100"/><rect class="a" x="4" y="8" width="8" height="8"/><rect class="m" x="4" y="22" width="8" height="8"/><rect class="m" x="4" y="34" width="8" height="8"/><rect class="p" x="16" y="0" width="144" height="12"/><rect class="a" x="20" y="2.5" width="32" height="9"/><rect class="n" x="54" y="2.5" width="32" height="9"/><rect class="n" x="88" y="2.5" width="32" height="9"/><rect class="n" x="22" y="20" width="132" height="34"/><rect class="n" x="22" y="60" width="64" height="32"/><rect class="n" x="90" y="60" width="64" height="32"/></svg><figcaption>Onglets d'objets</figcaption><small>Retenue — socle C ci-dessus.</small></figure>
+
+    <figure style="border-color:var(--accent);border-width:2px"><svg class="wf" viewBox="0 0 160 100"><rect x="10" y="10" width="22" height="10" fill="var(--accent)" stroke="none"/><rect x="36" y="10" width="22" height="10" fill="var(--accent-soft)" stroke="var(--accent)"/><rect x="62" y="10" width="22" height="10" fill="var(--rule)" stroke="none"/><rect x="88" y="10" width="22" height="10" fill="var(--ink3)" stroke="none"/><rect x="114" y="10" width="22" height="10" fill="var(--sheet)"/><path class="n" d="M40 24v8M120 24v8"/><rect class="p" x="8" y="34" width="66" height="58"/><rect class="k" x="13" y="39" width="16" height="4"/><rect class="a" x="12" y="52" width="58" height="14"/><rect class="p" x="86" y="34" width="66" height="58"/><rect class="k" x="91" y="39" width="16" height="4"/><rect class="a" x="90" y="52" width="58" height="14"/></svg><figcaption>Miroir de thème</figcaption><small>Intégrée — c'est la section « identité » plus haut.</small></figure>
+
+    <figure style="border-color:var(--accent);border-width:2px"><svg class="wf" viewBox="0 0 160 100"><rect class="p" x="0" y="0" width="160" height="12"/><rect class="n" x="8" y="22" width="46" height="30"/><rect class="a" x="60" y="22" width="46" height="30"/><rect class="n" x="8" y="58" width="46" height="30"/><rect class="n" x="60" y="58" width="46" height="30"/><rect x="112" y="12" width="48" height="88" fill="var(--sheet)" stroke="var(--accent)"/><rect class="m" x="118" y="20" width="26" height="4"/><rect class="n" x="117" y="30" width="38" height="8"/><rect class="n" x="117" y="42" width="38" height="8"/><rect class="a" x="117" y="86" width="38" height="8"/></svg><figcaption>Inspecteur unique</figcaption><small>Intégrée — c'est le volet droit des trois socles.</small></figure>
+
+    <figure style="border-color:var(--accent);border-width:2px"><svg class="wf" viewBox="0 0 160 100"><rect class="p" x="2" y="10" width="100" height="80"/><rect class="m" x="6" y="14" width="92" height="7"/><rect class="p" x="6" y="25" width="20" height="61"/><rect class="a" x="8" y="36" width="16" height="5"/><rect class="n" x="30" y="28" width="66" height="24"/><rect class="n" x="30" y="56" width="66" height="28"/><rect class="p" x="112" y="4" width="42" height="92" rx="4"/><rect class="n" x="117" y="20" width="32" height="20"/><rect class="a" x="115" y="72" width="36" height="20"/></svg><figcaption>Densité adaptative</figcaption><small>Intégrée — les vignettes mobiles ci-dessus.</small></figure>
+
+    <figure style="border-color:var(--accent);border-width:2px"><svg class="wf" viewBox="0 0 160 100"><rect class="p" x="0" y="0" width="160" height="12"/><circle cx="24" cy="30" r="3.4"/><circle cx="24" cy="48" r="3.4" fill="var(--rule)"/><circle cx="24" cy="66" r="3.4" fill="var(--rule)"/><path class="n" d="M24 34v10M24 52v10"/><rect class="m" x="34" y="28" width="26" height="3"/><rect class="n" x="76" y="22" width="76" height="10"/><rect class="n" x="76" y="38" width="76" height="10"/><rect class="n" x="76" y="54" width="76" height="10"/><rect class="p" x="0" y="86" width="160" height="14"/><rect class="a" x="122" y="89" width="32" height="8"/></svg><figcaption>Sans modale</figcaption><small>Intégrée — règle transversale, aucun dialogue nulle part.</small></figure>
+
+    <figure class="out"><svg class="wf" viewBox="0 0 160 100"><rect class="p" x="0" y="0" width="160" height="100"/><path class="g" d="M0 25h160M0 50h160M0 75h160M40 0v100M80 0v100M120 0v100"/><rect class="a" x="16" y="14" width="34" height="20"/><rect class="n" x="70" y="10" width="30" height="16"/><rect class="n" x="60" y="48" width="40" height="24"/><rect class="n" x="112" y="40" width="32" height="18"/><path class="n" d="M50 24h20M100 20l12 22M80 34v14"/></svg><figcaption>Toile infinie</figcaption><small>Coût de navigation clavier trop élevé pour le gain.</small></figure>
+
+    <figure class="out"><svg class="wf" viewBox="0 0 160 100"><rect class="a" x="0" y="0" width="160" height="100"/><path class="g" d="M0 20h160M0 40h160M0 60h160M0 80h160M25 0v100M50 0v100M75 0v100M100 0v100M125 0v100"/><rect class="p" x="6" y="8" width="40" height="84" rx="2"/><rect class="m" x="11" y="15" width="26" height="3"/><rect class="m" x="11" y="24" width="30" height="3"/><rect class="p" x="140" y="8" width="14" height="44" rx="2"/></svg><figcaption>Carte d'abord</figcaption><small>Absurde pour SQL Lab, l'audit et les pipelines.</small></figure>
+
+    <figure class="out"><svg class="wf" viewBox="0 0 160 100"><rect class="p" x="0" y="0" width="160" height="100"/><rect class="m" x="10" y="8" width="24" height="3"/><rect x="26" y="22" width="108" height="56" rx="2" fill="var(--sheet)" stroke="var(--accent)"/><rect class="m" x="33" y="30" width="52" height="4"/><rect class="a" x="29" y="40" width="102" height="9"/><rect class="m" x="33" y="53" width="72" height="3"/><rect class="m" x="33" y="61" width="60" height="3"/></svg><figcaption>Palette d'abord</figcaption><small>Pas un socle — ⌘K est présent dans les trois.</small></figure>
+
+    <figure class="out"><svg class="wf" viewBox="0 0 160 100"><rect class="p" x="0" y="0" width="160" height="16"/><rect class="a" x="8" y="4" width="30" height="9"/><rect class="n" x="42" y="4" width="30" height="9"/><rect class="n" x="76" y="4" width="30" height="9"/><rect class="n" x="8" y="36" width="46" height="26"/><rect class="n" x="58" y="36" width="46" height="26"/><rect class="n" x="108" y="36" width="46" height="26"/></svg><figcaption>Par intention</figcaption><small>Des analystes SIG connaissent déjà le modèle de données.</small></figure>
+
+    <figure class="out"><svg class="wf" viewBox="0 0 160 100"><rect class="p" x="0" y="0" width="38" height="100"/><rect class="m" x="6" y="10" width="24" height="3"/><rect class="a" x="8" y="26" width="28" height="7"/><rect class="m" x="52" y="12" width="60" height="5"/><rect class="m" x="52" y="24" width="94" height="3"/><rect class="a" x="52" y="41" width="94" height="26"/><rect class="m" x="52" y="74" width="90" height="3"/></svg><figcaption>Tout est document</figcaption><small>Toucherait AppRenderer — hors périmètre « studio seulement ».</small></figure>
+
+    <figure class="out"><svg class="wf" viewBox="0 0 160 100"><rect class="p" x="0" y="0" width="160" height="14"/><rect class="n" x="8" y="22" width="34" height="22"/><rect class="n" x="46" y="22" width="34" height="22"/><rect class="n" x="84" y="22" width="34" height="22"/><rect class="n" x="8" y="50" width="92" height="42"/><rect class="a" x="14" y="65" width="80" height="6"/><rect class="a" x="14" y="75" width="58" height="6"/><rect class="n" x="104" y="50" width="48" height="42"/></svg><figcaption>Poste de pilotage</figcaption><small>Devient la barre d'état + l'écran Tâches, pas un socle.</small></figure>
+
+    <figure class="out"><svg class="wf" viewBox="0 0 160 100"><rect class="p" x="0" y="0" width="160" height="12"/><rect class="n" x="8" y="20" width="98" height="34"/><rect class="n" x="8" y="60" width="46" height="32"/><rect class="n" x="60" y="60" width="46" height="32"/><rect x="112" y="12" width="48" height="88" fill="var(--sheet)" stroke="var(--accent)"/><rect class="a" x="118" y="20" width="34" height="12" rx="2"/><rect class="m" x="118" y="38" width="26" height="10" rx="2"/><rect class="a" x="124" y="54" width="28" height="14" rx="2"/></svg><figcaption>Copilote au centre</figcaption><small>Surcouche facultative derrière un drapeau, jamais le socle.</small></figure>
+
+  </div>
+</section>
+
+<footer>
+  <p>Maquettes de structure et d'identité, 29 août 2026. Aucun code n'est écrit : elles existent pour être tranchées, corrigées ou rejetées. Le socle retenu devient la spec SP-29 (fondation, tokens, kit headless) puis SP-30 (bascule des 30 écrans d'un bloc).</p>
+</footer>
+
+</div>
