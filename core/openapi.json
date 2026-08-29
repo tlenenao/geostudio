@@ -437,6 +437,30 @@
         "title": "BearerTokenPayload",
         "type": "object"
       },
+      "Body_create_map_icon_map_icons_post": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "title",
+          "category"
+        ],
+        "title": "Body_create_map_icon_map_icons_post",
+        "type": "object"
+      },
       "Body_upload_thumbnail_items__item_id__thumbnail_post": {
         "properties": {
           "file": {
@@ -2242,6 +2266,39 @@
           "view"
         ],
         "title": "MapConfig",
+        "type": "object"
+      },
+      "MapIconOut": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "contentType": {
+            "title": "Contenttype",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "category",
+          "contentType",
+          "createdAt"
+        ],
+        "title": "MapIconOut",
         "type": "object"
       },
       "MapLayer": {
@@ -6802,6 +6859,187 @@
           }
         },
         "summary": "Upload Thumbnail"
+      }
+    },
+    "/map-icons": {
+      "get": {
+        "operationId": "list_map_icons_map_icons_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MapIconOut"
+                  },
+                  "title": "Response List Map Icons Map Icons Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Map Icons"
+      },
+      "post": {
+        "operationId": "create_map_icon_map_icons_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_map_icon_map_icons_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapIconOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Map Icon"
+      }
+    },
+    "/map-icons/{icon_id}": {
+      "delete": {
+        "operationId": "delete_map_icon_map_icons__icon_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "icon_id",
+            "required": true,
+            "schema": {
+              "title": "Icon Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Map Icon"
+      }
+    },
+    "/map-icons/{icon_id}/file": {
+      "get": {
+        "operationId": "read_map_icon_file_map_icons__icon_id__file_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "icon_id",
+            "required": true,
+            "schema": {
+              "title": "Icon Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Map Icon File"
       }
     },
     "/me": {

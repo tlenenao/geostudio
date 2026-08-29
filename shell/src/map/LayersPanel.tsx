@@ -70,6 +70,20 @@ function LayerSymbologyEditor({
         })
       }
       sampleField={(field, limit) => client.sampleCollectionField(collectionId, field, limit)}
+      // `?.()` OBLIGATOIRE, pas cosmétique (défaut n° 5 de la brief Task 12) :
+      // ce hôte est rendu dans des tests existants avec des ItemClient
+      // PARTIELS (LayersPanel.test.tsx:48 et :103). Sans `?.`,
+      // `client.listMapIcons()` lève SYNCHRONIQUEMENT dans le callback
+      // d'effet et fait échouer le rendu de ces tests, verts aujourd'hui —
+      // le `.catch()` de l'effet n'attrape rien, il n'y a pas encore de
+      // promesse.
+      listCustomIcons={() => client.listMapIcons?.() ?? Promise.resolve([])}
+      uploadCustomIcon={(file, title, category) =>
+        // UN SEUL appel (D7) : plus de presign → PUT → POST. Le cœur reçoit
+        // les octets, choisit la clé S3, assainit, puis écrit.
+        client.uploadMapIcon(file, title, category)
+      }
+      deleteCustomIcon={(id) => client.deleteMapIcon(id)}
       onChange={(symbology) => onChangeLayer({ ...layer, symbology })}
     />
   );

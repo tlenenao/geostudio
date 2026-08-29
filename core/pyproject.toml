@@ -37,7 +37,7 @@ dependencies = [
                       # directement par app.configs et app.pipelines.
     "boto3>=1.34",
     "python-multipart>=0.0.9",
-    "mcp>=1.12",
+    "mcp>=1.12,<2.0",
     "shapely>=2.0",
     "procrastinate>=2.0",
     "pyogrio>=0.9",
@@ -210,6 +210,7 @@ layers = [
     "app.appexport",
     "app.tileset3d",
     "app.terrain3d",
+    "app.mapicons",
     "app.secrets",
     "app.cdc",
     "app.ingestion",
@@ -263,4 +264,5 @@ ignore_imports = [
     "app.db -> app.terrain3d.models",
     "app.db -> app.reports.models",
     "app.db -> app.appexport.models",
+    "app.db -> app.mapicons.models",
 ]

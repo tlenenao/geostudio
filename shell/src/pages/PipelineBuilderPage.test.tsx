@@ -32,15 +32,18 @@ vi.mock("../auth/useAuth", () => ({
   }),
 }));
 
+// A `class`, not `vi.fn().mockImplementation(() => ({...}))`: an arrow
+// function can never be a valid constructor, and `new ResizeObserver(...)`
+// now throws under it (silently tolerated before a vitest major bump) —
+// same fix as EChart.test.tsx.
+class NoopResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
 beforeEach(() => {
-  vi.stubGlobal(
-    "ResizeObserver",
-    vi.fn().mockImplementation(() => ({
-      observe: vi.fn(),
-      unobserve: vi.fn(),
-      disconnect: vi.fn(),
-    })),
-  );
+  vi.stubGlobal("ResizeObserver", NoopResizeObserver);
 });
 afterEach(() => vi.unstubAllGlobals());
 

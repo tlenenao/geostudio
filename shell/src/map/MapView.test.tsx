@@ -2,11 +2,17 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { MapConfig, MapLayer } from "../api/types";
 import { mapInstances } from "../test/MockMaplibreMap";
 import { overlayInstances } from "../test/MockDeckgl";
+import { installImageDecodeStub } from "../test/imageDecodeStub";
 import type { MapViewHandle } from "./MapView";
+// Dépendance transitive de maplibre-gl (précédent : mapSymbology.test.ts:9),
+// pas un ajout à shell/package.json — utilisée pour prouver contre le vrai
+// validateur MapLibre que les couches produites par MapView (et pas
+// seulement les entrées pures de buildMapPaint) sont un style valide.
+import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 
 vi.mock("maplibre-gl", async () => {
   const { MockMap } = await import("../test/MockMaplibreMap");
@@ -39,6 +45,13 @@ const { MapView } = await import("./MapView");
 beforeEach(() => {
   mapInstances.length = 0;
   overlayInstances.length = 0;
+});
+
+let imageStub: ReturnType<typeof installImageDecodeStub> | undefined;
+afterEach(() => {
+  imageStub?.restore();
+  imageStub = undefined;
+  vi.unstubAllGlobals();
 });
 
 const config: MapConfig = {
@@ -1371,4 +1384,717 @@ test("editing a layer's geometry-relevant property does still rebuild its MapLib
   const addSource = vi.spyOn(map, "addSource");
   rerender(<MapView config={tiled({ geometryKind: "polygon" })} />);
   expect(addSource).toHaveBeenCalledTimes(1);
+});
+
+test("le mock MapLibre transporte un payload d'événement et enregistre les images", () => {
+  render(<MapView config={config} />);
+  const map = mapInstances[0];
+  const seen: unknown[] = [];
+  map.on("error", (e?: unknown) => seen.push(e));
+  map.fire("error", { error: { message: "boom" } });
+  expect(seen).toEqual([{ error: { message: "boom" } }]);
+
+  map.addImage("x", { width: 1 }, { pixelRatio: 1 });
+  expect(map.hasImage("x")).toBe(true);
+  expect(map.listImages()).toEqual(["x"]);
+  expect(map.getStyle().glyphs).toBe("https://glyphs.test/{fontstack}/{range}.pbf");
+  expect(map.querySourceFeatures("nope")).toEqual([]);
+});
+
+test("a polygon layer with a stroke width adds a second outline line-layer sharing its source", () => {
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        symbology: {
+          stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "dashed" },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  expect(map.getLayer("communes")).toMatchObject({
+    type: "fill",
+    paint: { "fill-outline-color": "#000000" },
+  });
+  expect(map.getLayer("communes__outline")).toMatchObject({
+    type: "line",
+    source: "communes",
+    "source-layer": "communes",
+    paint: { "line-color": "#000000", "line-width": 2, "line-dasharray": [2, 2] },
+  });
+});
+
+test("the outline sub-layer gets no click handler of its own (one popup per click)", () => {
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        popup: { titleField: "nom" },
+        symbology: { stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "solid" } },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  expect(map.layerHandlers["click:communes"] ?? []).toHaveLength(1);
+  expect(map.layerHandlers["click:communes__outline"] ?? []).toHaveLength(0);
+});
+
+test("removing a stroked layer removes its outline sub-layer and its source", () => {
+  const { rerender } = render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        symbology: { stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "solid" } },
+      })}
+    />,
+  );
+  rerender(<MapView config={config} />);
+  const map = mapInstances[0];
+  expect(map.getLayer("communes__outline")).toBeUndefined();
+  expect(map.getLayer("communes")).toBeUndefined();
+  expect(map.getSource("communes")).toBeUndefined();
+});
+
+test("a failing outline sub-layer rolls back its parent instead of orphaning the source", () => {
+  const good: MapLayer = { id: "ok", title: "OK", visible: true, kind: "feature", url: "u1" };
+  const { rerender } = render(<MapView config={{ ...config, layers: [good] }} />);
+  const map = mapInstances[0];
+  map.throwOnAddLayer.add("communes__outline");
+  rerender(
+    <MapView
+      config={{
+        ...config,
+        layers: [
+          good,
+          ...tiled({
+            geometryKind: "polygon",
+            symbology: {
+              stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "solid" },
+            },
+          }).layers,
+        ],
+      }}
+    />,
+  );
+  expect(map.getLayer("communes")).toBeUndefined();
+  expect(map.getLayer("communes__outline")).toBeUndefined();
+  expect(map.getSource("communes")).toBeUndefined();
+  expect(map.getLayer("ok")).toBeDefined();
+});
+
+// Constat 1 (correctif de revue SP-27 Task 3) : le test ci-dessus ne passe
+// que par le chemin "geometryKind connu" (site 2), qui pose un contour à
+// suffixe simple ("communes__outline"). `tiled()` sans `geometryKind` passe
+// par le chemin de géométrie mixte (site 1) : sa sous-couche "polygon"
+// (communes__polygon) porte un contour à double suffixe
+// ("communes__polygon__outline"). La levée survient AVANT que ce double
+// suffixe soit posé, donc la boucle externe le retire en supprimant
+// "communes__polygon", et la boucle imbriquée s'exécute en no-op (le double
+// suffixe n'a jamais existé). Elle reste comme filet de sécurité pour une
+// passe future où une sous-couche décorative serait posée séparément.
+test("a failing double-suffixed outline (mixed-geometry polygon sub-layer) rolls back its parent and the source", () => {
+  const good: MapLayer = { id: "ok", title: "OK", visible: true, kind: "feature", url: "u1" };
+  const { rerender } = render(<MapView config={{ ...config, layers: [good] }} />);
+  const map = mapInstances[0];
+  map.throwOnAddLayer.add("communes__polygon__outline");
+  rerender(
+    <MapView
+      config={{
+        ...config,
+        layers: [
+          good,
+          ...tiled({
+            symbology: {
+              stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "solid" },
+            },
+          }).layers,
+        ],
+      }}
+    />,
+  );
+  expect(map.getLayer("communes__polygon")).toBeUndefined();
+  expect(map.getLayer("communes__polygon__outline")).toBeUndefined();
+  expect(map.getSource("communes")).toBeUndefined();
+  expect(map.getLayer("ok")).toBeDefined();
+});
+
+// Constat 2 (correctif de revue SP-27 Task 3) : le brief exige qu'un stroke
+// sur une géométrie "line" soit un no-op (une ligne a déjà sa propre couleur
+// via l'encodage `color` ; un second contour sur une ligne n'a pas de sens
+// cartographique). Trois gardes le garantissent par construction
+// (buildMapPaint ne pose l'outlinePaint que pour "point"/"polygon", et le
+// site d'appel ne pose addOutlineLayer que pour "polygon") mais rien ne le
+// prouvait par une assertion directe.
+test("a stroke on a line geometry is a no-op: no outline sub-layer, line color stays the color encoding's", () => {
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "line",
+        symbology: {
+          color: {
+            field: "categorie",
+            mode: "categorical",
+            palette: "categorical-a",
+            domain: { kind: "categorical", values: ["A", "B"] },
+            computedAt: "2026-08-23T00:00:00Z",
+          },
+          stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "solid" },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  expect(map.getLayer("communes__outline")).toBeUndefined();
+  expect(map.getLayer("communes")).toMatchObject({
+    type: "line",
+    paint: {
+      "line-color": ["match", ["get", "categorie"], "A", "#2563eb", "B", "#dc2626", "#2563eb"],
+    },
+  });
+});
+
+test("a feature layer's opacity reaches its paint", () => {
+  const layer: MapLayer = {
+    id: "l1",
+    title: "Zones",
+    visible: true,
+    kind: "feature",
+    url: "u",
+    symbology: { opacity: 40 },
+  };
+  render(<MapView config={{ ...config, layers: [layer] }} />);
+  expect(mapInstances[0].getLayer("l1")).toMatchObject({
+    type: "fill",
+    paint: { "fill-opacity": 0.4 },
+  });
+});
+
+test("themeColors reaches the paint compilation (theme-primary resolves)", () => {
+  const layer: MapLayer = {
+    id: "l1",
+    title: "Zones",
+    visible: true,
+    kind: "feature",
+    url: "u",
+    symbology: {
+      color: {
+        field: "valeur",
+        mode: "numeric",
+        palette: "theme-primary",
+        domain: { kind: "numeric", min: 0, max: 100 },
+        computedAt: "2026-08-27T00:00:00Z",
+      },
+    },
+  };
+  render(<MapView config={{ ...config, layers: [layer] }} themeColors={{ primary: "#123456" }} />);
+  expect(JSON.stringify(mapInstances[0].getLayer("l1"))).toContain("#123456");
+});
+
+test("a MapLibre error event is reported instead of vanishing", () => {
+  const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+  render(<MapView config={config} />);
+  mapInstances[0].fire("error", {
+    error: { message: "layers[0].paint.icon-image: unknown property" },
+  });
+  expect(spy).toHaveBeenCalledWith(
+    "MapView: MapLibre a signalé une erreur",
+    expect.objectContaining({ error: expect.anything() }),
+  );
+  spy.mockRestore();
+});
+
+// Constat N13 : sans filtre, ce listener journalise chaque tuile 404 et
+// chaque sprite manquant, donc noie le signal qu'il existe pour produire.
+test("an ordinary MapLibre error (a 404 tile) is not reported", () => {
+  const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+  render(<MapView config={config} />);
+  mapInstances[0].fire("error", { error: { message: "AJAXError: Not Found (404)" } });
+  expect(spy).not.toHaveBeenCalled();
+  spy.mockRestore();
+});
+
+// Redondant à dessein avec le test pur de buildMapPaint (mapSymbology.test.ts) :
+// celui-ci prouve que MapView pose bien l'expression sur les DEUX couches — la
+// principale et son sous-calque `__outline` —, ce qui traverse effectivePaint +
+// symbologyToPaintInputs + addOutlineLayer.
+test("un contour classé se compile en expression step sur la couche et son contour", () => {
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        symbology: {
+          stroke: {
+            color: {
+              field: "pop",
+              domain: { kind: "numeric-classed", breaks: [0, 10, 20] },
+              palette: "sequential-blue",
+              mode: "numeric",
+              classification: { method: "quantile", classes: 2 },
+              computedAt: "2026-08-27T00:00:00Z",
+            },
+            width: { fixed: 2 },
+            style: "solid",
+          },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  const paint = map.getLayer("communes")!.paint as Record<string, unknown>;
+  expect((paint["fill-outline-color"] as unknown[])[0]).toBe("step");
+  const outlinePaint = map.getLayer("communes__outline")!.paint as Record<string, unknown>;
+  expect((outlinePaint["line-color"] as unknown[])[0]).toBe("step");
+});
+
+test("a point layer with an icon encoding gets a paired symbol layer carrying icon-image in layout", () => {
+  imageStub = installImageDecodeStub();
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "point",
+        symbology: {
+          icon: {
+            field: "categorie",
+            domain: { kind: "categorical", values: ["ecole"] },
+            mapping: { ecole: { source: "lucide", name: "school" } },
+          },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  // La couche principale reste un cercle, sans aucune clé layout dans paint.
+  expect(map.getLayer("communes")).toMatchObject({ type: "circle" });
+  expect(
+    (map.getLayer("communes")!.paint as Record<string, unknown>)["icon-image"],
+  ).toBeUndefined();
+  expect(map.getLayer("communes__icon")).toMatchObject({
+    type: "symbol",
+    source: "communes",
+    "source-layer": "communes",
+    layout: {
+      "icon-image": ["match", ["get", "categorie"], "ecole", "lucide:school", "lucide:school"],
+      "icon-size": 1,
+      "icon-allow-overlap": true,
+    },
+  });
+  // Pas de handler de clic sur la couche d'icônes : sinon un clic ouvrirait
+  // deux popups (elle est posée exactement sur les points).
+  expect(map.layerHandlers["click:communes__icon"] ?? []).toHaveLength(0);
+});
+
+test("les images Lucide référencées sont chargées via addImage, sans option sdf", async () => {
+  imageStub = installImageDecodeStub();
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "point",
+        symbology: {
+          icon: {
+            field: "categorie",
+            domain: { kind: "categorical", values: ["ecole"] },
+            mapping: { ecole: { source: "lucide", name: "school" } },
+          },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  await vi.waitFor(() => expect(map.hasImage("lucide:school")).toBe(true));
+  // sdf: true déclarerait que l'image EST un signed distance field, ce
+  // qu'un ImageBitmap RGBA n'est pas — et rien ici n'utilise icon-color.
+  expect(map.images.get("lucide:school")?.options).toBeUndefined();
+});
+
+test("une icône qui échoue à charger n'empêche pas les couches d'être posées", async () => {
+  imageStub = installImageDecodeStub({ failing: ["blob:stub/"] });
+  const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "point",
+        symbology: {
+          icon: {
+            field: "categorie",
+            domain: { kind: "categorical", values: ["ecole"] },
+            // Nom d'icône dédié ("hospital"), distinct de "school" utilisé
+            // par les deux autres tests d'icônes de ce fichier :
+            // `rasterizeLucideIcon` met son résultat en cache à la portée du
+            // MODULE (`imageCache`, iconLibrary.ts), non réinitialisé entre
+            // les tests d'un même fichier (même précédent que iconLibrary.
+            // test.ts, trou 1/2 de sa revue). Réutiliser "school" ferait
+            // retomber sur l'entrée déjà résolue avec succès par le test
+            // précédent, et ce test-ci ne verrait jamais l'échec attendu.
+            mapping: { ecole: { source: "lucide", name: "hospital" } },
+          },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  // Les couches sont posées SYNCHRONEMENT, avant tout chargement d'image.
+  expect(map.getLayer("communes")).toBeDefined();
+  expect(map.getLayer("communes__icon")).toBeDefined();
+  await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+  expect(map.hasImage("lucide:hospital")).toBe(false);
+  spy.mockRestore();
+});
+
+// Fix I1 de la revue finale SP-27 : `loadIconImages` dérivait auparavant ses
+// propres ids d'image depuis `layer.symbology.icon.mapping`, sans jamais
+// regarder `geometryKind` — une couche non ponctuelle portant un encodage
+// icône (résidu d'un ancien encodage, ou copié-collé de config) déclenchait
+// quand même le chargement de l'icône, alors qu'aucune couche `symbol` ne
+// pouvait jamais l'afficher (buildMapPaint ne pose `iconLayout` que pour
+// "point"). `loadIconImages` consomme désormais `iconImages`, le retour
+// d'`applyLayers`, qui hérite du même garde que `buildMapPaint`.
+test("a non-point layer with an icon encoding does not fetch any icon", async () => {
+  imageStub = installImageDecodeStub();
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        symbology: {
+          icon: {
+            field: "categorie",
+            domain: { kind: "categorical", values: ["ecole"] },
+            mapping: { ecole: { source: "lucide", name: "school" } },
+          },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  // Aucune couche `symbol` d'icône n'est posée pour une géométrie non
+  // ponctuelle (garde déjà présent dans buildMapPaint).
+  expect(map.getLayer("communes__icon")).toBeUndefined();
+  // Laisse largement le temps à un éventuel chargement asynchrone erroné de
+  // se produire avant d'affirmer qu'il n'a pas eu lieu — le pipeline réel
+  // (FileReader jsdom + plusieurs sauts de microtâches, cf.
+  // imageDecodeStub.ts) prend plus qu'un simple `setTimeout(0)`, comme
+  // mesuré : un délai trop court laisse passer ce test même sans le correctif.
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(map.hasImage("lucide:school")).toBe(false);
+});
+
+// Fix I1 (suite) : `Object.values(icon.mapping)` itérait TOUTE la mise en
+// correspondance, y compris une entrée que "Recalculer les valeurs"
+// (MapSymbologyEditor.tsx, ~244-252) a laissée dans `mapping` après avoir
+// remplacé `domain` par un domaine plus étroit qui ne la contient plus.
+// `buildMapPaint` ne construit `iconImages` qu'à partir des valeurs
+// RÉELLEMENT présentes dans le domaine figé — cette entrée orpheline ne doit
+// donc plus jamais être fetchée.
+test("a mapping entry outside the frozen domain is not fetched", async () => {
+  imageStub = installImageDecodeStub();
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "point",
+        symbology: {
+          icon: {
+            field: "categorie",
+            domain: { kind: "categorical", values: ["ecole"] },
+            mapping: {
+              ecole: { source: "lucide", name: "school" },
+              // Reste dans `mapping` après un recalcul de domaine qui ne
+              // conserve plus que "ecole" — hors domaine, jamais rendue.
+              mairie: { source: "lucide", name: "landmark" },
+            },
+          },
+        },
+      })}
+    />,
+  );
+  const map = mapInstances[0];
+  await vi.waitFor(() => expect(map.hasImage("lucide:school")).toBe(true));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(map.hasImage("lucide:landmark")).toBe(false);
+});
+
+test("removing an icon layer removes its symbol sub-layer and its source", () => {
+  imageStub = installImageDecodeStub();
+  const { rerender } = render(
+    <MapView
+      config={tiled({
+        geometryKind: "point",
+        symbology: {
+          icon: {
+            field: "categorie",
+            domain: { kind: "categorical", values: ["ecole"] },
+            mapping: { ecole: { source: "lucide", name: "school" } },
+          },
+        },
+      })}
+    />,
+  );
+  rerender(<MapView config={config} />);
+  const map = mapInstances[0];
+  expect(map.getLayer("communes__icon")).toBeUndefined();
+  expect(map.getSource("communes")).toBeUndefined();
+});
+
+const labelSymbology = {
+  label: {
+    template: "${record.nom}",
+    size: 12,
+    color: "#1e293b",
+    haloColor: "#ffffff",
+    haloWidth: 1,
+  },
+};
+
+test("une couche étiquetée pose une source GeoJSON dédiée et une couche symbol", () => {
+  render(<MapView config={tiled({ geometryKind: "polygon", symbology: labelSymbology })} />);
+  const map = mapInstances[0];
+  expect(map.getSource("communes__labels")).toMatchObject({
+    spec: { type: "geojson" },
+  });
+  expect(map.getLayer("communes__label")).toMatchObject({
+    type: "symbol",
+    source: "communes__labels",
+    layout: { "text-field": ["get", "label"], "text-size": 12 },
+    paint: {
+      "text-color": "#1e293b",
+      "text-halo-color": "#ffffff",
+      "text-halo-width": 1,
+    },
+  });
+  // Aucune source-layer, aucun filtre : la source est du GeoJSON local.
+  expect(map.getLayer("communes__label")).not.toHaveProperty("source-layer");
+  // Aucun handler de clic : la couche est posée sur les mêmes entités.
+  expect(map.layerHandlers["click:communes__label"] ?? []).toHaveLength(0);
+});
+
+test("idle recalcule les étiquettes depuis querySourceFeatures", async () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", pkColumn: "code", symbology: labelSymbology })}
+    />,
+  );
+  const map = mapInstances[0];
+  map.sourceFeatures["communes"] = [
+    { id: 19108, properties: { nom: "Tulle" }, geometry: { type: "Point", coordinates: [1, 2] } },
+    { id: 19031, properties: { nom: "Brive" }, geometry: { type: "Point", coordinates: [3, 4] } },
+  ];
+  act(() => map.fire("idle"));
+  await vi.waitFor(() => {
+    const src = map.getSource("communes__labels") as { spec: { data?: unknown } };
+    expect(
+      (src.spec.data as { features: { properties: { label: string } }[] }).features.map(
+        (f) => f.properties.label,
+      ),
+    ).toEqual(["Tulle", "Brive"]);
+  });
+  // Source vecteur : sourceLayer est OBLIGATOIRE, sinon la requête ne
+  // renvoie rien, en silence.
+  expect(map.querySourceFeaturesCalls).toEqual(
+    expect.arrayContaining([{ sourceId: "communes", params: { sourceLayer: "communes" } }]),
+  );
+});
+
+test("une couche feature interroge sa source GeoJSON sans sourceLayer", async () => {
+  const layer: MapLayer = {
+    id: "l1",
+    title: "Zones",
+    visible: true,
+    kind: "feature",
+    url: "u",
+    symbology: labelSymbology,
+  };
+  render(<MapView config={{ ...config, layers: [layer] }} />);
+  const map = mapInstances[0];
+  map.sourceFeatures["l1"] = [
+    { id: 1, properties: { nom: "A" }, geometry: { type: "Point", coordinates: [0, 0] } },
+  ];
+  act(() => map.fire("idle"));
+  await vi.waitFor(() =>
+    expect(map.querySourceFeaturesCalls).toEqual(
+      expect.arrayContaining([{ sourceId: "l1", params: undefined }]),
+    ),
+  );
+});
+
+// Le style de MockMap déclare des glyphs par défaut. Pour tester le refus il
+// faut donc une carte dont le style n'en déclare pas AU MOMENT d'appliquer les
+// couches : MapView lit `map.getStyle().glyphs` à chaque `applyLayers`, donc un
+// premier rendu sans étiquette, `map.glyphs = undefined`, puis un rerender avec
+// étiquette suffit.
+test("une carte dont le style ne déclare pas de glyphs ne pose aucune couche d'étiquettes", () => {
+  const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const { rerender } = render(<MapView config={config} />);
+  const map = mapInstances[0];
+  map.glyphs = undefined;
+  rerender(<MapView config={tiled({ geometryKind: "polygon", symbology: labelSymbology })} />);
+  expect(map.getLayer("communes__label")).toBeUndefined();
+  expect(map.getSource("communes__labels")).toBeUndefined();
+  expect(spy).toHaveBeenCalledWith(expect.stringContaining("glyphs"));
+  spy.mockRestore();
+});
+
+test("retirer une couche étiquetée retire sa couche ET sa source d'étiquettes", () => {
+  const { rerender } = render(
+    <MapView config={tiled({ geometryKind: "polygon", symbology: labelSymbology })} />,
+  );
+  rerender(<MapView config={config} />);
+  const map = mapInstances[0];
+  expect(map.getLayer("communes__label")).toBeUndefined();
+  expect(map.getSource("communes__labels")).toBeUndefined();
+  expect(map.getSource("communes")).toBeUndefined();
+});
+
+test("deux idle consécutifs sans changement d'entités ne reposent pas la source", async () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", pkColumn: "code", symbology: labelSymbology })}
+    />,
+  );
+  const map = mapInstances[0];
+  map.sourceFeatures["communes"] = [
+    { id: 19108, properties: { nom: "Tulle" }, geometry: { type: "Point", coordinates: [1, 2] } },
+  ];
+  const source = map.getSource("communes__labels") as { setDataCalls: number };
+  act(() => map.fire("idle"));
+  await vi.waitFor(() => expect(source.setDataCalls).toBeGreaterThan(0));
+  const after = source.setDataCalls;
+  act(() => map.fire("idle"));
+  await new Promise((r) => setTimeout(r, 200)); // au-delà du debounce de 150 ms
+  // Sans garde d'idempotence, `idle` → setData → « content » → reload →
+  // repaint → `idle` s'auto-entretient à ~6 Hz (constat N3).
+  expect(source.setDataCalls).toBe(after);
+
+  // Un vrai changement d'entités, en revanche, doit repasser.
+  map.sourceFeatures["communes"] = [
+    { id: 19031, properties: { nom: "Brive" }, geometry: { type: "Point", coordinates: [3, 4] } },
+  ];
+  act(() => map.fire("idle"));
+  await vi.waitFor(() => expect(source.setDataCalls).toBe(after + 1));
+});
+
+test("deux instances de MapView partageant un layer.id ne partagent pas leur garde d'étiquettes", async () => {
+  // Scénario du correctif post-revue de Task 14 : `lastLabelPayloads` vivait
+  // à portée module, donc deux <MapView> montées en même temps et partageant
+  // un `layer.id` (deux widgets carte affichant la même collection)
+  // partageaient la même entrée de garde. Ici les deux instances calculent la
+  // MÊME sérialisation d'étiquettes : avant le correctif, la première à
+  // passer par `idle` primait le garde partagé et la seconde le voyait
+  // « inchangé », sautant son propre `setData` alors que sa source MapLibre —
+  // un objet distinct — n'avait jamais été peuplée.
+  const cfg = tiled({ geometryKind: "polygon", pkColumn: "code", symbology: labelSymbology });
+  render(<MapView config={cfg} />);
+  render(<MapView config={cfg} />);
+  const [mapA, mapB] = mapInstances;
+  const sameFeatures = [
+    { id: 19108, properties: { nom: "Tulle" }, geometry: { type: "Point", coordinates: [1, 2] } },
+  ];
+  mapA.sourceFeatures["communes"] = sameFeatures;
+  mapB.sourceFeatures["communes"] = sameFeatures;
+
+  const sourceA = mapA.getSource("communes__labels") as { setDataCalls: number };
+  act(() => mapA.fire("idle"));
+  await vi.waitFor(() => expect(sourceA.setDataCalls).toBe(1));
+
+  const sourceB = mapB.getSource("communes__labels") as { setDataCalls: number };
+  act(() => mapB.fire("idle"));
+  await vi.waitFor(() => expect(sourceB.setDataCalls).toBe(1));
+});
+
+test("la barre mesure/croquis est montée quand interactiveTools est vrai", () => {
+  render(<MapView config={config} interactiveTools />);
+  expect(screen.getByRole("button", { name: "Mesurer" })).toBeInTheDocument();
+});
+
+test("la barre mesure/croquis est absente par défaut", () => {
+  render(<MapView config={config} />);
+  expect(screen.queryByRole("button", { name: "Mesurer" })).not.toBeInTheDocument();
+});
+
+test("la popup est suspendue pendant une mesure", async () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", popup: { titleField: "nom" } })}
+      interactiveTools
+    />,
+  );
+  const map = mapInstances[0];
+  // Un clic d'entité ouvre la popup en mode normal…
+  act(() => map.fireOnLayer("click", "communes", clickPayload));
+  expect(await screen.findByText("Tulle")).toBeInTheDocument();
+
+  // …mais plus une fois la mesure activée.
+  await userEvent.click(screen.getByRole("button", { name: "Mesurer" }));
+  expect(screen.queryByText("Tulle")).not.toBeInTheDocument();
+});
+
+// Task 19 : le widget carte transmet désormais `symbology` tel quel à
+// MapView (il ne compile plus rien lui-même) — ces deux tests ferment la
+// boucle de bout en bout que ce câblage introduit, pour une couche `feature`
+// portant les quatre encodages à la fois (opacité, contour, icône, étiquette).
+const fourEncodingsLayer: MapLayer = {
+  id: "ds-1",
+  title: "Données",
+  visible: true,
+  kind: "feature",
+  url: "u",
+  renderAs: "circle",
+  symbology: {
+    opacity: 60,
+    stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "solid" },
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["ecole"] },
+      mapping: { ecole: { source: "lucide", name: "school" } },
+    },
+    label: {
+      template: "${record.nom}",
+      size: 12,
+      color: "#1e293b",
+      haloColor: "#ffffff",
+      haloWidth: 1,
+    },
+  },
+};
+
+test("une couche feature portant les quatre nouveaux encodages produit toutes ses sous-couches", () => {
+  installImageDecodeStub();
+  render(<MapView config={{ ...config, layers: [fourEncodingsLayer] }} />);
+  const map = mapInstances[0];
+  expect(map.getLayer("ds-1")).toMatchObject({
+    type: "circle",
+    paint: { "circle-opacity": 0.6, "circle-stroke-color": "#000000", "circle-stroke-width": 2 },
+  });
+  // renderAs "circle" ⇒ géométrie "point" ⇒ pas de contour en seconde couche.
+  expect(map.getLayer("ds-1__outline")).toBeUndefined();
+  expect(map.getLayer("ds-1__icon")).toMatchObject({ type: "symbol" });
+  expect(map.getLayer("ds-1__label")).toMatchObject({ type: "symbol", source: "ds-1__labels" });
+});
+
+// Constat N6 (Important) : le plan rend le mode de panne « clé layout posée
+// dans paint » observable (le listener `map.on("error")` de Task 3) mais pas
+// impossible — aucun test jusqu'ici ne passait les couches produites par
+// MapView au VRAI validateur de style MapLibre ; toutes les assertions
+// passent par MockMap, qui n'exécute aucun validateur. Ce test l'étend à
+// `validateStyleMin`, comme `createExpression` l'était déjà dans
+// `mapSymbology.test.ts:591` pour les entrées pures de `buildMapPaint`.
+test("les couches produites par MapView valident contre le vrai style-spec MapLibre", () => {
+  installImageDecodeStub();
+  render(<MapView config={{ ...config, layers: [fourEncodingsLayer] }} />);
+  const map = mapInstances[0];
+  // Style minimal réel : les sources et le glyphs que les couches exigent
+  // (l'étiquette pose un text-field, qui requiert un endpoint glyphs déclaré).
+  const style = {
+    version: 8 as const,
+    glyphs: "https://glyphs.test/{fontstack}/{range}.pbf",
+    sources: Object.fromEntries(
+      map.sources.map((s) => [
+        s.id,
+        { type: "geojson" as const, data: { type: "FeatureCollection" as const, features: [] } },
+      ]),
+    ),
+    layers: map.layers,
+  };
+  // Zéro erreur, pas « peu d'erreurs » : une clé layout posée dans paint, un
+  // text-field sans glyphs ou un ["feature-state", …] en layout sortent tous
+  // ici, alors que Style.addLayer les avalerait en faisant `return`.
+  expect(validateStyleMin(style as never)).toEqual([]);
 });

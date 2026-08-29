@@ -7,8 +7,8 @@ import { useSetCrossFilter, useSetExtent } from "../AnalyticsContext";
 import { useItemClient } from "../../api/ItemClientProvider";
 import {
   buildLegend,
-  buildMapPaint,
   detectGeometryKind,
+  renderAsFor,
   symbologyToPaintInputs,
 } from "./mapSymbology";
 import type { LayerSymbology, LegendSpec } from "./mapSymbology";
@@ -92,6 +92,63 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
           </span>
         </div>
       )}
+      {legend.stroke?.kind === "categorical" && (
+        <ul aria-label="Contour">
+          {legend.stroke.entries.map((e) => (
+            <li key={e.value} className="flex items-center gap-1">
+              <span
+                className="inline-block h-3 w-3 rounded-sm border-2"
+                style={{ borderColor: e.color }}
+              />
+              {e.value}
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* Fix I2 de la revue finale SP-27 : un contour classé/continu se
+          compile correctement (buildMapPaint, expression step/interpolate
+          sur fill-outline-color) depuis que Task 5 a rendu le sélecteur de
+          couleur de contour symétrique du remplissage, mais la légende ne
+          savait décrire que le cas catégoriel — miroir exact des blocs
+          legend.color juste au-dessus. */}
+      {legend.stroke?.kind === "classed" && (
+        <ul aria-label="Contour">
+          {legend.stroke.classes.map((c, i) => (
+            <li key={i} className="flex items-center gap-1">
+              <span
+                className="inline-block h-3 w-3 rounded-sm border-2"
+                style={{ borderColor: c.color }}
+              />
+              {c.from.toFixed(1)} – {c.to.toFixed(1)}
+            </li>
+          ))}
+        </ul>
+      )}
+      {legend.stroke?.kind === "numeric" && (
+        <div aria-label="Contour">
+          <div
+            className="h-2 w-24 rounded border-2"
+            style={{
+              background: `linear-gradient(to right, ${legend.stroke.colorLow}, ${legend.stroke.colorHigh})`,
+            }}
+          />
+          <span>
+            {legend.stroke.min} – {legend.stroke.max}
+          </span>
+        </div>
+      )}
+      {legend.icon && (
+        <ul aria-label="Icônes">
+          {legend.icon.entries.map((e) => (
+            <li key={e.value} className="flex items-center gap-1">
+              <span aria-hidden="true" className="text-base">
+                ◈
+              </span>
+              {e.value}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -152,6 +209,21 @@ export function registerMapWidget(): void {
                 "Jenks sur le widget carte nécessite un collectionId résolu — non câblé",
               );
             }}
+            // `?.()` OBLIGATOIRE, pas cosmétique (défaut n° 5 de la brief
+            // Task 12) : ce PropsPanel est rendu inconditionnellement, et
+            // `renderPropsPanel` (mapWidget.test.tsx:126) le monte avec
+            // `client={{} as unknown as ItemClient}` — un client entièrement
+            // vide. Sans `?.`, `client.listMapIcons()` lève SYNCHRONIQUEMENT
+            // dans le callback d'effet et fait échouer le rendu de tous les
+            // tests passant par `renderPropsPanel` — le `.catch()` de
+            // l'effet n'attrape rien, il n'y a pas encore de promesse.
+            listCustomIcons={() => client.listMapIcons?.() ?? Promise.resolve([])}
+            uploadCustomIcon={(file, title, category) =>
+              // UN SEUL appel (D7) : plus de presign → PUT → POST. Le cœur
+              // reçoit les octets, choisit la clé S3, assainit, puis écrit.
+              client.uploadMapIcon(file, title, category)
+            }
+            deleteCustomIcon={(id) => client.deleteMapIcon(id)}
             onChange={(symbology) => onChange({ ...props, symbology })}
           />
           <PopupEditor
@@ -179,19 +251,21 @@ export function registerMapWidget(): void {
       const url = ctx.data?.url;
 
       const symbology = props.symbology as LayerSymbology | undefined;
-      const { encodings, colorDomain, sizeDomain, palette } = symbologyToPaintInputs(
+      const geometryKind = detectGeometryKind(ctx.data?.records?.[0]?.geometry);
+      // Le widget ne compile PLUS la peinture : il transmet la symbologie et
+      // les couleurs de thème, et MapView compile — c'est le seul chemin qui
+      // fait bénéficier les apps/dashboards du contour, des icônes, des
+      // étiquettes et de l'opacité (SP-27). `renderAs` reste ici : c'est un
+      // champ de la couche `feature`, et MapView en dérive sa géométrie.
+      const renderAs = renderAsFor(geometryKind);
+      const { encodings, colorDomain, sizeDomain, palette, stroke } = symbologyToPaintInputs(
         symbology,
         ctx.theme?.colors,
       );
-      const geometryKind = detectGeometryKind(ctx.data?.records?.[0]?.geometry);
-      const { renderAs, paint } = buildMapPaint(
-        encodings,
-        colorDomain,
-        sizeDomain,
-        geometryKind,
-        palette,
-      );
-      const legend = buildLegend(encodings, colorDomain, sizeDomain, geometryKind, palette);
+      const legend = buildLegend(encodings, colorDomain, sizeDomain, geometryKind, palette, {
+        stroke,
+        icon: symbology?.icon,
+      });
 
       const config: MapConfig = {
         basemap: { style: DEFAULT_STYLE },
@@ -205,7 +279,7 @@ export function registerMapWidget(): void {
                 kind: "feature",
                 url,
                 renderAs,
-                paint,
+                ...(symbology ? { symbology } : {}),
                 popup: props.popup as PopupConfig | undefined,
               },
             ]
@@ -223,8 +297,11 @@ export function registerMapWidget(): void {
             <MapView
               ref={handle}
               config={config}
+              themeColors={ctx.theme?.colors}
+              interactiveTools={ctx.mode !== "edit"}
               getAuthToken={client.getAuthToken}
               getCoreUrl={client.getCoreUrl}
+              loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
               onViewChange={(v) => {
                 ctx.bus?.emit(ctx.widgetId ?? "", "extentChanged", v);
                 setExtent(v.bbox);

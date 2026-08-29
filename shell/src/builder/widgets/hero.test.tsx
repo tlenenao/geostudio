@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ActionBus } from "../ActionBus";
@@ -9,6 +9,13 @@ import { ActionBus } from "../ActionBus";
 beforeEach(() => {
   _resetRegistry();
   registerBuiltinWidgets();
+});
+
+// Plusieurs tests font vi.spyOn(window, "open") : sans restauration, un
+// second spyOn sur la même méthode réutilise l'espion existant (son
+// historique d'appels y compris) au lieu d'en créer un nouveau.
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 test("hero declares a cta event", () => {

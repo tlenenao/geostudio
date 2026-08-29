@@ -6,7 +6,8 @@ import { expect, test, vi } from "vitest";
 // round 2 de C-new le demande explicitement, qu'une expression de peinture
 // produite est réellement valide pour MapLibre (et pas seulement conforme à
 // la forme qu'on s'attend à lui voir).
-import { createExpression } from "@maplibre/maplibre-gl-style-spec";
+import { createExpression, validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
+import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import {
   buildLegend,
   buildMapPaint,
@@ -14,10 +15,12 @@ import {
   computeSizeDomain,
   detectGeometryKind,
   equalIntervalBreaks,
+  iconImageId,
   jenksBreaks,
   normalizeDomain,
   quantileBreaksFromRow,
   quantileMeasures,
+  renderAsFor,
   symbologyToPaintInputs,
 } from "./mapSymbology";
 import type { ColorDomain, LayerSymbology } from "./mapSymbology";
@@ -597,4 +600,453 @@ test("buildMapPaint's step expression for a usable (>= 2 classes) domain validat
   );
   const validated = createExpression(paint["fill-color"]);
   expect(validated.result).toBe("success");
+});
+
+test("buildMapPaint emits circle-stroke-* for a point layer with a fixed stroke color/width", () => {
+  const { paint } = buildMapPaint({}, null, null, "point", undefined, {
+    stroke: { color: { fixed: "#111111" }, width: { fixed: 2 }, style: "solid" },
+  });
+  expect(paint["circle-stroke-color"]).toBe("#111111");
+  expect(paint["circle-stroke-width"]).toBe(2);
+});
+
+test("buildMapPaint emits fill-outline-color plus an outline line-paint for a polygon with stroke", () => {
+  const result = buildMapPaint({}, null, null, "polygon", undefined, {
+    stroke: { color: { fixed: "#222222" }, width: { fixed: 3 }, style: "dashed" },
+  });
+  expect(result.paint["fill-outline-color"]).toBe("#222222");
+  expect(result.outlinePaint).toEqual({
+    "line-color": "#222222",
+    "line-width": 3,
+    "line-dasharray": [2, 2],
+  });
+});
+
+test("stroke on a line geometry is a no-op and never overwrites the color encoding", () => {
+  const result = buildMapPaint(
+    { color: { field: "region", mode: "categorical" } },
+    { kind: "categorical", values: ["Nord", "Sud"] },
+    null,
+    "line",
+    undefined,
+    { stroke: { color: { fixed: "#333333" }, width: { fixed: 7 }, style: "dotted" } },
+  );
+  // The `color` encoding owns line-color; the stroke must not touch it…
+  expect(result.paint["line-color"]).toEqual([
+    "match",
+    ["get", "region"],
+    "Nord",
+    "#2563eb",
+    "Sud",
+    "#dc2626",
+    "#2563eb",
+  ]);
+  // …nor introduce a width, a dash, or a second layer.
+  expect(result.paint["line-width"]).toBeUndefined();
+  expect(result.paint["line-dasharray"]).toBeUndefined();
+  expect(result.outlinePaint).toBeUndefined();
+});
+
+test("buildMapPaint applies data-driven stroke color from a categorical domain", () => {
+  const result = buildMapPaint({}, null, null, "polygon", undefined, {
+    stroke: {
+      color: {
+        field: "region",
+        domain: { kind: "categorical", values: ["Nord", "Sud"] },
+        palette: { kind: "categorical", colors: ["#aaaaaa", "#bbbbbb"] },
+      },
+      width: { fixed: 1 },
+      style: "solid",
+    },
+  });
+  expect(result.paint["fill-outline-color"]).toEqual([
+    "match",
+    ["get", "region"],
+    "Nord",
+    "#aaaaaa",
+    "Sud",
+    "#bbbbbb",
+    "#aaaaaa",
+  ]);
+});
+
+test("buildMapPaint applies data-driven stroke width from a numeric domain", () => {
+  const result = buildMapPaint({}, null, null, "polygon", undefined, {
+    stroke: {
+      color: { fixed: "#000000" },
+      width: { field: "pop", domain: { min: 0, max: 100 } },
+      style: "solid",
+    },
+  });
+  expect(result.outlinePaint?.["line-width"]).toEqual([
+    "interpolate",
+    ["linear"],
+    ["get", "pop"],
+    0,
+    1,
+    100,
+    8,
+  ]);
+});
+
+test("buildMapPaint applies fixed opacity per geometry, outline included", () => {
+  expect(
+    buildMapPaint({}, null, null, "polygon", undefined, { opacity: 50 }).paint["fill-opacity"],
+  ).toBe(0.5);
+  expect(
+    buildMapPaint({}, null, null, "point", undefined, { opacity: 25 }).paint["circle-opacity"],
+  ).toBe(0.25);
+  expect(
+    buildMapPaint({}, null, null, "line", undefined, { opacity: 100 }).paint["line-opacity"],
+  ).toBe(1);
+  // I3.11 du pré-vol : un polygone à 30 % gardait un contour opaque.
+  const withOutline = buildMapPaint({}, null, null, "polygon", undefined, {
+    opacity: 30,
+    stroke: { color: { fixed: "#000000" }, width: { fixed: 2 }, style: "solid" },
+  });
+  expect(withOutline.outlinePaint?.["line-opacity"]).toBe(0.3);
+});
+
+test("buildMapPaint emits an opacity of 0 rather than omitting it", () => {
+  // Cas limite : `extras?.opacity !== undefined` (pas `if (extras?.opacity)`)
+  // doit laisser passer une opacité de 0 — une couche invisible mais
+  // présente, distincte d'une couche sans opacity configurée du tout.
+  const result = buildMapPaint({}, null, null, "polygon", undefined, { opacity: 0 });
+  expect(result.paint["fill-opacity"]).toBe(0);
+  expect("fill-opacity" in result.paint).toBe(true);
+});
+
+test("buildMapPaint never writes a layout-only property into paint", () => {
+  const LAYOUT_ONLY = ["icon-image", "icon-size", "icon-allow-overlap", "text-field", "text-size"];
+  const result = buildMapPaint({}, null, null, "point", undefined, {
+    opacity: 40,
+    stroke: { color: { fixed: "#000000" }, width: { fixed: 1 }, style: "solid" },
+  });
+  for (const key of LAYOUT_ONLY) expect(result.paint[key]).toBeUndefined();
+});
+
+test("buildLegend includes a stroke entry for a data-driven stroke color", () => {
+  const legend = buildLegend({}, null, null, "polygon", undefined, {
+    stroke: {
+      color: {
+        field: "region",
+        domain: { kind: "categorical", values: ["Nord"] },
+        palette: { kind: "categorical", colors: ["#aaaaaa"] },
+      },
+      width: { fixed: 1 },
+      style: "solid",
+    },
+  });
+  expect(legend?.stroke).toEqual({
+    kind: "categorical",
+    field: "region",
+    entries: [{ value: "Nord", color: "#aaaaaa" }],
+  });
+});
+
+// Fix I2 de la revue finale SP-27 : `legend.stroke` était typé
+// catégoriel-seul alors que le sélecteur de couleur de contour (Task 5,
+// déviation D5) et `buildMapPaint` (test "compile un contour classé en
+// expression step" ci-dessous) traitent déjà un contour classé/continu comme
+// le remplissage. Miroir exact de "buildLegend with a numeric-classed domain
+// returns one range per class" ci-dessus, appliqué au contour.
+test("buildLegend with a numeric-classed stroke domain returns one range per class", () => {
+  const legend = buildLegend({}, null, null, "polygon", undefined, {
+    stroke: {
+      color: {
+        field: "pop",
+        domain: { kind: "numeric-classed", breaks: [0, 10, 20] },
+        palette: { kind: "sequential", low: "#000000", high: "#ffffff" },
+      },
+      width: { fixed: 1 },
+      style: "solid",
+    },
+  });
+  expect(legend?.stroke).toEqual({
+    kind: "classed",
+    field: "pop",
+    classes: [
+      { color: "#000000", from: 0, to: 10 },
+      { color: "#ffffff", from: 10, to: 20 },
+    ],
+  });
+});
+
+// Miroir de "buildLegend builds a numeric color section" pour le contour :
+// classification continue (pas de `classification` sur l'encodage), domaine
+// "numeric" et non "numeric-classed".
+test("buildLegend with a continuous numeric stroke domain returns a numeric section", () => {
+  const legend = buildLegend({}, null, null, "polygon", undefined, {
+    stroke: {
+      color: {
+        field: "pop",
+        domain: { kind: "numeric", min: 0, max: 100 },
+        palette: { kind: "sequential", low: "#111111", high: "#222222" },
+      },
+      width: { fixed: 1 },
+      style: "solid",
+    },
+  });
+  expect(legend?.stroke).toEqual({
+    kind: "numeric",
+    field: "pop",
+    min: 0,
+    max: 100,
+    colorLow: "#111111",
+    colorHigh: "#222222",
+  });
+});
+
+test("symbologyToPaintInputs resolves stroke.color.palette from an id, like color", () => {
+  const inputs = symbologyToPaintInputs(
+    {
+      stroke: {
+        color: {
+          field: "region",
+          mode: "categorical",
+          domain: { kind: "categorical", values: ["A"] },
+          palette: "theme-primary",
+          computedAt: "2026-08-27T00:00:00Z",
+        },
+        width: { fixed: 1 },
+        style: "solid",
+      },
+    },
+    { primary: "#123456" },
+  );
+  expect(inputs.stroke).toBeDefined();
+  expect(inputs.stroke && "field" in inputs.stroke.color && inputs.stroke.color.palette).toEqual(
+    expect.objectContaining({ kind: expect.any(String) }),
+  );
+});
+
+test("renderAsFor maps a geometry kind to the MapLibre layer type", () => {
+  expect(renderAsFor("point")).toBe("circle");
+  expect(renderAsFor("line")).toBe("line");
+  expect(renderAsFor("polygon")).toBe("fill");
+});
+
+// Le comportement (domaine figé, computedAt propagé jusqu'au rendu) est
+// vérifié par le test qui suit (« buildMapPaint compile un contour classé en
+// expression step »). Un test séparé qui ne faisait que relire au runtime le
+// littéral `LayerSymbology` qu'il venait d'écrire a été supprimé ici (constat
+// de revue Task 5, SP-27) : son assertion ne pouvait jamais échouer — sa
+// seule valeur réelle était une vérification de TYPE (compile sous tsc),
+// déjà couverte par `npm run build` / `tsc --noEmit`, mais sa forme de test
+// Vitest faisait croire à une vérification de comportement.
+
+test("buildMapPaint compile un contour classé en expression step", () => {
+  const result = buildMapPaint({}, null, null, "polygon", undefined, {
+    stroke: {
+      color: {
+        field: "pop",
+        domain: { kind: "numeric-classed", breaks: [0, 10, 20, 30] },
+        palette: { kind: "sequential", low: "#dbeafe", high: "#1e3a8a" },
+      },
+      width: { fixed: 2 },
+      style: "solid",
+    },
+  });
+  const step = result.paint["fill-outline-color"] as unknown[];
+  expect(step[0]).toBe("step");
+  expect(step[1]).toEqual(["get", "pop"]);
+  // 3 classes ⇒ couleur initiale + 2 paires (seuil, couleur).
+  expect(step).toHaveLength(2 + 1 + 4);
+  expect(result.outlinePaint?.["line-color"]).toEqual(step);
+});
+
+// Miroir du garde côté couleur : c'est exactement l'état que produit le
+// bouton « Couleur de contour par attribut » avant tout recalcul (champ vide,
+// `values: []`). Sans ce garde, `match` n'aurait pas assez d'arguments et
+// MapLibre ferait disparaître la couche ENTIÈRE, silencieusement.
+test("un contour classé jamais recalculé ne peint aucun contour au lieu d'une expression cassée", () => {
+  const result = buildMapPaint({}, null, null, "polygon", undefined, {
+    stroke: {
+      color: {
+        field: "",
+        domain: { kind: "categorical", values: [] },
+        palette: undefined,
+      },
+      width: { fixed: 2 },
+      style: "solid",
+    },
+  });
+  expect(result.paint["fill-outline-color"]).toBeUndefined();
+  expect(result.outlinePaint).toBeUndefined();
+});
+
+test("buildMapPaint on a point layer with a categorical icon emits iconLayout, never paint", () => {
+  const result = buildMapPaint({}, null, null, "point", undefined, {
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["ecole", "commerce"] },
+      mapping: {
+        ecole: { source: "lucide", name: "school" },
+        commerce: { source: "lucide", name: "shopping-cart" },
+      },
+      fallback: { source: "lucide", name: "map-pin" },
+    },
+  });
+  expect(result.iconLayout).toEqual({
+    "icon-image": [
+      "match",
+      ["get", "categorie"],
+      "ecole",
+      "lucide:school",
+      "commerce",
+      "lucide:shopping-cart",
+      "lucide:map-pin",
+    ],
+    "icon-size": 1,
+    "icon-allow-overlap": true,
+  });
+  expect(result.paint["icon-image"]).toBeUndefined();
+  expect(result.iconImages).toEqual(["lucide:school", "lucide:shopping-cart", "lucide:map-pin"]);
+});
+
+test("without an explicit fallback the match default is the first mapped icon", () => {
+  const result = buildMapPaint({}, null, null, "point", undefined, {
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["a"] },
+      mapping: { a: { source: "lucide", name: "star" } },
+    },
+  });
+  expect(result.iconLayout?.["icon-image"]).toEqual([
+    "match",
+    ["get", "categorie"],
+    "a",
+    "lucide:star",
+    "lucide:star",
+  ]);
+  expect(result.iconImages).toEqual(["lucide:star"]);
+});
+
+test("an icon encoding with no mapped value produces no icon layer at all", () => {
+  const result = buildMapPaint({}, null, null, "point", undefined, {
+    icon: { field: "categorie", domain: { kind: "categorical", values: ["a"] }, mapping: {} },
+  });
+  expect(result.iconLayout).toBeUndefined();
+  expect(result.iconImages).toEqual([]);
+});
+
+test("buildMapPaint icon on a non-point geometry is a no-op", () => {
+  const result = buildMapPaint({}, null, null, "polygon", undefined, {
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["a"] },
+      mapping: { a: { source: "lucide", name: "star" } },
+    },
+  });
+  expect(result.iconLayout).toBeUndefined();
+  expect(result.iconImages).toEqual([]);
+});
+
+test("iconImageId distinguishes lucide from custom refs", () => {
+  expect(iconImageId({ source: "lucide", name: "school" })).toBe("lucide:school");
+  expect(iconImageId({ source: "custom", id: "abc123" })).toBe("custom:abc123");
+});
+
+test("buildLegend includes an icon entry per mapped value", () => {
+  const legend = buildLegend({}, null, null, "point", undefined, {
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["ecole", "jamais-mappe"] },
+      mapping: { ecole: { source: "lucide", name: "school" } },
+    },
+  });
+  expect(legend?.icon).toEqual({
+    field: "categorie",
+    entries: [{ value: "ecole", imageId: "lucide:school" }],
+  });
+});
+
+// Jumelle du garde de buildMapPaint (« buildMapPaint icon on a non-point
+// geometry is a no-op ») : sans le même garde côté légende, une couche non
+// ponctuelle configurée avec un encodage icon ne peint toujours rien (correct
+// — no-op dans buildMapPaint) mais afficherait quand même une entrée de
+// légende icône, promettant un rendu qui n'existe pas sur la carte (constat 1
+// de la revue Task 7, SP-27 — classe de défaut n°4 de CLAUDE.md : garde posé
+// sur une surface, oublié sur sa jumelle).
+test("buildLegend icon on a non-point geometry produces no icon entry", () => {
+  const legend = buildLegend({}, null, null, "polygon", undefined, {
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["a"] },
+      mapping: { a: { source: "lucide", name: "star" } },
+    },
+  });
+  expect(legend).toBeNull();
+});
+
+// Constat 2 de la revue Task 7, SP-27 : le fallback est dédoublonné
+// (`if (!images.includes(fallbackId))`) mais deux valeurs mappées vers la
+// même icône ne l'étaient pas. Impact nul au rendu (Task 8 charge l'image une
+// seule fois), mais la sortie de la fonction doit être propre.
+test("iconImages est dédoublonné quand deux catégories partagent la même icône", () => {
+  const result = buildMapPaint({}, null, null, "point", undefined, {
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["ecole", "college"] },
+      mapping: {
+        ecole: { source: "lucide", name: "school" },
+        college: { source: "lucide", name: "school" },
+      },
+    },
+  });
+  expect(result.iconImages).toEqual(["lucide:school"]);
+});
+
+// Constat 3 de la revue Task 7, SP-27 : la preuve que `iconLayout` (issu de
+// la sortie RÉELLE de buildMapPaint, pas d'une couche recopiée à la main) est
+// un layout MapLibre valide n'existait que dans un rapport, donc ne protégeait
+// rien dans le temps. Rejouée ici contre le vrai validateur du paquet
+// installé (`validateStyleMin`, pas une simple vérification de forme) : deux
+// propriétés ont déjà fini du mauvais côté de la frontière paint/layout dans
+// ce plan, dont une qui faisait disparaître une couche entière SANS lever
+// d'exception (`Style.addLayer` fait `if (this._validate(...)) return;`).
+test("l'iconLayout produit par buildMapPaint est un layout MapLibre valide (jamais paint)", () => {
+  const result = buildMapPaint({}, null, null, "point", undefined, {
+    icon: {
+      field: "categorie",
+      domain: { kind: "categorical", values: ["ecole", "commerce"] },
+      mapping: {
+        ecole: { source: "lucide", name: "school" },
+        commerce: { source: "lucide", name: "shopping-cart" },
+      },
+      fallback: { source: "lucide", name: "map-pin" },
+    },
+  });
+  expect(result.iconLayout).toBeDefined();
+  const style = {
+    version: 8,
+    sources: { test: { type: "geojson", data: { type: "FeatureCollection", features: [] } } },
+    layers: [
+      {
+        id: "icons",
+        type: "symbol",
+        source: "test",
+        layout: result.iconLayout,
+        // `result.paint`, pas `{}` : si une future régression repose
+        // `icon-image` dans paint (au lieu de l'enlever de iconLayout), ce
+        // test doit le voir — sinon il ne prouve que la moitié de la
+        // frontière paint/layout.
+        paint: result.paint,
+      },
+    ],
+  } as unknown as StyleSpecification;
+  expect(validateStyleMin(style)).toEqual([]);
+});
+
+test("LayerSymbology.label porte le gabarit et les réglages de rendu", () => {
+  const symbology: LayerSymbology = {
+    label: {
+      template: "${record.nom}",
+      size: 12,
+      color: "#1e293b",
+      haloColor: "#ffffff",
+      haloWidth: 1,
+    },
+  };
+  expect(symbology.label?.template).toBe("${record.nom}");
 });
