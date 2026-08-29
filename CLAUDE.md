@@ -126,11 +126,20 @@ pre-commit install --hook-type pre-commit --hook-type commit-msg
 # cœur
 cd core && uv sync
 uv run pytest        # 1896 passed + 5 skipped + 1 failed (mesuré 2026-08-27,
-                     # avec un conteneur postgis-test). Les 5 skips = marqueur
-                     # qgis (sidecar réel requis). L'échec
+                     # avec un conteneur postgis-test ; compte croissant SP
+                     # après SP, non remesuré à chaque clôture — 2015+ à la
+                     # clôture de SP-29a). Les 5 skips = marqueur qgis (sidecar
+                     # réel requis). Deux échecs PRÉEXISTANTS possibles, à ne
+                     # pas imputer à son propre travail :
                      # test_features_rls.py::test_scope_preserves_original_sql_error
-                     # est PRÉEXISTANT (dérive psycopg2/transaction, non
-                     # diagnostiquée) — ne pas l'imputer à son propre travail.
+                     # (dérive psycopg2/transaction, non diagnostiquée —
+                     # confirmé INTERMITTENT à la clôture de SP-29a : absent
+                     # sur un run, présent sur un autre, mêmes commit/config) ;
+                     # test_deployability.py::test_every_compose_substitution_is_documented
+                     # (VITE_AUTH_MODE absent de .env.example malgré sa
+                     # substitution dans docker-compose.yml — trouvé et
+                     # reproduit à plusieurs reprises pendant SP-29a, jamais
+                     # corrigé, hors périmètre de ce plan).
 
 # portes de qualité (mêmes invocations qu'en CI — cf. .github/workflows/ci.yml)
 cd core
@@ -282,12 +291,50 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   bloquant (bug de largeur de titre dans `LayersPanel`, préexistant,
   partagé avec `kind: "vector"`, non introduit par cette branche) —
   **Ready to merge**.
+- **SP-29a** (12 tâches) — fondation de la refonte UI (spec
+  `2026-08-29-refonte-ui-triptyque-design.md`, socle triptyque retenu parmi
+  quinze directions) : `decide()` extraite de `can()` avec parité prouvée sur
+  256 cas, `roles_for_items()`/`roles_for_collections()` en une requête par
+  page, **`ItemRead.permissions`** (read/write/delete/share) calculé par le
+  cœur et lu côté shell par une porte unique (`Gate`/`hasPermission`/
+  `Locked`), état des neuf domaines dérivé du profil (`capabilities.ts` —
+  rôle masque, capacité verrouille), `GET /me` porte les sept capacités de
+  l'instance (parité avec `GET /instance` renforcée par un test paramétré sur
+  les sept), couche i18n (français seul, A12), tokens en deux ambiances
+  (`styles/tokens.css`, contrat testé mécaniquement) et trois fontes
+  empaquetées (Radix UI retenu pour SP-29b à l'issue d'un spike mesuré, doc
+  `docs/superpowers/plans/2026-08-29-sp29a-spike-primitives.md`). Aucun écran
+  modifié **sauf** `ItemActions`, qui cesse de proposer les actions produisant
+  un 403 (exception assumée §10.1.7 ; suit le cœur, pas la maquette, sur
+  Publier). E2E 112/4/0 → **113/4/0**. Revue finale de branche : 0 Critique,
+  2 Important (permissions incohérentes sur `PATCH /items` et 6 outils MCP —
+  la valeur servie contredisait l'action qui venait de réussir — et test de
+  parité `/me`/`instance` plus faible qu'annoncé ; les deux fermés et
+  re-vérifiés indépendamment), 1 Important **plan-mandaté** (même raison de
+  verrouillage répétée trois fois dans le menu `ItemActions` pour Modifier/
+  Publier/Miniature) tranché par Tanguy : laissé tel quel, reporté en suivi
+  non bloquant pour SP-30. Écarts assumés du plan lui-même, à reprendre : les
+  permissions de collection restent à `roles_for_collections()` seul (pas de
+  `CollectionPermissions`, cf. SP-30), le profil « Lecteur » de la spec n'est
+  pas dérivable du modèle actuel (`isAdmin`/`isAnalyst` seulement), « Publier »
+  reste ouvert à tout éditeur (restriction au propriétaire = SP-32 si voulue).
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
 
 ### À venir
 
+- **SP-29b** : bibliothèque de primitives headless (Select/Combobox/Menu/
+  Popover/Tooltip/Tabs/Drawer/ConfirmDialog) sur Radix UI Primitives, à partir
+  du relevé de mesures de SP-29a/Task 1 (surcoût, licence, rendu headless,
+  forme de `@theme` réelle). Puis **SP-30** : réécriture des écrans qui
+  consomment enfin `Gate`/`capabilities.ts`/`tokens.css` — c'est là que les 9
+  occurrences restantes de comparaison de droits en dur (`SqlLabPage.tsx`,
+  `AdminExtensionsPage.tsx`, `HarvestSourcesAdminPage.tsx`,
+  `CollectionsAdminPage.tsx`, `AppLayout.tsx`) doivent disparaître, que les
+  permissions de collection et le profil « Lecteur » se tranchent, et que la
+  raison de verrouillage triplée d'`ItemActions` (cf. entrée SP-29a) peut être
+  regroupée si voulu.
 - Reste **SP-15** : événements/déclencheurs durables au-delà du cron (non
   planifié) ; exposition MCP des noms de secrets (non planifiée) ; **exécuter
   réellement les 5 tests `@pytest.mark.qgis` de SP-15d** avant d'activer
