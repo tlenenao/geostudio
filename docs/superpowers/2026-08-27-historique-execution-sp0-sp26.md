@@ -2467,3 +2467,73 @@ deux (et un `--` côté entry).
   reste atteignable) ; la source `__sketch__` peut se retrouver sous une
   couche de données après un `applyLayers` ultérieur (ex. changement de
   source de données par un cross-filter) — cosmétique, pas fonctionnel.
+- **SP-28** (4 tâches, symbologie des couches `feature` — URL GeoJSON) —
+  résout l'item resté ouvert par SP-27 : l'éditeur de symbologie pour les
+  couches `kind: "feature"` dans `LayersPanel` (auparavant `null` faute de
+  `collectionId`). Nouveau module pur `shell/src/map/geojsonIntrospect.ts`
+  (fetch client-side, jamais via `ItemClient` — URL tierce arbitraire, pas
+  le catalogue du cœur) implémentant les contrats `StatQueryFn`/
+  `SampleFieldFn` calculés en mémoire sur les entités déjà chargées ;
+  `LayersPanel.tsx` branche `LayerPopupEditor`/`LayerSymbologyEditor` sur
+  présence/absence de `collectionId` via un hook react-query partagé
+  (`useFeatureLayerGeoJson`, clé `["feature-geojson", url]`) ; `LayerPicker.tsx`
+  gagne un formulaire « ajouter par URL GeoJSON », détecte `renderAs`
+  depuis la géométrie de la première entité et amorce ce même cache.
+  `jenksAvailable` reste vrai ici (contrairement au widget carte
+  `mapWidget.tsx`, adossé à un `DataSource` distant sans valeurs brutes) —
+  seul lot du plan, resté explicitement hors périmètre. E2E complet passé
+  de 111/4/0 à **112/4/0**. 4 tâches en subagent-driven-development, revue
+  indépendante par tâche (0 Critique/Important sur chacune), plus une
+  revue finale de branche sur opus.
+  **1 Critique trouvé par la revue finale, invisible à la revue par
+  tâche** (le défaut traverse Task 3, qui écrit `renderAs`, et deux
+  fichiers qu'elle n'ouvre jamais) : `renderAs` — premier champ persisté
+  jamais écrit par cette branche — ne survivait pas à un
+  enregistrement+rechargement. Absent du modèle Pydantic `MapLayer`
+  (`core/app/configs/schemas.py`, `extra="ignore"` le supprimait
+  silencieusement au `model_dump()`) et jamais lu par `toFrontLayer()`
+  (`shell/src/api/itemClient.ts`) — 3e occurrence du piège CLAUDE.md n°5
+  (« chemin de lecture oublié »), après `popup` et `symbology`.
+  Conséquence utilisateur réelle : une couche de points stylée en `circle`
+  redevenait invisible après rechargement (repli sur le défaut `fill` de
+  `MapView.tsx`) — défaisait exactement ce que la spec vise à empêcher.
+  Invalidait aussi la contrainte globale du plan (« pas de changement
+  cœur/pas de régénération OpenAPI »), vraie pour `symbology`/`popup`
+  (préexistants dans le schéma) mais devenue fausse dès que Task 3 a
+  commencé à émettre `renderAs`. Fixé (champ + régénération OpenAPI/TS
+  réelle, diff non vide cette fois — piège n°1 s'appliquait pour de vrai
+  — + spread côté shell + 2 tests de round-trip), re-revue indépendante :
+  fix vérifié. **2e occurrence du même défaut trouvée en vérification de
+  clôture, hors du filet des deux revues précédentes** : relancer la suite
+  pytest complète du cœur après le fix (jamais faite par le fix lui-même,
+  qui n'avait exécuté que la suite ciblée) a révélé qu'un test préexistant
+  sans rapport (`test_routes.py::test_map_config_round_trips_tiles3d_layer_terrain_and_camera`,
+  couche `tiles3d`) fait une égalité de dict **exacte** et n'incluait pas
+  la nouvelle clé `renderAs: None` — root-cause confirmée par bisection
+  manuelle sur worktree jetable (fichier par fichier : seul `schemas.py`
+  cause l'échec, car il change la sérialisation de *toute* couche, pas
+  seulement `feature`) ; corrigé directement par le contrôleur (1 ligne).
+  1 Important documenté en suivi non bloquant, pas corrigé dans cette
+  branche (décision actée, pattern établi de ce dépôt) : bug UI réel et
+  vérifié, **préexistant et partagé avec les couches `kind: "vector"`**
+  (pas introduit par SP-28) — le `<span>` de titre dans `LayersPanel.tsx`
+  peut avoir une largeur de layout nulle (interaction flex
+  `flex-1 truncate` + sibling `basis-full` toujours déployé pour
+  `vector`/`feature`), trouvé et documenté par la tâche E2E (contournée
+  par un sélecteur différent, `getByRole("button", { name: "Retirer …" })`).
+  5 Minor documentés, non corrigés : cache-priming de Task 3 n'élimine pas
+  réellement le refetch qu'il prétend éviter (`staleTime: 0` par défaut) ;
+  `retry: 3` par défaut triple les requêtes CORS échouées en production ;
+  la suppression du garde `if (!collectionId) return null` a aussi ouvert
+  l'éditeur pour une couche `vector` sans `collectionId` (cas non
+  atteignable depuis le picker actuel) ; chaque couche feature est
+  refetchée à l'ouverture de n'importe quel panneau de symbologie, pas
+  seulement la couche stylée (risque accepté par la spec, plus large que
+  son libellé) ; `setFeatureBusy(false)` pas dans un `finally`.
+  Contamination trouvée et corrigée en cours de session (piège n°9) :
+  `.superpowers/sdd/task-{1,2,3,4}-{brief,report}.md` étaient
+  force-trackés en git depuis une session antérieure malgré le
+  `.gitignore` `*` du dossier — restaurés (`git checkout --`) avant toute
+  clôture, aucune perte (contenu dupliqué dans le ledger `sp28-progress.md`
+  et les fichiers `sp28-task-*`). **Verdict final : Ready to merge — Yes**,
+  mergé dans `main` (`075b6ae`) et `dev`/`main` poussés sur `origin`.

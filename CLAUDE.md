@@ -270,6 +270,18 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   E2E 108/4/0 → **111/4/0**. Revue finale de branche : 0 Critique, 4 Important
   (tous des défauts d'interaction croisée entre tâches, tous fermés et
   re-vérifiés) — **Ready to merge**.
+- **SP-28** (4 tâches) — symbologie des couches `feature` (URL GeoJSON) :
+  résout l'item resté ouvert par SP-27 — `LayerSymbologyEditor`/
+  `LayerPopupEditor` ne retournent plus `null` pour une couche sans
+  `collectionId` ; nouveau module `geojsonIntrospect.ts` (fetch client-side,
+  jamais via `ItemClient`), `LayerPicker` gagne un formulaire d'ajout par
+  URL GeoJSON. E2E 111/4/0 → **112/4/0**. Revue finale de branche : 1
+  Critique (`renderAs` ne survivait pas à un rechargement — 3e occurrence
+  du piège n°5, fermé, avec une 2e occurrence du même défaut trouvée et
+  fermée en vérification de clôture), 1 Important documenté en suivi non
+  bloquant (bug de largeur de titre dans `LayersPanel`, préexistant,
+  partagé avec `kind: "vector"`, non introduit par cette branche) —
+  **Ready to merge**.
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
@@ -285,12 +297,17 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   nuages de points). Non planifié.
 - Reste **SP-20** : garde d'egress sur l'appel LLM sortant (vague 6.2) — 4e
   surface sortante, les trois autres en ont une.
-- Reste lot **Carte** : éditeur de symbologie pour les couches
-  `kind: "feature"` dans `LayersPanel` (aujourd'hui `null` faute de
-  `collectionId` — décision produit non tranchée). *Jenks sur le widget
-  carte des apps/dashboards résolu par SP-27/Task 19 : le widget délègue
-  désormais toute la compilation de peinture à `MapView`, même pipeline que
-  l'éditeur.*
+- Reste lot **Carte** (bug UI, pas une fonctionnalité manquante) : dans
+  `LayersPanel.tsx`, le `<span>` de titre d'une couche `vector`/`feature`
+  peut avoir une largeur de layout nulle (interaction flex
+  `flex-1 truncate` + sibling `basis-full` toujours déployé pour ces deux
+  kinds) — trouvé par SP-28/Task 4, contourné dans son propre test E2E par
+  un sélecteur différent (`getByRole("button", { name: "Retirer …" })`),
+  jamais corrigé (hors périmètre fichiers de cette tâche). *Éditeur de
+  symbologie pour les couches `kind: "feature"` résolu par SP-28. Jenks sur
+  le widget carte des apps/dashboards résolu par SP-27/Task 19 : le widget
+  délègue désormais toute la compilation de peinture à `MapView`, même
+  pipeline que l'éditeur.*
 - Questions produit ouvertes (comparatif §8) : **Q2** (premiers utilisateurs
   réels — la seule qui puisse réordonner le phasage), Q10 (temps réel), Q11
   (offline).
