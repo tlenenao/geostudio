@@ -7,6 +7,7 @@ import type { AppConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { SitePublicPage } from "./SitePublicPage";
 import type { AuthState } from "../auth/useAuth";
+import { READ_ONLY_PERMISSIONS } from "../auth/permissions";
 
 const authState: AuthState = {
   isLoading: false,
@@ -43,6 +44,7 @@ const siteItem: Item = {
   configId: "cfg-1",
   isPublished: true,
   slug: "mon-portail",
+  permissions: READ_ONLY_PERMISSIONS,
 };
 
 const config: AppConfig = {

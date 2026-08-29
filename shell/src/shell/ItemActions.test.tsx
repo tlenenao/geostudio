@@ -9,6 +9,7 @@ import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import type { Item, ItemClient } from "../api/types";
 import { ItemActions } from "./ItemActions";
+import { OWNER_PERMISSIONS } from "../auth/permissions";
 
 const item: Item = {
   pk: "7",
@@ -20,6 +21,7 @@ const item: Item = {
   date: "",
   configId: null,
   isPublished: false,
+  permissions: OWNER_PERMISSIONS,
 };
 
 function Harness({ children }: { children: ReactNode }) {

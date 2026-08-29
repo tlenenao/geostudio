@@ -61,6 +61,7 @@ import type {
 } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
+import { OWNER_PERMISSIONS } from "../auth/permissions";
 
 type RawMapLayer = {
   id: string;
@@ -593,6 +594,8 @@ export function createItemClient(opts: {
         date: "",
         configId: String(data.id),
         isPublished: false,
+        // On vient de créer cet objet : on en est le propriétaire.
+        permissions: OWNER_PERMISSIONS,
       };
     },
 
@@ -821,6 +824,8 @@ export function createItemClient(opts: {
         date: "",
         configId: String(data.id),
         isPublished: false,
+        // On vient de créer cet objet : on en est le propriétaire.
+        permissions: OWNER_PERMISSIONS,
       };
     },
 
@@ -926,6 +931,8 @@ export function createItemClient(opts: {
         date: "",
         configId: String(data.id),
         isPublished: false,
+        // On vient de créer cet objet : on en est le propriétaire.
+        permissions: OWNER_PERMISSIONS,
       };
     },
 
@@ -954,6 +961,8 @@ export function createItemClient(opts: {
         date: "",
         configId: String(data.id),
         isPublished: false,
+        // On vient de créer cet objet : on en est le propriétaire.
+        permissions: OWNER_PERMISSIONS,
       };
     },
 
@@ -989,6 +998,8 @@ export function createItemClient(opts: {
         date: "",
         configId: String(data.id),
         isPublished: false,
+        // On vient de créer cet objet : on en est le propriétaire.
+        permissions: OWNER_PERMISSIONS,
       };
     },
 
@@ -1051,6 +1062,8 @@ export function createItemClient(opts: {
         date: "",
         configId: String(data.id),
         isPublished: false,
+        // On vient de créer cet objet : on en est le propriétaire.
+        permissions: OWNER_PERMISSIONS,
       };
     },
 
@@ -1101,6 +1114,8 @@ export function createItemClient(opts: {
         date: "",
         configId: String(data.id),
         isPublished: false,
+        // On vient de créer cet objet : on en est le propriétaire.
+        permissions: OWNER_PERMISSIONS,
       };
     },
 

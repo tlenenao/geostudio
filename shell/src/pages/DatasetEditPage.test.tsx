@@ -7,6 +7,7 @@ import { expect, test, vi } from "vitest";
 import type { CollectionSchema, DatasetConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { DatasetEditPage } from "./DatasetEditPage";
+import { OWNER_PERMISSIONS } from "../auth/permissions";
 
 const item: Item = {
   pk: "ds-1",
@@ -19,6 +20,7 @@ const item: Item = {
   configId: "cfg-ds1",
   isPublished: false,
   keywords: [],
+  permissions: OWNER_PERMISSIONS,
 };
 
 const datasetConfig: DatasetConfig = {
