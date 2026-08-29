@@ -186,6 +186,27 @@ export function MapSymbologyEditor({
   // « Ajouter des icônes » n'avait aucun effet observable.
   const [iconDraft, setIconDraft] = useState(false);
   const [iconField, setIconField] = useState(icon?.field ?? "");
+  // Fix I4 de la revue finale SP-27 : `iconField` ne se resynchronisait
+  // qu'au montage (initialiseur de useState, jamais réévalué) — TOUS les
+  // autres contrôles de cet éditeur lisent `value` directement (`stroke`,
+  // `value?.opacity`…) et suivent donc naturellement un changement externe de
+  // `value`, mais `iconField` gardait sa propre copie. Ça désynchronise à
+  // travers l'undo/redo de SP-19 (le composant ne démonte pas ; `value.icon`
+  // change sous lui sans que `iconField` ne suive), et « Recalculer les
+  // valeurs » pouvait alors réécrire dans le document le NOM DE CHAMP
+  // périmé, ré-appliquant un changement que l'utilisateur venait d'annuler.
+  //
+  // Effet clé sur `icon?.field` (un primitif), pas sur `icon` (l'objet) :
+  // il ne se redéclenche donc QUE quand le nom de champ committé change
+  // réellement, jamais à cause d'un rendu du parent qui touche une autre
+  // partie de `value` (couleur, contour…) pendant que l'auteur tape encore
+  // un nom de champ non validé — `iconField` reste la brouillon local tant
+  // que « Recalculer les valeurs » (recomputeIconDomain) n'a pas committé le
+  // même nom dans `icon.field`, moment où cet effet et le state restent de
+  // toute façon déjà d'accord (no-op).
+  useEffect(() => {
+    setIconField(icon?.field ?? "");
+  }, [icon?.field]);
   const [iconBusy, setIconBusy] = useState(false);
   const [iconError, setIconError] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState<string | null>(null);

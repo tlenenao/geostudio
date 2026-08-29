@@ -832,6 +832,22 @@ test("la grille d'icônes n'apparaît que pour la valeur en cours d'édition", a
   expect(screen.getByRole("img", { name: "school" })).toBeInTheDocument();
 });
 
+// Fix I4 de la revue finale SP-27 : `iconField` ne se resynchronisait qu'au
+// montage — un changement EXTERNE de `value.icon.field` (undo/redo de
+// SP-19, le composant ne démonte pas) ne se répercutait jamais sur le champ
+// affiché, contrairement à tous les autres contrôles de cet éditeur.
+test("le champ icône se resynchronise avec value.icon.field après un changement externe (undo)", () => {
+  const { rerender } = render(
+    <MapSymbologyEditor {...baseProps} value={iconValue} onChange={vi.fn()} />,
+  );
+  expect(screen.getByLabelText("Champ icône")).toHaveValue("categorie");
+  // Simule un undo qui restaure une config antérieure portant un autre champ
+  // — la prop `value` change sous le composant sans qu'il démonte.
+  const restored = { icon: { ...iconValue.icon, field: "type" } };
+  rerender(<MapSymbologyEditor {...baseProps} value={restored} onChange={vi.fn()} />);
+  expect(screen.getByLabelText("Champ icône")).toHaveValue("type");
+});
+
 test("choisir une icône Lucide écrit icon.mapping pour cette valeur", async () => {
   const onChange = vi.fn();
   render(<MapSymbologyEditor {...baseProps} value={iconValue} onChange={onChange} />);
