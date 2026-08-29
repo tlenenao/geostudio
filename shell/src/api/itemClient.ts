@@ -79,6 +79,7 @@ type RawMapLayer = {
   collectionId?: string | null;
   geometryKind?: "point" | "line" | "polygon" | null;
   pkColumn?: string | null;
+  renderAs?: "fill" | "circle" | "line" | null;
   symbology?: import("../builder/widgets/mapSymbology").LayerSymbology | null;
 };
 
@@ -123,6 +124,7 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
         url: l.url ?? "",
         ...(l.paint ? { paint: l.paint } : {}),
         ...(l.popup ? { popup: l.popup } : {}),
+        ...(l.renderAs ? { renderAs: l.renderAs } : {}),
         ...(l.symbology ? { symbology: l.symbology } : {}),
       };
   }

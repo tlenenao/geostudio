@@ -1955,6 +1955,8 @@ export interface components {
             props?: {
                 [key: string]: unknown;
             } | null;
+            /** Renderas */
+            renderAs?: ("fill" | "circle" | "line") | null;
             /** Sourcelayer */
             sourceLayer?: string | null;
             /** Symbology */

@@ -2423,6 +2423,22 @@
             ],
             "title": "Props"
           },
+          "renderAs": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fill",
+                  "circle",
+                  "line"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Renderas"
+          },
           "sourceLayer": {
             "anyOf": [
               {
