@@ -105,7 +105,19 @@ services:
       - ./martin-config.yaml:/config.yaml
     command: --config /config.yaml
     ports:
-      - "3000:3000"
+      # Port hôte 3010 (pas 3000) : 3000 est le port par défaut de la plupart
+      # des serveurs de dev JS (Next.js, CRA, Vite avec ce choix...) et entre
+      # régulièrement en conflit avec un process déjà présent sur la machine
+      # de l'opérateur — dernier exemple daté : un `node.exe` Windows côté
+      # hôte WSL2, invisible de `ss` côté Linux, qui faisait échouer le
+      # port-forwarding de Docker Desktop (`/forwards/expose ... status: 500`)
+      # sans qu'aucun conteneur ne soit fautif. Le port interne du conteneur
+      # reste 3000 (healthcheck, `martin-config.yaml` inchangés) — seul le
+      # mapping hôte bouge. Accès purement développeur (curl manuel) : depuis
+      # SP-24 le shell ne parle plus à Martin (route publique retirée, tuiles
+      # servies par le cœur via ST_AsMVT), et docker-compose.prod.yml remet
+      # déjà `ports: !reset []` sur ce service.
+      - "3010:3000"
     networks: [gis-net]
     depends_on:
       pgbouncer:
@@ -503,8 +515,9 @@ services:
 
   # ─── Observabilité (SP-10b, profil optionnel) ──────────
 
-  # Grafana (:3001 côté hôte — :3000 est déjà pris par martin ci-dessus,
-  # le port interne du conteneur reste 3000) + Prometheus/Loki/Tempo
+  # Grafana (:3001 côté hôte — 3000 est le port interne par défaut de
+  # l'image Grafana elle-même, laissé inchangé ; évité côté hôte comme pour
+  # martin ci-dessus, cf. son commentaire) + Prometheus/Loki/Tempo
   # embarqués. `otelcol-config.yaml` remplace entièrement la config par
   # défaut du collecteur embarqué (pas de fusion partielle) et lui ajoute
   # le scraping Prometheus de martin/postgres-exporter (cf. Task 2).
