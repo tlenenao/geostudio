@@ -369,6 +369,22 @@ export function MapMeasureSketchToolbar({
   function startMode(next: ToolbarMode) {
     setMode(next);
     setPoints([]);
+    // Fix M7 de la revue finale SP-27 : passer d'un mode "sketch" mi-tracé à
+    // un autre mode (Mesurer/Surface) ne réinitialisait ni le polygone en
+    // cours d'accumulation ni le coin en attente d'un rectangle/cercle — leur
+    // résumé (le bloc "Terminer le polygone" / "Cliquez le second point…"
+    // ci-dessous, tout comme leur tracé dans la source `__sketch__` via
+    // l'effet de synchronisation) n'est conditionné à AUCUN endroit sur
+    // `mode === "sketch"`, seulement sur `sketchTool`/`polygonPoints`/
+    // `pendingCorner` eux-mêmes. Un polygone ou un rectangle à moitié tracé
+    // restait donc visible sur la carte et dans la barre après avoir changé
+    // d'outil vers "Mesurer"/"Surface". Le bouton de changement d'OUTIL de
+    // croquis (plus bas, Tracé libre/Rectangle/Cercle/Polygone/Texte) fait
+    // déjà ce nettoyage pour switcher d'outil SANS quitter le mode croquis ;
+    // ceci est le même nettoyage pour switcher de MODE.
+    setPolygonPoints([]);
+    pendingCornerRef.current = null;
+    setPendingCorner(null);
   }
 
   function clearAll() {
@@ -376,6 +392,15 @@ export function MapMeasureSketchToolbar({
     setPoints([]);
     setShapes([]);
     setSketchTool(null);
+    // Fix M2 de la revue finale SP-27 : MapLibre ne déclenche pas `mouseup`
+    // quand le bouton de la souris est relâché en dehors du canvas — le
+    // tracé libre restait alors indéfiniment en mode « en cours » côté
+    // `drawingRef` (jamais remis à `false` par cette fonction), et tout
+    // `mousemove` suivant continuait d'accumuler des points sans qu'aucun
+    // bouton ne soit réellement tenu enfoncé. « Effacer tout » est le geste
+    // naturel d'un utilisateur bloqué dans cet état — il doit donc aussi
+    // réinitialiser l'état de dessin, pas seulement les points accumulés.
+    drawingRef.current = false;
     freehandRef.current = [];
     setFreehandPoints([]);
     setPolygonPoints([]);
