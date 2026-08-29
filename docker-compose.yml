@@ -597,6 +597,14 @@ services:
       # VITE_CORE_URL dans .env pour activer un export réel (profil
       # "export") sans rebuild — voir la note détaillée dans .env.example.
       VITE_CORE_URL: ${VITE_CORE_URL:-http://localhost:8200}
+      # Sans cette ligne, `VITE_AUTH_MODE` reste une chaîne vide dans
+      # env-config.js (template shell/public/env-config.template.js) et
+      # shell/src/config.ts::mergeRuntimeEnv retombe sur son défaut "oidc" —
+      # le shell redirige alors vers Keycloak au lieu du mode `mock` déjà
+      # documenté comme flux par défaut (README, `CORE_AUTH_MODE` ci-dessus a
+      # le même défaut côté cœur). Piège n°2 : capacité documentée comme
+      # "par défaut" mais jamais câblée jusqu'ici sur ce service précis.
+      VITE_AUTH_MODE: ${VITE_AUTH_MODE:-mock}
     ports:
       - "8300:8300"
     networks: [gis-net]
