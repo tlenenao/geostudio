@@ -157,6 +157,25 @@ def test_get_item_returns_owned_item(app_client):
     assert result["owner"] == "mockuser"
 
 
+def test_get_item_reports_true_permissions_for_the_owner(app_client):
+    """Finding I1, Problème B : le tool MCP `get_item` doit renvoyer les
+    permissions réelles de l'appelant, pas le repli conservateur
+    `PUBLIC_READ_ONLY` (qui rapporterait `write: false` même pour le
+    propriétaire)."""
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id, title="Mine")
+
+    with app_client:
+        result = call_tool(app_client, "get_item", {"itemId": item_id})
+
+    assert result["permissions"]["write"] is True
+    assert result["permissions"] == {
+        "read": True,
+        "write": True,
+        "delete": True,
+        "share": True,
+    }
+
+
 def test_get_item_invisible_to_a_stranger_errors(app_client):
     with app_client.session_factory() as session:
         stranger = get_or_create_user(

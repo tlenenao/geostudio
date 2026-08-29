@@ -157,6 +157,21 @@ def test_listing_carries_the_same_permissions_as_the_detail(env):
     assert by_pk["shared"]["permissions"]["write"] is False
 
 
+def test_patch_response_reflects_the_write_that_just_succeeded(env):
+    """La réponse d'un PATCH réussi doit refléter le verdict réel, pas le
+    repli conservateur : la requête qui vient de réussir prouve déjà
+    `write: true` (Finding I1, Problème A)."""
+    client = env["as_user"](env["owner"])
+    response = client.patch("/items/shared", json={"title": "Réseau d'eau potable (v2)"})
+    assert response.status_code == 200, response.text
+    assert response.json()["permissions"] == {
+        "read": True,
+        "write": True,
+        "delete": True,
+        "share": True,
+    }
+
+
 def test_public_route_serves_the_conservative_default(env):
     """`GET /public/items` est anonyme : personne n'a de droit d'écriture,
     et le champ doit quand même être présent — le shell le lit sans savoir
