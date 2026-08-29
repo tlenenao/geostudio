@@ -2023,8 +2023,35 @@ export interface components {
             /** Zoom */
             zoom: number;
         };
+        /**
+         * MeCapabilities
+         * @description Les capacités du déploiement, servies avec le profil.
+         *
+         *     Même contenu que `GET /instance`, qui reste servi sans authentification
+         *     (page de connexion, mode démo). Le doublon est délibéré : le shell dérive
+         *     l'état de ses domaines d'un profil unique (spec §6.6) au lieu de croiser
+         *     deux requêtes dans chaque écran. `tests/test_auth_me_capabilities.py`
+         *     interdit aux deux routes de diverger.
+         */
+        MeCapabilities: {
+            /** Appexportenabled */
+            appExportEnabled: boolean;
+            /** Copilotenabled */
+            copilotEnabled: boolean;
+            /** Etlenabled */
+            etlEnabled: boolean;
+            /** Exportenabled */
+            exportEnabled: boolean;
+            /** Readonly */
+            readOnly: boolean;
+            /** Terrain3Denabled */
+            terrain3dEnabled: boolean;
+            /** Tileset3Denabled */
+            tileset3dEnabled: boolean;
+        };
         /** MeResponse */
         MeResponse: {
+            capabilities: components["schemas"]["MeCapabilities"];
             /** Email */
             email: string | null;
             /** Firstname */

@@ -2615,8 +2615,55 @@
         "title": "MapView",
         "type": "object"
       },
+      "MeCapabilities": {
+        "description": "Les capacit\u00e9s du d\u00e9ploiement, servies avec le profil.\n\nM\u00eame contenu que `GET /instance`, qui reste servi sans authentification\n(page de connexion, mode d\u00e9mo). Le doublon est d\u00e9lib\u00e9r\u00e9 : le shell d\u00e9rive\nl'\u00e9tat de ses domaines d'un profil unique (spec \u00a76.6) au lieu de croiser\ndeux requ\u00eates dans chaque \u00e9cran. `tests/test_auth_me_capabilities.py`\ninterdit aux deux routes de diverger.",
+        "properties": {
+          "appExportEnabled": {
+            "title": "Appexportenabled",
+            "type": "boolean"
+          },
+          "copilotEnabled": {
+            "title": "Copilotenabled",
+            "type": "boolean"
+          },
+          "etlEnabled": {
+            "title": "Etlenabled",
+            "type": "boolean"
+          },
+          "exportEnabled": {
+            "title": "Exportenabled",
+            "type": "boolean"
+          },
+          "readOnly": {
+            "title": "Readonly",
+            "type": "boolean"
+          },
+          "terrain3dEnabled": {
+            "title": "Terrain3Denabled",
+            "type": "boolean"
+          },
+          "tileset3dEnabled": {
+            "title": "Tileset3Denabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "readOnly",
+          "etlEnabled",
+          "exportEnabled",
+          "appExportEnabled",
+          "tileset3dEnabled",
+          "terrain3dEnabled",
+          "copilotEnabled"
+        ],
+        "title": "MeCapabilities",
+        "type": "object"
+      },
       "MeResponse": {
         "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/MeCapabilities"
+          },
           "email": {
             "anyOf": [
               {
@@ -2665,7 +2712,8 @@
           "firstName",
           "lastName",
           "isAdmin",
-          "isAnalyst"
+          "isAnalyst",
+          "capabilities"
         ],
         "title": "MeResponse",
         "type": "object"
