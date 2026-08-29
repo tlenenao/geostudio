@@ -124,7 +124,7 @@ function renderPropsPanel({
   theme,
 }: {
   props: Record<string, unknown>;
-  onChange: ReturnType<typeof vi.fn>;
+  onChange: (props: Record<string, unknown>) => void;
 
   dataSources?: any[];
   theme?: Theme;

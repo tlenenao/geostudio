@@ -27,7 +27,10 @@ function emptyConfig(): AppConfig {
   };
 }
 
-function renderPanel(client: Partial<ItemClient>, setDraft: ReturnType<typeof vi.fn>) {
+function renderPanel(
+  client: Partial<ItemClient>,
+  setDraft: (update: (prev: AppConfig | null) => AppConfig | null) => void,
+) {
   return render(
     <ItemClientProvider client={client as ItemClient}>
       <CopilotPanel itemId="1" config={emptyConfig()} activePageId="page-1" setDraft={setDraft} />
