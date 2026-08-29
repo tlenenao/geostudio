@@ -1,1 +1,12 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 @import "tailwindcss";
+
+/* Fontes empaquetées avec l'application : le shell est réempaqueté en
+ * conteneur autoporté (SP-18c) et rendu hors ligne par le worker d'export
+ * (SP-17a). Un CDN tiers y serait inaccessible. */
+@import "@fontsource-variable/archivo";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource-variable/source-serif-4";
+
+@import "./styles/tokens.css";
