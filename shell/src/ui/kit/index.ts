@@ -11,3 +11,4 @@ export { Gate } from "../../auth/Gate";
 export { Field } from "./Field";
 export { Input } from "./Input";
 export { Textarea } from "./Textarea";
+export { Checkbox } from "./Checkbox";
