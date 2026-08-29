@@ -317,18 +317,44 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
 Liste complète (une centaine d'entrées, par SP) dans l'archive. Ce qui change
 le comportement d'une session :
 
-- **`core`/`worker` ignorent `uv.lock` au build Docker** et récupèrent
-  `mcp==2.0.0`, qui casse l'import `fastmcp` (bug préexistant, documenté depuis
-  SP-21, toujours présent). Conséquence : le job CI **`shell-e2e-oidc`
-  (SP-26/3.8) est attendu rouge de façon déterministe** à son premier run réel
-  — c'est le premier job du dépôt à faire `docker compose build core`. Hors
-  périmètre de tous les SP livrés, par décision de scope répétée.
-- **Volume `pg-data` du projet compose par défaut cassé** (`alembic_version`
-  jamais stampée). Depuis SP-21, `shell` a `depends_on: core:
-  service_healthy` : il reste `Created` au lieu d'afficher une page d'erreur.
-- Autres pannes de packaging préexistantes, rencontrées en sondant la stack
-  réelle : GUC invalide `output_plugin_libraries` dans le `command:` de
-  `postgis`, `libexpat.so.1` manquant pour `defusedxml`.
+- **Stack par défaut vérifiée de bout en bout (2026-08-29)** : les 11 services
+  démarrent tous `healthy` (`docker compose up -d`, image `core`/`worker`/
+  `cdc-worker` reconstruite). Trois entrées ci-dessous, documentées comme
+  bloquantes depuis SP-21, ne se sont **pas reproduites** à cette date et ont
+  été corrigées ou requalifiées à la vérification réelle — piège n°3 :
+  - `mcp==2.0.0` cassant `mcp.server.fastmcp` : ne se reproduit plus.
+    `pyproject.toml` contraint déjà `mcp>=1.12,<2.0` ; le build installe
+    `mcp==1.29.1` et l'import passe. Cause probable : la contrainte a été
+    ajoutée depuis, sans mise à jour de cette note. Si ça revient, vérifier
+    d'abord `pip show mcp` dans l'image avant de ré-imputer à `uv.lock`.
+  - GUC `output_plugin_libraries` sur `postgis` : **valide**, pas une panne —
+    `SHOW output_plugin_libraries;` le confirme dans le conteneur réel.
+  - `libexpat.so.1` manquant pour `defusedxml` (`app/mapicons/svg.py`,
+    `app/harvest/connectors/ows.py`) : **réel**, reproduit (`worker` et
+    `cdc-worker` en crash-loop au premier import de `app.jobs`) —
+    `python:3.12-slim` (Debian trixie) n'embarque plus `libexpat1` par
+    défaut. Corrigé dans `core/Dockerfile` (`apt-get install libexpat1`) ;
+    corrige les trois images qui partagent ce Dockerfile.
+- **Volume `pg-data` du projet compose par défaut** : la commande de `core`
+  applique déjà `alembic upgrade head` avant `uvicorn` (idempotent) — pas de
+  correctif de plus à apporter là. Ce qui bloquait réellement un démarrage
+  `docker compose up -d` à blanc, ce jour-là : `.env` local avec
+  `CORE_SECRETS_MASTER_KEY` vide et `CORE_ENV` absent (les deux font
+  crash-looper `core` — gardes SP-15e §4/§8 et SP-26/3.1 — *après* que les
+  migrations se sont appliquées, donc sans lien avec `pg-data` lui-même mais
+  avec le même symptôme observable : `shell` reste `Created`). `.env.example`
+  a `CORE_ENV=development` ; un `.env` plus ancien copié avant son ajout ne
+  l'a pas. Si `shell` reste `Created` : vérifier `docker logs core` avant de
+  soupçonner `pg-data`.
+- **Martin (:3000 hôte) en conflit de port** : pas une panne du dépôt — un
+  process déjà présent sur la machine de l'opérateur (ex. un `node.exe`
+  Windows côté hôte WSL2, invisible de `ss` côté Linux) fait échouer le
+  port-forwarding de Docker Desktop (`/forwards/expose ... status: 500`).
+  Corrigé de façon pérenne en déplaçant le mapping hôte vers `3010`
+  (`docker-compose.yml`) — 3000 est un port trop commun côté dev JS pour
+  rester un bon choix par défaut ; sans incidence, cf. le commentaire sur
+  place (accès dev uniquement depuis SP-24, `docker-compose.prod.yml` désactive
+  déjà ce port en prod).
 - `deploy/postgis/Dockerfile` + `pg_hba.conf` (non commités) sont **inertes** —
   Postgres lit `$PGDATA/pg_hba.conf`. Ne pas les câbler : ils affaibliraient
   `scram-sha-256` en `md5`.
