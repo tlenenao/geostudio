@@ -1961,6 +1961,35 @@
         "title": "ItemPage",
         "type": "object"
       },
+      "ItemPermissions": {
+        "description": "Ce que l'utilisateur courant a le droit de faire sur cet item.\n\nCalcul\u00e9 par le c\u0153ur depuis `can()` (une seule porte, spec \u00a76.3) et jamais\nrecalcul\u00e9 c\u00f4t\u00e9 client : le shell affiche ou masque \u00e0 partir de ces quatre\nbool\u00e9ens, ce qui supprime les commandes qui produisaient un 403 apr\u00e8s le\nclic. Ce n'est PAS une fronti\u00e8re de s\u00e9curit\u00e9 \u2014 le c\u0153ur reste seul juge \u00e0\nchaque \u00e9criture.",
+        "properties": {
+          "delete": {
+            "title": "Delete",
+            "type": "boolean"
+          },
+          "read": {
+            "title": "Read",
+            "type": "boolean"
+          },
+          "share": {
+            "title": "Share",
+            "type": "boolean"
+          },
+          "write": {
+            "title": "Write",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "read",
+          "write",
+          "delete",
+          "share"
+        ],
+        "title": "ItemPermissions",
+        "type": "object"
+      },
       "ItemRead": {
         "properties": {
           "abstract": {
@@ -1997,6 +2026,9 @@
           "owner": {
             "title": "Owner",
             "type": "string"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/ItemPermissions"
           },
           "pk": {
             "title": "Pk",
@@ -2042,7 +2074,8 @@
           "thumbnailUrl",
           "date",
           "configId",
-          "isPublished"
+          "isPublished",
+          "permissions"
         ],
         "title": "ItemRead",
         "type": "object"

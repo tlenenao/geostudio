@@ -1813,6 +1813,26 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * ItemPermissions
+         * @description Ce que l'utilisateur courant a le droit de faire sur cet item.
+         *
+         *     Calculé par le cœur depuis `can()` (une seule porte, spec §6.3) et jamais
+         *     recalculé côté client : le shell affiche ou masque à partir de ces quatre
+         *     booléens, ce qui supprime les commandes qui produisaient un 403 après le
+         *     clic. Ce n'est PAS une frontière de sécurité — le cœur reste seul juge à
+         *     chaque écriture.
+         */
+        ItemPermissions: {
+            /** Delete */
+            delete: boolean;
+            /** Read */
+            read: boolean;
+            /** Share */
+            share: boolean;
+            /** Write */
+            write: boolean;
+        };
         /** ItemRead */
         ItemRead: {
             /** Abstract */
@@ -1830,6 +1850,7 @@ export interface components {
             keywords: string[];
             /** Owner */
             owner: string;
+            permissions: components["schemas"]["ItemPermissions"];
             /** Pk */
             pk: string;
             /** Resourcetype */

@@ -57,7 +57,9 @@ def get_item(
     facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
     if facts is None or not can(session, user_id=user.id, action="read", item=facts):
         raise HTTPException(status_code=404, detail="item not found")
-    result = repo.get_item(session, tenant_id=user.tenant_id, item_id=item_id)
+    result = repo.get_item(
+        session, tenant_id=user.tenant_id, item_id=item_id, current_user_id=user.id
+    )
     if result is None:
         raise HTTPException(status_code=404, detail="item not found")
     return result
