@@ -130,14 +130,28 @@ test("le croquis pose une forme comptabilisée dans la barre d'outils", async ({
   await expect(canvas).toBeVisible();
   const writes = recordWrites(page);
 
-  await page.getByRole("button", { name: "Croquis" }).click();
-  await page.getByRole("button", { name: "Rectangle" }).click();
-
   // Même précaution que le test précédent : les deux coins visent le tiers
   // bas de la carte pour rester hors de l'emprise de la barre d'outils
   // (overlay absolu en haut à gauche).
+  //
+  // Constat de revue (post-Task 20) : contrairement au test de mesure
+  // ci-dessus, dont l'assertion (regex de distance) est satisfaite quelle
+  // que soit la quantité de points déjà accumulés — donc rejouable telle
+  // quelle par `toPass` —, dessiner un rectangle N'EST PAS idempotent : une
+  // relance qui déclenche un second passage dessinerait un DEUXIÈME
+  // rectangle, et la barre d'outils passerait alors à « 2 rectangles »,
+  // texte que « 1 rectangle » ne peut plus jamais revoir pour le reste de
+  // la fenêtre de relance. « Effacer tout » ramène `shapes` à `[]`
+  // (`MapMeasureSketchToolbar.tsx`, `clearAll`, sans précondition — sûr même
+  // au tout premier passage où il n'y a rien à effacer) mais retombe aussi
+  // en mode "idle" et désélectionne l'outil, donc "Croquis"/"Rectangle"
+  // sont repris à CHAQUE tentative, à l'intérieur du bloc de relance, pour
+  // que chaque passage reparte d'un état à zéro.
   const box = (await canvas.boundingBox())!;
   await expect(async () => {
+    await page.getByRole("button", { name: "Effacer tout" }).click();
+    await page.getByRole("button", { name: "Croquis" }).click();
+    await page.getByRole("button", { name: "Rectangle" }).click();
     await page.mouse.click(box.x + box.width * 0.25, box.y + box.height * 0.75);
     await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.9);
     await expect(page.getByText("1 rectangle")).toBeVisible({ timeout: 500 });
