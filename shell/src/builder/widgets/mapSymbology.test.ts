@@ -744,6 +744,59 @@ test("buildLegend includes a stroke entry for a data-driven stroke color", () =>
   });
 });
 
+// Fix I2 de la revue finale SP-27 : `legend.stroke` était typé
+// catégoriel-seul alors que le sélecteur de couleur de contour (Task 5,
+// déviation D5) et `buildMapPaint` (test "compile un contour classé en
+// expression step" ci-dessous) traitent déjà un contour classé/continu comme
+// le remplissage. Miroir exact de "buildLegend with a numeric-classed domain
+// returns one range per class" ci-dessus, appliqué au contour.
+test("buildLegend with a numeric-classed stroke domain returns one range per class", () => {
+  const legend = buildLegend({}, null, null, "polygon", undefined, {
+    stroke: {
+      color: {
+        field: "pop",
+        domain: { kind: "numeric-classed", breaks: [0, 10, 20] },
+        palette: { kind: "sequential", low: "#000000", high: "#ffffff" },
+      },
+      width: { fixed: 1 },
+      style: "solid",
+    },
+  });
+  expect(legend?.stroke).toEqual({
+    kind: "classed",
+    field: "pop",
+    classes: [
+      { color: "#000000", from: 0, to: 10 },
+      { color: "#ffffff", from: 10, to: 20 },
+    ],
+  });
+});
+
+// Miroir de "buildLegend builds a numeric color section" pour le contour :
+// classification continue (pas de `classification` sur l'encodage), domaine
+// "numeric" et non "numeric-classed".
+test("buildLegend with a continuous numeric stroke domain returns a numeric section", () => {
+  const legend = buildLegend({}, null, null, "polygon", undefined, {
+    stroke: {
+      color: {
+        field: "pop",
+        domain: { kind: "numeric", min: 0, max: 100 },
+        palette: { kind: "sequential", low: "#111111", high: "#222222" },
+      },
+      width: { fixed: 1 },
+      style: "solid",
+    },
+  });
+  expect(legend?.stroke).toEqual({
+    kind: "numeric",
+    field: "pop",
+    min: 0,
+    max: 100,
+    colorLow: "#111111",
+    colorHigh: "#222222",
+  });
+});
+
 test("symbologyToPaintInputs resolves stroke.color.palette from an id, like color", () => {
   const inputs = symbologyToPaintInputs(
     {
