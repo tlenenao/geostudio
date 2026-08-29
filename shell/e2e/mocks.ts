@@ -11,6 +11,7 @@ const ALL = [
     date: "2026-01-01",
     configId: null,
     isPublished: false,
+    permissions: { read: true, write: true, delete: true, share: true },
   },
   {
     pk: "2",
@@ -22,6 +23,7 @@ const ALL = [
     date: "2026-01-01",
     configId: null,
     isPublished: false,
+    permissions: { read: true, write: true, delete: true, share: true },
   },
   {
     pk: "3",
@@ -33,6 +35,7 @@ const ALL = [
     date: "2026-01-01",
     configId: null,
     isPublished: false,
+    permissions: { read: true, write: true, delete: true, share: true },
   },
 ];
 
@@ -155,6 +158,7 @@ export async function mockCore(page: Page) {
     date: "2026-01-01",
     configId: null,
     isPublished: true,
+    permissions: { read: true, write: true, delete: true, share: true },
     keywords: ["risques"],
   } as const;
   const GALLERY_ITEM_CONFIG = {
@@ -291,6 +295,7 @@ export async function mockCore(page: Page) {
         date: "2026-01-01",
         configId: null,
         isPublished: published,
+        permissions: { read: true, write: true, delete: true, share: true },
       },
     });
   });
@@ -636,6 +641,7 @@ export async function mockCore(page: Page) {
         date: "2026-01-01",
         configId: null,
         isPublished: sitePublished,
+        permissions: { read: true, write: true, delete: true, share: true },
       },
     });
   });

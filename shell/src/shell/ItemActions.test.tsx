@@ -41,6 +41,10 @@ function Harness({ children }: { children: ReactNode }) {
   );
 }
 
+// Alias pour l'option `wrapper` de `render` (RTL) — même composant que
+// `Harness`, pas un second wrapper.
+const wrapper = Harness;
+
 test("renames an item via the edit dialog", async () => {
   render(
     <Harness>
@@ -133,4 +137,67 @@ test("masque « Programmer un rapport » quand la capacité export est coupée",
     expect(screen.getByRole("button", { name: /modifier/i })).toBeInTheDocument(),
   );
   expect(screen.queryByRole("button", { name: "Programmer un rapport" })).not.toBeInTheDocument();
+});
+
+const viewerItem: Item = {
+  pk: "42",
+  resourceType: "map",
+  title: "Réseau d'eau potable",
+  abstract: "",
+  owner: "tanguy",
+  thumbnailUrl: null,
+  date: "2026-08-29T00:00:00Z",
+  configId: null,
+  isPublished: false,
+  permissions: { read: true, write: false, delete: false, share: false },
+};
+
+const editorItem: Item = {
+  ...viewerItem,
+  pk: "43",
+  permissions: { read: true, write: true, delete: false, share: false },
+};
+
+describe("ItemActions et les droits", () => {
+  it("un lecteur ne voit ni Partager ni Supprimer", async () => {
+    render(<ItemActions item={viewerItem} />, { wrapper });
+    await userEvent.click(screen.getByRole("button", { name: "Actions" }));
+    expect(screen.queryByRole("button", { name: "Partager" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Supprimer" })).not.toBeInTheDocument();
+  });
+
+  it("un lecteur voit Modifier verrouillée, avec sa raison", async () => {
+    render(<ItemActions item={viewerItem} />, { wrapper });
+    await userEvent.click(screen.getByRole("button", { name: "Actions" }));
+    const edit = screen.getByRole("button", { name: "Modifier" });
+    expect(edit).toBeDisabled();
+    // Publier et Miniature sont aussi verrouillées par `write` pour ce même
+    // item et affichent la même raison (`locked.needWrite`) : plusieurs
+    // occurrences du texte sont donc attendues, `getAllByText` remplace le
+    // `getByText` du brief (piège n°3 — texte littéral faux face au rendu réel).
+    expect(
+      screen.getAllByText("Modification réservée aux éditeurs de cet élément.")[0],
+    ).toBeVisible();
+  });
+
+  it("un éditeur peut modifier et publier, mais pas supprimer ni partager", async () => {
+    render(<ItemActions item={editorItem} />, { wrapper });
+    await userEvent.click(screen.getByRole("button", { name: "Actions" }));
+    expect(screen.getByRole("button", { name: "Modifier" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Publier" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Supprimer" })).not.toBeInTheDocument();
+  });
+
+  it("le propriétaire garde les cinq commandes", async () => {
+    const owned: Item = {
+      ...viewerItem,
+      pk: "44",
+      permissions: { read: true, write: true, delete: true, share: true },
+    };
+    render(<ItemActions item={owned} />, { wrapper });
+    await userEvent.click(screen.getByRole("button", { name: "Actions" }));
+    for (const name of ["Modifier", "Publier", "Miniature", "Partager", "Supprimer"]) {
+      expect(screen.getByRole("button", { name })).toBeEnabled();
+    }
+  });
 });
