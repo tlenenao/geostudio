@@ -298,15 +298,15 @@ def test_canWrite_reflects_the_requesting_users_write_access(env):
         "/collections", json={"tableName": "incidents", "title": "Incidents", "isPublic": True}
     )
 
-    # admin (propriétaire de la collection qu'il vient de créer) : canWrite=True
-    assert client.get("/collections/incidents").json()["canWrite"] is True
-    assert client.get("/collections").json()["collections"][0]["canWrite"] is True
+    # admin (propriétaire de la collection qu'il vient de créer) : write=True
+    assert client.get("/collections/incidents").json()["permissions"]["write"] is True
+    assert client.get("/collections").json()["collections"][0]["permissions"]["write"] is True
 
     # regular : lisible car isPublic=True (comme un viewer), mais aucun rôle
-    # editor sur le groupe de partage de la collection → canWrite=False
+    # editor sur le groupe de partage de la collection → write=False
     _as(app, regular)
-    assert client.get("/collections/incidents").json()["canWrite"] is False
-    assert client.get("/collections").json()["collections"][0]["canWrite"] is False
+    assert client.get("/collections/incidents").json()["permissions"]["write"] is False
+    assert client.get("/collections").json()["collections"][0]["permissions"]["write"] is False
 
 
 def test_patch_collection_enqueues_embedding_only_when_title_or_description_change(
