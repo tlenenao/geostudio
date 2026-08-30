@@ -40,3 +40,17 @@ test("Plus ouvre les domaines restants accessibles au profil", async () => {
   expect(screen.getByRole("link", { name: "Administration" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Données" })).toBeInTheDocument();
 });
+
+test("marque l'entrée fixe active via aria-current, y compris sur une route en ?type=", () => {
+  render(
+    <MemoryRouter initialEntries={["/?type=map"]}>
+      <BottomNav profile={PROFILE} />
+    </MemoryRouter>,
+  );
+  const cartes = screen.getByRole("button", { name: "Cartes" });
+  const catalogue = screen.getByRole("button", { name: "Catalogue" });
+  const taches = screen.getByRole("button", { name: "Tâches" });
+  expect(cartes).toHaveAttribute("aria-current", "page");
+  expect(catalogue).not.toHaveAttribute("aria-current");
+  expect(taches).not.toHaveAttribute("aria-current");
+});
