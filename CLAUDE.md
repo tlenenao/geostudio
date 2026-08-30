@@ -318,23 +318,48 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   `CollectionPermissions`, cf. SP-30), le profil « Lecteur » de la spec n'est
   pas dérivable du modèle actuel (`isAdmin`/`isAnalyst` seulement), « Publier »
   reste ouvert à tout éditeur (restriction au propriétaire = SP-32 si voulue).
+- **SP-29b** (31 tâches) — kit de ~40 primitives UI headless (Radix UI +
+  tokens GeoStudio) sous `shell/src/ui/kit/`, additif à côté de `ui/*`
+  existants (intouchés, vérifié à plusieurs reprises) : formulaires
+  (Field/Input/Textarea/Select/Combobox/Checkbox/Radio/Switch/Slider/
+  Segmented/ColorField/NumberField), structure (Tabs/Tree/Table/DataTable/
+  Panel/Section/Breadcrumb/Toolbar/Splitter), surfaces (Popover/Menu/
+  Tooltip/Dialog/ConfirmDialog/Drawer), états (Badge/Chip/Toast/Skeleton/
+  EmptyState/Banner/Progress/Spinner), divers (Button/IconButton/Avatar/
+  Kbd) + galerie interne admin (`/internal/kit-gallery`), référence
+  visuelle pour SP-30. 18 paquets Radix/lucide-react épinglés en versions
+  exactes. E2E 113/4/0 inchangé, couverture shell 90,75 % (seuil 88).
+  Revue par tâche systématique + revue finale de branche (modèle le plus
+  capable) : 0 Critique, 3 Important trouvés et corrigés — **tous
+  re-vérifiés par falsification empirique après coup, pas seulement par
+  suite de tests** (le filet `expectTokenizedClasses()` semblait corrigé
+  sur les 7 composants portalisés visés après un premier correctif, mais
+  ne couvrait en réalité encore rien sur 3 d'entre eux — cf. piège n°10 ;
+  4 chaînes françaises hors `t()` ; 2 `aria-label` interpolant un
+  `ReactNode` arbitraire, bug latent pour SP-30). 6 Minor documentés en
+  suivi non bloquant pour SP-30. **Ready to merge** — PR #102 (dev→main,
+  avec SP-29a).
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
 
 ### À venir
 
-- **SP-29b** : bibliothèque de primitives headless (Select/Combobox/Menu/
-  Popover/Tooltip/Tabs/Drawer/ConfirmDialog) sur Radix UI Primitives, à partir
-  du relevé de mesures de SP-29a/Task 1 (surcoût, licence, rendu headless,
-  forme de `@theme` réelle). Puis **SP-30** : réécriture des écrans qui
+- **SP-30** : réécriture des écrans qui
   consomment enfin `Gate`/`capabilities.ts`/`tokens.css` — c'est là que les 9
   occurrences restantes de comparaison de droits en dur (`SqlLabPage.tsx`,
   `AdminExtensionsPage.tsx`, `HarvestSourcesAdminPage.tsx`,
   `CollectionsAdminPage.tsx`, `AppLayout.tsx`) doivent disparaître, que les
   permissions de collection et le profil « Lecteur » se tranchent, et que la
   raison de verrouillage triplée d'`ItemActions` (cf. entrée SP-29a) peut être
-  regroupée si voulu.
+  regroupée si voulu. Basculera les écrans réels sur le kit `ui/kit/`
+  (SP-29b) et retirera les anciens fichiers `ui/*`. 6 suivis non bloquants
+  hérités de SP-29b à traiter en chemin (détail dans son entrée `### Livré`
+  et l'historique d'exécution) : `DataTable.sortDirection` mort, deux `id`
+  DOM dupliqués dans la galerie, ambiance de la galerie non nettoyée au
+  démontage, branche de fermeture de `ConfirmDialog` non couverte,
+  asymétrie contrôlé/non-contrôlé entre surfaces, Providers Tooltip/Toast
+  non exportés par le barrel.
 - Reste **SP-15** : événements/déclencheurs durables au-delà du cron (non
   planifié) ; exposition MCP des noms de secrets (non planifiée) ; **exécuter
   réellement les 5 tests `@pytest.mark.qgis` de SP-15d** avant d'activer
@@ -461,3 +486,17 @@ le comportement d'une session :
    plusieurs. Nommer les ledgers `.superpowers/sdd/sp<XX>-*`, jamais
    `task-N-report.md` générique — une contamination de rapport a déjà été
    observée.
+10. **jsdom n'implémente pas plusieurs API navigateur consommées par Radix
+    UI** (`ResizeObserver`, `hasPointerCapture`, `scrollIntoView`,
+    `PointerEvent`) et ne fait jamais converger le repositionnement
+    `shift`/`flip` de `@floating-ui/react-dom` (Popover/Select/Combobox/
+    Menu/Tooltip) — stub/polyfill toujours **local au fichier de test**
+    (jamais `shell/src/test/setup.ts` : un stub global y a cassé 2 tests
+    sans rapport ailleurs, SP-29b/Task 8). **Un correctif de filet de test
+    doit être vérifié par falsification** (injecter délibérément le défaut
+    visé, confirmer que le test échoue, puis retirer) — « les tests
+    passent toujours » ne prouve rien : sur SP-29b, un correctif qui
+    semblait réparer `expectTokenizedClasses()` sur 7 fichiers ne
+    vérifiait en réalité toujours rien sur 3 d'entre eux après le premier
+    passage (baseElement pointant sur un `container` custom, contenu
+    vérifié après démontage, contenu jamais ouvert).
