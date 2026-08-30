@@ -32,3 +32,13 @@ test("disabled empêche le changement", async () => {
   );
   expect(screen.getByRole("switch", { name: "Activer" })).toBeDisabled();
 });
+
+test("disabled empêche le changement au clavier", async () => {
+  const onCheckedChange = vi.fn();
+  render(
+    <Switch aria-label="Activer" checked={false} disabled onCheckedChange={onCheckedChange} />,
+  );
+  screen.getByRole("switch", { name: "Activer" }).focus();
+  await userEvent.keyboard(" ");
+  expect(onCheckedChange).not.toHaveBeenCalled();
+});
