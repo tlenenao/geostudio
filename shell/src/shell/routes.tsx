@@ -18,6 +18,8 @@ import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
 import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
 import { HarvestSourcesAdminPage } from "../pages/HarvestSourcesAdminPage";
 import { KitGalleryPage } from "../pages/KitGalleryPage";
+import { TasksComingSoonPage } from "../pages/TasksComingSoonPage";
+import { SettingsComingSoonPage } from "../pages/SettingsComingSoonPage";
 import { RequireAuth } from "../auth/RequireAuth";
 import { AppLayout } from "./AppLayout";
 import { useItemClient } from "../api/ItemClientProvider";
@@ -276,6 +278,8 @@ export function AppRoutes() {
         <Route path="/admin/collections" element={<CollectionsAdminPage />} />
         <Route path="/admin/harvest" element={<HarvestSourcesAdminPage />} />
         <Route path="/internal/kit-gallery" element={<KitGalleryPage />} />
+        <Route path="/tasks" element={<TasksComingSoonPage />} />
+        <Route path="/settings" element={<SettingsComingSoonPage />} />
       </Route>
       <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
       <Route path="/sites/:slug" element={<SitePublicRoute />} />
