@@ -28,7 +28,7 @@ export function ThumbnailUpload({
   }
 
   return (
-    <div className="flex flex-col gap-1 text-sm">
+    <div className="flex flex-col gap-1 text-sm text-ink">
       <label className="flex flex-col gap-1">
         Miniature
         <input
@@ -40,7 +40,7 @@ export function ThumbnailUpload({
         />
       </label>
       {error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
