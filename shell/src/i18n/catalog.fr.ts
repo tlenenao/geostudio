@@ -45,4 +45,8 @@ export const fr = {
 
   // Catalogue
   "catalog.count": "{n} éléments",
+
+  // Kit: NumberField
+  "kit.numberField.increase": "Augmenter",
+  "kit.numberField.decrease": "Diminuer",
 } as const;

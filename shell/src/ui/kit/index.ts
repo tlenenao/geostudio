@@ -17,3 +17,4 @@ export { Switch } from "./Switch";
 export { Slider } from "./Slider";
 export { Segmented } from "./Segmented";
 export { ColorField } from "./ColorField";
+export { NumberField } from "./NumberField";
