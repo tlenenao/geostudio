@@ -4,6 +4,20 @@ import { expect, test } from "vitest";
 import { Splitter } from "./Splitter";
 import { expectTokenizedClasses } from "./testUtils";
 
+// jsdom n'implémente pas PointerEvent (typeof PointerEvent === "undefined") —
+// fireEvent.pointerDown/Move retombent sur un Event générique sans clientX.
+// Polyfill local à ce fichier uniquement, jamais setup.ts (piège documenté,
+// cf. Task 8/Slider).
+class FakePointerEvent extends MouseEvent {
+  constructor(type: string, params: PointerEventInit = {}) {
+    super(type, params);
+  }
+}
+if (typeof PointerEvent === "undefined") {
+  // @ts-expect-error jsdom n'a pas de PointerEvent natif
+  global.PointerEvent = FakePointerEvent;
+}
+
 test("expose un séparateur avec la largeur courante en aria-valuenow", () => {
   const { container } = render(
     <Splitter first={<div>Gauche</div>} second={<div>Droite</div>} defaultFirstWidth={300} />,
