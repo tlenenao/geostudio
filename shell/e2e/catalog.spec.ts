@@ -91,3 +91,17 @@ test("filtrer sur Dataset ne ramène que les datasets", async ({ page }) => {
   // reliably lands on the one ItemCard badge left after filtering.
   await expect(page.getByText("Dataset", { exact: true }).last()).toBeVisible();
 });
+
+test("changer de filtre ne remplit pas l'historique (retour arrière direct)", async ({ page }) => {
+  await mockCore(page);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
+  await page.getByLabel("Type").selectOption("dataset");
+  await page.getByLabel("Type").selectOption("map");
+  await page.goBack();
+  // Un seul retour doit sortir de la page (revenir à about:blank / page
+  // précédente réelle), pas rejouer "dataset" — la preuve la plus fiable
+  // ici est que l'URL ne contient plus aucun ?type= issu de nos deux
+  // changements de filtre consécutifs.
+  await expect(page).not.toHaveURL(/type=(dataset|map)/);
+});

@@ -247,7 +247,16 @@ export async function mockCore(page: Page) {
   // vs. https://core.test), so a path-only glob here would also intercept
   // the browser's document navigation to that page and break rendering.
   await page.route("https://core.test/items/1", async (route) => {
-    await route.fulfill({ json: ALL[0] });
+    if (route.request().method() === "PATCH") {
+      const body = await route.request().postDataJSON();
+      if (typeof body.title === "string") item1Title = body.title;
+    }
+    await route.fulfill({
+      json: {
+        ...ALL[0],
+        title: item1Title,
+      },
+    });
   });
 
   await page.route("**/configs", async (route) => {
@@ -280,6 +289,9 @@ export async function mockCore(page: Page) {
       });
     }
   });
+
+  // Item 1 (Alpha) — title tracking for edit test (SP-30b/Task 6).
+  let item1Title = "Alpha";
 
   // Same host-scoping rationale as "/items/1" above — the shell also has a
   // client-side route "/items/9".
