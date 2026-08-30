@@ -2537,3 +2537,167 @@ deux (et un `--` côté entry).
   clôture, aucune perte (contenu dupliqué dans le ledger `sp28-progress.md`
   et les fichiers `sp28-task-*`). **Verdict final : Ready to merge — Yes**,
   mergé dans `main` (`075b6ae`) et `dev`/`main` poussés sur `origin`.
+
+- **SP-29b** (31 tâches, exécution complète en subagent-driven-development
+  sur une seule session) — kit de ~40 primitives UI headless (Radix UI +
+  tokens GeoStudio) sous `shell/src/ui/kit/`, additif à côté des fichiers
+  `shell/src/ui/*` existants (jamais touchés, vérifié à plusieurs reprises
+  y compris en revue finale), plus une galerie interne réservée aux
+  administrateurs (`/internal/kit-gallery`). 18 paquets Radix + lucide-react
+  installés à des versions exactes, `--gs-shadow-*` ajouté au contrat de
+  tokens. Chaque tâche a eu sa revue indépendante (spec + qualité), la
+  plupart avec 0 défaut ; plusieurs défauts réels ont quand même été
+  trouvés et corrigés en cours de route, tous documentés en détail dans le
+  ledger de session (`sp29b-progress.md`, non commité — scratch) :
+
+  - **Task 2** : `npm install pkg@version` sans `--save-exact` avait écrit
+    des ranges caret dans `package.json` au lieu des 18 versions exactes
+    exigées par le brief — corrigé.
+  - **Task 5 (Checkbox, gabarit des 15 tâches Radix suivantes)** : la revue
+    a insisté sur ce fichier précisément parce qu'il sert de patron —
+    trouvé et corrigé un trou de couverture (`disabled` bloque le clic
+    mais n'était pas testé au clavier) avant qu'il ne se propage.
+  - **Task 6 (Radio)** : le wrapper Radix trivial du plan échoue
+    réellement le test de navigation clavier sous jsdom (confirmé
+    indépendamment par le contrôleur en le rejouant tel quel) — Radix gère
+    la sélection au clavier via des écouteurs `document`-level posés par
+    item (hors React), pas via un `onKeyDown` sur `Root`/`Item`. L'implé-
+    menteur a contourné avec un `onKeyDown` custom + registre de refs par
+    Context, mais sans `stopPropagation()` — analyse du code source Radix
+    installé a montré un risque réel de double appel à `onValueChange` en
+    répétition clavier (touche maintenue), invisible en test, latent tant
+    que `Radio` n'est câblé sur aucun écran. Corrigé (`stopPropagation()`),
+    re-vérifié.
+  - **Task 8 (Slider)** : un polyfill `ResizeObserver` posé GLOBALEMENT
+    dans `shell/src/test/setup.ts` (nécessaire pour Radix Slider) a cassé
+    2 tests préexistants et sans rapport dans `AppRenderer.test.tsx`, qui
+    dépendaient de `typeof ResizeObserver === "undefined"` pour un
+    comportement de repli délibéré en environnement de test. Corrigé en
+    stub local au fichier de test concerné (patron réutilisé sur toutes
+    les tâches Radix suivantes qui en avaient besoin : Select/Combobox/
+    Tooltip/galerie, jamais `setup.ts`).
+  - **Tasks 10/11/17** : trois bugs réels du texte littéral du plan
+    lui-même trouvés par les tests écrits verbatim eux-mêmes : ColorField
+    ne resynchronisait pas le champ texte sur un changement externe de
+    `value` (le plan promettait pourtant « synchronisé dans les deux
+    sens ») ; NumberField perdait la saisie multi-chiffres si lié
+    directement à `value` sans state local (le test du plan lui-même
+    l'aurait révélé) ; deux clés i18n `kit.numberField.*`/`kit.breadcrumb.
+    label` violaient la convention `<domaine>.<intention>` documentée en
+    tête de `catalog.fr.ts` — la correction de Task 11 (retirer `kit.`) et
+    celle de Task 17 (garder `kit.` mais fusionner l'intention) divergeaient
+    entre elles, incohérence trouvée et corrigée en Task 17.
+  - **Task 13 (Combobox, dispatché sur modèle standard, composant le plus
+    élaboré du plan)** : trois défauts vérifiés empiriquement par le
+    contrôleur avec falsification (remise du texte littéral du brief pour
+    confirmer l'échec, puis restauration) — `activeIndex` initial à `0`
+    (brief) au lieu de `-1` (le brief contredisait mathématiquement son
+    propre test) ; `avoidCollisions={false}` posé en PRODUCTION sur
+    `Combobox.tsx` (pas seulement en test) pour contourner un vrai coût
+    CPU mesuré (`shift`/`flip` de `@floating-ui/react-dom` qui ne converge
+    jamais sous jsdom, ×6.7 mesuré) — dégrade un comportement réel de
+    production (le menu ne se repliera jamais au bord de la fenêtre, même
+    dans un vrai navigateur), jugé acceptable (levier public documenté de
+    la lib, aucune alternative test-only crédible) et retenu comme
+    précédent pour Popover/Menu/Tooltip (Tasks 20/21/22), qui l'ont chacun
+    mesuré puis réutilisé à l'identique. En marge de cette tâche, une
+    vraie erreur `tsc`/`npm run build` a été trouvée dans `Segmented.tsx`
+    (Task 9, déjà « approuvée 0 défaut ») — invisible parce qu'aucune
+    revue de tâche jusque-là ne lançait `tsc --noEmit`, seulement Vitest ;
+    corrigée hors numérotation de tâche, toutes les revues suivantes
+    incluent désormais systématiquement `tsc --noEmit`.
+  - **Task 19 (Splitter)** : jsdom n'implémente pas du tout `PointerEvent`
+    — `fireEvent.pointerDown(el, { clientX })` (texte littéral du brief)
+    retombe sur un `Event` générique sans `clientX`, diagnostiqué par le
+    contrôleur (pas juste accepté du rapport de l'implémenteur qui avait
+    signalé DONE_WITH_CONCERNS), corrigé par un polyfill `PointerEvent`
+    local au fichier de test.
+  - **Task 23 (Dialog)** : un test en échec avait été attribué à tort par
+    l'implémenteur au même problème Popper que Combobox — le contrôleur a
+    vérifié indépendamment que `@radix-ui/react-dialog` n'utilise pas
+    `@radix-ui/react-popper` et a diagnostiqué la vraie cause : Radix
+    Dialog auto-focus déjà le premier élément focusable IMMÉDIATEMENT à
+    l'ouverture (confirmé empiriquement), donc le `userEvent.tab()` du
+    texte littéral du brief déplaçait le focus EN AVANT avant l'assertion
+    — encore un bug du texte du plan, pas de l'environnement.
+  - **Tâches 22/26 (Tooltip, Toast)** : deux seules tâches du plan à
+    toucher `shell/src/App.tsx` (Providers Radix globaux) — vérifiées
+    sûres (props de contexte pur pour Tooltip, positionnement `fixed`
+    pour le Viewport de Toast qui rend un vrai `<ol>`), `App.test.tsx`
+    revérifié 0 régression aux deux passages.
+  - **Task 30 (galerie)** : trois déviations du texte littéral, toutes
+    vérifiées — `Table` ajouté (sans lui, seule des 40 primitives jamais
+    réellement rendue, recoupé un à un contre l'auto-revue du plan) ;
+    Providers Radix posés localement dans le composant de PAGE plutôt que
+    dans le test (divergence du précédent Task 26, jugée sans danger par
+    lecture du code source Radix — contexte scopé par Provider le plus
+    proche — mais justification en commentaire légèrement trompeuse,
+    Minor) ; stub `ResizeObserver` attribué à 4 primitives, vérifié exact
+    (elles importent toutes `useSize` inconditionnellement au rendu,
+    contrairement aux composants popper-based).
+  - **Collision de session concurrente** découverte pendant la revue de
+    Task 6 : une autre session travaillait au même moment sur ce même
+    arbre (plan différent, intitulés historiques de SP-26) et écrasait en
+    un seul batch les fichiers génériques `.superpowers/sdd/task-N-brief.md`
+    du script `task-brief` — heureusement sans conséquence car le reviewer
+    de Task 6 avait revu contre le texte réel du plan plutôt que contre le
+    brief corrompu, mais tous les fichiers de cette session ont été
+    immédiatement renommés `sp29b-*` pour la suite (piège n°9, encore).
+
+  **Revue finale de branche** (modèle le plus capable) : 0 Critique,
+  **3 Important, tous re-vérifiés par falsification empirique après
+  coup, pas seulement par « les tests passent »** — leçon la plus
+  coûteuse de cette clôture. Le premier passage de correctif sur
+  l'Important 1 (`expectTokenizedClasses()` inspectait `container`, vide
+  pour les 7 primitives qui portalisent leur contenu stylé vers
+  `document.body` : Popover/Menu/Tooltip/Dialog/Drawer/Select/Combobox —
+  falsifié par injection de `bg-red-500`, un test « corrigé » ne bronchait
+  toujours pas) a été accepté sur la foi de « tous les tests passent » —
+  et le contrôleur, en re-falsifiant lui-même chaque fichier un par un
+  après le fix, a trouvé que 3 des 7 ne vérifiaient toujours rien :
+  `Popover.test.tsx` (un `container: root` explicite fait pointer
+  `baseElement` sur ce même `root`, pas `document.body` — comportement
+  réel de `@testing-library/react` vérifié dans le paquet installé),
+  `Select.test.tsx` (le test qui appelait la vérification n'ouvrait
+  jamais le menu déroulant) et `Menu.test.tsx` (la vérification était
+  placée APRÈS le clic qui ferme le menu et démonte son contenu portalisé).
+  Trois commits de correctif successifs, chacun re-vérifié par
+  falsification réelle avant d'être accepté. Les deux autres Important :
+  4 chaînes françaises hors `t()` (ConfirmDialog, Combobox, et deux
+  `aria-label`) et 2 `aria-label` interpolant un `React.ReactNode`
+  arbitraire dans un template literal (`Chip`, `DataTable` — bug latent
+  produisant `"[object Object]"` pour tout appelant SP-30 passant un
+  élément React plutôt qu'une string), corrigés par des props optionnelles
+  explicites avec repli via `t()`. 6 Minor documentés comme suivis non
+  bloquants pour SP-30 (détail dans l'entrée `### Livré` de CLAUDE.md).
+
+  Portes de qualité (Task 31) : `npm run test -- --coverage` échouait de
+  façon reproductible (v8 ajoute un surcoût CPU qui s'additionne au coût
+  de mesure Popper déjà connu, poussant 6-7 tests au-delà de leur
+  `OPEN_TIMEOUT` déjà à 15000) — diagnostiqué par le contrôleur
+  (`--maxWorkers` réduit seul insuffisant, même en exécution totalement
+  séquentielle ; `--testTimeout` CLI sans effet, le 3e argument de
+  `test()` prime) et corrigé en portant `OPEN_TIMEOUT` à 45000 dans les 4
+  fichiers concernés, stable sur 2 exécutions consécutives. Suite
+  complète finale : 215 fichiers / 1775 tests, e2e 113/4/0 inchangé,
+  couverture 90,75 % (seuil 88), `tsc`/lint/format/pre-commit tous
+  propres. **Verdict final : Ready to merge — Yes.**
+
+  **Après clôture, sur demande explicite** : PR #102 (dev→main, avec
+  SP-29a) a révélé 2 échecs CI pré-existants, non liés au contenu de
+  SP-29b — `core` : `test_deployability.py::
+  test_every_compose_substitution_is_documented` échouait sur
+  `VITE_AUTH_MODE` absent de `.env.example` malgré sa substitution dans
+  `docker-compose.yml`, documenté comme suivi non bloquant depuis SP-29a
+  et jamais corrigé jusqu'ici — corrigé (une ligne + commentaire). `scan`
+  (gitleaks, arbre de travail) : 2 leaks réels, dont une découverte plus
+  large que prévu — **104 fichiers** sous `.superpowers/sdd/` (scratch de
+  sessions SP-17a/SP-17b et antérieures, briefs/rapports/diffs) étaient
+  force-trackés en git depuis longtemps malgré le `.gitignore`
+  `.superpowers/` — récidive du piège n°9 jamais nettoyée en profondeur
+  malgré des mentions ponctuelles dans SP-14m/SP-28. Retirés du suivi
+  (`git rm --cached`, conservés sur disque) ; le second leak (exemple
+  curl `admin:admin` dans un plan SP-26) allowlisté sur le même patron
+  déjà établi pour SP-10b. Les deux corrections vérifiées par clone
+  propre + rejeu local avant push ; CI repassée intégralement au vert
+  (20/20 checks) après ce second passage.
