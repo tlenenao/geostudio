@@ -35,10 +35,15 @@ test(
     );
     await userEvent.click(screen.getByRole("button", { name: "Actions" }));
     const item = await screen.findByRole("menuitem", { name: "Supprimer" });
+    // Le menu portalisé (document.body) doit être vérifié tokenisé PENDANT
+    // qu'il est ouvert — après le clic ci-dessous, Radix le démonte et il
+    // n'y a plus rien à inspecter (trouvé en revue finale SP-29b par
+    // falsification : une couleur codée en dur injectée ici ne faisait pas
+    // échouer le test si la vérification était placée après la fermeture).
+    expectTokenizedClasses(baseElement);
     await userEvent.click(item);
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("menuitem", { name: "Supprimer" })).not.toBeInTheDocument();
-    expectTokenizedClasses(baseElement);
   },
   OPEN_TIMEOUT,
 );
