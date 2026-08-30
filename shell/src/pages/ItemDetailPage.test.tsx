@@ -135,3 +135,60 @@ test("un ?panel= inconnu n'affiche aucun panneau", async () => {
   await screen.findByRole("heading", { name: "Item 1" });
   expect(screen.queryByLabelText("Titre")).not.toBeInTheDocument();
 });
+
+// Revue finale SP-30b, finding 2 : un utilisateur en lecture seule qui
+// atteint /items/1?panel=... par un favori, un retour arrière ou un lien
+// périmé ne doit jamais voir un formulaire vivant, soumissible, dont
+// l'enregistrement échouerait en 403. Le panneau reste visible (traitement
+// « verrouillé et expliqué », cf. Locked.tsx) mais son fieldset est désactivé.
+function mockReadOnlyItem() {
+  server.use(
+    http.get("https://core.test/items/1", () =>
+      HttpResponse.json({
+        pk: "1",
+        resourceType: "app",
+        title: "Item 1",
+        abstract: "Abstract 1",
+        owner: "alice",
+        thumbnailUrl: null,
+        date: "2026-01-01T00:00:00Z",
+        configId: null,
+        isPublished: false,
+        permissions: { read: true, write: false, delete: false, share: false },
+      }),
+    ),
+  );
+}
+
+test("panel=edit sur un item en lecture seule n'affiche pas un formulaire soumissible", async () => {
+  mockReadOnlyItem();
+  render(<ItemDetailPage pk="1" />, {
+    wrapper: ({ children }) => wrapperWithInitialSearch("/items/1?panel=edit", children),
+  });
+  const title = await screen.findByLabelText("Titre");
+  expect(title).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+  expect(screen.getByText(/Modification réservée aux éditeurs/)).toBeInTheDocument();
+});
+
+test("panel=thumbnail sur un item en lecture seule n'affiche pas un envoi actif", async () => {
+  mockReadOnlyItem();
+  render(<ItemDetailPage pk="1" />, {
+    wrapper: ({ children }) => wrapperWithInitialSearch("/items/1?panel=thumbnail", children),
+  });
+  const input = await screen.findByLabelText("Miniature");
+  expect(input).toBeDisabled();
+  expect(screen.getByText(/Modification réservée aux éditeurs/)).toBeInTheDocument();
+});
+
+test("panel=share sur un item non partageable n'affiche pas le formulaire de partage actif", async () => {
+  mockReadOnlyItem();
+  render(<ItemDetailPage pk="1" />, {
+    wrapper: ({ children }) => wrapperWithInitialSearch("/items/1?panel=share", children),
+  });
+  expect(await screen.findByText(/Partage réservé au propriétaire/)).toBeInTheDocument();
+  // Le formulaire reste visible (traitement « verrouillé et expliqué ») mais
+  // son fieldset le rend inopérant : pas de case ni de bouton actionnable.
+  expect(await screen.findByLabelText("Public")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+});
