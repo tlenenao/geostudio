@@ -81,7 +81,7 @@ test("shows the conversion error message and does not call onUploaded", async ()
   expect(onUploaded).not.toHaveBeenCalled();
 });
 
-test("blocks Annuler/Escape/backdrop while an upload is in flight", async () => {
+test("désactive Annuler pendant un envoi en cours (plus d'Escape/backdrop à gérer — panneau en ligne)", async () => {
   server.use(
     http.post(`${CORE_URL}/terrain3d/uploads/presign`, () =>
       HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" }),
@@ -130,4 +130,11 @@ test("presigns on the terrain3d route with the file's real content type", async 
 
   await waitFor(() => expect(onUploaded).toHaveBeenCalledWith("t-1"));
   expect(presignBody).toEqual({ filename: "dem.tif", contentType: "image/tiff" });
+});
+
+test("le formulaire n'est jamais une fenêtre modale (pas de role=dialog)", async () => {
+  renderButton(vi.fn());
+  await userEvent.click(screen.getByRole("button", { name: /nouveau dem/i }));
+  expect(await screen.findByLabelText(/fichier dem/i)).toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
