@@ -35,6 +35,5 @@ test("le focus est piégé dans la boîte de dialogue à l'ouverture", async () 
       <button>Second</button>
     </Dialog>,
   );
-  await userEvent.tab();
-  expect(screen.getByRole("button", { name: "Premier" })).toHaveFocus();
+  expect(await screen.findByRole("button", { name: "Premier" })).toHaveFocus();
 });
