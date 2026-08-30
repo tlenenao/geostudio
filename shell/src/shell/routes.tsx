@@ -114,28 +114,21 @@ function useOpenItem() {
 function CatalogRoute() {
   const { onOpenItem, openError } = useOpenItem();
   return (
-    <>
-      {openError && (
-        <p role="alert" className="text-sm text-red-600">
-          Échec de l'ouverture de l'élément.
-        </p>
-      )}
-      <CatalogPage onOpenItem={onOpenItem} />
-    </>
+    <CatalogPage
+      onOpenItem={onOpenItem}
+      openError={openError ? "Échec de l'ouverture de l'élément." : undefined}
+    />
   );
 }
 
 function BookmarksRoute() {
   const { onOpenItem, openError } = useOpenItem();
   return (
-    <>
-      {openError && (
-        <p role="alert" className="text-sm text-red-600">
-          Échec de l'ouverture du signet.
-        </p>
-      )}
-      <CatalogPage onOpenItem={onOpenItem} fixedType="bookmark" />
-    </>
+    <CatalogPage
+      onOpenItem={onOpenItem}
+      fixedType="bookmark"
+      openError={openError ? "Échec de l'ouverture du signet." : undefined}
+    />
   );
 }
 
@@ -212,14 +205,11 @@ function ReportEditRoute() {
 function ReportsRoute() {
   const { onOpenItem, openError } = useOpenItem();
   return (
-    <>
-      {openError && (
-        <p role="alert" className="text-sm text-red-600">
-          Échec de l'ouverture du rapport.
-        </p>
-      )}
-      <CatalogPage onOpenItem={onOpenItem} fixedType="report" />
-    </>
+    <CatalogPage
+      onOpenItem={onOpenItem}
+      fixedType="report"
+      openError={openError ? "Échec de l'ouverture du rapport." : undefined}
+    />
   );
 }
 
