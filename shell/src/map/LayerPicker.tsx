@@ -5,7 +5,7 @@ import { useLayerSources } from "../api/hooks";
 import type { LayerSource, MapLayer } from "../api/types";
 import { detectGeometryKind, renderAsFor } from "../builder/widgets/mapSymbology";
 import { fetchFeatureCollection } from "./geojsonIntrospect";
-import { Button } from "../ui/button";
+import { Button } from "../ui/kit/Button";
 
 function toMapLayer(source: LayerSource): MapLayer {
   const id = crypto.randomUUID();
@@ -105,13 +105,13 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
         role="searchbox"
         aria-label="Rechercher une source de couche"
         placeholder="Rechercher…"
-        className="h-8 rounded-md border border-slate-300 px-2 text-sm"
+        className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
-      {isLoading && <p className="text-sm text-slate-500">Chargement des sources…</p>}
+      {isLoading && <p className="text-sm text-ink-2">Chargement des sources…</p>}
       {isError && (
-        <div className="text-sm text-red-600">
+        <div className="text-sm text-danger">
           <p role="alert">Impossible de charger les sources de couches.</p>
           <button type="button" className="underline" onClick={() => void refetch()}>
             Réessayer
@@ -119,7 +119,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
         </div>
       )}
       {!isLoading && !isError && (!data || data.length === 0) && (
-        <p className="text-sm text-slate-500">Aucune source disponible.</p>
+        <p className="text-sm text-ink-2">Aucune source disponible.</p>
       )}
       {!isLoading && !isError && data && data.length > 0 && (
         <ul className="flex flex-col gap-1">
@@ -127,13 +127,13 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             <li key={`${source.service}:${source.id}`}>
               <button
                 type="button"
-                className="w-full rounded-md px-2 py-1 text-left text-sm hover:bg-slate-100"
+                className="w-full rounded-md px-2 py-1 text-left text-sm text-ink hover:bg-sunken"
                 onClick={() => onAdd(toMapLayer(source))}
               >
                 {source.title}
-                <span className="ml-2 text-xs text-slate-400">{source.kind}</span>
+                <span className="ml-2 text-xs text-ink-3">{source.kind}</span>
                 {typeof source.featureCount === "number" && (
-                  <span className="ml-2 text-xs text-slate-400">{source.featureCount} entités</span>
+                  <span className="ml-2 text-xs text-ink-3">{source.featureCount} entités</span>
                 )}
               </button>
             </li>
@@ -141,13 +141,13 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
         </ul>
       )}
       <div className="border-t pt-2">
-        <p className="mb-1 text-xs font-medium text-slate-500">Ajouter un tileset 3D par URL</p>
+        <p className="mb-1 text-xs font-medium text-ink-2">Ajouter un tileset 3D par URL</p>
         <div className="flex flex-col gap-1">
           <input
             aria-label="Titre du tileset 3D"
             type="text"
             placeholder="Titre"
-            className="h-8 rounded-md border border-slate-300 px-2 text-sm"
+            className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
             value={tiles3dTitle}
             onChange={(e) => setTiles3dTitle(e.target.value)}
           />
@@ -155,7 +155,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             aria-label="URL du tileset.json"
             type="text"
             placeholder="https://…/tileset.json"
-            className="h-8 rounded-md border border-slate-300 px-2 text-sm"
+            className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
             value={tiles3dUrl}
             onChange={(e) => setTiles3dUrl(e.target.value)}
           />
@@ -171,15 +171,13 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
         </div>
       </div>
       <div className="border-t pt-2">
-        <p className="mb-1 text-xs font-medium text-slate-500">
-          Ajouter une couche par URL GeoJSON
-        </p>
+        <p className="mb-1 text-xs font-medium text-ink-2">Ajouter une couche par URL GeoJSON</p>
         <div className="flex flex-col gap-1">
           <input
             aria-label="Titre de la couche GeoJSON"
             type="text"
             placeholder="Titre"
-            className="h-8 rounded-md border border-slate-300 px-2 text-sm"
+            className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
             value={featureTitle}
             onChange={(e) => setFeatureTitle(e.target.value)}
           />
@@ -187,12 +185,12 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             aria-label="URL du GeoJSON"
             type="text"
             placeholder="https://…/donnees.geojson"
-            className="h-8 rounded-md border border-slate-300 px-2 text-sm"
+            className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
             value={featureUrl}
             onChange={(e) => setFeatureUrl(e.target.value)}
           />
           {featureError && (
-            <p role="alert" className="text-xs text-amber-600">
+            <p role="alert" className="text-xs text-warn">
               {featureError}
             </p>
           )}
