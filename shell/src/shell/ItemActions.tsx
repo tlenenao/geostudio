@@ -1,27 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useDeleteItem, useInstanceInfo, useUpdateItem, useUploadThumbnail } from "../api/hooks";
+import { useDeleteItem, useInstanceInfo, useUpdateItem } from "../api/hooks";
 import type { Item } from "../api/types";
-import { Button } from "../ui/button";
-import { Dialog } from "../ui/dialog";
-import { ConfirmDialog } from "../ui/ConfirmDialog";
-import { MetadataForm } from "../ui/MetadataForm";
-import { ThumbnailUpload } from "../ui/ThumbnailUpload";
-import { ShareDialog } from "./ShareDialog";
+import { Button } from "../ui/kit/Button";
+import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { Gate } from "../auth/Gate";
 import { Locked } from "../auth/Locked";
 import { hasPermission } from "../auth/permissions";
 import { t } from "../i18n";
 
-type Panel = null | "menu" | "edit" | "thumbnail" | "share" | "delete";
+type MenuState = "closed" | "open" | "delete";
 
 export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () => void }) {
   const navigate = useNavigate();
-  const [panel, setPanel] = useState<Panel>(null);
-  const update = useUpdateItem(item.pk);
+  const [menu, setMenu] = useState<MenuState>("closed");
   const publish = useUpdateItem(item.pk);
-  const thumbnail = useUploadThumbnail(item.pk);
   const remove = useDeleteItem();
   // Même garde que NewItemButton sur l'option « Pipeline »/etlEnabled : la
   // création d'un ReportSchedule est refusée en 403 par le cœur quand la
@@ -29,41 +23,28 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
   // proposer l'entrée.
   const exportEnabled = useInstanceInfo().data?.exportEnabled === true;
 
-  async function save(v: { title: string; abstract: string; keywords: string[] }) {
+  async function togglePublish() {
     try {
-      await update.mutateAsync(v);
-      setPanel(null);
+      await publish.mutateAsync({ isPublished: !item.isPublished });
+      setMenu("closed");
     } catch {
-      /* surfaced via update.isError */
-    }
-  }
-
-  async function upload(file: File) {
-    try {
-      await thumbnail.mutateAsync(file);
-      setPanel(null);
-    } catch {
-      /* surfaced via thumbnail.isError */
+      /* surfaced via publish.isError */
     }
   }
 
   async function confirmDelete() {
     try {
       await remove.mutateAsync(item.pk);
-      setPanel(null);
+      setMenu("closed");
       onDeleted?.();
     } catch {
       /* surfaced via remove.isError */
     }
   }
 
-  async function togglePublish() {
-    try {
-      await publish.mutateAsync({ isPublished: !item.isPublished });
-      setPanel(null);
-    } catch {
-      /* surfaced via publish.isError */
-    }
+  function goToPanel(panel: "edit" | "thumbnail" | "share") {
+    setMenu("closed");
+    navigate(`/items/${item.pk}?panel=${panel}`);
   }
 
   return (
@@ -72,49 +53,49 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
         size="sm"
         variant="ghost"
         aria-label={t("actions.menu")}
-        onClick={() => setPanel("menu")}
+        onClick={() => setMenu(menu === "open" ? "closed" : "open")}
       >
         ⋯
       </Button>
 
-      {panel === "menu" && (
-        <div className="absolute z-20 mt-8 flex flex-col rounded-md border border-slate-200 bg-white text-sm shadow">
+      {menu === "open" && (
+        <div className="absolute right-0 z-20 mt-1 flex w-44 flex-col rounded-md border border-rule bg-raised py-1 text-sm shadow-md">
           {hasPermission(item, "write") ? (
             <>
               <button
-                className="px-3 py-1 text-left hover:bg-slate-100"
-                onClick={() => setPanel("edit")}
+                className="px-3 py-1.5 text-left text-ink hover:bg-sunken"
+                onClick={() => goToPanel("edit")}
               >
                 {t("actions.edit")}
               </button>
               <button
-                className="px-3 py-1 text-left hover:bg-slate-100"
+                className="px-3 py-1.5 text-left text-ink hover:bg-sunken"
                 onClick={() => void togglePublish()}
               >
                 {item.isPublished ? t("actions.unpublish") : t("actions.publish")}
               </button>
               <button
-                className="px-3 py-1 text-left hover:bg-slate-100"
-                onClick={() => setPanel("thumbnail")}
+                className="px-3 py-1.5 text-left text-ink hover:bg-sunken"
+                onClick={() => goToPanel("thumbnail")}
               >
                 {t("actions.thumbnail")}
               </button>
             </>
           ) : (
             <Locked reason={t("locked.needWrite")}>
-              <button className="px-3 py-1 text-left">{t("actions.edit")}</button>
-              <button className="px-3 py-1 text-left">
+              <button className="px-3 py-1.5 text-left">{t("actions.edit")}</button>
+              <button className="px-3 py-1.5 text-left">
                 {item.isPublished ? t("actions.unpublish") : t("actions.publish")}
               </button>
-              <button className="px-3 py-1 text-left">{t("actions.thumbnail")}</button>
+              <button className="px-3 py-1.5 text-left">{t("actions.thumbnail")}</button>
             </Locked>
           )}
 
           {item.resourceType === "bookmark" && exportEnabled && (
             <button
-              className="px-3 py-1 text-left hover:bg-slate-100"
+              className="px-3 py-1.5 text-left text-ink hover:bg-sunken"
               onClick={() => {
-                setPanel(null);
+                setMenu("closed");
                 navigate("/reports/new", { state: { bookmarkItemId: item.pk } });
               }}
             >
@@ -127,8 +108,8 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
               encombrerait sans rien apprendre (doctrine §6.2). */}
           <Gate on={item} can="share">
             <button
-              className="px-3 py-1 text-left hover:bg-slate-100"
-              onClick={() => setPanel("share")}
+              className="px-3 py-1.5 text-left text-ink hover:bg-sunken"
+              onClick={() => goToPanel("share")}
             >
               {t("actions.share")}
             </button>
@@ -136,8 +117,8 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
 
           <Gate on={item} can="delete">
             <button
-              className="px-3 py-1 text-left text-red-600 hover:bg-slate-100"
-              onClick={() => setPanel("delete")}
+              className="px-3 py-1.5 text-left text-danger hover:bg-sunken"
+              onClick={() => setMenu("delete")}
             >
               {t("actions.delete")}
             </button>
@@ -145,51 +126,22 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
         </div>
       )}
 
-      <Dialog open={panel === "edit"} onClose={() => setPanel(null)} title={t("actions.editTitle")}>
-        <MetadataForm
-          initial={{ title: item.title, abstract: item.abstract, keywords: [] }}
-          onSubmit={(v) => void save(v)}
-          onCancel={() => setPanel(null)}
-          pending={update.isPending}
-        />
-        {update.isError && (
-          <p role="alert" className="mt-2 text-sm text-red-600">
-            {t("actions.saveFailed")}
-          </p>
-        )}
-      </Dialog>
-
-      <Dialog
-        open={panel === "thumbnail"}
-        onClose={() => setPanel(null)}
-        title={t("actions.thumbnailTitle")}
-      >
-        <ThumbnailUpload onUpload={(file) => void upload(file)} pending={thumbnail.isPending} />
-        {thumbnail.isError && (
-          <p role="alert" className="mt-2 text-sm text-red-600">
-            {t("actions.uploadFailed")}
-          </p>
-        )}
-      </Dialog>
-
-      <ShareDialog item={item} open={panel === "share"} onClose={() => setPanel(null)} />
-
       <ConfirmDialog
-        open={panel === "delete"}
+        open={menu === "delete"}
         title={t("actions.deleteTitle")}
         message={t("actions.deleteMessage", { title: item.title })}
         confirmLabel={t("actions.delete")}
         pending={remove.isPending}
         onConfirm={() => void confirmDelete()}
-        onCancel={() => setPanel(null)}
+        onCancel={() => setMenu("closed")}
       />
-      {remove.isError && panel === "delete" && (
-        <p role="alert" className="mt-2 text-sm text-red-600">
+      {remove.isError && menu === "delete" && (
+        <p role="alert" className="mt-2 text-sm text-danger">
           {t("actions.deleteFailed")}
         </p>
       )}
-      {publish.isError && panel === "menu" && (
-        <p role="alert" className="mt-2 text-sm text-red-600">
+      {publish.isError && menu === "open" && (
+        <p role="alert" className="mt-2 text-sm text-danger">
           {t("actions.publishFailed")}
         </p>
       )}
