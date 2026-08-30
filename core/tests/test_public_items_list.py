@@ -185,4 +185,5 @@ def test_never_exposes_a_sensitive_field(client):
         "configId",
         "isPublished",
         "keywords",
+        "permissions",
     }

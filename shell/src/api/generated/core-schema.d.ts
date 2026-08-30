@@ -1813,6 +1813,26 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * ItemPermissions
+         * @description Ce que l'utilisateur courant a le droit de faire sur cet item.
+         *
+         *     Calculé par le cœur depuis `can()` (une seule porte, spec §6.3) et jamais
+         *     recalculé côté client : le shell affiche ou masque à partir de ces quatre
+         *     booléens, ce qui supprime les commandes qui produisaient un 403 après le
+         *     clic. Ce n'est PAS une frontière de sécurité — le cœur reste seul juge à
+         *     chaque écriture.
+         */
+        ItemPermissions: {
+            /** Delete */
+            delete: boolean;
+            /** Read */
+            read: boolean;
+            /** Share */
+            share: boolean;
+            /** Write */
+            write: boolean;
+        };
         /** ItemRead */
         ItemRead: {
             /** Abstract */
@@ -1830,6 +1850,7 @@ export interface components {
             keywords: string[];
             /** Owner */
             owner: string;
+            permissions: components["schemas"]["ItemPermissions"];
             /** Pk */
             pk: string;
             /** Resourcetype */
@@ -2002,8 +2023,35 @@ export interface components {
             /** Zoom */
             zoom: number;
         };
+        /**
+         * MeCapabilities
+         * @description Les capacités du déploiement, servies avec le profil.
+         *
+         *     Même contenu que `GET /instance`, qui reste servi sans authentification
+         *     (page de connexion, mode démo). Le doublon est délibéré : le shell dérive
+         *     l'état de ses domaines d'un profil unique (spec §6.6) au lieu de croiser
+         *     deux requêtes dans chaque écran. `tests/test_auth_me_capabilities.py`
+         *     interdit aux deux routes de diverger.
+         */
+        MeCapabilities: {
+            /** Appexportenabled */
+            appExportEnabled: boolean;
+            /** Copilotenabled */
+            copilotEnabled: boolean;
+            /** Etlenabled */
+            etlEnabled: boolean;
+            /** Exportenabled */
+            exportEnabled: boolean;
+            /** Readonly */
+            readOnly: boolean;
+            /** Terrain3Denabled */
+            terrain3dEnabled: boolean;
+            /** Tileset3Denabled */
+            tileset3dEnabled: boolean;
+        };
         /** MeResponse */
         MeResponse: {
+            capabilities: components["schemas"]["MeCapabilities"];
             /** Email */
             email: string | null;
             /** Firstname */

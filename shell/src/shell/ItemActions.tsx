@@ -9,6 +9,9 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { MetadataForm } from "../ui/MetadataForm";
 import { ThumbnailUpload } from "../ui/ThumbnailUpload";
 import { ShareDialog } from "./ShareDialog";
+import { Gate } from "../auth/Gate";
+import { Locked } from "../auth/Locked";
+import { t } from "../i18n";
 
 type Panel = null | "menu" | "edit" | "thumbnail" | "share" | "delete";
 
@@ -64,18 +67,34 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
 
   return (
     <div className="relative">
-      <Button size="sm" variant="ghost" aria-label="Actions" onClick={() => setPanel("menu")}>
+      <Button
+        size="sm"
+        variant="ghost"
+        aria-label={t("actions.menu")}
+        onClick={() => setPanel("menu")}
+      >
         ⋯
       </Button>
 
       {panel === "menu" && (
         <div className="absolute z-20 mt-8 flex flex-col rounded-md border border-slate-200 bg-white text-sm shadow">
-          <button
-            className="px-3 py-1 text-left hover:bg-slate-100"
-            onClick={() => setPanel("edit")}
+          <Gate
+            on={item}
+            can="write"
+            fallback={
+              <Locked reason={t("locked.needWrite")}>
+                <button className="px-3 py-1 text-left">{t("actions.edit")}</button>
+              </Locked>
+            }
           >
-            Modifier
-          </button>
+            <button
+              className="px-3 py-1 text-left hover:bg-slate-100"
+              onClick={() => setPanel("edit")}
+            >
+              {t("actions.edit")}
+            </button>
+          </Gate>
+
           {item.resourceType === "bookmark" && exportEnabled && (
             <button
               className="px-3 py-1 text-left hover:bg-slate-100"
@@ -84,37 +103,70 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
                 navigate("/reports/new", { state: { bookmarkItemId: item.pk } });
               }}
             >
-              Programmer un rapport
+              {t("actions.scheduleReport")}
             </button>
           )}
-          <button
-            className="px-3 py-1 text-left hover:bg-slate-100"
-            onClick={() => void togglePublish()}
+
+          <Gate
+            on={item}
+            can="write"
+            fallback={
+              <Locked reason={t("locked.needWrite")}>
+                <button className="px-3 py-1 text-left">
+                  {item.isPublished ? t("actions.unpublish") : t("actions.publish")}
+                </button>
+              </Locked>
+            }
           >
-            {item.isPublished ? "Dépublier" : "Publier"}
-          </button>
-          <button
-            className="px-3 py-1 text-left hover:bg-slate-100"
-            onClick={() => setPanel("thumbnail")}
+            <button
+              className="px-3 py-1 text-left hover:bg-slate-100"
+              onClick={() => void togglePublish()}
+            >
+              {item.isPublished ? t("actions.unpublish") : t("actions.publish")}
+            </button>
+          </Gate>
+
+          <Gate
+            on={item}
+            can="write"
+            fallback={
+              <Locked reason={t("locked.needWrite")}>
+                <button className="px-3 py-1 text-left">{t("actions.thumbnail")}</button>
+              </Locked>
+            }
           >
-            Miniature
-          </button>
-          <button
-            className="px-3 py-1 text-left hover:bg-slate-100"
-            onClick={() => setPanel("share")}
-          >
-            Partager
-          </button>
-          <button
-            className="px-3 py-1 text-left text-red-600 hover:bg-slate-100"
-            onClick={() => setPanel("delete")}
-          >
-            Supprimer
-          </button>
+            <button
+              className="px-3 py-1 text-left hover:bg-slate-100"
+              onClick={() => setPanel("thumbnail")}
+            >
+              {t("actions.thumbnail")}
+            </button>
+          </Gate>
+
+          {/* Partager et Supprimer : traitement « absent », pas « verrouillé ».
+              Les montrer grisées sur chaque ligne d'un catalogue partagé
+              encombrerait sans rien apprendre (doctrine §6.2). */}
+          <Gate on={item} can="share">
+            <button
+              className="px-3 py-1 text-left hover:bg-slate-100"
+              onClick={() => setPanel("share")}
+            >
+              {t("actions.share")}
+            </button>
+          </Gate>
+
+          <Gate on={item} can="delete">
+            <button
+              className="px-3 py-1 text-left text-red-600 hover:bg-slate-100"
+              onClick={() => setPanel("delete")}
+            >
+              {t("actions.delete")}
+            </button>
+          </Gate>
         </div>
       )}
 
-      <Dialog open={panel === "edit"} onClose={() => setPanel(null)} title="Modifier l'élément">
+      <Dialog open={panel === "edit"} onClose={() => setPanel(null)} title={t("actions.editTitle")}>
         <MetadataForm
           initial={{ title: item.title, abstract: item.abstract, keywords: [] }}
           onSubmit={(v) => void save(v)}
@@ -123,16 +175,20 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
         />
         {update.isError && (
           <p role="alert" className="mt-2 text-sm text-red-600">
-            Échec de l'enregistrement.
+            {t("actions.saveFailed")}
           </p>
         )}
       </Dialog>
 
-      <Dialog open={panel === "thumbnail"} onClose={() => setPanel(null)} title="Miniature">
+      <Dialog
+        open={panel === "thumbnail"}
+        onClose={() => setPanel(null)}
+        title={t("actions.thumbnailTitle")}
+      >
         <ThumbnailUpload onUpload={(file) => void upload(file)} pending={thumbnail.isPending} />
         {thumbnail.isError && (
           <p role="alert" className="mt-2 text-sm text-red-600">
-            Échec de l'envoi.
+            {t("actions.uploadFailed")}
           </p>
         )}
       </Dialog>
@@ -141,21 +197,21 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
 
       <ConfirmDialog
         open={panel === "delete"}
-        title="Supprimer l'élément"
-        message={`Supprimer « ${item.title} » ? Cette action est irréversible.`}
-        confirmLabel="Supprimer"
+        title={t("actions.deleteTitle")}
+        message={t("actions.deleteMessage", { title: item.title })}
+        confirmLabel={t("actions.delete")}
         pending={remove.isPending}
         onConfirm={() => void confirmDelete()}
         onCancel={() => setPanel(null)}
       />
       {remove.isError && panel === "delete" && (
         <p role="alert" className="mt-2 text-sm text-red-600">
-          Échec de la suppression.
+          {t("actions.deleteFailed")}
         </p>
       )}
       {publish.isError && panel === "menu" && (
         <p role="alert" className="mt-2 text-sm text-red-600">
-          Échec de la publication.
+          {t("actions.publishFailed")}
         </p>
       )}
     </div>

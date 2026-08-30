@@ -105,7 +105,19 @@ services:
       - ./martin-config.yaml:/config.yaml
     command: --config /config.yaml
     ports:
-      - "3000:3000"
+      # Port hôte 3010 (pas 3000) : 3000 est le port par défaut de la plupart
+      # des serveurs de dev JS (Next.js, CRA, Vite avec ce choix...) et entre
+      # régulièrement en conflit avec un process déjà présent sur la machine
+      # de l'opérateur — dernier exemple daté : un `node.exe` Windows côté
+      # hôte WSL2, invisible de `ss` côté Linux, qui faisait échouer le
+      # port-forwarding de Docker Desktop (`/forwards/expose ... status: 500`)
+      # sans qu'aucun conteneur ne soit fautif. Le port interne du conteneur
+      # reste 3000 (healthcheck, `martin-config.yaml` inchangés) — seul le
+      # mapping hôte bouge. Accès purement développeur (curl manuel) : depuis
+      # SP-24 le shell ne parle plus à Martin (route publique retirée, tuiles
+      # servies par le cœur via ST_AsMVT), et docker-compose.prod.yml remet
+      # déjà `ports: !reset []` sur ce service.
+      - "3010:3000"
     networks: [gis-net]
     depends_on:
       pgbouncer:
@@ -503,8 +515,9 @@ services:
 
   # ─── Observabilité (SP-10b, profil optionnel) ──────────
 
-  # Grafana (:3001 côté hôte — :3000 est déjà pris par martin ci-dessus,
-  # le port interne du conteneur reste 3000) + Prometheus/Loki/Tempo
+  # Grafana (:3001 côté hôte — 3000 est le port interne par défaut de
+  # l'image Grafana elle-même, laissé inchangé ; évité côté hôte comme pour
+  # martin ci-dessus, cf. son commentaire) + Prometheus/Loki/Tempo
   # embarqués. `otelcol-config.yaml` remplace entièrement la config par
   # défaut du collecteur embarqué (pas de fusion partielle) et lui ajoute
   # le scraping Prometheus de martin/postgres-exporter (cf. Task 2).
@@ -584,6 +597,14 @@ services:
       # VITE_CORE_URL dans .env pour activer un export réel (profil
       # "export") sans rebuild — voir la note détaillée dans .env.example.
       VITE_CORE_URL: ${VITE_CORE_URL:-http://localhost:8200}
+      # Sans cette ligne, `VITE_AUTH_MODE` reste une chaîne vide dans
+      # env-config.js (template shell/public/env-config.template.js) et
+      # shell/src/config.ts::mergeRuntimeEnv retombe sur son défaut "oidc" —
+      # le shell redirige alors vers Keycloak au lieu du mode `mock` déjà
+      # documenté comme flux par défaut (README, `CORE_AUTH_MODE` ci-dessus a
+      # le même défaut côté cœur). Piège n°2 : capacité documentée comme
+      # "par défaut" mais jamais câblée jusqu'ici sur ce service précis.
+      VITE_AUTH_MODE: ${VITE_AUTH_MODE:-mock}
     ports:
       - "8300:8300"
     networks: [gis-net]

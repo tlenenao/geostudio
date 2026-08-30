@@ -1,0 +1,208 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * Les tokens de GeoStudio. Première feuille de style réelle du produit :
+ * jusqu'ici `index.css` contenait une ligne, et la palette de fait était le
+ * gris d'usine de Tailwind.
+ *
+ * Trois blocs d'ambiance, et l'ordre compte :
+ *   1. `:root`                              — la palette claire, complète
+ *   2. `prefers-color-scheme: dark` gardé par `:not([data-theme="light"])`
+ *      — pour que le choix explicite « clair » l'emporte sur un OS sombre
+ *   3. l'attribut `[data-theme="dark"]` posé sur `:root` — pour que le choix
+ *      explicite « sombre » l'emporte dans l'autre sens
+ *
+ * `tokens.test.ts` interdit mécaniquement qu'un token n'existe que dans l'un
+ * des trois : c'est le bug classique des pages à deux thèmes.
+ *
+ * Les six noms `primary`, `background`, `surface`, `text`, `muted`, `border`
+ * sont exactement ceux du `Theme` des apps (`src/builder/theme.ts`). Ce
+ * contrat partagé est ce qui rendra la marque blanche possible sans second
+ * système — mais les deux restent deux instances : le thème d'une app ne
+ * repeint pas le studio de son auteur.
+ */
+
+:root {
+  /* Contrat partagé avec le Theme des apps */
+  --gs-primary: #0b6e77;
+  --gs-background: #eff2f1;
+  --gs-surface: #fbfcfb;
+  --gs-text: #0e1a20;
+  --gs-muted: #6e8087;
+  --gs-border: #cfd8d6;
+
+  /* Surfaces propres au studio */
+  --gs-raised: #ffffff;
+  --gs-sunken: #e4e9e7;
+
+  /* Encre à trois niveaux */
+  --gs-ink: #0e1a20;
+  --gs-ink-2: #3b4c54;
+  --gs-ink-3: #6e8087;
+
+  /* Filets */
+  --gs-rule: #cfd8d6;
+  --gs-rule-2: #e2e8e6;
+
+  /* Accent — un seul, emprunté à l'hydrographie des planches topographiques */
+  --gs-accent: #0b6e77;
+  --gs-accent-soft: #d9ebec;
+  --gs-accent-ink: #07545b;
+
+  /* Réservé à ce qui vient du copilote : l'utilisateur voit d'un coup d'œil
+     ce qui a été fait par l'IA */
+  --gs-ai: #6a4c93;
+  --gs-ai-soft: #eae3f4;
+
+  /* Sémantiques — distinctes de l'accent, jamais décoratives */
+  --gs-ok: #2a6a50;
+  --gs-ok-soft: #ddeee5;
+  --gs-warn: #8e6410;
+  --gs-warn-soft: #f7ebd1;
+  --gs-danger: #9a2c45;
+  --gs-danger-soft: #f7e1e6;
+
+  /* Carte — non dérivables des neutres : un fond de carte clair sur un studio
+     sombre est illisible */
+  --gs-map-land: #e8efea;
+  --gs-map-alt: #dce7e3;
+  --gs-map-water: #bbd8dc;
+  --gs-map-road: #ffffff;
+
+  /* Élévation — Task 1 SP-29b */
+  --gs-shadow-sm: 0 1px 2px rgba(14, 26, 32, 0.08);
+  --gs-shadow-md: 0 4px 12px rgba(14, 26, 32, 0.12);
+  --gs-shadow-lg: 0 12px 32px rgba(14, 26, 32, 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --gs-primary: #4fb3bc;
+    --gs-background: #0a1316;
+    --gs-surface: #101a1e;
+    --gs-text: #e7eeec;
+    --gs-muted: #7c8f94;
+    --gs-border: #243339;
+
+    --gs-raised: #182629;
+    --gs-sunken: #16232a;
+
+    --gs-ink: #e7eeec;
+    --gs-ink-2: #afc0c2;
+    --gs-ink-3: #7c8f94;
+
+    --gs-rule: #243339;
+    --gs-rule-2: #1a272c;
+
+    --gs-accent: #4fb3bc;
+    --gs-accent-soft: #0f3238;
+    --gs-accent-ink: #7fd2d9;
+
+    --gs-ai: #ab8fd4;
+    --gs-ai-soft: #241a33;
+
+    --gs-ok: #63c295;
+    --gs-ok-soft: #11291f;
+    --gs-warn: #d9a441;
+    --gs-warn-soft: #2c2311;
+    --gs-danger: #e58098;
+    --gs-danger-soft: #2f161c;
+
+    --gs-map-land: #16242a;
+    --gs-map-alt: #1b2c31;
+    --gs-map-water: #1d3a42;
+    --gs-map-road: #2c4148;
+
+    --gs-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --gs-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --gs-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+  }
+}
+
+:root[data-theme="dark"] {
+  --gs-primary: #4fb3bc;
+  --gs-background: #0a1316;
+  --gs-surface: #101a1e;
+  --gs-text: #e7eeec;
+  --gs-muted: #7c8f94;
+  --gs-border: #243339;
+
+  --gs-raised: #182629;
+  --gs-sunken: #16232a;
+
+  --gs-ink: #e7eeec;
+  --gs-ink-2: #afc0c2;
+  --gs-ink-3: #7c8f94;
+
+  --gs-rule: #243339;
+  --gs-rule-2: #1a272c;
+
+  --gs-accent: #4fb3bc;
+  --gs-accent-soft: #0f3238;
+  --gs-accent-ink: #7fd2d9;
+
+  --gs-ai: #ab8fd4;
+  --gs-ai-soft: #241a33;
+
+  --gs-ok: #63c295;
+  --gs-ok-soft: #11291f;
+  --gs-warn: #d9a441;
+  --gs-warn-soft: #2c2311;
+  --gs-danger: #e58098;
+  --gs-danger-soft: #2f161c;
+
+  --gs-map-land: #16242a;
+  --gs-map-alt: #1b2c31;
+  --gs-map-water: #1d3a42;
+  --gs-map-road: #2c4148;
+
+  --gs-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --gs-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --gs-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+/* Exposition à Tailwind v4. `inline` est ce qui rend les tokens commutables :
+ * sans lui, Tailwind fige la valeur au moment de la compilation et le bloc
+ * sombre n'a plus d'effet.
+ *
+ * ATTENTION : la forme exacte a été relevée au Step 5 de Task 1, contre la
+ * version de Tailwind réellement installée. Si le relevé dit autre chose,
+ * c'est le relevé qui fait foi — corriger ici et consigner. */
+@theme inline {
+  --color-primary: var(--gs-primary);
+  --color-background: var(--gs-background);
+  --color-surface: var(--gs-surface);
+  --color-raised: var(--gs-raised);
+  --color-sunken: var(--gs-sunken);
+  --color-ink: var(--gs-ink);
+  --color-ink-2: var(--gs-ink-2);
+  --color-ink-3: var(--gs-ink-3);
+  --color-rule: var(--gs-rule);
+  --color-rule-2: var(--gs-rule-2);
+  --color-accent: var(--gs-accent);
+  --color-accent-soft: var(--gs-accent-soft);
+  --color-accent-ink: var(--gs-accent-ink);
+  --color-ai: var(--gs-ai);
+  --color-ai-soft: var(--gs-ai-soft);
+  --color-ok: var(--gs-ok);
+  --color-ok-soft: var(--gs-ok-soft);
+  --color-warn: var(--gs-warn);
+  --color-warn-soft: var(--gs-warn-soft);
+  --color-danger: var(--gs-danger);
+  --color-danger-soft: var(--gs-danger-soft);
+  --color-map-land: var(--gs-map-land);
+  --color-map-alt: var(--gs-map-alt);
+  --color-map-water: var(--gs-map-water);
+  --color-map-road: var(--gs-map-road);
+
+  --font-ui: "Archivo Variable", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+  --font-prose: "Source Serif 4 Variable", Georgia, "Times New Roman", serif;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+
+  --shadow-sm: var(--gs-shadow-sm);
+  --shadow-md: var(--gs-shadow-md);
+  --shadow-lg: var(--gs-shadow-lg);
+}

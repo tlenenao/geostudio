@@ -64,7 +64,7 @@ docker compose up -d         # stack complète — migrations du cœur appliqué
 |---|---|
 | Shell (front) | http://localhost:8300 |
 | Cœur (API) | http://localhost:8200 |
-| Martin (tuiles MVT) | http://localhost:3000 |
+| Martin (tuiles MVT, accès dev uniquement) | http://localhost:3010 |
 | Keycloak | http://localhost:8180 |
 | MinIO console | http://localhost:9001 |
 

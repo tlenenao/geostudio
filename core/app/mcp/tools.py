@@ -331,7 +331,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
         with request_scoped_session(session_factory) as session:
             user = _resolve_actor(session, access_token)
             _require_access(session, user=user, item_id=itemId, action="read")
-            result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=itemId)
+            result = items_repo.get_item(
+                session, tenant_id=user.tenant_id, item_id=itemId, current_user_id=user.id
+            )
             if result is None:
                 raise ValueError("item not found")
             return result
@@ -425,7 +427,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 object_id=config_result.id,
                 payload={"title": title, "kind": kind},
             )
-            result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
+            result = items_repo.get_item(
+                session, tenant_id=user.tenant_id, item_id=item.id, current_user_id=user.id
+            )
             assert result is not None  # just created it, in the same transaction
             return result
 
@@ -491,7 +495,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 object_id=config_result.id,
                 payload={"collectionId": collectionId, "includeForm": include_form},
             )
-            result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
+            result = items_repo.get_item(
+                session, tenant_id=user.tenant_id, item_id=item.id, current_user_id=user.id
+            )
             assert result is not None
             return result
 
@@ -554,7 +560,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 object_id=config_result.id,
                 payload={"title": title, "kind": "dataset"},
             )
-            result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
+            result = items_repo.get_item(
+                session, tenant_id=user.tenant_id, item_id=item.id, current_user_id=user.id
+            )
             assert result is not None
             return result
 
@@ -614,7 +622,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 object_id=config_result.id,
                 payload={"title": title, "kind": "bookmark"},
             )
-            result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
+            result = items_repo.get_item(
+                session, tenant_id=user.tenant_id, item_id=item.id, current_user_id=user.id
+            )
             assert result is not None  # just created it, in the same transaction
             return result
 
@@ -806,7 +816,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
                     object_id=config_result.id,
                     payload={"title": title, "kind": "pipeline"},
                 )
-                result = items_repo.get_item(session, tenant_id=user.tenant_id, item_id=item.id)
+                result = items_repo.get_item(
+                    session, tenant_id=user.tenant_id, item_id=item.id, current_user_id=user.id
+                )
                 assert result is not None
                 return result
 

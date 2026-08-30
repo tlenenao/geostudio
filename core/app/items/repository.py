@@ -9,12 +9,13 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.items.models import Item
-from app.items.schemas import ItemPage, ItemRead
+from app.items.schemas import ItemPage, ItemPermissions, ItemRead
 from app.items.slug import InvalidSlugError, SlugCollisionError, is_valid_slug, slugify
 from app.search.providers import get_embedding_provider
 from app.search.ranking import hybrid_search_ids
-from app.sharing.authorization import ItemAccessFacts
+from app.sharing.authorization import Action, ItemAccessFacts, decide
 from app.sharing.models import GroupMember, ItemShare
+from app.sharing.repository import roles_for_items
 from app.tenants.repository import DEFAULT_TENANT_SLUG
 from app.users.models import User
 
@@ -61,7 +62,64 @@ def _enqueue_embedding(item_id: str, tenant_id: str) -> None:
         )
 
 
-def _to_read(item: Item, owner_username: str) -> ItemRead:
+# Repli conservateur, servi partout où l'appelant ne fournit pas d'utilisateur :
+# les routes publiques anonymes, et la vingtaine d'appelants internes de
+# `get_item()` (MCP, validateurs de configs, jobs) qui ne lisent jamais ce
+# champ. `read=True` parce que ces chemins n'exposent que du publié ; tout le
+# reste est refusé par défaut.
+PUBLIC_READ_ONLY = ItemPermissions(read=True, write=False, delete=False, share=False)
+
+
+def _permissions(item: Item, *, current_user_id: str, roles: frozenset[str]) -> ItemPermissions:
+    is_owner = item.owner_id == current_user_id
+
+    def verdict(action: Action) -> bool:
+        # actor_is_admin=False : le rôle admin ne court-circuite QUE les
+        # collections (spec SP-3 §2), jamais les items — cf. decide().
+        return decide(
+            action=action,
+            kind="item",
+            is_owner=is_owner,
+            is_public=item.is_public,
+            is_published=item.is_published,
+            roles=roles,
+            actor_is_admin=False,
+        )
+
+    return ItemPermissions(
+        read=verdict("read"),
+        write=verdict("write"),
+        delete=verdict("delete"),
+        share=verdict("share"),
+    )
+
+
+def _permissions_by_id(
+    session: Session, *, tenant_id: str, current_user_id: str, items: list[Item]
+) -> dict[str, ItemPermissions]:
+    """Les permissions de toute une page, avec **une** requête de rôles.
+
+    C'est la raison d'être de `roles_for_items` : appeler `can()` item par item
+    ferait jusqu'à deux requêtes par ligne — le N+1 qu'interdit
+    `tests/test_items_no_nplus1.py`.
+    """
+    roles_by_id = roles_for_items(
+        session,
+        tenant_id=tenant_id,
+        user_id=current_user_id,
+        item_ids=[item.id for item in items],
+    )
+    return {
+        item.id: _permissions(
+            item, current_user_id=current_user_id, roles=roles_by_id.get(item.id, frozenset())
+        )
+        for item in items
+    }
+
+
+def _to_read(
+    item: Item, owner_username: str, permissions: ItemPermissions = PUBLIC_READ_ONLY
+) -> ItemRead:
     # configId is always None: app.items must never import app.configs (see
     # plan Architecture — items sits below configs in the layering), and the
     # shell's own Item.configId is already hardcoded to null everywhere today
@@ -79,6 +137,7 @@ def _to_read(item: Item, owner_username: str) -> ItemRead:
         configId=None,
         isPublished=item.is_published,
         keywords=item.keywords or [],
+        permissions=permissions,
     )
 
 
@@ -138,7 +197,9 @@ def create_item(
     return item
 
 
-def get_item(session: Session, *, tenant_id: str, item_id: str) -> ItemRead | None:
+def get_item(
+    session: Session, *, tenant_id: str, item_id: str, current_user_id: str | None = None
+) -> ItemRead | None:
     row = session.execute(
         select(Item, User.username)
         .join(User, User.id == Item.owner_id)
@@ -147,7 +208,14 @@ def get_item(session: Session, *, tenant_id: str, item_id: str) -> ItemRead | No
     if row is None:
         return None
     item, owner_username = row
-    return _to_read(item, owner_username)
+    if current_user_id is None:
+        # Appelants internes (MCP, validateurs, jobs) : ils ne lisent pas
+        # `permissions`, on ne paie pas la requête de rôles pour eux.
+        return _to_read(item, owner_username)
+    permissions = _permissions_by_id(
+        session, tenant_id=tenant_id, current_user_id=current_user_id, items=[item]
+    )[item.id]
+    return _to_read(item, owner_username, permissions)
 
 
 def get_access_facts(session: Session, *, tenant_id: str, item_id: str) -> ItemAccessFacts | None:
@@ -237,7 +305,11 @@ def list_items(
             .where(Item.id.in_(page_ids))
         ).all()
         by_id = {item.id: (item, owner_username) for item, owner_username in rows}
-        items = [_to_read(*by_id[i]) for i in page_ids if i in by_id]
+        page_items = [by_id[i][0] for i in page_ids if i in by_id]
+        perms = _permissions_by_id(
+            session, tenant_id=tenant_id, current_user_id=current_user_id, items=page_items
+        )
+        items = [_to_read(*by_id[i], perms[by_id[i][0].id]) for i in page_ids if i in by_id]
         return ItemPage(items=items, total=total, page=page, pageSize=page_size)
 
     if q:
@@ -248,7 +320,11 @@ def list_items(
     rows = session.execute(
         query.order_by(Item.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     ).all()
-    items = [_to_read(item, owner_username) for item, owner_username in rows]
+    page_items = [item for item, _owner_username in rows]
+    perms = _permissions_by_id(
+        session, tenant_id=tenant_id, current_user_id=current_user_id, items=page_items
+    )
+    items = [_to_read(item, owner_username, perms[item.id]) for item, owner_username in rows]
     return ItemPage(items=items, total=total, page=page, pageSize=page_size)
 
 
@@ -315,6 +391,7 @@ def update_item(
     keywords: list[str] | None,
     is_published: bool | None,
     slug: str | None = None,
+    current_user_id: str | None = None,
 ) -> ItemRead | None:
     item = session.execute(
         select(Item).where(Item.id == item_id, Item.tenant_id == tenant_id)
@@ -341,7 +418,12 @@ def update_item(
     session.refresh(item)
     owner_username = session.scalar(select(User.username).where(User.id == item.owner_id)) or ""
     _enqueue_embedding(item.id, tenant_id)
-    return _to_read(item, owner_username)
+    if current_user_id is None:
+        return _to_read(item, owner_username)
+    permissions = _permissions_by_id(
+        session, tenant_id=tenant_id, current_user_id=current_user_id, items=[item]
+    )[item.id]
+    return _to_read(item, owner_username, permissions)
 
 
 def get_published_item(session: Session, *, item_id: str) -> ItemRead | None:

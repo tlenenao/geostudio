@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import uuid
+from collections.abc import Sequence
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -8,38 +9,58 @@ from app.sharing.models import CollectionShare, Group, GroupMember, ItemShare
 from app.users.models import User
 
 
-def has_group_role(
-    session: Session, *, tenant_id: str, item_id: str, user_id: str, roles: set[str]
-) -> bool:
-    stmt = (
-        select(ItemShare.role)
+def roles_for_items(
+    session: Session, *, tenant_id: str, user_id: str, item_ids: Sequence[str]
+) -> dict[str, frozenset[str]]:
+    """Les rôles de groupe de `user_id` sur chacun des `item_ids`, en **une**
+    requête.
+
+    Élimine le pattern N+1 d'une requête par item et par jeu de rôles : la
+    sérialisation d'une page de catalogue a besoin des rôles de douze items
+    à la fois, et le faire ligne par ligne était le N+1 que
+    `tests/test_items_no_nplus1.py` interdit désormais.
+
+    Une clé absente du résultat signifie « aucun rôle » — les appelants
+    utilisent `.get(id, frozenset())`.
+    """
+    if not item_ids:
+        return {}
+    rows = session.execute(
+        select(ItemShare.item_id, ItemShare.role)
         .join(GroupMember, GroupMember.group_id == ItemShare.group_id)
         .where(
-            ItemShare.item_id == item_id,
+            ItemShare.item_id.in_(list(item_ids)),
             ItemShare.tenant_id == tenant_id,
             GroupMember.user_id == user_id,
             GroupMember.tenant_id == tenant_id,
-            ItemShare.role.in_(roles),
         )
-    )
-    return session.scalar(stmt) is not None
+    ).all()
+    out: dict[str, set[str]] = {}
+    for item_id, role in rows:
+        out.setdefault(item_id, set()).add(role)
+    return {k: frozenset(v) for k, v in out.items()}
 
 
-def has_collection_group_role(
-    session: Session, *, tenant_id: str, collection_id: str, user_id: str, roles: set[str]
-) -> bool:
-    stmt = (
-        select(CollectionShare.role)
+def roles_for_collections(
+    session: Session, *, tenant_id: str, user_id: str, collection_ids: Sequence[str]
+) -> dict[str, frozenset[str]]:
+    """Pendant de `roles_for_items` pour les collections. Même contrat."""
+    if not collection_ids:
+        return {}
+    rows = session.execute(
+        select(CollectionShare.collection_id, CollectionShare.role)
         .join(GroupMember, GroupMember.group_id == CollectionShare.group_id)
         .where(
-            CollectionShare.collection_id == collection_id,
+            CollectionShare.collection_id.in_(list(collection_ids)),
             CollectionShare.tenant_id == tenant_id,
             GroupMember.user_id == user_id,
             GroupMember.tenant_id == tenant_id,
-            CollectionShare.role.in_(roles),
         )
-    )
-    return session.scalar(stmt) is not None
+    ).all()
+    out: dict[str, set[str]] = {}
+    for collection_id, role in rows:
+        out.setdefault(collection_id, set()).add(role)
+    return {k: frozenset(v) for k, v in out.items()}
 
 
 def create_group(session: Session, *, tenant_id: str, name: str, created_by: str) -> Group:

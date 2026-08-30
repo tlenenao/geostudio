@@ -126,11 +126,20 @@ pre-commit install --hook-type pre-commit --hook-type commit-msg
 # cœur
 cd core && uv sync
 uv run pytest        # 1896 passed + 5 skipped + 1 failed (mesuré 2026-08-27,
-                     # avec un conteneur postgis-test). Les 5 skips = marqueur
-                     # qgis (sidecar réel requis). L'échec
+                     # avec un conteneur postgis-test ; compte croissant SP
+                     # après SP, non remesuré à chaque clôture — 2015+ à la
+                     # clôture de SP-29a). Les 5 skips = marqueur qgis (sidecar
+                     # réel requis). Deux échecs PRÉEXISTANTS possibles, à ne
+                     # pas imputer à son propre travail :
                      # test_features_rls.py::test_scope_preserves_original_sql_error
-                     # est PRÉEXISTANT (dérive psycopg2/transaction, non
-                     # diagnostiquée) — ne pas l'imputer à son propre travail.
+                     # (dérive psycopg2/transaction, non diagnostiquée —
+                     # confirmé INTERMITTENT à la clôture de SP-29a : absent
+                     # sur un run, présent sur un autre, mêmes commit/config) ;
+                     # test_deployability.py::test_every_compose_substitution_is_documented
+                     # (VITE_AUTH_MODE absent de .env.example malgré sa
+                     # substitution dans docker-compose.yml — trouvé et
+                     # reproduit à plusieurs reprises pendant SP-29a, jamais
+                     # corrigé, hors périmètre de ce plan).
 
 # portes de qualité (mêmes invocations qu'en CI — cf. .github/workflows/ci.yml)
 cd core
@@ -282,12 +291,75 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   bloquant (bug de largeur de titre dans `LayersPanel`, préexistant,
   partagé avec `kind: "vector"`, non introduit par cette branche) —
   **Ready to merge**.
+- **SP-29a** (12 tâches) — fondation de la refonte UI (spec
+  `2026-08-29-refonte-ui-triptyque-design.md`, socle triptyque retenu parmi
+  quinze directions) : `decide()` extraite de `can()` avec parité prouvée sur
+  256 cas, `roles_for_items()`/`roles_for_collections()` en une requête par
+  page, **`ItemRead.permissions`** (read/write/delete/share) calculé par le
+  cœur et lu côté shell par une porte unique (`Gate`/`hasPermission`/
+  `Locked`), état des neuf domaines dérivé du profil (`capabilities.ts` —
+  rôle masque, capacité verrouille), `GET /me` porte les sept capacités de
+  l'instance (parité avec `GET /instance` renforcée par un test paramétré sur
+  les sept), couche i18n (français seul, A12), tokens en deux ambiances
+  (`styles/tokens.css`, contrat testé mécaniquement) et trois fontes
+  empaquetées (Radix UI retenu pour SP-29b à l'issue d'un spike mesuré, doc
+  `docs/superpowers/plans/2026-08-29-sp29a-spike-primitives.md`). Aucun écran
+  modifié **sauf** `ItemActions`, qui cesse de proposer les actions produisant
+  un 403 (exception assumée §10.1.7 ; suit le cœur, pas la maquette, sur
+  Publier). E2E 112/4/0 → **113/4/0**. Revue finale de branche : 0 Critique,
+  2 Important (permissions incohérentes sur `PATCH /items` et 6 outils MCP —
+  la valeur servie contredisait l'action qui venait de réussir — et test de
+  parité `/me`/`instance` plus faible qu'annoncé ; les deux fermés et
+  re-vérifiés indépendamment), 1 Important **plan-mandaté** (même raison de
+  verrouillage répétée trois fois dans le menu `ItemActions` pour Modifier/
+  Publier/Miniature) tranché par Tanguy : laissé tel quel, reporté en suivi
+  non bloquant pour SP-30. Écarts assumés du plan lui-même, à reprendre : les
+  permissions de collection restent à `roles_for_collections()` seul (pas de
+  `CollectionPermissions`, cf. SP-30), le profil « Lecteur » de la spec n'est
+  pas dérivable du modèle actuel (`isAdmin`/`isAnalyst` seulement), « Publier »
+  reste ouvert à tout éditeur (restriction au propriétaire = SP-32 si voulue).
+- **SP-29b** (31 tâches) — kit de ~40 primitives UI headless (Radix UI +
+  tokens GeoStudio) sous `shell/src/ui/kit/`, additif à côté de `ui/*`
+  existants (intouchés, vérifié à plusieurs reprises) : formulaires
+  (Field/Input/Textarea/Select/Combobox/Checkbox/Radio/Switch/Slider/
+  Segmented/ColorField/NumberField), structure (Tabs/Tree/Table/DataTable/
+  Panel/Section/Breadcrumb/Toolbar/Splitter), surfaces (Popover/Menu/
+  Tooltip/Dialog/ConfirmDialog/Drawer), états (Badge/Chip/Toast/Skeleton/
+  EmptyState/Banner/Progress/Spinner), divers (Button/IconButton/Avatar/
+  Kbd) + galerie interne admin (`/internal/kit-gallery`), référence
+  visuelle pour SP-30. 18 paquets Radix/lucide-react épinglés en versions
+  exactes. E2E 113/4/0 inchangé, couverture shell 90,75 % (seuil 88).
+  Revue par tâche systématique + revue finale de branche (modèle le plus
+  capable) : 0 Critique, 3 Important trouvés et corrigés — **tous
+  re-vérifiés par falsification empirique après coup, pas seulement par
+  suite de tests** (le filet `expectTokenizedClasses()` semblait corrigé
+  sur les 7 composants portalisés visés après un premier correctif, mais
+  ne couvrait en réalité encore rien sur 3 d'entre eux — cf. piège n°10 ;
+  4 chaînes françaises hors `t()` ; 2 `aria-label` interpolant un
+  `ReactNode` arbitraire, bug latent pour SP-30). 6 Minor documentés en
+  suivi non bloquant pour SP-30. **Ready to merge** — PR #102 (dev→main,
+  avec SP-29a).
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
 
 ### À venir
 
+- **SP-30** : réécriture des écrans qui
+  consomment enfin `Gate`/`capabilities.ts`/`tokens.css` — c'est là que les 9
+  occurrences restantes de comparaison de droits en dur (`SqlLabPage.tsx`,
+  `AdminExtensionsPage.tsx`, `HarvestSourcesAdminPage.tsx`,
+  `CollectionsAdminPage.tsx`, `AppLayout.tsx`) doivent disparaître, que les
+  permissions de collection et le profil « Lecteur » se tranchent, et que la
+  raison de verrouillage triplée d'`ItemActions` (cf. entrée SP-29a) peut être
+  regroupée si voulu. Basculera les écrans réels sur le kit `ui/kit/`
+  (SP-29b) et retirera les anciens fichiers `ui/*`. 6 suivis non bloquants
+  hérités de SP-29b à traiter en chemin (détail dans son entrée `### Livré`
+  et l'historique d'exécution) : `DataTable.sortDirection` mort, deux `id`
+  DOM dupliqués dans la galerie, ambiance de la galerie non nettoyée au
+  démontage, branche de fermeture de `ConfirmDialog` non couverte,
+  asymétrie contrôlé/non-contrôlé entre surfaces, Providers Tooltip/Toast
+  non exportés par le barrel.
 - Reste **SP-15** : événements/déclencheurs durables au-delà du cron (non
   planifié) ; exposition MCP des noms de secrets (non planifiée) ; **exécuter
   réellement les 5 tests `@pytest.mark.qgis` de SP-15d** avant d'activer
@@ -317,18 +389,44 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
 Liste complète (une centaine d'entrées, par SP) dans l'archive. Ce qui change
 le comportement d'une session :
 
-- **`core`/`worker` ignorent `uv.lock` au build Docker** et récupèrent
-  `mcp==2.0.0`, qui casse l'import `fastmcp` (bug préexistant, documenté depuis
-  SP-21, toujours présent). Conséquence : le job CI **`shell-e2e-oidc`
-  (SP-26/3.8) est attendu rouge de façon déterministe** à son premier run réel
-  — c'est le premier job du dépôt à faire `docker compose build core`. Hors
-  périmètre de tous les SP livrés, par décision de scope répétée.
-- **Volume `pg-data` du projet compose par défaut cassé** (`alembic_version`
-  jamais stampée). Depuis SP-21, `shell` a `depends_on: core:
-  service_healthy` : il reste `Created` au lieu d'afficher une page d'erreur.
-- Autres pannes de packaging préexistantes, rencontrées en sondant la stack
-  réelle : GUC invalide `output_plugin_libraries` dans le `command:` de
-  `postgis`, `libexpat.so.1` manquant pour `defusedxml`.
+- **Stack par défaut vérifiée de bout en bout (2026-08-29)** : les 11 services
+  démarrent tous `healthy` (`docker compose up -d`, image `core`/`worker`/
+  `cdc-worker` reconstruite). Trois entrées ci-dessous, documentées comme
+  bloquantes depuis SP-21, ne se sont **pas reproduites** à cette date et ont
+  été corrigées ou requalifiées à la vérification réelle — piège n°3 :
+  - `mcp==2.0.0` cassant `mcp.server.fastmcp` : ne se reproduit plus.
+    `pyproject.toml` contraint déjà `mcp>=1.12,<2.0` ; le build installe
+    `mcp==1.29.1` et l'import passe. Cause probable : la contrainte a été
+    ajoutée depuis, sans mise à jour de cette note. Si ça revient, vérifier
+    d'abord `pip show mcp` dans l'image avant de ré-imputer à `uv.lock`.
+  - GUC `output_plugin_libraries` sur `postgis` : **valide**, pas une panne —
+    `SHOW output_plugin_libraries;` le confirme dans le conteneur réel.
+  - `libexpat.so.1` manquant pour `defusedxml` (`app/mapicons/svg.py`,
+    `app/harvest/connectors/ows.py`) : **réel**, reproduit (`worker` et
+    `cdc-worker` en crash-loop au premier import de `app.jobs`) —
+    `python:3.12-slim` (Debian trixie) n'embarque plus `libexpat1` par
+    défaut. Corrigé dans `core/Dockerfile` (`apt-get install libexpat1`) ;
+    corrige les trois images qui partagent ce Dockerfile.
+- **Volume `pg-data` du projet compose par défaut** : la commande de `core`
+  applique déjà `alembic upgrade head` avant `uvicorn` (idempotent) — pas de
+  correctif de plus à apporter là. Ce qui bloquait réellement un démarrage
+  `docker compose up -d` à blanc, ce jour-là : `.env` local avec
+  `CORE_SECRETS_MASTER_KEY` vide et `CORE_ENV` absent (les deux font
+  crash-looper `core` — gardes SP-15e §4/§8 et SP-26/3.1 — *après* que les
+  migrations se sont appliquées, donc sans lien avec `pg-data` lui-même mais
+  avec le même symptôme observable : `shell` reste `Created`). `.env.example`
+  a `CORE_ENV=development` ; un `.env` plus ancien copié avant son ajout ne
+  l'a pas. Si `shell` reste `Created` : vérifier `docker logs core` avant de
+  soupçonner `pg-data`.
+- **Martin (:3000 hôte) en conflit de port** : pas une panne du dépôt — un
+  process déjà présent sur la machine de l'opérateur (ex. un `node.exe`
+  Windows côté hôte WSL2, invisible de `ss` côté Linux) fait échouer le
+  port-forwarding de Docker Desktop (`/forwards/expose ... status: 500`).
+  Corrigé de façon pérenne en déplaçant le mapping hôte vers `3010`
+  (`docker-compose.yml`) — 3000 est un port trop commun côté dev JS pour
+  rester un bon choix par défaut ; sans incidence, cf. le commentaire sur
+  place (accès dev uniquement depuis SP-24, `docker-compose.prod.yml` désactive
+  déjà ce port en prod).
 - `deploy/postgis/Dockerfile` + `pg_hba.conf` (non commités) sont **inertes** —
   Postgres lit `$PGDATA/pg_hba.conf`. Ne pas les câbler : ils affaibliraient
   `scram-sha-256` en `md5`.
@@ -388,3 +486,17 @@ le comportement d'une session :
    plusieurs. Nommer les ledgers `.superpowers/sdd/sp<XX>-*`, jamais
    `task-N-report.md` générique — une contamination de rapport a déjà été
    observée.
+10. **jsdom n'implémente pas plusieurs API navigateur consommées par Radix
+    UI** (`ResizeObserver`, `hasPointerCapture`, `scrollIntoView`,
+    `PointerEvent`) et ne fait jamais converger le repositionnement
+    `shift`/`flip` de `@floating-ui/react-dom` (Popover/Select/Combobox/
+    Menu/Tooltip) — stub/polyfill toujours **local au fichier de test**
+    (jamais `shell/src/test/setup.ts` : un stub global y a cassé 2 tests
+    sans rapport ailleurs, SP-29b/Task 8). **Un correctif de filet de test
+    doit être vérifié par falsification** (injecter délibérément le défaut
+    visé, confirmer que le test échoue, puis retirer) — « les tests
+    passent toujours » ne prouve rien : sur SP-29b, un correctif qui
+    semblait réparer `expectTokenizedClasses()` sur 7 fichiers ne
+    vérifiait en réalité toujours rien sur 3 d'entre eux après le premier
+    passage (baseElement pointant sur un `container` custom, contenu
+    vérifié après démontage, contenu jamais ouvert).

@@ -2,6 +2,17 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# libexpat1 : python:3.12-slim (Debian trixie) ne l'embarque plus par défaut,
+# alors que le module stdlib `pyexpat` (utilisé par `defusedxml`, dépendance
+# directe du cœur — app/mapicons/svg.py, app/harvest/connectors/ows.py) le
+# charge dynamiquement au runtime. Sans lui : ImportError "libexpat.so.1:
+# cannot open shared object file" dès qu'un des trois services construits
+# depuis cette image (core/worker/cdc-worker) importe `app.jobs`, qui
+# enregistre toutes les tâches y compris celles import ant ces modules.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends libexpat1 \
+  && rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir uv
 
 # Utilisateur non-root (SP-26/3.6) — créé avant l'installation des

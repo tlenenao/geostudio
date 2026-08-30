@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
 import { createItemClient, FeatureValidationError, SqlQueryError } from "./itemClient";
 import type { DataSource } from "./types";
+import { OWNER_PERMISSIONS } from "../auth/permissions";
 
 // jsdom's Blob shim (used by this test environment) has no .text()/.arrayBuffer();
 // Node's own Blob (from node:buffer) does — swap it in so exportDataSource tests
@@ -833,6 +834,7 @@ test("createBookmarkItem posts a bookmark payload and returns a bookmark Item", 
     date: "",
     configId: "cfg-bookmark",
     isPublished: false,
+    permissions: OWNER_PERMISSIONS,
   });
 });
 
