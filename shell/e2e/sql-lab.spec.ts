@@ -36,7 +36,11 @@ test("un analyste exécute une requête SQL, voit le résultat, et recharge une 
   });
 
   await page.goto("/analytics/sql");
-  await expect(page.getByRole("link", { name: "SQL Lab" })).toBeVisible();
+  // Le lien "SQL Lab" de l'ancien menu latéral a disparu avec l'ancien
+  // chrome (Task 12) : la barre de domaines pointe vers ce même chemin
+  // sous le libellé "Analytique". On vérifie à la place que la page
+  // elle-même (inchangée) a bien rendu, via son propre titre.
+  await expect(page.getByRole("heading", { name: "SQL Lab" })).toBeVisible();
   await page.getByLabel("Requête SQL").fill("select nom, surface from parcs");
   await page.getByRole("button", { name: "Exécuter" }).click();
   await expect(page.getByRole("columnheader", { name: "nom" })).toBeVisible();

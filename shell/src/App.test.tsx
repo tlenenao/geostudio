@@ -25,6 +25,18 @@ vi.mock("./shell/ImportFileButton", () => ({
 }));
 const { AppLayout } = await import("./shell/AppLayout");
 
+// jsdom n'implémente pas window.matchMedia (cf. shell/src/shell/AppLayout.test.tsx) ;
+// AppLayout appelle useNarrowViewport (Task 8) sans mock ici. Stub local au
+// fichier (CLAUDE.md, piège n°10), jamais dans shell/src/test/setup.ts.
+vi.stubGlobal(
+  "matchMedia",
+  vi.fn().mockReturnValue({
+    matches: false,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }),
+);
+
 test("shell layout shows the GeoStudio brand", () => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
