@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useItems, useMe } from "../api/hooks";
 import type { ItemScope, ResourceType } from "../api/types";
 import { RESOURCE_TYPE_LABELS, RESOURCE_TYPE_ORDER } from "../api/resourceTypes";
@@ -18,7 +19,13 @@ export function CatalogPage({
   fixedType?: ResourceType;
 }) {
   const [q, setQ] = useState("");
-  const [type, setType] = useState<ResourceType | "">(fixedType ?? "");
+  const [searchParams] = useSearchParams();
+  const initialType = searchParams.get("type");
+  const validInitialType =
+    initialType !== null && (RESOURCE_TYPE_ORDER as readonly string[]).includes(initialType)
+      ? (initialType as ResourceType)
+      : "";
+  const [type, setType] = useState<ResourceType | "">(fixedType ?? validInitialType);
   const [scope, setScope] = useState<ItemScope>("all");
   const [page, setPage] = useState(1);
   const me = useMe();

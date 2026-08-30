@@ -4,6 +4,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { CatalogPage } from "./CatalogPage";
@@ -22,9 +23,11 @@ function wrapper({ children }: { children: ReactNode }) {
     getToken: () => "test-token",
   });
   return (
-    <QueryClientProvider client={queryClient}>
-      <ItemClientProvider client={client}>{children}</ItemClientProvider>
-    </QueryClientProvider>
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <ItemClientProvider client={client}>{children}</ItemClientProvider>
+      </QueryClientProvider>
+    </MemoryRouter>
   );
 }
 
@@ -113,4 +116,27 @@ test("fixedType locks the type filter and hides the selector", async () => {
   render(<CatalogPage onOpenItem={() => {}} fixedType="bookmark" />, { wrapper });
   await waitFor(() => expect(new URL(lastUrl).searchParams.get("type")).toBe("bookmark"));
   expect(screen.queryByLabelText("Type")).not.toBeInTheDocument();
+});
+
+test("prend le type initial depuis le paramètre d'URL ?type=", async () => {
+  function wrapperWithInitialType({ children }: { children: ReactNode }) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const client = createItemClient({
+      coreUrl: "https://core.test",
+      getToken: () => "test-token",
+    });
+    return (
+      <MemoryRouter initialEntries={["/?type=map"]}>
+        <QueryClientProvider client={queryClient}>
+          <ItemClientProvider client={client}>{children}</ItemClientProvider>
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+  }
+
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper: wrapperWithInitialType });
+  await screen.findByText("GeoStudio").catch(() => {});
+  expect(screen.getByLabelText("Type")).toHaveValue("map");
 });
