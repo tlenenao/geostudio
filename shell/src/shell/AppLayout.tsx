@@ -40,7 +40,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-paper">
+    <div className="flex min-h-screen flex-col bg-background">
       {readOnly && (
         <p className="bg-amber-100 px-6 py-2 text-center text-sm text-amber-900">
           {t("layout.readOnlyBanner")}
@@ -48,7 +48,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       )}
       <TopBar tileset3dEnabled={tileset3dEnabled} />
       {!narrow && <DomainBar profile={profile} />}
-      <div className="flex flex-1 flex-col overflow-hidden">{children}</div>
+      <div className="flex flex-1 flex-col overflow-hidden p-6">{children}</div>
       {narrow && <BottomNav profile={profile} />}
       <StatusBar />
     </div>
