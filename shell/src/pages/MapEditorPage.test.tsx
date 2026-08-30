@@ -36,7 +36,24 @@ vi.mock("@loaders.gl/3d-tiles", async () => {
 
 const { MapEditorPage } = await import("./MapEditorPage");
 
+// jsdom n'implémente pas window.matchMedia (piège n°10) ; TriptychLayout
+// l'appelle via useNarrowViewport. Stub local au fichier, jamais dans
+// shell/src/test/setup.ts. matches: false => le layout "large" (3 volets
+// simultanés), pas les onglets — la valeur par défaut de la plupart des
+// tests existants de ce fichier, qui n'affirment pas sur la largeur.
+function stubMatchMedia(matches: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  );
+}
+
 beforeEach(() => {
+  stubMatchMedia(false);
   mapInstances.length = 0;
   overlayInstances.length = 0;
   // La couche "feature" de `config` (ci-dessous) déclenche désormais un
@@ -208,4 +225,16 @@ test("affiche le panneau d'historique", async () => {
     listConfigRevisions: vi.fn().mockResolvedValue([]),
   });
   expect(await screen.findByText("Historique")).toBeInTheDocument();
+});
+
+test("sous viewport étroit, affiche trois onglets Couches/Carte/Inspecter avec Carte active par défaut", async () => {
+  stubMatchMedia(true);
+  renderEditor({
+    getMapConfig: vi.fn().mockResolvedValue(config),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  const tabs = await screen.findAllByRole("tab");
+  expect(tabs.map((t) => t.textContent)).toEqual(["Couches", "Carte", "Inspecter"]);
+  const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
+  expect(activeTab).toHaveTextContent("Carte");
 });

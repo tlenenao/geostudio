@@ -11,7 +11,8 @@ import { CameraControls } from "../map/CameraControls";
 import { PrintLayoutPanel } from "../builder/print/PrintLayoutPanel";
 import { ExportPanel } from "../builder/print/ExportPanel";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
-import { Button } from "../ui/button";
+import { Button } from "../ui/kit/Button";
+import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useIsExportRender } from "../shell/useIsExportRender";
 import { markExportReady } from "../shell/exportReady";
 
@@ -35,7 +36,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
   if (query.isLoading || (!draft && !query.isError)) return <p role="status">Chargement…</p>;
   if (query.isError || !draft)
     return (
-      <p role="alert" className="text-sm text-red-600">
+      <p role="alert" className="text-sm text-danger">
         Carte introuvable.
       </p>
     );
@@ -66,10 +67,13 @@ export function MapEditorPage({ pk }: { pk: string }) {
 
   // Export/print chrome (SP-17a Task 10): the Playwright worker (Task 6)
   // navigates here with ?exportRender=1 to capture a clean shot of the map
-  // plus the PrintLayoutConfig overlays — no builder aside, no editor UI.
-  // Ready signal = MapLibre "idle" (map.once), relayed via MapView's onReady.
-  // showScaleBar/showNorthArrow are intentionally not rendered yet (known
-  // limitation, tracked in the Task 10 report — not a silent no-op).
+  // plus the PrintLayoutConfig overlays — no builder aside, no editor UI, no
+  // triptyque chrome. Ready signal = MapLibre "idle" (map.once), relayed via
+  // MapView's onReady. showScaleBar/showNorthArrow are intentionally not
+  // rendered yet (known limitation, tracked in the Task 10 report — not a
+  // silent no-op). bg-white/90 stays hardcoded here on purpose (a print
+  // artifact meant to look like paper, not UI chrome — spec §2.2, the map
+  // itself also always stays light regardless of ambiance).
   if (isExportRender) {
     return (
       <div className="relative h-full w-full">
@@ -105,47 +109,70 @@ export function MapEditorPage({ pk }: { pk: string }) {
   }
 
   return (
-    <div className="flex h-full gap-4">
-      <aside className="flex w-72 flex-col gap-4 overflow-auto">
-        <BasemapSelect value={draft.basemap.style} onChange={setStyle} />
-        <LayersPanel layers={draft.layers} onChange={setLayers} />
-        <TerrainPanel value={draft.terrain ?? null} onChange={setTerrain} />
-        <CameraControls
-          pitch={draft.view.pitch ?? 0}
-          bearing={draft.view.bearing ?? 0}
-          onChange={setCamera}
-        />
-        <PrintLayoutPanel value={draft.printLayout ?? null} onChange={setPrintLayout} />
-        <ConfigHistoryPanel
-          pk={pk}
-          currentVersion={null}
-          onRestored={async () => setDraft(await client.getMapConfig(pk))}
-        />
-        {exportEnabled && <ExportPanel itemId={pk} />}
-        <Button
-          size="sm"
-          className="w-fit"
-          disabled={save.isPending}
-          onClick={() => save.mutate(draft)}
-        >
-          Enregistrer
-        </Button>
-        {save.isError && (
-          <p role="alert" className="text-sm text-red-600">
-            Échec de l'enregistrement.
-          </p>
-        )}
-      </aside>
-      <div className="relative flex-1">
-        <MapView
-          ref={mapViewRef}
-          config={draft}
-          onViewChange={setView}
-          getAuthToken={client.getAuthToken}
-          getCoreUrl={client.getCoreUrl}
-          loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
-        />
-      </div>
+    <div className="-m-6 flex flex-1 flex-col overflow-hidden">
+      <TriptychLayout
+        defaultTabId="map"
+        browse={{
+          id: "layers",
+          label: "Couches",
+          content: (
+            <div className="p-3">
+              <LayersPanel layers={draft.layers} onChange={setLayers} />
+            </div>
+          ),
+        }}
+        work={{
+          id: "map",
+          label: "Carte",
+          content: (
+            <div className="relative h-full w-full">
+              <MapView
+                ref={mapViewRef}
+                config={draft}
+                onViewChange={setView}
+                getAuthToken={client.getAuthToken}
+                getCoreUrl={client.getCoreUrl}
+                loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
+              />
+            </div>
+          ),
+        }}
+        inspect={{
+          id: "settings",
+          label: "Inspecter",
+          content: (
+            <div className="flex flex-col gap-4 p-3">
+              <BasemapSelect value={draft.basemap.style} onChange={setStyle} />
+              <TerrainPanel value={draft.terrain ?? null} onChange={setTerrain} />
+              <CameraControls
+                pitch={draft.view.pitch ?? 0}
+                bearing={draft.view.bearing ?? 0}
+                onChange={setCamera}
+              />
+              <PrintLayoutPanel value={draft.printLayout ?? null} onChange={setPrintLayout} />
+              <ConfigHistoryPanel
+                pk={pk}
+                currentVersion={null}
+                onRestored={async () => setDraft(await client.getMapConfig(pk))}
+              />
+              {exportEnabled && <ExportPanel itemId={pk} />}
+              <Button
+                size="sm"
+                className="w-fit"
+                disabled={save.isPending}
+                onClick={() => save.mutate(draft)}
+              >
+                Enregistrer
+              </Button>
+              {save.isError && (
+                <p role="alert" className="text-sm text-danger">
+                  Échec de l'enregistrement.
+                </p>
+              )}
+            </div>
+          ),
+        }}
+      />
     </div>
   );
 }
