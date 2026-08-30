@@ -24,3 +24,6 @@ export { Tabs } from "./Tabs";
 export { Tree, type TreeNode } from "./Tree";
 export { Table } from "./Table";
 export { DataTable } from "./DataTable";
+export { Panel } from "./Panel";
+export { Section } from "./Section";
+export { Breadcrumb } from "./Breadcrumb";
