@@ -9,7 +9,7 @@ import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import type { Item } from "../api/types";
-import { ShareDialog } from "./ShareDialog";
+import { ShareForm } from "./ShareForm";
 import { OWNER_PERMISSIONS } from "../auth/permissions";
 
 const item: Item = {
@@ -48,15 +48,15 @@ test("saves the sharing payload for a checked group", async () => {
       return new HttpResponse(null, { status: 204 });
     }),
   );
-  const onClose = vi.fn();
+  const onDone = vi.fn();
   render(
     <Harness>
-      <ShareDialog item={item} open onClose={onClose} />
+      <ShareForm item={item} onDone={onDone} />
     </Harness>,
   );
   await userEvent.click(await screen.findByRole("checkbox", { name: "Groupe Équipe B" }));
   await userEvent.click(screen.getByRole("button", { name: /enregistrer/i }));
-  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  await waitFor(() => expect(onDone).toHaveBeenCalled());
   expect(body).toEqual({
     public: true,
     groups: expect.arrayContaining([
@@ -66,17 +66,29 @@ test("saves the sharing payload for a checked group", async () => {
   });
 });
 
-test("keeps the dialog open and shows an alert when saving fails", async () => {
+test("shows an alert and does not call onDone when saving fails", async () => {
   server.use(
     http.put("https://core.test/items/:pk/sharing", () => new HttpResponse(null, { status: 500 })),
   );
-  const onClose = vi.fn();
+  const onDone = vi.fn();
   render(
     <Harness>
-      <ShareDialog item={item} open onClose={onClose} />
+      <ShareForm item={item} onDone={onDone} />
     </Harness>,
   );
   await userEvent.click(await screen.findByRole("button", { name: /enregistrer/i }));
   expect(await screen.findByText(/échec du partage/i)).toBeInTheDocument();
-  expect(onClose).not.toHaveBeenCalled();
+  expect(onDone).not.toHaveBeenCalled();
+});
+
+test("annuler appelle onDone sans enregistrer", async () => {
+  const onDone = vi.fn();
+  render(
+    <Harness>
+      <ShareForm item={item} onDone={onDone} />
+    </Harness>,
+  );
+  await screen.findByRole("checkbox", { name: "Groupe Équipe B" });
+  await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+  expect(onDone).toHaveBeenCalled();
 });
