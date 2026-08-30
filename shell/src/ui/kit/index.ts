@@ -22,3 +22,5 @@ export { Select } from "./Select";
 export { Combobox } from "./Combobox";
 export { Tabs } from "./Tabs";
 export { Tree, type TreeNode } from "./Tree";
+export { Table } from "./Table";
+export { DataTable } from "./DataTable";
