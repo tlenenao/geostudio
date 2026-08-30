@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Link, useLocation } from "react-router-dom";
 import { navigableDomains, type Profile } from "../../auth/capabilities";
-import { DOMAIN_PATHS } from "./domainRoutes";
+import { DOMAIN_PATHS, isDomainActive } from "./domainRoutes";
 import { t } from "../../i18n";
 
 export function DomainBar({ profile }: { profile: Profile }) {
@@ -15,27 +15,10 @@ export function DomainBar({ profile }: { profile: Profile }) {
     >
       {domains.map(({ domain, state }) => {
         const path = DOMAIN_PATHS[domain.id];
-        // Plusieurs domaines (Cartes/Données/Apps & sites/Automatisation)
-        // pointent tous vers "/" avec un ?type= différent (Task 6) : comparer
-        // seulement le pathname les ferait paraître actifs tous en même
-        // temps. Comparer aussi la recherche pour ceux dont le chemin en
-        // porte une ; pour les autres (dont Catalogue, "/" sans ?type=),
-        // comparer le pathname ET exiger une recherche vide — sinon
-        // Catalogue ("/") paraîtrait actif même sur "/?type=map", qui
-        // partage le même pathname.
-        //
-        // On utilise `Link`, pas `NavLink` : `NavLink` calcule sa PROPRE
-        // notion d'« actif » à partir du seul pathname de `to` (la query
-        // est perdue par `useResolvedPath`), et sa déstructuration par
-        // défaut réinjecte "page" dès qu'on lui passe `aria-current:
-        // undefined` — impossible d'annuler son `aria-current`/`className`
-        // internes depuis l'extérieur. Vérifié empiriquement : `NavLink` ici
-        // marquait Catalogue actif sur "/?type=map" malgré un `aria-current`
-        // explicite à `undefined`.
-        const currentHref = location.pathname + location.search;
-        const isActive = path.includes("?")
-          ? currentHref === path
-          : location.pathname === path && location.search === "";
+        // Cf. isDomainActive (domainRoutes.ts) pour le détail : plusieurs
+        // domaines partagent le pathname "/" et ne diffèrent que par ?type=,
+        // d'où l'usage de `Link` plutôt que `NavLink`.
+        const isActive = isDomainActive(path, location);
         if (state === "locked") {
           return (
             <span

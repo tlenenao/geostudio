@@ -54,6 +54,31 @@ test(
   OPEN_TIMEOUT,
 );
 
+test(
+  "le menu Plus ne marque qu'une seule entrée active même si plusieurs domaines partagent /",
+  async () => {
+    // Régression (Finding 6) : le menu "Plus" rendait ses domaines restants
+    // via NavLink, dont la détection d'actif ignore la recherche d'URL —
+    // Données/Apps & sites/Automatisation (tous "/") auraient tous porté
+    // aria-current="page" en même temps sur "/?type=dataset".
+    render(
+      <MemoryRouter initialEntries={["/?type=dataset"]}>
+        <BottomNav profile={PROFILE} />
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Plus" }));
+    expect(screen.getByRole("link", { name: "Données" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Apps & sites" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "Automatisation" })).not.toHaveAttribute(
+      "aria-current",
+    );
+    expect(screen.getByRole("link", { name: "Administration" })).not.toHaveAttribute(
+      "aria-current",
+    );
+  },
+  OPEN_TIMEOUT,
+);
+
 test("marque l'entrée fixe active via aria-current, y compris sur une route en ?type=", () => {
   render(
     <MemoryRouter initialEntries={["/?type=map"]}>

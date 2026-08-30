@@ -28,7 +28,7 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
             geometryType: null,
             srid: null,
             pkColumn: "id",
-            canWrite: true,
+            permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 2,
             owner: "mockuser",
           },

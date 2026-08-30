@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { navigableDomains, type Profile } from "../../auth/capabilities";
-import { DOMAIN_PATHS } from "./domainRoutes";
+import { DOMAIN_PATHS, isDomainActive } from "./domainRoutes";
 import { Popover } from "../../ui/kit/Popover";
 import { t } from "../../i18n";
 
@@ -18,13 +18,10 @@ export function BottomNav({ profile }: { profile: Profile }) {
     <nav aria-label={t("bottomNav.label")} className="flex items-center border-t border-rule">
       {fixed.map(({ domain }) => {
         const path = DOMAIN_PATHS[domain.id];
-        // Même calcul d'actif que DomainBar (cf. son commentaire) : plusieurs
+        // Même calcul d'actif que DomainBar (cf. isDomainActive) : plusieurs
         // domaines partagent le pathname "/" et ne diffèrent que par
         // ?type=, donc comparer aussi la recherche.
-        const currentHref = location.pathname + location.search;
-        const isActive = path.includes("?")
-          ? currentHref === path
-          : location.pathname === path && location.search === "";
+        const isActive = isDomainActive(path, location);
         return (
           <button
             key={domain.id}
@@ -43,6 +40,7 @@ export function BottomNav({ profile }: { profile: Profile }) {
       })}
       <Popover
         aria-label={t("bottomNav.more")}
+        side="top"
         trigger={
           <button
             type="button"
@@ -53,11 +51,23 @@ export function BottomNav({ profile }: { profile: Profile }) {
         }
       >
         <div className="flex flex-col gap-1">
-          {rest.map(({ domain }) => (
-            <NavLink key={domain.id} to={DOMAIN_PATHS[domain.id]} className="px-2 py-1 text-sm">
-              {t(domain.labelKey)}
-            </NavLink>
-          ))}
+          {rest.map(({ domain }) => {
+            const path = DOMAIN_PATHS[domain.id];
+            // Même raison que pour `fixed` ci-dessus et que DomainBar :
+            // `NavLink` réintroduirait plusieurs entrées actives à la fois
+            // sur "/" (cf. isDomainActive).
+            const isActive = isDomainActive(path, location);
+            return (
+              <Link
+                key={domain.id}
+                to={path}
+                aria-current={isActive ? "page" : undefined}
+                className="px-2 py-1 text-sm"
+              >
+                {t(domain.labelKey)}
+              </Link>
+            );
+          })}
         </div>
       </Popover>
     </nav>

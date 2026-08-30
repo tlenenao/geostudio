@@ -26,7 +26,7 @@ function renderBar(profile: Profile, initialPath = "/") {
   );
 }
 
-test("affiche les sept domaines accessibles à un créateur, sans Administration", () => {
+test("affiche les sept domaines accessibles à un créateur, sans Administration ni Analytique", () => {
   renderBar(BASE_PROFILE);
   for (const label of [
     "Catalogue",
@@ -34,13 +34,15 @@ test("affiche les sept domaines accessibles à un créateur, sans Administration
     "Données",
     "Apps & sites",
     "Automatisation",
-    "Analytique",
     "Tâches",
     "Paramètres",
   ]) {
     expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
   }
   expect(screen.queryByRole("link", { name: "Administration" })).not.toBeInTheDocument();
+  // Régression (Finding 7) : SqlLabPage refuse l'accès à qui n'est pas
+  // analyste — le domaine ne doit donc pas apparaître pour ce profil.
+  expect(screen.queryByRole("link", { name: "Analytique" })).not.toBeInTheDocument();
 });
 
 test("affiche Administration pour un administrateur", () => {
@@ -48,8 +50,13 @@ test("affiche Administration pour un administrateur", () => {
   expect(screen.getByRole("link", { name: "Administration" })).toBeInTheDocument();
 });
 
+test("affiche Analytique pour un analyste", () => {
+  renderBar({ ...BASE_PROFILE, isAnalyst: true });
+  expect(screen.getByRole("link", { name: "Analytique" })).toBeInTheDocument();
+});
+
 test("marque le domaine courant actif", () => {
-  renderBar(BASE_PROFILE, "/analytics/sql");
+  renderBar({ ...BASE_PROFILE, isAnalyst: true }, "/analytics/sql");
   expect(screen.getByRole("link", { name: "Analytique" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByRole("link", { name: "Catalogue" })).not.toHaveAttribute("aria-current");
 });

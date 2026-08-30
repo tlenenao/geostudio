@@ -4,7 +4,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { vi } from "vitest";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Link } from "react-router-dom";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { CatalogPage } from "./CatalogPage";
@@ -139,4 +139,41 @@ test("prend le type initial depuis le paramètre d'URL ?type=", async () => {
   render(<CatalogPage onOpenItem={() => {}} />, { wrapper: wrapperWithInitialType });
   await screen.findByText("GeoStudio").catch(() => {});
   expect(screen.getByLabelText("Type")).toHaveValue("map");
+});
+
+test("suit ?type= quand il change après une navigation (DomainBar) sans remonter la page", async () => {
+  // Régression : CatalogPage lisait ?type= dans un useState initializer, donc
+  // une navigation vers la même page montée (Cartes -> Données via DomainBar)
+  // ne mettait pas à jour le select/la grille. L'URL doit être la seule
+  // source de vérité.
+  function Harness() {
+    return (
+      <>
+        <Link to="/?type=dataset">Données</Link>
+        <CatalogPage onOpenItem={() => {}} />
+      </>
+    );
+  }
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const client = createItemClient({
+    coreUrl: "https://core.test",
+    getToken: () => "test-token",
+  });
+  render(
+    <MemoryRouter initialEntries={["/?type=map"]}>
+      <QueryClientProvider client={queryClient}>
+        <ItemClientProvider client={client}>
+          <Harness />
+        </ItemClientProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+
+  expect(screen.getByLabelText("Type")).toHaveValue("map");
+
+  await userEvent.click(screen.getByText("Données"));
+
+  await waitFor(() => expect(screen.getByLabelText("Type")).toHaveValue("dataset"));
 });

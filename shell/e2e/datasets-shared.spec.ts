@@ -26,7 +26,7 @@ test("create a dataset, edit a column label, then promote an app's inline source
             geometryType: "Point",
             srid: 4326,
             pkColumn: "id",
-            canWrite: true,
+            permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 3,
             owner: "alice",
           },

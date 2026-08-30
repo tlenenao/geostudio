@@ -19,13 +19,25 @@ export function CatalogPage({
   fixedType?: ResourceType;
 }) {
   const [q, setQ] = useState("");
-  const [searchParams] = useSearchParams();
-  const initialType = searchParams.get("type");
-  const validInitialType =
-    initialType !== null && (RESOURCE_TYPE_ORDER as readonly string[]).includes(initialType)
-      ? (initialType as ResourceType)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlType = searchParams.get("type");
+  const validUrlType =
+    urlType !== null && (RESOURCE_TYPE_ORDER as readonly string[]).includes(urlType)
+      ? (urlType as ResourceType)
       : "";
-  const [type, setType] = useState<ResourceType | "">(fixedType ?? validInitialType);
+  // L'URL est la source de vérité (DomainBar navigue en changeant ?type=) :
+  // pas de useState local qui figerait la valeur au premier rendu et
+  // ignorerait les navigations suivantes vers la même page montée.
+  const type = fixedType ?? validUrlType;
+  const setType = (next: ResourceType | "") => {
+    const params = new URLSearchParams(searchParams);
+    if (next) {
+      params.set("type", next);
+    } else {
+      params.delete("type");
+    }
+    setSearchParams(params);
+  };
   const [scope, setScope] = useState<ItemScope>("all");
   const [page, setPage] = useState(1);
   const me = useMe();
