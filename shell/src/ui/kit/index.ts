@@ -28,3 +28,4 @@ export { Panel } from "./Panel";
 export { Section } from "./Section";
 export { Breadcrumb } from "./Breadcrumb";
 export { Toolbar } from "./Toolbar";
+export { Splitter } from "./Splitter";
