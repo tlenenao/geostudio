@@ -539,6 +539,7 @@ export function createItemClient(opts: {
         lastName: string;
         isAdmin: boolean;
         isAnalyst: boolean;
+        hasAnyEditorRole: boolean;
       }>("GET", `/me`);
       return {
         username: data.username,
@@ -546,6 +547,7 @@ export function createItemClient(opts: {
         lastName: data.lastName,
         isAdmin: data.isAdmin,
         isAnalyst: data.isAnalyst,
+        hasAnyEditorRole: data.hasAnyEditorRole,
       };
     },
 
