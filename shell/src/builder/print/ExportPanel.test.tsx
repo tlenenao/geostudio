@@ -102,6 +102,25 @@ describe("ExportPanel", () => {
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
   });
+
+  it("annuler referme le sélecteur de format sans lancer d'export", async () => {
+    const createExport = vi.fn();
+    renderPanel({ createExport, getExportJob: vi.fn() });
+
+    await userEvent.click(screen.getByRole("button", { name: "Exporter" }));
+    expect(screen.getByText("Choisir le format d'export")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+    expect(screen.queryByText("Choisir le format d'export")).not.toBeInTheDocument();
+    expect(createExport).not.toHaveBeenCalled();
+  });
+
+  it("le sélecteur de format n'est jamais une fenêtre modale (pas de role=dialog)", async () => {
+    renderPanel({ createExport: vi.fn(), getExportJob: vi.fn() });
+    await userEvent.click(screen.getByRole("button", { name: "Exporter" }));
+    expect(screen.getByText("Choisir le format d'export")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 });
 
 // Fix round (finding I7) : le job d'export ne quitte jamais "running" —
