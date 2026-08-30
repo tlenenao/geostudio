@@ -2,6 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import { useMemo } from "react";
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { loadConfig } from "./config";
 import { AuthProvider } from "./auth/AuthProvider";
 import { useAuth } from "./auth/useAuth";
@@ -40,12 +41,14 @@ function AppShell() {
 
 export default function App() {
   return (
-    <AppErrorBoundary>
-      <AuthProvider config={config}>
-        <QueryClientProvider client={queryClient}>
-          <AppShell />
-        </QueryClientProvider>
-      </AuthProvider>
-    </AppErrorBoundary>
+    <TooltipPrimitive.Provider>
+      <AppErrorBoundary>
+        <AuthProvider config={config}>
+          <QueryClientProvider client={queryClient}>
+            <AppShell />
+          </QueryClientProvider>
+        </AuthProvider>
+      </AppErrorBoundary>
+    </TooltipPrimitive.Provider>
   );
 }
