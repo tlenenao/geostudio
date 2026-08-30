@@ -32,6 +32,9 @@ export const fr = {
   "locked.needDelete": "Suppression réservée au propriétaire et aux éditeurs.",
   "locked.capabilityOff": "Désactivé sur cette instance — voir un administrateur.",
 
+  // Chrome de page (AppLayout)
+  "layout.readOnlyBanner": "Mode démo — lecture seule, les modifications ne sont pas enregistrées.",
+
   // Domaines
   "domain.catalog": "Catalogue",
   "domain.maps": "Cartes",

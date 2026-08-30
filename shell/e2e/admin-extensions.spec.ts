@@ -51,7 +51,11 @@ test("un admin voit les extensions (actives et désactivées) et peut les active
   });
 
   await page.goto("/admin/extensions");
-  await expect(page.getByRole("link", { name: "Extensions" })).toBeVisible();
+  // Le lien "Extensions" de l'ancien menu latéral a disparu avec l'ancien
+  // chrome (Task 12) : la barre de domaines n'a plus qu'un seul lien
+  // "Administration" pour ce domaine. On vérifie à la place que la page
+  // elle-même (inchangée) a bien rendu, via son propre titre.
+  await expect(page.getByRole("heading", { name: "Extensions" })).toBeVisible();
   const toggle = page.getByRole("checkbox", { name: "Actif : Jauge (extension)" });
   await expect(toggle).toBeChecked();
   await toggle.click();

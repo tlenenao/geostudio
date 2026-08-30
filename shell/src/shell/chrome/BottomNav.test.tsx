@@ -30,16 +30,29 @@ test("affiche toujours les quatre entrées fixes", () => {
   }
 });
 
-test("Plus ouvre les domaines restants accessibles au profil", async () => {
-  render(
-    <MemoryRouter>
-      <BottomNav profile={PROFILE} />
-    </MemoryRouter>,
-  );
-  await userEvent.click(screen.getByRole("button", { name: "Plus" }));
-  expect(screen.getByRole("link", { name: "Administration" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Données" })).toBeInTheDocument();
-});
+// BottomNav rend son menu "Plus" via ui/kit/Popover (@floating-ui/react-dom) :
+// même coût de repositionnement sous jsdom que Popover.test.tsx (~2-3s par
+// ouverture), qui dépasse par intermittence le testTimeout par défaut du
+// dépôt (5000ms) sous charge CPU, et de façon reproductible sous couverture
+// v8 — précédent exact documenté dans Popover.test.tsx (Task 31, portes de
+// qualité) et jamais reporté ici (piège n°4 : garde-fou non propagé à un
+// consommateur du même composant).
+const OPEN_TIMEOUT = 45000;
+
+test(
+  "Plus ouvre les domaines restants accessibles au profil",
+  async () => {
+    render(
+      <MemoryRouter>
+        <BottomNav profile={PROFILE} />
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Plus" }));
+    expect(screen.getByRole("link", { name: "Administration" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Données" })).toBeInTheDocument();
+  },
+  OPEN_TIMEOUT,
+);
 
 test("marque l'entrée fixe active via aria-current, y compris sur une route en ?type=", () => {
   render(

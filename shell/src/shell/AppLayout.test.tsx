@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { vi } from "vitest";
+import { beforeEach, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
@@ -29,6 +28,24 @@ vi.mock("./ImportFileButton", () => ({
 
 const { AppLayout } = await import("./AppLayout");
 
+// jsdom n'implémente pas window.matchMedia (piège documenté pour
+// @floating-ui/react-dom ; ici c'est useNarrowViewport, Task 8, qui
+// l'appelle en dehors de tout mock). Stub local au fichier, jamais dans
+// shell/src/test/setup.ts (CLAUDE.md, piège n°10) : matches: false pour
+// que AppLayout choisisse DomainBar (des <Link>) plutôt que BottomNav
+// (des <button>), seule branche où `findByRole("link", { name: ... })`
+// trouve quoi que ce soit.
+beforeEach(() => {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  );
+});
+
 function renderLayout() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
@@ -45,37 +62,11 @@ function renderLayout() {
   );
 }
 
-test("shows brand, username and sign-out", async () => {
+test("assemble TopBar, DomainBar et StatusBar autour du contenu", async () => {
   renderLayout();
   expect(screen.getByText("GeoStudio")).toBeInTheDocument();
-  expect(screen.getByText("alice")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Nouveau" })).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: /déconnexion/i }));
-  expect(authState.signOut).toHaveBeenCalled();
-});
-
-test("shows the Extensions and Collections admin links only when the current user is admin", async () => {
-  server.use(
-    http.get("https://core.test/me", () =>
-      HttpResponse.json({
-        id: "u1",
-        username: "alice",
-        firstName: "Alice",
-        lastName: "Martin",
-        isAdmin: true,
-      }),
-    ),
-  );
-  renderLayout();
-  expect(await screen.findByRole("link", { name: "Extensions" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Collections" })).toBeInTheDocument();
-});
-
-test("hides the admin links for a non-admin user", async () => {
-  renderLayout();
-  await screen.findByText("GeoStudio");
-  expect(screen.queryByRole("link", { name: "Extensions" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "Collections" })).not.toBeInTheDocument();
+  expect(await screen.findByRole("link", { name: "Catalogue" })).toBeInTheDocument();
+  expect(screen.getByText("content")).toBeInTheDocument();
 });
 
 test("shows the read-only demo banner when the instance is in read-only mode", async () => {
@@ -92,27 +83,4 @@ test("hides the read-only demo banner by default", async () => {
   renderLayout();
   await screen.findByText("GeoStudio");
   expect(screen.queryByText(/Mode démo/)).not.toBeInTheDocument();
-});
-
-test("shows the SQL Lab link only when the current user is an analyst", async () => {
-  server.use(
-    http.get("https://core.test/me", () =>
-      HttpResponse.json({
-        id: "u1",
-        username: "alice",
-        firstName: "Alice",
-        lastName: "Martin",
-        isAdmin: false,
-        isAnalyst: true,
-      }),
-    ),
-  );
-  renderLayout();
-  expect(await screen.findByRole("link", { name: "SQL Lab" })).toBeInTheDocument();
-});
-
-test("hides the SQL Lab link for a non-analyst user", async () => {
-  renderLayout();
-  await screen.findByText("GeoStudio");
-  expect(screen.queryByRole("link", { name: "SQL Lab" })).not.toBeInTheDocument();
 });

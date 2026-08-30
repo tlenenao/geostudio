@@ -94,7 +94,11 @@ test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne d
   });
 
   await page.goto("/admin/harvest");
-  await expect(page.getByRole("link", { name: "Moissonnage" })).toBeVisible();
+  // Le lien "Moissonnage" de l'ancien menu latéral a disparu avec l'ancien
+  // chrome (Task 12) : la barre de domaines n'a plus qu'un seul lien
+  // "Administration" pour ce domaine. On vérifie à la place que la page
+  // elle-même (inchangée) a bien rendu, via son propre titre.
+  await expect(page.getByRole("heading", { name: "Moissonnage" })).toBeVisible();
 
   await page.getByRole("button", { name: "Ajouter une source" }).click();
   const dialog = page.getByRole("dialog", { name: "Ajouter une source" });
