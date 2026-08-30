@@ -17,6 +17,7 @@ import { SqlLabPage } from "../pages/SqlLabPage";
 import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
 import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
 import { HarvestSourcesAdminPage } from "../pages/HarvestSourcesAdminPage";
+import { KitGalleryPage } from "../pages/KitGalleryPage";
 import { RequireAuth } from "../auth/RequireAuth";
 import { AppLayout } from "./AppLayout";
 import { useItemClient } from "../api/ItemClientProvider";
@@ -274,6 +275,7 @@ export function AppRoutes() {
         <Route path="/admin/extensions" element={<AdminExtensionsPage />} />
         <Route path="/admin/collections" element={<CollectionsAdminPage />} />
         <Route path="/admin/harvest" element={<HarvestSourcesAdminPage />} />
+        <Route path="/internal/kit-gallery" element={<KitGalleryPage />} />
       </Route>
       <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
       <Route path="/sites/:slug" element={<SitePublicRoute />} />
