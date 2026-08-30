@@ -116,20 +116,7 @@ def get_feature_counter():
     return counter
 
 
-def _can_write_collection(session, user, col) -> bool:
-    if user is None:
-        return False
-    return col.editable and can(
-        session,
-        user_id=user.id,
-        action="write",
-        item=repo.get_access_facts(col),
-        kind="collection",
-        actor_is_admin=user.is_admin,
-    )
-
-
-def _collection_json(col, can_write: bool, owner: str | None = None) -> dict:
+def _collection_json(col, permissions, owner: str | None = None) -> dict:
     return {
         "id": col.id,
         "title": col.title,
@@ -140,7 +127,7 @@ def _collection_json(col, can_write: bool, owner: str | None = None) -> dict:
         "geometryType": col.geometry_type,
         "srid": col.srid,
         "pkColumn": col.pk_column,
-        "canWrite": can_write,
+        "permissions": permissions.model_dump(),
         "featureCount": col.feature_count,
         "owner": owner,
     }
@@ -221,7 +208,14 @@ def register_collection(
         object_id=col.id,
         payload={"tableName": col.table_name},
     )
-    return _collection_json(col, _can_write_collection(session, user, col))
+    permissions = repo.collection_permissions_by_id(
+        session,
+        tenant_id=user.tenant_id,
+        current_user_id=user.id,
+        actor_is_admin=user.is_admin,
+        collections=[col],
+    )[col.id]
+    return _collection_json(col, permissions)
 
 
 @router.post("/collections/empty", status_code=201)
@@ -243,7 +237,14 @@ def create_empty_collection_route(
         introspect=introspect,
         apply_ddl=apply_ddl,
     )
-    return _collection_json(col, True)
+    permissions = repo.collection_permissions_by_id(
+        session,
+        tenant_id=user.tenant_id,
+        current_user_id=user.id,
+        actor_is_admin=user.is_admin,
+        collections=[col],
+    )[col.id]
+    return _collection_json(col, permissions)
 
 
 @router.get("/collections")
@@ -269,12 +270,16 @@ def list_collections(
         if owner_ids
         else {}
     )
+    permissions_by_id = repo.collection_permissions_by_id(
+        session,
+        tenant_id=tenant_id,
+        current_user_id=user.id if user else None,
+        actor_is_admin=bool(user and user.is_admin),
+        collections=cols,
+    )
     return {
         "collections": [
-            _collection_json(
-                c, _can_write_collection(session, user, c), owner=owners.get(c.owner_id)
-            )
-            for c in cols
+            _collection_json(c, permissions_by_id[c.id], owner=owners.get(c.owner_id)) for c in cols
         ]
     }
 
@@ -326,7 +331,14 @@ def get_collection(
     extent_provider=Depends(get_extent_provider),
 ):
     col = get_readable_collection(session, user, collection_id)
-    body = _collection_json(col, _can_write_collection(session, user, col))
+    permissions = repo.collection_permissions_by_id(
+        session,
+        tenant_id=col.tenant_id,
+        current_user_id=user.id if user else None,
+        actor_is_admin=bool(user and user.is_admin),
+        collections=[col],
+    )[col.id]
+    body = _collection_json(col, permissions)
     body["itemType"] = "feature"
     base = str(request.base_url).rstrip("/")
     body["links"] = [
@@ -407,7 +419,14 @@ def patch_collection(
         object_id=col.id,
         payload=body.model_dump(exclude_none=True),
     )
-    return _collection_json(col, _can_write_collection(session, user, col))
+    permissions = repo.collection_permissions_by_id(
+        session,
+        tenant_id=user.tenant_id,
+        current_user_id=user.id,
+        actor_is_admin=user.is_admin,
+        collections=[col],
+    )[col.id]
+    return _collection_json(col, permissions)
 
 
 @router.delete("/collections/{collection_id}", status_code=204)
