@@ -46,6 +46,8 @@ export type Me = {
   isAdmin: boolean;
   isAnalyst: boolean;
   hasAnyEditorRole: boolean;
+  version: string;
+  tenantSlug: string;
 };
 
 export type InstanceInfo = {
