@@ -37,7 +37,7 @@ export function NumberField({
     <div className="flex items-center gap-1">
       <IconButton
         icon={<Minus size={14} />}
-        aria-label={t("kit.numberField.decrease")}
+        aria-label={t("numberField.decrease")}
         size="sm"
         disabled={min !== undefined && value <= min}
         onClick={() => {
@@ -61,7 +61,7 @@ export function NumberField({
       />
       <IconButton
         icon={<Plus size={14} />}
-        aria-label={t("kit.numberField.increase")}
+        aria-label={t("numberField.increase")}
         size="sm"
         disabled={max !== undefined && value >= max}
         onClick={() => {
