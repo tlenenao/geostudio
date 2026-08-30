@@ -185,7 +185,7 @@ test("surfaces a save failure", async () => {
   expect(await screen.findByText(/échec de l'enregistrement/i)).toBeInTheDocument();
 });
 
-test("exportRender=1 renders a nude chrome (no builder aside/save button) and marks the page export-ready once the map idles", async () => {
+test("exportRender=1 hides the builder chrome (no save button/layer removal controls) and marks the page export-ready once the map idles", async () => {
   renderEditor(
     {
       getMapConfig: vi.fn().mockResolvedValue({

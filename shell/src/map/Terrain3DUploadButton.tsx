@@ -92,13 +92,30 @@ export function Terrain3DUploadButton({
 
   const busy = phase === "uploading" || phase === "converting";
 
+  // Le déclencheur ouvre/ferme le même panneau que le bouton Annuler, avec
+  // les mêmes garanties (finding I1, revue finale SP-30c) : désactivé
+  // pendant l'envoi/la conversion (sinon un clic masquerait le panneau
+  // pendant que submit()/poll() tournent encore en arrière-plan, sans rien
+  // pour refléter leur succès ou leur échec) et, à la fermeture, réinitialise
+  // intégralement l'état (comme close()) plutôt qu'un simple setOpen(false)
+  // qui laisserait une erreur ou un brouillon périmés visibles à la
+  // réouverture.
+  function toggle() {
+    if (busy) return;
+    if (open) {
+      close();
+    } else {
+      setOpen(true);
+    }
+  }
+
   // Panneau en ligne, pas une fenêtre modale (spec §2.1) : plus d'Escape ni
-  // de backdrop à intercepter. Seul le bouton Annuler ferme, et reste
+  // de backdrop à intercepter. Le bouton Annuler ferme lui aussi, et reste
   // désactivé pendant l'envoi/la conversion — fermer laisserait submit()/
   // poll() tourner en arrière-plan sans rien pour le refléter.
   return (
     <div className="flex flex-col gap-2">
-      <Button size="sm" variant="outline" className="w-fit" onClick={() => setOpen((o) => !o)}>
+      <Button size="sm" variant="outline" className="w-fit" onClick={toggle} disabled={busy}>
         Nouveau DEM
       </Button>
       {open && (

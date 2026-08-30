@@ -132,6 +132,40 @@ test("presigns on the terrain3d route with the file's real content type", async 
   expect(presignBody).toEqual({ filename: "dem.tif", contentType: "image/tiff" });
 });
 
+test('le déclencheur "Nouveau DEM" ne masque pas un envoi/une conversion en cours (submit()/poll() tourneraient en arrière-plan sans rien pour le refléter)', async () => {
+  server.use(
+    http.post(`${CORE_URL}/terrain3d/uploads/presign`, () =>
+      HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" }),
+    ),
+    http.put(`${CORE_URL}/fake-s3-put`, () => new Promise(() => {})), // never resolves: stays "uploading"
+  );
+  renderButton(vi.fn());
+
+  await userEvent.click(screen.getByRole("button", { name: /nouveau dem/i }));
+  const file = new File([new Uint8Array(16)], "dem.tif", { type: "application/octet-stream" });
+  await userEvent.upload(screen.getByLabelText(/fichier dem/i), file);
+  await userEvent.type(screen.getByLabelText(/titre/i), "Relief");
+  await userEvent.click(screen.getByRole("button", { name: /importer/i }));
+
+  await waitFor(() => expect(screen.getByRole("button", { name: /annuler/i })).toBeDisabled());
+
+  // Clicking the trigger again while busy must not hide the in-flight panel.
+  await userEvent.click(screen.getByRole("button", { name: /nouveau dem/i }));
+  expect(screen.getByLabelText(/fichier dem/i)).toBeInTheDocument();
+});
+
+test('le déclencheur "Nouveau DEM" réinitialise le formulaire à la fermeture, comme le bouton Annuler', async () => {
+  renderButton(vi.fn());
+
+  await userEvent.click(screen.getByRole("button", { name: /nouveau dem/i }));
+  await userEvent.type(screen.getByLabelText(/titre/i), "Brouillon");
+  // Close via the trigger (not busy) — must reset state exactly like close().
+  await userEvent.click(screen.getByRole("button", { name: /nouveau dem/i }));
+  // Reopen: the form must not show the previous draft.
+  await userEvent.click(screen.getByRole("button", { name: /nouveau dem/i }));
+  expect(screen.getByLabelText(/titre/i)).toHaveValue("");
+});
+
 test("le formulaire n'est jamais une fenêtre modale (pas de role=dialog)", async () => {
   renderButton(vi.fn());
   await userEvent.click(screen.getByRole("button", { name: /nouveau dem/i }));
