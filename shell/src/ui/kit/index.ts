@@ -43,3 +43,5 @@ export { Spinner } from "./Spinner";
 export { Progress } from "./Progress";
 export { EmptyState } from "./EmptyState";
 export { Banner } from "./Banner";
+export { Avatar } from "./Avatar";
+export { Kbd } from "./Kbd";
