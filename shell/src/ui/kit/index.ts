@@ -32,3 +32,5 @@ export { Splitter } from "./Splitter";
 export { Popover } from "./Popover";
 export { Menu } from "./Menu";
 export { Tooltip } from "./Tooltip";
+export { Dialog } from "./Dialog";
+export { ConfirmDialog } from "./ConfirmDialog";
