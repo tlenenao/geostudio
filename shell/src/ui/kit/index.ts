@@ -14,3 +14,4 @@ export { Textarea } from "./Textarea";
 export { Checkbox } from "./Checkbox";
 export { Radio } from "./Radio";
 export { Switch } from "./Switch";
+export { Slider } from "./Slider";
