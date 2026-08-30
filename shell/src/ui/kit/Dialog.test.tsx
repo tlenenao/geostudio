@@ -16,7 +16,7 @@ test("ne rend rien quand fermé", () => {
 
 test("rend le contenu et le titre quand ouvert, Échap ferme", async () => {
   const onOpenChange = vi.fn();
-  const { container } = render(
+  const { baseElement } = render(
     <Dialog open onOpenChange={onOpenChange} title="Titre">
       <p>corps</p>
     </Dialog>,
@@ -25,7 +25,7 @@ test("rend le contenu et le titre quand ouvert, Échap ferme", async () => {
   expect(screen.getByText("corps")).toBeInTheDocument();
   await userEvent.keyboard("{Escape}");
   expect(onOpenChange).toHaveBeenCalledWith(false);
-  expectTokenizedClasses(container);
+  expectTokenizedClasses(baseElement);
 });
 
 test("le focus est piégé dans la boîte de dialogue à l'ouverture", async () => {

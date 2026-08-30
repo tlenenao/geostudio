@@ -41,3 +41,26 @@ test("cocher une ligne ajoute son id à selectedIds", async () => {
   await userEvent.click(screen.getByRole("checkbox", { name: "Sélectionner Carte topo" }));
   expect(onSelectedIdsChange).toHaveBeenCalledWith(new Set(["1"]));
 });
+
+test("colonne 0 rendant un ReactNode : aria-label générique, pas '[object Object]'", async () => {
+  const onSelectedIdsChange = vi.fn();
+  const columnsWithNode = [
+    { key: "name", label: "Nom", render: (r: Row) => <strong>{r.name}</strong> },
+    { key: "kind", label: "Type", render: (r: Row) => r.kind },
+  ];
+  render(
+    <DataTable
+      columns={columnsWithNode}
+      rows={ROWS}
+      getRowId={(r) => r.id}
+      selectedIds={new Set()}
+      onSelectedIdsChange={onSelectedIdsChange}
+    />,
+  );
+  // ROWS contient 2 lignes ; les deux rendent un ReactNode non-string en
+  // colonne 0, donc les deux reçoivent le même aria-label générique — on
+  // cible la première occurrence plutôt qu'un nom unique.
+  const [checkbox] = screen.getAllByRole("checkbox", { name: "Sélectionner la ligne" });
+  await userEvent.click(checkbox);
+  expect(onSelectedIdsChange).toHaveBeenCalledWith(new Set(["1"]));
+});

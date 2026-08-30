@@ -45,7 +45,7 @@ const OPEN_TIMEOUT = 45000;
 test(
   "le survol du déclencheur affiche le contenu du tooltip",
   async () => {
-    const { container } = renderWithProvider(
+    const { baseElement } = renderWithProvider(
       <Tooltip content="Verrouillé — modification réservée aux éditeurs">
         <button>×</button>
       </Tooltip>,
@@ -54,7 +54,7 @@ test(
     expect(
       await screen.findByText("Verrouillé — modification réservée aux éditeurs"),
     ).toBeInTheDocument();
-    expectTokenizedClasses(container);
+    expectTokenizedClasses(baseElement);
   },
   OPEN_TIMEOUT,
 );

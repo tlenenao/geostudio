@@ -2,6 +2,7 @@
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { useEffect, useId, useMemo, useState } from "react";
 import { cn } from "../../lib/utils";
+import { t } from "../../i18n";
 import { Input } from "./Input";
 
 export function Combobox({
@@ -98,7 +99,7 @@ export function Combobox({
           className="w-[var(--radix-popover-trigger-width)] rounded-md border border-rule bg-raised p-1 shadow-md"
         >
           {filtered.length === 0 ? (
-            <p className="px-2 py-1.5 text-sm text-ink-3">Aucun résultat</p>
+            <p className="px-2 py-1.5 text-sm text-ink-3">{t("combobox.noResults")}</p>
           ) : (
             filtered.map((option, index) => (
               <div

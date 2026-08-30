@@ -55,4 +55,18 @@ export const fr = {
 
   // Toast
   "toast.close": "Fermer la notification",
+
+  // ConfirmDialog
+  "confirmDialog.cancel": "Annuler",
+
+  // Combobox
+  "combobox.noResults": "Aucun résultat",
+
+  // Chip
+  "chip.remove": "Retirer {item}",
+  "chip.removeGeneric": "Retirer",
+
+  // DataTable
+  "dataTable.selectRow": "Sélectionner {item}",
+  "dataTable.selectRowGeneric": "Sélectionner la ligne",
 } as const;

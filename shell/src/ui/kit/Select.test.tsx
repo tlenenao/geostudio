@@ -19,11 +19,11 @@ const OPTIONS = [
 ];
 
 test("affiche le libellé de la valeur sélectionnée", () => {
-  const { container } = render(
+  const { baseElement } = render(
     <Select aria-label="Format" value="a" onValueChange={() => {}} options={OPTIONS} />,
   );
   expect(screen.getByRole("combobox", { name: "Format" })).toHaveTextContent("Option A");
-  expectTokenizedClasses(container);
+  expectTokenizedClasses(baseElement);
 });
 
 test("ouvre au clic et sélectionne une option au clic", async () => {
