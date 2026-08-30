@@ -29,7 +29,13 @@ const OPTIONS = [
 // par intermittence le testTimeout par défaut du dépôt (5000ms, aucune
 // surcharge dans vitest.config.ts). Relevé local à ce fichier, pas touché à
 // shell/src/test/setup.ts ni à vitest.config.ts.
-const OPEN_TIMEOUT = 15000;
+// Porté à 45000 (Task 31, portes de qualité) : sous `npm run test --
+// --coverage` (instrumentation v8), le même test dépassait encore 15000 et
+// jusqu'à 30000 par intermittence, y compris en réduisant le parallélisme
+// (`--maxWorkers`) — le coût de mesure Popper s'additionne au surcoût de
+// l'instrumentation de couverture. 45000 est resté stable sur 2 exécutions
+// consécutives de la suite complète avec couverture, parallélisme par défaut.
+const OPEN_TIMEOUT = 45000;
 
 test(
   "filtre les options en tapant, affiche uniquement les correspondances",

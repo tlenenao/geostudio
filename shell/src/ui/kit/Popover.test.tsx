@@ -17,7 +17,10 @@ import { expectTokenizedClasses } from "./testUtils";
 // ce fichier seul ou seulement src/ui/kit/. Relevé local à ce fichier, pas
 // touché à shell/src/test/setup.ts ni à vitest.config.ts — même précédent
 // que Combobox.test.tsx.
-const OPEN_TIMEOUT = 15000;
+// Porté à 45000 (Task 31, portes de qualité) : sous couverture v8, le même
+// dépassement se reproduisait même à parallélisme réduit — 45000 stable sur
+// 2 exécutions consécutives avec couverture, parallélisme par défaut.
+const OPEN_TIMEOUT = 45000;
 
 test(
   "un clic réel sur le déclencheur ouvre le contenu, porté hors de #root",
