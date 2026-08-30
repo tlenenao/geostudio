@@ -2056,6 +2056,8 @@ export interface components {
             email: string | null;
             /** Firstname */
             firstName: string;
+            /** Hasanyeditorrole */
+            hasAnyEditorRole: boolean;
             /** Id */
             id: string;
             /** Isadmin */
@@ -2066,8 +2068,12 @@ export interface components {
             lastName: string;
             /** Tenantid */
             tenantId: string;
+            /** Tenantslug */
+            tenantSlug: string;
             /** Username */
             username: string;
+            /** Version */
+            version: string;
         };
         /** Message */
         Message: {

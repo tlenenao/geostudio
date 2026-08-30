@@ -2679,6 +2679,10 @@
             "title": "Firstname",
             "type": "string"
           },
+          "hasAnyEditorRole": {
+            "title": "Hasanyeditorrole",
+            "type": "boolean"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -2699,20 +2703,31 @@
             "title": "Tenantid",
             "type": "string"
           },
+          "tenantSlug": {
+            "title": "Tenantslug",
+            "type": "string"
+          },
           "username": {
             "title": "Username",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
             "type": "string"
           }
         },
         "required": [
           "id",
           "tenantId",
+          "tenantSlug",
           "username",
           "email",
           "firstName",
           "lastName",
           "isAdmin",
           "isAnalyst",
+          "hasAnyEditorRole",
+          "version",
           "capabilities"
         ],
         "title": "MeResponse",
