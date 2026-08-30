@@ -6,13 +6,13 @@ import { Drawer } from "./Drawer";
 import { expectTokenizedClasses } from "./testUtils";
 
 test("rend le contenu à droite par défaut", () => {
-  const { container } = render(
+  const { baseElement } = render(
     <Drawer open onOpenChange={() => {}} title="Explorateur">
       <p>Contenu</p>
     </Drawer>,
   );
   expect(screen.getByRole("dialog", { name: "Explorateur" })).toHaveClass("right-0");
-  expectTokenizedClasses(container);
+  expectTokenizedClasses(baseElement);
 });
 
 test("side=left positionne le panneau à gauche", () => {

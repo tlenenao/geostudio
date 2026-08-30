@@ -24,7 +24,7 @@ test(
   "clic sur le déclencheur ouvre le menu, clic sur un item l'exécute et ferme",
   async () => {
     const onSelect = vi.fn();
-    const { container } = render(
+    const { baseElement } = render(
       <Menu
         trigger={<button>Actions</button>}
         items={[
@@ -38,7 +38,7 @@ test(
     await userEvent.click(item);
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("menuitem", { name: "Supprimer" })).not.toBeInTheDocument();
-    expectTokenizedClasses(container);
+    expectTokenizedClasses(baseElement);
   },
   OPEN_TIMEOUT,
 );

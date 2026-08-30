@@ -41,7 +41,7 @@ test(
   "filtre les options en tapant, affiche uniquement les correspondances",
   async () => {
     const onValueChange = vi.fn();
-    const { container } = render(
+    const { baseElement } = render(
       <Combobox aria-label="Collection" value="" onValueChange={onValueChange} options={OPTIONS} />,
     );
     const input = screen.getByRole("combobox", { name: "Collection" });
@@ -49,7 +49,7 @@ test(
     await userEvent.type(input, "ga");
     expect(screen.getByRole("option", { name: "Gamma" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Alpha" })).not.toBeInTheDocument();
-    expectTokenizedClasses(container);
+    expectTokenizedClasses(baseElement);
   },
   OPEN_TIMEOUT,
 );

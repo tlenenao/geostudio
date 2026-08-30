@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Checkbox } from "./Checkbox";
 import { Table } from "./Table";
+import { t } from "../../i18n";
 
 export function DataTable<T>({
   columns,
   rows,
   getRowId,
+  getRowLabel,
   selectedIds,
   onSelectedIdsChange,
   sortKey,
@@ -14,6 +16,7 @@ export function DataTable<T>({
   columns: { key: string; label: string; render: (row: T) => React.ReactNode }[];
   rows: T[];
   getRowId: (row: T) => string;
+  getRowLabel?: (row: T) => string;
   selectedIds?: Set<string>;
   onSelectedIdsChange?: (ids: Set<string>) => void;
   sortKey?: string;
@@ -21,6 +24,16 @@ export function DataTable<T>({
   onSortChange?: (key: string) => void;
 }) {
   const selectable = selectedIds !== undefined && onSelectedIdsChange !== undefined;
+
+  const resolveRowLabel = (row: T): string => {
+    const rendered = columns[0]?.render(row);
+    return (
+      getRowLabel?.(row) ??
+      (typeof rendered === "string"
+        ? t("dataTable.selectRow", { item: rendered })
+        : t("dataTable.selectRowGeneric"))
+    );
+  };
 
   return (
     <Table>
@@ -47,7 +60,7 @@ export function DataTable<T>({
               {selectable && (
                 <Table.Cell>
                   <Checkbox
-                    aria-label={`Sélectionner ${columns[0].render(row)}`}
+                    aria-label={resolveRowLabel(row)}
                     checked={selectedIds!.has(id)}
                     onCheckedChange={(checked) => {
                       const next = new Set(selectedIds);

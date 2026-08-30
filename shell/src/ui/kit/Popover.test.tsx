@@ -28,7 +28,7 @@ test(
     const root = document.createElement("div");
     root.id = "root";
     document.body.appendChild(root);
-    const { container } = render(
+    const { baseElement } = render(
       <Popover trigger={<button>Ouvrir</button>}>Contenu du popover</Popover>,
       {
         container: root,
@@ -39,7 +39,7 @@ test(
     const content = await screen.findByText("Contenu du popover");
     expect(content).toBeInTheDocument();
     expect(root.contains(content)).toBe(false);
-    expectTokenizedClasses(container);
+    expectTokenizedClasses(baseElement);
     document.body.removeChild(root);
   },
   OPEN_TIMEOUT,
