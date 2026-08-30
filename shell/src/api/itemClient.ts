@@ -540,6 +540,8 @@ export function createItemClient(opts: {
         isAdmin: boolean;
         isAnalyst: boolean;
         hasAnyEditorRole: boolean;
+        version: string;
+        tenantSlug: string;
       }>("GET", `/me`);
       return {
         username: data.username,
@@ -548,6 +550,8 @@ export function createItemClient(opts: {
         isAdmin: data.isAdmin,
         isAnalyst: data.isAnalyst,
         hasAnyEditorRole: data.hasAnyEditorRole,
+        version: data.version,
+        tenantSlug: data.tenantSlug,
       };
     },
 
