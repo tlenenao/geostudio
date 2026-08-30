@@ -33,3 +33,11 @@ test("le sélecteur natif porte la même valeur", () => {
   const swatch = screen.getByLabelText("Couleur d'accent (sélecteur)");
   expect(swatch).toHaveValue("#0b6e77");
 });
+
+test("un changement externe de la prop value resynchronise le champ texte", () => {
+  const { rerender } = render(
+    <ColorField aria-label="Couleur d'accent" value="#0b6e77" onValueChange={() => {}} />,
+  );
+  rerender(<ColorField aria-label="Couleur d'accent" value="#ff0000" onValueChange={() => {}} />);
+  expect(screen.getByRole("textbox", { name: "Couleur d'accent" })).toHaveValue("#ff0000");
+});

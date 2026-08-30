@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Input } from "./Input";
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
@@ -14,6 +14,10 @@ export function ColorField({
   "aria-label": string;
 }) {
   const [text, setText] = useState(value);
+
+  useEffect(() => {
+    setText(value);
+  }, [value]);
 
   return (
     <div className="flex items-center gap-2">
