@@ -28,9 +28,17 @@ test("affiche le libellé de la valeur sélectionnée", () => {
 
 test("ouvre au clic et sélectionne une option au clic", async () => {
   const onValueChange = vi.fn();
-  render(<Select aria-label="Format" value="a" onValueChange={onValueChange} options={OPTIONS} />);
+  const { baseElement } = render(
+    <Select aria-label="Format" value="a" onValueChange={onValueChange} options={OPTIONS} />,
+  );
   await userEvent.click(screen.getByRole("combobox", { name: "Format" }));
-  await userEvent.click(await screen.findByRole("option", { name: "Option B" }));
+  await screen.findByRole("option", { name: "Option B" });
+  // Le panneau d'options est portalisé (document.body, hors de l'arbre RTL) —
+  // vérifié tokenisé ici, pendant qu'il est ouvert, car le test précédent ne
+  // l'ouvre jamais (trouvé en revue finale SP-29b : expectTokenizedClasses
+  // sur le trigger fermé ne couvre jamais le Content portalisé).
+  expectTokenizedClasses(baseElement);
+  await userEvent.click(screen.getByRole("option", { name: "Option B" }));
   expect(onValueChange).toHaveBeenCalledWith("b");
 });
 
