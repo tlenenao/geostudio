@@ -35,6 +35,7 @@ export const handlers = [
       email: "alice@example.com",
       tenantId: "t1",
       isAdmin: false,
+      isAnalyst: false,
       hasAnyEditorRole: true,
       version: "0.1.0",
       tenantSlug: "demo",
