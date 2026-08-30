@@ -74,4 +74,12 @@ export const fr = {
   // DataTable
   "dataTable.selectRow": "Sélectionner {item}",
   "dataTable.selectRowGeneric": "Sélectionner la ligne",
+
+  // AccountMenu
+  "account.menu": "Compte",
+  "account.roleAdmin": "Administrateur",
+  "account.roleAnalyst": "Analyste",
+  "account.roleCreator": "Créateur",
+  "account.roleReader": "Lecteur",
+  "account.signOut": "Déconnexion",
 } as const;

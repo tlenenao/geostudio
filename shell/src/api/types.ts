@@ -45,6 +45,7 @@ export type Me = {
   lastName: string;
   isAdmin: boolean;
   isAnalyst: boolean;
+  hasAnyEditorRole: boolean;
 };
 
 export type InstanceInfo = {
