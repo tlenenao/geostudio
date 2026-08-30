@@ -13,7 +13,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { ConfigRevisionInfo } from "../api/types";
-import { Button } from "../ui/button";
+import { Button } from "../ui/kit/Button";
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -102,17 +102,17 @@ export function ConfigHistoryPanel({
     <div className="flex flex-col gap-2">
       <h3 className="text-sm font-medium">Historique</h3>
       {loadError && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-danger">
           Impossible de charger l'historique des versions.
         </p>
       )}
       {restoreError && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-danger">
           Impossible de restaurer cette version.
         </p>
       )}
       {!loadError && revisions !== null && revisions.length === 0 && (
-        <p className="text-sm text-slate-500">Aucune version enregistrée.</p>
+        <p className="text-sm text-ink-2">Aucune version enregistrée.</p>
       )}
       <ul className="flex flex-col gap-1">
         {(revisions ?? []).map((r) => (
@@ -121,7 +121,7 @@ export function ConfigHistoryPanel({
               Version {r.version} — {formatDate(r.createdAt)}
             </span>
             {r.version === current ? (
-              <span className="text-xs text-slate-500">(courante)</span>
+              <span className="text-xs text-ink-2">(courante)</span>
             ) : (
               <Button
                 size="sm"
