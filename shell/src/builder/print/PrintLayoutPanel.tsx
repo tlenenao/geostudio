@@ -22,7 +22,7 @@ export function PrintLayoutPanel({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Mise en page d&apos;impression</p>
+      <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Mise en page d&apos;impression</p>
       <label className="flex flex-col gap-1 text-sm">
         Format
         <select
