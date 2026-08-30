@@ -166,18 +166,17 @@ describe("ItemActions et les droits", () => {
     expect(screen.queryByRole("button", { name: "Supprimer" })).not.toBeInTheDocument();
   });
 
-  it("un lecteur voit Modifier verrouillée, avec sa raison", async () => {
+  it("un lecteur voit Modifier, Publier et Miniature verrouillées en un seul message", async () => {
     render(<ItemActions item={viewerItem} />, { wrapper });
     await userEvent.click(screen.getByRole("button", { name: "Actions" }));
-    const edit = screen.getByRole("button", { name: "Modifier" });
-    expect(edit).toBeDisabled();
-    // Publier et Miniature sont aussi verrouillées par `write` pour ce même
-    // item et affichent la même raison (`locked.needWrite`) : plusieurs
-    // occurrences du texte sont donc attendues, `getAllByText` remplace le
-    // `getByText` du brief (piège n°3 — texte littéral faux face au rendu réel).
-    expect(
-      screen.getAllByText("Modification réservée aux éditeurs de cet élément.")[0],
-    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Modifier" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Publier" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Miniature" })).toBeDisabled();
+    // Un seul message de raison pour les trois, pas un par action verrouillée
+    // (SP-29a review finale — regroupement décidé pour SP-30a).
+    expect(screen.getAllByText("Modification réservée aux éditeurs de cet élément.")).toHaveLength(
+      1,
+    );
   });
 
   it("un éditeur peut modifier et publier, mais pas supprimer ni partager", async () => {

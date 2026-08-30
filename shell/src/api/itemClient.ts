@@ -1428,8 +1428,11 @@ export function createItemClient(opts: {
     },
 
     async getCollectionPermission(collectionId: string): Promise<boolean> {
-      const data = await request<{ canWrite?: boolean }>("GET", `/collections/${collectionId}`);
-      return data.canWrite ?? false;
+      const data = await request<{ permissions?: { write?: boolean } }>(
+        "GET",
+        `/collections/${collectionId}`,
+      );
+      return data.permissions?.write ?? false;
     },
 
     async createFeature(

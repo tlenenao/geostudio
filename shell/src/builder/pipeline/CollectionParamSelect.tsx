@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useCollectionsAdmin } from "../../api/hooks";
+import { hasPermission } from "../../auth/permissions";
 
 // Filtre d'affichage seulement (variant="writable" ne montre que les
-// collections avec canWrite) — jamais une frontière de sécurité : la vraie
+// collections avec permission "write") — jamais une frontière de sécurité : la vraie
 // vérification lisible/éditable a lieu côté serveur à la sauvegarde
 // (app/pipelines/config_validation.py, SP-15a) et à nouveau à l'exécution.
 // Réutilise useCollectionsAdmin() tel quel : GET /collections est déjà
@@ -19,7 +20,9 @@ export function CollectionParamSelect({
   ariaLabel: string;
 }) {
   const collectionsQuery = useCollectionsAdmin();
-  const options = (collectionsQuery.data ?? []).filter((c) => variant === "readable" || c.canWrite);
+  const options = (collectionsQuery.data ?? []).filter(
+    (c) => variant === "readable" || hasPermission(c, "write"),
+  );
 
   return (
     <select

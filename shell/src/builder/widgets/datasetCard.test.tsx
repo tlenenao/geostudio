@@ -22,7 +22,7 @@ const collection: CollectionAdmin = {
   geometryType: null,
   srid: null,
   pkColumn: "id",
-  canWrite: false,
+  permissions: { read: true, write: false, delete: false, share: false },
   featureCount: 2,
   owner: null,
 };
