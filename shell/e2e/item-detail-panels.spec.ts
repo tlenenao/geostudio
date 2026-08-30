@@ -29,6 +29,7 @@ test("partager depuis la fiche ouvre le formulaire de partage inline, sans dialo
 });
 
 test("390 px : le catalogue passe en onglets, un volet à la fois", async ({ page }) => {
+  // 389, pas 390 : le média est (max-width: 389px), cf. useNarrowViewport.ts
   await page.setViewportSize({ width: 389, height: 800 });
   await mockCore(page);
   await page.goto("/");
@@ -42,6 +43,7 @@ test("390 px : le catalogue passe en onglets, un volet à la fois", async ({ pag
 });
 
 test("390 px : la fiche d'un item passe en onglets", async ({ page }) => {
+  // 389, pas 390 : le média est (max-width: 389px), cf. useNarrowViewport.ts
   await page.setViewportSize({ width: 389, height: 800 });
   await mockCore(page);
   await page.goto("/items/1");

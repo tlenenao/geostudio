@@ -9,6 +9,9 @@ import { ThumbnailUpload } from "../ui/ThumbnailUpload";
 import { ShareForm } from "../shell/ShareForm";
 import { ItemActions } from "../shell/ItemActions";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { Gate } from "../auth/Gate";
+import { Locked } from "../auth/Locked";
+import { hasPermission } from "../auth/permissions";
 import { t } from "../i18n";
 
 type PanelKind = "edit" | "thumbnail" | "share" | null;
@@ -94,7 +97,7 @@ export function ItemDetailPage({
           id: "item",
           label: "Élément",
           content: (
-            <article className="flex flex-col gap-3 p-6">
+            <article className="flex h-full flex-col gap-3 overflow-y-auto p-6">
               <span className="w-fit rounded bg-sunken px-2 py-0.5 text-xs uppercase text-ink-2">
                 {item.resourceType}
               </span>
@@ -124,35 +127,72 @@ export function ItemDetailPage({
               </div>
               {panel === "edit" && (
                 <Panel className="flex flex-col gap-2">
-                  <MetadataForm
-                    initial={{ title: item.title, abstract: item.abstract, keywords: [] }}
-                    onSubmit={(v) => void save(v)}
-                    onCancel={closePanel}
-                    pending={update.isPending}
-                  />
-                  {update.isError && (
-                    <p role="alert" className="text-sm text-danger">
-                      {t("actions.saveFailed")}
-                    </p>
+                  {hasPermission(item, "write") ? (
+                    <>
+                      <MetadataForm
+                        initial={{ title: item.title, abstract: item.abstract, keywords: [] }}
+                        onSubmit={(v) => void save(v)}
+                        onCancel={closePanel}
+                        pending={update.isPending}
+                      />
+                      {update.isError && (
+                        <p role="alert" className="text-sm text-danger">
+                          {t("actions.saveFailed")}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    // Point d'entrée par URL (favori, retour arrière, lien
+                    // périmé si le partage a changé depuis) : contrairement au
+                    // menu d'ItemActions qui se contente de ne pas montrer
+                    // l'entrée, l'utilisateur est déjà sur cette page — un
+                    // panneau vide serait déroutant. On explique plutôt
+                    // pourquoi (doctrine §6.2, cf. ItemActions.tsx).
+                    <Locked reason={t("locked.needWrite")}>
+                      <MetadataForm
+                        initial={{ title: item.title, abstract: item.abstract, keywords: [] }}
+                        onSubmit={closePanel}
+                        onCancel={closePanel}
+                        pending={false}
+                      />
+                    </Locked>
                   )}
                 </Panel>
               )}
               {panel === "thumbnail" && (
                 <Panel className="flex flex-col gap-2">
-                  <ThumbnailUpload
-                    onUpload={(file) => void upload(file)}
-                    pending={thumbnail.isPending}
-                  />
-                  {thumbnail.isError && (
-                    <p role="alert" className="text-sm text-danger">
-                      {t("actions.uploadFailed")}
-                    </p>
+                  {hasPermission(item, "write") ? (
+                    <>
+                      <ThumbnailUpload
+                        onUpload={(file) => void upload(file)}
+                        pending={thumbnail.isPending}
+                      />
+                      {thumbnail.isError && (
+                        <p role="alert" className="text-sm text-danger">
+                          {t("actions.uploadFailed")}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <Locked reason={t("locked.needWrite")}>
+                      <ThumbnailUpload onUpload={() => {}} pending={false} />
+                    </Locked>
                   )}
                 </Panel>
               )}
               {panel === "share" && (
                 <Panel>
-                  <ShareForm item={item} onDone={closePanel} />
+                  <Gate
+                    on={item}
+                    can="share"
+                    fallback={
+                      <Locked reason={t("locked.needShare")}>
+                        <ShareForm item={item} onDone={closePanel} />
+                      </Locked>
+                    }
+                  >
+                    <ShareForm item={item} onDone={closePanel} />
+                  </Gate>
                 </Panel>
               )}
             </div>

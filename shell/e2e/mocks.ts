@@ -90,6 +90,12 @@ export async function mockCore(page: Page) {
   // Stateful store: keyed by item id, holds the last PUT body per item.
   const savedConfigs = new Map<string, unknown>();
   let published = false;
+  // Item 1 (Alpha) — title tracking for edit test (SP-30b/Task 6). Hoisted
+  // here (rather than left next to the "/items/1" route below) so it's
+  // declared before any route-handler closure that reads it — a future spec
+  // ordering that made a route fire during the earlier declaration would
+  // otherwise hit the TDZ (final review of SP-30b, finding 3).
+  let item1Title = "Alpha";
 
   // Config history / restore (Task 18) — item "1" (Alpha) carries a
   // two-version story: the config served by GET /configs/by-item/1 starts
@@ -289,9 +295,6 @@ export async function mockCore(page: Page) {
       });
     }
   });
-
-  // Item 1 (Alpha) — title tracking for edit test (SP-30b/Task 6).
-  let item1Title = "Alpha";
 
   // Same host-scoping rationale as "/items/1" above — the shell also has a
   // client-side route "/items/9".
