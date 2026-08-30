@@ -18,7 +18,7 @@ const COLLECTIONS: CollectionAdmin[] = [
     geometryType: null,
     srid: null,
     pkColumn: "id",
-    canWrite: true,
+    permissions: { read: true, write: true, delete: true, share: true },
     featureCount: 10,
     owner: "alice",
   },

@@ -548,7 +548,7 @@ export type CollectionAdmin = {
   geometryType: string | null;
   srid: number | null;
   pkColumn: string;
-  canWrite: boolean;
+  permissions: ItemPermissions;
   featureCount: number | null;
   owner: string | null;
 };

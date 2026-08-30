@@ -11,6 +11,7 @@ import { ThumbnailUpload } from "../ui/ThumbnailUpload";
 import { ShareDialog } from "./ShareDialog";
 import { Gate } from "../auth/Gate";
 import { Locked } from "../auth/Locked";
+import { hasPermission } from "../auth/permissions";
 import { t } from "../i18n";
 
 type Panel = null | "menu" | "edit" | "thumbnail" | "share" | "delete";
@@ -78,22 +79,36 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
 
       {panel === "menu" && (
         <div className="absolute z-20 mt-8 flex flex-col rounded-md border border-slate-200 bg-white text-sm shadow">
-          <Gate
-            on={item}
-            can="write"
-            fallback={
-              <Locked reason={t("locked.needWrite")}>
-                <button className="px-3 py-1 text-left">{t("actions.edit")}</button>
-              </Locked>
-            }
-          >
-            <button
-              className="px-3 py-1 text-left hover:bg-slate-100"
-              onClick={() => setPanel("edit")}
-            >
-              {t("actions.edit")}
-            </button>
-          </Gate>
+          {hasPermission(item, "write") ? (
+            <>
+              <button
+                className="px-3 py-1 text-left hover:bg-slate-100"
+                onClick={() => setPanel("edit")}
+              >
+                {t("actions.edit")}
+              </button>
+              <button
+                className="px-3 py-1 text-left hover:bg-slate-100"
+                onClick={() => void togglePublish()}
+              >
+                {item.isPublished ? t("actions.unpublish") : t("actions.publish")}
+              </button>
+              <button
+                className="px-3 py-1 text-left hover:bg-slate-100"
+                onClick={() => setPanel("thumbnail")}
+              >
+                {t("actions.thumbnail")}
+              </button>
+            </>
+          ) : (
+            <Locked reason={t("locked.needWrite")}>
+              <button className="px-3 py-1 text-left">{t("actions.edit")}</button>
+              <button className="px-3 py-1 text-left">
+                {item.isPublished ? t("actions.unpublish") : t("actions.publish")}
+              </button>
+              <button className="px-3 py-1 text-left">{t("actions.thumbnail")}</button>
+            </Locked>
+          )}
 
           {item.resourceType === "bookmark" && exportEnabled && (
             <button
@@ -106,42 +121,6 @@ export function ItemActions({ item, onDeleted }: { item: Item; onDeleted?: () =>
               {t("actions.scheduleReport")}
             </button>
           )}
-
-          <Gate
-            on={item}
-            can="write"
-            fallback={
-              <Locked reason={t("locked.needWrite")}>
-                <button className="px-3 py-1 text-left">
-                  {item.isPublished ? t("actions.unpublish") : t("actions.publish")}
-                </button>
-              </Locked>
-            }
-          >
-            <button
-              className="px-3 py-1 text-left hover:bg-slate-100"
-              onClick={() => void togglePublish()}
-            >
-              {item.isPublished ? t("actions.unpublish") : t("actions.publish")}
-            </button>
-          </Gate>
-
-          <Gate
-            on={item}
-            can="write"
-            fallback={
-              <Locked reason={t("locked.needWrite")}>
-                <button className="px-3 py-1 text-left">{t("actions.thumbnail")}</button>
-              </Locked>
-            }
-          >
-            <button
-              className="px-3 py-1 text-left hover:bg-slate-100"
-              onClick={() => setPanel("thumbnail")}
-            >
-              {t("actions.thumbnail")}
-            </button>
-          </Gate>
 
           {/* Partager et Supprimer : traitement « absent », pas « verrouillé ».
               Les montrer grisées sur chaque ligne d'un catalogue partagé

@@ -20,7 +20,7 @@ const COLLECTION: CollectionAdmin = {
   geometryType: "Point",
   srid: 4326,
   pkColumn: "id",
-  canWrite: true,
+  permissions: { read: true, write: true, delete: true, share: true },
   featureCount: 3,
   owner: "admin",
 };
