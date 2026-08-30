@@ -52,4 +52,7 @@ export const fr = {
 
   // Breadcrumb
   "breadcrumb.label": "Fil d'Ariane",
+
+  // Toast
+  "toast.close": "Fermer la notification",
 } as const;

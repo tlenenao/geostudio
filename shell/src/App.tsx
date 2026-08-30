@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import { useMemo } from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import * as ToastPrimitive from "@radix-ui/react-toast";
 import { loadConfig } from "./config";
 import { AuthProvider } from "./auth/AuthProvider";
 import { useAuth } from "./auth/useAuth";
@@ -41,14 +42,17 @@ function AppShell() {
 
 export default function App() {
   return (
-    <TooltipPrimitive.Provider>
-      <AppErrorBoundary>
-        <AuthProvider config={config}>
-          <QueryClientProvider client={queryClient}>
-            <AppShell />
-          </QueryClientProvider>
-        </AuthProvider>
-      </AppErrorBoundary>
-    </TooltipPrimitive.Provider>
+    <ToastPrimitive.Provider>
+      <TooltipPrimitive.Provider>
+        <AppErrorBoundary>
+          <AuthProvider config={config}>
+            <QueryClientProvider client={queryClient}>
+              <AppShell />
+            </QueryClientProvider>
+          </AuthProvider>
+        </AppErrorBoundary>
+      </TooltipPrimitive.Provider>
+      <ToastPrimitive.Viewport className="fixed bottom-4 right-4 z-[100] flex w-80 flex-col gap-2 outline-none" />
+    </ToastPrimitive.Provider>
   );
 }
