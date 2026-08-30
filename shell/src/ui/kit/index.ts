@@ -35,3 +35,5 @@ export { Tooltip } from "./Tooltip";
 export { Dialog } from "./Dialog";
 export { ConfirmDialog } from "./ConfirmDialog";
 export { Drawer } from "./Drawer";
+export { Badge } from "./Badge";
+export { Chip } from "./Chip";
