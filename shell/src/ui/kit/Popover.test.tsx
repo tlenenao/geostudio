@@ -28,18 +28,23 @@ test(
     const root = document.createElement("div");
     root.id = "root";
     document.body.appendChild(root);
-    const { baseElement } = render(
-      <Popover trigger={<button>Ouvrir</button>}>Contenu du popover</Popover>,
-      {
-        container: root,
-      },
-    );
+    render(<Popover trigger={<button>Ouvrir</button>}>Contenu du popover</Popover>, {
+      container: root,
+    });
     expect(screen.queryByText("Contenu du popover")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Ouvrir" }));
     const content = await screen.findByText("Contenu du popover");
     expect(content).toBeInTheDocument();
     expect(root.contains(content)).toBe(false);
-    expectTokenizedClasses(baseElement);
+    // `render()` avec un `container` explicite (`root`) fait par défaut
+    // pointer `baseElement` sur ce même `root` (comportement RTL réel,
+    // vérifié dans node_modules/@testing-library/react/dist/pure.js :
+    // `baseElement = container`) — pas sur `document.body`. Le contenu
+    // portalisé n'étant jamais dans `root` (c'est précisément ce que ce test
+    // prouve juste au-dessus), `expectTokenizedClasses(baseElement)` ne
+    // vérifierait rien ici. `document.body` explicite est nécessaire (trouvé
+    // en revue finale SP-29b, faux négatif confirmé par falsification).
+    expectTokenizedClasses(document.body);
     document.body.removeChild(root);
   },
   OPEN_TIMEOUT,
