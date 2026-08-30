@@ -15,7 +15,7 @@ export function Segmented({
   options: { value: string; label: string }[];
 } & Omit<
   React.ComponentPropsWithoutRef<typeof ToggleGroupPrimitive.Root>,
-  "type" | "value" | "onValueChange"
+  "type" | "value" | "onValueChange" | "defaultValue"
 >) {
   return (
     <ToggleGroupPrimitive.Root
