@@ -27,3 +27,4 @@ export { DataTable } from "./DataTable";
 export { Panel } from "./Panel";
 export { Section } from "./Section";
 export { Breadcrumb } from "./Breadcrumb";
+export { Toolbar } from "./Toolbar";
