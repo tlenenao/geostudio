@@ -29,3 +29,4 @@ export { Section } from "./Section";
 export { Breadcrumb } from "./Breadcrumb";
 export { Toolbar } from "./Toolbar";
 export { Splitter } from "./Splitter";
+export { Popover } from "./Popover";
