@@ -117,7 +117,7 @@ test("exporter depuis DatasetEditPage en XLSX", async ({ page }) => {
             geometryType: "Point",
             srid: 4326,
             pkColumn: "id",
-            canWrite: true,
+            permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 1,
             owner: "mockuser",
           },

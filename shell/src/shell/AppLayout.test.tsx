@@ -67,6 +67,11 @@ test("assemble TopBar, DomainBar et StatusBar autour du contenu", async () => {
   expect(screen.getByText("GeoStudio")).toBeInTheDocument();
   expect(await screen.findByRole("link", { name: "Catalogue" })).toBeInTheDocument();
   expect(screen.getByText("content")).toBeInTheDocument();
+  // Régression (Finding 4) : le fixture partagé /me (test/msw/handlers.ts)
+  // ne portait pas version/tenantSlug (ajoutés par Task 2), donc StatusBar
+  // rendait silencieusement "vundefined · undefined". Cette assertion
+  // transforme le fixture en contrat vérifié plutôt qu'en décor.
+  expect(await screen.findByText("v0.1.0 · demo")).toBeInTheDocument();
 });
 
 test("shows the read-only demo banner when the instance is in read-only mode", async () => {

@@ -56,7 +56,7 @@ test("un viewer ne voit pas les boutons d'écriture ; une écriture forcée est 
   await mockCore(page);
   // Surcharge posée APRÈS mockCore : Playwright privilégie la route la plus
   // récemment enregistrée qui matche, donc ceci l'emporte sur le
-  // "**/collections/incidents" (canWrite:true) déjà enregistré par mockCore.
+  // "**/collections/incidents" (permissions.write:true) déjà enregistré par mockCore.
   await page.route("**/collections/incidents", async (route) => {
     await route.fulfill({
       json: {
@@ -69,7 +69,7 @@ test("un viewer ne voit pas les boutons d'écriture ; une écriture forcée est 
         geometryType: null,
         srid: null,
         pkColumn: "id",
-        canWrite: false,
+        permissions: { read: true, write: false, delete: false, share: false },
       },
     });
   });

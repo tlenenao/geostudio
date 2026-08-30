@@ -210,6 +210,9 @@ export async function mockCore(page: Page) {
         email: null,
         tenantId: "t-mock",
         isAdmin: false,
+        hasAnyEditorRole: true,
+        version: "0.1.0",
+        tenantSlug: "demo",
       },
     });
   });
@@ -521,7 +524,7 @@ export async function mockCore(page: Page) {
         geometryType: null,
         srid: null,
         pkColumn: "id",
-        canWrite: false,
+        permissions: { read: true, write: false, delete: false, share: false },
         featureCount: 2,
       },
     });
@@ -559,7 +562,7 @@ export async function mockCore(page: Page) {
         geometryType: null,
         srid: null,
         pkColumn: "id",
-        canWrite: true,
+        permissions: { read: true, write: true, delete: false, share: false },
       },
     });
   });

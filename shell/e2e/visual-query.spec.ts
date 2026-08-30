@@ -24,7 +24,7 @@ async function mockVisualQueryFlow(page: Page) {
             geometryType: null,
             srid: null,
             pkColumn: "id",
-            canWrite: true,
+            permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 3,
             owner: "mockuser",
           },

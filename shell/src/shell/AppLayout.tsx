@@ -48,7 +48,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       )}
       <TopBar tileset3dEnabled={tileset3dEnabled} />
       {!narrow && <DomainBar profile={profile} />}
-      <div className="flex flex-1 flex-col overflow-hidden p-6">{children}</div>
+      <div className="flex flex-1 flex-col overflow-y-auto p-6">{children}</div>
       {narrow && <BottomNav profile={profile} />}
       <StatusBar />
     </div>

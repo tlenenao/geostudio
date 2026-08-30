@@ -5,10 +5,12 @@ export function Popover({
   trigger,
   children,
   "aria-label": ariaLabel,
+  side = "bottom",
 }: {
   trigger: React.ReactNode;
   children: React.ReactNode;
   "aria-label"?: string;
+  side?: "top" | "bottom" | "left" | "right";
 }) {
   return (
     <PopoverPrimitive.Root>
@@ -16,6 +18,7 @@ export function Popover({
       <PopoverPrimitive.Portal>
         <PopoverPrimitive.Content
           aria-label={ariaLabel}
+          side={side}
           sideOffset={4}
           // avoidCollisions=false : cf. Combobox.tsx pour la mesure d'origine
           // (SP-29b/Task 13) — sous jsdom, le recalcul de collision de
