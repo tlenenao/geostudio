@@ -12,3 +12,4 @@ export { Field } from "./Field";
 export { Input } from "./Input";
 export { Textarea } from "./Textarea";
 export { Checkbox } from "./Checkbox";
+export { Radio } from "./Radio";
