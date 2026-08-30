@@ -34,3 +34,4 @@ export { Menu } from "./Menu";
 export { Tooltip } from "./Tooltip";
 export { Dialog } from "./Dialog";
 export { ConfirmDialog } from "./ConfirmDialog";
+export { Drawer } from "./Drawer";
