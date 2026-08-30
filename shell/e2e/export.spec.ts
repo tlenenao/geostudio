@@ -60,9 +60,13 @@ test("exporter une carte en PDF depuis la visionneuse : le job atteint 'done' et
   await createMap(page, "Carte à exporter");
 
   await page.getByRole("button", { name: "Exporter", exact: true }).click();
-  const formatDialog = page.getByRole("dialog", { name: "Choisir le format d'export" });
-  await expect(formatDialog).toBeVisible();
-  await formatDialog.getByRole("button", { name: "PDF", exact: true }).click();
+  // Panneau en ligne (ExportPanel converti Dialog→Panel par SP-30c), pas une
+  // fenêtre modale : pas de role="dialog" à localiser. Même convention que
+  // item-detail-panels.spec.ts — le texte et les boutons du panneau sont sans
+  // ambiguïté sur la page (mise en page triptyque à la taille de viewport par
+  // défaut de Playwright), donc pas besoin de locator englobant.
+  await expect(page.getByText("Choisir le format d'export")).toBeVisible();
+  await page.getByRole("button", { name: "PDF", exact: true }).click();
 
   await expect.poll(() => createdExportBody).not.toBeNull();
   // Vérifie le CONTENU du POST /export, pas seulement qu'un POST a eu lieu
