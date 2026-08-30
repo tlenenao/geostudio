@@ -34,8 +34,9 @@ regexes = [
 ]
 
 [[allowlists]]
-description = "Identifiants par défaut de Grafana en local (admin:admin) dans des exemples curl du runbook d'observabilité SP-10b — identifiant par défaut documenté, pas un secret déployé. Bloc séparé et targetRules dédié : condition par défaut OR sur un [[allowlists]] s'applique à tout le bloc, donc mettre ce chemin dans le bloc ci-dessus exempterait N'IMPORTE QUELLE règle sur tout ce fichier, pas seulement les hits admin:admin réellement triés."
+description = "Identifiants par défaut de Grafana en local (admin:admin) dans des exemples curl du runbook d'observabilité SP-10b/SP-26 — identifiant par défaut documenté, pas un secret déployé. Bloc séparé et targetRules dédié : condition par défaut OR sur un [[allowlists]] s'applique à tout le bloc, donc mettre ce chemin dans le bloc ci-dessus exempterait N'IMPORTE QUELLE règle sur tout ce fichier, pas seulement les hits admin:admin réellement triés."
 targetRules = ["curl-auth-user"]
 paths = [
   '''docs/superpowers/plans/2026-07-17-sp10b-observabilite-dashboards-slo\.md''',
+  '''docs/superpowers/plans/2026-08-23-sp26-durcissement\.md''',
 ]
