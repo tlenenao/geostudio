@@ -339,6 +339,38 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   `ReactNode` arbitraire, bug latent pour SP-30). 6 Minor documentés en
   suivi non bloquant pour SP-30. **Ready to merge** — PR #102 (dev→main,
   avec SP-29a).
+- **SP-30c** (7 tâches + 2 correctifs post-hoc, famille 3 « Cartes » du
+  §6.1 de la spec SP-30) — `MapEditorPage` sur `TriptychLayout` : onglets
+  « Couches » (`LayersPanel` seul, aucun nouveau composant) / « Carte »
+  (`MapView` plein volet) / « Inspecter » (fond de carte, terrain, caméra,
+  impression, historique, export, Enregistrer). Kit-ification de
+  `CameraControls`/`ConfigHistoryPanel`/`LayerPicker`/`BasemapSelect`/
+  `TerrainPanel`/`PrintLayoutPanel`/`LayersPanel` (Button + tokens, aucun
+  import cassant). Élimine les deux derniers `<Dialog>` de cette famille :
+  `ExportPanel` et `Terrain3DUploadButton` deviennent des panneaux en
+  ligne (bouton Annuler explicite, plus d'Escape/backdrop), chacun avec un
+  test falsifiable `queryByRole("dialog")` (piège n°10). Branche
+  `isExportRender` (rendu nu du worker Playwright, SP-17a) vérifiée
+  structurellement intacte. E2E 113/4/0 → **118/4/0** (SP-30b avait déjà
+  porté la référence à 113 ; ce plan n'ajoute aucun nouveau spec).
+  Couverture shell 90,85 % (seuil 88), suite complète 222 fichiers/1815
+  tests. **2 correctifs post-hoc trouvés en fin de plan, tous deux fermés
+  et re-vérifiés indépendamment** : (1) suite E2E complète (Step 3 de la
+  tâche de vérification finale) a trouvé une régression croisée réelle —
+  `shell/e2e/export.spec.ts` et `shell/e2e/terrain3d-hosting.spec.ts`,
+  hors de la liste de specs nommée par ce plan, utilisaient encore
+  `getByRole("dialog", ...)` pour les deux composants convertis en
+  panneau en ligne — exactement le piège n°6 (lancer la suite E2E
+  complète avant de clore un plan) ; (2) revue finale de branche (opus) a
+  trouvé 1 Important cross-tâche invisible en revue par tâche : les deux
+  conversions Dialog→Panel divergeaient sur la garde `busy` du
+  déclencheur (`ExportPanel` le désactivait pendant l'envoi,
+  `Terrain3DUploadButton` non, malgré un commentaire affirmant le
+  contraire) — **racine identifiée dans le texte même du plan** (le
+  prose de Task 5 promettait la garde, son bloc de code littéral ne la
+  contenait pas : piège n°3, défaut de plan pas de l'implémenteur).
+  6 Minor reportés en suivi non bloquant pour SP-30d (détail ci-dessous).
+  **Ready to merge.**
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
@@ -353,13 +385,47 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   permissions de collection et le profil « Lecteur » se tranchent, et que la
   raison de verrouillage triplée d'`ItemActions` (cf. entrée SP-29a) peut être
   regroupée si voulu. Basculera les écrans réels sur le kit `ui/kit/`
-  (SP-29b) et retirera les anciens fichiers `ui/*`. 6 suivis non bloquants
+  (SP-29b) et retirera les anciens fichiers `ui/*`. SP-30c a traité la
+  famille 3 (Cartes, `MapEditorPage`) du §6.1 de la spec SP-30 ; **restent
+  les familles 4 à 8** (SP-30d+, à découper en plans séparés — la spec
+  proscrit un seul plan pour tout le reste) : `DatasetEditPage` +
+  `CollectionPermissions` shell-side (Données), `AppBuilderPage` (Apps &
+  sites), `PipelineBuilderPage`/`ReportEditPage`/`VisualQueryWizardPage`
+  (Automatisation), `SqlLabPage` (Analytique), `AdminExtensionsPage`/
+  `CollectionsAdminPage`/`HarvestSourcesAdminPage` (Administration),
+  `Tileset3DUploadButton`/`NewItemButton`/`ImportFileButton` (chrome,
+  dette de `Dialog` documentée par SP-30a, non bloquante pour aucune
+  famille). Éditeurs de symbologie/popup imbriqués dans `LayersPanel`
+  (`MapSymbologyEditor.tsx` 797 lignes/27 couleurs, `PopupEditor.tsx`,
+  `FieldClassificationPicker.tsx`, `MapMeasureSketchToolbar.tsx`,
+  `MapPopup.tsx`, `MapLegend.tsx`, `formFieldStyles.ts`) : dette de tokens
+  cosmétique laissée par SP-30c (aucun `Dialog`, ne bloquait pas la
+  bascule de `MapEditorPage`), volume potentiellement aussi gros que
+  SP-30a+SP-30b réunis — à traiter dans un plan dédié, possiblement hors
+  SP-30 lui-même.
+  6 suivis non bloquants
   hérités de SP-29b à traiter en chemin (détail dans son entrée `### Livré`
   et l'historique d'exécution) : `DataTable.sortDirection` mort, deux `id`
   DOM dupliqués dans la galerie, ambiance de la galerie non nettoyée au
   démontage, branche de fermeture de `ConfirmDialog` non couverte,
   asymétrie contrôlé/non-contrôlé entre surfaces, Providers Tooltip/Toast
-  non exportés par le barrel.
+  non exportés par le barrel. 6 suivis non bloquants hérités de SP-30c
+  (revue finale de branche, tous cosmétiques, aucun ne bloquait le merge) :
+  styles divergents entre les deux panneaux convertis en ligne
+  (`ExportPanel` titre en `<p>`/`gap-2`, `Terrain3DUploadButton` en
+  `<h4>`/`gap-3` — choisir un seul patron avant que SP-30d en copie un des
+  deux) ; hiérarchie de boutons ambiguë sur `ExportPanel` (Annuler et PNG
+  tous deux `variant="outline"`, aucun disqualifié visuellement de PDF) ;
+  `border-t` non tokenisé (peint en `currentColor` sous Tailwind v4, sans
+  impact visible aujourd'hui mais incohérent) dans `LayerPicker.tsx`
+  (lignes ~143/173) et `LayersPanel.tsx` (~220) — fichiers que SP-30c
+  vient de balayer par ailleurs ; ni `ExportPanel` ni `Terrain3DUploadButton`
+  (ni `ItemActions`, préexistant) ne posent `aria-expanded`/`aria-controls`
+  sur leur déclencheur de panneau en ligne — à trancher une fois pour toute
+  la famille SP-30, pas au cas par cas ; stub `matchMedia` de
+  `MapEditorPage.test.tsx` jamais désinstallé explicitement (`vi.stubGlobal`
+  sans `vi.unstubAllGlobals`), sûr aujourd'hui car re-stubé à chaque
+  `beforeEach`, dépendance d'ordre latente à surveiller.
 - Reste **SP-15** : événements/déclencheurs durables au-delà du cron (non
   planifié) ; exposition MCP des noms de secrets (non planifiée) ; **exécuter
   réellement les 5 tests `@pytest.mark.qgis` de SP-15d** avant d'activer
