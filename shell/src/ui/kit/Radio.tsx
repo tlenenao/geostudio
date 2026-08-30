@@ -24,9 +24,11 @@ function RadioGroup({
     let nextIndex = -1;
     if (e.key === "ArrowDown" || e.key === "ArrowRight") {
       e.preventDefault();
+      e.stopPropagation();
       nextIndex = (currentIndex + 1) % items.length;
     } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
       e.preventDefault();
+      e.stopPropagation();
       nextIndex = (currentIndex - 1 + items.length) % items.length;
     }
 
