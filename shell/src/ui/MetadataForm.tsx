@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { Button } from "./button";
-import { Input } from "./input";
+import { Button } from "./kit/Button";
+import { Input } from "./kit/Input";
 
 export function MetadataForm({
   initial,
@@ -34,20 +34,20 @@ export function MetadataForm({
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
-      <label className="flex flex-col gap-1 text-sm">
+      <label className="flex flex-col gap-1 text-sm text-ink">
         Titre
         <Input aria-label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
       </label>
-      <label className="flex flex-col gap-1 text-sm">
+      <label className="flex flex-col gap-1 text-sm text-ink">
         Résumé
         <textarea
           aria-label="Résumé"
-          className="min-h-20 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+          className="min-h-20 rounded-md border border-rule bg-surface px-3 py-2 text-sm text-ink"
           value={abstract}
           onChange={(e) => setAbstract(e.target.value)}
         />
       </label>
-      <label className="flex flex-col gap-1 text-sm">
+      <label className="flex flex-col gap-1 text-sm text-ink">
         Mots-clés
         <Input
           aria-label="Mots-clés"

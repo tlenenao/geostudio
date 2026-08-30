@@ -6,10 +6,12 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.collections.models import Collection
+from app.collections.schemas import CollectionPermissions
 from app.search.providers import get_embedding_provider
 from app.search.ranking import hybrid_search_ids
-from app.sharing.authorization import AccessFacts
+from app.sharing.authorization import AccessFacts, Action, decide
 from app.sharing.models import CollectionShare, Group, GroupMember
+from app.sharing.repository import roles_for_collections
 
 logger = logging.getLogger(__name__)
 
@@ -198,3 +200,67 @@ def set_collection_sharing(
         )
     session.flush()
     return True
+
+
+def _collection_permissions(
+    col: Collection,
+    *,
+    current_user_id: str | None,
+    roles: frozenset[str],
+    actor_is_admin: bool,
+) -> CollectionPermissions:
+    is_owner = current_user_id is not None and col.owner_id == current_user_id
+
+    def verdict(action: Action) -> bool:
+        if action == "delete":
+            return actor_is_admin
+        base = decide(
+            action=action,
+            kind="collection",
+            is_owner=is_owner,
+            is_public=col.is_public,
+            is_published=False,
+            roles=roles,
+            actor_is_admin=actor_is_admin,
+        )
+        return col.editable and base if action == "write" else base
+
+    return CollectionPermissions(
+        read=verdict("read"),
+        write=verdict("write"),
+        delete=verdict("delete"),
+        share=verdict("share"),
+    )
+
+
+def collection_permissions_by_id(
+    session: Session,
+    *,
+    tenant_id: str,
+    current_user_id: str | None,
+    actor_is_admin: bool,
+    collections: list[Collection],
+) -> dict[str, CollectionPermissions]:
+    """Permissions de toute une page, avec **une** requête de rôles — pendant
+    de `_permissions_by_id` dans `app.items.repository`. Anonyme (`current_user_id`
+    absent) ne peut être ni propriétaire ni avoir de rôle : la requête de
+    rôles est sautée."""
+    roles_by_id = (
+        roles_for_collections(
+            session,
+            tenant_id=tenant_id,
+            user_id=current_user_id,
+            collection_ids=[c.id for c in collections],
+        )
+        if current_user_id is not None
+        else {}
+    )
+    return {
+        c.id: _collection_permissions(
+            c,
+            current_user_id=current_user_id,
+            roles=roles_by_id.get(c.id, frozenset()),
+            actor_is_admin=actor_is_admin,
+        )
+        for c in collections
+    }

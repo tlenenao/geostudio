@@ -59,7 +59,7 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
           geometryType: "Point",
           srid: 4326,
           pkColumn: "id",
-          canWrite: true,
+          permissions: { read: true, write: true, delete: false, share: true },
           featureCount: 0,
           owner: "mockuser",
         },
@@ -82,7 +82,7 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
                   geometryType: "Point",
                   srid: 4326,
                   pkColumn: "id",
-                  canWrite: true,
+                  permissions: { read: true, write: true, delete: false, share: true },
                   featureCount: 0,
                   owner: "mockuser",
                 },
@@ -108,7 +108,7 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
           geometryType: "Point",
           srid: 4326,
           pkColumn: "id",
-          canWrite: true,
+          permissions: { read: true, write: true, delete: false, share: true },
           featureCount: 0,
           owner: "mockuser",
         },
@@ -137,7 +137,11 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
   });
 
   await page.goto("/admin/collections");
-  await expect(page.getByRole("link", { name: "Collections" })).toBeVisible();
+  // Le lien "Collections" de l'ancien menu latéral a disparu avec l'ancien
+  // chrome (Task 12) : la barre de domaines n'a plus qu'un seul lien
+  // "Administration" pour ce domaine. On vérifie à la place que la page
+  // elle-même (inchangée) a bien rendu, via son propre titre.
+  await expect(page.getByRole("heading", { name: "Collections" })).toBeVisible();
 
   await page.getByRole("button", { name: "Enregistrer une table" }).click();
   // Scoped to the dialog: the RegisterCollectionDialog's own role="dialog"

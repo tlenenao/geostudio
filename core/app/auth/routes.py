@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,6 +18,8 @@ from app.auth.dependency import (
     is_tileset3d_enabled,
 )
 from app.db import get_session
+from app.sharing.repository import has_any_editor_role
+from app.tenants.models import Tenant
 from app.users.models import User
 from app.users.repository import count_admins, list_users, set_admin, set_analyst
 
@@ -46,26 +48,37 @@ class MeCapabilities(BaseModel):
 class MeResponse(BaseModel):
     id: str
     tenantId: str
+    tenantSlug: str
     username: str
     email: str | None
     firstName: str
     lastName: str
     isAdmin: bool
     isAnalyst: bool
+    hasAnyEditorRole: bool
+    version: str
     capabilities: MeCapabilities
 
 
 @router.get("/me", response_model=MeResponse)
-def get_me(user: User = Depends(get_current_user)) -> MeResponse:
+def get_me(
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> MeResponse:
+    tenant = session.get(Tenant, user.tenant_id)
     return MeResponse(
         id=user.id,
         tenantId=user.tenant_id,
+        tenantSlug=tenant.slug if tenant is not None else user.tenant_id,
         username=user.username,
         email=user.email,
         firstName=user.first_name,
         lastName=user.last_name,
         isAdmin=user.is_admin,
         isAnalyst=user.is_analyst,
+        hasAnyEditorRole=has_any_editor_role(session, tenant_id=user.tenant_id, user_id=user.id),
+        version=request.app.version,
         capabilities=MeCapabilities(
             readOnly=is_read_only_mode(),
             etlEnabled=is_etl_enabled(),

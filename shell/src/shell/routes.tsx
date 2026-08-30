@@ -18,6 +18,8 @@ import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
 import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
 import { HarvestSourcesAdminPage } from "../pages/HarvestSourcesAdminPage";
 import { KitGalleryPage } from "../pages/KitGalleryPage";
+import { TasksComingSoonPage } from "../pages/TasksComingSoonPage";
+import { SettingsComingSoonPage } from "../pages/SettingsComingSoonPage";
 import { RequireAuth } from "../auth/RequireAuth";
 import { AppLayout } from "./AppLayout";
 import { useItemClient } from "../api/ItemClientProvider";
@@ -112,28 +114,21 @@ function useOpenItem() {
 function CatalogRoute() {
   const { onOpenItem, openError } = useOpenItem();
   return (
-    <>
-      {openError && (
-        <p role="alert" className="text-sm text-red-600">
-          Échec de l'ouverture de l'élément.
-        </p>
-      )}
-      <CatalogPage onOpenItem={onOpenItem} />
-    </>
+    <CatalogPage
+      onOpenItem={onOpenItem}
+      openError={openError ? "Échec de l'ouverture de l'élément." : undefined}
+    />
   );
 }
 
 function BookmarksRoute() {
   const { onOpenItem, openError } = useOpenItem();
   return (
-    <>
-      {openError && (
-        <p role="alert" className="text-sm text-red-600">
-          Échec de l'ouverture du signet.
-        </p>
-      )}
-      <CatalogPage onOpenItem={onOpenItem} fixedType="bookmark" />
-    </>
+    <CatalogPage
+      onOpenItem={onOpenItem}
+      fixedType="bookmark"
+      openError={openError ? "Échec de l'ouverture du signet." : undefined}
+    />
   );
 }
 
@@ -210,14 +205,11 @@ function ReportEditRoute() {
 function ReportsRoute() {
   const { onOpenItem, openError } = useOpenItem();
   return (
-    <>
-      {openError && (
-        <p role="alert" className="text-sm text-red-600">
-          Échec de l'ouverture du rapport.
-        </p>
-      )}
-      <CatalogPage onOpenItem={onOpenItem} fixedType="report" />
-    </>
+    <CatalogPage
+      onOpenItem={onOpenItem}
+      fixedType="report"
+      openError={openError ? "Échec de l'ouverture du rapport." : undefined}
+    />
   );
 }
 
@@ -276,6 +268,8 @@ export function AppRoutes() {
         <Route path="/admin/collections" element={<CollectionsAdminPage />} />
         <Route path="/admin/harvest" element={<HarvestSourcesAdminPage />} />
         <Route path="/internal/kit-gallery" element={<KitGalleryPage />} />
+        <Route path="/tasks" element={<TasksComingSoonPage />} />
+        <Route path="/settings" element={<SettingsComingSoonPage />} />
       </Route>
       <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
       <Route path="/sites/:slug" element={<SitePublicRoute />} />

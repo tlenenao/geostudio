@@ -2089,16 +2089,20 @@ test("deleteFeature sends a DELETE and resolves on 204", async () => {
   expect(method).toBe("DELETE");
 });
 
-test("getCollectionPermission returns the canWrite flag", async () => {
+test("getCollectionPermission returns permissions.write", async () => {
   server.use(
     http.get("https://core.test/collections/incidents", () =>
-      HttpResponse.json({ id: "incidents", title: "Incidents", canWrite: true }),
+      HttpResponse.json({
+        id: "incidents",
+        title: "Incidents",
+        permissions: { read: true, write: true, delete: false, share: true },
+      }),
     ),
   );
   expect(await makeClient().getCollectionPermission("incidents")).toBe(true);
 });
 
-test("getCollectionPermission defaults to false when the field is absent", async () => {
+test("getCollectionPermission defaults to false when permissions is absent", async () => {
   server.use(
     http.get("https://core.test/collections/incidents", () =>
       HttpResponse.json({ id: "incidents", title: "Incidents" }),
@@ -2120,7 +2124,7 @@ test("getCollection returns the full collection metadata for a single id", async
         geometryType: null,
         srid: null,
         pkColumn: "id",
-        canWrite: false,
+        permissions: { read: true, write: false, delete: false, share: true },
         featureCount: 2,
         owner: null,
       }),
@@ -2137,7 +2141,7 @@ test("getCollection returns the full collection metadata for a single id", async
     geometryType: null,
     srid: null,
     pkColumn: "id",
-    canWrite: false,
+    permissions: { read: true, write: false, delete: false, share: true },
     featureCount: 2,
     owner: null,
   });
@@ -2272,7 +2276,7 @@ test("listCollections returns the admin collection shape including owner", async
             geometryType: "Point",
             srid: 4326,
             pkColumn: "id",
-            canWrite: true,
+            permissions: { read: true, write: true, delete: false, share: true },
             featureCount: 3,
             owner: "admin",
           },
@@ -2292,7 +2296,7 @@ test("listCollections returns the admin collection shape including owner", async
       geometryType: "Point",
       srid: 4326,
       pkColumn: "id",
-      canWrite: true,
+      permissions: { read: true, write: true, delete: false, share: true },
       featureCount: 3,
       owner: "admin",
     },
@@ -2344,7 +2348,7 @@ test("createCollection POSTs the input and returns the created collection", asyn
         geometryType: "Point",
         srid: 4326,
         pkColumn: "id",
-        canWrite: true,
+        permissions: { read: true, write: true, delete: false, share: true },
         featureCount: 0,
         owner: "admin",
       });
@@ -2373,7 +2377,7 @@ test("updateCollection PATCHes the patch and returns the updated collection", as
         geometryType: "Point",
         srid: 4326,
         pkColumn: "id",
-        canWrite: true,
+        permissions: { read: true, write: true, delete: false, share: true },
         featureCount: 3,
         owner: "admin",
       });

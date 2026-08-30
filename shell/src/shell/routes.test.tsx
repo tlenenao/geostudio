@@ -4,7 +4,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
-import { vi } from "vitest";
+import { beforeEach, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
@@ -55,6 +55,21 @@ vi.mock("../pages/AppRuntimePage", () => ({
 vi.mock("../pages/AdminExtensionsPage", () => ({
   AdminExtensionsPage: () => <div>admin-extensions</div>,
 }));
+
+// jsdom n'implémente pas window.matchMedia (cf. AppLayout.test.tsx) ; les
+// routes protégées passent par AppLayout, qui appelle useNarrowViewport
+// (Task 8) sans mock ici. Stub local au fichier (CLAUDE.md, piège n°10),
+// jamais dans shell/src/test/setup.ts.
+beforeEach(() => {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  );
+});
 
 function wrap(children: ReactNode, initial = "/") {
   const queryClient = new QueryClient({
@@ -226,13 +241,17 @@ test("exportRender=1 on a protected map route hides AppLayout's header/nav chrom
   expect(screen.queryByRole("link", { name: "Catalogue" })).not.toBeInTheDocument();
 });
 
-test("without exportRender, the same map route still renders AppLayout's header/nav chrome normally", () => {
+test("without exportRender, the same map route still renders AppLayout's header/nav chrome normally", async () => {
   wrap(<AppRoutes />, "/maps/77");
   expect(screen.getByText("map-editor-77")).toBeInTheDocument();
   expect(screen.getByText("GeoStudio")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /déconnexion/i })).toBeInTheDocument();
+  // Le sign-out n'est plus un bouton direct de l'en-tête (ancien chrome) :
+  // il vit désormais dans le Popover d'AccountMenu (Task 9), qu'il faut
+  // ouvrir d'abord — même structure que shell/chrome/AccountMenu.test.tsx.
+  await userEvent.click(screen.getByRole("button", { name: "Compte" }));
+  expect(await screen.findByRole("button", { name: "Déconnexion" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Catalogue" })).toBeInTheDocument();
-});
+}, 45000);
 
 test("opening an alert navigates to its dataset's edit page, not a generic app editor", async () => {
   server.use(

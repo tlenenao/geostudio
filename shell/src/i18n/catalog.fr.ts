@@ -32,6 +32,9 @@ export const fr = {
   "locked.needDelete": "Suppression réservée au propriétaire et aux éditeurs.",
   "locked.capabilityOff": "Désactivé sur cette instance — voir un administrateur.",
 
+  // Chrome de page (AppLayout)
+  "layout.readOnlyBanner": "Mode démo — lecture seule, les modifications ne sont pas enregistrées.",
+
   // Domaines
   "domain.catalog": "Catalogue",
   "domain.maps": "Cartes",
@@ -42,6 +45,11 @@ export const fr = {
   "domain.tasks": "Tâches",
   "domain.admin": "Administration",
   "domain.settings": "Paramètres",
+  "domainBar.label": "Domaines",
+  "bottomNav.label": "Navigation",
+  "bottomNav.more": "Plus",
+  "comingSoon.tasks": "Le centre de tâches arrive avec SP-31.",
+  "comingSoon.settings": "Les paramètres d'instance arrivent avec SP-33.",
 
   // Catalogue
   "catalog.count": "{n} éléments",
@@ -69,4 +77,12 @@ export const fr = {
   // DataTable
   "dataTable.selectRow": "Sélectionner {item}",
   "dataTable.selectRowGeneric": "Sélectionner la ligne",
+
+  // AccountMenu
+  "account.menu": "Compte",
+  "account.roleAdmin": "Administrateur",
+  "account.roleAnalyst": "Analyste",
+  "account.roleCreator": "Créateur",
+  "account.roleReader": "Lecteur",
+  "account.signOut": "Déconnexion",
 } as const;

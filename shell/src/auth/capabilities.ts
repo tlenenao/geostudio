@@ -47,7 +47,7 @@ export type DomainDef = {
   id: DomainId;
   labelKey: MessageKey;
   /** Absent = ouvert à tous. Présent et non satisfait = domaine MASQUÉ. */
-  requiresRole?: "admin";
+  requiresRole?: "admin" | "analyst";
   /** Absent = pas de dépendance. Présent et coupé = domaine VERROUILLÉ. */
   requiresCapability?: keyof InstanceCapabilities;
 };
@@ -59,16 +59,17 @@ export const DOMAINS: readonly DomainDef[] = [
   { id: "data", labelKey: "domain.data" },
   { id: "apps", labelKey: "domain.apps" },
   { id: "automation", labelKey: "domain.automation", requiresCapability: "etlEnabled" },
-  { id: "analytics", labelKey: "domain.analytics" },
+  { id: "analytics", labelKey: "domain.analytics", requiresRole: "analyst" },
   { id: "tasks", labelKey: "domain.tasks" },
   { id: "admin", labelKey: "domain.admin", requiresRole: "admin" },
   { id: "settings", labelKey: "domain.settings" },
 ] as const;
 
 export function domainState(domain: DomainDef, profile: Profile): DomainState {
-  // Le rôle est évalué EN PREMIER : sinon un non-admin apprendrait
-  // l'existence d'un domaine par le verrou qu'on lui montrerait.
+  // Le rôle est évalué EN PREMIER : sinon un non-admin/non-analyste
+  // apprendrait l'existence d'un domaine par le verrou qu'on lui montrerait.
   if (domain.requiresRole === "admin" && !profile.isAdmin) return "hidden";
+  if (domain.requiresRole === "analyst" && !profile.isAnalyst) return "hidden";
   if (domain.requiresCapability && !profile.capabilities[domain.requiresCapability]) {
     return "locked";
   }

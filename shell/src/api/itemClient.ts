@@ -539,6 +539,9 @@ export function createItemClient(opts: {
         lastName: string;
         isAdmin: boolean;
         isAnalyst: boolean;
+        hasAnyEditorRole: boolean;
+        version: string;
+        tenantSlug: string;
       }>("GET", `/me`);
       return {
         username: data.username,
@@ -546,6 +549,9 @@ export function createItemClient(opts: {
         lastName: data.lastName,
         isAdmin: data.isAdmin,
         isAnalyst: data.isAnalyst,
+        hasAnyEditorRole: data.hasAnyEditorRole,
+        version: data.version,
+        tenantSlug: data.tenantSlug,
       };
     },
 
@@ -1428,8 +1434,11 @@ export function createItemClient(opts: {
     },
 
     async getCollectionPermission(collectionId: string): Promise<boolean> {
-      const data = await request<{ canWrite?: boolean }>("GET", `/collections/${collectionId}`);
-      return data.canWrite ?? false;
+      const data = await request<{ permissions?: { write?: boolean } }>(
+        "GET",
+        `/collections/${collectionId}`,
+      );
+      return data.permissions?.write ?? false;
     },
 
     async createFeature(

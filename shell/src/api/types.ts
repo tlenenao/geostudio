@@ -45,6 +45,9 @@ export type Me = {
   lastName: string;
   isAdmin: boolean;
   isAnalyst: boolean;
+  hasAnyEditorRole: boolean;
+  version: string;
+  tenantSlug: string;
 };
 
 export type InstanceInfo = {
@@ -548,7 +551,7 @@ export type CollectionAdmin = {
   geometryType: string | null;
   srid: number | null;
   pkColumn: string;
-  canWrite: boolean;
+  permissions: ItemPermissions;
   featureCount: number | null;
   owner: string | null;
 };

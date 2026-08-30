@@ -99,6 +99,13 @@ def test_capability_reflects_the_environment(client, monkeypatch, env_value, exp
     assert client.get("/me").json()["capabilities"]["etlEnabled"] is expected
 
 
+def test_me_exposes_tenant_slug_version_and_editor_role(client):
+    body = client.get("/me").json()
+    assert isinstance(body["tenantSlug"], str) and body["tenantSlug"] != ""
+    assert isinstance(body["version"], str) and body["version"] != ""
+    assert body["hasAnyEditorRole"] is False  # aucun partage dans la fixture `client`
+
+
 # Finding I2 (revue finale SP-29a) : `test_me_capabilities_match_the_instance_route`
 # ci-dessus prouve l'égalité des deux réponses avec l'environnement par
 # défaut, mais `test_capability_reflects_the_environment` ne fait bouger

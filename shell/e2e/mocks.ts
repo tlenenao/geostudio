@@ -90,6 +90,12 @@ export async function mockCore(page: Page) {
   // Stateful store: keyed by item id, holds the last PUT body per item.
   const savedConfigs = new Map<string, unknown>();
   let published = false;
+  // Item 1 (Alpha) — title tracking for edit test (SP-30b/Task 6). Hoisted
+  // here (rather than left next to the "/items/1" route below) so it's
+  // declared before any route-handler closure that reads it — a future spec
+  // ordering that made a route fire during the earlier declaration would
+  // otherwise hit the TDZ (final review of SP-30b, finding 3).
+  let item1Title = "Alpha";
 
   // Config history / restore (Task 18) — item "1" (Alpha) carries a
   // two-version story: the config served by GET /configs/by-item/1 starts
@@ -210,6 +216,10 @@ export async function mockCore(page: Page) {
         email: null,
         tenantId: "t-mock",
         isAdmin: false,
+        isAnalyst: false,
+        hasAnyEditorRole: true,
+        version: "0.1.0",
+        tenantSlug: "demo",
       },
     });
   });
@@ -243,7 +253,16 @@ export async function mockCore(page: Page) {
   // vs. https://core.test), so a path-only glob here would also intercept
   // the browser's document navigation to that page and break rendering.
   await page.route("https://core.test/items/1", async (route) => {
-    await route.fulfill({ json: ALL[0] });
+    if (route.request().method() === "PATCH") {
+      const body = await route.request().postDataJSON();
+      if (typeof body.title === "string") item1Title = body.title;
+    }
+    await route.fulfill({
+      json: {
+        ...ALL[0],
+        title: item1Title,
+      },
+    });
   });
 
   await page.route("**/configs", async (route) => {
@@ -521,7 +540,7 @@ export async function mockCore(page: Page) {
         geometryType: null,
         srid: null,
         pkColumn: "id",
-        canWrite: false,
+        permissions: { read: true, write: false, delete: false, share: false },
         featureCount: 2,
       },
     });
@@ -559,7 +578,7 @@ export async function mockCore(page: Page) {
         geometryType: null,
         srid: null,
         pkColumn: "id",
-        canWrite: true,
+        permissions: { read: true, write: true, delete: false, share: false },
       },
     });
   });

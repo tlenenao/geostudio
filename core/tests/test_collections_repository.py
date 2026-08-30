@@ -1,10 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
+import uuid
+
 import procrastinate
 import pytest
 
 from app.collections import repository as repo
+from app.collections.repository import collection_permissions_by_id
+from app.collections.schemas import CollectionPermissions
 from app.db import Base, init_db, make_engine, make_session_factory
 from app.search.providers import FakeProvider
+from app.sharing.models import CollectionShare, Group, GroupMember
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -17,6 +22,37 @@ def session():
     with Session() as s:
         yield s
     engine.dispose()
+
+
+@pytest.fixture()
+def tenant(session):
+    return get_or_create_default_tenant(session)
+
+
+@pytest.fixture()
+def owner(session, tenant):
+    return get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="o",
+        username="owner",
+        email=None,
+        first_name="",
+        last_name="",
+    )
+
+
+@pytest.fixture()
+def other(session, tenant):
+    return get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="x",
+        username="other",
+        email=None,
+        first_name="",
+        last_name="",
+    )
 
 
 @pytest.fixture()
@@ -266,3 +302,106 @@ def test_list_visible_collections_hybrid_search_ranks_semantic_match_ahead_of_we
     )
     titles = [c.title for c in cols]
     assert titles.index("Sujet totalement différent") < titles.index("incidents")
+
+
+def _register(session, tenant, owner, *, id_="col-perm", editable=True, is_public=False):
+    from app.collections.models import Collection
+
+    col = Collection(
+        id=id_,
+        tenant_id=tenant.id,
+        owner_id=owner.id,
+        table_name=id_,
+        title=id_,
+        pk_column="id",
+        editable=editable,
+        is_public=is_public,
+    )
+    session.add(col)
+    session.flush()
+    return col
+
+
+def test_owner_gets_full_permissions_except_delete(session, tenant, owner):
+    col = _register(session, tenant, owner)
+    result = collection_permissions_by_id(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=owner.id,
+        actor_is_admin=False,
+        collections=[col],
+    )
+    assert result[col.id] == CollectionPermissions(read=True, write=True, delete=False, share=True)
+
+
+def test_admin_gets_delete_even_as_stranger(session, tenant, owner, other):
+    col = _register(session, tenant, owner)
+    result = collection_permissions_by_id(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=other.id,
+        actor_is_admin=True,
+        collections=[col],
+    )
+    assert result[col.id].delete is True
+
+
+def test_non_admin_owner_cannot_delete(session, tenant, owner):
+    # Anti-régression : unregister_collection est _require_admin seul, pas
+    # decide() — un propriétaire non-admin ne doit JAMAIS voir delete=True,
+    # sinon le bouton Supprimer produirait un 403 après clic.
+    col = _register(session, tenant, owner)
+    result = collection_permissions_by_id(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=owner.id,
+        actor_is_admin=False,
+        collections=[col],
+    )
+    assert result[col.id].delete is False
+
+
+def test_write_requires_editable_even_for_the_owner(session, tenant, owner):
+    col = _register(session, tenant, owner, editable=False)
+    result = collection_permissions_by_id(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=owner.id,
+        actor_is_admin=False,
+        collections=[col],
+    )
+    assert result[col.id].write is False
+
+
+def test_editor_role_grants_write_and_share_not_delete(session, tenant, owner, other):
+    col = _register(session, tenant, owner)
+    group = Group(id=uuid.uuid4().hex, tenant_id=tenant.id, name="g", created_by=owner.id)
+    session.add(group)
+    session.flush()
+    session.add(GroupMember(group_id=group.id, user_id=other.id, tenant_id=tenant.id))
+    session.add(
+        CollectionShare(collection_id=col.id, group_id=group.id, tenant_id=tenant.id, role="editor")
+    )
+    session.flush()
+    result = collection_permissions_by_id(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=other.id,
+        actor_is_admin=False,
+        collections=[col],
+    )
+    assert result[col.id] == CollectionPermissions(read=True, write=True, delete=False, share=True)
+
+
+def test_anonymous_gets_read_only_on_a_public_collection(session, tenant, owner):
+    col = _register(session, tenant, owner, is_public=True)
+    result = collection_permissions_by_id(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=None,
+        actor_is_admin=False,
+        collections=[col],
+    )
+    assert result[col.id] == CollectionPermissions(
+        read=True, write=False, delete=False, share=False
+    )
