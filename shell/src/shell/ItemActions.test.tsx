@@ -4,7 +4,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import type { ReactNode } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useSearchParams } from "react-router-dom";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import type { Item, ItemClient } from "../api/types";
@@ -45,30 +45,42 @@ function Harness({ children }: { children: ReactNode }) {
 // `Harness`, pas un second wrapper.
 const wrapper = Harness;
 
-test("renames an item via the edit dialog", async () => {
-  render(
-    <Harness>
-      <ItemActions item={item} />
-    </Harness>,
+function ShowSearch() {
+  const [params] = useSearchParams();
+  return <p>Fiche ouverte : {params.toString()}</p>;
+}
+
+function HarnessWithRouter({ children }: { children: ReactNode }) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
+  return (
+    <MemoryRouter initialEntries={["/"]}>
+      <QueryClientProvider client={queryClient}>
+        <ItemClientProvider client={client}>
+          <Routes>
+            <Route path="/" element={children} />
+            <Route path="/items/:pk" element={<ShowSearch />} />
+          </Routes>
+        </ItemClientProvider>
+      </QueryClientProvider>
+    </MemoryRouter>
   );
+}
+
+test("« Modifier » navigue vers la fiche avec ?panel=edit", async () => {
+  render(<ItemActions item={item} />, { wrapper: HarnessWithRouter });
   await userEvent.click(screen.getByRole("button", { name: /actions/i }));
   await userEvent.click(screen.getByRole("button", { name: /modifier/i }));
-  const title = screen.getByLabelText("Titre");
-  await userEvent.clear(title);
-  await userEvent.type(title, "Renamed");
-  await userEvent.click(screen.getByRole("button", { name: /enregistrer/i }));
-  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(await screen.findByText(/panel=edit/)).toBeInTheDocument();
 });
 
-test("opens the share dialog from the menu", async () => {
-  render(
-    <Harness>
-      <ItemActions item={item} />
-    </Harness>,
-  );
+test("« Partager » navigue vers la fiche avec ?panel=share", async () => {
+  render(<ItemActions item={item} />, { wrapper: HarnessWithRouter });
   await userEvent.click(screen.getByRole("button", { name: /actions/i }));
   await userEvent.click(screen.getByRole("button", { name: /partager/i }));
-  expect(await screen.findByRole("dialog", { name: /partager/i })).toBeInTheDocument();
+  expect(await screen.findByText(/panel=share/)).toBeInTheDocument();
 });
 
 test("deletes an item after confirmation and calls onDeleted", async () => {
