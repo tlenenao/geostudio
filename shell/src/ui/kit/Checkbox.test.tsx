@@ -49,3 +49,19 @@ test("disabled empêche le changement", async () => {
   await userEvent.click(box);
   expect(onCheckedChange).not.toHaveBeenCalled();
 });
+
+test("disabled empêche le changement au clavier", async () => {
+  const onCheckedChange = vi.fn();
+  render(
+    <Checkbox
+      aria-label="Sélectionner"
+      checked={false}
+      disabled
+      onCheckedChange={onCheckedChange}
+    />,
+  );
+  const box = screen.getByRole("checkbox", { name: "Sélectionner" });
+  box.focus();
+  await userEvent.keyboard(" ");
+  expect(onCheckedChange).not.toHaveBeenCalled();
+});
