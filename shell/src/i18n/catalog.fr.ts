@@ -49,4 +49,7 @@ export const fr = {
   // NumberField
   "numberField.increase": "Augmenter",
   "numberField.decrease": "Diminuer",
+
+  // Kit
+  "kit.breadcrumbLabel": "Fil d'Ariane",
 } as const;
