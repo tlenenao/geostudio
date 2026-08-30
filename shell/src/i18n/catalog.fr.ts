@@ -42,6 +42,9 @@ export const fr = {
   "domain.tasks": "Tâches",
   "domain.admin": "Administration",
   "domain.settings": "Paramètres",
+  "domainBar.label": "Domaines",
+  "comingSoon.tasks": "Le centre de tâches arrive avec SP-31.",
+  "comingSoon.settings": "Les paramètres d'instance arrivent avec SP-33.",
 
   // Catalogue
   "catalog.count": "{n} éléments",
