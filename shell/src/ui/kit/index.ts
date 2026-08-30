@@ -20,3 +20,4 @@ export { ColorField } from "./ColorField";
 export { NumberField } from "./NumberField";
 export { Select } from "./Select";
 export { Combobox } from "./Combobox";
+export { Tabs } from "./Tabs";
