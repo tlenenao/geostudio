@@ -95,13 +95,13 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
       </Button>
       {pickerOpen && (
         // Panneau en ligne, pas une fenêtre modale (spec §2.1, ConfirmDialog
-        // seul survit) : pas d'Escape/backdrop à intercepter, Annuler ferme
+        // seul survit) : pas d'Escape/backdrop à intercepter, Fermer ferme
         // explicitement sans exporter.
         <Panel className="flex flex-col gap-2">
           <p className="text-sm font-medium text-ink">Choisir le mode d'export</p>
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen(false)}>
-              Annuler
+              Fermer
             </Button>
             <Button type="button" size="sm" onClick={() => onChooseMode("static")}>
               Statique
@@ -129,7 +129,7 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
               Exporter quand même
             </Button>
             <Button size="sm" variant="outline" onClick={() => setPendingWarningMode(null)}>
-              Annuler
+              Ne pas exporter
             </Button>
           </div>
         </div>
