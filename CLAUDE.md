@@ -403,6 +403,38 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   qu'un humain ne pouvait pas atteindre ; les suites vertes n'étaient pas
   une preuve). 5 Minor reportés en suivi non bloquant pour SP-30e+
   (détail ci-dessous). **Ready to merge.**
+- **SP-30e** (3 tâches + 2 correctifs post-hoc, famille 5 « Apps & sites » du
+  §6.1 de la spec SP-30) — `AppBuilderPage` sur `TriptychLayout` : onglets
+  « Structure » (`PageManager` + `WidgetPalette`) / « Canevas » (en-tête
+  local Édition/Aperçu, Annuler/Rétablir, rupture, Capturer une miniature,
+  puis `AppRenderer` plein volet) / « Propriétés » (`PropsPanel` du widget
+  sélectionné en tête, puis Sources de données/Actions/Navigation/
+  Interactions/Variables/Thème/Impression/`ConfigHistoryPanel`/export
+  standalone/copilote/Enregistrer — inspecteur volontairement **non**
+  scindé « widget sélectionné » vs « réglages de l'app » malgré la
+  maquette : la suite de tests existante exige `ActionsPanel`/
+  `DataSourcePanel` accessibles pendant qu'un widget reste sélectionné,
+  et le mode Aperçu ne masque plus les volets latéraux). Kit-ification
+  préalable d'`AppExportPanel` (Dialog→panneau en ligne, busy guard) et
+  `CopilotPanel` (Button + tokens). E2E 118/4/0 inchangé (aucun nouveau
+  spec). Couverture shell 90,85 % (seuil 88), suite complète 222
+  fichiers/1817 tests. **1 Critical trouvé en Task 3, fermé** : le volet
+  Propriétés était passé d'`<aside>` à `<div>`, cassant 3 tests de
+  `shell/e2e/containers.spec.ts` — non listé dans le filet à 5 specs du
+  plan, 3e occurrence consécutive du piège n°6 (SP-30c, SP-30d, SP-30e) ;
+  fix : le volet Propriétés redevient `<aside>` (volet Structure reste
+  `<div>`, asymétrie assumée). **2 Important + 1 récidive trouvés en
+  revue finale de branche (opus), tous fermés** : la rangée de boutons du
+  sélecteur de mode d'export débordait de la colonne Propriétés (fix
+  `flex-wrap`) ; deux boutons « Annuler » d'`AppExportPanel` entraient en
+  collision avec le bouton d'annulation (undo) d'`AppBuilderPage` (fix :
+  renommage en « Fermer »/« Ne pas exporter ») ; le premier fix a reproduit
+  son propre défaut sur la rangée jumelle de l'avertissement (`flex-wrap`
+  oublié là aussi, 2e correctif). Recommandation actée pour SP-30f+ : ne
+  plus nommer de liste de specs E2E dans le texte du plan, exiger
+  directement la suite complète avant tout commit qui change la structure
+  DOM d'une page. 6 Minor reportés en suivi non bloquant pour SP-30f+
+  (détail ci-dessous). **Ready to merge.**
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
@@ -419,12 +451,13 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   regroupée si voulu. Basculera les écrans réels sur le kit `ui/kit/`
   (SP-29b) et retirera les anciens fichiers `ui/*`. SP-30c a traité la
   famille 3 (Cartes, `MapEditorPage`), SP-30d la famille 4 (Données,
-  `DatasetEditPage`) du §6.1 de la spec SP-30 ; **restent les familles 5
-  à 8** (SP-30e+, à découper en plans séparés — la spec proscrit un seul
-  plan pour tout le reste) : `AppBuilderPage` (Apps & sites),
-  `PipelineBuilderPage`/`ReportEditPage`/`VisualQueryWizardPage`
-  (Automatisation), `SqlLabPage` (Analytique), `AdminExtensionsPage`/
-  `CollectionsAdminPage`/`HarvestSourcesAdminPage` (Administration),
+  `DatasetEditPage`), SP-30e la famille 5 (Apps & sites, `AppBuilderPage`)
+  du §6.1 de la spec SP-30 ; **restent les familles 6 à 8** (SP-30f+, à
+  découper en plans séparés — la spec proscrit un seul plan pour tout le
+  reste) : `PipelineBuilderPage`/`ReportEditPage`/`VisualQueryWizardPage`
+  (Automatisation, famille 6 — prochaine dans l'ordre du §6.1), `SqlLabPage`
+  (Analytique, famille 7), `AdminExtensionsPage`/`CollectionsAdminPage`/
+  `HarvestSourcesAdminPage` (Administration, famille 8),
   `Tileset3DUploadButton`/`NewItemButton`/`ImportFileButton` (chrome,
   dette de `Dialog` documentée par SP-30a, non bloquante pour aucune
   famille). Éditeurs de symbologie/popup imbriqués dans `LayersPanel`
@@ -473,6 +506,27 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   disposition que `MapEditorPage.test.tsx` ci-dessus) ; densité du volet
   Réglages (`AlertRuleEditor`+`ConfigHistoryPanel` resserrés dans une
   colonne étroite), à surveiller si le patron se répète en SP-30e+.
+  6 suivis non bloquants hérités de SP-30e (revue finale de branche, tous
+  cosmétiques, aucun ne bloquait le merge) : le volet Propriétés
+  restauré en `<aside>` englobe désormais tout l'empilement (pas
+  seulement `PropsPanel` comme avant), portée des locators E2E
+  `propsPanel` élargie — risque de collision strict-mode Playwright si
+  un futur composant réutilise un libellé déjà présent ; pas de
+  `vi.unstubAllGlobals()` dans `AppBuilderPage.test.tsx` — 4e occurrence
+  de la même dette, toujours sans traitement cohérent pour la famille ;
+  décision « Aperçu garde les volets visibles » non vérifiée par un
+  test (ni unitaire ni E2E ne clique jamais sur Aperçu puis n'interroge
+  la présence des volets) ; commentaire perdu sur l'invariant
+  `onRestored` (pas de `query.refetch()`, `ConfigHistoryPanel` invalide
+  déjà la clé) ; capture de miniature scopée à la seule colonne Canevas
+  au lieu de la pleine largeur (ancien comportement Aperçu, aujourd'hui
+  impossible) — conséquence produit à confirmer avec Tanguy, pas un
+  défaut de code ; `AppExportPanel` réimplémente à la main la recette de
+  couleurs de `Banner variant="warn"` au lieu de l'importer.
+  Question à trancher au niveau de `TriptychLayout` lui-même en SP-30f
+  (pas page par page) : `AppBuilderPage` est la seule page à émettre
+  `<main>`/`<aside>`, les trois autres familles déjà basculées
+  n'utilisent que `<div>`.
 - Reste **SP-15** : événements/déclencheurs durables au-delà du cron (non
   planifié) ; exposition MCP des noms de secrets (non planifiée) ; **exécuter
   réellement les 5 tests `@pytest.mark.qgis` de SP-15d** avant d'activer
