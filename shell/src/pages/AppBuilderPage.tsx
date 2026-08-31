@@ -34,7 +34,8 @@ import { getWidget } from "../builder/registry";
 import { BREAKPOINTS, nextFreePosition, type Breakpoint } from "../builder/grid";
 import { getPages, getPageLayout, setPageLayout } from "../builder/pages";
 import { getConfigExpressionErrors } from "../builder/configExpressionErrors";
-import { Button } from "../ui/button";
+import { Button } from "../ui/kit/Button";
+import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useAuth } from "../auth/useAuth";
 
 registerBuiltinWidgets();
@@ -135,7 +136,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     return <p role="status">Chargement…</p>;
   if (query.isError || !draft || !activeLayout || !activePage)
     return (
-      <p role="alert" className="text-sm text-red-600">
+      <p role="alert" className="text-sm text-danger">
         Application introuvable.
       </p>
     );
@@ -262,192 +263,209 @@ export function AppBuilderPage({ pk }: { pk: string }) {
 
   return (
     <DataSourcesEditProvider onAdd={(source) => setSources([...draft.dataSources, source])}>
-      <div className="flex h-full flex-col">
-        <div className="flex items-center gap-2 border-b p-2">
-          <Button
-            size="sm"
-            variant={mode === "edit" ? "default" : "outline"}
-            onClick={() => setMode("edit")}
-          >
-            Édition
-          </Button>
-          <Button
-            size="sm"
-            variant={mode === "preview" ? "default" : "outline"}
-            onClick={() => setMode("preview")}
-          >
-            Aperçu
-          </Button>
-          <div className="ml-2 flex items-center gap-1">
-            <Button size="sm" variant="outline" disabled={!canUndo} onClick={undo}>
-              Annuler
-            </Button>
-            <Button size="sm" variant="outline" disabled={!canRedo} onClick={redo}>
-              Rétablir
-            </Button>
-          </div>
-          <div className="ml-2 flex items-center gap-1">
-            {BREAKPOINTS.map((bp) => (
-              <Button
-                key={bp}
-                size="sm"
-                variant={breakpoint === bp ? "default" : "outline"}
-                aria-label={`Éditer en ${bp}`}
-                onClick={() => setBreakpoint(bp)}
-              >
-                {bp}
-              </Button>
-            ))}
-          </div>
-          <div className="flex-1" />
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={thumbnail.isPending}
-            onClick={() => void captureThumbnail()}
-          >
-            Capturer une miniature
-          </Button>
-          <Button
-            size="sm"
-            disabled={save.isPending || expressionErrors.length > 0}
-            onClick={() => save.mutate(draft)}
-          >
-            Enregistrer
-          </Button>
-          {expressionErrors.length > 0 && (
-            <span
-              role="alert"
-              aria-label="Erreur de condition d'affichage"
-              className="text-sm text-red-600"
-            >
-              {expressionErrors[0]}
-            </span>
-          )}
-          {save.isError && (
-            <span role="alert" className="text-sm text-red-600">
-              Échec de l'enregistrement.
-            </span>
-          )}
-          {thumbnail.isError && (
-            <span role="alert" className="text-sm text-red-600">
-              Échec de la capture.
-            </span>
-          )}
-        </div>
-        <div className="flex flex-1 overflow-hidden">
-          {mode === "edit" && (
-            <aside className="w-48 overflow-auto border-r p-2">
-              <p className="mb-1 text-xs font-medium text-slate-500">Widgets</p>
-              <WidgetPalette onAdd={addWidget} />
-              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Pages</p>
-              <PageManager
-                pages={pages}
-                activePageId={activePage}
-                onChange={setPages}
-                onSelectPage={setActivePageId}
-              />
-              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Sources de données</p>
-              <DataSourcePanel
-                sources={draft.dataSources}
-                onChange={setSources}
-                onPromote={(id) => void promoteSource(id)}
-                promotingId={promotingId}
-              />
-              {createDataset.isError && (
-                <p role="alert" className="text-xs text-red-600">
-                  Échec de la promotion.
-                </p>
-              )}
-              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Actions</p>
-              <ActionsPanel
-                items={activeLayout.items}
-                variables={draft.variables ?? []}
-                messages={draft.messages}
-                onChange={setMessages}
-              />
-              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Navigation</p>
-              <NavigationPanel
-                navigationMode={draft.navigationMode ?? "tabs"}
-                onNavigationModeChange={setNavigationMode}
-                page={pages.find((p) => p.id === activePage) ?? pages[0]}
-                onPageChange={setActivePageOnEnter}
-              />
-              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Interactions</p>
-              <label className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  aria-label="Interactions automatiques (cross-filter)"
-                  checked={draft.interactions === "auto"}
-                  onChange={(e) => setInteractions(e.target.checked ? "auto" : "manual")}
+      <div className="-m-6 flex flex-1 flex-col overflow-hidden">
+        <TriptychLayout
+          defaultTabId="canvas"
+          browse={{
+            id: "structure",
+            label: "Structure",
+            content: (
+              <div className="flex flex-col gap-1 p-2">
+                <p className="mb-1 text-xs font-medium text-ink-2">Pages</p>
+                <PageManager
+                  pages={pages}
+                  activePageId={activePage}
+                  onChange={setPages}
+                  onSelectPage={setActivePageId}
                 />
-                Interactions automatiques (cross-filter)
-              </label>
-              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Variables</p>
-              <VariablesPanel variables={draft.variables ?? []} onChange={setVariables} />
-              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Thème</p>
-              <ThemePanel theme={draft.theme} onChange={setTheme} />
-              <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Impression</p>
-              <PrintLayoutPanel value={draft.printLayout ?? null} onChange={setPrintLayout} />
-              <div className="mt-3">
-                <ConfigHistoryPanel
-                  pk={pk}
-                  currentVersion={null}
-                  onRestored={async () => {
-                    const restored = await client.getAppConfig(pk);
-                    // resetDraft, pas setDraft : la pile undo ne peut pas défaire
-                    // une écriture serveur (cf. useUndoableDraft.resetDraft).
-                    // Pas de query.refetch() ici : ConfigHistoryPanel invalide
-                    // désormais lui-même la clé de la config (elle est active,
-                    // donc react-query la refetch), pour les cinq éditeurs.
-                    resetDraft(restored);
-                  }}
-                />
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Widgets</p>
+                <WidgetPalette onAdd={addWidget} />
               </div>
-              {appExportEnabled && (
-                <>
-                  <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Export standalone</p>
-                  <AppExportPanel itemId={pk} config={draft} />
-                </>
-              )}
-              {copilotEnabled && (
-                <>
-                  <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Copilote</p>
-                  <CopilotPanel
-                    itemId={pk}
+            ),
+          }}
+          work={{
+            id: "canvas",
+            label: "Canevas",
+            content: (
+              <div className="flex h-full flex-col overflow-hidden">
+                <div className="flex flex-wrap items-center gap-2 border-b border-rule p-2">
+                  <Button
+                    size="sm"
+                    variant={mode === "edit" ? "default" : "outline"}
+                    onClick={() => setMode("edit")}
+                  >
+                    Édition
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={mode === "preview" ? "default" : "outline"}
+                    onClick={() => setMode("preview")}
+                  >
+                    Aperçu
+                  </Button>
+                  <div className="ml-2 flex items-center gap-1">
+                    <Button size="sm" variant="outline" disabled={!canUndo} onClick={undo}>
+                      Annuler
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={!canRedo} onClick={redo}>
+                      Rétablir
+                    </Button>
+                  </div>
+                  <div className="ml-2 flex items-center gap-1">
+                    {BREAKPOINTS.map((bp) => (
+                      <Button
+                        key={bp}
+                        size="sm"
+                        variant={breakpoint === bp ? "default" : "outline"}
+                        aria-label={`Éditer en ${bp}`}
+                        onClick={() => setBreakpoint(bp)}
+                      >
+                        {bp}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="flex-1" />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={thumbnail.isPending}
+                    onClick={() => void captureThumbnail()}
+                  >
+                    Capturer une miniature
+                  </Button>
+                  {thumbnail.isError && (
+                    <span role="alert" className="text-sm text-danger">
+                      Échec de la capture.
+                    </span>
+                  )}
+                </div>
+                <main ref={mainRef} className="flex-1 overflow-auto p-2">
+                  <AppRenderer
                     config={draft}
-                    activePageId={activePage}
-                    setDraft={setDraft}
+                    mode={mode}
+                    onChange={setDraft}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                    breakpoint={breakpoint}
+                    pageId={activePage}
+                    onNavigate={setActivePageId}
                   />
-                </>
-              )}
-            </aside>
-          )}
-          <main ref={mainRef} className="flex-1 overflow-auto p-2">
-            <AppRenderer
-              config={draft}
-              mode={mode}
-              onChange={setDraft}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              breakpoint={breakpoint}
-              pageId={activePage}
-              onNavigate={setActivePageId}
-            />
-          </main>
-          {mode === "edit" && (
-            <aside className="w-64 overflow-auto border-l p-2">
-              <p className="mb-1 text-xs font-medium text-slate-500">Propriétés</p>
-              <PropsPanel
-                item={selected}
-                dataSources={draft.dataSources}
-                theme={draft.theme}
-                onChange={updateSelectedProps}
-                onVisibleWhenChange={updateSelectedVisibleWhen}
-              />
-            </aside>
-          )}
-        </div>
+                </main>
+              </div>
+            ),
+          }}
+          inspect={{
+            id: "props",
+            label: "Propriétés",
+            content: (
+              <div className="flex flex-col gap-1 p-2">
+                <p className="mb-1 text-xs font-medium text-ink-2">Propriétés</p>
+                <PropsPanel
+                  item={selected}
+                  dataSources={draft.dataSources}
+                  theme={draft.theme}
+                  onChange={updateSelectedProps}
+                  onVisibleWhenChange={updateSelectedVisibleWhen}
+                />
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Sources de données</p>
+                <DataSourcePanel
+                  sources={draft.dataSources}
+                  onChange={setSources}
+                  onPromote={(id) => void promoteSource(id)}
+                  promotingId={promotingId}
+                />
+                {createDataset.isError && (
+                  <p role="alert" className="text-xs text-danger">
+                    Échec de la promotion.
+                  </p>
+                )}
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Actions</p>
+                <ActionsPanel
+                  items={activeLayout.items}
+                  variables={draft.variables ?? []}
+                  messages={draft.messages}
+                  onChange={setMessages}
+                />
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Navigation</p>
+                <NavigationPanel
+                  navigationMode={draft.navigationMode ?? "tabs"}
+                  onNavigationModeChange={setNavigationMode}
+                  page={pages.find((p) => p.id === activePage) ?? pages[0]}
+                  onPageChange={setActivePageOnEnter}
+                />
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Interactions</p>
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    aria-label="Interactions automatiques (cross-filter)"
+                    checked={draft.interactions === "auto"}
+                    onChange={(e) => setInteractions(e.target.checked ? "auto" : "manual")}
+                  />
+                  Interactions automatiques (cross-filter)
+                </label>
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Variables</p>
+                <VariablesPanel variables={draft.variables ?? []} onChange={setVariables} />
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Thème</p>
+                <ThemePanel theme={draft.theme} onChange={setTheme} />
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Impression</p>
+                <PrintLayoutPanel value={draft.printLayout ?? null} onChange={setPrintLayout} />
+                <div className="mt-3">
+                  <ConfigHistoryPanel
+                    pk={pk}
+                    currentVersion={null}
+                    onRestored={async () => {
+                      const restored = await client.getAppConfig(pk);
+                      // resetDraft, pas setDraft : la pile undo ne peut pas défaire
+                      // une écriture serveur (cf. useUndoableDraft.resetDraft).
+                      resetDraft(restored);
+                    }}
+                  />
+                </div>
+                {appExportEnabled && (
+                  <>
+                    <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Export standalone</p>
+                    <AppExportPanel itemId={pk} config={draft} />
+                  </>
+                )}
+                {copilotEnabled && (
+                  <>
+                    <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Copilote</p>
+                    <CopilotPanel
+                      itemId={pk}
+                      config={draft}
+                      activePageId={activePage}
+                      setDraft={setDraft}
+                    />
+                  </>
+                )}
+                <div className="mt-3 flex flex-col gap-2 border-t border-rule pt-3">
+                  <Button
+                    size="sm"
+                    className="w-fit"
+                    disabled={save.isPending || expressionErrors.length > 0}
+                    onClick={() => save.mutate(draft)}
+                  >
+                    Enregistrer
+                  </Button>
+                  {expressionErrors.length > 0 && (
+                    <span
+                      role="alert"
+                      aria-label="Erreur de condition d'affichage"
+                      className="text-sm text-danger"
+                    >
+                      {expressionErrors[0]}
+                    </span>
+                  )}
+                  {save.isError && (
+                    <span role="alert" className="text-sm text-danger">
+                      Échec de l'enregistrement.
+                    </span>
+                  )}
+                </div>
+              </div>
+            ),
+          }}
+        />
       </div>
     </DataSourcesEditProvider>
   );
