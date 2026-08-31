@@ -505,6 +505,33 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   les trois autres, sans étendre à `["item", pk]` (aucun sibling ne le
   fait). 6 Minor reportés en suivi non bloquant (détail ci-dessous).
   **Ready to merge.**
+- **SP-30h** (4 tâches, famille 6 « Automatisation », volet 3 et dernier du
+  §6.1 de la spec SP-30 — **clôt la famille 6**) — `VisualQueryWizardPage`
+  sur `TriptychLayout` : onglets « Catalogue » (retour + `<dl>` Type/Modifié,
+  visible seulement une fois `existingDatasetItemQuery.data` résolu — cette
+  page référence un item **Pipeline** via `pipelinePk` mais affiche la fiche
+  du **Dataset** produit, réutilisant la requête déjà existante plutôt que
+  d'interroger le mauvais item ; `<dd>Type</dd>` utilise correctement
+  `RESOURCE_TYPE_LABELS[...]`, pas de littéral en dur) / « Requête » (titre
+  local + sélection de la collection de base + Filtrer/Joindre/Résumer,
+  conteneur `overflow-y-auto` propre posé dès l'écriture — défaut que
+  SP-30d avait dû corriger a posteriori, non répété ici) / « Réglages »
+  (Planifier, alertes de validation, erreur de sauvegarde, bouton
+  Créer/Mettre à jour). Aucun `ConfigHistoryPanel` ajouté (cette page n'en
+  a jamais eu, hors périmètre assumé). Kit-ification préalable de
+  `QueryFilterBuilder.tsx`/`QueryJoinPicker.tsx`/`QuerySummaryBuilder.tsx`
+  (+ défaut du `className` de `PercentileInput.tsx`, no-op vérifié sur les
+  deux sites d'appel de `DataSourcePanel.tsx`) — les trois composants de
+  requête visuelle confirmés API-neutres, consommés inchangés par la page.
+  Stub `matchMedia` local avec `vi.unstubAllGlobals()` dès l'introduction
+  (dette loguée 3 fois sur SP-30d/e, non répétée). E2E 118/4/0 inchangé
+  (aucun nouveau spec, `visual-query.spec.ts` reste vert). Vitest 222
+  fichiers/1824 tests, couverture shell 90,84 % (seuil 88). **0 Critical,
+  0 Important, 7 Minor en revue finale de branche (opus) — Ready to merge
+  sans correctif.** 7 Minor reportés en suivi non bloquant (détail
+  ci-dessous), dont plusieurs désormais répétées 3-4 fois dans la famille
+  sans jamais avoir été tranchées pour de bon — actées à trancher une fois
+  pour toute la famille avant SP-30i+ plutôt que reportées une fois de plus.
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
@@ -523,16 +550,11 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   famille 3 (Cartes, `MapEditorPage`), SP-30d la famille 4 (Données,
   `DatasetEditPage`), SP-30e la famille 5 (Apps & sites, `AppBuilderPage`),
   SP-30f la famille 6 volet 1 (Automatisation, `PipelineBuilderPage`),
-  SP-30g la famille 6 volet 2 (Automatisation, `ReportEditPage`)
-  du §6.1 de la spec SP-30 ; **restent le volet 3 de la famille 6 et les
-  familles 7/8** (SP-30h+, à découper en plans séparés — la spec proscrit
-  un seul plan pour tout le reste) : `VisualQueryWizardPage`
-  (Automatisation, famille 6 — prochaine dans l'ordre du §6.1 ;
-  `PipelineRunPanel.tsx`/`PipelineScheduleEditor.tsx` déjà kit-ifiés par
-  SP-30f, consommables sans retouche — `ReportRunPanel.tsx`/
-  `ReportScheduleEditor.tsx`, kit-ifiés par SP-30g, ne sont pas consommés
-  par cette page, vérifié : aucun recoupement entre les deux familles de
-  composants), `SqlLabPage`
+  SP-30g la famille 6 volet 2 (Automatisation, `ReportEditPage`), SP-30h la
+  famille 6 volet 3 et dernier (Automatisation, `VisualQueryWizardPage`)
+  du §6.1 de la spec SP-30 — **famille 6 entièrement close** ; **restent
+  les familles 7/8** (SP-30i+, à découper en plans séparés — la spec
+  proscrit un seul plan pour tout le reste) : `SqlLabPage`
   (Analytique, famille 7), `AdminExtensionsPage`/`CollectionsAdminPage`/
   `HarvestSourcesAdminPage` (Administration, famille 8),
   `Tileset3DUploadButton`/`NewItemButton`/`ImportFileButton` (chrome,
@@ -661,6 +683,35 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   `aria-expanded`/`aria-controls` sur un déclencheur de panneau en ligne,
   déjà notée par SP-30c comme à trancher une fois pour toute la famille,
   reste ouverte.
+  7 suivis non bloquants hérités de SP-30h (revue finale de branche, tous
+  cosmétiques, aucun ne bloquait le merge — **famille 6 close, dernière
+  occasion de trancher ces répétitions avant qu'elles migrent vers les
+  familles 7/8**) : commentaire `VisualQueryWizardPage.tsx:82-83` devenu
+  partiellement faux (la requête `existingDatasetItemQuery`, à l'origine
+  documentée pour préremplir le Titre seul, sert désormais aussi la fiche
+  Catalogue — même classe que le commentaire faux trouvé Important sur
+  SP-30g, ici Minor car sans conséquence fonctionnelle) ; une erreur
+  d'exécution peut devenir invisible sous 390px (le remontage de
+  `TriptychLayout` après l'écran de sondage post-création réinitialise
+  l'onglet actif sur « Requête », l'erreur restant dans « Réglages » —
+  seule page de la famille dont les retours anticipés démontent le
+  layout) ; le nouveau test de la fiche Type/Modifié n'est pas
+  falsifiable pour la propriété qu'il nomme (`findByText("Dataset")`
+  passerait aussi avec un littéral en dur) — plan-mandated, même classe
+  que le défaut déjà logué sur SP-30g (`findByText("Rapport")`) ;
+  `existingDatasetItemQuery.isError` non géré — **3e page** de la famille
+  à faire ce choix silencieusement après `ReportEditPage` ; `border-t`
+  inconditionnel en mode création avant sélection de collection — **3e
+  occurrence** dans la famille (après `PipelineBuilderPage`/
+  `ReportEditPage`), toujours jamais tranchée ; ordre alertes/bouton
+  divergent de `ReportEditPage` (alertes avant le bouton ici, l'inverse
+  là-bas — deux ordres coexistent dans la famille sans règle commune) ;
+  bouton natif `Supprimer` à côté d'un `Button` du kit dans
+  `QueryFilterBuilder.tsx` (même dette de hiérarchie de boutons que
+  SP-30c/d, pré-existante). **Aucune de ces répétitions n'a été tranchée
+  pour toute la famille avant sa clôture** — à faire explicitement au
+  démarrage de SP-30i si elles doivent être réglées plutôt que
+  perpétuées dans les familles 7/8.
 - Reste **SP-15** : événements/déclencheurs durables au-delà du cron (non
   planifié) ; exposition MCP des noms de secrets (non planifiée) ; **exécuter
   réellement les 5 tests `@pytest.mark.qgis` de SP-15d** avant d'activer
