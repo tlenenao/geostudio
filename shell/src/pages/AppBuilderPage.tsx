@@ -358,7 +358,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
             id: "props",
             label: "Propriétés",
             content: (
-              <div className="flex flex-col gap-1 p-2">
+              <aside className="flex flex-col gap-1 p-2">
                 <p className="mb-1 text-xs font-medium text-ink-2">Propriétés</p>
                 <PropsPanel
                   item={selected}
@@ -462,7 +462,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     </span>
                   )}
                 </div>
-              </div>
+              </aside>
             ),
           }}
         />
