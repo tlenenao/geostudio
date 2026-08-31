@@ -42,8 +42,29 @@ class NoopResizeObserver {
   disconnect() {}
 }
 
+// jsdom n'implémente pas window.matchMedia (piège n°10) ; TriptychLayout
+// l'appelle via useNarrowViewport. PipelineBuilderPage ne rendait pas
+// TriptychLayout avant ce plan, donc ce stub est nouveau dans ce fichier —
+// stub local, jamais dans shell/src/test/setup.ts. matches: false => le
+// layout "large" (3 volets simultanés), pas les onglets — la valeur par
+// défaut de tous les tests existants de ce fichier, qui n'affirment pas
+// sur la largeur. vi.unstubAllGlobals() en afterEach existait déjà ici
+// avant ce plan (contrairement à MapEditorPage.test.tsx/
+// DatasetEditPage.test.tsx/AppBuilderPage.test.tsx) — préservé tel quel.
+function stubMatchMedia(matches: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  );
+}
+
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", NoopResizeObserver);
+  stubMatchMedia(false);
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -329,4 +350,13 @@ test("unsaved mode: no history panel before the first save (no pipelineId yet)",
   renderPage(null);
   await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
   expect(screen.queryByText("Historique")).not.toBeInTheDocument();
+});
+
+test("sous viewport étroit, affiche trois onglets Étapes/Canevas/Propriétés avec Canevas actif par défaut", async () => {
+  stubMatchMedia(true);
+  renderPage(null);
+  const tabs = await screen.findAllByRole("tab");
+  expect(tabs.map((t) => t.textContent)).toEqual(["Étapes", "Canevas", "Propriétés"]);
+  const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
+  expect(activeTab).toHaveTextContent("Canevas");
 });

@@ -16,7 +16,7 @@ import type {
   PipelineRefreshPolicy,
   PipelineRun,
 } from "../api/types";
-import { Button } from "../ui/button";
+import { Button } from "../ui/kit/Button";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { PipelineCanvas } from "../builder/pipeline/PipelineCanvas";
 import { PipelineNodeInspector } from "../builder/pipeline/PipelineNodeInspector";
@@ -26,6 +26,7 @@ import { PipelineRunPanel } from "../builder/pipeline/PipelineRunPanel";
 import { PipelineScheduleEditor } from "../builder/pipeline/PipelineScheduleEditor";
 import { genNodeId, insertNodeOnEdge } from "../builder/pipeline/graphOps";
 import { isPipelineValid, validatePipelineGraphLocally } from "../builder/pipeline/validation";
+import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 
 const EMPTY_PAYLOAD: PipelinePayload = { nodes: [], edges: [] };
 
@@ -119,7 +120,7 @@ export function PipelineBuilderPage({
 
   return (
     <div
-      className="flex gap-4"
+      className="-m-6 flex flex-1 flex-col overflow-hidden"
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         const op = e.dataTransfer.getData(PIPELINE_OP_DND_TYPE);
@@ -127,61 +128,99 @@ export function PipelineBuilderPage({
         onDropOnCanvas(op, { x: e.clientX, y: e.clientY });
       }}
     >
-      <PipelinePalette />
-      <div className="flex flex-1 flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{initialTitle ?? "Pipeline"}</h2>
-          <Button
-            size="sm"
-            onClick={() => void onSave()}
-            disabled={!valid || createPipeline.isPending || savePipeline.isPending}
-          >
-            Enregistrer
-          </Button>
-        </div>
-        {saveError && (
-          <p role="alert" className="text-red-600 text-xs">
-            {saveError}
-          </p>
-        )}
-        <PipelineCanvas
-          nodes={draft.nodes}
-          edges={draft.edges}
-          selectedNodeId={selectedNodeId}
-          onSelectNode={setSelectedNodeId}
-          onNodesChange={setNodes}
-          onEdgesChange={setEdges}
-          onInsertOnEdge={onInsertOnEdge}
-          opsCatalog={catalog}
-          nodeStats={latestRun?.nodeStats}
-          runStatus={latestRun?.status}
-        />
-        {pk !== null && <PipelineRunPanel pipelineId={pk} onLatestRunChange={setLatestRun} />}
-        {pk !== null && (
-          <PipelineScheduleEditor value={draft.refreshPolicy ?? null} onChange={setRefreshPolicy} />
-        )}
-        {pk !== null && (
-          <ConfigHistoryPanel
-            pk={pk}
-            currentVersion={null}
-            onRestored={async () => setDraft(await client.getPipelineConfig(pk))}
-          />
-        )}
-      </div>
-      <div className="w-64 shrink-0 border-l border-slate-200 pl-4">
-        {selectedNode && catalog[selectedNode.op] && (
-          <>
-            <PipelineNodeInspector
-              key={selectedNode.id}
-              node={selectedNode}
-              opEntry={catalog[selectedNode.op]}
-              errors={validation.nodeErrors[selectedNode.id] ?? []}
-              onChange={updateSelectedNodeParams}
-            />
-            {pk !== null && <PipelinePreviewPanel pipelineId={pk} nodeId={selectedNode.id} />}
-          </>
-        )}
-      </div>
+      <TriptychLayout
+        defaultTabId="canvas"
+        browse={{
+          id: "steps",
+          label: "Étapes",
+          content: <PipelinePalette />,
+        }}
+        work={{
+          id: "canvas",
+          label: "Canevas",
+          content: (
+            <div className="flex h-full flex-col overflow-hidden">
+              <div className="border-b border-rule p-2">
+                <h2 className="text-lg font-semibold text-ink">{initialTitle ?? "Pipeline"}</h2>
+              </div>
+              <main className="flex-1 overflow-auto p-2">
+                <PipelineCanvas
+                  nodes={draft.nodes}
+                  edges={draft.edges}
+                  selectedNodeId={selectedNodeId}
+                  onSelectNode={setSelectedNodeId}
+                  onNodesChange={setNodes}
+                  onEdgesChange={setEdges}
+                  onInsertOnEdge={onInsertOnEdge}
+                  opsCatalog={catalog}
+                  nodeStats={latestRun?.nodeStats}
+                  runStatus={latestRun?.status}
+                />
+              </main>
+            </div>
+          ),
+        }}
+        inspect={{
+          id: "props",
+          label: "Propriétés",
+          content: (
+            <div className="flex flex-col gap-1 p-2">
+              {selectedNode && catalog[selectedNode.op] && (
+                <>
+                  <p className="mb-1 text-xs font-medium text-ink-2">Nœud sélectionné</p>
+                  <PipelineNodeInspector
+                    key={selectedNode.id}
+                    node={selectedNode}
+                    opEntry={catalog[selectedNode.op]}
+                    errors={validation.nodeErrors[selectedNode.id] ?? []}
+                    onChange={updateSelectedNodeParams}
+                  />
+                  {pk !== null && <PipelinePreviewPanel pipelineId={pk} nodeId={selectedNode.id} />}
+                </>
+              )}
+              {pk !== null && (
+                <>
+                  <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Exécution</p>
+                  <PipelineRunPanel pipelineId={pk} onLatestRunChange={setLatestRun} />
+                </>
+              )}
+              {pk !== null && (
+                <>
+                  <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Planification</p>
+                  <PipelineScheduleEditor
+                    value={draft.refreshPolicy ?? null}
+                    onChange={setRefreshPolicy}
+                  />
+                </>
+              )}
+              {pk !== null && (
+                <div className="mt-3">
+                  <ConfigHistoryPanel
+                    pk={pk}
+                    currentVersion={null}
+                    onRestored={async () => setDraft(await client.getPipelineConfig(pk))}
+                  />
+                </div>
+              )}
+              <div className="mt-3 flex flex-col gap-2 border-t border-rule pt-3">
+                <Button
+                  size="sm"
+                  className="w-fit"
+                  onClick={() => void onSave()}
+                  disabled={!valid || createPipeline.isPending || savePipeline.isPending}
+                >
+                  Enregistrer
+                </Button>
+                {saveError && (
+                  <p role="alert" className="text-xs text-danger">
+                    {saveError}
+                  </p>
+                )}
+              </div>
+            </div>
+          ),
+        }}
+      />
     </div>
   );
 }
