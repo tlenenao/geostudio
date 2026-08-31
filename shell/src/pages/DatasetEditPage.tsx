@@ -143,7 +143,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
           id: "dataset",
           label: "Dataset",
           content: (
-            <div className="flex flex-col gap-4 p-4">
+            <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
               <h2 className="text-xl font-semibold text-ink">Dataset partagé — {item.title}</h2>
               <MetadataForm
                 initial={{
