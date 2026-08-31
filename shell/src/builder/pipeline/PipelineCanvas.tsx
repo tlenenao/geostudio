@@ -271,7 +271,7 @@ function PipelineCanvasInner({
   const nextNodeId = runStatus === "running" ? order.find((id) => !nodeStats?.[id]) : undefined;
 
   return (
-    <div style={{ height: 480 }}>
+    <div className="h-full">
       <ReactFlow
         nodes={nodes.map((n) =>
           toFlowNode(n, n.id === selectedNodeId, {
