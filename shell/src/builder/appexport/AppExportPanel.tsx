@@ -124,7 +124,7 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
             Cette app contient un widget Formulaire — toute écriture sera désactivée dans
             l&apos;export faute de session authentifiée.
           </p>
-          <div className="mt-2 flex gap-2">
+          <div className="mt-2 flex flex-wrap gap-2">
             <Button size="sm" onClick={() => void runExport(pendingWarningMode)}>
               Exporter quand même
             </Button>
