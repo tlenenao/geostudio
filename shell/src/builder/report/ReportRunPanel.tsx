@@ -68,29 +68,29 @@ export function ReportRunPanel({ reportId }: { reportId: string }) {
     <div className="flex flex-col gap-2">
       <h3 className="text-sm font-medium">Historique des exécutions</h3>
       {hasError && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-danger">
           Impossible de charger l'historique des exécutions.
         </p>
       )}
       {!hasError && runs.length === 0 && (
-        <p className="text-sm text-slate-500">Aucune exécution pour l'instant.</p>
+        <p className="text-sm text-ink-2">Aucune exécution pour l'instant.</p>
       )}
       <ul className="flex flex-col gap-1">
         {runs.map((run) => (
           <li key={run.id} className="flex items-center gap-2 text-sm">
             <span>{STATUS_LABEL[run.status]}</span>
-            <span className="text-slate-400">{new Date(run.createdAt).toLocaleString()}</span>
+            <span className="text-ink-2">{new Date(run.createdAt).toLocaleString()}</span>
             {run.resultUrl && (
               <a
                 href={run.resultUrl}
-                className="text-blue-600 underline"
+                className="text-accent underline"
                 target="_blank"
                 rel="noreferrer"
               >
                 Télécharger
               </a>
             )}
-            {run.error && <span className="text-red-600">{run.error}</span>}
+            {run.error && <span className="text-danger">{run.error}</span>}
           </li>
         ))}
       </ul>
