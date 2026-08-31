@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
-import { expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import type { CollectionSchema, DatasetConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { DatasetEditPage } from "./DatasetEditPage";
@@ -43,6 +43,26 @@ function VisualQueryEditProbe() {
   const { pipelinePk } = useParams();
   return <p>Assistant requête visuelle pour {pipelinePk}</p>;
 }
+
+// jsdom n'implémente pas window.matchMedia (piège n°10) ; TriptychLayout
+// l'appelle via useNarrowViewport. Stub local au fichier, jamais dans
+// shell/src/test/setup.ts. matches: false => le layout "large" (3 volets
+// simultanés), pas les onglets — la valeur par défaut de tous les tests
+// existants de ce fichier, qui n'affirment pas sur la largeur.
+function stubMatchMedia(matches: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  );
+}
+
+beforeEach(() => {
+  stubMatchMedia(false);
+});
 
 function renderPage(client: Partial<ItemClient>) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -308,4 +328,17 @@ test("affiche le panneau d'historique", async () => {
     listConfigRevisions: vi.fn().mockResolvedValue([]),
   });
   expect(await screen.findByText("Historique")).toBeInTheDocument();
+});
+
+test("sous viewport étroit, affiche trois onglets Catalogue/Dataset/Réglages avec Dataset actif par défaut", async () => {
+  stubMatchMedia(true);
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn().mockResolvedValue(schema),
+  });
+  const tabs = await screen.findAllByRole("tab");
+  expect(tabs.map((t) => t.textContent)).toEqual(["Catalogue", "Dataset", "Réglages"]);
+  const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
+  expect(activeTab).toHaveTextContent("Dataset");
 });
