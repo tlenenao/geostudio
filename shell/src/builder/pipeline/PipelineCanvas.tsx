@@ -65,7 +65,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
   const node = data as unknown as CanvasNodeData;
   return (
     <div
-      className={`relative rounded-md border-2 px-3 py-2 text-xs ${KIND_COLOR[node.kind]} ${selected ? "ring-2 ring-blue-500" : ""}`}
+      className={`relative rounded-md border-2 px-3 py-2 text-xs ${KIND_COLOR[node.kind]} ${selected ? "ring-2 ring-accent" : ""}`}
     >
       <Handle type="target" position={Position.Left} id="primary" />
       {node.acceptsSecondaryInput && (
@@ -77,7 +77,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
         />
       )}
       <div className="font-medium">{node.title ?? node.op}</div>
-      <div className="text-[10px] text-slate-500">{node.op}</div>
+      <div className="text-[10px] text-ink-2">{node.op}</div>
       <Handle type="source" position={Position.Right} />
       {node.nodeStat && (
         <span
@@ -91,7 +91,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
         <span
           role="status"
           aria-label="Exécution en cours"
-          className="absolute -right-2 -top-2 h-3 w-3 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"
+          className="absolute -right-2 -top-2 h-3 w-3 animate-spin rounded-full border-2 border-accent border-t-transparent"
         />
       )}
     </div>
@@ -129,7 +129,7 @@ function InsertOnEdgeButton({
           <button
             type="button"
             aria-label="Insérer une étape sur cette arête"
-            className="h-5 w-5 rounded-full border border-slate-400 bg-white text-xs leading-none hover:bg-slate-100"
+            className="h-5 w-5 rounded-full border border-rule bg-surface text-xs leading-none hover:bg-sunken"
             onClick={() => setOpen((o) => !o)}
           >
             +
@@ -137,14 +137,14 @@ function InsertOnEdgeButton({
           {open && (
             <ul
               role="menu"
-              className="absolute z-10 mt-1 rounded border border-slate-300 bg-white text-xs shadow"
+              className="absolute z-10 mt-1 rounded border border-rule bg-surface text-xs shadow"
             >
               {INSERTABLE_TRANSFORMS.map((t) => (
                 <li key={t.op}>
                   <button
                     type="button"
                     role="menuitem"
-                    className="block w-full whitespace-nowrap px-2 py-1 text-left hover:bg-slate-100"
+                    className="block w-full whitespace-nowrap px-2 py-1 text-left hover:bg-sunken"
                     onClick={() => {
                       onInsert(id, t.op);
                       setOpen(false);
