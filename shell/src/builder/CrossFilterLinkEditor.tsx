@@ -47,12 +47,12 @@ export function CrossFilterLinkEditor({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded border border-slate-200 p-2 text-xs">
+    <div className="flex flex-col gap-2 rounded border border-rule p-2 text-xs">
       <label className="flex flex-col gap-1">
         Dataset cible
         <select
           aria-label="Dataset cible"
-          className="h-8 rounded border border-slate-300 px-2"
+          className="h-8 rounded border border-rule bg-surface px-2 text-ink"
           value={link.targetDatasetId}
           onChange={(e) => onChange({ ...link, targetDatasetId: e.target.value })}
         >
@@ -68,7 +68,7 @@ export function CrossFilterLinkEditor({
         Mode du lien
         <select
           aria-label="Mode du lien"
-          className="h-8 rounded border border-slate-300 px-2"
+          className="h-8 rounded border border-rule bg-surface px-2 text-ink"
           value={link.mode}
           onChange={(e) => changeMode(e.target.value as "attribute" | "spatial")}
         >
@@ -82,7 +82,7 @@ export function CrossFilterLinkEditor({
             Champ source
             <select
               aria-label="Champ source"
-              className="h-8 rounded border border-slate-300 px-2"
+              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
               value={link.sourceField}
               onChange={(e) => onChange({ ...link, sourceField: e.target.value })}
             >
@@ -98,7 +98,7 @@ export function CrossFilterLinkEditor({
             Champ cible
             <select
               aria-label="Champ cible"
-              className="h-8 rounded border border-slate-300 px-2"
+              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
               value={link.targetField}
               onChange={(e) => onChange({ ...link, targetField: e.target.value })}
             >
@@ -117,7 +117,7 @@ export function CrossFilterLinkEditor({
             Précision spatiale du lien
             <select
               aria-label="Précision spatiale du lien"
-              className="h-8 rounded border border-slate-300 px-2"
+              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
               value={link.precision}
               onChange={(e) => onChange({ ...link, precision: e.target.value as "bbox" | "exact" })}
             >
@@ -127,7 +127,7 @@ export function CrossFilterLinkEditor({
           </label>
         )
       )}
-      <button type="button" className="self-start text-red-600 underline" onClick={onRemove}>
+      <button type="button" className="self-start text-danger underline" onClick={onRemove}>
         Supprimer le lien
       </button>
     </div>
