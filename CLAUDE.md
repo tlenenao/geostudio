@@ -435,6 +435,38 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   directement la suite complète avant tout commit qui change la structure
   DOM d'une page. 6 Minor reportés en suivi non bloquant pour SP-30f+
   (détail ci-dessous). **Ready to merge.**
+- **SP-30f** (6 tâches + 2 correctifs post-hoc, famille 6 « Automatisation »,
+  volet 1 du §6.1 de la spec SP-30) — `PipelineBuilderPage` sur
+  `TriptychLayout` : onglets « Étapes » (`PipelinePalette` seul) / « Canevas »
+  (en-tête local titre seul ; Enregistrer déménagé en bas du volet
+  Propriétés, aligné sur les trois familles précédentes) / « Propriétés »
+  (nœud sélectionné + `PipelinePreviewPanel` si sélectionné — aucun message
+  de repli inventé pour l'inspecteur vide, comportement préexistant
+  préservé —, puis Exécution/`PipelineRunPanel`, Planification/
+  `PipelineScheduleEditor`, `ConfigHistoryPanel`, Enregistrer, tous gated
+  `pk !== null`). Kit-ification préalable de sept fichiers
+  `builder/pipeline/*` (tokens + `Button` du kit sur `PipelineRunPanel`) ;
+  `PipelineRunPanel`/`PipelineScheduleEditor` désormais définitivement
+  kit-ifiés pour la future `VisualQueryWizardPage` aussi (même composants
+  partagés, aucun retravail attendu côté SP-30g). `onDragOver`/`onDrop`
+  déplacés du conteneur de rangée disparu (palette+canevas+inspecteur
+  n'étaient plus dans le même conteneur) vers le conteneur externe `-m-6`.
+  E2E 118/4/0 inchangé (aucun nouveau spec). Vitest 12/12 sur
+  `PipelineBuilderPage.test.tsx` (11 existants + 1 nouveau test d'onglets,
+  RED→GREEN vérifié), couverture shell 90,85 % (seuil 88), suite complète
+  222 fichiers/1818 tests. **2 Important trouvés en revue finale de branche
+  (opus), tous fermés et re-vérifiés indépendamment** : le canevas DAG
+  restait à une hauteur fixe de 480px héritée de l'ancien layout défilant,
+  incohérente avec la colonne Canevas désormais pleine hauteur — corrigé
+  en `h-full` via la chaîne flex déjà éprouvée par SP-30c/d/e ; la question
+  `<main>`/`<aside>` posée par `CLAUDE.md` (entrée SP-30e, explicitement
+  assignée à ce plan) n'avait pas été traitée par le texte du plan et la
+  branche avait ajouté une 3e forme divergente (`<main>` orphelin sans
+  `ref` ni rôle fonctionnel autour du volet Canevas) — tranchée : `div`/
+  `div`/`div` (`AppBuilderPage` reste la seule exception documentée, son
+  `<main ref={mainRef}>` servant la capture de miniature). 7 Minor
+  reportés en suivi non bloquant pour SP-30g+ (détail ci-dessous).
+  **Ready to merge.**
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
@@ -451,11 +483,15 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   regroupée si voulu. Basculera les écrans réels sur le kit `ui/kit/`
   (SP-29b) et retirera les anciens fichiers `ui/*`. SP-30c a traité la
   famille 3 (Cartes, `MapEditorPage`), SP-30d la famille 4 (Données,
-  `DatasetEditPage`), SP-30e la famille 5 (Apps & sites, `AppBuilderPage`)
-  du §6.1 de la spec SP-30 ; **restent les familles 6 à 8** (SP-30f+, à
-  découper en plans séparés — la spec proscrit un seul plan pour tout le
-  reste) : `PipelineBuilderPage`/`ReportEditPage`/`VisualQueryWizardPage`
-  (Automatisation, famille 6 — prochaine dans l'ordre du §6.1), `SqlLabPage`
+  `DatasetEditPage`), SP-30e la famille 5 (Apps & sites, `AppBuilderPage`),
+  SP-30f la famille 6 volet 1 (Automatisation, `PipelineBuilderPage`)
+  du §6.1 de la spec SP-30 ; **restent le volet 2/3 de la famille 6 et les
+  familles 7/8** (SP-30g+, à découper en plans séparés — la spec proscrit
+  un seul plan pour tout le reste) : `ReportEditPage`/`VisualQueryWizardPage`
+  (Automatisation, famille 6 — prochaines dans l'ordre du §6.1 ;
+  `PipelineRunPanel.tsx`/`PipelineScheduleEditor.tsx` déjà kit-ifiés par
+  SP-30f, consommables sans retouche par `VisualQueryWizardPage`),
+  `SqlLabPage`
   (Analytique, famille 7), `AdminExtensionsPage`/`CollectionsAdminPage`/
   `HarvestSourcesAdminPage` (Administration, famille 8),
   `Tileset3DUploadButton`/`NewItemButton`/`ImportFileButton` (chrome,
@@ -523,10 +559,37 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   impossible) — conséquence produit à confirmer avec Tanguy, pas un
   défaut de code ; `AppExportPanel` réimplémente à la main la recette de
   couleurs de `Banner variant="warn"` au lieu de l'importer.
-  Question à trancher au niveau de `TriptychLayout` lui-même en SP-30f
-  (pas page par page) : `AppBuilderPage` est la seule page à émettre
-  `<main>`/`<aside>`, les trois autres familles déjà basculées
-  n'utilisent que `<div>`.
+  Question `<main>`/`<aside>` au niveau de `TriptychLayout` **tranchée par
+  SP-30f** : aucun landmark imposé par défaut, chaque page choisit `<div>`
+  sauf besoin fonctionnel documenté — `AppBuilderPage` reste la seule
+  exception (`<main ref={mainRef}>` pour la capture de miniature,
+  `<aside>` sur Propriétés) ; `PipelineBuilderPage`, qui avait introduit un
+  `<main>` orphelin, a rejoint la majorité `div`/`div`/`div`.
+  7 suivis non bloquants hérités de SP-30f (revue finale de branche, tous
+  cosmétiques, aucun ne bloquait le merge) : `text-ink-2` (tokenisé,
+  Task 2) posé sur les fonds catégoriels exemptés `bg-emerald/amber/
+  sky-50` de `KIND_COLOR` (non tokenisés, décision explicite du plan) —
+  contraste correct en ambiance claire aujourd'hui, incohérence latente
+  si l'ambiance sombre devient un jour atteignable (rien ne fixe de
+  `text-*` sur `body` actuellement) ; le motif de grep de vérification des
+  couleurs en dur ne couvre pas `text-white`/`text-black` sans suffixe
+  numérique (seul `bg-white/black` l'est) — angle mort à corriger avant
+  qu'il masque un vrai hit non exempté sur une future famille ;
+  `border-t` de `PipelineScheduleEditor.tsx` (composant partagé avec la
+  future `VisualQueryWizardPage`) se retrouve collé sous le nouveau
+  libellé « Planification » au lieu de servir de séparateur de section ;
+  l'en-tête du volet Canevas affiche le placeholder « Pipeline » en
+  permanence sur la route d'édition (`PipelineEditRoute` ne passe pas
+  `initialTitle`, préexistant mais promu en chrome visible par cette
+  bascule) ; en mode onglets étroit, changer d'onglet pendant qu'une
+  exécution est en cours démonte `PipelineRunPanel` et gèle son polling
+  (boucle sans `AbortController`, pattern préexistant SP-6a partagé avec
+  `ImportFileButton`, chemin de démontage nouvellement atteignable) ;
+  double padding dans le volet Propriétés (`p-2` de la page + `p-2` déjà
+  interne à `PipelineNodeInspector`), même classe que la densité notée
+  sur SP-30d ; `pk !== null` répété 4 fois dans le volet Propriétés au
+  lieu d'un booléen `isPersisted` (hérité du code littéral du plan
+  lui-même, cf. entrée SP-30f).
 - Reste **SP-15** : événements/déclencheurs durables au-delà du cron (non
   planifié) ; exposition MCP des noms de secrets (non planifiée) ; **exécuter
   réellement les 5 tests `@pytest.mark.qgis` de SP-15d** avant d'activer
