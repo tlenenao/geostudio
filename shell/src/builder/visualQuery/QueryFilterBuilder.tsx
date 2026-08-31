@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { CollectionSchema } from "../../api/types";
 import { FilterOperator, FilterRow } from "./compileFilter";
-import { Button } from "../../ui/button";
+import { Button } from "../../ui/kit/Button";
 
 const OPERATOR_LABELS: Record<FilterOperator, string> = {
   eq: "égal à",
@@ -41,7 +41,7 @@ export function QueryFilterBuilder({
           <div key={i} className="flex items-center gap-2">
             <select
               aria-label={`Colonne du filtre ${i + 1}`}
-              className="h-8 rounded border border-slate-300 px-2 text-xs"
+              className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
               value={row.column}
               onChange={(e) => updateRow(i, { column: e.target.value })}
             >
@@ -53,7 +53,7 @@ export function QueryFilterBuilder({
             </select>
             <select
               aria-label={`Opérateur du filtre ${i + 1}`}
-              className="h-8 rounded border border-slate-300 px-2 text-xs"
+              className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
               value={row.operator}
               onChange={(e) => updateRow(i, { operator: e.target.value as FilterOperator })}
             >
@@ -66,14 +66,14 @@ export function QueryFilterBuilder({
             <input
               aria-label={`Valeur du filtre ${i + 1}`}
               inputMode={isNumeric ? "numeric" : undefined}
-              className="h-8 rounded border border-slate-300 px-2 text-xs"
+              className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
               value={row.value}
               onChange={(e) => updateRow(i, { value: e.target.value })}
             />
             <button
               type="button"
               aria-label={`Supprimer le filtre ${i + 1}`}
-              className="text-xs text-red-600"
+              className="text-xs text-danger"
               onClick={() => removeRow(i)}
             >
               Supprimer
