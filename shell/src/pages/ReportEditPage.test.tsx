@@ -30,8 +30,8 @@ vi.mock("../auth/useAuth", () => ({
 // layout "large" (3 volets simultanés), pas les onglets — la valeur par
 // défaut de tous les tests de ce fichier qui n'affirment pas sur la
 // largeur. vi.unstubAllGlobals() en afterEach dès l'introduction du stub —
-// contrairement à MapEditorPage.test.tsx/DatasetEditPage.test.tsx/
-// AppBuilderPage.test.tsx, qui ne l'ont pas — dette non répétée ici).
+// contrairement à DatasetEditPage.test.tsx/AppBuilderPage.test.tsx, qui ne
+// l'ont pas — dette non répétée ici.
 function stubMatchMedia(matches: boolean) {
   vi.stubGlobal(
     "matchMedia",

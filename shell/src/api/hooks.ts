@@ -385,8 +385,12 @@ export function useReportScheduleConfig(pk: string, options?: { enabled?: boolea
 
 export function useSaveReportSchedule(pk: string) {
   const client = useItemClientInternal();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: ReportSchedulePayload) => client.saveReportScheduleConfig(pk, payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["report-schedule", pk] });
+    },
   });
 }
 
