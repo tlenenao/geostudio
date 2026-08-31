@@ -143,7 +143,7 @@ export function PipelineBuilderPage({
               <div className="border-b border-rule p-2">
                 <h2 className="text-lg font-semibold text-ink">{initialTitle ?? "Pipeline"}</h2>
               </div>
-              <main className="flex-1 overflow-auto p-2">
+              <div className="flex-1 overflow-auto p-2">
                 <PipelineCanvas
                   nodes={draft.nodes}
                   edges={draft.edges}
@@ -156,7 +156,7 @@ export function PipelineBuilderPage({
                   nodeStats={latestRun?.nodeStats}
                   runStatus={latestRun?.status}
                 />
-              </main>
+              </div>
             </div>
           ),
         }}
