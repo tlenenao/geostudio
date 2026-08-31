@@ -33,11 +33,12 @@ export function useItems(params: ListItemsParams, opts?: { enabled?: boolean }) 
   });
 }
 
-export function useItem(pk: string) {
+export function useItem(pk: string, options?: { enabled?: boolean }) {
   const client = useItemClientInternal();
   return useQuery({
     queryKey: ["item", pk],
     queryFn: () => client.getItem(pk),
+    enabled: options?.enabled ?? true,
   });
 }
 
