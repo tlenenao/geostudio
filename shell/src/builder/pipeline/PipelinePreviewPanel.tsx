@@ -17,7 +17,7 @@ export function PipelinePreviewPanel({
   if (previewQuery.isLoading) return <p role="status">Chargement de l'aperçu…</p>;
   if (previewQuery.isError)
     return (
-      <p role="alert" className="text-sm text-red-600">
+      <p role="alert" className="text-sm text-danger">
         Aperçu indisponible.
       </p>
     );
@@ -33,14 +33,14 @@ export function PipelinePreviewPanel({
           <button
             type="button"
             onClick={() => setView("table")}
-            className={`rounded px-2 py-1 ${view === "table" ? "bg-slate-200" : ""}`}
+            className={`rounded px-2 py-1 ${view === "table" ? "bg-sunken" : ""}`}
           >
             Tableau
           </button>
           <button
             type="button"
             onClick={() => setView("map")}
-            className={`rounded px-2 py-1 ${view === "map" ? "bg-slate-200" : ""}`}
+            className={`rounded px-2 py-1 ${view === "map" ? "bg-sunken" : ""}`}
           >
             Carte
           </button>
@@ -61,7 +61,7 @@ export function PipelinePreviewPanel({
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={i} className="border-t border-slate-200">
+              <tr key={i} className="border-t border-rule">
                 {columns.map((c) => (
                   <td key={c} className="p-1">
                     {String(row[c])}
