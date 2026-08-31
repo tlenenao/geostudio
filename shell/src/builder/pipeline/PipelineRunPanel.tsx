@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useItemClient } from "../../api/hooks";
 import type { PipelineRun } from "../../api/types";
-import { Button } from "../../ui/button";
+import { Button } from "../../ui/kit/Button";
 
 const STATUS_LABEL: Record<PipelineRun["status"], string> = {
   queued: "En attente",
@@ -78,17 +78,17 @@ export function PipelineRunPanel({
         {running ? "Exécution…" : "Exécuter"}
       </Button>
       {runError && (
-        <p role="alert" className="text-red-600 text-xs">
+        <p role="alert" className="text-xs text-danger">
           {runError}
         </p>
       )}
       <ul className="flex flex-col gap-1 text-xs">
         {runs.map((run) => (
-          <li key={run.id} className="border-t border-slate-200 pt-1">
+          <li key={run.id} className="border-t border-rule pt-1">
             <span>{STATUS_LABEL[run.status]}</span>
-            {run.startedAt && <span className="ml-2 text-slate-500">{run.startedAt}</span>}
+            {run.startedAt && <span className="ml-2 text-ink-2">{run.startedAt}</span>}
             {run.error && (
-              <p role="alert" className="text-red-600">
+              <p role="alert" className="text-danger">
                 {run.error}
               </p>
             )}
