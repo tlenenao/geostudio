@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../auth/useAuth";
 import { useItemClient } from "../api/ItemClientProvider";
 import { useCollectionsAdmin, usePipelineConfig } from "../api/hooks";
 import type { CollectionSchema, PipelineRefreshPolicy } from "../api/types";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
+import { RESOURCE_TYPE_LABELS } from "../api/resourceTypes";
+import { Button } from "../ui/kit/Button";
+import { Input } from "../ui/kit/Input";
+import { Panel } from "../ui/kit/Panel";
 import { QueryFilterBuilder } from "../builder/visualQuery/QueryFilterBuilder";
 import { QueryJoinPicker } from "../builder/visualQuery/QueryJoinPicker";
 import { QuerySummaryBuilder } from "../builder/visualQuery/QuerySummaryBuilder";
@@ -21,6 +23,7 @@ import {
   compileVisualQueryToPipeline,
   decompilePipelineToWizardState,
 } from "../builder/visualQuery/compilePipeline";
+import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 
 // Compare le schéma de sortie recompilé (déduit de l'état courant du
 // formulaire) au schéma réel de la collection de sortie déjà provisionnée,
@@ -169,7 +172,7 @@ export function VisualQueryWizardPage({
 
   if (pipelinePk !== null && unrecognizedShape) {
     return (
-      <p role="alert" className="text-sm text-red-600">
+      <p role="alert" className="text-sm text-danger">
         Cette requête a été modifiée dans l'éditeur avancé et ne peut plus être ouverte dans
         l'assistant.{" "}
         <a className="underline" href={`/pipelines/${pipelinePk}/edit`}>
@@ -291,135 +294,192 @@ export function VisualQueryWizardPage({
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <h2 className="text-xl font-semibold">
-        {pipelinePk !== null ? "Modifier la requête" : "Nouvelle requête visuelle"}
-      </h2>
-      <label className="flex flex-col gap-1 text-sm">
-        Titre
-        <Input
-          aria-label="Titre"
-          value={title}
-          onChange={(e) => {
-            setTitle(e.target.value);
-            setTitleTouched(true);
-          }}
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Collection de base
-        <select
-          aria-label="Collection de base"
-          className="h-9 rounded-md border border-slate-300 px-3 text-sm"
-          value={baseCollectionId}
-          onChange={(e) => {
-            // Important 3 : un changement direct de collection de base
-            // invalide filtres/jointure/résumé (colonnes qui n'existent
-            // plus forcément dans la nouvelle collection) — réinitialiser
-            // pour éviter un état validé à tort qui échouerait à
-            // l'exécution. Le useEffect de décompilation (chargement d'une
-            // requête existante) pose ces mêmes champs ensemble et n'a pas
-            // besoin de ce garde : ce n'est pas une interaction utilisateur.
-            setBaseCollectionId(e.target.value);
-            setFilters([]);
-            setJoin(null);
-            setSummary(null);
-          }}
-        >
-          <option value="">Choisir…</option>
-          {(collectionsQuery.data ?? []).map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.title}
-            </option>
-          ))}
-        </select>
-      </label>
-      {baseSchema && (
-        <>
-          <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">Filtrer</p>
-            <QueryFilterBuilder schema={baseSchema} rows={filters} onChange={setFilters} />
-          </div>
-          <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">Joindre</p>
-            {join ? (
-              <div className="flex flex-col gap-2">
-                <QueryJoinPicker
-                  baseSchema={baseSchema}
-                  joinedSchema={joinedSchemaQuery.data ?? null}
-                  collections={collectionsQuery.data ?? []}
-                  value={join}
-                  onChange={setJoin}
+    <div className="-m-6 flex flex-1 flex-col overflow-hidden">
+      <TriptychLayout
+        defaultTabId="query"
+        browse={{
+          id: "back",
+          label: "Catalogue",
+          content: (
+            <Panel className="m-3 flex flex-col gap-3 text-sm">
+              <Link to="/" className="text-accent hover:underline">
+                ← Retour au catalogue
+              </Link>
+              {existingDatasetItemQuery.data && (
+                <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs text-ink-2">
+                  <dt>Type</dt>
+                  <dd>{RESOURCE_TYPE_LABELS[existingDatasetItemQuery.data.resourceType]}</dd>
+                  <dt>Modifié</dt>
+                  <dd>{existingDatasetItemQuery.data.date || "—"}</dd>
+                </dl>
+              )}
+            </Panel>
+          ),
+        }}
+        work={{
+          id: "query",
+          label: "Requête",
+          content: (
+            <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
+              <h2 className="text-lg font-semibold text-ink">
+                {pipelinePk !== null ? "Modifier la requête" : "Nouvelle requête visuelle"}
+              </h2>
+              <label className="flex flex-col gap-1 text-sm">
+                Titre
+                <Input
+                  aria-label="Titre"
+                  value={title}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    setTitleTouched(true);
+                  }}
                 />
-                <Button type="button" size="sm" variant="outline" onClick={() => setJoin(null)}>
-                  Supprimer la jointure
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                Collection de base
+                <select
+                  aria-label="Collection de base"
+                  className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                  value={baseCollectionId}
+                  onChange={(e) => {
+                    // Important 3 : un changement direct de collection de base
+                    // invalide filtres/jointure/résumé (colonnes qui n'existent
+                    // plus forcément dans la nouvelle collection) — réinitialiser
+                    // pour éviter un état validé à tort qui échouerait à
+                    // l'exécution. Le useEffect de décompilation (chargement d'une
+                    // requête existante) pose ces mêmes champs ensemble et n'a pas
+                    // besoin de ce garde : ce n'est pas une interaction utilisateur.
+                    setBaseCollectionId(e.target.value);
+                    setFilters([]);
+                    setJoin(null);
+                    setSummary(null);
+                  }}
+                >
+                  <option value="">Choisir…</option>
+                  {(collectionsQuery.data ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {baseSchema && (
+                <>
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-ink-2">Filtrer</p>
+                    <QueryFilterBuilder schema={baseSchema} rows={filters} onChange={setFilters} />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-ink-2">Joindre</p>
+                    {join ? (
+                      <div className="flex flex-col gap-2">
+                        <QueryJoinPicker
+                          baseSchema={baseSchema}
+                          joinedSchema={joinedSchemaQuery.data ?? null}
+                          collections={collectionsQuery.data ?? []}
+                          value={join}
+                          onChange={setJoin}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setJoin(null)}
+                        >
+                          Supprimer la jointure
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setJoin({ collectionId: "", on: "", how: "inner" })}
+                      >
+                        Ajouter une jointure
+                      </Button>
+                    )}
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-ink-2">Résumer</p>
+                    {summary ? (
+                      <div className="flex flex-col gap-2">
+                        <QuerySummaryBuilder
+                          schema={baseSchema}
+                          value={summary}
+                          onChange={setSummary}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setSummary(null)}
+                        >
+                          Supprimer le résumé
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSummary({ groupBy: [], metrics: [] })}
+                      >
+                        Ajouter un résumé
+                      </Button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          ),
+        }}
+        inspect={{
+          id: "settings",
+          label: "Réglages",
+          content: (
+            <div className="flex flex-col gap-4 p-3">
+              {baseSchema && (
+                <div>
+                  <p className="mb-1 text-xs font-medium text-ink-2">Planifier</p>
+                  <PipelineScheduleEditor value={refreshPolicy} onChange={setRefreshPolicy} />
+                </div>
+              )}
+              <div className="flex flex-col gap-2 border-t border-rule pt-3">
+                {pipelinePk !== null && outputSchemaMismatch && (
+                  <p role="alert" className="text-sm text-danger">
+                    La structure de sortie a changé (colonnes ou géométrie) : cette modification ne
+                    peut pas être enregistrée sur la requête existante. Créez une nouvelle requête à
+                    la place.
+                  </p>
+                )}
+                {error && (
+                  <p role="alert" className="text-sm text-danger">
+                    {error}
+                  </p>
+                )}
+                <Button
+                  size="sm"
+                  className="w-fit"
+                  disabled={
+                    submitting ||
+                    !title.trim() ||
+                    !baseCollectionId ||
+                    !filtersValid ||
+                    !joinValid ||
+                    !summaryValid ||
+                    (pipelinePk !== null && !existingOutput) ||
+                    outputSchemaMismatch
+                  }
+                  onClick={() => void handleCreate()}
+                >
+                  {pipelinePk !== null ? "Mettre à jour" : "Créer"}
                 </Button>
               </div>
-            ) : (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setJoin({ collectionId: "", on: "", how: "inner" })}
-              >
-                Ajouter une jointure
-              </Button>
-            )}
-          </div>
-          <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">Résumer</p>
-            {summary ? (
-              <div className="flex flex-col gap-2">
-                <QuerySummaryBuilder schema={baseSchema} value={summary} onChange={setSummary} />
-                <Button type="button" size="sm" variant="outline" onClick={() => setSummary(null)}>
-                  Supprimer le résumé
-                </Button>
-              </div>
-            ) : (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setSummary({ groupBy: [], metrics: [] })}
-              >
-                Ajouter un résumé
-              </Button>
-            )}
-          </div>
-          <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">Planifier</p>
-            <PipelineScheduleEditor value={refreshPolicy} onChange={setRefreshPolicy} />
-          </div>
-        </>
-      )}
-      {pipelinePk !== null && outputSchemaMismatch && (
-        <p role="alert" className="text-sm text-red-600">
-          La structure de sortie a changé (colonnes ou géométrie) : cette modification ne peut pas
-          être enregistrée sur la requête existante. Créez une nouvelle requête à la place.
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
-      )}
-      <Button
-        size="sm"
-        className="w-fit"
-        disabled={
-          submitting ||
-          !title.trim() ||
-          !baseCollectionId ||
-          !filtersValid ||
-          !joinValid ||
-          !summaryValid ||
-          (pipelinePk !== null && !existingOutput) ||
-          outputSchemaMismatch
-        }
-        onClick={() => void handleCreate()}
-      >
-        {pipelinePk !== null ? "Mettre à jour" : "Créer"}
-      </Button>
+            </div>
+          ),
+        }}
+      />
     </div>
   );
 }
