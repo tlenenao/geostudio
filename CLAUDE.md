@@ -371,6 +371,38 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   contenait pas : piège n°3, défaut de plan pas de l'implémenteur).
   6 Minor reportés en suivi non bloquant pour SP-30d (détail ci-dessous).
   **Ready to merge.**
+- **SP-30d** (3 tâches + 1 correctif post-hoc, famille 4 « Données » du
+  §6.1 de la spec SP-30) — `DatasetEditPage` sur `TriptychLayout` :
+  onglets « Catalogue » (retour + `<dl>` Type/Modifié, même idiome
+  qu'`ItemDetailPage.tsx:79-95`, pas de panneau-liste métier équivalent à
+  `LayersPanel` sur cette page) / « Dataset » (métadonnées, colonnes,
+  champ temporel, cross-filter — le contenu directement éditable) /
+  « Réglages » (export, `AlertRuleEditor`, `ConfigHistoryPanel`, requête
+  source, Enregistrer — même regroupement que « Inspecter » sur
+  `MapEditorPage`, SP-30c). Kit-ification préalable d'`AlertRuleEditor`/
+  `CrossFilterLinkEditor` (Button + tokens, aucun des deux n'important
+  `ui/dialog` — rien à convertir côté modal, à la différence des familles
+  Catalogue/Cartes). Prérequis `CollectionPermissions` déjà livré par
+  SP-30a (vérifié par lecture directe du code avant d'écrire ce plan,
+  piège n°3), donc aucun changement au cœur dans ce plan. E2E 118/4/0
+  inchangé (aucun nouveau spec ; le filet nommé par le plan omettait
+  `analytics-context.spec.ts`, 6e consommateur réel de la page — défaut
+  du texte du plan, piège n°6, sans conséquence car la suite E2E
+  complète l'a couverte). Couverture shell 90,85 % (seuil 88), suite
+  complète 222 fichiers/1816 tests. **1 correctif post-hoc trouvé en fin
+  de plan par la revue finale de branche (opus), fermé et re-vérifié
+  indépendamment** : le volet « Dataset » (work) n'avait pas
+  `h-full overflow-y-auto` comme ses deux jumeaux `CatalogPage`/
+  `ItemDetailPage` — la cellule `work` de `TriptychLayout` est
+  `overflow-hidden` par construction, chaque consommateur doit fournir
+  son propre conteneur de défilement ; contenu le plus haut de la page
+  (tableau des colonnes, éditeurs cross-filter) tronqué et inatteignable
+  sur viewport large, **invisible aux deux filets de test** (jsdom ne
+  fait pas de layout, Playwright fait défiler programmatiquement les
+  conteneurs `overflow-hidden` — les specs E2E cliquaient des éléments
+  qu'un humain ne pouvait pas atteindre ; les suites vertes n'étaient pas
+  une preuve). 5 Minor reportés en suivi non bloquant pour SP-30e+
+  (détail ci-dessous). **Ready to merge.**
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
@@ -386,11 +418,11 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   raison de verrouillage triplée d'`ItemActions` (cf. entrée SP-29a) peut être
   regroupée si voulu. Basculera les écrans réels sur le kit `ui/kit/`
   (SP-29b) et retirera les anciens fichiers `ui/*`. SP-30c a traité la
-  famille 3 (Cartes, `MapEditorPage`) du §6.1 de la spec SP-30 ; **restent
-  les familles 4 à 8** (SP-30d+, à découper en plans séparés — la spec
-  proscrit un seul plan pour tout le reste) : `DatasetEditPage` +
-  `CollectionPermissions` shell-side (Données), `AppBuilderPage` (Apps &
-  sites), `PipelineBuilderPage`/`ReportEditPage`/`VisualQueryWizardPage`
+  famille 3 (Cartes, `MapEditorPage`), SP-30d la famille 4 (Données,
+  `DatasetEditPage`) du §6.1 de la spec SP-30 ; **restent les familles 5
+  à 8** (SP-30e+, à découper en plans séparés — la spec proscrit un seul
+  plan pour tout le reste) : `AppBuilderPage` (Apps & sites),
+  `PipelineBuilderPage`/`ReportEditPage`/`VisualQueryWizardPage`
   (Automatisation), `SqlLabPage` (Analytique), `AdminExtensionsPage`/
   `CollectionsAdminPage`/`HarvestSourcesAdminPage` (Administration),
   `Tileset3DUploadButton`/`NewItemButton`/`ImportFileButton` (chrome,
@@ -425,7 +457,22 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   la famille SP-30, pas au cas par cas ; stub `matchMedia` de
   `MapEditorPage.test.tsx` jamais désinstallé explicitement (`vi.stubGlobal`
   sans `vi.unstubAllGlobals`), sûr aujourd'hui car re-stubé à chaque
-  `beforeEach`, dépendance d'ordre latente à surveiller.
+  `beforeEach`, dépendance d'ordre latente à surveiller. 5 suivis non
+  bloquants hérités de SP-30d (revue finale de branche, tous cosmétiques,
+  aucun ne bloquait le merge) : divergence de hiérarchie de boutons sur
+  `DatasetEditPage.tsx` (les boutons d'export sont restés en `<button>`
+  natif alors que « Créer la règle »/« Ajouter un lien » sont passés sur
+  `Button` du kit dans cette même branche — même classe que la
+  divergence `ExportPanel`/`Terrain3DUploadButton` de SP-30c) ; rangée
+  des boutons d'export sans `flex-wrap`, dépassement possible dans la
+  colonne étroite (260px min) du volet Réglages ; volet Catalogue code
+  en dur `<dd>Dataset</dd>` au lieu de
+  `RESOURCE_TYPE_LABELS[item.resourceType]` (idiome `ItemDetailPage`
+  copié partiellement) ; `vi.stubGlobal` de `DatasetEditPage.test.tsx`
+  sans `vi.unstubAllGlobals` — 3e occurrence de la même dette (même
+  disposition que `MapEditorPage.test.tsx` ci-dessus) ; densité du volet
+  Réglages (`AlertRuleEditor`+`ConfigHistoryPanel` resserrés dans une
+  colonne étroite), à surveiller si le patron se répète en SP-30e+.
 - Reste **SP-15** : événements/déclencheurs durables au-delà du cron (non
   planifié) ; exposition MCP des noms de secrets (non planifiée) ; **exécuter
   réellement les 5 tests `@pytest.mark.qgis` de SP-15d** avant d'activer
