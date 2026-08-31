@@ -3,7 +3,7 @@ import type { CollectionSchema } from "../../api/types";
 import { DEFAULT_PERCENTILE } from "../aggregates";
 import { PercentileInput } from "../PercentileInput";
 import { MetricConfig, MetricFunction, SummaryConfig } from "./inferSchema";
-import { Button } from "../../ui/button";
+import { Button } from "../../ui/kit/Button";
 
 const FUNCTION_LABELS: Record<MetricFunction, string> = {
   count: "Compter",
@@ -74,7 +74,7 @@ export function QuerySummaryBuilder({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-xs font-medium text-slate-500">Regrouper par</p>
+      <p className="text-xs font-medium text-ink-2">Regrouper par</p>
       {schema.fields.map((f) => (
         <label key={f.name} className="flex items-center gap-2 text-xs">
           <input
@@ -86,12 +86,12 @@ export function QuerySummaryBuilder({
           {f.name}
         </label>
       ))}
-      <p className="text-xs font-medium text-slate-500">Métriques</p>
+      <p className="text-xs font-medium text-ink-2">Métriques</p>
       {value.metrics.map((metric, i) => (
         <div key={i} className="flex items-center gap-2">
           <select
             aria-label={`Fonction de la métrique ${i + 1}`}
-            className="h-8 rounded border border-slate-300 px-2 text-xs"
+            className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
             value={metric.function}
             onChange={(e) => updateMetric(i, { function: e.target.value as MetricFunction })}
           >
@@ -104,7 +104,7 @@ export function QuerySummaryBuilder({
           {metric.function !== "count" && (
             <select
               aria-label={`Colonne de la métrique ${i + 1}`}
-              className="h-8 rounded border border-slate-300 px-2 text-xs"
+              className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
               value={metric.sourceColumn ?? ""}
               onChange={(e) => updateMetric(i, { sourceColumn: e.target.value })}
             >
