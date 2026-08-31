@@ -467,6 +467,44 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   `<main ref={mainRef}>` servant la capture de miniature). 7 Minor
   reportés en suivi non bloquant pour SP-30g+ (détail ci-dessous).
   **Ready to merge.**
+- **SP-30g** (4 tâches + 1 correctif post-hoc, famille 6 « Automatisation »,
+  volet 2 du §6.1 de la spec SP-30) — `ReportEditPage` sur `TriptychLayout` :
+  onglets « Catalogue » (retour + `<dl>` Type/Modifié, **absente tant que le
+  rapport est un brouillon non enregistré** — `pk` nullable ici comme sur
+  `PipelineBuilderPage`, à la différence de `DatasetEditPage` où `pk` est
+  toujours défini ; `<dd>Type</dd>` utilise correctement
+  `RESOURCE_TYPE_LABELS[item.resourceType]`, pas de littéral en dur —
+  n'a pas répété le défaut logué sur `DatasetEditPage.tsx` par SP-30d) /
+  « Rapport » (titre local + `ReportScheduleEditor`) / « Réglages »
+  (`ReportRunPanel`/`ConfigHistoryPanel` si `pk !== null`, Enregistrer +
+  erreur). `useItem` (`shell/src/api/hooks.ts`) gagne un second paramètre
+  optionnel `{ enabled?: boolean }` sur le patron exact de
+  `useDatasetConfig`/`useReportScheduleConfig` — rétrocompatible, ses trois
+  call sites existants (`ItemDetailPage`, `DatasetEditPage`,
+  `AppRuntimePage`) inchangés. Kit-ification préalable de
+  `ReportRunPanel.tsx`/`ReportScheduleEditor.tsx` (tokens seuls, aucun des
+  deux n'important `ui/*`). Dette de test refermée, pas répétée : le
+  nouveau stub `matchMedia` de `ReportEditPage.test.tsx` est accompagné
+  d'un `vi.unstubAllGlobals()` en `afterEach` dès son introduction.
+  `VisualQueryWizardPage` (volet 3 de la même famille) reste hors
+  périmètre — granularité une page par plan, confirmée par SP-30f et
+  reconduite ici. E2E 118/4/0 inchangé (aucun nouveau spec, le consommateur
+  direct `report-schedule.spec.ts` reste vert). Vitest 222 fichiers/1821
+  tests, couverture shell 90,85 % (seuil 88). **0 Critical, 2 Important
+  trouvés en revue finale de branche (opus), tous deux fermés et
+  re-vérifiés par lecture directe du diff par le contrôleur** : un
+  commentaire committé affirmait à tort que `MapEditorPage.test.tsx`
+  n'avait pas de `vi.unstubAllGlobals()` (il l'a déjà — seuls
+  `DatasetEditPage.test.tsx`/`AppBuilderPage.test.tsx` en manquent encore),
+  texte faux hérité verbatim du plan lui-même (piège n°3) ; `useSaveReportSchedule`
+  était le seul hook de sauvegarde de la famille sans invalidation de
+  cache (`useSaveMap`/`useSaveDataset`/`useSavePipeline` invalident déjà
+  leur propre clé de config), devenu porteur de conséquence par ce plan
+  puisque le volet Catalogue affiche désormais `item.date` — corrigé en
+  ajoutant l'invalidation de `["report-schedule", pk]`, même patron que
+  les trois autres, sans étendre à `["item", pk]` (aucun sibling ne le
+  fait). 6 Minor reportés en suivi non bloquant (détail ci-dessous).
+  **Ready to merge.**
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
@@ -484,14 +522,17 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   (SP-29b) et retirera les anciens fichiers `ui/*`. SP-30c a traité la
   famille 3 (Cartes, `MapEditorPage`), SP-30d la famille 4 (Données,
   `DatasetEditPage`), SP-30e la famille 5 (Apps & sites, `AppBuilderPage`),
-  SP-30f la famille 6 volet 1 (Automatisation, `PipelineBuilderPage`)
-  du §6.1 de la spec SP-30 ; **restent le volet 2/3 de la famille 6 et les
-  familles 7/8** (SP-30g+, à découper en plans séparés — la spec proscrit
-  un seul plan pour tout le reste) : `ReportEditPage`/`VisualQueryWizardPage`
-  (Automatisation, famille 6 — prochaines dans l'ordre du §6.1 ;
+  SP-30f la famille 6 volet 1 (Automatisation, `PipelineBuilderPage`),
+  SP-30g la famille 6 volet 2 (Automatisation, `ReportEditPage`)
+  du §6.1 de la spec SP-30 ; **restent le volet 3 de la famille 6 et les
+  familles 7/8** (SP-30h+, à découper en plans séparés — la spec proscrit
+  un seul plan pour tout le reste) : `VisualQueryWizardPage`
+  (Automatisation, famille 6 — prochaine dans l'ordre du §6.1 ;
   `PipelineRunPanel.tsx`/`PipelineScheduleEditor.tsx` déjà kit-ifiés par
-  SP-30f, consommables sans retouche par `VisualQueryWizardPage`),
-  `SqlLabPage`
+  SP-30f, consommables sans retouche — `ReportRunPanel.tsx`/
+  `ReportScheduleEditor.tsx`, kit-ifiés par SP-30g, ne sont pas consommés
+  par cette page, vérifié : aucun recoupement entre les deux familles de
+  composants), `SqlLabPage`
   (Analytique, famille 7), `AdminExtensionsPage`/`CollectionsAdminPage`/
   `HarvestSourcesAdminPage` (Administration, famille 8),
   `Tileset3DUploadButton`/`NewItemButton`/`ImportFileButton` (chrome,
@@ -590,6 +631,36 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   sur SP-30d ; `pk !== null` répété 4 fois dans le volet Propriétés au
   lieu d'un booléen `isPersisted` (hérité du code littéral du plan
   lui-même, cf. entrée SP-30f).
+  6 suivis non bloquants hérités de SP-30g (revue finale de branche, tous
+  cosmétiques, aucun ne bloquait le merge) : le test qui devait prouver
+  l'usage de `RESOURCE_TYPE_LABELS[item.resourceType]` (plutôt qu'un
+  littéral `"Rapport"` en dur) ne peut pas échouer pour cette raison —
+  `findByText("Rapport")` matche indifféremment l'idiome correct et le
+  défaut qu'il visait à exclure, la valeur coïncidant avec le libellé
+  chrome de l'onglet « Rapport » (ambigu aussi en mode étroit, collision
+  potentielle) — à corriger via le couple `<dt>`/`<dd>` ou un fixture dont
+  le libellé diffère de toute chaîne de chrome ; séparateur `border-t`
+  du volet Réglages rendu même quand les deux panneaux gated `pk !== null`
+  au-dessus sont absents (mode brouillon), première ligne visible sans
+  rien à séparer — `PipelineBuilderPage.tsx` gate la même règle sur
+  `mt-3` en plus, cette page est désormais l'exception de la famille sur
+  ce point précis ; `itemQuery.isError` non géré, une erreur 403/404 sur
+  `getItem` en mode persisté rend le volet Catalogue visuellement
+  identique à l'état brouillon (silencieux, 2e page à faire ce choix non
+  documenté après `DatasetEditPage`, qui elle échoue franchement) ; les
+  contrôles tokenisés de `ReportScheduleEditor.tsx` (`rounded border
+  border-rule bg-surface px-2 py-1 text-ink`, sans hauteur fixe) divergent
+  de `PipelineScheduleEditor.tsx` rendu juste en dessous dans le même
+  composant (`h-8 …`) et de `DatasetEditPage` (`h-8 … text-xs`) — la
+  famille n'a toujours pas une seule recette de contrôle de formulaire
+  (texte littéral du plan lui-même, pas un écart d'implémentation) ;
+  deux titres de test restent en anglais/mixte (« unsaved mode: no
+  history panel before the first save (no report id yet) », « persisted
+  mode: … ») malgré la règle « identifiants de test en français » —
+  hérité du fichier avant ce plan, non corrigé au passage ; la question
+  `aria-expanded`/`aria-controls` sur un déclencheur de panneau en ligne,
+  déjà notée par SP-30c comme à trancher une fois pour toute la famille,
+  reste ouverte.
 - Reste **SP-15** : événements/déclencheurs durables au-delà du cron (non
   planifié) ; exposition MCP des noms de secrets (non planifiée) ; **exécuter
   réellement les 5 tests `@pytest.mark.qgis` de SP-15d** avant d'activer
