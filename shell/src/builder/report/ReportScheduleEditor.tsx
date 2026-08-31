@@ -25,14 +25,14 @@ export function ReportScheduleEditor({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-ink-2">
         Vue ciblée : <span className="font-medium">{bookmarkLabel}</span>
       </p>
 
       <label className="flex flex-col gap-1 text-sm">
         Canal
         <select
-          className="rounded border border-slate-300 px-2 py-1"
+          className="rounded border border-rule bg-surface px-2 py-1 text-ink"
           value={channel?.kind ?? "webhook"}
           onChange={(e) => {
             if (e.target.value === "webhook") setChannel({ kind: "webhook", url: "" });
@@ -48,7 +48,7 @@ export function ReportScheduleEditor({
         <label className="flex flex-col gap-1 text-sm">
           URL du webhook
           <input
-            className="rounded border border-slate-300 px-2 py-1"
+            className="rounded border border-rule bg-surface px-2 py-1 text-ink"
             value={channel.url}
             onChange={(e) => setChannel({ kind: "webhook", url: e.target.value })}
           />
@@ -60,7 +60,7 @@ export function ReportScheduleEditor({
           <label className="flex flex-col gap-1 text-sm">
             Destinataire
             <input
-              className="rounded border border-slate-300 px-2 py-1"
+              className="rounded border border-rule bg-surface px-2 py-1 text-ink"
               value={channel.to}
               onChange={(e) =>
                 setChannel({
@@ -74,7 +74,7 @@ export function ReportScheduleEditor({
           <label className="flex flex-col gap-1 text-sm">
             Secret SMTP
             <input
-              className="rounded border border-slate-300 px-2 py-1"
+              className="rounded border border-rule bg-surface px-2 py-1 text-ink"
               value={channel.smtpSecretName}
               onChange={(e) =>
                 setChannel({ kind: "email", to: channel.to, smtpSecretName: e.target.value })
