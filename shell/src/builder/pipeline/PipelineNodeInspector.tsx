@@ -20,12 +20,12 @@ function KeyValueField({
   const rows = Object.entries(value);
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-slate-600">{name}</span>
+      <span className="text-xs font-medium text-ink-2">{name}</span>
       {rows.map(([key, val], i) => (
         <div key={i} className="flex gap-1">
           <input
             aria-label={`${name} clé ${i + 1}`}
-            className="h-8 w-1/2 rounded border border-slate-300 px-2 text-xs"
+            className="h-8 w-1/2 rounded border border-rule bg-surface px-2 text-xs text-ink"
             value={key}
             onChange={(e) => {
               const next = Object.fromEntries(rows);
@@ -36,7 +36,7 @@ function KeyValueField({
           />
           <input
             aria-label={`${name} valeur ${i + 1}`}
-            className="h-8 w-1/2 rounded border border-slate-300 px-2 text-xs"
+            className="h-8 w-1/2 rounded border border-rule bg-surface px-2 text-xs text-ink"
             value={val ?? ""}
             onChange={(e) => {
               const next = Object.fromEntries(rows);
@@ -48,7 +48,7 @@ function KeyValueField({
       ))}
       <button
         type="button"
-        className="w-fit text-xs text-blue-600 hover:underline"
+        className="w-fit text-xs text-accent hover:underline"
         onClick={() => onChange({ ...value, "": "" })}
       >
         Ajouter {name}
@@ -71,7 +71,7 @@ function StringListField({
       {name}
       <input
         aria-label={name}
-        className="h-8 rounded border border-slate-300 px-2"
+        className="h-8 rounded border border-rule bg-surface px-2 text-ink"
         defaultValue={value.join(", ")}
         onChange={(e) =>
           onChange(
@@ -118,7 +118,7 @@ export function PipelineNodeInspector({
     return (
       <div key={name} className="flex flex-col gap-1">
         {control}
-        <p className="text-xs text-slate-500">{prop.description}</p>
+        <p className="text-xs text-ink-2">{prop.description}</p>
       </div>
     );
   }
@@ -141,7 +141,7 @@ export function PipelineNodeInspector({
           {name}
           <select
             aria-label={name}
-            className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm"
+            className="h-9 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
             value={String(params[name] ?? prop.default ?? "")}
             onChange={(e) => setField(name, e.target.value)}
           >
@@ -193,7 +193,7 @@ export function PipelineNodeInspector({
         <input
           type={prop.type === "number" || prop.type === "integer" ? "number" : "text"}
           aria-label={name}
-          className="h-8 rounded border border-slate-300 px-2"
+          className="h-8 rounded border border-rule bg-surface px-2 text-ink"
           value={String(params[name] ?? "")}
           onChange={(e) =>
             setField(
@@ -214,7 +214,7 @@ export function PipelineNodeInspector({
         renderField(name, prop),
       )}
       {errors.map((err) => (
-        <p key={err} role="alert" className="text-xs text-red-600">
+        <p key={err} role="alert" className="text-xs text-danger">
           {err}
         </p>
       ))}
