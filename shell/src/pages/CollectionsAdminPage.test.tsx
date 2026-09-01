@@ -313,15 +313,53 @@ test("switching from edit to share on a different row closes the edit panel (exc
     http.get("https://core.test/collections/parcs/sharing", () =>
       HttpResponse.json({ public: false, groups: [] }),
     ),
+    http.get("https://core.test/collections/incidents/sharing", () =>
+      HttpResponse.json({ public: false, groups: [] }),
+    ),
   );
   render(<Harness />);
   const editButtons = await screen.findAllByRole("button", { name: "Éditer" });
+  const shareButtons = screen.getAllByRole("button", { name: "Partager" });
+  const registerButton = screen.getByRole("button", { name: "Enregistrer une table" });
+
+  // edit -> share (sens déjà couvert avant ce correctif) : Éditer puis
+  // Partager sur une autre ligne ferme le panneau Éditer (setEditing(null)
+  // dans le gestionnaire Partager).
   await userEvent.click(editButtons[0]);
   expect(await screen.findByLabelText("Titre")).toBeInTheDocument();
-  const shareButtons = screen.getAllByRole("button", { name: "Partager" });
   await userEvent.click(shareButtons[1]);
   await screen.findByText("Partager la collection");
   expect(screen.queryByLabelText("Titre")).not.toBeInTheDocument();
+
+  // share -> edit (sens inverse) : ferme le panneau Partager
+  // (setSharing(null) dans le gestionnaire Éditer).
+  await userEvent.click(editButtons[0]);
+  expect(await screen.findByLabelText("Titre")).toBeInTheDocument();
+  expect(screen.queryByText("Partager la collection")).not.toBeInTheDocument();
+
+  // edit -> "Enregistrer une table" : ferme le panneau Éditer
+  // (setEditing(null) dans le gestionnaire Enregistrer une table).
+  await userEvent.click(registerButton);
+  await screen.findByRole("heading", { name: "Enregistrer une table" });
+  expect(screen.queryByLabelText("Titre")).not.toBeInTheDocument();
+
+  // "Enregistrer une table" -> share : ferme le panneau Enregistrer
+  // (setRegistering(false) dans le gestionnaire Partager).
+  await userEvent.click(shareButtons[0]);
+  await screen.findByText("Partager la collection");
+  expect(screen.queryByRole("heading", { name: "Enregistrer une table" })).not.toBeInTheDocument();
+
+  // share -> "Enregistrer une table" : ferme le panneau Partager
+  // (setSharing(null) dans le gestionnaire Enregistrer une table).
+  await userEvent.click(registerButton);
+  await screen.findByRole("heading", { name: "Enregistrer une table" });
+  expect(screen.queryByText("Partager la collection")).not.toBeInTheDocument();
+
+  // "Enregistrer une table" -> edit : ferme le panneau Enregistrer
+  // (setRegistering(false) dans le gestionnaire Éditer).
+  await userEvent.click(editButtons[0]);
+  expect(await screen.findByLabelText("Titre")).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Enregistrer une table" })).not.toBeInTheDocument();
 });
 
 test("sous viewport étroit, affiche trois onglets Catalogue/Collections/Détail avec Collections actif par défaut", async () => {
