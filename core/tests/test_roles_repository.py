@@ -1,0 +1,128 @@
+# SPDX-License-Identifier: Apache-2.0
+from app.db import init_db, make_engine, make_session_factory
+from app.roles.privileges import Privilege
+from app.roles.repository import (
+    count_role_holders,
+    count_users_with_privileges,
+    create_role,
+    delete_role,
+    ensure_built_in_roles,
+    get_privilege_catalog,
+    get_role,
+    list_roles,
+    update_role,
+    would_orphan_privilege_holders,
+)
+from app.tenants.repository import get_or_create_default_tenant
+from app.users.repository import get_or_create_user
+
+
+def _session():
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    return make_session_factory(engine)
+
+
+def test_ensure_built_in_roles_is_idempotent_and_covers_the_four_profiles():
+    Session = _session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        assert set(roles) == {"admin", "creator", "analyst", "reader"}
+        assert roles["admin"].privileges == [p.value for p in Privilege]
+        assert roles["reader"].privileges == []
+        assert all(r.is_built_in for r in roles.values())
+        again = ensure_built_in_roles(s, tenant_id=tenant.id)
+        assert {r.id for r in again.values()} == {r.id for r in roles.values()}
+
+
+def test_create_update_delete_a_custom_role():
+    Session = _session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        role = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Contributeur moissonnage",
+            privileges=[Privilege.ADMIN_HARVEST_MANAGE.value],
+        )
+        assert role.is_built_in is False
+        fetched = get_role(s, tenant_id=tenant.id, role_id=role.id)
+        assert fetched is not None and fetched.name == "Contributeur moissonnage"
+        updated = update_role(
+            s,
+            tenant_id=tenant.id,
+            role_id=role.id,
+            name="Moissonnage+",
+            privileges=[
+                Privilege.ADMIN_HARVEST_MANAGE.value,
+                Privilege.ADMIN_COLLECTIONS_MANAGE.value,
+            ],
+        )
+        assert updated is not None and len(updated.privileges) == 2
+        assert {r.id for r in list_roles(s, tenant_id=tenant.id)} >= {role.id}
+        delete_role(s, tenant_id=tenant.id, role_id=role.id)
+        assert get_role(s, tenant_id=tenant.id, role_id=role.id) is None
+
+
+def test_count_role_holders():
+    Session = _session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        u = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="x",
+            username="x",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        s.flush()
+        assert count_role_holders(s, tenant_id=tenant.id, role_id=roles["creator"].id) >= 1
+        assert count_role_holders(s, tenant_id=tenant.id, role_id=roles["admin"].id) == 0
+        assert u.role_id == roles["creator"].id
+
+
+def test_count_users_with_privileges_and_orphan_detection():
+    Session = _session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="admin",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        needed = [Privilege.ADMIN_USERS_MANAGE.value, Privilege.ADMIN_ROLES_MANAGE.value]
+        assert count_users_with_privileges(s, tenant_id=tenant.id, privileges=needed) == 1
+        # Retirer ces deux privilèges du rôle admin lui-même (hypothèse) laisserait
+        # le tenant sans personne capable de gérer utilisateurs/rôles.
+        assert would_orphan_privilege_holders(
+            s,
+            tenant_id=tenant.id,
+            privileges=needed,
+            role_id=roles["admin"].id,
+            new_privileges=[],
+        )
+        # Ne rien changer d'autre ne l'orpheline pas.
+        assert not would_orphan_privilege_holders(
+            s,
+            tenant_id=tenant.id,
+            privileges=needed,
+            role_id=roles["reader"].id,
+            new_privileges=[],
+        )
+
+
+def test_privilege_catalog_covers_every_privilege_with_domain_and_label_key():
+    catalog = get_privilege_catalog()
+    assert len(catalog) == len(list(Privilege))
+    for entry in catalog:
+        assert set(entry) == {"privilege", "domain", "labelKey"}
