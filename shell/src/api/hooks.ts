@@ -2,6 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "./ItemClientProvider";
 import type {
+  AdminToolName,
   AlertRulePayload,
   AppConfig,
   CollectionCreateInput,
@@ -446,6 +447,13 @@ export function useSetExtensionEnabled() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["extensions"] });
     },
+  });
+}
+
+export function useLaunchAdminTool() {
+  const client = useItemClientInternal();
+  return useMutation({
+    mutationFn: (tool: AdminToolName) => client.launchAdminTool(tool),
   });
 }
 

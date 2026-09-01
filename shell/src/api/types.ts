@@ -58,7 +58,10 @@ export type InstanceInfo = {
   tileset3dEnabled: boolean;
   terrain3dEnabled: boolean;
   copilotEnabled: boolean;
+  adminToolsEnabled: boolean;
 };
+
+export type AdminToolName = "martin" | "titiler" | "grafana";
 
 export type CopilotMessage = { role: "user" | "assistant"; content: string };
 export type CopilotClientOp = { op: string; args: Record<string, unknown> };
@@ -292,6 +295,7 @@ export interface ItemClient {
   updateHarvestSource(id: string, patch: HarvestSourcePatchInput): Promise<HarvestSource>;
   deleteHarvestSource(id: string): Promise<void>;
   runHarvestSource(id: string): Promise<void>;
+  launchAdminTool(tool: AdminToolName): Promise<{ url: string }>;
   getCollectionSharing(id: string): Promise<Sharing>;
   setCollectionSharing(id: string, sharing: Sharing): Promise<void>;
   createMapItem(input: { title: string; owner: string }): Promise<Item>;
