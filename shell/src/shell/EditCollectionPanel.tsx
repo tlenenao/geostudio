@@ -1,18 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useInstanceInfo, useUpdateCollection } from "../api/hooks";
 import type { CollectionAdmin } from "../api/types";
-import { Button } from "../ui/button";
-import { Dialog } from "../ui/dialog";
-import { Input } from "../ui/input";
+import { Button } from "../ui/kit/Button";
+import { Input } from "../ui/kit/Input";
 
-export function EditCollectionDialog({
+export function EditCollectionPanel({
   collection,
-  open,
   onClose,
 }: {
   collection: CollectionAdmin;
-  open: boolean;
   onClose: () => void;
 }) {
   const updateCollection = useUpdateCollection(collection.id);
@@ -22,16 +19,6 @@ export function EditCollectionDialog({
   const [description, setDescription] = useState(collection.description);
   const [isPublic, setIsPublic] = useState(collection.isPublic);
   const [editable, setEditable] = useState(collection.editable);
-
-  useEffect(() => {
-    if (!open) return;
-    setTitle(collection.title);
-    setDescription(collection.description);
-    setIsPublic(collection.isPublic);
-    setEditable(collection.editable);
-    updateCollection.reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, collection]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -44,13 +31,14 @@ export function EditCollectionDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title={`Éditer ${collection.title}`}>
+    <section aria-label={`Éditer ${collection.title}`} className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold text-ink">Éditer {collection.title}</h2>
       <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm text-ink">
           Titre
           <Input aria-label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
         </label>
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm text-ink">
           Description
           <Input
             aria-label="Description"
@@ -58,7 +46,7 @@ export function EditCollectionDialog({
             onChange={(e) => setDescription(e.target.value)}
           />
         </label>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"
             aria-label="Public"
@@ -67,7 +55,7 @@ export function EditCollectionDialog({
           />
           Public
         </label>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"
             aria-label="Éditable"
@@ -77,7 +65,7 @@ export function EditCollectionDialog({
           Éditable
         </label>
         {updateCollection.isError && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-danger">
             Échec de la mise à jour.
           </p>
         )}
@@ -90,6 +78,6 @@ export function EditCollectionDialog({
           </Button>
         </div>
       </form>
-    </Dialog>
+    </section>
   );
 }
