@@ -252,6 +252,58 @@ test("deletes a collection after confirming", async () => {
   await waitFor(() => expect(deleteCalled).toBe(true));
 });
 
+test("supprimer la ligne en cours d'édition ferme le panneau Éditer (croisement editing/deleting)", async () => {
+  server.use(
+    http.get("https://core.test/collections", () =>
+      HttpResponse.json({ collections: [INCIDENTS] }),
+    ),
+    http.get("https://core.test/collections/candidates", () =>
+      HttpResponse.json({ candidates: [] }),
+    ),
+    http.delete(
+      "https://core.test/collections/incidents",
+      () => new HttpResponse(null, { status: 204 }),
+    ),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Éditer" }));
+  expect(await screen.findByLabelText("Titre")).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
+  const dialog = screen.getByRole("dialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
+
+  await waitFor(() => expect(screen.queryByLabelText("Titre")).not.toBeInTheDocument());
+});
+
+test("supprimer la ligne en cours de partage ferme le panneau Partager (croisement sharing/deleting)", async () => {
+  server.use(
+    http.get("https://core.test/collections", () =>
+      HttpResponse.json({ collections: [INCIDENTS] }),
+    ),
+    http.get("https://core.test/collections/candidates", () =>
+      HttpResponse.json({ candidates: [] }),
+    ),
+    http.get("https://core.test/groups", () => HttpResponse.json([])),
+    http.get("https://core.test/collections/incidents/sharing", () =>
+      HttpResponse.json({ public: false, groups: [] }),
+    ),
+    http.delete(
+      "https://core.test/collections/incidents",
+      () => new HttpResponse(null, { status: 204 }),
+    ),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Partager" }));
+  await screen.findByText("Partager la collection");
+
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
+  const dialog = screen.getByRole("dialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
+
+  await waitFor(() => expect(screen.queryByText("Partager la collection")).not.toBeInTheDocument());
+});
+
 test("shares a collection via the row action", async () => {
   let putBody: unknown;
   server.use(

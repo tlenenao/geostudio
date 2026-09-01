@@ -29,6 +29,11 @@ export function HarvestSourcesAdminPage() {
     if (!deleting) return;
     try {
       await deleteSource.mutateAsync(deleting.id);
+      // Croisement entre tâches (revue finale SP-30j) : editing n'est plus
+      // un Dialog modal, donc peut rester ouvert sur la ligne qu'on vient de
+      // supprimer si l'utilisateur clique Supprimer sans le fermer d'abord.
+      // Fermer explicitement s'il pointait vers l'objet supprimé.
+      if (editing?.id === deleting.id) setEditing(null);
       setDeleting(null);
     } catch {
       // surfaced via deleteSource.isError

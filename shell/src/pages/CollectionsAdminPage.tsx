@@ -23,6 +23,13 @@ export function CollectionsAdminPage() {
     if (!deleting) return;
     try {
       await deleteCollection.mutateAsync(deleting.id);
+      // Croisement entre tâches (revue finale SP-30j) : editing/sharing ne
+      // sont plus des Dialog modaux, donc peuvent rester ouverts sur la
+      // ligne qu'on vient de supprimer si l'utilisateur clique Supprimer
+      // sans les fermer d'abord. Fermer explicitement s'ils pointaient
+      // vers l'objet supprimé.
+      if (editing?.id === deleting.id) setEditing(null);
+      if (sharing?.id === deleting.id) setSharing(null);
       setDeleting(null);
     } catch {
       // surfaced via deleteCollection.isError

@@ -192,6 +192,42 @@ test("cliquer « Éditer » pendant la création ferme le panneau d'ajout", asyn
   expect(screen.getAllByRole("button", { name: "Enregistrer" })).toHaveLength(1);
 });
 
+test("supprimer la source en cours d'édition ferme le panneau Éditer (croisement editing/deleting)", async () => {
+  server.use(
+    http.get("https://core.test/harvest/sources", () =>
+      HttpResponse.json({
+        sources: [
+          {
+            id: "src-1",
+            type: "stac",
+            url: "https://a",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: null,
+            lastError: null,
+          },
+        ],
+      }),
+    ),
+    http.delete("https://core.test/harvest/sources/src-1", () =>
+      HttpResponse.text("", { status: 204 }),
+    ),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Éditer" }));
+  expect(await screen.findByRole("region", { name: "Éditer https://a" })).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
+  const dialog = screen.getByRole("dialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
+
+  await waitFor(() =>
+    expect(screen.queryByRole("region", { name: "Éditer https://a" })).not.toBeInTheDocument(),
+  );
+});
+
 test("delete removes the source from the list", async () => {
   let deleted = false;
   server.use(
