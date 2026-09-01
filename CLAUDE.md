@@ -637,6 +637,28 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   transverse de sortie de SP-30 (§7) et la dette de symbologie/popup
   imbriquée dans `LayersPanel` (notée SP-30c, hors périmètre de tout
   plan SP-30 jusqu'ici).
+- **SP-30l** (3 tâches, revue transverse de sortie — §7 de la spec, clôt
+  SP-30) — les huit critères de sortie vérifiés un par un, pas supposés
+  acquis parce que les neuf familles et le chrome sont clos : 1 bug réel
+  trouvé et corrigé (`useNarrowViewport` bascule sous `max-width: 389px`,
+  classant 390 px — la largeur CSS réelle des iPhone 12/13/14 et le seuil
+  que la maquette elle-même nomme — comme *large* plutôt qu'étroit ; aucun
+  test unitaire existant ne pouvait le voir, chacun stubbant
+  `window.matchMedia` avec une valeur fixe plutôt que la vraie chaîne de
+  requête, piège n°10 — seul un test Playwright à viewport réel l'a
+  révélé), corrigé à `max-width: 390px`, preuve par
+  `e2e/triptych-narrow.spec.ts` sur les 8 écrans de référence de la
+  maquette. Second trou comblé : le badge de rôle (§7.8) n'était vérifié
+  que par des tests unitaires MSW, jamais par un compte de test E2E dédié
+  à cette question précise — `e2e/account-badge.spec.ts` couvre désormais
+  les quatre profils (admin/analyste/créateur/lecteur-simulé) contre un
+  vrai `/me` mocké, plus le cas Analyste manquant sur
+  `AccountMenu.test.tsx`. Les six autres critères (chrome neuf partout,
+  neuf domaines navigables, suites + portes de qualité vertes,
+  OpenAPI/types à jour, `CollectionPermissions` sans `canWrite`,
+  `ItemActions` sans raison de verrou dupliquée) étaient déjà acquis par
+  SP-30a→k, re-vérifiés mécaniquement plutôt que supposés. E2E 118/4/0 →
+  **130/4/0**. **SP-30 est clos.**
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
@@ -689,23 +711,9 @@ rétroactif en masse :
 
 ### À venir
 
-- **SP-30** : réécriture des écrans qui
-  consomment enfin `Gate`/`capabilities.ts`/`tokens.css`. SP-30c a traité la
-  famille 3 (Cartes, `MapEditorPage`), SP-30d la famille 4 (Données,
-  `DatasetEditPage`), SP-30e la famille 5 (Apps & sites, `AppBuilderPage`),
-  SP-30f/g/h la famille 6 (Automatisation, `PipelineBuilderPage`/
-  `ReportEditPage`/`VisualQueryWizardPage`), SP-30i la famille 7
-  (Analytique, `SqlLabPage`), SP-30j la famille 8 (Administration,
-  `AdminExtensionsPage`/`CollectionsAdminPage`/`HarvestSourcesAdminPage`),
-  SP-30k le dernier reliquat nommé de la spec §2.1 hors familles
-  (chrome : `Tileset3DUploadButton`/`NewItemButton`/`ImportFileButton`,
-  `Dialog`→`Drawer`) — **les neuf familles du §6.1 et ce dernier
-  reliquat sont désormais tous clos.** Les 9 occurrences de comparaison
-  de droits en dur visées par la spec ont disparu (SP-30i/j), les écrans
-  réels basculés sur le kit `ui/kit/` (SP-29b) sur toute la liste nommée
-  par §2.1/§6.1. Reste, hors traitement par aucun plan SP-30 à ce jour :
-  la revue transverse de sortie (§7, badge de rôle sur les quatre
-  profils, 390 px sur les huit écrans de référence, etc.) ; les
+- **SP-30 est clos** (SP-30a→l). Les neuf familles du §6.1, le dernier
+  reliquat nommé du §2.1 (chrome) et les huit critères de sortie du §7 sont
+  tous vérifiés. Reste, hors traitement par aucun plan SP-30 à ce jour : les
   permissions de collection et le profil « Lecteur » qui restent à
   trancher (cf. entrée SP-29a) ; la raison de verrouillage triplée
   d'`ItemActions` (cf. entrée SP-29a) qui peut être regroupée si voulu ;
