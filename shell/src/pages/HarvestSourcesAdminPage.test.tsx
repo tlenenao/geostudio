@@ -162,6 +162,36 @@ test("cliquer « Ajouter une source » pendant l'édition ferme le panneau d'éd
   expect(screen.getAllByRole("button", { name: "Enregistrer" })).toHaveLength(1);
 });
 
+test("cliquer « Éditer » pendant la création ferme le panneau d'ajout", async () => {
+  server.use(
+    http.get("https://core.test/harvest/sources", () =>
+      HttpResponse.json({
+        sources: [
+          {
+            id: "src-1",
+            type: "stac",
+            url: "https://a",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: null,
+            lastError: null,
+          },
+        ],
+      }),
+    ),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
+  expect(await screen.findByRole("region", { name: "Ajouter une source" })).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Éditer" }));
+  expect(screen.queryByRole("region", { name: "Ajouter une source" })).not.toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Éditer https://a" })).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "Enregistrer" })).toHaveLength(1);
+});
+
 test("delete removes the source from the list", async () => {
   let deleted = false;
   server.use(
