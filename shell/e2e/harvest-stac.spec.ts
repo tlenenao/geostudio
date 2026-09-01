@@ -101,8 +101,8 @@ test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne d
   await expect(page.getByRole("heading", { name: "Moissonnage" })).toBeVisible();
 
   await page.getByRole("button", { name: "Ajouter une source" }).click();
-  const dialog = page.getByRole("dialog", { name: "Ajouter une source" });
-  await dialog.getByLabel("URL").fill("https://stac.example.com/collections");
+  const panel = page.getByRole("region", { name: "Ajouter une source" });
+  await panel.getByLabel("URL").fill("https://stac.example.com/collections");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect
     .poll(() => created)

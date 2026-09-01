@@ -101,9 +101,9 @@ test("un admin déclare une source ArcGIS, la moissonne, et un re-moissonnage ne
   await expect(page.getByRole("heading", { name: "Moissonnage" })).toBeVisible();
 
   await page.getByRole("button", { name: "Ajouter une source" }).click();
-  const dialog = page.getByRole("dialog", { name: "Ajouter une source" });
-  await dialog.getByLabel("URL").fill(FS);
-  await dialog.getByLabel("Type").selectOption("arcgis");
+  const panel = page.getByRole("region", { name: "Ajouter une source" });
+  await panel.getByLabel("URL").fill(FS);
+  await panel.getByLabel("Type").selectOption("arcgis");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect
     .poll(() => created)

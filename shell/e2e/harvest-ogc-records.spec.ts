@@ -89,9 +89,9 @@ test("un admin déclare une source OGC API - Records, la moissonne, et l'item ap
 
   await page.goto("/admin/harvest");
   await page.getByRole("button", { name: "Ajouter une source" }).click();
-  const dialog = page.getByRole("dialog", { name: "Ajouter une source" });
-  await dialog.getByLabel("URL").fill(OGC_URL);
-  await dialog.getByLabel("Type").selectOption("ogc-records");
+  const panel = page.getByRole("region", { name: "Ajouter une source" });
+  await panel.getByLabel("URL").fill(OGC_URL);
+  await panel.getByLabel("Type").selectOption("ogc-records");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect
     .poll(() => created)
