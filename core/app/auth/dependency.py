@@ -99,6 +99,14 @@ def is_copilot_enabled() -> bool:
     return bool(os.environ.get("CORE_LLM_PROVIDER")) and not is_read_only_mode()
 
 
+def is_admin_tools_enabled() -> bool:
+    """CORE_ADMIN_TOOLS_ENABLED — capacité instance-wide optionnelle, même
+    convention que is_tileset3d_enabled : lue à chaque appel, sans cache.
+    Défaut false : les trois routes /admin-tools/* ne sont montées que si
+    l'opérateur a explicitement activé la capacité (design URLs admin §3)."""
+    return os.environ.get("CORE_ADMIN_TOOLS_ENABLED", "false").lower() == "true"
+
+
 def admin_subs() -> set[str]:
     """OIDC subs à promouvoir admin au prochain get_or_create_user (source de
     vérité de CORE_ADMIN_SUBS — utilisée par le chemin REST ci-dessous ET par

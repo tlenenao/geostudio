@@ -2,6 +2,7 @@
 from fastapi import APIRouter
 
 from app.auth.dependency import (
+    is_admin_tools_enabled,
     is_appexport_enabled,
     is_copilot_enabled,
     is_etl_enabled,
@@ -24,4 +25,5 @@ def get_instance_info() -> dict:
         "tileset3dEnabled": is_tileset3d_enabled(),
         "terrain3dEnabled": is_terrain3d_enabled(),
         "copilotEnabled": is_copilot_enabled(),
+        "adminToolsEnabled": is_admin_tools_enabled(),
     }

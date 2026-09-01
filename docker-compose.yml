@@ -264,6 +264,7 @@ services:
       # n'appartiennent qu'à `worker` (cf. ce service plus bas).
       CORE_TILESET3D_MAX_PROXY_READ_BYTES: ${CORE_TILESET3D_MAX_PROXY_READ_BYTES:-134217728}
       CORE_TERRAIN3D_ENABLED: ${CORE_TERRAIN3D_ENABLED:-false}
+      CORE_ADMIN_TOOLS_ENABLED: ${CORE_ADMIN_TOOLS_ENABLED:-false}
       S3_TERRAIN3D_BUCKET: geostudio-terrain3d
       # Titiler sert les tuiles terrain-RGB depuis le COG hébergé (proxy
       # read_terrain3d_tile, app/terrain3d/routes.py) — appel interne, jamais

@@ -63,6 +63,7 @@ def test_instance_reports_etl_disabled_by_default(env):
         "tileset3dEnabled": False,
         "terrain3dEnabled": False,
         "copilotEnabled": False,
+        "adminToolsEnabled": False,
     }
 
 
@@ -78,4 +79,5 @@ def test_instance_reports_etl_enabled(env, monkeypatch):
         "tileset3dEnabled": False,
         "terrain3dEnabled": False,
         "copilotEnabled": False,
+        "adminToolsEnabled": False,
     }

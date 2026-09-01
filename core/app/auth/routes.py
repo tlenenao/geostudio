@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth.dependency import (
     get_current_user,
+    is_admin_tools_enabled,
     is_appexport_enabled,
     is_copilot_enabled,
     is_etl_enabled,
@@ -43,6 +44,7 @@ class MeCapabilities(BaseModel):
     tileset3dEnabled: bool
     terrain3dEnabled: bool
     copilotEnabled: bool
+    adminToolsEnabled: bool
 
 
 class MeResponse(BaseModel):
@@ -87,6 +89,7 @@ def get_me(
             tileset3dEnabled=is_tileset3d_enabled(),
             terrain3dEnabled=is_terrain3d_enabled(),
             copilotEnabled=is_copilot_enabled(),
+            adminToolsEnabled=is_admin_tools_enabled(),
         ),
     )
 
