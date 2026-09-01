@@ -93,3 +93,18 @@ test(
   },
   OPEN_TIMEOUT,
 );
+
+test(
+  "affiche Analyste pour un compte analyste non admin",
+  async () => {
+    server.use(
+      http.get("https://core.test/me", () =>
+        meResponse({ isAnalyst: true, hasAnyEditorRole: true }),
+      ),
+    );
+    renderMenu();
+    await userEvent.click(screen.getByRole("button", { name: "Compte" }));
+    expect(await screen.findByText("Analyste")).toBeInTheDocument();
+  },
+  OPEN_TIMEOUT,
+);
