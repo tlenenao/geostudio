@@ -138,9 +138,29 @@ test("the runtime route renders without going through the auth gate", () => {
   authState.isAuthenticated = true;
 });
 
-test("renders the admin extensions route at /admin/extensions", () => {
+test("renders the admin extensions route at /admin/extensions", async () => {
+  // /admin/extensions passe par RequireRole (SP-30j) depuis ce commit — le
+  // handler MSW par défaut de /me renvoie isAdmin: false, il faut le
+  // surcharger et attendre la résolution avant d'affirmer sur le contenu.
+  server.use(
+    http.get("https://core.test/me", () =>
+      HttpResponse.json({
+        id: "u1",
+        username: "alice",
+        firstName: "Alice",
+        lastName: "Martin",
+        email: "alice@example.com",
+        tenantId: "t1",
+        isAdmin: true,
+        isAnalyst: false,
+        hasAnyEditorRole: true,
+        version: "0.1.0",
+        tenantSlug: "demo",
+      }),
+    ),
+  );
   wrap(<AppRoutes />, "/admin/extensions");
-  expect(screen.getByText("admin-extensions")).toBeInTheDocument();
+  expect(await screen.findByText("admin-extensions")).toBeInTheDocument();
 });
 
 test("protected routes still require authentication", () => {
