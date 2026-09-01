@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { renderHook, act } from "@testing-library/react";
 import { vi } from "vitest";
-import { useNarrowViewport } from "./useNarrowViewport";
+import { useNarrowViewport, NARROW_QUERY } from "./useNarrowViewport";
 
 function mockMatchMedia(initialMatches: boolean) {
   let listener: (() => void) | null = null;
@@ -14,8 +14,10 @@ function mockMatchMedia(initialMatches: boolean) {
       listener = null;
     },
   };
-  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue(mql));
+  const matchMedia = vi.fn().mockReturnValue(mql);
+  vi.stubGlobal("matchMedia", matchMedia);
   return {
+    matchMedia,
     fireChange(matches: boolean) {
       mql.matches = matches;
       listener?.();
@@ -23,16 +25,22 @@ function mockMatchMedia(initialMatches: boolean) {
   };
 }
 
-test("retourne false par défaut strictement au-dessus de 390 px", () => {
+test("retourne false strictement au-dessus du seuil étroit", () => {
   mockMatchMedia(false);
   const { result } = renderHook(() => useNarrowViewport());
   expect(result.current).toBe(false);
 });
 
-test("retourne true à 390 px ou en-dessous, et suit les changements", () => {
+test("retourne true au seuil étroit ou en-dessous, et suit les changements", () => {
   const { fireChange } = mockMatchMedia(true);
   const { result } = renderHook(() => useNarrowViewport());
   expect(result.current).toBe(true);
   act(() => fireChange(false));
   expect(result.current).toBe(false);
+});
+
+test("interroge la vraie chaîne de media query, pas seulement le booléen mocké", () => {
+  const { matchMedia } = mockMatchMedia(false);
+  renderHook(() => useNarrowViewport());
+  expect(matchMedia).toHaveBeenCalledWith(NARROW_QUERY);
 });
