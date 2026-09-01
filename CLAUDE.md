@@ -639,26 +639,74 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   plan SP-30 jusqu'ici).
 - **SP-30l** (3 tâches, revue transverse de sortie — §7 de la spec, clôt
   SP-30) — les huit critères de sortie vérifiés un par un, pas supposés
-  acquis parce que les neuf familles et le chrome sont clos : 1 bug réel
-  trouvé et corrigé (`useNarrowViewport` bascule sous `max-width: 389px`,
-  classant 390 px — la largeur CSS réelle des iPhone 12/13/14 et le seuil
-  que la maquette elle-même nomme — comme *large* plutôt qu'étroit ; aucun
-  test unitaire existant ne pouvait le voir, chacun stubbant
-  `window.matchMedia` avec une valeur fixe plutôt que la vraie chaîne de
-  requête, piège n°10 — seul un test Playwright à viewport réel l'a
-  révélé), corrigé à `max-width: 390px`, preuve par
-  `e2e/triptych-narrow.spec.ts` sur les 8 écrans de référence de la
-  maquette. Second trou comblé : le badge de rôle (§7.8) n'était vérifié
-  que par des tests unitaires MSW, jamais par un compte de test E2E dédié
-  à cette question précise — `e2e/account-badge.spec.ts` couvre désormais
-  les quatre profils (admin/analyste/créateur/lecteur-simulé) contre un
-  vrai `/me` mocké, plus le cas Analyste manquant sur
-  `AccountMenu.test.tsx`. Les six autres critères (chrome neuf partout,
-  neuf domaines navigables, suites + portes de qualité vertes,
-  OpenAPI/types à jour, `CollectionPermissions` sans `canWrite`,
-  `ItemActions` sans raison de verrou dupliquée) étaient déjà acquis par
-  SP-30a→k, re-vérifiés mécaniquement plutôt que supposés. E2E 118/4/0 →
-  **130/4/0**. **SP-30 est clos.**
+  acquis parce que les neuf familles et le chrome sont clos. 1 bug réel
+  trouvé : `useNarrowViewport` basculait sous `max-width: 389px`, classant
+  390 px — la largeur CSS réelle des iPhone 12/13/14 et le seuil que la
+  maquette elle-même nomme — comme *large* plutôt qu'étroit ; aucun test
+  unitaire existant ne pouvait le voir, chacun stubbant `window.matchMedia`
+  avec une valeur fixe plutôt que la vraie chaîne de requête (piège n°10).
+  Second trou comblé : le badge de rôle (§7.8) n'était vérifié que par des
+  tests unitaires MSW, jamais par un compte de test E2E dédié à cette
+  question précise. Les six autres critères (chrome neuf partout, neuf
+  domaines navigables, suites + portes de qualité vertes,
+  `CollectionPermissions` sans `canWrite`, `ItemActions` sans raison de
+  verrou dupliquée) étaient déjà acquis par SP-30a→k, re-vérifiés
+  mécaniquement plutôt que supposés.
+  **Revue finale de tout le plan (2026-09-02) : 4 Important, tous fermés** —
+  (1) le seuil corrigé une première fois à `max-width: 390px`
+  (`70146c8d`) ne suffisait pas : mesure réelle, de ~391 px à ~540 px la
+  grille triptyque desktop (`grid-cols-[minmax(220px,280px)_1fr_
+  minmax(260px,320px)]` de `TriptychLayout.tsx`) clippe toujours du
+  contenu (clippé à 540 px, sans casse à partir de 640 px) — une bande qui
+  couvre des téléphones réels courants (iPhone 14/15 Plus/Pro Max, Pixel
+  7/8 Pro, iPhone XR/11). Décision (Tanguy) : seuil relevé à
+  `max-width: 640px` (le seuil `sm` conventionnel de Tailwind), constante
+  désormais exportée (`NARROW_QUERY`, `useNarrowViewport.ts`) plutôt que
+  répétée en dur. Un second groupe de 8 tests vérifie désormais 641 px
+  (juste au-dessus du seuil relevé) : 7 écrans passent sans contenu
+  clippé, le 8e (Catalogue) est `test.skip()` avec un **nouveau défaut
+  trouvé et documenté, non corrigé ici** (hors périmètre explicite de ce
+  correctif) — la colonne centrale (`work`, 1fr) de `TriptychLayout` est
+  affamée par les deux colonnes latérales, qui grandissent d'abord vers
+  leur maximum (280+320=600 px) avant que la piste `1fr` ne reçoive quoi
+  que ce soit (algorithme standard de dimensionnement CSS Grid) — un effet
+  potentiellement partagé par les 8 écrans mais qui ne clippe visiblement
+  que sur `CatalogPage.tsx` (résumés d'items effondrés à largeur 0) ; un
+  chantier de layout distinct, à ouvrir séparément, pas un simple réglage
+  de seuil. (2) le filet `expectNoHorizontalOverflow()` d'origine (lisant
+  `document.documentElement.scrollWidth`) était lui-même vacant — il peut
+  lire 0 alors que du contenu réel est clippé, parce que le conteneur de
+  contenu d'`AppLayout.tsx` est `overflow-y-auto` (l'axe X visible calcule
+  alors à `auto` par la spec CSS, absorbant tout débordement avant le
+  document) et que les cellules de la grille desktop sont
+  `overflow-hidden` (elles clippent sans rien remonter) ; remplacé par
+  `expectNoClippedContent()`, qui scanne tous les éléments dont le
+  débordement X est significatif (`hidden`/`auto`/`scroll`) et vérifie
+  qu'aucun n'a de contenu dépassant sa propre boîte — vérifié par
+  falsification (piège n°10) : le nouveau filet échoue bien quand le
+  seuil est délibérément re-régressé à 390 px, sur un vrai clippage
+  mesuré (390 → 500 px, `CatalogPage.tsx`), pas seulement « les tests
+  passent toujours ». (3) les trois copies quasi-identiques du littéral
+  `GET /me` (`e2e/mocks.ts`, et les `meRoute()` locales des deux nouvelles
+  specs) retombées sur un seul helper exporté `mockMe()` dans
+  `e2e/mocks.ts`. (4) les deux tests `item-detail-panels.spec.ts` qui
+  figeaient encore `width: 389` avec un commentaire défendant l'ancienne
+  borne au pixel près sont repassés à 390 px (largeur représentative,
+  plus de borne à défendre — le point même de ce correctif). Le critère
+  « OpenAPI/types à jour » a nécessité une double vérification du fait de
+  sessions concurrentes actives sur `core/` pendant ce correctif (module
+  rôles/privilèges, capacité `adminToolsEnabled`) : un premier passage a
+  trouvé `adminToolsEnabled` absent de `core/openapi.json`/
+  `core-schema.d.ts` alors que déjà présent dans
+  `core/app/auth/routes.py`/`instance/routes.py` — pas un défaut de ce
+  plan, une dérive introduite par une branche concurrente non regénérée —
+  résolue par cette même session concurrente avant la clôture de ce
+  correctif (revérifiée par grep juste avant ce commit). Rappel pour la
+  suite : dans un dépôt à sessions concurrentes, ce critère se revérifie à
+  chaque clôture, il ne se suppose jamais acquis d'une vérification à
+  l'autre. E2E 118/4/0 → **137/5/0** (118 pré-existants + 16
+  `triptych-narrow.spec.ts` [8×390 px + 8×641 px, 1 skip documenté ci-
+  dessus] + 4 `account-badge.spec.ts`). **SP-30 est clos.**
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
