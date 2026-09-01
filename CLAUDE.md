@@ -641,6 +641,52 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
 
+### Conventions tranchées (2026-09-01)
+
+Trois dettes Minor répétées famille après famille (SP-30c→SP-30j) sans jamais
+être décidées, tranchées ici pour de bon — s'appliquent à tout nouveau code et
+à l'occasion du prochain contact avec un fichier existant, pas de correctif
+rétroactif en masse :
+
+- **Hauteur des contrôles de formulaire** : `h-9`, alignée sur `Button`
+  (`size="default"`) et sur `ui/kit/Input`/`ui/kit/Select`. `h-8` réservé aux
+  contextes explicitement denses (`Button size="sm"`, ligne de tableau
+  serrée) — jamais un choix par défaut. Les contrôles natifs encore en `h-8`
+  ad hoc (`LayerPicker.tsx`, `CrossFilterLinkEditor.tsx`,
+  `QueryFilterBuilder.tsx`, `PercentileInput.tsx`, `ReportScheduleEditor.tsx`,
+  `PipelineScheduleEditor.tsx`, …) ne sont pas corrigés par cette décision
+  seule — à migrer vers les contrôles du kit à l'occasion, pas en urgence.
+- **`<button>` natif vs `Button` du kit** : `Button` pour toute action
+  **autonome** (pas noyée dans une phrase, pas répétée par ligne dense) —
+  `variant="default"` pour l'action principale d'un panneau, `outline` pour
+  une action secondaire/alternative, `danger` pour une action destructive
+  autonome, `ghost` pour un bouton d'icône/chrome. `<button>` natif réservé à
+  deux cas : (a) une action stylée en lien inline dans une phrase
+  (`underline`, ex. « Réessayer » de `LayerPicker.tsx`) ; (b) une action
+  répétée par ligne dans une liste/tableau dense où la hauteur du kit
+  casserait l'alignement (ex. « Supprimer » par ligne de filtre dans
+  `QueryFilterBuilder.tsx`/`CrossFilterLinkEditor.tsx`). Conséquence concrète
+  actée comme dette : les boutons d'export de `DatasetEditPage.tsx` (rangée
+  fixe de 3-4 actions, pas une liste dense) auraient dû passer sur `Button` —
+  à corriger à l'occasion, pas par cette décision seule.
+- **`aria-expanded`/`aria-controls` sur un déclencheur de panneau en ligne** :
+  obligatoire sur tout bouton qui bascule un panneau en ligne (`ExportPanel`,
+  `Terrain3DUploadButton`, panneaux d'édition/partage SP-30j, etc.) —
+  `aria-expanded={open}` + `aria-controls={panelId}` sur le bouton, `id`
+  correspondant (+ `role="region"` si le panneau est substantiel) sur la
+  cible. Aucune primitive du kit ne le fournit aujourd'hui hors `Combobox`
+  (géré par Radix) — c'est au consommateur de le poser. Non appliqué
+  rétroactivement par cette décision.
+- **Dette de tokens `LayersPanel`/`MapSymbologyEditor.tsx` et voisins**
+  (`PopupEditor.tsx`, `FieldClassificationPicker.tsx`,
+  `MapMeasureSketchToolbar.tsx`, `MapPopup.tsx`, `MapLegend.tsx`,
+  `formFieldStyles.ts`) : confirmée hors périmètre de tout plan SP-30 (aucun
+  `Dialog` à convertir, ne bloque aucune tâche nommée). Volume potentiellement
+  comparable à SP-29a+SP-29b réunis. Décision : son propre chantier
+  (brainstorm si nécessaire → spec → plan dédiés), à ouvrir après la clôture
+  complète de SP-30 (revue transverse §7 incluse) — pas fusionné dans une
+  tâche SP-30 existante, pas improvisé en aparté.
+
 ### À venir
 
 - **SP-30** : réécriture des écrans qui
@@ -666,20 +712,18 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   le retrait des anciens fichiers `ui/*` — encore consommés par
   `AppRuntimePage.tsx`/`builder/widgets/modal.tsx`, hors périmètre par
   doctrine (cf. entrée SP-30k) ; et la longue liste de suivis non
-  bloquants Minor accumulés SP-29b→SP-30k ci-dessous, dont plusieurs
-  répétitions jamais tranchées pour toute la famille (`aria-expanded`/
-  `aria-controls` sur un déclencheur de panneau en ligne : 5 familles
-  consécutives sans décision ; commentaires attribuant une garde de
-  sécurité au mauvais composant après son déplacement, trouvé Important
-  à deux reprises distinctes — SP-30g, SP-30i). Éditeurs de
-  symbologie/popup imbriqués dans `LayersPanel`
-  (`MapSymbologyEditor.tsx` 797 lignes/27 couleurs, `PopupEditor.tsx`,
-  `FieldClassificationPicker.tsx`, `MapMeasureSketchToolbar.tsx`,
-  `MapPopup.tsx`, `MapLegend.tsx`, `formFieldStyles.ts`) : dette de tokens
-  cosmétique laissée par SP-30c (aucun `Dialog`, ne bloquait pas la
-  bascule de `MapEditorPage`), volume potentiellement aussi gros que
-  SP-30a+SP-30b réunis — à traiter dans un plan dédié, possiblement hors
-  SP-30 lui-même.
+  bloquants Minor accumulés SP-29b→SP-30k ci-dessous. Trois répétitions
+  jamais tranchées pour toute la famille (hauteur des contrôles de
+  formulaire, `<button>` natif vs `Button` du kit, `aria-expanded`/
+  `aria-controls` sur un déclencheur de panneau en ligne — 5 familles
+  consécutives sans décision) et la dette de tokens `LayersPanel`/
+  `MapSymbologyEditor.tsx` et voisins (volume potentiellement aussi gros
+  que SP-29a+SP-29b réunis) sont désormais **tranchées, cf. ### Conventions
+  tranchées (2026-09-01)** ci-dessus — reste seulement à les appliquer au
+  prochain contact avec chaque fichier concerné, pas de correctif rétroactif
+  en masse. Reste ouvert, non tranché par cette note : commentaires
+  attribuant une garde de sécurité au mauvais composant après son
+  déplacement, trouvé Important à deux reprises distinctes — SP-30g, SP-30i.
   6 suivis non bloquants
   hérités de SP-29b à traiter en chemin (détail dans son entrée `### Livré`
   et l'historique d'exécution) : `DataTable.sortDirection` mort, deux `id`
