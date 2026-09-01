@@ -85,6 +85,32 @@ const DEFAULT_APP_CONFIG = {
   layout: { type: "grid", breakpoints: {}, items: [] },
 } as const;
 
+// Fixture canonique de GET /me — seule source de vérité pour ce payload
+// (revue transverse SP-30l, finding 6 : trois copies quasi-identiques de ce
+// littéral existaient, mockCore() ci-dessous et deux specs distinctes ;
+// désormais toutes les trois passent par mockMe()). hasAnyEditorRole: true
+// par défaut, comme avant ce refactor — seul AccountMenu.tsx lit ce champ
+// (roleLabel()), aucune route/domaine n'en dépend.
+const DEFAULT_ME = {
+  id: "u-mock",
+  username: "mockuser",
+  firstName: "Mock",
+  lastName: "User",
+  email: null,
+  tenantId: "t-mock",
+  isAdmin: false,
+  isAnalyst: false,
+  hasAnyEditorRole: true,
+  version: "0.1.0",
+  tenantSlug: "demo",
+};
+
+export function mockMe(page: Page, overrides: Partial<typeof DEFAULT_ME> = {}) {
+  return page.route("**/me", async (route) => {
+    await route.fulfill({ json: { ...DEFAULT_ME, ...overrides } });
+  });
+}
+
 export async function mockCore(page: Page) {
   const deleted = new Set<string>();
   // Stateful store: keyed by item id, holds the last PUT body per item.
@@ -206,23 +232,7 @@ export async function mockCore(page: Page) {
     await route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 12 } });
   });
 
-  await page.route("**/me", async (route) => {
-    await route.fulfill({
-      json: {
-        id: "u-mock",
-        username: "mockuser",
-        firstName: "Mock",
-        lastName: "User",
-        email: null,
-        tenantId: "t-mock",
-        isAdmin: false,
-        isAnalyst: false,
-        hasAnyEditorRole: true,
-        version: "0.1.0",
-        tenantSlug: "demo",
-      },
-    });
-  });
+  await mockMe(page);
 
   // Instance info (SP-9 démo lecture seule) — AppLayout appelle
   // GET /instance sans condition sur chaque page via useInstanceInfo().

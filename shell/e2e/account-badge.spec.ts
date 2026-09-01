@@ -1,27 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { test, expect, type Page } from "@playwright/test";
-import { mockCore } from "./mocks";
-
-function meRoute(page: Page, overrides: Record<string, boolean>) {
-  return page.route("**/me", async (route) => {
-    await route.fulfill({
-      json: {
-        id: "u-mock",
-        username: "mockuser",
-        firstName: "Mock",
-        lastName: "User",
-        email: null,
-        tenantId: "t-mock",
-        isAdmin: false,
-        isAnalyst: false,
-        hasAnyEditorRole: false,
-        version: "0.1.0",
-        tenantSlug: "demo",
-        ...overrides,
-      },
-    });
-  });
-}
+import { test, expect } from "@playwright/test";
+import { mockCore, mockMe } from "./mocks";
 
 const CASES: Array<{ profile: string; overrides: Record<string, boolean>; badge: string }> = [
   {
@@ -41,7 +20,10 @@ const CASES: Array<{ profile: string; overrides: Record<string, boolean>; badge:
   },
   {
     profile: "lecteur (simulé — aucun rôle éditeur, ni admin, ni analyste)",
-    overrides: {},
+    // Explicite (pas juste {}) : le défaut partagé de mockMe() a
+    // hasAnyEditorRole: true (cf. mocks.ts), donc ce cas doit le désarmer
+    // lui-même pour rester le profil "aucun rôle" qu'il prétend tester.
+    overrides: { isAdmin: false, isAnalyst: false, hasAnyEditorRole: false },
     badge: "Lecteur",
   },
 ];
@@ -49,7 +31,7 @@ const CASES: Array<{ profile: string; overrides: Record<string, boolean>; badge:
 for (const { profile, overrides, badge } of CASES) {
   test(`le badge de rôle affiche « ${badge} » pour un compte ${profile}`, async ({ page }) => {
     await mockCore(page);
-    await meRoute(page, overrides);
+    await mockMe(page, overrides);
     await page.goto("/");
     await page.getByRole("button", { name: "Compte" }).click();
     await expect(page.getByText(badge, { exact: true })).toBeVisible();
