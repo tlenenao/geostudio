@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 
-const QUERY = "(max-width: 389px)";
+const QUERY = "(max-width: 390px)";
 
 export function useNarrowViewport(): boolean {
   const [narrow, setNarrow] = useState(() => window.matchMedia(QUERY).matches);
