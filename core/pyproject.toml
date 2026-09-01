@@ -223,6 +223,7 @@ layers = [
     "app.items",
     "app.sharing",
     "app.instance",
+    "app.roles",
     "app.auth",
     "app.audit",
     "app.users",
@@ -292,4 +293,5 @@ ignore_imports = [
     "app.db -> app.reports.models",
     "app.db -> app.appexport.models",
     "app.db -> app.mapicons.models",
+    "app.db -> app.roles.models",
 ]
