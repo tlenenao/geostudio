@@ -78,8 +78,6 @@ def test_me_capabilities_match_the_instance_route(client):
 
 
 def test_me_keeps_its_existing_fields(client):
-    """Non-régression : le champ ajouté ne doit rien retirer — le shell lit
-    encore `username`, `isAdmin` et `isAnalyst` à quinze endroits."""
     body = client.get("/me").json()
     for key in (
         "id",
@@ -88,10 +86,11 @@ def test_me_keeps_its_existing_fields(client):
         "email",
         "firstName",
         "lastName",
-        "isAdmin",
-        "isAnalyst",
+        "role",
+        "privileges",
     ):
         assert key in body, f"champ disparu de MeResponse : {key}"
+    assert set(body["role"]) == {"id", "name", "slug"}
 
 
 @pytest.mark.parametrize("env_value,expected", [("true", True), ("false", False)])
@@ -100,11 +99,10 @@ def test_capability_reflects_the_environment(client, monkeypatch, env_value, exp
     assert client.get("/me").json()["capabilities"]["etlEnabled"] is expected
 
 
-def test_me_exposes_tenant_slug_version_and_editor_role(client):
+def test_me_exposes_tenant_slug_and_version(client):
     body = client.get("/me").json()
     assert isinstance(body["tenantSlug"], str) and body["tenantSlug"] != ""
     assert isinstance(body["version"], str) and body["version"] != ""
-    assert body["hasAnyEditorRole"] is False  # aucun partage dans la fixture `client`
 
 
 # Finding I2 (revue finale SP-29a) : `test_me_capabilities_match_the_instance_route`
