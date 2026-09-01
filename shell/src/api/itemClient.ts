@@ -2,6 +2,7 @@
 import type {
   ActionMessage,
   AdminExtension,
+  AdminToolName,
   AlertEvaluation,
   AlertRulePayload,
   AlertRuleSummary,
@@ -741,6 +742,10 @@ export function createItemClient(opts: {
 
     async setExtensionEnabled(id: string, enabled: boolean): Promise<void> {
       await request<void>("PATCH", `/extensions/${id}`, { enabled });
+    },
+
+    async launchAdminTool(tool: AdminToolName): Promise<{ url: string }> {
+      return request<{ url: string }>("POST", `/admin-tools/launch/${tool}`);
     },
 
     async listCollections(): Promise<CollectionAdmin[]> {

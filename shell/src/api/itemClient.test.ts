@@ -2261,6 +2261,16 @@ test("setExtensionEnabled PATCHes the extension with the new enabled value", asy
   expect(body).toEqual({ enabled: false });
 });
 
+test("launchAdminTool POSTs to /admin-tools/launch/{tool} and returns the url", async () => {
+  server.use(
+    http.post("https://core.test/admin-tools/launch/martin", () =>
+      HttpResponse.json({ url: "https://core.test/admin-tools/session/martin?_at=abc" }),
+    ),
+  );
+  const result = await makeClient().launchAdminTool("martin");
+  expect(result.url).toBe("https://core.test/admin-tools/session/martin?_at=abc");
+});
+
 test("listCollections returns the admin collection shape including owner", async () => {
   server.use(
     http.get("https://core.test/collections", () =>

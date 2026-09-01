@@ -162,6 +162,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async runHarvestSource(..._args: unknown[]) {
       return unsupported();
     },
+    async launchAdminTool(..._args: unknown[]) {
+      return unsupported();
+    },
     async getCollectionSharing(..._args: unknown[]) {
       return unsupported();
     },
