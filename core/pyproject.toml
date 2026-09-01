@@ -258,6 +258,13 @@ ignore_imports = [
     # arête est autorisée, tout autre import d'`app.sharing` depuis
     # `app.auth` reste interdit et fera échouer le contrat.
     "app.auth.routes -> app.sharing.repository",
+    # app.roles doit être AU-DESSUS d'app.auth dans ce contrat (ses propres
+    # routes, app.roles.routes, ont besoin de get_current_user) — mais
+    # get_or_create_user (app.users.repository, sous app.auth) doit résoudre
+    # le rôle initial d'un nouvel utilisateur via app.roles.repository.
+    # ensure_built_in_roles(). Même classe de tension que l'exemption
+    # ci-dessus : aucune place linéaire ne satisfait les deux sens à la fois.
+    "app.users.repository -> app.roles.repository",
     "app.db -> app.configs.models",
     "app.db -> app.collections.models",
     "app.db -> app.items.models",

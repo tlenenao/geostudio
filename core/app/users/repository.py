@@ -4,6 +4,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.roles.repository import ensure_built_in_roles
 from app.users.models import User
 
 
@@ -19,10 +20,17 @@ def get_or_create_user(
     bootstrap_admin: bool = False,
     bootstrap_analyst: bool = False,
 ) -> User:
+    roles = ensure_built_in_roles(session, tenant_id=tenant_id)
     user = session.scalar(
         select(User).where(User.tenant_id == tenant_id, User.oidc_sub == oidc_sub)
     )
     if user is None:
+        if bootstrap_admin:
+            initial_role = roles["admin"]
+        elif bootstrap_analyst:
+            initial_role = roles["analyst"]
+        else:
+            initial_role = roles["creator"]
         user = User(
             id=uuid.uuid4().hex,
             tenant_id=tenant_id,
@@ -31,6 +39,8 @@ def get_or_create_user(
             email=email,
             first_name=first_name,
             last_name=last_name,
+            role_id=initial_role.id,
+            is_admin=(initial_role.slug == "admin"),
         )
         session.add(user)
     else:
@@ -38,43 +48,31 @@ def get_or_create_user(
         user.email = email
         user.first_name = first_name
         user.last_name = last_name
-    if bootstrap_admin and not user.is_admin:
-        # Promotion par env uniquement — la rétrogradation passe par set_admin()
-        # (retirer un sub de CORE_ADMIN_SUBS ne doit pas destituer silencieusement).
-        user.is_admin = True
-    if bootstrap_analyst and not user.is_analyst:
-        # Promotion par env uniquement (retirer un sub de CORE_ANALYST_SUBS
-        # ne doit pas destituer silencieusement) — miroir de bootstrap_admin.
-        user.is_analyst = True
+        if bootstrap_admin and user.role_id != roles["admin"].id:
+            # Promotion par env uniquement — la rétrogradation passe par
+            # set_user_role() (retirer un sub de CORE_ADMIN_SUBS ne doit pas
+            # destituer silencieusement).
+            user.role_id = roles["admin"].id
+            user.is_admin = True
+        elif bootstrap_analyst and user.role_id not in (roles["admin"].id, roles["analyst"].id):
+            # Miroir de bootstrap_admin — ne rétrograde jamais un admin
+            # existant vers analyste.
+            user.role_id = roles["analyst"].id
     session.flush()
     session.refresh(user)
     return user
 
 
-def set_admin(session: Session, *, tenant_id: str, user_id: str, is_admin: bool) -> User | None:
+def set_user_role(
+    session: Session, *, tenant_id: str, user_id: str, role_id: str, role_slug: str
+) -> User | None:
     user = session.scalar(select(User).where(User.tenant_id == tenant_id, User.id == user_id))
     if user is None:
         return None
-    user.is_admin = is_admin
+    user.role_id = role_id
+    user.is_admin = role_slug == "admin"
     session.flush()
     return user
-
-
-def set_analyst(session: Session, *, tenant_id: str, user_id: str, is_analyst: bool) -> User | None:
-    user = session.scalar(select(User).where(User.tenant_id == tenant_id, User.id == user_id))
-    if user is None:
-        return None
-    user.is_analyst = is_analyst
-    session.flush()
-    return user
-
-
-def count_admins(session: Session, *, tenant_id: str) -> int:
-    return session.scalar(
-        select(func.count())
-        .select_from(User)
-        .where(User.tenant_id == tenant_id, User.is_admin.is_(True))
-    )
 
 
 def list_users(
