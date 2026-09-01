@@ -20,6 +20,7 @@ import {
   useGroups,
   useHarvestSources,
   useInstanceInfo,
+  useItem,
   useItems,
   useMapConfig,
   useMe,
@@ -436,4 +437,15 @@ test("useRunHarvestSource posts to the run endpoint", async () => {
   const { result } = renderHook(() => useRunHarvestSource(), { wrapper });
   await result.current.mutateAsync("src-1");
   expect(called).toBe(true);
+});
+
+test("useItem: enabled false ne déclenche aucune requête", () => {
+  // Aucun handler MSW enregistré pour GET /items/x : si enabled n'est pas
+  // câblé, la requête réelle échouerait bruyamment (onUnhandledRequest:
+  // "error", shell/src/test/setup.ts) — mais on la détecte plus tôt, de
+  // façon synchrone, via fetchStatus : "fetching" démarre immédiatement si
+  // la requête part, "idle" si elle est bien désactivée.
+  const { result } = renderHook(() => useItem("x", { enabled: false }), { wrapper });
+  expect(result.current.fetchStatus).toBe("idle");
+  expect(result.current.data).toBeUndefined();
 });

@@ -339,6 +339,199 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   `ReactNode` arbitraire, bug latent pour SP-30). 6 Minor documentés en
   suivi non bloquant pour SP-30. **Ready to merge** — PR #102 (dev→main,
   avec SP-29a).
+- **SP-30c** (7 tâches + 2 correctifs post-hoc, famille 3 « Cartes » du
+  §6.1 de la spec SP-30) — `MapEditorPage` sur `TriptychLayout` : onglets
+  « Couches » (`LayersPanel` seul, aucun nouveau composant) / « Carte »
+  (`MapView` plein volet) / « Inspecter » (fond de carte, terrain, caméra,
+  impression, historique, export, Enregistrer). Kit-ification de
+  `CameraControls`/`ConfigHistoryPanel`/`LayerPicker`/`BasemapSelect`/
+  `TerrainPanel`/`PrintLayoutPanel`/`LayersPanel` (Button + tokens, aucun
+  import cassant). Élimine les deux derniers `<Dialog>` de cette famille :
+  `ExportPanel` et `Terrain3DUploadButton` deviennent des panneaux en
+  ligne (bouton Annuler explicite, plus d'Escape/backdrop), chacun avec un
+  test falsifiable `queryByRole("dialog")` (piège n°10). Branche
+  `isExportRender` (rendu nu du worker Playwright, SP-17a) vérifiée
+  structurellement intacte. E2E 113/4/0 → **118/4/0** (SP-30b avait déjà
+  porté la référence à 113 ; ce plan n'ajoute aucun nouveau spec).
+  Couverture shell 90,85 % (seuil 88), suite complète 222 fichiers/1815
+  tests. **2 correctifs post-hoc trouvés en fin de plan, tous deux fermés
+  et re-vérifiés indépendamment** : (1) suite E2E complète (Step 3 de la
+  tâche de vérification finale) a trouvé une régression croisée réelle —
+  `shell/e2e/export.spec.ts` et `shell/e2e/terrain3d-hosting.spec.ts`,
+  hors de la liste de specs nommée par ce plan, utilisaient encore
+  `getByRole("dialog", ...)` pour les deux composants convertis en
+  panneau en ligne — exactement le piège n°6 (lancer la suite E2E
+  complète avant de clore un plan) ; (2) revue finale de branche (opus) a
+  trouvé 1 Important cross-tâche invisible en revue par tâche : les deux
+  conversions Dialog→Panel divergeaient sur la garde `busy` du
+  déclencheur (`ExportPanel` le désactivait pendant l'envoi,
+  `Terrain3DUploadButton` non, malgré un commentaire affirmant le
+  contraire) — **racine identifiée dans le texte même du plan** (le
+  prose de Task 5 promettait la garde, son bloc de code littéral ne la
+  contenait pas : piège n°3, défaut de plan pas de l'implémenteur).
+  6 Minor reportés en suivi non bloquant pour SP-30d (détail ci-dessous).
+  **Ready to merge.**
+- **SP-30d** (3 tâches + 1 correctif post-hoc, famille 4 « Données » du
+  §6.1 de la spec SP-30) — `DatasetEditPage` sur `TriptychLayout` :
+  onglets « Catalogue » (retour + `<dl>` Type/Modifié, même idiome
+  qu'`ItemDetailPage.tsx:79-95`, pas de panneau-liste métier équivalent à
+  `LayersPanel` sur cette page) / « Dataset » (métadonnées, colonnes,
+  champ temporel, cross-filter — le contenu directement éditable) /
+  « Réglages » (export, `AlertRuleEditor`, `ConfigHistoryPanel`, requête
+  source, Enregistrer — même regroupement que « Inspecter » sur
+  `MapEditorPage`, SP-30c). Kit-ification préalable d'`AlertRuleEditor`/
+  `CrossFilterLinkEditor` (Button + tokens, aucun des deux n'important
+  `ui/dialog` — rien à convertir côté modal, à la différence des familles
+  Catalogue/Cartes). Prérequis `CollectionPermissions` déjà livré par
+  SP-30a (vérifié par lecture directe du code avant d'écrire ce plan,
+  piège n°3), donc aucun changement au cœur dans ce plan. E2E 118/4/0
+  inchangé (aucun nouveau spec ; le filet nommé par le plan omettait
+  `analytics-context.spec.ts`, 6e consommateur réel de la page — défaut
+  du texte du plan, piège n°6, sans conséquence car la suite E2E
+  complète l'a couverte). Couverture shell 90,85 % (seuil 88), suite
+  complète 222 fichiers/1816 tests. **1 correctif post-hoc trouvé en fin
+  de plan par la revue finale de branche (opus), fermé et re-vérifié
+  indépendamment** : le volet « Dataset » (work) n'avait pas
+  `h-full overflow-y-auto` comme ses deux jumeaux `CatalogPage`/
+  `ItemDetailPage` — la cellule `work` de `TriptychLayout` est
+  `overflow-hidden` par construction, chaque consommateur doit fournir
+  son propre conteneur de défilement ; contenu le plus haut de la page
+  (tableau des colonnes, éditeurs cross-filter) tronqué et inatteignable
+  sur viewport large, **invisible aux deux filets de test** (jsdom ne
+  fait pas de layout, Playwright fait défiler programmatiquement les
+  conteneurs `overflow-hidden` — les specs E2E cliquaient des éléments
+  qu'un humain ne pouvait pas atteindre ; les suites vertes n'étaient pas
+  une preuve). 5 Minor reportés en suivi non bloquant pour SP-30e+
+  (détail ci-dessous). **Ready to merge.**
+- **SP-30e** (3 tâches + 2 correctifs post-hoc, famille 5 « Apps & sites » du
+  §6.1 de la spec SP-30) — `AppBuilderPage` sur `TriptychLayout` : onglets
+  « Structure » (`PageManager` + `WidgetPalette`) / « Canevas » (en-tête
+  local Édition/Aperçu, Annuler/Rétablir, rupture, Capturer une miniature,
+  puis `AppRenderer` plein volet) / « Propriétés » (`PropsPanel` du widget
+  sélectionné en tête, puis Sources de données/Actions/Navigation/
+  Interactions/Variables/Thème/Impression/`ConfigHistoryPanel`/export
+  standalone/copilote/Enregistrer — inspecteur volontairement **non**
+  scindé « widget sélectionné » vs « réglages de l'app » malgré la
+  maquette : la suite de tests existante exige `ActionsPanel`/
+  `DataSourcePanel` accessibles pendant qu'un widget reste sélectionné,
+  et le mode Aperçu ne masque plus les volets latéraux). Kit-ification
+  préalable d'`AppExportPanel` (Dialog→panneau en ligne, busy guard) et
+  `CopilotPanel` (Button + tokens). E2E 118/4/0 inchangé (aucun nouveau
+  spec). Couverture shell 90,85 % (seuil 88), suite complète 222
+  fichiers/1817 tests. **1 Critical trouvé en Task 3, fermé** : le volet
+  Propriétés était passé d'`<aside>` à `<div>`, cassant 3 tests de
+  `shell/e2e/containers.spec.ts` — non listé dans le filet à 5 specs du
+  plan, 3e occurrence consécutive du piège n°6 (SP-30c, SP-30d, SP-30e) ;
+  fix : le volet Propriétés redevient `<aside>` (volet Structure reste
+  `<div>`, asymétrie assumée). **2 Important + 1 récidive trouvés en
+  revue finale de branche (opus), tous fermés** : la rangée de boutons du
+  sélecteur de mode d'export débordait de la colonne Propriétés (fix
+  `flex-wrap`) ; deux boutons « Annuler » d'`AppExportPanel` entraient en
+  collision avec le bouton d'annulation (undo) d'`AppBuilderPage` (fix :
+  renommage en « Fermer »/« Ne pas exporter ») ; le premier fix a reproduit
+  son propre défaut sur la rangée jumelle de l'avertissement (`flex-wrap`
+  oublié là aussi, 2e correctif). Recommandation actée pour SP-30f+ : ne
+  plus nommer de liste de specs E2E dans le texte du plan, exiger
+  directement la suite complète avant tout commit qui change la structure
+  DOM d'une page. 6 Minor reportés en suivi non bloquant pour SP-30f+
+  (détail ci-dessous). **Ready to merge.**
+- **SP-30f** (6 tâches + 2 correctifs post-hoc, famille 6 « Automatisation »,
+  volet 1 du §6.1 de la spec SP-30) — `PipelineBuilderPage` sur
+  `TriptychLayout` : onglets « Étapes » (`PipelinePalette` seul) / « Canevas »
+  (en-tête local titre seul ; Enregistrer déménagé en bas du volet
+  Propriétés, aligné sur les trois familles précédentes) / « Propriétés »
+  (nœud sélectionné + `PipelinePreviewPanel` si sélectionné — aucun message
+  de repli inventé pour l'inspecteur vide, comportement préexistant
+  préservé —, puis Exécution/`PipelineRunPanel`, Planification/
+  `PipelineScheduleEditor`, `ConfigHistoryPanel`, Enregistrer, tous gated
+  `pk !== null`). Kit-ification préalable de sept fichiers
+  `builder/pipeline/*` (tokens + `Button` du kit sur `PipelineRunPanel`) ;
+  `PipelineRunPanel`/`PipelineScheduleEditor` désormais définitivement
+  kit-ifiés pour la future `VisualQueryWizardPage` aussi (même composants
+  partagés, aucun retravail attendu côté SP-30g). `onDragOver`/`onDrop`
+  déplacés du conteneur de rangée disparu (palette+canevas+inspecteur
+  n'étaient plus dans le même conteneur) vers le conteneur externe `-m-6`.
+  E2E 118/4/0 inchangé (aucun nouveau spec). Vitest 12/12 sur
+  `PipelineBuilderPage.test.tsx` (11 existants + 1 nouveau test d'onglets,
+  RED→GREEN vérifié), couverture shell 90,85 % (seuil 88), suite complète
+  222 fichiers/1818 tests. **2 Important trouvés en revue finale de branche
+  (opus), tous fermés et re-vérifiés indépendamment** : le canevas DAG
+  restait à une hauteur fixe de 480px héritée de l'ancien layout défilant,
+  incohérente avec la colonne Canevas désormais pleine hauteur — corrigé
+  en `h-full` via la chaîne flex déjà éprouvée par SP-30c/d/e ; la question
+  `<main>`/`<aside>` posée par `CLAUDE.md` (entrée SP-30e, explicitement
+  assignée à ce plan) n'avait pas été traitée par le texte du plan et la
+  branche avait ajouté une 3e forme divergente (`<main>` orphelin sans
+  `ref` ni rôle fonctionnel autour du volet Canevas) — tranchée : `div`/
+  `div`/`div` (`AppBuilderPage` reste la seule exception documentée, son
+  `<main ref={mainRef}>` servant la capture de miniature). 7 Minor
+  reportés en suivi non bloquant pour SP-30g+ (détail ci-dessous).
+  **Ready to merge.**
+- **SP-30g** (4 tâches + 1 correctif post-hoc, famille 6 « Automatisation »,
+  volet 2 du §6.1 de la spec SP-30) — `ReportEditPage` sur `TriptychLayout` :
+  onglets « Catalogue » (retour + `<dl>` Type/Modifié, **absente tant que le
+  rapport est un brouillon non enregistré** — `pk` nullable ici comme sur
+  `PipelineBuilderPage`, à la différence de `DatasetEditPage` où `pk` est
+  toujours défini ; `<dd>Type</dd>` utilise correctement
+  `RESOURCE_TYPE_LABELS[item.resourceType]`, pas de littéral en dur —
+  n'a pas répété le défaut logué sur `DatasetEditPage.tsx` par SP-30d) /
+  « Rapport » (titre local + `ReportScheduleEditor`) / « Réglages »
+  (`ReportRunPanel`/`ConfigHistoryPanel` si `pk !== null`, Enregistrer +
+  erreur). `useItem` (`shell/src/api/hooks.ts`) gagne un second paramètre
+  optionnel `{ enabled?: boolean }` sur le patron exact de
+  `useDatasetConfig`/`useReportScheduleConfig` — rétrocompatible, ses trois
+  call sites existants (`ItemDetailPage`, `DatasetEditPage`,
+  `AppRuntimePage`) inchangés. Kit-ification préalable de
+  `ReportRunPanel.tsx`/`ReportScheduleEditor.tsx` (tokens seuls, aucun des
+  deux n'important `ui/*`). Dette de test refermée, pas répétée : le
+  nouveau stub `matchMedia` de `ReportEditPage.test.tsx` est accompagné
+  d'un `vi.unstubAllGlobals()` en `afterEach` dès son introduction.
+  `VisualQueryWizardPage` (volet 3 de la même famille) reste hors
+  périmètre — granularité une page par plan, confirmée par SP-30f et
+  reconduite ici. E2E 118/4/0 inchangé (aucun nouveau spec, le consommateur
+  direct `report-schedule.spec.ts` reste vert). Vitest 222 fichiers/1821
+  tests, couverture shell 90,85 % (seuil 88). **0 Critical, 2 Important
+  trouvés en revue finale de branche (opus), tous deux fermés et
+  re-vérifiés par lecture directe du diff par le contrôleur** : un
+  commentaire committé affirmait à tort que `MapEditorPage.test.tsx`
+  n'avait pas de `vi.unstubAllGlobals()` (il l'a déjà — seuls
+  `DatasetEditPage.test.tsx`/`AppBuilderPage.test.tsx` en manquent encore),
+  texte faux hérité verbatim du plan lui-même (piège n°3) ; `useSaveReportSchedule`
+  était le seul hook de sauvegarde de la famille sans invalidation de
+  cache (`useSaveMap`/`useSaveDataset`/`useSavePipeline` invalident déjà
+  leur propre clé de config), devenu porteur de conséquence par ce plan
+  puisque le volet Catalogue affiche désormais `item.date` — corrigé en
+  ajoutant l'invalidation de `["report-schedule", pk]`, même patron que
+  les trois autres, sans étendre à `["item", pk]` (aucun sibling ne le
+  fait). 6 Minor reportés en suivi non bloquant (détail ci-dessous).
+  **Ready to merge.**
+- **SP-30h** (4 tâches, famille 6 « Automatisation », volet 3 et dernier du
+  §6.1 de la spec SP-30 — **clôt la famille 6**) — `VisualQueryWizardPage`
+  sur `TriptychLayout` : onglets « Catalogue » (retour + `<dl>` Type/Modifié,
+  visible seulement une fois `existingDatasetItemQuery.data` résolu — cette
+  page référence un item **Pipeline** via `pipelinePk` mais affiche la fiche
+  du **Dataset** produit, réutilisant la requête déjà existante plutôt que
+  d'interroger le mauvais item ; `<dd>Type</dd>` utilise correctement
+  `RESOURCE_TYPE_LABELS[...]`, pas de littéral en dur) / « Requête » (titre
+  local + sélection de la collection de base + Filtrer/Joindre/Résumer,
+  conteneur `overflow-y-auto` propre posé dès l'écriture — défaut que
+  SP-30d avait dû corriger a posteriori, non répété ici) / « Réglages »
+  (Planifier, alertes de validation, erreur de sauvegarde, bouton
+  Créer/Mettre à jour). Aucun `ConfigHistoryPanel` ajouté (cette page n'en
+  a jamais eu, hors périmètre assumé). Kit-ification préalable de
+  `QueryFilterBuilder.tsx`/`QueryJoinPicker.tsx`/`QuerySummaryBuilder.tsx`
+  (+ défaut du `className` de `PercentileInput.tsx`, no-op vérifié sur les
+  deux sites d'appel de `DataSourcePanel.tsx`) — les trois composants de
+  requête visuelle confirmés API-neutres, consommés inchangés par la page.
+  Stub `matchMedia` local avec `vi.unstubAllGlobals()` dès l'introduction
+  (dette loguée 3 fois sur SP-30d/e, non répétée). E2E 118/4/0 inchangé
+  (aucun nouveau spec, `visual-query.spec.ts` reste vert). Vitest 222
+  fichiers/1824 tests, couverture shell 90,84 % (seuil 88). **0 Critical,
+  0 Important, 7 Minor en revue finale de branche (opus) — Ready to merge
+  sans correctif.** 7 Minor reportés en suivi non bloquant (détail
+  ci-dessous), dont plusieurs désormais répétées 3-4 fois dans la famille
+  sans jamais avoir été tranchées pour de bon — actées à trancher une fois
+  pour toute la famille avant SP-30i+ plutôt que reportées une fois de plus.
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
@@ -353,13 +546,172 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   permissions de collection et le profil « Lecteur » se tranchent, et que la
   raison de verrouillage triplée d'`ItemActions` (cf. entrée SP-29a) peut être
   regroupée si voulu. Basculera les écrans réels sur le kit `ui/kit/`
-  (SP-29b) et retirera les anciens fichiers `ui/*`. 6 suivis non bloquants
+  (SP-29b) et retirera les anciens fichiers `ui/*`. SP-30c a traité la
+  famille 3 (Cartes, `MapEditorPage`), SP-30d la famille 4 (Données,
+  `DatasetEditPage`), SP-30e la famille 5 (Apps & sites, `AppBuilderPage`),
+  SP-30f la famille 6 volet 1 (Automatisation, `PipelineBuilderPage`),
+  SP-30g la famille 6 volet 2 (Automatisation, `ReportEditPage`), SP-30h la
+  famille 6 volet 3 et dernier (Automatisation, `VisualQueryWizardPage`)
+  du §6.1 de la spec SP-30 — **famille 6 entièrement close** ; **restent
+  les familles 7/8** (SP-30i+, à découper en plans séparés — la spec
+  proscrit un seul plan pour tout le reste) : `SqlLabPage`
+  (Analytique, famille 7), `AdminExtensionsPage`/`CollectionsAdminPage`/
+  `HarvestSourcesAdminPage` (Administration, famille 8),
+  `Tileset3DUploadButton`/`NewItemButton`/`ImportFileButton` (chrome,
+  dette de `Dialog` documentée par SP-30a, non bloquante pour aucune
+  famille). Éditeurs de symbologie/popup imbriqués dans `LayersPanel`
+  (`MapSymbologyEditor.tsx` 797 lignes/27 couleurs, `PopupEditor.tsx`,
+  `FieldClassificationPicker.tsx`, `MapMeasureSketchToolbar.tsx`,
+  `MapPopup.tsx`, `MapLegend.tsx`, `formFieldStyles.ts`) : dette de tokens
+  cosmétique laissée par SP-30c (aucun `Dialog`, ne bloquait pas la
+  bascule de `MapEditorPage`), volume potentiellement aussi gros que
+  SP-30a+SP-30b réunis — à traiter dans un plan dédié, possiblement hors
+  SP-30 lui-même.
+  6 suivis non bloquants
   hérités de SP-29b à traiter en chemin (détail dans son entrée `### Livré`
   et l'historique d'exécution) : `DataTable.sortDirection` mort, deux `id`
   DOM dupliqués dans la galerie, ambiance de la galerie non nettoyée au
   démontage, branche de fermeture de `ConfirmDialog` non couverte,
   asymétrie contrôlé/non-contrôlé entre surfaces, Providers Tooltip/Toast
-  non exportés par le barrel.
+  non exportés par le barrel. 6 suivis non bloquants hérités de SP-30c
+  (revue finale de branche, tous cosmétiques, aucun ne bloquait le merge) :
+  styles divergents entre les deux panneaux convertis en ligne
+  (`ExportPanel` titre en `<p>`/`gap-2`, `Terrain3DUploadButton` en
+  `<h4>`/`gap-3` — choisir un seul patron avant que SP-30d en copie un des
+  deux) ; hiérarchie de boutons ambiguë sur `ExportPanel` (Annuler et PNG
+  tous deux `variant="outline"`, aucun disqualifié visuellement de PDF) ;
+  `border-t` non tokenisé (peint en `currentColor` sous Tailwind v4, sans
+  impact visible aujourd'hui mais incohérent) dans `LayerPicker.tsx`
+  (lignes ~143/173) et `LayersPanel.tsx` (~220) — fichiers que SP-30c
+  vient de balayer par ailleurs ; ni `ExportPanel` ni `Terrain3DUploadButton`
+  (ni `ItemActions`, préexistant) ne posent `aria-expanded`/`aria-controls`
+  sur leur déclencheur de panneau en ligne — à trancher une fois pour toute
+  la famille SP-30, pas au cas par cas ; stub `matchMedia` de
+  `MapEditorPage.test.tsx` jamais désinstallé explicitement (`vi.stubGlobal`
+  sans `vi.unstubAllGlobals`), sûr aujourd'hui car re-stubé à chaque
+  `beforeEach`, dépendance d'ordre latente à surveiller. 5 suivis non
+  bloquants hérités de SP-30d (revue finale de branche, tous cosmétiques,
+  aucun ne bloquait le merge) : divergence de hiérarchie de boutons sur
+  `DatasetEditPage.tsx` (les boutons d'export sont restés en `<button>`
+  natif alors que « Créer la règle »/« Ajouter un lien » sont passés sur
+  `Button` du kit dans cette même branche — même classe que la
+  divergence `ExportPanel`/`Terrain3DUploadButton` de SP-30c) ; rangée
+  des boutons d'export sans `flex-wrap`, dépassement possible dans la
+  colonne étroite (260px min) du volet Réglages ; volet Catalogue code
+  en dur `<dd>Dataset</dd>` au lieu de
+  `RESOURCE_TYPE_LABELS[item.resourceType]` (idiome `ItemDetailPage`
+  copié partiellement) ; `vi.stubGlobal` de `DatasetEditPage.test.tsx`
+  sans `vi.unstubAllGlobals` — 3e occurrence de la même dette (même
+  disposition que `MapEditorPage.test.tsx` ci-dessus) ; densité du volet
+  Réglages (`AlertRuleEditor`+`ConfigHistoryPanel` resserrés dans une
+  colonne étroite), à surveiller si le patron se répète en SP-30e+.
+  6 suivis non bloquants hérités de SP-30e (revue finale de branche, tous
+  cosmétiques, aucun ne bloquait le merge) : le volet Propriétés
+  restauré en `<aside>` englobe désormais tout l'empilement (pas
+  seulement `PropsPanel` comme avant), portée des locators E2E
+  `propsPanel` élargie — risque de collision strict-mode Playwright si
+  un futur composant réutilise un libellé déjà présent ; pas de
+  `vi.unstubAllGlobals()` dans `AppBuilderPage.test.tsx` — 4e occurrence
+  de la même dette, toujours sans traitement cohérent pour la famille ;
+  décision « Aperçu garde les volets visibles » non vérifiée par un
+  test (ni unitaire ni E2E ne clique jamais sur Aperçu puis n'interroge
+  la présence des volets) ; commentaire perdu sur l'invariant
+  `onRestored` (pas de `query.refetch()`, `ConfigHistoryPanel` invalide
+  déjà la clé) ; capture de miniature scopée à la seule colonne Canevas
+  au lieu de la pleine largeur (ancien comportement Aperçu, aujourd'hui
+  impossible) — conséquence produit à confirmer avec Tanguy, pas un
+  défaut de code ; `AppExportPanel` réimplémente à la main la recette de
+  couleurs de `Banner variant="warn"` au lieu de l'importer.
+  Question `<main>`/`<aside>` au niveau de `TriptychLayout` **tranchée par
+  SP-30f** : aucun landmark imposé par défaut, chaque page choisit `<div>`
+  sauf besoin fonctionnel documenté — `AppBuilderPage` reste la seule
+  exception (`<main ref={mainRef}>` pour la capture de miniature,
+  `<aside>` sur Propriétés) ; `PipelineBuilderPage`, qui avait introduit un
+  `<main>` orphelin, a rejoint la majorité `div`/`div`/`div`.
+  7 suivis non bloquants hérités de SP-30f (revue finale de branche, tous
+  cosmétiques, aucun ne bloquait le merge) : `text-ink-2` (tokenisé,
+  Task 2) posé sur les fonds catégoriels exemptés `bg-emerald/amber/
+  sky-50` de `KIND_COLOR` (non tokenisés, décision explicite du plan) —
+  contraste correct en ambiance claire aujourd'hui, incohérence latente
+  si l'ambiance sombre devient un jour atteignable (rien ne fixe de
+  `text-*` sur `body` actuellement) ; le motif de grep de vérification des
+  couleurs en dur ne couvre pas `text-white`/`text-black` sans suffixe
+  numérique (seul `bg-white/black` l'est) — angle mort à corriger avant
+  qu'il masque un vrai hit non exempté sur une future famille ;
+  `border-t` de `PipelineScheduleEditor.tsx` (composant partagé avec la
+  future `VisualQueryWizardPage`) se retrouve collé sous le nouveau
+  libellé « Planification » au lieu de servir de séparateur de section ;
+  l'en-tête du volet Canevas affiche le placeholder « Pipeline » en
+  permanence sur la route d'édition (`PipelineEditRoute` ne passe pas
+  `initialTitle`, préexistant mais promu en chrome visible par cette
+  bascule) ; en mode onglets étroit, changer d'onglet pendant qu'une
+  exécution est en cours démonte `PipelineRunPanel` et gèle son polling
+  (boucle sans `AbortController`, pattern préexistant SP-6a partagé avec
+  `ImportFileButton`, chemin de démontage nouvellement atteignable) ;
+  double padding dans le volet Propriétés (`p-2` de la page + `p-2` déjà
+  interne à `PipelineNodeInspector`), même classe que la densité notée
+  sur SP-30d ; `pk !== null` répété 4 fois dans le volet Propriétés au
+  lieu d'un booléen `isPersisted` (hérité du code littéral du plan
+  lui-même, cf. entrée SP-30f).
+  6 suivis non bloquants hérités de SP-30g (revue finale de branche, tous
+  cosmétiques, aucun ne bloquait le merge) : le test qui devait prouver
+  l'usage de `RESOURCE_TYPE_LABELS[item.resourceType]` (plutôt qu'un
+  littéral `"Rapport"` en dur) ne peut pas échouer pour cette raison —
+  `findByText("Rapport")` matche indifféremment l'idiome correct et le
+  défaut qu'il visait à exclure, la valeur coïncidant avec le libellé
+  chrome de l'onglet « Rapport » (ambigu aussi en mode étroit, collision
+  potentielle) — à corriger via le couple `<dt>`/`<dd>` ou un fixture dont
+  le libellé diffère de toute chaîne de chrome ; séparateur `border-t`
+  du volet Réglages rendu même quand les deux panneaux gated `pk !== null`
+  au-dessus sont absents (mode brouillon), première ligne visible sans
+  rien à séparer — `PipelineBuilderPage.tsx` gate la même règle sur
+  `mt-3` en plus, cette page est désormais l'exception de la famille sur
+  ce point précis ; `itemQuery.isError` non géré, une erreur 403/404 sur
+  `getItem` en mode persisté rend le volet Catalogue visuellement
+  identique à l'état brouillon (silencieux, 2e page à faire ce choix non
+  documenté après `DatasetEditPage`, qui elle échoue franchement) ; les
+  contrôles tokenisés de `ReportScheduleEditor.tsx` (`rounded border
+  border-rule bg-surface px-2 py-1 text-ink`, sans hauteur fixe) divergent
+  de `PipelineScheduleEditor.tsx` rendu juste en dessous dans le même
+  composant (`h-8 …`) et de `DatasetEditPage` (`h-8 … text-xs`) — la
+  famille n'a toujours pas une seule recette de contrôle de formulaire
+  (texte littéral du plan lui-même, pas un écart d'implémentation) ;
+  deux titres de test restent en anglais/mixte (« unsaved mode: no
+  history panel before the first save (no report id yet) », « persisted
+  mode: … ») malgré la règle « identifiants de test en français » —
+  hérité du fichier avant ce plan, non corrigé au passage ; la question
+  `aria-expanded`/`aria-controls` sur un déclencheur de panneau en ligne,
+  déjà notée par SP-30c comme à trancher une fois pour toute la famille,
+  reste ouverte.
+  7 suivis non bloquants hérités de SP-30h (revue finale de branche, tous
+  cosmétiques, aucun ne bloquait le merge — **famille 6 close, dernière
+  occasion de trancher ces répétitions avant qu'elles migrent vers les
+  familles 7/8**) : commentaire `VisualQueryWizardPage.tsx:82-83` devenu
+  partiellement faux (la requête `existingDatasetItemQuery`, à l'origine
+  documentée pour préremplir le Titre seul, sert désormais aussi la fiche
+  Catalogue — même classe que le commentaire faux trouvé Important sur
+  SP-30g, ici Minor car sans conséquence fonctionnelle) ; une erreur
+  d'exécution peut devenir invisible sous 390px (le remontage de
+  `TriptychLayout` après l'écran de sondage post-création réinitialise
+  l'onglet actif sur « Requête », l'erreur restant dans « Réglages » —
+  seule page de la famille dont les retours anticipés démontent le
+  layout) ; le nouveau test de la fiche Type/Modifié n'est pas
+  falsifiable pour la propriété qu'il nomme (`findByText("Dataset")`
+  passerait aussi avec un littéral en dur) — plan-mandated, même classe
+  que le défaut déjà logué sur SP-30g (`findByText("Rapport")`) ;
+  `existingDatasetItemQuery.isError` non géré — **3e page** de la famille
+  à faire ce choix silencieusement après `ReportEditPage` ; `border-t`
+  inconditionnel en mode création avant sélection de collection — **3e
+  occurrence** dans la famille (après `PipelineBuilderPage`/
+  `ReportEditPage`), toujours jamais tranchée ; ordre alertes/bouton
+  divergent de `ReportEditPage` (alertes avant le bouton ici, l'inverse
+  là-bas — deux ordres coexistent dans la famille sans règle commune) ;
+  bouton natif `Supprimer` à côté d'un `Button` du kit dans
+  `QueryFilterBuilder.tsx` (même dette de hiérarchie de boutons que
+  SP-30c/d, pré-existante). **Aucune de ces répétitions n'a été tranchée
+  pour toute la famille avant sa clôture** — à faire explicitement au
+  démarrage de SP-30i si elles doivent être réglées plutôt que
+  perpétuées dans les familles 7/8.
 - Reste **SP-15** : événements/déclencheurs durables au-delà du cron (non
   planifié) ; exposition MCP des noms de secrets (non planifiée) ; **exécuter
   réellement les 5 tests `@pytest.mark.qgis` de SP-15d** avant d'activer

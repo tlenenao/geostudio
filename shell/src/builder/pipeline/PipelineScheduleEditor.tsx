@@ -86,8 +86,8 @@ export function PipelineScheduleEditor({
   }
 
   return (
-    <div className="flex flex-col gap-2 border-t border-slate-200 pt-2">
-      <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+    <div className="flex flex-col gap-2 border-t border-rule pt-2">
+      <label className="flex items-center gap-2 text-xs font-medium text-ink-2">
         <input
           type="checkbox"
           aria-label="Planification automatique"
@@ -102,7 +102,7 @@ export function PipelineScheduleEditor({
             Mode
             <select
               aria-label="Mode de planification"
-              className="h-8 rounded border border-slate-300 px-2"
+              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
               value={form.mode}
               onChange={(e) => {
                 const mode = e.target.value as ScheduleForm["mode"];
@@ -126,7 +126,7 @@ export function PipelineScheduleEditor({
                 aria-label="Intervalle en minutes"
                 type="number"
                 min={1}
-                className="h-8 rounded border border-slate-300 px-2"
+                className="h-8 rounded border border-rule bg-surface px-2 text-ink"
                 value={form.minutes}
                 onChange={(e) => handleSetForm({ mode: "interval", minutes: e.target.value })}
               />
@@ -138,7 +138,7 @@ export function PipelineScheduleEditor({
               <input
                 aria-label="Heure d'exécution"
                 type="time"
-                className="h-8 rounded border border-slate-300 px-2"
+                className="h-8 rounded border border-rule bg-surface px-2 text-ink"
                 value={form.time}
                 onChange={(e) => handleSetForm({ mode: "daily", time: e.target.value })}
               />
@@ -150,7 +150,7 @@ export function PipelineScheduleEditor({
                 Jour
                 <select
                   aria-label="Jour de la semaine"
-                  className="h-8 rounded border border-slate-300 px-2"
+                  className="h-8 rounded border border-rule bg-surface px-2 text-ink"
                   value={form.day}
                   onChange={(e) =>
                     handleSetForm({ mode: "weekly", day: e.target.value, time: form.time })
@@ -168,7 +168,7 @@ export function PipelineScheduleEditor({
                 <input
                   aria-label="Heure d'exécution"
                   type="time"
-                  className="h-8 rounded border border-slate-300 px-2"
+                  className="h-8 rounded border border-rule bg-surface px-2 text-ink"
                   value={form.time}
                   onChange={(e) =>
                     handleSetForm({ mode: "weekly", day: form.day, time: e.target.value })
@@ -182,12 +182,12 @@ export function PipelineScheduleEditor({
               Expression cron
               <input
                 aria-label="Expression cron"
-                className="h-8 rounded border border-slate-300 px-2 font-mono"
+                className="h-8 rounded border border-rule bg-surface px-2 font-mono text-ink"
                 value={form.raw}
                 onChange={(e) => handleSetForm({ mode: "advanced", raw: e.target.value })}
               />
               {!ADVANCED_CRON_RE.test(form.raw) && (
-                <p role="alert" className="text-red-600">
+                <p role="alert" className="text-danger">
                   Format cron invalide (5 champs attendus).
                 </p>
               )}

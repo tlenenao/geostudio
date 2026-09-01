@@ -2,8 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/hooks";
 import type { ExportFormat, ExportJob } from "../../api/types";
-import { Button } from "../../ui/button";
-import { Dialog } from "../../ui/dialog";
+import { Button } from "../../ui/kit/Button";
+import { Panel } from "../../ui/kit/Panel";
 
 const POLL_INTERVAL_MS = 1500;
 // Fix round (finding I7) : ni PipelineRunPanel ni ImportFileButton (les deux
@@ -27,7 +27,7 @@ const MAX_POLL_ATTEMPTS = 200;
 // démontage pour ne rien laisser en suspens.
 export function ExportPanel({ itemId }: { itemId: string }) {
   const client = useItemClient();
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [job, setJob] = useState<ExportJob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -60,7 +60,7 @@ export function ExportPanel({ itemId }: { itemId: string }) {
   }
 
   async function onExport(format: ExportFormat) {
-    setDialogOpen(false);
+    setPickerOpen(false);
     setRunning(true);
     setError(null);
     setJob(null);
@@ -80,30 +80,40 @@ export function ExportPanel({ itemId }: { itemId: string }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)} disabled={running}>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => setPickerOpen((open) => !open)}
+        disabled={running}
+      >
         Exporter
       </Button>
-      <Dialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        title="Choisir le format d'export"
-      >
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => void onExport("png")}>
-            PNG
-          </Button>
-          <Button type="button" size="sm" onClick={() => void onExport("pdf")}>
-            PDF
-          </Button>
-        </div>
-      </Dialog>
+      {pickerOpen && (
+        // Panneau en ligne, pas une fenêtre modale (spec §2.1, ConfirmDialog
+        // seul survit) : pas d'Escape/backdrop à intercepter, Annuler ferme
+        // explicitement sans exporter.
+        <Panel className="flex flex-col gap-2">
+          <p className="text-sm font-medium text-ink">Choisir le format d'export</p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen(false)}>
+              Annuler
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => void onExport("png")}>
+              PNG
+            </Button>
+            <Button type="button" size="sm" onClick={() => void onExport("pdf")}>
+              PDF
+            </Button>
+          </div>
+        </Panel>
+      )}
       {job?.status === "done" && job.resultUrl && (
-        <a href={job.resultUrl} download className="text-sm text-blue-600 underline">
+        <a href={job.resultUrl} download className="text-sm text-accent underline">
           Télécharger l&apos;export
         </a>
       )}
       {(error || job?.status === "error") && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-danger">
           {error ?? job?.error ?? "Échec de l'export."}
         </p>
       )}

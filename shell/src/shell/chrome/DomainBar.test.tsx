@@ -40,7 +40,7 @@ test("affiche les sept domaines accessibles à un créateur, sans Administration
     expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
   }
   expect(screen.queryByRole("link", { name: "Administration" })).not.toBeInTheDocument();
-  // Régression (Finding 7) : SqlLabPage refuse l'accès à qui n'est pas
+  // Régression (Finding 7) : RequireRole (routes.tsx, /analytics/sql) refuse l'accès à qui n'est pas
   // analyste — le domaine ne doit donc pas apparaître pour ce profil.
   expect(screen.queryByRole("link", { name: "Analytique" })).not.toBeInTheDocument();
 });

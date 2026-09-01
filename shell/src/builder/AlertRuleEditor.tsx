@@ -4,16 +4,15 @@ import { useAlertEvaluations, useAlertRulesForDataset, useCreateAlertRule } from
 import type { AlertRuleSummary } from "../api/types";
 import { PipelineScheduleEditor } from "./pipeline/PipelineScheduleEditor";
 import type { PipelineRefreshPolicy } from "../api/types";
+import { Button } from "../ui/kit/Button";
 
 function AlertRuleRow({ rule }: { rule: AlertRuleSummary }) {
   const evaluationsQuery = useAlertEvaluations(rule.itemId);
   const latest = evaluationsQuery.data?.[0];
   return (
-    <div className="flex items-center justify-between border-t border-slate-200 py-1 text-xs">
+    <div className="flex items-center justify-between border-t border-rule py-1 text-xs">
       <span>{rule.title}</span>
-      <span
-        className={latest?.state === "firing" ? "font-semibold text-red-600" : "text-slate-500"}
-      >
+      <span className={latest?.state === "firing" ? "font-semibold text-danger" : "text-ink-2"}>
         {latest ? latest.state : "—"}
       </span>
     </div>
@@ -61,21 +60,21 @@ export function AlertRuleEditor({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-xs font-medium text-slate-500">Alertes</p>
+      <p className="text-xs font-medium text-ink-2">Alertes</p>
       {rulesQuery.isError && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-danger">
           Impossible de charger les règles d'alerte.
         </p>
       )}
       {(rulesQuery.data ?? []).map((rule) => (
         <AlertRuleRow key={rule.itemId} rule={rule} />
       ))}
-      <div className="flex flex-col gap-2 border-t border-slate-200 pt-2 text-xs">
+      <div className="flex flex-col gap-2 border-t border-rule pt-2 text-xs">
         <label className="flex flex-col gap-1">
           Nom de la règle
           <input
             aria-label="Nom de la règle"
-            className="h-8 rounded border border-slate-300 px-2"
+            className="h-8 rounded border border-rule bg-surface px-2 text-ink"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
@@ -84,7 +83,7 @@ export function AlertRuleEditor({
           Condition (expression)
           <input
             aria-label="Condition (expression)"
-            className="h-8 rounded border border-slate-300 px-2 font-mono"
+            className="h-8 rounded border border-rule bg-surface px-2 font-mono text-ink"
             placeholder="value > 100"
             value={expr}
             onChange={(e) => setExpr(e.target.value)}
@@ -94,22 +93,24 @@ export function AlertRuleEditor({
           URL du webhook
           <input
             aria-label="URL du webhook"
-            className="h-8 rounded border border-slate-300 px-2"
+            className="h-8 rounded border border-rule bg-surface px-2 text-ink"
             value={webhookUrl}
             onChange={(e) => setWebhookUrl(e.target.value)}
           />
         </label>
         <PipelineScheduleEditor value={refreshPolicy} onChange={setRefreshPolicy} />
-        <button
+        <Button
           type="button"
-          className="self-start rounded border border-slate-300 px-2 py-1 hover:bg-slate-100"
+          variant="outline"
+          size="sm"
+          className="self-start"
           onClick={() => void handleCreate()}
           disabled={createRule.isPending}
         >
           Créer la règle
-        </button>
+        </Button>
         {createError && (
-          <p role="alert" className="text-red-600">
+          <p role="alert" className="text-danger">
             {createError}
           </p>
         )}

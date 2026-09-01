@@ -33,11 +33,12 @@ export function useItems(params: ListItemsParams, opts?: { enabled?: boolean }) 
   });
 }
 
-export function useItem(pk: string) {
+export function useItem(pk: string, options?: { enabled?: boolean }) {
   const client = useItemClientInternal();
   return useQuery({
     queryKey: ["item", pk],
     queryFn: () => client.getItem(pk),
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -384,8 +385,12 @@ export function useReportScheduleConfig(pk: string, options?: { enabled?: boolea
 
 export function useSaveReportSchedule(pk: string) {
   const client = useItemClientInternal();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: ReportSchedulePayload) => client.saveReportScheduleConfig(pk, payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["report-schedule", pk] });
+    },
   });
 }
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -23,6 +23,29 @@ vi.mock("../auth/useAuth", () => ({
     error: null,
   }),
 }));
+
+// jsdom n'implémente pas window.matchMedia (piège n°10) ; TriptychLayout
+// l'appelle via useNarrowViewport. VisualQueryWizardPage ne rendait pas
+// TriptychLayout avant ce plan, donc ce stub est nouveau dans ce fichier —
+// stub local, jamais dans shell/src/test/setup.ts. matches: false => le
+// layout "large" (3 volets simultanés), pas les onglets — la valeur par
+// défaut de tous les tests de ce fichier qui n'affirment pas sur la
+// largeur. vi.unstubAllGlobals() en afterEach dès l'introduction du stub.
+function stubMatchMedia(matches: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  );
+}
+
+beforeEach(() => {
+  stubMatchMedia(false);
+});
+afterEach(() => vi.unstubAllGlobals());
 
 const BASE_SCHEMA = {
   collection: "incidents",
@@ -533,5 +556,32 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     });
 
     expect(screen.getByLabelText("Titre")).toHaveValue("Titre tapé par l'utilisateur");
+  });
+
+  test("le volet Catalogue affiche la fiche Type/Modifié une fois l'item dataset résolu", async () => {
+    renderWizardEdit();
+    await screen.findByText("Modifier la requête");
+    await waitFor(() =>
+      expect(screen.getByLabelText("Collection de base")).toHaveValue("incidents"),
+    );
+    expect(await screen.findByText("Dataset")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "← Retour au catalogue" })).toBeInTheDocument();
+  });
+});
+
+describe("VisualQueryWizardPage — volet Catalogue et dégradation d'affichage", () => {
+  test("mode création : le volet Catalogue ne montre aucune fiche d'item avant le premier Créer", async () => {
+    renderWizard();
+    expect(await screen.findByRole("link", { name: "← Retour au catalogue" })).toBeInTheDocument();
+    expect(screen.queryByText("Dataset")).not.toBeInTheDocument();
+  });
+
+  test("sous viewport étroit, affiche trois onglets Catalogue/Requête/Réglages avec Requête actif par défaut", async () => {
+    stubMatchMedia(true);
+    renderWizard();
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(["Catalogue", "Requête", "Réglages"]);
+    const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
+    expect(activeTab).toHaveTextContent("Requête");
   });
 });

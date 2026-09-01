@@ -8,7 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/ItemClientProvider";
 import type { AppConfig, CopilotMessage } from "../../api/types";
-import { Button } from "../../ui/button";
+import { Button } from "../../ui/kit/Button";
 import { applyClientOp, type RawClientOp } from "./applyClientOp";
 import { buildClientToolSchemas } from "./clientTools";
 import { useMcpToken } from "./useMcpToken";
@@ -92,7 +92,7 @@ export function CopilotPanel({
     <div className="flex flex-col gap-2 text-sm">
       <div className="flex max-h-64 flex-col gap-2 overflow-auto">
         {history.map((m, i) => (
-          <p key={i} className={m.role === "user" ? "font-medium" : "text-slate-600"}>
+          <p key={i} className={m.role === "user" ? "font-medium" : "text-ink-2"}>
             {m.content}
           </p>
         ))}
@@ -100,7 +100,7 @@ export function CopilotPanel({
       <label className="flex flex-col gap-1">
         <textarea
           aria-label="Message au copilote"
-          className="min-h-16 rounded-md border border-slate-300 p-2 text-sm"
+          className="min-h-16 rounded-md border border-rule bg-surface p-2 text-sm text-ink"
           value={input}
           onChange={(e) => setInput(e.target.value)}
         />
@@ -109,14 +109,14 @@ export function CopilotPanel({
         Envoyer
       </Button>
       {lastOpsSummary.length > 0 && (
-        <ul className="text-xs text-slate-500">
+        <ul className="text-xs text-ink-2">
           {lastOpsSummary.map((s, i) => (
             <li key={i}>{s}</li>
           ))}
         </ul>
       )}
       {error && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-xs text-danger">
           {error}
         </p>
       )}

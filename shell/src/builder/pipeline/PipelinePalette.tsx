@@ -20,7 +20,7 @@ export function PipelinePalette() {
     <div className="flex flex-col gap-3 p-2 text-xs">
       {(["reader", "transform", "writer"] as const).map((kind) => (
         <div key={kind}>
-          <h3 className="mb-1 font-semibold text-slate-600">{SECTION_LABEL[kind]}</h3>
+          <h3 className="mb-1 font-semibold text-ink-2">{SECTION_LABEL[kind]}</h3>
           <ul className="flex flex-col gap-1">
             {byKind[kind].map((op) => (
               <li key={op}>
@@ -30,7 +30,7 @@ export function PipelinePalette() {
                     e.dataTransfer.setData(PIPELINE_OP_DND_TYPE, op);
                     e.dataTransfer.effectAllowed = "move";
                   }}
-                  className="cursor-grab rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-50"
+                  className="cursor-grab rounded border border-rule bg-surface px-2 py-1 hover:bg-sunken"
                 >
                   {op}
                 </div>

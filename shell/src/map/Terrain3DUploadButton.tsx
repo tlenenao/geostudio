@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { useItemClient } from "../api/hooks";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Dialog } from "../ui/dialog";
+import { Button } from "../ui/kit/Button";
+import { Input } from "../ui/kit/Input";
+import { Panel } from "../ui/kit/Panel";
 
 const DEFAULT_POLL_INTERVAL_MS = 1500;
 // Un job de conversion qui n'atteint jamais un état terminal ne doit pas
-// laisser le dialogue définitivement infermable — même garde-fou que
+// laisser le panneau définitivement infermable — même garde-fou que
 // Tileset3DUploadButton (design tileset3d hosting, leçon Task 12/I3).
 const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -92,51 +92,67 @@ export function Terrain3DUploadButton({
 
   const busy = phase === "uploading" || phase === "converting";
 
-  // Même garde que Tileset3DUploadButton : fermer le dialogue en plein
-  // envoi/conversion laisserait le chaîne submit()/poll() tourner en
-  // arrière-plan sans dialogue pour la refléter.
-  function requestClose() {
+  // Le déclencheur ouvre/ferme le même panneau que le bouton Annuler, avec
+  // les mêmes garanties (finding I1, revue finale SP-30c) : désactivé
+  // pendant l'envoi/la conversion (sinon un clic masquerait le panneau
+  // pendant que submit()/poll() tournent encore en arrière-plan, sans rien
+  // pour refléter leur succès ou leur échec) et, à la fermeture, réinitialise
+  // intégralement l'état (comme close()) plutôt qu'un simple setOpen(false)
+  // qui laisserait une erreur ou un brouillon périmés visibles à la
+  // réouverture.
+  function toggle() {
     if (busy) return;
-    close();
+    if (open) {
+      close();
+    } else {
+      setOpen(true);
+    }
   }
 
+  // Panneau en ligne, pas une fenêtre modale (spec §2.1) : plus d'Escape ni
+  // de backdrop à intercepter. Le bouton Annuler ferme lui aussi, et reste
+  // désactivé pendant l'envoi/la conversion — fermer laisserait submit()/
+  // poll() tourner en arrière-plan sans rien pour le refléter.
   return (
-    <>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+    <div className="flex flex-col gap-2">
+      <Button size="sm" variant="outline" className="w-fit" onClick={toggle} disabled={busy}>
         Nouveau DEM
       </Button>
-      <Dialog open={open} onClose={requestClose} title="Nouveau DEM">
-        <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1 text-sm">
-            Fichier DEM (GeoTIFF)
-            <input
-              aria-label="Fichier DEM (GeoTIFF)"
-              type="file"
-              accept=".tif,.tiff"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Titre
-            <Input aria-label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
-          </label>
-          {phase === "uploading" && <p className="text-sm text-slate-500">Envoi du fichier…</p>}
-          {phase === "converting" && <p className="text-sm text-slate-500">Conversion en COG…</p>}
-          {phase === "error" && (
-            <p role="alert" className="text-sm text-red-600">
-              {error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={close} disabled={busy}>
-              Annuler
-            </Button>
-            <Button type="submit" size="sm" disabled={busy || !file || !title.trim()}>
-              {busy ? "Envoi…" : "Importer"}
-            </Button>
-          </div>
-        </form>
-      </Dialog>
-    </>
+      {open && (
+        <Panel className="flex flex-col gap-3">
+          <h4 className="text-sm font-semibold text-ink">Nouveau DEM</h4>
+          <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1 text-sm text-ink">
+              Fichier DEM (GeoTIFF)
+              <input
+                aria-label="Fichier DEM (GeoTIFF)"
+                type="file"
+                accept=".tif,.tiff"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm text-ink">
+              Titre
+              <Input aria-label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
+            </label>
+            {phase === "uploading" && <p className="text-sm text-ink-2">Envoi du fichier…</p>}
+            {phase === "converting" && <p className="text-sm text-ink-2">Conversion en COG…</p>}
+            {phase === "error" && (
+              <p role="alert" className="text-sm text-danger">
+                {error}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={close} disabled={busy}>
+                Annuler
+              </Button>
+              <Button type="submit" size="sm" disabled={busy || !file || !title.trim()}>
+                {busy ? "Envoi…" : "Importer"}
+              </Button>
+            </div>
+          </form>
+        </Panel>
+      )}
+    </div>
   );
 }

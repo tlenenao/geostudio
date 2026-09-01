@@ -26,7 +26,7 @@ export function QueryJoinPicker({
         Collection à joindre
         <select
           aria-label="Collection à joindre"
-          className="h-8 rounded border border-slate-300 px-2 text-xs"
+          className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
           value={value.collectionId}
           onChange={(e) => onChange({ ...value, collectionId: e.target.value, on: "" })}
         >
@@ -39,7 +39,7 @@ export function QueryJoinPicker({
         </select>
       </label>
       {joinedSchema && commonColumns.length === 0 && (
-        <p className="text-xs text-red-600">
+        <p className="text-xs text-danger">
           Aucune colonne commune entre les deux collections — la jointure est impossible.
         </p>
       )}
@@ -48,7 +48,7 @@ export function QueryJoinPicker({
           Colonne de jointure
           <select
             aria-label="Colonne de jointure"
-            className="h-8 rounded border border-slate-300 px-2 text-xs"
+            className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
             value={value.on}
             onChange={(e) => onChange({ ...value, on: e.target.value })}
           >
@@ -65,7 +65,7 @@ export function QueryJoinPicker({
         Type de jointure
         <select
           aria-label="Type de jointure"
-          className="h-8 rounded border border-slate-300 px-2 text-xs"
+          className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
           value={value.how}
           onChange={(e) => onChange({ ...value, how: e.target.value as "inner" | "left" })}
         >

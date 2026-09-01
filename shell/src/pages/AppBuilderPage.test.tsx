@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import type { AppConfig, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppBuilderPage } from "./AppBuilderPage";
@@ -30,6 +30,28 @@ const config: AppConfig = {
   messages: [],
   layout: { type: "grid", breakpoints: {}, items: [] },
 };
+
+// jsdom n'implémente pas window.matchMedia (piège n°10) ; TriptychLayout
+// l'appelle via useNarrowViewport. AppBuilderPage ne rendait pas
+// TriptychLayout avant ce plan, donc ce stub est nouveau dans ce fichier —
+// stub local, jamais dans shell/src/test/setup.ts. matches: false => le
+// layout "large" (3 volets simultanés), pas les onglets — la valeur par
+// défaut de tous les tests existants de ce fichier, qui n'affirment pas
+// sur la largeur.
+function stubMatchMedia(matches: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  );
+}
+
+beforeEach(() => {
+  stubMatchMedia(false);
+});
 
 function renderPage(client: Partial<ItemClient>) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -488,4 +510,13 @@ test("restaurer une version recharge le brouillon et vide l'undo", async () => {
 
   await userEvent.click(await screen.findByRole("button", { name: /restaurer/i }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled());
+});
+
+test("sous viewport étroit, affiche trois onglets Structure/Canevas/Propriétés avec Canevas actif par défaut", async () => {
+  stubMatchMedia(true);
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(config) });
+  const tabs = await screen.findAllByRole("tab");
+  expect(tabs.map((t) => t.textContent)).toEqual(["Structure", "Canevas", "Propriétés"]);
+  const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
+  expect(activeTab).toHaveTextContent("Canevas");
 });

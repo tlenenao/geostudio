@@ -66,7 +66,7 @@ export function TerrainPanel({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="mb-1 mt-3 text-xs font-medium text-slate-500">Terrain 3D</p>
+      <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Terrain 3D</p>
       <label className="flex items-center gap-2 text-sm">
         <input
           aria-label="Activer le terrain 3D"

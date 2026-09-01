@@ -21,6 +21,7 @@ import { KitGalleryPage } from "../pages/KitGalleryPage";
 import { TasksComingSoonPage } from "../pages/TasksComingSoonPage";
 import { SettingsComingSoonPage } from "../pages/SettingsComingSoonPage";
 import { RequireAuth } from "../auth/RequireAuth";
+import { RequireRole } from "../auth/RequireRole";
 import { AppLayout } from "./AppLayout";
 import { useItemClient } from "../api/ItemClientProvider";
 import { encodeAnalyticsContext } from "../lib/analyticsContextUrl";
@@ -263,7 +264,14 @@ export function AppRoutes() {
         <Route path="/reports" element={<ReportsRoute />} />
         <Route path="/reports/new" element={<ReportNewRoute />} />
         <Route path="/reports/:pk/edit" element={<ReportEditRoute />} />
-        <Route path="/analytics/sql" element={<SqlLabPage />} />
+        <Route
+          path="/analytics/sql"
+          element={
+            <RequireRole role="analyst" deniedMessage="Accès réservé aux analystes.">
+              <SqlLabPage />
+            </RequireRole>
+          }
+        />
         <Route path="/admin/extensions" element={<AdminExtensionsPage />} />
         <Route path="/admin/collections" element={<CollectionsAdminPage />} />
         <Route path="/admin/harvest" element={<HarvestSourcesAdminPage />} />

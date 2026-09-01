@@ -1,19 +1,23 @@
 // shell/src/pages/ReportEditPage.tsx
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   useCreateReportSchedule,
+  useItem,
   useReportScheduleConfig,
   useSaveReportSchedule,
 } from "../api/hooks";
 import { useAuth } from "../auth/useAuth";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { ReportSchedulePayload } from "../api/types";
-import { Button } from "../ui/button";
+import { RESOURCE_TYPE_LABELS } from "../api/resourceTypes";
+import { Button } from "../ui/kit/Button";
+import { Panel } from "../ui/kit/Panel";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { ReportScheduleEditor } from "../builder/report/ReportScheduleEditor";
 import { ReportRunPanel } from "../builder/report/ReportRunPanel";
+import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 
 function defaultPayload(bookmarkItemId: string): ReportSchedulePayload {
   return {
@@ -37,6 +41,7 @@ export function ReportEditPage({
   const navigate = useNavigate();
   const { username } = useAuth();
   const client = useItemClient();
+  const itemQuery = useItem(pk ?? "", { enabled: pk !== null });
   const configQuery = useReportScheduleConfig(pk ?? "", { enabled: pk !== null });
   const createReport = useCreateReportSchedule();
   const saveReport = useSaveReportSchedule(pk ?? "");
@@ -71,34 +76,76 @@ export function ReportEditPage({
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <h1 className="text-lg font-medium">
-        {pk === null ? "Programmer un rapport" : "Modifier le rapport planifié"}
-      </h1>
-      <ReportScheduleEditor
-        value={draft}
-        onChange={setDraft}
-        bookmarkLabel={draft.bookmarkItemId}
+    <div className="-m-6 flex flex-1 flex-col overflow-hidden">
+      <TriptychLayout
+        defaultTabId="report"
+        browse={{
+          id: "back",
+          label: "Catalogue",
+          content: (
+            <Panel className="m-3 flex flex-col gap-3 text-sm">
+              <Link to="/" className="text-accent hover:underline">
+                ← Retour au catalogue
+              </Link>
+              {itemQuery.data && (
+                <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs text-ink-2">
+                  <dt>Type</dt>
+                  <dd>{RESOURCE_TYPE_LABELS[itemQuery.data.resourceType]}</dd>
+                  <dt>Modifié</dt>
+                  <dd>{itemQuery.data.date || "—"}</dd>
+                </dl>
+              )}
+            </Panel>
+          ),
+        }}
+        work={{
+          id: "report",
+          label: "Rapport",
+          content: (
+            <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
+              <h2 className="text-lg font-semibold text-ink">
+                {pk === null ? "Programmer un rapport" : "Modifier le rapport planifié"}
+              </h2>
+              <ReportScheduleEditor
+                value={draft}
+                onChange={setDraft}
+                bookmarkLabel={draft.bookmarkItemId}
+              />
+            </div>
+          ),
+        }}
+        inspect={{
+          id: "settings",
+          label: "Réglages",
+          content: (
+            <div className="flex flex-col gap-4 p-3">
+              {pk !== null && <ReportRunPanel reportId={pk} />}
+              {pk !== null && (
+                <ConfigHistoryPanel
+                  pk={pk}
+                  currentVersion={null}
+                  onRestored={async () => setDraft(await client.getReportScheduleConfig(pk))}
+                />
+              )}
+              <div className="flex flex-col gap-2 border-t border-rule pt-3">
+                <Button
+                  size="sm"
+                  className="w-fit"
+                  onClick={() => void onSave()}
+                  disabled={createReport.isPending || saveReport.isPending}
+                >
+                  Enregistrer
+                </Button>
+                {saveError && (
+                  <p role="alert" className="text-sm text-danger">
+                    {saveError}
+                  </p>
+                )}
+              </div>
+            </div>
+          ),
+        }}
       />
-      <Button
-        onClick={() => void onSave()}
-        disabled={createReport.isPending || saveReport.isPending}
-      >
-        Enregistrer
-      </Button>
-      {saveError && (
-        <p role="alert" className="text-sm text-red-600">
-          {saveError}
-        </p>
-      )}
-      {pk !== null && <ReportRunPanel reportId={pk} />}
-      {pk !== null && (
-        <ConfigHistoryPanel
-          pk={pk}
-          currentVersion={null}
-          onRestored={async () => setDraft(await client.getReportScheduleConfig(pk))}
-        />
-      )}
     </div>
   );
 }

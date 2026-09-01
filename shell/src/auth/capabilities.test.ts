@@ -67,7 +67,7 @@ describe("domainState", () => {
   });
 
   it("masque le domaine analytique à un non-analyste, le montre à un analyste", () => {
-    // Régression (Finding 7) : SqlLabPage refuse l'accès à qui n'est pas
+    // Régression (Finding 7) : RequireRole (routes.tsx, /analytics/sql) refuse l'accès à qui n'est pas
     // analyste — le domaine ne doit donc pas apparaître dans le chrome pour
     // ce profil, sous peine de proposer un point d'entrée mort.
     expect(stateOf("analytics", creator)).toBe("hidden");

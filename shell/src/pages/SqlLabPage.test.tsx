@@ -2,51 +2,51 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { SqlLabPage } from "./SqlLabPage";
 
+// jsdom n'implémente pas window.matchMedia (piège n°10) ; TriptychLayout
+// l'appelle via useNarrowViewport. Stub local, avec vi.unstubAllGlobals()
+// en afterEach dès son introduction (même patron que ReportEditPage.test.tsx
+// et PipelineBuilderPage.test.tsx) — SqlLabPage ne rendait pas
+// TriptychLayout avant ce plan, ce stub est nouveau dans ce fichier.
+function stubMatchMedia(matches: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  );
+}
+
+beforeEach(() => {
+  stubMatchMedia(false);
+  localStorage.clear();
+});
+afterEach(() => vi.unstubAllGlobals());
+
 function Harness() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
   return (
-    <QueryClientProvider client={queryClient}>
-      <ItemClientProvider client={client}>
-        <SqlLabPage />
-      </ItemClientProvider>
-    </QueryClientProvider>
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <ItemClientProvider client={client}>
+          <SqlLabPage />
+        </ItemClientProvider>
+      </QueryClientProvider>
+    </MemoryRouter>
   );
 }
 
-function mockMe(isAnalyst: boolean) {
-  server.use(
-    http.get("https://core.test/me", () =>
-      HttpResponse.json({
-        id: "u1",
-        username: "alice",
-        firstName: "Alice",
-        lastName: "Martin",
-        isAdmin: false,
-        isAnalyst,
-      }),
-    ),
-  );
-}
-
-beforeEach(() => localStorage.clear());
-
-test("shows an access-denied message for a non-analyst user", async () => {
-  mockMe(false);
-  render(<Harness />);
-  await waitFor(() =>
-    expect(screen.getByRole("alert")).toHaveTextContent("Accès réservé aux analystes."),
-  );
-});
-
-test("executes a query and renders the result table", async () => {
-  mockMe(true);
+test("exécute une requête et affiche le tableau de résultat", async () => {
   let posted: unknown;
   server.use(
     http.post("https://core.test/analytics/sql", async ({ request }) => {
@@ -71,8 +71,7 @@ test("executes a query and renders the result table", async () => {
   await waitFor(() => expect(posted).toEqual({ sql: "select nom, surface from parcs" }));
 });
 
-test("shows the truncation notice when the result was capped", async () => {
-  mockMe(true);
+test("affiche l'avis de troncature quand le résultat a été plafonné", async () => {
   server.use(
     http.post("https://core.test/analytics/sql", () =>
       HttpResponse.json({ columns: ["id"], rows: [["1"]], truncated: true }),
@@ -85,8 +84,7 @@ test("shows the truncation notice when the result was capped", async () => {
   expect(await screen.findByText("Résultat tronqué aux 1 premières lignes.")).toBeInTheDocument();
 });
 
-test("shows the server error message and keeps the SQL text on failure", async () => {
-  mockMe(true);
+test("affiche le message d'erreur du serveur et conserve le texte SQL en cas d'échec", async () => {
   server.use(
     http.post("https://core.test/analytics/sql", () =>
       HttpResponse.json(
@@ -105,8 +103,7 @@ test("shows the server error message and keeps the SQL text on failure", async (
   expect(textarea).toHaveValue("select * fro x");
 });
 
-test("records history on success and reloads a past query when clicked", async () => {
-  mockMe(true);
+test("enregistre l'historique au succès et recharge une requête passée au clic", async () => {
   server.use(
     http.post("https://core.test/analytics/sql", () =>
       HttpResponse.json({ columns: ["id"], rows: [["1"]], truncated: false }),
@@ -123,4 +120,19 @@ test("records history on success and reloads a past query when clicked", async (
   });
   await userEvent.click(historyButton);
   expect(textarea).toHaveValue("select id from x");
+});
+
+test("affiche un état vide dans l'onglet Historique tant qu'aucune requête n'a été exécutée", async () => {
+  render(<Harness />);
+  await screen.findByLabelText("Requête SQL");
+  expect(screen.getByText("Aucune requête exécutée pour l'instant.")).toBeInTheDocument();
+});
+
+test("sous viewport étroit, affiche trois onglets Catalogue/Requête/Historique avec Requête actif par défaut", async () => {
+  stubMatchMedia(true);
+  render(<Harness />);
+  const tabs = await screen.findAllByRole("tab");
+  expect(tabs.map((t) => t.textContent)).toEqual(["Catalogue", "Requête", "Historique"]);
+  const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
+  expect(activeTab).toHaveTextContent("Requête");
 });

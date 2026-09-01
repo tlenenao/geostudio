@@ -77,20 +77,27 @@ test("upload a DEM, select it as hosted terrain, tiles resolve", async ({ page }
 
   await page.getByLabel("Activer le terrain 3D").check();
   await page.getByRole("button", { name: "Nouveau DEM" }).click();
-  // Scoped to the dialog (unlike the plan's literal `page.getByLabel(...)`):
-  // the map editor's tileset3d panel also has a "Titre du tileset 3D" field
-  // (a non-exact substring match) plus another bare "Titre" field elsewhere
-  // on the page, so an unscoped lookup hits a strict-mode violation — same
-  // disambiguation rationale tileset3d.spec.ts documents for "Importer".
-  const demDialog = page.getByRole("dialog", { name: "Nouveau DEM" });
-  await demDialog.getByLabel("Fichier DEM (GeoTIFF)").setInputFiles({
+  // Terrain3DUploadButton converti Dialog→Panel en ligne par SP-30c : plus de
+  // role="dialog" à localiser. Scopé au <form> du panneau (pas un locator
+  // englobant sur un rôle inexistant) : le panneau Couches de l'éditeur de
+  // carte a aussi un champ "Titre du tileset 3D" (correspondance substring
+  // non exacte) plus un autre champ "Titre" nu ailleurs sur la page, donc un
+  // lookup non scopé heurte une violation de mode strict — même
+  // justification de désambiguïsation que tileset3d.spec.ts documente pour
+  // "Importer". Le <form> est identifié par son descendant unique (le champ
+  // fichier), sans dépendre d'un rôle/testid sur le Panel lui-même (qui n'en
+  // a aucun, cf. ui/kit/Panel.tsx).
+  const demForm = page.locator("form", { has: page.getByLabel("Fichier DEM (GeoTIFF)") });
+  await demForm.getByLabel("Fichier DEM (GeoTIFF)").setInputFiles({
     name: "dem.tif",
     mimeType: "application/octet-stream",
     buffer: Buffer.from("fake dem bytes"),
   });
-  await demDialog.getByLabel("Titre", { exact: true }).fill("Relief du massif E2E");
-  await demDialog.getByRole("button", { name: "Importer" }).click();
-  await expect(demDialog).toHaveCount(0, { timeout: 10_000 });
+  await demForm.getByLabel("Titre", { exact: true }).fill("Relief du massif E2E");
+  await demForm.getByRole("button", { name: "Importer" }).click();
+  // Le panneau ferme (close() réinitialise `open` à false côté composant) :
+  // le champ fichier du formulaire disparaît du DOM.
+  await expect(page.getByLabel("Fichier DEM (GeoTIFF)")).toHaveCount(0, { timeout: 10_000 });
 
   const tileRequest = page.waitForResponse((r) => /\/terrain3d\/d1\/tiles\/.+\.png$/.test(r.url()));
   await page.getByLabel("DEM hébergé").selectOption("d1");

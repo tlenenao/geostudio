@@ -192,7 +192,7 @@ export function LayersPanel({
             <button
               type="button"
               aria-label={`Retirer ${layer.title}`}
-              className="px-1 text-red-600"
+              className="px-1 text-danger"
               onClick={() => remove(layer.id)}
             >
               ✕
@@ -215,10 +215,10 @@ export function LayersPanel({
             )}
           </li>
         ))}
-        {layers.length === 0 && <li className="text-xs text-slate-400">Aucune couche.</li>}
+        {layers.length === 0 && <li className="text-xs text-ink-3">Aucune couche.</li>}
       </ul>
       <div className="border-t pt-2">
-        <p className="mb-1 text-xs font-medium text-slate-500">Ajouter une couche</p>
+        <p className="mb-1 text-xs font-medium text-ink-2">Ajouter une couche</p>
         <LayerPicker onAdd={(layer) => onChange([...layers, layer])} />
       </div>
     </div>
