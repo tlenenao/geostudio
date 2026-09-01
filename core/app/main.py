@@ -10,10 +10,12 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
 from app import db, observability
+from app.admin_tools import routes as admin_tools_routes
 from app.alerts import routes as alerts_routes
 from app.appexport import routes as appexport_routes
 from app.auth import routes as auth_routes
 from app.auth.dependency import (
+    is_admin_tools_enabled,
     is_appexport_enabled,
     is_copilot_enabled,
     is_etl_enabled,
@@ -280,6 +282,8 @@ def create_app() -> FastAPI:
         app.include_router(terrain3d_routes.router)
     if is_copilot_enabled():
         app.include_router(copilot_routes.router)
+    if is_admin_tools_enabled():
+        app.include_router(admin_tools_routes.router)
 
     s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
     s3_access_key = os.environ.get("S3_ACCESS_KEY")

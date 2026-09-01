@@ -2034,6 +2034,8 @@ export interface components {
          *     interdit aux deux routes de diverger.
          */
         MeCapabilities: {
+            /** Admintoolsenabled */
+            adminToolsEnabled: boolean;
             /** Appexportenabled */
             appExportEnabled: boolean;
             /** Copilotenabled */
@@ -2056,16 +2058,13 @@ export interface components {
             email: string | null;
             /** Firstname */
             firstName: string;
-            /** Hasanyeditorrole */
-            hasAnyEditorRole: boolean;
             /** Id */
             id: string;
-            /** Isadmin */
-            isAdmin: boolean;
-            /** Isanalyst */
-            isAnalyst: boolean;
             /** Lastname */
             lastName: string;
+            /** Privileges */
+            privileges: string[];
+            role: components["schemas"]["RoleSummary"];
             /** Tenantid */
             tenantId: string;
             /** Tenantslug */
@@ -2291,6 +2290,15 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** RoleSummary */
+        RoleSummary: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
         /** RollbackRequest */
         RollbackRequest: {
             /** Version */
@@ -2381,12 +2389,10 @@ export interface components {
             /** Totalbytes */
             totalBytes: number;
         };
-        /** UserAdminPatch */
-        UserAdminPatch: {
-            /** Isadmin */
-            isAdmin?: boolean | null;
-            /** Isanalyst */
-            isAnalyst?: boolean | null;
+        /** UserRolePatch */
+        UserRolePatch: {
+            /** Roleid */
+            roleId: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -5437,7 +5443,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UserAdminPatch"];
+                "application/json": components["schemas"]["UserRolePatch"];
             };
         };
         responses: {

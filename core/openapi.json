@@ -2618,6 +2618,10 @@
       "MeCapabilities": {
         "description": "Les capacit\u00e9s du d\u00e9ploiement, servies avec le profil.\n\nM\u00eame contenu que `GET /instance`, qui reste servi sans authentification\n(page de connexion, mode d\u00e9mo). Le doublon est d\u00e9lib\u00e9r\u00e9 : le shell d\u00e9rive\nl'\u00e9tat de ses domaines d'un profil unique (spec \u00a76.6) au lieu de croiser\ndeux requ\u00eates dans chaque \u00e9cran. `tests/test_auth_me_capabilities.py`\ninterdit aux deux routes de diverger.",
         "properties": {
+          "adminToolsEnabled": {
+            "title": "Admintoolsenabled",
+            "type": "boolean"
+          },
           "appExportEnabled": {
             "title": "Appexportenabled",
             "type": "boolean"
@@ -2654,7 +2658,8 @@
           "appExportEnabled",
           "tileset3dEnabled",
           "terrain3dEnabled",
-          "copilotEnabled"
+          "copilotEnabled",
+          "adminToolsEnabled"
         ],
         "title": "MeCapabilities",
         "type": "object"
@@ -2679,25 +2684,23 @@
             "title": "Firstname",
             "type": "string"
           },
-          "hasAnyEditorRole": {
-            "title": "Hasanyeditorrole",
-            "type": "boolean"
-          },
           "id": {
             "title": "Id",
             "type": "string"
           },
-          "isAdmin": {
-            "title": "Isadmin",
-            "type": "boolean"
-          },
-          "isAnalyst": {
-            "title": "Isanalyst",
-            "type": "boolean"
-          },
           "lastName": {
             "title": "Lastname",
             "type": "string"
+          },
+          "privileges": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Privileges",
+            "type": "array"
+          },
+          "role": {
+            "$ref": "#/components/schemas/RoleSummary"
           },
           "tenantId": {
             "title": "Tenantid",
@@ -2724,9 +2727,8 @@
           "email",
           "firstName",
           "lastName",
-          "isAdmin",
-          "isAnalyst",
-          "hasAnyEditorRole",
+          "role",
+          "privileges",
           "version",
           "capabilities"
         ],
@@ -3297,6 +3299,29 @@
         "title": "RevisionInfo",
         "type": "object"
       },
+      "RoleSummary": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug"
+        ],
+        "title": "RoleSummary",
+        "type": "object"
+      },
       "RollbackRequest": {
         "properties": {
           "version": {
@@ -3561,32 +3586,17 @@
         "title": "Tileset3DPayload",
         "type": "object"
       },
-      "UserAdminPatch": {
+      "UserRolePatch": {
         "properties": {
-          "isAdmin": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Isadmin"
-          },
-          "isAnalyst": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Isanalyst"
+          "roleId": {
+            "title": "Roleid",
+            "type": "string"
           }
         },
-        "title": "UserAdminPatch",
+        "required": [
+          "roleId"
+        ],
+        "title": "UserRolePatch",
         "type": "object"
       },
       "ValidationError": {
@@ -8368,7 +8378,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UserAdminPatch"
+                "$ref": "#/components/schemas/UserRolePatch"
               }
             }
           },
