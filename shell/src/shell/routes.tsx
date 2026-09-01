@@ -272,9 +272,30 @@ export function AppRoutes() {
             </RequireRole>
           }
         />
-        <Route path="/admin/extensions" element={<AdminExtensionsPage />} />
-        <Route path="/admin/collections" element={<CollectionsAdminPage />} />
-        <Route path="/admin/harvest" element={<HarvestSourcesAdminPage />} />
+        <Route
+          path="/admin/extensions"
+          element={
+            <RequireRole role="admin" deniedMessage="Accès réservé aux administrateurs.">
+              <AdminExtensionsPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/admin/collections"
+          element={
+            <RequireRole role="admin" deniedMessage="Accès réservé aux administrateurs.">
+              <CollectionsAdminPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/admin/harvest"
+          element={
+            <RequireRole role="admin" deniedMessage="Accès réservé aux administrateurs.">
+              <HarvestSourcesAdminPage />
+            </RequireRole>
+          }
+        />
         <Route path="/internal/kit-gallery" element={<KitGalleryPage />} />
         <Route path="/tasks" element={<TasksComingSoonPage />} />
         <Route path="/settings" element={<SettingsComingSoonPage />} />
