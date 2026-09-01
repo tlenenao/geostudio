@@ -181,10 +181,15 @@ qu'un flag CLI : `TITILER_API_ROOT_PATH=/admin/titiler` (confirmé dans le
 code de l'image — `FastAPI(root_path=api_settings.root_path)`, avec une
 réécriture explicite des URLs de tuiles quand `root_path` est non vide).
 
-Grafana (`otel-lgtm`) : `GF_SERVER_ROOT_URL=https://<host>/admin/grafana`
-et `GF_SERVER_SERVE_FROM_SUB_PATH=true` (mécanisme natif de Grafana 12,
-confirmé comme version réelle embarquée — pas vérifié en conteneur tournant
-avec ces variables, à faire en tâche d'implémentation).
+Grafana (`otel-lgtm`) : `GF_SERVER_ROOT_URL=https://<host>/admin/grafana/`
+et `GF_SERVER_SERVE_FROM_SUB_PATH=true` — **rejoué en conteneur réel dans
+cette session** (`docker run grafana/otel-lgtm:0.11.4` avec ces deux
+variables) : `GET /admin/grafana/login` → 200, `GET /admin/grafana/api/health`
+→ `{"database":"ok",...}`, `GET /login` (sans préfixe) → 301. Confirme que
+Grafana, avec `SERVE_FROM_SUB_PATH=true`, attend le préfixe **conservé** —
+**à l'inverse de Martin/Titiler** : son routeur Traefik ne doit **pas**
+avoir de `stripprefix` dans sa chaîne de middlewares (juste
+`admin-auth@docker,security-headers@docker,rate-limit@docker`).
 
 Le middleware `admin-auth` n'est déclaré qu'une fois (sur l'un des trois
 services, réutilisé via `@docker` par les deux autres — patron déjà utilisé
@@ -230,10 +235,13 @@ lecture du code embarqué) — pas contre leur documentation générique :
   renseigné.
 - **Grafana 12.0.1** (confirmé `grafana --version` dans l'image
   `grafana/otel-lgtm:0.11.4`) — `GF_SERVER_ROOT_URL` +
-  `GF_SERVER_SERVE_FROM_SUB_PATH=true` sont un mécanisme natif ancien et
-  stable de Grafana. Non rejoué en conteneur complet avec provisioning
-  (coût disproportionné à ce stade) — smoke-test réel exigé en tâche
-  d'implémentation, pas supposé acquis.
+  `GF_SERVER_SERVE_FROM_SUB_PATH=true` **rejoué en conteneur réel** dans
+  cette session (`docker run` direct, sans provisioning ni Traefik) :
+  `/admin/grafana/login` → 200, `/admin/grafana/api/health` → sain, `/login`
+  sans préfixe → 301. Confirme aussi que ce mode attend le préfixe
+  **conservé** par le proxy, contrairement à Martin/Titiler (cf. §4.1) — pas
+  rejoué avec le provisioning complet de ce dépôt (dashboards/alerting),
+  seulement le mécanisme de sous-chemin lui-même.
 - **Console MinIO `minio/minio:RELEASE.2025-09-07T16-13-09Z`** —
   **aucun** flag ni variable d'environnement de sous-chemin dans
   `minio --help` / `minio server --help` (sortie complète inspectée). La
