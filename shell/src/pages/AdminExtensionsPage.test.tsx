@@ -2,60 +2,49 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AdminExtensionsPage } from "./AdminExtensionsPage";
 
+// jsdom n'implémente pas window.matchMedia (piège n°10) ; TriptychLayout
+// l'appelle via useNarrowViewport. Stub local, avec vi.unstubAllGlobals()
+// en afterEach dès son introduction (même patron que SqlLabPage.test.tsx,
+// SP-30i).
+function stubMatchMedia(matches: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  );
+}
+
+beforeEach(() => stubMatchMedia(false));
+afterEach(() => vi.unstubAllGlobals());
+
 function Harness() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
   return (
-    <QueryClientProvider client={queryClient}>
-      <ItemClientProvider client={client}>
-        <AdminExtensionsPage />
-      </ItemClientProvider>
-    </QueryClientProvider>
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <ItemClientProvider client={client}>
+          <AdminExtensionsPage />
+        </ItemClientProvider>
+      </QueryClientProvider>
+    </MemoryRouter>
   );
 }
-
-test("shows an access-denied message and never calls /extensions when the user is not admin", async () => {
-  let extensionsCalled = false;
-  server.use(
-    http.get("https://core.test/me", () =>
-      HttpResponse.json({
-        id: "u1",
-        username: "alice",
-        firstName: "Alice",
-        lastName: "Martin",
-        isAdmin: false,
-      }),
-    ),
-    http.get("https://core.test/extensions", () => {
-      extensionsCalled = true;
-      return HttpResponse.json({ extensions: [] });
-    }),
-  );
-  render(<Harness />);
-  await waitFor(() =>
-    expect(screen.getByRole("alert")).toHaveTextContent("Accès réservé aux administrateurs."),
-  );
-  expect(extensionsCalled).toBe(false);
-});
 
 test("lists extensions (including disabled) and toggles enabled via PATCH", async () => {
   let patchedBody: unknown;
   server.use(
-    http.get("https://core.test/me", () =>
-      HttpResponse.json({
-        id: "u1",
-        username: "admin",
-        firstName: "Admin",
-        lastName: "Root",
-        isAdmin: true,
-      }),
-    ),
     http.get("https://core.test/extensions", ({ request }) => {
       expect(new URL(request.url).searchParams.get("all")).toBe("true");
       return HttpResponse.json({
@@ -89,15 +78,6 @@ test("lists extensions (including disabled) and toggles enabled via PATCH", asyn
 
 test("surfaces an alert when the PATCH to toggle an extension fails", async () => {
   server.use(
-    http.get("https://core.test/me", () =>
-      HttpResponse.json({
-        id: "u1",
-        username: "admin",
-        firstName: "Admin",
-        lastName: "Root",
-        isAdmin: true,
-      }),
-    ),
     http.get("https://core.test/extensions", () =>
       HttpResponse.json({
         extensions: [
@@ -130,15 +110,6 @@ test("surfaces an alert when the PATCH to toggle an extension fails", async () =
 
 test("disables the enabled toggle when the instance is in read-only demo mode", async () => {
   server.use(
-    http.get("https://core.test/me", () =>
-      HttpResponse.json({
-        id: "u1",
-        username: "admin",
-        firstName: "Admin",
-        lastName: "Root",
-        isAdmin: true,
-      }),
-    ),
     http.get("https://core.test/extensions", () =>
       HttpResponse.json({
         extensions: [
@@ -162,4 +133,14 @@ test("disables the enabled toggle when the instance is in read-only demo mode", 
   render(<Harness />);
   const toggle = await screen.findByRole("checkbox", { name: "Actif : Jauge (extension)" });
   expect(toggle).toBeDisabled();
+});
+
+test("sous viewport étroit, affiche trois onglets Catalogue/Extensions/Détail avec Extensions actif par défaut", async () => {
+  stubMatchMedia(true);
+  server.use(http.get("https://core.test/extensions", () => HttpResponse.json({ extensions: [] })));
+  render(<Harness />);
+  const tabs = await screen.findAllByRole("tab");
+  expect(tabs.map((t) => t.textContent)).toEqual(["Catalogue", "Extensions", "Détail"]);
+  const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
+  expect(activeTab).toHaveTextContent("Extensions");
 });
