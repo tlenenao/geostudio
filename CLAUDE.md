@@ -532,6 +532,111 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   ci-dessous), dont plusieurs désormais répétées 3-4 fois dans la famille
   sans jamais avoir été tranchées pour de bon — actées à trancher une fois
   pour toute la famille avant SP-30i+ plutôt que reportées une fois de plus.
+- **SP-30i** (4 tâches, famille 7 « Analytique » du §6.1 de la spec SP-30)
+  — `SqlLabPage` sur `TriptychLayout` : onglets « Catalogue » (lien retour
+  seul, `Panel`) / « Requête » (éditeur/résultat existants, conteneur
+  `overflow-y-auto` posé dès l'écriture — piège déjà documenté 5 fois par
+  SP-30d→h, non répété ici) / « Historique » (liste ou `EmptyState` si
+  vide). Le vrai garde-fou de sécurité reste côté serveur
+  (`core/app/features/routes.py:421-431`, 403 si `!user.is_analyst`) :
+  retirer le check `isAnalyst` interne à la page n'est donc pas une
+  régression, `RequireRole` (déjà posé sur les trois routes admin par
+  SP-29a) devient la défense en profondeur pour ce 4e consommateur —
+  générique, vérifié structurellement identique à `KitGalleryPage.tsx`.
+  `SqlLabPage.tsx` disparaît de la liste des 9 occurrences de comparaison
+  de droits en dur visée par SP-30 (décompte réel révisé à 11
+  occurrences/6 fichiers : le texte de la spec §6.5 sous-comptait, il
+  omettait `KitGalleryPage.tsx`). E2E 118/4/0 inchangé, Vitest 223
+  fichiers/1829 tests, couverture shell 90,85 %. Revue finale de branche
+  (opus) : 0 Critical, 1 Important fermé (deux commentaires de test
+  affirmaient à tort que `SqlLabPage` refuse encore l'accès en interne,
+  alors que ce plan déplace ce refus vers `RequireRole` — corrigé,
+  attribution remise à jour, aucun changement de logique), 10 Minor
+  reportés en suivi non bloquant, plusieurs explicitement adressés à
+  SP-30j (inventaire `RequireRole` sous-compté ; `useMe()` consommé pour
+  deux usages distincts sur les pages admin — le garde ET
+  `enabled: isAdmin` sur leur requête, les deux à retirer ensemble).
+  **Ready to merge.**
+- **SP-30j** (5 tâches + 1 correctif hors-tâche du contrôleur, famille 8
+  « Administration » du §6.1 de la spec SP-30 — dernière des neuf
+  familles nommées) — `AdminExtensionsPage`/`HarvestSourcesAdminPage`/
+  `CollectionsAdminPage` sur `TriptychLayout`, les trois routes admin
+  enveloppées dans `<RequireRole role="admin">` (suivi SP-30i consommé :
+  `useMe()`/`isAdmin` disparus des trois pages, garde ET `enabled` de
+  requête retirés ensemble). Cinq dialogues Radix convertis en panneaux
+  (`CreateHarvestSourcePanel`/`EditHarvestSourcePanel`/
+  `EditCollectionPanel`/`CollectionSharePanel`/`RegisterCollectionPanel`),
+  exclusivité mutuelle entre panneaux posée par chaque gestionnaire de
+  clic (2 états sur Harvest, 3 sur Collections). E2E 118/4/0 inchangé
+  (specs harvest/collections mises à jour pour cibler `region` au lieu de
+  `dialog`). Vitest 219 fichiers/1830 tests, couverture 91,09 %.
+  **Correctif hors-tâche du contrôleur** : régression de
+  `routes.test.tsx` introduite par Task 1 (test synchrone n'attendant pas
+  la résolution de `RequireRole`/`useMe()`), trouvée en aparté par
+  l'implémenteur de Task 4 — aucune tâche ni revue par tâche ne relance
+  la suite vitest complète — corrigée directement par le contrôleur.
+  Deux tâches ont trouvé le même défaut plan-mandaté (test d'exclusivité
+  mutuelle absent du texte littéral du brief) à des stades différents :
+  Task 3 en 2 rounds de correctif avec falsification, Task 4 dès le
+  premier passage de revue grâce au briefing explicite du risque de
+  récidive. Revue finale de branche (opus) : 0 Critical, 1 Important
+  fermé — la décision 6 du plan (exempter `deleting` de la remise à zéro
+  croisée) était trouée identiquement sur les deux pages admin à
+  panneaux : supprimer une ligne pendant que SON PROPRE panneau
+  d'édition/partage est ouvert ne le refermait pas, ces panneaux n'étant
+  plus modaux depuis cette branche — fixé (remise à zéro conditionnelle
+  sur l'id après succès de la mutation), vérifié par falsification
+  indépendante du re-reviewer — 9 Minor reportés en suivi non bloquant
+  pour SP-30k+/SP-31 (dont : `aria-expanded`/`aria-controls` toujours
+  absent sur cinq déclencheurs, 5e famille consécutive à différer la
+  question, plus aucune famille suivante dans SP-30 pour la trancher ;
+  deux doctrines de mode démo différentes coexistent désormais sous le
+  même layout — `HarvestSourcesAdminPage` masque sous `!readOnly`,
+  `CollectionsAdminPage` ne le fait pas). **Ready to merge.**
+- **SP-30k** (4 tâches, dernier reliquat nommé de la spec §2.1 —
+  `ImportFileButton`/`NewItemButton`/`Tileset3DUploadButton`) — bascule
+  des trois derniers composants de **chrome** (montés dans `TopBar`, sur
+  toutes les routes protégées, à la différence de toutes les pages
+  SP-30a→j) de `ui/dialog.tsx` vers `ui/kit/Drawer` (+ `Button`/`Input`
+  du kit, tokens) : premier consommateur de production de `Drawer`
+  (livré SP-29b, jamais consommé hors `KitGalleryPage` avant ce plan).
+  Ancien funnel `onClose()` devient `onOpenChange={(next) => !next &&
+  <funnel>()}` (vérifié empiriquement avant écriture du plan : Radix
+  appelle `onOpenChange(false)` sur Échap et clic hors zone).
+  `NewItemButton`/`ImportFileButton` préservent à l'identique l'absence
+  de garde `busy` sur la fermeture ; `Tileset3DUploadButton` est seul à
+  en avoir une réelle (`requestClose()`), préservée sur ses trois chemins
+  de fermeture, test réécrit ciblant `dialog.previousSibling` (l'`Overlay`
+  Radix ne porte pas `aria-hidden="true"`, contrairement à l'ancien fond
+  fait main). `ui/button"`/`ui/input"`/`ui/dialog"` désormais absents de
+  tout `shell/src/shell/` (grep élargi au dossier entier) — seuls deux
+  consommateurs de `ui/dialog` restent dans tout le shell, tous deux hors
+  périmètre par doctrine (`AppRuntimePage.tsx`, rendu public ;
+  `builder/widgets/modal.tsx`, widget runtime « Modale »). E2E 118/4/0
+  inchangé, suite complète relancée après **chaque** tâche (Global
+  Constraint du plan). Vitest 219 fichiers/1833 tests, couverture shell
+  91,07 %. Un implémenteur de tâche s'est arrêté une fois en attendant
+  une notification de fond qui ne pouvait pas lui parvenir (piège déjà
+  noté SP-29a) — relancé par message direct, sans conséquence. Revue
+  finale (opus) : 0 Critical, 1 Important non bloquant
+  (`ImportFileButton`/`NewItemButton` n'ont — et n'avaient déjà — aucune
+  garde `busy` sur leur fermeture, comportement préexistant que le plan
+  interdisait explicitement de « corriger » ici ; à tracker
+  explicitement car SP-30k est la dernière brique nommée de la spec
+  §2.1, aucun SP-30l ne l'héritera), 7 Minor (dont : `ui/kit/Drawer.tsx`
+  sans `overflow-y-auto` sur son contenu — dette du **kit** lui-même,
+  invisible aux deux filets de test, même classe que le Critical trouvé
+  par SP-30d ; `Drawer.test.tsx` ne couvre que Échap, pas le clic hors
+  zone, dont dépend désormais un consommateur réel ; modalité Radix
+  (focus trap, scroll lock, `aria-hidden` sur le reste de la page)
+  jamais mentionnée par le plan bien que ces trois composants soient
+  montés sur toutes les routes protégées — vérifié qu'aucun portail
+  Toast/Tooltip global n'en pâtit). **Ready to merge.** Avec cette
+  branche, les neuf familles du §6.1 (SP-30a→j) et le dernier reliquat
+  nommé du §2.1 (chrome) sont tous clos ; ne reste que la revue
+  transverse de sortie de SP-30 (§7) et la dette de symbologie/popup
+  imbriquée dans `LayersPanel` (notée SP-30c, hors périmètre de tout
+  plan SP-30 jusqu'ici).
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
@@ -539,27 +644,35 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
 ### À venir
 
 - **SP-30** : réécriture des écrans qui
-  consomment enfin `Gate`/`capabilities.ts`/`tokens.css` — c'est là que les 9
-  occurrences restantes de comparaison de droits en dur (`SqlLabPage.tsx`,
-  `AdminExtensionsPage.tsx`, `HarvestSourcesAdminPage.tsx`,
-  `CollectionsAdminPage.tsx`, `AppLayout.tsx`) doivent disparaître, que les
-  permissions de collection et le profil « Lecteur » se tranchent, et que la
-  raison de verrouillage triplée d'`ItemActions` (cf. entrée SP-29a) peut être
-  regroupée si voulu. Basculera les écrans réels sur le kit `ui/kit/`
-  (SP-29b) et retirera les anciens fichiers `ui/*`. SP-30c a traité la
+  consomment enfin `Gate`/`capabilities.ts`/`tokens.css`. SP-30c a traité la
   famille 3 (Cartes, `MapEditorPage`), SP-30d la famille 4 (Données,
   `DatasetEditPage`), SP-30e la famille 5 (Apps & sites, `AppBuilderPage`),
-  SP-30f la famille 6 volet 1 (Automatisation, `PipelineBuilderPage`),
-  SP-30g la famille 6 volet 2 (Automatisation, `ReportEditPage`), SP-30h la
-  famille 6 volet 3 et dernier (Automatisation, `VisualQueryWizardPage`)
-  du §6.1 de la spec SP-30 — **famille 6 entièrement close** ; **restent
-  les familles 7/8** (SP-30i+, à découper en plans séparés — la spec
-  proscrit un seul plan pour tout le reste) : `SqlLabPage`
-  (Analytique, famille 7), `AdminExtensionsPage`/`CollectionsAdminPage`/
-  `HarvestSourcesAdminPage` (Administration, famille 8),
-  `Tileset3DUploadButton`/`NewItemButton`/`ImportFileButton` (chrome,
-  dette de `Dialog` documentée par SP-30a, non bloquante pour aucune
-  famille). Éditeurs de symbologie/popup imbriqués dans `LayersPanel`
+  SP-30f/g/h la famille 6 (Automatisation, `PipelineBuilderPage`/
+  `ReportEditPage`/`VisualQueryWizardPage`), SP-30i la famille 7
+  (Analytique, `SqlLabPage`), SP-30j la famille 8 (Administration,
+  `AdminExtensionsPage`/`CollectionsAdminPage`/`HarvestSourcesAdminPage`),
+  SP-30k le dernier reliquat nommé de la spec §2.1 hors familles
+  (chrome : `Tileset3DUploadButton`/`NewItemButton`/`ImportFileButton`,
+  `Dialog`→`Drawer`) — **les neuf familles du §6.1 et ce dernier
+  reliquat sont désormais tous clos.** Les 9 occurrences de comparaison
+  de droits en dur visées par la spec ont disparu (SP-30i/j), les écrans
+  réels basculés sur le kit `ui/kit/` (SP-29b) sur toute la liste nommée
+  par §2.1/§6.1. Reste, hors traitement par aucun plan SP-30 à ce jour :
+  la revue transverse de sortie (§7, badge de rôle sur les quatre
+  profils, 390 px sur les huit écrans de référence, etc.) ; les
+  permissions de collection et le profil « Lecteur » qui restent à
+  trancher (cf. entrée SP-29a) ; la raison de verrouillage triplée
+  d'`ItemActions` (cf. entrée SP-29a) qui peut être regroupée si voulu ;
+  le retrait des anciens fichiers `ui/*` — encore consommés par
+  `AppRuntimePage.tsx`/`builder/widgets/modal.tsx`, hors périmètre par
+  doctrine (cf. entrée SP-30k) ; et la longue liste de suivis non
+  bloquants Minor accumulés SP-29b→SP-30k ci-dessous, dont plusieurs
+  répétitions jamais tranchées pour toute la famille (`aria-expanded`/
+  `aria-controls` sur un déclencheur de panneau en ligne : 5 familles
+  consécutives sans décision ; commentaires attribuant une garde de
+  sécurité au mauvais composant après son déplacement, trouvé Important
+  à deux reprises distinctes — SP-30g, SP-30i). Éditeurs de
+  symbologie/popup imbriqués dans `LayersPanel`
   (`MapSymbologyEditor.tsx` 797 lignes/27 couleurs, `PopupEditor.tsx`,
   `FieldClassificationPicker.tsx`, `MapMeasureSketchToolbar.tsx`,
   `MapPopup.tsx`, `MapLegend.tsx`, `formFieldStyles.ts`) : dette de tokens
@@ -712,6 +825,98 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   pour toute la famille avant sa clôture** — à faire explicitement au
   démarrage de SP-30i si elles doivent être réglées plutôt que
   perpétuées dans les familles 7/8.
+  10 Minor reportés en suivi non bloquant hérités de SP-30i (revue finale
+  de branche, tous cosmétiques, aucun ne bloquait le merge) : décompte de
+  référence de la spec §6.5 sous-comptait `RequireRole`
+  (`KitGalleryPage.tsx` en 4e consommateur, absent de l'inventaire —
+  consommé par SP-30j) ; les pages admin utilisent `useMe()` pour deux
+  usages distincts, le garde ET `enabled` de requête (consommé par
+  SP-30j) ; étape « couverture » du gabarit de Task de vérification finale
+  lance `npm run build` puis lit `coverage-summary.json`, que seul
+  `vitest run --coverage` écrit — défaut de texte copié plan après plan
+  depuis au moins SP-30d, sans conséquence à ce jour (toujours détecté et
+  contourné en session) ; `RequireRole.tsx` sans gestion de
+  `meQuery.isError` (fail-closed silencieux, 4e page de la série à faire
+  ce choix sans jamais le trancher) ; retourne `children` nu au lieu de
+  `<>{children}</>` comme son jumeau `RequireAuth.tsx` ; rechargement
+  d'historique invisible sous viewport étroit (bouton et cible dans deux
+  onglets différents, nécessiterait un changement d'API `TriptychLayout`) ;
+  SQL long en colonne étroite : débordement horizontal scrollable plutôt
+  qu'un layout cassé, jamais tranché pour la famille ; seul `<h1>` du
+  shell (`text-lg font-bold`) contre `<h2 font-semibold>` des pages
+  sœurs ; fixture `RequireRole.test.tsx` divergente du type `Me` réel,
+  héritée verbatim de l'ancienne fixture `SqlLabPage`.
+  9 Minor reportés en suivi non bloquant hérités de SP-30j (revue finale
+  de branche, tous cosmétiques, aucun ne bloquait le merge) : commentaire
+  « décision 5 » au lieu de « décision 6 », commité deux fois (Collections
+  et Harvest) ; `ui/ConfirmDialog.tsx` (l'ancien, pas `ui/kit/ConfirmDialog`)
+  devenu orphelin, supprimable ; paramètres `options?: { enabled? }` morts
+  sur 5 hooks (plus aucun appelant réel après cette branche, sauf
+  `useCollectionsAdmin`) ; les deux tests d'exclusivité mutuelle
+  (Harvest/Collections) utilisent des idiomes de locator différents,
+  celui de Collections dépendant silencieusement d'une fixture vide ;
+  `CollectionSharePanel` seul panneau à ne pas nommer son sujet dans son
+  titre (contrairement à ses jumeaux « Éditer {title} ») ; erreur de
+  mutation figée non effaçable au re-clic sur la même ligne, sur les deux
+  pages à panneaux ; perte nette d'assertions unitaires vs les 4 anciens
+  fichiers de test de dialogue supprimés, compensée par l'E2E ;
+  `aria-expanded`/`aria-controls` toujours absents — **5e famille
+  consécutive** (SP-30c→SP-30j), plus de famille suivante dans SP-30 pour
+  trancher, reporté à SP-31 ; sous viewport étroit, cliquer Éditer/
+  Partager/Ajouter ne produit aucun retour visuel tant que l'onglet n'est
+  pas changé manuellement — plus grave ici que sur les familles
+  précédentes car ce sont les déclencheurs CRUD primaires de la page.
+  Deux défauts de texte de plan notés pour référence (pas des défauts
+  d'implémentation) : la décision 3 du plan SP-30j promettait « même
+  test-par-composant sauf EditHarvestSourceDialog » mais son texte
+  exécutable mandatait la suppression des 4 fichiers de test de dialogue
+  — même classe que le défaut de plan trouvé par SP-30c Task 5 (prose et
+  bloc de code en désaccord, seul l'exécutable suivi) ; la justification
+  de la décision 6 (exempter `deleting`) n'était correcte que dans un
+  sens — à reformuler si le patron est réutilisé (« tout état qui monte
+  quelque chose dans l'onglet Détail doit être remis à zéro par tout
+  autre déclencheur, y compris les déclencheurs destructifs au succès »).
+  Divergence pré-existante notée en passant, pas introduite par SP-30j :
+  deux doctrines de mode démo différentes coexistent désormais sous le
+  même layout (`HarvestSourcesAdminPage` masque sous `!readOnly`,
+  `CollectionsAdminPage` ne le fait pas) — à trancher en SP-31 plutôt que
+  laisser une 3e variante apparaître.
+  7 Minor reportés en suivi non bloquant hérités de SP-30k (revue finale
+  de branche, tous cosmétiques, aucun ne bloquait le merge — **dernière
+  brique nommée de la spec §2.1, aucun SP-30l ne les héritera** : à
+  trancher à la revue transverse de sortie SP-30 §7 ou à défaut en
+  suivi séparé) : `ui/kit/Drawer.tsx` sans `overflow-y-auto` sur son
+  contenu — dette du **kit** lui-même (pas de ces trois fichiers),
+  invisible aux deux filets de test par construction (jsdom ne fait pas
+  de layout, Playwright fait défiler les conteneurs `overflow-hidden`
+  programmatiquement), même classe que le Critical trouvé par SP-30d ;
+  `Drawer.test.tsx` ne couvre que Échap, pas le clic hors zone, dont
+  dépend désormais un vrai consommateur (`Tileset3DUploadButton`) ;
+  Annuler de `Tileset3DUploadButton` reste `onClick={close}` +
+  `disabled={busy}` plutôt que `onClick={requestClose}` (un seul
+  invariant, deux mécanismes, d'où un commentaire nécessaire pour
+  l'expliquer) ; vocabulaire "dialog"/"backdrop" de l'ère `ui/dialog.tsx`
+  resté dans le test voisin non retouché de `Tileset3DUploadButton` ;
+  titres de test en anglais (chaîne littérale imposée par le plan) ;
+  recette `<select>` natif dupliquée huit fois entre les deux fichiers
+  sans anneau de focus visible, contrairement à `Input` du kit juste à
+  côté dans le même formulaire — dette à consommer par un futur plan qui
+  adopterait un `Select` du kit ; modalité Radix (focus trap, scroll
+  lock, `aria-hidden` sur le reste de la page) jamais mentionnée par le
+  plan bien que ces trois composants soient montés sur toutes les routes
+  protégées — vérifié qu'aucun portail Toast/Tooltip global n'en pâtit,
+  mais à garder en tête si un futur portail global apparaît.
+  **Important non bloquant hérité de SP-30k, à ne pas perdre faute de
+  SP-30l pour l'hériter** : `ImportFileButton`/`NewItemButton` n'ont — et
+  n'avaient déjà avant SP-30k — aucune garde `busy` sur leur fermeture
+  (contrairement à `Tileset3DUploadButton`) ; fermer le tiroir pendant
+  l'upload/le sondage/la mutation laisse la chaîne async tourner en
+  arrière-plan, qui rappellera `close()`/`navigate()` sur un tiroir
+  éventuellement rouvert entre-temps. Comportement strictement
+  préexistant à SP-30k (le plan interdisait explicitement de le
+  « corriger » dans son périmètre), donc aucune action de code prise ;
+  à rattacher explicitement à la revue de sortie SP-30 §7 plutôt que le
+  laisser disparaître silencieusement.
 - Reste **SP-15** : événements/déclencheurs durables au-delà du cron (non
   planifié) ; exposition MCP des noms de secrets (non planifiée) ; **exécuter
   réellement les 5 tests `@pytest.mark.qgis` de SP-15d** avant d'activer
