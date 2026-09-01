@@ -25,6 +25,7 @@ CAPABILITY_KEYS = {
     "tileset3dEnabled",
     "terrain3dEnabled",
     "copilotEnabled",
+    "adminToolsEnabled",
 }
 
 
@@ -129,6 +130,7 @@ _CAPABILITY_PROBES = [
     # active dès que CORE_LLM_PROVIDER est une chaîne non vide (cf. sa
     # docstring dans app/auth/dependency.py) — pas "true"/"false".
     ("CORE_LLM_PROVIDER", "copilotEnabled", "openai", ""),
+    ("CORE_ADMIN_TOOLS_ENABLED", "adminToolsEnabled", "true", "false"),
 ]
 
 
