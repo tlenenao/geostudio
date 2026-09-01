@@ -151,7 +151,7 @@ test("gives up on a job that never finishes, and lets the dialog be closed again
   expect(screen.queryByText("Nouveau tileset 3D", { selector: "h2" })).not.toBeInTheDocument();
 });
 
-test("blocks closing (Annuler, Escape, backdrop) while an upload is in progress", async () => {
+test("blocks closing (Annuler, Escape, outside pointerdown) while an upload is in progress", async () => {
   let releaseCreate: () => void = () => {};
   const createGate = new Promise<void>((resolve) => {
     releaseCreate = resolve;
@@ -179,7 +179,7 @@ test("blocks closing (Annuler, Escape, backdrop) while an upload is in progress"
     ),
   );
 
-  const { container } = render(
+  render(
     <Harness>
       <Tileset3DUploadButton />
     </Harness>,
@@ -198,14 +198,18 @@ test("blocks closing (Annuler, Escape, backdrop) while an upload is in progress"
   await userEvent.click(cancelButton);
   expect(screen.getByText("Nouveau tileset 3D", { selector: "h2" })).toBeInTheDocument();
 
-  // Escape is wired through Dialog's onClose, the same guarded handler.
+  // Escape is wired through Drawer's onOpenChange, the same guarded handler.
   fireEvent.keyDown(document, { key: "Escape" });
   expect(screen.getByText("Nouveau tileset 3D", { selector: "h2" })).toBeInTheDocument();
 
-  // Backdrop click goes through the same onClose prop.
-  const backdrop = container.querySelector('[aria-hidden="true"]');
-  expect(backdrop).not.toBeNull();
-  fireEvent.click(backdrop as Element);
+  // Outside pointerdown goes through the same funnel. Radix's
+  // DialogPrimitive.Overlay (rendered by Drawer) does not carry
+  // aria-hidden="true" — unlike the old hand-rolled ui/dialog.tsx backdrop
+  // this test used to target — so it's located as the sibling immediately
+  // before the role="dialog" content instead.
+  const dialog = screen.getByRole("dialog", { name: "Nouveau tileset 3D" });
+  const overlay = dialog.previousSibling as Element;
+  await userEvent.click(overlay);
   expect(screen.getByText("Nouveau tileset 3D", { selector: "h2" })).toBeInTheDocument();
 
   // Let the held request settle so the upload completes normally and

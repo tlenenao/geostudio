@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { useItemClient } from "../api/hooks";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Dialog } from "../ui/dialog";
+import { Button } from "../ui/kit/Button";
+import { Input } from "../ui/kit/Input";
+import { Drawer } from "../ui/kit/Drawer";
 
 // S3 multipart accepts a single part of any size — the same chunking code
 // path serves a tiny test fixture and a multi-GB tileset (design §4,
@@ -12,8 +12,8 @@ import { Dialog } from "../ui/dialog";
 const PART_SIZE_BYTES = 100 * 1024 * 1024;
 
 // A finalize job that never reaches a terminal state (stuck/lost
-// procrastinate job) must not leave the dialog permanently unclosable —
-// the close-guard blocks Annuler/Escape/backdrop while busy, and
+// procrastinate job) must not leave the drawer permanently unclosable —
+// the close-guard blocks Annuler/Escape/outside-pointerdown while busy, and
 // "finalizing" counts as busy.
 const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -99,10 +99,13 @@ export function Tileset3DUploadButton({
 
   // Closing mid-upload would leave the background submit()/poll() chain
   // running unabandoned: it would eventually call close() again (silently
-  // discarding whatever the user started in a since-reopened dialog) or
+  // discarding whatever the user started in a since-reopened drawer) or
   // setPhase("error") (overwriting that session's state). Block Escape,
-  // backdrop click, and the Annuler button alike while busy — Dialog's
-  // onClose is the single funnel for all three.
+  // outside pointerdown, and the Annuler button alike while busy —
+  // Drawer's onOpenChange is the single funnel for Escape and outside
+  // pointerdown (Radix calls it with `false` for both); the Annuler button
+  // calls close() directly, which is why it also needs its own
+  // disabled={busy} below.
   function requestClose() {
     if (busy) return;
     close();
@@ -113,9 +116,13 @@ export function Tileset3DUploadButton({
       <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
         Nouveau tileset 3D
       </Button>
-      <Dialog open={open} onClose={requestClose} title="Nouveau tileset 3D">
+      <Drawer
+        open={open}
+        onOpenChange={(next) => !next && requestClose()}
+        title="Nouveau tileset 3D"
+      >
         <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1 text-sm">
+          <label className="flex flex-col gap-1 text-sm text-ink">
             Archive du tileset (.zip)
             <input
               aria-label="Archive du tileset (.zip)"
@@ -124,20 +131,18 @@ export function Tileset3DUploadButton({
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm">
+          <label className="flex flex-col gap-1 text-sm text-ink">
             Titre
             <Input aria-label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
           {progress && (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-ink-2">
               Envoi de la partie {progress.done}/{progress.total}…
             </p>
           )}
-          {phase === "finalizing" && (
-            <p className="text-sm text-slate-500">Validation du tileset…</p>
-          )}
+          {phase === "finalizing" && <p className="text-sm text-ink-2">Validation du tileset…</p>}
           {phase === "error" && (
-            <p role="alert" className="text-sm text-red-600">
+            <p role="alert" className="text-sm text-danger">
               {error}
             </p>
           )}
@@ -150,7 +155,7 @@ export function Tileset3DUploadButton({
             </Button>
           </div>
         </form>
-      </Dialog>
+      </Drawer>
     </>
   );
 }
