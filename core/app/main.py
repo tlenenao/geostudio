@@ -48,6 +48,7 @@ from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
 from app.ratelimit.limiter import RateLimiter, route_group
 from app.reports import routes as reports_routes
+from app.roles import routes as roles_routes
 from app.schemas_routes import router as schemas_router
 from app.secrets import crypto as secrets_crypto
 from app.secrets import routes as secrets_routes
@@ -254,6 +255,7 @@ def create_app() -> FastAPI:
     app.include_router(configs_routes.router)
     app.include_router(extensions_routes.router)
     app.include_router(secrets_routes.router)
+    app.include_router(roles_routes.router)
     app.include_router(mapicons_routes.router)
     app.include_router(instance_routes.router)
     app.include_router(items_routes.router)
