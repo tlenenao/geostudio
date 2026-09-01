@@ -17,11 +17,21 @@ restent sur des ports hôte ad hoc, sans aucune route Traefik :
 | MinIO (console) | `:9001` (host) | aucun (`ports: !reset []`) |
 | Grafana/otel-lgtm | `:3001` (host, profil `observability`) | aucun (profil non repris dans l'overlay prod) |
 
-Objectif : donner à ces quatre outils une URL cohérente avec l'existant
+Objectif : donner à Martin/Titiler/Grafana une URL cohérente avec l'existant
 (`/admin/<outil>`, même domaine `${GEOSTUDIO_PUBLIC_HOST}`/`${DOMAIN}`),
 accessible aux seuls utilisateurs admin, avec un lien depuis l'espace
 Administration du shell — sans revenir sur la décision de sécurité SP-24
 (Martin ne redevient pas accessible en RLS-bypass à qui a juste l'URL).
+
+**MinIO est traité différemment** (décision de session, après vérification
+empirique §5 : sa console est une SPA sans aucun support de sous-chemin,
+confirmé en lisant `--help` de l'image réelle — ni flag ni variable
+d'environnement). Elle reste accessible exactement comme aujourd'hui
+(`:9001`, dev uniquement, aucune protection ajoutée), mais le shell affiche
+quand même un lien vers elle dans le même panneau, explicitement marqué
+comme non protégé par ce garde-fou — cohérence de *découverte* (un seul
+endroit où trouver les quatre outils), pas cohérence d'*URL* ni de
+protection pour celui-ci.
 
 ## 2. Périmètre
 
@@ -30,7 +40,7 @@ Dans le périmètre :
 - Nouvelle variable `CORE_ADMIN_TOOLS_TOKEN_SECRET` (HMAC, même convention
   que `CORE_EXPORT_TOKEN_SECRET`) et `CORE_ADMIN_TOOLS_ENABLED` (défaut
   `false`, même convention que `CORE_TILESET3D_ENABLED`).
-- Labels Traefik sur `martin`, `titiler`, `minio`, `otel-lgtm` dans
+- Labels Traefik sur `martin`, `titiler`, `otel-lgtm` dans
   `docker-compose.yml` (base, dev) **et** leur `labels: !override`
   correspondant dans `docker-compose.prod.yml` — même besoin que
   `core`/`shell`/`keycloak`, qui divergent déjà entre les deux fichiers
@@ -39,12 +49,18 @@ Dans le périmètre :
   session : même mécanisme d'auth dans les deux environnements, mais la
   config Traefik elle-même n'est pas un copier-coller brut de l'un à
   l'autre — cf. §4.2.
+- Configuration de sous-chemin par outil, chacune vérifiée contre l'image
+  réelle (§5) : `--base-path` (Martin), `TITILER_API_ROOT_PATH` (Titiler),
+  `GF_SERVER_ROOT_URL`/`GF_SERVER_SERVE_FROM_SUB_PATH` (Grafana).
 - Section « Outils d'infrastructure » dans l'espace Administration du shell
-  (zone déjà gardée par `RequireRole role="admin"`, patron SP-30j).
-- Vérification empirique, par outil, du support d'un sous-chemin (cf. §5,
-  risques) — piège n°3 du dépôt : jamais conclure depuis la doc/mémoire.
+  (zone déjà gardée par `RequireRole role="admin"`, patron SP-30j) : trois
+  boutons protégés (Martin/Titiler/Grafana) + un lien simple non protégé
+  (MinIO, cf. §6).
 
 Hors périmètre, explicitement :
+- **Console MinIO sous `/admin/minio`** — impossible (§5, vérifié contre
+  l'image réelle). Reste sur son port hôte actuel, non protégée par ce
+  garde-fou ; seul son lien de découverte dans l'UI est dans le périmètre.
 - **Retirer les ports hôte actuels** (`3010`, `8000`, `9001`, `3001`). Ils
   restent, pour le debug local direct non protégé — `/admin/*` est une voie
   d'accès supplémentaire, pas un remplacement.
@@ -77,7 +93,8 @@ même patron que `CORE_EXPORT_TOKEN_SECRET` (SP-17a).
 ### 3.1 Flux
 
 1. Le shell (déjà authentifié, JWT en mémoire) appelle
-   `POST /admin-tools/launch/{tool}` (`tool` ∈ `martin|titiler|minio|grafana`).
+   `POST /admin-tools/launch/{tool}` (`tool` ∈ `martin|titiler|grafana` —
+   MinIO n'a pas de flux `launch`, cf. §1/§6).
    Dépendance : `user: User = Depends(get_current_user)`, puis un
    `_require_admin(user)` local au module (même style que
    `harvest/routes.py`/`collections/routes.py` : `if not user.is_admin: raise
@@ -108,9 +125,9 @@ même patron que `CORE_EXPORT_TOKEN_SECRET` (SP-17a).
 
 ### 3.2 Pourquoi pas de header d'identité forwardé aux outils
 
-Martin/Titiler/MinIO/Grafana n'ont pas de notion d'utilisateur GeoStudio —
-ce sont des outils à identifiants partagés. `admin-tools/verify` n'a donc
-rien à transmettre en aval au-delà de l'autorisation (200/403) ; pas de
+Martin/Titiler/Grafana n'ont pas de notion d'utilisateur GeoStudio — ce sont
+des outils à identifiants partagés. `admin-tools/verify` n'a donc rien à
+transmettre en aval au-delà de l'autorisation (200/403) ; pas de
 `authResponseHeaders` à configurer côté Traefik pour ce besoin.
 
 ### 3.3 Mode mock (dev)
@@ -130,14 +147,15 @@ https://<host>/admin-tools/session/... → core (nouveau, bootstrap cookie)
 https://<host>/admin-tools/verify      → core (nouveau, forwardAuth uniquement)
 https://<host>/admin/martin/...        → Martin                   [nouveau, gate cookie]
 https://<host>/admin/titiler/...       → Titiler                  [nouveau, gate cookie]
-https://<host>/admin/minio/...         → console MinIO             [nouveau, gate cookie]
 https://<host>/admin/grafana/...       → Grafana/otel-lgtm         [nouveau, gate cookie, profil observability]
 ```
 
 `<host>` = `${DOMAIN}` (dev, `docker-compose.yml`) ou
-`${GEOSTUDIO_PUBLIC_HOST}` (prod, overlay).
+`${GEOSTUDIO_PUBLIC_HOST}` (prod, overlay). MinIO reste sur son port hôte
+actuel (`:9001`), hors de cette arborescence (§1).
 
-### 4.1 Labels Traefik (patron, à répéter pour les 4 outils)
+### 4.1 Labels Traefik (patron, à répéter pour les 3 outils — chacun avec sa
+propre configuration de sous-chemin, vérifiée §5)
 
 ```yaml
 labels:
@@ -151,8 +169,25 @@ labels:
   - traefik.http.services.martin.loadbalancer.server.port=3000
 ```
 
-Le middleware `admin-auth` n'est déclaré qu'une fois (sur l'un des quatre
-services, réutilisé via `@docker` par les trois autres — patron déjà utilisé
+Martin connaît son propre préfixe (`command: --config /config.yaml
+--base-path /admin/martin`, flag confirmé contre l'image réelle, §5) — le
+TileJSON qu'il sert inclut donc déjà `/admin/martin` dans ses URLs de
+tuiles, cohérent avec le `stripprefix` ci-dessus (Traefik retire le
+préfixe avant de transmettre à Martin, qui le réintroduit lui-même dans ses
+réponses).
+
+Titiler suit le même schéma mais via une variable d'environnement plutôt
+qu'un flag CLI : `TITILER_API_ROOT_PATH=/admin/titiler` (confirmé dans le
+code de l'image — `FastAPI(root_path=api_settings.root_path)`, avec une
+réécriture explicite des URLs de tuiles quand `root_path` est non vide).
+
+Grafana (`otel-lgtm`) : `GF_SERVER_ROOT_URL=https://<host>/admin/grafana`
+et `GF_SERVER_SERVE_FROM_SUB_PATH=true` (mécanisme natif de Grafana 12,
+confirmé comme version réelle embarquée — pas vérifié en conteneur tournant
+avec ces variables, à faire en tâche d'implémentation).
+
+Le middleware `admin-auth` n'est déclaré qu'une fois (sur l'un des trois
+services, réutilisé via `@docker` par les deux autres — patron déjà utilisé
 par `security-headers`/`rate-limit` entre `core` et `shell`) :
 
 ```yaml
@@ -165,7 +200,7 @@ par cohérence d'échelle avec les priorités déjà en place (1, 10, 20).
 
 ### 4.2 Overlay prod (`docker-compose.prod.yml`)
 
-Même schéma d'URL et même middleware `admin-auth`, mais les 4 services
+Même schéma d'URL et même middleware `admin-auth`, mais les 3 services
 reçoivent un `labels: !override` (comme `core`/`shell`/`keycloak` déjà dans
 ce fichier) qui remplace `entrypoints=websecure` + `tls.certresolver=
 letsencrypt` par `entrypoints=web` seul — pas d'ACME dans cet overlay, le
@@ -176,67 +211,86 @@ et Traefik chercherait un certresolver `letsencrypt` qui n'existe plus dans
 cet overlay — même piège que celui déjà corrigé pour `build:` (cf. l'en-tête
 de `docker-compose.prod.yml`).
 
-## 5. Risques connus — à vérifier empiriquement avant le plan d'implémentation
+## 5. Risques connus — vérifiés empiriquement contre les images réelles
 
 Piège n°3 du dépôt (« le texte d'un plan est régulièrement faux sur les
-interfaces tierces ») s'applique directement ici : aucune des lignes
-suivantes ne doit être crue sans test contre l'image réelle.
+interfaces tierces ») s'applique directement ici. Vérifié en session,
+contre les images réellement épinglées par ce dépôt (`docker run --help`,
+lecture du code embarqué) — pas contre leur documentation générique :
 
-- **Martin (`ghcr.io/maplibre/martin:v0.18.0`)** : le TileJSON qu'il sert
-  contient des URLs de tuiles absolues. Servi derrière un `stripprefix`, ces
-  URLs internes pourraient ne pas inclure `/admin/martin`, cassant un client
-  (QGIS) qui suit le catalogue plutôt que de construire l'URL lui-même. À
-  tester : Martin a-t-il un flag de base-path, ou un header
-  `X-Rewrite-URL`/équivalent ?
-- **Console MinIO** : son support d'un sous-chemin dépend de la version et
-  de variables spécifiques (`MINIO_BROWSER_REDIRECT_URL` ou équivalent) — à
-  vérifier contre l'image épinglée du dépôt, pas contre la doc générique
-  MinIO (qui couvre plusieurs générations de la console).
-- **Grafana** (`grafana/otel-lgtm:0.11.4`, image composite) : le support
-  natif (`GF_SERVER_ROOT_URL`, `GF_SERVER_SERVE_FROM_SUB_PATH=true`) est
-  documenté pour Grafana seul — à revérifier contre cette image précise
-  (elle empile aussi Prometheus/Loki/Tempo/le collecteur OTel, potentiellement
-  avec son propre reverse-proxy interne).
-- **Titiler** : vérifier si un `root_path` Uvicorn/Starlette est nécessaire
-  pour que `/docs` et les liens de son catalogue restent cohérents sous
-  `/admin/titiler`.
-- **`forwardauth.trustForwardHeader` / transmission du header `Cookie`** :
-  comportement par défaut de Traefik `v3.0.4` à confirmer contre une
-  instance réelle plutôt que contre la documentation Traefik (déjà vue
-  fautive une fois sur ce dépôt pour un autre outil tiers, cf. piège n°3).
-
-Aucun de ces points ne remet en cause le design ; ils déterminent seulement
-si chaque outil a besoin d'une variable d'environnement supplémentaire (déjà
-anticipée dans le patron ci-dessus, à instancier au cas par cas) ou d'un
-`stripprefix` remplacé par une réécriture plus fine.
+- **Martin `ghcr.io/maplibre/martin:v0.18.0`** — a un flag CLI
+  `--base-path <BASE_PATH>` (« Set TileJSON URL path prefix »), confirmé via
+  `docker run ... martin --help`. Combinable avec `--config /config.yaml`
+  (aucune exclusivité observée entre les deux flags).
+- **Titiler `ghcr.io/developmentseed/titiler:0.18.4`** — son `app`
+  FastAPI est construit avec `root_path=api_settings.root_path`, lu depuis
+  `TITILER_API_ROOT_PATH` (`pydantic_settings`, `env_prefix="TITILER_API_"`,
+  confirmé en lisant `titiler.application.settings`/`.main` dans l'image) ;
+  le code réécrit explicitement les URLs de tuiles quand `root_path` est
+  renseigné.
+- **Grafana 12.0.1** (confirmé `grafana --version` dans l'image
+  `grafana/otel-lgtm:0.11.4`) — `GF_SERVER_ROOT_URL` +
+  `GF_SERVER_SERVE_FROM_SUB_PATH=true` sont un mécanisme natif ancien et
+  stable de Grafana. Non rejoué en conteneur complet avec provisioning
+  (coût disproportionné à ce stade) — smoke-test réel exigé en tâche
+  d'implémentation, pas supposé acquis.
+- **Console MinIO `minio/minio:RELEASE.2025-09-07T16-13-09Z`** —
+  **aucun** flag ni variable d'environnement de sous-chemin dans
+  `minio --help` / `minio server --help` (sortie complète inspectée). La
+  console est une SPA qui suppose être servie à la racine (assets en
+  chemin absolu `/static/...`) — confirmé impossible, pas seulement
+  « à vérifier ». D'où sa sortie du périmètre `/admin/*` (§1/§2).
+- **`forwardauth` / transmission du header `Cookie`** : comportement par
+  défaut de Traefik (le serveur d'auth reçoit les en-têtes de la requête
+  originale, dont `Cookie`) — non rejoué contre une instance Traefik
+  `v3.0.4` réelle dans cette session ; à confirmer par un test d'intégration
+  concret (curl avec/sans cookie contre `/admin/martin` une fois la stack
+  levée), pas supposé acquis avant cette vérification.
 
 ## 6. UI shell
 
-Nouvelle section « Outils d'infrastructure » dans l'espace Administration
-existant (même route protégée que `AdminExtensionsPage`/
-`CollectionsAdminPage`/`HarvestSourcesAdminPage`, `RequireRole
-role="admin"`, SP-30j). Quatre boutons (Martin, Titiler, MinIO, Grafana),
-chacun :
-1. Appelle `POST /admin-tools/launch/{tool}`.
-2. Ouvre l'URL retournée (`window.open`, nouvel onglet).
+Nouvelle page `AdminInfrastructurePage` (route `/admin/infrastructure`,
+sibling de `/admin/extensions`/`/admin/collections`/`/admin/harvest`, même
+`RequireRole role="admin"`, SP-30j) — pas un panneau ajouté à une page
+existante : les trois pages admin actuelles n'ont aujourd'hui aucune
+navigation croisée entre elles (vérifié, lacune préexistante, hors
+périmètre de correction ici), donc un lien simple depuis
+`AdminExtensionsPage` (déjà la page d'atterrissage du domaine « Admin »,
+`DOMAIN_PATHS.admin`) suffit à la rendre découvrable sans reconstruire ce
+qui manque pour les deux autres.
 
-Pas de nouvelle page — un panneau de plus dans le triptyque admin déjà en
-place, cohérent avec le reste de SP-30.
+Contenu, quatre entrées dans le panneau :
+- **Martin, Titiler, Grafana** — bouton qui appelle
+  `POST /admin-tools/launch/{tool}` puis ouvre l'URL retournée
+  (`window.open`, nouvel onglet). Masqué (remplacé par un message) si
+  `CORE_ADMIN_TOOLS_ENABLED` est faux (`instanceQuery.data?.
+  adminToolsEnabled`, même patron que `copilotEnabled` sur
+  `AppBuilderPage`).
+- **MinIO** — lien simple (`<a>`, pas de `launch`), construit côté client
+  (`${window.location.protocol}//${window.location.hostname}:9001`),
+  explicitement annoté « accès direct, non protégé par ce garde-fou,
+  fonctionne seulement si le port 9001 est exposé sur cet hôte » — honnête
+  sur le fait qu'il ne bénéficie d'aucune des garanties des trois autres.
 
 ## 7. Tests
 
-- Core : tests unitaires du module `admin_tools` — jeton valide/expiré/
-  mauvais `tool`/mauvaise signature, cookie valide/expiré/absent, 403 pour
-  un non-admin sur `launch`. `CORE_ADMIN_TOOLS_ENABLED=false` → routeur non
-  monté (même patron de test que `CORE_TILESET3D_ENABLED`).
+- Core : tests unitaires du module `admin_tools` — jeton de lancement
+  valide/expiré/mauvais `tool`/mauvaise signature, cookie de session
+  valide/expiré/absent, 403 pour un non-admin sur `launch`.
+  `CORE_ADMIN_TOOLS_ENABLED=false` → routeur non monté (même patron de test
+  que `CORE_TILESET3D_ENABLED`, `test_tileset3d_enabled_flag.py`).
+  `adminToolsEnabled` ajouté à `GET /instance` et `GET /me`, couvert par le
+  test de parité paramétré existant (`test_auth_me_capabilities.py`,
+  `_CAPABILITY_PROBES`).
 - Pas de test E2E Playwright prévu contre les outils tiers eux-mêmes (hors
   périmètre de contrôle du dépôt) — seul le bouton de lancement côté shell
   (appel `launch`, ouverture d'onglet) est testable en Vitest avec
   `window.open` mocké.
-- Vérification manuelle obligatoire, par outil, une fois le
-  `docker-compose.yml` modifié : `docker compose up`, se connecter comme
-  admin, cliquer chaque bouton, confirmer que l'outil s'affiche
-  correctement sous son sous-chemin (cf. §5).
+- Vérification manuelle obligatoire une fois le `docker-compose.yml`
+  modifié : `docker compose up`, `curl` direct contre `/admin-tools/verify`
+  avec et sans cookie (confirme le comportement `forwardAuth` réel, §5),
+  puis connexion admin dans le shell et clic sur chacun des trois boutons
+  pour confirmer l'affichage correct sous son sous-chemin.
 
 ## 8. Questions ouvertes pour la suite (pas bloquantes pour ce design)
 
