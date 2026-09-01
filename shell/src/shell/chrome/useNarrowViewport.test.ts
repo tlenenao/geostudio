@@ -23,13 +23,13 @@ function mockMatchMedia(initialMatches: boolean) {
   };
 }
 
-test("retourne false par défaut au-dessus de 390 px", () => {
+test("retourne false par défaut strictement au-dessus de 390 px", () => {
   mockMatchMedia(false);
   const { result } = renderHook(() => useNarrowViewport());
   expect(result.current).toBe(false);
 });
 
-test("retourne true sous 390 px et suit les changements", () => {
+test("retourne true à 390 px ou en-dessous, et suit les changements", () => {
   const { fireChange } = mockMatchMedia(true);
   const { result } = renderHook(() => useNarrowViewport());
   expect(result.current).toBe(true);
