@@ -248,16 +248,24 @@ ignore_imports = [
     "app.analytics.sql_sandbox -> app.collections.introspection",
     # `app.auth` est bas dans le contrat car `app.auth.dependency` (surtout
     # `get_current_user`) est consommé par la quasi-totalité des modules —
-    # il doit rester proche de la fondation. `GET /me` (app.auth.routes),
-    # lui, a besoin d'un signal de rôle (`hasAnyEditorRole`, SP-30a Task 2)
-    # qui exige de lire les tables de partage, propriété d'`app.sharing`,
-    # placé plus haut. Aucune place linéaire du contrat ne permet les deux à
-    # la fois sans réordonner tout le graphe (`app.sharing.routes` importe
-    # déjà `app.auth.dependency` dans l'autre sens). Exemption nommée à
-    # l'arête exacte, comme pour `app.analytics` ci-dessus : seule cette
-    # arête est autorisée, tout autre import d'`app.sharing` depuis
-    # `app.auth` reste interdit et fera échouer le contrat.
-    "app.auth.routes -> app.sharing.repository",
+    # il doit rester proche de la fondation. app.roles doit être AU-DESSUS
+    # d'app.auth (ses propres routes, app.roles.routes, ont besoin de
+    # get_current_user), mais /me et PATCH /users/{id} (app.auth.routes, EN
+    # DESSOUS) doivent lire le rôle et les privilèges de l'appelant/de la
+    # cible. Aucune place linéaire du contrat ne permet les deux sens à la
+    # fois sans réordonner tout le graphe. Exemption nommée aux arêtes
+    # exactes, comme pour `app.analytics` ci-dessus : seules ces trois
+    # arêtes sont autorisées, tout autre import d'`app.roles` depuis
+    # `app.auth.routes` reste interdit et fera échouer le contrat.
+    #
+    # Note historique : une exemption `app.auth.routes -> app.sharing.repository`
+    # a existé ici (SP-30a Task 2, pour `hasAnyEditorRole` dans `GET /me`) —
+    # retirée quand cette tâche a remplacé `isAdmin`/`isAnalyst`/
+    # `hasAnyEditorRole` par `role`/`privileges` : `app.auth.routes`
+    # n'importe plus rien d'`app.sharing`.
+    "app.auth.routes -> app.roles.repository",
+    "app.auth.routes -> app.roles.privileges",
+    "app.auth.routes -> app.roles.guards",
     # app.roles doit être AU-DESSUS d'app.auth dans ce contrat (ses propres
     # routes, app.roles.routes, ont besoin de get_current_user) — mais
     # get_or_create_user (app.users.repository, sous app.auth) doit résoudre
