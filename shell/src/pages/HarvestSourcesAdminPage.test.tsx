@@ -132,6 +132,36 @@ test("edits a source via the row action", async () => {
   await waitFor(() => expect(patched).toMatchObject({ url: "https://a (édité)" }));
 });
 
+test("cliquer « Ajouter une source » pendant l'édition ferme le panneau d'édition", async () => {
+  server.use(
+    http.get("https://core.test/harvest/sources", () =>
+      HttpResponse.json({
+        sources: [
+          {
+            id: "src-1",
+            type: "stac",
+            url: "https://a",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: null,
+            lastError: null,
+          },
+        ],
+      }),
+    ),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Éditer" }));
+  expect(await screen.findByRole("region", { name: "Éditer https://a" })).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une source" }));
+  expect(screen.queryByRole("region", { name: "Éditer https://a" })).not.toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Ajouter une source" })).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "Enregistrer" })).toHaveLength(1);
+});
+
 test("delete removes the source from the list", async () => {
   let deleted = false;
   server.use(
