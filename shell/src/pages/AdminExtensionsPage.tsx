@@ -21,6 +21,9 @@ export function AdminExtensionsPage() {
               <Link to="/" className="text-accent hover:underline">
                 ← Retour au catalogue
               </Link>
+              <Link to="/admin/infrastructure" className="text-accent hover:underline">
+                Outils d'infrastructure →
+              </Link>
             </Panel>
           ),
         }}

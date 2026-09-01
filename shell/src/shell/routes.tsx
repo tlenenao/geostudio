@@ -15,6 +15,7 @@ import { VisualQueryWizardPage } from "../pages/VisualQueryWizardPage";
 import { ReportEditPage } from "../pages/ReportEditPage";
 import { SqlLabPage } from "../pages/SqlLabPage";
 import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
+import { AdminInfrastructurePage } from "../pages/AdminInfrastructurePage";
 import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
 import { HarvestSourcesAdminPage } from "../pages/HarvestSourcesAdminPage";
 import { KitGalleryPage } from "../pages/KitGalleryPage";
@@ -293,6 +294,14 @@ export function AppRoutes() {
           element={
             <RequireRole role="admin" deniedMessage="Accès réservé aux administrateurs.">
               <HarvestSourcesAdminPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/admin/infrastructure"
+          element={
+            <RequireRole role="admin" deniedMessage="Accès réservé aux administrateurs.">
+              <AdminInfrastructurePage />
             </RequireRole>
           }
         />
