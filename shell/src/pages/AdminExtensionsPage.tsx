@@ -1,68 +1,83 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useAllExtensions, useInstanceInfo, useMe, useSetExtensionEnabled } from "../api/hooks";
+import { Link } from "react-router-dom";
+import { useAllExtensions, useInstanceInfo, useSetExtensionEnabled } from "../api/hooks";
+import { Panel } from "../ui/kit/Panel";
+import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 
 export function AdminExtensionsPage() {
-  const meQuery = useMe();
-  const extensionsQuery = useAllExtensions({ enabled: meQuery.data?.isAdmin === true });
+  const extensionsQuery = useAllExtensions();
   const setEnabled = useSetExtensionEnabled();
   const instanceQuery = useInstanceInfo();
   const readOnly = instanceQuery.data?.readOnly === true;
 
-  if (meQuery.isLoading) {
-    return <p role="status">Chargement…</p>;
-  }
-  if (meQuery.data?.isAdmin !== true) {
-    return (
-      <p role="alert" className="text-sm text-red-600">
-        Accès réservé aux administrateurs.
-      </p>
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-lg font-bold">Extensions</h1>
-      {extensionsQuery.isLoading && <p role="status">Chargement…</p>}
-      {extensionsQuery.isError && (
-        <p role="alert" className="text-sm text-red-600">
-          Échec du chargement des extensions.
-        </p>
-      )}
-      {setEnabled.isError && (
-        <p role="alert" className="text-sm text-red-600">
-          Échec de la mise à jour de l'extension.
-        </p>
-      )}
-      {extensionsQuery.data && (
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-slate-200">
-              <th className="py-2">Étiquette</th>
-              <th className="py-2">Balise</th>
-              <th className="py-2">Module</th>
-              <th className="py-2">Actif</th>
-            </tr>
-          </thead>
-          <tbody>
-            {extensionsQuery.data.map((ext) => (
-              <tr key={ext.type} className="border-b border-slate-100">
-                <td className="py-2">{ext.label}</td>
-                <td className="py-2">{ext.tag}</td>
-                <td className="py-2 text-xs text-slate-500">{ext.moduleUrl}</td>
-                <td className="py-2">
-                  <input
-                    type="checkbox"
-                    aria-label={`Actif : ${ext.label}`}
-                    checked={ext.enabled}
-                    disabled={setEnabled.isPending || readOnly}
-                    onChange={(e) => setEnabled.mutate({ id: ext.type, enabled: e.target.checked })}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+    <div className="-m-6 flex flex-1 flex-col overflow-hidden">
+      <TriptychLayout
+        browse={{
+          id: "back",
+          label: "Catalogue",
+          content: (
+            <Panel className="m-3 flex flex-col gap-3 text-sm">
+              <Link to="/" className="text-accent hover:underline">
+                ← Retour au catalogue
+              </Link>
+            </Panel>
+          ),
+        }}
+        work={{
+          id: "extensions",
+          label: "Extensions",
+          content: (
+            <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
+              <h1 className="text-lg font-bold text-ink">Extensions</h1>
+              {extensionsQuery.isLoading && <p role="status">Chargement…</p>}
+              {extensionsQuery.isError && (
+                <p role="alert" className="text-sm text-danger">
+                  Échec du chargement des extensions.
+                </p>
+              )}
+              {setEnabled.isError && (
+                <p role="alert" className="text-sm text-danger">
+                  Échec de la mise à jour de l'extension.
+                </p>
+              )}
+              {extensionsQuery.data && (
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-rule">
+                      <th className="py-2 text-ink">Étiquette</th>
+                      <th className="py-2 text-ink">Balise</th>
+                      <th className="py-2 text-ink">Module</th>
+                      <th className="py-2 text-ink">Actif</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {extensionsQuery.data.map((ext) => (
+                      <tr key={ext.type} className="border-b border-rule-2">
+                        <td className="py-2 text-ink">{ext.label}</td>
+                        <td className="py-2 text-ink">{ext.tag}</td>
+                        <td className="py-2 text-xs text-ink-2">{ext.moduleUrl}</td>
+                        <td className="py-2">
+                          <input
+                            type="checkbox"
+                            aria-label={`Actif : ${ext.label}`}
+                            checked={ext.enabled}
+                            disabled={setEnabled.isPending || readOnly}
+                            onChange={(e) =>
+                              setEnabled.mutate({ id: ext.type, enabled: e.target.checked })
+                            }
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ),
+        }}
+        inspect={{ id: "detail", label: "Détail", content: null }}
+      />
     </div>
   );
 }
