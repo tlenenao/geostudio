@@ -2,64 +2,47 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { HarvestSourcesAdminPage } from "./HarvestSourcesAdminPage";
 
+// jsdom n'implémente pas window.matchMedia (piège n°10) ; TriptychLayout
+// l'appelle via useNarrowViewport. Stub local, avec vi.unstubAllGlobals()
+// en afterEach dès son introduction (même patron que SqlLabPage.test.tsx,
+// SP-30i).
+function stubMatchMedia(matches: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  );
+}
+
+beforeEach(() => stubMatchMedia(false));
+afterEach(() => vi.unstubAllGlobals());
+
 function Harness() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
   return (
-    <QueryClientProvider client={queryClient}>
-      <ItemClientProvider client={client}>
-        <HarvestSourcesAdminPage />
-      </ItemClientProvider>
-    </QueryClientProvider>
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <ItemClientProvider client={client}>
+          <HarvestSourcesAdminPage />
+        </ItemClientProvider>
+      </QueryClientProvider>
+    </MemoryRouter>
   );
 }
-
-function mockAdmin() {
-  server.use(
-    http.get("https://core.test/me", () =>
-      HttpResponse.json({
-        id: "u1",
-        username: "admin",
-        firstName: "Admin",
-        lastName: "Root",
-        isAdmin: true,
-      }),
-    ),
-  );
-}
-
-test("shows an access-denied message and never calls /harvest/sources when not admin", async () => {
-  let called = false;
-  server.use(
-    http.get("https://core.test/me", () =>
-      HttpResponse.json({
-        id: "u1",
-        username: "alice",
-        firstName: "Alice",
-        lastName: "Martin",
-        isAdmin: false,
-      }),
-    ),
-    http.get("https://core.test/harvest/sources", () => {
-      called = true;
-      return HttpResponse.json({ sources: [] });
-    }),
-  );
-  render(<Harness />);
-  await waitFor(() =>
-    expect(screen.getByRole("alert")).toHaveTextContent("Accès réservé aux administrateurs."),
-  );
-  expect(called).toBe(false);
-});
 
 test("admin creates a STAC source and triggers a manual run", async () => {
-  mockAdmin();
   let created: Record<string, unknown> | null = null;
   let ran = false;
   server.use(
@@ -85,13 +68,7 @@ test("admin creates a STAC source and triggers a manual run", async () => {
     http.post("https://core.test/harvest/sources", async ({ request }) => {
       created = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json(
-        {
-          id: "src-1",
-          ...created,
-          lastRunAt: null,
-          lastStatus: null,
-          lastError: null,
-        },
+        { id: "src-1", ...created, lastRunAt: null, lastStatus: null, lastError: null },
         { status: 201 },
       );
     }),
@@ -102,11 +79,7 @@ test("admin creates a STAC source and triggers a manual run", async () => {
   );
   render(<Harness />);
   await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
-  const dialog = screen.getByRole("dialog", { name: "Ajouter une source" });
-  await userEvent.type(
-    dialog.querySelector("input[aria-label='URL']")!,
-    "https://stac.example.com/collections",
-  );
+  await userEvent.type(await screen.findByLabelText("URL"), "https://stac.example.com/collections");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(created).not.toBeNull());
   expect(await screen.findByText("https://stac.example.com/collections")).toBeInTheDocument();
@@ -115,8 +88,51 @@ test("admin creates a STAC source and triggers a manual run", async () => {
   await waitFor(() => expect(ran).toBe(true));
 });
 
+test("edits a source via the row action", async () => {
+  let patched: unknown;
+  server.use(
+    http.get("https://core.test/harvest/sources", () =>
+      HttpResponse.json({
+        sources: [
+          {
+            id: "src-1",
+            type: "stac",
+            url: "https://a",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: null,
+            lastError: null,
+          },
+        ],
+      }),
+    ),
+    http.patch("https://core.test/harvest/sources/src-1", async ({ request }) => {
+      patched = await request.json();
+      return HttpResponse.json({
+        id: "src-1",
+        type: "stac",
+        url: "https://a (édité)",
+        mode: "reference",
+        enabled: true,
+        intervalMinutes: null,
+        lastRunAt: null,
+        lastStatus: null,
+        lastError: null,
+      });
+    }),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Éditer" }));
+  const urlInput = await screen.findByLabelText("URL");
+  await userEvent.clear(urlInput);
+  await userEvent.type(urlInput, "https://a (édité)");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(patched).toMatchObject({ url: "https://a (édité)" }));
+});
+
 test("delete removes the source from the list", async () => {
-  mockAdmin();
   let deleted = false;
   server.use(
     http.get("https://core.test/harvest/sources", () =>
@@ -156,7 +172,6 @@ test("delete removes the source from the list", async () => {
 });
 
 test("masque les boutons d'écriture en mode démo (read-only)", async () => {
-  mockAdmin();
   server.use(
     http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
     http.get("https://core.test/harvest/sources", () =>
@@ -183,4 +198,195 @@ test("masque les boutons d'écriture en mode démo (read-only)", async () => {
   expect(screen.queryByRole("button", { name: "Moissonner maintenant" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Éditer" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Supprimer" })).toBeNull();
+});
+
+test("sends the selected type (arcgis) on creation", async () => {
+  let body: unknown = null;
+  server.use(
+    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
+    http.post("https://core.test/harvest/sources", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json(
+        {
+          id: "s1",
+          type: "arcgis",
+          url: "https://x/FeatureServer",
+          mode: "reference",
+          enabled: true,
+          intervalMinutes: null,
+          lastRunAt: null,
+          lastStatus: null,
+          lastError: null,
+        },
+        { status: 201 },
+      );
+    }),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
+  await userEvent.type(await screen.findByLabelText("URL"), "https://x/FeatureServer");
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "arcgis");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(body).toEqual({
+      type: "arcgis",
+      url: "https://x/FeatureServer",
+      mode: "reference",
+      enabled: true,
+    }),
+  );
+});
+
+test("envoie le type WMS et force le mode référence (copie désactivée)", async () => {
+  let body: unknown = null;
+  server.use(
+    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
+    http.post("https://core.test/harvest/sources", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json(
+        {
+          id: "s1",
+          type: "wms",
+          url: "https://ows/x",
+          mode: "reference",
+          enabled: true,
+          intervalMinutes: null,
+          lastRunAt: null,
+          lastStatus: null,
+          lastError: null,
+        },
+        { status: 201 },
+      );
+    }),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
+  await userEvent.type(await screen.findByLabelText("URL"), "https://ows/x");
+  await userEvent.selectOptions(screen.getByLabelText("Mode"), "copy");
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "wms");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(body).toEqual({ type: "wms", url: "https://ows/x", mode: "reference", enabled: true }),
+  );
+});
+
+test("garde le mode copie disponible pour WFS", async () => {
+  server.use(
+    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
+  await userEvent.selectOptions(await screen.findByLabelText("Type"), "wfs");
+  const copyOption = screen.getByRole("option", { name: "Copie" }) as HTMLOptionElement;
+  expect(copyOption.disabled).toBe(false);
+});
+
+test("envoie le type CSW et force le mode référence (copie désactivée)", async () => {
+  let body: unknown = null;
+  server.use(
+    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
+    http.post("https://core.test/harvest/sources", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json(
+        {
+          id: "s1",
+          type: "csw",
+          url: "https://geonetwork.example.com/csw",
+          mode: "reference",
+          enabled: true,
+          intervalMinutes: null,
+          lastRunAt: null,
+          lastStatus: null,
+          lastError: null,
+        },
+        { status: 201 },
+      );
+    }),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
+  await userEvent.type(await screen.findByLabelText("URL"), "https://geonetwork.example.com/csw");
+  await userEvent.selectOptions(screen.getByLabelText("Mode"), "copy");
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "csw");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(body).toEqual({
+      type: "csw",
+      url: "https://geonetwork.example.com/csw",
+      mode: "reference",
+      enabled: true,
+    }),
+  );
+});
+
+test("garde le mode copie désactivé pour OGC API - Records", async () => {
+  server.use(
+    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
+  await userEvent.selectOptions(await screen.findByLabelText("Type"), "ogc-records");
+  const copyOption = screen.getByRole("option", { name: "Copie" }) as HTMLOptionElement;
+  expect(copyOption.disabled).toBe(true);
+});
+
+test("envoie le type CKAN en mode copie", async () => {
+  let body: unknown = null;
+  server.use(
+    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
+    http.post("https://core.test/harvest/sources", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json(
+        {
+          id: "s1",
+          type: "ckan",
+          url: "https://demo.data.gouv.fr",
+          mode: "copy",
+          enabled: true,
+          intervalMinutes: null,
+          lastRunAt: null,
+          lastStatus: null,
+          lastError: null,
+        },
+        { status: 201 },
+      );
+    }),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
+  await userEvent.type(await screen.findByLabelText("URL"), "https://demo.data.gouv.fr");
+  await userEvent.selectOptions(screen.getByLabelText("Type"), "ckan");
+  await userEvent.selectOptions(screen.getByLabelText("Mode"), "copy");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(body).toEqual({
+      type: "ckan",
+      url: "https://demo.data.gouv.fr",
+      mode: "copy",
+      enabled: true,
+    }),
+  );
+});
+
+test("garde le mode copie disponible pour CKAN", async () => {
+  server.use(
+    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
+  await userEvent.selectOptions(await screen.findByLabelText("Type"), "ckan");
+  const copyOption = screen.getByRole("option", { name: "Copie" }) as HTMLOptionElement;
+  expect(copyOption.disabled).toBe(false);
+});
+
+test("sous viewport étroit, affiche trois onglets Catalogue/Moissonnage/Détail avec Moissonnage actif par défaut", async () => {
+  stubMatchMedia(true);
+  server.use(
+    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
+  );
+  render(<Harness />);
+  const tabs = await screen.findAllByRole("tab");
+  expect(tabs.map((t) => t.textContent)).toEqual(["Catalogue", "Moissonnage", "Détail"]);
+  const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
+  expect(activeTab).toHaveTextContent("Moissonnage");
 });

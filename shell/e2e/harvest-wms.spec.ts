@@ -119,9 +119,9 @@ test("un admin déclare une source WMS, la moissonne, et affiche la couche raste
   // 1) Déclarer et moissonner la source WMS
   await page.goto("/admin/harvest");
   await page.getByRole("button", { name: "Ajouter une source" }).click();
-  const dialog = page.getByRole("dialog", { name: "Ajouter une source" });
-  await dialog.getByLabel("URL").fill(CAPS);
-  await dialog.getByLabel("Type").selectOption("wms");
+  const panel = page.getByRole("region", { name: "Ajouter une source" });
+  await panel.getByLabel("URL").fill(CAPS);
+  await panel.getByLabel("Type").selectOption("wms");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect
     .poll(() => created)
