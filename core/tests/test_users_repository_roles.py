@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from app.db import init_db, make_engine, make_session_factory
-from app.roles.repository import ensure_built_in_roles, get_role
+from app.roles.privileges import Privilege
+from app.roles.repository import create_role, ensure_built_in_roles, get_role
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user, set_user_role
 
@@ -100,6 +101,53 @@ def test_bootstrap_analyst_assigns_the_analyst_role_but_never_demotes_an_admin()
         )
         role = get_role(s, tenant_id=tenant.id, role_id=analyst.role_id)
         assert role is not None and role.slug == "analyst"
+
+
+def test_bootstrap_analyst_never_overwrites_a_custom_role():
+    Session = _session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        custom = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Gestionnaire sur mesure",
+            privileges=[
+                Privilege.ADMIN_USERS_MANAGE.value,
+                Privilege.ADMIN_ROLES_MANAGE.value,
+            ],
+        )
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="c",
+            username="c",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        updated = set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=user.id,
+            role_id=custom.id,
+            role_slug=custom.slug,
+        )
+        assert updated is not None and updated.role_id == custom.id
+        # Un sub désormais listé dans CORE_ANALYST_SUBS ne doit PAS écraser
+        # silencieusement un rôle sur mesure (bypass anti-lockout — cf. le
+        # commentaire dans get_or_create_user).
+        again = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="c",
+            username="c",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_analyst=True,
+        )
+        assert again.id == user.id
+        assert again.role_id == custom.id
 
 
 def test_set_user_role_updates_role_id_and_synced_is_admin():

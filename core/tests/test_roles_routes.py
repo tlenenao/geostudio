@@ -110,10 +110,18 @@ def test_a_built_in_role_privileges_cannot_be_edited_either(env):
 
 
 def test_deleting_a_role_still_in_use_is_blocked(env):
-    app, client, admin, regular, roles = env
+    # delete_role_route vérifie is_built_in AVANT le nombre de détenteurs —
+    # un rôle prédéfini renvoie donc toujours 400 sans jamais exercer le
+    # garde `holders > 0` (celui qui évite une violation de contrainte NOT
+    # NULL sur users.role_id). Utiliser un rôle personnalisé pour exercer
+    # réellement ce garde et vérifier son code 409.
+    app, client, admin, regular, _roles = env
     _as(app, admin)
-    client.patch(f"/users/{regular.id}", json={"roleId": roles["reader"]})
-    assert client.delete(f"/roles/{roles['reader']}").status_code in (400, 409)
+    created = client.post(
+        "/roles", json={"name": "Support terrain", "privileges": ["data.view"]}
+    ).json()
+    assert client.patch(f"/users/{regular.id}", json={"roleId": created["id"]}).status_code == 200
+    assert client.delete(f"/roles/{created['id']}").status_code == 409
 
 
 def test_removing_admin_roles_manage_from_the_only_holder_is_blocked(env):
@@ -138,4 +146,26 @@ def test_removing_admin_roles_manage_from_the_only_holder_is_blocked(env):
     assert reassign.status_code == 200
 
     resp = client.patch(f"/roles/{created['id']}", json={"privileges": ["admin.users.manage"]})
+    assert resp.status_code == 409
+
+
+def test_moving_the_sole_conjoint_holder_off_a_custom_role_is_blocked(env):
+    # Scénario nommé par le plan (Task 17) comme jamais testé conjointement :
+    # un rôle sur mesure porte À LA FOIS admin.users.manage ET
+    # admin.roles.manage, son seul détenteur tente de PATCH /users/{id} pour
+    # en changer de rôle lui-même (pas le rôle qu'on édite, l'utilisateur
+    # lui-même) — count_users_with_privileges doit bloquer ce PATCH /users
+    # exactement comme il bloque déjà le PATCH /roles équivalent.
+    app, client, admin, _regular, roles = env
+    _as(app, admin)
+    created = client.post(
+        "/roles",
+        json={
+            "name": "Super-admin custom",
+            "privileges": ["admin.users.manage", "admin.roles.manage"],
+        },
+    ).json()
+    assert client.patch(f"/users/{admin.id}", json={"roleId": created["id"]}).status_code == 200
+
+    resp = client.patch(f"/users/{admin.id}", json={"roleId": roles["reader"]})
     assert resp.status_code == 409

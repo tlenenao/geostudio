@@ -11,6 +11,7 @@ from app.main import create_app
 from app.roles.repository import ensure_built_in_roles
 from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
+from app.users.models import User
 from app.users.repository import get_or_create_user
 
 
@@ -113,6 +114,11 @@ def test_patch_user_cross_tenant_returns_404(env):
 
     _as(app, admin)
     assert client.patch(f"/users/{outsider.id}", json={"roleId": roles["admin"]}).status_code == 404
+    with Session() as s:
+        refetched = s.get(User, outsider.id)
+        assert refetched is not None
+        assert refetched.role_id == outsider.role_id
+        assert refetched.is_admin is False
 
 
 def test_role_change_is_audited(env):

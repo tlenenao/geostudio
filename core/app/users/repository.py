@@ -54,9 +54,14 @@ def get_or_create_user(
             # destituer silencieusement).
             user.role_id = roles["admin"].id
             user.is_admin = True
-        elif bootstrap_analyst and user.role_id not in (roles["admin"].id, roles["analyst"].id):
-            # Miroir de bootstrap_admin — ne rétrograde jamais un admin
-            # existant vers analyste.
+        elif bootstrap_analyst and user.role_id in (roles["creator"].id, roles["reader"].id):
+            # Miroir de bootstrap_admin — ne promeut que depuis un rôle
+            # prédéfini non-privilégié (creator/reader). Ne touche JAMAIS un
+            # rôle sur mesure : un tel rôle peut porter des privilèges
+            # qu'une rétrogradation silencieuse briserait, y compris
+            # l'anti-lockout (ce chemin d'écriture ne passe par aucun des
+            # deux gardes anti-lockout HTTP). "admin" est déjà exclu par la
+            # construction du elif.
             user.role_id = roles["analyst"].id
     session.flush()
     session.refresh(user)

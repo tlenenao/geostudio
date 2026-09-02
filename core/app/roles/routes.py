@@ -6,6 +6,7 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.db import get_session
 from app.roles.guards import require_privilege
+from app.roles.models import Role
 from app.roles.privileges import ALL_PRIVILEGE_VALUES, Privilege
 from app.roles.repository import (
     count_role_holders,
@@ -25,7 +26,7 @@ router = APIRouter()
 _ANTI_LOCKOUT_PRIVILEGES = [Privilege.ADMIN_USERS_MANAGE.value, Privilege.ADMIN_ROLES_MANAGE.value]
 
 
-def _role_json(role) -> RoleRead:
+def _role_json(role: Role) -> RoleRead:
     return RoleRead(
         id=role.id,
         name=role.name,
