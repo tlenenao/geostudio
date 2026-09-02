@@ -858,6 +858,152 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   gate `/admin/grafana` ; conforme au texte littéral du plan, pas un
   défaut de son exécution.
 
+- **SP-31 — rôles à base de privilèges** (17 tâches + 1 correctif hors-plan
+  + 1 lot de correctifs de revue finale, spec
+  `2026-09-01-roles-privileges-design.md`, plan
+  `2026-09-02-roles-privileges-implementation.md`) — remplace
+  `User.is_admin`/`User.is_analyst` (deux booléens plats) par un modèle de
+  rôles nommés à privilèges cochés : **18 privilèges** catalogués
+  (`app/roles/privileges.py::Privilege` — le texte du plan disait « 17 »
+  partout, coquille de prose jamais reflétée dans le code, corrigée ici),
+  **4 rôles prédéfinis immuables par tenant** (Administrateur/Créateur/
+  Analyste/Lecteur — API rejette 400 sur tout PATCH, nom **et** privilèges,
+  y compris sur le rôle Admin — décision explicitement tranchée avec Tanguy
+  après qu'une revue a trouvé le texte littéral du plan auto-contradictoire
+  entre son code de garde et son propre test) + rôles sur mesure créés par
+  tenant. `User.role_id` (FK NOT NULL) remplace `is_analyst` (colonne
+  supprimée) ; `is_admin` **survit** comme colonne synchronisée
+  exclusivement par la logique de rôle (jamais réglée indépendamment,
+  ~20 sites de lecture existants inchangés). Nouveau module `app/roles/`
+  (modèle, catalogue, repository, garde `require_privilege`, routes CRUD
+  `/roles`+`/roles/catalog` gardées `admin.roles.manage`, anti-lockout sur
+  `PATCH /roles/{id}` et `PATCH /users/{id}`), migration Alembic 0030
+  testée dans les deux sens sur base non vide réelle. Cinq modules migrés
+  de `_require_admin(user)` local vers `require_privilege(session, user,
+  Privilege.X.value)` (extensions, harvest, secrets, collections, SQL
+  Lab — dernier consommateur de `is_analyst`). Côté shell :
+  `Me.role`/`Me.privileges` remplacent `isAdmin`/`isAnalyst`/
+  `hasAnyEditorRole` ; `capabilities.ts` gagne un `requiresPrivilege` sur
+  cinq domaines (Données/Apps/Automatisation/Analytique/Tâches,
+  auparavant visibles à tout authentifié quel que soit son rôle) — ferme
+  enfin le trou « le profil Lecteur n'est pas dérivable du modèle actuel »
+  documenté depuis SP-29a ; `RequireRole` supprimé, remplacé par
+  `RequirePrivilege` sur les 4 routes `/admin/*`+`/analytics/sql`
+  existantes **et** la 5e route `/admin/infrastructure` ajoutée entre
+  temps par la session Traefik concurrente (découverte et convertie au
+  passage, sans quoi la suppression de `RequireRole` l'aurait cassée) ;
+  nouvel écran `RolesAdminPage` (créer/éditer/supprimer un rôle sur
+  mesure, cases à cocher par domaine) — patron répliqué de
+  `HarvestSourcesAdminPage`.
+  Exécuté sur un **checkout partagé avec une session concurrente active**
+  (Traefik `/admin/*`, ci-dessus) — coordination directe tout au long
+  (heads-up avant chaque build/e2e, diagnostic conjoint d'un conflit
+  d'index git résiduel sans rapport avec l'un ou l'autre plan). Débloque
+  le blocage (2) noté par l'entrée Traefik ci-dessus (`relation "roles"
+  does not exist`) : la migration 0030 existe désormais, le smoke test
+  Traefik bout-en-bout reste à rejouer par une future session.
+  Suite complète cœur **1912→1915 passed** / 168 skipped / 0 failed
+  (référence CLAUDE.md pré-plan : 1896+5+1 intermittent — delta positif,
+  aucune régression, les 2 échecs pré-existants documentés non reproduits
+  dans cet environnement). Suite shell **221 fichiers/1846 tests, 0
+  failed**, couverture 90,5 % (seuil 88), `tsc --noEmit` propre.
+  **E2E cassé puis réparé en cours de vérification finale** (piège n°6
+  concrétisé à grande échelle) : aucune des tâches shell n'avait fait
+  tourner la suite E2E complète (seulement Vitest+tsc, comme spécifié par
+  leurs briefs respectifs) — au premier run complet, 121 échecs sur ~135,
+  tous tracés à `shell/e2e/mocks.ts` et 11 specs encore construits sur
+  l'ancienne forme de `/me` (`isAdmin`/`isAnalyst`/`hasAnyEditorRole`),
+  faisant planter `AppErrorBoundary` sur quasi toute page authentifiée.
+  Diagnostiqué (pas supposé) et corrigé : 4 profils canoniques exportés
+  dans `mocks.ts`, alignés item-pour-item sur `BUILT_IN_ROLE_PRIVILEGES`.
+  **133 passed / 10 skipped / 0 failed** après correctif — vérifié via
+  `test-results/.last-run.json`, pas le tail tronqué et trompeur du
+  reporter Playwright `list` sur un run de ~14 minutes (piège
+  méthodologique à retenir pour toute future vérification E2E longue).
+  **Revue finale de branche (opus, package scopé par pathspec — `dev`
+  avait reçu ~20 commits étrangers interleaved de la session Traefik
+  pendant l'exécution) : 0 Critical, 9 Important.** Mécanisme
+  d'autorisation lui-même jugé correct, complet, bien testé (aucune route
+  n'a perdu de garde, `can()`/`decide()` intact, migration saine dans les
+  deux sens). Lot de 10 correctifs appliqué et re-revu (0 Critical/
+  Important restant, « Ready to merge: Yes », les 3 correctifs à plus
+  fort enjeu vérifiés par falsification active, pas seulement lus) :
+  - `ensure_built_in_roles` ne resynchronisait jamais un rôle prédéfini
+    déjà créé — un privilège futur serait resté inatteignable à jamais
+    pour tout tenant existant (rôle prédéfini totalement figé côté API,
+    aucune réparation possible hors migration). Corrigé : resynchronise
+    nom+privilèges à chaque appel (déjà sur le chemin chaud de toute
+    requête authentifiée, coût nul mesuré — colonne JSON inchangée
+    suppressée du flush par SQLAlchemy).
+  - **Le plus sérieux** : le chemin de connexion (`get_or_create_user`,
+    branche `bootstrap_analyst`) pouvait écraser silencieusement le rôle
+    sur mesure d'un utilisateur vers "analyst" à la connexion suivante si
+    son sub apparaissait dans `CORE_ANALYST_SUBS` — sans passer par aucun
+    des deux gardes anti-lockout HTTP, contournement réel de l'invariant
+    que la spec design demandait explicitement en couche service.
+    Régression par rapport à l'ancien code (qui n'ajoutait jamais, ne
+    retirait jamais). Corrigé : la promotion ne part plus que des rôles
+    prédéfinis non-privilégiés (creator/reader), ne touche plus jamais un
+    rôle sur mesure.
+  - 3 commentaires vivants attribuant encore une garde à `_require_admin`
+    supprimé — même classe de défaut déjà payée 2x sur ce dépôt
+    (SP-30g/SP-30i).
+  - Docstring `CollectionPermissions` (réécrite par ce même plan) corrigée
+    pour dire le vrai : `delete` reflète encore `actor_is_admin`
+    (`is_admin`), pas le privilège `admin.collections.manage` — écart
+    architectural documenté en suivi ci-dessous, PAS résolu par ce
+    correctif (portée délibérément limitée au commentaire).
+  - Test `DELETE /roles/{id}` "encore utilisé" (409) ne testait jamais ce
+    chemin (supprimait un rôle prédéfini, heurtait la garde d'immutabilité
+    400 avant d'atteindre la garde de compte de porteurs) — corrigé sur un
+    rôle sur mesure réel.
+  - `DomainBar.test.tsx` figeait l'ancien comportement (Créateur sans
+    Analytique) sous une fixture prétendant refléter le cœur mais fausse —
+    contredisait `capabilities.test.ts`, qui teste le changement
+    délibéré inverse. Corrigé — **révèle un suivi produit non résolu, cf.
+    ci-dessous**.
+  - `RolesAdminPage` (fonctionnalité phare de ce plan) inatteignable
+    depuis l'UI — aucun lien, seule la route existait. Corrigé (patron
+    répliqué du seul lien `/admin/*` existant).
+  - `app/roles` ajouté à `mypy --strict` (CI + commande locale) ; 2
+    erreurs réelles trouvées et corrigées (annotation + branche morte,
+    aucun changement de comportement).
+  - Post-condition perdue sur `test_patch_user_cross_tenant_returns_404`
+    restaurée ; nouveau test du scénario « conjoint » explicitement non
+    testé par ce plan (rôle sur mesure porteur des deux privilèges
+    anti-lockout, seul porteur, tentative de le lui retirer via
+    `PATCH /users/{id}`) — vérifié par falsification qu'il exerce bien la
+    garde `count_users_with_privileges`, distincte de celle déjà couverte
+    côté `PATCH /roles/{id}`.
+  Suivis non bloquants documentés, non corrigés (décisions de périmètre
+  plus larges qu'un lot de correctifs sans nouvelle décision produit) :
+  visibilité `is_admin` vs garde `require_privilege` divergentes sur 3
+  sites (`extensions.include_disabled`, scope de liste `/collections`,
+  `CollectionPermissions.delete` — docstring seule corrigée ci-dessus) ;
+  cast `entry.labelKey as MessageKey` non gardé dans les deux panneaux de
+  rôle (aucun test ne lie le catalogue cœur aux clés `catalog.fr.ts`) ;
+  5 des 18 privilèges (`catalog.manage`/`maps.manage`/`data.manage`/
+  `automation.secrets.manage`/`tasks.view_all`) n'imposent rien nulle
+  part — hérité du périmètre de la spec design elle-même (§3.2 prévoyait
+  une paire view/manage par domaine, seul `data.view` existe côté
+  Lecteur), pas un défaut de cette exécution ; **corriger la fixture
+  `DomainBar.test.tsx` légitime un lien de nav vers le domaine Analytique
+  pour un Créateur dont l'unique destination (`/analytics/sql`) le
+  refuse** (`analytics.sql_lab.access`, que Créateur n'a pas) — exactement
+  l'anti-pattern qu'`ItemActions` avait éliminé (SP-29a) ; décision
+  produit à trancher (gater le domaine sur `analytics.sql_lab.access`, ou
+  donner une autre destination), pas improvisée ici ; même défaut sur le
+  nouveau lien `/admin/roles` lui-même (ungated pour qui n'a pas
+  `admin.roles.manage`, mais cohérent avec le seul précédent existant,
+  `/admin/infrastructure`) ; `/admin/harvest`/`/admin/collections`
+  toujours inatteignables depuis la nav (préexistant, confirmé contre le
+  commit de base — sans rapport avec ce plan) ; privilèges du Créateur
+  triplement dupliqués (cœur + 2 fixtures test shell) sans lien
+  mécanique — le prochain privilège ajouté rouvrira la même classe de
+  défaut que `DomainBar.test.tsx` ci-dessus ; `GET /users` en N+1 (une
+  requête de rôle par utilisateur) contre la doctrine SP-29a d'une seule
+  requête par page.
+
 ### Conventions tranchées (2026-09-01)
 
 Trois dettes Minor répétées famille après famille (SP-30c→SP-30j) sans jamais
