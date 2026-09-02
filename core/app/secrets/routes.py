@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.db import get_session
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.secrets import crypto
 from app.secrets import repository as repo
 from app.secrets.models import ConnectorSecret
@@ -17,11 +19,6 @@ from app.secrets.schemas import SecretCreate
 from app.users.models import User
 
 router = APIRouter()
-
-
-def _require_admin(user: User) -> None:
-    if not user.is_admin:
-        raise HTTPException(status_code=403, detail="admin role required")
 
 
 class ConnectorSecretOut(BaseModel):
@@ -48,7 +45,7 @@ def create_secret_route(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> ConnectorSecretOut:
-    _require_admin(user)
+    require_privilege(session, user, Privilege.ADMIN_SECRETS_MANAGE.value)
     if repo.get_secret_by_name(session, tenant_id=user.tenant_id, name=body.name):
         raise HTTPException(status_code=409, detail="secret name already exists")
     ciphertext, nonce = crypto.encrypt(body.payload.model_dump())
@@ -94,7 +91,7 @@ def list_secrets_route(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> list[ConnectorSecretOut]:
-    _require_admin(user)
+    require_privilege(session, user, Privilege.ADMIN_SECRETS_MANAGE.value)
     return [_to_response(s) for s in repo.list_secrets(session, tenant_id=user.tenant_id)]
 
 
@@ -104,7 +101,7 @@ def delete_secret_route(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> None:
-    _require_admin(user)
+    require_privilege(session, user, Privilege.ADMIN_SECRETS_MANAGE.value)
     secret = repo.get_secret(session, tenant_id=user.tenant_id, secret_id=secret_id)
     if secret is None:
         raise HTTPException(status_code=404, detail="secret not found")
