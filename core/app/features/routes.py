@@ -37,6 +37,8 @@ from app.db import get_session
 from app.errors import ValidationHTTPException
 from app.features.repository import FilterError
 from app.features.validation import validate_feature
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 
 router = APIRouter()
@@ -427,8 +429,7 @@ def analytics_sql(
     conn_factory=Depends(get_duckdb_connection_factory),
     base_uri: str = Depends(get_analytics_base_uri),
 ):
-    if not user.is_analyst:
-        raise HTTPException(status_code=403, detail="analyst role required")
+    require_privilege(session, user, Privilege.ANALYTICS_SQL_LAB_ACCESS.value)
     cols = list_visible_collections(
         session,
         tenant_id=user.tenant_id,
