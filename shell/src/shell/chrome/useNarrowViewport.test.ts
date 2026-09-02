@@ -44,3 +44,7 @@ test("interroge la vraie chaîne de media query, pas seulement le booléen mock�
   renderHook(() => useNarrowViewport());
   expect(matchMedia).toHaveBeenCalledWith(NARROW_QUERY);
 });
+
+test("NARROW_QUERY correspond au seuil documenté par SP-33 (899px)", () => {
+  expect(NARROW_QUERY).toBe("(max-width: 899px)");
+});
