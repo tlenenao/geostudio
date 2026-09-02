@@ -31,13 +31,13 @@ export function MapPopup({
     <div
       role="dialog"
       aria-label="Attributs de l'entité"
-      className="absolute z-20 max-h-64 max-w-xs -translate-x-1/2 -translate-y-full overflow-auto rounded-md bg-white p-2 text-xs shadow-lg"
+      className="absolute z-20 max-h-64 max-w-xs -translate-x-1/2 -translate-y-full overflow-auto rounded-md bg-surface p-2 text-xs shadow-lg"
       style={{ left: `${x}px`, top: `${y}px` }}
     >
       <button
         type="button"
         aria-label="Fermer"
-        className="absolute right-1 top-1 px-1 text-slate-400"
+        className="absolute right-1 top-1 px-1 text-ink-3"
         onClick={onClose}
       >
         ✕
@@ -49,13 +49,13 @@ export function MapPopup({
         <dl className="grid grid-cols-[auto_1fr] gap-x-2">
           {content.rows.map((r) => (
             <div key={r.label} className="col-span-2 grid grid-cols-subgrid">
-              <dt className="text-slate-500">{r.label}</dt>
+              <dt className="text-ink-3">{r.label}</dt>
               <dd className="break-words">{r.value}</dd>
             </div>
           ))}
         </dl>
       )}
-      {empty && <p className="text-slate-400">Aucun attribut</p>}
+      {empty && <p className="text-ink-3">Aucun attribut</p>}
     </div>
   );
 }
