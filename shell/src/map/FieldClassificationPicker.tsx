@@ -20,6 +20,7 @@ import type {
 import type { PaletteId } from "../builder/widgets/palette";
 import type { ThemeColors } from "../api/types";
 import { labelCls, inputCls } from "./formFieldStyles";
+import { Button } from "../ui/kit/Button";
 
 const PALETTE_OPTIONS: { id: Exclude<PaletteId, "theme-primary">; label: string }[] = [
   { id: "categorical-a", label: "Catégorielle A" },
@@ -193,16 +194,18 @@ export function FieldClassificationPicker({
               )}
             </>
           )}
-          <button
+          <Button
             type="button"
-            className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
+            size="sm"
+            variant="outline"
+            className="self-start"
             disabled={busy}
             onClick={onRecompute}
           >
             {busy ? "Calcul…" : labels.recompute}
-          </button>
+          </Button>
           {error && (
-            <p role="alert" className="text-xs text-red-600">
+            <p role="alert" className="text-xs text-danger">
               {error}
             </p>
           )}
@@ -211,12 +214,12 @@ export function FieldClassificationPicker({
               la phrase est identique au caractère près à celle d'avant
               l'extraction. */}
           {!value.computedAt && (
-            <p className="text-xs text-amber-600">
+            <p className="text-xs text-warn">
               Classes non calculées — cliquez sur « {labels.recompute} ».
             </p>
           )}
           {value.computedAt && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ink-3">
               Classes calculées le {new Date(value.computedAt).toLocaleString()} :{" "}
               {formatDomain(value.domain)}
             </p>
