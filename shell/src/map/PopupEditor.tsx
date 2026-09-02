@@ -7,9 +7,11 @@ import { Button } from "../ui/kit/Button";
 import { labelCls, inputCls } from "./formFieldStyles";
 
 // Contrôle répété une fois par champ disponible dans une liste dense
-// (`PopupEditor` ci-dessous) : reste en h-8 par exception, comme les
-// contrôles denses équivalents de QueryFilterBuilder.tsx/
-// CrossFilterLinkEditor.tsx (convention tranchée le 2026-09-01, CLAUDE.md).
+// (`PopupEditor` ci-dessous) : reste en h-8 par exception, même hauteur que
+// les contrôles denses équivalents de QueryFilterBuilder.tsx/
+// CrossFilterLinkEditor.tsx (convention de hauteur tranchée le 2026-09-01,
+// CLAUDE.md) — seule cette hauteur est partagée, pas leur recette complète
+// (ces deux fichiers portent aussi `bg-surface text-ink`, absents ici).
 const denseInputCls = "h-8 rounded-md border border-rule px-2 text-sm";
 
 // Vérifie les placeholders d'un gabarit sans le rendre. Réutilise le scanner

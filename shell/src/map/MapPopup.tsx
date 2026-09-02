@@ -31,7 +31,7 @@ export function MapPopup({
     <div
       role="dialog"
       aria-label="Attributs de l'entité"
-      className="absolute z-20 max-h-64 max-w-xs -translate-x-1/2 -translate-y-full overflow-auto rounded-md bg-surface p-2 text-xs shadow-lg"
+      className="absolute z-20 max-h-64 max-w-xs -translate-x-1/2 -translate-y-full overflow-auto rounded-md bg-surface p-2 text-xs text-ink shadow-lg"
       style={{ left: `${x}px`, top: `${y}px` }}
     >
       <button
