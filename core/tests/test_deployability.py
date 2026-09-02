@@ -841,24 +841,30 @@ def test_grafana_router_has_no_stripprefix_middleware(compose):
     §3, vérifié contre `grafana/otel-lgtm:0.11.4` réel) : Grafana sert déjà
     ses assets avec le préfixe `/admin/grafana` conservé
     (GF_SERVER_SERVE_FROM_SUB_PATH=true) — un stripprefix Traefik devant lui
-    casserait le routage. Aucun middleware du routeur grafana, ni aucune
-    définition de middleware nommée `strip*grafana*`, ne doit exister."""
-    labels = _traefik_labels(services(compose)["otel-lgtm"])
-    middlewares = _router_middlewares(labels, "grafana")
-    assert not any("stripprefix" in m for m in middlewares), (
-        f"le routeur grafana ({compose.name}) référence un middleware dont le "
-        f"nom contient 'stripprefix' : {middlewares} — Grafana attend le "
-        "préfixe conservé, contrairement à martin/titiler."
-    )
-    stripprefix_defs = [
-        key
+    casserait le routage. Aucun middleware `stripprefix` (quel que soit le
+    service qui le DÉFINIT — Traefik fusionne les labels `@docker`
+    globalement à travers tous les conteneurs, cf. docstring de
+    `test_admin_auth_forwardauth_middleware_defined_exactly_once` — donc un
+    `strip-admin-grafana` déclaré sur `martin` mais référencé par le
+    routeur `grafana` échapperait à un scan limité à `otel-lgtm`) ne doit
+    être référencé par le routeur grafana."""
+    all_labels = {
+        name: _traefik_labels(service) for name, service in services(compose).items()
+    }
+    stripprefix_middleware_names = {
+        key.split(".")[3]
+        for labels in all_labels.values()
         for key in labels
         if key.startswith("traefik.http.middlewares.") and ".stripprefix." in key
+    }
+    middlewares = _router_middlewares(all_labels["otel-lgtm"], "grafana")
+    referenced_stripprefix = [
+        m for m in middlewares if m.split("@", 1)[0] in stripprefix_middleware_names
     ]
-    assert not stripprefix_defs, (
-        f"le service otel-lgtm ({compose.name}) définit un middleware "
-        f"stripprefix ({stripprefix_defs}) alors qu'aucun routeur grafana "
-        "n'est censé en référencer un."
+    assert not referenced_stripprefix, (
+        f"le routeur grafana ({compose.name}) référence un middleware "
+        f"stripprefix ({referenced_stripprefix}) — Grafana attend le "
+        "préfixe conservé, contrairement à martin/titiler."
     )
 
 

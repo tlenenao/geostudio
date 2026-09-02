@@ -798,8 +798,8 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   `/admin/martin`, `/admin/titiler`, `/admin/grafana` derrière un gate
   cookie que seul un admin peut ouvrir depuis le shell : module
   `core/app/admin_tools/` (jeton de lancement HMAC à durée de vie courte
-  (60s), non révocable avant expiration — pas de suivi de consommation
-  (même choix que `app/auth/export_tokens.py`, SP-17a) —,
+  (60s), non révocable avant expiration, sans suivi de consommation
+  (même choix que `app/auth/export_tokens.py`, SP-17a) :
   `POST /admin-tools/launch/{tool}` Bearer-admin → jeton de lancement →
   `GET /admin-tools/session/{tool}` échange le jeton contre un cookie
   `gs_admin_session` HttpOnly/Secure/SameSite=Strict/Path=/admin de 30 min
