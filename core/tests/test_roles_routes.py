@@ -99,6 +99,16 @@ def test_a_built_in_role_cannot_be_edited_or_deleted(env):
     assert client.delete(f"/roles/{roles['admin']}").status_code == 400
 
 
+def test_a_built_in_role_privileges_cannot_be_edited_either(env):
+    # Complément du test ci-dessus : l'immuabilité des rôles prédéfinis porte
+    # aussi bien sur le nom que sur les privilèges — aucun PATCH ne doit
+    # jamais atteindre update_role() pour un rôle is_built_in.
+    app, client, admin, _regular, roles = env
+    _as(app, admin)
+    resp = client.patch(f"/roles/{roles['reader']}", json={"privileges": ["catalog.manage"]})
+    assert resp.status_code == 400
+
+
 def test_deleting_a_role_still_in_use_is_blocked(env):
     app, client, admin, regular, roles = env
     _as(app, admin)
@@ -107,7 +117,25 @@ def test_deleting_a_role_still_in_use_is_blocked(env):
 
 
 def test_removing_admin_roles_manage_from_the_only_holder_is_blocked(env):
+    # Le rôle prédéfini Admin est désormais totalement immuable (y compris
+    # ses privilèges) : ce garde-fou anti-lockout ne peut donc s'exercer
+    # que sur un rôle personnalisé. On construit un rôle custom qui détient
+    # les deux privilèges anti-lockout, on y bascule le seul détenteur (le
+    # fixture admin, qui quitte alors le rôle prédéfini Admin — 0 détenteur
+    # restant sur ce dernier), rendant le rôle custom seul détenteur des
+    # deux privilèges, puis on tente de lui en retirer un.
     app, client, admin, _regular, roles = env
     _as(app, admin)
-    resp = client.patch(f"/roles/{roles['admin']}", json={"privileges": ["catalog.manage"]})
+    created = client.post(
+        "/roles",
+        json={
+            "name": "Super-admin custom",
+            "privileges": ["admin.users.manage", "admin.roles.manage"],
+        },
+    ).json()
+
+    reassign = client.patch(f"/users/{admin.id}", json={"roleId": created["id"]})
+    assert reassign.status_code == 200
+
+    resp = client.patch(f"/roles/{created['id']}", json={"privileges": ["admin.users.manage"]})
     assert resp.status_code == 409

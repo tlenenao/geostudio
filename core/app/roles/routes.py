@@ -88,8 +88,8 @@ def patch_role(
     role = get_role(session, tenant_id=user.tenant_id, role_id=role_id)
     if role is None:
         raise HTTPException(status_code=404, detail="role not found")
-    if role.is_built_in and body.name is not None:
-        raise HTTPException(status_code=400, detail="a built-in role's name cannot be changed")
+    if role.is_built_in:
+        raise HTTPException(status_code=400, detail="a built-in role cannot be edited")
     if body.privileges is not None:
         unknown = set(body.privileges) - set(ALL_PRIVILEGE_VALUES)
         if unknown:
