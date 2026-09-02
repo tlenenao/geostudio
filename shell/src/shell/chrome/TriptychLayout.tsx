@@ -21,7 +21,7 @@ export function TriptychLayout({
 
   if (!narrow) {
     return (
-      <div className="grid flex-1 grid-cols-[minmax(220px,280px)_1fr_minmax(260px,320px)] overflow-hidden">
+      <div className="grid flex-1 grid-cols-[minmax(220px,280px)_minmax(360px,1fr)_minmax(260px,320px)] overflow-hidden">
         <div className="overflow-y-auto border-r border-rule">{browse.content}</div>
         <div className="overflow-hidden">{work.content}</div>
         <div className="overflow-y-auto border-l border-rule">{inspect.content}</div>
