@@ -139,9 +139,9 @@ test("the runtime route renders without going through the auth gate", () => {
 });
 
 test("renders the admin extensions route at /admin/extensions", async () => {
-  // /admin/extensions passe par RequireRole (SP-30j) depuis ce commit — le
-  // handler MSW par défaut de /me renvoie isAdmin: false, il faut le
-  // surcharger et attendre la résolution avant d'affirmer sur le contenu.
+  // /admin/extensions passe par RequirePrivilege depuis ce commit — le
+  // handler MSW par défaut de /me ne porte pas admin.extensions.manage, il
+  // faut le surcharger et attendre la résolution avant d'affirmer sur le contenu.
   server.use(
     http.get("https://core.test/me", () =>
       HttpResponse.json({
@@ -151,9 +151,8 @@ test("renders the admin extensions route at /admin/extensions", async () => {
         lastName: "Martin",
         email: "alice@example.com",
         tenantId: "t1",
-        isAdmin: true,
-        isAnalyst: false,
-        hasAnyEditorRole: true,
+        role: { id: "role-admin", name: "Administrateur", slug: "admin" },
+        privileges: ["admin.extensions.manage"],
         version: "0.1.0",
         tenantSlug: "demo",
       }),
