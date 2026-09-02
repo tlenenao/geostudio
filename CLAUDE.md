@@ -792,9 +792,9 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
 
-- **Traefik /admin/\*** (7 tâches, spec
+- **SP-32 — Traefik /admin/\*** (7 tâches, spec
   `2026-09-01-traefik-admin-tools-design.md`, plan
-  `2026-09-01-traefik-admin-tools.md` — pas de numéro SP) — URLs cohérentes
+  `2026-09-01-traefik-admin-tools.md`) — URLs cohérentes
   `/admin/martin`, `/admin/titiler`, `/admin/grafana` derrière un gate
   cookie que seul un admin peut ouvrir depuis le shell : module
   `core/app/admin_tools/` (jeton de lancement HMAC à durée de vie courte
