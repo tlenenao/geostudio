@@ -199,11 +199,14 @@ def test_non_analyst_gets_403(env):
     assert resp.status_code == 403
 
 
-def test_admin_without_analyst_gets_403(env):
+def test_admin_can_access_sql_lab(env):
+    # Le rôle admin porte tous les privilèges (Tâche 1, BUILT_IN_ROLE_PRIVILEGES) —
+    # l'ancienne orthogonalité is_admin/is_analyst n'existe plus : un admin
+    # accède à SQL Lab sans devoir être en plus analyste.
     app, client, admin, _r, _tmp, _tid, _Session = env
-    _as(app, admin)  # admin mais is_analyst=False
+    _as(app, admin)
     resp = client.post("/analytics/sql", json={"sql": "SELECT 1"})
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
 
 def test_analyst_queries_readable_view(env_with_analyst):

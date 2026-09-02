@@ -128,13 +128,26 @@ def test_read_only_mode_does_not_block_the_aggregate_endpoint(env, monkeypatch):
 def test_analytics_sql_is_exempt_from_read_only(env, monkeypatch):
     """POST /analytics/sql est une lecture (SP-11c) malgré son verbe HTTP ;
     en mode démo lecture seule, le middleware ne doit pas le 403-er avant même
-    que la route ne s'exécute. La fixture `env` authentifie un admin qui n'est
-    pas analyste, donc la route elle-même renvoie 403 (analyst role required)
-    — mais ce n'est PAS le message du middleware read-only, ce qui prouve que
-    la requête a bien traversé le garde."""
+    que la route ne s'exécute. La fixture `env` authentifie un admin, qui
+    porte tous les privilèges (Tâche 1, BUILT_IN_ROLE_PRIVILEGES) et passe
+    donc le garde `require_privilege(analytics.sql_lab.access)` de la route
+    (Tâche 11) — la requête aboutit en 200, ce qui prouve elle-même qu'elle a
+    traversé le middleware read-only sans être 403-ée par lui."""
+    import duckdb
+
+    from app.features import routes as features_routes
+
+    def fake_duckdb_factory():
+        conn = duckdb.connect(":memory:")
+        conn.execute("INSTALL spatial; LOAD spatial;")
+        return conn
+
+    env.app.dependency_overrides[features_routes.get_duckdb_connection_factory] = lambda: (
+        fake_duckdb_factory
+    )
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
     response = env.post("/analytics/sql", json={"sql": "SELECT 1"})
-    assert response.status_code == 403
+    assert response.status_code == 200
     assert response.json() != {"detail": READ_ONLY_MESSAGE}
 
 
