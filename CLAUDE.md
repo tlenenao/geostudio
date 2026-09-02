@@ -1068,9 +1068,10 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   `accent`/`surface`/`sunken`), sans aucun changement de comportement —
   `formFieldStyles.ts` (1 occurrence, + `inputCls` relevé `h-8`→`h-9`,
   convention 2026-09-01), `FieldClassificationPicker.tsx` (4),
-  `MapSymbologyEditor.tsx` (28, en deux tâches — tokens puis bascule de 5
-  actions autonomes vers `Button` du kit : « Recalculer… »×3, « Ajouter un
-  contour/des icônes/une étiquette »), `PopupEditor.tsx` (7, + abandon de
+  `MapSymbologyEditor.tsx` (28, en deux tâches — bascule de 5 actions
+  autonomes vers `Button` du kit (« Recalculer… »×3, « Ajouter un
+  contour/des icônes/une étiquette ») puis tokens restants), `PopupEditor.tsx`
+  (7, + abandon de
   sa copie locale de `labelCls`/`inputCls` au profit de l'import de
   `formFieldStyles.ts`, fermant la duplication que son propre commentaire
   signalait), `LayersPanel.tsx` (0 couleur brute mais son séparateur
@@ -1112,9 +1113,10 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   localement), symbologie configurée couleur classée (Quantiles, 5
   classes) + contour fixe + icônes + étiquette, popup liste de champs +
   gabarit avancé — capturés en écran clair **et** sombre (même session,
-  `page.emulateMedia({colorScheme})`, sans rechargement) : tout reste
-  lisible et cohérent dans les deux ambiances, aucune régression de
-  contraste trouvée. **Constat fait pendant ce contrôle, pas un défaut de
+  `page.emulateMedia({colorScheme})`, sans rechargement) : tout paraissait
+  lisible et cohérent dans les deux ambiances lors de ce contrôle — **constat
+  incomplet, corrigé plus bas par la revue finale de branche.** **Constat
+  fait pendant ce contrôle, pas un défaut de
   ce plan** : la barre de mesure/croquis (`MapMeasureSketchToolbar.tsx`)
   ne se monte jamais depuis l'onglet Carte de `MapEditorPage` lui-même —
   `interactiveTools` n'y est jamais passé à `MapView` (seul
@@ -1130,7 +1132,30 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   contrôle (`psycopg.errors.DuplicatePreparedStatement` sous pgbouncer) —
   artefact d'infrastructure sans rapport avec ce plan (aucun changement
   sous `core/`, confirmé), sans conséquence sur les écrans vérifiés.
-  **Ready to merge** — pas de correctif nécessaire.
+  **Revue finale de branche (opus) : 1 Important trouvé et corrigé, invisible
+  au contrôle visuel manuel ci-dessus** — les trois superpositions carte
+  (`MapLegend.tsx`, `MapMeasureSketchToolbar.tsx`, `MapPopup.tsx`) peignent
+  leur conteneur flottant en `bg-surface`/`bg-surface/90` sans jamais
+  l'associer à `text-ink`, alors que rien dans ce dépôt ne fixe de couleur de
+  texte racine (le texte résout donc à la couleur par défaut du navigateur,
+  noir, dans les deux ambiances). Avant cette branche, ces trois fichiers
+  étaient protégés par construction : `bg-white`/`bg-white/90` forçait un
+  fond blanc, rendant le texte noir non tokenisé toujours lisible quelle que
+  soit l'ambiance. Cette branche a fait suivre le fond à l'ambiance (`#101a1e`
+  en sombre) sans faire suivre le texte — texte noir sur fond quasi-noir en
+  ambiance sombre, régression que le contrôle manuel ci-dessus n'a pas
+  détectée (capturé en ambiance claire d'abord, où le défaut ne se voit pas).
+  Corrigé en ajoutant `text-ink` aux trois conteneurs, à côté de la classe
+  `bg-surface`/`bg-surface/90` déjà en place — className seul, aucun
+  changement de comportement, les 46 tests existants des 3 fichiers +
+  `PopupEditor.tsx` restent verts sans modification. 2 Minor également
+  corrigés dans le même lot : commentaire `denseInputCls` de `PopupEditor.tsx`
+  resserré pour ne revendiquer que la parité de hauteur `h-8` avec
+  `QueryFilterBuilder.tsx`/`CrossFilterLinkEditor.tsx` (pas leur recette
+  complète, qu'il n'a pas) ; ordre des deux tâches sur
+  `MapSymbologyEditor.tsx` corrigé ci-dessus (bascule vers `Button` d'abord,
+  tokens ensuite — l'inverse de ce que cette entrée affirmait initialement).
+  **Ready to merge** — correctif appliqué et vérifié.
 
 ### Conventions tranchées (2026-09-01)
 

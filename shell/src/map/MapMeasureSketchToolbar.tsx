@@ -416,7 +416,7 @@ export function MapMeasureSketchToolbar({
   const buttonCls = "rounded border border-rule px-2 py-1";
 
   return (
-    <div className="absolute left-2 top-2 z-10 flex flex-col gap-1 rounded-md bg-surface/90 p-2 text-xs shadow">
+    <div className="absolute left-2 top-2 z-10 flex flex-col gap-1 rounded-md bg-surface/90 p-2 text-xs text-ink shadow">
       <div className="flex flex-wrap gap-1">
         <button
           type="button"
