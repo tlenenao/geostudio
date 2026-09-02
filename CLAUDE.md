@@ -792,6 +792,70 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
 
+- **Traefik /admin/\*** (7 tâches, spec
+  `2026-09-01-traefik-admin-tools-design.md`, plan
+  `2026-09-01-traefik-admin-tools.md` — pas de numéro SP) — URLs cohérentes
+  `/admin/martin`, `/admin/titiler`, `/admin/grafana` derrière un gate
+  cookie que seul un admin peut ouvrir depuis le shell : module
+  `core/app/admin_tools/` (jeton de lancement HMAC à usage unique 60s,
+  `POST /admin-tools/launch/{tool}` Bearer-admin → jeton de lancement →
+  `GET /admin-tools/session/{tool}` échange le jeton contre un cookie
+  `gs_admin_session` HttpOnly/Secure/SameSite=Strict/Path=/admin de 30 min
+  — **premier cookie de tout ce dépôt** — vérifié par `GET
+  /admin-tools/verify`, la cible du `forwardAuth` Traefik), les trois
+  routes montées uniquement si `CORE_ADMIN_TOOLS_ENABLED` (même convention
+  que `terrain3d`/`tileset3d`/`copilot`, absentes de l'export OpenAPI par
+  défaut). Sous-chemin par outil vérifié contre l'image réelle : `--base-path`
+  pour Martin, `TITILER_API_ROOT_PATH` pour Titiler, `GF_SERVER_ROOT_URL`/
+  `GF_SERVER_SERVE_FROM_SUB_PATH` pour Grafana (seul des trois SANS
+  `stripprefix`, préfixe conservé — vérifié empiriquement contre
+  `grafana/otel-lgtm:0.11.4` réel). Overlay prod (`docker-compose.prod.yml`)
+  reprend les mêmes noms de routeur/service/middleware, substitue
+  `entrypoints=web`/`${GEOSTUDIO_PUBLIC_HOST}` (pas d'ACME). Shell :
+  `ItemClient.launchAdminTool`/`useLaunchAdminTool`, page
+  `AdminInfrastructurePage` (`/admin/infrastructure`, `RequireRole
+  role="admin"`, trois boutons masqués — pas juste désactivés — quand la
+  capacité est inactive, lien de découverte depuis `AdminExtensionsPage`)
+  + lien MinIO direct non gaté (limite technique assumée, cf. spec §1/§5).
+  E2E 130/4/0 → **inchangé** (aucun nouveau spec E2E dans ce plan, cf.
+  spec §7) ; suite complète relancée en contexte élargi (post-SP-30l) :
+  Vitest shell 220/220 fichiers, 1839/1839 tests, E2E 141 (136 passed/5
+  skipped, 1 flake de contention confirmé et effacé en isolation — cf.
+  ci-dessous). Suite core : 69/69 tests admin_tools-spécifiques,
+  `test_deployability.py` 35/35, portes qualité (ruff/mypy --strict/
+  lint-imports/couverture 85,69 %) toutes vertes. **Exécuté sur un
+  checkout partagé avec une session concurrente active** (refactor
+  "roles/privileges", `2026-09-02-roles-privileges-implementation.md`) :
+  contention réelle de ports/build shell (E2E, coordonnée directement avec
+  l'autre session) et 14 échecs de la suite core préexistants/hors-scope
+  (retrait de `user.is_analyst`, confirmé en isolant les 5 fichiers
+  concernés → 0 échec restant). **Le smoke test réel de bout en bout
+  (Step 6 : lancement→session→cookie→accès Martin via Traefik) n'a PAS pu
+  être rejoué dans cet environnement** — deux blocages indépendants, ni
+  l'un ni l'autre imputable à ce plan : (1) `traefik:v3.0.4` ne peut pas
+  parler au démon Docker de cette machine (`Error response from daemon:
+  ""` en boucle, TOUS les routeurs Traefik répondent 404, y compris une
+  route préexistante sans rapport testée en contrôle) — skew de version
+  probable entre l'image pinnée et un moteur Docker très récent
+  (29.4.3/API 1.54), persiste après redémarrage du conteneur ; (2) requête
+  authentifiée directe contre `core` (contournant Traefik) répond 500 —
+  `relation "roles" does not exist`, la session concurrente
+  "roles-privileges" n'a pas encore écrit sa migration Alembic (ses
+  propres tests passent en SQLite mémoire, schéma construit hors Alembic,
+  trou invisible à sa propre suite). Décision actée avec Tanguy : clore ce
+  plan sur la preuve statique (`docker compose config`, Tâches 4/5) + la
+  preuve TDD (Tâche 3, 10/10, `GET /admin-tools/verify` sans cookie
+  confirmé 403 en direct contre `core:8200`) plutôt que d'attendre la
+  résolution de ces deux éléments externes — **à rejouer réellement une
+  fois les deux résolus**, ni l'un ni l'autre dans le périmètre de ce
+  plan.
+  **Suivi non bloquant, sécurité, à trancher séparément** : le nouveau
+  bloc `otel-lgtm` de l'overlay prod ne fait pas `ports: !reset []`
+  (contrairement à `martin`/`titiler`) — Grafana (3001) et les deux ports
+  OTLP (4317/4318) restent publiés directement sur l'hôte en prod, hors du
+  gate `/admin/grafana` ; conforme au texte littéral du plan, pas un
+  défaut de son exécution.
+
 ### Conventions tranchées (2026-09-01)
 
 Trois dettes Minor répétées famille après famille (SP-30c→SP-30j) sans jamais
