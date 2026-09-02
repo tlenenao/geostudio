@@ -11,6 +11,7 @@ import {
   type StrokeStyle,
 } from "../builder/widgets/mapSymbology";
 import { LUCIDE_ICONS, type IconCategory } from "../builder/widgets/iconLibrary";
+import { Button } from "../ui/kit/Button";
 import { FieldClassificationPicker, type ClassifiedEncoding } from "./FieldClassificationPicker";
 import { labelCls, inputCls } from "./formFieldStyles";
 import type { ThemeColors } from "../api/types";
@@ -353,14 +354,16 @@ export function MapSymbologyEditor({
       )}
       {size?.field && (
         <>
-          <button
+          <Button
             type="button"
-            className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
+            size="sm"
+            variant="outline"
+            className="self-start"
             disabled={busy === "size"}
             onClick={() => void recomputeSize()}
           >
             {busy === "size" ? "Calcul…" : "Recalculer la taille"}
-          </button>
+          </Button>
           {sizeError && (
             <p role="alert" className="text-xs text-red-600">
               {sizeError}
@@ -393,13 +396,15 @@ export function MapSymbologyEditor({
         />
       </label>
       {!stroke && (
-        <button
+        <Button
           type="button"
-          className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs"
+          size="sm"
+          variant="outline"
+          className="self-start"
           onClick={() => setStroke({})}
         >
           Ajouter un contour
-        </button>
+        </Button>
       )}
       {stroke && (
         <div className="flex flex-col gap-2 border-l-2 border-slate-200 pl-2">
@@ -530,13 +535,15 @@ export function MapSymbologyEditor({
         </div>
       )}
       {!icon && !iconDraft && (
-        <button
+        <Button
           type="button"
-          className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs"
+          size="sm"
+          variant="outline"
+          className="self-start"
           onClick={() => setIconDraft(true)}
         >
           Ajouter des icônes
-        </button>
+        </Button>
       )}
       {(icon || iconDraft) && (
         <div className="flex flex-col gap-2 border-l-2 border-slate-200 pl-2">
@@ -550,14 +557,16 @@ export function MapSymbologyEditor({
               onChange={(e) => setIconField(e.target.value)}
             />
           </label>
-          <button
+          <Button
             type="button"
-            className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
+            size="sm"
+            variant="outline"
+            className="self-start"
             disabled={iconBusy || !iconField}
             onClick={() => void recomputeIconDomain()}
           >
             {iconBusy ? "Calcul…" : "Recalculer les valeurs"}
-          </button>
+          </Button>
           {iconError && <p className="text-xs text-red-700">{iconError}</p>}
 
           {icon?.domain.values.map((v) => {
@@ -719,9 +728,11 @@ export function MapSymbologyEditor({
       )}
 
       {!value?.label && (
-        <button
+        <Button
           type="button"
-          className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs"
+          size="sm"
+          variant="outline"
+          className="self-start"
           onClick={() =>
             onChange({
               ...value,
@@ -736,7 +747,7 @@ export function MapSymbologyEditor({
           }
         >
           Ajouter une étiquette
-        </button>
+        </Button>
       )}
       {value?.label && (
         <div className="flex flex-col gap-2 border-l-2 border-slate-200 pl-2">
