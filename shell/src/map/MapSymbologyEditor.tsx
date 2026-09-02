@@ -411,7 +411,7 @@ export function MapSymbologyEditor({
           <div className="flex gap-1">
             <button
               type="button"
-              className={`rounded-md border border-rule px-2 py-1 text-xs ${
+              className={`rounded-md border border-rule px-2 py-1 text-xs text-ink ${
                 strokeColorIsFixed ? "bg-sunken" : ""
               }`}
               aria-pressed={strokeColorIsFixed}
@@ -433,7 +433,7 @@ export function MapSymbologyEditor({
             </button>
             <button
               type="button"
-              className={`rounded-md border border-rule px-2 py-1 text-xs ${
+              className={`rounded-md border border-rule px-2 py-1 text-xs text-ink ${
                 !strokeColorIsFixed ? "bg-sunken" : ""
               }`}
               aria-pressed={!strokeColorIsFixed}

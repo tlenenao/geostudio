@@ -1155,7 +1155,18 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   complète, qu'il n'a pas) ; ordre des deux tâches sur
   `MapSymbologyEditor.tsx` corrigé ci-dessus (bascule vers `Button` d'abord,
   tokens ensuite — l'inverse de ce que cette entrée affirmait initialement).
-  **Ready to merge** — correctif appliqué et vérifié.
+  **Ready to merge** — correctif appliqué et vérifié. **Re-revue de ce
+  correctif (round 2, même jour) : même classe de défaut trouvée sur 2 sites
+  de plus**, restés hors du lot ci-dessus — les deux boutons de bascule
+  « Couleur de contour fixe »/« Couleur de contour par attribut » de
+  `MapSymbologyEditor.tsx` (lignes ~415/437) peignaient leur fond actif en
+  `bg-sunken` (`#16232a` en ambiance sombre) sans jamais l'associer à
+  `text-ink` non plus — exactement le même mécanisme, la balayette de
+  clôture (Task 10) ne portant que sur les couleurs Tailwind brutes, pas sur
+  cette classe de défaut de contraste. Le correctif complet couvre donc
+  **5 sites au total** (les 3 superpositions carte ci-dessus + ces 2
+  boutons de bascule), tous par simple ajout de `text-ink` au className
+  statique, sans changement de comportement.
 
 ### Conventions tranchées (2026-09-01)
 
