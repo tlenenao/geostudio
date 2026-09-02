@@ -1,29 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect } from "@playwright/test";
-import { mockCore, mockMe } from "./mocks";
+import { mockCore, mockMe, ADMIN_ME, ANALYST_ME, CREATOR_ME, READER_ME } from "./mocks";
 
-const CASES: Array<{ profile: string; overrides: Record<string, boolean>; badge: string }> = [
+const CASES: Array<{
+  profile: string;
+  overrides: { role: { id: string; name: string; slug: string }; privileges: string[] };
+  badge: string;
+}> = [
   {
     profile: "administrateur",
-    overrides: { isAdmin: true, isAnalyst: true, hasAnyEditorRole: true },
+    overrides: ADMIN_ME,
     badge: "Administrateur",
   },
   {
     profile: "analyste",
-    overrides: { isAnalyst: true, hasAnyEditorRole: true },
+    overrides: ANALYST_ME,
     badge: "Analyste",
   },
   {
     profile: "créateur",
-    overrides: { hasAnyEditorRole: true },
+    // Explicite (pas juste {}) : ce cas doit rester correct même si le
+    // défaut partagé de mockMe() (DEFAULT_ME, mocks.ts) venait à changer de
+    // rôle par défaut.
+    overrides: CREATOR_ME,
     badge: "Créateur",
   },
   {
-    profile: "lecteur (simulé — aucun rôle éditeur, ni admin, ni analyste)",
-    // Explicite (pas juste {}) : le défaut partagé de mockMe() a
-    // hasAnyEditorRole: true (cf. mocks.ts), donc ce cas doit le désarmer
-    // lui-même pour rester le profil "aucun rôle" qu'il prétend tester.
-    overrides: { isAdmin: false, isAnalyst: false, hasAnyEditorRole: false },
+    profile: "lecteur (simulé — aucun privilège)",
+    overrides: READER_ME,
     badge: "Lecteur",
   },
 ];

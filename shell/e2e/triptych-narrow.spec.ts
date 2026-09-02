@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect, type Page } from "@playwright/test";
-import { mockCore, mockMe } from "./mocks";
+import { mockCore, mockMe, ADMIN_ME, ANALYST_ME } from "./mocks";
 
 const NARROW_WIDTH = 390;
 const NARROW_HEIGHT = 844;
@@ -230,7 +230,7 @@ const SCREENS: Array<{
   {
     name: "Analytique",
     path: "/analytics/sql",
-    before: (p) => mockMe(p, { isAnalyst: true }),
+    before: (p) => mockMe(p, ANALYST_ME),
     // Mesuré par le check corrigé (round 2, 2026-09-02) : 1 offenseur
     // stable à 641px.
     wideBoundaryKnownIssue: `Analytique : 1 offenseur stable mesuré à 641px. ${WIDE_BOUNDARY_ROOT_CAUSE}`,
@@ -262,7 +262,7 @@ const SCREENS: Array<{
   {
     name: "Administration",
     path: "/admin/extensions",
-    before: (p) => mockMe(p, { isAdmin: true }),
+    before: (p) => mockMe(p, ADMIN_ME),
     // Mesuré par le check corrigé (round 2, 2026-09-02) : 1 offenseur
     // stable à 641px.
     wideBoundaryKnownIssue: `Administration : 1 offenseur stable mesuré à 641px. ${WIDE_BOUNDARY_ROOT_CAUSE}`,
