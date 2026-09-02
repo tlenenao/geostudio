@@ -637,9 +637,11 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   transverse de sortie de SP-30 (§7) et la dette de symbologie/popup
   imbriquée dans `LayersPanel` (notée SP-30c, hors périmètre de tout
   plan SP-30 jusqu'ici).
-- **SP-30l** (3 tâches, revue transverse de sortie — §7 de la spec, clôt
-  SP-30) — les huit critères de sortie vérifiés un par un, pas supposés
-  acquis parce que les neuf familles et le chrome sont clos. 1 bug réel
+- **SP-30l** (3 tâches + round 2 de correction, revue transverse de sortie —
+  §7 de la spec ; **ne clôt PAS SP-30**, cf. paragraphe round 2 en fin
+  d'entrée et `### À venir`/SP-30) — les huit critères de sortie vérifiés un
+  par un, pas supposés acquis parce que les neuf familles et le chrome sont
+  clos. 1 bug réel
   trouvé : `useNarrowViewport` basculait sous `max-width: 389px`, classant
   390 px — la largeur CSS réelle des iPhone 12/13/14 et le seuil que la
   maquette elle-même nomme — comme *large* plutôt qu'étroit ; aucun test
@@ -704,9 +706,82 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   correctif (revérifiée par grep juste avant ce commit). Rappel pour la
   suite : dans un dépôt à sessions concurrentes, ce critère se revérifie à
   chaque clôture, il ne se suppose jamais acquis d'une vérification à
-  l'autre. E2E 118/4/0 → **137/5/0** (118 pré-existants + 16
+  l'autre. E2E 118/4/0 → 137/5/0 (118 pré-existants + 16
   `triptych-narrow.spec.ts` [8×390 px + 8×641 px, 1 skip documenté ci-
-  dessus] + 4 `account-badge.spec.ts`). **SP-30 est clos.**
+  dessus] + 4 `account-badge.spec.ts`).
+  **Round 2 de correction (2026-09-02), sur ré-examen indépendant : la revue
+  finale ci-dessus était elle-même trouée, et l'affirmation « SP-30 est clos »
+  qui suivait était prématurée — corrigée ici.** Le filet ajouté par round 1,
+  `expectNoClippedContent()` (`shell/e2e/triptych-narrow.spec.ts`), enveloppait
+  sa mesure dans `expect(...).toPass({ timeout: 3000 })` — qui s'arrête au
+  **premier** succès, jamais garanti d'observer l'état stabilisé. Sur 5 des 8
+  écrans qui rendent réellement la grille de `TriptychLayout.tsx` (Cartes,
+  Apps & sites, Analytique, Administration — Catalogue déjà correctement
+  attrapé par round 1), le tout premier sondage tombait pendant la peinture
+  initiale vide/chargement (0 offenseur), `toPass` déclarait la réussite
+  immédiatement, et la mise en page réellement installée n'était jamais
+  observée — un défaut du filet de test lui-même, pas de l'implémentation
+  qu'il prétendait vérifier (piège n°10). Corrigé par un settle-poll réel :
+  `expectNoClippedContent()` attend `networkidle` puis sonde le nombre
+  d'offenseurs toutes les ~150 ms jusqu'à 3 mesures consécutives identiques
+  (ou 5 s écoulées), et n'affirme qu'une fois sur cette mesure stabilisée —
+  **vérifié par falsification réelle**, pas supposé : le check corrigé, lancé
+  contre les écrans concernés, rapporte bien un nombre d'offenseurs stable et
+  non nul (pas 0), confirmant qu'il peut désormais échouer sur une vraie
+  casse. Une fois ce filet honnête, il révèle un clipping stable et réel à
+  641 px sur **6 des 8 écrans**, pas 1 : Catalogue (5 offenseurs, inchangé),
+  Cartes (3), Apps & sites (2), Analytique (1), Administration (1), et
+  Automatisation (2, mais seulement après avoir corrigé un second défaut —
+  voir ci-dessous). Seuls Tâches et Paramètres passent pour de vraies
+  raisons (`TasksComingSoonPage.tsx`/`SettingsComingSoonPage.tsx` ne rendent
+  qu'un `<EmptyState>`, aucune grille `TriptychLayout` à mesurer — confirmé
+  par lecture directe du fichier). Racine commune, désormais nommée dans le
+  code (`WIDE_BOUNDARY_ROOT_CAUSE`, `triptych-narrow.spec.ts`) : la grille
+  `grid-cols-[minmax(220px,280px)_1fr_minmax(260px,320px)]` de
+  `TriptychLayout.tsx` maximise d'abord ses deux colonnes latérales (jusqu'à
+  280+320=600 px combinés, algorithme standard de dimensionnement CSS Grid)
+  avant de donner quoi que ce soit à la colonne centrale (`work`, piste
+  `1fr`) — à 641 px elle n'hérite que de 41 px, quel que soit l'écran. Ce
+  n'est pas propre à 641 px : la même famine plausiblement jusqu'à
+  ~1000 px+ selon l'écran (ex. une fenêtre desktop en demi-écran) — un vrai
+  chantier de layout sur `TriptychLayout` lui-même, partagé par les neuf
+  familles SP-30, **non corrigé par ce round** (décision de Tanguy : borné,
+  pas de correctif de layout improvisé dans ce round de correction de
+  filets de test — un futur plan dédié le reprendra). Second défaut trouvé
+  en vérifiant le premier : le test « Automatisation à 641 px » passait déjà
+  avant round 2, mais pour une raison entièrement différente et sans
+  rapport — sous les mocks e2e existants, `GET /pipelines/ops` n'était pas
+  répondu du tout, `PipelineBuilderPage.tsx:62` restait bloqué sur
+  `<p role="status">Chargement…</p>`, et la grille `TriptychLayout` n'était
+  donc jamais atteinte (0 offenseur mesuré parce qu'il n'y avait rien à
+  mesurer) — un faux vert, pas un écran correct. Corrigé en ajoutant un mock
+  minimal de cette route dans le `before` de l'écran Automatisation
+  (`AUTOMATISATION_OPS_CATALOG`), ce qui fait quitter la page son état de
+  chargement et révèle la même famine de colonne centrale (2 offenseurs
+  stables) que les cinq autres écrans. Un test de non-régression du seuil
+  lui-même a aussi été ajouté (absent jusqu'ici : revenir `NARROW_QUERY` à
+  `(max-width: 390px)` laissait toute la suite committée verte, puisqu'aucun
+  test ne visait un viewport dans la bande 391-640 px) — un viewport à
+  500 px doit rendre le mode étroit (`BottomNav`/« Navigation », onglets),
+  pas la grille desktop ; vérifié par falsification (le test échoue bien
+  quand le seuil est délibérément re-régressé à 390 px, puis le fichier est
+  restauré). Le commentaire de `useNarrowViewport.ts` affirmant à tort que
+  la grille tient « sans aucun clipping » à partir de 640 px a été réécrit
+  pour dire le vrai : 640 px élimine la pire famine (colonne centrale à
+  `clientWidth` 0 de 391 à 540 px) mais ne garantit rien au-dessus — le
+  clipping résiduel de `TriptychLayout` y est désormais documenté et pointé
+  vers cette même entrée. E2E 137/5/0 → **143 tests (133 passed/10
+  skipped/0 failed)** — 5 skips 641 px supplémentaires (Cartes/Apps &
+  sites/Analytique/Administration/Automatisation, en plus du skip Catalogue
+  déjà présent) et 1 test de non-régression du seuil en plus. Vitest 220
+  fichiers/1839 tests, tous passés. **Conséquence assumée avec Tanguy :
+  SP-30 N'EST PAS déclaré clos par ce round** — le critère de sortie §7
+  « aucun écran ne clippe au-dessus du seuil » n'est en réalité vérifié que
+  sur 2 des 8 écrans de référence (Tâches, Paramètres) ; le défaut de
+  `TriptychLayout` ci-dessus reste le seul bloquant avant de pouvoir
+  redéclarer SP-30 clos (cf. `### À venir`, entrée SP-30, pour le suivi
+  scopé) — ce correctif règle l'honnêteté des tests et de la documentation,
+  pas le défaut de layout lui-même.
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
@@ -759,9 +834,38 @@ rétroactif en masse :
 
 ### À venir
 
-- **SP-30 est clos** (SP-30a→l). Les neuf familles du §6.1, le dernier
-  reliquat nommé du §2.1 (chrome) et les huit critères de sortie du §7 sont
-  tous vérifiés. Reste, hors traitement par aucun plan SP-30 à ce jour : les
+- **SP-30 n'est PAS clos** (SP-30a→l — round 2 de correction, 2026-09-02,
+  revient sur l'affirmation « SP-30 est clos » de la précédente version de
+  cette entrée et de l'entrée `### Livré`/SP-30l, trouvée prématurée sur
+  ré-examen indépendant). Les neuf familles du §6.1 et le dernier reliquat
+  nommé du §2.1 (chrome) sont vérifiés ; des huit critères de sortie du §7,
+  sept sont acquis mais le huitième — « aucun écran ne clippe au-dessus du
+  seuil relevé » — ne l'est en réalité que sur 2 des 8 écrans de référence
+  (Tâches, Paramètres). **Bloquant restant avant de pouvoir redéclarer SP-30
+  clos, scopé et directement reprenable par une future session :**
+  `TriptychLayout.tsx` (`shell/src/shell/chrome/TriptychLayout.tsx`, grille
+  `grid-cols-[minmax(220px,280px)_1fr_minmax(260px,320px)]`) affame sa
+  colonne centrale (`work`, piste `1fr`) — ses deux colonnes latérales
+  grandissent d'abord vers leur maximum combiné (280+320=600px, algorithme
+  standard de dimensionnement CSS Grid) avant que la colonne centrale ne
+  reçoive quoi que ce soit. Défaut mesuré, stable et reproductible sur 6 des
+  8 écrans de référence — Catalogue (5 offenseurs à 641px), Cartes (3),
+  Apps & sites (2), Analytique (1), Administration (1), Automatisation (2) —
+  cf. `shell/e2e/triptych-narrow.spec.ts` (constante
+  `WIDE_BOUNDARY_ROOT_CAUSE`, un `test.skip()` documenté par écran) et
+  l'entrée `### Livré`/SP-30l pour le détail complet. Bande de largeur
+  concernée : mesurée cassée à 641px (le premier viewport « large » sous le
+  seuil de `useNarrowViewport.ts`), plausiblement jusqu'à ~1000px+ selon la
+  largeur minimale réelle du contenu de chaque écran (ex. une fenêtre
+  desktop en demi-écran) — borne haute non mesurée précisément, à établir
+  par le futur plan. Ce round de correction n'a corrigé QUE l'honnêteté du
+  filet de test qui le mesure (il déclarait ces écrans corrects par un
+  artefact de `toPass({ timeout })`, cf. `### Livré`/SP-30l) et de cette
+  documentation — pas le défaut de layout lui-même, décision explicite de
+  Tanguy pour borner ce round. Reprise directe : chantier de layout dédié
+  sur les proportions de colonnes de `TriptychLayout` (brainstorm si
+  nécessaire → spec → plan), à ouvrir avant de pouvoir redéclarer SP-30 clos.
+  Reste, par ailleurs, hors traitement par aucun plan SP-30 à ce jour : les
   permissions de collection et le profil « Lecteur » qui restent à
   trancher (cf. entrée SP-29a) ; la raison de verrouillage triplée
   d'`ItemActions` (cf. entrée SP-29a) qui peut être regroupée si voulu ;
