@@ -5,7 +5,10 @@ import { DomainBar } from "./DomainBar";
 import type { Profile } from "../../auth/capabilities";
 
 // Privilèges d'un Créateur (cf. BUILT_IN_ROLE_PRIVILEGES, core/app/roles/privileges.py,
-// dupliqué en fixture dans capabilities.test.ts) — ni admin.*, ni analytics.view.
+// dupliqué en fixture dans capabilities.test.ts) — comprend analytics.view
+// (le domaine Analytique lui est visible, sans analytics.sql_lab.access —
+// SQL Lab reste hors d'atteinte, cf. RequirePrivilege sur /analytics/sql) ;
+// ni admin.*.
 const BASE_PROFILE: Profile = {
   privileges: new Set([
     "catalog.manage",
@@ -14,6 +17,7 @@ const BASE_PROFILE: Profile = {
     "data.manage",
     "apps.manage",
     "automation.manage",
+    "analytics.view",
     "tasks.view",
   ]),
   capabilities: {
@@ -35,7 +39,7 @@ function renderBar(profile: Profile, initialPath = "/") {
   );
 }
 
-test("affiche les sept domaines accessibles à un créateur, sans Administration ni Analytique", () => {
+test("affiche les huit domaines accessibles à un créateur, avec Analytique mais sans Administration", () => {
   renderBar(BASE_PROFILE);
   for (const label of [
     "Catalogue",
@@ -43,15 +47,13 @@ test("affiche les sept domaines accessibles à un créateur, sans Administration
     "Données",
     "Apps & sites",
     "Automatisation",
+    "Analytique",
     "Tâches",
     "Paramètres",
   ]) {
     expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
   }
   expect(screen.queryByRole("link", { name: "Administration" })).not.toBeInTheDocument();
-  // Régression (Finding 7) : RequireRole (routes.tsx, /analytics/sql) refuse l'accès à qui n'est pas
-  // analyste — le domaine ne doit donc pas apparaître pour ce profil.
-  expect(screen.queryByRole("link", { name: "Analytique" })).not.toBeInTheDocument();
 });
 
 test("affiche Administration pour un administrateur", () => {

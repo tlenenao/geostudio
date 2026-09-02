@@ -135,6 +135,16 @@ test("disables the enabled toggle when the instance is in read-only demo mode", 
   expect(toggle).toBeDisabled();
 });
 
+test("le volet Catalogue propose un lien vers /admin/roles (RolesAdminPage sinon inatteignable)", async () => {
+  server.use(http.get("https://core.test/extensions", () => HttpResponse.json({ extensions: [] })));
+  render(<Harness />);
+  await screen.findByRole("table");
+  expect(screen.getByRole("link", { name: "Rôles et privilèges →" })).toHaveAttribute(
+    "href",
+    "/admin/roles",
+  );
+});
+
 test("sous viewport étroit, affiche trois onglets Catalogue/Extensions/Détail avec Extensions actif par défaut", async () => {
   stubMatchMedia(true);
   server.use(http.get("https://core.test/extensions", () => HttpResponse.json({ extensions: [] })));
