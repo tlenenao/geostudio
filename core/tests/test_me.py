@@ -90,16 +90,15 @@ def test_get_me_returns_the_resolved_user(client):
     assert body["username"] == "alice"
     assert body["email"] == "alice@example.com"
     assert body["firstName"] == "Alice"
-    assert body["isAdmin"] is False
-    assert body["isAnalyst"] is False
+    assert body["role"]["slug"] == "creator"
 
 
 def test_get_me_reflects_admin_flag(admin_client):
     response = admin_client.get("/me")
-    assert response.json()["isAdmin"] is True
+    assert response.json()["role"]["slug"] == "admin"
 
 
-def test_me_exposes_is_analyst(analyst_client):
+def test_me_exposes_the_analyst_role(analyst_client):
     response = analyst_client.get("/me")
     assert response.status_code == 200
-    assert response.json()["isAnalyst"] is True
+    assert response.json()["role"]["slug"] == "analyst"
