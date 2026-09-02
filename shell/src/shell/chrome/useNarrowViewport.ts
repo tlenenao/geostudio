@@ -1,27 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 
-// 640px = le seuil "sm" conventionnel de Tailwind, déjà idiomatique dans ce
-// dépôt. Choisi (2026-09-02, revue transverse SP-30l) après mesure réelle :
-// la grille triptyque trois colonnes de TriptychLayout.tsx clippait du
-// contenu sur toute la bande ~391-540px avec l'ancien seuil de 390px
-// (confirmé clippé à 540px), classant des téléphones réels courants
-// (iPhone 14/15 Plus/Pro Max, Pixel 7/8 Pro, iPhone XR/11) en mode "large"
-// alors qu'ils ne peuvent pas afficher la grille sans casse. Relever le
-// seuil à 640px élimine cette famine-là (la pire, colonne centrale à
-// clientWidth 0), mais NE garantit PAS l'absence de tout clipping au-dessus
-// de 640px sur chaque écran : round 2 de correction (2026-09-02, même date,
-// cf. CLAUDE.md entrée SP-30l) a mesuré, via un check corrigé pour observer
-// l'état stabilisé plutôt que le premier échantillon, un clipping résiduel
-// stable sur 6 des 8 écrans de référence à 641px (Catalogue, Cartes,
-// Apps & sites, Analytique, Administration, Automatisation — cf. shell/e2e/
-// triptych-narrow.spec.ts, WIDE_BOUNDARY_ROOT_CAUSE) — un défaut de
-// TriptychLayout.tsx lui-même (ses colonnes latérales grandissent vers leur
-// maximum combiné, 280+320=600px, avant que la colonne centrale ne reçoive
-// quoi que ce soit), pas de ce seuil. Ce défaut est tracké séparément et
-// n'est PAS corrigé par ce seuil ; SP-30 n'est donc pas déclaré clos tant
-// qu'il ne l'est pas (CLAUDE.md, section "À venir", entrée SP-30).
-export const NARROW_QUERY = "(max-width: 640px)";
+// Seuil de la grille triptyque à trois colonnes vs. le mode mobile (onglets
+// + BottomNav) — partagé avec AppLayout.tsx (bascule DomainBar/BottomNav).
+// Historique : 390px (SP-30) → 640px ("sm" Tailwind, revue transverse
+// SP-30l — corrigeait la pire famine mais laissait la colonne centrale de
+// TriptychLayout.tsx sans plancher réel entre ~641px et ce seuil, mesuré
+// clippé sur 6 des 8 écrans de référence) → 899px (SP-33, spec
+// docs/superpowers/specs/2026-09-02-sp33-triptychlayout-colonne-centrale-design.md).
+// SP-33 a donné à la colonne centrale un plancher CSS explicite
+// (minmax(360px,1fr), TriptychLayout.tsx) ; ce seuil est calé juste
+// au-dessus de la somme des trois planchers (browse 220 + centre 360 +
+// inspect 260 = 840px, +~60px de marge) pour que la grille à trois
+// colonnes ne soit jamais rendue en dessous du point où les trois peuvent
+// coexister sans dépassement — sous ce seuil, le mode mobile prend le
+// relais. Deux défauts pré-existants et distincts sur l'écran Cartes
+// (colonne browse trop étroite pour LayersPanel ; <span> de titre
+// LayersPanel à largeur nulle) restent hors périmètre de ce chantier — cf.
+// shell/e2e/triptych-narrow.spec.ts et CLAUDE.md, lot "Carte".
+export const NARROW_QUERY = "(max-width: 899px)";
 
 export function useNarrowViewport(): boolean {
   const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_QUERY).matches);
