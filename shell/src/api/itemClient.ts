@@ -52,9 +52,14 @@ import type {
   PipelineRun,
   PopupConfig,
   PrintLayoutConfig,
+  PrivilegeCatalogEntry,
   ReportRunStatus,
   ReportSchedulePayload,
   ResourceType,
+  Role,
+  RoleCreateInput,
+  RolePatchInput,
+  RoleSummary,
   Sharing,
   Theme,
   UpdatePatch,
@@ -538,9 +543,8 @@ export function createItemClient(opts: {
         username: string;
         firstName: string;
         lastName: string;
-        isAdmin: boolean;
-        isAnalyst: boolean;
-        hasAnyEditorRole: boolean;
+        role: RoleSummary;
+        privileges: string[];
         version: string;
         tenantSlug: string;
       }>("GET", `/me`);
@@ -548,12 +552,31 @@ export function createItemClient(opts: {
         username: data.username,
         firstName: data.firstName,
         lastName: data.lastName,
-        isAdmin: data.isAdmin,
-        isAnalyst: data.isAnalyst,
-        hasAnyEditorRole: data.hasAnyEditorRole,
+        role: data.role,
+        privileges: data.privileges,
         version: data.version,
         tenantSlug: data.tenantSlug,
       };
+    },
+
+    async getPrivilegeCatalog(): Promise<PrivilegeCatalogEntry[]> {
+      return request<PrivilegeCatalogEntry[]>("GET", "/roles/catalog");
+    },
+
+    async listRoles(): Promise<Role[]> {
+      return request<Role[]>("GET", "/roles");
+    },
+
+    async createRole(input: RoleCreateInput): Promise<Role> {
+      return request<Role>("POST", "/roles", input);
+    },
+
+    async updateRole(id: string, patch: RolePatchInput): Promise<Role> {
+      return request<Role>("PATCH", `/roles/${id}`, patch);
+    },
+
+    async deleteRole(id: string): Promise<void> {
+      await request<void>("DELETE", `/roles/${id}`);
     },
 
     async getInstanceInfo(): Promise<InstanceInfo> {

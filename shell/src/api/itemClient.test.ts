@@ -54,8 +54,8 @@ test("getMe maps camelCase fields, dropping id/email/tenantId", async () => {
         username: "alice",
         firstName: "Alice",
         lastName: "Martin",
-        isAdmin: false,
-        isAnalyst: false,
+        role: { id: "role-1", name: "Créateur", slug: "creator" },
+        privileges: ["catalog.manage", "maps.manage"],
       }),
     ),
   );
@@ -64,12 +64,12 @@ test("getMe maps camelCase fields, dropping id/email/tenantId", async () => {
     username: "alice",
     firstName: "Alice",
     lastName: "Martin",
-    isAdmin: false,
-    isAnalyst: false,
+    role: { id: "role-1", name: "Créateur", slug: "creator" },
+    privileges: ["catalog.manage", "maps.manage"],
   });
 });
 
-test("getMe surfaces isAdmin", async () => {
+test("getMe surfaces the caller's privileges", async () => {
   server.use(
     http.get("https://core.test/me", () =>
       HttpResponse.json({
@@ -77,13 +77,14 @@ test("getMe surfaces isAdmin", async () => {
         username: "alice",
         firstName: "Alice",
         lastName: "Martin",
-        isAdmin: true,
-        isAnalyst: false,
+        role: { id: "role-2", name: "Administrateur", slug: "admin" },
+        privileges: ["admin.roles.manage", "admin.users.manage"],
       }),
     ),
   );
   const me = await makeClient().getMe();
-  expect(me.isAdmin).toBe(true);
+  expect(me.role.slug).toBe("admin");
+  expect(me.privileges).toContain("admin.roles.manage");
 });
 
 test("createConfigItem does not send owner in the request body", async () => {
@@ -3362,4 +3363,54 @@ test("getAuthToken exposes the client's current token", () => {
 test("getCoreUrl exposes the client's configured core API origin", () => {
   const client = makeClient("secret-token");
   expect(client.getCoreUrl?.()).toBe("https://core.test");
+});
+
+test("getPrivilegeCatalog returns the catalog as-is", async () => {
+  server.use(
+    http.get("https://core.test/roles/catalog", () =>
+      HttpResponse.json([
+        {
+          privilege: "admin.harvest.manage",
+          domain: "admin",
+          labelKey: "roles.privilege.adminHarvestManage",
+        },
+      ]),
+    ),
+  );
+  const catalog = await makeClient().getPrivilegeCatalog();
+  expect(catalog).toHaveLength(1);
+  expect(catalog[0].privilege).toBe("admin.harvest.manage");
+});
+
+test("listRoles/createRole/updateRole/deleteRole round-trip", async () => {
+  let roles = [
+    {
+      id: "r1",
+      name: "Support",
+      slug: "abc",
+      isBuiltIn: false,
+      privileges: ["admin.harvest.manage"],
+    },
+  ];
+  server.use(
+    http.get("https://core.test/roles", () => HttpResponse.json(roles)),
+    http.post("https://core.test/roles", async ({ request }) => {
+      const body = (await request.json()) as { name: string; privileges: string[] };
+      const created = { id: "r2", slug: "def", isBuiltIn: false, ...body };
+      roles = [...roles, created];
+      return HttpResponse.json(created, { status: 201 });
+    }),
+    http.patch("https://core.test/roles/r1", async ({ request }) => {
+      const patch = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ ...roles[0], ...patch });
+    }),
+    http.delete("https://core.test/roles/r1", () => new HttpResponse(null, { status: 204 })),
+  );
+  const client = makeClient();
+  expect(await client.listRoles()).toEqual(roles);
+  const created = await client.createRole({ name: "Analyste+", privileges: ["analytics.view"] });
+  expect(created.id).toBe("r2");
+  const updated = await client.updateRole("r1", { name: "Support+" });
+  expect(updated.name).toBe("Support+");
+  await expect(client.deleteRole("r1")).resolves.toBeUndefined();
 });
