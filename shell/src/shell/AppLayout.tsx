@@ -26,8 +26,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   const profile: Profile = {
-    isAdmin: meQuery.data?.isAdmin === true,
-    isAnalyst: meQuery.data?.isAnalyst === true,
+    privileges: new Set(meQuery.data?.privileges ?? []),
     capabilities: {
       readOnly,
       etlEnabled: instanceQuery.data?.etlEnabled === true,
