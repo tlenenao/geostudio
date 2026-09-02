@@ -4,9 +4,18 @@ import { MemoryRouter } from "react-router-dom";
 import { DomainBar } from "./DomainBar";
 import type { Profile } from "../../auth/capabilities";
 
+// Privilèges d'un Créateur (cf. BUILT_IN_ROLE_PRIVILEGES, core/app/roles/privileges.py,
+// dupliqué en fixture dans capabilities.test.ts) — ni admin.*, ni analytics.view.
 const BASE_PROFILE: Profile = {
-  isAdmin: false,
-  isAnalyst: false,
+  privileges: new Set([
+    "catalog.manage",
+    "maps.manage",
+    "data.view",
+    "data.manage",
+    "apps.manage",
+    "automation.manage",
+    "tasks.view",
+  ]),
   capabilities: {
     readOnly: false,
     etlEnabled: true,
@@ -46,17 +55,26 @@ test("affiche les sept domaines accessibles à un créateur, sans Administration
 });
 
 test("affiche Administration pour un administrateur", () => {
-  renderBar({ ...BASE_PROFILE, isAdmin: true });
+  renderBar({
+    ...BASE_PROFILE,
+    privileges: new Set([...BASE_PROFILE.privileges, "admin.users.manage"]),
+  });
   expect(screen.getByRole("link", { name: "Administration" })).toBeInTheDocument();
 });
 
 test("affiche Analytique pour un analyste", () => {
-  renderBar({ ...BASE_PROFILE, isAnalyst: true });
+  renderBar({
+    ...BASE_PROFILE,
+    privileges: new Set([...BASE_PROFILE.privileges, "analytics.view"]),
+  });
   expect(screen.getByRole("link", { name: "Analytique" })).toBeInTheDocument();
 });
 
 test("marque le domaine courant actif", () => {
-  renderBar({ ...BASE_PROFILE, isAnalyst: true }, "/analytics/sql");
+  renderBar(
+    { ...BASE_PROFILE, privileges: new Set([...BASE_PROFILE.privileges, "analytics.view"]) },
+    "/analytics/sql",
+  );
   expect(screen.getByRole("link", { name: "Analytique" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByRole("link", { name: "Catalogue" })).not.toHaveAttribute("aria-current");
 });

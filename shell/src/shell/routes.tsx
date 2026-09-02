@@ -22,7 +22,7 @@ import { KitGalleryPage } from "../pages/KitGalleryPage";
 import { TasksComingSoonPage } from "../pages/TasksComingSoonPage";
 import { SettingsComingSoonPage } from "../pages/SettingsComingSoonPage";
 import { RequireAuth } from "../auth/RequireAuth";
-import { RequireRole } from "../auth/RequireRole";
+import { RequirePrivilege } from "../auth/RequirePrivilege";
 import { AppLayout } from "./AppLayout";
 import { useItemClient } from "../api/ItemClientProvider";
 import { encodeAnalyticsContext } from "../lib/analyticsContextUrl";
@@ -268,41 +268,56 @@ export function AppRoutes() {
         <Route
           path="/analytics/sql"
           element={
-            <RequireRole role="analyst" deniedMessage="Accès réservé aux analystes.">
+            <RequirePrivilege
+              privilege="analytics.sql_lab.access"
+              deniedMessage="Accès réservé aux analystes."
+            >
               <SqlLabPage />
-            </RequireRole>
+            </RequirePrivilege>
           }
         />
         <Route
           path="/admin/extensions"
           element={
-            <RequireRole role="admin" deniedMessage="Accès réservé aux administrateurs.">
+            <RequirePrivilege
+              privilege="admin.extensions.manage"
+              deniedMessage="Accès réservé aux administrateurs."
+            >
               <AdminExtensionsPage />
-            </RequireRole>
+            </RequirePrivilege>
           }
         />
         <Route
           path="/admin/collections"
           element={
-            <RequireRole role="admin" deniedMessage="Accès réservé aux administrateurs.">
+            <RequirePrivilege
+              privilege="admin.collections.manage"
+              deniedMessage="Accès réservé aux administrateurs."
+            >
               <CollectionsAdminPage />
-            </RequireRole>
+            </RequirePrivilege>
           }
         />
         <Route
           path="/admin/harvest"
           element={
-            <RequireRole role="admin" deniedMessage="Accès réservé aux administrateurs.">
+            <RequirePrivilege
+              privilege="admin.harvest.manage"
+              deniedMessage="Accès réservé aux administrateurs."
+            >
               <HarvestSourcesAdminPage />
-            </RequireRole>
+            </RequirePrivilege>
           }
         />
         <Route
           path="/admin/infrastructure"
           element={
-            <RequireRole role="admin" deniedMessage="Accès réservé aux administrateurs.">
+            <RequirePrivilege
+              privilege="settings.instance.manage"
+              deniedMessage="Accès réservé aux administrateurs."
+            >
               <AdminInfrastructurePage />
-            </RequireRole>
+            </RequirePrivilege>
           }
         />
         <Route path="/internal/kit-gallery" element={<KitGalleryPage />} />

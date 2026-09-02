@@ -5,9 +5,9 @@ import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
-import { RequireRole } from "./RequireRole";
+import { RequirePrivilege } from "./RequirePrivilege";
 
-function mockMe(overrides: { isAdmin?: boolean; isAnalyst?: boolean }) {
+function mockMe(privileges: string[]) {
   server.use(
     http.get("https://core.test/me", () =>
       HttpResponse.json({
@@ -15,50 +15,50 @@ function mockMe(overrides: { isAdmin?: boolean; isAnalyst?: boolean }) {
         username: "alice",
         firstName: "Alice",
         lastName: "Martin",
-        isAdmin: overrides.isAdmin ?? false,
-        isAnalyst: overrides.isAnalyst ?? false,
+        role: { id: "role-1", name: "Créateur", slug: "creator" },
+        privileges,
       }),
     ),
   );
 }
 
-function renderGate(role: "admin" | "analyst", deniedMessage: string) {
+function renderGate(privilege: string, deniedMessage: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
   render(
     <QueryClientProvider client={queryClient}>
       <ItemClientProvider client={client}>
-        <RequireRole role={role} deniedMessage={deniedMessage}>
+        <RequirePrivilege privilege={privilege} deniedMessage={deniedMessage}>
           <p>Contenu protégé</p>
-        </RequireRole>
+        </RequirePrivilege>
       </ItemClientProvider>
     </QueryClientProvider>,
   );
 }
 
-test("affiche le contenu quand le rôle requis est présent", async () => {
-  mockMe({ isAnalyst: true });
-  renderGate("analyst", "Accès réservé aux analystes.");
+test("affiche le contenu quand le privilège requis est présent", async () => {
+  mockMe(["analytics.sql_lab.access"]);
+  renderGate("analytics.sql_lab.access", "Accès réservé aux analystes.");
   expect(await screen.findByText("Contenu protégé")).toBeInTheDocument();
 });
 
-test("affiche le message de refus quand le rôle requis est absent", async () => {
-  mockMe({ isAnalyst: false });
-  renderGate("analyst", "Accès réservé aux analystes.");
+test("affiche le message de refus quand le privilège requis est absent", async () => {
+  mockMe([]);
+  renderGate("analytics.sql_lab.access", "Accès réservé aux analystes.");
   await waitFor(() =>
     expect(screen.getByRole("alert")).toHaveTextContent("Accès réservé aux analystes."),
   );
   expect(screen.queryByText("Contenu protégé")).not.toBeInTheDocument();
 });
 
-test("le rôle admin se vérifie indépendamment du rôle analyste", async () => {
-  mockMe({ isAdmin: true, isAnalyst: false });
-  renderGate("admin", "Accès réservé aux administrateurs.");
+test("un privilège se vérifie indépendamment des autres privilèges détenus", async () => {
+  mockMe(["admin.roles.manage"]);
+  renderGate("admin.roles.manage", "Accès réservé à la gestion des rôles.");
   expect(await screen.findByText("Contenu protégé")).toBeInTheDocument();
 });
 
 test("affiche un statut de chargement avant la résolution de /me", () => {
-  mockMe({ isAnalyst: true });
-  renderGate("analyst", "Accès réservé aux analystes.");
+  mockMe(["analytics.sql_lab.access"]);
+  renderGate("analytics.sql_lab.access", "Accès réservé aux analystes.");
   expect(screen.getByRole("status")).toHaveTextContent("Chargement…");
 });
