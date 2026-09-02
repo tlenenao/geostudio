@@ -29,6 +29,8 @@ from app.harvest.egress import EgressBlockedError, build_guarded_client
 from app.harvest.jobs import run_harvest_task
 from app.harvest.schemas import HarvestSourceCreate, HarvestSourcePatch
 from app.items import repository as items_repo
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -39,11 +41,6 @@ _MAX_LIMIT = 1000
 
 def get_arcgis_http_client():  # overridé en test
     return build_guarded_client()
-
-
-def _require_admin(user) -> None:
-    if not user.is_admin:
-        raise HTTPException(status_code=403, detail="admin role required")
 
 
 def _parse_bbox(raw: str | None) -> tuple[float, float, float, float] | None:
@@ -128,7 +125,7 @@ def create_source(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    _require_admin(user)
+    require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
     _check_copy_support(body.type, body.mode)
     source = repo.create_source(
         session,
@@ -155,7 +152,7 @@ def create_source(
 
 @router.get("/harvest/sources")
 def list_sources(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
-    _require_admin(user)
+    require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
     sources = repo.list_sources(session, tenant_id=user.tenant_id)
     return {"sources": [_source_json(s) for s in sources]}
 
@@ -198,7 +195,7 @@ def get_source(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    _require_admin(user)
+    require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
     source = repo.get_source(session, tenant_id=user.tenant_id, source_id=source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="harvest source not found")
@@ -212,7 +209,7 @@ def patch_source(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    _require_admin(user)
+    require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
     source = repo.get_source(session, tenant_id=user.tenant_id, source_id=source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="harvest source not found")
@@ -241,7 +238,7 @@ def delete_source(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    _require_admin(user)
+    require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
     source = repo.get_source(session, tenant_id=user.tenant_id, source_id=source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="harvest source not found")
@@ -265,7 +262,7 @@ def run_source(
     session: Session = Depends(get_session),
     defer_task=Depends(get_task_deferrer),
 ):
-    _require_admin(user)
+    require_privilege(session, user, Privilege.ADMIN_HARVEST_MANAGE.value)
     source = repo.get_source(session, tenant_id=user.tenant_id, source_id=source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="harvest source not found")
