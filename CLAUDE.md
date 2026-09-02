@@ -778,7 +778,10 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   pour dire le vrai : 640 px élimine la pire famine (colonne centrale à
   `clientWidth` 0 de 391 à 540 px) mais ne garantit rien au-dessus — le
   clipping résiduel de `TriptychLayout` y est désormais documenté et pointé
-  vers cette même entrée. E2E 137/5/0 → **143 tests (133 passed/10
+  vers cette même entrée (commentaire depuis réécrit par SP-33, qui pointe
+  vers sa propre spec et le lot Carte plutôt que vers cette entrée — le
+  défaut lui-même est corrigé, cf. ### Livré/SP-33). E2E 137/5/0 → **143
+  tests (133 passed/10
   skipped/0 failed)** — 5 skips 641 px supplémentaires (Cartes/Apps &
   sites/Analytique/Administration/Automatisation, en plus du skip Catalogue
   déjà présent) et 1 test de non-régression du seuil en plus. Vitest 220
