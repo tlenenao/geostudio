@@ -4,12 +4,14 @@ import { mockCore, mockMe, ADMIN_ME, ANALYST_ME } from "./mocks";
 
 const NARROW_WIDTH = 390;
 const NARROW_HEIGHT = 844;
-// Premier viewport "large" sous le nouveau seuil de useNarrowViewport.ts
-// (NARROW_QUERY = "(max-width: 640px)") — le point de vérification demandé
-// par la revue transverse SP-30l (finding 2) : 640px seul ne prouve rien,
-// il faut vérifier que la grille triptyque tient bien juste au-dessus du
-// seuil, pas seulement loin en-dessous.
-const WIDE_BOUNDARY_WIDTH = 641;
+// Premier viewport "large" sous le seuil de useNarrowViewport.ts
+// (NARROW_QUERY = "(max-width: 899px)", relevé par SP-33 — cf.
+// docs/superpowers/specs/2026-09-02-sp33-triptychlayout-colonne-centrale-design.md)
+// — le point de vérification demandé par la revue transverse SP-30l
+// (finding 2), reconduit par SP-33 au nouveau seuil : le seuil seul ne
+// prouve rien, il faut vérifier que la grille triptyque tient bien juste
+// au-dessus, pas seulement loin en-dessous.
+const WIDE_BOUNDARY_WIDTH = 900;
 const WIDE_HEIGHT = 900;
 
 // Revue transverse SP-30l (finding 1) : l'ancien expectNoHorizontalOverflow()
@@ -137,25 +139,14 @@ const AUTOMATISATION_OPS_CATALOG = {
   },
 };
 
-// Mécanisme partagé derrière tous les `wideBoundaryKnownIssue` ci-dessous
-// (round 2 de correction, 2026-09-02) : TriptychLayout.tsx rend, au-dessus du
-// seuil de useNarrowViewport.ts (640px), une grille
-// `grid-cols-[minmax(220px,280px)_1fr_minmax(260px,320px)]`. L'algorithme
-// standard de dimensionnement CSS Grid maximise d'abord les pistes non
-// flexibles (les deux colonnes latérales, jusqu'à 280+320=600px combinés)
-// avant de donner quoi que ce soit à la piste `fr` (la colonne centrale
-// `work`) — donc à 641px, la colonne centrale n'hérite que de 641-600=41px,
-// quel que soit l'écran qui s'y trouve. Ce n'est pas propre à 641px : toute
-// largeur sous ~600px + la largeur minimale réelle du contenu de la colonne
-// centrale subit la même famine (plausiblement jusqu'à ~1000px+ selon
-// l'écran, ex. une fenêtre desktop en demi-écran) — un vrai chantier de
-// layout sur TriptychLayout lui-même (colonnes latérales/centrale), partagé
-// par les neuf familles SP-30, pas un simple ajustement de seuil. Chaque
-// entrée ci-dessous cite le nombre d'offenseurs réellement mesuré par le
-// check corrigé de cette tâche (settle-poll, pas le premier échantillon) —
-// cf. CLAUDE.md, entrée SP-30l, pour le suivi.
-const WIDE_BOUNDARY_ROOT_CAUSE =
-  "TriptychLayout : la colonne centrale (work) est affamée par les maximums des colonnes latérales (280+320=600px) jusqu'à ce que le viewport les dépasse largement — mécanisme partagé, cf. commentaire WIDE_BOUNDARY_ROOT_CAUSE. Hors périmètre de cette tâche : chantier de layout distinct, tracké CLAUDE.md/SP-30l.";
+// SP-33 (docs/superpowers/specs/2026-09-02-sp33-triptychlayout-colonne-centrale-design.md)
+// a donné à la colonne centrale (work) de TriptychLayout.tsx un plancher
+// CSS explicite (minmax(360px,1fr), au lieu d'un `1fr` nu sans plancher
+// réel) et relevé le seuil de useNarrowViewport.ts en conséquence (899px)
+// — la famine de colonne centrale documentée par la revue transverse SP-30l
+// (round 2, 2026-09-02) est corrigée. Seul l'écran Cartes conserve un
+// wideBoundaryKnownIssue, pour deux défauts distincts et pré-existants,
+// sans rapport avec ce mécanisme (cf. son entrée ci-dessous).
 
 const SCREENS: Array<{
   name: string;
@@ -165,20 +156,18 @@ const SCREENS: Array<{
   // déjà connu, documenté et hors périmètre (jamais une façon de faire
   // disparaître un vrai problème découvert par cette tâche).
   skipClipCheckForTabs?: string[];
-  // Raison de test.skip() pour le groupe 641px de cet écran — réservé à un
-  // nouveau défaut découvert PAR cette tâche mais explicitement hors
-  // périmètre de sa correction (cf. WIDE_BOUNDARY_ROOT_CAUSE ci-dessus).
-  // Jamais un moyen de faire disparaître un échec sans le documenter.
+  // Raison de test.skip() pour le groupe de largeur "juste au-dessus du
+  // seuil" de cet écran — réservé à un défaut pré-existant, distinct du
+  // mécanisme corrigé par SP-33 ci-dessus. Jamais un moyen de faire
+  // disparaître un échec sans le documenter.
   wideBoundaryKnownIssue?: string;
 }> = [
   {
     name: "Catalogue",
     path: "/",
-    // Mesuré par le check corrigé (round 2, 2026-09-02) : 5 offenseurs
-    // stables à 641px, dont trois <p class="line-clamp-2"> de résumé
-    // d'item à clientWidth 0 (scrollWidth 10-11px, contenu réel invisible)
-    // — la colonne centrale de CatalogPage.tsx n'hérite que de 41px.
-    wideBoundaryKnownIssue: `Catalogue : 5 offenseurs stables mesurés à 641px (résumés d'items à largeur 0). ${WIDE_BOUNDARY_ROOT_CAUSE}`,
+    // SP-33 : les 5 offenseurs mesurés à 641px (résumés d'items à
+    // clientWidth 0) relevaient uniquement de la famine de colonne
+    // centrale, désormais corrigée.
   },
   {
     name: "Cartes",
@@ -192,48 +181,21 @@ const SCREENS: Array<{
     // investigation (page.evaluate ciblé) avant d'écarter cet onglet ici,
     // pas supposé.
     skipClipCheckForTabs: ["Couches"],
-    // Round 3 de vérification (2026-09-02) : les 3 offenseurs mesurés à
-    // 641px sur cet écran ne sont PAS trois occurrences du même mécanisme —
-    // une version précédente de ce commentaire l'affirmait à tort en
-    // parlant d'une famine "indépendante du défaut LayersPanel". Mesurés
-    // individuellement :
-    // 1. DIV.overflow-y-auto.border-r.border-rule (scrollWidth 397 /
-    //    clientWidth 279) — la colonne latérale gauche (browse), où
-    //    LayersPanel se rend par défaut à cette largeur (pas besoin de
-    //    cliquer l'onglet "Couches" comme dans le groupe 390px ci-dessus),
-    //    est elle-même plafonnée à son propre max-width de 280px : trop
-    //    étroit pour le contenu de LayersPanel. Mécanisme DIFFÉRENT de la
-    //    famine de colonne centrale : ici c'est la colonne latérale qui est
-    //    trop étroite, pas la colonne centrale qui est affamée. Sondé aussi
-    //    à 900/1400/1920px : persiste identiquement à chaque largeur — pas
-    //    borné à la bande ~641-1000px de WIDE_BOUNDARY_ROOT_CAUSE.
-    // 2. SPAN.flex-1.truncate (scrollWidth 79 / clientWidth 0) — c'est LE
-    //    MÊME défaut déjà tracké CLAUDE.md/lot "Carte" que celui écarté par
-    //    skipClipCheckForTabs ci-dessus pour le groupe 390px (le <span> de
-    //    titre LayersPanel à largeur de layout nulle) : PAS indépendant de
-    //    ce défaut, juste rendu visible sans clic ici parce que LayersPanel
-    //    occupe déjà la colonne browse au premier rendu à 641px. Persiste
-    //    lui aussi identiquement à 900/1400/1920px — pas borné non plus.
-    // 3. DIV.overflow-hidden (scrollWidth 92 / clientWidth 41) — seul celui-
-    //    ci est la vraie famine de colonne centrale (work, 641-600=41px),
-    //    le même mécanisme partagé que les 4 autres écrans ci-dessous,
-    //    borné à la bande ~641-1000px+ (cf. WIDE_BOUNDARY_ROOT_CAUSE).
-    wideBoundaryKnownIssue: `Cartes : 3 offenseurs stables mesurés à 641px, de MÉCANISMES DISTINCTS — (a) la colonne browse elle-même plafonnée à 280px, trop étroite pour LayersPanel (persiste à toute largeur sondée, non bornée) ; (b) le <span> de titre LayersPanel à largeur nulle, déjà tracké CLAUDE.md/lot "Carte" — pas indépendant, juste visible sans clic à cette largeur (persiste aussi à toute largeur) ; (c) la vraie famine de colonne centrale, seule partagée avec les autres écrans. ${WIDE_BOUNDARY_ROOT_CAUSE}`,
+    wideBoundaryKnownIssue:
+      'Cartes : 2 offenseurs pré-existants et distincts (colonne browse trop étroite pour LayersPanel ; <span> de titre LayersPanel à largeur nulle) — sans rapport avec la famine de colonne centrale corrigée par SP-33. Trackés CLAUDE.md/lot "Carte" et SP-30l.',
   },
   {
     name: "Apps & sites",
     path: "/apps/1/edit",
-    // Mesuré par le check corrigé (round 2, 2026-09-02) : 2 offenseurs
-    // stables à 641px.
-    wideBoundaryKnownIssue: `Apps & sites : 2 offenseurs stables mesurés à 641px. ${WIDE_BOUNDARY_ROOT_CAUSE}`,
+    // SP-33 : les 2 offenseurs mesurés à 641px relevaient uniquement de la
+    // famine de colonne centrale, désormais corrigée.
   },
   {
     name: "Analytique",
     path: "/analytics/sql",
     before: (p) => mockMe(p, ANALYST_ME),
-    // Mesuré par le check corrigé (round 2, 2026-09-02) : 1 offenseur
-    // stable à 641px.
-    wideBoundaryKnownIssue: `Analytique : 1 offenseur stable mesuré à 641px. ${WIDE_BOUNDARY_ROOT_CAUSE}`,
+    // SP-33 : l'offenseur mesuré à 641px relevait uniquement de la famine
+    // de colonne centrale, désormais corrigée.
   },
   {
     name: "Automatisation",
@@ -242,15 +204,12 @@ const SCREENS: Array<{
       p.route("https://core.test/pipelines/ops", async (route) => {
         await route.fulfill({ json: AUTOMATISATION_OPS_CATALOG });
       }),
-    // Round 2 de correction (2026-09-02) : le mock ci-dessus fait quitter à
-    // la page son état "Chargement…" (cf. commentaire sur
-    // AUTOMATISATION_OPS_CATALOG) — une fois la grille réellement exercée,
-    // le check corrigé y mesure 2 offenseurs stables à 641px, la même
-    // famine de colonne centrale que les autres écrans. Round 1 déclarait
-    // ce test vert pour une raison sans rapport (page jamais chargée) ;
-    // round 2 découvre qu'il aurait dû être rouge pour la vraie raison une
-    // fois corrigé.
-    wideBoundaryKnownIssue: `Automatisation : 2 offenseurs stables mesurés à 641px une fois la page effectivement chargée (round 1 le déclarait vert par un défaut de mock, cf. commentaire AUTOMATISATION_OPS_CATALOG). ${WIDE_BOUNDARY_ROOT_CAUSE}`,
+    // Le mock ci-dessus fait quitter à la page son état "Chargement…" (cf.
+    // commentaire sur AUTOMATISATION_OPS_CATALOG), condition nécessaire
+    // pour atteindre la grille TriptychLayout et l'exercer réellement —
+    // sans rapport avec SP-33. SP-33 : les 2 offenseurs mesurés à 641px
+    // une fois la page chargée relevaient uniquement de la famine de
+    // colonne centrale, désormais corrigée.
   },
   {
     name: "Tâches",
@@ -263,9 +222,8 @@ const SCREENS: Array<{
     name: "Administration",
     path: "/admin/extensions",
     before: (p) => mockMe(p, ADMIN_ME),
-    // Mesuré par le check corrigé (round 2, 2026-09-02) : 1 offenseur
-    // stable à 641px.
-    wideBoundaryKnownIssue: `Administration : 1 offenseur stable mesuré à 641px. ${WIDE_BOUNDARY_ROOT_CAUSE}`,
+    // SP-33 : l'offenseur mesuré à 641px relevait uniquement de la famine
+    // de colonne centrale, désormais corrigée.
   },
   {
     name: "Paramètres",
@@ -306,20 +264,25 @@ for (const screen of SCREENS) {
 
 // Revue transverse SP-30l (finding 2) : le seuil est passé de 390px à 640px
 // parce que la grille triptyque desktop clippait encore du contenu de ~391px
-// à ~540px. Ce groupe vérifie que 641px — le premier viewport classé "large"
-// sous le nouveau seuil — rend la grille trois colonnes sans contenu clippé.
-// Pas d'assertion BottomNav/onglets ici : à 641px le mode large (DomainBar +
-// grille) est attendu, pas le mode étroit.
+// à ~540px. Ce groupe vérifie que le premier viewport classé "large" sous
+// le seuil courant rend la grille trois colonnes sans contenu clippé. Pas
+// d'assertion BottomNav/onglets ici : au-dessus du seuil, le mode large
+// (DomainBar + grille) est attendu, pas le mode étroit.
 //
 // Round 2 (2026-09-02) : une fois le check lui-même corrigé pour mesurer
 // l'état stabilisé (cf. expectNoClippedContent ci-dessus) plutôt que le
-// premier échantillon, la majorité de ces tests échouent pour de vrai —
-// cf. wideBoundaryKnownIssue sur chaque écran concerné dans SCREENS
-// ci-dessus pour le nombre d'offenseurs réellement mesuré et le mécanisme
-// partagé (WIDE_BOUNDARY_ROOT_CAUSE). Seuls Tâches/Paramètres (aucune
-// grille TriptychLayout ne s'y rend) passent pour de vraies raisons.
+// premier échantillon, la majorité de ces tests échouaient pour de vrai à
+// l'ancien seuil (640px).
+//
+// SP-33 (docs/superpowers/specs/2026-09-02-sp33-triptychlayout-colonne-centrale-design.md) :
+// plancher explicite sur la colonne centrale + seuil relevé à 899px
+// (WIDE_BOUNDARY_WIDTH = 900 ci-dessus) — tous les écrans passent
+// désormais sans wideBoundaryKnownIssue, sauf Cartes (2 offenseurs
+// pré-existants et distincts, sans rapport avec ce chantier, cf. son
+// entrée dans SCREENS) et Tâches/Paramètres (aucune grille
+// TriptychLayout ne s'y rend, jamais concernés).
 for (const screen of SCREENS) {
-  test(`${screen.name} à 641 px (juste au-dessus du seuil relevé) : aucun contenu clippé`, async ({
+  test(`${screen.name} à 900 px (juste au-dessus du seuil relevé) : aucun contenu clippé`, async ({
     page,
   }) => {
     test.skip(screen.wideBoundaryKnownIssue !== undefined, screen.wideBoundaryKnownIssue);
@@ -334,22 +297,22 @@ for (const screen of SCREENS) {
   });
 }
 
-// Task 3 (round 2 de correction, 2026-09-02) : rien ne protège la valeur du
-// seuil elle-même — sans ce test, revenir NARROW_QUERY à "(max-width: 390px)"
-// (l'ancien seuil) dans useNarrowViewport.ts laisserait toute la suite
-// committée verte, puisque les groupes 390px/641px ci-dessus ne testent
-// jamais un viewport à l'intérieur de la bande 391-640px. 500px est choisi à
-// l'intérieur de cette bande : sous le seuil actuel (640px) il doit rendre
-// le mode ÉTROIT (BottomNav "Navigation" + onglets), pas la grille desktop
-// (DomainBar "Domaines", aucun role="tab"). Si le seuil régressait sous
-// 500px, AppLayout.tsx basculerait sur DomainBar et TriptychLayout.tsx sur
-// sa grille — ce test échouerait pour de vrai (vérifié : DomainBar/BottomNav
-// utilisent des libellés aria-label distincts, "Domaines"/"Navigation",
+// Task 3 (round 2 de correction SP-30l, puis SP-33) : rien ne protège la
+// valeur du seuil elle-même — sans ce test, régresser NARROW_QUERY vers son
+// ancienne valeur laisserait toute la suite committée verte, puisque les
+// groupes 390px/900px ci-dessus ne testent jamais un viewport à l'intérieur
+// de la bande 391-899px. 700px est choisi à l'intérieur de cette bande :
+// sous le seuil actuel (899px) il doit rendre le mode ÉTROIT (BottomNav
+// "Navigation" + onglets), pas la grille desktop (DomainBar "Domaines",
+// aucun role="tab"). Si le seuil régressait sous 700px, AppLayout.tsx
+// basculerait sur DomainBar et TriptychLayout.tsx sur sa grille — ce test
+// échouerait pour de vrai (vérifié : DomainBar/BottomNav utilisent des
+// libellés aria-label distincts, "Domaines"/"Navigation",
 // catalog.fr.ts:48-49 — pas une coïncidence de sélecteur).
-test("500 px (bande 391-640, sous le seuil relevé) : mode étroit, pas la grille desktop", async ({
+test("700 px (bande 391-899, sous le seuil relevé) : mode étroit, pas la grille desktop", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 500, height: 900 });
+  await page.setViewportSize({ width: 700, height: 900 });
   await mockCore(page);
   await page.goto("/");
 
