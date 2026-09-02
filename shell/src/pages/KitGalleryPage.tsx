@@ -200,7 +200,7 @@ export function KitGalleryPage() {
   if (meQuery.isLoading) {
     return <p role="status">Chargement…</p>;
   }
-  if (meQuery.data?.isAdmin !== true) {
+  if (meQuery.data?.role.slug !== "admin") {
     return (
       <p role="alert" className="text-sm text-danger">
         Accès réservé aux administrateurs.

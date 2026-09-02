@@ -6,7 +6,10 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { KitGalleryPage } from "./KitGalleryPage";
 
 vi.mock("../api/hooks", () => ({
-  useMe: () => ({ isLoading: false, data: { isAdmin: true } }),
+  useMe: () => ({
+    isLoading: false,
+    data: { role: { id: "role-admin", name: "Administrateur", slug: "admin" } },
+  }),
 }));
 
 // Checkbox/Radio/Switch/Slider (rendus sans interaction dans la galerie)

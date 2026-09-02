@@ -37,9 +37,11 @@ describe("catalogue français", () => {
     }
   });
 
-  it("nomme ses clés en <domaine>.<intention>", () => {
+  it("nomme ses clés en <domaine>.<intention> (ou <domaine>.privilege.<intention> pour les libellés de privilège, dont la clé est un contrat de données avec le cœur — cf. PRIVILEGE_METADATA, core/app/roles/privileges.py)", () => {
     for (const key of Object.keys(fr)) {
-      expect(key, `clé mal formée : ${key}`).toMatch(/^[a-z][a-zA-Z0-9]*\.[a-zA-Z0-9]+$/);
+      expect(key, `clé mal formée : ${key}`).toMatch(
+        /^[a-z][a-zA-Z0-9]*\.([a-zA-Z0-9]+|privilege\.[a-zA-Z0-9]+)$/,
+      );
     }
   });
 });
