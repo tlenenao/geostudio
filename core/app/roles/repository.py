@@ -11,11 +11,16 @@ from app.users.models import User
 
 
 def ensure_built_in_roles(session: Session, *, tenant_id: str) -> dict[str, Role]:
-    """Crée les 4 rôles prédéfinis pour ce tenant s'ils n'existent pas déjà —
-    idempotent, appelée à chaque requête authentifiée (app.auth.dependency).
-    Chaque tenant reçoit sa PROPRE copie, jamais un tenant_id nul (arbitrage
-    non négociable) ; l'immuabilité vient de is_built_in (app.roles.routes),
-    pas du partage d'une ligne (design §2)."""
+    """Crée les 4 rôles prédéfinis pour ce tenant s'ils n'existent pas déjà, et
+    resynchronise nom/privilèges de ceux qui existent déjà sur
+    BUILT_IN_ROLE_PRIVILEGES — idempotent, appelée à chaque requête
+    authentifiée (app.auth.dependency). Chaque tenant reçoit sa PROPRE copie,
+    jamais un tenant_id nul (arbitrage non négociable) ; l'immuabilité vient
+    de is_built_in (app.roles.routes), pas du partage d'une ligne (design §2).
+    La resynchronisation existe pour qu'un privilège ajouté à un rôle
+    prédéfini dans une future release atteigne les tenants existants — sans
+    elle, un rôle prédéfini déjà créé reste figé à jamais (aucun PATCH
+    possible sur un rôle is_built_in)."""
     existing = {
         role.slug: role
         for role in session.scalars(
@@ -24,6 +29,9 @@ def ensure_built_in_roles(session: Session, *, tenant_id: str) -> dict[str, Role
     }
     for slug, privileges in BUILT_IN_ROLE_PRIVILEGES.items():
         if slug in existing:
+            role = existing[slug]
+            role.name = BUILT_IN_ROLE_NAMES[slug]
+            role.privileges = list(privileges)
             continue
         role = Role(
             id=uuid.uuid4().hex,
@@ -91,10 +99,13 @@ def delete_role(session: Session, *, tenant_id: str, role_id: str) -> None:
 
 
 def count_role_holders(session: Session, *, tenant_id: str, role_id: str) -> int:
-    return session.scalar(
-        select(func.count())
-        .select_from(User)
-        .where(User.tenant_id == tenant_id, User.role_id == role_id)
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.tenant_id == tenant_id, User.role_id == role_id)
+        )
+        or 0
     )
 
 

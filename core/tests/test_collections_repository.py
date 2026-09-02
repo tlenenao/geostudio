@@ -347,8 +347,9 @@ def test_admin_gets_delete_even_as_stranger(session, tenant, owner, other):
 
 
 def test_non_admin_owner_cannot_delete(session, tenant, owner):
-    # Anti-régression : unregister_collection est _require_admin seul, pas
-    # decide() — un propriétaire non-admin ne doit JAMAIS voir delete=True,
+    # Anti-régression : unregister_collection est require_privilege(
+    # admin.collections.manage) seul, pas decide() — un propriétaire
+    # non-admin ne doit JAMAIS voir delete=True,
     # sinon le bouton Supprimer produirait un 403 après clic.
     col = _register(session, tenant, owner)
     result = collection_permissions_by_id(

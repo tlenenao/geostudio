@@ -144,7 +144,7 @@ uv run pytest        # 1896 passed + 5 skipped + 1 failed (mesuré 2026-08-27,
 # portes de qualité (mêmes invocations qu'en CI — cf. .github/workflows/ci.yml)
 cd core
 uv run ruff check . && uv run ruff format --check .
-uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools
+uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools app/roles
 uv run lint-imports                      # contrat de couches (30 entrées)
 uv run python scripts/check_coverage.py coverage.xml .coverage-threshold   # 85
 cd ../shell

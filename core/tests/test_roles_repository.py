@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 from app.db import init_db, make_engine, make_session_factory
-from app.roles.privileges import Privilege
+from app.roles.privileges import BUILT_IN_ROLE_NAMES, BUILT_IN_ROLE_PRIVILEGES, Privilege
 from app.roles.repository import (
     count_role_holders,
     count_users_with_privileges,
@@ -34,6 +34,24 @@ def test_ensure_built_in_roles_is_idempotent_and_covers_the_four_profiles():
         assert all(r.is_built_in for r in roles.values())
         again = ensure_built_in_roles(s, tenant_id=tenant.id)
         assert {r.id for r in again.values()} == {r.id for r in roles.values()}
+
+
+def test_ensure_built_in_roles_reconciles_drifted_privileges_on_existing_roles():
+    Session = _session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        # Simule une dérive : un déploiement plus ancien avait un jeu de
+        # privilèges différent pour "creator" (ex. avant l'ajout d'un
+        # privilège à BUILT_IN_ROLE_PRIVILEGES dans une future release).
+        roles["creator"].privileges = [Privilege.DATA_VIEW.value]
+        roles["creator"].name = "Ancien nom"
+        s.flush()
+        s.commit()
+        reconciled = ensure_built_in_roles(s, tenant_id=tenant.id)
+        assert reconciled["creator"].privileges == BUILT_IN_ROLE_PRIVILEGES["creator"]
+        assert reconciled["creator"].name == BUILT_IN_ROLE_NAMES["creator"]
+        assert reconciled["creator"].id == roles["creator"].id
 
 
 def test_create_update_delete_a_custom_role():
