@@ -19,10 +19,11 @@ class CollectionPermissions(BaseModel):
     collections. Calculé depuis `decide()`, jamais recalculé côté client.
 
     `delete` n'est PAS le verdict générique de `decide()` : `unregister_collection`
-    (DELETE /collections/{id}) est gardé par `_require_admin` seul, pas par
-    `can()`/`decide()` — refléter autre chose que `actor_is_admin` ici
-    afficherait un bouton Supprimer qui produit un 403 après clic pour un
-    propriétaire ou un éditeur non-admin.
+    (DELETE /collections/{id}) est gardé par `require_privilege(...,
+    "admin.collections.manage")` seul, pas par `can()`/`decide()` — refléter
+    autre chose que ce privilège ici afficherait un bouton Supprimer qui
+    produit un 403 après clic pour un propriétaire ou un éditeur sans ce
+    privilège.
     """
 
     read: bool
