@@ -909,6 +909,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Roles */
+        get: operations["get_roles_roles_get"];
+        put?: never;
+        /** Post Role */
+        post: operations["post_role_roles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roles/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Roles Catalog */
+        get: operations["get_roles_catalog_roles_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roles/{role_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Role Route */
+        delete: operations["delete_role_route_roles__role_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Role */
+        patch: operations["patch_role_roles__role_id__patch"];
+        trace?: never;
+    };
     "/schemas/app-config": {
         parameters: {
             query?: never;
@@ -2034,6 +2087,8 @@ export interface components {
          *     interdit aux deux routes de diverger.
          */
         MeCapabilities: {
+            /** Admintoolsenabled */
+            adminToolsEnabled: boolean;
             /** Appexportenabled */
             appExportEnabled: boolean;
             /** Copilotenabled */
@@ -2056,16 +2111,13 @@ export interface components {
             email: string | null;
             /** Firstname */
             firstName: string;
-            /** Hasanyeditorrole */
-            hasAnyEditorRole: boolean;
             /** Id */
             id: string;
-            /** Isadmin */
-            isAdmin: boolean;
-            /** Isanalyst */
-            isAnalyst: boolean;
             /** Lastname */
             lastName: string;
+            /** Privileges */
+            privileges: string[];
+            role: components["schemas"]["RoleSummary"];
             /** Tenantid */
             tenantId: string;
             /** Tenantslug */
@@ -2258,6 +2310,15 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** PrivilegeCatalogEntry */
+        PrivilegeCatalogEntry: {
+            /** Domain */
+            domain: string;
+            /** Labelkey */
+            labelKey: string;
+            /** Privilege */
+            privilege: string;
+        };
         /** ReportRunStatus */
         ReportRunStatus: {
             /** Createdat */
@@ -2290,6 +2351,42 @@ export interface components {
             created_at: string;
             /** Version */
             version: number;
+        };
+        /** RoleCreate */
+        RoleCreate: {
+            /** Name */
+            name: string;
+            /** Privileges */
+            privileges: string[];
+        };
+        /** RolePatch */
+        RolePatch: {
+            /** Name */
+            name?: string | null;
+            /** Privileges */
+            privileges?: string[] | null;
+        };
+        /** RoleRead */
+        RoleRead: {
+            /** Id */
+            id: string;
+            /** Isbuiltin */
+            isBuiltIn: boolean;
+            /** Name */
+            name: string;
+            /** Privileges */
+            privileges: string[];
+            /** Slug */
+            slug: string;
+        };
+        /** RoleSummary */
+        RoleSummary: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
         };
         /** RollbackRequest */
         RollbackRequest: {
@@ -2381,12 +2478,10 @@ export interface components {
             /** Totalbytes */
             totalBytes: number;
         };
-        /** UserAdminPatch */
-        UserAdminPatch: {
-            /** Isadmin */
-            isAdmin?: boolean | null;
-            /** Isanalyst */
-            isAnalyst?: boolean | null;
+        /** UserRolePatch */
+        UserRolePatch: {
+            /** Roleid */
+            roleId: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -4872,6 +4967,171 @@ export interface operations {
             };
         };
     };
+    get_roles_roles_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_role_roles_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_roles_catalog_roles_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrivilegeCatalogEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_role_route_roles__role_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_role_roles__role_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RolePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_app_config_schema_schemas_app_config_get: {
         parameters: {
             query?: never;
@@ -5437,7 +5697,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UserAdminPatch"];
+                "application/json": components["schemas"]["UserRolePatch"];
             };
         };
         responses: {

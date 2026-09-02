@@ -39,15 +39,44 @@ export type ItemPage = {
   pageSize: number;
 };
 
+export type RoleSummary = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
 export type Me = {
   username: string;
   firstName: string;
   lastName: string;
-  isAdmin: boolean;
-  isAnalyst: boolean;
-  hasAnyEditorRole: boolean;
+  role: RoleSummary;
+  privileges: string[];
   version: string;
   tenantSlug: string;
+};
+
+export type Role = {
+  id: string;
+  name: string;
+  slug: string;
+  isBuiltIn: boolean;
+  privileges: string[];
+};
+
+export type PrivilegeCatalogEntry = {
+  privilege: string;
+  domain: string;
+  labelKey: string;
+};
+
+export type RoleCreateInput = {
+  name: string;
+  privileges: string[];
+};
+
+export type RolePatchInput = {
+  name?: string;
+  privileges?: string[];
 };
 
 export type InstanceInfo = {
@@ -58,7 +87,10 @@ export type InstanceInfo = {
   tileset3dEnabled: boolean;
   terrain3dEnabled: boolean;
   copilotEnabled: boolean;
+  adminToolsEnabled: boolean;
 };
+
+export type AdminToolName = "martin" | "titiler" | "grafana";
 
 export type CopilotMessage = { role: "user" | "assistant"; content: string };
 export type CopilotClientOp = { op: string; args: Record<string, unknown> };
@@ -244,6 +276,11 @@ export interface ItemClient {
     pageSize?: number;
   }): Promise<ItemPage>;
   getMe(): Promise<Me>;
+  getPrivilegeCatalog(): Promise<PrivilegeCatalogEntry[]>;
+  listRoles(): Promise<Role[]>;
+  createRole(input: RoleCreateInput): Promise<Role>;
+  updateRole(id: string, patch: RolePatchInput): Promise<Role>;
+  deleteRole(id: string): Promise<void>;
   getInstanceInfo(): Promise<InstanceInfo>;
   copilotTurn(
     itemId: string,
@@ -292,6 +329,7 @@ export interface ItemClient {
   updateHarvestSource(id: string, patch: HarvestSourcePatchInput): Promise<HarvestSource>;
   deleteHarvestSource(id: string): Promise<void>;
   runHarvestSource(id: string): Promise<void>;
+  launchAdminTool(tool: AdminToolName): Promise<{ url: string }>;
   getCollectionSharing(id: string): Promise<Sharing>;
   setCollectionSharing(id: string, sharing: Sharing): Promise<void>;
   createMapItem(input: { title: string; owner: string }): Promise<Item>;

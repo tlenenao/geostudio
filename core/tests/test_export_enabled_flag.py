@@ -63,6 +63,7 @@ def test_instance_reports_export_disabled_by_default(env):
         "tileset3dEnabled": False,
         "terrain3dEnabled": False,
         "copilotEnabled": False,
+        "adminToolsEnabled": False,
     }
 
 

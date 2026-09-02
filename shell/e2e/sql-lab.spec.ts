@@ -1,26 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCore, mockMe, ANALYST_ME } from "./mocks";
 
 test("un analyste exécute une requête SQL, voit le résultat, et recharge une requête depuis l'historique", async ({
   page,
 }) => {
   await mockCore(page);
-  await page.route("**/me", async (route) => {
-    await route.fulfill({
-      json: {
-        id: "u-mock",
-        username: "mockuser",
-        firstName: "Mock",
-        lastName: "User",
-        email: null,
-        tenantId: "t-mock",
-        isAdmin: false,
-        isAnalyst: true,
-      },
-    });
-  });
+  await mockMe(page, ANALYST_ME);
 
   let posted: unknown;
   // Host-scoped (not "**/analytics/sql"): the shell's own client-side route
@@ -58,20 +45,7 @@ test("une erreur SQL affiche le message du serveur et conserve le texte dans l'�
   page,
 }) => {
   await mockCore(page);
-  await page.route("**/me", async (route) => {
-    await route.fulfill({
-      json: {
-        id: "u-mock",
-        username: "mockuser",
-        firstName: "Mock",
-        lastName: "User",
-        email: null,
-        tenantId: "t-mock",
-        isAdmin: false,
-        isAnalyst: true,
-      },
-    });
-  });
+  await mockMe(page, ANALYST_ME);
   await page.route("https://core.test/analytics/sql", async (route) => {
     await route.fulfill({
       status: 400,

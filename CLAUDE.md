@@ -144,7 +144,7 @@ uv run pytest        # 1896 passed + 5 skipped + 1 failed (mesuré 2026-08-27,
 # portes de qualité (mêmes invocations qu'en CI — cf. .github/workflows/ci.yml)
 cd core
 uv run ruff check . && uv run ruff format --check .
-uv run mypy --strict app/auth app/secrets app/analytics app/copilot
+uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools app/roles
 uv run lint-imports                      # contrat de couches (30 entrées)
 uv run python scripts/check_coverage.py coverage.xml .coverage-threshold   # 85
 cd ../shell
@@ -532,41 +532,576 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   ci-dessous), dont plusieurs désormais répétées 3-4 fois dans la famille
   sans jamais avoir été tranchées pour de bon — actées à trancher une fois
   pour toute la famille avant SP-30i+ plutôt que reportées une fois de plus.
+- **SP-30i** (4 tâches, famille 7 « Analytique » du §6.1 de la spec SP-30)
+  — `SqlLabPage` sur `TriptychLayout` : onglets « Catalogue » (lien retour
+  seul, `Panel`) / « Requête » (éditeur/résultat existants, conteneur
+  `overflow-y-auto` posé dès l'écriture — piège déjà documenté 5 fois par
+  SP-30d→h, non répété ici) / « Historique » (liste ou `EmptyState` si
+  vide). Le vrai garde-fou de sécurité reste côté serveur
+  (`core/app/features/routes.py:421-431`, 403 si `!user.is_analyst`) :
+  retirer le check `isAnalyst` interne à la page n'est donc pas une
+  régression, `RequireRole` (déjà posé sur les trois routes admin par
+  SP-29a) devient la défense en profondeur pour ce 4e consommateur —
+  générique, vérifié structurellement identique à `KitGalleryPage.tsx`.
+  `SqlLabPage.tsx` disparaît de la liste des 9 occurrences de comparaison
+  de droits en dur visée par SP-30 (décompte réel révisé à 11
+  occurrences/6 fichiers : le texte de la spec §6.5 sous-comptait, il
+  omettait `KitGalleryPage.tsx`). E2E 118/4/0 inchangé, Vitest 223
+  fichiers/1829 tests, couverture shell 90,85 %. Revue finale de branche
+  (opus) : 0 Critical, 1 Important fermé (deux commentaires de test
+  affirmaient à tort que `SqlLabPage` refuse encore l'accès en interne,
+  alors que ce plan déplace ce refus vers `RequireRole` — corrigé,
+  attribution remise à jour, aucun changement de logique), 10 Minor
+  reportés en suivi non bloquant, plusieurs explicitement adressés à
+  SP-30j (inventaire `RequireRole` sous-compté ; `useMe()` consommé pour
+  deux usages distincts sur les pages admin — le garde ET
+  `enabled: isAdmin` sur leur requête, les deux à retirer ensemble).
+  **Ready to merge.**
+- **SP-30j** (5 tâches + 1 correctif hors-tâche du contrôleur, famille 8
+  « Administration » du §6.1 de la spec SP-30 — dernière des neuf
+  familles nommées) — `AdminExtensionsPage`/`HarvestSourcesAdminPage`/
+  `CollectionsAdminPage` sur `TriptychLayout`, les trois routes admin
+  enveloppées dans `<RequireRole role="admin">` (suivi SP-30i consommé :
+  `useMe()`/`isAdmin` disparus des trois pages, garde ET `enabled` de
+  requête retirés ensemble). Cinq dialogues Radix convertis en panneaux
+  (`CreateHarvestSourcePanel`/`EditHarvestSourcePanel`/
+  `EditCollectionPanel`/`CollectionSharePanel`/`RegisterCollectionPanel`),
+  exclusivité mutuelle entre panneaux posée par chaque gestionnaire de
+  clic (2 états sur Harvest, 3 sur Collections). E2E 118/4/0 inchangé
+  (specs harvest/collections mises à jour pour cibler `region` au lieu de
+  `dialog`). Vitest 219 fichiers/1830 tests, couverture 91,09 %.
+  **Correctif hors-tâche du contrôleur** : régression de
+  `routes.test.tsx` introduite par Task 1 (test synchrone n'attendant pas
+  la résolution de `RequireRole`/`useMe()`), trouvée en aparté par
+  l'implémenteur de Task 4 — aucune tâche ni revue par tâche ne relance
+  la suite vitest complète — corrigée directement par le contrôleur.
+  Deux tâches ont trouvé le même défaut plan-mandaté (test d'exclusivité
+  mutuelle absent du texte littéral du brief) à des stades différents :
+  Task 3 en 2 rounds de correctif avec falsification, Task 4 dès le
+  premier passage de revue grâce au briefing explicite du risque de
+  récidive. Revue finale de branche (opus) : 0 Critical, 1 Important
+  fermé — la décision 6 du plan (exempter `deleting` de la remise à zéro
+  croisée) était trouée identiquement sur les deux pages admin à
+  panneaux : supprimer une ligne pendant que SON PROPRE panneau
+  d'édition/partage est ouvert ne le refermait pas, ces panneaux n'étant
+  plus modaux depuis cette branche — fixé (remise à zéro conditionnelle
+  sur l'id après succès de la mutation), vérifié par falsification
+  indépendante du re-reviewer — 9 Minor reportés en suivi non bloquant
+  pour SP-30k+/SP-31 (dont : `aria-expanded`/`aria-controls` toujours
+  absent sur cinq déclencheurs, 5e famille consécutive à différer la
+  question, plus aucune famille suivante dans SP-30 pour la trancher ;
+  deux doctrines de mode démo différentes coexistent désormais sous le
+  même layout — `HarvestSourcesAdminPage` masque sous `!readOnly`,
+  `CollectionsAdminPage` ne le fait pas). **Ready to merge.**
+- **SP-30k** (4 tâches, dernier reliquat nommé de la spec §2.1 —
+  `ImportFileButton`/`NewItemButton`/`Tileset3DUploadButton`) — bascule
+  des trois derniers composants de **chrome** (montés dans `TopBar`, sur
+  toutes les routes protégées, à la différence de toutes les pages
+  SP-30a→j) de `ui/dialog.tsx` vers `ui/kit/Drawer` (+ `Button`/`Input`
+  du kit, tokens) : premier consommateur de production de `Drawer`
+  (livré SP-29b, jamais consommé hors `KitGalleryPage` avant ce plan).
+  Ancien funnel `onClose()` devient `onOpenChange={(next) => !next &&
+  <funnel>()}` (vérifié empiriquement avant écriture du plan : Radix
+  appelle `onOpenChange(false)` sur Échap et clic hors zone).
+  `NewItemButton`/`ImportFileButton` préservent à l'identique l'absence
+  de garde `busy` sur la fermeture ; `Tileset3DUploadButton` est seul à
+  en avoir une réelle (`requestClose()`), préservée sur ses trois chemins
+  de fermeture, test réécrit ciblant `dialog.previousSibling` (l'`Overlay`
+  Radix ne porte pas `aria-hidden="true"`, contrairement à l'ancien fond
+  fait main). `ui/button"`/`ui/input"`/`ui/dialog"` désormais absents de
+  tout `shell/src/shell/` (grep élargi au dossier entier) — seuls deux
+  consommateurs de `ui/dialog` restent dans tout le shell, tous deux hors
+  périmètre par doctrine (`AppRuntimePage.tsx`, rendu public ;
+  `builder/widgets/modal.tsx`, widget runtime « Modale »). E2E 118/4/0
+  inchangé, suite complète relancée après **chaque** tâche (Global
+  Constraint du plan). Vitest 219 fichiers/1833 tests, couverture shell
+  91,07 %. Un implémenteur de tâche s'est arrêté une fois en attendant
+  une notification de fond qui ne pouvait pas lui parvenir (piège déjà
+  noté SP-29a) — relancé par message direct, sans conséquence. Revue
+  finale (opus) : 0 Critical, 1 Important non bloquant
+  (`ImportFileButton`/`NewItemButton` n'ont — et n'avaient déjà — aucune
+  garde `busy` sur leur fermeture, comportement préexistant que le plan
+  interdisait explicitement de « corriger » ici ; à tracker
+  explicitement car SP-30k est la dernière brique nommée de la spec
+  §2.1, aucun SP-30l ne l'héritera), 7 Minor (dont : `ui/kit/Drawer.tsx`
+  sans `overflow-y-auto` sur son contenu — dette du **kit** lui-même,
+  invisible aux deux filets de test, même classe que le Critical trouvé
+  par SP-30d ; `Drawer.test.tsx` ne couvre que Échap, pas le clic hors
+  zone, dont dépend désormais un consommateur réel ; modalité Radix
+  (focus trap, scroll lock, `aria-hidden` sur le reste de la page)
+  jamais mentionnée par le plan bien que ces trois composants soient
+  montés sur toutes les routes protégées — vérifié qu'aucun portail
+  Toast/Tooltip global n'en pâtit). **Ready to merge.** Avec cette
+  branche, les neuf familles du §6.1 (SP-30a→j) et le dernier reliquat
+  nommé du §2.1 (chrome) sont tous clos ; ne reste que la revue
+  transverse de sortie de SP-30 (§7) et la dette de symbologie/popup
+  imbriquée dans `LayersPanel` (notée SP-30c, hors périmètre de tout
+  plan SP-30 jusqu'ici).
+- **SP-30l** (3 tâches + round 2 de correction, revue transverse de sortie —
+  §7 de la spec ; **ne clôt PAS SP-30**, cf. paragraphe round 2 en fin
+  d'entrée et `### À venir`/SP-30) — les huit critères de sortie vérifiés un
+  par un, pas supposés acquis parce que les neuf familles et le chrome sont
+  clos. 1 bug réel
+  trouvé : `useNarrowViewport` basculait sous `max-width: 389px`, classant
+  390 px — la largeur CSS réelle des iPhone 12/13/14 et le seuil que la
+  maquette elle-même nomme — comme *large* plutôt qu'étroit ; aucun test
+  unitaire existant ne pouvait le voir, chacun stubbant `window.matchMedia`
+  avec une valeur fixe plutôt que la vraie chaîne de requête (piège n°10).
+  Second trou comblé : le badge de rôle (§7.8) n'était vérifié que par des
+  tests unitaires MSW, jamais par un compte de test E2E dédié à cette
+  question précise. Les six autres critères (chrome neuf partout, neuf
+  domaines navigables, suites + portes de qualité vertes,
+  `CollectionPermissions` sans `canWrite`, `ItemActions` sans raison de
+  verrou dupliquée) étaient déjà acquis par SP-30a→k, re-vérifiés
+  mécaniquement plutôt que supposés.
+  **Revue finale de tout le plan (2026-09-02) : 4 Important, tous fermés** —
+  (1) le seuil corrigé une première fois à `max-width: 390px`
+  (`70146c8d`) ne suffisait pas : mesure réelle, de ~391 px à ~540 px la
+  grille triptyque desktop (`grid-cols-[minmax(220px,280px)_1fr_
+  minmax(260px,320px)]` de `TriptychLayout.tsx`) clippe toujours du
+  contenu (clippé à 540 px, sans casse à partir de 640 px) — une bande qui
+  couvre des téléphones réels courants (iPhone 14/15 Plus/Pro Max, Pixel
+  7/8 Pro, iPhone XR/11). Décision (Tanguy) : seuil relevé à
+  `max-width: 640px` (le seuil `sm` conventionnel de Tailwind), constante
+  désormais exportée (`NARROW_QUERY`, `useNarrowViewport.ts`) plutôt que
+  répétée en dur. Un second groupe de 8 tests vérifie désormais 641 px
+  (juste au-dessus du seuil relevé) : 7 écrans passent sans contenu
+  clippé, le 8e (Catalogue) est `test.skip()` avec un **nouveau défaut
+  trouvé et documenté, non corrigé ici** (hors périmètre explicite de ce
+  correctif) — la colonne centrale (`work`, 1fr) de `TriptychLayout` est
+  affamée par les deux colonnes latérales, qui grandissent d'abord vers
+  leur maximum (280+320=600 px) avant que la piste `1fr` ne reçoive quoi
+  que ce soit (algorithme standard de dimensionnement CSS Grid) — un effet
+  potentiellement partagé par les 8 écrans mais qui ne clippe visiblement
+  que sur `CatalogPage.tsx` (résumés d'items effondrés à largeur 0)
+  **(affirmation infirmée par le round 2 de vérification ci-dessous : le
+  filet lui-même était vacant sur les 5 autres écrans concernés, et une
+  fois corrigé il révèle un clipping stable sur 6 des 8 écrans, pas 1 —
+  voir le paragraphe « Round 2 de correction » plus bas pour le détail
+  exact)** ; un chantier de layout distinct, à ouvrir séparément, pas un
+  simple réglage de seuil. (2) le filet `expectNoHorizontalOverflow()`
+  d'origine (lisant `document.documentElement.scrollWidth`) était lui-même
+  vacant — il peut lire 0 alors que du contenu réel est clippé, parce que
+  le conteneur de contenu d'`AppLayout.tsx` est `overflow-y-auto` (l'axe X
+  visible calcule
+  alors à `auto` par la spec CSS, absorbant tout débordement avant le
+  document) et que les cellules de la grille desktop sont
+  `overflow-hidden` (elles clippent sans rien remonter) ; remplacé par
+  `expectNoClippedContent()`, qui scanne tous les éléments dont le
+  débordement X est significatif (`hidden`/`auto`/`scroll`) et vérifie
+  qu'aucun n'a de contenu dépassant sa propre boîte — vérifié par
+  falsification (piège n°10) : le nouveau filet échoue bien quand le
+  seuil est délibérément re-régressé à 390 px, sur un vrai clippage
+  mesuré (390 → 500 px, `CatalogPage.tsx`), pas seulement « les tests
+  passent toujours ». (3) les trois copies quasi-identiques du littéral
+  `GET /me` (`e2e/mocks.ts`, et les `meRoute()` locales des deux nouvelles
+  specs) retombées sur un seul helper exporté `mockMe()` dans
+  `e2e/mocks.ts`. (4) les deux tests `item-detail-panels.spec.ts` qui
+  figeaient encore `width: 389` avec un commentaire défendant l'ancienne
+  borne au pixel près sont repassés à 390 px (largeur représentative,
+  plus de borne à défendre — le point même de ce correctif). Le critère
+  « OpenAPI/types à jour » a nécessité une double vérification du fait de
+  sessions concurrentes actives sur `core/` pendant ce correctif (module
+  rôles/privilèges, capacité `adminToolsEnabled`) : un premier passage a
+  trouvé `adminToolsEnabled` absent de `core/openapi.json`/
+  `core-schema.d.ts` alors que déjà présent dans
+  `core/app/auth/routes.py`/`instance/routes.py` — pas un défaut de ce
+  plan, une dérive introduite par une branche concurrente non regénérée —
+  résolue par cette même session concurrente avant la clôture de ce
+  correctif (revérifiée par grep juste avant ce commit). Rappel pour la
+  suite : dans un dépôt à sessions concurrentes, ce critère se revérifie à
+  chaque clôture, il ne se suppose jamais acquis d'une vérification à
+  l'autre. E2E 118/4/0 → 137/5/0 (118 pré-existants + 16
+  `triptych-narrow.spec.ts` [8×390 px + 8×641 px, 1 skip documenté ci-
+  dessus] + 4 `account-badge.spec.ts`).
+  **Round 2 de correction (2026-09-02), sur ré-examen indépendant : la revue
+  finale ci-dessus était elle-même trouée, et l'affirmation « SP-30 est clos »
+  qui suivait était prématurée — corrigée ici.** Le filet ajouté par round 1,
+  `expectNoClippedContent()` (`shell/e2e/triptych-narrow.spec.ts`), enveloppait
+  sa mesure dans `expect(...).toPass({ timeout: 3000 })` — qui s'arrête au
+  **premier** succès, jamais garanti d'observer l'état stabilisé. Sur 5 des 8
+  écrans qui rendent réellement la grille de `TriptychLayout.tsx` (Cartes,
+  Apps & sites, Analytique, Administration, Automatisation — Catalogue déjà
+  correctement attrapé par round 1), le tout premier sondage tombait pendant
+  la peinture
+  initiale vide/chargement (0 offenseur), `toPass` déclarait la réussite
+  immédiatement, et la mise en page réellement installée n'était jamais
+  observée — un défaut du filet de test lui-même, pas de l'implémentation
+  qu'il prétendait vérifier (piège n°10). Corrigé par un settle-poll réel :
+  `expectNoClippedContent()` attend `networkidle` puis sonde le nombre
+  d'offenseurs toutes les ~150 ms jusqu'à 3 mesures consécutives identiques
+  (ou 5 s écoulées), et n'affirme qu'une fois sur cette mesure stabilisée —
+  **vérifié par falsification réelle**, pas supposé : le check corrigé, lancé
+  contre les écrans concernés, rapporte bien un nombre d'offenseurs stable et
+  non nul (pas 0), confirmant qu'il peut désormais échouer sur une vraie
+  casse. Une fois ce filet honnête, il révèle un clipping stable et réel à
+  641 px sur **6 des 8 écrans**, pas 1 : Catalogue (5 offenseurs, inchangé),
+  Cartes (3), Apps & sites (2), Analytique (1), Administration (1), et
+  Automatisation (2, mais seulement après avoir corrigé un second défaut —
+  voir ci-dessous). Seuls Tâches et Paramètres passent pour de vraies
+  raisons (`TasksComingSoonPage.tsx`/`SettingsComingSoonPage.tsx` ne rendent
+  qu'un `<EmptyState>`, aucune grille `TriptychLayout` à mesurer — confirmé
+  par lecture directe du fichier). Racine commune, désormais nommée dans le
+  code (`WIDE_BOUNDARY_ROOT_CAUSE`, `triptych-narrow.spec.ts`) : la grille
+  `grid-cols-[minmax(220px,280px)_1fr_minmax(260px,320px)]` de
+  `TriptychLayout.tsx` maximise d'abord ses deux colonnes latérales (jusqu'à
+  280+320=600 px combinés, algorithme standard de dimensionnement CSS Grid)
+  avant de donner quoi que ce soit à la colonne centrale (`work`, piste
+  `1fr`) — à 641 px elle n'hérite que de 41 px, quel que soit l'écran. Ce
+  n'est pas propre à 641 px : la même famine plausiblement jusqu'à
+  ~1000 px+ selon l'écran (ex. une fenêtre desktop en demi-écran) — un vrai
+  chantier de layout sur `TriptychLayout` lui-même, partagé par les neuf
+  familles SP-30, **non corrigé par ce round** (décision de Tanguy : borné,
+  pas de correctif de layout improvisé dans ce round de correction de
+  filets de test — un futur plan dédié le reprendra). Second défaut trouvé
+  en vérifiant le premier : le test « Automatisation à 641 px » passait déjà
+  avant round 2, mais pour une raison entièrement différente et sans
+  rapport — sous les mocks e2e existants, `GET /pipelines/ops` n'était pas
+  répondu du tout, `PipelineBuilderPage.tsx:62` restait bloqué sur
+  `<p role="status">Chargement…</p>`, et la grille `TriptychLayout` n'était
+  donc jamais atteinte (0 offenseur mesuré parce qu'il n'y avait rien à
+  mesurer) — un faux vert, pas un écran correct. Corrigé en ajoutant un mock
+  minimal de cette route dans le `before` de l'écran Automatisation
+  (`AUTOMATISATION_OPS_CATALOG`), ce qui fait quitter la page son état de
+  chargement et révèle la même famine de colonne centrale (2 offenseurs
+  stables) que les cinq autres écrans. Un test de non-régression du seuil
+  lui-même a aussi été ajouté (absent jusqu'ici : revenir `NARROW_QUERY` à
+  `(max-width: 390px)` laissait toute la suite committée verte, puisqu'aucun
+  test ne visait un viewport dans la bande 391-640 px) — un viewport à
+  500 px doit rendre le mode étroit (`BottomNav`/« Navigation », onglets),
+  pas la grille desktop ; vérifié par falsification (le test échoue bien
+  quand le seuil est délibérément re-régressé à 390 px, puis le fichier est
+  restauré). Le commentaire de `useNarrowViewport.ts` affirmant à tort que
+  la grille tient « sans aucun clipping » à partir de 640 px a été réécrit
+  pour dire le vrai : 640 px élimine la pire famine (colonne centrale à
+  `clientWidth` 0 de 391 à 540 px) mais ne garantit rien au-dessus — le
+  clipping résiduel de `TriptychLayout` y est désormais documenté et pointé
+  vers cette même entrée. E2E 137/5/0 → **143 tests (133 passed/10
+  skipped/0 failed)** — 5 skips 641 px supplémentaires (Cartes/Apps &
+  sites/Analytique/Administration/Automatisation, en plus du skip Catalogue
+  déjà présent) et 1 test de non-régression du seuil en plus. Vitest 220
+  fichiers/1839 tests, tous passés. **Conséquence assumée avec Tanguy :
+  SP-30 N'EST PAS déclaré clos par ce round** — le critère de sortie §7
+  « aucun écran ne clippe au-dessus du seuil » n'est en réalité vérifié que
+  sur 2 des 8 écrans de référence (Tâches, Paramètres) ; le défaut de
+  `TriptychLayout` ci-dessus reste le seul bloquant avant de pouvoir
+  redéclarer SP-30 clos (cf. `### À venir`, entrée SP-30, pour le suivi
+  scopé) — ce correctif règle l'honnêteté des tests et de la documentation,
+  pas le défaut de layout lui-même.
 
 Jalons atteints : **M1, M2, M4, M5, M11, M12, M13, M15, M16**. **M14** reste
 bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
 
+- **SP-32 — Traefik /admin/\*** (7 tâches, spec
+  `2026-09-01-traefik-admin-tools-design.md`, plan
+  `2026-09-01-traefik-admin-tools.md`) — URLs cohérentes
+  `/admin/martin`, `/admin/titiler`, `/admin/grafana` derrière un gate
+  cookie que seul un admin peut ouvrir depuis le shell : module
+  `core/app/admin_tools/` (jeton de lancement HMAC à durée de vie courte
+  (60s), non révocable avant expiration, sans suivi de consommation
+  (même choix que `app/auth/export_tokens.py`, SP-17a) :
+  `POST /admin-tools/launch/{tool}` Bearer-admin → jeton de lancement →
+  `GET /admin-tools/session/{tool}` échange le jeton contre un cookie
+  `gs_admin_session` HttpOnly/Secure/SameSite=Strict/Path=/admin de 30 min
+  — **premier cookie de tout ce dépôt** — vérifié par `GET
+  /admin-tools/verify`, la cible du `forwardAuth` Traefik), les trois
+  routes montées uniquement si `CORE_ADMIN_TOOLS_ENABLED` (même convention
+  que `terrain3d`/`tileset3d`/`copilot`, absentes de l'export OpenAPI par
+  défaut). Sous-chemin par outil vérifié contre l'image réelle : `--base-path`
+  pour Martin, `TITILER_API_ROOT_PATH` pour Titiler, `GF_SERVER_ROOT_URL`/
+  `GF_SERVER_SERVE_FROM_SUB_PATH` pour Grafana (seul des trois SANS
+  `stripprefix`, préfixe conservé — vérifié empiriquement contre
+  `grafana/otel-lgtm:0.11.4` réel). Overlay prod (`docker-compose.prod.yml`)
+  reprend les mêmes noms de routeur/service/middleware, substitue
+  `entrypoints=web`/`${GEOSTUDIO_PUBLIC_HOST}` (pas d'ACME). Shell :
+  `ItemClient.launchAdminTool`/`useLaunchAdminTool`, page
+  `AdminInfrastructurePage` (`/admin/infrastructure`, `RequireRole
+  role="admin"`, trois boutons masqués — pas juste désactivés — quand la
+  capacité est inactive, lien de découverte depuis `AdminExtensionsPage`)
+  + lien MinIO direct non gaté (limite technique assumée, cf. spec §1/§5).
+  E2E 130/4/0 → **inchangé** (aucun nouveau spec E2E dans ce plan, cf.
+  spec §7) ; suite complète relancée en contexte élargi (post-SP-30l) :
+  Vitest shell 220/220 fichiers, 1839/1839 tests, E2E 141 (136 passed/5
+  skipped, 1 flake de contention confirmé et effacé en isolation — cf.
+  ci-dessous). Suite core : 69/69 tests admin_tools-spécifiques,
+  `test_deployability.py` 35/35, portes qualité (ruff/mypy --strict/
+  lint-imports/couverture 85,69 %) toutes vertes. **Exécuté sur un
+  checkout partagé avec une session concurrente active** (refactor
+  "roles/privileges", `2026-09-02-roles-privileges-implementation.md`) :
+  contention réelle de ports/build shell (E2E, coordonnée directement avec
+  l'autre session) et 14 échecs de la suite core préexistants/hors-scope
+  (retrait de `user.is_analyst`, confirmé en isolant les 5 fichiers
+  concernés → 0 échec restant). **Le smoke test réel de bout en bout
+  (Step 6 : lancement→session→cookie→accès Martin via Traefik) n'a PAS pu
+  être rejoué dans cet environnement** — deux blocages indépendants, ni
+  l'un ni l'autre imputable à ce plan : (1) `traefik:v3.0.4` ne peut pas
+  parler au démon Docker de cette machine (`Error response from daemon:
+  ""` en boucle, TOUS les routeurs Traefik répondent 404, y compris une
+  route préexistante sans rapport testée en contrôle) — skew de version
+  probable entre l'image pinnée et un moteur Docker très récent
+  (29.4.3/API 1.54), persiste après redémarrage du conteneur ; (2) requête
+  authentifiée directe contre `core` (contournant Traefik) répond 500 —
+  `relation "roles" does not exist`, la session concurrente
+  "roles-privileges" n'a pas encore écrit sa migration Alembic (ses
+  propres tests passent en SQLite mémoire, schéma construit hors Alembic,
+  trou invisible à sa propre suite). Décision actée avec Tanguy : clore ce
+  plan sur la preuve statique (`docker compose config`, Tâches 4/5) + la
+  preuve TDD (Tâche 3, 10/10, `GET /admin-tools/verify` sans cookie
+  confirmé 403 en direct contre `core:8200`) plutôt que d'attendre la
+  résolution de ces deux éléments externes — **à rejouer réellement une
+  fois les deux résolus**, ni l'un ni l'autre dans le périmètre de ce
+  plan.
+  **Suivi non bloquant, sécurité, à trancher séparément** : le nouveau
+  bloc `otel-lgtm` de l'overlay prod ne fait pas `ports: !reset []`
+  (contrairement à `martin`/`titiler`) — Grafana (3001) et les deux ports
+  OTLP (4317/4318) restent publiés directement sur l'hôte en prod, hors du
+  gate `/admin/grafana` ; conforme au texte littéral du plan, pas un
+  défaut de son exécution.
+
+- **SP-31 — rôles à base de privilèges** (17 tâches + 1 correctif hors-plan
+  + 1 lot de correctifs de revue finale, spec
+  `2026-09-01-roles-privileges-design.md`, plan
+  `2026-09-02-roles-privileges-implementation.md`) — remplace
+  `User.is_admin`/`User.is_analyst` (deux booléens plats) par un modèle de
+  rôles nommés à privilèges cochés : **18 privilèges** catalogués
+  (`app/roles/privileges.py::Privilege` — le texte du plan disait « 17 »
+  partout, coquille de prose jamais reflétée dans le code, corrigée ici),
+  **4 rôles prédéfinis immuables par tenant** (Administrateur/Créateur/
+  Analyste/Lecteur — API rejette 400 sur tout PATCH, nom **et** privilèges,
+  y compris sur le rôle Admin — décision explicitement tranchée avec Tanguy
+  après qu'une revue a trouvé le texte littéral du plan auto-contradictoire
+  entre son code de garde et son propre test) + rôles sur mesure créés par
+  tenant. `User.role_id` (FK NOT NULL) remplace `is_analyst` (colonne
+  supprimée) ; `is_admin` **survit** comme colonne synchronisée
+  exclusivement par la logique de rôle (jamais réglée indépendamment,
+  ~20 sites de lecture existants inchangés). Nouveau module `app/roles/`
+  (modèle, catalogue, repository, garde `require_privilege`, routes CRUD
+  `/roles`+`/roles/catalog` gardées `admin.roles.manage`, anti-lockout sur
+  `PATCH /roles/{id}` et `PATCH /users/{id}`), migration Alembic 0030
+  testée dans les deux sens sur base non vide réelle. Cinq modules migrés
+  de `_require_admin(user)` local vers `require_privilege(session, user,
+  Privilege.X.value)` (extensions, harvest, secrets, collections, SQL
+  Lab — dernier consommateur de `is_analyst`). Côté shell :
+  `Me.role`/`Me.privileges` remplacent `isAdmin`/`isAnalyst`/
+  `hasAnyEditorRole` ; `capabilities.ts` gagne un `requiresPrivilege` sur
+  cinq domaines (Données/Apps/Automatisation/Analytique/Tâches,
+  auparavant visibles à tout authentifié quel que soit son rôle) — ferme
+  enfin le trou « le profil Lecteur n'est pas dérivable du modèle actuel »
+  documenté depuis SP-29a ; `RequireRole` supprimé, remplacé par
+  `RequirePrivilege` sur les 4 routes `/admin/*`+`/analytics/sql`
+  existantes **et** la 5e route `/admin/infrastructure` ajoutée entre
+  temps par la session Traefik concurrente (découverte et convertie au
+  passage, sans quoi la suppression de `RequireRole` l'aurait cassée) ;
+  nouvel écran `RolesAdminPage` (créer/éditer/supprimer un rôle sur
+  mesure, cases à cocher par domaine) — patron répliqué de
+  `HarvestSourcesAdminPage`.
+  Exécuté sur un **checkout partagé avec une session concurrente active**
+  (Traefik `/admin/*`, ci-dessus) — coordination directe tout au long
+  (heads-up avant chaque build/e2e, diagnostic conjoint d'un conflit
+  d'index git résiduel sans rapport avec l'un ou l'autre plan). Débloque
+  le blocage (2) noté par l'entrée Traefik ci-dessus (`relation "roles"
+  does not exist`) : la migration 0030 existe désormais, le smoke test
+  Traefik bout-en-bout reste à rejouer par une future session.
+  Suite complète cœur **1912→1915 passed** / 168 skipped / 0 failed
+  (référence CLAUDE.md pré-plan : 1896+5+1 intermittent — delta positif,
+  aucune régression, les 2 échecs pré-existants documentés non reproduits
+  dans cet environnement). Suite shell **221 fichiers/1846 tests, 0
+  failed**, couverture 90,5 % (seuil 88), `tsc --noEmit` propre.
+  **E2E cassé puis réparé en cours de vérification finale** (piège n°6
+  concrétisé à grande échelle) : aucune des tâches shell n'avait fait
+  tourner la suite E2E complète (seulement Vitest+tsc, comme spécifié par
+  leurs briefs respectifs) — au premier run complet, 121 échecs sur ~135,
+  tous tracés à `shell/e2e/mocks.ts` et 11 specs encore construits sur
+  l'ancienne forme de `/me` (`isAdmin`/`isAnalyst`/`hasAnyEditorRole`),
+  faisant planter `AppErrorBoundary` sur quasi toute page authentifiée.
+  Diagnostiqué (pas supposé) et corrigé : 4 profils canoniques exportés
+  dans `mocks.ts`, alignés item-pour-item sur `BUILT_IN_ROLE_PRIVILEGES`.
+  **133 passed / 10 skipped / 0 failed** après correctif — vérifié via
+  `test-results/.last-run.json`, pas le tail tronqué et trompeur du
+  reporter Playwright `list` sur un run de ~14 minutes (piège
+  méthodologique à retenir pour toute future vérification E2E longue).
+  **Revue finale de branche (opus, package scopé par pathspec — `dev`
+  avait reçu ~20 commits étrangers interleaved de la session Traefik
+  pendant l'exécution) : 0 Critical, 9 Important.** Mécanisme
+  d'autorisation lui-même jugé correct, complet, bien testé (aucune route
+  n'a perdu de garde, `can()`/`decide()` intact, migration saine dans les
+  deux sens). Lot de 10 correctifs appliqué et re-revu (0 Critical/
+  Important restant, « Ready to merge: Yes », les 3 correctifs à plus
+  fort enjeu vérifiés par falsification active, pas seulement lus) :
+  - `ensure_built_in_roles` ne resynchronisait jamais un rôle prédéfini
+    déjà créé — un privilège futur serait resté inatteignable à jamais
+    pour tout tenant existant (rôle prédéfini totalement figé côté API,
+    aucune réparation possible hors migration). Corrigé : resynchronise
+    nom+privilèges à chaque appel (déjà sur le chemin chaud de toute
+    requête authentifiée, coût nul mesuré — colonne JSON inchangée
+    suppressée du flush par SQLAlchemy).
+  - **Le plus sérieux** : le chemin de connexion (`get_or_create_user`,
+    branche `bootstrap_analyst`) pouvait écraser silencieusement le rôle
+    sur mesure d'un utilisateur vers "analyst" à la connexion suivante si
+    son sub apparaissait dans `CORE_ANALYST_SUBS` — sans passer par aucun
+    des deux gardes anti-lockout HTTP, contournement réel de l'invariant
+    que la spec design demandait explicitement en couche service.
+    Régression par rapport à l'ancien code (qui n'ajoutait jamais, ne
+    retirait jamais). Corrigé : la promotion ne part plus que des rôles
+    prédéfinis non-privilégiés (creator/reader), ne touche plus jamais un
+    rôle sur mesure.
+  - 3 commentaires vivants attribuant encore une garde à `_require_admin`
+    supprimé — même classe de défaut déjà payée 2x sur ce dépôt
+    (SP-30g/SP-30i).
+  - Docstring `CollectionPermissions` (réécrite par ce même plan) corrigée
+    pour dire le vrai : `delete` reflète encore `actor_is_admin`
+    (`is_admin`), pas le privilège `admin.collections.manage` — écart
+    architectural documenté en suivi ci-dessous, PAS résolu par ce
+    correctif (portée délibérément limitée au commentaire).
+  - Test `DELETE /roles/{id}` "encore utilisé" (409) ne testait jamais ce
+    chemin (supprimait un rôle prédéfini, heurtait la garde d'immutabilité
+    400 avant d'atteindre la garde de compte de porteurs) — corrigé sur un
+    rôle sur mesure réel.
+  - `DomainBar.test.tsx` figeait l'ancien comportement (Créateur sans
+    Analytique) sous une fixture prétendant refléter le cœur mais fausse —
+    contredisait `capabilities.test.ts`, qui teste le changement
+    délibéré inverse. Corrigé — **révèle un suivi produit non résolu, cf.
+    ci-dessous**.
+  - `RolesAdminPage` (fonctionnalité phare de ce plan) inatteignable
+    depuis l'UI — aucun lien, seule la route existait. Corrigé (patron
+    répliqué du seul lien `/admin/*` existant).
+  - `app/roles` ajouté à `mypy --strict` (CI + commande locale) ; 2
+    erreurs réelles trouvées et corrigées (annotation + branche morte,
+    aucun changement de comportement).
+  - Post-condition perdue sur `test_patch_user_cross_tenant_returns_404`
+    restaurée ; nouveau test du scénario « conjoint » explicitement non
+    testé par ce plan (rôle sur mesure porteur des deux privilèges
+    anti-lockout, seul porteur, tentative de le lui retirer via
+    `PATCH /users/{id}`) — vérifié par falsification qu'il exerce bien la
+    garde `count_users_with_privileges`, distincte de celle déjà couverte
+    côté `PATCH /roles/{id}`.
+  Suivis non bloquants documentés, non corrigés (décisions de périmètre
+  plus larges qu'un lot de correctifs sans nouvelle décision produit) :
+  visibilité `is_admin` vs garde `require_privilege` divergentes sur 3
+  sites (`extensions.include_disabled`, scope de liste `/collections`,
+  `CollectionPermissions.delete` — docstring seule corrigée ci-dessus) ;
+  cast `entry.labelKey as MessageKey` non gardé dans les deux panneaux de
+  rôle (aucun test ne lie le catalogue cœur aux clés `catalog.fr.ts`) ;
+  5 des 18 privilèges (`catalog.manage`/`maps.manage`/`data.manage`/
+  `automation.secrets.manage`/`tasks.view_all`) n'imposent rien nulle
+  part — hérité du périmètre de la spec design elle-même (§3.2 prévoyait
+  une paire view/manage par domaine, seul `data.view` existe côté
+  Lecteur), pas un défaut de cette exécution ; **corriger la fixture
+  `DomainBar.test.tsx` légitime un lien de nav vers le domaine Analytique
+  pour un Créateur dont l'unique destination (`/analytics/sql`) le
+  refuse** (`analytics.sql_lab.access`, que Créateur n'a pas) — exactement
+  l'anti-pattern qu'`ItemActions` avait éliminé (SP-29a) ; décision
+  produit à trancher (gater le domaine sur `analytics.sql_lab.access`, ou
+  donner une autre destination), pas improvisée ici ; même défaut sur le
+  nouveau lien `/admin/roles` lui-même (ungated pour qui n'a pas
+  `admin.roles.manage`, mais cohérent avec le seul précédent existant,
+  `/admin/infrastructure`) ; `/admin/harvest`/`/admin/collections`
+  toujours inatteignables depuis la nav (préexistant, confirmé contre le
+  commit de base — sans rapport avec ce plan) ; privilèges du Créateur
+  triplement dupliqués (cœur + 2 fixtures test shell) sans lien
+  mécanique — le prochain privilège ajouté rouvrira la même classe de
+  défaut que `DomainBar.test.tsx` ci-dessus ; `GET /users` en N+1 (une
+  requête de rôle par utilisateur) contre la doctrine SP-29a d'une seule
+  requête par page.
+
+### Conventions tranchées (2026-09-01)
+
+Trois dettes Minor répétées famille après famille (SP-30c→SP-30j) sans jamais
+être décidées, tranchées ici pour de bon — s'appliquent à tout nouveau code et
+à l'occasion du prochain contact avec un fichier existant, pas de correctif
+rétroactif en masse :
+
+- **Hauteur des contrôles de formulaire** : `h-9`, alignée sur `Button`
+  (`size="default"`) et sur `ui/kit/Input`/`ui/kit/Select`. `h-8` réservé aux
+  contextes explicitement denses (`Button size="sm"`, ligne de tableau
+  serrée) — jamais un choix par défaut. Les contrôles natifs encore en `h-8`
+  ad hoc (`LayerPicker.tsx`, `CrossFilterLinkEditor.tsx`,
+  `QueryFilterBuilder.tsx`, `PercentileInput.tsx`, `ReportScheduleEditor.tsx`,
+  `PipelineScheduleEditor.tsx`, …) ne sont pas corrigés par cette décision
+  seule — à migrer vers les contrôles du kit à l'occasion, pas en urgence.
+- **`<button>` natif vs `Button` du kit** : `Button` pour toute action
+  **autonome** (pas noyée dans une phrase, pas répétée par ligne dense) —
+  `variant="default"` pour l'action principale d'un panneau, `outline` pour
+  une action secondaire/alternative, `danger` pour une action destructive
+  autonome, `ghost` pour un bouton d'icône/chrome. `<button>` natif réservé à
+  deux cas : (a) une action stylée en lien inline dans une phrase
+  (`underline`, ex. « Réessayer » de `LayerPicker.tsx`) ; (b) une action
+  répétée par ligne dans une liste/tableau dense où la hauteur du kit
+  casserait l'alignement (ex. « Supprimer » par ligne de filtre dans
+  `QueryFilterBuilder.tsx`/`CrossFilterLinkEditor.tsx`). Conséquence concrète
+  actée comme dette : les boutons d'export de `DatasetEditPage.tsx` (rangée
+  fixe de 3-4 actions, pas une liste dense) auraient dû passer sur `Button` —
+  à corriger à l'occasion, pas par cette décision seule.
+- **`aria-expanded`/`aria-controls` sur un déclencheur de panneau en ligne** :
+  obligatoire sur tout bouton qui bascule un panneau en ligne (`ExportPanel`,
+  `Terrain3DUploadButton`, panneaux d'édition/partage SP-30j, etc.) —
+  `aria-expanded={open}` + `aria-controls={panelId}` sur le bouton, `id`
+  correspondant (+ `role="region"` si le panneau est substantiel) sur la
+  cible. Aucune primitive du kit ne le fournit aujourd'hui hors `Combobox`
+  (géré par Radix) — c'est au consommateur de le poser. Non appliqué
+  rétroactivement par cette décision.
+- **Dette de tokens `LayersPanel`/`MapSymbologyEditor.tsx` et voisins**
+  (`PopupEditor.tsx`, `FieldClassificationPicker.tsx`,
+  `MapMeasureSketchToolbar.tsx`, `MapPopup.tsx`, `MapLegend.tsx`,
+  `formFieldStyles.ts`) : confirmée hors périmètre de tout plan SP-30 (aucun
+  `Dialog` à convertir, ne bloque aucune tâche nommée). Volume potentiellement
+  comparable à SP-29a+SP-29b réunis. Décision : son propre chantier
+  (brainstorm si nécessaire → spec → plan dédiés), à ouvrir après la clôture
+  complète de SP-30 (revue transverse §7 incluse) — pas fusionné dans une
+  tâche SP-30 existante, pas improvisé en aparté.
+
 ### À venir
 
-- **SP-30** : réécriture des écrans qui
-  consomment enfin `Gate`/`capabilities.ts`/`tokens.css` — c'est là que les 9
-  occurrences restantes de comparaison de droits en dur (`SqlLabPage.tsx`,
-  `AdminExtensionsPage.tsx`, `HarvestSourcesAdminPage.tsx`,
-  `CollectionsAdminPage.tsx`, `AppLayout.tsx`) doivent disparaître, que les
-  permissions de collection et le profil « Lecteur » se tranchent, et que la
-  raison de verrouillage triplée d'`ItemActions` (cf. entrée SP-29a) peut être
-  regroupée si voulu. Basculera les écrans réels sur le kit `ui/kit/`
-  (SP-29b) et retirera les anciens fichiers `ui/*`. SP-30c a traité la
-  famille 3 (Cartes, `MapEditorPage`), SP-30d la famille 4 (Données,
-  `DatasetEditPage`), SP-30e la famille 5 (Apps & sites, `AppBuilderPage`),
-  SP-30f la famille 6 volet 1 (Automatisation, `PipelineBuilderPage`),
-  SP-30g la famille 6 volet 2 (Automatisation, `ReportEditPage`), SP-30h la
-  famille 6 volet 3 et dernier (Automatisation, `VisualQueryWizardPage`)
-  du §6.1 de la spec SP-30 — **famille 6 entièrement close** ; **restent
-  les familles 7/8** (SP-30i+, à découper en plans séparés — la spec
-  proscrit un seul plan pour tout le reste) : `SqlLabPage`
-  (Analytique, famille 7), `AdminExtensionsPage`/`CollectionsAdminPage`/
-  `HarvestSourcesAdminPage` (Administration, famille 8),
-  `Tileset3DUploadButton`/`NewItemButton`/`ImportFileButton` (chrome,
-  dette de `Dialog` documentée par SP-30a, non bloquante pour aucune
-  famille). Éditeurs de symbologie/popup imbriqués dans `LayersPanel`
-  (`MapSymbologyEditor.tsx` 797 lignes/27 couleurs, `PopupEditor.tsx`,
-  `FieldClassificationPicker.tsx`, `MapMeasureSketchToolbar.tsx`,
-  `MapPopup.tsx`, `MapLegend.tsx`, `formFieldStyles.ts`) : dette de tokens
-  cosmétique laissée par SP-30c (aucun `Dialog`, ne bloquait pas la
-  bascule de `MapEditorPage`), volume potentiellement aussi gros que
-  SP-30a+SP-30b réunis — à traiter dans un plan dédié, possiblement hors
-  SP-30 lui-même.
+- **SP-30 n'est PAS clos** (SP-30a→l — round 2 de correction, 2026-09-02,
+  revient sur l'affirmation « SP-30 est clos » de la précédente version de
+  cette entrée et de l'entrée `### Livré`/SP-30l, trouvée prématurée sur
+  ré-examen indépendant). Les neuf familles du §6.1 et le dernier reliquat
+  nommé du §2.1 (chrome) sont vérifiés ; des huit critères de sortie du §7,
+  sept sont acquis mais le huitième — « aucun écran ne clippe au-dessus du
+  seuil relevé » — ne l'est en réalité que sur 2 des 8 écrans de référence
+  (Tâches, Paramètres). **Bloquant restant avant de pouvoir redéclarer SP-30
+  clos, scopé et directement reprenable par une future session :**
+  `TriptychLayout.tsx` (`shell/src/shell/chrome/TriptychLayout.tsx`, grille
+  `grid-cols-[minmax(220px,280px)_1fr_minmax(260px,320px)]`) affame sa
+  colonne centrale (`work`, piste `1fr`) — ses deux colonnes latérales
+  grandissent d'abord vers leur maximum combiné (280+320=600px, algorithme
+  standard de dimensionnement CSS Grid) avant que la colonne centrale ne
+  reçoive quoi que ce soit. Défaut mesuré, stable et reproductible sur 6 des
+  8 écrans de référence — Catalogue (5 offenseurs à 641px), Cartes (3),
+  Apps & sites (2), Analytique (1), Administration (1), Automatisation (2) —
+  cf. `shell/e2e/triptych-narrow.spec.ts` (constante
+  `WIDE_BOUNDARY_ROOT_CAUSE`, un `test.skip()` documenté par écran) et
+  l'entrée `### Livré`/SP-30l pour le détail complet. Bande de largeur
+  concernée : mesurée cassée à 641px (le premier viewport « large » sous le
+  seuil de `useNarrowViewport.ts`), plausiblement jusqu'à ~1000px+ selon la
+  largeur minimale réelle du contenu de chaque écran (ex. une fenêtre
+  desktop en demi-écran) — borne haute non mesurée précisément, à établir
+  par le futur plan. Ce round de correction n'a corrigé QUE l'honnêteté du
+  filet de test qui le mesure (il déclarait ces écrans corrects par un
+  artefact de `toPass({ timeout })`, cf. `### Livré`/SP-30l) et de cette
+  documentation — pas le défaut de layout lui-même, décision explicite de
+  Tanguy pour borner ce round. Reprise directe : chantier de layout dédié
+  sur les proportions de colonnes de `TriptychLayout` (brainstorm si
+  nécessaire → spec → plan), à ouvrir avant de pouvoir redéclarer SP-30 clos.
+  Reste, par ailleurs, hors traitement par aucun plan SP-30 à ce jour : les
+  permissions de collection et le profil « Lecteur » qui restent à
+  trancher (cf. entrée SP-29a) ; la raison de verrouillage triplée
+  d'`ItemActions` (cf. entrée SP-29a) qui peut être regroupée si voulu ;
+  le retrait des anciens fichiers `ui/*` — encore consommés par
+  `AppRuntimePage.tsx`/`builder/widgets/modal.tsx`, hors périmètre par
+  doctrine (cf. entrée SP-30k) ; et la longue liste de suivis non
+  bloquants Minor accumulés SP-29b→SP-30k ci-dessous. Trois répétitions
+  jamais tranchées pour toute la famille (hauteur des contrôles de
+  formulaire, `<button>` natif vs `Button` du kit, `aria-expanded`/
+  `aria-controls` sur un déclencheur de panneau en ligne — 5 familles
+  consécutives sans décision) et la dette de tokens `LayersPanel`/
+  `MapSymbologyEditor.tsx` et voisins (volume potentiellement aussi gros
+  que SP-29a+SP-29b réunis) sont désormais **tranchées, cf. ### Conventions
+  tranchées (2026-09-01)** ci-dessus — reste seulement à les appliquer au
+  prochain contact avec chaque fichier concerné, pas de correctif rétroactif
+  en masse. Reste ouvert, non tranché par cette note : commentaires
+  attribuant une garde de sécurité au mauvais composant après son
+  déplacement, trouvé Important à deux reprises distinctes — SP-30g, SP-30i.
   6 suivis non bloquants
   hérités de SP-29b à traiter en chemin (détail dans son entrée `### Livré`
   et l'historique d'exécution) : `DataTable.sortDirection` mort, deux `id`
@@ -712,6 +1247,98 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   pour toute la famille avant sa clôture** — à faire explicitement au
   démarrage de SP-30i si elles doivent être réglées plutôt que
   perpétuées dans les familles 7/8.
+  10 Minor reportés en suivi non bloquant hérités de SP-30i (revue finale
+  de branche, tous cosmétiques, aucun ne bloquait le merge) : décompte de
+  référence de la spec §6.5 sous-comptait `RequireRole`
+  (`KitGalleryPage.tsx` en 4e consommateur, absent de l'inventaire —
+  consommé par SP-30j) ; les pages admin utilisent `useMe()` pour deux
+  usages distincts, le garde ET `enabled` de requête (consommé par
+  SP-30j) ; étape « couverture » du gabarit de Task de vérification finale
+  lance `npm run build` puis lit `coverage-summary.json`, que seul
+  `vitest run --coverage` écrit — défaut de texte copié plan après plan
+  depuis au moins SP-30d, sans conséquence à ce jour (toujours détecté et
+  contourné en session) ; `RequireRole.tsx` sans gestion de
+  `meQuery.isError` (fail-closed silencieux, 4e page de la série à faire
+  ce choix sans jamais le trancher) ; retourne `children` nu au lieu de
+  `<>{children}</>` comme son jumeau `RequireAuth.tsx` ; rechargement
+  d'historique invisible sous viewport étroit (bouton et cible dans deux
+  onglets différents, nécessiterait un changement d'API `TriptychLayout`) ;
+  SQL long en colonne étroite : débordement horizontal scrollable plutôt
+  qu'un layout cassé, jamais tranché pour la famille ; seul `<h1>` du
+  shell (`text-lg font-bold`) contre `<h2 font-semibold>` des pages
+  sœurs ; fixture `RequireRole.test.tsx` divergente du type `Me` réel,
+  héritée verbatim de l'ancienne fixture `SqlLabPage`.
+  9 Minor reportés en suivi non bloquant hérités de SP-30j (revue finale
+  de branche, tous cosmétiques, aucun ne bloquait le merge) : commentaire
+  « décision 5 » au lieu de « décision 6 », commité deux fois (Collections
+  et Harvest) ; `ui/ConfirmDialog.tsx` (l'ancien, pas `ui/kit/ConfirmDialog`)
+  devenu orphelin, supprimable ; paramètres `options?: { enabled? }` morts
+  sur 5 hooks (plus aucun appelant réel après cette branche, sauf
+  `useCollectionsAdmin`) ; les deux tests d'exclusivité mutuelle
+  (Harvest/Collections) utilisent des idiomes de locator différents,
+  celui de Collections dépendant silencieusement d'une fixture vide ;
+  `CollectionSharePanel` seul panneau à ne pas nommer son sujet dans son
+  titre (contrairement à ses jumeaux « Éditer {title} ») ; erreur de
+  mutation figée non effaçable au re-clic sur la même ligne, sur les deux
+  pages à panneaux ; perte nette d'assertions unitaires vs les 4 anciens
+  fichiers de test de dialogue supprimés, compensée par l'E2E ;
+  `aria-expanded`/`aria-controls` toujours absents — **5e famille
+  consécutive** (SP-30c→SP-30j), plus de famille suivante dans SP-30 pour
+  trancher, reporté à SP-31 ; sous viewport étroit, cliquer Éditer/
+  Partager/Ajouter ne produit aucun retour visuel tant que l'onglet n'est
+  pas changé manuellement — plus grave ici que sur les familles
+  précédentes car ce sont les déclencheurs CRUD primaires de la page.
+  Deux défauts de texte de plan notés pour référence (pas des défauts
+  d'implémentation) : la décision 3 du plan SP-30j promettait « même
+  test-par-composant sauf EditHarvestSourceDialog » mais son texte
+  exécutable mandatait la suppression des 4 fichiers de test de dialogue
+  — même classe que le défaut de plan trouvé par SP-30c Task 5 (prose et
+  bloc de code en désaccord, seul l'exécutable suivi) ; la justification
+  de la décision 6 (exempter `deleting`) n'était correcte que dans un
+  sens — à reformuler si le patron est réutilisé (« tout état qui monte
+  quelque chose dans l'onglet Détail doit être remis à zéro par tout
+  autre déclencheur, y compris les déclencheurs destructifs au succès »).
+  Divergence pré-existante notée en passant, pas introduite par SP-30j :
+  deux doctrines de mode démo différentes coexistent désormais sous le
+  même layout (`HarvestSourcesAdminPage` masque sous `!readOnly`,
+  `CollectionsAdminPage` ne le fait pas) — à trancher en SP-31 plutôt que
+  laisser une 3e variante apparaître.
+  7 Minor reportés en suivi non bloquant hérités de SP-30k (revue finale
+  de branche, tous cosmétiques, aucun ne bloquait le merge — **dernière
+  brique nommée de la spec §2.1, aucun SP-30l ne les héritera** : à
+  trancher à la revue transverse de sortie SP-30 §7 ou à défaut en
+  suivi séparé) : `ui/kit/Drawer.tsx` sans `overflow-y-auto` sur son
+  contenu — dette du **kit** lui-même (pas de ces trois fichiers),
+  invisible aux deux filets de test par construction (jsdom ne fait pas
+  de layout, Playwright fait défiler les conteneurs `overflow-hidden`
+  programmatiquement), même classe que le Critical trouvé par SP-30d ;
+  `Drawer.test.tsx` ne couvre que Échap, pas le clic hors zone, dont
+  dépend désormais un vrai consommateur (`Tileset3DUploadButton`) ;
+  Annuler de `Tileset3DUploadButton` reste `onClick={close}` +
+  `disabled={busy}` plutôt que `onClick={requestClose}` (un seul
+  invariant, deux mécanismes, d'où un commentaire nécessaire pour
+  l'expliquer) ; vocabulaire "dialog"/"backdrop" de l'ère `ui/dialog.tsx`
+  resté dans le test voisin non retouché de `Tileset3DUploadButton` ;
+  titres de test en anglais (chaîne littérale imposée par le plan) ;
+  recette `<select>` natif dupliquée huit fois entre les deux fichiers
+  sans anneau de focus visible, contrairement à `Input` du kit juste à
+  côté dans le même formulaire — dette à consommer par un futur plan qui
+  adopterait un `Select` du kit ; modalité Radix (focus trap, scroll
+  lock, `aria-hidden` sur le reste de la page) jamais mentionnée par le
+  plan bien que ces trois composants soient montés sur toutes les routes
+  protégées — vérifié qu'aucun portail Toast/Tooltip global n'en pâtit,
+  mais à garder en tête si un futur portail global apparaît.
+  **Important non bloquant hérité de SP-30k, à ne pas perdre faute de
+  SP-30l pour l'hériter** : `ImportFileButton`/`NewItemButton` n'ont — et
+  n'avaient déjà avant SP-30k — aucune garde `busy` sur leur fermeture
+  (contrairement à `Tileset3DUploadButton`) ; fermer le tiroir pendant
+  l'upload/le sondage/la mutation laisse la chaîne async tourner en
+  arrière-plan, qui rappellera `close()`/`navigate()` sur un tiroir
+  éventuellement rouvert entre-temps. Comportement strictement
+  préexistant à SP-30k (le plan interdisait explicitement de le
+  « corriger » dans son périmètre), donc aucune action de code prise ;
+  à rattacher explicitement à la revue de sortie SP-30 §7 plutôt que le
+  laisser disparaître silencieusement.
 - Reste **SP-15** : événements/déclencheurs durables au-delà du cron (non
   planifié) ; exposition MCP des noms de secrets (non planifiée) ; **exécuter
   réellement les 5 tests `@pytest.mark.qgis` de SP-15d** avant d'activer

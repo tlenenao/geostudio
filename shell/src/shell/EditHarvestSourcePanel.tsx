@@ -1,18 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useInstanceInfo, useUpdateHarvestSource } from "../api/hooks";
 import type { HarvestSource } from "../api/types";
-import { Button } from "../ui/button";
-import { Dialog } from "../ui/dialog";
-import { Input } from "../ui/input";
+import { Button } from "../ui/kit/Button";
+import { Input } from "../ui/kit/Input";
 
-export function EditHarvestSourceDialog({
+export function EditHarvestSourcePanel({
   source,
-  open,
   onClose,
 }: {
   source: HarvestSource;
-  open: boolean;
   onClose: () => void;
 }) {
   const updateSource = useUpdateHarvestSource(source.id);
@@ -20,14 +17,6 @@ export function EditHarvestSourceDialog({
   const readOnly = instanceQuery.data?.readOnly === true;
   const [url, setUrl] = useState(source.url);
   const [enabled, setEnabled] = useState(source.enabled);
-
-  useEffect(() => {
-    if (!open) return;
-    setUrl(source.url);
-    setEnabled(source.enabled);
-    updateSource.reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, source]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -40,13 +29,14 @@ export function EditHarvestSourceDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title={`Éditer ${source.url}`}>
+    <section aria-label={`Éditer ${source.url}`} className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold text-ink">Éditer {source.url}</h2>
       <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm text-ink">
           URL
           <Input aria-label="URL" value={url} onChange={(e) => setUrl(e.target.value)} />
         </label>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"
             aria-label="Actif"
@@ -56,7 +46,7 @@ export function EditHarvestSourceDialog({
           Actif
         </label>
         {updateSource.isError && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-danger">
             Échec de la mise à jour.
           </p>
         )}
@@ -69,6 +59,6 @@ export function EditHarvestSourceDialog({
           </Button>
         </div>
       </form>
-    </Dialog>
+    </section>
   );
 }

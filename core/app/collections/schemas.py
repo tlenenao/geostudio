@@ -19,10 +19,18 @@ class CollectionPermissions(BaseModel):
     collections. Calculé depuis `decide()`, jamais recalculé côté client.
 
     `delete` n'est PAS le verdict générique de `decide()` : `unregister_collection`
-    (DELETE /collections/{id}) est gardé par `_require_admin` seul, pas par
-    `can()`/`decide()` — refléter autre chose que `actor_is_admin` ici
-    afficherait un bouton Supprimer qui produit un 403 après clic pour un
-    propriétaire ou un éditeur non-admin.
+    (DELETE /collections/{id}) est gardé par `require_privilege(...,
+    "admin.collections.manage")` seul, pas par `can()`/`decide()`. MAIS le
+    calcul de `delete` ici (`app/collections/repository.py::_collection_permissions`)
+    reflète encore aujourd'hui `actor_is_admin` (la colonne synchronisée
+    `User.is_admin`), PAS le privilège `admin.collections.manage` lui-même —
+    un rôle personnalisé qui détiendrait ce privilège sans être le rôle
+    prédéfini "admin" verrait donc `delete: false` ici alors que la route
+    DELETE le laisserait effectivement passer. Écart architectural connu,
+    documenté comme suivi non bloquant plutôt que corrigé unilatéralement
+    (le même arbitrage se pose sur d'autres surfaces `is_admin`-dérivées,
+    ex. extensions) — ne pas réconcilier ce docstring silencieusement avec
+    le code sans trancher la question plus large en amont.
     """
 
     read: bool

@@ -5,9 +5,31 @@ import { MemoryRouter } from "react-router-dom";
 import { BottomNav } from "./BottomNav";
 import type { Profile } from "../../auth/capabilities";
 
+// Privilèges d'un administrateur (cf. BUILT_IN_ROLE_PRIVILEGES,
+// core/app/roles/privileges.py, dupliqué en fixture dans capabilities.test.ts)
+// — nécessaire pour que tous les domaines exercés par ces tests (Données,
+// Apps & sites, Automatisation, Administration) soient visibles.
 const PROFILE: Profile = {
-  isAdmin: true,
-  isAnalyst: false,
+  privileges: new Set([
+    "catalog.manage",
+    "maps.manage",
+    "data.view",
+    "data.manage",
+    "apps.manage",
+    "automation.manage",
+    "automation.secrets.manage",
+    "analytics.view",
+    "analytics.sql_lab.access",
+    "tasks.view",
+    "tasks.view_all",
+    "admin.users.manage",
+    "admin.roles.manage",
+    "admin.harvest.manage",
+    "admin.collections.manage",
+    "admin.extensions.manage",
+    "admin.secrets.manage",
+    "settings.instance.manage",
+  ]),
   capabilities: {
     readOnly: false,
     etlEnabled: true,

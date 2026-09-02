@@ -263,8 +263,9 @@ def test_patch_and_delete(env):
 def test_patch_by_non_owner_without_editor_role_returns_403(env):
     # patch_collection's own "write access required" 403 branch
     # (app/collections/routes.py) had no test at all before this review —
-    # test_patch_and_delete only exercises the DELETE guard (_require_admin,
-    # a different check). A user who can read the (public) collection but
+    # test_patch_and_delete only exercises the DELETE guard
+    # (require_privilege(admin.collections.manage), a different check). A
+    # user who can read the (public) collection but
     # has no editor share and isn't admin must be refused the PATCH.
     app, client, _, admin, regular, _ddl = env
     _as(app, admin)

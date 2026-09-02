@@ -2,9 +2,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useItemClient } from "../api/hooks";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Dialog } from "../ui/dialog";
+import { Button } from "../ui/kit/Button";
+import { Input } from "../ui/kit/Input";
+import { Drawer } from "../ui/kit/Drawer";
 
 type Phase = "form" | "uploading" | "selecting-layer" | "polling" | "error";
 type LayerInfo = { name: string; featureCount: number; geometryType: string };
@@ -153,14 +153,14 @@ export function ImportFileButton() {
       <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
         Importer un fichier
       </Button>
-      <Dialog open={open} onClose={close} title="Importer un fichier">
+      <Drawer open={open} onOpenChange={(next) => !next && close()} title="Importer un fichier">
         {phase === "selecting-layer" ? (
           <form onSubmit={(e) => void confirmLayer(e)} className="flex flex-col gap-3">
-            <label className="flex flex-col gap-1 text-sm">
+            <label className="flex flex-col gap-1 text-sm text-ink">
               Couche à importer
               <select
                 aria-label="Couche à importer"
-                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                 value={layerName}
                 onChange={(e) => setLayerName(e.target.value)}
               >
@@ -183,7 +183,7 @@ export function ImportFileButton() {
           </form>
         ) : (
           <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
-            <label className="flex flex-col gap-1 text-sm">
+            <label className="flex flex-col gap-1 text-sm text-ink">
               Fichier à importer
               <input
                 aria-label="Fichier à importer"
@@ -192,7 +192,7 @@ export function ImportFileButton() {
                 onChange={(e) => void onFileChange(e)}
               />
             </label>
-            <label className="flex flex-col gap-1 text-sm">
+            <label className="flex flex-col gap-1 text-sm text-ink">
               Titre de la collection
               <Input
                 aria-label="Titre de la collection"
@@ -202,11 +202,11 @@ export function ImportFileButton() {
             </label>
             {needsManualLatLon && (
               <>
-                <label className="flex flex-col gap-1 text-sm">
+                <label className="flex flex-col gap-1 text-sm text-ink">
                   Colonne latitude
                   <select
                     aria-label="Colonne latitude"
-                    className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                    className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                     value={latField}
                     onChange={(e) => setLatField(e.target.value)}
                   >
@@ -218,11 +218,11 @@ export function ImportFileButton() {
                     ))}
                   </select>
                 </label>
-                <label className="flex flex-col gap-1 text-sm">
+                <label className="flex flex-col gap-1 text-sm text-ink">
                   Colonne longitude
                   <select
                     aria-label="Colonne longitude"
-                    className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                    className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                     value={lonField}
                     onChange={(e) => setLonField(e.target.value)}
                   >
@@ -237,7 +237,7 @@ export function ImportFileButton() {
               </>
             )}
             {phase === "error" && (
-              <p role="alert" className="text-sm text-red-600">
+              <p role="alert" className="text-sm text-danger">
                 {error}
               </p>
             )}
@@ -255,7 +255,7 @@ export function ImportFileButton() {
             </div>
           </form>
         )}
-      </Dialog>
+      </Drawer>
     </>
   );
 }

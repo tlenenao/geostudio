@@ -22,7 +22,13 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String, nullable=True)
     first_name: Mapped[str] = mapped_column(String, default="")
     last_name: Mapped[str] = mapped_column(String, default="")
+    role_id: Mapped[str] = mapped_column(ForeignKey("roles.id"), nullable=False)
+    # Colonne synchronisée, PAS une source de vérité indépendante : réglée
+    # uniquement par get_or_create_user()/set_user_role() (app.users.repository),
+    # toujours en même temps que role_id. ~20 lecteurs existants (decide(),
+    # list_visible_collections(), app.mcp.tools, app.pipelines, app.dcat,
+    # app.stac…) la consomment comme signal — préservée à l'identique pour ne
+    # pas les toucher (design, résolution documentée en tête de ce plan).
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    is_analyst: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)

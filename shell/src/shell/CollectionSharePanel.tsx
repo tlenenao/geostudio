@@ -7,20 +7,17 @@ import {
   useSetCollectionSharing,
 } from "../api/hooks";
 import type { ShareRole } from "../api/types";
-import { Button } from "../ui/button";
-import { Dialog } from "../ui/dialog";
+import { Button } from "../ui/kit/Button";
 
-export function CollectionShareDialog({
+export function CollectionSharePanel({
   collectionId,
-  open,
   onClose,
 }: {
   collectionId: string;
-  open: boolean;
   onClose: () => void;
 }) {
-  const groupsQuery = useGroups({ enabled: open });
-  const sharingQuery = useCollectionSharing(collectionId, { enabled: open });
+  const groupsQuery = useGroups();
+  const sharingQuery = useCollectionSharing(collectionId);
   const setSharing = useSetCollectionSharing(collectionId);
   const instanceQuery = useInstanceInfo();
   const readOnly = instanceQuery.data?.readOnly === true;
@@ -29,17 +26,16 @@ export function CollectionShareDialog({
   const [roles, setRoles] = useState<Record<string, ShareRole | undefined>>({});
 
   useEffect(() => {
-    if (!open || !sharingQuery.data) return;
+    if (!sharingQuery.data) return;
     setIsPublic(sharingQuery.data.public);
     const map: Record<string, ShareRole> = {};
     sharingQuery.data.groups.forEach((g) => {
       map[g.groupId] = g.role;
     });
     setRoles(map);
-  }, [open, sharingQuery.data]);
+  }, [sharingQuery.data]);
 
   async function submit() {
-    setSharing.reset();
     const groups = Object.entries(roles)
       .filter(([, role]) => role)
       .map(([groupId, role]) => ({ groupId, role: role as ShareRole }));
@@ -56,16 +52,17 @@ export function CollectionShareDialog({
   const ready = groupsQuery.isSuccess && sharingQuery.isSuccess;
 
   return (
-    <Dialog open={open} onClose={onClose} title="Partager la collection">
+    <section aria-label="Partager la collection" className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold text-ink">Partager la collection</h2>
       {loading && <p role="status">Chargement…</p>}
       {failed && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-danger">
           Erreur de chargement.
         </p>
       )}
       {ready && (
         <div className="flex flex-col gap-3">
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm text-ink">
             <input
               type="checkbox"
               aria-label="Public"
@@ -77,7 +74,7 @@ export function CollectionShareDialog({
 
           <div className="flex flex-col gap-2">
             {groupsQuery.data.map((g) => (
-              <div key={g.id} className="flex items-center justify-between gap-2 text-sm">
+              <div key={g.id} className="flex items-center justify-between gap-2 text-sm text-ink">
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -94,7 +91,7 @@ export function CollectionShareDialog({
                 </label>
                 <select
                   aria-label={`Rôle ${g.title}`}
-                  className="h-8 rounded-md border border-slate-300 bg-white px-2 text-sm"
+                  className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
                   disabled={!roles[g.id]}
                   value={roles[g.id] ?? "viewer"}
                   onChange={(e) => setRoles((r) => ({ ...r, [g.id]: e.target.value as ShareRole }))}
@@ -107,7 +104,7 @@ export function CollectionShareDialog({
           </div>
 
           {setSharing.isError && (
-            <p role="alert" className="text-sm text-red-600">
+            <p role="alert" className="text-sm text-danger">
               Échec du partage.
             </p>
           )}
@@ -127,6 +124,6 @@ export function CollectionShareDialog({
           </div>
         </div>
       )}
-    </Dialog>
+    </section>
   );
 }

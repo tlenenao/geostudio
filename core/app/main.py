@@ -10,10 +10,12 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
 from app import db, observability
+from app.admin_tools import routes as admin_tools_routes
 from app.alerts import routes as alerts_routes
 from app.appexport import routes as appexport_routes
 from app.auth import routes as auth_routes
 from app.auth.dependency import (
+    is_admin_tools_enabled,
     is_appexport_enabled,
     is_copilot_enabled,
     is_etl_enabled,
@@ -21,6 +23,7 @@ from app.auth.dependency import (
     is_read_only_mode,
     is_terrain3d_enabled,
     is_tileset3d_enabled,
+    reject_admin_tools_without_secret,
     reject_mock_outside_development,
 )
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
@@ -46,6 +49,7 @@ from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
 from app.ratelimit.limiter import RateLimiter, route_group
 from app.reports import routes as reports_routes
+from app.roles import routes as roles_routes
 from app.schemas_routes import router as schemas_router
 from app.secrets import crypto as secrets_crypto
 from app.secrets import routes as secrets_routes
@@ -105,6 +109,7 @@ def create_app() -> FastAPI:
     observability.setup()
     secrets_crypto.load_master_key()  # échec rapide si absente/mal formée (design SP-15e §4/§8)
     reject_mock_outside_development()  # échec rapide si mock hors dev (design SP-26 §3.1)
+    reject_admin_tools_without_secret()  # échec rapide si gate admin sans secret
     database_url = os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     engine = make_engine(database_url)
     observability.instrument_engine(engine)
@@ -252,6 +257,7 @@ def create_app() -> FastAPI:
     app.include_router(configs_routes.router)
     app.include_router(extensions_routes.router)
     app.include_router(secrets_routes.router)
+    app.include_router(roles_routes.router)
     app.include_router(mapicons_routes.router)
     app.include_router(instance_routes.router)
     app.include_router(items_routes.router)
@@ -280,6 +286,8 @@ def create_app() -> FastAPI:
         app.include_router(terrain3d_routes.router)
     if is_copilot_enabled():
         app.include_router(copilot_routes.router)
+    if is_admin_tools_enabled():
+        app.include_router(admin_tools_routes.router)
 
     s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
     s3_access_key = os.environ.get("S3_ACCESS_KEY")

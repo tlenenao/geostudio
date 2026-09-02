@@ -6,13 +6,19 @@ import { Avatar } from "../../ui/kit/Avatar";
 import { Popover } from "../../ui/kit/Popover";
 import { Badge } from "../../ui/kit/Badge";
 import { t } from "../../i18n";
+import type { MessageKey } from "../../i18n";
+
+const BUILT_IN_ROLE_LABEL_KEYS: Record<string, MessageKey> = {
+  admin: "account.roleAdmin",
+  analyst: "account.roleAnalyst",
+  creator: "account.roleCreator",
+  reader: "account.roleReader",
+};
 
 function roleLabel(me: Me | undefined): string {
   if (!me) return "";
-  if (me.isAdmin) return t("account.roleAdmin");
-  if (me.isAnalyst) return t("account.roleAnalyst");
-  if (me.hasAnyEditorRole) return t("account.roleCreator");
-  return t("account.roleReader");
+  const key = BUILT_IN_ROLE_LABEL_KEYS[me.role.slug];
+  return key ? t(key) : me.role.name;
 }
 
 function initials(username: string): string {

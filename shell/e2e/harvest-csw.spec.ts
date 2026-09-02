@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCore, mockMe, ADMIN_ME } from "./mocks";
 
 const CSW_URL = "https://geonetwork.example.com/geonetwork/srv/eng/csw";
 
@@ -8,19 +8,7 @@ test("un admin déclare une source CSW, la moissonne, et l'item apparaît au cat
   page,
 }) => {
   await mockCore(page);
-  await page.route("**/me", async (route) => {
-    await route.fulfill({
-      json: {
-        id: "u-mock",
-        username: "mockuser",
-        firstName: "Mock",
-        lastName: "User",
-        email: null,
-        tenantId: "t-mock",
-        isAdmin: true,
-      },
-    });
-  });
+  await mockMe(page, ADMIN_ME);
 
   let created: unknown = null;
   let runCount = 0;
@@ -89,9 +77,9 @@ test("un admin déclare une source CSW, la moissonne, et l'item apparaît au cat
 
   await page.goto("/admin/harvest");
   await page.getByRole("button", { name: "Ajouter une source" }).click();
-  const dialog = page.getByRole("dialog", { name: "Ajouter une source" });
-  await dialog.getByLabel("URL").fill(CSW_URL);
-  await dialog.getByLabel("Type").selectOption("csw");
+  const panel = page.getByRole("region", { name: "Ajouter une source" });
+  await panel.getByLabel("URL").fill(CSW_URL);
+  await panel.getByLabel("Type").selectOption("csw");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect
     .poll(() => created)

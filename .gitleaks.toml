@@ -40,3 +40,14 @@ paths = [
   '''docs/superpowers/plans/2026-07-17-sp10b-observabilite-dashboards-slo\.md''',
   '''docs/superpowers/plans/2026-08-23-sp26-durcissement\.md''',
 ]
+
+[[allowlists]]
+description = "Secrets HS256 factices dans le texte de test littéral du plan SP-32 (Traefik /admin/*) — signature de jeton volontairement fausse (« wrong-secret-padding-… ») et secret alternatif de test (« a-different-secret-padding-… »), jamais des identifiants réels. Bloc séparé (pas fusionné dans le premier) : une regex globale ici exempterait la règle sur tout le dépôt, pas seulement ce fichier."
+targetRules = ["generic-api-key"]
+paths = [
+  '''docs/superpowers/plans/2026-09-01-traefik-admin-tools\.md''',
+]
+regexes = [
+  '''wrong-secret-padding-0123456789012''',
+  '''a-different-secret-padding-0123456''',
+]

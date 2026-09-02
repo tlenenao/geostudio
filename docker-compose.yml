@@ -103,7 +103,12 @@ services:
       DATABASE_URL: postgresql://gis:${PG_PASSWORD}@pgbouncer:6432/gis
     volumes:
       - ./martin-config.yaml:/config.yaml
-    command: --config /config.yaml
+    # --base-path (confirmé contre l'image réelle, v0.18.0 : "Set TileJSON
+    # URL path prefix") : Martin réécrit les URLs de tuiles de son propre
+    # TileJSON avec ce préfixe — cohérent avec le stripprefix Traefik du
+    # label admin-auth ci-dessous (Traefik retire /admin/martin avant de
+    # transmettre ; Martin le réintroduit lui-même dans ses réponses).
+    command: --config /config.yaml --base-path /admin/martin
     ports:
       # Port hôte 3010 (pas 3000) : 3000 est le port par défaut de la plupart
       # des serveurs de dev JS (Next.js, CRA, Vite avec ce choix...) et entre
@@ -134,6 +139,16 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.martin.rule=Host(`${DOMAIN}`) && PathPrefix(`/admin/martin`)
+      - traefik.http.routers.martin.entrypoints=websecure
+      - traefik.http.routers.martin.tls.certresolver=letsencrypt
+      - traefik.http.routers.martin.priority=15
+      - traefik.http.routers.martin.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-martin@docker
+      - traefik.http.middlewares.strip-admin-martin.stripprefix.prefixes=/admin/martin
+      - traefik.http.middlewares.admin-auth.forwardauth.address=http://core:8200/admin-tools/verify
+      - traefik.http.services.martin.loadbalancer.server.port=3000
 
   titiler:
     image: ghcr.io/developmentseed/titiler:0.18.4
@@ -153,6 +168,14 @@ services:
       AWS_S3_ENDPOINT: minio:9000
       AWS_HTTPS: "NO"
       AWS_VIRTUAL_HOSTING: "FALSE"
+      # Confirmé dans le code de l'image (titiler.application.main :
+      # FastAPI(root_path=api_settings.root_path), pydantic-settings
+      # env_prefix="TITILER_API_") : Titiler réécrit les URLs de tuiles de
+      # ses réponses avec ce préfixe — même rôle que --base-path pour
+      # Martin ci-dessus, cohérent avec le stripprefix Traefik du label
+      # admin-auth plus bas (Traefik retire /admin/titiler avant de
+      # transmettre).
+      TITILER_API_ROOT_PATH: /admin/titiler
       # L'image (base tiangolo/uvicorn-gunicorn) écoute par défaut sur le
       # port 80 tant qu'aucun `PORT` n'est fourni (`gunicorn_conf.py` :
       # `port = os.getenv("PORT", "80")`, confirmé en conteneur réel). Trois
@@ -172,6 +195,15 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.titiler.rule=Host(`${DOMAIN}`) && PathPrefix(`/admin/titiler`)
+      - traefik.http.routers.titiler.entrypoints=websecure
+      - traefik.http.routers.titiler.tls.certresolver=letsencrypt
+      - traefik.http.routers.titiler.priority=15
+      - traefik.http.routers.titiler.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-titiler@docker
+      - traefik.http.middlewares.strip-admin-titiler.stripprefix.prefixes=/admin/titiler
+      - traefik.http.services.titiler.loadbalancer.server.port=8000
 
   # ─── Applications ──────────────────────────────────────
 
@@ -264,6 +296,11 @@ services:
       # n'appartiennent qu'à `worker` (cf. ce service plus bas).
       CORE_TILESET3D_MAX_PROXY_READ_BYTES: ${CORE_TILESET3D_MAX_PROXY_READ_BYTES:-134217728}
       CORE_TERRAIN3D_ENABLED: ${CORE_TERRAIN3D_ENABLED:-false}
+      CORE_ADMIN_TOOLS_ENABLED: ${CORE_ADMIN_TOOLS_ENABLED:-false}
+      # Secret HMAC du gate /admin/* (Martin/Titiler/Grafana) — signe le
+      # jeton de lancement (60s) et le cookie de session (30 min) qu'il
+      # bootstrap. Même convention que CORE_EXPORT_TOKEN_SECRET.
+      CORE_ADMIN_TOOLS_TOKEN_SECRET: ${CORE_ADMIN_TOOLS_TOKEN_SECRET:-}
       S3_TERRAIN3D_BUCKET: geostudio-terrain3d
       # Titiler sert les tuiles terrain-RGB depuis le COG hébergé (proxy
       # read_terrain3d_tile, app/terrain3d/routes.py) — appel interne, jamais
@@ -537,6 +574,13 @@ services:
       # livré nulle part si jamais une règle non liée au test se
       # déclenchait avant configuration réelle par l'opérateur.
       GRAFANA_ALERT_WEBHOOK_URL: ${GRAFANA_ALERT_WEBHOOK_URL:-http://127.0.0.1:1/grafana-alert-webhook-not-configured}
+      # Rejoué en conteneur réel (grafana/otel-lgtm:0.11.4) pendant l'écriture
+      # de ce plan : avec SERVE_FROM_SUB_PATH=true, Grafana attend le
+      # préfixe CONSERVÉ par le proxy (contrairement à Martin/Titiler
+      # ci-dessus) — /login sans préfixe répond 301, /admin/grafana/login
+      # répond 200. Ne PAS ajouter de stripprefix pour ce service.
+      GF_SERVER_ROOT_URL: https://${DOMAIN}/admin/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
     ports:
       - "3001:3000"
       - "4317:4317"
@@ -547,6 +591,14 @@ services:
       - ./deploy/observability/grafana/provisioning/dashboards/custom:/otel-lgtm/grafana/conf/provisioning/dashboards/custom
       - ./deploy/observability/grafana/provisioning/alerting:/otel-lgtm/grafana/conf/provisioning/alerting
     networks: [gis-net]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.grafana.rule=Host(`${DOMAIN}`) && PathPrefix(`/admin/grafana`)
+      - traefik.http.routers.grafana.entrypoints=websecure
+      - traefik.http.routers.grafana.tls.certresolver=letsencrypt
+      - traefik.http.routers.grafana.priority=15
+      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker
+      - traefik.http.services.grafana.loadbalancer.server.port=3000
 
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.20.1

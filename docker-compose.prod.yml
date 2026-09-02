@@ -38,10 +38,45 @@ services:
     # can(). Les tuiles vectorielles d'une collection passent désormais par
     # GET /collections/{id}/tiles/{z}/{x}/{y}.mvt, servi par le cœur. Le
     # service reste joignable sur le réseau interne.
+    #
+    # /admin/martin (ce plan) reste une exception délibérée : connexion
+    # directe d'un outil desktop (QGIS) par un admin authentifié, en toute
+    # connaissance du bypass RLS — pas une réouverture de la route
+    # applicative retirée par SP-24.
+    #
+    # labels: !override (pas une simple fusion) : le fichier de base
+    # (Task 4) porte déjà entrypoints=websecure +
+    # tls.certresolver=letsencrypt sur ce routeur. Compose fusionne les
+    # labels comme une map par clé — sans !override, entrypoints=web
+    # écraserait bien la clé entrypoints, mais tls.certresolver=letsencrypt
+    # survivrait à côté (vérifié empiriquement avec `docker compose config`
+    # sur un cas réduit) : un routeur sur l'entrypoint web qui tente quand
+    # même une résolution ACME. !override remplace la map entière.
+    labels: !override
+      - traefik.enable=true
+      - traefik.http.routers.martin.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/admin/martin`)
+      - traefik.http.routers.martin.entrypoints=web
+      - traefik.http.routers.martin.priority=15
+      - traefik.http.routers.martin.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-martin@docker
+      - traefik.http.middlewares.strip-admin-martin.stripprefix.prefixes=/admin/martin
+      - traefik.http.middlewares.admin-auth.forwardauth.address=http://core:8200/admin-tools/verify
+      - traefik.http.services.martin.loadbalancer.server.port=3000
 
   titiler:
     restart: unless-stopped
     ports: !reset []
+    # labels: !override — même raison que martin ci-dessus (le fichier de
+    # base porte déjà entrypoints=websecure + tls.certresolver=letsencrypt
+    # sur ce routeur ; une fusion par clé laisserait tls.certresolver
+    # survivre à côté d'entrypoints=web).
+    labels: !override
+      - traefik.enable=true
+      - traefik.http.routers.titiler.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/admin/titiler`)
+      - traefik.http.routers.titiler.entrypoints=web
+      - traefik.http.routers.titiler.priority=15
+      - traefik.http.routers.titiler.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-titiler@docker
+      - traefik.http.middlewares.strip-admin-titiler.stripprefix.prefixes=/admin/titiler
+      - traefik.http.services.titiler.loadbalancer.server.port=8000
 
   keycloak:
     restart: unless-stopped
@@ -78,6 +113,29 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+
+  otel-lgtm:
+    restart: unless-stopped
+    ports: !reset []
+    # Le fichier de base (Task 4) porte déjà GF_SERVER_ROOT_URL (avec
+    # ${DOMAIN}, pas ${GEOSTUDIO_PUBLIC_HOST}) sur ce service : l'override
+    # ci-dessous remplace juste cette clé, GF_SERVER_SERVE_FROM_SUB_PATH
+    # (base) reste hérité tel quel — une fusion de map par clé, pas de
+    # !override nécessaire pour environment:.
+    environment:
+      GF_SERVER_ROOT_URL: https://${GEOSTUDIO_PUBLIC_HOST}/admin/grafana/
+    # labels: !override — le fichier de base porte déjà
+    # entrypoints=websecure + tls.certresolver=letsencrypt sur ce routeur ;
+    # même raison que martin/titiler ci-dessus (vérifié empiriquement avec
+    # `docker compose config` : sans !override, tls.certresolver survivrait
+    # à côté d'entrypoints=web).
+    labels: !override
+      - traefik.enable=true
+      - traefik.http.routers.grafana.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/admin/grafana`)
+      - traefik.http.routers.grafana.entrypoints=web
+      - traefik.http.routers.grafana.priority=15
+      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker
+      - traefik.http.services.grafana.loadbalancer.server.port=3000
 
   core:
     image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}

@@ -2,53 +2,40 @@
 import { useState } from "react";
 import { useCreateHarvestSource, useInstanceInfo } from "../api/hooks";
 import type { HarvestSourceType } from "../api/types";
-import { Button } from "../ui/button";
-import { Dialog } from "../ui/dialog";
-import { Input } from "../ui/input";
+import { Button } from "../ui/kit/Button";
+import { Input } from "../ui/kit/Input";
 
-export function CreateHarvestSourceDialog({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
+const COPY_TYPES: HarvestSourceType[] = ["stac", "arcgis", "wfs", "ckan"];
+
+export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
   const createSource = useCreateHarvestSource();
   const instanceQuery = useInstanceInfo();
   const readOnly = instanceQuery.data?.readOnly === true;
   const [type, setType] = useState<HarvestSourceType>("stac");
   const [url, setUrl] = useState("");
   const [mode, setMode] = useState<"reference" | "copy">("reference");
-  const COPY_TYPES: HarvestSourceType[] = ["stac", "arcgis", "wfs", "ckan"];
   const copyAllowed = COPY_TYPES.includes(type);
-
-  function close() {
-    setType("stac");
-    setUrl("");
-    setMode("reference");
-    createSource.reset();
-    onClose();
-  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!url) return;
     try {
       await createSource.mutateAsync({ type, url, mode, enabled: true });
-      close();
+      onClose();
     } catch {
       // surfaced via createSource.isError
     }
   }
 
   return (
-    <Dialog open={open} onClose={close} title="Ajouter une source">
+    <section aria-label="Ajouter une source" className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold text-ink">Ajouter une source</h2>
       <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm text-ink">
           Type
           <select
             aria-label="Type"
-            className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+            className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
             value={type}
             onChange={(e) => {
               const next = e.target.value as HarvestSourceType;
@@ -66,15 +53,15 @@ export function CreateHarvestSourceDialog({
             <option value="ckan">CKAN</option>
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm text-ink">
           URL
           <Input aria-label="URL" value={url} onChange={(e) => setUrl(e.target.value)} />
         </label>
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm text-ink">
           Mode
           <select
             aria-label="Mode"
-            className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+            className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
             value={mode}
             onChange={(e) => setMode(e.target.value as "reference" | "copy")}
           >
@@ -85,12 +72,12 @@ export function CreateHarvestSourceDialog({
           </select>
         </label>
         {createSource.isError && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-danger">
             Échec de la création.
           </p>
         )}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={close}>
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
             Annuler
           </Button>
           <Button type="submit" size="sm" disabled={!url || createSource.isPending || readOnly}>
@@ -98,6 +85,6 @@ export function CreateHarvestSourceDialog({
           </Button>
         </div>
       </form>
-    </Dialog>
+    </section>
   );
 }

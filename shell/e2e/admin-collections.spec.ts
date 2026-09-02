@@ -1,21 +1,9 @@
 import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCore, mockMe, ADMIN_ME } from "./mocks";
 
 test("un admin gère le cycle de vie complet d'une collection depuis le shell", async ({ page }) => {
   await mockCore(page);
-  await page.route("**/me", async (route) => {
-    await route.fulfill({
-      json: {
-        id: "u-mock",
-        username: "mockuser",
-        firstName: "Mock",
-        lastName: "User",
-        email: null,
-        tenantId: "t-mock",
-        isAdmin: true,
-      },
-    });
-  });
+  await mockMe(page, ADMIN_ME);
 
   let registered: unknown = null;
   let patchedTitle: string | null = null;
@@ -144,18 +132,20 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
   await expect(page.getByRole("heading", { name: "Collections" })).toBeVisible();
 
   await page.getByRole("button", { name: "Enregistrer une table" }).click();
-  // Scoped to the dialog: the RegisterCollectionDialog's own role="dialog"
-  // element carries aria-label="Enregistrer une table" (its title), whose
-  // accessible name contains the substring "Table" — an unscoped
-  // getByLabel("Table") resolves to both that dialog and the <select>,
-  // tripping Playwright's strict mode. Same fix pattern as the "Supprimer"
-  // scoping below (ConfirmDialog vs. row action button).
-  const registerDialog = page.getByRole("dialog", { name: "Enregistrer une table" });
-  await registerDialog.getByLabel("Table").selectOption("points_interet");
-  await registerDialog.getByLabel("Titre").fill("Points d'intérêt");
-  // exact: true — the page's own "Enregistrer une table" button (behind the
-  // dialog overlay, still in the DOM) is a substring superstring match of
-  // "Enregistrer" and would otherwise trip Playwright's strict mode.
+  // Scoped to the panel: RegisterCollectionPanel's <section> carries
+  // aria-label="Enregistrer une table" (role="region" implicite), dont le nom
+  // accessible contient la sous-chaîne "Table" — un getByLabel("Table") non
+  // scopé résoudrait à la fois ce conteneur et le <select>, faisant échouer
+  // le mode strict de Playwright. Même schéma de correction que le scoping
+  // "Supprimer" plus bas (ConfirmDialog vs. bouton de ligne). SP-30j : la
+  // page bascule sur TriptychLayout, RegisterCollectionDialog (role="dialog")
+  // devient RegisterCollectionPanel (role="region" implicite).
+  const registerPanel = page.getByRole("region", { name: "Enregistrer une table" });
+  await registerPanel.getByLabel("Table").selectOption("points_interet");
+  await registerPanel.getByLabel("Titre").fill("Points d'intérêt");
+  // exact: true — the page's own "Enregistrer une table" button (still in
+  // the DOM, not behind an overlay anymore) is a substring superstring match
+  // of "Enregistrer" and would otherwise trip Playwright's strict mode.
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect
     .poll(() => registered)

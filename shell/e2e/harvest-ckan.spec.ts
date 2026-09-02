@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCore, mockMe, ADMIN_ME } from "./mocks";
 
 const PORTAL = "https://demo.data.gouv.fr";
 
@@ -8,19 +8,7 @@ test("un admin déclare une source CKAN en référencement, la moissonne, et l'i
   page,
 }) => {
   await mockCore(page);
-  await page.route("**/me", async (route) => {
-    await route.fulfill({
-      json: {
-        id: "u-mock",
-        username: "mockuser",
-        firstName: "Mock",
-        lastName: "User",
-        email: null,
-        tenantId: "t-mock",
-        isAdmin: true,
-      },
-    });
-  });
+  await mockMe(page, ADMIN_ME);
 
   let created: unknown = null;
   let runCount = 0;
@@ -89,9 +77,9 @@ test("un admin déclare une source CKAN en référencement, la moissonne, et l'i
 
   await page.goto("/admin/harvest");
   await page.getByRole("button", { name: "Ajouter une source" }).click();
-  const dialog = page.getByRole("dialog", { name: "Ajouter une source" });
-  await dialog.getByLabel("URL").fill(PORTAL);
-  await dialog.getByLabel("Type").selectOption("ckan");
+  const panel = page.getByRole("region", { name: "Ajouter une source" });
+  await panel.getByLabel("URL").fill(PORTAL);
+  await panel.getByLabel("Type").selectOption("ckan");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect
     .poll(() => created)
@@ -126,19 +114,7 @@ test("un admin déclare une source CKAN en copie, la moissonne, et la collection
   page,
 }) => {
   await mockCore(page);
-  await page.route("**/me", async (route) => {
-    await route.fulfill({
-      json: {
-        id: "u-mock",
-        username: "mockuser",
-        firstName: "Mock",
-        lastName: "User",
-        email: null,
-        tenantId: "t-mock",
-        isAdmin: true,
-      },
-    });
-  });
+  await mockMe(page, ADMIN_ME);
 
   let created: unknown = null;
   let runCount = 0;
@@ -255,10 +231,10 @@ test("un admin déclare une source CKAN en copie, la moissonne, et la collection
   // 1) Déclarer et moissonner la source CKAN en mode copie
   await page.goto("/admin/harvest");
   await page.getByRole("button", { name: "Ajouter une source" }).click();
-  const dialog = page.getByRole("dialog", { name: "Ajouter une source" });
-  await dialog.getByLabel("URL").fill(PORTAL);
-  await dialog.getByLabel("Type").selectOption("ckan");
-  await dialog.getByLabel("Mode").selectOption("copy");
+  const panel = page.getByRole("region", { name: "Ajouter une source" });
+  await panel.getByLabel("URL").fill(PORTAL);
+  await panel.getByLabel("Type").selectOption("ckan");
+  await panel.getByLabel("Mode").selectOption("copy");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect
     .poll(() => created)

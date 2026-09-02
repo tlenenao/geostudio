@@ -1,23 +1,11 @@
 import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCore, mockMe, ADMIN_ME } from "./mocks";
 
 test("un admin voit les extensions (actives et désactivées) et peut les activer/désactiver depuis le shell", async ({
   page,
 }) => {
   await mockCore(page);
-  await page.route("**/me", async (route) => {
-    await route.fulfill({
-      json: {
-        id: "u-mock",
-        username: "mockuser",
-        firstName: "Mock",
-        lastName: "User",
-        email: null,
-        tenantId: "t-mock",
-        isAdmin: true,
-      },
-    });
-  });
+  await mockMe(page, ADMIN_ME);
   let patchedBody: unknown;
   // Host-scoped (not "**/extensions*"): the shell's own client-side route to
   // this very page is "/admin/extensions" — a path-only glob would also

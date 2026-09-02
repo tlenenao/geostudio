@@ -10,9 +10,9 @@ import {
   useInstanceInfo,
 } from "../api/hooks";
 import { useAuth } from "../auth/useAuth";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Dialog } from "../ui/dialog";
+import { Button } from "../ui/kit/Button";
+import { Input } from "../ui/kit/Input";
+import { Drawer } from "../ui/kit/Drawer";
 import { TEMPLATES } from "../builder/templates";
 import { isValidSlug, slugify } from "../lib/slug";
 
@@ -114,13 +114,13 @@ export function NewItemButton() {
       <Button size="sm" onClick={() => setOpen(true)}>
         Nouveau
       </Button>
-      <Dialog open={open} onClose={close} title="Nouvel élément">
+      <Drawer open={open} onOpenChange={(next) => !next && close()} title="Nouvel élément">
         <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1 text-sm">
+          <label className="flex flex-col gap-1 text-sm text-ink">
             Type
             <select
               aria-label="Type"
-              className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+              className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
               value={kind}
               onChange={(e) => {
                 setKind(e.target.value as Kind);
@@ -137,11 +137,11 @@ export function NewItemButton() {
             </select>
           </label>
           {kind !== "map" && kind !== "dataset" && kind !== "pipeline" && (
-            <label className="flex flex-col gap-1 text-sm">
+            <label className="flex flex-col gap-1 text-sm text-ink">
               Modèle
               <select
                 aria-label="Modèle"
-                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                 value={templateId}
                 onChange={(e) => setTemplateId(e.target.value)}
               >
@@ -155,11 +155,11 @@ export function NewItemButton() {
             </label>
           )}
           {kind === "dataset" && (
-            <label className="flex flex-col gap-1 text-sm">
+            <label className="flex flex-col gap-1 text-sm text-ink">
               Type de source
               <select
                 aria-label="Type de source"
-                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                 value={datasetSource}
                 onChange={(e) => setDatasetSource(e.target.value as "collection" | "arcgis")}
               >
@@ -169,11 +169,11 @@ export function NewItemButton() {
             </label>
           )}
           {kind === "dataset" && datasetSource === "collection" && (
-            <label className="flex flex-col gap-1 text-sm">
+            <label className="flex flex-col gap-1 text-sm text-ink">
               Collection source
               <select
                 aria-label="Collection source"
-                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                 value={collectionId}
                 onChange={(e) => setCollectionId(e.target.value)}
               >
@@ -187,11 +187,11 @@ export function NewItemButton() {
             </label>
           )}
           {kind === "dataset" && datasetSource === "arcgis" && (
-            <label className="flex flex-col gap-1 text-sm">
+            <label className="flex flex-col gap-1 text-sm text-ink">
               Couche ArcGIS
               <select
                 aria-label="Couche ArcGIS"
-                className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                 value={arcgisItemId}
                 onChange={(e) => setArcgisItemId(e.target.value)}
               >
@@ -203,19 +203,19 @@ export function NewItemButton() {
                 ))}
               </select>
               {featureLayersQuery.data?.length === 0 && (
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-ink-2">
                   Aucune couche moissonnée. Configurez une source de moissonnage ArcGIS (mode
                   référence) dans l'administration.
                 </span>
               )}
             </label>
           )}
-          <label className="flex flex-col gap-1 text-sm">
+          <label className="flex flex-col gap-1 text-sm text-ink">
             Titre
             <Input aria-label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
           {kind === "site" && (
-            <label className="flex flex-col gap-1 text-sm">
+            <label className="flex flex-col gap-1 text-sm text-ink">
               Slug
               <Input
                 aria-label="Slug"
@@ -226,14 +226,14 @@ export function NewItemButton() {
                 }}
               />
               {slug && !isValidSlug(slug) && (
-                <span className="text-xs text-red-600">
+                <span className="text-xs text-danger">
                   Slug invalide (minuscules, chiffres, tirets).
                 </span>
               )}
             </label>
           )}
           {(create.isError || createMap.isError || createDataset.isError) && (
-            <p role="alert" className="text-sm text-red-600">
+            <p role="alert" className="text-sm text-danger">
               Échec de la création.
             </p>
           )}
@@ -257,7 +257,7 @@ export function NewItemButton() {
             </Button>
           </div>
         </form>
-      </Dialog>
+      </Drawer>
     </>
   );
 }

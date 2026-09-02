@@ -162,6 +162,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async runHarvestSource(..._args: unknown[]) {
       return unsupported();
     },
+    async launchAdminTool(..._args: unknown[]) {
+      return unsupported();
+    },
     async getCollectionSharing(..._args: unknown[]) {
       return unsupported();
     },
@@ -313,6 +316,21 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
       return unsupported();
     },
     async getTerrain3DUploadJob(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getPrivilegeCatalog(..._args: unknown[]) {
+      return unsupported();
+    },
+    async listRoles(..._args: unknown[]) {
+      return unsupported();
+    },
+    async createRole(..._args: unknown[]) {
+      return unsupported();
+    },
+    async updateRole(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteRole(..._args: unknown[]) {
       return unsupported();
     },
     // getAuthToken?() et getCoreUrl?() sont optionnels sur ItemClient et

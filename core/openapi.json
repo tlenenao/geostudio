@@ -2618,6 +2618,10 @@
       "MeCapabilities": {
         "description": "Les capacit\u00e9s du d\u00e9ploiement, servies avec le profil.\n\nM\u00eame contenu que `GET /instance`, qui reste servi sans authentification\n(page de connexion, mode d\u00e9mo). Le doublon est d\u00e9lib\u00e9r\u00e9 : le shell d\u00e9rive\nl'\u00e9tat de ses domaines d'un profil unique (spec \u00a76.6) au lieu de croiser\ndeux requ\u00eates dans chaque \u00e9cran. `tests/test_auth_me_capabilities.py`\ninterdit aux deux routes de diverger.",
         "properties": {
+          "adminToolsEnabled": {
+            "title": "Admintoolsenabled",
+            "type": "boolean"
+          },
           "appExportEnabled": {
             "title": "Appexportenabled",
             "type": "boolean"
@@ -2654,7 +2658,8 @@
           "appExportEnabled",
           "tileset3dEnabled",
           "terrain3dEnabled",
-          "copilotEnabled"
+          "copilotEnabled",
+          "adminToolsEnabled"
         ],
         "title": "MeCapabilities",
         "type": "object"
@@ -2679,25 +2684,23 @@
             "title": "Firstname",
             "type": "string"
           },
-          "hasAnyEditorRole": {
-            "title": "Hasanyeditorrole",
-            "type": "boolean"
-          },
           "id": {
             "title": "Id",
             "type": "string"
           },
-          "isAdmin": {
-            "title": "Isadmin",
-            "type": "boolean"
-          },
-          "isAnalyst": {
-            "title": "Isanalyst",
-            "type": "boolean"
-          },
           "lastName": {
             "title": "Lastname",
             "type": "string"
+          },
+          "privileges": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Privileges",
+            "type": "array"
+          },
+          "role": {
+            "$ref": "#/components/schemas/RoleSummary"
           },
           "tenantId": {
             "title": "Tenantid",
@@ -2724,9 +2727,8 @@
           "email",
           "firstName",
           "lastName",
-          "isAdmin",
-          "isAnalyst",
-          "hasAnyEditorRole",
+          "role",
+          "privileges",
           "version",
           "capabilities"
         ],
@@ -3181,6 +3183,29 @@
         "title": "PrintLayout",
         "type": "object"
       },
+      "PrivilegeCatalogEntry": {
+        "properties": {
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "labelKey": {
+            "title": "Labelkey",
+            "type": "string"
+          },
+          "privilege": {
+            "title": "Privilege",
+            "type": "string"
+          }
+        },
+        "required": [
+          "privilege",
+          "domain",
+          "labelKey"
+        ],
+        "title": "PrivilegeCatalogEntry",
+        "type": "object"
+      },
       "ReportRunStatus": {
         "properties": {
           "createdAt": {
@@ -3295,6 +3320,117 @@
           "created_at"
         ],
         "title": "RevisionInfo",
+        "type": "object"
+      },
+      "RoleCreate": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "privileges": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Privileges",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "privileges"
+        ],
+        "title": "RoleCreate",
+        "type": "object"
+      },
+      "RolePatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "privileges": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privileges"
+          }
+        },
+        "title": "RolePatch",
+        "type": "object"
+      },
+      "RoleRead": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isBuiltIn": {
+            "title": "Isbuiltin",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "privileges": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Privileges",
+            "type": "array"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "isBuiltIn",
+          "privileges"
+        ],
+        "title": "RoleRead",
+        "type": "object"
+      },
+      "RoleSummary": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug"
+        ],
+        "title": "RoleSummary",
         "type": "object"
       },
       "RollbackRequest": {
@@ -3561,32 +3697,17 @@
         "title": "Tileset3DPayload",
         "type": "object"
       },
-      "UserAdminPatch": {
+      "UserRolePatch": {
         "properties": {
-          "isAdmin": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Isadmin"
-          },
-          "isAnalyst": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Isanalyst"
+          "roleId": {
+            "title": "Roleid",
+            "type": "string"
           }
         },
-        "title": "UserAdminPatch",
+        "required": [
+          "roleId"
+        ],
+        "title": "UserRolePatch",
         "type": "object"
       },
       "ValidationError": {
@@ -7446,6 +7567,241 @@
         "summary": "Get Report Runs Route"
       }
     },
+    "/roles": {
+      "get": {
+        "operationId": "get_roles_roles_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleRead"
+                  },
+                  "title": "Response Get Roles Roles Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Roles"
+      },
+      "post": {
+        "operationId": "post_role_roles_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Role"
+      }
+    },
+    "/roles/catalog": {
+      "get": {
+        "operationId": "get_roles_catalog_roles_catalog_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PrivilegeCatalogEntry"
+                  },
+                  "title": "Response Get Roles Catalog Roles Catalog Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Roles Catalog"
+      }
+    },
+    "/roles/{role_id}": {
+      "delete": {
+        "operationId": "delete_role_route_roles__role_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "title": "Role Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Role Route"
+      },
+      "patch": {
+        "operationId": "patch_role_roles__role_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "title": "Role Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RolePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Role"
+      }
+    },
     "/schemas/app-config": {
       "get": {
         "operationId": "get_app_config_schema_schemas_app_config_get",
@@ -8368,7 +8724,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UserAdminPatch"
+                "$ref": "#/components/schemas/UserRolePatch"
               }
             }
           },

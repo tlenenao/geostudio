@@ -2,9 +2,10 @@
 """Routes REST de la bibliothèque d'icônes personnalisées (SP-27 §3.4, D7).
 
 Tenant-scoped, auditée, ouverte à tout utilisateur authentifié du tenant —
-délibérément PAS admin-only, contrairement à app.secrets (`_require_admin`
-sur toutes ses routes) : une icône est du matériel de présentation attaché à
-une carte que l'utilisateur a déjà le droit d'éditer, sans contenu secret.
+délibérément PAS admin-only, contrairement à app.secrets
+(`require_privilege(admin.secrets.manage)` sur toutes ses routes) : une
+icône est du matériel de présentation attaché à une carte que l'utilisateur
+a déjà le droit d'éditer, sans contenu secret.
 Ne passe pas par can() : can() autorise l'accès à un ITEM, et une icône n'en
 est pas un.
 

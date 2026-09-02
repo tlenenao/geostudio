@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCore, mockMe, ADMIN_ME } from "./mocks";
 
 const OGC_URL = "https://records.example.com/api";
 
@@ -8,19 +8,7 @@ test("un admin déclare une source OGC API - Records, la moissonne, et l'item ap
   page,
 }) => {
   await mockCore(page);
-  await page.route("**/me", async (route) => {
-    await route.fulfill({
-      json: {
-        id: "u-mock",
-        username: "mockuser",
-        firstName: "Mock",
-        lastName: "User",
-        email: null,
-        tenantId: "t-mock",
-        isAdmin: true,
-      },
-    });
-  });
+  await mockMe(page, ADMIN_ME);
 
   let created: unknown = null;
   let runCount = 0;
@@ -89,9 +77,9 @@ test("un admin déclare une source OGC API - Records, la moissonne, et l'item ap
 
   await page.goto("/admin/harvest");
   await page.getByRole("button", { name: "Ajouter une source" }).click();
-  const dialog = page.getByRole("dialog", { name: "Ajouter une source" });
-  await dialog.getByLabel("URL").fill(OGC_URL);
-  await dialog.getByLabel("Type").selectOption("ogc-records");
+  const panel = page.getByRole("region", { name: "Ajouter une source" });
+  await panel.getByLabel("URL").fill(OGC_URL);
+  await panel.getByLabel("Type").selectOption("ogc-records");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect
     .poll(() => created)
