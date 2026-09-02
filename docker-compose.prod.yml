@@ -115,6 +115,8 @@ services:
       start_period: 30s
 
   otel-lgtm:
+    restart: unless-stopped
+    ports: !reset []
     # Le fichier de base (Task 4) porte déjà GF_SERVER_ROOT_URL (avec
     # ${DOMAIN}, pas ${GEOSTUDIO_PUBLIC_HOST}) sur ce service : l'override
     # ci-dessous remplace juste cette clé, GF_SERVER_SERVE_FROM_SUB_PATH

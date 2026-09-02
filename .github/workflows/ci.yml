@@ -57,7 +57,7 @@ jobs:
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy --strict app/auth app/secrets app/analytics app/copilot
+      - run: uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools
       - run: uv run pytest --cov=app --cov-report=xml:coverage.xml
       - run: uv run python scripts/check_coverage.py coverage.xml .coverage-threshold
       - name: Mypy (périmètre large, non bloquant)

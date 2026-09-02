@@ -211,6 +211,7 @@ layers = [
     "app.tileset3d",
     "app.terrain3d",
     "app.mapicons",
+    "app.admin_tools",
     "app.secrets",
     "app.cdc",
     "app.ingestion",

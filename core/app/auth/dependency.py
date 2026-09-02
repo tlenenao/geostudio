@@ -107,6 +107,22 @@ def is_admin_tools_enabled() -> bool:
     return os.environ.get("CORE_ADMIN_TOOLS_ENABLED", "false").lower() == "true"
 
 
+def reject_admin_tools_without_secret() -> None:
+    """Appelée une fois au démarrage (create_app()), même patron que
+    reject_mock_outside_development() ci-dessus : échec rapide et lisible
+    plutôt qu'un 500 opaque au premier appel. jwt.encode(claims, "") lève
+    InvalidKeyError("HMAC key must not be empty.") — non attrapé par
+    app.admin_tools.routes, ce qui ferait déjà échouer POST
+    /admin-tools/launch/{tool} en pratique (fail-closed, pas exploitable),
+    mais sans rien dire à l'opérateur sur la cause. CORE_ADMIN_TOOLS_ENABLED
+    activé sans secret réglé est exactement l'état que .env.example invite
+    par défaut (CORE_ADMIN_TOOLS_TOKEN_SECRET vide)."""
+    if is_admin_tools_enabled() and not os.environ.get("CORE_ADMIN_TOOLS_TOKEN_SECRET"):
+        raise RuntimeError(
+            "CORE_ADMIN_TOOLS_ENABLED=true requires a non-empty CORE_ADMIN_TOOLS_TOKEN_SECRET"
+        )
+
+
 def admin_subs() -> set[str]:
     """OIDC subs à promouvoir admin au prochain get_or_create_user (source de
     vérité de CORE_ADMIN_SUBS — utilisée par le chemin REST ci-dessous ET par

@@ -23,6 +23,7 @@ from app.auth.dependency import (
     is_read_only_mode,
     is_terrain3d_enabled,
     is_tileset3d_enabled,
+    reject_admin_tools_without_secret,
     reject_mock_outside_development,
 )
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
@@ -108,6 +109,7 @@ def create_app() -> FastAPI:
     observability.setup()
     secrets_crypto.load_master_key()  # échec rapide si absente/mal formée (design SP-15e §4/§8)
     reject_mock_outside_development()  # échec rapide si mock hors dev (design SP-26 §3.1)
+    reject_admin_tools_without_secret()  # échec rapide si gate admin sans secret
     database_url = os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     engine = make_engine(database_url)
     observability.instrument_engine(engine)

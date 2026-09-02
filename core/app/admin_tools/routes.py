@@ -2,16 +2,17 @@
 """Routes du gate /admin/* — montées uniquement quand
 CORE_ADMIN_TOOLS_ENABLED est actif (app.main, même patron que
 app.tileset3d/app.export). Trois endpoints : lancement (Bearer, appelé par
-le shell), bootstrap de session (jeton à usage unique -> cookie, atteint
-par navigation directe du navigateur depuis l'URL renvoyée par le
-lancement), et vérification (appelée par le forwardAuth de Traefik,
-jamais par le shell — cf. plan d'implémentation, Tâche 4)."""
+le shell), bootstrap de session (jeton de lancement à durée de vie courte
+(60s) -> cookie, atteint par navigation directe du navigateur depuis l'URL
+renvoyée par le lancement), et vérification (appelée par le forwardAuth de
+Traefik, jamais par le shell — cf. plan d'implémentation, Tâche 4)."""
 
 import os
 from typing import Literal
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 
 from app.admin_tools.tokens import (
     AdminToolsTokenError,
@@ -30,17 +31,23 @@ _SESSION_COOKIE = "gs_admin_session"
 _SESSION_MAX_AGE_SECONDS = 1800
 
 
+class LaunchAdminToolResponse(BaseModel):
+    url: str
+
+
 def _require_admin(user: User) -> None:
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="admin role required")
 
 
 @router.post("/admin-tools/launch/{tool}")
-def launch_admin_tool(tool: ToolName, user: User = Depends(get_current_user)) -> dict:
+def launch_admin_tool(
+    tool: ToolName, user: User = Depends(get_current_user)
+) -> LaunchAdminToolResponse:
     _require_admin(user)
     base = os.environ.get("CORE_BASE_URL", "http://localhost:8200")
     token = mint_launch_token(sub=user.id, tool=tool)
-    return {"url": f"{base}/admin-tools/session/{tool}?_at={token}"}
+    return LaunchAdminToolResponse(url=f"{base}/admin-tools/session/{tool}?_at={token}")
 
 
 @router.get("/admin-tools/session/{tool}")
