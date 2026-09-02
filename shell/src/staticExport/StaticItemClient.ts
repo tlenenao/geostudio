@@ -318,6 +318,21 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async getTerrain3DUploadJob(..._args: unknown[]) {
       return unsupported();
     },
+    async getPrivilegeCatalog(..._args: unknown[]) {
+      return unsupported();
+    },
+    async listRoles(..._args: unknown[]) {
+      return unsupported();
+    },
+    async createRole(..._args: unknown[]) {
+      return unsupported();
+    },
+    async updateRole(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteRole(..._args: unknown[]) {
+      return unsupported();
+    },
     // getAuthToken?() et getCoreUrl?() sont optionnels sur ItemClient et
     // n'ont pas de sens sans backend réel (aucun jeton, aucune base URL de
     // cœur) : omis intentionnellement plutôt qu'implémentés pour rejeter.
