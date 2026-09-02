@@ -23,9 +23,12 @@ test.describe("authentification OIDC réelle (Keycloak)", () => {
     await page.click('input[type="submit"], button[type="submit"]');
     await page.waitForURL("http://localhost:8300/**");
 
-    // Sélecteur vérifié contre le code réel (shell/src/shell/AppLayout.tsx) :
-    // <Button onClick={signOut}>Déconnexion</Button> — un vrai <button>
-    // (shell/src/ui/button.tsx), libellé "Déconnexion" sans variante anglaise.
+    // Sélecteur vérifié contre le code réel (shell/src/shell/chrome/AccountMenu.tsx,
+    // introduit par SP-29a) : le bouton "Déconnexion" est désormais dans le
+    // Popover du badge de compte (déclencheur aria-label "Compte",
+    // account.menu), plus un <button> direct de AppLayout.tsx — même
+    // patron que shell/e2e/account-badge.spec.ts.
+    await page.getByRole("button", { name: "Compte" }).click();
     await page.getByRole("button", { name: /déconnexion|logout/i }).click();
     await page.waitForURL(/\/realms\/geostudio\/protocol\/openid-connect\/auth|localhost:8300\/?$/);
   });
