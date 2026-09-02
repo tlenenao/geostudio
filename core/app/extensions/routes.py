@@ -7,14 +7,11 @@ from app.auth.dependency import get_current_user, get_current_user_optional
 from app.db import get_session
 from app.extensions import repository as repo
 from app.extensions.schemas import ExtensionCreate, ExtensionPatch
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.tenants.repository import get_or_create_default_tenant
 
 router = APIRouter()
-
-
-def _require_admin(user) -> None:
-    if not user.is_admin:
-        raise HTTPException(status_code=403, detail="admin role required")
 
 
 def _extension_json(ext) -> dict:
@@ -38,7 +35,7 @@ def register_extension(
     user=Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    _require_admin(user)
+    require_privilege(session, user, Privilege.ADMIN_EXTENSIONS_MANAGE.value)
     if repo.get_extension(session, tenant_id=user.tenant_id, extension_id=body.id):
         raise HTTPException(status_code=409, detail="extension already registered")
     ext = repo.create_extension(
@@ -75,7 +72,7 @@ def patch_extension(
     user=Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    _require_admin(user)
+    require_privilege(session, user, Privilege.ADMIN_EXTENSIONS_MANAGE.value)
     ext = repo.get_extension(session, tenant_id=user.tenant_id, extension_id=extension_id)
     if not ext:
         raise HTTPException(status_code=404, detail="extension not found")
