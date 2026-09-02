@@ -192,13 +192,33 @@ const SCREENS: Array<{
     // investigation (page.evaluate ciblé) avant d'écarter cet onglet ici,
     // pas supposé.
     skipClipCheckForTabs: ["Couches"],
-    // Mesuré par le check corrigé (round 2, 2026-09-02) : 3 offenseurs
-    // stables à 641px sur l'onglet par défaut ("Carte"/Inspecter) de
-    // MapEditorPage.tsx — même famine de colonne centrale, indépendante du
-    // défaut LayersPanel ci-dessus (déjà écarté par skipClipCheckForTabs
-    // sur le groupe 390px, mais le groupe 641px n'a pas de logique par
-    // onglet : il teste uniquement l'écran au premier rendu).
-    wideBoundaryKnownIssue: `Cartes : 3 offenseurs stables mesurés à 641px. ${WIDE_BOUNDARY_ROOT_CAUSE}`,
+    // Round 3 de vérification (2026-09-02) : les 3 offenseurs mesurés à
+    // 641px sur cet écran ne sont PAS trois occurrences du même mécanisme —
+    // une version précédente de ce commentaire l'affirmait à tort en
+    // parlant d'une famine "indépendante du défaut LayersPanel". Mesurés
+    // individuellement :
+    // 1. DIV.overflow-y-auto.border-r.border-rule (scrollWidth 397 /
+    //    clientWidth 279) — la colonne latérale gauche (browse), où
+    //    LayersPanel se rend par défaut à cette largeur (pas besoin de
+    //    cliquer l'onglet "Couches" comme dans le groupe 390px ci-dessus),
+    //    est elle-même plafonnée à son propre max-width de 280px : trop
+    //    étroit pour le contenu de LayersPanel. Mécanisme DIFFÉRENT de la
+    //    famine de colonne centrale : ici c'est la colonne latérale qui est
+    //    trop étroite, pas la colonne centrale qui est affamée. Sondé aussi
+    //    à 900/1400/1920px : persiste identiquement à chaque largeur — pas
+    //    borné à la bande ~641-1000px de WIDE_BOUNDARY_ROOT_CAUSE.
+    // 2. SPAN.flex-1.truncate (scrollWidth 79 / clientWidth 0) — c'est LE
+    //    MÊME défaut déjà tracké CLAUDE.md/lot "Carte" que celui écarté par
+    //    skipClipCheckForTabs ci-dessus pour le groupe 390px (le <span> de
+    //    titre LayersPanel à largeur de layout nulle) : PAS indépendant de
+    //    ce défaut, juste rendu visible sans clic ici parce que LayersPanel
+    //    occupe déjà la colonne browse au premier rendu à 641px. Persiste
+    //    lui aussi identiquement à 900/1400/1920px — pas borné non plus.
+    // 3. DIV.overflow-hidden (scrollWidth 92 / clientWidth 41) — seul celui-
+    //    ci est la vraie famine de colonne centrale (work, 641-600=41px),
+    //    le même mécanisme partagé que les 4 autres écrans ci-dessous,
+    //    borné à la bande ~641-1000px+ (cf. WIDE_BOUNDARY_ROOT_CAUSE).
+    wideBoundaryKnownIssue: `Cartes : 3 offenseurs stables mesurés à 641px, de MÉCANISMES DISTINCTS — (a) la colonne browse elle-même plafonnée à 280px, trop étroite pour LayersPanel (persiste à toute largeur sondée, non bornée) ; (b) le <span> de titre LayersPanel à largeur nulle, déjà tracké CLAUDE.md/lot "Carte" — pas indépendant, juste visible sans clic à cette largeur (persiste aussi à toute largeur) ; (c) la vraie famine de colonne centrale, seule partagée avec les autres écrans. ${WIDE_BOUNDARY_ROOT_CAUSE}`,
   },
   {
     name: "Apps & sites",

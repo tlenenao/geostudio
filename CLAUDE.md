@@ -673,12 +673,17 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   leur maximum (280+320=600 px) avant que la piste `1fr` ne reçoive quoi
   que ce soit (algorithme standard de dimensionnement CSS Grid) — un effet
   potentiellement partagé par les 8 écrans mais qui ne clippe visiblement
-  que sur `CatalogPage.tsx` (résumés d'items effondrés à largeur 0) ; un
-  chantier de layout distinct, à ouvrir séparément, pas un simple réglage
-  de seuil. (2) le filet `expectNoHorizontalOverflow()` d'origine (lisant
-  `document.documentElement.scrollWidth`) était lui-même vacant — il peut
-  lire 0 alors que du contenu réel est clippé, parce que le conteneur de
-  contenu d'`AppLayout.tsx` est `overflow-y-auto` (l'axe X visible calcule
+  que sur `CatalogPage.tsx` (résumés d'items effondrés à largeur 0)
+  **(affirmation infirmée par le round 2 de vérification ci-dessous : le
+  filet lui-même était vacant sur les 5 autres écrans concernés, et une
+  fois corrigé il révèle un clipping stable sur 6 des 8 écrans, pas 1 —
+  voir le paragraphe « Round 2 de correction » plus bas pour le détail
+  exact)** ; un chantier de layout distinct, à ouvrir séparément, pas un
+  simple réglage de seuil. (2) le filet `expectNoHorizontalOverflow()`
+  d'origine (lisant `document.documentElement.scrollWidth`) était lui-même
+  vacant — il peut lire 0 alors que du contenu réel est clippé, parce que
+  le conteneur de contenu d'`AppLayout.tsx` est `overflow-y-auto` (l'axe X
+  visible calcule
   alors à `auto` par la spec CSS, absorbant tout débordement avant le
   document) et que les cellules de la grille desktop sont
   `overflow-hidden` (elles clippent sans rien remonter) ; remplacé par
@@ -716,8 +721,9 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   sa mesure dans `expect(...).toPass({ timeout: 3000 })` — qui s'arrête au
   **premier** succès, jamais garanti d'observer l'état stabilisé. Sur 5 des 8
   écrans qui rendent réellement la grille de `TriptychLayout.tsx` (Cartes,
-  Apps & sites, Analytique, Administration — Catalogue déjà correctement
-  attrapé par round 1), le tout premier sondage tombait pendant la peinture
+  Apps & sites, Analytique, Administration, Automatisation — Catalogue déjà
+  correctement attrapé par round 1), le tout premier sondage tombait pendant
+  la peinture
   initiale vide/chargement (0 offenseur), `toPass` déclarait la réussite
   immédiatement, et la mise en page réellement installée n'était jamais
   observée — un défaut du filet de test lui-même, pas de l'implémentation

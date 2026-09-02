@@ -13,8 +13,8 @@ import { useEffect, useState } from "react";
 // de 640px sur chaque écran : round 2 de correction (2026-09-02, même date,
 // cf. CLAUDE.md entrée SP-30l) a mesuré, via un check corrigé pour observer
 // l'état stabilisé plutôt que le premier échantillon, un clipping résiduel
-// stable sur 5 des 8 écrans de référence à 641px (Catalogue, Cartes,
-// Apps & sites, Analytique, Administration — cf. shell/e2e/
+// stable sur 6 des 8 écrans de référence à 641px (Catalogue, Cartes,
+// Apps & sites, Analytique, Administration, Automatisation — cf. shell/e2e/
 // triptych-narrow.spec.ts, WIDE_BOUNDARY_ROOT_CAUSE) — un défaut de
 // TriptychLayout.tsx lui-même (ses colonnes latérales grandissent vers leur
 // maximum combiné, 280+320=600px, avant que la colonne centrale ne reçoive
