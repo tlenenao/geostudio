@@ -1,21 +1,9 @@
 import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCore, mockMe, ADMIN_ME } from "./mocks";
 
 test("un admin gère le cycle de vie complet d'une collection depuis le shell", async ({ page }) => {
   await mockCore(page);
-  await page.route("**/me", async (route) => {
-    await route.fulfill({
-      json: {
-        id: "u-mock",
-        username: "mockuser",
-        firstName: "Mock",
-        lastName: "User",
-        email: null,
-        tenantId: "t-mock",
-        isAdmin: true,
-      },
-    });
-  });
+  await mockMe(page, ADMIN_ME);
 
   let registered: unknown = null;
   let patchedTitle: string | null = null;

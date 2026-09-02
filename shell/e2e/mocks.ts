@@ -88,9 +88,14 @@ const DEFAULT_APP_CONFIG = {
 // Fixture canonique de GET /me — seule source de vérité pour ce payload
 // (revue transverse SP-30l, finding 6 : trois copies quasi-identiques de ce
 // littéral existaient, mockCore() ci-dessous et deux specs distinctes ;
-// désormais toutes les trois passent par mockMe()). hasAnyEditorRole: true
-// par défaut, comme avant ce refactor — seul AccountMenu.tsx lit ce champ
-// (roleLabel()), aucune route/domaine n'en dépend.
+// désormais toutes les trois passent par mockMe()).
+//
+// role/privileges (Task 17, plan roles-privileges-implementation) : remplace
+// isAdmin/isAnalyst/hasAnyEditorRole, retirés du modèle Me côté cœur et
+// shell. Défaut "creator" — même mapping que l'ancien hasAnyEditorRole: true
+// (un éditeur, ni admin ni analyste) — miroir exact de
+// BUILT_IN_ROLE_PRIVILEGES["creator"] (core/app/roles/privileges.py) et de
+// la fixture `creator` de shell/src/auth/capabilities.test.ts.
 const DEFAULT_ME = {
   id: "u-mock",
   username: "mockuser",
@@ -98,9 +103,17 @@ const DEFAULT_ME = {
   lastName: "User",
   email: null,
   tenantId: "t-mock",
-  isAdmin: false,
-  isAnalyst: false,
-  hasAnyEditorRole: true,
+  role: { id: "role-creator", name: "Créateur", slug: "creator" },
+  privileges: [
+    "catalog.manage",
+    "maps.manage",
+    "data.view",
+    "data.manage",
+    "apps.manage",
+    "automation.manage",
+    "analytics.view",
+    "tasks.view",
+  ],
   version: "0.1.0",
   tenantSlug: "demo",
 };
@@ -110,6 +123,61 @@ export function mockMe(page: Page, overrides: Partial<typeof DEFAULT_ME> = {}) {
     await route.fulfill({ json: { ...DEFAULT_ME, ...overrides } });
   });
 }
+
+// Quatre profils canoniques (Task 17, plan roles-privileges-implementation) —
+// mêmes valeurs que BUILT_IN_ROLE_PRIVILEGES (core/app/roles/privileges.py)
+// et les fixtures admin/creator/analyst/reader de
+// shell/src/auth/capabilities.test.ts. Les specs qui ont besoin d'un rôle
+// différent du défaut ("creator", cf. DEFAULT_ME ci-dessus) passent
+// mockMe(page, ADMIN_ME) / mockMe(page, ANALYST_ME) / mockMe(page, READER_ME)
+// plutôt que de composer leur propre littéral role/privileges.
+export const ADMIN_ME = {
+  role: { id: "role-admin", name: "Administrateur", slug: "admin" },
+  privileges: [
+    "catalog.manage",
+    "maps.manage",
+    "data.view",
+    "data.manage",
+    "apps.manage",
+    "automation.manage",
+    "automation.secrets.manage",
+    "analytics.view",
+    "analytics.sql_lab.access",
+    "tasks.view",
+    "tasks.view_all",
+    "admin.users.manage",
+    "admin.roles.manage",
+    "admin.harvest.manage",
+    "admin.collections.manage",
+    "admin.extensions.manage",
+    "admin.secrets.manage",
+    "settings.instance.manage",
+  ],
+};
+
+export const CREATOR_ME = {
+  role: { id: "role-creator", name: "Créateur", slug: "creator" },
+  privileges: [
+    "catalog.manage",
+    "maps.manage",
+    "data.view",
+    "data.manage",
+    "apps.manage",
+    "automation.manage",
+    "analytics.view",
+    "tasks.view",
+  ],
+};
+
+export const ANALYST_ME = {
+  role: { id: "role-analyst", name: "Analyste", slug: "analyst" },
+  privileges: ["data.view", "analytics.view", "analytics.sql_lab.access", "tasks.view"],
+};
+
+export const READER_ME = {
+  role: { id: "role-reader", name: "Lecteur", slug: "reader" },
+  privileges: [] as string[],
+};
 
 export async function mockCore(page: Page) {
   const deleted = new Set<string>();
