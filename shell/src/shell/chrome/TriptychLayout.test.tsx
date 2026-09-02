@@ -22,6 +22,16 @@ test("large : les trois volets sont visibles en même temps", () => {
   expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
 });
 
+test("large : la colonne centrale a un plancher CSS explicite, pas un 1fr nu", () => {
+  vi.mocked(useNarrowViewport).mockReturnValue(false);
+  const { container } = render(<TriptychLayout {...TABS} />);
+  const grid = container.querySelector(".grid");
+  expect(grid).not.toBeNull();
+  expect(grid?.className).toContain(
+    "grid-cols-[minmax(220px,280px)_minmax(360px,1fr)_minmax(260px,320px)]",
+  );
+});
+
 test("étroit : un seul volet à la fois, par défaut Travailler", () => {
   vi.mocked(useNarrowViewport).mockReturnValue(true);
   render(<TriptychLayout {...TABS} />);
