@@ -1003,6 +1003,45 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   défaut que `DomainBar.test.tsx` ci-dessus ; `GET /users` en N+1 (une
   requête de rôle par utilisateur) contre la doctrine SP-29a d'une seule
   requête par page.
+- **SP-33 — TriptychLayout : fin de l'affamement de la colonne centrale**
+  (3 tâches, spec/plan
+  `2026-09-02-sp33-triptychlayout-colonne-centrale-*.md` — **clôt le
+  blocage documenté par SP-30l/round 2**, seul point qui empêchait de
+  redéclarer SP-30 clos) — deux changements ciblés dans
+  `shell/src/shell/chrome/` : la grille de `TriptychLayout.tsx` passe de
+  `grid-cols-[minmax(220px,280px)_1fr_minmax(260px,320px)]` à
+  `grid-cols-[minmax(220px,280px)_minmax(360px,1fr)_minmax(260px,320px)]`
+  (plancher CSS explicite de 360px sur la colonne centrale, au lieu d'une
+  piste `1fr` nue affamée par les deux colonnes latérales) ; le seuil
+  partagé étroit/large `NARROW_QUERY` (`useNarrowViewport.ts`) passe de
+  `(max-width: 640px)` à `(max-width: 899px)` — calé juste au-dessus de la
+  somme des trois planchers (220+360+260=840px, +~60px de marge) pour que
+  la grille à trois colonnes ne soit jamais rendue en dessous du point où
+  les trois peuvent coexister sans dépassement. Hypothèse 360px/899px
+  confirmée **dès le premier essai empirique**, aucun palier
+  intermédiaire nécessaire. Exclusion explicite et documentée (commentaire
+  `useNarrowViewport.ts` + `shell/e2e/triptych-narrow.spec.ts`) de deux
+  défauts pré-existants et sans rapport sur l'écran Cartes (colonne
+  `browse` trop étroite pour `LayersPanel` ; `<span>` de titre
+  `LayersPanel` à largeur nulle — cf. lot **Carte** ci-dessous) : ce test
+  reste seul `test.skip()` de la suite. Un commentaire devenu stale dans
+  `shell/e2e/item-detail-panels.spec.ts` (deux occurrences citant encore
+  le seuil 640px de SP-30l) corrigé pour citer 899px/SP-33. Suite complète
+  relancée avant clôture (piège n°6) : Vitest shell 221 fichiers/1848
+  tests, 0 échec, couverture 90,51 % (seuil 88) ; Playwright 143 tests —
+  138 passed/5 skipped/0 failed (4 skips pré-existants sans rapport —
+  `connected-export.spec.ts`, `static-export.spec.ts` ×3 — + le seul skip
+  Cartes ci-dessus ; `triptych-narrow.spec.ts` seul : 16 passed/1
+  skipped/0 failed). Aucun changement sous `core/` (confirmé par
+  `git diff --stat` scopé aux commits de ce plan) : pas de régénération
+  OpenAPI/TS nécessaire. **Avec cette branche, SP-30 est clos** : les huit
+  critères de sortie du §7 sont désormais tous acquis. Ne restent, par
+  ailleurs et sans rapport avec cette clôture, que les items déjà listés
+  en suivi non bloquant sous `### À venir` (permissions de collection et
+  profil « Lecteur », raison de verrouillage triplée d'`ItemActions`,
+  retrait des anciens fichiers `ui/*`, le lot **Carte**, et la longue
+  liste de suivis Minor accumulés SP-29b→SP-30k) — ce plan ne les résout
+  pas et ne prétend pas les résoudre.
 
 ### Conventions tranchées (2026-09-01)
 
@@ -1052,38 +1091,17 @@ rétroactif en masse :
 
 ### À venir
 
-- **SP-30 n'est PAS clos** (SP-30a→l — round 2 de correction, 2026-09-02,
-  revient sur l'affirmation « SP-30 est clos » de la précédente version de
-  cette entrée et de l'entrée `### Livré`/SP-30l, trouvée prématurée sur
-  ré-examen indépendant). Les neuf familles du §6.1 et le dernier reliquat
-  nommé du §2.1 (chrome) sont vérifiés ; des huit critères de sortie du §7,
-  sept sont acquis mais le huitième — « aucun écran ne clippe au-dessus du
-  seuil relevé » — ne l'est en réalité que sur 2 des 8 écrans de référence
-  (Tâches, Paramètres). **Bloquant restant avant de pouvoir redéclarer SP-30
-  clos, scopé et directement reprenable par une future session :**
-  `TriptychLayout.tsx` (`shell/src/shell/chrome/TriptychLayout.tsx`, grille
-  `grid-cols-[minmax(220px,280px)_1fr_minmax(260px,320px)]`) affame sa
-  colonne centrale (`work`, piste `1fr`) — ses deux colonnes latérales
-  grandissent d'abord vers leur maximum combiné (280+320=600px, algorithme
-  standard de dimensionnement CSS Grid) avant que la colonne centrale ne
-  reçoive quoi que ce soit. Défaut mesuré, stable et reproductible sur 6 des
-  8 écrans de référence — Catalogue (5 offenseurs à 641px), Cartes (3),
-  Apps & sites (2), Analytique (1), Administration (1), Automatisation (2) —
-  cf. `shell/e2e/triptych-narrow.spec.ts` (constante
-  `WIDE_BOUNDARY_ROOT_CAUSE`, un `test.skip()` documenté par écran) et
-  l'entrée `### Livré`/SP-30l pour le détail complet. Bande de largeur
-  concernée : mesurée cassée à 641px (le premier viewport « large » sous le
-  seuil de `useNarrowViewport.ts`), plausiblement jusqu'à ~1000px+ selon la
-  largeur minimale réelle du contenu de chaque écran (ex. une fenêtre
-  desktop en demi-écran) — borne haute non mesurée précisément, à établir
-  par le futur plan. Ce round de correction n'a corrigé QUE l'honnêteté du
-  filet de test qui le mesure (il déclarait ces écrans corrects par un
-  artefact de `toPass({ timeout })`, cf. `### Livré`/SP-30l) et de cette
-  documentation — pas le défaut de layout lui-même, décision explicite de
-  Tanguy pour borner ce round. Reprise directe : chantier de layout dédié
-  sur les proportions de colonnes de `TriptychLayout` (brainstorm si
-  nécessaire → spec → plan), à ouvrir avant de pouvoir redéclarer SP-30 clos.
-  Reste, par ailleurs, hors traitement par aucun plan SP-30 à ce jour : les
+- **Suivis non bloquants pour SP-30 (désormais clos)** (SP-30a→l ; clôture
+  confirmée par SP-33, cf. `### Livré`/SP-33 ci-dessous, qui corrige le seul
+  blocage nommé par le round 2 de correction du 2026-09-02 — l'affamement de
+  la colonne centrale de `TriptychLayout.tsx` sur 6 des 8 écrans de
+  référence). Les huit critères de sortie du §7 sont désormais tous acquis
+  (le 8e, « aucun écran ne clippe au-dessus du seuil relevé », vérifié par
+  `shell/e2e/triptych-narrow.spec.ts` à 900px sur les 7 écrans qui la font
+  passer — Cartes reste en `test.skip()` pour deux défauts pré-existants et
+  sans rapport avec ce défaut de layout, cf. `### Livré`/SP-33 et le lot
+  **Carte** ci-dessous). Reste, par ailleurs, hors traitement par aucun plan
+  SP-30 à ce jour : les
   permissions de collection et le profil « Lecteur » qui restent à
   trancher (cf. entrée SP-29a) ; la raison de verrouillage triplée
   d'`ItemActions` (cf. entrée SP-29a) qui peut être regroupée si voulu ;
