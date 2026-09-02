@@ -19,6 +19,8 @@ import type {
   MapConfig,
   PipelinePayload,
   ReportSchedulePayload,
+  RoleCreateInput,
+  RolePatchInput,
   Sharing,
   UpdatePatch,
 } from "./types";
@@ -46,6 +48,53 @@ export function useItem(pk: string, options?: { enabled?: boolean }) {
 export function useMe() {
   const client = useItemClientInternal();
   return useQuery({ queryKey: ["me"], queryFn: () => client.getMe() });
+}
+
+export function useRolesCatalog() {
+  const client = useItemClientInternal();
+  return useQuery({ queryKey: ["roles", "catalog"], queryFn: () => client.getPrivilegeCatalog() });
+}
+
+export function useRoles(options?: { enabled?: boolean }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["roles"],
+    queryFn: () => client.listRoles(),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useCreateRole() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RoleCreateInput) => client.createRole(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["roles"] });
+    },
+  });
+}
+
+export function useUpdateRole(id: string) {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: RolePatchInput) => client.updateRole(id, patch),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["roles"] });
+    },
+  });
+}
+
+export function useDeleteRole() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => client.deleteRole(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["roles"] });
+    },
+  });
 }
 
 export function useInstanceInfo() {
