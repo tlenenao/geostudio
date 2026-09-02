@@ -24,6 +24,9 @@ export function AdminExtensionsPage() {
               <Link to="/admin/infrastructure" className="text-accent hover:underline">
                 Outils d'infrastructure →
               </Link>
+              <Link to="/admin/roles" className="text-accent hover:underline">
+                Rôles et privilèges →
+              </Link>
             </Panel>
           ),
         }}
