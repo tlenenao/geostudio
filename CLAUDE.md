@@ -144,7 +144,7 @@ uv run pytest        # 1896 passed + 5 skipped + 1 failed (mesuré 2026-08-27,
 # portes de qualité (mêmes invocations qu'en CI — cf. .github/workflows/ci.yml)
 cd core
 uv run ruff check . && uv run ruff format --check .
-uv run mypy --strict app/auth app/secrets app/analytics app/copilot
+uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools
 uv run lint-imports                      # contrat de couches (30 entrées)
 uv run python scripts/check_coverage.py coverage.xml .coverage-threshold   # 85
 cd ../shell
@@ -797,7 +797,9 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   `2026-09-01-traefik-admin-tools.md` — pas de numéro SP) — URLs cohérentes
   `/admin/martin`, `/admin/titiler`, `/admin/grafana` derrière un gate
   cookie que seul un admin peut ouvrir depuis le shell : module
-  `core/app/admin_tools/` (jeton de lancement HMAC à usage unique 60s,
+  `core/app/admin_tools/` (jeton de lancement HMAC à durée de vie courte
+  (60s), non révocable avant expiration — pas de suivi de consommation
+  (même choix que `app/auth/export_tokens.py`, SP-17a) —,
   `POST /admin-tools/launch/{tool}` Bearer-admin → jeton de lancement →
   `GET /admin-tools/session/{tool}` échange le jeton contre un cookie
   `gs_admin_session` HttpOnly/Secure/SameSite=Strict/Path=/admin de 30 min

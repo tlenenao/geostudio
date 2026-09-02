@@ -803,3 +803,144 @@ def test_dockerfile_creates_and_chowns_scratch_before_switching_user(dockerfile,
     assert chown_line is not None and "/scratch" in chown_line.group(0), (
         f"{dockerfile} doit chown /scratch vers l'utilisateur `{user_name}`"
     )
+
+
+# ─── Gate admin-tools (Traefik /admin/<tool>) ──────────────────────────
+#
+# Revue finale du plan Traefik admin-tools (2026-09-01, finding I4) : aucune
+# règle de ce fichier ne couvrait le câblage Traefik du gate — trois
+# routeurs (martin/titiler/grafana) tous gardés par le même middleware
+# forwardauth `admin-auth`, avec une exception délibérée pour grafana (pas
+# de stripprefix, contrairement à martin/titiler — Grafana attend le
+# préfixe conservé, vérifié empiriquement contre l'image réelle, cf.
+# commentaire du service `otel-lgtm` dans docker-compose.yml). Rien ne
+# vérifiait mécaniquement que cette exception reste correcte, que les trois
+# routeurs restent bien gardés, ni que l'overlay prod ne diverge pas du
+# fichier de base sur ces noms.
+
+ADMIN_TOOL_ROUTERS = ("martin", "titiler", "grafana")
+
+
+def _traefik_labels(service: dict) -> dict[str, str]:
+    """`labels:` d'un service Traefik en dict `clé=valeur` — les labels
+    Traefik n'ont jamais de `=` dans la clé elle-même, `split("=", 1)`
+    suffit. `ComposeLoader` a déjà résolu `!override`/`!override […]` à une
+    liste nue (cf. `_drop_tag` plus haut), donc `service["labels"]` est
+    toujours une liste de chaînes ici, jamais un objet `!override`."""
+    return dict(label.split("=", 1) for label in service.get("labels") or [])
+
+
+def _router_middlewares(labels: dict[str, str], router: str) -> list[str]:
+    raw = labels.get(f"traefik.http.routers.{router}.middlewares", "")
+    return [m for m in raw.split(",") if m]
+
+
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+def test_grafana_router_has_no_stripprefix_middleware(compose):
+    """Exception délibérée à la recette martin/titiler (design admin-tools
+    §3, vérifié contre `grafana/otel-lgtm:0.11.4` réel) : Grafana sert déjà
+    ses assets avec le préfixe `/admin/grafana` conservé
+    (GF_SERVER_SERVE_FROM_SUB_PATH=true) — un stripprefix Traefik devant lui
+    casserait le routage. Aucun middleware du routeur grafana, ni aucune
+    définition de middleware nommée `strip*grafana*`, ne doit exister."""
+    labels = _traefik_labels(services(compose)["otel-lgtm"])
+    middlewares = _router_middlewares(labels, "grafana")
+    assert not any("stripprefix" in m for m in middlewares), (
+        f"le routeur grafana ({compose.name}) référence un middleware dont le "
+        f"nom contient 'stripprefix' : {middlewares} — Grafana attend le "
+        "préfixe conservé, contrairement à martin/titiler."
+    )
+    stripprefix_defs = [
+        key
+        for key in labels
+        if key.startswith("traefik.http.middlewares.") and ".stripprefix." in key
+    ]
+    assert not stripprefix_defs, (
+        f"le service otel-lgtm ({compose.name}) définit un middleware "
+        f"stripprefix ({stripprefix_defs}) alors qu'aucun routeur grafana "
+        "n'est censé en référencer un."
+    )
+
+
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+@pytest.mark.parametrize("tool", ADMIN_TOOL_ROUTERS)
+def test_admin_tool_router_is_gated_by_admin_auth(compose, tool):
+    """Les trois outils (martin, titiler, grafana) doivent tous passer par
+    le même gate — un routeur qui perdrait `admin-auth@docker` de sa liste
+    de middlewares deviendrait accessible sans authentification admin,
+    silencieusement (Traefik ne refuse pas de démarrer pour ça)."""
+    service_name = "otel-lgtm" if tool == "grafana" else tool
+    labels = _traefik_labels(services(compose)[service_name])
+    middlewares = _router_middlewares(labels, tool)
+    assert "admin-auth@docker" in middlewares, (
+        f"le routeur {tool} ({compose.name}) doit référencer "
+        f"admin-auth@docker dans ses middlewares, a trouvé : {middlewares}"
+    )
+
+
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+def test_admin_auth_forwardauth_middleware_defined_exactly_once(compose):
+    """Le middleware `admin-auth` (forwardauth) n'est déclaré que sur le
+    service `martin` — titiler/grafana le RÉFÉRENCENT
+    (`admin-auth@docker` dans leurs `middlewares`) sans le redéfinir.
+    Compose fusionne les labels Traefik globalement à travers tous les
+    services d'un même provider (`@docker`) : une redéfinition sur un
+    second service serait soit redondante soit, pire, silencieusement
+    divergente (une autre `address`) selon l'ordre de découverte des
+    conteneurs. Vérifie aussi que la seule définition existante pointe bien
+    vers `/admin-tools/verify`, la cible réelle du forwardAuth Traefik
+    (`core/app/admin_tools/routes.py::verify_admin_tool_session`)."""
+    defining_services = {}
+    for name, service in services(compose).items():
+        labels = _traefik_labels(service)
+        if "traefik.http.middlewares.admin-auth.forwardauth.address" in labels:
+            defining_services[name] = labels["traefik.http.middlewares.admin-auth.forwardauth.address"]
+    assert list(defining_services) == ["martin"], (
+        f"le middleware admin-auth.forwardauth.address doit être défini "
+        f"exactement une fois, sur le service martin — trouvé sur : "
+        f"{sorted(defining_services)} ({compose.name})"
+    )
+    address = defining_services["martin"]
+    assert address.endswith("/admin-tools/verify"), (
+        f"admin-auth.forwardauth.address ({compose.name}) doit cibler "
+        f"/admin-tools/verify, a trouvé : {address!r}"
+    )
+
+
+_TRAEFIK_NAME_RE = re.compile(r"^traefik\.http\.(routers|services|middlewares)\.([^.]+)\.")
+
+
+def _traefik_names(labels: dict[str, str]) -> set[tuple[str, str]]:
+    """Ensemble de couples (routers|services|middlewares, nom) référencés
+    par un jeu de labels — pas les clés complètes : `entrypoints`,
+    `priority`, `tls.certresolver` diffèrent légitimement entre base et
+    prod (base seule a l'ACME letsencrypt, cf. commentaires !override dans
+    docker-compose.prod.yml), seuls les NOMS doivent coïncider."""
+    names = set()
+    for key in labels:
+        match = _TRAEFIK_NAME_RE.match(key)
+        if match:
+            names.add((match.group(1), match.group(2)))
+    return names
+
+
+def test_base_and_prod_agree_on_admin_tool_router_names():
+    """Base et overlay prod redéfinissent entièrement `labels:` pour
+    martin/titiler/grafana (`!override`, cf. commentaires en tête de chaque
+    bloc dans docker-compose.prod.yml) : rien ne garantit mécaniquement que
+    les deux copies gardent les mêmes noms de routeur/service/middleware —
+    une faute de frappe dans l'un des deux fichiers désynchroniserait
+    silencieusement le routage entre dev et prod (le routeur mal nommé
+    n'existerait tout simplement pas, 404 silencieux)."""
+    base_services = services(BASE)
+    prod_services = services(PROD)
+    for tool in ADMIN_TOOL_ROUTERS:
+        service_name = "otel-lgtm" if tool == "grafana" else tool
+        base_names = _traefik_names(_traefik_labels(base_services[service_name]))
+        prod_names = _traefik_names(_traefik_labels(prod_services[service_name]))
+        assert base_names == prod_names, (
+            f"noms de routeur/service/middleware Traefik divergents pour "
+            f"{tool} entre base et prod : seulement en base = "
+            f"{sorted(base_names - prod_names)}, seulement en prod = "
+            f"{sorted(prod_names - base_names)}"
+        )

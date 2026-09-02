@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """Jetons du gate /admin/* (outils d'infrastructure Martin/Titiler/
-Grafana) : un jeton de lancement à usage unique (60s), qui bootstrap un
-cookie de session (30 min) posé par app.admin_tools.routes — même patron
-que app.auth.export_tokens (SP-17a). Pas de suivi « déjà consommé », comme
-export_tokens : révocation par TTL seul (SP-17a, même choix assumé)."""
+Grafana) : un jeton de lancement à durée de vie courte (60s),
+non révocable avant expiration — pas de suivi de consommation (même choix
+que app.auth.export_tokens, SP-17a) —, qui bootstrap un cookie de session
+(30 min) posé par app.admin_tools.routes."""
 
 import os
 import time
