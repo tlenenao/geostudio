@@ -20,6 +20,8 @@ from app.collections.publication import remove_table_from_publication
 from app.collections.schema_json import table_info_to_schema
 from app.collections.schemas import CollectionCreate, CollectionPatch, EmptyCollectionCreate
 from app.db import core_table_names, get_session
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.sharing.schemas import Sharing
 
@@ -133,11 +135,6 @@ def _collection_json(col, permissions, owner: str | None = None) -> dict:
     }
 
 
-def _require_admin(user) -> None:
-    if not user.is_admin:
-        raise HTTPException(status_code=403, detail="admin role required")
-
-
 def get_readable_collection(session, user, collection_id):
     """404 avant 403 : une collection illisible est indistinguable d'une absente."""
     col = None
@@ -172,7 +169,7 @@ def register_collection(
     apply_ddl: Callable = Depends(get_ddl_applier),
     count_features=Depends(get_feature_counter),
 ):
-    _require_admin(user)
+    require_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     if body.tableName in _core_tables():
         raise HTTPException(status_code=400, detail="core table cannot be registered")
     if repo.get_collection(session, tenant_id=user.tenant_id, collection_id=body.tableName):
@@ -291,7 +288,7 @@ def list_candidate_tables(
     list_tables: Callable[[Session], list[str]] = Depends(get_table_lister),
     introspect: Introspector = Depends(get_introspector),
 ):
-    _require_admin(user)
+    require_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     core = _core_tables()
     candidates = []
     for table_name in list_tables(session):
@@ -436,7 +433,8 @@ def unregister_collection(
     session: Session = Depends(get_session),
 ):
     col = get_readable_collection(session, user, collection_id)
-    _require_admin(user)  # après le 404 : un non-admin qui la voit reçoit 403
+    # après le 404 : un non-admin qui la voit reçoit 403
+    require_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     remove_table_from_publication(session, col.table_name)
     repo.delete_collection(session, col)
     write_audit(
