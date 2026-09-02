@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Jetons du gate /admin/* (outils d'infrastructure Martin/Titiler/
 Grafana) : un jeton de lancement à durée de vie courte (60s),
-non révocable avant expiration — pas de suivi de consommation (même choix
-que app.auth.export_tokens, SP-17a) —, qui bootstrap un cookie de session
+non révocable avant expiration, sans suivi de consommation (même choix
+que app.auth.export_tokens, SP-17a), qui bootstrap un cookie de session
 (30 min) posé par app.admin_tools.routes."""
 
 import os
