@@ -18,6 +18,7 @@ import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
 import { AdminInfrastructurePage } from "../pages/AdminInfrastructurePage";
 import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
 import { HarvestSourcesAdminPage } from "../pages/HarvestSourcesAdminPage";
+import { RolesAdminPage } from "../pages/RolesAdminPage";
 import { KitGalleryPage } from "../pages/KitGalleryPage";
 import { TasksComingSoonPage } from "../pages/TasksComingSoonPage";
 import { SettingsComingSoonPage } from "../pages/SettingsComingSoonPage";
@@ -306,6 +307,17 @@ export function AppRoutes() {
               deniedMessage="Accès réservé aux administrateurs."
             >
               <HarvestSourcesAdminPage />
+            </RequirePrivilege>
+          }
+        />
+        <Route
+          path="/admin/roles"
+          element={
+            <RequirePrivilege
+              privilege="admin.roles.manage"
+              deniedMessage="Accès réservé à la gestion des rôles."
+            >
+              <RolesAdminPage />
             </RequirePrivilege>
           }
         />
