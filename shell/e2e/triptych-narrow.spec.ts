@@ -25,40 +25,137 @@ const WIDE_HEIGHT = 900;
 // X est significatif (hidden/auto/scroll — les seuls capables de clipper ou
 // de faire défiler) et on vérifie qu'aucun n'a de contenu qui dépasse sa
 // propre boîte.
-async function expectNoClippedContent(page: Page) {
-  // toPass() plutôt qu'un seul page.evaluate() : au tout premier paint,
-  // certains écrans affichent un instant "Chargement…" (query.isLoading,
-  // ex. CatalogPage.tsx) pendant que la grille finit de se dimensionner —
-  // un split-second sans rapport avec le seuil de largeur, mais qui peut
-  // se faire échantillonner comme un faux positif si on évalue trop tôt.
-  // Un vrai défaut de mise en page, lui, ne se résorbe pas en 3s.
-  await expect(async () => {
-    const offenders = await page.evaluate(() => {
-      const bad: Array<{
-        tag: string;
-        className: string;
-        scrollWidth: number;
-        clientWidth: number;
-      }> = [];
-      for (const el of document.querySelectorAll<HTMLElement>("*")) {
-        const style = getComputedStyle(el);
-        if (
-          ["hidden", "auto", "scroll"].includes(style.overflowX) &&
-          el.scrollWidth > el.clientWidth + 1
-        ) {
-          bad.push({
-            tag: el.tagName,
-            className: el.className,
-            scrollWidth: el.scrollWidth,
-            clientWidth: el.clientWidth,
-          });
-        }
+type ClipOffender = {
+  tag: string;
+  className: string;
+  scrollWidth: number;
+  clientWidth: number;
+};
+
+async function measureClipOffenders(page: Page): Promise<ClipOffender[]> {
+  return page.evaluate(() => {
+    const bad: Array<{
+      tag: string;
+      className: string;
+      scrollWidth: number;
+      clientWidth: number;
+    }> = [];
+    for (const el of document.querySelectorAll<HTMLElement>("*")) {
+      const style = getComputedStyle(el);
+      if (
+        ["hidden", "auto", "scroll"].includes(style.overflowX) &&
+        el.scrollWidth > el.clientWidth + 1
+      ) {
+        bad.push({
+          tag: el.tagName,
+          className: el.className,
+          scrollWidth: el.scrollWidth,
+          clientWidth: el.clientWidth,
+        });
       }
-      return bad;
-    });
-    expect(offenders, JSON.stringify(offenders)).toHaveLength(0);
-  }).toPass({ timeout: 3000 });
+    }
+    return bad;
+  });
 }
+
+// Round 2 de correction (2026-09-02) : la version précédente enveloppait la
+// mesure dans expect(...).toPass({ timeout: 3000 }) — qui s'arrête au premier
+// succès. Sur la plupart des écrans qui rendent réellement la grille de
+// TriptychLayout.tsx (tous sauf Catalogue, déjà correctement attrapé par
+// round 1), le tout premier sondage tombait pendant la peinture initiale
+// vide/chargement (0 offenseur mesuré), toPass déclarait la réussite
+// immédiatement, et la mise en page réellement installée — prouvée clippée
+// par un ré-examen indépendant via échantillonnage manuel dans le temps —
+// n'était jamais observée. toPass() ne peut PAS prouver l'absence de
+// clipping : il ne peut que constater qu'un sondage a réussi un jour.
+//
+// Cette version mesure l'état STABILISÉ, pas le premier échantillon : on
+// attend d'abord networkidle (règle la plupart des écrans "Chargement…"),
+// puis on sonde le nombre d'offenseurs toutes les ~150ms jusqu'à ce qu'il
+// soit identique sur 3 sondages consécutifs (ou qu'un budget de temps
+// maximal s'écoule), et on n'affirme qu'une seule fois sur cette mesure
+// stabilisée. Un vrai défaut de mise en page ne se résorbe jamais : il reste
+// stable à une valeur > 0 et cette fonction doit pouvoir échouer dessus —
+// vérifié par falsification (cf. rapport de tâche) avant d'être considérée
+// correcte, pas seulement supposée correcte parce qu'elle "devrait" marcher.
+async function expectNoClippedContent(page: Page) {
+  await page.waitForLoadState("networkidle").catch(() => {
+    // Pas fatal : certains écrans (ex. Automatisation sous mock incomplet)
+    // ne quittent jamais un état de chargement réseau — le settle-poll
+    // ci-dessous mesure quand même l'état DOM stabilisé qui en résulte.
+  });
+
+  const SETTLE_STREAK = 3;
+  const POLL_INTERVAL_MS = 150;
+  const MAX_WAIT_MS = 5000;
+
+  const history: number[] = [];
+  let lastOffenders: ClipOffender[] = [];
+  const deadline = Date.now() + MAX_WAIT_MS;
+
+  for (;;) {
+    lastOffenders = await measureClipOffenders(page);
+    history.push(lastOffenders.length);
+    const tail = history.slice(-SETTLE_STREAK);
+    const settled = tail.length === SETTLE_STREAK && tail.every((n) => n === tail[0]);
+    if (settled || Date.now() >= deadline) break;
+    await page.waitForTimeout(POLL_INTERVAL_MS);
+  }
+
+  expect(lastOffenders, JSON.stringify(lastOffenders)).toHaveLength(0);
+}
+
+// Catalogue de secours (SP-15b) pour l'écran Automatisation (/pipelines/new) —
+// round 2 de correction (2026-09-02) : sous les mocks e2e existants, cette
+// route n'était pas répondue du tout, la page restait bloquée sur
+// `<p role="status">Chargement…</p>` (PipelineBuilderPage.tsx:62,
+// `opsQuery.isLoading || !opsQuery.data`) et n'atteignait donc jamais la
+// grille de TriptychLayout — le test à 641px "passait" sans avoir rien
+// exercé (0 offenseur mesuré parce qu'il n'y avait pas encore de mise en
+// page à mesurer), pas parce que l'écran est correct. Un sous-ensemble du
+// vrai catalogue servi par pipeline-builder.spec.ts (mêmes formes de
+// schéma), suffisant pour que PipelineBuilderPage quitte son état de
+// chargement.
+const AUTOMATISATION_OPS_CATALOG = {
+  "reader.collection": {
+    kind: "reader",
+    paramsSchema: {
+      properties: { collectionId: { type: "string", format: "collection-id" } },
+      required: ["collectionId"],
+    },
+  },
+  "transform.filter": {
+    kind: "transform",
+    paramsSchema: { properties: { expr: { type: "string" } }, required: ["expr"] },
+  },
+  "writer.collection": {
+    kind: "writer",
+    paramsSchema: {
+      properties: { collectionId: { type: "string", format: "collection-id" } },
+      required: ["collectionId"],
+    },
+  },
+};
+
+// Mécanisme partagé derrière tous les `wideBoundaryKnownIssue` ci-dessous
+// (round 2 de correction, 2026-09-02) : TriptychLayout.tsx rend, au-dessus du
+// seuil de useNarrowViewport.ts (640px), une grille
+// `grid-cols-[minmax(220px,280px)_1fr_minmax(260px,320px)]`. L'algorithme
+// standard de dimensionnement CSS Grid maximise d'abord les pistes non
+// flexibles (les deux colonnes latérales, jusqu'à 280+320=600px combinés)
+// avant de donner quoi que ce soit à la piste `fr` (la colonne centrale
+// `work`) — donc à 641px, la colonne centrale n'hérite que de 641-600=41px,
+// quel que soit l'écran qui s'y trouve. Ce n'est pas propre à 641px : toute
+// largeur sous ~600px + la largeur minimale réelle du contenu de la colonne
+// centrale subit la même famine (plausiblement jusqu'à ~1000px+ selon
+// l'écran, ex. une fenêtre desktop en demi-écran) — un vrai chantier de
+// layout sur TriptychLayout lui-même (colonnes latérales/centrale), partagé
+// par les neuf familles SP-30, pas un simple ajustement de seuil. Chaque
+// entrée ci-dessous cite le nombre d'offenseurs réellement mesuré par le
+// check corrigé de cette tâche (settle-poll, pas le premier échantillon) —
+// cf. CLAUDE.md, entrée SP-30l, pour le suivi.
+const WIDE_BOUNDARY_ROOT_CAUSE =
+  "TriptychLayout : la colonne centrale (work) est affamée par les maximums des colonnes latérales (280+320=600px) jusqu'à ce que le viewport les dépasse largement — mécanisme partagé, cf. commentaire WIDE_BOUNDARY_ROOT_CAUSE. Hors périmètre de cette tâche : chantier de layout distinct, tracké CLAUDE.md/SP-30l.";
 
 const SCREENS: Array<{
   name: string;
@@ -70,34 +167,18 @@ const SCREENS: Array<{
   skipClipCheckForTabs?: string[];
   // Raison de test.skip() pour le groupe 641px de cet écran — réservé à un
   // nouveau défaut découvert PAR cette tâche mais explicitement hors
-  // périmètre de sa correction (cf. commentaire sur l'écran concerné) :
-  // jamais un moyen de faire disparaître un échec sans le documenter.
+  // périmètre de sa correction (cf. WIDE_BOUNDARY_ROOT_CAUSE ci-dessus).
+  // Jamais un moyen de faire disparaître un échec sans le documenter.
   wideBoundaryKnownIssue?: string;
 }> = [
   {
     name: "Catalogue",
     path: "/",
-    // Nouveau défaut trouvé par cette tâche (revue transverse SP-30l,
-    // vérification du relèvement à 640px), PAS corrigé ici — l'instruction
-    // explicite en cas de découverte à 641px est de ne pas relever le seuil
-    // encore, et de rapporter plutôt qu'improviser un correctif. Mesuré : à
-    // 641px, TriptychLayout.tsx (grid-cols-[minmax(220px,280px)_1fr_
-    // minmax(260px,320px)]) fait d'abord grandir les deux colonnes latérales
-    // vers leur maximum (280+320=600px) avant de donner quoi que ce soit à
-    // la colonne centrale (1fr) — algorithme standard de dimensionnement
-    // CSS Grid (les pistes non flexibles sont maximisées avant que les
-    // pistes fr ne reçoivent le reste). La colonne centrale ("Catalogue",
-    // le slot `work` de CatalogPage.tsx) n'hérite donc que de 641-600=41px,
-    // et les <p class="line-clamp-2"> des résumés d'items s'y effondrent à
-    // clientWidth 0 (contenu réel, scrollWidth 10-11px, invisible). Ce n'est
-    // pas propre à 641px : toute largeur sous ~600+(largeur minimale réelle
-    // du contenu de la colonne centrale) subit la même famine, un effet de
-    // ce gabarit de grille indépendant du seuil de useNarrowViewport.ts —
-    // un vrai chantier de layout (colonnes latérales/centrale de
-    // TriptychLayout), pas un simple ajustement de seuil. Signalé comme
-    // nouveau finding dans le rapport de cette tâche, pas traité ici.
-    wideBoundaryKnownIssue:
-      "TriptychLayout : la colonne centrale (work) est affamée par les maximums des colonnes latérales (280+320=600px) jusqu'à ce que le viewport les dépasse largement — CatalogPage.tsx en souffre concrètement à 641px (résumés d'items à largeur 0). Hors périmètre de cette tâche (cf. commentaire ci-dessus) : chantier de layout distinct.",
+    // Mesuré par le check corrigé (round 2, 2026-09-02) : 5 offenseurs
+    // stables à 641px, dont trois <p class="line-clamp-2"> de résumé
+    // d'item à clientWidth 0 (scrollWidth 10-11px, contenu réel invisible)
+    // — la colonne centrale de CatalogPage.tsx n'hérite que de 41px.
+    wideBoundaryKnownIssue: `Catalogue : 5 offenseurs stables mesurés à 641px (résumés d'items à largeur 0). ${WIDE_BOUNDARY_ROOT_CAUSE}`,
   },
   {
     name: "Cartes",
@@ -111,17 +192,68 @@ const SCREENS: Array<{
     // investigation (page.evaluate ciblé) avant d'écarter cet onglet ici,
     // pas supposé.
     skipClipCheckForTabs: ["Couches"],
+    // Mesuré par le check corrigé (round 2, 2026-09-02) : 3 offenseurs
+    // stables à 641px sur l'onglet par défaut ("Carte"/Inspecter) de
+    // MapEditorPage.tsx — même famine de colonne centrale, indépendante du
+    // défaut LayersPanel ci-dessus (déjà écarté par skipClipCheckForTabs
+    // sur le groupe 390px, mais le groupe 641px n'a pas de logique par
+    // onglet : il teste uniquement l'écran au premier rendu).
+    wideBoundaryKnownIssue: `Cartes : 3 offenseurs stables mesurés à 641px. ${WIDE_BOUNDARY_ROOT_CAUSE}`,
   },
-  { name: "Apps & sites", path: "/apps/1/edit" },
-  { name: "Analytique", path: "/analytics/sql", before: (p) => mockMe(p, { isAnalyst: true }) },
-  { name: "Automatisation", path: "/pipelines/new" },
-  { name: "Tâches", path: "/tasks" },
+  {
+    name: "Apps & sites",
+    path: "/apps/1/edit",
+    // Mesuré par le check corrigé (round 2, 2026-09-02) : 2 offenseurs
+    // stables à 641px.
+    wideBoundaryKnownIssue: `Apps & sites : 2 offenseurs stables mesurés à 641px. ${WIDE_BOUNDARY_ROOT_CAUSE}`,
+  },
+  {
+    name: "Analytique",
+    path: "/analytics/sql",
+    before: (p) => mockMe(p, { isAnalyst: true }),
+    // Mesuré par le check corrigé (round 2, 2026-09-02) : 1 offenseur
+    // stable à 641px.
+    wideBoundaryKnownIssue: `Analytique : 1 offenseur stable mesuré à 641px. ${WIDE_BOUNDARY_ROOT_CAUSE}`,
+  },
+  {
+    name: "Automatisation",
+    path: "/pipelines/new",
+    before: (p) =>
+      p.route("https://core.test/pipelines/ops", async (route) => {
+        await route.fulfill({ json: AUTOMATISATION_OPS_CATALOG });
+      }),
+    // Round 2 de correction (2026-09-02) : le mock ci-dessus fait quitter à
+    // la page son état "Chargement…" (cf. commentaire sur
+    // AUTOMATISATION_OPS_CATALOG) — une fois la grille réellement exercée,
+    // le check corrigé y mesure 2 offenseurs stables à 641px, la même
+    // famine de colonne centrale que les autres écrans. Round 1 déclarait
+    // ce test vert pour une raison sans rapport (page jamais chargée) ;
+    // round 2 découvre qu'il aurait dû être rouge pour la vraie raison une
+    // fois corrigé.
+    wideBoundaryKnownIssue: `Automatisation : 2 offenseurs stables mesurés à 641px une fois la page effectivement chargée (round 1 le déclarait vert par un défaut de mock, cf. commentaire AUTOMATISATION_OPS_CATALOG). ${WIDE_BOUNDARY_ROOT_CAUSE}`,
+  },
+  {
+    name: "Tâches",
+    path: "/tasks",
+    // TasksComingSoonPage.tsx ne rend qu'un <EmptyState> — aucune grille
+    // TriptychLayout à cet écran (confirmé par lecture directe du fichier,
+    // pas supposé) : passage réel et significatif, pas vacant.
+  },
   {
     name: "Administration",
     path: "/admin/extensions",
     before: (p) => mockMe(p, { isAdmin: true }),
+    // Mesuré par le check corrigé (round 2, 2026-09-02) : 1 offenseur
+    // stable à 641px.
+    wideBoundaryKnownIssue: `Administration : 1 offenseur stable mesuré à 641px. ${WIDE_BOUNDARY_ROOT_CAUSE}`,
   },
-  { name: "Paramètres", path: "/settings" },
+  {
+    name: "Paramètres",
+    path: "/settings",
+    // SettingsComingSoonPage.tsx ne rend qu'un <EmptyState> — aucune grille
+    // TriptychLayout à cet écran (confirmé par lecture directe du fichier,
+    // pas supposé) : passage réel et significatif, pas vacant.
+  },
 ];
 
 for (const screen of SCREENS) {
@@ -155,9 +287,17 @@ for (const screen of SCREENS) {
 // Revue transverse SP-30l (finding 2) : le seuil est passé de 390px à 640px
 // parce que la grille triptyque desktop clippait encore du contenu de ~391px
 // à ~540px. Ce groupe vérifie que 641px — le premier viewport classé "large"
-// sous le nouveau seuil — rend bien la grille trois colonnes sans aucun
-// contenu clippé. Pas d'assertion BottomNav/onglets ici : à 641px le mode
-// large (DomainBar + grille) est attendu, pas le mode étroit.
+// sous le nouveau seuil — rend la grille trois colonnes sans contenu clippé.
+// Pas d'assertion BottomNav/onglets ici : à 641px le mode large (DomainBar +
+// grille) est attendu, pas le mode étroit.
+//
+// Round 2 (2026-09-02) : une fois le check lui-même corrigé pour mesurer
+// l'état stabilisé (cf. expectNoClippedContent ci-dessus) plutôt que le
+// premier échantillon, la majorité de ces tests échouent pour de vrai —
+// cf. wideBoundaryKnownIssue sur chaque écran concerné dans SCREENS
+// ci-dessus pour le nombre d'offenseurs réellement mesuré et le mécanisme
+// partagé (WIDE_BOUNDARY_ROOT_CAUSE). Seuls Tâches/Paramètres (aucune
+// grille TriptychLayout ne s'y rend) passent pour de vraies raisons.
 for (const screen of SCREENS) {
   test(`${screen.name} à 641 px (juste au-dessus du seuil relevé) : aucun contenu clippé`, async ({
     page,
@@ -173,3 +313,27 @@ for (const screen of SCREENS) {
     await expectNoClippedContent(page);
   });
 }
+
+// Task 3 (round 2 de correction, 2026-09-02) : rien ne protège la valeur du
+// seuil elle-même — sans ce test, revenir NARROW_QUERY à "(max-width: 390px)"
+// (l'ancien seuil) dans useNarrowViewport.ts laisserait toute la suite
+// committée verte, puisque les groupes 390px/641px ci-dessus ne testent
+// jamais un viewport à l'intérieur de la bande 391-640px. 500px est choisi à
+// l'intérieur de cette bande : sous le seuil actuel (640px) il doit rendre
+// le mode ÉTROIT (BottomNav "Navigation" + onglets), pas la grille desktop
+// (DomainBar "Domaines", aucun role="tab"). Si le seuil régressait sous
+// 500px, AppLayout.tsx basculerait sur DomainBar et TriptychLayout.tsx sur
+// sa grille — ce test échouerait pour de vrai (vérifié : DomainBar/BottomNav
+// utilisent des libellés aria-label distincts, "Domaines"/"Navigation",
+// catalog.fr.ts:48-49 — pas une coïncidence de sélecteur).
+test("500 px (bande 391-640, sous le seuil relevé) : mode étroit, pas la grille desktop", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 500, height: 900 });
+  await mockCore(page);
+  await page.goto("/");
+
+  await expect(page.getByRole("navigation", { name: "Navigation" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Domaines" })).toHaveCount(0);
+  await expect(page.getByRole("tab").first()).toBeVisible();
+});
