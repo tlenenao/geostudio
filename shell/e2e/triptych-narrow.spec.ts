@@ -145,8 +145,10 @@ const AUTOMATISATION_OPS_CATALOG = {
 // réel) et relevé le seuil de useNarrowViewport.ts en conséquence (899px)
 // — la famine de colonne centrale documentée par la revue transverse SP-30l
 // (round 2, 2026-09-02) est corrigée. Seul l'écran Cartes conserve un
-// wideBoundaryKnownIssue, pour deux défauts distincts et pré-existants,
-// sans rapport avec ce mécanisme (cf. son entrée ci-dessous).
+// wideBoundaryKnownIssue, pour un défaut pré-existant et sans rapport avec ce
+// mécanisme (colonne browse trop étroite pour LayersPanel — cf. son entrée
+// ci-dessous ; le second défaut historiquement bundlé ici, le titre de
+// couche à largeur nulle, est corrigé par SP-36).
 
 const SCREENS: Array<{
   name: string;
@@ -155,6 +157,10 @@ const SCREENS: Array<{
   // Onglets à ne pas soumettre à expectNoClippedContent — réservé à un défaut
   // déjà connu, documenté et hors périmètre (jamais une façon de faire
   // disparaître un vrai problème découvert par cette tâche).
+  // Échappatoire délibérée : aucun SCREENS n'en a plus besoin depuis SP-36
+  // (l'écran Cartes était le seul consommateur), mais le champ et la branche
+  // qui le lit restent en place pour le prochain écran qui en aurait besoin —
+  // pas du code mort à retirer.
   skipClipCheckForTabs?: string[];
   // Raison de test.skip() pour le groupe de largeur "juste au-dessus du
   // seuil" de cet écran — réservé à un défaut pré-existant, distinct du
@@ -172,17 +178,22 @@ const SCREENS: Array<{
   {
     name: "Cartes",
     path: "/maps/map-1",
-    // CLAUDE.md, lot "Carte" (bug UI connu, pré-existant, hors périmètre de
-    // tout plan SP-30) : dans LayersPanel.tsx, le <span> de titre d'une
-    // couche vector/feature peut avoir une largeur de layout nulle
-    // (flex-1 truncate + sibling basis-full) — scrollWidth > clientWidth (0)
-    // pour de vrai, mais c'est le défaut déjà tracké, pas un effet du seuil
-    // de useNarrowViewport que cette tâche corrige. Confirmé par
-    // investigation (page.evaluate ciblé) avant d'écarter cet onglet ici,
-    // pas supposé.
-    skipClipCheckForTabs: ["Couches"],
+    // SP-36 (docs/superpowers/plans/2026-09-03-sp36-layerspanel-titre-flex-wrap.md) :
+    // le <span> de titre d'une couche vector/feature à largeur de layout
+    // nulle (mécanisme (b), flex-1 truncate + sibling basis-full toujours
+    // déployé) est corrigé — flex-wrap ajouté à la ligne (LayersPanel.tsx).
+    // Ré-mesuré empiriquement (pas supposé) : plus aucun offenseur sur
+    // l'onglet "Couches" à 390px avec la vérification de clip désormais
+    // active. Seul le mécanisme (a) — la colonne browse (~249px de large à
+    // 900px) trop étroite pour le contenu de LayersPanel — persiste, et
+    // seulement dans la grille desktop (900px) : offenseur unique mesuré
+    // DIV.overflow-y-auto.border-r.border-rule (scrollWidth 290 >
+    // clientWidth 249), sans rapport avec la famine de colonne centrale
+    // corrigée par SP-33. À 390px (layout mobile en onglets, la colonne
+    // "Couches" occupe toute la largeur disponible) ce mécanisme ne
+    // reproduit pas.
     wideBoundaryKnownIssue:
-      'Cartes : 2 offenseurs pré-existants et distincts (colonne browse trop étroite pour LayersPanel ; <span> de titre LayersPanel à largeur nulle) — sans rapport avec la famine de colonne centrale corrigée par SP-33. Trackés CLAUDE.md/lot "Carte" et SP-30l.',
+      'Cartes : 1 offenseur pré-existant (colonne browse trop étroite pour le contenu de LayersPanel) — sans rapport avec la famine de colonne centrale corrigée par SP-33 ; le titre de couche à largeur nulle est corrigé par SP-36. Tracké CLAUDE.md/lot "Carte".',
   },
   {
     name: "Apps & sites",
@@ -277,10 +288,11 @@ for (const screen of SCREENS) {
 // SP-33 (docs/superpowers/specs/2026-09-02-sp33-triptychlayout-colonne-centrale-design.md) :
 // plancher explicite sur la colonne centrale + seuil relevé à 899px
 // (WIDE_BOUNDARY_WIDTH = 900 ci-dessus) — tous les écrans passent
-// désormais sans wideBoundaryKnownIssue, sauf Cartes (2 offenseurs
-// pré-existants et distincts, sans rapport avec ce chantier, cf. son
-// entrée dans SCREENS) et Tâches/Paramètres (aucune grille
-// TriptychLayout ne s'y rend, jamais concernés).
+// désormais sans wideBoundaryKnownIssue, sauf Cartes (1 offenseur
+// pré-existant, sans rapport avec ce chantier, cf. son entrée dans
+// SCREENS — SP-36 a fermé le second défaut historiquement bundlé avec
+// celui-ci) et Tâches/Paramètres (aucune grille TriptychLayout ne s'y
+// rend, jamais concernés).
 for (const screen of SCREENS) {
   test(`${screen.name} à 900 px (juste au-dessus du seuil relevé) : aucun contenu clippé`, async ({
     page,

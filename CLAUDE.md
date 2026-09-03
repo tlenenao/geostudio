@@ -1287,6 +1287,54 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   ce round ; une imprécision triviale de numéros de ligne dans un rapport
   d'implémenteur). Suite cœur finale **1899 passed** / 3 skipped / 0
   failed. **10 commits au total.** **Ready to merge.**
+- **SP-36 — LayersPanel, titre de couche à largeur nulle** (3 tâches +
+  vérification finale, spec
+  `docs/superpowers/specs/2026-09-03-sp36-layerspanel-titre-flex-wrap-design.md`,
+  plan
+  `docs/superpowers/plans/2026-09-03-sp36-layerspanel-titre-flex-wrap.md`
+  — referme la partie « titre à largeur nulle » du lot **Carte** ouvert
+  depuis SP-28) : `flex-wrap` ajouté au `<li>` de `LayersPanel.tsx:164` —
+  sans lui, le bloc `basis-full` (édition inline, couches
+  `vector`/`feature`) ne pouvait jamais passer à la ligne, et écrasait à
+  la place le `<span>` de titre — seul sibling à min-width automatique
+  réduite à 0 via `flex-1 truncate`/`overflow: hidden` — à une largeur de
+  layout nulle. Deux specs E2E mises à jour :
+  `map-feature-layer-symbology.spec.ts` (remplace le contournement par
+  sélecteur « Retirer … » par une assertion directe de visibilité du
+  titre) et `map-symbology.spec.ts` (ajoute la toute première assertion
+  de titre pour le cas `vector`, sur la couche « Communes »). Correctif
+  falsifié avant d'être fait confiance : revert temporaire, les deux
+  specs confirmées en échec réel, restauré. `triptych-narrow.spec.ts`
+  (Task 3, re-mesure empirique de l'écran Cartes, pas supposée) : « le
+  `<span>` de titre d'une couche vector/feature à largeur de layout
+  nulle (mécanisme (b), `flex-1 truncate` + sibling `basis-full` toujours
+  déployé) est corrigé — `flex-wrap` ajouté à la ligne (`LayersPanel.tsx`).
+  Ré-mesuré empiriquement (pas supposé) : plus aucun offenseur sur
+  l'onglet "Couches" à 390px avec la vérification de clip désormais
+  active. Seul le mécanisme (a) — la colonne browse (~249px de large à
+  900px) trop étroite pour le contenu de LayersPanel — persiste, et
+  seulement dans la grille desktop (900px) : offenseur unique mesuré
+  `DIV.overflow-y-auto.border-r.border-rule` (scrollWidth 290 >
+  clientWidth 249), sans rapport avec la famine de colonne centrale
+  corrigée par SP-33. À 390px (layout mobile en onglets, la colonne
+  "Couches" occupe toute la largeur disponible) ce mécanisme ne
+  reproduit pas. » — `wideBoundaryKnownIssue` reformulé en conséquence :
+  « Cartes : 1 offenseur pré-existant (colonne browse trop étroite pour
+  le contenu de LayersPanel) — sans rapport avec la famine de colonne
+  centrale corrigée par SP-33 ; le titre de couche à largeur nulle est
+  corrigé par SP-36. Tracké CLAUDE.md/lot "Carte". » Aucun changement
+  sous `core/` (`git diff --stat main...HEAD -- core/` vide). E2E 143
+  tests/138 passed/5 skipped/0 failed → **inchangé** vs la référence
+  SP-33/SP-34 (aucun test ajouté ni retiré par ce plan — l'onglet
+  "Couches" à 390px passe désormais pour de vraies raisons plutôt que
+  d'être écarté par `skipClipCheckForTabs`, sans changer le compte).
+  Vitest shell **inchangé** (221 fichiers/1848 tests — un premier run
+  complet a montré 1 échec isolé sur `MapEditorPage.test.tsx` [« affiche
+  le panneau d'historique »], confirmé flaky et sans rapport avec ce plan
+  par ré-exécution ciblée puis complète, 0 échec les deux fois : la
+  dépendance d'ordre sur le stub `matchMedia` de ce fichier, sans
+  `vi.unstubAllGlobals()`, était déjà documentée comme risque latent —
+  cf. entrée SP-30l). **Ready to merge.**
 
 ### Conventions tranchées (2026-09-01)
 
@@ -1346,7 +1394,9 @@ rétroactif en masse :
   (le 8e, « aucun écran ne clippe au-dessus du seuil relevé », vérifié par
   `shell/e2e/triptych-narrow.spec.ts` à 900px sur les 5 écrans qui rendent
   réellement la grille et la font passer — Cartes reste en `test.skip()`
-  pour deux défauts pré-existants et sans rapport avec ce défaut de layout,
+  pour un défaut pré-existant et sans rapport avec ce défaut de layout
+  (mécanisme (b), le titre de couche à largeur nulle, résolu par SP-36 —
+  seul (a), la colonne `browse` trop étroite pour `LayersPanel`, subsiste),
   Tâches/Paramètres ne rendent aucune grille à vérifier (`<EmptyState>`
   seul), cf. `### Livré`/SP-33 et le lot **Carte** ci-dessous). Reste, par
   ailleurs, hors traitement par aucun plan
@@ -1616,20 +1666,26 @@ rétroactif en masse :
   nuages de points). Non planifié.
 - Reste **SP-20** : garde d'egress sur l'appel LLM sortant (vague 6.2) — 4e
   surface sortante, les trois autres en ont une.
-- Reste lot **Carte** (bug UI, pas une fonctionnalité manquante) : dans
-  `LayersPanel.tsx`, le `<span>` de titre d'une couche `vector`/`feature`
-  peut avoir une largeur de layout nulle (interaction flex
-  `flex-1 truncate` + sibling `basis-full` toujours déployé pour ces deux
-  kinds) — trouvé par SP-28/Task 4, contourné dans son propre test E2E par
-  un sélecteur différent (`getByRole("button", { name: "Retirer …" })`),
-  jamais corrigé (hors périmètre fichiers de cette tâche). *Éditeur de
-  symbologie pour les couches `kind: "feature"` résolu par SP-28. Jenks sur
-  le widget carte des apps/dashboards résolu par SP-27/Task 19 : le widget
-  délègue désormais toute la compilation de peinture à `MapView`, même
-  pipeline que l'éditeur.* Un futur correctif doit tenir compte du fait
-  que la colonne `browse` peut désormais rendre aussi étroite qu'~250px
-  dans la bande 900-959px (juste au-dessus du seuil relevé par SP-33), pas
-  seulement son ancien maximum fixe de 280px — cf. `### Livré`/SP-33.
+- Reste lot **Carte** (bug UI, pas une fonctionnalité manquante) — **la
+  moitié « titre à largeur nulle » est résolue, cf. `### Livré`/SP-36** :
+  dans `LayersPanel.tsx`, le `<span>` de titre d'une couche
+  `vector`/`feature` pouvait avoir une largeur de layout nulle (mécanisme
+  (b), interaction flex `flex-1 truncate` + sibling `basis-full` toujours
+  déployé pour ces deux kinds) — trouvé par SP-28/Task 4, corrigé par
+  SP-36 (`flex-wrap` sur le `<li>`). Reste ouvert, sans autre lieu de
+  suivi que cette entrée, le second mécanisme historiquement bundlé avec
+  le premier : la colonne `browse` trop étroite pour le contenu de
+  `LayersPanel` (mécanisme (a)) — mesuré par SP-36/Task 3 : reproduit à
+  900px (grille desktop, un seul offenseur `DIV.overflow-y-auto.border-r.
+  border-rule`, scrollWidth 290 > clientWidth 249 — la colonne `browse`
+  rendant aussi étroite qu'~249px dans la bande 900-959px, juste
+  au-dessus du seuil relevé par SP-33, pas seulement son ancien maximum
+  fixe de 280px), mais ne reproduit **pas** à 390px (layout mobile en
+  onglets, où la colonne "Couches" occupe toute la largeur disponible).
+  *Éditeur de symbologie pour les couches `kind: "feature"` résolu par
+  SP-28. Jenks sur le widget carte des apps/dashboards résolu par
+  SP-27/Task 19 : le widget délègue désormais toute la compilation de
+  peinture à `MapView`, même pipeline que l'éditeur.*
 - Questions produit ouvertes (comparatif §8) : **Q2** (premiers utilisateurs
   réels — la seule qui puisse réordonner le phasage), Q10 (temps réel), Q11
   (offline).

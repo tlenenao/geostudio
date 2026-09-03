@@ -48,6 +48,19 @@ test("author 5 quantile classes on a tiled layer, save, reload, and the rendered
   await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
 
   await page.getByRole("button", { name: /Communes/ }).click();
+  // SP-36 : couvre le cas partagé jamais testé avant ce plan — couche
+  // "vector" (pas seulement "feature" comme dans
+  // map-feature-layer-symbology.spec.ts). L'assertion est scopée à la ligne
+  // de LayersPanel elle-même (filtrée sur son bouton "Retirer Communes",
+  // unique à cette ligne) plutôt qu'un texte "Communes" nu : MapLegend.tsx
+  // rend aussi un <li>{title}</li> par couche visible (légende superposée en
+  // coin de carte) avec exactement le même texte — un getByText nu ne doit
+  // jamais pouvoir matcher cette légende, quel que soit l'ordre du DOM entre
+  // les deux (le .first() positionnel précédent en dépendait implicitement).
+  const communesRow = page
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("button", { name: "Retirer Communes" }) });
+  await expect(communesRow.getByText("Communes", { exact: true })).toBeVisible();
 
   // Configurer la symbologie via l'UI réelle (MapSymbologyEditor.tsx).
   await page.getByLabel("Champ couleur").fill("population");
