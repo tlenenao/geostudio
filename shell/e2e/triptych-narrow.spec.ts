@@ -144,11 +144,10 @@ const AUTOMATISATION_OPS_CATALOG = {
 // CSS explicite (minmax(360px,1fr), au lieu d'un `1fr` nu sans plancher
 // réel) et relevé le seuil de useNarrowViewport.ts en conséquence (899px)
 // — la famine de colonne centrale documentée par la revue transverse SP-30l
-// (round 2, 2026-09-02) est corrigée. Seul l'écran Cartes conserve un
-// wideBoundaryKnownIssue, pour un défaut pré-existant et sans rapport avec ce
-// mécanisme (colonne browse trop étroite pour LayersPanel — cf. son entrée
-// ci-dessous ; le second défaut historiquement bundlé ici, le titre de
-// couche à largeur nulle, est corrigé par SP-36).
+// (round 2, 2026-09-02) est corrigée. SP-36 puis SP-37 ont depuis fermé les
+// deux défauts pré-existants et sans rapport de l'écran Cartes (titre de
+// couche à largeur nulle ; colonne browse trop étroite pour LayersPanel) —
+// plus aucun écran de ce fichier ne porte de wideBoundaryKnownIssue.
 
 const SCREENS: Array<{
   name: string;
@@ -178,22 +177,15 @@ const SCREENS: Array<{
   {
     name: "Cartes",
     path: "/maps/map-1",
-    // SP-36 (docs/superpowers/plans/2026-09-03-sp36-layerspanel-titre-flex-wrap.md) :
-    // le <span> de titre d'une couche vector/feature à largeur de layout
-    // nulle (mécanisme (b), flex-1 truncate + sibling basis-full toujours
-    // déployé) est corrigé — flex-wrap ajouté à la ligne (LayersPanel.tsx).
-    // Ré-mesuré empiriquement (pas supposé) : plus aucun offenseur sur
-    // l'onglet "Couches" à 390px avec la vérification de clip désormais
-    // active. Seul le mécanisme (a) — la colonne browse (~249px de large à
-    // 900px) trop étroite pour le contenu de LayersPanel — persiste, et
-    // seulement dans la grille desktop (900px) : offenseur unique mesuré
-    // DIV.overflow-y-auto.border-r.border-rule (scrollWidth 290 >
-    // clientWidth 249), sans rapport avec la famine de colonne centrale
-    // corrigée par SP-33. À 390px (layout mobile en onglets, la colonne
-    // "Couches" occupe toute la largeur disponible) ce mécanisme ne
-    // reproduit pas.
-    wideBoundaryKnownIssue:
-      'Cartes : 1 offenseur pré-existant (colonne browse trop étroite pour le contenu de LayersPanel) — sans rapport avec la famine de colonne centrale corrigée par SP-33 ; le titre de couche à largeur nulle est corrigé par SP-36. Tracké CLAUDE.md/lot "Carte".',
+    // SP-36 a fermé le mécanisme (b) (titre de couche à largeur nulle).
+    // SP-37 (docs/superpowers/specs/2026-09-04-sp37-layerspanel-colonne-browse-design.md)
+    // ferme le mécanisme (a) restant (colonne browse trop étroite pour le
+    // contenu de LayersPanel) : deux offenseurs distincts trouvés et
+    // corrigés — la ligne d'ajout de champ de PopupEditor.tsx (flex-wrap
+    // manquant) et le champ de fichier d'upload d'icône de
+    // MapSymbologyEditor.tsx (aucune classe de largeur). Ré-mesuré
+    // empiriquement après les deux correctifs : plus aucun offenseur, ni à
+    // 390px ni à 900px. Le lot "Carte" est clos (CLAUDE.md).
   },
   {
     name: "Apps & sites",
