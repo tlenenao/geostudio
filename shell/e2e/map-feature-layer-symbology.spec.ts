@@ -54,9 +54,16 @@ test("add a layer by GeoJSON URL and style it categorically from its own data", 
   // SP-36 (docs/superpowers/specs/2026-09-03-sp36-layerspanel-titre-flex-wrap-design.md) :
   // le <span class="truncate"> du titre de couche s'effondrait à une largeur
   // de 0px pour les couches vector/feature (flex-wrap manquant sur le <li>
-  // parent de LayersPanel.tsx) — corrigé. Assertion directe, plus besoin du
-  // bouton "Retirer …" comme preuve indirecte.
-  await expect(page.getByText("Points d'intérêt", { exact: true }).first()).toBeVisible();
+  // parent de LayersPanel.tsx) — corrigé. L'assertion est scopée à la ligne
+  // de LayersPanel elle-même (filtrée sur son bouton "Retirer Points
+  // d'intérêt", unique à cette ligne) plutôt qu'un texte nu : MapLegend.tsx
+  // rend aussi un <li>{title}</li> par couche visible (légende superposée en
+  // coin de carte) avec exactement le même texte, et ce scoping doit rester
+  // valable quel que soit l'ordre du DOM entre les deux.
+  const poiRow = page
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("button", { name: "Retirer Points d'intérêt" }) });
+  await expect(poiRow.getByText("Points d'intérêt", { exact: true })).toBeVisible();
 
   await page.getByLabel("Champ couleur").fill("categorie");
   await page.getByRole("button", { name: "Recalculer les classes" }).click();
@@ -68,5 +75,8 @@ test("add a layer by GeoJSON URL and style it categorically from its own data", 
 
   await page.reload();
   await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
-  await expect(page.getByText("Points d'intérêt", { exact: true }).first()).toBeVisible();
+  // poiRow est une locator lazy (Playwright ré-évalue à chaque assertion) :
+  // valide toujours contre le DOM reconstruit après reload, pas besoin de la
+  // recréer.
+  await expect(poiRow.getByText("Points d'intérêt", { exact: true })).toBeVisible();
 });
