@@ -1038,7 +1038,7 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   `useNarrowViewport.ts` + `shell/e2e/triptych-narrow.spec.ts`) de deux
   défauts pré-existants et sans rapport sur l'écran Cartes (colonne
   `browse` trop étroite pour `LayersPanel` ; `<span>` de titre
-  `LayersPanel` à largeur nulle — cf. lot **Carte** ci-dessous) : ce test
+  `LayersPanel` à largeur nulle — cf. `### Livré`/SP-36 et SP-37) : ce test
   reste seul `test.skip()` de `triptych-narrow.spec.ts`. Un commentaire
   devenu stale dans
   `shell/e2e/item-detail-panels.spec.ts` (deux occurrences citant encore
@@ -1446,14 +1446,12 @@ rétroactif en masse :
   la colonne centrale de `TriptychLayout.tsx` sur 6 des 8 écrans de
   référence). Les huit critères de sortie du §7 sont désormais tous acquis
   (le 8e, « aucun écran ne clippe au-dessus du seuil relevé », vérifié par
-  `shell/e2e/triptych-narrow.spec.ts` à 900px sur les 5 écrans qui rendent
-  réellement la grille et la font passer — Cartes reste en `test.skip()`
-  pour un défaut pré-existant et sans rapport avec ce défaut de layout
-  (mécanisme (b), le titre de couche à largeur nulle, résolu par SP-36 —
-  seul (a), la colonne `browse` trop étroite pour `LayersPanel`, subsiste),
-  Tâches/Paramètres ne rendent aucune grille à vérifier (`<EmptyState>`
-  seul), cf. `### Livré`/SP-33 — le lot **Carte** est depuis clos par
-  SP-37). Reste, par
+  `shell/e2e/triptych-narrow.spec.ts` à 900px sur les 6 écrans qui rendent
+  réellement la grille et la font passer — Cartes incluse depuis SP-37, qui
+  a retiré son `test.skip()` (les deux mécanismes du lot « Carte » sont
+  clos : (b) par SP-36, (a) par SP-37) —, Tâches/Paramètres ne rendent
+  aucune grille à vérifier (`<EmptyState>` seul), cf. `### Livré`/SP-33,
+  SP-36 et SP-37). Reste, par
   ailleurs, hors traitement par aucun plan
   SP-30 à ce jour : les
   permissions de collection et le profil « Lecteur » qui restent à
