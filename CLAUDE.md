@@ -1335,6 +1335,60 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   dépendance d'ordre sur le stub `matchMedia` de ce fichier, sans
   `vi.unstubAllGlobals()`, était déjà documentée comme risque latent —
   cf. entrée SP-30l). **Ready to merge.**
+- **SP-37 — LayersPanel, colonne browse à 900px** (4 tâches + vérification
+  finale, spec
+  `docs/superpowers/specs/2026-09-04-sp37-layerspanel-colonne-browse-design.md`,
+  plan
+  `docs/superpowers/plans/2026-09-04-sp37-layerspanel-colonne-browse.md` —
+  ferme le dernier mécanisme ouvert du lot **Carte** : la colonne `browse`
+  de `TriptychLayout.tsx` qui clippait le contenu de `LayersPanel` à
+  900px, tracké depuis SP-28, mesuré par SP-36/Task 3) : deux offenseurs
+  réels trouvés et corrigés, dont un dont l'hypothèse initiale de la spec
+  s'est révélée fausse — vérifiée avant d'être écrite dans le plan, pas
+  après coup. Le premier offenseur, `PopupEditor.tsx:160` (la ligne
+  d'ajout de champ), corrigé par `flex-wrap` — même mécanisme que SP-36.
+  Pour le second, l'hypothèse initiale de la spec visait
+  `MapSymbologyEditor.tsx:575` (la ligne valeur d'icône `span`+`button`) :
+  testée pendant l'écriture de la spec, elle ne reproduisait pas (son
+  texte passe à la ligne, ne force aucune largeur). Le vrai second
+  offenseur, trouvé à sa place : `MapSymbologyEditor.tsx:695`, un
+  `<input type="file">` d'upload d'icône sans aucune classe de largeur —
+  mécanisme distinct, pas un défaut de flex-wrap mais un plancher de
+  largeur de contrôle natif ; `min-w-0` seul testé et jugé insuffisant,
+  `w-full` requis. Fix intégré au passage, à la demande de Tanguy : les
+  deux `border-t` restants non tokenisés de `LayerPicker.tsx` (dette
+  extraite de SP-30c/SP-34) s'écrivent désormais `border-t border-rule`.
+  `triptych-narrow.spec.ts` (Task 4, écran Cartes) porte désormais le
+  commentaire suivant, mot pour mot :
+  « SP-36 a fermé le mécanisme (b) (titre de couche à largeur nulle).
+  SP-37 (docs/superpowers/specs/2026-09-04-sp37-layerspanel-colonne-browse-design.md)
+  ferme le mécanisme (a) restant (colonne browse trop étroite pour le
+  contenu de LayersPanel) : deux offenseurs distincts trouvés et
+  corrigés — la ligne d'ajout de champ de PopupEditor.tsx (flex-wrap
+  manquant) et le champ de fichier d'upload d'icône de
+  MapSymbologyEditor.tsx (aucune classe de largeur). Ré-mesuré
+  empiriquement après les deux correctifs : plus aucun offenseur, ni à
+  390px ni à 900px. Le lot "Carte" est clos (CLAUDE.md). » Aucun
+  changement sous `core/` (`git diff --stat` scopé aux commits de ce
+  plan vide ; le seul diff `core/` relevé par la commande littérale du
+  plan sur `main...HEAD` est un commit `core/uv.lock` antérieur à
+  l'ouverture de ce plan, sans rapport). E2E 143 tests/138 passed/5
+  skipped/0 failed → **144 tests/140 passed/4 skipped/0 failed** (le
+  skip Cartes à 900px retiré par Task 4, plus le nouveau test permanent
+  de Task 2 — exactement l'arithmétique prédite par le plan, confirmée
+  et non simplement recopiée). Vitest shell **inchangé** (221
+  fichiers/1848 tests — un premier run complet a de nouveau montré le
+  même échec isolé et déjà documenté sur `MapEditorPage.test.tsx`,
+  reconfirmé flaky par ré-exécution isolée puis complète, 0 échec les
+  deux fois). Couverture shell **90,51 %** (seuil 88) — identique à la
+  référence SP-33, aucune régression. Défaut de texte de plan trouvé et
+  corrigé, pas un échec : la Step 4 du texte de Task 4 prédisait que le
+  run complet montrerait « tous les tests passent sauf le skip Catalogue
+  pré-existant » — prédiction périmée, le skip Catalogue avait déjà été
+  fermé par SP-33 ; le seul skip réel du fichier avant Task 4 était
+  Cartes lui-même (celui que cette tâche retire) — le résultat
+  réellement observé était donc 0 skip, strictement meilleur que la
+  prédiction du plan, pas un échec. **Ready to merge.**
 
 ### Conventions tranchées (2026-09-01)
 
@@ -1398,7 +1452,8 @@ rétroactif en masse :
   (mécanisme (b), le titre de couche à largeur nulle, résolu par SP-36 —
   seul (a), la colonne `browse` trop étroite pour `LayersPanel`, subsiste),
   Tâches/Paramètres ne rendent aucune grille à vérifier (`<EmptyState>`
-  seul), cf. `### Livré`/SP-33 et le lot **Carte** ci-dessous). Reste, par
+  seul), cf. `### Livré`/SP-33 — le lot **Carte** est depuis clos par
+  SP-37). Reste, par
   ailleurs, hors traitement par aucun plan
   SP-30 à ce jour : les
   permissions de collection et le profil « Lecteur » qui restent à
@@ -1666,26 +1721,6 @@ rétroactif en masse :
   nuages de points). Non planifié.
 - Reste **SP-20** : garde d'egress sur l'appel LLM sortant (vague 6.2) — 4e
   surface sortante, les trois autres en ont une.
-- Reste lot **Carte** (bug UI, pas une fonctionnalité manquante) — **la
-  moitié « titre à largeur nulle » est résolue, cf. `### Livré`/SP-36** :
-  dans `LayersPanel.tsx`, le `<span>` de titre d'une couche
-  `vector`/`feature` pouvait avoir une largeur de layout nulle (mécanisme
-  (b), interaction flex `flex-1 truncate` + sibling `basis-full` toujours
-  déployé pour ces deux kinds) — trouvé par SP-28/Task 4, corrigé par
-  SP-36 (`flex-wrap` sur le `<li>`). Reste ouvert, sans autre lieu de
-  suivi que cette entrée, le second mécanisme historiquement bundlé avec
-  le premier : la colonne `browse` trop étroite pour le contenu de
-  `LayersPanel` (mécanisme (a)) — mesuré par SP-36/Task 3 : reproduit à
-  900px (grille desktop, un seul offenseur `DIV.overflow-y-auto.border-r.
-  border-rule`, scrollWidth 290 > clientWidth 249 — la colonne `browse`
-  rendant aussi étroite qu'~249px dans la bande 900-959px, juste
-  au-dessus du seuil relevé par SP-33, pas seulement son ancien maximum
-  fixe de 280px), mais ne reproduit **pas** à 390px (layout mobile en
-  onglets, où la colonne "Couches" occupe toute la largeur disponible).
-  *Éditeur de symbologie pour les couches `kind: "feature"` résolu par
-  SP-28. Jenks sur le widget carte des apps/dashboards résolu par
-  SP-27/Task 19 : le widget délègue désormais toute la compilation de
-  peinture à `MapView`, même pipeline que l'éditeur.*
 - Questions produit ouvertes (comparatif §8) : **Q2** (premiers utilisateurs
   réels — la seule qui puisse réordonner le phasage), Q10 (temps réel), Q11
   (offline).
