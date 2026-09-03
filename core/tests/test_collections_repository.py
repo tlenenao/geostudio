@@ -329,6 +329,7 @@ def test_owner_gets_full_permissions_except_delete(session, tenant, owner):
         tenant_id=tenant.id,
         current_user_id=owner.id,
         actor_is_admin=False,
+        can_manage_collections=False,
         collections=[col],
     )
     assert result[col.id] == CollectionPermissions(read=True, write=True, delete=False, share=True)
@@ -341,15 +342,32 @@ def test_admin_gets_delete_even_as_stranger(session, tenant, owner, other):
         tenant_id=tenant.id,
         current_user_id=other.id,
         actor_is_admin=True,
+        can_manage_collections=True,
         collections=[col],
     )
     assert result[col.id].delete is True
 
 
+def test_custom_role_gets_delete_without_being_actor_is_admin(session, tenant, owner, other):
+    # Le coeur de SP-35 : delete suit can_manage_collections, pas actor_is_admin.
+    col = _register(session, tenant, owner)
+    result = collection_permissions_by_id(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=other.id,
+        actor_is_admin=False,
+        can_manage_collections=True,
+        collections=[col],
+    )
+    assert result[col.id].delete is True
+    # inchangé : read reste gouverné par decide()/actor_is_admin
+    assert result[col.id].read is False
+
+
 def test_non_admin_owner_cannot_delete(session, tenant, owner):
     # Anti-régression : unregister_collection est require_privilege(
     # admin.collections.manage) seul, pas decide() — un propriétaire
-    # non-admin ne doit JAMAIS voir delete=True,
+    # non-privilégié ne doit JAMAIS voir delete=True,
     # sinon le bouton Supprimer produirait un 403 après clic.
     col = _register(session, tenant, owner)
     result = collection_permissions_by_id(
@@ -357,6 +375,7 @@ def test_non_admin_owner_cannot_delete(session, tenant, owner):
         tenant_id=tenant.id,
         current_user_id=owner.id,
         actor_is_admin=False,
+        can_manage_collections=False,
         collections=[col],
     )
     assert result[col.id].delete is False
@@ -369,6 +388,7 @@ def test_write_requires_editable_even_for_the_owner(session, tenant, owner):
         tenant_id=tenant.id,
         current_user_id=owner.id,
         actor_is_admin=False,
+        can_manage_collections=False,
         collections=[col],
     )
     assert result[col.id].write is False
@@ -389,6 +409,7 @@ def test_editor_role_grants_write_and_share_not_delete(session, tenant, owner, o
         tenant_id=tenant.id,
         current_user_id=other.id,
         actor_is_admin=False,
+        can_manage_collections=False,
         collections=[col],
     )
     assert result[col.id] == CollectionPermissions(read=True, write=True, delete=False, share=True)
@@ -401,6 +422,7 @@ def test_anonymous_gets_read_only_on_a_public_collection(session, tenant, owner)
         tenant_id=tenant.id,
         current_user_id=None,
         actor_is_admin=False,
+        can_manage_collections=False,
         collections=[col],
     )
     assert result[col.id] == CollectionPermissions(
