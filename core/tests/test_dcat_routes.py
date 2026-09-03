@@ -181,3 +181,45 @@ def test_custom_role_with_collections_manage_sees_a_private_collection_in_catalo
 
         resp = client.get("/dcat/catalog")
         assert [d["dct:identifier"] for d in resp.json()["dcat:dataset"]] == ["incidents"]
+
+
+def test_custom_role_with_collections_manage_reaches_dataset_detail(env):
+    # Round 2 : GET /dcat/catalog montrait déjà la collection privée (fix
+    # précédent) mais son détail (/dcat/datasets/{id}) appelait encore
+    # get_readable_collection() sans can_manage_collections → 404 en cliquant
+    # dessus, même défaut que celui déjà fermé sur /collections/{id}/schema.
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.users.repository import set_user_role
+
+    app, client, admin, regular, Session = env
+    _register(app, client, admin, public=False)
+
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        custom = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Gestionnaire de collections",
+            privileges=[Privilege.ADMIN_COLLECTIONS_MANAGE.value],
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=regular.id,
+            role_id=custom.id,
+            role_slug=custom.slug,
+        )
+        s.commit()
+        regular_id = regular.id
+
+    with Session() as s:
+        from app.users.models import User
+
+        custom_user = s.get(User, regular_id)
+        assert custom_user is not None and custom_user.is_admin is False
+        _as(app, custom_user)
+
+        resp = client.get("/dcat/datasets/incidents")
+        assert resp.status_code == 200
+        assert resp.json()["dct:identifier"] == "incidents"

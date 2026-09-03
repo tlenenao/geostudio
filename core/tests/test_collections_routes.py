@@ -335,6 +335,27 @@ def test_custom_role_with_collections_manage_gets_honest_403_not_404_on_sharing(
         )
 
 
+def test_private_collection_schema_and_sharing_404_without_privilege(env):
+    # Contrepartie négative des deux tests ci-dessus (Gestionnaire de
+    # collections → 200/403) : un utilisateur SANS ce privilège doit rester
+    # 404 sur les trois mêmes routes, comme il l'est déjà sur la ressource de
+    # base /collections/{id} (test_private_collection_hidden_from_stranger_
+    # and_anonymous) — jamais vérifié explicitement pour /schema et /sharing.
+    app, client, _, admin, regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})  # privée, admin owner
+
+    _as(app, regular)
+    assert client.get("/collections/incidents/schema").status_code == 404
+    assert client.get("/collections/incidents/sharing").status_code == 404
+    assert (
+        client.put(
+            "/collections/incidents/sharing", json={"public": False, "groups": []}
+        ).status_code
+        == 404
+    )
+
+
 def test_schema_endpoint_uses_introspector(env):
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
