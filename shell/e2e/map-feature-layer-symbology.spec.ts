@@ -51,19 +51,12 @@ test("add a layer by GeoJSON URL and style it categorically from its own data", 
   await page.getByLabel("Titre de la couche GeoJSON").fill("Points d'intérêt");
   await page.getByLabel("URL du GeoJSON").fill("https://external.test/poi.geojson");
   await page.getByRole("button", { name: "Ajouter la couche" }).click();
-  // On confirme l'ajout via le bouton "Retirer <titre>" plutôt que le texte
-  // du titre lui-même : pour une couche vector/feature (éditeur toujours
-  // déplié, pas d'accordéon), la ligne <li> est un flex-row sans retour à la
-  // ligne où le panneau d'édition (`basis-full`) revendique toute la largeur
-  // disponible — le <span class="truncate"> du titre, seul élément flexible
-  // avec min-width auto ramené à 0 par `overflow: hidden`, se retrouve
-  // rendu à une largeur de 0px (visible dans le DOM, invisible à l'écran).
-  // C'est un détail de mise en page préexistant, partagé avec les couches
-  // "vector" (ex. "Communes" dans map-symbology.spec.ts, qui ne teste jamais
-  // la visibilité du titre après ajout) — hors périmètre de cette tâche.
-  // Le bouton "Retirer …" porte le même titre dans son aria-label et n'est
-  // pas soumis à cet écrasement (il n'est pas flex-1).
-  await expect(page.getByRole("button", { name: "Retirer Points d'intérêt" })).toBeVisible();
+  // SP-36 (docs/superpowers/specs/2026-09-03-sp36-layerspanel-titre-flex-wrap-design.md) :
+  // le <span class="truncate"> du titre de couche s'effondrait à une largeur
+  // de 0px pour les couches vector/feature (flex-wrap manquant sur le <li>
+  // parent de LayersPanel.tsx) — corrigé. Assertion directe, plus besoin du
+  // bouton "Retirer …" comme preuve indirecte.
+  await expect(page.getByText("Points d'intérêt", { exact: true }).first()).toBeVisible();
 
   await page.getByLabel("Champ couleur").fill("categorie");
   await page.getByRole("button", { name: "Recalculer les classes" }).click();
@@ -75,5 +68,5 @@ test("add a layer by GeoJSON URL and style it categorically from its own data", 
 
   await page.reload();
   await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Retirer Points d'intérêt" })).toBeVisible();
+  await expect(page.getByText("Points d'intérêt", { exact: true }).first()).toBeVisible();
 });
