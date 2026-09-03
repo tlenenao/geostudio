@@ -20,7 +20,7 @@ from app.collections.publication import remove_table_from_publication
 from app.collections.schema_json import table_info_to_schema
 from app.collections.schemas import CollectionCreate, CollectionPatch, EmptyCollectionCreate
 from app.db import core_table_names, get_session
-from app.roles.guards import require_privilege
+from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.sharing.schemas import Sharing
@@ -254,11 +254,14 @@ def list_collections(
     from app.users.models import User
 
     tenant_id = user.tenant_id if user else get_or_create_default_tenant(session).id
+    can_manage_collections = bool(
+        user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    )
     cols = repo.list_visible_collections(
         session,
         tenant_id=tenant_id,
         user_id=user.id if user else None,
-        is_admin=bool(user and user.is_admin),
+        can_see_all=can_manage_collections,
         q=q,
     )
     owner_ids = {c.owner_id for c in cols}

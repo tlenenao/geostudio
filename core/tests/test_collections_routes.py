@@ -203,6 +203,43 @@ def test_public_collection_visible_to_anonymous(env):
     assert [c["id"] for c in body["collections"]] == ["incidents"]
 
 
+def test_custom_role_with_collections_manage_sees_a_private_collection(env):
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.users.repository import set_user_role
+
+    app, client, Session, admin, regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})  # privée, admin owner
+
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        custom = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Gestionnaire de collections",
+            privileges=[Privilege.ADMIN_COLLECTIONS_MANAGE.value],
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=regular.id,
+            role_id=custom.id,
+            role_slug=custom.slug,
+        )
+        s.commit()
+        regular_id = regular.id
+
+    with Session() as s:
+        from app.users.models import User
+
+        custom_user = s.get(User, regular_id)
+        assert custom_user is not None and custom_user.is_admin is False
+        _as(app, custom_user)
+        listed = client.get("/collections").json()["collections"]
+        assert [c["id"] for c in listed] == ["incidents"]
+
+
 def test_schema_endpoint_uses_introspector(env):
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
