@@ -208,12 +208,13 @@ def _collection_permissions(
     current_user_id: str | None,
     roles: frozenset[str],
     actor_is_admin: bool,
+    can_manage_collections: bool,
 ) -> CollectionPermissions:
     is_owner = current_user_id is not None and col.owner_id == current_user_id
 
     def verdict(action: Action) -> bool:
         if action == "delete":
-            return actor_is_admin
+            return can_manage_collections
         base = decide(
             action=action,
             kind="collection",
@@ -239,6 +240,7 @@ def collection_permissions_by_id(
     tenant_id: str,
     current_user_id: str | None,
     actor_is_admin: bool,
+    can_manage_collections: bool,
     collections: list[Collection],
 ) -> dict[str, CollectionPermissions]:
     """Permissions de toute une page, avec **une** requête de rôles — pendant
@@ -261,6 +263,7 @@ def collection_permissions_by_id(
             current_user_id=current_user_id,
             roles=roles_by_id.get(c.id, frozenset()),
             actor_is_admin=actor_is_admin,
+            can_manage_collections=can_manage_collections,
         )
         for c in collections
     }

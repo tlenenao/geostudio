@@ -135,8 +135,17 @@ def _collection_json(col, permissions, owner: str | None = None) -> dict:
     }
 
 
-def get_readable_collection(session, user, collection_id):
-    """404 avant 403 : une collection illisible est indistinguable d'une absente."""
+def get_readable_collection(session, user, collection_id, *, can_manage_collections: bool = False):
+    """404 avant 403 : une collection illisible est indistinguable d'une absente.
+
+    `can_manage_collections` (privilège `admin.collections.manage`, SP-35) élargit
+    la visibilité exactement comme `can_see_all` le fait déjà pour
+    `list_visible_collections` : un rôle sur mesure porteur de ce privilège doit
+    voir individuellement (GET/PATCH/DELETE) toute collection qu'il voit déjà en
+    liste, pas seulement les siennes/partagées/publiques — sinon un même
+    utilisateur verrait une collection dans `GET /collections` puis un 404 en
+    cliquant dessus ou en la supprimant (piège n°5, chemin de lecture oublié,
+    appliqué ici à la visibilité individuelle plutôt qu'au verdict `delete`)."""
     col = None
     if user is not None:
         col = repo.get_collection(session, tenant_id=user.tenant_id, collection_id=collection_id)
@@ -147,7 +156,7 @@ def get_readable_collection(session, user, collection_id):
         col = repo.get_collection(session, tenant_id=tenant.id, collection_id=collection_id)
     if col is None:
         raise HTTPException(status_code=404, detail="collection not found")
-    readable = can(
+    readable = can_manage_collections or can(
         session,
         user_id=user.id if user else "",
         action="read",
@@ -205,11 +214,13 @@ def register_collection(
         object_id=col.id,
         payload={"tableName": col.table_name},
     )
+    can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     permissions = repo.collection_permissions_by_id(
         session,
         tenant_id=user.tenant_id,
         current_user_id=user.id,
         actor_is_admin=user.is_admin,
+        can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
     return _collection_json(col, permissions)
@@ -234,11 +245,13 @@ def create_empty_collection_route(
         introspect=introspect,
         apply_ddl=apply_ddl,
     )
+    can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     permissions = repo.collection_permissions_by_id(
         session,
         tenant_id=user.tenant_id,
         current_user_id=user.id,
         actor_is_admin=user.is_admin,
+        can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
     return _collection_json(col, permissions)
@@ -275,6 +288,7 @@ def list_collections(
         tenant_id=tenant_id,
         current_user_id=user.id if user else None,
         actor_is_admin=bool(user and user.is_admin),
+        can_manage_collections=can_manage_collections,
         collections=cols,
     )
     return {
@@ -330,12 +344,18 @@ def get_collection(
     introspect: Introspector = Depends(get_introspector),
     extent_provider=Depends(get_extent_provider),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    can_manage_collections = bool(
+        user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    )
+    col = get_readable_collection(
+        session, user, collection_id, can_manage_collections=can_manage_collections
+    )
     permissions = repo.collection_permissions_by_id(
         session,
         tenant_id=col.tenant_id,
         current_user_id=user.id if user else None,
         actor_is_admin=bool(user and user.is_admin),
+        can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
     body = _collection_json(col, permissions)
@@ -385,7 +405,10 @@ def patch_collection(
     user=Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    col = get_readable_collection(
+        session, user, collection_id, can_manage_collections=can_manage_collections
+    )
     if not can(
         session,
         user_id=user.id,
@@ -424,6 +447,7 @@ def patch_collection(
         tenant_id=user.tenant_id,
         current_user_id=user.id,
         actor_is_admin=user.is_admin,
+        can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
     return _collection_json(col, permissions)
@@ -435,7 +459,10 @@ def unregister_collection(
     user=Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    col = get_readable_collection(
+        session, user, collection_id, can_manage_collections=can_manage_collections
+    )
     # après le 404 : un non-admin qui la voit reçoit 403
     require_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     remove_table_from_publication(session, col.table_name)

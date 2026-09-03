@@ -203,7 +203,7 @@ def test_public_collection_visible_to_anonymous(env):
     assert [c["id"] for c in body["collections"]] == ["incidents"]
 
 
-def test_custom_role_with_collections_manage_sees_a_private_collection(env):
+def test_custom_role_with_collections_manage_sees_and_can_delete_a_private_collection(env):
     from app.roles.privileges import Privilege
     from app.roles.repository import create_role
     from app.users.repository import set_user_role
@@ -236,8 +236,15 @@ def test_custom_role_with_collections_manage_sees_a_private_collection(env):
         custom_user = s.get(User, regular_id)
         assert custom_user is not None and custom_user.is_admin is False
         _as(app, custom_user)
+
         listed = client.get("/collections").json()["collections"]
         assert [c["id"] for c in listed] == ["incidents"]
+        assert listed[0]["permissions"]["delete"] is True
+
+        # La route DELETE laisse effectivement passer — le verdict n'est pas
+        # un mensonge d'affichage (piège n°5/n°4 : chemin de lecture ET
+        # d'écriture doivent être d'accord).
+        assert client.delete("/collections/incidents").status_code == 204
 
 
 def test_schema_endpoint_uses_introspector(env):
