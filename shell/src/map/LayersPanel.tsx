@@ -161,7 +161,13 @@ export function LayersPanel({
     <div className="flex flex-col gap-3">
       <ul className="flex flex-col gap-1">
         {layers.map((layer, i) => (
-          <li key={layer.id} className="flex items-center gap-2 text-sm">
+          <li
+            key={layer.id}
+            className="flex flex-wrap items-center gap-2 text-sm"
+            // flex-wrap : sans lui, le bloc `basis-full` (édition inline,
+            // ci-dessous) ne peut jamais passer à la ligne — il écrase le titre à
+            // largeur 0 à la place (SP-36).
+          >
             <span className="flex-1 truncate">{layer.title}</span>
             <button
               type="button"
