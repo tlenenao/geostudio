@@ -54,21 +54,48 @@ ligne via `page.evaluate` fait tomber l'overflow mesuré de scrollWidth 290 à
 exactement 249 (= clientWidth, 0 offenseur) — confirmation sans ambiguïté du
 mécanisme, avant d'écrire cette spec.
 
-**Deuxième pattern structurellement identique repéré pendant l'investigation,
-non encore prouvé** : `MapSymbologyEditor.tsx:575`, la ligne d'assignation
-d'icône par valeur de domaine catégoriel :
+**Deuxième offenseur, trouvé et vérifié pendant l'investigation (pas la
+même hypothèse que celle initialement pressentie — corrigé ici avant
+d'écrire le plan) :** l'hypothèse de départ (`MapSymbologyEditor.tsx:575`,
+la ligne `<span>{v}</span>` + `<button>` d'assignation d'icône par valeur de
+domaine) a été **testée et infirmée** : ni `span` ni `button` n'y portent
+`whitespace-nowrap`, donc leur texte enveloppe (`white-space: normal` par
+défaut) au lieu de forcer une largeur — mesuré avec une valeur de domaine
+longue et réaliste (« Zone industrielle secteur nord-ouest »), 0 offenseur
+une fois le vrai offenseur ci-dessous corrigé.
+
+Le vrai deuxième offenseur, **inconditionnel** (reproduit même avec des
+valeurs de domaine courtes comme "A"/"B" — il suffit d'ouvrir la section
+icônes) : `MapSymbologyEditor.tsx:695`, le sélecteur de fichier
+d'upload d'icône personnalisée :
 
 ```tsx
-<div key={v} className="flex items-center gap-2">
-  <span className="text-xs font-medium">{v}</span>
-  <button ...>{/* nom de l'icône assignée, ou "Aucune" */}</button>
-</div>
+<input
+  aria-label="Ajouter une icône au tenant (PNG ou SVG)"
+  type="file"
+  accept="image/png,image/svg+xml"
+  onChange={...}
+/>
 ```
 
-Même absence de `flex-wrap`, mêmes ingrédients (texte + bouton côte à côte,
-sans plancher annulé). Non exercé par la fixture `map-1` actuelle (pas
-d'encodage icône catégoriel configuré dessus) — à vérifier réellement avant
-de décider s'il faut le corriger (§2, §4).
+Cet `<input type="file">` ne porte **aucune classe de largeur** — ni
+`inputCls`, ni `w-full`. Un input de type `file` a un plancher automatique
+natif large (rendu du bouton « Parcourir »/« Choisir un fichier » +
+« Aucun fichier choisi », mesuré ~300px+ selon le navigateur), et comme il
+n'a pas de largeur spécifiée, la règle de plancher automatique
+(`min-width: auto`) n'a rien à minorer : il s'affiche à son plein
+min-content natif, qui dépasse le budget de ~249px de la colonne `browse`.
+Mécanisme **différent** du premier offenseur (pas un flex-row sans
+`flex-wrap` — un simple contrôle natif sans contrainte de largeur).
+
+**Vérifié par falsification en direct** (avec des valeurs de domaine
+courtes, pour isoler cet offenseur de tout effet de texte long) :
+- Masquer cet `<input>` (`display:none` sur son `<label>` parent) fait
+  tomber les offenseurs mesurés à 0 — confirme qu'il est bien la seule
+  cause dans cet état.
+- `className="w-full"` seul (sans `min-w-0`, testé et insuffisant seul)
+  fait tomber l'overflow à 0 offenseurs, y compris avec la valeur de
+  domaine longue ci-dessus — confirme le remède.
 
 ## 2. Périmètre
 
@@ -76,19 +103,16 @@ de décider s'il faut le corriger (§2, §4).
 
 1. `shell/src/map/PopupEditor.tsx:160` — ajouter `flex-wrap` à la ligne
    d'ajout de champ (correctif confirmé, §1).
-2. `shell/src/map/MapSymbologyEditor.tsx:575` — reproduire réellement l'état
-   qui exerce cette ligne (une couche avec encodage icône catégoriel assigné,
-   valeur de domaine et nom d'icône assez longs pour approcher le budget de
-   ~249px) à 900px, mesurer. Si l'overflow est réellement observé, corriger
-   par le même `flex-wrap`. Si non reproduit, ne rien changer et documenter
-   « vérifié, non reproduit à ce jour » dans le commentaire de
-   `triptych-narrow.spec.ts` plutôt que de laisser un silence ambigu.
+2. `shell/src/map/MapSymbologyEditor.tsx:695` — ajouter `className="w-full"`
+   au `<input type="file">` d'upload d'icône personnalisée (correctif
+   confirmé, §1). Mécanisme et remède différents du fix #1 : pas un
+   `flex-wrap`, un contrôle natif sans classe de largeur.
 3. `shell/src/map/LayerPicker.tsx:143` et `:173` — ajouter `border-rule` aux
    deux `border-t` non tokenisés (dette notée SP-30c, explicitement exclue du
    périmètre de SP-34 comme « chantier séparé », reprise ici à la demande de
    Tanguy). `className` seul, aucun changement de comportement.
-4. `shell/e2e/triptych-narrow.spec.ts` — une fois §2.1 (et §2.2 si confirmé)
-   corrigés : retirer `wideBoundaryKnownIssue` de l'écran Cartes, le test à
+4. `shell/e2e/triptych-narrow.spec.ts` — une fois §2.1 et §2.2 corrigés :
+   retirer `wideBoundaryKnownIssue` de l'écran Cartes, le test à
    900px rejoint les 7 autres écrans (plus de `test.skip()`). Mettre à jour
    le commentaire du bloc `SCREENS` (lignes ~179-197) et le commentaire
    d'en-tête (~142-151) en conséquence.
@@ -103,22 +127,22 @@ de décider s'il faut le corriger (§2, §4).
   colonne pour toute la famille de 9 écrans n'est pas nécessaire et
   réintroduirait la question du seuil partagé (SP-33).
 - Toute restructuration de `PopupEditor.tsx`/`MapSymbologyEditor.tsx`/
-  `FieldClassificationPicker.tsx` au-delà des classes `flex-wrap`/
+  `FieldClassificationPicker.tsx` au-delà des classes `flex-wrap`/`w-full`/
   `border-rule` ci-dessus.
-- Audit exhaustif de tout pattern flex-row du dépôt en dehors des fichiers
+- Audit exhaustif de tout pattern similaire du dépôt en dehors des fichiers
   consommés par la colonne `browse` de l'écran Cartes — seuls les deux
-  patterns identifiés en §1 sont dans le périmètre.
+  offenseurs identifiés en §1 sont dans le périmètre.
 
 ## 3. Mécanisme
 
-Identique à SP-36 : ajout de `flex-wrap` au(x) conteneur(s) flex-row
-identifié(s), sans restructuration. Avec `flex-wrap`, le bouton (« Ajouter le
-champ », ou le bouton d'icône si §2.2 confirme le second cas) est rejeté sur
-sa propre ligne dès que l'input/span voisin ne peut plus tenir à côté à sa
-largeur normale — l'input/span, seul élément restant sur la première ligne,
-récupère l'espace disponible sans plancher partagé avec le bouton. Aucun
-changement visuel aux largeurs où tout tenait déjà côte à côte (≥270px de
-colonne disponible) : le retour à la ligne ne se déclenche que sous ce seuil.
+**Fix #1** : identique à SP-36, ajout de `flex-wrap` au conteneur flex-row
+identifié, sans restructuration. Avec `flex-wrap`, le bouton (« Ajouter le
+champ ») est rejeté sur sa propre ligne dès que l'input voisin ne peut plus
+tenir à côté à sa largeur normale — l'input, seul élément restant sur la
+première ligne, récupère l'espace disponible sans plancher partagé avec le
+bouton. Aucun changement visuel aux largeurs où tout tenait déjà côte à côte
+(≥270px de colonne disponible) : le retour à la ligne ne se déclenche que
+sous ce seuil.
 
 ```diff
 - <div className="flex items-center gap-2">
@@ -126,6 +150,27 @@ colonne disponible) : le retour à la ligne ne se déclenche que sous ce seuil.
     <input aria-label="Nom du champ à ajouter" className={`${inputCls} flex-1`} ... />
     <Button ...>Ajouter le champ</Button>
   </div>
+```
+
+**Fix #2** : mécanisme différent, pas de `flex-wrap` — `w-full` donne à
+l'`<input type="file">` une largeur spécifiée à 100 % de son conteneur
+(`<label>`, `flex flex-col gap-1`, déjà `align-items: stretch` par défaut).
+Une fois la largeur spécifiée, la règle CSS de plancher automatique
+(`min-width: auto` sur un flex item) plafonne le plancher au *minimum entre*
+cette largeur spécifiée et le min-content natif du contrôle — au lieu
+d'utiliser le min-content natif seul (très large pour un `<input
+type="file">`) quand aucune largeur n'est spécifiée. `min-w-0` seul, sans
+`w-full`, a été testé et est **insuffisant** (l'overflow persiste) : c'est
+la largeur spécifiée qui fait le travail ici, pas l'annulation du plancher.
+
+```diff
+  <input
+    aria-label="Ajouter une icône au tenant (PNG ou SVG)"
+    type="file"
++   className="w-full"
+    accept="image/png,image/svg+xml"
+    onChange={...}
+  />
 ```
 
 Pour `LayerPicker.tsx`, changement sans rapport mécaniquement (dette de
@@ -138,25 +183,31 @@ token de couleur, pas de layout) :
 
 ## 4. Tests
 
-1. **Falsification obligatoire** (piège n°10) pour chaque `flex-wrap`
-   ajouté : retirer temporairement la classe, confirmer sur un run
-   Playwright réel que la mesure `expectNoClippedContent`
-   (`triptych-narrow.spec.ts`) échoue bien avec un offenseur non-vide,
-   remettre. Pour le fix #1 (`PopupEditor.tsx`), déjà pré-vérifié
-   manuellement pendant le brainstorming — à rejouer formellement dans le
-   plan, pas à supposer acquis.
-2. **Reproduction réelle du second pattern (§2.2)** avant toute décision de
-   correctif : construire un état où `MapSymbologyEditor.tsx` a un encodage
-   icône catégoriel assigné avec des valeurs/labels assez longs, à 900px,
-   mesurer avec la même fonction `measureClipOffenders`/
-   `expectNoClippedContent` que `triptych-narrow.spec.ts`. Ne pas corriger à
-   l'aveugle si non reproduit.
-3. `triptych-narrow.spec.ts` : re-mesurer l'écran Cartes à 900px après
-   correctif(s) — 0 offenseur attendu, retirer `wideBoundaryKnownIssue` et
-   son commentaire.
-4. Pas d'assertion Vitest/jsdom sur la classe CSS ajoutée (jsdom ne fait pas
-   de layout — même doctrine que SP-36). Vérifier simplement, par lecture
-   directe, qu'aucun test existant de `PopupEditor.test.tsx`/
+1. **Falsification obligatoire** (piège n°10) pour chaque fix : retirer
+   temporairement la classe ajoutée, confirmer sur un run Playwright réel
+   que la mesure `expectNoClippedContent` (`triptych-narrow.spec.ts`)
+   échoue bien avec un offenseur non-vide, remettre. Les deux fixes sont
+   déjà pré-vérifiés manuellement pendant le brainstorming/l'écriture de
+   cette spec (fix #1 : `flex-wrap` retiré → 1 offenseur ; fix #2 : `w-full`
+   retiré → 1 offenseur, même sans texte long) — à rejouer formellement
+   dans le plan, pas à supposer acquis.
+2. Le fix #2 nécessite d'ouvrir réellement la section « Ajouter des
+   icônes » de `MapSymbologyEditor.tsx` pour que l'`<input type="file">`
+   soit monté — la couche « Communes » de la fixture `map-1` n'a pas
+   d'encodage icône par défaut, il faut interagir avec l'UI (bouton
+   « Ajouter des icônes », remplir « Champ icône », cliquer « Recalculer
+   les valeurs ») avant de mesurer. Le champ agrégat (`POST
+   /collections/communes/aggregate`) n'est stubbé nulle part dans
+   `mocks.ts` pour la collection `communes` — mocker la route directement
+   dans le test (mêmes formes `categoryKey`/`rows` que
+   `map-symbology.spec.ts:30-37`, mode `groupBy` plutôt que `measures`, cf.
+   `itemClient.test.ts:1443-1466` pour le format exact de réponse attendu).
+3. `triptych-narrow.spec.ts` : re-mesurer l'écran Cartes à 900px après les
+   deux correctifs — 0 offenseur attendu, retirer `wideBoundaryKnownIssue`
+   et son commentaire.
+4. Pas d'assertion Vitest/jsdom sur les classes CSS ajoutées (jsdom ne fait
+   pas de layout — même doctrine que SP-36). Vérifier simplement, par
+   lecture directe, qu'aucun test existant de `PopupEditor.test.tsx`/
    `MapSymbologyEditor.test.tsx`/`LayerPicker.test.tsx` n'assertait une
    classe exacte qui casserait avec ces ajouts.
 5. `npm run test` et `npm run e2e` verts, couverture shell non régressée
@@ -178,9 +229,15 @@ token de couleur, pas de layout) :
 
 ## 6. Risques et limites connues
 
-- **Second pattern (§2.2) conditionnel** : si la reproduction échoue à
-  démontrer un overflow réel, il ne sera pas corrigé par ce plan — pas un
-  défaut d'exécution, une décision prise sur preuve (§2).
-- **Portée limitée aux deux fichiers consommés par la colonne `browse` de
-  l'écran Cartes** : un pattern similaire ailleurs dans le shell (hors
-  périmètre de cette spec) resterait non détecté par ce travail.
+- **Correction de l'hypothèse initiale de brainstorming** : cette spec a été
+  révisée une fois, avant l'écriture du plan, après que l'hypothèse de
+  départ pour le second offenseur (ligne `span`+`button` d'assignation
+  d'icône, `MapSymbologyEditor.tsx:575`) s'est révélée fausse à la
+  vérification (le texte y enveloppe, ne force pas de largeur). Le second
+  offenseur réel (`<input type="file">` sans largeur, ligne 695) a été
+  trouvé et vérifié à la place, par la même méthode de falsification — pas
+  un changement de périmètre, une correction de diagnostic.
+- **Portée limitée aux trois fichiers identifiés** (`PopupEditor.tsx`,
+  `MapSymbologyEditor.tsx`, `LayerPicker.tsx`) : un pattern similaire
+  ailleurs dans le shell (hors périmètre de cette spec) resterait non
+  détecté par ce travail.
