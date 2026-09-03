@@ -20,17 +20,29 @@ class CollectionPermissions(BaseModel):
 
     `delete` n'est PAS le verdict générique de `decide()` : `unregister_collection`
     (DELETE /collections/{id}) est gardé par `require_privilege(...,
-    "admin.collections.manage")` seul, pas par `can()`/`decide()`. MAIS le
-    calcul de `delete` ici (`app/collections/repository.py::_collection_permissions`)
-    reflète encore aujourd'hui `actor_is_admin` (la colonne synchronisée
-    `User.is_admin`), PAS le privilège `admin.collections.manage` lui-même —
-    un rôle personnalisé qui détiendrait ce privilège sans être le rôle
-    prédéfini "admin" verrait donc `delete: false` ici alors que la route
-    DELETE le laisserait effectivement passer. Écart architectural connu,
-    documenté comme suivi non bloquant plutôt que corrigé unilatéralement
-    (le même arbitrage se pose sur d'autres surfaces `is_admin`-dérivées,
-    ex. extensions) — ne pas réconcilier ce docstring silencieusement avec
-    le code sans trancher la question plus large en amont.
+    "admin.collections.manage")` seul, pas par `can()`/`decide()`. Le calcul de
+    `delete` ici (`app/collections/repository.py::_collection_permissions`)
+    reflète directement ce même privilège via `has_privilege()`
+    (`app/roles/guards.py`), pas `actor_is_admin`/`User.is_admin` — un rôle
+    sur mesure qui détiendrait `admin.collections.manage` sans être le rôle
+    prédéfini "admin" voit donc `delete: true` ici exactement quand la route
+    DELETE le laisserait effectivement passer (SP-35, corrige l'écart
+    documenté par SP-31 — l'ancien comportement retournait `actor_is_admin`
+    ici).
+
+    `read`, lui, reste le verdict brut de `decide()` (action "read") — il ne
+    dit RIEN sur le fait que la réponse qui porte ce bloc `permissions` a été
+    servie avec succès. Depuis le correctif `delete` ci-dessus et l'extension
+    du bypass `can_manage_collections` à GET/PATCH/DELETE et
+    /schema/sharing (fix wave de revue finale SP-35), une réponse 200 tout à
+    fait légitime peut porter `read: false` : un porteur du privilège
+    `admin.collections.manage` qui n'est ni propriétaire ni bénéficiaire d'un
+    partage voit son 404 de visibilité levé par `can_manage_collections`,
+    donc reçoit bien la collection, alors que `decide()` — qui ignore ce
+    privilège — continue de répondre `False` à la question read. Ce n'est pas
+    une incohérence à corriger : `read` répond uniquement « `decide()`
+    autoriserait-il un accès classique (propriétaire/partage/public) ? »,
+    pas « cette réponse a-t-elle été servie ? ».
     """
 
     read: bool

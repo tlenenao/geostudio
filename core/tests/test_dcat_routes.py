@@ -46,6 +46,15 @@ def env():
             last_name="",
             bootstrap_admin=True,
         )
+        regular = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="r",
+            username="regular",
+            email=None,
+            first_name="",
+            last_name="",
+        )
         s.commit()
     app = create_app()
 
@@ -63,7 +72,7 @@ def env():
     app.dependency_overrides[dcat_routes.get_bbox_provider] = lambda: (
         lambda session, info: [1.0, 44.0, 2.0, 45.0]
     )
-    return app, TestClient(app), admin
+    return app, TestClient(app), admin, regular, Session
 
 
 def _as(app, user):
@@ -80,7 +89,7 @@ def _register(app, client, admin, *, public=False, description=""):
 
 
 def test_catalog_content_type_and_shape(env):
-    app, client, admin = env
+    app, client, admin, _regular, _Session = env
     _register(app, client, admin, public=True, description="Réseau routier")
     resp = client.get("/dcat/catalog")
     assert resp.headers["content-type"] == "application/ld+json"
@@ -95,7 +104,7 @@ def test_catalog_content_type_and_shape(env):
 
 
 def test_catalog_reflects_restricted_access_rights(env):
-    app, client, admin = env
+    app, client, admin, _regular, _Session = env
     _register(app, client, admin, public=False)
     resp = client.get("/dcat/catalog")  # vue admin : voit sa propre collection non publique
     ds = resp.json()["dcat:dataset"][0]
@@ -103,7 +112,7 @@ def test_catalog_reflects_restricted_access_rights(env):
 
 
 def test_dataset_detail_is_self_contained_with_context(env):
-    app, client, admin = env
+    app, client, admin, _regular, _Session = env
     _register(app, client, admin, public=True)
     resp = client.get("/dcat/datasets/incidents")
     assert resp.headers["content-type"] == "application/ld+json"
@@ -119,7 +128,7 @@ def test_dataset_detail_is_self_contained_with_context(env):
 
 
 def test_dataset_detail_404_non_leaking(env):
-    app, client, admin = env
+    app, client, admin, _regular, _Session = env
     _register(app, client, admin, public=False)
     _as(app, admin)
     assert client.get("/dcat/datasets/nope").status_code == 404
@@ -130,8 +139,87 @@ def test_dataset_detail_404_non_leaking(env):
 
 
 def test_anonymous_catalog_shows_public_only_no_leak(env):
-    app, client, admin = env
+    app, client, admin, _regular, _Session = env
     _register(app, client, admin, public=False)
     app.dependency_overrides.pop(get_current_user, None)
     app.dependency_overrides.pop(get_current_user_optional, None)
     assert client.get("/dcat/catalog").json()["dcat:dataset"] == []
+
+
+def test_custom_role_with_collections_manage_sees_a_private_collection_in_catalog(env):
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.users.repository import set_user_role
+
+    app, client, admin, regular, Session = env
+    _register(app, client, admin, public=False)
+
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        custom = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Gestionnaire de collections",
+            privileges=[Privilege.ADMIN_COLLECTIONS_MANAGE.value],
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=regular.id,
+            role_id=custom.id,
+            role_slug=custom.slug,
+        )
+        s.commit()
+        regular_id = regular.id
+
+    with Session() as s:
+        from app.users.models import User
+
+        custom_user = s.get(User, regular_id)
+        assert custom_user is not None and custom_user.is_admin is False
+        _as(app, custom_user)
+
+        resp = client.get("/dcat/catalog")
+        assert [d["dct:identifier"] for d in resp.json()["dcat:dataset"]] == ["incidents"]
+
+
+def test_custom_role_with_collections_manage_reaches_dataset_detail(env):
+    # Round 2 : GET /dcat/catalog montrait déjà la collection privée (fix
+    # précédent) mais son détail (/dcat/datasets/{id}) appelait encore
+    # get_readable_collection() sans can_manage_collections → 404 en cliquant
+    # dessus, même défaut que celui déjà fermé sur /collections/{id}/schema.
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.users.repository import set_user_role
+
+    app, client, admin, regular, Session = env
+    _register(app, client, admin, public=False)
+
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        custom = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Gestionnaire de collections",
+            privileges=[Privilege.ADMIN_COLLECTIONS_MANAGE.value],
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=regular.id,
+            role_id=custom.id,
+            role_slug=custom.slug,
+        )
+        s.commit()
+        regular_id = regular.id
+
+    with Session() as s:
+        from app.users.models import User
+
+        custom_user = s.get(User, regular_id)
+        assert custom_user is not None and custom_user.is_admin is False
+        _as(app, custom_user)
+
+        resp = client.get("/dcat/datasets/incidents")
+        assert resp.status_code == 200
+        assert resp.json()["dct:identifier"] == "incidents"

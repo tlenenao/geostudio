@@ -20,7 +20,7 @@ from app.collections.publication import remove_table_from_publication
 from app.collections.schema_json import table_info_to_schema
 from app.collections.schemas import CollectionCreate, CollectionPatch, EmptyCollectionCreate
 from app.db import core_table_names, get_session
-from app.roles.guards import require_privilege
+from app.roles.guards import has_privilege, privilege_required_error, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.sharing.schemas import Sharing
@@ -135,8 +135,17 @@ def _collection_json(col, permissions, owner: str | None = None) -> dict:
     }
 
 
-def get_readable_collection(session, user, collection_id):
-    """404 avant 403 : une collection illisible est indistinguable d'une absente."""
+def get_readable_collection(session, user, collection_id, *, can_manage_collections: bool = False):
+    """404 avant 403 : une collection illisible est indistinguable d'une absente.
+
+    `can_manage_collections` (privilège `admin.collections.manage`, SP-35) élargit
+    la visibilité exactement comme `can_see_all` le fait déjà pour
+    `list_visible_collections` : un rôle sur mesure porteur de ce privilège doit
+    voir individuellement (GET/PATCH/DELETE) toute collection qu'il voit déjà en
+    liste, pas seulement les siennes/partagées/publiques — sinon un même
+    utilisateur verrait une collection dans `GET /collections` puis un 404 en
+    cliquant dessus ou en la supprimant (piège n°5, chemin de lecture oublié,
+    appliqué ici à la visibilité individuelle plutôt qu'au verdict `delete`)."""
     col = None
     if user is not None:
         col = repo.get_collection(session, tenant_id=user.tenant_id, collection_id=collection_id)
@@ -147,7 +156,7 @@ def get_readable_collection(session, user, collection_id):
         col = repo.get_collection(session, tenant_id=tenant.id, collection_id=collection_id)
     if col is None:
         raise HTTPException(status_code=404, detail="collection not found")
-    readable = can(
+    readable = can_manage_collections or can(
         session,
         user_id=user.id if user else "",
         action="read",
@@ -205,11 +214,15 @@ def register_collection(
         object_id=col.id,
         payload={"tableName": col.table_name},
     )
+    # require_privilege() plus haut n'a pas levé : le privilège est donc déjà
+    # prouvé pour cette requête, inutile de le requêter une seconde fois.
+    can_manage_collections = True
     permissions = repo.collection_permissions_by_id(
         session,
         tenant_id=user.tenant_id,
         current_user_id=user.id,
         actor_is_admin=user.is_admin,
+        can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
     return _collection_json(col, permissions)
@@ -234,11 +247,13 @@ def create_empty_collection_route(
         introspect=introspect,
         apply_ddl=apply_ddl,
     )
+    can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     permissions = repo.collection_permissions_by_id(
         session,
         tenant_id=user.tenant_id,
         current_user_id=user.id,
         actor_is_admin=user.is_admin,
+        can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
     return _collection_json(col, permissions)
@@ -254,11 +269,14 @@ def list_collections(
     from app.users.models import User
 
     tenant_id = user.tenant_id if user else get_or_create_default_tenant(session).id
+    can_manage_collections = bool(
+        user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    )
     cols = repo.list_visible_collections(
         session,
         tenant_id=tenant_id,
         user_id=user.id if user else None,
-        is_admin=bool(user and user.is_admin),
+        can_see_all=can_manage_collections,
         q=q,
     )
     owner_ids = {c.owner_id for c in cols}
@@ -272,6 +290,7 @@ def list_collections(
         tenant_id=tenant_id,
         current_user_id=user.id if user else None,
         actor_is_admin=bool(user and user.is_admin),
+        can_manage_collections=can_manage_collections,
         collections=cols,
     )
     return {
@@ -327,12 +346,18 @@ def get_collection(
     introspect: Introspector = Depends(get_introspector),
     extent_provider=Depends(get_extent_provider),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    can_manage_collections = bool(
+        user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    )
+    col = get_readable_collection(
+        session, user, collection_id, can_manage_collections=can_manage_collections
+    )
     permissions = repo.collection_permissions_by_id(
         session,
         tenant_id=col.tenant_id,
         current_user_id=user.id if user else None,
         actor_is_admin=bool(user and user.is_admin),
+        can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
     body = _collection_json(col, permissions)
@@ -365,7 +390,12 @@ def get_collection_schema(
     session: Session = Depends(get_session),
     introspect: Introspector = Depends(get_introspector),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    can_manage_collections = bool(
+        user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    )
+    col = get_readable_collection(
+        session, user, collection_id, can_manage_collections=can_manage_collections
+    )
     try:
         info = introspect(session, col.table_name)
     except TableNotFound as exc:
@@ -382,7 +412,14 @@ def patch_collection(
     user=Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    col = get_readable_collection(
+        session, user, collection_id, can_manage_collections=can_manage_collections
+    )
+    # can_manage_collections lève seulement le voile de visibilité ci-dessus, pas
+    # ce garde d'écriture : un porteur non-propriétaire d'admin.collections.manage
+    # qui arrive ici sans accès write réel (propriétaire/partage éditeur/rôle
+    # admin) reçoit 403 (contre 404 avant get_readable_collection).
     if not can(
         session,
         user_id=user.id,
@@ -421,6 +458,7 @@ def patch_collection(
         tenant_id=user.tenant_id,
         current_user_id=user.id,
         actor_is_admin=user.is_admin,
+        can_manage_collections=can_manage_collections,
         collections=[col],
     )[col.id]
     return _collection_json(col, permissions)
@@ -432,9 +470,15 @@ def unregister_collection(
     user=Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    col = get_readable_collection(session, user, collection_id)
-    # après le 404 : un non-admin qui la voit reçoit 403
-    require_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    col = get_readable_collection(
+        session, user, collection_id, can_manage_collections=can_manage_collections
+    )
+    # après le 404 : un non-admin qui la voit reçoit 403. can_manage_collections
+    # est déjà le résultat de ce même privilège (calculé ci-dessus) : pas besoin
+    # de le requêter une seconde fois via require_privilege().
+    if not can_manage_collections:
+        raise privilege_required_error(Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     remove_table_from_publication(session, col.table_name)
     repo.delete_collection(session, col)
     write_audit(
@@ -467,7 +511,10 @@ def get_sharing(
     user=Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    col = get_readable_collection(
+        session, user, collection_id, can_manage_collections=can_manage_collections
+    )
     _require_share(session, user, col)
     shares = repo.get_collection_sharing(session, tenant_id=user.tenant_id, collection_id=col.id)
     return {
@@ -483,7 +530,10 @@ def put_sharing(
     user=Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    col = get_readable_collection(
+        session, user, collection_id, can_manage_collections=can_manage_collections
+    )
     _require_share(session, user, col)
     ok = repo.set_collection_sharing(
         session,

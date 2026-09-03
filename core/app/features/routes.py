@@ -37,7 +37,7 @@ from app.db import get_session
 from app.errors import ValidationHTTPException
 from app.features.repository import FilterError
 from app.features.validation import validate_feature
-from app.roles.guards import require_privilege
+from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 
@@ -434,7 +434,7 @@ def analytics_sql(
         session,
         tenant_id=user.tenant_id,
         user_id=user.id,
-        is_admin=user.is_admin,
+        can_see_all=has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value),
     )
     allowed: dict = {}
     for col in cols:

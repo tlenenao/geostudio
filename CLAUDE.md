@@ -982,10 +982,11 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
     garde `count_users_with_privileges`, distincte de celle déjà couverte
     côté `PATCH /roles/{id}`.
   Suivis non bloquants documentés, non corrigés (décisions de périmètre
-  plus larges qu'un lot de correctifs sans nouvelle décision produit) :
-  visibilité `is_admin` vs garde `require_privilege` divergentes sur 3
-  sites (`extensions.include_disabled`, scope de liste `/collections`,
-  `CollectionPermissions.delete` — docstring seule corrigée ci-dessus) ;
+  plus larges qu'un lot de correctifs sans nouvelle décision produit) —
+  **la divergence `is_admin` vs `require_privilege` sur les 3 sites
+  ci-dessous (`extensions.include_disabled`, scope de liste
+  `/collections`, `CollectionPermissions.delete`) est désormais traitée,
+  cf. `### Livré`/SP-35** :
   cast `entry.labelKey as MessageKey` non gardé dans les deux panneaux de
   rôle (aucun test ne lie le catalogue cœur aux clés `catalog.fr.ts`) ;
   5 des 18 privilèges (`catalog.manage`/`maps.manage`/`data.manage`/
@@ -1174,6 +1175,118 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   porter ce défaut — ensemble borné et désormais entièrement apparié.
   **Ready to merge** — les deux correctifs appliqués et re-vérifiés
   indépendamment.
+- **SP-35 — cohérence privilège/`is_admin`** (6 tâches + 2 lots de
+  correctifs de revue finale, spec
+  `2026-09-03-sp35-coherence-privilege-is-admin-design.md`, plan
+  `2026-09-03-sp35-coherence-privilege-is-admin.md` — referme le suivi non
+  bloquant ouvert par SP-31 « visibilité `is_admin` vs garde
+  `require_privilege` divergentes sur 3 sites ») : **4 sites** dans
+  `core/app` où une lecture directe de `user.is_admin` gouvernait une
+  décision de visibilité/autorisation migrés vers le privilège nommé
+  correspondant — `list_visible_collections` (portée de `GET /collections`,
+  paramètre renommé `is_admin`→`can_see_all`, câblé sur
+  `admin.collections.manage`), `CollectionPermissions.delete` (via
+  `_collection_permissions`/`collection_permissions_by_id`, même privilège
+  — `read`/`write`/`share` inchangés), `list_extensions`'s
+  `include_disabled` (`admin.extensions.manage`), et
+  `app/admin_tools/routes.py::launch_admin_tool` (4e site, **trouvé par
+  l'audit étendu de ce plan lui-même, jamais dans la liste SP-31** — ce
+  module avait été bâti par l'effort Traefik concurrent, SP-32, antérieur
+  au système de privilèges et jamais migré ; le local `_require_admin(user)`
+  supprimé au profit de `require_privilege(…, Privilege.
+  SETTINGS_INSTANCE_MANAGE.value)`, comblant un vrai trou où le shell
+  gatait déjà le bouton sur ce privilège mais un porteur de rôle sur mesure
+  obtenait un 403 réel au clic). Nouveau `has_privilege(session, user,
+  privilege) -> bool` (`app/roles/guards.py`), variante booléenne sœur de
+  `require_privilege` (qui délègue désormais à elle), même signature de
+  paramètres, consommée identiquement par les 3 premiers sites.
+  **Deux trous de plan trouvés et corrigés en cours d'exécution, pas
+  improvisés en aparté** : Task 2 — le brief n'anticipait que 5 sites
+  d'appel de test pour le paramètre renommé, 3 sites de *production*
+  existaient aussi (`app/dcat/routes.py`, `app/features/routes.py`,
+  `app/stac/routes.py`) — renommage de kwarg pur, aucun changement
+  sémantique, corrigé et disclosé dans le commit. Task 3 — le test de bout
+  en bout du texte littéral du plan exigeait qu'un porteur de rôle sur
+  mesure obtienne un 204 sur `DELETE /collections/{id}`, mais la porte de
+  visibilité partagée `get_readable_collection` (utilisée par
+  GET/PATCH/DELETE sur une collection unique) n'avait aucune notion du
+  nouveau privilège et renvoyait 404 avant même d'atteindre la garde de
+  suppression — corrigé par un paramètre de contournement opt-in
+  `can_manage_collections` (défaut `False`, ~14+3 sites d'appel existants
+  non affectés, vérifié). **Escaladé à Tanguy comme une vraie décision de
+  périmètre** : le contournement doit-il s'appliquer seulement à DELETE (le
+  minimum prouvé nécessaire par le test), ou aussi à GET/PATCH (cohérence
+  plus large, mais expose le champ `extent` de collections privées à des
+  porteurs de privilège non propriétaires, et transforme un 404 en 403 sur
+  PATCH sans accorder l'écriture) ? **Tanguy a explicitement choisi de
+  garder les trois (GET+PATCH+DELETE)** pour la cohérence — une vague de
+  correctifs a ensuite clarifié par commentaire que le contournement de
+  PATCH ne joue que sur la visibilité (la garde d'écriture réelle reste
+  intacte, toujours gardée par `actor_is_admin`), et retiré deux
+  re-requêtes de privilège redondantes. Suite cœur **1912→1920 passed** /
+  168 skipped / 0 failed (référence CLAUDE.md pré-plan : 1912-1915 selon
+  l'entrée SP-31 — delta positif, aucune régression). Vérifications de
+  clôture (Task 6) toutes vertes : `mypy --strict app/auth app/secrets
+  app/analytics app/copilot app/admin_tools app/roles` propre (la spec
+  affirmait à tort que `app/admin_tools` n'était pas dans le périmètre
+  `--strict` CI — il l'est déjà, `.github/workflows/ci.yml:60`, corrigé en
+  cours de planification) ; `ruff check`/`ruff format --check` propres ;
+  `lint-imports` propre (30 entrées, aucun nouvel import cross-module) ;
+  diff OpenAPI **vide** (seule la logique interne d'un booléen déjà
+  existant change, aucune forme de route/schéma) ; `mypy app/` informatif
+  — 3 erreurs préexistantes dans `app/collections/` (lignes identiques,
+  vérifiées mot pour mot contre le commit de base `e03d521c`, non
+  attribuables à ce plan), aucune nouvelle erreur sur les fichiers
+  touchés.
+  **Revue finale de branche (opus, package des 6 tâches) : 0 Critical, 3
+  Important, 8 Minor.** (1) La spec elle-même se trompait sur son propre
+  périmètre : « aucun autre site » (§Motivation) était faux — 3 sites de
+  production (`app/dcat/routes.py`, `app/features/routes.py`,
+  `app/stac/routes.py`) appelaient encore
+  `list_visible_collections(can_see_all=user.is_admin)`, la même fonction
+  que Task 2 avait re-clée sur le privilège, oubliée par une exclusion mal
+  posée (le motif « alimente `decide()`/`can()` » ne s'appliquait pas à ces
+  appels). (2) `permissions.read` reste à `false` sur une collection
+  pourtant servie en 200 grâce au contournement `can_manage_collections` —
+  un contrat de réponse qui se contredit lui-même (même classe de défaut
+  qu'Important en SP-29a). (3) Les sous-ressources `GET`/`PUT
+  /collections/{id}/sharing` et `GET /collections/{id}/schema` restaient
+  404 pour ce rôle malgré la visibilité GET/PATCH/DELETE déjà étendue — le
+  panneau Partager de `CollectionsAdminPage` affiche désormais la ligne
+  (grâce à cette branche) mais 404 au clic. **Les trois soumis à Tanguy** :
+  (1) corriger — accepté ; (2) documenter dans le docstring plutôt que
+  changer le comportement — accepté ; (3) étendre le contournement à
+  `/schema`+`/sharing` — accepté, cohérent avec la décision GET+PATCH+DELETE
+  déjà prise en Task 3. Lot de correctifs (commit `f23fe291`, 6 correctifs :
+  les 3 ci-dessus + branche `role is None` de `has_privilege` non testée,
+  extraction d'un helper `privilege_required_error` pour ne plus dupliquer
+  le format d'erreur en dur, test négatif manquant pour un rôle sur mesure
+  sans le privilège sur `admin_tools`). Suite complète 1896 passed/3
+  skipped/0 failed.
+  **Re-revue (opus) : 0 Critical, 1 nouvel Important** — corriger la liste
+  DCAT/STAC (finding 1) sans leurs routes de détail a réintroduit *le même
+  piège n°5* que Task 3 avait fermé sur `/collections/{id}` :
+  `GET /dcat/datasets/{id}`/`GET /stac/collections/{id}` restaient 404
+  alors que la collection apparaît désormais dans `GET /dcat/catalog`/
+  `GET /stac/collections`. **Soumis à Tanguy à nouveau, accepté.** Second
+  lot de correctifs (commit `30ba1ac2`, exécuté en deux passes — le
+  sous-agent s'est arrêté une fois avant de committer en attendant un run
+  de test resté silencieux, relancé par message direct sans perte de
+  travail, commit et rapport confirmés identiques à la reprise) :
+  contournement étendu aux deux routes de détail + test négatif
+  schema/sharing pour utilisateur non privilégié. Suite complète 1899
+  passed/3 skipped/0 failed.
+  **Deuxième re-revue (opus) : 0 Critical, 0 Important, 4 Minor** (tests
+  négatifs authentifié-mais-non-privilégié manquants sur les 2 routes de
+  détail dcat/stac — même asymétrie mineure que celle fermée sur
+  schema/sharing, non bloquante ; ~25 lignes de boilerplate
+  `create_role`/`set_user_role` dupliquées sur 4 tests, à factoriser à la
+  prochaine occurrence ; observation confirmée hors-scope — les hrefs
+  `items`/`features` des documents STAC/DCAT restent 404 pour ce rôle,
+  frontière data-vs-métadonnées déjà ratifiée par Tanguy, pré-existante à
+  ce round ; une imprécision triviale de numéros de ligne dans un rapport
+  d'implémenteur). Suite cœur finale **1899 passed** / 3 skipped / 0
+  failed. **10 commits au total.** **Ready to merge.**
 
 ### Conventions tranchées (2026-09-01)
 

@@ -49,6 +49,15 @@ def env():
             last_name="",
             bootstrap_admin=True,
         )
+        regular = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="r",
+            username="regular",
+            email=None,
+            first_name="",
+            last_name="",
+        )
         s.commit()
     app = create_app()
 
@@ -66,7 +75,7 @@ def env():
     app.dependency_overrides[stac_routes.get_bbox_provider] = lambda: (
         lambda session, info: [1.0, 44.0, 2.0, 45.0]
     )
-    return app, TestClient(app), admin
+    return app, TestClient(app), admin, regular, Session
 
 
 def _as(app, user):
@@ -80,20 +89,20 @@ def _register(app, client, admin, public=False):
 
 
 def test_landing_advertises_conformance(env):
-    app, client, _admin = env
+    app, client, _admin, _regular, _Session = env
     body = client.get("/stac").json()
     assert body["type"] == "Catalog"
     assert "https://api.stacspec.org/v1.0.0/item-search" in body["conformsTo"]
 
 
 def test_conformance_endpoint(env):
-    app, client, _admin = env
+    app, client, _admin, _regular, _Session = env
     body = client.get("/stac/conformance").json()
     assert "https://api.stacspec.org/v1.0.0/core" in body["conformsTo"]
 
 
 def test_collections_list_shows_registered(env):
-    app, client, admin = env
+    app, client, admin, _regular, _Session = env
     _register(app, client, admin)
     body = client.get("/stac/collections").json()
     ids = [c["id"] for c in body["collections"]]
@@ -102,7 +111,7 @@ def test_collections_list_shows_registered(env):
 
 
 def test_collection_detail_and_leakproof_404(env):
-    app, client, admin = env
+    app, client, admin, _regular, _Session = env
     _register(app, client, admin, public=False)
     _as(app, admin)
     assert client.get("/stac/collections/incidents").json()["id"] == "incidents"
@@ -114,11 +123,90 @@ def test_collection_detail_and_leakproof_404(env):
 
 
 def test_anonymous_lists_public_only(env):
-    app, client, admin = env
+    app, client, admin, _regular, _Session = env
     _register(app, client, admin, public=False)
     app.dependency_overrides.pop(get_current_user, None)
     app.dependency_overrides.pop(get_current_user_optional, None)
     assert client.get("/stac/collections").json()["collections"] == []
+
+
+def test_custom_role_with_collections_manage_sees_a_private_collection(env):
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.users.repository import set_user_role
+
+    app, client, admin, regular, Session = env
+    _register(app, client, admin, public=False)
+
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        custom = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Gestionnaire de collections",
+            privileges=[Privilege.ADMIN_COLLECTIONS_MANAGE.value],
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=regular.id,
+            role_id=custom.id,
+            role_slug=custom.slug,
+        )
+        s.commit()
+        regular_id = regular.id
+
+    with Session() as s:
+        from app.users.models import User
+
+        custom_user = s.get(User, regular_id)
+        assert custom_user is not None and custom_user.is_admin is False
+        _as(app, custom_user)
+
+        body = client.get("/stac/collections").json()
+        assert [c["id"] for c in body["collections"]] == ["incidents"]
+
+
+def test_custom_role_with_collections_manage_reaches_collection_detail(env):
+    # Round 2 : GET /stac/collections montrait déjà la collection privée (fix
+    # précédent) mais son détail (/stac/collections/{id}) appelait encore
+    # get_readable_collection() sans can_manage_collections → 404 en cliquant
+    # dessus, même défaut que celui déjà fermé sur /collections/{id}/schema.
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.users.repository import set_user_role
+
+    app, client, admin, regular, Session = env
+    _register(app, client, admin, public=False)
+
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        custom = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Gestionnaire de collections",
+            privileges=[Privilege.ADMIN_COLLECTIONS_MANAGE.value],
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=regular.id,
+            role_id=custom.id,
+            role_slug=custom.slug,
+        )
+        s.commit()
+        regular_id = regular.id
+
+    with Session() as s:
+        from app.users.models import User
+
+        custom_user = s.get(User, regular_id)
+        assert custom_user is not None and custom_user.is_admin is False
+        _as(app, custom_user)
+
+        resp = client.get("/stac/collections/incidents")
+        assert resp.status_code == 200
+        assert resp.json()["id"] == "incidents"
 
 
 FEAT = {
@@ -144,7 +232,7 @@ def make_fake_repo(matched=3):
 
 @pytest.fixture()
 def env_repo(env):
-    app, client, admin = env
+    app, client, admin, _regular, _Session = env
     repo = make_fake_repo()
     app.dependency_overrides[features_routes.get_features_repo] = lambda: repo
     return app, client, admin, repo

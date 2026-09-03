@@ -210,7 +210,7 @@ def test_corrupted_geojson_raises_without_creating_anything(env):
         s.rollback()
     with Session() as s:
         cols = collections_repo.list_visible_collections(
-            s, tenant_id=tenant.id, user_id=user.id, is_admin=True
+            s, tenant_id=tenant.id, user_id=user.id, can_see_all=True
         )
         assert cols == []
 
@@ -323,7 +323,7 @@ def test_gpkg_import_requires_layer_name_when_multiple_layers(env, tmp_path):
         s.rollback()
     with Session() as s:
         cols = collections_repo.list_visible_collections(
-            s, tenant_id=tenant.id, user_id=user.id, is_admin=True
+            s, tenant_id=tenant.id, user_id=user.id, can_see_all=True
         )
         assert cols == []
 

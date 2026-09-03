@@ -18,6 +18,8 @@ from app.collections.repository import list_visible_collections
 from app.collections.routes import get_introspector, get_readable_collection
 from app.db import get_session
 from app.features.routes import get_features_repo, get_rls_scope
+from app.roles.guards import has_privilege
+from app.roles.privileges import Privilege
 from app.stac import serializers
 from app.stac.extent import estimated_bbox_4326
 
@@ -52,7 +54,9 @@ def _visible_collections(session: Session, user):
         session,
         tenant_id=tenant_id,
         user_id=user.id if user else None,
-        is_admin=bool(user and user.is_admin),
+        can_see_all=bool(
+            user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+        ),
     )
     return sorted(cols, key=lambda c: c.id)
 
@@ -119,7 +123,14 @@ def get_collection(
     bbox_provider=Depends(get_bbox_provider),
     rls=Depends(get_rls_scope),
 ):
-    col = get_readable_collection(session, user, collection_id)  # 404 non-fuyant
+    col = get_readable_collection(
+        session,
+        user,
+        collection_id,
+        can_manage_collections=bool(
+            user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+        ),
+    )  # 404 non-fuyant
     info = introspect(session, col.table_name)
     with rls(session, col.tenant_id):
         bbox = bbox_provider(session, info)
