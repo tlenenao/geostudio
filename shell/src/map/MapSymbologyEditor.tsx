@@ -693,6 +693,7 @@ export function MapSymbologyEditor({
               <input
                 aria-label="Ajouter une icône au tenant (PNG ou SVG)"
                 type="file"
+                className="w-full"
                 accept="image/png,image/svg+xml"
                 onChange={(e) => {
                   const file = e.target.files?.[0];

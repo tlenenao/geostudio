@@ -332,3 +332,33 @@ test("700 px (bande 391-899, sous le seuil relevé) : mode étroit, pas la grill
   await expect(page.getByRole("navigation", { name: "Domaines" })).toHaveCount(0);
   await expect(page.getByRole("tab").first()).toBeVisible();
 });
+
+// SP-37 (docs/superpowers/specs/2026-09-04-sp37-layerspanel-colonne-browse-design.md) :
+// contrairement aux offenseurs génériques mesurés par les deux boucles
+// ci-dessus (déclenchés par le simple chargement de la page), celui-ci
+// n'apparaît qu'une fois la section "Ajouter des icônes" de
+// MapSymbologyEditor.tsx ouverte et un champ icône recalculé — d'où un test
+// dédié plutôt qu'une entrée SCREENS générique. Valeurs de domaine COURTES
+// ("A"/"B") délibérément : l'offenseur (un <input type="file"> sans classe
+// de largeur) est inconditionnel, indépendant de la longueur du texte —
+// contrairement à l'offenseur de PopupEditor.tsx (Task 1 de ce plan), pas
+// besoin d'un texte long pour le démontrer.
+test("Cartes à 900 px : la section icônes de la symbologie ne clippe pas une fois ouverte", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: WIDE_BOUNDARY_WIDTH, height: WIDE_HEIGHT });
+  await mockCore(page);
+  await page.route("**/collections/communes/aggregate", async (route) => {
+    await route.fulfill({
+      json: { categoryKey: "type_zone", rows: [{ type_zone: "A" }, { type_zone: "B" }] },
+    });
+  });
+  await page.goto("/maps/map-1");
+
+  await page.getByRole("button", { name: "Ajouter des icônes" }).click();
+  await page.getByLabel("Champ icône").fill("type_zone");
+  await page.getByRole("button", { name: "Recalculer les valeurs" }).click();
+  await expect(page.getByLabel("Ajouter une icône au tenant (PNG ou SVG)")).toBeVisible();
+
+  await expectNoClippedContent(page);
+});
