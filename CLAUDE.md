@@ -1175,7 +1175,8 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   porter ce défaut — ensemble borné et désormais entièrement apparié.
   **Ready to merge** — les deux correctifs appliqués et re-vérifiés
   indépendamment.
-- **SP-35 — cohérence privilège/`is_admin`** (6 tâches, spec
+- **SP-35 — cohérence privilège/`is_admin`** (6 tâches + 2 lots de
+  correctifs de revue finale, spec
   `2026-09-03-sp35-coherence-privilege-is-admin-design.md`, plan
   `2026-09-03-sp35-coherence-privilege-is-admin.md` — referme le suivi non
   bloquant ouvert par SP-31 « visibilité `is_admin` vs garde
@@ -1236,7 +1237,56 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   — 3 erreurs préexistantes dans `app/collections/` (lignes identiques,
   vérifiées mot pour mot contre le commit de base `e03d521c`, non
   attribuables à ce plan), aucune nouvelle erreur sur les fichiers
-  touchés. **Ready to merge.**
+  touchés.
+  **Revue finale de branche (opus, package des 6 tâches) : 0 Critical, 3
+  Important, 8 Minor.** (1) La spec elle-même se trompait sur son propre
+  périmètre : « aucun autre site » (§Motivation) était faux — 3 sites de
+  production (`app/dcat/routes.py`, `app/features/routes.py`,
+  `app/stac/routes.py`) appelaient encore
+  `list_visible_collections(can_see_all=user.is_admin)`, la même fonction
+  que Task 2 avait re-clée sur le privilège, oubliée par une exclusion mal
+  posée (le motif « alimente `decide()`/`can()` » ne s'appliquait pas à ces
+  appels). (2) `permissions.read` reste à `false` sur une collection
+  pourtant servie en 200 grâce au contournement `can_manage_collections` —
+  un contrat de réponse qui se contredit lui-même (même classe de défaut
+  qu'Important en SP-29a). (3) Les sous-ressources `GET`/`PUT
+  /collections/{id}/sharing` et `GET /collections/{id}/schema` restaient
+  404 pour ce rôle malgré la visibilité GET/PATCH/DELETE déjà étendue — le
+  panneau Partager de `CollectionsAdminPage` affiche désormais la ligne
+  (grâce à cette branche) mais 404 au clic. **Les trois soumis à Tanguy** :
+  (1) corriger — accepté ; (2) documenter dans le docstring plutôt que
+  changer le comportement — accepté ; (3) étendre le contournement à
+  `/schema`+`/sharing` — accepté, cohérent avec la décision GET+PATCH+DELETE
+  déjà prise en Task 3. Lot de correctifs (commit `f23fe291`, 6 correctifs :
+  les 3 ci-dessus + branche `role is None` de `has_privilege` non testée,
+  extraction d'un helper `privilege_required_error` pour ne plus dupliquer
+  le format d'erreur en dur, test négatif manquant pour un rôle sur mesure
+  sans le privilège sur `admin_tools`). Suite complète 1896 passed/3
+  skipped/0 failed.
+  **Re-revue (opus) : 0 Critical, 1 nouvel Important** — corriger la liste
+  DCAT/STAC (finding 1) sans leurs routes de détail a réintroduit *le même
+  piège n°5* que Task 3 avait fermé sur `/collections/{id}` :
+  `GET /dcat/datasets/{id}`/`GET /stac/collections/{id}` restaient 404
+  alors que la collection apparaît désormais dans `GET /dcat/catalog`/
+  `GET /stac/collections`. **Soumis à Tanguy à nouveau, accepté.** Second
+  lot de correctifs (commit `30ba1ac2`, exécuté en deux passes — le
+  sous-agent s'est arrêté une fois avant de committer en attendant un run
+  de test resté silencieux, relancé par message direct sans perte de
+  travail, commit et rapport confirmés identiques à la reprise) :
+  contournement étendu aux deux routes de détail + test négatif
+  schema/sharing pour utilisateur non privilégié. Suite complète 1899
+  passed/3 skipped/0 failed.
+  **Deuxième re-revue (opus) : 0 Critical, 0 Important, 4 Minor** (tests
+  négatifs authentifié-mais-non-privilégié manquants sur les 2 routes de
+  détail dcat/stac — même asymétrie mineure que celle fermée sur
+  schema/sharing, non bloquante ; ~25 lignes de boilerplate
+  `create_role`/`set_user_role` dupliquées sur 4 tests, à factoriser à la
+  prochaine occurrence ; observation confirmée hors-scope — les hrefs
+  `items`/`features` des documents STAC/DCAT restent 404 pour ce rôle,
+  frontière data-vs-métadonnées déjà ratifiée par Tanguy, pré-existante à
+  ce round ; une imprécision triviale de numéros de ligne dans un rapport
+  d'implémenteur). Suite cœur finale **1899 passed** / 3 skipped / 0
+  failed. **10 commits au total.** **Ready to merge.**
 
 ### Conventions tranchées (2026-09-01)
 
