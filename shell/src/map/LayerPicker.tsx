@@ -140,7 +140,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
           ))}
         </ul>
       )}
-      <div className="border-t pt-2">
+      <div className="border-t border-rule pt-2">
         <p className="mb-1 text-xs font-medium text-ink-2">Ajouter un tileset 3D par URL</p>
         <div className="flex flex-col gap-1">
           <input
@@ -170,7 +170,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
           </Button>
         </div>
       </div>
-      <div className="border-t pt-2">
+      <div className="border-t border-rule pt-2">
         <p className="mb-1 text-xs font-medium text-ink-2">Ajouter une couche par URL GeoJSON</p>
         <div className="flex flex-col gap-1">
           <input
