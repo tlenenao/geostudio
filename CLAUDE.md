@@ -1288,8 +1288,9 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   d'implémenteur). Suite cœur finale **1899 passed** / 3 skipped / 0
   failed. **10 commits au total.** **Ready to merge.**
 - **SP-36 — LayersPanel, titre de couche à largeur nulle** (3 tâches +
-  vérification finale, spec `docs/superpowers/specs/2026-09-03-sp36-
-  layerspanel-titre-flex-wrap-design.md`, plan
+  vérification finale, spec
+  `docs/superpowers/specs/2026-09-03-sp36-layerspanel-titre-flex-wrap-design.md`,
+  plan
   `docs/superpowers/plans/2026-09-03-sp36-layerspanel-titre-flex-wrap.md`
   — referme la partie « titre à largeur nulle » du lot **Carte** ouvert
   depuis SP-28) : `flex-wrap` ajouté au `<li>` de `LayersPanel.tsx:164` —
@@ -1393,7 +1394,9 @@ rétroactif en masse :
   (le 8e, « aucun écran ne clippe au-dessus du seuil relevé », vérifié par
   `shell/e2e/triptych-narrow.spec.ts` à 900px sur les 5 écrans qui rendent
   réellement la grille et la font passer — Cartes reste en `test.skip()`
-  pour deux défauts pré-existants et sans rapport avec ce défaut de layout,
+  pour un défaut pré-existant et sans rapport avec ce défaut de layout
+  (mécanisme (b), le titre de couche à largeur nulle, résolu par SP-36 —
+  seul (a), la colonne `browse` trop étroite pour `LayersPanel`, subsiste),
   Tâches/Paramètres ne rendent aucune grille à vérifier (`<EmptyState>`
   seul), cf. `### Livré`/SP-33 et le lot **Carte** ci-dessous). Reste, par
   ailleurs, hors traitement par aucun plan
