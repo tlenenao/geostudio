@@ -86,7 +86,7 @@ def test_list_visible_collections_q_none_is_unchanged(session, tenant_and_user):
         srid=None,
     )
     cols = repo.list_visible_collections(
-        session, tenant_id=tenant.id, user_id=user.id, is_admin=False
+        session, tenant_id=tenant.id, user_id=user.id, can_see_all=False
     )
     assert [c.title for c in cols] == ["Communes"]
 
@@ -213,7 +213,7 @@ def test_list_visible_collections_hybrid_search_never_leaks_an_invisible_collect
         pg_session,
         tenant_id=tenant.id,
         user_id=other.id,
-        is_admin=False,
+        can_see_all=False,
         q="incidents",
     )
     assert cols == []
@@ -297,7 +297,7 @@ def test_list_visible_collections_hybrid_search_ranks_semantic_match_ahead_of_we
         pg_session,
         tenant_id=tenant.id,
         user_id=user.id,
-        is_admin=False,
+        can_see_all=False,
         q="incidents voirie",
     )
     titles = [c.title for c in cols]

@@ -51,7 +51,7 @@ def _visible_collections(session: Session, user, tenant: Tenant):
         session,
         tenant_id=tenant.id,
         user_id=user.id if user else None,
-        is_admin=bool(user and user.is_admin),
+        can_see_all=bool(user and user.is_admin),
     )
     return sorted(cols, key=lambda c: c.id)
 

@@ -434,7 +434,7 @@ def analytics_sql(
         session,
         tenant_id=user.tenant_id,
         user_id=user.id,
-        is_admin=user.is_admin,
+        can_see_all=user.is_admin,
     )
     allowed: dict = {}
     for col in cols:

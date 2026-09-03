@@ -103,11 +103,11 @@ def list_visible_collections(
     *,
     tenant_id: str,
     user_id: str | None,
-    is_admin: bool,
+    can_see_all: bool,
     q: str | None = None,
 ) -> list[Collection]:
     stmt = select(Collection).where(Collection.tenant_id == tenant_id)
-    if not is_admin:
+    if not can_see_all:
         if user_id is None:
             stmt = stmt.where(Collection.is_public.is_(True))
         else:
