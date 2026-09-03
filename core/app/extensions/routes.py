@@ -7,7 +7,7 @@ from app.auth.dependency import get_current_user, get_current_user_optional
 from app.db import get_session
 from app.extensions import repository as repo
 from app.extensions.schemas import ExtensionCreate, ExtensionPatch
-from app.roles.guards import require_privilege
+from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.tenants.repository import get_or_create_default_tenant
 
@@ -102,6 +102,8 @@ def list_extensions(
     session: Session = Depends(get_session),
 ):
     tenant_id = user.tenant_id if user else get_or_create_default_tenant(session).id
-    include_disabled = bool(user and user.is_admin and all)
+    include_disabled = bool(
+        user and all and has_privilege(session, user, Privilege.ADMIN_EXTENSIONS_MANAGE.value)
+    )
     exts = repo.list_extensions(session, tenant_id=tenant_id, include_disabled=include_disabled)
     return {"extensions": [_extension_json(e) for e in exts]}

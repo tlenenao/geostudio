@@ -212,3 +212,41 @@ def test_get_extensions_all_true_ignored_for_anonymous(env):
     del app.dependency_overrides[get_current_user_optional]
     listed = client.get("/extensions?all=true").json()["extensions"]
     assert listed == []
+
+
+def test_get_extensions_all_true_shown_to_custom_role_with_extensions_manage(env):
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.users.repository import set_user_role
+
+    app, client, Session, admin, regular = env
+    _as(app, admin)
+    client.post("/extensions", json=GAUGE_BODY)
+    client.patch("/extensions/acme.gauge", json={"enabled": False})
+
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        custom = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Gestionnaire d'extensions",
+            privileges=[Privilege.ADMIN_EXTENSIONS_MANAGE.value],
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=regular.id,
+            role_id=custom.id,
+            role_slug=custom.slug,
+        )
+        s.commit()
+        regular_id = regular.id
+
+    with Session() as s:
+        from app.users.models import User
+
+        custom_user = s.get(User, regular_id)
+        assert custom_user is not None and custom_user.is_admin is False
+        _as(app, custom_user)
+        all_listed = client.get("/extensions?all=true").json()["extensions"]
+        assert [e["id"] for e in all_listed] == ["acme.gauge"]
