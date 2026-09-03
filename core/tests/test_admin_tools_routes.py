@@ -69,7 +69,7 @@ def env():
 
         app.dependency_overrides[get_current_user] = _dep
 
-    return TestClient(app), use_as, admin_id, member_id
+    return TestClient(app), use_as, admin_id, member_id, session_factory
 
 
 def test_routes_absent_when_disabled(monkeypatch):
@@ -80,21 +80,21 @@ def test_routes_absent_when_disabled(monkeypatch):
 
 
 def test_launch_requires_admin(env):
-    client, use_as, _admin_id, member_id = env
+    client, use_as, _admin_id, member_id, _sf = env
     use_as(member_id)
     response = client.post("/admin-tools/launch/martin")
     assert response.status_code == 403
 
 
 def test_launch_rejects_unknown_tool(env):
-    client, use_as, admin_id, _member_id = env
+    client, use_as, admin_id, _member_id, _sf = env
     use_as(admin_id)
     response = client.post("/admin-tools/launch/not-a-real-tool")
     assert response.status_code == 422
 
 
 def test_launch_returns_session_url_for_admin(env):
-    client, use_as, admin_id, _member_id = env
+    client, use_as, admin_id, _member_id, _sf = env
     use_as(admin_id)
     response = client.post("/admin-tools/launch/martin")
     assert response.status_code == 200
@@ -103,7 +103,7 @@ def test_launch_returns_session_url_for_admin(env):
 
 
 def test_session_redirects_and_sets_cookie_on_valid_token(env):
-    client, _use_as, admin_id, _member_id = env
+    client, _use_as, admin_id, _member_id, _sf = env
     token = mint_launch_token(sub=admin_id, tool="martin")
     response = client.get(f"/admin-tools/session/martin?_at={token}", follow_redirects=False)
     assert response.status_code == 302
@@ -117,7 +117,7 @@ def test_session_redirects_and_sets_cookie_on_valid_token(env):
 
 
 def test_session_rejects_expired_launch_token(env):
-    client, _use_as, admin_id, _member_id = env
+    client, _use_as, admin_id, _member_id, _sf = env
     now = int(time.time())
     expired = jwt.encode(
         {
@@ -135,14 +135,14 @@ def test_session_rejects_expired_launch_token(env):
 
 
 def test_session_rejects_tool_mismatch(env):
-    client, _use_as, admin_id, _member_id = env
+    client, _use_as, admin_id, _member_id, _sf = env
     token = mint_launch_token(sub=admin_id, tool="martin")
     response = client.get(f"/admin-tools/session/titiler?_at={token}", follow_redirects=False)
     assert response.status_code == 401
 
 
 def test_verify_accepts_valid_session_cookie(env):
-    client, _use_as, admin_id, _member_id = env
+    client, _use_as, admin_id, _member_id, _sf = env
     token = mint_session_token(sub=admin_id)
     client.cookies.set("gs_admin_session", token)
     response = client.get("/admin-tools/verify")
@@ -150,13 +150,13 @@ def test_verify_accepts_valid_session_cookie(env):
 
 
 def test_verify_rejects_missing_cookie(env):
-    client, _use_as, _admin_id, _member_id = env
+    client, _use_as, _admin_id, _member_id, _sf = env
     response = client.get("/admin-tools/verify")
     assert response.status_code == 403
 
 
 def test_verify_rejects_expired_session_cookie(env):
-    client, _use_as, admin_id, _member_id = env
+    client, _use_as, admin_id, _member_id, _sf = env
     now = int(time.time())
     expired = jwt.encode(
         {"typ": "admin_session", "sub": admin_id, "iat": now - 2000, "exp": now - 1},
@@ -166,3 +166,33 @@ def test_verify_rejects_expired_session_cookie(env):
     client.cookies.set("gs_admin_session", expired)
     response = client.get("/admin-tools/verify")
     assert response.status_code == 403
+
+
+def test_launch_allowed_for_custom_role_with_settings_instance_manage(env):
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.tenants.repository import get_or_create_default_tenant
+    from app.users.repository import set_user_role
+
+    client, use_as, _admin_id, member_id, session_factory = env
+
+    with session_factory() as s:
+        tenant = get_or_create_default_tenant(s)
+        custom = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Infra",
+            privileges=[Privilege.SETTINGS_INSTANCE_MANAGE.value],
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=member_id,
+            role_id=custom.id,
+            role_slug=custom.slug,
+        )
+        s.commit()
+
+    use_as(member_id)
+    response = client.post("/admin-tools/launch/martin")
+    assert response.status_code == 200

@@ -13,6 +13,7 @@ from typing import Literal
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.admin_tools.tokens import (
     AdminToolsTokenError,
@@ -22,6 +23,9 @@ from app.admin_tools.tokens import (
     mint_session_token,
 )
 from app.auth.dependency import get_current_user
+from app.db import get_session
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.users.models import User
 
 router = APIRouter()
@@ -35,16 +39,13 @@ class LaunchAdminToolResponse(BaseModel):
     url: str
 
 
-def _require_admin(user: User) -> None:
-    if not user.is_admin:
-        raise HTTPException(status_code=403, detail="admin role required")
-
-
 @router.post("/admin-tools/launch/{tool}")
 def launch_admin_tool(
-    tool: ToolName, user: User = Depends(get_current_user)
+    tool: ToolName,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> LaunchAdminToolResponse:
-    _require_admin(user)
+    require_privilege(session, user, Privilege.SETTINGS_INSTANCE_MANAGE.value)
     base = os.environ.get("CORE_BASE_URL", "http://localhost:8200")
     token = mint_launch_token(sub=user.id, tool=tool)
     return LaunchAdminToolResponse(url=f"{base}/admin-tools/session/{tool}?_at={token}")
