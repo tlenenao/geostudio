@@ -157,6 +157,10 @@ const SCREENS: Array<{
   // Onglets à ne pas soumettre à expectNoClippedContent — réservé à un défaut
   // déjà connu, documenté et hors périmètre (jamais une façon de faire
   // disparaître un vrai problème découvert par cette tâche).
+  // Échappatoire délibérée : aucun SCREENS n'en a plus besoin depuis SP-36
+  // (l'écran Cartes était le seul consommateur), mais le champ et la branche
+  // qui le lit restent en place pour le prochain écran qui en aurait besoin —
+  // pas du code mort à retirer.
   skipClipCheckForTabs?: string[];
   // Raison de test.skip() pour le groupe de largeur "juste au-dessus du
   // seuil" de cet écran — réservé à un défaut pré-existant, distinct du
