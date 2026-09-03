@@ -55,7 +55,7 @@ test("author 5 quantile classes on a tiled layer, save, reload, and the rendered
   // "Communesvector" (le kind est concaténé au titre dans le bouton, sans
   // séparateur), jamais "Communes" seul — mais une ambiguïté réelle existe :
   // MapLegend.tsx rend aussi un <li>{title}</li> par couche visible
-  // (légende en survol de carte), texte exactement "Communes" — d'où
+  // (légende superposée en coin de carte), texte exactement "Communes" — d'où
   // .first() pour cibler le <span> de titre dans LayersPanel, qui précède
   // la légende dans l'ordre du DOM (violation de strict mode confirmée à
   // l'exécution réelle contre l'app).
