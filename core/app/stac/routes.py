@@ -123,7 +123,14 @@ def get_collection(
     bbox_provider=Depends(get_bbox_provider),
     rls=Depends(get_rls_scope),
 ):
-    col = get_readable_collection(session, user, collection_id)  # 404 non-fuyant
+    col = get_readable_collection(
+        session,
+        user,
+        collection_id,
+        can_manage_collections=bool(
+            user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+        ),
+    )  # 404 non-fuyant
     info = introspect(session, col.table_name)
     with rls(session, col.tenant_id):
         bbox = bbox_provider(session, info)

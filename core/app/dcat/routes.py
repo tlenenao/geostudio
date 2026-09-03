@@ -115,7 +115,14 @@ def get_dataset(
     bbox_provider=Depends(get_bbox_provider),
     rls=Depends(get_rls_scope),
 ):
-    col = get_readable_collection(session, user, collection_id)  # 404 non-fuyant
+    col = get_readable_collection(
+        session,
+        user,
+        collection_id,
+        can_manage_collections=bool(
+            user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+        ),
+    )  # 404 non-fuyant
     base = _base(request)
     tenant = _resolve_tenant(session, user)
     doc = _dataset_doc(
