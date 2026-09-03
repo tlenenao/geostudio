@@ -214,7 +214,9 @@ def register_collection(
         object_id=col.id,
         payload={"tableName": col.table_name},
     )
-    can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    # require_privilege() plus haut n'a pas levé : le privilège est donc déjà
+    # prouvé pour cette requête, inutile de le requêter une seconde fois.
+    can_manage_collections = True
     permissions = repo.collection_permissions_by_id(
         session,
         tenant_id=user.tenant_id,
@@ -409,6 +411,10 @@ def patch_collection(
     col = get_readable_collection(
         session, user, collection_id, can_manage_collections=can_manage_collections
     )
+    # can_manage_collections lève seulement le voile de visibilité ci-dessus, pas
+    # ce garde d'écriture : un porteur non-propriétaire d'admin.collections.manage
+    # qui arrive ici sans accès write réel (propriétaire/partage éditeur/rôle
+    # admin) reçoit 403 (contre 404 avant get_readable_collection).
     if not can(
         session,
         user_id=user.id,
@@ -463,8 +469,14 @@ def unregister_collection(
     col = get_readable_collection(
         session, user, collection_id, can_manage_collections=can_manage_collections
     )
-    # après le 404 : un non-admin qui la voit reçoit 403
-    require_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    # après le 404 : un non-admin qui la voit reçoit 403. can_manage_collections
+    # est déjà le résultat de ce même privilège (calculé ci-dessus) : pas besoin
+    # de le requêter une seconde fois via require_privilege().
+    if not can_manage_collections:
+        raise HTTPException(
+            status_code=403,
+            detail=f"privilege '{Privilege.ADMIN_COLLECTIONS_MANAGE.value}' required",
+        )
     remove_table_from_publication(session, col.table_name)
     repo.delete_collection(session, col)
     write_audit(
