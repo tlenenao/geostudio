@@ -48,6 +48,16 @@ test("author 5 quantile classes on a tiled layer, save, reload, and the rendered
   await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
 
   await page.getByRole("button", { name: /Communes/ }).click();
+  // SP-36 : couvre le cas partagé jamais testé avant ce plan — couche
+  // "vector" (pas seulement "feature" comme dans
+  // map-feature-layer-symbology.spec.ts). exact:true est nécessaire : le
+  // bouton source du LayerPicker ci-dessus a pour texte accessible complet
+  // "Communes vector" (le kind est concaténé au titre dans le bouton),
+  // jamais "Communes" seul — mais une ambiguïté réelle existe : la liste de
+  // sources du LayerPicker garde un <li>Communes</li> (source déjà ajoutée,
+  // affiché différemment) en plus du <span> de titre dans LayersPanel — d'où
+  // .first() (violation de strict mode observée à l'exécution, cf. rapport).
+  await expect(page.getByText("Communes", { exact: true }).first()).toBeVisible();
 
   // Configurer la symbologie via l'UI réelle (MapSymbologyEditor.tsx).
   await page.getByLabel("Champ couleur").fill("population");
