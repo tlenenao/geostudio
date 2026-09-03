@@ -1175,7 +1175,7 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   porter ce défaut — ensemble borné et désormais entièrement apparié.
   **Ready to merge** — les deux correctifs appliqués et re-vérifiés
   indépendamment.
-- **SP-35 — cohérence privilège/`is_admin`** (5 tâches, spec
+- **SP-35 — cohérence privilège/`is_admin`** (6 tâches, spec
   `2026-09-03-sp35-coherence-privilege-is-admin-design.md`, plan
   `2026-09-03-sp35-coherence-privilege-is-admin.md` — referme le suivi non
   bloquant ouvert par SP-31 « visibilité `is_admin` vs garde
