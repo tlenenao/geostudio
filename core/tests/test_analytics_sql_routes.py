@@ -239,6 +239,52 @@ def test_analyst_cannot_reach_unauthorized_collection(env_with_analyst_and_priva
     assert resp.status_code == 400
 
 
+def test_custom_role_with_collections_manage_reaches_private_collection(
+    env_with_analyst_and_private,
+):
+    # Un rôle sur mesure porteur d'analytics.sql_lab.access ET
+    # admin.collections.manage doit matérialiser une collection privée
+    # non partagée dans SQL Lab (can_see_all=True), au même titre que
+    # list_visible_collections ailleurs (SP-35).
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.tenants.repository import get_or_create_default_tenant
+    from app.users.repository import set_user_role
+
+    app, client, analyst, private_col, Session = env_with_analyst_and_private
+
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        custom = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Analyste + collections",
+            privileges=[
+                Privilege.ANALYTICS_SQL_LAB_ACCESS.value,
+                Privilege.ADMIN_COLLECTIONS_MANAGE.value,
+            ],
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=analyst.id,
+            role_id=custom.id,
+            role_slug=custom.slug,
+        )
+        s.commit()
+        analyst_id = analyst.id
+
+    with Session() as s:
+        from app.users.models import User
+
+        custom_user = s.get(User, analyst_id)
+        assert custom_user is not None and custom_user.is_admin is False
+        _as(app, custom_user)
+
+        resp = client.post("/analytics/sql", json={"sql": f"SELECT * FROM {private_col['id']}"})
+        assert resp.status_code == 200
+
+
 def test_invalid_sql_returns_400(env_with_analyst):
     app, client, analyst, *rest = env_with_analyst
     _as(app, analyst)

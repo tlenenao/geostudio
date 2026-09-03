@@ -16,6 +16,8 @@ from app.collections.routes import get_introspector, get_readable_collection
 from app.db import get_session
 from app.dcat import serializers
 from app.features.routes import get_rls_scope
+from app.roles.guards import has_privilege
+from app.roles.privileges import Privilege
 from app.stac.extent import estimated_bbox_4326
 from app.tenants.models import Tenant
 
@@ -51,7 +53,9 @@ def _visible_collections(session: Session, user, tenant: Tenant):
         session,
         tenant_id=tenant.id,
         user_id=user.id if user else None,
-        can_see_all=bool(user and user.is_admin),
+        can_see_all=bool(
+            user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+        ),
     )
     return sorted(cols, key=lambda c: c.id)
 

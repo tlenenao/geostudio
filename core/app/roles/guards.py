@@ -11,6 +11,10 @@ def has_privilege(session: Session, user: User, privilege: str) -> bool:
     return role is not None and privilege in role.privileges
 
 
+def privilege_required_error(privilege: str) -> HTTPException:
+    return HTTPException(status_code=403, detail=f"privilege '{privilege}' required")
+
+
 def require_privilege(session: Session, user: User, privilege: str) -> None:
     if not has_privilege(session, user, privilege):
-        raise HTTPException(status_code=403, detail=f"privilege '{privilege}' required")
+        raise privilege_required_error(privilege)

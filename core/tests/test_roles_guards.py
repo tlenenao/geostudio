@@ -7,6 +7,7 @@ from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.roles.repository import ensure_built_in_roles
 from app.tenants.repository import get_or_create_default_tenant
+from app.users.models import User
 from app.users.repository import get_or_create_user
 
 
@@ -75,3 +76,17 @@ def test_has_privilege_returns_a_plain_bool_without_raising():
 
         assert has_privilege(s, admin, Privilege.ADMIN_ROLES_MANAGE.value) is True
         assert has_privilege(s, reader, Privilege.ADMIN_ROLES_MANAGE.value) is False
+
+        # role_id bidon (get_role() renvoie None) : ne lève pas, retourne False.
+        # Objet transitoire, jamais ajouté/flushé à la session — role_id est une
+        # FK réelle (app/users/models.py), la persister violerait la contrainte.
+        # has_privilege() ne lit que les attributs Python de `user`, jamais la
+        # ligne `users` elle-même.
+        bogus_role_user = User(
+            id="bogus",
+            tenant_id=reader.tenant_id,
+            oidc_sub="bogus",
+            username="bogus",
+            role_id="does-not-exist",
+        )
+        assert has_privilege(s, bogus_role_user, Privilege.ADMIN_ROLES_MANAGE.value) is False

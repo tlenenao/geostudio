@@ -196,3 +196,33 @@ def test_launch_allowed_for_custom_role_with_settings_instance_manage(env):
     use_as(member_id)
     response = client.post("/admin-tools/launch/martin")
     assert response.status_code == 200
+
+
+def test_launch_rejected_for_custom_role_without_settings_instance_manage(env):
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.tenants.repository import get_or_create_default_tenant
+    from app.users.repository import set_user_role
+
+    client, use_as, _admin_id, member_id, session_factory = env
+
+    with session_factory() as s:
+        tenant = get_or_create_default_tenant(s)
+        custom = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Gestionnaire de collections",
+            privileges=[Privilege.ADMIN_COLLECTIONS_MANAGE.value],
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=member_id,
+            role_id=custom.id,
+            role_slug=custom.slug,
+        )
+        s.commit()
+
+    use_as(member_id)
+    response = client.post("/admin-tools/launch/martin")
+    assert response.status_code == 403
