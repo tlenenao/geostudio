@@ -5,7 +5,7 @@ export function MapLegend({ layers }: { layers: MapConfig["layers"] }) {
   const visible = layers.filter((l) => l.visible);
   if (visible.length === 0) return null;
   return (
-    <ul className="absolute bottom-2 left-2 z-10 rounded-md bg-white/90 p-2 text-xs shadow">
+    <ul className="absolute bottom-2 left-2 z-10 rounded-md bg-surface/90 p-2 text-xs text-ink shadow">
       {visible.map((l) => (
         <li key={l.id}>{l.title}</li>
       ))}

@@ -1057,6 +1057,123 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   retrait des anciens fichiers `ui/*`, le lot **Carte**, et la longue
   liste de suivis Minor accumulés SP-29b→SP-30k) — ce plan ne les résout
   pas et ne prétend pas les résoudre.
+- **SP-34 — dette de tokens `LayersPanel`/`MapSymbologyEditor` et voisins**
+  (10 tâches, spec/plan `2026-09-03-sp34-dette-tokens-layerspanel-*.md` —
+  referme le chantier que SP-30c avait explicitement mis de côté et que
+  « Conventions tranchées (2026-09-01) » ci-dessous avait acté comme son
+  propre chantier séparé) : les **48 occurrences** de couleurs Tailwind
+  brutes (`slate-*`, `red-*`, `amber-*`, `blue-700`, `bg-white`/`white`)
+  recensées sur les 8 fichiers de `shell/src/map/` remplacées par les
+  tokens sémantiques (`ink`/`ink-2`/`ink-3`/`rule`/`danger`/`warn`/
+  `accent`/`surface`/`sunken`), sans aucun changement de comportement —
+  `formFieldStyles.ts` (1 occurrence, + `inputCls` relevé `h-8`→`h-9`,
+  convention 2026-09-01), `FieldClassificationPicker.tsx` (4),
+  `MapSymbologyEditor.tsx` (28, en deux tâches — bascule de 5 actions
+  autonomes vers `Button` du kit (« Recalculer… »×3, « Ajouter un
+  contour/des icônes/une étiquette ») puis tokens restants), `PopupEditor.tsx`
+  (7, + abandon de
+  sa copie locale de `labelCls`/`inputCls` au profit de l'import de
+  `formFieldStyles.ts`, fermant la duplication que son propre commentaire
+  signalait), `LayersPanel.tsx` (0 couleur brute mais son séparateur
+  `border-t` non tokenisé — noté par la revue finale SP-30c — tokenisé au
+  passage), `MapMeasureSketchToolbar.tsx` (3), `MapPopup.tsx` (4),
+  `MapLegend.tsx` (1). Décision de brainstorming actée explicitement : les
+  **trois superpositions carte** (`MapMeasureSketchToolbar`/`MapPopup`/
+  `MapLegend`, `position: absolute` par-dessus le canevas, catégorie
+  distincte des cinq éditeurs de formulaire) sont **incluses et
+  tokénisées complètement**, sans exception de fond figé en blanc — elles
+  peignent leur propre fond avant tout texte, donc aucun risque de
+  contraste contre les tuiles de fond de carte, et le dépôt n'avait établi
+  nulle part de précédent « ce composant s'exclut de l'ambiance ».
+  Exclusions hors périmètre, assumées et documentées dans la spec :
+  `LayerPicker.tsx` (dette de `border-t` séparée, notée SP-30c, non
+  reprise ici) ; conversion des `<select>`/`<input list=…>` (datalist)
+  vers `Select`/`Combobox` du kit (changerait le comportement — liste
+  fermée vs saisie libre — pas seulement l'apparence) ; conversion du
+  toggle « Couleur de contour fixe/par attribut » vers `Segmented` du kit
+  (encapsule une garde anti-reclic documentée Important en revue finale
+  SP-27, resterait un changement structurel). Vérification finale (Task
+  10) : grep de clôture sur les 8 fichiers avec la commande exacte de la
+  spec (incluant l'angle mort `text-white`/`text-black` sans suffixe
+  identifié par SP-30f) — un seul hit, faux positif attendu et vérifié
+  (`-translate-x-1/2`/`-translate-y-full` de `MapPopup.tsx` contiennent la
+  sous-chaîne littérale « slate » ; un grep affiné à `slate-[0-9]` sur les
+  8 fichiers revient bien vide). Vitest shell 221 fichiers/1848 tests, 0
+  échec — compte identique à la référence SP-33 (aucun test ajouté ni
+  supprimé par ce plan, conforme à la spec : la suite de test de ces 13
+  fichiers ne référence aucune classe Tailwind en dur, donc rester verte
+  sans modification sert de garde-fou comportemental). `npm run build`
+  propre (`tsc --noEmit` + `vite build`). Playwright 138 passed/5
+  skipped/0 failed — identique à la référence SP-33 (vérifié via
+  `test-results/.last-run.json`, pas le tail du reporter `list`, piège
+  méthodologique documenté). **Contrôle visuel manuel réalisé contre un
+  backend réel** (stack `docker compose up -d` complète, 11 services,
+  `CORE_AUTH_MODE=mock`) plutôt que des mocks E2E : Map créée, couche
+  ajoutée par URL GeoJSON (fonctionnalité SP-28, 6 points de test servis
+  localement), symbologie configurée couleur classée (Quantiles, 5
+  classes) + contour fixe + icônes + étiquette, popup liste de champs +
+  gabarit avancé — capturés en écran clair **et** sombre (même session,
+  `page.emulateMedia({colorScheme})`, sans rechargement) : tout paraissait
+  lisible et cohérent dans les deux ambiances lors de ce contrôle — **constat
+  incomplet, corrigé plus bas par la revue finale de branche.** **Constat
+  fait pendant ce contrôle, pas un défaut de
+  ce plan** : la barre de mesure/croquis (`MapMeasureSketchToolbar.tsx`)
+  ne se monte jamais depuis l'onglet Carte de `MapEditorPage` lui-même —
+  `interactiveTools` n'y est jamais passé à `MapView` (seul
+  `mapWidget.tsx` le fait, via `ctx.mode !== "edit"`, pour le widget Carte
+  du builder) ; comportement préexistant, confirmé par lecture directe des
+  trois fichiers, à ne pas confondre avec une régression de cette
+  branche — la légende et la popup au clic, elles, sont bien visibles
+  directement dans l'éditeur de carte. Vérifiée à la place via une App
+  minimale portant un widget Carte lié à une collection réelle, en mode
+  Aperçu (`ctx.mode="preview"`) : légende et barre de mesure/croquis
+  s'affichent, tokenisées correctement, dans les deux ambiances. Quelques
+  erreurs 500 intermittentes observées dans les logs `core` pendant le
+  contrôle (`psycopg.errors.DuplicatePreparedStatement` sous pgbouncer) —
+  artefact d'infrastructure sans rapport avec ce plan (aucun changement
+  sous `core/`, confirmé), sans conséquence sur les écrans vérifiés.
+  **Revue finale de branche (opus) : 1 Important trouvé et corrigé, invisible
+  au contrôle visuel manuel ci-dessus** — les trois superpositions carte
+  (`MapLegend.tsx`, `MapMeasureSketchToolbar.tsx`, `MapPopup.tsx`) peignent
+  leur conteneur flottant en `bg-surface`/`bg-surface/90` sans jamais
+  l'associer à `text-ink`, alors que rien dans ce dépôt ne fixe de couleur de
+  texte racine (le texte résout donc à la couleur par défaut du navigateur,
+  noir, dans les deux ambiances). Avant cette branche, ces trois fichiers
+  étaient protégés par construction : `bg-white`/`bg-white/90` forçait un
+  fond blanc, rendant le texte noir non tokenisé toujours lisible quelle que
+  soit l'ambiance. Cette branche a fait suivre le fond à l'ambiance (`#101a1e`
+  en sombre) sans faire suivre le texte — texte noir sur fond quasi-noir en
+  ambiance sombre, régression que le contrôle manuel ci-dessus n'a pas
+  détectée (capturé en ambiance claire d'abord, où le défaut ne se voit pas).
+  Corrigé en ajoutant `text-ink` aux trois conteneurs, à côté de la classe
+  `bg-surface`/`bg-surface/90` déjà en place — className seul, aucun
+  changement de comportement, les 46 tests existants des 3 fichiers +
+  `PopupEditor.tsx` restent verts sans modification. 2 Minor également
+  corrigés dans le même lot : commentaire `denseInputCls` de `PopupEditor.tsx`
+  resserré pour ne revendiquer que la parité de hauteur `h-8` avec
+  `QueryFilterBuilder.tsx`/`CrossFilterLinkEditor.tsx` (pas leur recette
+  complète, qu'il n'a pas) ; ordre des deux tâches sur
+  `MapSymbologyEditor.tsx` corrigé ci-dessus (bascule vers `Button` d'abord,
+  tokens ensuite — l'inverse de ce que cette entrée affirmait initialement).
+  **Re-revue de ce correctif (round 2, même jour) : même classe de défaut
+  trouvée sur 2 sites de plus**, restés hors du lot ci-dessus — les deux
+  boutons de bascule « Couleur de contour fixe »/« Couleur de contour par
+  attribut » de `MapSymbologyEditor.tsx` (lignes ~415/437) peignaient leur
+  fond actif en `bg-sunken` (`#16232a` en ambiance sombre) sans jamais
+  l'associer à `text-ink` non plus — exactement le même mécanisme, le
+  balayage de clôture (Task 10) ne portant que sur les couleurs Tailwind
+  brutes, pas sur cette classe de défaut de contraste. Le correctif complet
+  couvre donc **5 sites au total** (les 3 superpositions carte ci-dessus +
+  ces 2 boutons de bascule), tous par simple ajout de `text-ink` au
+  className statique, sans changement de comportement — `MapSymbologyEditor.
+  test.tsx` 43/43 avant et après, fichier de test non modifié. Balayage
+  indépendant de la re-revue (round 2) sur tout le plan (10 tâches +
+  2 correctifs) confirmant qu'il n'existe pas de 6e site : aucun fond racine
+  n'est jamais posé sur ce shell (`AppLayout`/`TriptychLayout`/`tokens.css`),
+  donc seul un élément qui peint lui-même un fond suivant l'ambiance peut
+  porter ce défaut — ensemble borné et désormais entièrement apparié.
+  **Ready to merge** — les deux correctifs appliqués et re-vérifiés
+  indépendamment.
 
 ### Conventions tranchées (2026-09-01)
 
@@ -1102,7 +1219,9 @@ rétroactif en masse :
   comparable à SP-29a+SP-29b réunis. Décision : son propre chantier
   (brainstorm si nécessaire → spec → plan dédiés), à ouvrir après la clôture
   complète de SP-30 (revue transverse §7 incluse) — pas fusionné dans une
-  tâche SP-30 existante, pas improvisé en aparté.
+  tâche SP-30 existante, pas improvisé en aparté. **Chantier exécuté et clos
+  par SP-34 (2026-09-03), cf. `### Livré`/SP-34** : les 8 fichiers sont
+  tokenisés, plus de suivi ouvert sur ce point.
 
 ### À venir
 
@@ -1129,12 +1248,13 @@ rétroactif en masse :
   jamais tranchées pour toute la famille (hauteur des contrôles de
   formulaire, `<button>` natif vs `Button` du kit, `aria-expanded`/
   `aria-controls` sur un déclencheur de panneau en ligne — 5 familles
-  consécutives sans décision) et la dette de tokens `LayersPanel`/
-  `MapSymbologyEditor.tsx` et voisins (volume potentiellement aussi gros
-  que SP-29a+SP-29b réunis) sont désormais **tranchées, cf. ### Conventions
-  tranchées (2026-09-01)** ci-dessus — reste seulement à les appliquer au
-  prochain contact avec chaque fichier concerné, pas de correctif rétroactif
-  en masse. Reste ouvert, non tranché par cette note : commentaires
+  consécutives sans décision) sont désormais **tranchées, cf.
+  ### Conventions tranchées (2026-09-01)** ci-dessus — reste seulement à
+  les appliquer au prochain contact avec chaque fichier concerné, pas de
+  correctif rétroactif en masse. La dette de tokens `LayersPanel`/
+  `MapSymbologyEditor.tsx` et voisins, elle, a été **exécutée et close par
+  SP-34 (2026-09-03)** — plus un suivi ouvert, cf. `### Livré`/SP-34.
+  Reste ouvert, non tranché par cette note : commentaires
   attribuant une garde de sécurité au mauvais composant après son
   déplacement, trouvé Important à deux reprises distinctes — SP-30g, SP-30i.
   6 suivis non bloquants

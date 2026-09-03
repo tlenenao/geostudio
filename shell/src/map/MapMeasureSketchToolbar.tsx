@@ -413,10 +413,10 @@ export function MapMeasureSketchToolbar({
   const area =
     mode === "measure-area" && points.length >= 3 ? sphericalPolygonAreaSquareMeters(points) : null;
 
-  const buttonCls = "rounded border border-slate-300 px-2 py-1";
+  const buttonCls = "rounded border border-rule px-2 py-1";
 
   return (
-    <div className="absolute left-2 top-2 z-10 flex flex-col gap-1 rounded-md bg-white/90 p-2 text-xs shadow">
+    <div className="absolute left-2 top-2 z-10 flex flex-col gap-1 rounded-md bg-surface/90 p-2 text-xs text-ink shadow">
       <div className="flex flex-wrap gap-1">
         <button
           type="button"
@@ -487,7 +487,7 @@ export function MapMeasureSketchToolbar({
           </>
         )}
       </div>
-      {pendingCorner && <p className="text-slate-500">Cliquez le second point…</p>}
+      {pendingCorner && <p className="text-ink-3">Cliquez le second point…</p>}
       {sketchTool === "polygon" && polygonPoints.length >= 3 && (
         <button
           type="button"

@@ -7,4 +7,4 @@
 // laissait. Un petit module de constantes plutôt qu'un export de l'un vers
 // l'autre : ni fichier n'a besoin d'importer l'autre pour ces deux chaînes.
 export const labelCls = "flex flex-col gap-1";
-export const inputCls = "h-8 rounded-md border border-slate-300 px-2 text-sm";
+export const inputCls = "h-9 rounded-md border border-rule px-2 text-sm";

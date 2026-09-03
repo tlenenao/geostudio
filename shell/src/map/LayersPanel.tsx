@@ -217,7 +217,7 @@ export function LayersPanel({
         ))}
         {layers.length === 0 && <li className="text-xs text-ink-3">Aucune couche.</li>}
       </ul>
-      <div className="border-t pt-2">
+      <div className="border-t border-rule pt-2">
         <p className="mb-1 text-xs font-medium text-ink-2">Ajouter une couche</p>
         <LayerPicker onAdd={(layer) => onChange([...layers, layer])} />
       </div>

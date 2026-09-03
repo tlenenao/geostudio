@@ -11,6 +11,7 @@ import {
   type StrokeStyle,
 } from "../builder/widgets/mapSymbology";
 import { LUCIDE_ICONS, type IconCategory } from "../builder/widgets/iconLibrary";
+import { Button } from "../ui/kit/Button";
 import { FieldClassificationPicker, type ClassifiedEncoding } from "./FieldClassificationPicker";
 import { labelCls, inputCls } from "./formFieldStyles";
 import type { ThemeColors } from "../api/types";
@@ -317,7 +318,7 @@ export function MapSymbologyEditor({
       {color && (
         <button
           type="button"
-          className="self-start text-xs text-red-700 underline"
+          className="self-start text-xs text-danger underline"
           onClick={clearColor}
         >
           Retirer la couleur
@@ -345,7 +346,7 @@ export function MapSymbologyEditor({
       {size && (
         <button
           type="button"
-          className="self-start text-xs text-red-700 underline"
+          className="self-start text-xs text-danger underline"
           onClick={clearSize}
         >
           Retirer la taille
@@ -353,26 +354,28 @@ export function MapSymbologyEditor({
       )}
       {size?.field && (
         <>
-          <button
+          <Button
             type="button"
-            className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
+            size="sm"
+            variant="outline"
+            className="self-start"
             disabled={busy === "size"}
             onClick={() => void recomputeSize()}
           >
             {busy === "size" ? "Calcul…" : "Recalculer la taille"}
-          </button>
+          </Button>
           {sizeError && (
-            <p role="alert" className="text-xs text-red-600">
+            <p role="alert" className="text-xs text-danger">
               {sizeError}
             </p>
           )}
           {!size.computedAt && (
-            <p className="text-xs text-amber-600">
+            <p className="text-xs text-warn">
               Taille non calculée — cliquez sur « Recalculer la taille ».
             </p>
           )}
           {size.computedAt && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ink-3">
               Taille calculée le {new Date(size.computedAt).toLocaleString()} : {size.domain.min} –{" "}
               {size.domain.max}
             </p>
@@ -393,21 +396,23 @@ export function MapSymbologyEditor({
         />
       </label>
       {!stroke && (
-        <button
+        <Button
           type="button"
-          className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs"
+          size="sm"
+          variant="outline"
+          className="self-start"
           onClick={() => setStroke({})}
         >
           Ajouter un contour
-        </button>
+        </Button>
       )}
       {stroke && (
-        <div className="flex flex-col gap-2 border-l-2 border-slate-200 pl-2">
+        <div className="flex flex-col gap-2 border-l-2 border-rule-2 pl-2">
           <div className="flex gap-1">
             <button
               type="button"
-              className={`rounded-md border border-slate-300 px-2 py-1 text-xs ${
-                strokeColorIsFixed ? "bg-slate-200" : ""
+              className={`rounded-md border border-rule px-2 py-1 text-xs text-ink ${
+                strokeColorIsFixed ? "bg-sunken" : ""
               }`}
               aria-pressed={strokeColorIsFixed}
               onClick={() => {
@@ -428,8 +433,8 @@ export function MapSymbologyEditor({
             </button>
             <button
               type="button"
-              className={`rounded-md border border-slate-300 px-2 py-1 text-xs ${
-                !strokeColorIsFixed ? "bg-slate-200" : ""
+              className={`rounded-md border border-rule px-2 py-1 text-xs text-ink ${
+                !strokeColorIsFixed ? "bg-sunken" : ""
               }`}
               aria-pressed={!strokeColorIsFixed}
               onClick={() => {
@@ -522,7 +527,7 @@ export function MapSymbologyEditor({
           </label>
           <button
             type="button"
-            className="self-start text-xs text-red-700 underline"
+            className="self-start text-xs text-danger underline"
             onClick={() => clearEncoding("stroke")}
           >
             Retirer le contour
@@ -530,16 +535,18 @@ export function MapSymbologyEditor({
         </div>
       )}
       {!icon && !iconDraft && (
-        <button
+        <Button
           type="button"
-          className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs"
+          size="sm"
+          variant="outline"
+          className="self-start"
           onClick={() => setIconDraft(true)}
         >
           Ajouter des icônes
-        </button>
+        </Button>
       )}
       {(icon || iconDraft) && (
-        <div className="flex flex-col gap-2 border-l-2 border-slate-200 pl-2">
+        <div className="flex flex-col gap-2 border-l-2 border-rule-2 pl-2">
           <label className={labelCls}>
             Champ icône
             <input
@@ -550,15 +557,17 @@ export function MapSymbologyEditor({
               onChange={(e) => setIconField(e.target.value)}
             />
           </label>
-          <button
+          <Button
             type="button"
-            className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
+            size="sm"
+            variant="outline"
+            className="self-start"
             disabled={iconBusy || !iconField}
             onClick={() => void recomputeIconDomain()}
           >
             {iconBusy ? "Calcul…" : "Recalculer les valeurs"}
-          </button>
-          {iconError && <p className="text-xs text-red-700">{iconError}</p>}
+          </Button>
+          {iconError && <p className="text-xs text-danger">{iconError}</p>}
 
           {icon?.domain.values.map((v) => {
             const assigned = icon.mapping[v];
@@ -568,7 +577,7 @@ export function MapSymbologyEditor({
                 <button
                   type="button"
                   aria-label={`Choisir l'icône de ${v}`}
-                  className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                  className="rounded-md border border-rule px-2 py-1 text-xs"
                   onClick={() => setEditingValue(editingValue === v ? null : v)}
                 >
                   {assigned
@@ -599,7 +608,7 @@ export function MapSymbologyEditor({
                 ] as IconCategory[]
               ).map((category) => (
                 <div key={category} className="flex flex-col gap-1">
-                  <h4 className="text-[10px] uppercase text-slate-500">{category}</h4>
+                  <h4 className="text-[10px] uppercase text-ink-3">{category}</h4>
                   <div className="flex flex-wrap gap-1">
                     {LUCIDE_ICONS.filter((li) => li.category === category).map((li) => (
                       <button
@@ -608,7 +617,7 @@ export function MapSymbologyEditor({
                         role="img"
                         aria-label={li.name}
                         title={li.name}
-                        className="h-6 w-6 rounded border border-slate-200"
+                        className="h-6 w-6 rounded border border-rule-2"
                         onClick={() =>
                           assignIcon(editingValue, { source: "lucide", name: li.name })
                         }
@@ -619,7 +628,7 @@ export function MapSymbologyEditor({
               ))}
               {customIcons.length > 0 && (
                 <div className="flex flex-col gap-1">
-                  <h4 className="text-[10px] uppercase text-slate-500">Bibliothèque du tenant</h4>
+                  <h4 className="text-[10px] uppercase text-ink-3">Bibliothèque du tenant</h4>
                   <div className="flex flex-wrap gap-1">
                     {customIcons.map((ci) => (
                       <span key={ci.id} className="flex items-center gap-1">
@@ -627,14 +636,14 @@ export function MapSymbologyEditor({
                           type="button"
                           role="img"
                           aria-label={ci.title}
-                          className="h-6 w-6 rounded border border-slate-200"
+                          className="h-6 w-6 rounded border border-rule-2"
                           onClick={() => assignIcon(editingValue, { source: "custom", id: ci.id })}
                         />
                         {deleteCustomIcon && (
                           <button
                             type="button"
                             aria-label={`Supprimer l'icône ${ci.title}`}
-                            className="text-[10px] text-red-700 underline"
+                            className="text-[10px] text-danger underline"
                             onClick={() => {
                               // Fix I3 (Part B) de la revue finale SP-27 : le cœur ne fait
                               // AUCUN comptage de références — supprimer une icône laisse
@@ -705,7 +714,7 @@ export function MapSymbologyEditor({
           {icon && (
             <button
               type="button"
-              className="self-start text-xs text-red-700 underline"
+              className="self-start text-xs text-danger underline"
               onClick={() => {
                 setIconDraft(false);
                 setEditingValue(null);
@@ -719,9 +728,11 @@ export function MapSymbologyEditor({
       )}
 
       {!value?.label && (
-        <button
+        <Button
           type="button"
-          className="self-start rounded-md border border-slate-300 px-2 py-1 text-xs"
+          size="sm"
+          variant="outline"
+          className="self-start"
           onClick={() =>
             onChange({
               ...value,
@@ -736,10 +747,10 @@ export function MapSymbologyEditor({
           }
         >
           Ajouter une étiquette
-        </button>
+        </Button>
       )}
       {value?.label && (
-        <div className="flex flex-col gap-2 border-l-2 border-slate-200 pl-2">
+        <div className="flex flex-col gap-2 border-l-2 border-rule-2 pl-2">
           <label className={labelCls}>
             Gabarit d'étiquette
             <textarea
@@ -752,7 +763,7 @@ export function MapSymbologyEditor({
               }
             />
           </label>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-3">
             {'Syntaxe : ${record.nom}, ${record.pop > 10000 ? "ville" : "commune"}'}
           </p>
           <label className={labelCls}>
@@ -785,7 +796,7 @@ export function MapSymbologyEditor({
           </label>
           <button
             type="button"
-            className="self-start text-xs text-red-700 underline"
+            className="self-start text-xs text-danger underline"
             onClick={() => clearEncoding("label")}
           >
             Retirer l'étiquette

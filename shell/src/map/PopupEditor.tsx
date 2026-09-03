@@ -3,9 +3,16 @@ import { useId, useState } from "react";
 import type { PopupConfig, PopupField } from "../api/types";
 import { validateExpression } from "../builder/expr";
 import { closingBrace } from "./popupTemplate";
+import { Button } from "../ui/kit/Button";
+import { labelCls, inputCls } from "./formFieldStyles";
 
-const labelCls = "flex flex-col gap-1";
-const inputCls = "h-8 rounded-md border border-slate-300 px-2 text-sm";
+// Contrôle répété une fois par champ disponible dans une liste dense
+// (`PopupEditor` ci-dessous) : reste en h-8 par exception, même hauteur que
+// les contrôles denses équivalents de QueryFilterBuilder.tsx/
+// CrossFilterLinkEditor.tsx (convention de hauteur tranchée le 2026-09-01,
+// CLAUDE.md) — seule cette hauteur est partagée, pas leur recette complète
+// (ces deux fichiers portent aussi `bg-surface text-ink`, absents ici).
+const denseInputCls = "h-8 rounded-md border border-rule px-2 text-sm";
 
 // Vérifie les placeholders d'un gabarit sans le rendre. Réutilise le scanner
 // de popupTemplate.ts (closingBrace), conscient des littéraux de chaîne CEL —
@@ -92,7 +99,7 @@ export function PopupEditor({
               ))}
             </datalist>
           </label>
-          <p className="text-xs text-slate-500">Sans sélection, tous les champs sont affichés.</p>
+          <p className="text-xs text-ink-3">Sans sélection, tous les champs sont affichés.</p>
           <ul className="flex flex-col gap-1">
             {availableFields.map((f) => {
               const entry = selected?.find((s) => s.name === f);
@@ -108,7 +115,7 @@ export function PopupEditor({
                   {entry && (
                     <input
                       aria-label={`Libellé de ${f}`}
-                      className={`${inputCls} w-28`}
+                      className={`${denseInputCls} w-28`}
                       value={entry.label ?? ""}
                       onChange={(e) =>
                         onChange({
@@ -136,7 +143,7 @@ export function PopupEditor({
                   <span className="flex-1 truncate">{f.name}</span>
                   <input
                     aria-label={`Libellé de ${f.name}`}
-                    className={`${inputCls} w-28`}
+                    className={`${denseInputCls} w-28`}
                     value={f.label ?? ""}
                     onChange={(e) =>
                       onChange({
@@ -158,20 +165,16 @@ export function PopupEditor({
               value={draftField}
               onChange={(e) => setDraftField(e.target.value)}
             />
-            <button
-              type="button"
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
-              onClick={addDraftField}
-            >
+            <Button type="button" size="sm" variant="outline" onClick={addDraftField}>
               Ajouter le champ
-            </button>
+            </Button>
           </div>
         </>
       )}
       {value !== undefined && (
         <button
           type="button"
-          className="self-start text-xs text-blue-700 underline"
+          className="self-start text-xs text-accent underline"
           onClick={() => setAdvanced((a) => !a)}
         >
           {advanced ? "Liste de champs" : "Avancé (gabarit)"}
@@ -182,18 +185,18 @@ export function PopupEditor({
           Gabarit
           <textarea
             aria-label="Gabarit"
-            className="min-h-24 rounded-md border border-slate-300 p-2 font-mono text-xs"
+            className="min-h-24 rounded-md border border-rule p-2 font-mono text-xs"
             value={value.template ?? ""}
             onChange={(e) => onChange({ ...value, template: e.target.value })}
           />
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-ink-3">
             Markdown ; chaque {"${expression}"} est évaluée sur l&apos;entité cliquée, par exemple{" "}
             {"${record.nom}"}.
           </span>
         </label>
       )}
       {error && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-xs text-danger">
           {error}
         </p>
       )}
