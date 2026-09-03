@@ -29,6 +29,20 @@ class CollectionPermissions(BaseModel):
     DELETE le laisserait effectivement passer (SP-35, corrige l'écart
     documenté par SP-31 — l'ancien comportement retournait `actor_is_admin`
     ici).
+
+    `read`, lui, reste le verdict brut de `decide()` (action "read") — il ne
+    dit RIEN sur le fait que la réponse qui porte ce bloc `permissions` a été
+    servie avec succès. Depuis le correctif `delete` ci-dessus et l'extension
+    du bypass `can_manage_collections` à GET/PATCH/DELETE et
+    /schema/sharing (fix wave de revue finale SP-35), une réponse 200 tout à
+    fait légitime peut porter `read: false` : un porteur du privilège
+    `admin.collections.manage` qui n'est ni propriétaire ni bénéficiaire d'un
+    partage voit son 404 de visibilité levé par `can_manage_collections`,
+    donc reçoit bien la collection, alors que `decide()` — qui ignore ce
+    privilège — continue de répondre `False` à la question read. Ce n'est pas
+    une incohérence à corriger : `read` répond uniquement « `decide()`
+    autoriserait-il un accès classique (propriétaire/partage/public) ? »,
+    pas « cette réponse a-t-elle été servie ? ».
     """
 
     read: bool

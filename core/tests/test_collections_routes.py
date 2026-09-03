@@ -247,6 +247,94 @@ def test_custom_role_with_collections_manage_sees_and_can_delete_a_private_colle
         assert client.delete("/collections/incidents").status_code == 204
 
 
+def test_custom_role_with_collections_manage_reaches_schema_of_a_private_collection(env):
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.users.repository import set_user_role
+
+    app, client, Session, admin, regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})  # privée, admin owner
+
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        custom = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Gestionnaire de collections",
+            privileges=[Privilege.ADMIN_COLLECTIONS_MANAGE.value],
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=regular.id,
+            role_id=custom.id,
+            role_slug=custom.slug,
+        )
+        s.commit()
+        regular_id = regular.id
+
+    with Session() as s:
+        from app.users.models import User
+
+        custom_user = s.get(User, regular_id)
+        assert custom_user is not None and custom_user.is_admin is False
+        _as(app, custom_user)
+
+        # 200, pas 404 : can_manage_collections lève le voile de visibilité
+        # exactement comme sur GET/PATCH/DELETE /collections/{id}.
+        resp = client.get("/collections/incidents/schema")
+        assert resp.status_code == 200
+        assert resp.json()["pk"] == "id"
+
+
+def test_custom_role_with_collections_manage_gets_honest_403_not_404_on_sharing(env):
+    # can_manage_collections lève le voile de visibilité (get_readable_collection),
+    # mais _require_share() (can(action="share", ...)) reste inchangé : un
+    # porteur non-propriétaire du privilège reçoit un 403 honnête, pas un 404
+    # confus — même patron que le garde d'écriture de patch_collection.
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.users.repository import set_user_role
+
+    app, client, Session, admin, regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})  # privée, admin owner
+
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        custom = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Gestionnaire de collections",
+            privileges=[Privilege.ADMIN_COLLECTIONS_MANAGE.value],
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=regular.id,
+            role_id=custom.id,
+            role_slug=custom.slug,
+        )
+        s.commit()
+        regular_id = regular.id
+
+    with Session() as s:
+        from app.users.models import User
+
+        custom_user = s.get(User, regular_id)
+        assert custom_user is not None and custom_user.is_admin is False
+        _as(app, custom_user)
+
+        assert client.get("/collections/incidents/sharing").status_code == 403
+        assert (
+            client.put(
+                "/collections/incidents/sharing", json={"public": False, "groups": []}
+            ).status_code
+            == 403
+        )
+
+
 def test_schema_endpoint_uses_introspector(env):
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)

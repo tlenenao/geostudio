@@ -20,7 +20,7 @@ from app.collections.publication import remove_table_from_publication
 from app.collections.schema_json import table_info_to_schema
 from app.collections.schemas import CollectionCreate, CollectionPatch, EmptyCollectionCreate
 from app.db import core_table_names, get_session
-from app.roles.guards import has_privilege, require_privilege
+from app.roles.guards import has_privilege, privilege_required_error, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.sharing.schemas import Sharing
@@ -390,7 +390,12 @@ def get_collection_schema(
     session: Session = Depends(get_session),
     introspect: Introspector = Depends(get_introspector),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    can_manage_collections = bool(
+        user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    )
+    col = get_readable_collection(
+        session, user, collection_id, can_manage_collections=can_manage_collections
+    )
     try:
         info = introspect(session, col.table_name)
     except TableNotFound as exc:
@@ -473,10 +478,7 @@ def unregister_collection(
     # est déjà le résultat de ce même privilège (calculé ci-dessus) : pas besoin
     # de le requêter une seconde fois via require_privilege().
     if not can_manage_collections:
-        raise HTTPException(
-            status_code=403,
-            detail=f"privilege '{Privilege.ADMIN_COLLECTIONS_MANAGE.value}' required",
-        )
+        raise privilege_required_error(Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     remove_table_from_publication(session, col.table_name)
     repo.delete_collection(session, col)
     write_audit(
@@ -509,7 +511,10 @@ def get_sharing(
     user=Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    col = get_readable_collection(
+        session, user, collection_id, can_manage_collections=can_manage_collections
+    )
     _require_share(session, user, col)
     shares = repo.get_collection_sharing(session, tenant_id=user.tenant_id, collection_id=col.id)
     return {
@@ -525,7 +530,10 @@ def put_sharing(
     user=Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    col = get_readable_collection(
+        session, user, collection_id, can_manage_collections=can_manage_collections
+    )
     _require_share(session, user, col)
     ok = repo.set_collection_sharing(
         session,
