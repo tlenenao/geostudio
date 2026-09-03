@@ -279,12 +279,11 @@ for (const screen of SCREENS) {
 //
 // SP-33 (docs/superpowers/specs/2026-09-02-sp33-triptychlayout-colonne-centrale-design.md) :
 // plancher explicite sur la colonne centrale + seuil relevé à 899px
-// (WIDE_BOUNDARY_WIDTH = 900 ci-dessus) — tous les écrans passent
-// désormais sans wideBoundaryKnownIssue, sauf Cartes (1 offenseur
-// pré-existant, sans rapport avec ce chantier, cf. son entrée dans
-// SCREENS — SP-36 a fermé le second défaut historiquement bundlé avec
-// celui-ci) et Tâches/Paramètres (aucune grille TriptychLayout ne s'y
-// rend, jamais concernés).
+// (WIDE_BOUNDARY_WIDTH = 900 ci-dessus). SP-36 puis SP-37 ont depuis fermé
+// les deux défauts pré-existants et sans rapport de l'écran Cartes (cf.
+// son entrée dans SCREENS) — plus aucun écran de ce fichier ne porte de
+// wideBoundaryKnownIssue. Tâches/Paramètres n'ont jamais été concernés
+// (aucune grille TriptychLayout ne s'y rend).
 for (const screen of SCREENS) {
   test(`${screen.name} à 900 px (juste au-dessus du seuil relevé) : aucun contenu clippé`, async ({
     page,
