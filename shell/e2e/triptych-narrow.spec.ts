@@ -165,6 +165,10 @@ const SCREENS: Array<{
   // seuil" de cet écran — réservé à un défaut pré-existant, distinct du
   // mécanisme corrigé par SP-33 ci-dessus. Jamais un moyen de faire
   // disparaître un échec sans le documenter.
+  // Échappatoire délibérée : aucun SCREENS n'en a plus besoin depuis SP-37
+  // (l'écran Cartes était le seul consommateur), mais le champ et la
+  // branche `test.skip()` qui le lit restent en place pour le prochain
+  // écran qui en aurait besoin — pas du code mort à retirer.
   wideBoundaryKnownIssue?: string;
 }> = [
   {
@@ -350,6 +354,16 @@ test("Cartes à 900 px : la section icônes de la symbologie ne clippe pas une f
   await page.getByLabel("Champ icône").fill("type_zone");
   await page.getByRole("button", { name: "Recalculer les valeurs" }).click();
   await expect(page.getByLabel("Ajouter une icône au tenant (PNG ou SVG)")).toBeVisible();
+
+  // Ancre le mécanisme réellement gardé par le groupe générique 900px
+  // ci-dessus pour "Cartes" (Task 1, PopupEditor.tsx) : cette ligne "Ajouter
+  // un champ" ne rend que si le popup de la fixture map-1 a
+  // value !== undefined && !advanced (PopupEditor.tsx:79-80). Sans cette
+  // assertion, un futur changement de la fixture qui viderait ou
+  // avancerait ce popup ferait toujours passer le test générique — plus
+  // rien à cliper, donc plus rien à garder — sans qu'aucun test ne le
+  // signale.
+  await expect(page.getByLabel("Nom du champ à ajouter")).toBeVisible();
 
   await expectNoClippedContent(page);
 });
