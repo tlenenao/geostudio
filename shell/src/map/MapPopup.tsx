@@ -15,7 +15,7 @@ export function MapPopup({
   y,
   onClose,
   attachments,
-  attachmentFileUrl,
+  onDownloadAttachment,
 }: {
   content: PopupContent;
   x: number;
@@ -26,7 +26,7 @@ export function MapPopup({
   // prêtes — ce composant reste purement présentationnel, sans connaître ni
   // ItemClient ni la notion de collection/fid.
   attachments?: AttachmentSummary[];
-  attachmentFileUrl?: (attachmentId: string) => string;
+  onDownloadAttachment?: (attachmentId: string, filename: string) => void;
 }) {
   // Un gabarit qui s'interpole en chaîne vide (`marked.parse("")` → `""`)
   // est traité comme « pas de html » : la chaîne vide n'a rien à afficher,
@@ -65,20 +65,19 @@ export function MapPopup({
         </dl>
       )}
       {empty && <p className="text-ink-3">Aucun attribut</p>}
-      {attachments && attachments.length > 0 && attachmentFileUrl && (
+      {attachments && attachments.length > 0 && onDownloadAttachment && (
         <div className="mt-1 border-t border-rule pt-1">
           <p className="mb-1 text-ink-3">Pièces jointes</p>
           <ul className="flex flex-col gap-0.5">
             {attachments.map((a) => (
               <li key={a.id}>
-                <a
-                  href={attachmentFileUrl(a.id)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline"
+                <button
+                  type="button"
+                  onClick={() => onDownloadAttachment(a.id, a.filename)}
+                  className="bg-transparent p-0 underline"
                 >
                   {a.filename}
-                </a>
+                </button>
               </li>
             ))}
           </ul>

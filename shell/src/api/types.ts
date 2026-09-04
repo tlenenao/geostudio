@@ -455,6 +455,11 @@ export interface ItemClient {
   ): Promise<AttachmentSummary[]>;
   deleteAttachment(collectionId: string, fid: string, attachmentId: string): Promise<void>;
   attachmentFileUrl(collectionId: string, fid: string, attachmentId: string): string;
+  downloadAttachment(
+    collectionId: string,
+    fid: string,
+    attachmentId: string,
+  ): Promise<{ blob: Blob; filename: string }>;
   getCollection(collectionId: string): Promise<CollectionAdmin>;
   getCollectionPermission(collectionId: string): Promise<boolean>;
   createFeature(

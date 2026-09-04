@@ -65,7 +65,8 @@ test("shows an explicit message when the feature carries no attribute", () => {
   expect(screen.getByText("Aucun attribut")).toBeInTheDocument();
 });
 
-test("affiche la section Pièces jointes quand la liste est non vide", () => {
+test("affiche la section Pièces jointes quand la liste est non vide", async () => {
+  const onDownloadAttachment = vi.fn();
   render(
     <MapPopup
       content={{ title: "X", rows: [], html: null }}
@@ -82,14 +83,12 @@ test("affiche la section Pièces jointes quand la liste est non vide", () => {
           createdAt: "",
         },
       ]}
-      attachmentFileUrl={(id) => `http://core/${id}/file`}
+      onDownloadAttachment={onDownloadAttachment}
     />,
   );
   expect(screen.getByText("Pièces jointes")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "a.jpg" })).toHaveAttribute(
-    "href",
-    "http://core/a1/file",
-  );
+  await userEvent.click(screen.getByRole("button", { name: "a.jpg" }));
+  expect(onDownloadAttachment).toHaveBeenCalledWith("a1", "a.jpg");
 });
 
 test("n'affiche pas la section Pièces jointes quand attachments est vide ou absent", () => {

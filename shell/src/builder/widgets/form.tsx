@@ -285,6 +285,17 @@ function AttachmentFieldInput({
     void queryClient.invalidateQueries({ queryKey: ["attachments", collectionId, fid, fieldKey] });
   }
 
+  async function handleDownload(attachmentId: string) {
+    if (fid === null) return;
+    const { blob, filename } = await client.downloadAttachment(collectionId, fid, attachmentId);
+    const url = URL.createObjectURL(blob);
+    const el = document.createElement("a");
+    el.href = url;
+    el.download = filename;
+    el.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (fid === null) {
     return (
       <p className="text-xs text-ink-3">
@@ -298,14 +309,14 @@ function AttachmentFieldInput({
       <ul className="flex flex-col gap-1">
         {(query.data ?? []).map((a) => (
           <li key={a.id} className="flex items-center gap-2 text-xs">
-            <a
-              href={client.attachmentFileUrl(collectionId, fid, a.id)}
-              target="_blank"
-              rel="noreferrer"
-              className="flex-1 truncate underline"
+            <button
+              type="button"
+              aria-label={a.filename}
+              onClick={() => void handleDownload(a.id)}
+              className="flex-1 truncate bg-transparent p-0 text-left underline"
             >
               {a.filename}
-            </a>
+            </button>
             <button
               type="button"
               aria-label={`Supprimer ${a.filename}`}

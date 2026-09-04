@@ -3011,6 +3011,25 @@ test("exportDataSource falls back to a generic filename when Content-Disposition
   expect(filename).toBe("export");
 });
 
+test("downloadAttachment sends the bearer token and returns the blob and filename", async () => {
+  let auth: string | null = null;
+  server.use(
+    http.get("https://core.test/collections/col1/items/f1/attachments/att1/file", ({ request }) => {
+      auth = request.headers.get("authorization");
+      return new HttpResponse("binary-content", {
+        headers: {
+          "Content-Type": "image/jpeg",
+          "Content-Disposition": 'attachment; filename="photo.jpg"',
+        },
+      });
+    }),
+  );
+  const { blob, filename } = await makeClient("tok").downloadAttachment("col1", "f1", "att1");
+  expect(auth).toBe("Bearer tok");
+  expect(filename).toBe("photo.jpg");
+  expect(await blob.text()).toBe("binary-content");
+});
+
 test("getMapConfig reads printLayout from the top level of the config, not nested under map", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/77", () =>

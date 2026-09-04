@@ -278,6 +278,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     attachmentFileUrl(): string {
       return "about:blank";
     },
+    async downloadAttachment(..._args: unknown[]) {
+      return unsupported();
+    },
     async getCollection(..._args: unknown[]) {
       return unsupported();
     },

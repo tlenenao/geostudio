@@ -1375,6 +1375,32 @@ export const MapView = forwardRef<
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [popup?.layerId, popup?.fid, popupConfig?.attachmentField]);
 
+  async function downloadPopupAttachment(attachmentId: string, filename: string) {
+    if (
+      !popupLayer ||
+      (popupLayer.kind !== "vector" && popupLayer.kind !== "feature") ||
+      !popupLayer.collectionId ||
+      !popup ||
+      popup.fid === undefined
+    )
+      return;
+    const coreUrl = getCoreUrlRef.current?.();
+    if (!coreUrl) return;
+    const token = getAuthTokenRef.current?.();
+    const url = `${coreUrl}/collections/${popupLayer.collectionId}/items/${popup.fid}/attachments/${attachmentId}/file`;
+    const res = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const el = document.createElement("a");
+    el.href = objectUrl;
+    el.download = filename;
+    el.click();
+    URL.revokeObjectURL(objectUrl);
+  }
+
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" data-testid="map-container" />
@@ -1386,12 +1412,8 @@ export const MapView = forwardRef<
           y={popupPoint.y}
           onClose={() => setPopup(null)}
           attachments={popupAttachments}
-          attachmentFileUrl={(attachmentId) =>
-            popupLayer &&
-            (popupLayer.kind === "vector" || popupLayer.kind === "feature") &&
-            popup.fid !== undefined
-              ? `${getCoreUrlRef.current?.() ?? ""}/collections/${popupLayer.collectionId}/items/${popup.fid}/attachments/${attachmentId}/file`
-              : ""
+          onDownloadAttachment={(attachmentId, filename) =>
+            void downloadPopupAttachment(attachmentId, filename)
           }
         />
       )}

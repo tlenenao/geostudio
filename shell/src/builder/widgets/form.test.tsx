@@ -3,7 +3,7 @@ import { useState } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
@@ -16,6 +16,13 @@ import type { FormField } from "./form";
 beforeEach(() => {
   _resetRegistry();
   registerBuiltinWidgets();
+});
+
+// jsdom n'implémente pas URL.createObjectURL/revokeObjectURL (consommés par
+// AttachmentFieldInput.handleDownload) — stub local au fichier, jamais dans
+// setup.ts (piège n°10, CLAUDE.md), même patron qu'ExplorerMenu.test.tsx.
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 const schema: CollectionSchema = {
@@ -898,10 +905,12 @@ test("affiche la liste des pièces jointes existantes pour un champ attachment",
       createdAt: "2026-01-01",
     },
   ]);
-  const attachmentFileUrl = vi.fn().mockReturnValue("http://core/x/file");
+  const downloadAttachment = vi
+    .fn()
+    .mockResolvedValue({ blob: new Blob(["x"]), filename: "a.jpg" });
   renderConnectedForm({
     fields: attachmentFields,
-    client: { listAttachments, attachmentFileUrl },
+    client: { listAttachments, downloadAttachment },
     bus,
     widgetId: "form1",
   });
@@ -934,10 +943,12 @@ test("supprime une pièce jointe au clic sur Supprimer", async () => {
     },
   ]);
   const deleteAttachment = vi.fn().mockResolvedValue(undefined);
-  const attachmentFileUrl = vi.fn().mockReturnValue("http://core/x/file");
+  const downloadAttachment = vi
+    .fn()
+    .mockResolvedValue({ blob: new Blob(["x"]), filename: "a.jpg" });
   renderConnectedForm({
     fields: attachmentFields,
-    client: { listAttachments, deleteAttachment, attachmentFileUrl },
+    client: { listAttachments, deleteAttachment, downloadAttachment },
     bus,
     widgetId: "form1",
   });
@@ -945,4 +956,36 @@ test("supprime une pièce jointe au clic sur Supprimer", async () => {
   await screen.findByText("a.jpg");
   await userEvent.click(screen.getByRole("button", { name: /supprimer a\.jpg/i }));
   expect(deleteAttachment).toHaveBeenCalledWith("incidents", "7", "att1");
+});
+
+test("télécharge une pièce jointe authentifiée au clic sur son nom", async () => {
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
+  const listAttachments = vi.fn().mockResolvedValue([
+    {
+      id: "att1",
+      fieldKey: "photos",
+      filename: "a.jpg",
+      contentType: "image/jpeg",
+      byteSize: 10,
+      createdAt: "2026-01-01",
+    },
+  ]);
+  const blob = new Blob(["x"]);
+  const downloadAttachment = vi.fn().mockResolvedValue({ blob, filename: "a.jpg" });
+  const createObjectURL = vi.fn().mockReturnValue("blob:fake");
+  const revokeObjectURL = vi.fn();
+  vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+  renderConnectedForm({
+    fields: attachmentFields,
+    client: { listAttachments, downloadAttachment },
+    bus,
+    widgetId: "form1",
+  });
+  bus.emit("table1", "itemSelected", { id: 7, properties: {} });
+  await userEvent.click(await screen.findByRole("button", { name: "a.jpg" }));
+  expect(downloadAttachment).toHaveBeenCalledWith("incidents", "7", "att1");
+  expect(createObjectURL).toHaveBeenCalledWith(blob);
 });
