@@ -39,10 +39,16 @@ function templateError(template: string): string | null {
 export function PopupEditor({
   value,
   availableFields,
+  // Optionnel avec repli `[]` plutôt que requis : rend le prop rétrocompatible
+  // avec tout appelant existant qui ne connaît pas encore les pièces jointes
+  // (tests notamment) — évite de forcer une mise à jour de chaque site
+  // d'appel juste pour satisfaire tsc (piège n°6, CLAUDE.md).
+  attachmentFields = [],
   onChange,
 }: {
   value: PopupConfig | undefined;
   availableFields: string[];
+  attachmentFields?: string[];
   onChange: (next: PopupConfig | undefined) => void;
 }) {
   const [advanced, setAdvanced] = useState(Boolean(value?.template));
@@ -170,6 +176,24 @@ export function PopupEditor({
             </Button>
           </div>
         </>
+      )}
+      {value !== undefined && attachmentFields.length > 0 && (
+        <label className={labelCls}>
+          Pièces jointes
+          <select
+            aria-label="Pièces jointes"
+            className={inputCls}
+            value={value.attachmentField ?? ""}
+            onChange={(e) => onChange({ ...value, attachmentField: e.target.value || undefined })}
+          >
+            <option value="">Aucune</option>
+            {attachmentFields.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+        </label>
       )}
       {value !== undefined && (
         <button
