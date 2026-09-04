@@ -15,8 +15,40 @@ from app.ingestion.importer import run_import
 from app.ingestion.parsers import IngestionParseError
 from app.ingestion.storage import download_object, make_s3_client
 from app.jobs import app
+from app.notifications import repository as notifications_repo
 
 logger = logging.getLogger(__name__)
+
+
+def _notify(
+    session_factory,
+    *,
+    tenant_id: str,
+    created_by: str,
+    status: str,
+    item_id: str | None,
+    collection_title: str,
+    error: str | None = None,
+) -> None:
+    """Écrit la notification in-app de fin de job — best-effort, jamais
+    bloquant : son propre bloc try/except, séparé de celui qui commite
+    mark_done/mark_error, pour qu'un échec ici ne fasse jamais rollback d'un
+    changement de statut de job déjà réussi (cf. request_scoped_session)."""
+    try:
+        with request_scoped_session(session_factory) as session:
+            notifications_repo.create_notification(
+                session,
+                tenant_id=tenant_id,
+                recipient_user_id=created_by,
+                kind="ingestion",
+                status=status,
+                item_id=item_id,
+                item_resource_type="dataset" if item_id is not None else None,
+                item_title=collection_title,
+                error_message=error,
+            )
+    except Exception:
+        logger.exception("ingestion job : échec de l'écriture de la notification")
 
 
 def _make_s3_client_from_env():
@@ -74,12 +106,38 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
                 collection_id=result.collection_id,
                 item_id=result.item_id,
             )
+        _notify(
+            session_factory,
+            tenant_id=tenant_id,
+            created_by=created_by,
+            status="success",
+            item_id=result.item_id,
+            collection_title=collection_title,
+        )
     except IngestionParseError as exc:
         with request_scoped_session(session_factory) as session:
             ingestion_repo.mark_error(session, job_id=job_id, error_message=str(exc))
+        _notify(
+            session_factory,
+            tenant_id=tenant_id,
+            created_by=created_by,
+            status="failure",
+            item_id=None,
+            collection_title=collection_title,
+            error=str(exc),
+        )
     except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("ingestion job %s : erreur inattendue", job_id)
         with request_scoped_session(session_factory) as session:
             ingestion_repo.mark_error(
                 session, job_id=job_id, error_message=f"erreur interne : {exc}"
             )
+        _notify(
+            session_factory,
+            tenant_id=tenant_id,
+            created_by=created_by,
+            status="failure",
+            item_id=None,
+            collection_title=collection_title,
+            error=f"erreur interne : {exc}",
+        )
