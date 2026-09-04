@@ -39,16 +39,12 @@ function templateError(template: string): string | null {
 export function PopupEditor({
   value,
   availableFields,
-  // Optionnel avec repli `[]` plutôt que requis : rend le prop rétrocompatible
-  // avec tout appelant existant qui ne connaît pas encore les pièces jointes
-  // (tests notamment) — évite de forcer une mise à jour de chaque site
-  // d'appel juste pour satisfaire tsc (piège n°6, CLAUDE.md).
-  attachmentFields = [],
+  attachmentFields,
   onChange,
 }: {
   value: PopupConfig | undefined;
   availableFields: string[];
-  attachmentFields?: string[];
+  attachmentFields: string[];
   onChange: (next: PopupConfig | undefined) => void;
 }) {
   const [advanced, setAdvanced] = useState(Boolean(value?.template));
