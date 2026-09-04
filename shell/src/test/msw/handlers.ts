@@ -41,6 +41,35 @@ export const handlers = [
     }),
   ),
   http.get(`${CORE}/instance`, () => HttpResponse.json({ readOnly: false })),
+  http.get(`${CORE}/metadata-catalog`, () =>
+    HttpResponse.json({
+      licenses: [
+        {
+          id: "etalab-2.0",
+          label: "Licence Ouverte / Open Licence 2.0 (Etalab)",
+          dcatUri: "https://spdx.org/licenses/etalab-2.0.html",
+          spdxId: "etalab-2.0",
+        },
+        { id: "cc0-1.0", label: "CC0 1.0 Universal", dcatUri: null, spdxId: "CC0-1.0" },
+        {
+          id: "proprietary",
+          label: "Propriétaire (aucune réutilisation)",
+          dcatUri: null,
+          spdxId: "proprietary",
+        },
+        { id: "other", label: "Autre (URI à saisir)", dcatUri: null, spdxId: "other" },
+      ],
+      frequencies: [
+        { id: "daily", label: "Quotidienne" },
+        { id: "monthly", label: "Mensuelle" },
+        { id: "annual", label: "Annuelle" },
+      ],
+      languages: [
+        { id: "fr", label: "Français" },
+        { id: "en", label: "Anglais" },
+      ],
+    }),
+  ),
   http.post(`${CORE}/configs`, async ({ request }) => {
     const body = (await request.json()) as { title: string; config: { kind: string } };
     return HttpResponse.json(
