@@ -72,6 +72,16 @@ const COLLECTIONS: CollectionAdmin[] = [
     featureCount: 10,
     owner: "alice",
     attachmentFields: [],
+    license: "",
+    licenseUri: "",
+    producer: "",
+    contact: "",
+    updateFrequency: "",
+    lineage: "",
+    language: "fr",
+    version: "",
+    temporalStart: null,
+    temporalEnd: null,
   },
 ];
 
@@ -480,6 +490,16 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
         featureCount: 5,
         owner: "alice",
         attachmentFields: [],
+        license: "",
+        licenseUri: "",
+        producer: "",
+        contact: "",
+        updateFrequency: "",
+        lineage: "",
+        language: "fr",
+        version: "",
+        temporalStart: null,
+        temporalEnd: null,
       },
     ];
     const client = renderWizard({ listCollections: () => Promise.resolve(collections) });

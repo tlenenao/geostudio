@@ -60,6 +60,8 @@ const item: Item = {
   isPublished: false,
   keywords: [],
   permissions: OWNER_PERMISSIONS,
+  license: "",
+  language: "fr",
 };
 
 function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}) {

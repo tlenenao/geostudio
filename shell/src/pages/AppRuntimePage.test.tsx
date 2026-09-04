@@ -110,6 +110,8 @@ const okItem: Item = {
   configId: null,
   isPublished: true,
   permissions: OWNER_PERMISSIONS,
+  license: "",
+  language: "fr",
 };
 
 test("navigate() percent-encodes pk and the target pageId", async () => {

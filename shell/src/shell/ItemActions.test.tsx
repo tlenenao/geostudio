@@ -22,6 +22,8 @@ const item: Item = {
   configId: null,
   isPublished: false,
   permissions: OWNER_PERMISSIONS,
+  license: "",
+  language: "fr",
 };
 
 function Harness({ children }: { children: ReactNode }) {
@@ -162,6 +164,8 @@ const viewerItem: Item = {
   configId: null,
   isPublished: false,
   permissions: { read: true, write: false, delete: false, share: false },
+  license: "",
+  language: "fr",
 };
 
 const editorItem: Item = {

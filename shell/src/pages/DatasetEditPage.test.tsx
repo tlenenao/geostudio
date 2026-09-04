@@ -21,6 +21,8 @@ const item: Item = {
   isPublished: false,
   keywords: [],
   permissions: OWNER_PERMISSIONS,
+  license: "",
+  language: "fr",
 };
 
 const datasetConfig: DatasetConfig = {
