@@ -42,7 +42,8 @@ for bucket in "${S3_THUMBNAILS_BUCKET:-geostudio-thumbnails}" \
               "${S3_CDC_BUCKET:-geostudio-cdc}" \
               "${S3_TILESET3D_BUCKET:-geostudio-tileset3d}" \
               "${S3_TERRAIN3D_BUCKET:-geostudio-terrain3d}" \
-              "${S3_MAPICONS_BUCKET:-geostudio-mapicons}"; do
+              "${S3_MAPICONS_BUCKET:-geostudio-mapicons}" \
+              "${S3_ATTACHMENTS_BUCKET:-geostudio-attachments}"; do
   if mc ls "local/${bucket}" >/dev/null 2>&1; then
     mc mirror --overwrite --quiet "local/${bucket}" "${WORKDIR}/minio/${bucket}"
   else

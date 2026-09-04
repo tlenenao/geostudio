@@ -316,6 +316,7 @@ services:
       S3_CDC_BUCKET: geostudio-cdc
       S3_TILESET3D_BUCKET: geostudio-tileset3d
       S3_MAPICONS_BUCKET: geostudio-mapicons
+      S3_ATTACHMENTS_BUCKET: geostudio-attachments
       # Lues dans CE process (app/main.py, app/export/routes.py,
       # app/reports/routes.py, app/appexport/routes.py) — pas seulement dans
       # le worker qui écrit les objets. Mêmes valeurs littérales que
