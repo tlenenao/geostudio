@@ -600,3 +600,95 @@ def test_register_collection_defaults_attachment_fields_to_empty(env):
     _as(app, admin)
     res = client.post("/collections", json={"tableName": "incidents"})
     assert res.json()["attachmentFields"] == []
+
+
+def test_register_collection_defaults_open_metadata_to_empty(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    res = client.post("/collections", json={"tableName": "incidents"})
+    body = res.json()
+    assert body["license"] == ""
+    assert body["licenseUri"] == ""
+    assert body["producer"] == ""
+    assert body["contact"] == ""
+    assert body["updateFrequency"] == ""
+    assert body["lineage"] == ""
+    assert body["language"] == "fr"
+    assert body["version"] == ""
+    assert body["temporalStart"] is None
+    assert body["temporalEnd"] is None
+
+
+def test_patch_collection_declares_open_metadata(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+
+    res = client.patch(
+        "/collections/incidents",
+        json={
+            "license": "etalab-2.0",
+            "producer": "Ma Régie",
+            "contact": "contact@example.org",
+            "updateFrequency": "monthly",
+            "lineage": "Relevé terrain 2026",
+            "language": "en",
+            "version": "1.0",
+            "temporalStart": "2020-01-01",
+            "temporalEnd": "2026-12-31",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["license"] == "etalab-2.0"
+    assert body["producer"] == "Ma Régie"
+    assert body["contact"] == "contact@example.org"
+    assert body["updateFrequency"] == "monthly"
+    assert body["lineage"] == "Relevé terrain 2026"
+    assert body["language"] == "en"
+    assert body["version"] == "1.0"
+    assert body["temporalStart"] == "2020-01-01"
+    assert body["temporalEnd"] == "2026-12-31"
+
+    get_res = client.get("/collections/incidents")
+    assert get_res.json()["license"] == "etalab-2.0"
+
+
+def test_patch_collection_with_other_license_requires_uri(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+
+    res = client.patch(
+        "/collections/incidents",
+        json={"license": "other", "licenseUri": "https://example.org/my-license"},
+    )
+    assert res.status_code == 200
+    assert res.json()["licenseUri"] == "https://example.org/my-license"
+
+
+def test_patch_collection_rejects_unknown_license(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    res = client.patch("/collections/incidents", json={"license": "bogus"})
+    assert res.status_code == 422
+
+
+def test_patch_collection_rejects_unknown_language(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    res = client.patch("/collections/incidents", json={"language": "bogus"})
+    assert res.status_code == 422
+
+
+def test_patch_collection_without_open_metadata_leaves_it_unchanged(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    client.patch("/collections/incidents", json={"license": "etalab-2.0"})
+
+    res = client.patch("/collections/incidents", json={"title": "Nouveau titre"})
+    assert res.status_code == 200
+    assert res.json()["license"] == "etalab-2.0"

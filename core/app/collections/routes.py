@@ -133,6 +133,16 @@ def _collection_json(col, permissions, owner: str | None = None) -> dict:
         "featureCount": col.feature_count,
         "owner": owner,
         "attachmentFields": col.attachment_fields,
+        "license": col.license,
+        "licenseUri": col.license_uri,
+        "producer": col.producer,
+        "contact": col.contact,
+        "updateFrequency": col.update_frequency,
+        "lineage": col.lineage,
+        "language": col.language,
+        "version": col.version,
+        "temporalStart": col.temporal_start.isoformat() if col.temporal_start else None,
+        "temporalEnd": col.temporal_end.isoformat() if col.temporal_end else None,
     }
 
 
@@ -438,6 +448,16 @@ def patch_collection(
         ("description", body.description),
         ("is_public", body.isPublic),
         ("editable", body.editable),
+        ("license", body.license),
+        ("license_uri", body.licenseUri),
+        ("producer", body.producer),
+        ("contact", body.contact),
+        ("update_frequency", body.updateFrequency),
+        ("lineage", body.lineage),
+        ("language", body.language),
+        ("version", body.version),
+        ("temporal_start", body.temporalStart),
+        ("temporal_end", body.temporalEnd),
     ):
         if value is not None:
             setattr(col, attr, value)
@@ -454,7 +474,7 @@ def patch_collection(
         action="collection.update",
         object_type="collection",
         object_id=col.id,
-        payload=body.model_dump(exclude_none=True),
+        payload=body.model_dump(exclude_none=True, mode="json"),
     )
     permissions = repo.collection_permissions_by_id(
         session,
