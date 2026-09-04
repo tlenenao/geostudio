@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app import db
+from app.attachments import routes as attachments_routes
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.db import Base, make_session_factory, request_scoped_session
 from app.main import create_app
@@ -17,6 +18,15 @@ from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
 pytestmark = pytest.mark.postgis
+
+
+class _FakeS3Client:
+    """Stub minimal pour attachments_routes.get_s3_client (SP-40) : la
+    cascade de suppression de remove_feature (app/features/routes.py) en
+    dépend, best-effort — cf. test_features_routes_write.py, même patron."""
+
+    def delete_object(self, *, Bucket, Key):
+        pass
 
 
 @pytest.fixture()
@@ -53,6 +63,7 @@ def pg_app(pg_engine):
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[get_current_user] = lambda: admin
     app.dependency_overrides[get_current_user_optional] = lambda: admin
+    app.dependency_overrides[attachments_routes.get_s3_client] = lambda: _FakeS3Client()
     yield TestClient(app)
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS demo_incidents"))
