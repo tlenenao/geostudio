@@ -4097,3 +4097,430 @@ git commit -m "fix(shell): le popup carte retrouve le fid via feature.id quand l
 ```
 
 Si le Step 6 a modifié `shell/e2e/attachments-popup.spec.ts`, l'ajouter à ce même commit et lancer `cd shell && npx playwright test e2e/attachments-popup.spec.ts` avant de committer (1 passed attendu).
+
+---
+
+## Task 21: téléchargement authentifié (C1) + assainissement du nom de fichier (I2)
+
+**Ajoutée après la revue finale de branche (Task 18).** Deux défauts trouvés :
+
+- **C1 (Critical)** : le lien de téléchargement d'une pièce jointe
+  (`<a href={client.attachmentFileUrl(...)}>` dans le widget Formulaire,
+  `<a href={attachmentFileUrl(id)}>` dans `MapPopup`) ne porte AUCUN
+  en-tête `Authorization` — un `<a>` de navigateur nu. La route
+  `GET .../attachments/{id}/file` est un proxy authentifié
+  (`get_current_user_optional`) : pour toute collection NON publique, le
+  clic reçoit 404 même pour un utilisateur pourtant autorisé à lire
+  l'entité. Seul le cas anonyme sur collection publique (`/sites/{slug}`)
+  fonctionne aujourd'hui. **Décision actée avec Tanguy** : fetch
+  authentifié côté client + `URL.createObjectURL`, patron déjà utilisé
+  dans ce dépôt pour l'export de données
+  (`shell/src/builder/widgets/ExplorerMenu.tsx::handleExport`, qui
+  consomme `client.exportDataSource()` — `itemClient.ts`'s `requestBlob`
+  interne, déjà authentifié) — pas de nouveau mécanisme de jeton, la
+  décision 1 de la spec (proxy authentifié, `can()`/RLS relus à chaque
+  octet servi) reste intacte.
+- **I2 (Important)** : `core/app/attachments/routes.py` interpole
+  `attachment.filename` (fourni tel quel par le client à l'upload, jamais
+  assaini) dans l'en-tête `Content-Disposition` — Starlette encode les
+  en-têtes en latin-1, donc tout nom non-ASCII (CJK, cyrillique, emoji)
+  fait lever `UnicodeEncodeError` → **500 à chaque téléchargement**, et
+  un guillemet dans le nom permet d'injecter des paramètres dans
+  l'en-tête. Le patron correct existe déjà dans
+  `core/app/mapicons/routes.py::_SAFE_FILENAME` (`re.compile(r"[^A-Za-z0-9._-]+")`,
+  appliqué à l'upload, tronqué à 80, repli si vide) mais n'a pas été
+  repris ici. Décision 4 de la spec (§2) demande aussi une liste noire
+  d'extensions dangereuses à l'upload, absente du code — aucune liste
+  précise n'étant donnée par la spec, une liste standard est posée ici
+  (exécutables/scripts courants), ajustable plus tard si Tanguy le
+  demande.
+
+**Files:**
+- Modify: `core/app/attachments/routes.py`
+- Test: `core/tests/test_attachments_upload_routes.py` (ajout)
+- Test: `core/tests/test_attachments_read_routes.py` (ajout)
+- Modify: `shell/src/api/types.ts` (`ItemClient.downloadAttachment`)
+- Modify: `shell/src/api/itemClient.ts`
+- Test: `shell/src/api/itemClient.test.ts` (ajout)
+- Modify: `shell/src/staticExport/StaticItemClient.ts` (stub `downloadAttachment`)
+- Modify: `shell/src/builder/widgets/form.tsx`
+- Test: `shell/src/builder/widgets/form.test.tsx` (adapter les 2 tests existants qui mockent `attachmentFileUrl`, ajouter 1 test)
+- Modify: `shell/src/map/MapView.tsx`
+- Test: `shell/src/map/MapView.test.tsx` (adapter si nécessaire)
+- Modify: `shell/src/map/MapPopup.tsx`
+- Test: `shell/src/map/MapPopup.test.tsx` (adapter le test existant qui mocke `attachmentFileUrl`)
+
+**Interfaces :** `client.downloadAttachment(collectionId, fid, attachmentId): Promise<{ blob: Blob; filename: string }>` (nouveau, sur `ItemClient`) — `client.attachmentFileUrl` reste sur l'interface (potentiellement utile ailleurs, ex. un futur usage non authentifié), mais n'est plus consommé par le widget Formulaire ni `MapPopup`.
+
+### Étage cœur (I2)
+
+- [ ] **Step 1 : ajouter l'assainissement et le refus d'extension dans `core/app/attachments/routes.py`**
+
+Import `re` en tête de fichier. Juste après `MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024` :
+
+```python
+_SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
+# Liste non exhaustive d'extensions exécutables/scripts courantes — la spec
+# (§2, décision 4) demande une liste noire sans en donner le contenu exact ;
+# ajustable si Tanguy le demande.
+_DANGEROUS_EXTENSIONS = frozenset(
+    {".exe", ".dll", ".com", ".bat", ".cmd", ".msi", ".scr", ".ps1", ".vbs", ".js", ".jar", ".sh", ".app"}
+)
+
+
+def _sanitize_filename(filename: str) -> str:
+    """Assainit le nom de fichier fourni par le client avant de le stocker
+    et de le servir dans Content-Disposition — même mécanisme que
+    app/mapicons/routes.py::_SAFE_FILENAME (dupliqué localement, pas
+    importé : cf. le commentaire d'en-tête de ce module sur get_s3_client,
+    même rationale). Sans cette garde, un nom hors latin-1 fait lever
+    UnicodeEncodeError à la lecture (Starlette encode les en-têtes en
+    latin-1) et un guillemet permettrait d'injecter des paramètres dans
+    l'en-tête."""
+    safe = _SAFE_FILENAME.sub("_", filename)[:80]
+    return safe or "fichier"
+
+
+def _reject_dangerous_extension(filename: str) -> None:
+    ext = os.path.splitext(filename)[1].lower()
+    if ext in _DANGEROUS_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"extension de fichier non autorisée : {ext}")
+```
+
+- [ ] **Step 2 : appliquer dans `presign_attachment`**
+
+```diff
+     col = _get_writable_collection(session, user, collection_id)
+     _require_declared_field(col, body.fieldKey)
++    _reject_dangerous_extension(body.filename)
+     bucket = get_attachments_bucket()
+     ensure_uploads_bucket(s3, bucket)
+-    key = f"{col.tenant_id}/{collection_id}/{fid}/{uuid.uuid4().hex}-{body.filename}"
++    key = f"{col.tenant_id}/{collection_id}/{fid}/{uuid.uuid4().hex}-{_sanitize_filename(body.filename)}"
+```
+
+- [ ] **Step 3 : appliquer dans `confirm_attachment`**
+
+```diff
+     col = _get_writable_collection(session, user, collection_id)
+     _require_declared_field(col, body.fieldKey)
++    _reject_dangerous_extension(body.filename)
+     # Même garde anti-confused-deputy que POST /uploads (app/ingestion/routes.py) :
+```
+
+Et dans l'appel à `attachments_repo.create_attachment` un peu plus bas :
+
+```diff
+         field_key=body.fieldKey,
+-        filename=body.filename,
++        filename=_sanitize_filename(body.filename),
+         content_type=body.contentType,
+```
+
+- [ ] **Step 4 : tests (RED puis GREEN)**
+
+Ajouter à `core/tests/test_attachments_upload_routes.py` (patron exact du fixture `client` déjà en place dans ce fichier) :
+
+```python
+def test_presign_rejects_a_dangerous_extension(client):
+    api, *_ = client
+    res = api.post(
+        "/collections/col1/items/f1/attachments/presign",
+        json={"fieldKey": "photos", "filename": "malware.exe", "contentType": "application/octet-stream"},
+    )
+    assert res.status_code == 400
+
+
+def test_confirm_rejects_a_dangerous_extension(client):
+    api, tenant, _user, _s3 = client[0], client[1], client[2], client[3]
+    key = f"{tenant.id}/col1/f1/abc-malware.exe"
+    res = api.post(
+        "/collections/col1/items/f1/attachments",
+        json={"key": key, "fieldKey": "photos", "filename": "malware.exe", "contentType": "application/octet-stream"},
+    )
+    assert res.status_code == 400
+```
+
+Note : vérifie la forme exacte du fixture `client` de ce fichier (nombre d'éléments retournés — le brief de la Task 3 en montrait 5 : `api, _Session, tenant, _user, s3`) avant d'écrire le déballage — ne devine pas.
+
+Ajouter à `core/tests/test_attachments_upload_routes.py` aussi (ou au fichier de lecture si plus approprié, vérifie) :
+
+```python
+def test_confirm_sanitizes_a_non_ascii_filename(client):
+    api, _Session, tenant, _user, s3 = client
+    key = f"{tenant.id}/col1/f1/abc-photo.jpg"
+    s3.heads[key] = {"ContentLength": 10}
+    res = api.post(
+        "/collections/col1/items/f1/attachments",
+        json={"key": key, "fieldKey": "photos", "filename": "文件.png", "contentType": "image/png"},
+    )
+    assert res.status_code == 201
+    # Le nom stocké est assaini (ASCII sûr), jamais le nom brut non-ASCII.
+    assert res.json()["filename"] != "文件.png"
+    assert res.json()["filename"].endswith(".png")
+```
+
+Ajouter à `core/tests/test_attachments_read_routes.py` un test de bout en bout confirmant que lire un fichier dont le nom aurait plané avant ce correctif fonctionne réellement (upload avec un nom non-ASCII via le dépôt directement — `attachments_repo.create_attachment` — PUIS lecture, pour prouver que `read_attachment_file` ne lève plus sur un nom déjà en base avec des caractères hors ASCII, au cas où une ligne existante y échapperait) :
+
+```python
+def test_file_download_does_not_crash_on_a_non_ascii_filename_already_in_db(env):
+    """Preuve directe du défaut I2 (revue finale) : Content-Disposition
+    plantait en UnicodeEncodeError sur un nom hors latin-1 déjà en base
+    (avant assainissement à la confirmation, ou pour une ligne existante)."""
+    api, Session, tenant, owner, _reader, _attachment_id, s3 = env
+    with Session() as session:
+        a = attachments_repo.create_attachment(
+            session,
+            tenant_id=tenant.id,
+            collection_id="col1",
+            fid="f1",
+            field_key="photos",
+            filename="文件.png",
+            content_type="image/png",
+            byte_size=3,
+            s3_key=f"{tenant.id}/col1/f1/other-非ascii.png",
+            created_by=owner.id,
+        )
+        session.commit()
+        attachment_id = a.id
+    s3.objects[f"{tenant.id}/col1/f1/other-非ascii.png"] = b"png"
+    api.app.dependency_overrides[get_current_user] = lambda: owner
+    res = api.get(f"/collections/col1/items/f1/attachments/{attachment_id}/file")
+    assert res.status_code == 200
+```
+
+Vérifie les imports nécessaires (`attachments_repo`, `get_current_user`) déjà présents dans ce fichier — sinon ajoute-les.
+
+- [ ] **Step 5 : lancer les tests, vérifier le succès**
+
+```bash
+cd core && uv run pytest tests/test_attachments_upload_routes.py tests/test_attachments_read_routes.py -v
+uv run ruff check . && uv run ruff format --check .
+```
+
+- [ ] **Step 6 : commit cœur**
+
+```bash
+git add core/app/attachments/routes.py core/tests/test_attachments_upload_routes.py core/tests/test_attachments_read_routes.py
+git commit -m "fix(core): assainit le nom de fichier et refuse les extensions dangereuses (SP-40)"
+```
+
+### Étage shell (C1)
+
+- [ ] **Step 7 : `ItemClient.downloadAttachment` (types.ts + itemClient.ts)**
+
+`shell/src/api/types.ts`, interface `ItemClient`, près de `attachmentFileUrl` :
+
+```diff
+   attachmentFileUrl(collectionId: string, fid: string, attachmentId: string): string;
++  downloadAttachment(
++    collectionId: string,
++    fid: string,
++    attachmentId: string,
++  ): Promise<{ blob: Blob; filename: string }>;
+```
+
+`shell/src/api/itemClient.ts`, à côté de `attachmentFileUrl` (utilise `requestBlob`, déjà défini dans ce fichier — cf. `exportDataSource`) :
+
+```typescript
+    async downloadAttachment(
+      collectionId: string,
+      fid: string,
+      attachmentId: string,
+    ): Promise<{ blob: Blob; filename: string }> {
+      return requestBlob(
+        coreUrl,
+        getAuthToken,
+        "GET",
+        `/collections/${collectionId}/items/${fid}/attachments/${attachmentId}/file`,
+      );
+    },
+```
+
+Vérifie le nom exact des variables `coreUrl`/`getAuthToken` déjà en scope dans ce fichier (déjà utilisées par `exportDataSource`, juste au-dessus).
+
+- [ ] **Step 8 : `StaticItemClient.ts`**
+
+Ajoute `downloadAttachment` au même endroit que `listAttachments` (Task 10), même patron `unsupported()` (aucun fichier de pièce jointe dans un export statique figé) :
+
+```typescript
+    async downloadAttachment(): Promise<{ blob: Blob; filename: string }> {
+      return unsupported("downloadAttachment");
+    },
+```
+
+(adapte à la signature exacte d'`unsupported` déjà utilisée pour les autres méthodes de ce fichier).
+
+- [ ] **Step 9 : test `itemClient.test.ts`**
+
+Ajoute un test vérifiant que `downloadAttachment` fait un fetch authentifié et retourne le blob (patron déjà en place dans ce fichier pour `exportDataSource`, à réutiliser).
+
+- [ ] **Step 10 : `form.tsx` — remplace le lien nu par un téléchargement authentifié**
+
+Dans `AttachmentFieldInput` (autour de la liste rendue, où `<a href={client.attachmentFileUrl(...)}>` existe aujourd'hui) :
+
+```diff
++  async function handleDownload(attachmentId: string) {
++    const { blob, filename } = await client.downloadAttachment(collectionId, fid!, attachmentId);
++    const url = URL.createObjectURL(blob);
++    const el = document.createElement("a");
++    el.href = url;
++    el.download = filename;
++    el.click();
++    URL.revokeObjectURL(url);
++  }
++
+   // ... dans le rendu de la liste ...
+-            <a
+-              href={client.attachmentFileUrl(collectionId, fid, a.id)}
+-              target="_blank"
+-              rel="noreferrer"
+-              className="flex-1 truncate underline"
+-            >
+-              {a.filename}
+-            </a>
++            <button
++              type="button"
++              onClick={() => void handleDownload(a.id)}
++              className="flex-1 truncate bg-transparent p-0 text-left underline"
++            >
++              {a.filename}
++            </button>
+```
+
+Vérifie l'emplacement exact (fid est non-null à ce point, garanti par le rendu conditionnel déjà en place — cf. Task 11).
+
+- [ ] **Step 11 : adapter `form.test.tsx`**
+
+Les 2 tests existants qui mockent `attachmentFileUrl` (`makeMockClient({ ..., attachmentFileUrl: vi.fn()... })`, autour des lignes 901/937) doivent mocker `downloadAttachment` à la place (retour `Promise.resolve({ blob: new Blob(["x"]), filename: "a.jpg" })` — vérifie si `Blob`/`URL.createObjectURL` sont déjà mockés/disponibles dans l'environnement de test de ce fichier, sinon stubbe `URL.createObjectURL`/`URL.revokeObjectURL` localement). Ajoute un nouveau test cliquant le nom de fichier et vérifiant que `downloadAttachment` est appelé avec les bons arguments.
+
+- [ ] **Step 12 : `MapPopup.tsx` — prop `onDownloadAttachment` au lieu de `attachmentFileUrl`**
+
+```diff
+ export function MapPopup({
+   content,
+   x,
+   y,
+   onClose,
+   attachments,
+-  attachmentFileUrl,
++  onDownloadAttachment,
+ }: {
+   content: PopupContent;
+   x: number;
+   y: number;
+   onClose: () => void;
+   attachments?: AttachmentSummary[];
+-  attachmentFileUrl?: (attachmentId: string) => string;
++  onDownloadAttachment?: (attachmentId: string, filename: string) => void;
+ }) {
+```
+
+```diff
+-      {attachments && attachments.length > 0 && attachmentFileUrl && (
++      {attachments && attachments.length > 0 && onDownloadAttachment && (
+         <div className="mt-1 border-t border-rule pt-1">
+           <p className="mb-1 text-ink-3">Pièces jointes</p>
+           <ul className="flex flex-col gap-0.5">
+             {attachments.map((a) => (
+               <li key={a.id}>
+-                <a
+-                  href={attachmentFileUrl(a.id)}
+-                  target="_blank"
+-                  rel="noreferrer"
+-                  className="underline"
+-                >
++                <button
++                  type="button"
++                  onClick={() => onDownloadAttachment(a.id, a.filename)}
++                  className="bg-transparent p-0 underline"
++                >
+                   {a.filename}
+-                </a>
++                </button>
+               </li>
+             ))}
+           </ul>
+         </div>
+       )}
+```
+
+- [ ] **Step 13 : adapter `MapPopup.test.tsx`**
+
+Le test existant qui mocke `attachmentFileUrl={(id) => ...}` (autour de la ligne 85) doit passer `onDownloadAttachment={vi.fn()}` à la place, et vérifier soit l'appel au clic, soit simplement la présence du `<button>` (adapte selon ce que le test vérifiait déjà — s'il vérifiait `toHaveAttribute("href", ...)`, remplace par un clic + assertion d'appel).
+
+- [ ] **Step 14 : `MapView.tsx` — câble `onDownloadAttachment`**
+
+Remplace la prop `attachmentFileUrl` du call site de `<MapPopup>` (autour de la ligne 1389-1395) :
+
+```diff
+-          attachmentFileUrl={(attachmentId) =>
+-            popupLayer &&
+-            (popupLayer.kind === "vector" || popupLayer.kind === "feature") &&
+-            popup.fid !== undefined
+-              ? `${getCoreUrlRef.current?.() ?? ""}/collections/${popupLayer.collectionId}/items/${popup.fid}/attachments/${attachmentId}/file`
+-              : ""
+-          }
++          onDownloadAttachment={async (attachmentId, filename) => {
++            if (
++              !popupLayer ||
++              (popupLayer.kind !== "vector" && popupLayer.kind !== "feature") ||
++              !popupLayer.collectionId ||
++              popup.fid === undefined
++            )
++              return;
++            const coreUrl = getCoreUrlRef.current?.();
++            if (!coreUrl) return;
++            const token = getAuthTokenRef.current?.();
++            const url = `${coreUrl}/collections/${popupLayer.collectionId}/items/${popup.fid}/attachments/${attachmentId}/file`;
++            const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
++            if (!res.ok) return;
++            const blob = await res.blob();
++            const objectUrl = URL.createObjectURL(blob);
++            const el = document.createElement("a");
++            el.href = objectUrl;
++            el.download = filename;
++            el.click();
++            URL.revokeObjectURL(objectUrl);
++          }}
+```
+
+- [ ] **Step 15 : adapter `MapView.test.tsx` si nécessaire**
+
+Les 4 tests existants d'attachements (Tâches 14/19/20) vérifient le FETCH DE LISTE (`GET .../attachments?fieldKey=...`), pas le téléchargement d'un fichier individuel — ils ne devraient pas casser. Vérifie quand même en lançant la suite ; si un test inspectait `attachmentFileUrl` directement (peu probable vu les tests déjà vus), adapte-le.
+
+- [ ] **Step 16 : lancer toutes les vérifications**
+
+```bash
+cd shell
+npx vitest run src/api/itemClient.test.ts src/builder/widgets/form.test.tsx \
+  src/map/MapPopup.test.tsx src/map/MapView.test.tsx
+npx tsc --noEmit
+npm run test
+```
+Expected : tous PASS, `tsc` propre, aucune régression.
+
+- [ ] **Step 17 : commit shell**
+
+```bash
+git add shell/src/api/types.ts shell/src/api/itemClient.ts shell/src/api/itemClient.test.ts \
+  shell/src/staticExport/StaticItemClient.ts shell/src/builder/widgets/form.tsx \
+  shell/src/builder/widgets/form.test.tsx shell/src/map/MapPopup.tsx shell/src/map/MapPopup.test.tsx \
+  shell/src/map/MapView.tsx shell/src/map/MapView.test.tsx
+git commit -m "fix(shell): téléchargement de pièce jointe authentifié (fetch+blob) au lieu d'un lien nu (SP-40)"
+```
+
+- [ ] **Step 18 : E2E — vérifier `attachments.spec.ts` (le lien devient un bouton)**
+
+`shell/e2e/attachments.spec.ts` (Task 16) vérifie `page.getByRole("link", { name: "a.jpg" })` — ce sélecteur ne matchera plus un `<button>`. Adapte en `page.getByRole("button", { name: "a.jpg" })`, et si le test veut prouver que le téléchargement fonctionne réellement (recommandé, referme exactement le trou par lequel C1 est passé — cf. revue finale), ajoute une assertion sur la réponse réelle de la requête déclenchée par le clic plutôt que de vérifier seulement la visibilité du bouton. Lance :
+```bash
+npx playwright test e2e/attachments.spec.ts e2e/attachments-popup.spec.ts
+```
+Expected : 2 passed (adapte `attachments-popup.spec.ts` de la même façon si son assertion porte sur un `role="link"`).
+
+- [ ] **Step 19 : commit E2E si modifié**
+
+```bash
+git add shell/e2e/attachments.spec.ts shell/e2e/attachments-popup.spec.ts
+git commit -m "test(e2e): adapte les specs pièces jointes au bouton de téléchargement authentifié (SP-40)"
+```
