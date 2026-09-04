@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+from sqlalchemy import select
+
 from app.appexport import repository as appexport_repo
 from app.appexport.jobs import build_app_export_task
 from app.collections.repository import create_collection
@@ -6,6 +8,7 @@ from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig, DataSource, Layout, LayoutItem, Page
 from app.db import init_db, make_engine, make_session_factory
 from app.items.repository import create_item
+from app.notifications.models import Notification
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -187,3 +190,36 @@ def test_standalone_job_with_private_source_marks_error(monkeypatch, tmp_path):
         job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
     assert job.status == "error"
     assert "publique" in job.error
+
+
+def test_success_writes_a_notification_for_the_requester(monkeypatch, tmp_path):
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
+
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant_id))
+    assert job.status == "done"
+    assert notification is not None
+    assert notification.recipient_user_id == job.user_id
+    assert notification.kind == "appexport"
+    assert notification.status == "success"
+    assert notification.item_resource_type == "app"
+    assert notification.item_title == "App"
+
+
+def test_disabled_flag_writes_no_notification(monkeypatch, tmp_path):
+    """L'export est marqué "error" AVANT le chargement du job (item_id/user_id
+    jamais lus) — cf. spec §4, même limite documentée que sur export/jobs.py."""
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path)
+    monkeypatch.setenv("CORE_APPEXPORT_ENABLED", "false")
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+
+    with Session() as s:
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant_id))
+    assert notification is None
