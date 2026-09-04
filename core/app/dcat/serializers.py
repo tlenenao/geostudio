@@ -27,8 +27,18 @@ ACCESS_RIGHTS_RESTRICTED = (
 WORLD_BBOX = [-180.0, -90.0, 180.0, 90.0]
 
 
-def publisher(*, base: str, name: str) -> dict:
-    return {"@id": f"{base}/dcat/publisher", "@type": "foaf:Agent", "foaf:name": name}
+def publisher(*, base: str, name: str, producer_slug: str | None = None) -> dict:
+    # Sans producer_slug (défaut, cf. catalog() ci-dessous et dataset() quand
+    # aucun producteur n'est déclaré) : IRI partagée à l'échelle du tenant,
+    # inchangée. Avec producer_slug (dataset() quand col.producer est déclaré,
+    # SP-41 correctif de revue finale) : IRI distincte par collection — sans
+    # quoi GET /dcat/catalog fait pointer tous les jeux de données vers le
+    # même @id de publisher avec des foaf:name différents et incohérents pour
+    # un consommateur JSON-LD qui fusionne le document en graphe RDF.
+    publisher_id = (
+        f"{base}/dcat/publisher/{producer_slug}" if producer_slug else f"{base}/dcat/publisher"
+    )
+    return {"@id": publisher_id, "@type": "foaf:Agent", "foaf:name": name}
 
 
 def _bbox_polygon(bbox: list[float] | None) -> dict:
@@ -80,6 +90,7 @@ def dataset(
     version: str = "",
     temporal_start: str | None = None,
     temporal_end: str | None = None,
+    producer_declared: bool = False,
 ) -> dict:
     license_entry = resolve_license(license) if license else None
     if license_entry is not None and license_entry.dcat_uri:
@@ -115,7 +126,11 @@ def dataset(
         "dct:accessRights": {
             "@id": ACCESS_RIGHTS_PUBLIC if is_public else ACCESS_RIGHTS_RESTRICTED
         },
-        "dct:publisher": publisher(base=base, name=publisher_name),
+        "dct:publisher": publisher(
+            base=base,
+            name=publisher_name,
+            producer_slug=collection_id if producer_declared else None,
+        ),
         "dct:spatial": {
             "@type": "dct:Location",
             "locn:geometry": {

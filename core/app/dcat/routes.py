@@ -83,6 +83,7 @@ def _dataset_doc(*, base, col, introspect, bbox_provider, rls, session, publishe
         version=col.version,
         temporal_start=col.temporal_start.isoformat() if col.temporal_start else None,
         temporal_end=col.temporal_end.isoformat() if col.temporal_end else None,
+        producer_declared=bool(col.producer),
     )
 
 

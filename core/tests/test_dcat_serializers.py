@@ -42,6 +42,67 @@ def test_publisher_is_valid_foaf_agent(dcat_shacl_shapes):
     assert conforms, text
 
 
+def test_publisher_id_distinct_per_producer_slug():
+    # SP-41, correctif de revue finale : sans producer_slug, deux jeux de
+    # données avec des producteurs déclarés différents partageaient la même
+    # @id dct:publisher — un consommateur JSON-LD qui fusionne
+    # GET /dcat/catalog en graphe RDF voyait un seul Agent avec N foaf:name
+    # incohérents. producer_slug rend l'IRI distincte par collection.
+    shared = s.publisher(base=BASE, name="Tenant par défaut")
+    assert shared["@id"] == f"{BASE}/dcat/publisher"
+
+    roads = s.publisher(base=BASE, name="Ma Régie", producer_slug="roads")
+    rivers = s.publisher(base=BASE, name="Autre Régie", producer_slug="rivers")
+    assert roads["@id"] == f"{BASE}/dcat/publisher/roads"
+    assert rivers["@id"] == f"{BASE}/dcat/publisher/rivers"
+    assert roads["@id"] != rivers["@id"]
+    assert roads["@id"] != shared["@id"]
+
+
+def test_dataset_publisher_id_distinct_when_producer_declared():
+    without_producer = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Tenant par défaut",
+        bbox=None,
+    )
+    assert without_producer["dct:publisher"]["@id"] == f"{BASE}/dcat/publisher"
+
+    with_producer_a = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Ma Régie",
+        bbox=None,
+        producer_declared=True,
+    )
+    with_producer_b = s.dataset(
+        base=BASE,
+        collection_id="rivers",
+        title="Rivières",
+        description="d",
+        created_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Autre Régie",
+        bbox=None,
+        producer_declared=True,
+    )
+    assert with_producer_a["dct:publisher"]["foaf:name"] == "Ma Régie"
+    assert with_producer_b["dct:publisher"]["foaf:name"] == "Autre Régie"
+    assert with_producer_a["dct:publisher"]["@id"] != with_producer_b["dct:publisher"]["@id"]
+    assert with_producer_a["dct:publisher"]["@id"] != without_producer["dct:publisher"]["@id"]
+
+
 def test_shacl_gate_actually_catches_violations(dcat_shacl_shapes):
     # Contre-preuve : un Dataset sans dct:title/dct:description (mandatoires)
     # DOIT être rejeté — sinon le gate ne prouve rien.
