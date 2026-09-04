@@ -12,6 +12,7 @@ docs/superpowers/specs/2026-09-04-sp40-pieces-jointes-design.md §3.1."""
 
 import logging
 import os
+import re
 import uuid
 
 from botocore.exceptions import ClientError
@@ -41,6 +42,47 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
+
+_SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
+# Liste non exhaustive d'extensions exécutables/scripts courantes — la spec
+# (§2, décision 4) demande une liste noire sans en donner le contenu exact ;
+# ajustable si Tanguy le demande.
+_DANGEROUS_EXTENSIONS = frozenset(
+    {
+        ".exe",
+        ".dll",
+        ".com",
+        ".bat",
+        ".cmd",
+        ".msi",
+        ".scr",
+        ".ps1",
+        ".vbs",
+        ".js",
+        ".jar",
+        ".sh",
+        ".app",
+    }
+)
+
+
+def _sanitize_filename(filename: str) -> str:
+    """Assainit le nom de fichier fourni par le client avant de le stocker
+    et de le servir dans Content-Disposition — même mécanisme que
+    app/mapicons/routes.py::_SAFE_FILENAME (dupliqué localement, pas
+    importé : cf. le commentaire d'en-tête de ce module sur get_s3_client,
+    même rationale). Sans cette garde, un nom hors latin-1 fait lever
+    UnicodeEncodeError à la lecture (Starlette encode les en-têtes en
+    latin-1) et un guillemet permettrait d'injecter des paramètres dans
+    l'en-tête."""
+    safe = _SAFE_FILENAME.sub("_", filename)[:80]
+    return safe or "fichier"
+
+
+def _reject_dangerous_extension(filename: str) -> None:
+    ext = os.path.splitext(filename)[1].lower()
+    if ext in _DANGEROUS_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"extension de fichier non autorisée : {ext}")
 
 
 def get_s3_client():  # overridé dans main.py quand S3_* est configuré
@@ -100,9 +142,11 @@ def presign_attachment(
 ) -> AttachmentPresignResponse:
     col = _get_writable_collection(session, user, collection_id)
     _require_declared_field(col, body.fieldKey)
+    _reject_dangerous_extension(body.filename)
     bucket = get_attachments_bucket()
     ensure_uploads_bucket(s3, bucket)
-    key = f"{col.tenant_id}/{collection_id}/{fid}/{uuid.uuid4().hex}-{body.filename}"
+    safe_filename = _sanitize_filename(body.filename)
+    key = f"{col.tenant_id}/{collection_id}/{fid}/{uuid.uuid4().hex}-{safe_filename}"
     url = generate_presigned_put_url(s3, bucket=bucket, key=key, content_type=body.contentType)
     return AttachmentPresignResponse(uploadUrl=url, key=key)
 
@@ -122,6 +166,7 @@ def confirm_attachment(
 ) -> AttachmentRead:
     col = _get_writable_collection(session, user, collection_id)
     _require_declared_field(col, body.fieldKey)
+    _reject_dangerous_extension(body.filename)
     # Même garde anti-confused-deputy que POST /uploads (app/ingestion/routes.py) :
     # la clé est censée venir du présigné ci-dessus, toujours préfixée par le
     # tenant de l'appelant.
@@ -148,7 +193,7 @@ def confirm_attachment(
         collection_id=collection_id,
         fid=fid,
         field_key=body.fieldKey,
-        filename=body.filename,
+        filename=_sanitize_filename(body.filename),
         content_type=body.contentType,
         byte_size=size,
         s3_key=body.key,
@@ -219,7 +264,15 @@ def read_attachment_file(
             # fichier utilisateur authentifié.
             "Cache-Control": "private, max-age=3600",
             "X-Content-Type-Options": "nosniff",
-            "Content-Disposition": f'attachment; filename="{attachment.filename}"',
+            # _sanitize_filename appliqué aussi ici (pas seulement à l'upload,
+            # Steps 2/3) : défense en profondeur pour une ligne déjà en base
+            # avec un nom hors ASCII (ex. insérée avant ce correctif, ou par
+            # un chemin qui contournerait la validation d'entrée) — sans
+            # cette garde, Content-Disposition lève UnicodeEncodeError à la
+            # lecture (Starlette encode les en-têtes en latin-1).
+            "Content-Disposition": (
+                f'attachment; filename="{_sanitize_filename(attachment.filename)}"'
+            ),
         },
     )
 

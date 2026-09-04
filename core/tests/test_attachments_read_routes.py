@@ -212,3 +212,29 @@ def test_delete_removes_row_and_object_and_requires_write_access(env):
 
     missing = api.get("/collections/col1/items/f1/attachments")
     assert missing.json()["attachments"] == []
+
+
+def test_file_download_does_not_crash_on_a_non_ascii_filename_already_in_db(env):
+    """Preuve directe du défaut I2 (revue finale) : Content-Disposition
+    plantait en UnicodeEncodeError sur un nom hors latin-1 déjà en base
+    (avant assainissement à la confirmation, ou pour une ligne existante)."""
+    api, Session, tenant, owner, _reader, _attachment_id, s3 = env
+    with Session() as session:
+        a = attachments_repo.create_attachment(
+            session,
+            tenant_id=tenant.id,
+            collection_id="col1",
+            fid="f1",
+            field_key="photos",
+            filename="文件.png",
+            content_type="image/png",
+            byte_size=3,
+            s3_key=f"{tenant.id}/col1/f1/other-非ascii.png",
+            created_by=owner.id,
+        )
+        session.commit()
+        attachment_id = a.id
+    s3.objects[f"{tenant.id}/col1/f1/other-非ascii.png"] = b"png"
+    _authenticate_as(api, owner)
+    res = api.get(f"/collections/col1/items/f1/attachments/{attachment_id}/file")
+    assert res.status_code == 200
