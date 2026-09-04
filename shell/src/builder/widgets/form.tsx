@@ -99,7 +99,7 @@ function FieldOverrides({
               />
               Masqué
             </label>
-            {f.type !== "unsupported" && (
+            {f.type !== "unsupported" && f.type !== "attachment" && (
               <label className="flex items-center gap-1 whitespace-nowrap text-[10px]">
                 <input
                   type="checkbox"
@@ -209,7 +209,13 @@ function FormPropsPanel({
 
 function validateField(field: FormField, value: unknown): string | null {
   const empty = value === undefined || value === null || value === "";
-  if (field.required && empty) return "Champ requis";
+  // Un champ attachment ne passe jamais par values/onChange
+  // (AttachmentFieldInput gère son propre état via useQuery, cf. Task 11) —
+  // required ne peut donc jamais être satisfait pour ce type, y compris pour
+  // une config déjà enregistrée avant que l'éditeur n'exclue ce type de la
+  // case « Requis » (revue finale de branche, I4). Le bloquer rendrait le
+  // formulaire définitivement non soumettable.
+  if (field.required && empty && field.type !== "attachment") return "Champ requis";
   if (empty) return null;
   if (field.type === "integer" || field.type === "number") {
     const n = Number(value);
@@ -230,17 +236,142 @@ function validateField(field: FormField, value: unknown): string | null {
 
 const fieldInputCls = "h-9 rounded-md border border-slate-300 px-2 text-sm";
 
+function AttachmentFieldInput({
+  collectionId,
+  fid,
+  fieldKey,
+  client,
+}: {
+  collectionId: string;
+  fid: string | null;
+  fieldKey: string;
+  client: ReturnType<typeof useItemClient>;
+}) {
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: ["attachments", collectionId, fid, fieldKey],
+    queryFn: () => client.listAttachments(collectionId, fid!, fieldKey),
+    enabled: fid !== null,
+  });
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || fid === null) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const { uploadUrl, key } = await client.presignAttachmentUpload(collectionId, fid, {
+          fieldKey,
+          filename: file.name,
+          contentType: file.type || "application/octet-stream",
+        });
+        await fetch(uploadUrl, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": file.type },
+        });
+        await client.confirmAttachmentUpload(collectionId, fid, {
+          key,
+          fieldKey,
+          filename: file.name,
+          contentType: file.type || "application/octet-stream",
+        });
+      }
+      void queryClient.invalidateQueries({
+        queryKey: ["attachments", collectionId, fid, fieldKey],
+      });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleDelete(attachmentId: string) {
+    if (fid === null) return;
+    await client.deleteAttachment(collectionId, fid, attachmentId);
+    void queryClient.invalidateQueries({ queryKey: ["attachments", collectionId, fid, fieldKey] });
+  }
+
+  async function handleDownload(attachmentId: string) {
+    if (fid === null) return;
+    const { blob, filename } = await client.downloadAttachment(collectionId, fid, attachmentId);
+    const url = URL.createObjectURL(blob);
+    const el = document.createElement("a");
+    el.href = url;
+    el.download = filename;
+    el.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (fid === null) {
+    return (
+      <p className="text-xs text-ink-3">
+        Enregistrer l&apos;entité avant d&apos;ajouter des pièces jointes.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <ul className="flex flex-col gap-1">
+        {(query.data ?? []).map((a) => (
+          <li key={a.id} className="flex items-center gap-2 text-xs">
+            <button
+              type="button"
+              aria-label={a.filename}
+              onClick={() => void handleDownload(a.id)}
+              className="flex-1 truncate bg-transparent p-0 text-left underline"
+            >
+              {a.filename}
+            </button>
+            <button
+              type="button"
+              aria-label={`Supprimer ${a.filename}`}
+              className="text-danger underline"
+              onClick={() => void handleDelete(a.id)}
+            >
+              Supprimer
+            </button>
+          </li>
+        ))}
+      </ul>
+      <input
+        type="file"
+        multiple
+        aria-label="Ajouter des fichiers"
+        disabled={uploading}
+        onChange={(e) => void handleFiles(e.target.files)}
+      />
+    </div>
+  );
+}
+
 function FieldInput({
   field,
   value,
   onChange,
   onBlur,
+  collectionId,
+  fid,
+  client,
 }: {
   field: FormField;
   value: unknown;
   onChange: (v: unknown) => void;
   onBlur: () => void;
+  collectionId: string;
+  fid: string | null;
+  client: ReturnType<typeof useItemClient>;
 }) {
+  if (field.type === "attachment") {
+    return (
+      <AttachmentFieldInput
+        collectionId={collectionId}
+        fid={fid}
+        fieldKey={field.name}
+        client={client}
+      />
+    );
+  }
   if (field.type === "boolean") {
     return (
       <input
@@ -491,6 +622,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             value={values[f.name]}
             onChange={(v) => setValues((old) => ({ ...old, [f.name]: v }))}
             onBlur={() => setTouched((t) => ({ ...t, [f.name]: true }))}
+            collectionId={collectionId}
+            fid={editingId === null ? null : String(editingId)}
+            client={client}
           />
           {errorFor(f) && (
             <span role="alert" className="text-xs text-red-600">

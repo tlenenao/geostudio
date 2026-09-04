@@ -219,6 +219,7 @@ layers = [
     "app.dcat",
     "app.stac",
     "app.features",
+    "app.attachments",
     "app.collections",
     "app.configs",
     "app.extensions",
@@ -276,6 +277,18 @@ ignore_imports = [
     # ensure_built_in_roles(). Même classe de tension que l'exemption
     # ci-dessus : aucune place linéaire ne satisfait les deux sens à la fois.
     "app.users.repository -> app.roles.repository",
+    # app.attachments est placé entre app.features et app.collections
+    # (app.features::remove_feature importe app.attachments normalement
+    # pour la cascade de suppression — aucune exemption nécessaire dans ce
+    # sens). Mais app.attachments.routes a besoin de deux fonctions PURES
+    # d'app.ingestion.storage (ensure_uploads_bucket/generate_presigned_put_url)
+    # pour le patron A6 — app.ingestion est au-dessus d'app.features dans ce
+    # contrat, donc au-dessus de la position d'app.attachments. Le stub
+    # get_s3_client, lui, N'EST PAS importé d'app.ingestion.routes : il est
+    # redéfini localement dans app.attachments.routes (Tâche 3) précisément
+    # pour éviter une deuxième exemption sur ce module — cf.
+    # docs/superpowers/specs/2026-09-04-sp40-pieces-jointes-design.md §3.1.
+    "app.attachments.routes -> app.ingestion.storage",
     "app.db -> app.configs.models",
     "app.db -> app.collections.models",
     "app.db -> app.items.models",
@@ -297,4 +310,5 @@ ignore_imports = [
     "app.db -> app.appexport.models",
     "app.db -> app.mapicons.models",
     "app.db -> app.roles.models",
+    "app.db -> app.attachments.models",
 ]

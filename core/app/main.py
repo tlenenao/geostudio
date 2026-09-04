@@ -13,6 +13,7 @@ from app import db, observability
 from app.admin_tools import routes as admin_tools_routes
 from app.alerts import routes as alerts_routes
 from app.appexport import routes as appexport_routes
+from app.attachments import routes as attachments_routes
 from app.auth import routes as auth_routes
 from app.auth.dependency import (
     is_admin_tools_enabled,
@@ -269,6 +270,7 @@ def create_app() -> FastAPI:
     app.include_router(collections_routes.router)
     app.include_router(features_routes.router)
     app.include_router(tiles_routes.router)
+    app.include_router(attachments_routes.router)
     app.include_router(ingestion_routes.router)
     app.include_router(stac_routes.router)
     app.include_router(dcat_routes.router)
@@ -332,6 +334,18 @@ def create_app() -> FastAPI:
         s3_terrain3d_bucket = os.environ.get("S3_TERRAIN3D_BUCKET", "geostudio-terrain3d")
         app.dependency_overrides[terrain3d_routes.get_terrain3d_bucket] = lambda: (
             s3_terrain3d_bucket
+        )
+        # Clé d'override DISTINCTE de ingestion_routes.get_s3_client : ce
+        # stub est défini localement dans app.attachments.routes (pas
+        # réutilisé depuis app.ingestion) — cf. spec SP-40 §3.1. Partagée
+        # entre les propres routes d'app.attachments (déjà incluses ci-dessus)
+        # ET app.features.routes::remove_feature (cascade de suppression),
+        # même mécanisme que les cinq modules ci-dessus avec la clé
+        # ingestion_routes.get_s3_client.
+        app.dependency_overrides[attachments_routes.get_s3_client] = lambda: make_s3_client(
+            endpoint_url=s3_endpoint,
+            access_key=s3_access_key,
+            secret_key=s3_secret_key,
         )
 
     @app.get("/health")

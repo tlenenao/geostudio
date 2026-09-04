@@ -183,13 +183,27 @@ export function VisualQueryWizardPage({
     );
   }
 
-  const baseSchema: CollectionSchema | undefined = baseSchemaQuery.data;
+  // GET /collections/{id}/schema fusionne les champs `attachment` déclarés
+  // (chantier 4.12) comme pseudo-champs sans colonne SQL réelle — jamais
+  // filtrable, joignable ni résumable, donc exclus une seule fois ici plutôt
+  // que dans chacun des 3 composants de requête visuelle qui consomment
+  // baseSchema/joinedSchema (revue finale de branche, I3).
+  function withoutAttachmentFields(schema: CollectionSchema): CollectionSchema {
+    return { ...schema, fields: schema.fields.filter((f) => f.type !== "attachment") };
+  }
+
+  const baseSchema: CollectionSchema | undefined = baseSchemaQuery.data
+    ? withoutAttachmentFields(baseSchemaQuery.data)
+    : undefined;
+  const joinedSchema: CollectionSchema | null = joinedSchemaQuery.data
+    ? withoutAttachmentFields(joinedSchemaQuery.data)
+    : null;
 
   // Calculé une fois pour être réutilisé à la fois par le garde-fou
   // ci-dessous et par la branche création de handleCreate (évite de
   // dupliquer l'appel à inferOutputColumns).
   const inferredOutput: InferredSchema | null = baseSchema
-    ? inferOutputColumns(baseSchema, join, joinedSchemaQuery.data ?? null, summary)
+    ? inferOutputColumns(baseSchema, join, joinedSchema, summary)
     : null;
   // Incompatibilité de schéma de sortie, mode édition seulement (Important
   // 1) : bloque la soumission tant que le schéma recompilé ne correspond
@@ -224,7 +238,7 @@ export function VisualQueryWizardPage({
         const pipeline = compileVisualQueryToPipeline(
           state,
           baseSchema,
-          joinedSchemaQuery.data ?? null,
+          joinedSchema,
           outputCollectionId,
           datasetPk,
         );
@@ -251,7 +265,7 @@ export function VisualQueryWizardPage({
         const pipeline = compileVisualQueryToPipeline(
           state,
           baseSchema,
-          joinedSchemaQuery.data ?? null,
+          joinedSchema,
           outputCollectionId,
           datasetPk,
         );
@@ -375,7 +389,7 @@ export function VisualQueryWizardPage({
                       <div className="flex flex-col gap-2">
                         <QueryJoinPicker
                           baseSchema={baseSchema}
-                          joinedSchema={joinedSchemaQuery.data ?? null}
+                          joinedSchema={joinedSchema}
                           collections={collectionsQuery.data ?? []}
                           value={join}
                           onChange={setJoin}

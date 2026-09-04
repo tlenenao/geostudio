@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import type { AttachmentSummary } from "../api/types";
 import type { PopupContent } from "./popupContent";
 
 // Composant purement présentationnel : il ne connaît ni MapLibre ni la
@@ -13,11 +14,19 @@ export function MapPopup({
   x,
   y,
   onClose,
+  attachments,
+  onDownloadAttachment,
 }: {
   content: PopupContent;
   x: number;
   y: number;
   onClose: () => void;
+  // Pièces jointes de l'entité cliquée (chantier 4.12) : `MapView` les
+  // résout lui-même (fetch nu, cf. son commentaire dédié) et les passe déjà
+  // prêtes — ce composant reste purement présentationnel, sans connaître ni
+  // ItemClient ni la notion de collection/fid.
+  attachments?: AttachmentSummary[];
+  onDownloadAttachment?: (attachmentId: string, filename: string) => void;
 }) {
   // Un gabarit qui s'interpole en chaîne vide (`marked.parse("")` → `""`)
   // est traité comme « pas de html » : la chaîne vide n'a rien à afficher,
@@ -56,6 +65,24 @@ export function MapPopup({
         </dl>
       )}
       {empty && <p className="text-ink-3">Aucun attribut</p>}
+      {attachments && attachments.length > 0 && onDownloadAttachment && (
+        <div className="mt-1 border-t border-rule pt-1">
+          <p className="mb-1 text-ink-3">Pièces jointes</p>
+          <ul className="flex flex-col gap-0.5">
+            {attachments.map((a) => (
+              <li key={a.id}>
+                <button
+                  type="button"
+                  onClick={() => onDownloadAttachment(a.id, a.filename)}
+                  className="bg-transparent p-0 underline"
+                >
+                  {a.filename}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

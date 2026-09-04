@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { lazy, Suspense, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { useBusAction } from "../ActionBusContext";
@@ -169,6 +170,22 @@ export function registerMapWidget(): void {
       const dataSourceId = String(props.dataSourceId ?? "");
       const dataSource = dataSources.find((d) => d.id === dataSourceId);
       const datasetId = dataSource?.datasetId;
+      // Résout le schéma pour offrir les champs `attachment` déclarés sur la
+      // collection au sélecteur « Pièces jointes » de PopupEditor (revue
+      // finale de branche, I6) — même source d'id de collection que
+      // runStatistics juste en dessous (dataSource.layer, patron
+      // FormPropsPanel). N'étend PAS availableFields de MapSymbologyEditor
+      // (toujours [], limitation documentée et volontairement non élargie
+      // ici, cf. commentaire jenksAvailable/sampleField ci-dessous) — hors
+      // périmètre de ce correctif.
+      const collectionId = dataSource?.layer ?? "";
+      const schemaQuery = useQuery({
+        queryKey: ["collection-schema", collectionId],
+        queryFn: () => client.getCollectionSchema(collectionId),
+        enabled: collectionId !== "",
+      });
+      const attachmentFields =
+        schemaQuery.data?.fields.filter((f) => f.type === "attachment").map((f) => f.name) ?? [];
       return (
         <div className="flex flex-col gap-2 text-sm">
           <DataSourceSelect
@@ -229,6 +246,7 @@ export function registerMapWidget(): void {
           <PopupEditor
             value={props.popup as PopupConfig | undefined}
             availableFields={[]}
+            attachmentFields={attachmentFields}
             onChange={(popup) => onChange({ ...props, popup })}
           />
         </div>
@@ -281,6 +299,8 @@ export function registerMapWidget(): void {
                 renderAs,
                 ...(symbology ? { symbology } : {}),
                 popup: props.popup as PopupConfig | undefined,
+                collectionId: ctx.data?.collectionId,
+                pkColumn: ctx.data?.pkColumn,
               },
             ]
           : [],

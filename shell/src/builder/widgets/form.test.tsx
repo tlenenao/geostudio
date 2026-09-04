@@ -3,7 +3,7 @@ import { useState } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
@@ -11,10 +11,18 @@ import type { CollectionSchema, DataSource, ItemClient } from "../../api/types";
 import type { WidgetContext } from "../registry";
 import { ActionBus } from "../ActionBus";
 import { FeatureValidationError } from "../../api/itemClient";
+import type { FormField } from "./form";
 
 beforeEach(() => {
   _resetRegistry();
   registerBuiltinWidgets();
+});
+
+// jsdom n'implémente pas URL.createObjectURL/revokeObjectURL (consommés par
+// AttachmentFieldInput.handleDownload) — stub local au fichier, jamais dans
+// setup.ts (piège n°10, CLAUDE.md), même patron qu'ExplorerMenu.test.tsx.
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 const schema: CollectionSchema = {
@@ -309,7 +317,7 @@ const visibleFields = [
   },
 ];
 
-function renderForm(fields = visibleFields, ctx: Partial<WidgetContext> = {}) {
+function renderForm(fields: FormField[] = visibleFields, ctx: Partial<WidgetContext> = {}) {
   const client = { createFeature: vi.fn().mockResolvedValue({ id: 1 }) } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const Form = getWidget("form")!.Component;
@@ -387,7 +395,7 @@ function renderConnectedForm({
   widgetId = "form1",
   layer = "incidents",
 }: {
-  fields?: typeof visibleFields;
+  fields?: FormField[];
   client?: Partial<ItemClient>;
   bus?: ActionBus;
   widgetId?: string;
@@ -876,4 +884,127 @@ test("hides the write buttons when getCollectionPermission rejects (query genuin
   await waitFor(() =>
     expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument(),
   );
+});
+
+const attachmentFields: FormField[] = [
+  { name: "photos", type: "attachment", label: "Photos", order: 0, hidden: false, required: false },
+];
+
+test("affiche la liste des pièces jointes existantes pour un champ attachment", async () => {
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
+  const listAttachments = vi.fn().mockResolvedValue([
+    {
+      id: "att1",
+      fieldKey: "photos",
+      filename: "a.jpg",
+      contentType: "image/jpeg",
+      byteSize: 10,
+      createdAt: "2026-01-01",
+    },
+  ]);
+  const downloadAttachment = vi
+    .fn()
+    .mockResolvedValue({ blob: new Blob(["x"]), filename: "a.jpg" });
+  renderConnectedForm({
+    fields: attachmentFields,
+    client: { listAttachments, downloadAttachment },
+    bus,
+    widgetId: "form1",
+  });
+  bus.emit("table1", "itemSelected", { id: 7, properties: {} });
+  await screen.findByText(/Modification de l'enregistrement #7/);
+  expect(await screen.findByText("a.jpg")).toBeInTheDocument();
+});
+
+test("désactive le champ attachment tant que l'entité n'est pas enregistrée", () => {
+  renderForm(attachmentFields);
+  expect(
+    screen.getByText(/enregistrer l'entité avant d'ajouter des pièces jointes/i),
+  ).toBeInTheDocument();
+  expect(screen.queryByLabelText(/ajouter des fichiers/i)).not.toBeInTheDocument();
+});
+
+test("supprime une pièce jointe au clic sur Supprimer", async () => {
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
+  const listAttachments = vi.fn().mockResolvedValue([
+    {
+      id: "att1",
+      fieldKey: "photos",
+      filename: "a.jpg",
+      contentType: "image/jpeg",
+      byteSize: 10,
+      createdAt: "2026-01-01",
+    },
+  ]);
+  const deleteAttachment = vi.fn().mockResolvedValue(undefined);
+  const downloadAttachment = vi
+    .fn()
+    .mockResolvedValue({ blob: new Blob(["x"]), filename: "a.jpg" });
+  renderConnectedForm({
+    fields: attachmentFields,
+    client: { listAttachments, deleteAttachment, downloadAttachment },
+    bus,
+    widgetId: "form1",
+  });
+  bus.emit("table1", "itemSelected", { id: 7, properties: {} });
+  await screen.findByText("a.jpg");
+  await userEvent.click(screen.getByRole("button", { name: /supprimer a\.jpg/i }));
+  expect(deleteAttachment).toHaveBeenCalledWith("incidents", "7", "att1");
+});
+
+test("un champ attachment marqué requis ne bloque jamais la soumission (revue finale, I4)", async () => {
+  // AttachmentFieldInput ne passe jamais par values/onChange (Task 11) : un
+  // champ attachment marqué `required: true` — y compris sur une config déjà
+  // enregistrée avant que l'éditeur n'exclue ce type de la case « Requis » —
+  // ne doit jamais rendre le formulaire définitivement non soumettable.
+  renderForm([
+    {
+      name: "photos",
+      type: "attachment",
+      label: "Photos",
+      order: 0,
+      hidden: false,
+      required: true,
+    },
+  ]);
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  expect(screen.queryByText("Champ requis")).not.toBeInTheDocument();
+});
+
+test("télécharge une pièce jointe authentifiée au clic sur son nom", async () => {
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
+  const listAttachments = vi.fn().mockResolvedValue([
+    {
+      id: "att1",
+      fieldKey: "photos",
+      filename: "a.jpg",
+      contentType: "image/jpeg",
+      byteSize: 10,
+      createdAt: "2026-01-01",
+    },
+  ]);
+  const blob = new Blob(["x"]);
+  const downloadAttachment = vi.fn().mockResolvedValue({ blob, filename: "a.jpg" });
+  const createObjectURL = vi.fn().mockReturnValue("blob:fake");
+  const revokeObjectURL = vi.fn();
+  vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+  renderConnectedForm({
+    fields: attachmentFields,
+    client: { listAttachments, downloadAttachment },
+    bus,
+    widgetId: "form1",
+  });
+  bus.emit("table1", "itemSelected", { id: 7, properties: {} });
+  await userEvent.click(await screen.findByRole("button", { name: "a.jpg" }));
+  expect(downloadAttachment).toHaveBeenCalledWith("incidents", "7", "att1");
+  expect(createObjectURL).toHaveBeenCalledWith(blob);
 });

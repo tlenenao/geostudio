@@ -7,5 +7,7 @@ export function mergeDatasetSchema(
   schema: CollectionSchema,
   columns: Record<string, DatasetColumnMeta>,
 ): MergedSchemaField[] {
-  return schema.fields.map((field) => ({ ...field, ...columns[field.name] }));
+  return schema.fields
+    .filter((field) => field.type !== "attachment")
+    .map((field) => ({ ...field, ...columns[field.name] }));
 }

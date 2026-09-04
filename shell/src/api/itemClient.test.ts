@@ -3011,6 +3011,25 @@ test("exportDataSource falls back to a generic filename when Content-Disposition
   expect(filename).toBe("export");
 });
 
+test("downloadAttachment sends the bearer token and returns the blob and filename", async () => {
+  let auth: string | null = null;
+  server.use(
+    http.get("https://core.test/collections/col1/items/f1/attachments/att1/file", ({ request }) => {
+      auth = request.headers.get("authorization");
+      return new HttpResponse("binary-content", {
+        headers: {
+          "Content-Type": "image/jpeg",
+          "Content-Disposition": 'attachment; filename="photo.jpg"',
+        },
+      });
+    }),
+  );
+  const { blob, filename } = await makeClient("tok").downloadAttachment("col1", "f1", "att1");
+  expect(auth).toBe("Bearer tok");
+  expect(filename).toBe("photo.jpg");
+  expect(await blob.text()).toBe("binary-content");
+});
+
 test("getMapConfig reads printLayout from the top level of the config, not nested under map", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/77", () =>
@@ -3454,4 +3473,31 @@ test("listUsers omet q de la query string quand il n'est pas fourni", async () =
   await makeClient().listUsers({ page: 1, pageSize: 50 });
   const url = new URL(lastUrl);
   expect(url.searchParams.has("q")).toBe(false);
+});
+
+test("presignAttachmentUpload appelle la route presign avec le bon corps", async () => {
+  server.use(
+    http.post(
+      "https://core.test/collections/col1/items/f1/attachments/presign",
+      async ({ request }) => {
+        const body = await request.json();
+        expect(body).toEqual({ fieldKey: "photos", filename: "a.jpg", contentType: "image/jpeg" });
+        return HttpResponse.json({ uploadUrl: "https://minio/x", key: "t/col1/f1/x-a.jpg" });
+      },
+    ),
+  );
+  const client = makeClient();
+  const res = await client.presignAttachmentUpload("col1", "f1", {
+    fieldKey: "photos",
+    filename: "a.jpg",
+    contentType: "image/jpeg",
+  });
+  expect(res.key).toBe("t/col1/f1/x-a.jpg");
+});
+
+test("attachmentFileUrl construit l'URL du proxy-read", () => {
+  const client = makeClient();
+  expect(client.attachmentFileUrl("col1", "f1", "att1")).toBe(
+    "https://core.test/collections/col1/items/f1/attachments/att1/file",
+  );
 });

@@ -1354,6 +1354,221 @@ test("the popup survives a config change that keeps the layer but changes someth
   expect(screen.getByRole("dialog")).toBeInTheDocument();
 });
 
+// Pièces jointes de l'entité cliquée (chantier 4.12) : fetch nu (getCoreUrl/
+// getAuthToken), jamais useItemClient()/React Query — MapView fonctionne
+// aussi hors ItemClientProvider.
+test("fetches and shows the entity's attachments when the layer's popup declares an attachmentField", async () => {
+  const blob = new Blob(["x"]);
+  // Un seul fetch mocké sert deux requêtes distinctes (SP-40 Task 21) : la
+  // liste des pièces jointes (`GET .../attachments?fieldKey=...`) au clic
+  // sur l'entité, PUIS le fichier individuel (`GET .../attachments/{id}/file`)
+  // au clic sur son nom — authentifié via fetch+blob, plus un `<a href>` nu.
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url.endsWith("/file")) {
+      return Promise.resolve({ ok: true, blob: async () => blob });
+    }
+    return Promise.resolve({
+      ok: true,
+      json: async () => ({
+        attachments: [
+          {
+            id: "a1",
+            fieldKey: "photos",
+            filename: "a.jpg",
+            contentType: "image/jpeg",
+            byteSize: 1,
+            createdAt: "",
+          },
+        ],
+      }),
+    });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const createObjectURL = vi.fn().mockReturnValue("blob:fake");
+  const revokeObjectURL = vi.fn();
+  vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        pkColumn: "code",
+        popup: { attachmentField: "photos" },
+      })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "communes", {
+      // Pas de `id` top-level (SP-40 Task 20) : `code` est une PK non
+      // entière (chaîne), donc `ST_AsMVT` ne pose jamais `feature_id_name`
+      // pour cette couche — la valeur ne vit que dans `properties`, jamais
+      // dans `f.id` (cf. le nouveau test dédié au cas PK entière, plus haut
+      // dans ce fichier, qui utilise `id` top-level à la place).
+      features: [{ properties: { code: "19272", nom: "Tulle" } }],
+      lngLat: { lng: 12, lat: 34 },
+    }),
+  );
+  expect(fetchMock).toHaveBeenCalledWith(
+    "http://core.test/collections/communes/items/19272/attachments?fieldKey=photos",
+    { headers: { Authorization: "Bearer tok" } },
+  );
+  await screen.findByText("Pièces jointes");
+  await userEvent.click(screen.getByRole("button", { name: "a.jpg" }));
+  expect(fetchMock).toHaveBeenCalledWith(
+    "http://core.test/collections/communes/items/19272/attachments/a1/file",
+    { headers: { Authorization: "Bearer tok" } },
+  );
+  expect(createObjectURL).toHaveBeenCalledWith(blob);
+});
+
+test("does not fetch the entity's attachments when the popup does not declare an attachmentField", () => {
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", pkColumn: "code", popup: { titleField: "nom" } })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "communes", {
+      features: [{ id: 7, properties: { code: "19272", nom: "Tulle" } }],
+      lngLat: { lng: 12, lat: 34 },
+    }),
+  );
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test("does not fetch attachments for a feature layer even when attachmentField is configured", () => {
+  // Une couche `feature` PEUT porter des pièces jointes depuis la Tâche 19
+  // (widget carte de l'App Builder/`/sites/{slug}`, cf. le test
+  // "fetches attachments for a feature layer…" ci-dessous) si elle porte
+  // collectionId+pkColumn — celle-ci n'en porte aucun (GeoJSON externe pur),
+  // donc reste sans pièces jointes possibles.
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  const cfg: MapConfig = {
+    ...config,
+    layers: [
+      {
+        id: "pts",
+        title: "Points",
+        visible: true,
+        kind: "feature",
+        url: "https://fs/pts",
+        popup: { attachmentField: "photos" },
+      },
+    ],
+  };
+  render(<MapView config={cfg} getAuthToken={() => "tok"} getCoreUrl={() => "http://core.test"} />);
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "pts", {
+      features: [{ id: 7, properties: { nom: "Parc" } }],
+      lngLat: { lng: 1, lat: 2 },
+    }),
+  );
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test("fetches attachments for a feature layer that carries a resolvable collectionId/pkColumn (SP-40, widget carte)", () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue({ ok: true, json: async () => ({ attachments: [] }) });
+  vi.stubGlobal("fetch", fetchMock);
+  const cfg: MapConfig = {
+    ...config,
+    layers: [
+      {
+        id: "pts",
+        title: "Points",
+        visible: true,
+        kind: "feature",
+        url: "https://core.test/collections/parcs/items.geojson",
+        collectionId: "parcs",
+        pkColumn: "id",
+        popup: { attachmentField: "photos" },
+      },
+    ],
+  };
+  render(<MapView config={cfg} getAuthToken={() => "tok"} getCoreUrl={() => "http://core.test"} />);
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "pts", {
+      // `id` top-level, pas dans `properties` (SP-40 Task 20) : le GeoJSON
+      // servi par l'OGC API Features du cœur place toujours la PK dans le
+      // champ `id` top-level de la Feature et l'exclut de `properties`
+      // (core/app/features/repository.py::_row_to_feature/_property_columns).
+      features: [{ id: 42, properties: {} }],
+      lngLat: { lng: 1, lat: 2 },
+    }),
+  );
+  expect(fetchMock).toHaveBeenCalledWith(
+    "http://core.test/collections/parcs/items/42/attachments?fieldKey=photos",
+    { headers: { Authorization: "Bearer tok" } },
+  );
+});
+
+test("does not fetch attachments when the clicked feature has no value for the layer's pkColumn", () => {
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        pkColumn: "code",
+        popup: { attachmentField: "photos" },
+      })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "communes", {
+      // Pas de `id` top-level (SP-40 Task 20) : ce test prouve l'absence de
+      // TOUTE valeur exploitable pour la PK — ni dans `properties` (déjà le
+      // cas avant ce correctif), ni dans `f.id` (sinon ce serait exactement
+      // le cas couvert par le nouveau test PK entière, plus haut).
+      features: [{ properties: { nom: "Tulle" } }],
+      lngLat: { lng: 12, lat: 34 },
+    }),
+  );
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test("fetches attachments using the feature's top-level id when properties omits the integer pkColumn (ST_AsMVT feature_id, SP-40 Task 20)", async () => {
+  // Reproduit le comportement réel de ST_AsMVT(..., feature_id_name) côté
+  // cœur (core/app/features/tiles.py::mvt_feature_id_column) pour une PK
+  // entière : la colonne PK est retirée de `properties` et placée dans le
+  // champ `id` top-level de la feature MapLibre — jamais les deux à la fois.
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ attachments: [] }),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        pkColumn: "code",
+        popup: { attachmentField: "photos" },
+      })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "communes", {
+      features: [{ id: 19272, properties: { nom: "Tulle" } }],
+      lngLat: { lng: 12, lat: 34 },
+    }),
+  );
+  expect(fetchMock).toHaveBeenCalledWith(
+    "http://core.test/collections/communes/items/19272/attachments?fieldKey=photos",
+    { headers: { Authorization: "Bearer tok" } },
+  );
+});
+
 // I5 de la revue finale SP-24 : avant `layersKey`, chaque frappe dans
 // PopupEditor produisait un nouveau tableau `config.layers` (même contenu
 // pertinent) qui détruisait puis recréait TOUTES les sources/couches

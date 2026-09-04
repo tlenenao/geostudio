@@ -11,7 +11,7 @@ registerBuiltinWidgets();
 // Synthesized in memory, never persisted — the read-only preview reuses the
 // single AppRenderer(config, "runtime") runtime (A31), never a bespoke
 // map/table pairing.
-function previewConfig(collectionId: string): AppConfig {
+function previewConfig(collectionId: string, attachmentField: string | undefined): AppConfig {
   const dataSourceId = "dataset-preview";
   return {
     kind: "app",
@@ -31,7 +31,10 @@ function previewConfig(collectionId: string): AppConfig {
           y: 0,
           w: 6,
           h: 6,
-          props: { dataSourceId },
+          props: {
+            dataSourceId,
+            ...(attachmentField ? { popup: { attachmentField } } : {}),
+          },
         },
         {
           id: "dataset-preview-table",
@@ -54,6 +57,15 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
     queryFn: () => client.getCollection(collectionId),
     retry: false,
   });
+  // Non bloquant à dessein (pas de garde `isLoading` supplémentaire, cf.
+  // spec §3.4) : tant que le schéma n'a pas résolu, `attachmentField` reste
+  // `undefined` et le popup se comporte comme avant SP-40.
+  const schemaQuery = useQuery({
+    queryKey: ["public-dataset-schema", collectionId],
+    queryFn: () => client.getCollectionSchema(collectionId),
+    retry: false,
+  });
+  const attachmentField = schemaQuery.data?.fields.find((f) => f.type === "attachment")?.name;
 
   if (query.isLoading) {
     return <p role="status">Chargement…</p>;
@@ -77,7 +89,7 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
       </header>
       <DatasetDownloadButtons collectionId={collectionId} featureCount={col.featureCount} />
       <div className="h-[480px] w-full">
-        <AppRenderer config={previewConfig(collectionId)} mode="runtime" />
+        <AppRenderer config={previewConfig(collectionId, attachmentField)} mode="runtime" />
       </div>
     </div>
   );

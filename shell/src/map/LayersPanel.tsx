@@ -53,10 +53,15 @@ function LayerPopupEditor({
       // pour une collection dont le schéma charge encore.
       availableFields={
         collectionId
-          ? (schema.data?.fields.map((f) => f.name) ?? [])
+          ? (schema.data?.fields.filter((f) => f.type !== "attachment").map((f) => f.name) ?? [])
           : featureGeojson.data
             ? listFields(featureGeojson.data)
             : []
+      }
+      attachmentFields={
+        collectionId
+          ? (schema.data?.fields.filter((f) => f.type === "attachment").map((f) => f.name) ?? [])
+          : []
       }
       onChange={(popup) => onChangeLayer({ ...layer, popup })}
     />
@@ -94,7 +99,11 @@ function LayerSymbologyEditor({
     <MapSymbologyEditor
       value={layer.symbology}
       availableFields={
-        collectionId ? (schema.data?.fields.map((f) => f.name) ?? []) : fc ? listFields(fc) : []
+        collectionId
+          ? (schema.data?.fields.filter((f) => f.type !== "attachment").map((f) => f.name) ?? [])
+          : fc
+            ? listFields(fc)
+            : []
       }
       themeColors={undefined} // no Theme on a standalone MapConfig (spec §1)
       runStatistics={

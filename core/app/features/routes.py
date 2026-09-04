@@ -28,6 +28,8 @@ from app.analytics.export import (
     rows_to_format,
 )
 from app.analytics.sql_sandbox import SqlSandboxError, run_analyst_sql
+from app.attachments import repository as attachments_repo
+from app.attachments.routes import get_attachments_bucket, get_s3_client
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections.introspection import TableNotFound
@@ -620,6 +622,7 @@ def remove_feature(
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    s3=Depends(get_s3_client),
 ):
     col = _get_writable(session, user, collection_id)
     info = introspect(session, col.table_name)
@@ -630,6 +633,14 @@ def remove_feature(
     session.execute(
         text("UPDATE collections SET feature_count = feature_count - 1 WHERE id = :id"),
         {"id": col.id},
+    )
+    attachments_repo.delete_all_for_feature(
+        session,
+        s3,
+        get_attachments_bucket(),
+        tenant_id=col.tenant_id,
+        collection_id=col.id,
+        fid=fid,
     )
     write_audit(
         session,

@@ -9,23 +9,39 @@ const fields = ["id", "nom", "population"];
 test("enabling the popup posts an empty config, disabling it clears the field", async () => {
   const onChange = vi.fn();
   const { rerender } = render(
-    <PopupEditor value={undefined} availableFields={fields} onChange={onChange} />,
+    <PopupEditor
+      value={undefined}
+      availableFields={fields}
+      attachmentFields={[]}
+      onChange={onChange}
+    />,
   );
   await userEvent.click(screen.getByRole("checkbox", { name: "Afficher les attributs au clic" }));
   expect(onChange).toHaveBeenLastCalledWith({});
-  rerender(<PopupEditor value={{}} availableFields={fields} onChange={onChange} />);
+  rerender(
+    <PopupEditor value={{}} availableFields={fields} attachmentFields={[]} onChange={onChange} />,
+  );
   await userEvent.click(screen.getByRole("checkbox", { name: "Afficher les attributs au clic" }));
   expect(onChange).toHaveBeenLastCalledWith(undefined);
 });
 
 test("the field controls are hidden while the popup is disabled", () => {
-  render(<PopupEditor value={undefined} availableFields={fields} onChange={() => {}} />);
+  render(
+    <PopupEditor
+      value={undefined}
+      availableFields={fields}
+      attachmentFields={[]}
+      onChange={() => {}}
+    />,
+  );
   expect(screen.queryByLabelText("Champ titre")).not.toBeInTheDocument();
 });
 
 test("typing a title field posts it", async () => {
   const onChange = vi.fn();
-  render(<PopupEditor value={{}} availableFields={fields} onChange={onChange} />);
+  render(
+    <PopupEditor value={{}} availableFields={fields} attachmentFields={[]} onChange={onChange} />,
+  );
   await userEvent.type(screen.getByLabelText("Champ titre"), "n");
   expect(onChange).toHaveBeenLastCalledWith({ titleField: "n" });
 });
@@ -36,7 +52,7 @@ test("an arbitrary field name can be added when no schema is available", async (
   // l'auteur saisit le nom du champ — comme les champs « Champ couleur » et
   // « Champ taille » voisins, qui sont déjà des saisies libres.
   const onChange = vi.fn();
-  render(<PopupEditor value={{}} availableFields={[]} onChange={onChange} />);
+  render(<PopupEditor value={{}} availableFields={[]} attachmentFields={[]} onChange={onChange} />);
   await userEvent.type(screen.getByLabelText("Nom du champ à ajouter"), "nom");
   await userEvent.click(screen.getByRole("button", { name: "Ajouter le champ" }));
   expect(onChange).toHaveBeenLastCalledWith({ fields: [{ name: "nom" }] });
@@ -44,7 +60,7 @@ test("an arbitrary field name can be added when no schema is available", async (
 
 test("adding a blank field name does nothing", async () => {
   const onChange = vi.fn();
-  render(<PopupEditor value={{}} availableFields={[]} onChange={onChange} />);
+  render(<PopupEditor value={{}} availableFields={[]} attachmentFields={[]} onChange={onChange} />);
   await userEvent.click(screen.getByRole("button", { name: "Ajouter le champ" }));
   expect(onChange).not.toHaveBeenCalled();
 });
@@ -52,7 +68,12 @@ test("adding a blank field name does nothing", async () => {
 test("adding a field already in the list does not duplicate it", async () => {
   const onChange = vi.fn();
   render(
-    <PopupEditor value={{ fields: [{ name: "nom" }] }} availableFields={[]} onChange={onChange} />,
+    <PopupEditor
+      value={{ fields: [{ name: "nom" }] }}
+      availableFields={[]}
+      attachmentFields={[]}
+      onChange={onChange}
+    />,
   );
   await userEvent.type(screen.getByLabelText("Nom du champ à ajouter"), "nom");
   await userEvent.click(screen.getByRole("button", { name: "Ajouter le champ" }));
@@ -62,7 +83,7 @@ test("adding a field already in the list does not duplicate it", async () => {
 test("checking a field adds it to the list, unchecking removes it", async () => {
   const onChange = vi.fn();
   const { rerender } = render(
-    <PopupEditor value={{}} availableFields={fields} onChange={onChange} />,
+    <PopupEditor value={{}} availableFields={fields} attachmentFields={[]} onChange={onChange} />,
   );
   await userEvent.click(screen.getByRole("checkbox", { name: "population" }));
   expect(onChange).toHaveBeenLastCalledWith({ fields: [{ name: "population" }] });
@@ -70,6 +91,7 @@ test("checking a field adds it to the list, unchecking removes it", async () => 
     <PopupEditor
       value={{ fields: [{ name: "population" }] }}
       availableFields={fields}
+      attachmentFields={[]}
       onChange={onChange}
     />,
   );
@@ -83,6 +105,7 @@ test("a field label can be overridden", async () => {
     <PopupEditor
       value={{ fields: [{ name: "population" }] }}
       availableFields={fields}
+      attachmentFields={[]}
       onChange={onChange}
     />,
   );
@@ -92,7 +115,9 @@ test("a field label can be overridden", async () => {
 
 test("the advanced mode posts a template", async () => {
   const onChange = vi.fn();
-  render(<PopupEditor value={{}} availableFields={fields} onChange={onChange} />);
+  render(
+    <PopupEditor value={{}} availableFields={fields} attachmentFields={[]} onChange={onChange} />,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Avancé (gabarit)" }));
   await userEvent.type(screen.getByLabelText("Gabarit"), "x");
   expect(onChange).toHaveBeenLastCalledWith({ template: "x" });
@@ -100,7 +125,12 @@ test("the advanced mode posts a template", async () => {
 
 test("an invalid placeholder is reported without blocking typing", async () => {
   render(
-    <PopupEditor value={{ template: "${(((}" }} availableFields={fields} onChange={() => {}} />,
+    <PopupEditor
+      value={{ template: "${(((}" }}
+      availableFields={fields}
+      attachmentFields={[]}
+      onChange={() => {}}
+    />,
   );
   expect(screen.getByRole("alert")).toHaveTextContent("Expression invalide");
 });
@@ -110,6 +140,7 @@ test("an unclosed placeholder is reported", () => {
     <PopupEditor
       value={{ template: "${record.nom" }}
       availableFields={fields}
+      attachmentFields={[]}
       onChange={() => {}}
     />,
   );
@@ -121,8 +152,35 @@ test("a valid template reports nothing", () => {
     <PopupEditor
       value={{ template: "${record.nom}" }}
       availableFields={fields}
+      attachmentFields={[]}
       onChange={() => {}}
     />,
   );
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+test("propose un sélecteur de champ pièces jointes quand attachmentFields est non vide", async () => {
+  const onChange = vi.fn();
+  render(
+    <PopupEditor
+      value={{ fields: [] }}
+      availableFields={["nom"]}
+      attachmentFields={["photos"]}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.selectOptions(screen.getByLabelText("Pièces jointes"), "photos");
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ attachmentField: "photos" }));
+});
+
+test("n'affiche aucun sélecteur pièces jointes si attachmentFields est vide", () => {
+  render(
+    <PopupEditor
+      value={{ fields: [] }}
+      availableFields={["nom"]}
+      attachmentFields={[]}
+      onChange={vi.fn()}
+    />,
+  );
+  expect(screen.queryByLabelText("Pièces jointes")).not.toBeInTheDocument();
 });

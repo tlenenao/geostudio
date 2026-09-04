@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -71,6 +71,7 @@ const COLLECTIONS: CollectionAdmin[] = [
     permissions: { read: true, write: true, delete: true, share: true },
     featureCount: 10,
     owner: "alice",
+    attachmentFields: [],
   },
 ];
 
@@ -273,6 +274,23 @@ describe("VisualQueryWizardPage", () => {
     expect(client.savePipelineConfig).not.toHaveBeenCalled();
   });
 
+  test("Filtrer ne propose jamais un champ attachment comme colonne (revue finale SP-40, I3)", async () => {
+    renderWizard({
+      getCollectionSchema: () =>
+        Promise.resolve({
+          ...BASE_SCHEMA,
+          fields: [...BASE_SCHEMA.fields, { name: "photos", type: "attachment", required: false }],
+        }),
+    });
+    await screen.findByRole("option", { name: "Incidents" });
+    await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "incidents");
+    await screen.findByText("Filtrer");
+    await userEvent.click(screen.getByRole("button", { name: "Ajouter un filtre" }));
+    const columnSelect = await screen.findByLabelText("Colonne du filtre 1");
+    expect(screen.getByRole("option", { name: "commune" })).toBeInTheDocument();
+    expect(within(columnSelect).queryByRole("option", { name: "photos" })).not.toBeInTheDocument();
+  });
+
   test("affiche une erreur si le provisionnement échoue, sans créer le dataset ni le pipeline", async () => {
     const client = renderWizard({
       createEmptyCollection: vi.fn().mockRejectedValue(new Error("quota dépassé")),
@@ -461,6 +479,7 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
         permissions: { read: true, write: true, delete: true, share: true },
         featureCount: 5,
         owner: "alice",
+        attachmentFields: [],
       },
     ];
     const client = renderWizard({ listCollections: () => Promise.resolve(collections) });

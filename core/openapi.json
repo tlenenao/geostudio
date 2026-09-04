@@ -380,6 +380,148 @@
         "title": "ApiKeyPayload",
         "type": "object"
       },
+      "AttachmentConfirmRequest": {
+        "properties": {
+          "contentType": {
+            "title": "Contenttype",
+            "type": "string"
+          },
+          "fieldKey": {
+            "title": "Fieldkey",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "fieldKey",
+          "filename",
+          "contentType"
+        ],
+        "title": "AttachmentConfirmRequest",
+        "type": "object"
+      },
+      "AttachmentFieldSpec": {
+        "description": "Un champ `attachment` d\u00e9clar\u00e9 sur une collection (chantier 4.12) \u2014\npas une colonne SQL r\u00e9elle, juste un slot nomm\u00e9 fusionn\u00e9 dans\nGET /collections/{id}/schema (app/collections/schema_json.py).",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "AttachmentFieldSpec",
+        "type": "object"
+      },
+      "AttachmentList": {
+        "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentRead"
+            },
+            "title": "Attachments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "attachments"
+        ],
+        "title": "AttachmentList",
+        "type": "object"
+      },
+      "AttachmentPresignRequest": {
+        "properties": {
+          "contentType": {
+            "title": "Contenttype",
+            "type": "string"
+          },
+          "fieldKey": {
+            "title": "Fieldkey",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fieldKey",
+          "filename",
+          "contentType"
+        ],
+        "title": "AttachmentPresignRequest",
+        "type": "object"
+      },
+      "AttachmentPresignResponse": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "uploadUrl": {
+            "title": "Uploadurl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uploadUrl",
+          "key"
+        ],
+        "title": "AttachmentPresignResponse",
+        "type": "object"
+      },
+      "AttachmentRead": {
+        "properties": {
+          "byteSize": {
+            "title": "Bytesize",
+            "type": "integer"
+          },
+          "contentType": {
+            "title": "Contenttype",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "fieldKey": {
+            "title": "Fieldkey",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "fieldKey",
+          "filename",
+          "contentType",
+          "byteSize",
+          "createdAt"
+        ],
+        "title": "AttachmentRead",
+        "type": "object"
+      },
       "BaseMap": {
         "properties": {
           "style": {
@@ -828,6 +970,20 @@
       },
       "CollectionPatch": {
         "properties": {
+          "attachmentFields": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AttachmentFieldSpec"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attachmentfields"
+          },
           "description": {
             "anyOf": [
               {
@@ -4944,6 +5100,339 @@
           }
         },
         "summary": "Put Feature"
+      }
+    },
+    "/collections/{collection_id}/items/{fid}/attachments": {
+      "get": {
+        "operationId": "list_attachments_route_collections__collection_id__items__fid__attachments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fid",
+            "required": true,
+            "schema": {
+              "title": "Fid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fieldKey",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fieldkey"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Attachments Route"
+      },
+      "post": {
+        "operationId": "confirm_attachment_collections__collection_id__items__fid__attachments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fid",
+            "required": true,
+            "schema": {
+              "title": "Fid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachmentConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Attachment"
+      }
+    },
+    "/collections/{collection_id}/items/{fid}/attachments/presign": {
+      "post": {
+        "operationId": "presign_attachment_collections__collection_id__items__fid__attachments_presign_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fid",
+            "required": true,
+            "schema": {
+              "title": "Fid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachmentPresignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentPresignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Presign Attachment"
+      }
+    },
+    "/collections/{collection_id}/items/{fid}/attachments/{attachment_id}": {
+      "delete": {
+        "operationId": "delete_attachment_route_collections__collection_id__items__fid__attachments__attachment_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fid",
+            "required": true,
+            "schema": {
+              "title": "Fid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Attachment Route"
+      }
+    },
+    "/collections/{collection_id}/items/{fid}/attachments/{attachment_id}/file": {
+      "get": {
+        "operationId": "read_attachment_file_collections__collection_id__items__fid__attachments__attachment_id__file_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fid",
+            "required": true,
+            "schema": {
+              "title": "Fid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Attachment File"
       }
     },
     "/collections/{collection_id}/schema": {

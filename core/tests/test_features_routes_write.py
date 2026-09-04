@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
 
 from app import db
+from app.attachments import routes as attachments_routes
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections import routes as collections_routes
 from app.collections.introspection import ColumnInfo, TableInfo, TableNotFound
@@ -74,6 +75,21 @@ def make_fake_write_repo():
 VALID = {"type": "Feature", "properties": {"titre": "Nid de poule"}, "geometry": None}
 
 
+class _FakeS3Client:
+    """Stub minimal pour attachments_routes.get_s3_client (Tâche 7, SP-40) :
+    remove_feature dépend désormais de get_s3_client pour la cascade de
+    suppression des pièces jointes, donc TOUT test de ce fichier qui appelle
+    DELETE /collections/{id}/items/{fid} a besoin de cet override, pas
+    seulement le nouveau test dédié — sinon RuntimeError("S3 client
+    dependency not configured")."""
+
+    def __init__(self):
+        self.deleted: list[str] = []
+
+    def delete_object(self, *, Bucket, Key):
+        self.deleted.append(Key)
+
+
 @pytest.fixture()
 def env():
     engine = make_engine("sqlite+pysqlite:///:memory:")
@@ -119,6 +135,11 @@ def env():
     app.dependency_overrides[features_routes.get_features_repo] = lambda: fake_repo
     # SQLite ne connaît ni SET LOCAL ROLE ni set_config : neutraliser le scope.
     app.dependency_overrides[features_routes.get_rls_scope] = lambda: features_routes.null_rls_scope
+    # remove_feature dépend de get_s3_client (cascade de suppression des
+    # pièces jointes, Tâche 7 SP-40) — override par défaut pour tous les
+    # tests DELETE existants de ce fichier, pas seulement le nouveau test
+    # dédié (cf. _FakeS3Client ci-dessus).
+    app.dependency_overrides[attachments_routes.get_s3_client] = lambda: _FakeS3Client()
     client = TestClient(app)
     return app, client, Session, admin, regular, fake_repo
 
@@ -249,3 +270,39 @@ def test_put_does_not_change_feature_count(env):
     _as(app, admin)
     client.put("/collections/incidents/items/1", json=VALID)
     assert _feature_count(Session) == 0  # remplacement, pas de création
+
+
+def test_delete_feature_cascades_to_its_attachments(env):
+    from app.attachments import repository as attachments_repo
+
+    app, client, Session, admin, _r, _repo = env
+    _register(app, client, admin)
+    _as(app, admin)
+
+    s3 = _FakeS3Client()
+    app.dependency_overrides[attachments_routes.get_s3_client] = lambda: s3
+
+    with Session() as session:
+        attachments_repo.create_attachment(
+            session,
+            tenant_id=admin.tenant_id,
+            collection_id="incidents",
+            fid="1",
+            field_key="photos",
+            filename="a.jpg",
+            content_type="image/jpeg",
+            byte_size=3,
+            s3_key=f"{admin.tenant_id}/incidents/1/abc-a.jpg",
+            created_by=admin.id,
+        )
+        session.commit()
+
+    res = client.delete("/collections/incidents/items/1")
+    assert res.status_code == 204
+
+    with Session() as session:
+        remaining = attachments_repo.list_attachments(
+            session, tenant_id=admin.tenant_id, collection_id="incidents", fid="1"
+        )
+        assert remaining == []
+    assert len(s3.deleted) == 1

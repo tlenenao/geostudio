@@ -15,7 +15,7 @@ import { HeatmapLayer, HexagonLayer } from "@deck.gl/aggregation-layers";
 import { ColumnLayer } from "@deck.gl/layers";
 import { Tile3DLayer } from "@deck.gl/geo-layers";
 import { Tiles3DLoader } from "@loaders.gl/3d-tiles";
-import type { DataRecord, MapConfig, MapLayer, ThemeColors } from "../api/types";
+import type { AttachmentSummary, DataRecord, MapConfig, MapLayer, ThemeColors } from "../api/types";
 import { MapLegend } from "./MapLegend";
 import { MapMeasureSketchToolbar } from "./MapMeasureSketchToolbar";
 import { MapPopup } from "./MapPopup";
@@ -374,18 +374,28 @@ function makeFeatureClickHandler(
   // chaque rendu) qui décide si la couche a encore un popup — le handler ne
   // capture donc plus `layer.popup`, et une modification du popup n'oblige
   // plus à reconstruire la carte (I5 de la revue finale SP-24).
-  onPopup: (properties: Record<string, unknown>, lngLat: { lng: number; lat: number }) => void,
+  onPopup: (
+    properties: Record<string, unknown>,
+    lngLat: { lng: number; lat: number },
+    id: string | number | undefined,
+  ) => void,
 ) {
   return (e: maplibregl.MapLayerMouseEvent) => {
     const f = e.features?.[0];
     if (!f) return;
     const properties = (f.properties ?? {}) as Record<string, unknown>;
-    // Le popup s'ouvre même sans identité utilisable : les attributs sont là,
-    // c'est la seule chose dont il a besoin. Le repli d'id ne conditionne que
-    // la sélection et le cross-filter.
-    onPopup(properties, e.lngLat);
+    // `f.id` (id de feature top-level MapLibre) prime sur properties[pkColumn] :
+    // ST_AsMVT retire la colonne PK des attributs quand elle est entière
+    // (feature_id_name, cf. core/app/features/tiles.py::mvt_feature_id_column)
+    // — elle n'existe alors QUE dans f.id, jamais dans properties (chantier
+    // 4.12, Tâche 20). properties[pkColumn] reste le repli pour une PK non
+    // entière ou une couche `feature` (GeoJSON, jamais de feature_id MVT).
     const fallback = pkColumn ? properties[pkColumn] : undefined;
     const id = (f.id ?? fallback) as string | number | undefined;
+    // Le popup s'ouvre même sans identité utilisable : les attributs sont là,
+    // c'est la seule chose dont il a besoin — mais on transmet quand même
+    // l'id résolu, dont dépend maintenant aussi le popup (pièces jointes).
+    onPopup(properties, e.lngLat, id);
     if (id == null) return;
     onFeatureClick({ id, properties, geometry: f.geometry });
   };
@@ -403,6 +413,7 @@ function applyLayers(
     layerId: string,
     properties: Record<string, unknown>,
     lngLat: { lng: number; lat: number },
+    id: string | number | undefined,
   ) => void,
   themeColors: ThemeColors | undefined,
   // Rempli par CETTE passe : les ids d'image résolus par `effectivePaint`
@@ -529,7 +540,7 @@ function applyLayers(
             // Le popup est toujours identifié par l'id de la COUCHE de la
             // config, jamais par celui d'une sous-couche : c'est lui que
             // MapView recroise avec config.layers.
-            (properties, lngLat) => onPopup(layer.id, properties, lngLat),
+            (properties, lngLat, featureId) => onPopup(layer.id, properties, lngLat, featureId),
           );
           map.on("click", id, handler);
           clickHandlers.set(id, handler);
@@ -605,8 +616,10 @@ function applyLayers(
           applied.add(`${layer.id}__label`);
           applied.add(`${layer.id}__labels`);
         }
-        const handler = makeFeatureClickHandler(undefined, onFeatureClick, (properties, lngLat) =>
-          onPopup(layer.id, properties, lngLat),
+        const handler = makeFeatureClickHandler(
+          undefined,
+          onFeatureClick,
+          (properties, lngLat, featureId) => onPopup(layer.id, properties, lngLat, featureId),
         );
         map.on("click", layer.id, handler);
         clickHandlers.set(layer.id, handler);
@@ -963,8 +976,17 @@ export const MapView = forwardRef<
     layerId: string;
     properties: Record<string, unknown>;
     lngLat: { lng: number; lat: number };
+    // Identité de l'entité cliquée, dérivée de `pkColumn` (uniquement pour
+    // les couches `vector` — cf. handlePopup) : nécessaire pour retrouver
+    // ses pièces jointes (chantier 4.12), absente pour tout le reste.
+    fid: string | undefined;
   } | null>(null);
   const [popupPoint, setPopupPoint] = useState<{ x: number; y: number } | null>(null);
+  // Pièces jointes de l'entité dont le popup est ouvert (chantier 4.12) :
+  // remplies par l'effet de fetch juste avant le `return` final, jamais lues
+  // directement depuis `popup` — ce n'est pas une projection pure de l'état
+  // déjà là, mais le résultat d'un appel réseau asynchrone.
+  const [popupAttachments, setPopupAttachments] = useState<AttachmentSummary[]>([]);
   // Un `useRef` assigné dans un effet ne provoque AUCUN rendu : la barre
   // d'outils conditionnée à `mapRef.current` ne se monterait jamais au
   // premier rendu. On garde donc l'instance dans un état, posé depuis le
@@ -1045,10 +1067,25 @@ export const MapView = forwardRef<
       layerId: string,
       properties: Record<string, unknown>,
       lngLat: { lng: number; lat: number },
+      featureId: string | number | undefined,
     ) => {
       const layer = layersRef.current.find((l) => l.id === layerId);
       if (!layer || !("popup" in layer) || !layer.popup) return;
-      setPopup({ layerId, properties, lngLat });
+      // `vector` ET `feature` peuvent porter `pkColumn`/`collectionId`
+      // (chantier 4.12 ; Tâche 19 : le widget carte de l'App Builder/
+      // `/sites/{slug}` construit toujours `kind: "feature"`, jamais
+      // `vector` — les deux champs y sont optionnels et absents pour une
+      // couche GeoJSON externe pure, qui reste donc sans pièces jointes).
+      // `featureId` (résolu en amont par makeFeatureClickHandler — Tâche 20)
+      // prime sur properties[pkColumn] : ST_AsMVT retire la colonne PK des
+      // attributs quand elle est entière, elle n'existe alors que dans
+      // f.id (cf. core/app/features/tiles.py::mvt_feature_id_column).
+      const pkValue = featureId ?? (layer.pkColumn ? properties[layer.pkColumn] : undefined);
+      const fid =
+        (layer.kind === "vector" || layer.kind === "feature") && layer.pkColumn && pkValue != null
+          ? String(pkValue)
+          : undefined;
+      setPopup({ layerId, properties, lngLat, fid });
     },
     [],
   );
@@ -1305,6 +1342,65 @@ export const MapView = forwardRef<
   // n'ont pas de champ `popup` du tout).
   const popupConfig = popupLayer && "popup" in popupLayer ? popupLayer.popup : undefined;
 
+  // Pièces jointes de l'entité dont le popup est ouvert (chantier 4.12) :
+  // fetch NU via getCoreUrl/getAuthToken, jamais useItemClient()/React Query
+  // — ce composant fonctionne aussi hors ItemClientProvider (export
+  // statique, cf. son commentaire d'en-tête général sur exportRender/SP-17a
+  // et les usages standalone de MapView). Placé ICI, après le calcul de
+  // popupConfig/popupLayer ci-dessus (dont il dépend) et avant le `return`
+  // final : il n'y a aucun `return` conditionnel plus haut dans ce
+  // composant, donc cet ordre respecte les règles des Hooks (jamais après
+  // un `return` conditionnel).
+  useEffect(() => {
+    setPopupAttachments([]);
+    if (!popup || !popupConfig?.attachmentField || popup.fid === undefined) return;
+    if (!popupLayer || (popupLayer.kind !== "vector" && popupLayer.kind !== "feature")) return;
+    if (!popupLayer.collectionId) return;
+    const coreUrl = getCoreUrlRef.current?.();
+    if (!coreUrl) return;
+    const token = getAuthTokenRef.current?.();
+    const url = `${coreUrl}/collections/${popupLayer.collectionId}/items/${popup.fid}/attachments?fieldKey=${encodeURIComponent(popupConfig.attachmentField)}`;
+    let cancelled = false;
+    fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((res) => (res.ok ? res.json() : { attachments: [] }))
+      .then((data: { attachments?: AttachmentSummary[] }) => {
+        if (!cancelled) setPopupAttachments(data.attachments ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setPopupAttachments([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [popup?.layerId, popup?.fid, popupConfig?.attachmentField]);
+
+  async function downloadPopupAttachment(attachmentId: string, filename: string) {
+    if (
+      !popupLayer ||
+      (popupLayer.kind !== "vector" && popupLayer.kind !== "feature") ||
+      !popupLayer.collectionId ||
+      !popup ||
+      popup.fid === undefined
+    )
+      return;
+    const coreUrl = getCoreUrlRef.current?.();
+    if (!coreUrl) return;
+    const token = getAuthTokenRef.current?.();
+    const url = `${coreUrl}/collections/${popupLayer.collectionId}/items/${popup.fid}/attachments/${attachmentId}/file`;
+    const res = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const el = document.createElement("a");
+    el.href = objectUrl;
+    el.download = filename;
+    el.click();
+    URL.revokeObjectURL(objectUrl);
+  }
+
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" data-testid="map-container" />
@@ -1315,6 +1411,10 @@ export const MapView = forwardRef<
           x={popupPoint.x}
           y={popupPoint.y}
           onClose={() => setPopup(null)}
+          attachments={popupAttachments}
+          onDownloadAttachment={(attachmentId, filename) =>
+            void downloadPopupAttachment(attachmentId, filename)
+          }
         />
       )}
       {interactiveTools && readyMap && (

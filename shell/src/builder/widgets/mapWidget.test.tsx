@@ -122,18 +122,20 @@ function renderPropsPanel({
   onChange,
   dataSources = [],
   theme,
+  clientOverrides = {},
 }: {
   props: Record<string, unknown>;
   onChange: (props: Record<string, unknown>) => void;
 
   dataSources?: any[];
   theme?: Theme;
+  clientOverrides?: Partial<ItemClient>;
 }) {
   const Panel = getWidget("map")!.PropsPanel;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <ItemClientProvider client={{} as unknown as ItemClient}>
+      <ItemClientProvider client={clientOverrides as unknown as ItemClient}>
         <Panel props={props} dataSources={dataSources} onChange={onChange} theme={theme} />
       </ItemClientProvider>
     </QueryClientProvider>,
@@ -673,6 +675,35 @@ test("the props panel exposes the shared popup editor", async () => {
   expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ popup: {} }));
 });
 
+test("the props panel resolves attachment fields from the bound collection's schema (revue finale, I6)", async () => {
+  // Avant ce correctif, attachmentFields={[]} était codé en dur : aucune app
+  // ne pouvait jamais configurer PopupConfig.attachmentField depuis le
+  // builder — seule la dérivation automatique de DatasetPage (/sites/{slug},
+  // Tâche 19) l'atteignait. Ce test prouve que le sélecteur « Pièces
+  // jointes » de PopupEditor s'affiche désormais dès qu'une vraie
+  // collection déclarant un champ attachment est liée.
+  const onChange = vi.fn();
+  const getCollectionSchema = vi.fn().mockResolvedValue({
+    collection: "incidents",
+    pk: "id",
+    geometry: null,
+    fields: [
+      { name: "titre", type: "string", required: false },
+      { name: "photos", type: "attachment", required: false, label: "Photos" },
+    ],
+  });
+  renderPropsPanel({
+    props: { dataSourceId: "ds1", popup: {} },
+    onChange,
+    dataSources: [{ id: "ds1", type: "features", service: "core", layer: "incidents", query: {} }],
+    clientOverrides: { getCollectionSchema },
+  });
+  await userEvent.selectOptions(await screen.findByLabelText("Pièces jointes"), "photos");
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ popup: { attachmentField: "photos" } }),
+  );
+});
+
 test("the popup editor accepts a hand-typed field name", async () => {
   // PropsPanel ne reçoit que { props, onChange, dataSources }
   // (builder/registry.ts:33-37) : ni schéma ni enregistrements. La saisie
@@ -825,4 +856,20 @@ test("le widget carte fournit le chargeur d'icônes personnalisées à MapView",
     ),
   );
   expect(await screen.findByText(/loader:function/)).toBeInTheDocument();
+});
+
+test("map widget carries collectionId/pkColumn from ctx.data onto the feature layer (SP-40)", () => {
+  renderWidget({
+    props: { dataSourceId: "ds1" },
+    ctx: {
+      data: state({
+        url: "https://core.test/collections/parcs/items.geojson",
+        collectionId: "parcs",
+        pkColumn: "id",
+      }),
+    },
+  });
+  const layer = lastMapConfig().layers[0] as { collectionId?: string; pkColumn?: string };
+  expect(layer.collectionId).toBe("parcs");
+  expect(layer.pkColumn).toBe("id");
 });
