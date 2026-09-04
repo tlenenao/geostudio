@@ -195,3 +195,45 @@ def test_confirm_returns_404_when_the_object_was_never_uploaded(client):
         json={"key": key, "fieldKey": "photos", "filename": "a.jpg", "contentType": "image/jpeg"},
     )
     assert res.status_code == 404
+
+
+def test_presign_rejects_a_dangerous_extension(client):
+    api, *_ = client
+    res = api.post(
+        "/collections/col1/items/f1/attachments/presign",
+        json={
+            "fieldKey": "photos",
+            "filename": "malware.exe",
+            "contentType": "application/octet-stream",
+        },
+    )
+    assert res.status_code == 400
+
+
+def test_confirm_rejects_a_dangerous_extension(client):
+    api, _Session, tenant, _user, _s3 = client
+    key = f"{tenant.id}/col1/f1/abc-malware.exe"
+    res = api.post(
+        "/collections/col1/items/f1/attachments",
+        json={
+            "key": key,
+            "fieldKey": "photos",
+            "filename": "malware.exe",
+            "contentType": "application/octet-stream",
+        },
+    )
+    assert res.status_code == 400
+
+
+def test_confirm_sanitizes_a_non_ascii_filename(client):
+    api, _Session, tenant, _user, s3 = client
+    key = f"{tenant.id}/col1/f1/abc-photo.jpg"
+    s3.heads[key] = {"ContentLength": 10}
+    res = api.post(
+        "/collections/col1/items/f1/attachments",
+        json={"key": key, "fieldKey": "photos", "filename": "文件.png", "contentType": "image/png"},
+    )
+    assert res.status_code == 201
+    # Le nom stocké est assaini (ASCII sûr), jamais le nom brut non-ASCII.
+    assert res.json()["filename"] != "文件.png"
+    assert res.json()["filename"].endswith(".png")
