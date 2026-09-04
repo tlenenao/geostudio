@@ -96,6 +96,20 @@ test("cliquer une entité avec un champ attachment configuré révèle sa pièce
       },
     });
   });
+  // Preuve de sortie de C1 (revue finale de branche) : le fichier n'est plus
+  // servi par un `<a href>` nu (jamais authentifié) mais par un fetch réel —
+  // ce mock permet de vérifier que la requête déclenchée par le clic aboutit
+  // bien en 200, pas seulement que le bouton est visible. Le glob
+  // `attachments*` ci-dessus ne matche jamais ce chemin (un `/` suit
+  // "attachments"), donc une route dédiée est nécessaire.
+  await page.route("**/collections/communes/items/1/attachments/att1/file", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "image/jpeg",
+      body: Buffer.from("x"),
+      headers: { "Content-Disposition": 'attachment; filename="releve.jpg"' },
+    });
+  });
 
   await page.goto("/maps/map-1");
   const canvas = page.locator("canvas.maplibregl-canvas").first();
@@ -118,5 +132,13 @@ test("cliquer une entité avec un champ attachment configuré révèle sa pièce
   }).toPass({ timeout: 10000 });
 
   await expect(popup.getByText("Pièces jointes")).toBeVisible();
-  await expect(popup.getByRole("link", { name: "releve.jpg" })).toBeVisible();
+  await expect(popup.getByRole("button", { name: "releve.jpg" })).toBeVisible();
+
+  // Le clic déclenche un fetch authentifié réel (plus un `<a href>` nu) —
+  // vérifié via la réponse effective, pas seulement la visibilité du bouton.
+  const [fileResponse] = await Promise.all([
+    page.waitForResponse((res) => res.url().includes("/attachments/att1/file")),
+    popup.getByRole("button", { name: "releve.jpg" }).click(),
+  ]);
+  expect(fileResponse.status()).toBe(200);
 });
