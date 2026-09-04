@@ -12,6 +12,7 @@ from app.db import init_db, make_engine, make_session_factory
 from app.export import jobs as export_jobs
 from app.export import repository as export_repo
 from app.items.repository import create_item
+from app.notifications import repository as notifications_repo
 from app.notifications.models import Notification
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -445,6 +446,11 @@ def test_failure_writes_a_notification(db_session, monkeypatch):
     assert notification is not None
     assert notification.status == "failure"
     assert "navigation timeout" in notification.error_message
+    # Revue finale SP-39 (I3) : resource_type vaut None dans la branche
+    # d'échec (config non chargé), mais l'item existe toujours — la
+    # notification doit rester cliquable (repli sur item.resourceType),
+    # pas la seule des 5 sortes de notification jamais cliquable.
+    assert notification.item_resource_type == "map"
 
 
 def test_report_triggered_export_does_not_write_an_export_notification(db_session, monkeypatch):
@@ -467,5 +473,42 @@ def test_report_triggered_export_does_not_write_an_export_notification(db_sessio
 
     export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
 
+    notification = session.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+    assert notification is None
+
+
+def test_notification_write_failure_does_not_affect_job_status(db_session, monkeypatch):
+    """I2 (revue finale SP-39) : une erreur dans l'écriture de la
+    notification ne doit jamais affecter le statut du job lui-même. Boom
+    réel (viole une contrainte NOT NULL, fait échouer session.flush() pour
+    de vrai) plutôt qu'une exception Python qui ne toucherait jamais la
+    session — cf. test_report_jobs.py pour la même falsification."""
+    session, tenant, user, item = db_session
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
+    session.commit()
+    monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url: _FakePage())
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
+
+    def _boom(session, **kwargs):
+        session.add(
+            Notification(
+                tenant_id=tenant.id,
+                recipient_user_id=user.id,
+                kind="x",
+                status="failure",
+                item_title="x",
+            )
+        )
+        session.flush()
+
+    monkeypatch.setattr(notifications_repo, "create_notification", _boom)
+
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+
+    session.expire_all()  # cf. test_render_export_task_marks_done_on_success pour la raison
+    fetched = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
+    assert fetched.status == "done"
     notification = session.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
     assert notification is None
