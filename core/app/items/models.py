@@ -33,7 +33,7 @@ class Item(Base):
     # Métadonnées ouvertes (chantier 4.9, sous-ensemble réduit à license+
     # language — cf. spec §1.2). Même convention str/default="" que
     # Collection.
-    license: Mapped[str] = mapped_column(String, default="", nullable=False)
-    language: Mapped[str] = mapped_column(String, default="fr", nullable=False)
+    license: Mapped[str] = mapped_column(String, default="", server_default="", nullable=False)
+    language: Mapped[str] = mapped_column(String, default="fr", server_default="fr", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
