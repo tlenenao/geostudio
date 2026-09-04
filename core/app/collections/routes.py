@@ -456,11 +456,20 @@ def patch_collection(
         ("lineage", body.lineage),
         ("language", body.language),
         ("version", body.version),
-        ("temporal_start", body.temporalStart),
-        ("temporal_end", body.temporalEnd),
     ):
         if value is not None:
             setattr(col, attr, value)
+    # temporalStart/temporalEnd sont typés date | None sans représentation
+    # "vide" non-None distincte : la boucle générique ci-dessus ne peut pas
+    # distinguer "champ omis" de "champ explicitement mis à null" (les deux
+    # valent None côté Python). model_fields_set permet de savoir si la clé
+    # était présente dans le JSON de la requête, même avec une valeur null,
+    # ce qui permet d'effacer une emprise temporelle déjà déclarée (SP-41,
+    # correctif de revue finale).
+    if "temporalStart" in body.model_fields_set:
+        col.temporal_start = body.temporalStart
+    if "temporalEnd" in body.model_fields_set:
+        col.temporal_end = body.temporalEnd
     if body.attachmentFields is not None:
         col.attachment_fields = [f.model_dump() for f in body.attachmentFields]
     session.flush()
