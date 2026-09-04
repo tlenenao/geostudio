@@ -2,7 +2,7 @@
 from datetime import UTC, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -32,5 +32,9 @@ class Collection(Base):
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     editable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # [{"key": str, "label": str}] — champs `attachment` déclarés (chantier
+    # 4.12) ; pas de colonne SQL réelle par champ, cf.
+    # docs/superpowers/specs/2026-09-04-sp40-pieces-jointes-design.md §3.1.
+    attachment_fields: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)

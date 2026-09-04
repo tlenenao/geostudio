@@ -47,6 +47,7 @@ def core_table_names() -> frozenset[str]:
     vérité de la denylist du registre de collections."""
     from app.alerts import models as alerts_models  # noqa: F401
     from app.appexport import models as appexport_models  # noqa: F401
+    from app.attachments import models as attachments_models  # noqa: F401
     from app.audit import models as audit_models  # noqa: F401
     from app.collections import models as collections_models  # noqa: F401
     from app.configs import models  # noqa: F401
