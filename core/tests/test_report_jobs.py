@@ -1005,15 +1005,15 @@ def test_record_trigger_failure_survives_a_notification_write_that_poisons_its_o
 ):
     """Revue finale SP-39 (I1, falsification + I2) : create_notification est
     remplacé par une écriture qui viole une contrainte NOT NULL et fait
-    échouer session.flush() pour de vrai (pas un monkeypatch qui se contente
-    de lever une exception Python sans jamais toucher la session — ça ne
-    prouverait rien, cf. le vieux code qui attrapait déjà cette exception-là
-    sans jamais planter). Avant le correctif (l'écriture de notification
-    partageait `session` avec le run+audit), un DBAPIError ici empoisonnait
-    la transaction et faisait échouer le session.commit() qui suit,
-    perdant le run+audit déjà en attente. Après le correctif (session
-    isolée dans _notify), le run+audit survivent intacts, et le
-    session.commit() de l'appelant ne lève jamais."""
+    échouer session.flush() (sous pytest's `filterwarnings=["error"]`, une
+    SAWarning est promue en erreur avant le DB ; hors pytest, une
+    IntegrityError au flush — le mécanisme ci-dessous qui empoisonne la
+    session fonctionne identiquement dans les deux cas). Avant le correctif
+    (l'écriture de notification partageait `session` avec le run+audit), un
+    DBAPIError/SAWarning-as-error ici empoisonnait la transaction et faisait
+    échouer le session.commit() qui suit, perdant le run+audit déjà en
+    attente. Après le correctif (session isolée dans _notify), le run+audit
+    survivent intacts, et le session.commit() de l'appelant ne lève jamais."""
     Session = _make_session()
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
@@ -1084,8 +1084,8 @@ def test_notify_pending_reports_survives_a_notification_write_that_poisons_its_o
 ):
     """Second site du même I1 : _notify_pending_reports partageait aussi sa
     session entre l'écriture de notification et le mark_notified/commit du
-    `finally`. Même falsification que le test ci-dessus, appliquée à ce
-    second appelant."""
+    `finally`. Même falsification que le test ci-dessus (SAWarning-as-error
+    sous pytest, IntegrityError hors), appliquée à ce second appelant."""
     Session = _make_session()
     with Session() as s:
         tenant = get_or_create_default_tenant(s)

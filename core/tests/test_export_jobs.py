@@ -480,9 +480,10 @@ def test_report_triggered_export_does_not_write_an_export_notification(db_sessio
 def test_notification_write_failure_does_not_affect_job_status(db_session, monkeypatch):
     """I2 (revue finale SP-39) : une erreur dans l'écriture de la
     notification ne doit jamais affecter le statut du job lui-même. Boom
-    réel (viole une contrainte NOT NULL, fait échouer session.flush() pour
-    de vrai) plutôt qu'une exception Python qui ne toucherait jamais la
-    session — cf. test_report_jobs.py pour la même falsification."""
+    réel (viole une contrainte NOT NULL, SAWarning-as-error sous pytest ou
+    IntegrityError hors pytest) plutôt qu'une exception Python qui ne
+    toucherait jamais la session — cf. test_report_jobs.py pour la même
+    falsification."""
     session, tenant, user, item = db_session
     job = export_repo.create_job(
         session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"

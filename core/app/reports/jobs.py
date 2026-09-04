@@ -330,10 +330,10 @@ def _notify_pending_reports(session_factory) -> None:
             # s'échappait de _notify_pending_reports AVANT mark_notified :
             # list_unnotified_runs étant cross-tenant et non ordonnée, un seul
             # run cassé bloquait définitivement la notification de tous les
-            # rapports de tous les tenants, à chaque balayage — exactement la
-            # contrainte « une notification est tentée une fois par run,
-            # jamais rejouée, même en échec » que ce filet garantit désormais
-            # aussi pour le chemin d'erreur inattendue.
+            # rapports de tous les tenants, à chaque balayage — ce filet
+            # empêche l'abort du sweep, même si l'isolation de la notification
+            # (revue finale SP-39, I1) change la garantie de delivery :
+            # voir le docstring de mark_notified ci-dessous.
             try:
                 report_config = configs_repo.get_config_by_item(session, run.report_item_id)
                 if report_config is None or report_config.kind != "report":
@@ -432,10 +432,15 @@ def _notify_pending_reports(session_factory) -> None:
                     )
             finally:
                 # Posé après la tentative, quel que soit le résultat par canal
-                # ET quelle que soit l'erreur inattendue ci-dessus — une
-                # notification n'est jamais rejouée au tick suivant (design
-                # SP-17b §2, cf. le risque documenté "webhook cassé de façon
-                # permanente ne doit pas devenir un déni de service").
+                # ET quelle que soit l'erreur inattendue ci-dessus. L'écriture
+                # de notification in-app est désormais isolée (revue finale
+                # SP-39, I1) dans sa propre session : en cas de crash entre
+                # cette écriture et mark_notified ci-dessous, un prochain tick
+                # peut réécrire une seconde notification pour le même run —
+                # compromis accepté au profit de l'isolation de session. Les
+                # webhooks/emails (enregistrés dans l'audit sur `session`)
+                # conservent leur garantie "tentés une fois" tant que ce
+                # `finally` s'exécute (design SP-17b §2).
                 reports_repo.mark_notified(session, run_id=run.id)
                 session.commit()
 

@@ -140,6 +140,7 @@ export function NotificationBell() {
             </p>
           )}
           {!notificationsQuery.isError &&
+            !notificationsQuery.isPending &&
             (notificationsQuery.data?.notifications.length ?? 0) === 0 && (
               <span className="text-sm text-ink-2">{t("notifications.empty")}</span>
             )}
