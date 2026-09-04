@@ -19,7 +19,7 @@ export function EditCollectionPanel({
   const [description, setDescription] = useState(collection.description);
   const [isPublic, setIsPublic] = useState(collection.isPublic);
   const [editable, setEditable] = useState(collection.editable);
-  const [attachmentFields, setAttachmentFields] = useState(collection.attachmentFields);
+  const [attachmentFields, setAttachmentFields] = useState(collection.attachmentFields ?? []);
   const [draftKey, setDraftKey] = useState("");
   const [draftLabel, setDraftLabel] = useState("");
 
