@@ -2,13 +2,21 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { test, expect, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../test/msw/server";
 import { createItemClient } from "../../api/itemClient";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { NotificationBell } from "./NotificationBell";
+
+// Sonde de destination pour vérifier que cliquer une notification avec item
+// navigue réellement (pas seulement "n'a pas planté") — même patron que
+// src/shell/ImportFileButton.test.tsx::MapProbe.
+function PipelineProbe() {
+  const { id } = useParams();
+  return <div>pipeline-{id}</div>;
+}
 
 // NotificationBell interroge toujours la préférence (useNotificationPreference),
 // même quand aucun test ci-dessous ne l'exerce — sans ce handler par défaut,
@@ -43,6 +51,9 @@ function Harness() {
       <QueryClientProvider client={queryClient}>
         <ItemClientProvider client={client}>
           <NotificationBell />
+          <Routes>
+            <Route path="/pipelines/:id/edit" element={<PipelineProbe />} />
+          </Routes>
         </ItemClientProvider>
       </QueryClientProvider>
     </MemoryRouter>
@@ -101,11 +112,12 @@ test(
 );
 
 test(
-  "une notification sans item n'est pas cliquable, une notification avec item ouvre son écran",
+  "une notification sans item n'est pas cliquable, une notification avec item ouvre son écran et la marque lue",
   async () => {
+    let markReadCalledWith: string | null = null;
     server.use(
       http.get("https://core.test/notifications/unread-count", () =>
-        HttpResponse.json({ count: 1 }),
+        HttpResponse.json({ count: 2 }),
       ),
       http.get("https://core.test/notifications", () =>
         HttpResponse.json({
@@ -121,15 +133,118 @@ test(
               createdAt: "2026-09-04T10:00:00Z",
               readAt: null,
             },
+            {
+              id: "n3",
+              kind: "pipeline",
+              status: "success",
+              itemId: "pl-1",
+              itemResourceType: "pipeline",
+              itemTitle: "Pipeline ok",
+              errorMessage: null,
+              createdAt: "2026-09-04T09:00:00Z",
+              readAt: null,
+            },
           ],
-          total: 1,
+          total: 2,
         }),
+      ),
+      http.post("https://core.test/notifications/:id/read", ({ params }) => {
+        markReadCalledWith = params.id as string;
+        return HttpResponse.json({
+          id: params.id,
+          kind: "pipeline",
+          status: "success",
+          itemId: "pl-1",
+          itemResourceType: "pipeline",
+          itemTitle: "Pipeline ok",
+          errorMessage: null,
+          createdAt: "2026-09-04T09:00:00Z",
+          readAt: "2026-09-04T10:05:00Z",
+        });
+      }),
+    );
+    render(<Harness />);
+    await userEvent.click(await screen.findByRole("button", { name: "Notifications" }));
+
+    // Moitié 1 : sans item, jamais cliquable.
+    await screen.findByText("Import cassé");
+    expect(screen.queryByRole("button", { name: /Import cassé/ })).not.toBeInTheDocument();
+
+    // Moitié 2 : avec item, cliquer ouvre son écran (navigation réelle, pas
+    // seulement "n'a pas planté") ET marque la notification lue.
+    const title = await screen.findByText("Pipeline ok");
+    const clickable = title.closest("button");
+    expect(clickable).not.toBeNull();
+    await userEvent.click(clickable as HTMLButtonElement);
+
+    await screen.findByText("pipeline-pl-1"); // rendu par PipelineProbe -> navigation confirmée
+    await waitFor(() => expect(markReadCalledWith).toBe("n3"));
+  },
+  OPEN_TIMEOUT,
+);
+
+test(
+  "changer la préférence appelle PATCH /notifications/preference avec la valeur choisie",
+  async () => {
+    let patchedValue: string | null = null;
+    server.use(
+      http.get("https://core.test/notifications/unread-count", () =>
+        HttpResponse.json({ count: 0 }),
+      ),
+      http.get("https://core.test/notifications", () =>
+        HttpResponse.json({ notifications: [], total: 0 }),
+      ),
+      http.patch("https://core.test/notifications/preference", async ({ request }) => {
+        const body = (await request.json()) as { value: string };
+        patchedValue = body.value;
+        return HttpResponse.json({ value: body.value });
+      }),
+    );
+    render(<Harness />);
+    await userEvent.click(await screen.findByRole("button", { name: "Notifications" }));
+    const select = await screen.findByRole("combobox");
+    await userEvent.selectOptions(select, "Échecs seulement");
+    await waitFor(() => expect(patchedValue).toBe("failures_only"));
+  },
+  OPEN_TIMEOUT,
+);
+
+test(
+  "affiche un état d'erreur visible quand le chargement des notifications échoue (pas 'Aucune notification.')",
+  async () => {
+    server.use(
+      http.get("https://core.test/notifications/unread-count", () =>
+        HttpResponse.json({ count: 0 }),
+      ),
+      http.get("https://core.test/notifications", () => new HttpResponse(null, { status: 500 })),
+    );
+    render(<Harness />);
+    await userEvent.click(await screen.findByRole("button", { name: "Notifications" }));
+    await screen.findByRole("alert");
+    expect(screen.queryByText("Aucune notification.")).not.toBeInTheDocument();
+  },
+  OPEN_TIMEOUT,
+);
+
+test(
+  "un échec de « Tout marquer comme lu » reste visible, pas silencieux",
+  async () => {
+    server.use(
+      http.get("https://core.test/notifications/unread-count", () =>
+        HttpResponse.json({ count: 1 }),
+      ),
+      http.get("https://core.test/notifications", () =>
+        HttpResponse.json({ notifications: [], total: 0 }),
+      ),
+      http.post(
+        "https://core.test/notifications/read-all",
+        () => new HttpResponse(null, { status: 500 }),
       ),
     );
     render(<Harness />);
     await userEvent.click(await screen.findByRole("button", { name: "Notifications" }));
-    await screen.findByText("Import cassé");
-    expect(screen.queryByRole("button", { name: "Import cassé" })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Tout marquer comme lu" }));
+    await screen.findByRole("alert");
   },
   OPEN_TIMEOUT,
 );

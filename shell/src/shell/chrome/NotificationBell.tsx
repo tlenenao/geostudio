@@ -54,6 +54,11 @@ function NotificationRow({ notification }: { notification: NotificationSummary }
       <span className="text-xs text-ink-2">
         {new Date(notification.createdAt).toLocaleString()}
       </span>
+      {markRead.isError && (
+        <span role="alert" className="text-xs text-danger">
+          {t("notifications.actionError")}
+        </span>
+      )}
     </div>
   );
 
@@ -99,30 +104,45 @@ export function NotificationBell() {
       }
     >
       <div className="flex w-72 flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <select
-            aria-label={t("notifications.bell")}
-            className="rounded border border-rule bg-surface px-1 py-0.5 text-xs text-ink"
-            value={preferenceQuery.data ?? "all"}
-            onChange={(e) => updatePreference.mutate(e.target.value as NotificationPreferenceValue)}
-          >
-            {(["all", "failuresOnly", "none"] as const).map((value) => (
-              <option key={value} value={value}>
-                {t(PREFERENCE_LABEL_KEYS[value])}
-              </option>
-            ))}
-          </select>
-          <button
-            className="text-xs text-ink-2 hover:text-ink"
-            onClick={() => markAllRead.mutate()}
-          >
-            {t("notifications.markAllRead")}
-          </button>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-2">
+            <select
+              aria-label={t("notifications.bell")}
+              className="rounded border border-rule bg-surface px-1 py-0.5 text-xs text-ink"
+              value={preferenceQuery.data ?? "all"}
+              onChange={(e) =>
+                updatePreference.mutate(e.target.value as NotificationPreferenceValue)
+              }
+            >
+              {(["all", "failuresOnly", "none"] as const).map((value) => (
+                <option key={value} value={value}>
+                  {t(PREFERENCE_LABEL_KEYS[value])}
+                </option>
+              ))}
+            </select>
+            <button
+              className="text-xs text-ink-2 hover:text-ink"
+              onClick={() => markAllRead.mutate()}
+            >
+              {t("notifications.markAllRead")}
+            </button>
+          </div>
+          {(updatePreference.isError || markAllRead.isError) && (
+            <span role="alert" className="text-xs text-danger">
+              {t("notifications.actionError")}
+            </span>
+          )}
         </div>
         <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
-          {(notificationsQuery.data?.notifications.length ?? 0) === 0 && (
-            <span className="text-sm text-ink-2">{t("notifications.empty")}</span>
+          {(notificationsQuery.isError || unreadQuery.isError) && (
+            <p role="alert" className="text-sm text-danger">
+              {t("notifications.loadError")}
+            </p>
           )}
+          {!notificationsQuery.isError &&
+            (notificationsQuery.data?.notifications.length ?? 0) === 0 && (
+              <span className="text-sm text-ink-2">{t("notifications.empty")}</span>
+            )}
           {notificationsQuery.data?.notifications.map((n) => (
             <NotificationRow key={n.id} notification={n} />
           ))}
