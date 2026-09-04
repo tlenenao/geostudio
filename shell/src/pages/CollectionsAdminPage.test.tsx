@@ -41,6 +41,7 @@ type CollectionAdminFixture = {
   permissions: { read: boolean; write: boolean; delete: boolean; share: boolean };
   featureCount: number | null;
   owner: string | null;
+  attachmentFields: { key: string; label: string }[];
 };
 
 const INCIDENTS: CollectionAdminFixture = {
@@ -56,6 +57,7 @@ const INCIDENTS: CollectionAdminFixture = {
   permissions: { read: true, write: true, delete: false, share: true },
   featureCount: 3,
   owner: "admin",
+  attachmentFields: [],
 };
 
 function Harness() {
