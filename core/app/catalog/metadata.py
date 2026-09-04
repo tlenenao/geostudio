@@ -2,9 +2,10 @@
 """Catalogues curatés pour les métadonnées de Collection/Item (chantier 4.9,
 docs/superpowers/specs/2026-09-04-sp41-metadonnees-licence-design.md §2).
 Zéro dépendance interne (même discipline que app.roles.privileges) : ce
-module est placé tout en bas du contrat de couches (core/pyproject.toml),
-importable par app.collections, app.items, app.dcat et app.stac sans
-exemption."""
+module est placé au-dessus de app.auth et app.users dans le contrat de
+couches (core/pyproject.toml), ce qui permet à app.catalog.routes
+d'importer depuis app.auth et app.users. Il reste importable sans exemption
+par app.collections, app.items, app.dcat et app.stac."""
 
 from dataclasses import dataclass
 
