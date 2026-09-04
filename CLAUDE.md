@@ -1453,7 +1453,9 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   `updateUserRole.isPending`/`variables?.id`, un seul objet de mutation
   partagé dont `variables` ne survit que pour le dernier appel invoqué —
   remplacé par un état local `pendingUserId`, posé avant `mutateAsync` et
-  effacé en `finally`, insensible au nombre d'appels concurrents ; `rowError`
+  effacé en `finally` — correct pour un changement à la fois ; avec deux
+  lignes en vol simultanément, le dernier posé gagne (état scalaire, limite
+  assumée, non testée) ; `rowError`
   survivait un changement de page ou de recherche sans lien visible avec ce
   qui s'affichait — effacé désormais aux trois points d'entrée (recherche,
   Précédent, Suivant). Deux nouveaux tests ajoutés à
