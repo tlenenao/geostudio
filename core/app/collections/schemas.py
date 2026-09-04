@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
+
+from app.catalog.metadata import validate_frequency_id, validate_language_id, validate_license_id
 
 
 class CollectionCreate(BaseModel):
@@ -66,6 +69,31 @@ class CollectionPatch(BaseModel):
     isPublic: bool | None = None
     editable: bool | None = None
     attachmentFields: list[AttachmentFieldSpec] | None = None
+    license: str | None = None
+    licenseUri: str | None = None
+    producer: str | None = None
+    contact: str | None = None
+    updateFrequency: str | None = None
+    lineage: str | None = None
+    language: str | None = None
+    version: str | None = None
+    temporalStart: date | None = None
+    temporalEnd: date | None = None
+
+    @field_validator("license")
+    @classmethod
+    def _validate_license(cls, v: str | None) -> str | None:
+        return validate_license_id(v)
+
+    @field_validator("updateFrequency")
+    @classmethod
+    def _validate_update_frequency(cls, v: str | None) -> str | None:
+        return validate_frequency_id(v)
+
+    @field_validator("language")
+    @classmethod
+    def _validate_language(cls, v: str | None) -> str | None:
+        return validate_language_id(v)
 
 
 class EmptyCollectionColumn(BaseModel):
