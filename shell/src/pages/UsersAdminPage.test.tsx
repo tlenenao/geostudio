@@ -137,6 +137,28 @@ test("pagination : un clic sur Suivant redemande la page 2", async () => {
   await waitFor(() => expect(lastPage).toBe("2"));
 });
 
+test("un échec de /users affiche une alerte de chargement", async () => {
+  server.use(
+    http.get("https://core.test/roles", () => HttpResponse.json(ROLES)),
+    http.get("https://core.test/users", () => new HttpResponse(null, { status: 500 })),
+  );
+  render(<Harness />);
+  expect(await screen.findByText("Échec du chargement des utilisateurs.")).toBeInTheDocument();
+});
+
+test("un échec de /roles (403) affiche une alerte expliquant le privilège manquant, sans planter la table", async () => {
+  server.use(
+    http.get("https://core.test/roles", () => new HttpResponse(null, { status: 403 })),
+    http.get("https://core.test/users", () => HttpResponse.json({ users: USERS, total: 2 })),
+  );
+  render(<Harness />);
+  expect(
+    await screen.findByText(/gestion des rôles.*requis en plus.*gestion des utilisateurs/i),
+  ).toBeInTheDocument();
+  // La table (qui dépend de rolesQuery.data) ne doit pas apparaître.
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+});
+
 test("le volet Détail explique l'invariant anti-lockout", async () => {
   server.use(
     http.get("https://core.test/roles", () => HttpResponse.json(ROLES)),

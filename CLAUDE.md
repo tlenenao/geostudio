@@ -1426,6 +1426,55 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   exécuté** : aucune stack `docker compose up -d` disponible dans cet
   environnement, non démarrée spécialement pour ce plan (décision actée par
   le brief lui-même). **Ready to merge.**
+  **Revue finale de branche (opus) : 2 Important + 1 lot de Minor groupés,
+  tous fermés et re-vérifiés.** (1) La route `/admin/users` n'admet que le
+  privilège `admin.users.manage`, mais `UsersAdminPage` dépend aussi de
+  `GET /roles` (gardé côté cœur par le privilège **distinct**
+  `admin.roles.manage`) pour peupler chaque sélecteur de rôle — un rôle sur
+  mesure porteur du premier privilège sans le second obtenait un
+  `usersQuery` en succès et un `rolesQuery` en 403 silencieux : le garde de
+  rendu `{usersQuery.data && rolesQuery.data && (<table>…)}` ne produisait
+  alors ni table ni message, une page blanche sans explication. Corrigé par
+  une alerte dédiée (`role="alert"`, même style que celle de
+  `usersQuery.isError`) qui nomme explicitement les deux privilèges en jeu.
+  (2) `useUpdateUserRole` n'invalidait que `["users"]` ; rien n'empêche un
+  admin de changer son propre rôle depuis cette page (seule garde serveur :
+  anti-lockout sur le dernier titulaire des privilèges sensibles, pas une
+  interdiction de l'auto-rétrogradation), auquel cas `useMe()` (`["me"]`)
+  continuait de servir l'ancien jeu de privilèges en cache — nav, domaines
+  et `RequirePrivilege` restaient faux dans tout le shell jusqu'à un
+  rechargement complet. Corrigé par l'ajout d'une seconde invalidation
+  `["me"]` dans le même `onSuccess`. Lot de Minor groupé, à la recommandation
+  du reviewer : `rowError` était effacé sans condition en tête de
+  `handleRoleChange`, donc changer le rôle de la ligne B faisait disparaître
+  un message d'erreur encore valide sur la ligne A — scopé pour ne
+  s'effacer que si l'erreur affichée appartient à la ligne en cours de
+  modification ; l'indicateur `pending`/`disabled` par ligne dépendait de
+  `updateUserRole.isPending`/`variables?.id`, un seul objet de mutation
+  partagé dont `variables` ne survit que pour le dernier appel invoqué —
+  remplacé par un état local `pendingUserId`, posé avant `mutateAsync` et
+  effacé en `finally`, insensible au nombre d'appels concurrents ; `rowError`
+  survivait un changement de page ou de recherche sans lien visible avec ce
+  qui s'affichait — effacé désormais aux trois points d'entrée (recherche,
+  Précédent, Suivant). Deux nouveaux tests ajoutés à
+  `UsersAdminPage.test.tsx` pour les deux branches d'erreur (échec `/users`,
+  échec `/roles` — la seconde vérifie explicitement l'absence de
+  `<table>`) : suite passée de 7 à **9 tests, tous verts**
+  (`npx vitest run src/pages/UsersAdminPage.test.tsx`). `npx tsc --noEmit`
+  propre. Suite shell complète relancée (piège n°6) : **222 fichiers/1860
+  tests, 0 échec** — aucune régression sur `hooks.test.ts` ni aucun autre
+  consommateur de `useUpdateUserRole`. Suivis non bloquants documentés,
+  non corrigés dans cette passe : pas d'état vide explicite sur une
+  recherche à zéro résultat ; le lien de découverte depuis
+  `AdminExtensionsPage` est gardé sur `admin.extensions.manage`, pas sur
+  `admin.users.manage` lui-même — un rôle sur mesure porteur du seul
+  privilège que cette page nomme dans sa propre garde de route ne peut pas
+  la découvrir depuis le hub, la même classe de défaut « livré mais
+  inatteignable » que ce SP existe pour combler, à reprendre dans une
+  future session ; recherche sans anti-rebond à chaque frappe, dette de
+  famille partagée avec le patron déjà existant de `CatalogPage`, pas
+  nouvelle ici ; collision possible d'`aria-label` si deux utilisateurs
+  partagent le même nom d'utilisateur. **Ready to merge.**
 
 ### Conventions tranchées (2026-09-01)
 
