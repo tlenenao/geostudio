@@ -22,9 +22,36 @@ from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
 from app.db import make_engine, make_session_factory, request_scoped_session
 from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
+from app.items import repository as items_repo
 from app.jobs import app
+from app.notifications import repository as notifications_repo
 
 logger = logging.getLogger(__name__)
+
+
+def _notify(session_factory, *, tenant_id, item_id, user_id, status, error=None):
+    """Écrit la notification in-app de fin d'export d'app — best-effort,
+    jamais bloquant : son propre bloc try/except, séparé de celui qui commite
+    mark_done/mark_error, pour qu'un échec ici ne fasse jamais rollback d'un
+    changement de statut de job déjà réussi (même patron que
+    app.export.jobs._notify / app.pipelines.jobs._notify, SP-39)."""
+    try:
+        with request_scoped_session(session_factory) as session:
+            item = items_repo.get_item(session, tenant_id=tenant_id, item_id=item_id)
+            title = item.title if item is not None else item_id
+            notifications_repo.create_notification(
+                session,
+                tenant_id=tenant_id,
+                recipient_user_id=user_id,
+                kind="appexport",
+                status=status,
+                item_id=item_id,
+                item_resource_type="app",
+                item_title=title,
+                error_message=error,
+            )
+    except Exception:
+        logger.exception("app export job : échec de l'écriture de la notification")
 
 
 def _session_factory():
@@ -84,6 +111,7 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
         appexport_repo.mark_running(session, job_id=job_id)
         item_id = job.item_id
         mode = job.mode
+        user_id = job.user_id
 
     try:
         with request_scoped_session(session_factory) as session:
@@ -109,7 +137,18 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
 
         with request_scoped_session(session_factory) as session:
             appexport_repo.mark_done(session, job_id=job_id, result_key=result_key)
+        _notify(
+            session_factory, tenant_id=tenant_id, item_id=item_id, user_id=user_id, status="success"
+        )
     except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("app export job %s : erreur inattendue", job_id)
         with request_scoped_session(session_factory) as session:
             appexport_repo.mark_error(session, job_id=job_id, error=str(exc))
+        _notify(
+            session_factory,
+            tenant_id=tenant_id,
+            item_id=item_id,
+            user_id=user_id,
+            status="failure",
+            error=str(exc),
+        )
