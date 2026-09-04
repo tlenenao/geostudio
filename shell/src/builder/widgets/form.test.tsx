@@ -958,6 +958,25 @@ test("supprime une pièce jointe au clic sur Supprimer", async () => {
   expect(deleteAttachment).toHaveBeenCalledWith("incidents", "7", "att1");
 });
 
+test("un champ attachment marqué requis ne bloque jamais la soumission (revue finale, I4)", async () => {
+  // AttachmentFieldInput ne passe jamais par values/onChange (Task 11) : un
+  // champ attachment marqué `required: true` — y compris sur une config déjà
+  // enregistrée avant que l'éditeur n'exclue ce type de la case « Requis » —
+  // ne doit jamais rendre le formulaire définitivement non soumettable.
+  renderForm([
+    {
+      name: "photos",
+      type: "attachment",
+      label: "Photos",
+      order: 0,
+      hidden: false,
+      required: true,
+    },
+  ]);
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  expect(screen.queryByText("Champ requis")).not.toBeInTheDocument();
+});
+
 test("télécharge une pièce jointe authentifiée au clic sur son nom", async () => {
   const bus = new ActionBus();
   bus.configure([
