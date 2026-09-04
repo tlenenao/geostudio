@@ -21,6 +21,7 @@ const COLLECTIONS: CollectionAdmin[] = [
     permissions: { read: true, write: true, delete: true, share: true },
     featureCount: 10,
     owner: "alice",
+    attachmentFields: [],
   },
 ];
 

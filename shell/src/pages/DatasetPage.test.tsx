@@ -32,6 +32,7 @@ const collection: CollectionAdmin = {
   permissions: { read: true, write: false, delete: false, share: false },
   featureCount: 2,
   owner: null,
+  attachmentFields: [],
 };
 
 function renderPage(client: Partial<ItemClient>, collectionId = "parcs") {
