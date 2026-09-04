@@ -15,19 +15,23 @@ const TILE = readFileSync(fileURLToPath(new URL("./fixtures/world-tile.mvt", imp
 // donc prioritaire) pour ajouter `attachmentField: "photos"` au popup de la
 // couche.
 //
-// pkColumn: "population" plutôt que "id" (utilisé par map-popup.spec.ts) :
-// vérifié empiriquement (cf. rapport Task 17) que world-tile.mvt encode sa
-// colonne "id" comme feature-id MVT (ST_AsMVT(..., 'id') — même mécanisme
-// que core/app/features/tiles.py::mvt_feature_id_column pour un pk entier),
-// ce qui la retire des attributs décodés par MapLibre — seul `f.id` la
-// porte, jamais `properties.id`. `handlePopup` (MapView.tsx) ne résout `fid`
-// que depuis `properties[layer.pkColumn]`, jamais depuis `f.id` : un vrai
-// défaut shipped (Task 14), hors périmètre de cette tâche E2E-only (limitée
-// à ce seul fichier), documenté dans le rapport. "population" reste un
-// attribut MVT ordinaire (jamais choisi comme feature-id par la fixture),
-// donc un choix de pkColumn réaliste pour une collection dont la PK réelle
-// n'est pas de type entier (cf. `mvt_feature_id_column`, qui rend alors
-// `fid=NULL` côté SQL et laisse la colonne dans les attributs).
+// pkColumn: "id" (comme map-popup.spec.ts, PAS "population" comme au
+// commit initial de la Tâche 17) : ce champ est justement le cas courant
+// que la Tâche 20 corrige. Décodée directement (`@mapbox/vector-tile`,
+// SP-40 Task 20), `world-tile.mvt` encode sa colonne "id" comme feature-id
+// MVT — `ST_AsMVT(..., 'id')`, même mécanisme que
+// core/app/features/tiles.py::mvt_feature_id_column pour une PK entière — :
+// un seul feature, `f.id === 1`, `properties === { nom: "Tulle", population:
+// 14000 }` (pas de clé "id"). Avant la Tâche 20, `handlePopup` ne résolvait
+// `fid` que depuis `properties[layer.pkColumn]`, jamais depuis `f.id` — la
+// Tâche 17 avait donc dû contourner avec `pkColumn: "population"` (un
+// attribut MVT ordinaire, jamais choisi comme feature-id par la fixture) pour
+// faire passer son scénario, ce qui prouvait un cas réel (PK non entière)
+// mais pas le plus courant. Avec le correctif de la Tâche 20, `f.id` (1)
+// prime sur `properties[pkColumn]` : ce spec cible maintenant
+// `items/1/attachments`, pas `items/14000/…` (14000 est `population`, une
+// valeur d'attribut ordinaire, jamais l'identité de l'entité pour cette
+// couche).
 test("cliquer une entité avec un champ attachment configuré révèle sa pièce jointe dans le popup", async ({
   page,
 }) => {
@@ -54,7 +58,7 @@ test("cliquer une entité avec un champ attachment configuré révèle sa pièce
                 sourceLayer: "communes",
                 collectionId: "communes",
                 geometryKind: "polygon",
-                pkColumn: "population",
+                pkColumn: "id",
                 popup: {
                   titleField: "nom",
                   fields: [{ name: "population", label: "Habitants" }],
@@ -76,7 +80,7 @@ test("cliquer une entité avec un champ attachment configuré révèle sa pièce
     }),
   );
 
-  await page.route("**/collections/communes/items/14000/attachments*", async (route) => {
+  await page.route("**/collections/communes/items/1/attachments*", async (route) => {
     await route.fulfill({
       json: {
         attachments: [

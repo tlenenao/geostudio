@@ -374,18 +374,28 @@ function makeFeatureClickHandler(
   // chaque rendu) qui décide si la couche a encore un popup — le handler ne
   // capture donc plus `layer.popup`, et une modification du popup n'oblige
   // plus à reconstruire la carte (I5 de la revue finale SP-24).
-  onPopup: (properties: Record<string, unknown>, lngLat: { lng: number; lat: number }) => void,
+  onPopup: (
+    properties: Record<string, unknown>,
+    lngLat: { lng: number; lat: number },
+    id: string | number | undefined,
+  ) => void,
 ) {
   return (e: maplibregl.MapLayerMouseEvent) => {
     const f = e.features?.[0];
     if (!f) return;
     const properties = (f.properties ?? {}) as Record<string, unknown>;
-    // Le popup s'ouvre même sans identité utilisable : les attributs sont là,
-    // c'est la seule chose dont il a besoin. Le repli d'id ne conditionne que
-    // la sélection et le cross-filter.
-    onPopup(properties, e.lngLat);
+    // `f.id` (id de feature top-level MapLibre) prime sur properties[pkColumn] :
+    // ST_AsMVT retire la colonne PK des attributs quand elle est entière
+    // (feature_id_name, cf. core/app/features/tiles.py::mvt_feature_id_column)
+    // — elle n'existe alors QUE dans f.id, jamais dans properties (chantier
+    // 4.12, Tâche 20). properties[pkColumn] reste le repli pour une PK non
+    // entière ou une couche `feature` (GeoJSON, jamais de feature_id MVT).
     const fallback = pkColumn ? properties[pkColumn] : undefined;
     const id = (f.id ?? fallback) as string | number | undefined;
+    // Le popup s'ouvre même sans identité utilisable : les attributs sont là,
+    // c'est la seule chose dont il a besoin — mais on transmet quand même
+    // l'id résolu, dont dépend maintenant aussi le popup (pièces jointes).
+    onPopup(properties, e.lngLat, id);
     if (id == null) return;
     onFeatureClick({ id, properties, geometry: f.geometry });
   };
@@ -403,6 +413,7 @@ function applyLayers(
     layerId: string,
     properties: Record<string, unknown>,
     lngLat: { lng: number; lat: number },
+    id: string | number | undefined,
   ) => void,
   themeColors: ThemeColors | undefined,
   // Rempli par CETTE passe : les ids d'image résolus par `effectivePaint`
@@ -529,7 +540,7 @@ function applyLayers(
             // Le popup est toujours identifié par l'id de la COUCHE de la
             // config, jamais par celui d'une sous-couche : c'est lui que
             // MapView recroise avec config.layers.
-            (properties, lngLat) => onPopup(layer.id, properties, lngLat),
+            (properties, lngLat, featureId) => onPopup(layer.id, properties, lngLat, featureId),
           );
           map.on("click", id, handler);
           clickHandlers.set(id, handler);
@@ -605,8 +616,10 @@ function applyLayers(
           applied.add(`${layer.id}__label`);
           applied.add(`${layer.id}__labels`);
         }
-        const handler = makeFeatureClickHandler(undefined, onFeatureClick, (properties, lngLat) =>
-          onPopup(layer.id, properties, lngLat),
+        const handler = makeFeatureClickHandler(
+          undefined,
+          onFeatureClick,
+          (properties, lngLat, featureId) => onPopup(layer.id, properties, lngLat, featureId),
         );
         map.on("click", layer.id, handler);
         clickHandlers.set(layer.id, handler);
@@ -1054,6 +1067,7 @@ export const MapView = forwardRef<
       layerId: string,
       properties: Record<string, unknown>,
       lngLat: { lng: number; lat: number },
+      featureId: string | number | undefined,
     ) => {
       const layer = layersRef.current.find((l) => l.id === layerId);
       if (!layer || !("popup" in layer) || !layer.popup) return;
@@ -1062,11 +1076,14 @@ export const MapView = forwardRef<
       // `/sites/{slug}` construit toujours `kind: "feature"`, jamais
       // `vector` — les deux champs y sont optionnels et absents pour une
       // couche GeoJSON externe pure, qui reste donc sans pièces jointes).
+      // `featureId` (résolu en amont par makeFeatureClickHandler — Tâche 20)
+      // prime sur properties[pkColumn] : ST_AsMVT retire la colonne PK des
+      // attributs quand elle est entière, elle n'existe alors que dans
+      // f.id (cf. core/app/features/tiles.py::mvt_feature_id_column).
+      const pkValue = featureId ?? (layer.pkColumn ? properties[layer.pkColumn] : undefined);
       const fid =
-        (layer.kind === "vector" || layer.kind === "feature") &&
-        layer.pkColumn &&
-        properties[layer.pkColumn] != null
-          ? String(properties[layer.pkColumn])
+        (layer.kind === "vector" || layer.kind === "feature") && layer.pkColumn && pkValue != null
+          ? String(pkValue)
           : undefined;
       setPopup({ layerId, properties, lngLat, fid });
     },
