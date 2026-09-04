@@ -116,6 +116,10 @@ def test_presign_rejects_undeclared_field_key(client):
 def test_presign_requires_write_access(client):
     api, Session, tenant, _user, _s3 = client
     with Session() as session:
+        col = session.get(Collection, "col1")
+        col.is_public = True
+        session.commit()
+    with Session() as session:
         stranger = get_or_create_user(
             session,
             tenant_id=tenant.id,
