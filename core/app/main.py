@@ -13,6 +13,7 @@ from app import db, observability
 from app.admin_tools import routes as admin_tools_routes
 from app.alerts import routes as alerts_routes
 from app.appexport import routes as appexport_routes
+from app.attachments import routes as attachments_routes
 from app.auth import routes as auth_routes
 from app.auth.dependency import (
     is_admin_tools_enabled,
@@ -269,6 +270,7 @@ def create_app() -> FastAPI:
     app.include_router(collections_routes.router)
     app.include_router(features_routes.router)
     app.include_router(tiles_routes.router)
+    app.include_router(attachments_routes.router)
     app.include_router(ingestion_routes.router)
     app.include_router(stac_routes.router)
     app.include_router(dcat_routes.router)
