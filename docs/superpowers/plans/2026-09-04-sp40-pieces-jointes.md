@@ -3489,3 +3489,611 @@ Suivre `superpowers:requesting-code-review` sur l'ensemble de la branche (18 tâ
 - l'ordre des hooks dans `MapView.tsx` (Tâche 14) — le nouvel effet doit être déclaré AVANT tout retour conditionnel ;
 - la double invalidation de cache (`["attachments", collectionId, fid, fieldKey]`) reste cohérente entre le widget Formulaire (Tâche 11) et les hooks génériques (Tâche 10) — deux implémentations indépendantes de la même idée, à ne pas laisser diverger silencieusement ;
 - que les 3 tests existants de `test_features_routes.py`/E2E `map-popup.spec.ts`/`incident-form.spec.ts` réutilisés comme patrons (Tâches 7, 16, 17) ont bien été lus avant d'écrire le code correspondant, pas devinés.
+
+---
+
+## Task 19: le widget carte (App Builder / `/sites/{slug}`) expose aussi les pièces jointes
+
+**Ajoutée en cours d'exécution, à exécuter et faire réviser AVANT la Task 18** (la vérification finale de branche doit couvrir cette tâche). Contexte découvert pendant la Task 15 puis creusé avec Tanguy : le widget carte de l'App Builder (`mapWidget.tsx`, consommé aussi bien par les Apps que par `DatasetPage.tsx`/`/sites/{slug}`) construit TOUJOURS une couche `kind: "feature"` (URL GeoJSON résolue), jamais `kind: "vector"` — seul l'éditeur de carte (`MapEditorPage`/`LayersPanel`) produit des couches `vector` (avec `collectionId`/`pkColumn`). Or `MapView` (Tâche 14) ne récupère les pièces jointes QUE pour une couche `kind: "vector"` : la plomberie de la Tâche 15 est donc réelle mais inerte sur `/sites/{slug}` et sur toute App avec un widget carte, contrairement à ce que dit explicitement la spec §3.4 (« un visiteur anonyme d'un site public voit les pièces jointes… exactement comme il voit déjà ses entités »).
+
+**Décision actée avec Tanguy (approche la plus sûre, pas de bascule de `kind`)** : ajouter `collectionId?`/`pkColumn?` en champs PUREMENT optionnels à la variante `kind: "feature"` de `MapLayer` (aucun changement de rendu — la couche continue de se dessiner exactement comme avant, via son URL GeoJSON), résoudre ces deux valeurs dans `DataContext.tsx` pour une source `type: "features", service: "core"` SANS `datasetId` (cas de `previewConfig`, qui n'a pas de dataset enregistré — `layer` porte alors directement le collectionId), les transmettre depuis `mapWidget.tsx` sur la couche construite, et élargir la garde de `MapView.tsx` (déjà review-approuvée Tâche 14) pour accepter aussi `kind: "feature"` quand ces deux champs sont présents. Zéro changement du pipeline de rendu/symbologie partagé, zéro changement de comportement pour une source dataset-liée existante côté `pkColumn` (résolution identique, juste aussi exposée sous `collectionId`) ni pour une source `service` non-`"core"` (jamais concernée).
+
+**Files:**
+- Modify: `shell/src/api/types.ts` (`MapLayer["feature"]`, `DataSourceState`)
+- Modify: `shell/src/builder/DataContext.tsx`
+- Test: `shell/src/builder/DataContext.test.tsx` (2 tests)
+- Modify: `shell/src/builder/widgets/mapWidget.tsx`
+- Test: `shell/src/builder/widgets/mapWidget.test.tsx` (1 test)
+- Modify: `shell/src/map/MapView.tsx`
+- Test: `shell/src/map/MapView.test.tsx` (1 test + commentaire corrigé sur un test existant)
+
+**Interfaces:**
+- Consumes: rien de nouveau — étend `MapLayer`/`DataSourceState` (`shell/src/api/types.ts`, déjà existants).
+- Produces: `DataSourceState.collectionId`, `MapLayer["feature"].collectionId`/`.pkColumn` — consommés par `MapView.tsx` (déjà review-approuvé Tâche 14, élargi ici).
+
+- [ ] **Step 1: `shell/src/api/types.ts` — deux champs optionnels**
+
+`DataSourceState` (déjà défini, `layer?`/`url?`/`datasetId?`/`pkColumn?`/`resolvedSource?`/`hasGeometry?`) :
+
+```diff
+ export type DataSourceState = {
+   loading: boolean;
+   error: boolean;
+   records: DataRecord[];
+   layer?: string;
+   url?: string;
+   datasetId?: string;
+   pkColumn?: string;
++  collectionId?: string;
+   resolvedSource?: DataSource;
+   hasGeometry?: boolean;
+ };
+```
+
+`MapLayer`, variante `kind: "feature"` :
+
+```diff
+   | {
+       id: string;
+       title: string;
+       visible: boolean;
+       kind: "feature";
+       url: string;
+       paint?: Record<string, unknown>;
+       renderAs?: "fill" | "circle" | "line";
+       popup?: PopupConfig;
+       symbology?: import("../builder/widgets/mapSymbology").LayerSymbology;
++      collectionId?: string;
++      pkColumn?: string;
+     }
+```
+
+- [ ] **Step 2: Écrire les 2 tests de `DataContext.test.tsx` (RED)**
+
+Patron exact déjà en place dans ce fichier (cf. `test("resolves datasetId and pkColumn onto the DataSourceState for a dataset-bound source", …)`, ligne ~93) — deux nouveaux tests, ajoutés à la fin du fichier :
+
+```typescript
+test("resolves collectionId and pkColumn onto the DataSourceState for a direct-layer core features source without a datasetId", async () => {
+  const client = {
+    queryDataSource: vi.fn().mockResolvedValue([{ id: 1, properties: {} }]),
+    featuresUrl: vi.fn().mockReturnValue("https://core.test/collections/parcs/items.geojson"),
+    getCollectionSchema: vi
+      .fn()
+      .mockResolvedValue({ collection: "parcs", pk: "id", geometry: null, fields: [] }),
+  } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const src: DataSource[] = [
+    { id: "ds1", type: "features", service: "core", layer: "parcs", query: {} },
+  ];
+
+  function Probe() {
+    const states = useDataStates();
+    const s = states["ds1"];
+    return (
+      <p>
+        collectionId:{s?.collectionId ?? "none"} pkColumn:{s?.pkColumn ?? "none"}
+      </p>
+    );
+  }
+
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider interactions="manual">
+          <DataProvider sources={src}>
+            <Probe />
+          </DataProvider>
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => {
+    expect(screen.getByText(/collectionId:parcs/)).toBeInTheDocument();
+    expect(screen.getByText(/pkColumn:id/)).toBeInTheDocument();
+  });
+  expect(client.getCollectionSchema).toHaveBeenCalledWith("parcs");
+});
+
+test("does not resolve collectionId/pkColumn for a non-core features source without a datasetId", async () => {
+  const client = {
+    queryDataSource: vi.fn().mockResolvedValue([{ id: 1, properties: {} }]),
+    featuresUrl: vi.fn().mockReturnValue("https://fs/parcs/items.json"),
+    getCollectionSchema: vi.fn(), // must never be called for a non-core service
+  } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const src: DataSource[] = [
+    { id: "ds1", type: "features", service: "featureserv", layer: "parcs", query: {} },
+  ];
+
+  function Probe() {
+    const states = useDataStates();
+    const s = states["ds1"];
+    if (!s || s.loading) return <p>loading</p>;
+    return (
+      <p>
+        collectionId:{s?.collectionId ?? "none"} pkColumn:{s?.pkColumn ?? "none"}
+      </p>
+    );
+  }
+
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider interactions="manual">
+          <DataProvider sources={src}>
+            <Probe />
+          </DataProvider>
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => expect(screen.getByText(/collectionId:none/)).toBeInTheDocument());
+  expect(screen.getByText(/pkColumn:none/)).toBeInTheDocument();
+  expect(client.getCollectionSchema).not.toHaveBeenCalled();
+});
+```
+
+Note : le test existant `"resolves datasetId and pkColumn onto the DataSourceState for a dataset-bound source"` (ligne ~93) utilise délibérément `service: "featureserv"` sur une source **dataset-liée** (`datasetId` présent) — la résolution `pkColumn` existante ne dépend jamais de `service` dans ce cas, seulement de `dataset.source === "collection"`. Le nouveau garde-fou `service === "core"` ajouté par cette tâche ne s'applique QUE dans la nouvelle branche « pas de `datasetId` » — ne pas le confondre avec ni le dupliquer sur la branche dataset-liée existante.
+
+- [ ] **Step 3: Lancer les tests, vérifier l'échec**
+
+Run: `cd shell && npx vitest run src/builder/DataContext.test.tsx`
+Expected: FAIL sur les 2 nouveaux tests — `collectionId` est `undefined`/absent du type `DataSourceState` avant le Step 1 (TS), et `pkColumn` reste `"none"` avant le Step 4 ci-dessous (le Step 1 seul suffit à faire compiler mais pas à faire passer ces 2 tests).
+
+- [ ] **Step 4: Étendre `DataContext.tsx`**
+
+Juste avant la définition de `collectionIds` (fonction `DataProvider`, autour de la ligne 51) :
+
+```diff
+   // Resolve the primary-key column name for every distinct collection behind
+   // those datasets, so table/map widgets can cross-filter by pk without
+   // fetching a schema themselves (they only read ctx.data.pkColumn).
++  // Une source `type: "features"` sans `datasetId` porte directement son
++  // collectionId dans `layer` quand `service === "core"` (chantier 4.12,
++  // DataSourcePanel.tsx : champ « Collection » en saisie libre, ou
++  // previewConfig de DatasetPage.tsx pour /sites/{slug}, qui n'a pas de
++  // dataset enregistré) — résolu ici au même titre qu'un dataset partagé,
++  // pour que le widget carte connaisse pkColumn/collectionId dans les deux
++  // cas sans requête supplémentaire.
++  const directCollectionIds = sources
++    .filter((s) => s.type === "features" && s.service === "core" && !s.datasetId && s.layer)
++    .map((s) => s.layer);
+   const collectionIds = [
+     ...new Set(
+-      Object.values(datasets)
+-        .filter(
+-          (d): d is Extract<DatasetConfig, { source: "collection" }> => d.source === "collection",
+-        )
+-        .map((d) => d.collectionId),
++      [
++        ...Object.values(datasets)
++          .filter(
++            (d): d is Extract<DatasetConfig, { source: "collection" }> =>
++              d.source === "collection",
++          )
++          .map((d) => d.collectionId),
++        ...directCollectionIds,
++      ],
+     ),
+   ];
+```
+
+Puis dans la boucle `sources.forEach` qui construit `states` :
+
+```diff
+   const states: Record<string, DataSourceState> = {};
+   sources.forEach((s, i) => {
+     const r = results[i];
+     const merged = mergedQueryFor(s);
+     const dataset = s.datasetId ? datasets[s.datasetId] : undefined;
++    const directId =
++      s.type === "features" && s.service === "core" && !s.datasetId && s.layer
++        ? s.layer
++        : undefined;
++    const resolvedCollectionId =
++      dataset && dataset.source === "collection" ? dataset.collectionId : directId;
+     const hasGeometry = dataset
+       ? dataset.source === "arcgis"
+         ? true
+         : (hasGeometryByCollection[dataset.collectionId] ?? false)
+       : false;
+     states[s.id] = {
+       loading: r.isLoading,
+       error: r.isError,
+       records: r.data ?? [],
+       layer: s.layer,
+       url: s.type === "features" ? client.featuresUrl(merged) : undefined,
+       datasetId: s.datasetId,
+-      pkColumn:
+-        dataset && dataset.source === "collection"
+-          ? pkByCollection[dataset.collectionId]
+-          : undefined,
++      pkColumn: resolvedCollectionId ? pkByCollection[resolvedCollectionId] : undefined,
++      collectionId: resolvedCollectionId,
+       resolvedSource: merged,
+       hasGeometry,
+     };
+   });
+```
+
+- [ ] **Step 5: Lancer les tests, vérifier le succès**
+
+Run: `cd shell && npx vitest run src/builder/DataContext.test.tsx`
+Expected: tous PASS, y compris les 2 nouveaux et les existants (en particulier `"resolves datasetId and pkColumn onto the DataSourceState for a dataset-bound source"` et `"does not crash and leaves pkColumn undefined for an arcgis-sourced dataset"` — comportement inchangé pour ces deux branches).
+
+- [ ] **Step 6: Écrire le test de `mapWidget.test.tsx` (RED)**
+
+Ajouter à la fin du fichier, en réutilisant `renderWidget`/`state`/`lastMapConfig` déjà définis dans ce fichier :
+
+```typescript
+test("map widget carries collectionId/pkColumn from ctx.data onto the feature layer (SP-40)", () => {
+  renderWidget({
+    props: { dataSourceId: "ds1" },
+    ctx: {
+      data: state({
+        url: "https://core.test/collections/parcs/items.geojson",
+        collectionId: "parcs",
+        pkColumn: "id",
+      }),
+    },
+  });
+  const layer = lastMapConfig().layers[0] as { collectionId?: string; pkColumn?: string };
+  expect(layer.collectionId).toBe("parcs");
+  expect(layer.pkColumn).toBe("id");
+});
+```
+
+- [ ] **Step 7: Lancer le test, vérifier l'échec**
+
+Run: `cd shell && npx vitest run src/builder/widgets/mapWidget.test.tsx -t "collectionId/pkColumn from ctx.data"`
+Expected: FAIL — `layer.collectionId`/`layer.pkColumn` sont `undefined`.
+
+- [ ] **Step 8: Câbler `mapWidget.tsx`**
+
+Dans le `Component`, bloc `config: MapConfig` (autour de la ligne 271-288) :
+
+```diff
+       layers: url
+         ? [
+             {
+               id: `ds-${String(props.dataSourceId)}`,
+               title: "Données",
+               visible: true,
+               kind: "feature",
+               url,
+               renderAs,
+               ...(symbology ? { symbology } : {}),
+               popup: props.popup as PopupConfig | undefined,
++              collectionId: ctx.data?.collectionId,
++              pkColumn: ctx.data?.pkColumn,
+             },
+           ]
+         : [],
+```
+
+- [ ] **Step 9: Lancer les tests, vérifier le succès**
+
+Run: `cd shell && npx vitest run src/builder/widgets/mapWidget.test.tsx`
+Expected: tous PASS (le nouveau + tous les existants — `collectionId`/`pkColumn` valent `undefined` par défaut sur `ctx.data` dans tous les tests existants qui ne les fournissent pas, donc `layer.collectionId`/`.pkColumn` valent `undefined`, comportement inchangé).
+
+- [ ] **Step 10: Écrire le test de `MapView.test.tsx` (RED) et corriger le commentaire d'un test existant**
+
+D'abord, `test("does not fetch attachments for a feature layer even when attachmentField is configured", …)` (ligne ~1424) — son comportement ne change PAS (sa couche `feature` ne porte ni `pkColumn` ni `collectionId`, donc `fid` reste `undefined`), mais son commentaire devient factuellement faux après cette tâche. Corriger :
+
+```diff
+-  // Les couches `feature` (GeoJSON externe) n'ont pas de collection : jamais
+-  // de pièces jointes possibles, quel que soit le popup déclaré.
++  // Une couche `feature` PEUT porter des pièces jointes depuis la Tâche 19
++  // (widget carte de l'App Builder/`/sites/{slug}`, cf. le test
++  // "fetches attachments for a feature layer…" ci-dessous) si elle porte
++  // collectionId+pkColumn — celle-ci n'en porte aucun (GeoJSON externe pur),
++  // donc reste sans pièces jointes possibles.
+```
+
+Puis ajouter un nouveau test juste après ce même test (~ligne 1450) :
+
+```typescript
+test("fetches attachments for a feature layer that carries a resolvable collectionId/pkColumn (SP-40, widget carte)", () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ attachments: [] }) });
+  vi.stubGlobal("fetch", fetchMock);
+  const cfg: MapConfig = {
+    ...config,
+    layers: [
+      {
+        id: "pts",
+        title: "Points",
+        visible: true,
+        kind: "feature",
+        url: "https://core.test/collections/parcs/items.geojson",
+        collectionId: "parcs",
+        pkColumn: "id",
+        popup: { attachmentField: "photos" },
+      },
+    ],
+  };
+  render(<MapView config={cfg} getAuthToken={() => "tok"} getCoreUrl={() => "http://core.test"} />);
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "pts", {
+      features: [{ id: 7, properties: { id: "42" } }],
+      lngLat: { lng: 1, lat: 2 },
+    }),
+  );
+  expect(fetchMock).toHaveBeenCalledWith(
+    "http://core.test/collections/parcs/items/42/attachments?fieldKey=photos",
+    { headers: { Authorization: "Bearer tok" } },
+  );
+});
+```
+
+Adapter le nom exact de la variable de config de base (`config`) et de `mapInstances[0].fireOnLayer` au patron réel déjà utilisé par le test voisin — vérifier avant d'écrire, ne pas deviner.
+
+- [ ] **Step 11: Lancer les tests, vérifier l'échec**
+
+Run: `cd shell && npx vitest run src/map/MapView.test.tsx -t "resolvable collectionId/pkColumn"`
+Expected: FAIL — `fetchMock` non appelé (la garde `popupLayer.kind !== "vector"` bloque encore tout `kind: "feature"`).
+
+- [ ] **Step 12: Élargir `MapView.tsx`**
+
+`handlePopup` (autour de la ligne 1058-1067) :
+
+```diff
+       const layer = layersRef.current.find((l) => l.id === layerId);
+       if (!layer || !("popup" in layer) || !layer.popup) return;
+-      // Seules les couches `vector` portent `pkColumn`/`collectionId` : une
+-      // couche `feature` (GeoJSON externe) n'a pas de collection, donc
+-      // jamais de pièces jointes possibles (chantier 4.12).
++      // `vector` ET `feature` peuvent porter `pkColumn`/`collectionId`
++      // (chantier 4.12 ; Tâche 19 : le widget carte de l'App Builder/
++      // `/sites/{slug}` construit toujours `kind: "feature"`, jamais
++      // `vector` — les deux champs y sont optionnels et absents pour une
++      // couche GeoJSON externe pure, qui reste donc sans pièces jointes).
+       const fid =
+-        layer.kind === "vector" && layer.pkColumn && properties[layer.pkColumn] != null
++        (layer.kind === "vector" || layer.kind === "feature") &&
++        layer.pkColumn &&
++        properties[layer.pkColumn] != null
+           ? String(properties[layer.pkColumn])
+           : undefined;
+```
+
+L'effet de fetch des pièces jointes (autour de la ligne 1333-1336) :
+
+```diff
+   useEffect(() => {
+     setPopupAttachments([]);
+     if (!popup || !popupConfig?.attachmentField || popup.fid === undefined) return;
+-    if (!popupLayer || popupLayer.kind !== "vector") return;
++    if (!popupLayer || (popupLayer.kind !== "vector" && popupLayer.kind !== "feature")) return;
++    if (!popupLayer.collectionId) return;
+     const coreUrl = getCoreUrlRef.current?.();
+```
+
+- [ ] **Step 13: Lancer les tests, vérifier le succès**
+
+```bash
+cd shell && npx vitest run src/map/MapView.test.tsx src/builder/widgets/mapWidget.test.tsx \
+  src/builder/DataContext.test.tsx
+npx tsc --noEmit
+npm run test
+```
+Expected: tous PASS (y compris les 3 tests d'attachements existants de `MapView.test.tsx`, ligne ~1360-1470 — en particulier celui sur `kind: "vector"` doit rester identique), `tsc` propre, aucune régression sur la suite complète.
+
+- [ ] **Step 14: Commit**
+
+```bash
+git add shell/src/api/types.ts shell/src/builder/DataContext.tsx shell/src/builder/DataContext.test.tsx \
+  shell/src/builder/widgets/mapWidget.tsx shell/src/builder/widgets/mapWidget.test.tsx \
+  shell/src/map/MapView.tsx shell/src/map/MapView.test.tsx
+git commit -m "feat(shell): le widget carte expose aussi les pièces jointes (couche feature, SP-40)"
+```
+
+---
+
+## Task 20: le popup de la carte retrouve le fid même quand la PK est entière (feature_id MVT)
+
+**Ajoutée en cours d'exécution, à exécuter et faire réviser AVANT la Task 18.** Contexte découvert par l'implémenteur de la Task 17 (E2E popup carte) en essayant de faire fonctionner son scénario avec un `pkColumn` entier réaliste, puis confirmé par le contrôleur en lisant le code cœur :
+
+`ST_AsMVT(tile, :layer, :extent, 'geom', :fid)` (`core/app/features/tiles.py::build_mvt_sql`) reçoit un 5e argument `feature_id_name` — posé UNIQUEMENT quand la colonne PK est de type entier (`mvt_feature_id_column`). Quand ce paramètre est posé, PostGIS retire cette colonne des attributs MVT et la place dans le champ `id` top-level de la feature (spec MVT standard) — elle n'existe alors PLUS dans `feature.properties`. `handlePopup` (`shell/src/map/MapView.tsx`, Tâche 14) ne lit pourtant le fid QUE depuis `properties[layer.pkColumn]`, jamais depuis `feature.id` — contrairement à `makeFeatureClickHandler` (même fichier, utilisé pour `onFeatureClick`/cross-filter), qui fait déjà le bon repli `f.id ?? properties[pkColumn]`, mais dont l'id résolu n'est jamais transmis à `onPopup`/`handlePopup`.
+
+**Conséquence réelle** : sur une vraie collection avec PK entière (le cas le plus courant), le popup de l'éditeur de carte (ET du widget carte, Tâche 19) ne remonte JAMAIS les pièces jointes — la Tâche 17 n'a pu faire passer son E2E qu'en contournant avec un `pkColumn` non entier (`"population"`), ce qui masque le bug plutôt que de le prouver résolu.
+
+**Fix** : plomber l'id déjà résolu par `makeFeatureClickHandler` (`f.id ?? properties[pkColumn]`) jusqu'à `onPopup`/`handlePopup`, au lieu de laisser `handlePopup` relire `properties[pkColumn]` seul. Additif, ne change aucun autre comportement (`onFeatureClick`/cross-filter déjà correct, inchangé — `handlePopup` gagne juste une meilleure source de vérité pour la même valeur).
+
+**Files:**
+- Modify: `shell/src/map/MapView.tsx`
+- Test: `shell/src/map/MapView.test.tsx` (1 nouveau test)
+
+**Interfaces:** aucune nouvelle — corrige un défaut interne de `MapView.tsx` (Tâche 14/19, déjà review-approuvées).
+
+- [ ] **Step 1: Écrire le test (RED)**
+
+Ajouter à la suite des tests d'attachements existants (`shell/src/map/MapView.test.tsx`, après `"does not fetch attachments when the clicked feature has no value for the layer's pkColumn"`) :
+
+```typescript
+test("fetches attachments using the feature's top-level id when properties omits the integer pkColumn (ST_AsMVT feature_id, SP-40 Task 20)", async () => {
+  // Reproduit le comportement réel de ST_AsMVT(..., feature_id_name) côté
+  // cœur (core/app/features/tiles.py::mvt_feature_id_column) pour une PK
+  // entière : la colonne PK est retirée de `properties` et placée dans le
+  // champ `id` top-level de la feature MapLibre — jamais les deux à la fois.
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ attachments: [] }),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        pkColumn: "code",
+        popup: { attachmentField: "photos" },
+      })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "communes", {
+      features: [{ id: 19272, properties: { nom: "Tulle" } }],
+      lngLat: { lng: 12, lat: 34 },
+    }),
+  );
+  expect(fetchMock).toHaveBeenCalledWith(
+    "http://core.test/collections/communes/items/19272/attachments?fieldKey=photos",
+    { headers: { Authorization: "Bearer tok" } },
+  );
+});
+```
+
+Note : reprendre le patron exact de `tiled(...)` déjà utilisé par les 3 tests d'attachements voisins de ce fichier (même config de base, `pkColumn: "code"`) — seule la forme de l'événement de clic diffère (`properties` sans `code`, `id: 19272` top-level).
+
+- [ ] **Step 2: Lancer le test, vérifier l'échec**
+
+Run: `cd shell && npx vitest run src/map/MapView.test.tsx -t "feature's top-level id"`
+Expected: FAIL — `fetchMock` non appelé (`properties.code` est `undefined`, `handlePopup` ne regarde que `properties[layer.pkColumn]`).
+
+- [ ] **Step 3: Plomber l'id résolu jusqu'à `onPopup`**
+
+`makeFeatureClickHandler` (autour de la ligne 370-392) — le paramètre `onPopup` gagne un 3e argument, et l'id est calculé AVANT l'appel à `onPopup` (au lieu d'après) pour pouvoir le lui transmettre :
+
+```diff
+ function makeFeatureClickHandler(
+   pkColumn: string | undefined,
+   onFeatureClick: (record: DataRecord) => void,
+   // Toujours appelé : c'est `handlePopup` (côté React, qui relit la config à
+   // chaque rendu) qui décide si la couche a encore un popup — le handler ne
+   // capture donc plus `layer.popup`, et une modification du popup n'oblige
+   // plus à reconstruire la carte (I5 de la revue finale SP-24).
+-  onPopup: (properties: Record<string, unknown>, lngLat: { lng: number; lat: number }) => void,
++  onPopup: (
++    properties: Record<string, unknown>,
++    lngLat: { lng: number; lat: number },
++    id: string | number | undefined,
++  ) => void,
+ ) {
+   return (e: maplibregl.MapLayerMouseEvent) => {
+     const f = e.features?.[0];
+     if (!f) return;
+     const properties = (f.properties ?? {}) as Record<string, unknown>;
++    // `f.id` (id de feature top-level MapLibre) prime sur properties[pkColumn] :
++    // ST_AsMVT retire la colonne PK des attributs quand elle est entière
++    // (feature_id_name, cf. core/app/features/tiles.py::mvt_feature_id_column)
++    // — elle n'existe alors QUE dans f.id, jamais dans properties (chantier
++    // 4.12, Tâche 20). properties[pkColumn] reste le repli pour une PK non
++    // entière ou une couche `feature` (GeoJSON, jamais de feature_id MVT).
++    const fallback = pkColumn ? properties[pkColumn] : undefined;
++    const id = (f.id ?? fallback) as string | number | undefined;
+     // Le popup s'ouvre même sans identité utilisable : les attributs sont là,
+-    // c'est la seule chose dont il a besoin. Le repli d'id ne conditionne que
+-    // la sélection et le cross-filter.
+-    onPopup(properties, e.lngLat);
+-    const fallback = pkColumn ? properties[pkColumn] : undefined;
+-    const id = (f.id ?? fallback) as string | number | undefined;
++    // c'est la seule chose dont il a besoin — mais on transmet quand même
++    // l'id résolu, dont dépend maintenant aussi le popup (pièces jointes).
++    onPopup(properties, e.lngLat, id);
+     if (id == null) return;
+     onFeatureClick({ id, properties, geometry: f.geometry });
+   };
+ }
+```
+
+`applyLayers`, type du paramètre `onPopup` (autour de la ligne 402-406) :
+
+```diff
+   onPopup: (
+     layerId: string,
+     properties: Record<string, unknown>,
+     lngLat: { lng: number; lat: number },
++    id: string | number | undefined,
+   ) => void,
+```
+
+Les deux sites d'appel de `makeFeatureClickHandler` dans `applyLayers` — couches `vector` (autour de la ligne 526-533) :
+
+```diff
+         for (const id of layerIds) {
+           const handler = makeFeatureClickHandler(
+             layer.pkColumn,
+             onFeatureClick,
+             // Le popup est toujours identifié par l'id de la COUCHE de la
+             // config, jamais par celui d'une sous-couche : c'est lui que
+             // MapView recroise avec config.layers.
+-            (properties, lngLat) => onPopup(layer.id, properties, lngLat),
++            (properties, lngLat, featureId) => onPopup(layer.id, properties, lngLat, featureId),
+           );
+```
+
+Et couches `feature` (autour de la ligne 608-610) :
+
+```diff
+-        const handler = makeFeatureClickHandler(undefined, onFeatureClick, (properties, lngLat) =>
+-          onPopup(layer.id, properties, lngLat),
+-        );
++        const handler = makeFeatureClickHandler(undefined, onFeatureClick, (properties, lngLat, featureId) =>
++          onPopup(layer.id, properties, lngLat, featureId),
++        );
+```
+
+(Le premier argument `undefined` de `makeFeatureClickHandler` pour les couches `feature` reste inchangé — c'est le comportement pré-existant d'`onFeatureClick`/cross-filter sur ces couches, hors périmètre de cette tâche.)
+
+- [ ] **Step 4: Élargir `handlePopup`**
+
+Autour de la ligne 1052-1070 :
+
+```diff
+   const handlePopup = useCallback(
+     (
+       layerId: string,
+       properties: Record<string, unknown>,
+       lngLat: { lng: number; lat: number },
++      featureId: string | number | undefined,
+     ) => {
+       const layer = layersRef.current.find((l) => l.id === layerId);
+       if (!layer || !("popup" in layer) || !layer.popup) return;
+       // `vector` ET `feature` peuvent porter `pkColumn`/`collectionId`
+       // (chantier 4.12 ; Tâche 19 : le widget carte de l'App Builder/
+       // `/sites/{slug}` construit toujours `kind: "feature"`, jamais
+       // `vector` — les deux champs y sont optionnels et absents pour une
+       // couche GeoJSON externe pure, qui reste donc sans pièces jointes).
++      // `featureId` (résolu en amont par makeFeatureClickHandler — Tâche 20)
++      // prime sur properties[pkColumn] : ST_AsMVT retire la colonne PK des
++      // attributs quand elle est entière, elle n'existe alors que dans
++      // f.id (cf. core/app/features/tiles.py::mvt_feature_id_column).
++      const pkValue = featureId ?? (layer.pkColumn ? properties[layer.pkColumn] : undefined);
+       const fid =
+-        (layer.kind === "vector" || layer.kind === "feature") &&
+-        layer.pkColumn &&
+-        properties[layer.pkColumn] != null
+-          ? String(properties[layer.pkColumn])
++        (layer.kind === "vector" || layer.kind === "feature") && layer.pkColumn && pkValue != null
++          ? String(pkValue)
+           : undefined;
+       setPopup({ layerId, properties, lngLat, fid });
+     },
+     [],
+   );
+```
+
+- [ ] **Step 5: Lancer les tests, vérifier le succès**
+
+```bash
+cd shell && npx vitest run src/map/MapView.test.tsx
+npx tsc --noEmit
+npm run test
+```
+Expected: tous PASS — en particulier les 4 tests d'attachements existants (dont celui `kind: "feature"` de la Tâche 19) restent verts sans modification, ainsi que tous les tests de `onFeatureClick`/cross-filter (le comportement de `makeFeatureClickHandler` pour `onFeatureClick` est inchangé — seul le moment où `id` est calculé a bougé, pas sa valeur ni sa condition de garde `if (id == null) return`). `tsc` propre, aucune régression sur la suite complète.
+
+- [ ] **Step 6: Reconsidérer le contournement de la Task 17 (E2E)**
+
+`shell/e2e/attachments-popup.spec.ts` (Tâche 17, déjà committée) utilise `pkColumn: "population"` (non entière) pour contourner ce bug — un scénario réel mais pas le cas le plus courant. Avec ce correctif, vérifier si la fixture MVT réelle du spec (`world-tile.mvt`, réutilisée depuis `map-popup.spec.ts`) encode un `feature_id` exploitable pour une colonne entière : si oui, ajuster le spec pour prouver le cas courant (PK entière) plutôt que de le contourner ; si la fixture ne le permet pas (tuile générique sans rapport avec notre schéma), documenter explicitement pourquoi ce spec E2E ne peut prouver que le cas non-entier, et s'appuyer sur le nouveau test unitaire du Step 1 ci-dessus comme preuve du cas entier — ne pas deviner, vérifier la fixture réelle avant de décider.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add shell/src/map/MapView.tsx shell/src/map/MapView.test.tsx
+git commit -m "fix(shell): le popup carte retrouve le fid via feature.id quand la PK est entière (SP-40)"
+```
+
+Si le Step 6 a modifié `shell/e2e/attachments-popup.spec.ts`, l'ajouter à ce même commit et lancer `cd shell && npx playwright test e2e/attachments-popup.spec.ts` avant de committer (1 passed attendu).

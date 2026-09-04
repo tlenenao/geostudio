@@ -1571,6 +1571,99 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   granularité déjà pratiquée sur SP-38 pour un chantier de risque
   comparable. **Ready to merge.**
 
+- **SP-40 — pièces jointes sur une entité** (20 tâches — 18 planifiées + 2
+  ajoutées en cours d'exécution, spec
+  `docs/superpowers/specs/2026-09-04-sp40-pieces-jointes-design.md`, plan
+  `docs/superpowers/plans/2026-09-04-sp40-pieces-jointes.md` — ferme le
+  chantier 4.12) : une photo (ou tout autre fichier) attachée à une entité
+  depuis le widget Formulaire est visible d'un lecteur autorisé et
+  invisible des autres, consultable dans le popup de la carte (éditeur
+  **et** widget carte de l'App Builder/`/sites/{slug}`, anonyme inclus sur
+  une collection publique) et via l'outil MCP en lecture `list_attachments`.
+  Nouveau domaine `core/app/attachments/` (modèle `Attachment`, dépôt,
+  routes self-scoped presign/confirm/liste/lecture/suppression) inséré
+  entre `app.features` et `app.collections` dans le contrat de couches ;
+  upload S3 présigné (patron A6) ; lecture en proxy authentifié
+  (`Depends(get_current_user_optional)`, `tenant_id` toujours résolu via
+  `col.tenant_id`, jamais `user.tenant_id`) ; `Collection.attachment_fields`
+  (JSON, déclaré via `PATCH /collections/{id}`) fusionné comme pseudo-champ
+  `type: "attachment"` dans `GET /collections/{id}/schema` ; cascade de
+  suppression depuis `remove_feature` ; `MAX_ATTACHMENT_BYTES` 25 Mo.
+  Côté shell : nouveau type de champ `attachment` dans le widget
+  Formulaire (upload/liste/suppression), éditeur de liste dans
+  `EditCollectionPanel`, sélecteur « Pièces jointes » dans `PopupEditor`
+  (câblé éditeur de carte **et** widget carte), `MapView`/`MapPopup`
+  affichent la section, `/sites/{slug}` la dérive automatiquement du
+  schéma. Suite core **1896→2159 passed** / 5 skipped / 0 failed (mesurée
+  sur un conteneur `postgis-test` réel, rafraîchi en Tâche 18 — schéma
+  périmé depuis la Tâche 7, `ALTER TABLE collections ADD COLUMN
+  attachment_fields` appliqué directement, container non tracké par
+  Alembic). Suite shell **222→224 fichiers / 1858→1889 tests**, couverture
+  90,17 % (seuil 88). E2E **144→143 tests** (2 nouveaux specs pièces
+  jointes, 1 skip Catalogue pré-existant sans rapport devenu obsolète en
+  cours de route — décompte net stable).
+  **Deux tâches ajoutées en cours d'exécution, hors plan initial, sur
+  décision de Tanguy après escalade** — le texte du plan lui-même
+  s'avérant insuffisant pour livrer la promesse de sa propre spec :
+  - **Tâche 19** : le widget carte de l'App Builder (consommé aussi par
+    `/sites/{slug}`) construit TOUJOURS des couches `kind: "feature"`
+    (URL GeoJSON résolue), jamais `kind: "vector"` — seul l'éditeur de
+    carte en produit. `MapView` (Tâche 14) ne récupérait pourtant les
+    pièces jointes que pour `kind: "vector"` : la plomberie de la Tâche 15
+    était donc réelle mais inerte sur `/sites/{slug}`, contrairement à la
+    spec §3.4. Décision actée avec Tanguy (approche la plus sûre parmi
+    deux proposées, pas de bascule de `kind` — trop invasif, aurait
+    touché le pipeline de rendu/symbologie partagé de toutes les Apps
+    existantes) : champs `collectionId?`/`pkColumn?` purement additifs
+    sur la variante `feature` de `MapLayer`, résolution dans
+    `DataContext.tsx` pour une source `type: "features", service: "core"`
+    sans `datasetId` (cas `previewConfig`, sans dataset enregistré),
+    câblage depuis le widget carte, garde `MapView` élargie. Un 3e site
+    gardé en dur sur `"vector"` trouvé au passage (`attachmentFileUrl` de
+    `MapPopup` — sans lui, la liste se serait affichée avec des liens de
+    téléchargement cassés).
+  - **Tâche 20** : sur une vraie collection à PK **entière** (le cas le
+    plus courant), `ST_AsMVT(..., feature_id_name)`
+    (`core/app/features/tiles.py`) retire la colonne PK des attributs MVT
+    et la place uniquement dans `feature.id` top-level, jamais dans
+    `properties` — `handlePopup` (Tâche 14) ne lisait le fid que depuis
+    `properties[layer.pkColumn]`, donc le popup de carte ne remontait
+    JAMAIS les pièces jointes pour ce cas, plus sérieux que le gap
+    `/sites/{slug}` (touche le tout premier des 4 usages de l'objectif du
+    plan). Trouvé par l'implémenteur de la Tâche 17 en tentant un
+    `pkColumn` entier réaliste pour son E2E (contourné à l'origine avec
+    `pkColumn: "population"`, non entière — masquant plutôt que prouvant
+    le cas courant). Fix : plombe l'id déjà résolu par
+    `makeFeatureClickHandler` (`f.id ?? properties[pkColumn]`, déjà
+    correct pour `onFeatureClick`/cross-filter) jusqu'à `onPopup`/
+    `handlePopup`. A revélé que **3 des 4 tests d'attachements déjà
+    approuvés** (Tâches 14/19) avaient des fixtures combinant un `id`
+    top-level arbitraire avec une valeur `properties[pkColumn]`
+    différente — combinaison structurellement impossible en production
+    (vérifié contre `tiles.py`/`repository.py`) — corrigées vers des
+    scénarios réalistes. Le spec E2E de la Tâche 17 a ensuite pu abandonner
+    son contournement (`pkColumn: "population"` → `"id"`, cas réel) après
+    décodage direct du fixture binaire `world-tile.mvt` confirmant un
+    `feature_id` exploitable.
+  **Revue finale de branche (Tâche 18) : 1 régression réelle trouvée par
+  la suite E2E complète et corrigée, indépendamment revue et vérifiée par
+  falsification** : `admin-collections.spec.ts` (spec antérieure à SP-40,
+  jamais mise à jour) faisait planter `EditCollectionPanel` —
+  `useState(collection.attachmentFields)` sans repli, alors qu'aucun de
+  ses 3 mocks de réponse collection n'inclut ce nouveau champ désormais
+  requis. Confirmée régression réelle (pas pré-existante) via
+  `git show d243fdff:...EditCollectionPanel.tsx`. Corrigée
+  (`?? []`) et vérifiée par falsification (revert → même timeout exact
+  reproduit → restauré). Suivi Minor non bloquant : les 3 mocks de ce
+  spec restent incohérents avec le vrai contrat API (un vrai
+  `POST /collections` renvoie toujours `attachmentFields: []`, jamais
+  absent) — le correctif protège contre l'absence sans corriger les mocks
+  à la source. Chaque tâche individuellement review-approuvée (spec +
+  qualité), plusieurs défauts réels du texte littéral des briefs trouvés
+  et corrigés en cours de route (piège n°3, détail dans le ledger de
+  session) — aucun Critical ni Important restant à la clôture.
+  **Ready to merge.**
+
 ### Conventions tranchées (2026-09-01)
 
 Trois dettes Minor répétées famille après famille (SP-30c→SP-30j) sans jamais
