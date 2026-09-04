@@ -1661,8 +1661,66 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   à la source. Chaque tâche individuellement review-approuvée (spec +
   qualité), plusieurs défauts réels du texte littéral des briefs trouvés
   et corrigés en cours de route (piège n°3, détail dans le ledger de
-  session) — aucun Critical ni Important restant à la clôture.
-  **Ready to merge.**
+  session).
+  **Revue finale de branche transverse (Tâche 18, opus, paquet des 25
+  commits) : 1 Critical (C1) + 6 Important (I2-I7), tous fermés et
+  indépendamment re-revus — Ready to merge après ce lot.** Le cœur et
+  les deux points les plus sensibles désignés par le plan (contrat
+  `tenant_id`, ordre des hooks de `MapView.tsx` après ses 3 modifications
+  cumulées) tenaient déjà ; les défauts trouvés sont tous des angles
+  morts transverses qu'aucune revue par tâche ne pouvait voir seule :
+  - **C1 (Critical)** : les liens de téléchargement de pièce jointe
+    (`<a href>` nu, widget Formulaire ET popup carte) ne portaient aucun
+    en-tête `Authorization` — 404 pour toute collection non publique,
+    même pour un utilisateur autorisé ; seul le cas anonyme/collection
+    publique (`/sites/{slug}`) fonctionnait. Racine dans la spec
+    elle-même (exigeait un `href=` direct tout en imposant un proxy
+    authentifié). Corrigé : `client.downloadAttachment` (fetch
+    authentifié + `URL.createObjectURL`, patron déjà établi
+    `ExplorerMenu.handleExport`) remplace les deux liens par un bouton.
+    E2E renforcés pour suivre un vrai `200` sur la requête déclenchée,
+    pas seulement la visibilité du lien — referme le trou par lequel C1
+    était passé.
+  - **I2** : `filename`/`content_type` client jamais assainis →
+    `UnicodeEncodeError` (500) sur tout nom/type non-ASCII, guillemet
+    permettant l'injection d'en-tête. Patron `_SAFE_FILENAME` de
+    mapicons appliqué, liste noire d'extensions dangereuses posée. 2
+    passes de revue supplémentaires ont trouvé et fermé : `content_type`
+    encore non validé (même crash, en-tête différent) ; la première
+    passe avait mutilé le nom STOCKÉ, régression sur les noms accentués
+    français jamais cassés avant — corrigé par l'encodage RFC 6266/5987
+    standard (ASCII de repli + valeur UTF-8 exacte), le nom brut n'étant
+    plus jamais altéré en base ; contournement résiduel sur un `\n`
+    final (`.match()` → `.fullmatch()`).
+  - **I3** : `GET /collections/{id}/schema` fusionne les champs
+    `attachment` (chantier 4.12) comme pseudo-champs sans colonne SQL —
+    5 consommateurs shell les traitaient encore comme des colonnes
+    réelles (symbologie de carte, lien de cross-filter, requête visuelle
+    ×3, dataset édité, export CSV) — tous exclus.
+  - **I4** : un champ attachment marqué « Requis » rendait le formulaire
+    définitivement non soumettable (le composant ne passe jamais par
+    `values`/`onChange`) — corrigé y compris pour une config déjà
+    enregistrée avant ce correctif.
+  - **I5** : hooks `useAttachments`/`useDeleteAttachment` sans aucun
+    consommateur — supprimés.
+  - **I6** : le widget carte de l'App Builder ne pouvait JAMAIS
+    configurer `PopupConfig.attachmentField` (codé en dur à `[]`) —
+    seule la dérivation automatique de `/sites/{slug}` l'atteignait.
+    Résout maintenant le schéma de la collection liée (patron
+    `FormPropsPanel`).
+  - **I7** : le test de migration existant ne couvrait que
+    `Base.metadata.create_all()`, jamais `alembic upgrade` ni une base
+    non vide (piège n°8). Nouveau test sur une base Postgres jetable,
+    vérifié par falsification. **A lui-même trouvé un vrai bug en cours
+    d'écriture** : `Config("alembic.ini")` déclenche `fileConfig()` dans
+    `env.py`, qui désactive par défaut tous les loggers du process non
+    listés dans ce fichier — polluait 3 tests `caplog` sans rapport
+    ailleurs dans la même session pytest, reproduit et corrigé
+    (`Config()` sans fichier ini + `script_location` posé à la main).
+
+  Suite finale : cœur 2170 passed/5 skipped/0 failed (Postgres réel) ;
+  shell 224 fichiers/~1900 tests, `tsc`/eslint/prettier propres ; E2E 143
+  passed/4 skipped/0 failed. **Ready to merge.**
 
 ### Conventions tranchées (2026-09-01)
 
