@@ -106,6 +106,32 @@ test("affiche le formulaire d'édition quand l'URL porte ?panel=edit", async () 
   expect(await screen.findByLabelText("Titre")).toBeInTheDocument();
 });
 
+test("conserve les mots-clés existants à l'ouverture du panneau Éditer", async () => {
+  server.use(
+    http.get("https://core.test/items/1", () =>
+      HttpResponse.json({
+        pk: "1",
+        resourceType: "app",
+        title: "Item 1",
+        abstract: "Abstract 1",
+        owner: "alice",
+        thumbnailUrl: null,
+        date: "2026-01-01T00:00:00Z",
+        configId: null,
+        isPublished: false,
+        keywords: ["existing-tag"],
+        license: "",
+        language: "fr",
+        permissions: { read: true, write: true, delete: true, share: true },
+      }),
+    ),
+  );
+  render(<ItemDetailPage pk="1" />, {
+    wrapper: ({ children }) => wrapperWithInitialSearch("/items/1?panel=edit", children),
+  });
+  expect(await screen.findByLabelText("Mots-clés")).toHaveValue("existing-tag");
+});
+
 test("affiche l'envoi de miniature quand l'URL porte ?panel=thumbnail", async () => {
   render(<ItemDetailPage pk="1" />, {
     wrapper: ({ children }) => wrapperWithInitialSearch("/items/1?panel=thumbnail", children),

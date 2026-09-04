@@ -190,7 +190,7 @@ Commits conventional sur `dev`, sans PR, préfixe `(SP-42)` — SP-41 est pris.
 | Livrable | Chemin |
 |---|---|
 | Cette spec | `docs/superpowers/specs/2026-09-04-sp42-revue-globale-design.md` |
-| Correctifs Critical/Important | commits `fix(core|shell): … (SP-42)` |
+| Correctifs Critical/Important | commits `fix(core...)` / `fix(shell...)` … (SP-42) |
 | Matrice de fonctionnalités | `docs/revue/2026-09-04-matrice-fonctionnalites.md` |
 | Matrice, version consultable | Artifact HTML filtrable et triable |
 | Analyse des manques | `docs/revue/2026-09-04-analyse-gaps.md` |
@@ -240,7 +240,7 @@ les Minor de cette revue, les Minor hérités SP-29b→SP-40 encore ouverts, et 
 4. Portes de qualité vertes : `ruff`, `mypy --strict` sur les modules concernés,
    `lint-imports`, seuils de couverture, `eslint`, `prettier`, `tsc --noEmit`.
 5. Diff OpenAPI/types vérifié — vide s'il doit l'être, régénéré sinon.
-6. Les neuf livrables du §8 existent et sont commités.
+6. Les dix livrables du §8 existent et sont commités.
 7. `CLAUDE.md` porte une entrée SP-42 dans `### Livré` et ne contient plus
    l'historique détaillé déplacé.
 
