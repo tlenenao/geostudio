@@ -55,19 +55,25 @@ n'ont de sens que sur une `Collection` publiable en open data).
 
 ### 1.1 `Collection` (`core/app/collections/models.py`)
 
-Neuf nouvelles colonnes, toutes nullable ou avec défaut — aucune donnée
+Dix nouvelles colonnes. Toutes non-nullables avec défaut `""` sauf les deux
+dates (pas d'équivalent chaîne vide naturel) et `language` (jamais vide) —
+patron déjà utilisé par `Collection.description`/`Item.abstract`
+(`str, default=""`), qui évite l'ambiguïté PATCH classique entre « champ omis »
+et « champ explicitement remis à vide » quand le défaut est `None` (un `PATCH`
+qui envoie `None` sur un champ `X | None = None` ne peut jamais le distinguer
+d'un champ non envoyé, cf. `ItemUpdatePatch` existant). Aucune donnée
 existante n'est retouchée par la migration :
 
 | Colonne | Type | Défaut | Note |
 |---|---|---|---|
-| `license` | `String \| None` | `None` | id du catalogue curaté §2.1 |
-| `license_uri` | `String \| None` | `None` | utilisé seulement si `license == "other"` |
-| `producer` | `String \| None` | `None` | texte libre ; vide ⇒ repli sur `tenant.name` |
-| `contact` | `String \| None` | `None` | texte libre (email ou nom) |
-| `update_frequency` | `String \| None` | `None` | id du catalogue curaté §2.2 |
-| `lineage` | `String \| None` | `None` | texte libre (généalogie/provenance) |
-| `language` | `String` | `"fr"` | id du catalogue curaté §2.3, jamais null |
-| `version` | `String \| None` | `None` | texte libre |
+| `license` | `String` | `""` | id du catalogue curaté §2.1, `""` = non déclarée |
+| `license_uri` | `String` | `""` | utilisé seulement si `license == "other"` |
+| `producer` | `String` | `""` | texte libre ; vide ⇒ repli sur `tenant.name` |
+| `contact` | `String` | `""` | texte libre (email ou nom) ; vide ⇒ omis des exports |
+| `update_frequency` | `String` | `""` | id du catalogue curaté §2.2, `""` = non déclarée |
+| `lineage` | `String` | `""` | texte libre (généalogie/provenance) |
+| `language` | `String` | `"fr"` | id du catalogue curaté §2.3, jamais vide |
+| `version` | `String` | `""` | texte libre |
 | `temporal_start` | `Date \| None` | `None` | déclaration manuelle, pas de calcul |
 | `temporal_end` | `Date \| None` | `None` | déclaration manuelle, pas de calcul |
 
@@ -80,16 +86,18 @@ tenter de les unifier dans ce plan.
 
 ### 1.2 `Item` (`core/app/items/models.py`, `core/app/items/schemas.py`)
 
-Deux nouvelles colonnes, même catalogues que `Collection` :
+Deux nouvelles colonnes, même catalogues que `Collection`, même convention
+`str, default=""` :
 
 | Colonne | Type | Défaut |
 |---|---|---|
-| `license` | `String \| None` | `None` |
+| `license` | `String` | `""` |
 | `language` | `String` | `"fr"` |
 
-`ItemRead` gagne `license: str | None = None` et `language: str = "fr"`.
+`ItemRead` gagne `license: str = ""` et `language: str = "fr"`.
 `ItemUpdatePatch` gagne `license: str | None = None` et
-`language: str | None = None` (patron identique aux champs existants).
+`language: str | None = None` (patron identique aux champs `PATCH` existants :
+`None` = champ omis, une chaîne — y compris `""` — = valeur explicite).
 
 ### 1.3 Migration Alembic
 
@@ -102,10 +110,17 @@ vérifier `downgrade -1` puis `upgrade head` de nouveau.
 
 ## 2. Catalogues curatés
 
-Nouveau module `core/app/collections/metadata_catalog.py`, listes figées en
-code (patron palettes SP-25 / icônes curatées SP-27 : pas de table SQL, pas de
-gestion CRUD, juste une constante versionnée avec le code). Partagé entre
-`Collection` et `Item` — un seul module, pas de duplication.
+Nouveau module top-level `core/app/catalog/` (pas sous `app/collections/` :
+partagé par `Collection` **et** `Item`, et par `app.dcat`/`app.stac` en
+lecture — d'après le contrat de couches (`pyproject.toml`,
+`[[tool.importlinter.contracts]]`), `app.collections` est strictement
+au-dessus d'`app.items`, aucune position sous `app.collections` ne serait
+importable par les deux). Listes figées en code (patron
+`app.roles.privileges` / palettes SP-25 / icônes curatées SP-27 : pas de
+table SQL, pas de gestion CRUD, juste une constante versionnée avec le code),
+placé tout en bas du contrat de couches (sous `app.analytics`, comme
+`app.roles.privileges` est sous `app.collections`/`app.items` : zéro
+dépendance interne, importable par tout le reste sans exemption).
 
 Exposé en lecture par une nouvelle route **top-level** `GET /metadata-catalog`
 (pas sous `/collections/`, puisque partagé par `Collection` et `Item` —
@@ -137,9 +152,12 @@ ne rien changer côté `dct:accessRights` (déjà géré indépendamment par
 
 ### 2.2 Fréquences de mise à jour (`dct:accrualPeriodicity`, MDR-FREQ)
 
-`irregular`, `daily`, `weekly`, `monthly`, `quarterly`, `annual`,
-`continuous`, `unknown` (valeur par défaut si non renseigné — mais absent de
-l'export, cf. §3, pas émis avec la valeur `unknown`).
+Sept entrées catalogue : `daily`, `weekly`, `monthly`, `quarterly`, `annual`,
+`continuous`, `irregular`. Pas d'entrée « non renseignée » dans le catalogue
+lui-même — `Collection.update_frequency == ""` (valeur par défaut, §1.1) est
+l'état non déclaré, cohérent avec tous les autres champs texte de ce plan ;
+le sélecteur du shell (§5) ajoute son propre sentinel d'affichage, absent du
+catalogue renvoyé par l'API.
 
 URI MDR-FREQ à vérifier contre la table réelle avant de coder (ex.
 `http://publications.europa.eu/resource/authority/frequency/DAILY`) — piège
@@ -153,40 +171,42 @@ aucun champ langue : pas d'impact sur `stac/serializers.py`.
 
 ## 3. Export DCAT-AP (`core/app/dcat/serializers.py`)
 
-Tout nouveau champ est **omis de la sortie s'il n'est pas renseigné** —
-comportement actuel préservé à l'identique pour toute collection qui ne
-touche pas ce nouveau formulaire (critère de sortie testé explicitement,
-§7).
+Tout nouveau champ est **omis de la sortie s'il vaut `""`** (valeur par
+défaut, §1.1) — comportement actuel préservé à l'identique pour toute
+collection qui ne touche pas ce nouveau formulaire (critère de sortie testé
+explicitement, §7).
 
-- `dct:license` : résolu depuis le catalogue si `license` est renseigné (URI
-  DCAT-AP de §2.1, ou `license_uri` si `license == "other"`) ; sinon
-  `LICENSE_OTHER` (inchangé).
+- `dct:license` : résolu depuis le catalogue si `license != ""` (URI DCAT-AP
+  de §2.1, ou `license_uri` si `license == "other"` et `license_uri != ""`) ;
+  sinon `LICENSE_OTHER` (inchangé) — même repli si `license == "other"` mais
+  `license_uri == ""` (saisie incomplète, pas d'erreur bloquante).
 - `dct:language` : par `Collection` au lieu d'une constante — le catalogue
   racine (`catalog()`) garde `"fr"` (c'est un choix de langue de l'instance,
-  pas d'un jeu), chaque `dataset()` porte sa propre langue résolue.
-- `dct:publisher` : `producer` si renseigné, sinon `tenant.name` (comportement
-  actuel).
+  pas d'un jeu), chaque `dataset()` porte sa propre langue résolue (toujours
+  non vide, §1.1).
+- `dct:publisher` : `producer` si `producer != ""`, sinon `tenant.name`
+  (comportement actuel).
 - `dct:accrualPeriodicity` : nouveau, `{"@id": <URI MDR-FREQ>}`, omis si
-  `update_frequency` absent.
+  `update_frequency == ""`.
 - `dct:provenance` : nouveau, `{"@type": "dct:ProvenanceStatement", "rdfs:label": lineage}`
-  (ajoute le préfixe `rdfs` au `CONTEXT`), omis si `lineage` absent.
-- `dcat:contactPoint` : nouveau, omis si `contact` absent ; heuristique simple
+  (ajoute le préfixe `rdfs` au `CONTEXT`), omis si `lineage == ""`.
+- `dcat:contactPoint` : nouveau, omis si `contact == ""` ; heuristique simple
   — si la valeur contient `@`, `{"@type": "vcard:Kind", "vcard:hasEmail": "mailto:" + contact}`,
   sinon `{"@type": "vcard:Kind", "vcard:fn": contact}` (ajoute le préfixe
   `vcard` au `CONTEXT`).
 - `dct:temporal` : `dcat:startDate`/`dcat:endDate` depuis `temporal_start`/
-  `temporal_end` si renseignés (les deux ou aucun — si un seul est renseigné,
-  utiliser celui-là seul, ne pas inventer l'autre) ; sinon repli actuel
-  (`dcat:startDate = created_at`, pas de fin).
-- `dct:hasVersion` : nouveau, texte libre, omis si `version` absent.
+  `temporal_end` si l'un des deux est non `None` (les deux ou un seul — si un
+  seul est renseigné, utiliser celui-là seul, ne pas inventer l'autre) ; sinon
+  repli actuel (`dcat:startDate = created_at`, pas de fin).
+- `dct:hasVersion` : nouveau, texte libre, omis si `version == ""`.
 
 ## 4. Export STAC (`core/app/stac/serializers.py`)
 
-- `license` : id SPDX résolu depuis le catalogue (§2.1) si `license`
-  renseigné, sinon `"other"` (inchangé).
+- `license` : id SPDX résolu depuis le catalogue (§2.1) si `license != ""`,
+  sinon `"other"` (inchangé).
 - `providers` : nouveau tableau `[{"name": producer ou tenant.name, "roles": ["producer"]}]` —
   toujours présent (cohérent avec `dct:publisher`, jamais vide car retombe sur
-  `tenant.name`).
+  `tenant.name` si `producer == ""`).
 - `extent.temporal` : `[[temporal_start ou None, temporal_end ou None]]` si au
   moins l'un des deux est renseigné (colonnes `Collection.temporal_start`/
   `temporal_end`, §1.1), sinon comportement actuel — repli sur le paramètre
@@ -205,11 +225,14 @@ composant à écrire) pour ne pas empiler ~13 champs dans un seul formulaire :
 - **Général** (contenu actuel, inchangé) : titre, description, Public,
   Éditable.
 - **Métadonnées ouvertes** (nouveau) : licence (`Select` du kit, peuplé
-  depuis `GET /collections/metadata-catalog` ; champ `license_uri` en texte
-  libre affiché seulement si `license === "other"`), producteur (`Input`),
-  contact (`Input`), fréquence de mise à jour (`Select`), généalogie
-  (`Textarea`), langue (`Select`), version (`Input`), emprise temporelle
-  (deux `Input type="date"`, libellés « Début » / « Fin »).
+  depuis `GET /metadata-catalog` + un sentinel d'affichage `"unset"` prépendu
+  côté shell — non persisté, mappé vers `license: ""` à la soumission ; champ
+  `license_uri` en texte libre affiché seulement si `license === "other"`),
+  producteur (`Input`), contact (`Input`), fréquence de mise à jour (`Select`,
+  même sentinel `"unset"` ⇒ `""`), généalogie (`Textarea`), langue (`Select`,
+  jamais de sentinel, toujours une valeur réelle), version (`Input`), emprise
+  temporelle (deux `Input type="date"`, libellés « Début » / « Fin » ; chaîne
+  vide envoyée comme `null`).
 - **Pièces jointes** (section existante SP-40, déplacée telle quelle, aucun
   changement de logique).
 
@@ -266,8 +289,8 @@ sans reconstruction champ à champ — à confirmer, pas à supposer).
 
 ## 8. Décomposition en tâches (indicatif, affiné en plan)
 
-1. Modèle + migration `Collection` (9 colonnes) + `Item` (2 colonnes).
-2. Catalogue curaté (`metadata_catalog.py`) + route `GET /collections/metadata-catalog`.
+1. Modèle + migration `Collection` (10 colonnes) + `Item` (2 colonnes).
+2. Catalogue curaté (`app/catalog/`) + route `GET /metadata-catalog`.
 3. `dcat/serializers.py` + `dcat/routes.py` (câblage des nouveaux champs).
 4. `stac/serializers.py` + `stac/routes.py` (câblage des nouveaux champs).
 5. Tests de non-régression (export identique sans nouveaux champs) + tests
