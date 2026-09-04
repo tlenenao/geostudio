@@ -335,6 +335,18 @@ def create_app() -> FastAPI:
         app.dependency_overrides[terrain3d_routes.get_terrain3d_bucket] = lambda: (
             s3_terrain3d_bucket
         )
+        # Clé d'override DISTINCTE de ingestion_routes.get_s3_client : ce
+        # stub est défini localement dans app.attachments.routes (pas
+        # réutilisé depuis app.ingestion) — cf. spec SP-40 §3.1. Partagée
+        # entre les propres routes d'app.attachments (déjà incluses ci-dessus)
+        # ET app.features.routes::remove_feature (cascade de suppression),
+        # même mécanisme que les cinq modules ci-dessus avec la clé
+        # ingestion_routes.get_s3_client.
+        app.dependency_overrides[attachments_routes.get_s3_client] = lambda: make_s3_client(
+            endpoint_url=s3_endpoint,
+            access_key=s3_access_key,
+            secret_key=s3_secret_key,
+        )
 
     @app.get("/health")
     def health() -> dict[str, str]:
