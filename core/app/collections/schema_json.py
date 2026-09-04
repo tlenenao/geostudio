@@ -5,7 +5,7 @@ Aucune dépendance DB ici : uniquement une transformation de données."""
 from app.collections.introspection import TableInfo
 
 
-def table_info_to_schema(info: TableInfo) -> dict:
+def table_info_to_schema(info: TableInfo, attachment_fields: list[dict] | None = None) -> dict:
     fields = []
     for col in info.columns:
         if col.name in (info.pk_column, "tenant_id", info.geometry_column):
@@ -16,6 +16,10 @@ def table_info_to_schema(info: TableInfo) -> dict:
         if col.enum_values is not None:
             entry["values"] = col.enum_values
         fields.append(entry)
+    for spec in attachment_fields or []:
+        fields.append(
+            {"name": spec["key"], "type": "attachment", "required": False, "label": spec["label"]}
+        )
     geometry = None
     if info.geometry_column:
         geometry = {"column": info.geometry_column, "type": info.geometry_type, "srid": info.srid}

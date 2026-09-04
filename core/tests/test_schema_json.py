@@ -67,3 +67,38 @@ def test_no_geometry():
         columns=[ColumnInfo(name="txt", type="string", required=False)],
     )
     assert table_info_to_schema(info)["geometry"] is None
+
+
+def test_table_info_to_schema_without_attachment_fields_is_unchanged():
+    schema = table_info_to_schema(
+        _info(
+            [
+                ColumnInfo(name="id", type="integer", required=True),
+                ColumnInfo(name="geom", type="string", required=False),
+                ColumnInfo(name="nom", type="string", required=False),
+            ]
+        )
+    )
+    assert [f["name"] for f in schema["fields"]] == ["nom"]
+
+
+def test_table_info_to_schema_appends_declared_attachment_fields():
+    schema = table_info_to_schema(
+        _info(
+            [
+                ColumnInfo(name="id", type="integer", required=True),
+                ColumnInfo(name="geom", type="string", required=False),
+                ColumnInfo(name="nom", type="string", required=False),
+            ]
+        ),
+        attachment_fields=[{"key": "photos", "label": "Photos"}],
+    )
+    names = [f["name"] for f in schema["fields"]]
+    assert names == ["nom", "photos"]
+    attachment_entry = schema["fields"][-1]
+    assert attachment_entry == {
+        "name": "photos",
+        "type": "attachment",
+        "required": False,
+        "label": "Photos",
+    }
