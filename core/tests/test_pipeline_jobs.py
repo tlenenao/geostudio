@@ -3,11 +3,12 @@ import geopandas as gpd
 import pytest
 from procrastinate import testing
 from shapely.geometry import Point
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.collections.ddl import apply_collection_ddl
 from app.db import Base, make_session_factory
 from app.items import repository as items_repo  # noqa: F401 -- enregistre Item sur Base.metadata
+from app.notifications.models import Notification
 from app.pipelines import jobs as pipeline_jobs
 from app.pipelines import repository as pipelines_repo
 from app.tenants.repository import get_or_create_default_tenant
@@ -201,6 +202,86 @@ def test_run_pipeline_task_marks_run_failed_never_zombie(env, monkeypatch):
         fetched = pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id)
         assert fetched.status == "failed"
         assert fetched.error is not None
+
+
+def test_success_writes_a_notification_for_the_item_owner(env):
+    app, Session, tenant, user, item_id = env
+    with Session() as s:
+        run = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        run_id = run.id
+
+    pipeline_jobs.run_pipeline_task.defer(run_id=run_id, tenant_id=tenant.id)
+    app.run_worker(wait=False, queues=["etl"])
+
+    with Session() as s:
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+        assert notification is not None
+        assert notification.recipient_user_id == user.id
+        assert notification.kind == "pipeline"
+        assert notification.status == "success"
+        assert notification.item_id == item_id
+        assert notification.item_resource_type == "pipeline"
+
+
+def test_failure_writes_a_notification(env, monkeypatch):
+    app, Session, tenant, user, item_id = env
+
+    def _boom(session, *, item_id):
+        raise ValueError("bad config")
+
+    monkeypatch.setattr(pipeline_jobs, "_get_pipeline_payload", _boom)
+
+    with Session() as s:
+        run = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        run_id = run.id
+
+    pipeline_jobs.run_pipeline_task.defer(run_id=run_id, tenant_id=tenant.id)
+    app.run_worker(wait=False, queues=["etl"])
+
+    with Session() as s:
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+        assert notification is not None
+        assert notification.status == "failure"
+        assert notification.error_message is not None
+
+
+def test_early_failure_before_item_id_bound_does_not_crash(env, monkeypatch):
+    """Régression (trouvée en écrivant cette tâche, même piège que Task 4/
+    app.ingestion.tasks._notify) : si get_run/mark_running lève avant que
+    item_id ne soit affecté, les handlers `except` de run_pipeline_task
+    appelaient _notify(item_id=...) sur cette locale jamais liée ->
+    UnboundLocalError levée APRÈS que mark_failed a déjà committé, donc le
+    run finit bien "failed" (jamais zombie) mais la tâche procrastinate
+    elle-même plantait au lieu d'avaler l'échec best-effort de la
+    notification. Appel direct de la fonction (pas de passage par le
+    worker procrastinate) : c'est cette levée qu'on veut voir absente ici."""
+    app, Session, tenant, user, item_id = env
+
+    def _boom(session, *, run_id):
+        raise RuntimeError("connectivité DB perdue")
+
+    monkeypatch.setattr(pipelines_repo, "mark_running", _boom)
+
+    with Session() as s:
+        run = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        run_id = run.id
+
+    pipeline_jobs.run_pipeline_task(run_id=run_id, tenant_id=tenant.id)
+
+    with Session() as s:
+        fetched = pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id)
+        assert fetched.status == "failed"
+        assert fetched.error is not None
+
+        # Pas de destinataire connu (item_id jamais lié) : aucune
+        # notification de repli n'est écrite — le run est déjà marqué
+        # "failed" ci-dessus, la garantie best-effort porte sur la
+        # notification, pas sur le statut du run.
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+        assert notification is None
 
 
 def test_run_pipeline_task_writes_node_stats_incrementally_before_failure(env, monkeypatch):
