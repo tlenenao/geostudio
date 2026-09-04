@@ -135,36 +135,45 @@ pas triviale :
   automatiquement en dessous d'`app.attachments` si celui-ci est placé
   juste sous `app.features`. Position retenue : **entre `app.features` et
   `app.collections`**.
-- **Point non trivial** : `app.attachments` doit aussi réutiliser
-  `get_s3_client`/`make_s3_client` du patron A6
-  (`app.ingestion.routes`/`app.ingestion.storage`). Or `app.ingestion` est
-  **au-dessus** d'`app.features` dans la liste actuelle (position ~17 contre
-  ~21) — c'est-à-dire au-dessus de la position retenue pour
-  `app.attachments`. Les cinq modules qui réutilisent aujourd'hui
+- **Point non trivial, résolu en traçant aussi le besoin S3 de la
+  suppression en cascade (pas seulement des routes d'upload)** :
+  `app.attachments` a besoin d'un client S3 pour ses propres routes
+  (presign/confirm/delete), **et** `app.features.routes::remove_feature`
+  (qui est au-dessus d'`app.attachments` dans le contrat) a besoin d'un
+  client S3 pour supprimer les objets d'une entité effacée. Un client S3
+  n'est utilisable qu'à travers `Depends(...)` — `app.dependency_overrides`
+  n'intercepte que les résolutions FastAPI, jamais un appel de fonction nu —
+  donc **le module qui définit le stub `get_s3_client` doit être visible par
+  tous ses consommateurs**. Les cinq modules qui réutilisent aujourd'hui
   `from app.ingestion.routes import get_s3_client` verbatim (`export`,
   `appexport`, `tileset3d`, `terrain3d`, `mapicons`) sont **tous** placés
-  au-dessus d'`app.ingestion` — vérifié par lecture des cinq fichiers, pas
-  une coïncidence : c'est la seule position qui autorise cet import sans
-  exemption. `app.attachments`, contraint sous `app.features` (donc sous
-  `app.ingestion`), serait le **premier** module consommateur de S3 sous
-  cette ligne. Deux options :
-  1. Dupliquer un `get_s3_client` propre à `app.attachments` (stub qui lève
-     `RuntimeError`, overridé indépendamment dans `main.py` avec le même
-     `make_s3_client(...)`) — aucune exemption de contrat nécessaire, mais
-     rompt la convention « même clé d'override, un seul override enregistré
-     dans `main.py` » suivie par les cinq modules existants (commentaire
-     explicite à ce sujet dans `main.py`, `app.export.routes réutilise
-     ingestion_routes.get_s3_client verbatim`).
-  2. **Retenu** : une entrée nommée dans `ignore_imports`
-     (`core/pyproject.toml`), exactement le mécanisme déjà utilisé deux fois
-     dans ce contrat pour un problème structurellement identique
-     (`app.analytics.aggregate -> app.collections.introspection`,
-     `app.auth.routes -> app.roles...`) : `"app.attachments.routes ->
-     app.ingestion.routes"`, commentée pour expliquer pourquoi la place
-     linéaire ne suffit pas ici (le graphe réel n'est pas un ordre total :
-     `app.attachments` a besoin d'être à la fois sous `app.features` et au
-     niveau de `app.ingestion`). Choisi pour préserver la convention
-     « un seul override » plutôt que la dupliquer une sixième fois.
+  au-dessus d'`app.ingestion` (position ~17) — la seule position qui
+  autorise cet import sans exemption. Ni `app.attachments` (retenu entre
+  `app.features` et `app.collections`, sous `app.ingestion`) ni
+  `app.features` lui-même (également sous `app.ingestion`) ne peuvent
+  réutiliser `ingestion_routes.get_s3_client` sans exemption — et une
+  exemption par consommateur (2 modules × la même dépendance) serait deux
+  arêtes de plus au lieu d'une.
+  **Retenu** : `app.attachments.routes` définit son **propre** stub
+  `get_s3_client()` (même forme que celui d'`app.ingestion.routes` — lève
+  `RuntimeError`, overridé dans `main.py` avec le même `make_s3_client(...)`
+  que les six autres, sous une clé d'override distincte). `app.features`,
+  au-dessus d'`app.attachments` dans le contrat, importe ce stub
+  **normalement** (`from app.attachments.routes import get_s3_client`, une
+  importation descendante ordinaire, aucune exemption requise) pour le
+  passer à `remove_feature` — même mécanisme de partage de clé d'override
+  que les cinq modules existants, sauf que la clé partagée est désormais
+  celle d'`app.attachments`, pas celle d'`app.ingestion`. Seule
+  `ensure_uploads_bucket`/`generate_presigned_put_url`
+  (`app.ingestion.storage`, deux fonctions pures, pas des dépendances
+  FastAPI) restent à importer directement dans `app.attachments.routes` —
+  **une seule** entrée nommée dans `ignore_imports`
+  (`core/pyproject.toml`), exactement le mécanisme déjà utilisé pour un
+  problème structurellement identique
+  (`app.analytics.aggregate -> app.collections.introspection`,
+  `app.auth.routes -> app.roles...`) : `"app.attachments.routes ->
+  app.ingestion.storage"`, commentée pour expliquer pourquoi la place
+  linéaire ne suffit pas ici.
 
 **API** (`core/app/attachments/routes.py`, montée sous le préfixe des
 entités, `/collections/{collection_id}/items/{fid}/attachments…`, routeur
@@ -214,13 +223,16 @@ l'appelant qui a déjà `col` en scope), ajoutant une entrée `{"name": key,
 déclaré.
 
 **Cascade de suppression** — `remove_feature`
-(`features/routes.py:614-644`) appelle
-`attachments_repo.delete_all_for_feature(session, s3_client, bucket,
-tenant_id=col.tenant_id, collection_id=col.id, fid=fid)` dans la même
-requête, juste après avoir confirmé la suppression de la ligne (`ok` vrai) et
-avant le `write_audit` de fin de fonction — supprime toutes les lignes
-`attachments` **et** leurs objets S3 (best-effort sur S3, comme la
-suppression individuelle) pour ce `(collection_id, fid)`.
+(`features/routes.py:614-644`) gagne un paramètre
+`s3=Depends(attachments_routes.get_s3_client)` (importé normalement depuis
+`app.attachments.routes`, cf. ci-dessus) et appelle
+`attachments_repo.delete_all_for_feature(session, s3,
+attachments_routes.get_attachments_bucket(), tenant_id=col.tenant_id,
+collection_id=col.id, fid=fid)` dans la même requête, juste après avoir
+confirmé la suppression de la ligne (`ok` vrai) et avant le `write_audit` de
+fin de fonction — supprime toutes les lignes `attachments` **et** leurs
+objets S3 (best-effort sur S3, comme la suppression individuelle) pour ce
+`(collection_id, fid)`.
 
 ### 3.2 Shell
 
@@ -371,9 +383,10 @@ de toute liste de suivi informelle si elle y apparaît.
      accessibles sans authentification sur une collection publique,
      refusés (401/404 selon la garde) sur une collection privée.
    - Contrat de couches (`uv run lint-imports`) : l'entrée `ignore_imports`
-     ajoutée est bien la SEULE arête qui échouerait sans elle (vérifié en
-     la retirant temporairement et en observant l'échec attendu, pas
-     supposé).
+     ajoutée (`app.attachments.routes -> app.ingestion.storage`) est bien
+     nécessaire (vérifié en la retirant temporairement et en observant
+     l'échec attendu, pas supposé) ; `app.features -> app.attachments`
+     passe sans aucune exemption (import descendant ordinaire).
    - `list_attachments` (MCP) : retourne les bonnes métadonnées + `fileUrl`
      pour une collection lisible, lève sur une collection hors périmètre de
      l'acteur (même garde que `list_items`) ; absent d'`ALLOWED_MCP_TOOL_NAMES`
@@ -391,15 +404,22 @@ de toute liste de suivi informelle si elle y apparaît.
      "attachment"`.
    - `DatasetPage`/`previewConfig` : `attachmentField` dérivé du schéma
      quand la collection en déclare un, absent sinon.
-3. **E2E** : au moins deux specs bout en bout nouveaux —
-   `shell/e2e/attachments.spec.ts` (preuve de sortie littérale du chantier,
-   deux comptes réels via mock OIDC : une pièce jointe créée par l'un est
-   visible en lecture par l'autre et invisible d'un troisième hors partage)
-   et `shell/e2e/attachments-popup-site.spec.ts` (clic sur une entité dans
-   l'éditeur de carte **et** sur `/sites/{slug}` révèle sa pièce jointe,
-   accès anonyme vérifié sur le second). Un test E2E à deux/trois sessions
-   couvre une différence de visibilité entre acteurs mieux que
-   Vitest+pytest isolément.
+3. **E2E** — correction par rapport à un premier brouillon de cette section :
+   `shell/e2e/*.spec.ts` tourne contre des routes **mockées**
+   (`page.route()`, cf. `e2e/mocks.ts`), une seule identité simulée par test
+   — ce n'est **pas** une suite d'intégration à deux comptes réels contre un
+   vrai cœur (cette forme-là existe séparément, `shell/e2e-oidc/`, hors
+   périmètre de ce chantier). **La preuve de sortie littérale du chantier
+   (visible d'un lecteur autorisé, invisible des autres) est donc prouvée au
+   niveau cœur (§5.1, TestClient + vraie base), pas par l'E2E shell** — même
+   partage des responsabilités que le reste de ce dépôt. L'E2E shell vérifie
+   le **câblage UI** contre des routes mockées : au moins deux specs
+   nouveaux — `shell/e2e/attachments.spec.ts` (widget Formulaire : ajout
+   multi-fichiers, liste, suppression, champ désactivé avant le premier
+   enregistrement) et `shell/e2e/attachments-popup.spec.ts` (cliquer une
+   entité dont la couche a un `attachmentField` configuré révèle la section
+   « Pièces jointes » dans le popup de l'éditeur de carte, avec des routes
+   d'attachments mockées).
 4. `npm run test`, `uv run pytest`, `npm run e2e` verts ; couverture shell
    non régressée (seuil 88, mesurée après nettoyage de `dist/`/
    `dist-export/`), couverture cœur non régressée (seuil 85).
@@ -422,7 +442,8 @@ de toute liste de suivi informelle si elle y apparaît.
 
 1. Une photo attachée depuis le widget Formulaire est visible d'un lecteur
    autorisé et invisible des autres (preuve de sortie littérale du
-   chantier 4.12), vérifié par un test E2E à deux comptes.
+   chantier 4.12), vérifié par un test cœur (pytest, TestClient + vraie
+   base) — pas par l'E2E shell, mocké (§5.3).
 2. Un champ `attachment` se déclare sur une collection (`PATCH
    /collections/{id}`) et apparaît dans `GET /collections/{id}/schema`,
    consommé sans code de routage dupliqué par le widget Formulaire.
