@@ -836,6 +836,8 @@ test("createBookmarkItem posts a bookmark payload and returns a bookmark Item", 
     configId: "cfg-bookmark",
     isPublished: false,
     permissions: OWNER_PERMISSIONS,
+    license: "",
+    language: "fr",
   });
 });
 

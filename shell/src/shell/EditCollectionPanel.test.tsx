@@ -174,8 +174,32 @@ describe("EditCollectionPanel — métadonnées ouvertes (SP-41)", () => {
       />,
     );
     await userEvent.click(screen.getByRole("tab", { name: "Métadonnées ouvertes" }));
+    // Fait basculer explicitement le Select Licence vers le sentinel UNSET
+    // ("Aucune licence déclarée") — sans ce clic, ce test ne fait que
+    // revérifier un round-trip inchangé et laisse le ternaire
+    // `license === UNSET ? "" : license` de submit() non exercé.
+    await userEvent.click(screen.getByRole("combobox", { name: "Licence" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Aucune licence déclarée" }));
     await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
-    expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ license: "etalab-2.0" }));
+    expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ license: "" }));
+  });
+
+  it("envoie une chaîne vide quand la fréquence de mise à jour redevient non renseignée", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue(undefined);
+    mockUseUpdateCollection.mockReturnValue({ mutateAsync, isPending: false, isError: false });
+    render(
+      <EditCollectionPanel
+        collection={{ ...baseCollection, updateFrequency: "monthly" }}
+        onClose={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "Métadonnées ouvertes" }));
+    // Même vérification que ci-dessus pour le ternaire jumeau
+    // `updateFrequency === UNSET ? "" : updateFrequency`.
+    await userEvent.click(screen.getByRole("combobox", { name: "Fréquence de mise à jour" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Non renseignée" }));
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ updateFrequency: "" }));
   });
 
   it("envoie null pour une emprise temporelle non renseignée", async () => {
