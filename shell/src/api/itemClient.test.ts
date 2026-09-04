@@ -3455,3 +3455,30 @@ test("listUsers omet q de la query string quand il n'est pas fourni", async () =
   const url = new URL(lastUrl);
   expect(url.searchParams.has("q")).toBe(false);
 });
+
+test("presignAttachmentUpload appelle la route presign avec le bon corps", async () => {
+  server.use(
+    http.post(
+      "https://core.test/collections/col1/items/f1/attachments/presign",
+      async ({ request }) => {
+        const body = await request.json();
+        expect(body).toEqual({ fieldKey: "photos", filename: "a.jpg", contentType: "image/jpeg" });
+        return HttpResponse.json({ uploadUrl: "https://minio/x", key: "t/col1/f1/x-a.jpg" });
+      },
+    ),
+  );
+  const client = makeClient();
+  const res = await client.presignAttachmentUpload("col1", "f1", {
+    fieldKey: "photos",
+    filename: "a.jpg",
+    contentType: "image/jpeg",
+  });
+  expect(res.key).toBe("t/col1/f1/x-a.jpg");
+});
+
+test("attachmentFileUrl construit l'URL du proxy-read", () => {
+  const client = makeClient();
+  expect(client.attachmentFileUrl("col1", "f1", "att1")).toBe(
+    "https://core.test/collections/col1/items/f1/attachments/att1/file",
+  );
+});

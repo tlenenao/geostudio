@@ -258,6 +258,26 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async getCollectionSchema(..._args: unknown[]) {
       return unsupported();
     },
+    async presignAttachmentUpload(..._args: unknown[]) {
+      return unsupported();
+    },
+    async confirmAttachmentUpload(..._args: unknown[]) {
+      return unsupported();
+    },
+    async listAttachments(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteAttachment(..._args: unknown[]) {
+      return unsupported();
+    },
+    // Même raisonnement que featuresUrl() ci-dessus : signature synchrone,
+    // potentiellement appelée pendant un rendu (popup carte, widget
+    // Formulaire) — un throw synchrone démonterait tout l'arbre sans
+    // recours. "about:blank" est un placeholder inerte, aucune pièce jointe
+    // n'a de sens sans backend réel.
+    attachmentFileUrl(): string {
+      return "about:blank";
+    },
     async getCollection(..._args: unknown[]) {
       return unsupported();
     },

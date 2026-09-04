@@ -71,6 +71,7 @@ const COLLECTIONS: CollectionAdmin[] = [
     permissions: { read: true, write: true, delete: true, share: true },
     featureCount: 10,
     owner: "alice",
+    attachmentFields: [],
   },
 ];
 
@@ -461,6 +462,7 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
         permissions: { read: true, write: true, delete: true, share: true },
         featureCount: 5,
         owner: "alice",
+        attachmentFields: [],
       },
     ];
     const client = renderWizard({ listCollections: () => Promise.resolve(collections) });

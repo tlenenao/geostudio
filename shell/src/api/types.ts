@@ -162,6 +162,7 @@ export type PopupConfig = {
   titleField?: string;
   fields?: PopupField[];
   template?: string;
+  attachmentField?: string;
 };
 export type MapLayer =
   | {
@@ -241,7 +242,15 @@ export type LayerSource = {
 };
 
 export type CollectionFieldType =
-  "string" | "integer" | "number" | "boolean" | "date" | "datetime" | "enum" | "unsupported";
+  | "string"
+  | "integer"
+  | "number"
+  | "boolean"
+  | "date"
+  | "datetime"
+  | "enum"
+  | "attachment"
+  | "unsupported";
 
 export type CollectionSchemaField = {
   name: string;
@@ -249,6 +258,7 @@ export type CollectionSchemaField = {
   required: boolean;
   maxLength?: number;
   values?: string[];
+  label?: string;
 };
 
 export type CollectionSchema = {
@@ -256,6 +266,15 @@ export type CollectionSchema = {
   pk: string;
   geometry: { column: string; type: string | null; srid: number } | null;
   fields: CollectionSchemaField[];
+};
+
+export type AttachmentSummary = {
+  id: string;
+  fieldKey: string;
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  createdAt: string;
 };
 
 export type EmptyCollectionColumn = { name: string; sqlType: string };
@@ -417,6 +436,23 @@ export interface ItemClient {
   featuresUrl(source: DataSource): string;
   exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }>;
   getCollectionSchema(collectionId: string): Promise<CollectionSchema>;
+  presignAttachmentUpload(
+    collectionId: string,
+    fid: string,
+    input: { fieldKey: string; filename: string; contentType: string },
+  ): Promise<{ uploadUrl: string; key: string }>;
+  confirmAttachmentUpload(
+    collectionId: string,
+    fid: string,
+    input: { key: string; fieldKey: string; filename: string; contentType: string },
+  ): Promise<AttachmentSummary>;
+  listAttachments(
+    collectionId: string,
+    fid: string,
+    fieldKey?: string,
+  ): Promise<AttachmentSummary[]>;
+  deleteAttachment(collectionId: string, fid: string, attachmentId: string): Promise<void>;
+  attachmentFileUrl(collectionId: string, fid: string, attachmentId: string): string;
   getCollection(collectionId: string): Promise<CollectionAdmin>;
   getCollectionPermission(collectionId: string): Promise<boolean>;
   createFeature(
@@ -629,6 +665,7 @@ export type CollectionAdmin = {
   permissions: ItemPermissions;
   featureCount: number | null;
   owner: string | null;
+  attachmentFields: { key: string; label: string }[];
 };
 
 export type CandidateTable =
@@ -653,6 +690,7 @@ export type CollectionPatchInput = {
   description?: string;
   isPublic?: boolean;
   editable?: boolean;
+  attachmentFields?: { key: string; label: string }[];
 };
 
 export type HarvestSourceType =

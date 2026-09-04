@@ -214,6 +214,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/collections/{collection_id}/items/{fid}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Attachments Route */
+        get: operations["list_attachments_route_collections__collection_id__items__fid__attachments_get"];
+        put?: never;
+        /** Confirm Attachment */
+        post: operations["confirm_attachment_collections__collection_id__items__fid__attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/collections/{collection_id}/items/{fid}/attachments/presign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Presign Attachment */
+        post: operations["presign_attachment_collections__collection_id__items__fid__attachments_presign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/collections/{collection_id}/items/{fid}/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Attachment Route */
+        delete: operations["delete_attachment_route_collections__collection_id__items__fid__attachments__attachment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/collections/{collection_id}/items/{fid}/attachments/{attachment_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Attachment File */
+        get: operations["read_attachment_file_collections__collection_id__items__fid__attachments__attachment_id__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/collections/{collection_id}/schema": {
         parameters: {
             query?: never;
@@ -1458,6 +1527,65 @@ export interface components {
             /** Value */
             value: string;
         };
+        /** AttachmentConfirmRequest */
+        AttachmentConfirmRequest: {
+            /** Contenttype */
+            contentType: string;
+            /** Fieldkey */
+            fieldKey: string;
+            /** Filename */
+            filename: string;
+            /** Key */
+            key: string;
+        };
+        /**
+         * AttachmentFieldSpec
+         * @description Un champ `attachment` déclaré sur une collection (chantier 4.12) —
+         *     pas une colonne SQL réelle, juste un slot nommé fusionné dans
+         *     GET /collections/{id}/schema (app/collections/schema_json.py).
+         */
+        AttachmentFieldSpec: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+        };
+        /** AttachmentList */
+        AttachmentList: {
+            /** Attachments */
+            attachments: components["schemas"]["AttachmentRead"][];
+        };
+        /** AttachmentPresignRequest */
+        AttachmentPresignRequest: {
+            /** Contenttype */
+            contentType: string;
+            /** Fieldkey */
+            fieldKey: string;
+            /** Filename */
+            filename: string;
+        };
+        /** AttachmentPresignResponse */
+        AttachmentPresignResponse: {
+            /** Key */
+            key: string;
+            /** Uploadurl */
+            uploadUrl: string;
+        };
+        /** AttachmentRead */
+        AttachmentRead: {
+            /** Bytesize */
+            byteSize: number;
+            /** Contenttype */
+            contentType: string;
+            /** Createdat */
+            createdAt: string;
+            /** Fieldkey */
+            fieldKey: string;
+            /** Filename */
+            filename: string;
+            /** Id */
+            id: string;
+        };
         /** BaseMap */
         BaseMap: {
             /** Style */
@@ -1603,6 +1731,8 @@ export interface components {
         };
         /** CollectionPatch */
         CollectionPatch: {
+            /** Attachmentfields */
+            attachmentFields?: components["schemas"]["AttachmentFieldSpec"][] | null;
             /** Description */
             description?: string | null;
             /** Editable */
@@ -3263,6 +3393,186 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_attachments_route_collections__collection_id__items__fid__attachments_get: {
+        parameters: {
+            query?: {
+                fieldKey?: string | null;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+                fid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_attachment_collections__collection_id__items__fid__attachments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+                fid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachmentConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    presign_attachment_collections__collection_id__items__fid__attachments_presign_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+                fid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachmentPresignRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentPresignResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_attachment_route_collections__collection_id__items__fid__attachments__attachment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+                fid: string;
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_attachment_file_collections__collection_id__items__fid__attachments__attachment_id__file_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+                fid: string;
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
             /** @description Validation Error */
             422: {

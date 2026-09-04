@@ -21,6 +21,7 @@ const COLLECTIONS: CollectionAdmin[] = [
     permissions: { read: true, write: true, delete: true, share: true },
     featureCount: 10,
     owner: "alice",
+    attachmentFields: [],
   },
   {
     id: "readonly_layer",
@@ -35,6 +36,7 @@ const COLLECTIONS: CollectionAdmin[] = [
     permissions: { read: true, write: false, delete: false, share: false },
     featureCount: 3,
     owner: "bob",
+    attachmentFields: [],
   },
 ];
 
