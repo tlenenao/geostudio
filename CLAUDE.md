@@ -1389,6 +1389,43 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   Cartes lui-même (celui que cette tâche retire) — le résultat
   réellement observé était donc 0 skip, strictement meilleur que la
   prédiction du plan, pas un échec. **Ready to merge.**
+- **SP-38 — page d'administration des utilisateurs** (4 tâches + vérification
+  finale, spec `docs/superpowers/specs/2026-09-04-sp38-admin-utilisateurs-design.md`,
+  plan `docs/superpowers/plans/2026-09-04-sp38-admin-utilisateurs.md` — ferme
+  le chantier 4.21 de la vague 4
+  (`docs/vision/2026-08-20-revue-projet-et-plan-daction.md`) : le cœur avait
+  déjà `GET`/`PATCH /users` (livrés et testés par SP-31, sans que son entrée
+  CLAUDE.md le documente comme tel) ; seule l'UI manquait. Unique ajout côté
+  cœur : le paramètre de recherche `q` sur `GET /users`/`list_users()`,
+  nécessaire pour que la recherche fonctionne à n'importe quelle échelle de
+  tenant — un filtrage côté client sur une seule page de résultats paginés
+  n'aurait cherché que dans la page déjà chargée. Côté shell :
+  `UserSummary`/`client.listUsers`/`client.updateUserRole` sur `ItemClient`
+  (+ `useUsers`/`useUpdateUserRole`), puis `UsersAdminPage` (`/admin/users`,
+  `RequirePrivilege privilege="admin.users.manage"`) — sélecteur de rôle
+  natif inline par ligne (erreur générique par ligne sur échec, `rowError`),
+  recherche, pagination Précédent/Suivant, panneau d'aide anti-lockout
+  statique, patron `TriptychLayout` identique à `RolesAdminPage` — découverte
+  depuis `AdminExtensionsPage`. Aucun nouveau spec E2E (chantier UI de faible
+  risque, déjà couvert par les tests d'intégration cœur en `TestClient` et
+  les tests shell mockés MSW). Suite cœur **2093 passed / 5 skipped / 0
+  failed** (`CORE_TEST_DATABASE_URL` pointé vers le conteneur `postgis-test`
+  local, port 5433 — sans lui, 168 tests postgis/qgis skippent silencieusement
+  au lieu des 5 skips qgis réels ; le chiffre de baseline du plan, 1899
+  passed/3 skipped, s'est révélé lui-même périmé/inexact à la vérification —
+  le diff réel depuis le commit d'ouverture du plan ne touche que
+  `core/app/auth/routes.py`, `core/app/users/repository.py`,
+  `core/openapi.json` et un seul fichier de test [+26 lignes, Task 1] :
+  aucune régression, aucune activité concurrente détectée). Vitest shell
+  **222 fichiers/1858 tests, 0 échec**, couverture 90,51 % (seuil 88,
+  identique à la référence SP-33/34/36/37). `npm run build` propre. E2E
+  **144 tests/140 passed/4 skipped/0 failed** — inchangé vs la référence
+  SP-37, confirmé via `test-results/.last-run.json` (`status: "passed"`,
+  `failedTests: []`), pas la seule fin de la sortie du reporter `list`.
+  Contrôle manuel de bout en bout (Step 5, recommandé non bloquant) **non
+  exécuté** : aucune stack `docker compose up -d` disponible dans cet
+  environnement, non démarrée spécialement pour ce plan (décision actée par
+  le brief lui-même). **Ready to merge.**
 
 ### Conventions tranchées (2026-09-01)
 
