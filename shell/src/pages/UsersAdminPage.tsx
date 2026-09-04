@@ -13,6 +13,7 @@ export function UsersAdminPage() {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [rowError, setRowError] = useState<{ userId: string; message: string } | null>(null);
+  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
 
   const usersQuery = useUsers({ page, pageSize: PAGE_SIZE, q: q || undefined });
   const rolesQuery = useRoles();
@@ -23,11 +24,16 @@ export function UsersAdminPage() {
     : 1;
 
   async function handleRoleChange(userId: string, roleId: string) {
-    setRowError(null);
+    // Ne touche que l'erreur de CETTE ligne : changer le rôle de la ligne B
+    // ne doit jamais effacer un message d'erreur encore affiché sur la ligne A.
+    setRowError((prev) => (prev?.userId === userId ? null : prev));
+    setPendingUserId(userId);
     try {
       await updateUserRole.mutateAsync({ id: userId, roleId });
     } catch {
       setRowError({ userId, message: "Échec de la mise à jour du rôle." });
+    } finally {
+      setPendingUserId(null);
     }
   }
 
@@ -59,6 +65,7 @@ export function UsersAdminPage() {
                   onChange={(e) => {
                     setQ(e.target.value);
                     setPage(1);
+                    setRowError(null);
                   }}
                 />
               </label>
@@ -66,6 +73,12 @@ export function UsersAdminPage() {
               {usersQuery.isError && (
                 <p role="alert" className="text-sm text-danger">
                   Échec du chargement des utilisateurs.
+                </p>
+              )}
+              {rolesQuery.isError && (
+                <p role="alert" className="text-sm text-danger">
+                  Le chargement des rôles a échoué (privilège « Gestion des rôles » requis en plus
+                  de « Gestion des utilisateurs » pour afficher cette page).
                 </p>
               )}
               {usersQuery.data && rolesQuery.data && (
@@ -79,8 +92,7 @@ export function UsersAdminPage() {
                   <tbody>
                     {usersQuery.data.users.map((u) => {
                       const currentRole = rolesQuery.data.find((r) => r.slug === u.roleSlug);
-                      const pending =
-                        updateUserRole.isPending && updateUserRole.variables?.id === u.id;
+                      const pending = pendingUserId === u.id;
                       return (
                         <tr key={u.id} className="border-b border-rule-2">
                           <td className="py-2 text-ink">{u.username}</td>
@@ -115,7 +127,10 @@ export function UsersAdminPage() {
                   size="sm"
                   variant="outline"
                   disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  onClick={() => {
+                    setPage((p) => Math.max(1, p - 1));
+                    setRowError(null);
+                  }}
                 >
                   Précédent
                 </Button>
@@ -126,7 +141,10 @@ export function UsersAdminPage() {
                   size="sm"
                   variant="outline"
                   disabled={page >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
+                  onClick={() => {
+                    setPage((p) => p + 1);
+                    setRowError(null);
+                  }}
                 >
                   Suivant
                 </Button>

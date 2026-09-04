@@ -113,6 +113,13 @@ export function useUpdateUserRole() {
       client.updateUserRole(vars.id, vars.roleId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["users"] });
+      // Un admin peut changer son propre rôle depuis cette page (seule garde
+      // serveur : anti-lockout sur le dernier titulaire des privilèges
+      // sensibles, pas une interdiction de l'auto-rétrogradation). Sans
+      // cette invalidation, useMe() ("me") continuerait de servir l'ancien
+      // jeu de privilèges en cache — nav/domaines/RequirePrivilege resteraient
+      // faux jusqu'à un rechargement complet.
+      void queryClient.invalidateQueries({ queryKey: ["me"] });
     },
   });
 }
