@@ -123,6 +123,8 @@ def test_dataset_detail_is_self_contained_with_context(env):
         "foaf": "http://xmlns.com/foaf/0.1/",
         "locn": "http://www.w3.org/ns/locn#",
         "xsd": "http://www.w3.org/2001/XMLSchema#",
+        "vcard": "http://www.w3.org/2006/vcard/ns#",
+        "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
     }
     assert body["dct:identifier"] == "incidents"
 
@@ -223,3 +225,41 @@ def test_custom_role_with_collections_manage_reaches_dataset_detail(env):
         resp = client.get("/dcat/datasets/incidents")
         assert resp.status_code == 200
         assert resp.json()["dct:identifier"] == "incidents"
+
+
+def test_dcat_dataset_reflects_declared_license(env):
+    app, client, admin, _regular, Session = env
+    _register(app, client, admin)
+    _as(app, admin)
+    client.patch("/collections/incidents", json={"license": "etalab-2.0"})
+    res = client.get("/dcat/datasets/incidents")
+    assert res.json()["dct:license"] == {"@id": "https://spdx.org/licenses/etalab-2.0.html"}
+
+
+def test_dcat_dataset_publisher_uses_producer_when_declared(env):
+    app, client, admin, _regular, Session = env
+    _register(app, client, admin)
+    _as(app, admin)
+    client.patch("/collections/incidents", json={"producer": "Ma Régie"})
+    res = client.get("/dcat/datasets/incidents")
+    assert res.json()["dct:publisher"]["foaf:name"] == "Ma Régie"
+
+
+def test_dcat_dataset_without_declared_metadata_omits_optional_fields(env):
+    app, client, admin, _regular, Session = env
+    _register(app, client, admin)
+    res = client.get("/dcat/datasets/incidents")
+    body = res.json()
+    assert body["dct:license"] == {
+        "@id": "http://publications.europa.eu/resource/authority/licence/OTHER"
+    }
+    assert "dct:accrualPeriodicity" not in body
+    assert "dct:provenance" not in body
+    assert "dcat:contactPoint" not in body
+    assert "dct:hasVersion" not in body
+    # Exception assumée (spec §3/§7.2) : dct:language, lui, apparaît
+    # désormais inconditionnellement (défaut "fr" jamais vide) — ce n'est
+    # PAS un défaut de non-régression.
+    assert body["dct:language"] == {
+        "@id": "http://publications.europa.eu/resource/authority/language/FRA"
+    }
