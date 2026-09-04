@@ -90,13 +90,12 @@ def dataset(
         license_id = {"@id": LICENSE_OTHER}
 
     temporal: dict = {"@type": "dct:PeriodOfTime"}
-    if temporal_start or temporal_end:
-        if temporal_start:
-            temporal["dcat:startDate"] = {"@value": temporal_start, "@type": "xsd:date"}
-        if temporal_end:
-            temporal["dcat:endDate"] = {"@value": temporal_end, "@type": "xsd:date"}
+    if temporal_start:
+        temporal["dcat:startDate"] = {"@value": temporal_start, "@type": "xsd:date"}
     else:
         temporal["dcat:startDate"] = {"@value": created_at, "@type": "xsd:dateTime"}
+    if temporal_end:
+        temporal["dcat:endDate"] = {"@value": temporal_end, "@type": "xsd:date"}
 
     doc = {
         "@id": f"{base}/dcat/datasets/{collection_id}",

@@ -409,3 +409,23 @@ def test_dataset_declared_temporal_extent_start_only():
     temporal = doc["dct:temporal"]
     assert temporal["dcat:startDate"] == {"@value": "2020-01-01", "@type": "xsd:date"}
     assert "dcat:endDate" not in temporal
+
+
+def test_dataset_declared_temporal_extent_end_only_falls_back_to_created_at():
+    doc = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-07-01T00:00:00Z",
+        updated_at="2026-07-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Default",
+        bbox=None,
+        temporal_end="2026-12-31",
+    )
+    assert doc["dct:temporal"] == {
+        "@type": "dct:PeriodOfTime",
+        "dcat:startDate": {"@value": "2026-07-01T00:00:00Z", "@type": "xsd:dateTime"},
+        "dcat:endDate": {"@value": "2026-12-31", "@type": "xsd:date"},
+    }
