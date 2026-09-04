@@ -131,6 +131,7 @@ def test_collection_resolves_declared_license_to_spdx_id():
         license="etalab-2.0",
     )
     assert doc["license"] == "etalab-2.0"
+    Collection.model_validate(doc)
 
 
 def test_collection_unknown_license_falls_back_to_other():
@@ -144,6 +145,7 @@ def test_collection_unknown_license_falls_back_to_other():
         license="",
     )
     assert doc["license"] == "other"
+    Collection.model_validate(doc)
 
 
 def test_collection_providers_present_only_when_declared():
@@ -156,6 +158,7 @@ def test_collection_providers_present_only_when_declared():
         temporal_start="2026-07-01T00:00:00Z",
     )
     assert "providers" not in without
+    Collection.model_validate(without)
 
     with_providers = s.collection(
         base=BASE,
@@ -167,19 +170,28 @@ def test_collection_providers_present_only_when_declared():
         providers=[{"name": "Ma Régie", "roles": ["producer"]}],
     )
     assert with_providers["providers"] == [{"name": "Ma Régie", "roles": ["producer"]}]
+    Collection.model_validate(with_providers)
 
 
 def test_collection_declared_temporal_extent():
+    # Les valeurs passées ici sont des instants RFC 3339 complets, pas de
+    # simples dates : c'est la forme que produit désormais app/stac/routes.py
+    # (SP-41, correctif de revue finale) avant d'appeler ce serializer — un
+    # appelant qui repasserait à des dates nues romprait la conformité STAC
+    # (Collection.model_validate l'exige déjà, ci-dessous).
     doc = s.collection(
         base=BASE,
         collection_id="roads",
         title="Routes",
         description="d",
         bbox=None,
-        temporal_start="2020-01-01",
-        temporal_end="2026-12-31",
+        temporal_start="2020-01-01T00:00:00Z",
+        temporal_end="2026-12-31T23:59:59Z",
     )
-    assert doc["extent"]["temporal"]["interval"] == [["2020-01-01", "2026-12-31"]]
+    assert doc["extent"]["temporal"]["interval"] == [
+        ["2020-01-01T00:00:00Z", "2026-12-31T23:59:59Z"]
+    ]
+    Collection.model_validate(doc)
 
 
 def test_collection_temporal_extent_start_falls_back_when_only_end_declared():
@@ -189,7 +201,9 @@ def test_collection_temporal_extent_start_falls_back_when_only_end_declared():
     # ne perd pas temporal_start même quand seul temporal_end est déclaré. Ce
     # test verrouille ce comportement au niveau serializer : passé tel quel
     # depuis routes.py, temporal_start ne doit jamais devenir None simplement
-    # parce que temporal_end est renseigné.
+    # parce que temporal_end est renseigné. Les deux valeurs sont des instants
+    # RFC 3339 complets (cf. commentaire de test_collection_declared_temporal_extent
+    # ci-dessus).
     doc = s.collection(
         base=BASE,
         collection_id="roads",
@@ -197,6 +211,9 @@ def test_collection_temporal_extent_start_falls_back_when_only_end_declared():
         description="d",
         bbox=None,
         temporal_start="2026-01-01T00:00:00Z",  # repli déjà résolu par l'appelant
-        temporal_end="2026-12-31",
+        temporal_end="2026-12-31T23:59:59Z",
     )
-    assert doc["extent"]["temporal"]["interval"] == [["2026-01-01T00:00:00Z", "2026-12-31"]]
+    assert doc["extent"]["temporal"]["interval"] == [
+        ["2026-01-01T00:00:00Z", "2026-12-31T23:59:59Z"]
+    ]
+    Collection.model_validate(doc)

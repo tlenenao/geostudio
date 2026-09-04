@@ -297,4 +297,4 @@ def test_stac_collection_temporal_start_falls_back_when_only_end_declared(env):
     res = client.get("/stac/collections/incidents").json()
     interval = res["extent"]["temporal"]["interval"][0]
     assert interval[0] is not None  # repli sur created_at, pas perdu
-    assert interval[1] == "2026-12-31"
+    assert interval[1] == "2026-12-31T23:59:59Z"
