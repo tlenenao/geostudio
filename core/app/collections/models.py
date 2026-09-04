@@ -41,14 +41,16 @@ class Collection(Base):
     # str/default="" (pas None) : un PATCH ne peut jamais distinguer un champ
     # omis d'un champ explicitement remis à None, donc "" porte le sens
     # "non déclaré" partout ici, cohérent avec description ci-dessus.
-    license: Mapped[str] = mapped_column(String, default="", nullable=False)
-    license_uri: Mapped[str] = mapped_column(String, default="", nullable=False)
-    producer: Mapped[str] = mapped_column(String, default="", nullable=False)
-    contact: Mapped[str] = mapped_column(String, default="", nullable=False)
-    update_frequency: Mapped[str] = mapped_column(String, default="", nullable=False)
-    lineage: Mapped[str] = mapped_column(String, default="", nullable=False)
-    language: Mapped[str] = mapped_column(String, default="fr", nullable=False)
-    version: Mapped[str] = mapped_column(String, default="", nullable=False)
+    license: Mapped[str] = mapped_column(String, default="", server_default="", nullable=False)
+    license_uri: Mapped[str] = mapped_column(String, default="", server_default="", nullable=False)
+    producer: Mapped[str] = mapped_column(String, default="", server_default="", nullable=False)
+    contact: Mapped[str] = mapped_column(String, default="", server_default="", nullable=False)
+    update_frequency: Mapped[str] = mapped_column(
+        String, default="", server_default="", nullable=False
+    )
+    lineage: Mapped[str] = mapped_column(String, default="", server_default="", nullable=False)
+    language: Mapped[str] = mapped_column(String, default="fr", server_default="fr", nullable=False)
+    version: Mapped[str] = mapped_column(String, default="", server_default="", nullable=False)
     temporal_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     temporal_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
