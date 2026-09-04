@@ -565,3 +565,38 @@ def test_list_collections_includes_owner_username(env):
     client.post("/collections", json={"tableName": "incidents"})
     body = client.get("/collections").json()
     assert body["collections"][0]["owner"] == "admin"
+
+
+def test_patch_collection_declares_attachment_fields(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+
+    res = client.patch(
+        "/collections/incidents", json={"attachmentFields": [{"key": "photos", "label": "Photos"}]}
+    )
+    assert res.status_code == 200
+    assert res.json()["attachmentFields"] == [{"key": "photos", "label": "Photos"}]
+
+    get_res = client.get("/collections/incidents")
+    assert get_res.json()["attachmentFields"] == [{"key": "photos", "label": "Photos"}]
+
+
+def test_patch_collection_without_attachment_fields_leaves_them_unchanged(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    client.patch(
+        "/collections/incidents", json={"attachmentFields": [{"key": "photos", "label": "Photos"}]}
+    )
+
+    res = client.patch("/collections/incidents", json={"title": "Nouveau titre"})
+    assert res.status_code == 200
+    assert res.json()["attachmentFields"] == [{"key": "photos", "label": "Photos"}]
+
+
+def test_register_collection_defaults_attachment_fields_to_empty(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    res = client.post("/collections", json={"tableName": "incidents"})
+    assert res.json()["attachmentFields"] == []
