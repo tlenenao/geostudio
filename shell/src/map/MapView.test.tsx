@@ -1422,8 +1422,11 @@ test("does not fetch the entity's attachments when the popup does not declare an
 });
 
 test("does not fetch attachments for a feature layer even when attachmentField is configured", () => {
-  // Les couches `feature` (GeoJSON externe) n'ont pas de collection : jamais
-  // de pièces jointes possibles, quel que soit le popup déclaré.
+  // Une couche `feature` PEUT porter des pièces jointes depuis la Tâche 19
+  // (widget carte de l'App Builder/`/sites/{slug}`, cf. le test
+  // "fetches attachments for a feature layer…" ci-dessous) si elle porte
+  // collectionId+pkColumn — celle-ci n'en porte aucun (GeoJSON externe pur),
+  // donc reste sans pièces jointes possibles.
   const fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
   const cfg: MapConfig = {
@@ -1447,6 +1450,39 @@ test("does not fetch attachments for a feature layer even when attachmentField i
     }),
   );
   expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test("fetches attachments for a feature layer that carries a resolvable collectionId/pkColumn (SP-40, widget carte)", () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue({ ok: true, json: async () => ({ attachments: [] }) });
+  vi.stubGlobal("fetch", fetchMock);
+  const cfg: MapConfig = {
+    ...config,
+    layers: [
+      {
+        id: "pts",
+        title: "Points",
+        visible: true,
+        kind: "feature",
+        url: "https://core.test/collections/parcs/items.geojson",
+        collectionId: "parcs",
+        pkColumn: "id",
+        popup: { attachmentField: "photos" },
+      },
+    ],
+  };
+  render(<MapView config={cfg} getAuthToken={() => "tok"} getCoreUrl={() => "http://core.test"} />);
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "pts", {
+      features: [{ id: 7, properties: { id: "42" } }],
+      lngLat: { lng: 1, lat: 2 },
+    }),
+  );
+  expect(fetchMock).toHaveBeenCalledWith(
+    "http://core.test/collections/parcs/items/42/attachments?fieldKey=photos",
+    { headers: { Authorization: "Bearer tok" } },
+  );
 });
 
 test("does not fetch attachments when the clicked feature has no value for the layer's pkColumn", () => {

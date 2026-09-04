@@ -362,3 +362,84 @@ test("exposes hasGeometry true for an arcgis-sourced dataset regardless of schem
   await waitFor(() => expect(screen.getByText(/hasGeometry:true/)).toBeInTheDocument());
   expect(client.getCollectionSchema).not.toHaveBeenCalled();
 });
+
+test("resolves collectionId and pkColumn onto the DataSourceState for a direct-layer core features source without a datasetId", async () => {
+  const client = {
+    queryDataSource: vi.fn().mockResolvedValue([{ id: 1, properties: {} }]),
+    featuresUrl: vi.fn().mockReturnValue("https://core.test/collections/parcs/items.geojson"),
+    getCollectionSchema: vi
+      .fn()
+      .mockResolvedValue({ collection: "parcs", pk: "id", geometry: null, fields: [] }),
+  } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const src: DataSource[] = [
+    { id: "ds1", type: "features", service: "core", layer: "parcs", query: {} },
+  ];
+
+  function Probe() {
+    const states = useDataStates();
+    const s = states["ds1"];
+    return (
+      <p>
+        collectionId:{s?.collectionId ?? "none"} pkColumn:{s?.pkColumn ?? "none"}
+      </p>
+    );
+  }
+
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider interactions="manual">
+          <DataProvider sources={src}>
+            <Probe />
+          </DataProvider>
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => {
+    expect(screen.getByText(/collectionId:parcs/)).toBeInTheDocument();
+    expect(screen.getByText(/pkColumn:id/)).toBeInTheDocument();
+  });
+  expect(client.getCollectionSchema).toHaveBeenCalledWith("parcs");
+});
+
+test("does not resolve collectionId/pkColumn for a non-core features source without a datasetId", async () => {
+  const client = {
+    queryDataSource: vi.fn().mockResolvedValue([{ id: 1, properties: {} }]),
+    featuresUrl: vi.fn().mockReturnValue("https://fs/parcs/items.json"),
+    getCollectionSchema: vi.fn(), // must never be called for a non-core service
+  } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const src: DataSource[] = [
+    { id: "ds1", type: "features", service: "featureserv", layer: "parcs", query: {} },
+  ];
+
+  function Probe() {
+    const states = useDataStates();
+    const s = states["ds1"];
+    if (!s || s.loading) return <p>loading</p>;
+    return (
+      <p>
+        collectionId:{s?.collectionId ?? "none"} pkColumn:{s?.pkColumn ?? "none"}
+      </p>
+    );
+  }
+
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <AnalyticsContextProvider interactions="manual">
+          <DataProvider sources={src}>
+            <Probe />
+          </DataProvider>
+        </AnalyticsContextProvider>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => expect(screen.getByText(/collectionId:none/)).toBeInTheDocument());
+  expect(screen.getByText(/pkColumn:none/)).toBeInTheDocument();
+  expect(client.getCollectionSchema).not.toHaveBeenCalled();
+});

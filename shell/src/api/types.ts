@@ -197,6 +197,8 @@ export type MapLayer =
       renderAs?: "fill" | "circle" | "line";
       popup?: PopupConfig;
       symbology?: import("../builder/widgets/mapSymbology").LayerSymbology;
+      collectionId?: string;
+      pkColumn?: string;
     }
   | {
       id: string;
@@ -739,6 +741,7 @@ export type DataSourceState = {
   url?: string;
   datasetId?: string;
   pkColumn?: string;
+  collectionId?: string;
   resolvedSource?: DataSource;
   hasGeometry?: boolean;
 };

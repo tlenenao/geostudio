@@ -282,6 +282,8 @@ export function registerMapWidget(): void {
                 renderAs,
                 ...(symbology ? { symbology } : {}),
                 popup: props.popup as PopupConfig | undefined,
+                collectionId: ctx.data?.collectionId,
+                pkColumn: ctx.data?.pkColumn,
               },
             ]
           : [],
