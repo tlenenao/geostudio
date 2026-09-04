@@ -88,6 +88,8 @@ def update_item(
             keywords=patch.keywords,
             is_published=patch.isPublished,
             slug=patch.slug,
+            license=patch.license,
+            language=patch.language,
             current_user_id=user.id,
         )
     except SlugCollisionError as err:
