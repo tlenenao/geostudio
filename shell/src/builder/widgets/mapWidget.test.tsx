@@ -122,18 +122,20 @@ function renderPropsPanel({
   onChange,
   dataSources = [],
   theme,
+  clientOverrides = {},
 }: {
   props: Record<string, unknown>;
   onChange: (props: Record<string, unknown>) => void;
 
   dataSources?: any[];
   theme?: Theme;
+  clientOverrides?: Partial<ItemClient>;
 }) {
   const Panel = getWidget("map")!.PropsPanel;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <ItemClientProvider client={{} as unknown as ItemClient}>
+      <ItemClientProvider client={clientOverrides as unknown as ItemClient}>
         <Panel props={props} dataSources={dataSources} onChange={onChange} theme={theme} />
       </ItemClientProvider>
     </QueryClientProvider>,
@@ -671,6 +673,35 @@ test("the props panel exposes the shared popup editor", async () => {
   renderPropsPanel({ props: { dataSourceId: "ds1" }, onChange });
   await userEvent.click(screen.getByRole("checkbox", { name: "Afficher les attributs au clic" }));
   expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ popup: {} }));
+});
+
+test("the props panel resolves attachment fields from the bound collection's schema (revue finale, I6)", async () => {
+  // Avant ce correctif, attachmentFields={[]} était codé en dur : aucune app
+  // ne pouvait jamais configurer PopupConfig.attachmentField depuis le
+  // builder — seule la dérivation automatique de DatasetPage (/sites/{slug},
+  // Tâche 19) l'atteignait. Ce test prouve que le sélecteur « Pièces
+  // jointes » de PopupEditor s'affiche désormais dès qu'une vraie
+  // collection déclarant un champ attachment est liée.
+  const onChange = vi.fn();
+  const getCollectionSchema = vi.fn().mockResolvedValue({
+    collection: "incidents",
+    pk: "id",
+    geometry: null,
+    fields: [
+      { name: "titre", type: "string", required: false },
+      { name: "photos", type: "attachment", required: false, label: "Photos" },
+    ],
+  });
+  renderPropsPanel({
+    props: { dataSourceId: "ds1", popup: {} },
+    onChange,
+    dataSources: [{ id: "ds1", type: "features", service: "core", layer: "incidents", query: {} }],
+    clientOverrides: { getCollectionSchema },
+  });
+  await userEvent.selectOptions(await screen.findByLabelText("Pièces jointes"), "photos");
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ popup: { attachmentField: "photos" } }),
+  );
 });
 
 test("the popup editor accepts a hand-typed field name", async () => {
