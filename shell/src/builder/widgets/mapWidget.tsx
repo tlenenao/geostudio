@@ -229,6 +229,7 @@ export function registerMapWidget(): void {
           <PopupEditor
             value={props.popup as PopupConfig | undefined}
             availableFields={[]}
+            attachmentFields={[]} // PropsPanel has no schema (registry.ts) — same PopupEditor precedent
             onChange={(popup) => onChange({ ...props, popup })}
           />
         </div>

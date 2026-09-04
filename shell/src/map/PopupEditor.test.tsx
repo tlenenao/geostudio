@@ -126,3 +126,29 @@ test("a valid template reports nothing", () => {
   );
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
+
+test("propose un sélecteur de champ pièces jointes quand attachmentFields est non vide", async () => {
+  const onChange = vi.fn();
+  render(
+    <PopupEditor
+      value={{ fields: [] }}
+      availableFields={["nom"]}
+      attachmentFields={["photos"]}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.selectOptions(screen.getByLabelText("Pièces jointes"), "photos");
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ attachmentField: "photos" }));
+});
+
+test("n'affiche aucun sélecteur pièces jointes si attachmentFields est vide", () => {
+  render(
+    <PopupEditor
+      value={{ fields: [] }}
+      availableFields={["nom"]}
+      attachmentFields={[]}
+      onChange={vi.fn()}
+    />,
+  );
+  expect(screen.queryByLabelText("Pièces jointes")).not.toBeInTheDocument();
+});
