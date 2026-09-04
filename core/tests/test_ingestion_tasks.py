@@ -5,11 +5,12 @@ d'aucun vrai worker en CI ; PostGIS réel pour les écritures du pipeline."""
 
 import pytest
 from procrastinate import testing
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.db import Base, make_session_factory
 from app.ingestion import repository as ingestion_repo
 from app.ingestion import tasks as ingestion_tasks
+from app.notifications.models import Notification
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -126,3 +127,71 @@ def test_missing_job_is_a_noop_not_a_crash(env, monkeypatch):
     monkeypatch.setattr(ingestion_tasks, "_make_s3_client_from_env", lambda: _FakeS3Client({}))
     ingestion_tasks.run_ingestion_task.defer(job_id="does-not-exist", tenant_id=tenant.id)
     app.run_worker(wait=False, queues=["ingestion"])  # ne doit pas lever
+
+
+def test_success_writes_a_notification_for_the_creator(env, monkeypatch):
+    app, Session, tenant, user = env
+    geojson = (
+        b'{"type":"FeatureCollection","features":[{"type":"Feature",'
+        b'"properties":{"nom":"A"},"geometry":{"type":"Point","coordinates":[1.0,45.0]}}]}'
+    )
+    monkeypatch.setattr(
+        ingestion_tasks, "_make_s3_client_from_env", lambda: _FakeS3Client({"k3": geojson})
+    )
+    with Session() as s:
+        job = ingestion_repo.create_job(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k3",
+            filename="villes.geojson",
+            collection_title="Villes notif",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+        job_id = job.id
+
+    ingestion_tasks.run_ingestion_task.defer(job_id=job_id, tenant_id=tenant.id)
+    app.run_worker(wait=False, queues=["ingestion"])
+
+    with Session() as s:
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+        assert notification is not None
+        assert notification.recipient_user_id == user.id
+        assert notification.kind == "ingestion"
+        assert notification.status == "success"
+        assert notification.item_resource_type == "dataset"
+        assert notification.item_title == "Villes notif"
+        assert notification.item_id is not None
+
+
+def test_failure_writes_a_notification_with_no_item(env, monkeypatch):
+    app, Session, tenant, user = env
+    monkeypatch.setattr(
+        ingestion_tasks, "_make_s3_client_from_env", lambda: _FakeS3Client({"k4": b"not json"})
+    )
+    with Session() as s:
+        job = ingestion_repo.create_job(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k4",
+            filename="broken.geojson",
+            collection_title="Casse notif",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+        job_id = job.id
+
+    ingestion_tasks.run_ingestion_task.defer(job_id=job_id, tenant_id=tenant.id)
+    app.run_worker(wait=False, queues=["ingestion"])
+
+    with Session() as s:
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+        assert notification is not None
+        assert notification.status == "failure"
+        assert notification.item_id is None
+        assert notification.item_title == "Casse notif"
+        assert notification.error_message is not None
