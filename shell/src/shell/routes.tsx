@@ -19,6 +19,7 @@ import { AdminInfrastructurePage } from "../pages/AdminInfrastructurePage";
 import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
 import { HarvestSourcesAdminPage } from "../pages/HarvestSourcesAdminPage";
 import { RolesAdminPage } from "../pages/RolesAdminPage";
+import { UsersAdminPage } from "../pages/UsersAdminPage";
 import { KitGalleryPage } from "../pages/KitGalleryPage";
 import { TasksComingSoonPage } from "../pages/TasksComingSoonPage";
 import { SettingsComingSoonPage } from "../pages/SettingsComingSoonPage";
@@ -318,6 +319,17 @@ export function AppRoutes() {
               deniedMessage="Accès réservé à la gestion des rôles."
             >
               <RolesAdminPage />
+            </RequirePrivilege>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <RequirePrivilege
+              privilege="admin.users.manage"
+              deniedMessage="Accès réservé à la gestion des utilisateurs."
+            >
+              <UsersAdminPage />
             </RequirePrivilege>
           }
         />
