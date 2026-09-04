@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -36,5 +36,20 @@ class Collection(Base):
     # 4.12) ; pas de colonne SQL réelle par champ, cf.
     # docs/superpowers/specs/2026-09-04-sp40-pieces-jointes-design.md §3.1.
     attachment_fields: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    # Métadonnées ouvertes (chantier 4.9, docs/superpowers/specs/
+    # 2026-09-04-sp41-metadonnees-licence-design.md §1.1). Convention
+    # str/default="" (pas None) : un PATCH ne peut jamais distinguer un champ
+    # omis d'un champ explicitement remis à None, donc "" porte le sens
+    # "non déclaré" partout ici, cohérent avec description ci-dessus.
+    license: Mapped[str] = mapped_column(String, default="", nullable=False)
+    license_uri: Mapped[str] = mapped_column(String, default="", nullable=False)
+    producer: Mapped[str] = mapped_column(String, default="", nullable=False)
+    contact: Mapped[str] = mapped_column(String, default="", nullable=False)
+    update_frequency: Mapped[str] = mapped_column(String, default="", nullable=False)
+    lineage: Mapped[str] = mapped_column(String, default="", nullable=False)
+    language: Mapped[str] = mapped_column(String, default="fr", nullable=False)
+    version: Mapped[str] = mapped_column(String, default="", nullable=False)
+    temporal_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    temporal_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
