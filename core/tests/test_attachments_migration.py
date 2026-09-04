@@ -1,4 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
+"""Fumée rapide sur SQLite : vérifie que le module est bien enregistré sur
+Base.metadata (create_all), PAS que la migration Alembic réelle 0032
+s'applique correctement sur une base Postgres non vide — cf.
+test_attachments_migration_alembic.py pour ce second test (revue finale de
+branche, I7 : ce fichier ne prétendait à tort couvrir que la fumée SQLite,
+jamais le chemin réel de production)."""
+
 from sqlalchemy import inspect
 
 from app.db import Base, make_engine
