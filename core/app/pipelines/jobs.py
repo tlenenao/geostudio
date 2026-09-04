@@ -15,6 +15,7 @@ from app.configs import repository as configs_repo
 from app.configs.schemas import PipelinePayload
 from app.db import make_engine, make_session_factory, request_scoped_session
 from app.jobs import app
+from app.notifications import repository as notifications_repo
 from app.pipelines import repository as pipelines_repo
 from app.pipelines.runtime import NodeStat, PipelineRuntimeError, run_pipeline
 from app.users.models import User
@@ -60,6 +61,48 @@ def _acting_user(session, *, tenant_id: str, item_id: str) -> User:
     return user
 
 
+def _owner_and_title(session, *, tenant_id: str, item_id: str) -> tuple[str, str]:
+    from sqlalchemy import select
+
+    from app.items.models import Item
+
+    row = session.execute(
+        select(Item.owner_id, Item.title).where(Item.id == item_id, Item.tenant_id == tenant_id)
+    ).one()
+    return row.owner_id, row.title
+
+
+def _notify(
+    session_factory,
+    *,
+    tenant_id: str,
+    item_id: str,
+    status: str,
+    error: str | None = None,
+) -> None:
+    """Écrit la notification in-app de fin de run — best-effort, jamais
+    bloquant : son propre bloc try/except, séparé de celui qui commite
+    mark_succeeded/mark_failed, pour qu'un échec ici ne fasse jamais
+    rollback d'un changement de statut de run déjà réussi (même patron que
+    app.ingestion.tasks._notify, SP-39/Tâche 4)."""
+    try:
+        with request_scoped_session(session_factory) as session:
+            owner_id, title = _owner_and_title(session, tenant_id=tenant_id, item_id=item_id)
+            notifications_repo.create_notification(
+                session,
+                tenant_id=tenant_id,
+                recipient_user_id=owner_id,
+                kind="pipeline",
+                status=status,
+                item_id=item_id,
+                item_resource_type="pipeline",
+                item_title=title,
+                error_message=error,
+            )
+    except Exception:
+        logger.exception("pipeline run : échec de l'écriture de la notification")
+
+
 def _s3_client_from_env():
     from app.ingestion.storage import make_s3_client
 
@@ -100,6 +143,15 @@ def _make_progress_callback(
 @app.task(queue="etl")
 def run_pipeline_task(run_id: str, tenant_id: str) -> None:
     session_factory = _session_factory()
+    # Toujours lié avant le premier bloc protégé : si get_run/mark_running
+    # lève avant l'affectation réelle (ci-dessous), les handlers `except`
+    # doivent pouvoir le lire sans UnboundLocalError (même piège que
+    # app.ingestion.tasks._notify, trouvé en revue de la Tâche 4, SP-39) —
+    # None encode "item inconnu", donc pas de notification best-effort
+    # possible dans ce cas (le statut du run est déjà marqué "failed" par
+    # ailleurs, la garantie best-effort porte sur la notification, pas sur
+    # le statut du run).
+    item_id: str | None = None
 
     try:
         with request_scoped_session(session_factory) as session:
@@ -138,13 +190,35 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                 run_id=run_id,
                 node_stats={s.nodeId: s.to_dict() for s in stats},
             )
+        assert item_id is not None  # affecté ci-dessus, jamais atteint sinon (cf. return/raise)
+        _notify(session_factory, tenant_id=tenant_id, item_id=item_id, status="success")
     except (PipelineRuntimeError, ValueError) as exc:
         with request_scoped_session(session_factory) as session:
             pipelines_repo.mark_failed(session, run_id=run_id, error=str(exc))
+        if item_id is not None:
+            _notify(
+                session_factory,
+                tenant_id=tenant_id,
+                item_id=item_id,
+                status="failure",
+                error=str(exc),
+            )
+        else:
+            logger.info("pipeline run %s : notification ignorée (item inconnu)", run_id)
     except Exception as exc:  # toute erreur inattendue finit "failed", jamais zombie
         logger.exception("pipeline run %s : erreur inattendue", run_id)
         with request_scoped_session(session_factory) as session:
             pipelines_repo.mark_failed(session, run_id=run_id, error=f"erreur interne : {exc}")
+        if item_id is not None:
+            _notify(
+                session_factory,
+                tenant_id=tenant_id,
+                item_id=item_id,
+                status="failure",
+                error=f"erreur interne : {exc}",
+            )
+        else:
+            logger.info("pipeline run %s : notification ignorée (item inconnu)", run_id)
 
 
 @app.periodic(cron="*/5 * * * *")
