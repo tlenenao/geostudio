@@ -83,6 +83,25 @@ test("attribute mode offers source fields and the target dataset's own fields", 
   expect(screen.getByRole("option", { name: "commune" })).toBeInTheDocument();
 });
 
+test("attribute mode ne propose jamais un champ attachment comme champ cible (revue finale, I3)", async () => {
+  renderEditor(
+    {
+      getDatasetConfig: vi.fn().mockResolvedValue(incidentsDataset),
+      getCollectionSchema: vi.fn().mockResolvedValue({
+        ...incidentsSchema,
+        fields: [
+          ...incidentsSchema.fields,
+          { name: "photos", type: "attachment", required: false },
+        ],
+      }),
+    },
+    { link: { targetDatasetId: "ds-2", mode: "attribute", sourceField: "", targetField: "" } },
+  );
+  await waitFor(() => expect(screen.getByLabelText("Champ cible")).toBeInTheDocument());
+  expect(screen.getByRole("option", { name: "commune" })).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "photos" })).not.toBeInTheDocument();
+});
+
 test("spatial mode shows a precision select only when the target collection has geometry", async () => {
   renderEditor(
     {

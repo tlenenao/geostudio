@@ -115,6 +115,19 @@ test("recordsToCsv renders an empty geometry cell when the record has no geometr
   expect(csv).toBe("id,nom,geometry\r\n1,X,");
 });
 
+test("recordsToCsv omet les pseudo-champs attachment, qui n'ont pas de colonne réelle (revue finale, I3)", () => {
+  const schemaWithAttachment: CollectionSchema = {
+    ...schema,
+    fields: [...schema.fields, { name: "photos", type: "attachment", required: false }],
+  };
+  const csv = recordsToCsv(schemaWithAttachment, [
+    { id: 1, properties: { nom: "X" }, geometry: null },
+  ]);
+  // Sans le filtre, "photos" apparaîtrait comme colonne toujours vide
+  // (aucune valeur dans properties pour un pseudo-champ sans colonne SQL).
+  expect(csv).toBe("id,nom,geometry\r\n1,X,");
+});
+
 // jsdom (25.0.1) does not implement URL.createObjectURL/revokeObjectURL, and
 // clicking a real <a> triggers jsdom's "Not implemented: navigation" — both
 // must be stubbed before exercising the DOM-download side effect.

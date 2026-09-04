@@ -31,4 +31,14 @@ describe("mergeDatasetSchema", () => {
     const merged = mergeDatasetSchema(schema, { disparue: { label: "Fantôme" } });
     expect(merged.find((f) => f.name === "disparue")).toBeUndefined();
   });
+
+  test("un pseudo-champ attachment n'a pas de colonne réelle : jamais mergé (revue finale, I3)", () => {
+    const schemaWithAttachment: CollectionSchema = {
+      ...schema,
+      fields: [...schema.fields, { name: "photos", type: "attachment", required: false }],
+    };
+    const merged = mergeDatasetSchema(schemaWithAttachment, {});
+    expect(merged.find((f) => f.name === "photos")).toBeUndefined();
+    expect(merged).toHaveLength(2);
+  });
 });

@@ -56,7 +56,11 @@ function csvEscape(value: string): string {
 }
 
 export function recordsToCsv(schema: CollectionSchema, records: DataRecord[]): string {
-  const columns = [schema.pk, ...schema.fields.map((f) => f.name), "geometry"];
+  const columns = [
+    schema.pk,
+    ...schema.fields.filter((f) => f.type !== "attachment").map((f) => f.name),
+    "geometry",
+  ];
   const lines = [columns.map(csvEscape).join(",")];
   for (const r of records) {
     const cells = columns.map((col) => {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -272,6 +272,23 @@ describe("VisualQueryWizardPage", () => {
     // Régression I3 : le mode création n'appelle jamais la primitive de mise
     // à jour en place — seul le mode édition (pipelinePk !== null) le fait.
     expect(client.savePipelineConfig).not.toHaveBeenCalled();
+  });
+
+  test("Filtrer ne propose jamais un champ attachment comme colonne (revue finale SP-40, I3)", async () => {
+    renderWizard({
+      getCollectionSchema: () =>
+        Promise.resolve({
+          ...BASE_SCHEMA,
+          fields: [...BASE_SCHEMA.fields, { name: "photos", type: "attachment", required: false }],
+        }),
+    });
+    await screen.findByRole("option", { name: "Incidents" });
+    await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "incidents");
+    await screen.findByText("Filtrer");
+    await userEvent.click(screen.getByRole("button", { name: "Ajouter un filtre" }));
+    const columnSelect = await screen.findByLabelText("Colonne du filtre 1");
+    expect(screen.getByRole("option", { name: "commune" })).toBeInTheDocument();
+    expect(within(columnSelect).queryByRole("option", { name: "photos" })).not.toBeInTheDocument();
   });
 
   test("affiche une erreur si le provisionnement échoue, sans créer le dataset ni le pipeline", async () => {

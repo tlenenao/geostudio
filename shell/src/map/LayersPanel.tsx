@@ -99,7 +99,11 @@ function LayerSymbologyEditor({
     <MapSymbologyEditor
       value={layer.symbology}
       availableFields={
-        collectionId ? (schema.data?.fields.map((f) => f.name) ?? []) : fc ? listFields(fc) : []
+        collectionId
+          ? (schema.data?.fields.filter((f) => f.type !== "attachment").map((f) => f.name) ?? [])
+          : fc
+            ? listFields(fc)
+            : []
       }
       themeColors={undefined} // no Theme on a standalone MapConfig (spec §1)
       runStatistics={
