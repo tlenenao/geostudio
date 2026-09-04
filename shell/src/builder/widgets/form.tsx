@@ -99,7 +99,7 @@ function FieldOverrides({
               />
               Masqué
             </label>
-            {f.type !== "unsupported" && (
+            {f.type !== "unsupported" && f.type !== "attachment" && (
               <label className="flex items-center gap-1 whitespace-nowrap text-[10px]">
                 <input
                   type="checkbox"
@@ -209,7 +209,13 @@ function FormPropsPanel({
 
 function validateField(field: FormField, value: unknown): string | null {
   const empty = value === undefined || value === null || value === "";
-  if (field.required && empty) return "Champ requis";
+  // Un champ attachment ne passe jamais par values/onChange
+  // (AttachmentFieldInput gère son propre état via useQuery, cf. Task 11) —
+  // required ne peut donc jamais être satisfait pour ce type, y compris pour
+  // une config déjà enregistrée avant que l'éditeur n'exclue ce type de la
+  // case « Requis » (revue finale de branche, I4). Le bloquer rendrait le
+  // formulaire définitivement non soumettable.
+  if (field.required && empty && field.type !== "attachment") return "Champ requis";
   if (empty) return null;
   if (field.type === "integer" || field.type === "number") {
     const n = Number(value);

@@ -637,30 +637,6 @@ export function useUpdateCollection(id: string) {
   });
 }
 
-export function useAttachments(
-  collectionId: string,
-  fid: string | null,
-  fieldKey: string | undefined,
-) {
-  const client = useItemClientInternal();
-  return useQuery({
-    queryKey: ["attachments", collectionId, fid, fieldKey],
-    queryFn: () => client.listAttachments(collectionId, fid!, fieldKey),
-    enabled: fid !== null && fieldKey !== undefined,
-  });
-}
-
-export function useDeleteAttachment(collectionId: string, fid: string) {
-  const client = useItemClientInternal();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (attachmentId: string) => client.deleteAttachment(collectionId, fid, attachmentId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["attachments", collectionId, fid] });
-    },
-  });
-}
-
 export function useDeleteCollection() {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
