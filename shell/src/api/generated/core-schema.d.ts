@@ -5653,6 +5653,7 @@ export interface operations {
             query?: {
                 page?: number;
                 pageSize?: number;
+                q?: string | null;
             };
             header?: {
                 authorization?: string;
