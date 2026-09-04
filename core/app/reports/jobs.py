@@ -71,7 +71,62 @@ def _audit_trigger_failure(session, *, tenant_id: str, item_id: str, error: str)
     )
 
 
-def _record_trigger_failure(session, *, tenant_id: str, item_id: str, error: str) -> None:
+def _notify(
+    session_factory,
+    *,
+    tenant_id: str,
+    item_id: str,
+    status: str,
+    error: str | None = None,
+) -> None:
+    """Écrit la notification in-app de rapport — best-effort, jamais bloquant,
+    dans SA PROPRE session isolée du sweep (revue finale SP-39, I1) : ce
+    helper n'est appelé qu'APRÈS que l'appelant (_record_trigger_failure,
+    _notify_pending_reports) a déjà committé son propre run+audit sur SA
+    propre session — jamais en partageant sa transaction. Avant ce correctif,
+    la même session servait aux deux : un DBAPIError réel dans
+    create_notification (son session.flush() interne) empoisonnait la
+    transaction, et le session.commit()/mark_notified qui suivait levait à
+    son tour — perdant les lignes run+audit déjà en attente ET, pour
+    _record_trigger_failure, laissant l'exception s'échapper dans la boucle
+    multi-tenant de _trigger_due_reports (elle n'attrape que ReportTriggerError
+    et Exception autour de l'appel à _record_trigger_failure lui-même, pas
+    une exception levée PAR lui) — abortant le balayage pour tous les tenants
+    restants de ce tick. Isoler l'écriture dans sa propre
+    request_scoped_session (même patron que app.pipelines.jobs._notify /
+    app.export.jobs._notify / app.appexport.jobs._notify /
+    app.ingestion.tasks._notify) rend les deux impossibles : son
+    commit/rollback est local à cette session, jamais à celle de l'appelant,
+    qui a déjà committé avant cet appel."""
+    try:
+        with request_scoped_session(session_factory) as session:
+            owner = _owner_user(session, tenant_id=tenant_id, item_id=item_id)
+            item = items_repo.get_item(session, tenant_id=tenant_id, item_id=item_id)
+            notifications_repo.create_notification(
+                session,
+                tenant_id=tenant_id,
+                recipient_user_id=owner.id,
+                kind="report",
+                status=status,
+                item_id=item_id,
+                item_resource_type="report",
+                item_title=item.title if item is not None else item_id,
+                error_message=error,
+            )
+    except Exception:
+        # Best-effort (Global Constraints) : couvre à la fois
+        # ReportTriggerError (propriétaire introuvable — item supprimé entre
+        # l'échec initial et ce point, rien à notifier, le run+audit déjà
+        # écrits par l'appelant suffisent) ET toute erreur inattendue.
+        logger.exception(
+            "rapport %s : échec de l'écriture de la notification",
+            item_id,
+        )
+
+
+def _record_trigger_failure(
+    session, *, tenant_id: str, item_id: str, error: str, session_factory
+) -> None:
     """Chemin d'échec unique du déclenchement (ReportTriggerError attendue ou
     erreur inattendue) : on annule d'abord les écritures partielles de cette
     itération (un export_jobs créé juste avant l'échec, par exemple), puis on
@@ -85,7 +140,12 @@ def _record_trigger_failure(session, *, tenant_id: str, item_id: str, error: str
     raisonnement qu'AlertRule, qui persiste toujours une évaluation
     (state="error") pour que la cadence soit respectée en échec comme en
     succès. Le run est marqué notifié immédiatement : aucun rendu n'a été mis
-    en file, il n'y a rien à notifier — l'audit report.run porte l'échec."""
+    en file, il n'y a rien à notifier — l'audit report.run porte l'échec.
+
+    La notification in-app est écrite APRÈS ce commit, via _notify (session
+    isolée, revue finale SP-39/I1) — jamais sur `session` : voir le docstring
+    de _notify pour la raison exacte (transaction empoisonnée + abort du
+    sweep multi-tenant, les deux modes de défaillance que ça évite)."""
     session.rollback()
     run = reports_repo.create_run(
         session,
@@ -95,35 +155,8 @@ def _record_trigger_failure(session, *, tenant_id: str, item_id: str, error: str
     )
     reports_repo.mark_notified(session, run_id=run.id)
     _audit_trigger_failure(session, tenant_id=tenant_id, item_id=item_id, error=error)
-    try:
-        owner = _owner_user(session, tenant_id=tenant_id, item_id=item_id)
-        item = items_repo.get_item(session, tenant_id=tenant_id, item_id=item_id)
-        notifications_repo.create_notification(
-            session,
-            tenant_id=tenant_id,
-            recipient_user_id=owner.id,
-            kind="report",
-            status="failure",
-            item_id=item_id,
-            item_resource_type="report",
-            item_title=item.title if item is not None else item_id,
-            error_message=error,
-        )
-    except Exception:
-        # Best-effort (Global Constraints) : couvre à la fois
-        # ReportTriggerError (propriétaire introuvable — item supprimé entre
-        # l'échec initial et ce point, rien à notifier, le run+audit déjà
-        # écrits ci-dessus suffisent) ET toute erreur inattendue. Doit
-        # rester large ici — cette fonction est appelée depuis le `except
-        # Exception` fourre-tout de _trigger_due_reports (l.201-216) ; une
-        # exception non rattrapée ici remonterait et interromprait le
-        # balayage pour TOUS les tenants restants de ce tick (même piège que
-        # celui documenté en commentaire sur ce fourre-tout).
-        logger.exception(
-            "échec de déclenchement du rapport %s : échec de l'écriture de la notification",
-            item_id,
-        )
     session.commit()
+    _notify(session_factory, tenant_id=tenant_id, item_id=item_id, status="failure", error=error)
 
 
 def _trigger_due_reports(session_factory) -> None:
@@ -225,7 +258,11 @@ def _trigger_due_reports(session_factory) -> None:
             except ReportTriggerError as exc:
                 logger.warning("report %s trigger failed: %s", item_id, exc)
                 _record_trigger_failure(
-                    session, tenant_id=tenant_id, item_id=item_id, error=str(exc)
+                    session,
+                    tenant_id=tenant_id,
+                    item_id=item_id,
+                    error=str(exc),
+                    session_factory=session_factory,
                 )
             except Exception as exc:
                 # Jumeau du filet large d'app.alerts.jobs : tout ce qui est
@@ -242,6 +279,7 @@ def _trigger_due_reports(session_factory) -> None:
                     tenant_id=tenant_id,
                     item_id=item_id,
                     error=f"erreur interne : {exc}",
+                    session_factory=session_factory,
                 )
         export_repo.reclaim_stuck_jobs(session)
         session.commit()
@@ -312,25 +350,17 @@ def _notify_pending_reports(session_factory) -> None:
                 )
                 title = item.title if item is not None else run.report_item_id
                 result_url = _presigned_url_for_job(job)
-                try:
-                    owner = _owner_user(
-                        session, tenant_id=run.tenant_id, item_id=run.report_item_id
-                    )
-                    notifications_repo.create_notification(
-                        session,
-                        tenant_id=run.tenant_id,
-                        recipient_user_id=owner.id,
-                        kind="report",
-                        status="success" if job.status == "done" else "failure",
-                        item_id=run.report_item_id,
-                        item_resource_type="report",
-                        item_title=title,
-                        error_message=job.error,
-                    )
-                except Exception:
-                    logger.exception(
-                        "run de rapport %s : échec de l'écriture de la notification", run.id
-                    )
+                # Session isolée du sweep (revue finale SP-39, I1) : voir le
+                # docstring de _notify — ne jamais écrire cette notification
+                # sur `session`, qui porte aussi le mark_notified/commit du
+                # `finally` ci-dessous.
+                _notify(
+                    session_factory,
+                    tenant_id=run.tenant_id,
+                    item_id=run.report_item_id,
+                    status="success" if job.status == "done" else "failure",
+                    error=job.error,
+                )
                 message = (
                     f"Rapport « {title} » : {job.status}."
                     + (f" Lien : {result_url}" if result_url else "")
