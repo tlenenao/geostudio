@@ -40,6 +40,18 @@ class _FakeS3Client:
         self.deleted.append(Key)
         self.objects.pop(Key, None)
 
+    def head_object(self, *, Bucket, Key):
+        # Ajouté pour test_accented_french_filename_survives_upload_to_download_intact
+        # (revue finale, Important #2) : seul consommateur de confirm_attachment
+        # (donc de head_object) dans ce fichier — les autres tests écrivent
+        # directement via attachments_repo, jamais via la route HTTP de
+        # confirmation.
+        if Key not in self.objects:
+            from botocore.exceptions import ClientError
+
+            raise ClientError({"Error": {"Code": "404", "Message": "x"}}, "HeadObject")
+        return {"ContentLength": len(self.objects[Key])}
+
 
 @pytest.fixture()
 def env():
@@ -238,3 +250,45 @@ def test_file_download_does_not_crash_on_a_non_ascii_filename_already_in_db(env)
     _authenticate_as(api, owner)
     res = api.get(f"/collections/col1/items/f1/attachments/{attachment_id}/file")
     assert res.status_code == 200
+
+
+def test_accented_french_filename_survives_upload_to_download_intact(env):
+    """Preuve directe du correctif Important #2 (revue finale de branche,
+    Task 21) : un nom accentué français, qui fonctionnait déjà avant Task 21
+    (encodable en latin-1, ne cassait jamais Content-Disposition), ne doit
+    plus être mutilé par la sanitization du nom stocké — corrigée pour ne
+    plus s'appliquer qu'au repli ASCII de l'en-tête RFC 6266, jamais au nom
+    persisté. Bout en bout : confirm_attachment (stockage) → GET .../file
+    (en-tête)."""
+    from urllib.parse import quote
+
+    api, Session, tenant, owner, _reader, _attachment_id, s3 = env
+    filename = "Relevé été.pdf"
+    key = f"{tenant.id}/col1/f1/abc-releve.pdf"
+    # Simule l'upload S3 déjà effectué (via le PUT présigné, hors périmètre
+    # ici) avant que confirm_attachment ne fasse son head_object.
+    s3.objects[key] = b"%PDF"
+    _authenticate_as(api, owner)
+    confirm_res = api.post(
+        "/collections/col1/items/f1/attachments",
+        json={
+            "key": key,
+            "fieldKey": "photos",
+            "filename": filename,
+            "contentType": "application/pdf",
+        },
+    )
+    assert confirm_res.status_code == 201
+    # Stockage : le nom brut n'est jamais mutilé (Important #2).
+    assert confirm_res.json()["filename"] == filename
+    attachment_id = confirm_res.json()["id"]
+
+    file_res = api.get(f"/collections/col1/items/f1/attachments/{attachment_id}/file")
+    assert file_res.status_code == 200
+    disposition = file_res.headers["content-disposition"]
+    # Repli ASCII non vide (compris par un client qui ignore filename*) —
+    # calculé, pas deviné : _SAFE_FILENAME remplace chaque run contigu de
+    # caractères non-ASCII par un seul "_" ("é ét" -> "_t_", pas "__t_").
+    assert 'filename="Relev_t_.pdf"' in disposition
+    # Valeur exacte, RFC 6266, comprise par tous les navigateurs modernes.
+    assert f"filename*=UTF-8''{quote(filename, safe='')}" in disposition
