@@ -31,7 +31,8 @@ export function CrossFilterLinkEditor({
     enabled: Boolean(targetCollectionId),
   });
   const targetHasGeometry = Boolean(targetSchemaQuery.data?.geometry);
-  const targetFields = targetSchemaQuery.data?.fields.map((f) => f.name) ?? [];
+  const targetFields =
+    targetSchemaQuery.data?.fields.filter((f) => f.type !== "attachment").map((f) => f.name) ?? [];
 
   function changeMode(mode: "attribute" | "spatial") {
     onChange(
