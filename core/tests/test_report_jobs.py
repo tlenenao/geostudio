@@ -15,6 +15,7 @@ from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory
 from app.export import repository as export_repo
 from app.items import repository as items_repo
+from app.notifications.models import Notification
 from app.reports import jobs as report_jobs
 from app.reports import repository as reports_repo
 from app.tenants.repository import get_or_create_default_tenant
@@ -877,3 +878,118 @@ def test_presigned_url_is_none_for_a_job_that_is_not_done(monkeypatch):
     )
     job = type("_Job", (), {"status": "error", "result_key": None})()
     assert report_jobs._presigned_url_for_job(job) is None
+
+
+def test_notify_writes_a_notification_independently_of_configured_channels(monkeypatch):
+    # NB (écart trouvé vs le texte du plan) : `ReportSchedulePayload` a son
+    # propre validateur `_require_at_least_one_channel`
+    # (app/configs/schemas.py, testé explicitement par
+    # tests/test_report_config_schema.py::
+    # test_report_schedule_payload_requires_at_least_one_channel) — un
+    # `channels: []` ne peut PAS être persisté via
+    # `BuilderConfig.model_validate`/`configs_repo.create_config` : la
+    # validation lève immédiatement, et même en le forçant à l'écriture, la
+    # relecture (`configs_repo.get_config_by_item` fait
+    # `BuilderConfig.model_validate(revision.data)`) échouerait de la même
+    # façon. Le scénario « channels vide » que ce test doit prouver
+    # (indépendance de l'écriture de notification vis-à-vis de
+    # `payload.channels`) est donc aujourd'hui inatteignable via la vraie API
+    # de persistance — pas une erreur de cette tâche, un écart du texte du
+    # plan/spec (qui affirme à tort que `payload.channels` "peut être vide")
+    # contre le schéma réel. On exerce directement l'invariant de code visé
+    # en contournant la persistance : `get_config_by_item` est monkeypatché
+    # pour retourner un `ConfigRead` construit via `model_construct` (pas de
+    # revalidation Pydantic déclenchée en passant une instance déjà du bon
+    # type — vérifié empiriquement), portant `report.channels == []`. Le
+    # reste du test (items/export/run réels) est inchangé.
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        app_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard"
+        )
+        report_id = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="Weekly report"
+        ).id
+        job = export_repo.create_job(
+            s, tenant_id=tenant.id, item_id=app_item.id, user_id=owner.id, format="pdf"
+        )
+        export_repo.mark_done(s, job_id=job.id, result_key="renders/job-2.pdf")
+        reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id
+        )
+        s.commit()
+        owner_id = owner.id
+
+    from app.configs.repository import ConfigRead
+    from app.configs.schemas import PipelineRefreshPolicy, ReportSchedulePayload
+
+    no_channel_payload = ReportSchedulePayload.model_construct(
+        bookmarkItemId="bookmark-x",
+        refreshPolicy=PipelineRefreshPolicy(enabled=True, cron="*/5 * * * *"),
+        channels=[],  # aucun canal configuré — la notification in-app doit tout de même s'écrire
+    )
+    no_channel_config = BuilderConfig.model_construct(kind="report", report=no_channel_payload)
+    fake_config_read = ConfigRead(
+        id="cfg-x", kind="report", itemId=report_id, version=1, config=no_channel_config
+    )
+    monkeypatch.setattr(
+        configs_repo, "get_config_by_item", lambda session, item_id: fake_config_read
+    )
+    monkeypatch.setattr(
+        report_jobs, "_presigned_url_for_job", lambda job: "https://s3.test/renders/job-2.pdf"
+    )
+    report_jobs._notify_pending_reports(Session)
+
+    with Session() as s:
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+        assert notification is not None
+        assert notification.recipient_user_id == owner_id
+        assert notification.kind == "report"
+        assert notification.status == "success"
+        assert notification.item_resource_type == "report"
+        assert notification.item_title == "Weekly report"
+
+
+def test_trigger_failure_writes_a_failure_notification(monkeypatch):
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        report_id = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="Broken report"
+        ).id
+        s.commit()
+        owner_id = owner.id
+
+    with Session() as s:
+        report_jobs._record_trigger_failure(
+            s, tenant_id=tenant.id, item_id=report_id, error="bookmark not readable"
+        )
+        s.commit()
+
+    with Session() as s:
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+        assert notification is not None
+        assert notification.recipient_user_id == owner_id
+        assert notification.kind == "report"
+        assert notification.status == "failure"
+        assert notification.item_title == "Broken report"
+        assert notification.error_message == "bookmark not readable"
