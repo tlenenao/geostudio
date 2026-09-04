@@ -10,6 +10,7 @@ from sqlalchemy import select, text
 from app.db import Base, make_session_factory
 from app.ingestion import repository as ingestion_repo
 from app.ingestion import tasks as ingestion_tasks
+from app.notifications import repository as notifications_repo
 from app.notifications.models import Notification
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -195,6 +196,60 @@ def test_failure_writes_a_notification_with_no_item(env, monkeypatch):
         assert notification.item_id is None
         assert notification.item_title == "Casse notif"
         assert notification.error_message is not None
+
+
+def test_notification_write_failure_does_not_affect_job_status(env, monkeypatch):
+    """I2 (revue finale SP-39) : une erreur dans l'écriture de la
+    notification ne doit jamais affecter le statut du job lui-même. Boom
+    réel (viole une contrainte NOT NULL, fait échouer session.flush() pour
+    de vrai) plutôt qu'une exception Python qui ne toucherait jamais la
+    session — cf. test_report_jobs.py pour la même falsification."""
+    app, Session, tenant, user = env
+    geojson = (
+        b'{"type":"FeatureCollection","features":[{"type":"Feature",'
+        b'"properties":{"nom":"A"},"geometry":{"type":"Point","coordinates":[1.0,45.0]}}]}'
+    )
+    monkeypatch.setattr(
+        ingestion_tasks, "_make_s3_client_from_env", lambda: _FakeS3Client({"k6": geojson})
+    )
+
+    def _boom(session, **kwargs):
+        session.add(
+            Notification(
+                tenant_id=tenant.id,
+                recipient_user_id=user.id,
+                kind="x",
+                status="failure",
+                item_title="x",
+            )
+        )
+        session.flush()
+
+    monkeypatch.setattr(notifications_repo, "create_notification", _boom)
+
+    with Session() as s:
+        job = ingestion_repo.create_job(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k6",
+            filename="villes.geojson",
+            collection_title="Villes best-effort",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+        job_id = job.id
+
+    ingestion_tasks.run_ingestion_task.defer(job_id=job_id, tenant_id=tenant.id)
+    app.run_worker(wait=False, queues=["ingestion"])
+
+    with Session() as s:
+        fetched = ingestion_repo.get_job(s, tenant_id=tenant.id, job_id=job_id)
+        assert fetched.status == "done"
+        assert fetched.item_id is not None
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+        assert notification is None
 
 
 def test_early_failure_before_created_by_bound_does_not_crash(env, monkeypatch):

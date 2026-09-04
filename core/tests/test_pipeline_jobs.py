@@ -8,6 +8,7 @@ from sqlalchemy import select, text
 from app.collections.ddl import apply_collection_ddl
 from app.db import Base, make_session_factory
 from app.items import repository as items_repo  # noqa: F401 -- enregistre Item sur Base.metadata
+from app.notifications import repository as notifications_repo
 from app.notifications.models import Notification
 from app.pipelines import jobs as pipeline_jobs
 from app.pipelines import repository as pipelines_repo
@@ -245,6 +246,43 @@ def test_failure_writes_a_notification(env, monkeypatch):
         assert notification is not None
         assert notification.status == "failure"
         assert notification.error_message is not None
+
+
+def test_notification_write_failure_does_not_affect_run_status(env, monkeypatch):
+    """I2 (revue finale SP-39) : une erreur dans l'écriture de la
+    notification ne doit jamais affecter le statut du run lui-même. Boom
+    réel (viole une contrainte NOT NULL, fait échouer session.flush() pour
+    de vrai) plutôt qu'une exception Python qui ne toucherait jamais la
+    session — cf. test_report_jobs.py pour la même falsification."""
+    app, Session, tenant, user, item_id = env
+
+    def _boom(session, **kwargs):
+        session.add(
+            Notification(
+                tenant_id=tenant.id,
+                recipient_user_id=user.id,
+                kind="x",
+                status="failure",
+                item_title="x",
+            )
+        )
+        session.flush()
+
+    monkeypatch.setattr(notifications_repo, "create_notification", _boom)
+
+    with Session() as s:
+        run = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        run_id = run.id
+
+    pipeline_jobs.run_pipeline_task.defer(run_id=run_id, tenant_id=tenant.id)
+    app.run_worker(wait=False, queues=["etl"])
+
+    with Session() as s:
+        fetched = pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id)
+        assert fetched.status == "succeeded"
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+        assert notification is None
 
 
 def test_early_failure_before_item_id_bound_does_not_crash(env, monkeypatch):
