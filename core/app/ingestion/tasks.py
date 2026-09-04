@@ -68,6 +68,13 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
     engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
     session_factory = make_session_factory(engine)
 
+    # Toujours liés avant le premier bloc protégé : si get_job/mark_running
+    # lève avant leur affectation réelle (ligne ~78), le handler générique
+    # `except Exception` plus bas doit pouvoir les lire sans UnboundLocalError
+    # (ce que la valeur None encode alors : « destinataire inconnu »).
+    created_by: str | None = None
+    collection_title: str | None = None
+
     try:
         with request_scoped_session(session_factory) as session:
             job = ingestion_repo.get_job(session, tenant_id=tenant_id, job_id=job_id)
@@ -132,12 +139,19 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
             ingestion_repo.mark_error(
                 session, job_id=job_id, error_message=f"erreur interne : {exc}"
             )
-        _notify(
-            session_factory,
-            tenant_id=tenant_id,
-            created_by=created_by,
-            status="failure",
-            item_id=None,
-            collection_title=collection_title,
-            error=f"erreur interne : {exc}",
-        )
+        # created_by/collection_title restent None si l'échec a eu lieu avant
+        # get_job/mark_running (cf. init en tête de fonction) : pas de
+        # destinataire connu, donc pas de notification à écrire — le statut
+        # du job est déjà marqué "error" ci-dessus, best-effort préservé.
+        if created_by is not None:
+            _notify(
+                session_factory,
+                tenant_id=tenant_id,
+                created_by=created_by,
+                status="failure",
+                item_id=None,
+                collection_title=collection_title or "",
+                error=f"erreur interne : {exc}",
+            )
+        else:
+            logger.info("ingestion job %s : notification ignorée (destinataire inconnu)", job_id)

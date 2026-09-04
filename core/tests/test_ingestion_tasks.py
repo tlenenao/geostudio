@@ -195,3 +195,51 @@ def test_failure_writes_a_notification_with_no_item(env, monkeypatch):
         assert notification.item_id is None
         assert notification.item_title == "Casse notif"
         assert notification.error_message is not None
+
+
+def test_early_failure_before_created_by_bound_does_not_crash(env, monkeypatch):
+    """Régression : si get_job/mark_running lève avant que created_by/
+    collection_title ne soient affectés, le handler générique `except
+    Exception` de run_ingestion_task appelait _notify(created_by=...,
+    collection_title=...) sur ces deux locales jamais liées ->
+    UnboundLocalError levée AVANT même d'entrer dans le try/except de
+    _notify, donc jamais avalée par lui — elle s'échappait de
+    run_ingestion_task en entier (trouvé en revue de la Task 4, SP-39).
+    Appel direct de la fonction (pas de passage par le worker
+    procrastinate) : c'est cette levée qu'on veut voir absente ici."""
+    app, Session, tenant, user = env
+    monkeypatch.setattr(ingestion_tasks, "_make_s3_client_from_env", lambda: _FakeS3Client({}))
+
+    def _boom(session, *, job_id):
+        raise RuntimeError("connectivité DB perdue")
+
+    monkeypatch.setattr(ingestion_repo, "mark_running", _boom)
+
+    with Session() as s:
+        job = ingestion_repo.create_job(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k5",
+            filename="peu-importe.geojson",
+            collection_title="Titre peu importe",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+        job_id = job.id
+
+    ingestion_tasks.run_ingestion_task(job_id=job_id, tenant_id=tenant.id)
+
+    with Session() as s:
+        fetched = ingestion_repo.get_job(s, tenant_id=tenant.id, job_id=job_id)
+        assert fetched.status == "error"
+        assert fetched.error_message is not None
+        assert "connectivité DB perdue" in fetched.error_message
+
+        # Pas de destinataire connu (created_by jamais lié) : aucune
+        # notification de repli n'est écrite — le job est déjà marqué
+        # "error" ci-dessus, la garantie best-effort porte sur la
+        # notification, pas sur le statut du job.
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+        assert notification is None
