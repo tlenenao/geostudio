@@ -28,6 +28,7 @@ from app.ingestion.storage import generate_presigned_get_url
 from app.items import repository as items_repo
 from app.items.models import Item
 from app.jobs import app
+from app.notifications import repository as notifications_repo
 from app.reports import repository as reports_repo
 from app.reports.ctx import encode_analytics_context
 from app.sharing.authorization import can
@@ -94,6 +95,34 @@ def _record_trigger_failure(session, *, tenant_id: str, item_id: str, error: str
     )
     reports_repo.mark_notified(session, run_id=run.id)
     _audit_trigger_failure(session, tenant_id=tenant_id, item_id=item_id, error=error)
+    try:
+        owner = _owner_user(session, tenant_id=tenant_id, item_id=item_id)
+        item = items_repo.get_item(session, tenant_id=tenant_id, item_id=item_id)
+        notifications_repo.create_notification(
+            session,
+            tenant_id=tenant_id,
+            recipient_user_id=owner.id,
+            kind="report",
+            status="failure",
+            item_id=item_id,
+            item_resource_type="report",
+            item_title=item.title if item is not None else item_id,
+            error_message=error,
+        )
+    except Exception:
+        # Best-effort (Global Constraints) : couvre à la fois
+        # ReportTriggerError (propriétaire introuvable — item supprimé entre
+        # l'échec initial et ce point, rien à notifier, le run+audit déjà
+        # écrits ci-dessus suffisent) ET toute erreur inattendue. Doit
+        # rester large ici — cette fonction est appelée depuis le `except
+        # Exception` fourre-tout de _trigger_due_reports (l.201-216) ; une
+        # exception non rattrapée ici remonterait et interromprait le
+        # balayage pour TOUS les tenants restants de ce tick (même piège que
+        # celui documenté en commentaire sur ce fourre-tout).
+        logger.exception(
+            "échec de déclenchement du rapport %s : échec de l'écriture de la notification",
+            item_id,
+        )
     session.commit()
 
 
@@ -283,6 +312,25 @@ def _notify_pending_reports(session_factory) -> None:
                 )
                 title = item.title if item is not None else run.report_item_id
                 result_url = _presigned_url_for_job(job)
+                try:
+                    owner = _owner_user(
+                        session, tenant_id=run.tenant_id, item_id=run.report_item_id
+                    )
+                    notifications_repo.create_notification(
+                        session,
+                        tenant_id=run.tenant_id,
+                        recipient_user_id=owner.id,
+                        kind="report",
+                        status="success" if job.status == "done" else "failure",
+                        item_id=run.report_item_id,
+                        item_resource_type="report",
+                        item_title=title,
+                        error_message=job.error,
+                    )
+                except Exception:
+                    logger.exception(
+                        "run de rapport %s : échec de l'écriture de la notification", run.id
+                    )
                 message = (
                     f"Rapport « {title} » : {job.status}."
                     + (f" Lien : {result_url}" if result_url else "")
