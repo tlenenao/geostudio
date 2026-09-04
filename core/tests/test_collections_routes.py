@@ -692,3 +692,33 @@ def test_patch_collection_without_open_metadata_leaves_it_unchanged(env):
     res = client.patch("/collections/incidents", json={"title": "Nouveau titre"})
     assert res.status_code == 200
     assert res.json()["license"] == "etalab-2.0"
+
+
+def test_patch_collection_can_clear_a_declared_temporal_extent(env):
+    # Défaut de revue finale (SP-41) : temporalStart/temporalEnd sont typés
+    # date | None sans représentation "vide" non-None distincte, donc "champ
+    # omis" et "champ explicitement mis à null" valaient tous deux None côté
+    # Python — un PATCH {"temporalStart": null} ne pouvait jamais effacer une
+    # emprise déjà déclarée. C'est pourtant exactement le payload envoyé par
+    # EditCollectionPanel du shell (`temporalStart: temporalStart || null`).
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    client.patch(
+        "/collections/incidents",
+        json={"temporalStart": "2020-01-01", "temporalEnd": "2026-12-31"},
+    )
+
+    get_res = client.get("/collections/incidents")
+    assert get_res.json()["temporalStart"] == "2020-01-01"
+    assert get_res.json()["temporalEnd"] == "2026-12-31"
+
+    clear_res = client.patch(
+        "/collections/incidents",
+        json={"temporalStart": None, "temporalEnd": None},
+    )
+    assert clear_res.status_code == 200
+
+    final_res = client.get("/collections/incidents")
+    assert final_res.json()["temporalStart"] is None
+    assert final_res.json()["temporalEnd"] is None
