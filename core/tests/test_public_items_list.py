@@ -186,4 +186,8 @@ def test_never_exposes_a_sensitive_field(client):
         "isPublished",
         "keywords",
         "permissions",
+        # license/language (SP-41) : métadonnées publiques par conception,
+        # pas des champs sensibles.
+        "license",
+        "language",
     }
