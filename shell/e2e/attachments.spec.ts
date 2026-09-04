@@ -82,6 +82,18 @@ test("ajouter, lister et supprimer une pièce jointe depuis le widget Formulaire
     confirmed = false;
     await route.fulfill({ status: 204, body: "" });
   });
+  // Preuve de sortie de C1 (revue finale de branche) : le fichier n'est plus
+  // servi par un `<a href>` nu (jamais authentifié) mais par un fetch réel —
+  // ce mock permet de vérifier que la requête déclenchée par le clic aboutit
+  // bien en 200, pas seulement que le bouton est visible.
+  await page.route("**/collections/incidents/items/1/attachments/att1/file", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "image/jpeg",
+      body: Buffer.from("x"),
+      headers: { "Content-Disposition": 'attachment; filename="a.jpg"' },
+    });
+  });
 
   // Créer l'app depuis le gabarit, sans code (patron incident-form.spec.ts).
   await page.goto("/");
@@ -122,8 +134,20 @@ test("ajouter, lister et supprimer une pièce jointe depuis le widget Formulaire
     .getByLabel("Ajouter des fichiers")
     .setInputFiles({ name: "a.jpg", mimeType: "image/jpeg", buffer: Buffer.from("x") });
 
-  await expect(page.getByRole("link", { name: "a.jpg" })).toBeVisible();
+  // `exact: true` : Playwright fait un matching par sous-chaîne par défaut sur
+  // `name`, contrairement à Testing Library — "a.jpg" matcherait aussi le
+  // bouton "Supprimer a.jpg" juste à côté sans cette option.
+  const downloadButton = page.getByRole("button", { name: "a.jpg", exact: true });
+  await expect(downloadButton).toBeVisible();
+
+  // Le clic déclenche un fetch authentifié réel (plus un `<a href>` nu) —
+  // vérifié via la réponse effective, pas seulement la visibilité du bouton.
+  const [fileResponse] = await Promise.all([
+    page.waitForResponse((res) => res.url().includes("/attachments/att1/file")),
+    downloadButton.click(),
+  ]);
+  expect(fileResponse.status()).toBe(200);
 
   await page.getByRole("button", { name: "Supprimer a.jpg" }).click();
-  await expect(page.getByRole("link", { name: "a.jpg" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "a.jpg", exact: true })).toHaveCount(0);
 });
