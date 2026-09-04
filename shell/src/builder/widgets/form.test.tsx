@@ -11,6 +11,7 @@ import type { CollectionSchema, DataSource, ItemClient } from "../../api/types";
 import type { WidgetContext } from "../registry";
 import { ActionBus } from "../ActionBus";
 import { FeatureValidationError } from "../../api/itemClient";
+import type { FormField } from "./form";
 
 beforeEach(() => {
   _resetRegistry();
@@ -309,7 +310,7 @@ const visibleFields = [
   },
 ];
 
-function renderForm(fields = visibleFields, ctx: Partial<WidgetContext> = {}) {
+function renderForm(fields: FormField[] = visibleFields, ctx: Partial<WidgetContext> = {}) {
   const client = { createFeature: vi.fn().mockResolvedValue({ id: 1 }) } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const Form = getWidget("form")!.Component;
@@ -387,7 +388,7 @@ function renderConnectedForm({
   widgetId = "form1",
   layer = "incidents",
 }: {
-  fields?: typeof visibleFields;
+  fields?: FormField[];
   client?: Partial<ItemClient>;
   bus?: ActionBus;
   widgetId?: string;
@@ -876,4 +877,72 @@ test("hides the write buttons when getCollectionPermission rejects (query genuin
   await waitFor(() =>
     expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument(),
   );
+});
+
+const attachmentFields: FormField[] = [
+  { name: "photos", type: "attachment", label: "Photos", order: 0, hidden: false, required: false },
+];
+
+test("affiche la liste des pièces jointes existantes pour un champ attachment", async () => {
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
+  const listAttachments = vi.fn().mockResolvedValue([
+    {
+      id: "att1",
+      fieldKey: "photos",
+      filename: "a.jpg",
+      contentType: "image/jpeg",
+      byteSize: 10,
+      createdAt: "2026-01-01",
+    },
+  ]);
+  const attachmentFileUrl = vi.fn().mockReturnValue("http://core/x/file");
+  renderConnectedForm({
+    fields: attachmentFields,
+    client: { listAttachments, attachmentFileUrl },
+    bus,
+    widgetId: "form1",
+  });
+  bus.emit("table1", "itemSelected", { id: 7, properties: {} });
+  await screen.findByText(/Modification de l'enregistrement #7/);
+  expect(await screen.findByText("a.jpg")).toBeInTheDocument();
+});
+
+test("désactive le champ attachment tant que l'entité n'est pas enregistrée", () => {
+  renderForm(attachmentFields);
+  expect(
+    screen.getByText(/enregistrer l'entité avant d'ajouter des pièces jointes/i),
+  ).toBeInTheDocument();
+  expect(screen.queryByLabelText(/ajouter des fichiers/i)).not.toBeInTheDocument();
+});
+
+test("supprime une pièce jointe au clic sur Supprimer", async () => {
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
+  const listAttachments = vi.fn().mockResolvedValue([
+    {
+      id: "att1",
+      fieldKey: "photos",
+      filename: "a.jpg",
+      contentType: "image/jpeg",
+      byteSize: 10,
+      createdAt: "2026-01-01",
+    },
+  ]);
+  const deleteAttachment = vi.fn().mockResolvedValue(undefined);
+  const attachmentFileUrl = vi.fn().mockReturnValue("http://core/x/file");
+  renderConnectedForm({
+    fields: attachmentFields,
+    client: { listAttachments, deleteAttachment, attachmentFileUrl },
+    bus,
+    widgetId: "form1",
+  });
+  bus.emit("table1", "itemSelected", { id: 7, properties: {} });
+  await screen.findByText("a.jpg");
+  await userEvent.click(screen.getByRole("button", { name: /supprimer a\.jpg/i }));
+  expect(deleteAttachment).toHaveBeenCalledWith("incidents", "7", "att1");
 });
