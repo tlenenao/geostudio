@@ -1478,6 +1478,99 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   nouvelle ici ; collision possible d'`aria-label` si deux utilisateurs
   partagent le même nom d'utilisateur. **Ready to merge.**
 
+- **SP-39 — notifications in-app** (12 tâches, spec
+  `docs/superpowers/specs/2026-09-04-sp39-notifications-in-app-design.md`,
+  plan `docs/superpowers/plans/2026-09-04-sp39-notifications-in-app.md` —
+  ferme le chantier 4.19 de la vague 4
+  (`docs/vision/2026-08-20-revue-projet-et-plan-daction.md`, document non
+  modifié — même règle que SP-38 §2.7/§3.3) : un run de pipeline (ou tout
+  autre job des 4 autres familles) en échec est désormais signalé dans une
+  cloche persistante du shell même si l'utilisateur a quitté le panneau de
+  suivi. Nouveau domaine `core/app/notifications/` (modèle, migration 0031,
+  dépôt, 6 routes self-service `/notifications*` **inconditionnelles**, sans
+  flag de capacité — vérifié genuinely unconditional contre le fichier réel,
+  pas seulement le diff) écrit en best-effort par les **5** tâches
+  procrastinate existantes (ingestion, pipeline, export, export d'app,
+  rapport), chacune dans un bloc `try/except` séparé de celui qui committe
+  le statut du job (`app/db.py::request_scoped_session` fait rollback de
+  tout le bloc `with` sur exception — violer cette séparation aurait
+  silencieusement annulé un statut de job déjà écrit). Garde
+  anti-double-notification sur `export/jobs.py` : aucune notification
+  `kind="export"` quand `job.page_id is not None` (rendu interne au sweep
+  de rapports, notifié `kind="report"` à sa place). Côté shell :
+  `NotificationBell` dans `TopBar` (badge masqué à zéro, popover, sélecteur
+  de préférence `all`/`failures_only`/`none` persisté par utilisateur,
+  clic sur une notification avec item → `useOpenItem` + marquage lu ; sans
+  item → non cliquable), sondage `refetchInterval: 45_000` via React Query
+  (pas le patron de boucle manuelle plafonnée des jobs individuels — forme
+  de problème différente, sondage indéfini monté une fois pour toute la
+  session). E2E 144/4/0 → **inchangé** (aucun nouveau spec E2E, décision
+  explicite de la spec §5.3). Vitest shell 222→**223 fichiers, 1865
+  tests**, 0 échec, couverture 90,32 % (seuil 88). Suite cœur
+  **2120 passed / 5 skipped / 0 failed** (mesuré avec un conteneur
+  `postgis-test` réel, driver `+psycopg` — pas `+psycopg2`, dont l'usage a
+  fait échouer à tort `test_cdc_consumer_postgis.py` lors d'un premier run
+  de cette clôture, corrigé en cours de vérification, sans rapport avec ce
+  plan) ; l'échec intermittent préexistant
+  `test_features_rls.py::test_scope_preserves_original_sql_error`
+  (documenté depuis SP-29a) ne s'est pas reproduit sur ce run. Migration
+  0031 testée dans les deux sens sur une base Postgres réellement non vide
+  (piège n°8) : `postgis-test` s'est révélé être un schéma construit par
+  `Base.metadata.create_all()` (aucune table `alembic_version`), donc
+  **pas** sûr d'y lancer Alembic directement — un tenant/rôles/utilisateur/
+  notification réels ont été insérés dans une base Postgres temporaire
+  séparée (`sp39_migration_test`, même conteneur, détruite après coup) pour
+  vérifier `upgrade head` → `downgrade -1` → `upgrade head` sans toucher au
+  schéma de test partagé par les autres tâches.
+  **Deux bugs `UnboundLocalError` réels trouvés sur la classe de défaut
+  « variable référencée par l'appel `_notify` de la branche d'échec,
+  jamais garantie liée si l'échec survient avant son affectation
+  normale »** — le bloc `try/except` séparé garantit le statut du job,
+  mais pas, par lui-même, que l'appel de notification ne plante pas avant
+  d'atteindre son propre `try/except` : (1) `app/ingestion/tasks.py`,
+  trouvé par la revue finale de la Tâche 4 (texte littéral du plan
+  fautif, pas une déviation de l'implémenteur), corrigé en initialisant
+  `created_by`/`collection_title` à `None` et en gardant l'appel sur
+  `created_by is not None` — fermé et re-vérifié par falsification
+  indépendante (retrait du correctif → crash reproduit) ; (2)
+  `app/pipelines/jobs.py`, cette fois trouvé et corrigé **proactivement**
+  par l'implémenteur de la Tâche 5 avant même la revue (même mécanisme,
+  `item_id`), la revue ayant ensuite retracé tout le flux de contrôle pour
+  confirmer qu'aucun chemin non lié ne subsiste. Les trois autres sites
+  d'écriture (export, export d'app, rapport) ont chacun leurs variables
+  affectées **avant** le `try` qu'elles gardent — vérifié explicitement,
+  pas supposé, aucun correctif nécessaire là. **1 Important accepté comme
+  dette non bloquante, non corrigé** (Tâche 8, plan-mandaté) : les deux
+  sites d'écriture du sweep de rapports (`_notify_pending_reports`/
+  `_record_trigger_failure`) partagent la même session/transaction que les
+  lignes run+audit qu'ils ne doivent pas affecter — à la différence du
+  patron `app/pipelines/jobs.py::_notify` (session isolée) — texte du plan
+  explicite (« malgré le commit partagé »), risque étroit et de faible
+  probabilité sous Postgres réel, mirroring un patron déjà présent
+  ailleurs dans ce même fichier ; candidat à un futur correctif transverse
+  sur les 5 sites d'écriture, pas traité ici. **Un vrai écart spec/schéma
+  trouvé et correctement contourné** (Tâche 8) : la spec SP-39 affirme que
+  `payload.channels` « peut être vide », mais
+  `ReportSchedulePayload._require_at_least_one_channel` l'interdit
+  réellement (contrainte délibérément testée) — le scénario littéral du
+  brief était donc irréalisable via l'API de persistance réelle ;
+  contourné par un test qui monkeypatche `get_config_by_item` pour prouver
+  l'invariant de code sans toucher à la validation produit (changer le
+  validateur serait une vraie décision produit, hors périmètre de cette
+  tâche). Revues par tâche systématiques (11 tâches de code, 1 tâche
+  mécanique de régénération OpenAPI/TS faite directement) : **0 Critique
+  sur l'ensemble du plan**, 2 Important trouvés et fermés (les deux
+  `UnboundLocalError` ci-dessus), 1 Important accepté comme dette
+  documentée (session partagée du sweep de rapports), une vingtaine de
+  Minor documentés par tâche (recette de contrôle non uniformisée entre
+  tâches sœurs, `aria-label` partagé entre 3 éléments du popover de
+  notifications une fois ouvert — à corriger dans une future tâche —,
+  tests de limite de pagination absents, etc.). Revue finale de branche
+  **non lancée séparément** dans ce plan : la vérification finale (Tâche
+  12, ci-dessus) a servi de filet de clôture, conformément à la
+  granularité déjà pratiquée sur SP-38 pour un chantier de risque
+  comparable. **Ready to merge.**
+
 ### Conventions tranchées (2026-09-01)
 
 Trois dettes Minor répétées famille après famille (SP-30c→SP-30j) sans jamais
