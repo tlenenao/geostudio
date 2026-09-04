@@ -3,6 +3,7 @@ import { NewItemButton } from "../NewItemButton";
 import { ImportFileButton } from "../ImportFileButton";
 import { Tileset3DUploadButton } from "../Tileset3DUploadButton";
 import { AccountMenu } from "./AccountMenu";
+import { NotificationBell } from "./NotificationBell";
 
 export function TopBar({ tileset3dEnabled }: { tileset3dEnabled: boolean }) {
   return (
@@ -12,6 +13,7 @@ export function TopBar({ tileset3dEnabled }: { tileset3dEnabled: boolean }) {
         <NewItemButton />
         <ImportFileButton />
         {tileset3dEnabled && <Tileset3DUploadButton />}
+        <NotificationBell />
         <AccountMenu />
       </div>
     </header>

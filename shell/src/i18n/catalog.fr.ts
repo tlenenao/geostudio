@@ -86,6 +86,22 @@ export const fr = {
   "account.roleReader": "Lecteur",
   "account.signOut": "Déconnexion",
 
+  // Notifications (SP-39, chantier 4.19)
+  "notifications.bell": "Notifications",
+  "notifications.empty": "Aucune notification.",
+  "notifications.markAllRead": "Tout marquer comme lu",
+  "notifications.preferenceAll": "Tous",
+  "notifications.preferenceFailuresOnly": "Échecs seulement",
+  "notifications.preferenceNone": "Aucune",
+  "notifications.statusSuccess": "Succès",
+  "notifications.statusFailure": "Échec",
+  "notifications.kindIngestion": "Import",
+  "notifications.kindPipeline": "Pipeline",
+  "notifications.kindExport": "Export",
+  "notifications.kindAppexport": "Export d'app",
+  "notifications.kindReport": "Rapport",
+  "notifications.deletedItem": "Élément supprimé",
+
   // Administration des rôles
   "roles.title": "Rôles",
   "roles.addRole": "Ajouter un rôle",

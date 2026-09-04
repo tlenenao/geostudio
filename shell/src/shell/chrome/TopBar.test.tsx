@@ -24,6 +24,9 @@ vi.mock("../ImportFileButton", () => ({
 vi.mock("../Tileset3DUploadButton", () => ({
   Tileset3DUploadButton: () => <button>Téléverser un tileset</button>,
 }));
+vi.mock("./NotificationBell", () => ({
+  NotificationBell: () => <button>Notifications</button>,
+}));
 
 const { TopBar } = await import("./TopBar");
 
@@ -46,6 +49,7 @@ test("affiche la marque, Nouveau, Importer, et le compte", () => {
   expect(screen.getByText("GeoStudio")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Nouveau" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Importer un fichier" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Notifications" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Compte" })).toBeInTheDocument();
 });
 
