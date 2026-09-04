@@ -984,6 +984,17 @@
             ],
             "title": "Attachmentfields"
           },
+          "contact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact"
+          },
           "description": {
             "anyOf": [
               {
@@ -1017,6 +1028,85 @@
             ],
             "title": "Ispublic"
           },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License"
+          },
+          "licenseUri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licenseuri"
+          },
+          "lineage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lineage"
+          },
+          "producer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Producer"
+          },
+          "temporalEnd": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temporalend"
+          },
+          "temporalStart": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temporalstart"
+          },
           "title": {
             "anyOf": [
               {
@@ -1027,6 +1117,28 @@
               }
             ],
             "title": "Title"
+          },
+          "updateFrequency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updatefrequency"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
           }
         },
         "title": "CollectionPatch",
@@ -1763,6 +1875,24 @@
         "title": "ExtensionSize",
         "type": "object"
       },
+      "FrequencyCatalogEntry": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "FrequencyCatalogEntry",
+        "type": "object"
+      },
       "GroupRead": {
         "properties": {
           "id": {
@@ -2179,6 +2309,16 @@
             "title": "Keywords",
             "type": "array"
           },
+          "language": {
+            "default": "fr",
+            "title": "Language",
+            "type": "string"
+          },
+          "license": {
+            "default": "",
+            "title": "License",
+            "type": "string"
+          },
           "owner": {
             "title": "Owner",
             "type": "string"
@@ -2274,6 +2414,28 @@
             ],
             "title": "Keywords"
           },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License"
+          },
           "slug": {
             "anyOf": [
               {
@@ -2298,6 +2460,24 @@
           }
         },
         "title": "ItemUpdatePatch",
+        "type": "object"
+      },
+      "LanguageCatalogEntry": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "LanguageCatalogEntry",
         "type": "object"
       },
       "LayerInfoOut": {
@@ -2422,6 +2602,41 @@
           "h"
         ],
         "title": "LayoutItem",
+        "type": "object"
+      },
+      "LicenseCatalogEntry": {
+        "properties": {
+          "dcatUri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dcaturi"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "spdxId": {
+            "title": "Spdxid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "dcatUri",
+          "spdxId"
+        ],
+        "title": "LicenseCatalogEntry",
         "type": "object"
       },
       "MapConfig": {
@@ -2940,6 +3155,38 @@
           "action"
         ],
         "title": "Message",
+        "type": "object"
+      },
+      "MetadataCatalog": {
+        "properties": {
+          "frequencies": {
+            "items": {
+              "$ref": "#/components/schemas/FrequencyCatalogEntry"
+            },
+            "title": "Frequencies",
+            "type": "array"
+          },
+          "languages": {
+            "items": {
+              "$ref": "#/components/schemas/LanguageCatalogEntry"
+            },
+            "title": "Languages",
+            "type": "array"
+          },
+          "licenses": {
+            "items": {
+              "$ref": "#/components/schemas/LicenseCatalogEntry"
+            },
+            "title": "Licenses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "licenses",
+          "frequencies",
+          "languages"
+        ],
+        "title": "MetadataCatalog",
         "type": "object"
       },
       "NotificationPage": {
@@ -7953,6 +8200,46 @@
           }
         },
         "summary": "Get Me"
+      }
+    },
+    "/metadata-catalog": {
+      "get": {
+        "operationId": "get_metadata_catalog_metadata_catalog_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetadataCatalog"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Metadata Catalog"
       }
     },
     "/notifications": {

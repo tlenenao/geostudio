@@ -605,6 +605,15 @@ export function useCollectionsAdmin(options?: { enabled?: boolean }) {
   });
 }
 
+export function useMetadataCatalog() {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["metadata-catalog"],
+    queryFn: () => client.getMetadataCatalog(),
+    staleTime: Infinity, // catalogue statique côté cœur, jamais invalidé
+  });
+}
+
 export function useCandidateTables(options?: { enabled?: boolean }) {
   const client = useItemClientInternal();
   return useQuery({

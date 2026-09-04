@@ -47,6 +47,7 @@ import type {
   MapIconOut,
   MapLayer,
   Me,
+  MetadataCatalog,
   NotificationSummary,
   NotificationPreferenceValue,
   Page,
@@ -535,6 +536,10 @@ export function createItemClient(opts: {
       return request<Item>("GET", `/items/${pk}`);
     },
 
+    async getMetadataCatalog(): Promise<MetadataCatalog> {
+      return request<MetadataCatalog>("GET", "/metadata-catalog");
+    },
+
     async getItemBySlug(slug: string): Promise<Item> {
       return request<Item>("GET", `/public/sites/${encodeURIComponent(slug)}`);
     },
@@ -696,6 +701,8 @@ export function createItemClient(opts: {
         date: "",
         configId: String(data.id),
         isPublished: false,
+        license: "",
+        language: "fr",
         // On vient de créer cet objet : on en est le propriétaire.
         permissions: OWNER_PERMISSIONS,
       };
@@ -930,6 +937,8 @@ export function createItemClient(opts: {
         date: "",
         configId: String(data.id),
         isPublished: false,
+        license: "",
+        language: "fr",
         // On vient de créer cet objet : on en est le propriétaire.
         permissions: OWNER_PERMISSIONS,
       };
@@ -1037,6 +1046,8 @@ export function createItemClient(opts: {
         date: "",
         configId: String(data.id),
         isPublished: false,
+        license: "",
+        language: "fr",
         // On vient de créer cet objet : on en est le propriétaire.
         permissions: OWNER_PERMISSIONS,
       };
@@ -1067,6 +1078,8 @@ export function createItemClient(opts: {
         date: "",
         configId: String(data.id),
         isPublished: false,
+        license: "",
+        language: "fr",
         // On vient de créer cet objet : on en est le propriétaire.
         permissions: OWNER_PERMISSIONS,
       };
@@ -1104,6 +1117,8 @@ export function createItemClient(opts: {
         date: "",
         configId: String(data.id),
         isPublished: false,
+        license: "",
+        language: "fr",
         // On vient de créer cet objet : on en est le propriétaire.
         permissions: OWNER_PERMISSIONS,
       };
@@ -1168,6 +1183,8 @@ export function createItemClient(opts: {
         date: "",
         configId: String(data.id),
         isPublished: false,
+        license: "",
+        language: "fr",
         // On vient de créer cet objet : on en est le propriétaire.
         permissions: OWNER_PERMISSIONS,
       };
@@ -1220,6 +1237,8 @@ export function createItemClient(opts: {
         date: "",
         configId: String(data.id),
         isPublished: false,
+        license: "",
+        language: "fr",
         // On vient de créer cet objet : on en est le propriétaire.
         permissions: OWNER_PERMISSIONS,
       };
