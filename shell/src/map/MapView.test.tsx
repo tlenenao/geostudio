@@ -1387,7 +1387,12 @@ test("fetches and shows the entity's attachments when the layer's popup declares
   );
   act(() =>
     mapInstances[0].fireOnLayer("click", "communes", {
-      features: [{ id: 7, properties: { code: "19272", nom: "Tulle" } }],
+      // Pas de `id` top-level (SP-40 Task 20) : `code` est une PK non
+      // entière (chaîne), donc `ST_AsMVT` ne pose jamais `feature_id_name`
+      // pour cette couche — la valeur ne vit que dans `properties`, jamais
+      // dans `f.id` (cf. le nouveau test dédié au cas PK entière, plus haut
+      // dans ce fichier, qui utilise `id` top-level à la place).
+      features: [{ properties: { code: "19272", nom: "Tulle" } }],
       lngLat: { lng: 12, lat: 34 },
     }),
   );
@@ -1475,7 +1480,11 @@ test("fetches attachments for a feature layer that carries a resolvable collecti
   render(<MapView config={cfg} getAuthToken={() => "tok"} getCoreUrl={() => "http://core.test"} />);
   act(() =>
     mapInstances[0].fireOnLayer("click", "pts", {
-      features: [{ id: 7, properties: { id: "42" } }],
+      // `id` top-level, pas dans `properties` (SP-40 Task 20) : le GeoJSON
+      // servi par l'OGC API Features du cœur place toujours la PK dans le
+      // champ `id` top-level de la Feature et l'exclut de `properties`
+      // (core/app/features/repository.py::_row_to_feature/_property_columns).
+      features: [{ id: 42, properties: {} }],
       lngLat: { lng: 1, lat: 2 },
     }),
   );
@@ -1501,11 +1510,48 @@ test("does not fetch attachments when the clicked feature has no value for the l
   );
   act(() =>
     mapInstances[0].fireOnLayer("click", "communes", {
-      features: [{ id: 7, properties: { nom: "Tulle" } }],
+      // Pas de `id` top-level (SP-40 Task 20) : ce test prouve l'absence de
+      // TOUTE valeur exploitable pour la PK — ni dans `properties` (déjà le
+      // cas avant ce correctif), ni dans `f.id` (sinon ce serait exactement
+      // le cas couvert par le nouveau test PK entière, plus haut).
+      features: [{ properties: { nom: "Tulle" } }],
       lngLat: { lng: 12, lat: 34 },
     }),
   );
   expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test("fetches attachments using the feature's top-level id when properties omits the integer pkColumn (ST_AsMVT feature_id, SP-40 Task 20)", async () => {
+  // Reproduit le comportement réel de ST_AsMVT(..., feature_id_name) côté
+  // cœur (core/app/features/tiles.py::mvt_feature_id_column) pour une PK
+  // entière : la colonne PK est retirée de `properties` et placée dans le
+  // champ `id` top-level de la feature MapLibre — jamais les deux à la fois.
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ attachments: [] }),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        pkColumn: "code",
+        popup: { attachmentField: "photos" },
+      })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "communes", {
+      features: [{ id: 19272, properties: { nom: "Tulle" } }],
+      lngLat: { lng: 12, lat: 34 },
+    }),
+  );
+  expect(fetchMock).toHaveBeenCalledWith(
+    "http://core.test/collections/communes/items/19272/attachments?fieldKey=photos",
+    { headers: { Authorization: "Bearer tok" } },
+  );
 });
 
 // I5 de la revue finale SP-24 : avant `layersKey`, chaque frappe dans
