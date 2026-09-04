@@ -138,3 +138,29 @@ def test_patch_user_rejects_an_unknown_role_id(env):
     app, client, _, admin, regular, _roles = env
     _as(app, admin)
     assert client.patch(f"/users/{regular.id}", json={"roleId": "nope"}).status_code == 400
+
+
+def test_list_users_filters_by_username(env):
+    app, client, Session, admin, regular, _roles = env
+    with Session() as s:
+        get_or_create_user(
+            s,
+            tenant_id=admin.tenant_id,
+            oidc_sub="c",
+            username="charlie",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        s.commit()
+
+    _as(app, admin)
+    body = client.get("/users?q=reg").json()
+    assert body["total"] == 1
+    assert {u["username"] for u in body["users"]} == {"regular"}
+
+    body_ci = client.get("/users?q=REG").json()
+    assert body_ci["total"] == 1
+
+    body_all = client.get("/users").json()
+    assert body_all["total"] == 3

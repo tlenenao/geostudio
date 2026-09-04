@@ -81,9 +81,11 @@ def set_user_role(
 
 
 def list_users(
-    session: Session, *, tenant_id: str, page: int, page_size: int
+    session: Session, *, tenant_id: str, page: int, page_size: int, q: str | None = None
 ) -> tuple[list[User], int]:
     base = select(User).where(User.tenant_id == tenant_id)
+    if q:
+        base = base.where(User.username.ilike(f"%{q}%"))
     total = session.scalar(select(func.count()).select_from(base.subquery()))
     users = list(
         session.scalars(
