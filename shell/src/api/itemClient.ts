@@ -63,6 +63,7 @@ import type {
   Sharing,
   Theme,
   UpdatePatch,
+  UserSummary,
   Variable,
 } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
@@ -577,6 +578,23 @@ export function createItemClient(opts: {
 
     async deleteRole(id: string): Promise<void> {
       await request<void>("DELETE", `/roles/${id}`);
+    },
+
+    async listUsers(params: {
+      page: number;
+      pageSize: number;
+      q?: string;
+    }): Promise<{ users: UserSummary[]; total: number }> {
+      const query = new URLSearchParams({
+        page: String(params.page),
+        pageSize: String(params.pageSize),
+      });
+      if (params.q) query.set("q", params.q);
+      return request<{ users: UserSummary[]; total: number }>("GET", `/users?${query.toString()}`);
+    },
+
+    async updateUserRole(id: string, roleId: string): Promise<UserSummary> {
+      return request<UserSummary>("PATCH", `/users/${id}`, { roleId });
     },
 
     async getInstanceInfo(): Promise<InstanceInfo> {
