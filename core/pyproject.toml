@@ -227,6 +227,7 @@ layers = [
     "app.sharing",
     "app.instance",
     "app.roles",
+    "app.catalog",
     "app.auth",
     "app.audit",
     "app.users",

@@ -27,6 +27,7 @@ from app.auth.dependency import (
     reject_admin_tools_without_secret,
     reject_mock_outside_development,
 )
+from app.catalog import routes as catalog_routes
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
 from app.collections import routes as collections_routes
 from app.configs import routes as configs_routes
@@ -268,6 +269,7 @@ def create_app() -> FastAPI:
     app.include_router(public_routes.router)
     app.include_router(schemas_router)
     app.include_router(collections_routes.router)
+    app.include_router(catalog_routes.router)
     app.include_router(features_routes.router)
     app.include_router(tiles_routes.router)
     app.include_router(attachments_routes.router)
