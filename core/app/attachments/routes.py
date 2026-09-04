@@ -98,7 +98,11 @@ def _reject_dangerous_extension(filename: str) -> None:
 
 
 def _reject_invalid_content_type(content_type: str) -> None:
-    if not _CONTENT_TYPE_PATTERN.match(content_type):
+    # fullmatch, pas match : `$` en Python matche aussi juste avant un
+    # unique retour à la ligne terminal — .match() laissait donc passer
+    # "image/png\n" (revue finale, 2e passe), même défaut que ce validateur
+    # visait à fermer, sur une forme d'entrée différente.
+    if not _CONTENT_TYPE_PATTERN.fullmatch(content_type):
         raise HTTPException(status_code=400, detail="type de contenu invalide")
 
 

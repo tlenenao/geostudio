@@ -267,6 +267,21 @@ def test_confirm_rejects_an_invalid_content_type(client):
     assert res.status_code == 400
 
 
+def test_presign_rejects_a_content_type_with_a_trailing_newline(client):
+    """Contournement fermé par la revue finale (2e passe) : `$` en Python
+    matche aussi juste avant un unique retour à la ligne terminal — `.match()`
+    laissait donc passer "image/png\\n", stocké tel quel, faisant planter
+    read_attachment_file (h11 lève LocalProtocolError, httptools lève
+    RuntimeError) — même défaut qu'Important #1 visait à fermer, sur une
+    forme d'entrée différente. Fermé en passant à `.fullmatch()`."""
+    api, *_ = client
+    res = api.post(
+        "/collections/col1/items/f1/attachments/presign",
+        json={"fieldKey": "photos", "filename": "a.png", "contentType": "image/png\n"},
+    )
+    assert res.status_code == 400
+
+
 def test_presign_rejects_a_dangerous_extension_with_a_trailing_dot(client):
     """Contournement fermé par la revue finale (fix bonus) : "malware.exe."
     a pour extension os.path.splitext ".", jamais dans la liste noire sans
