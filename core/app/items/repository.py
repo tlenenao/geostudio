@@ -137,6 +137,8 @@ def _to_read(
         configId=None,
         isPublished=item.is_published,
         keywords=item.keywords or [],
+        license=item.license,
+        language=item.language,
         permissions=permissions,
     )
 
@@ -391,6 +393,8 @@ def update_item(
     keywords: list[str] | None,
     is_published: bool | None,
     slug: str | None = None,
+    license: str | None = None,
+    language: str | None = None,
     current_user_id: str | None = None,
 ) -> ItemRead | None:
     item = session.execute(
@@ -414,6 +418,10 @@ def update_item(
         if slug_exists(session, tenant_id=tenant_id, slug=slug, exclude_item_id=item_id):
             raise SlugCollisionError(f"slug déjà utilisé: {slug!r}")
         item.slug = slug
+    if license is not None:
+        item.license = license
+    if language is not None:
+        item.language = language
     session.flush()
     session.refresh(item)
     owner_username = session.scalar(select(User.username).where(User.id == item.owner_id)) or ""

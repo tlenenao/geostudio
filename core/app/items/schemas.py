@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.catalog.metadata import validate_language_id, validate_license_id
 
 
 class ItemPermissions(BaseModel):
@@ -30,6 +32,8 @@ class ItemRead(BaseModel):
     configId: str | None
     isPublished: bool
     keywords: list[str] = []
+    license: str = ""
+    language: str = "fr"
     permissions: ItemPermissions
 
 
@@ -46,3 +50,15 @@ class ItemUpdatePatch(BaseModel):
     keywords: list[str] | None = None
     isPublished: bool | None = Field(default=None)
     slug: str | None = None
+    license: str | None = None
+    language: str | None = None
+
+    @field_validator("license")
+    @classmethod
+    def _validate_license(cls, v: str | None) -> str | None:
+        return validate_license_id(v)
+
+    @field_validator("language")
+    @classmethod
+    def _validate_language(cls, v: str | None) -> str | None:
+        return validate_language_id(v)

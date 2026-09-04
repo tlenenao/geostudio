@@ -104,6 +104,38 @@ def test_patch_item_missing_returns_404(client):
     assert client.patch("/items/nope", json={"title": "x"}).status_code == 404
 
 
+def test_get_item_defaults_license_and_language(client):
+    item_id = _seed_item(client)
+    body = client.get(f"/items/{item_id}").json()
+    assert body["license"] == ""
+    assert body["language"] == "fr"
+
+
+def test_patch_item_updates_license_and_language(client):
+    item_id = _seed_item(client)
+    response = client.patch(f"/items/{item_id}", json={"license": "cc-by-4.0", "language": "en"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["license"] == "cc-by-4.0"
+    assert body["language"] == "en"
+
+    get_body = client.get(f"/items/{item_id}").json()
+    assert get_body["license"] == "cc-by-4.0"
+    assert get_body["language"] == "en"
+
+
+def test_patch_item_rejects_unknown_license(client):
+    item_id = _seed_item(client)
+    response = client.patch(f"/items/{item_id}", json={"license": "bogus"})
+    assert response.status_code == 422
+
+
+def test_patch_item_rejects_unknown_language(client):
+    item_id = _seed_item(client)
+    response = client.patch(f"/items/{item_id}", json={"language": "bogus"})
+    assert response.status_code == 422
+
+
 def test_upload_and_read_thumbnail(client):
     item_id = _seed_item(client)
     store = InMemoryThumbnailStore()
