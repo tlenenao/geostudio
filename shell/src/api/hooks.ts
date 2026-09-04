@@ -17,6 +17,7 @@ import type {
   ItemPage,
   ListItemsParams,
   MapConfig,
+  NotificationPreferenceValue,
   PipelinePayload,
   ReportSchedulePayload,
   RoleCreateInput,
@@ -93,6 +94,95 @@ export function useDeleteRole() {
     mutationFn: (id: string) => client.deleteRole(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["roles"] });
+    },
+  });
+}
+
+export function useUsers(params: { page: number; pageSize: number; q?: string }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["users", params],
+    queryFn: () => client.listUsers(params),
+  });
+}
+
+export function useUpdateUserRole() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; roleId: string }) =>
+      client.updateUserRole(vars.id, vars.roleId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+      // Un admin peut changer son propre rôle depuis cette page (seule garde
+      // serveur : anti-lockout sur le dernier titulaire des privilèges
+      // sensibles, pas une interdiction de l'auto-rétrogradation). Sans
+      // cette invalidation, useMe() ("me") continuerait de servir l'ancien
+      // jeu de privilèges en cache — nav/domaines/RequirePrivilege resteraient
+      // faux jusqu'à un rechargement complet.
+      void queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
+
+export function useNotifications(params: { page: number; pageSize: number }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["notifications", params],
+    queryFn: () => client.listNotifications(params),
+  });
+}
+
+export function useUnreadNotificationCount() {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: () => client.getUnreadNotificationCount(),
+    refetchInterval: 45_000,
+    // Sondage indéfini global (monté une fois dans TopBar, toute la session),
+    // pas le patron "boucle manuelle capped" de PipelineRunPanel/ExportPanel/
+    // ImportFileButton (poll jusqu'à fin d'UN job précis, plafonné) — forme de
+    // problème différente, refetchInterval react-query est le bon outil ici.
+  });
+}
+
+export function useMarkNotificationRead() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => client.markNotificationRead(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+}
+
+export function useMarkAllNotificationsRead() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => client.markAllNotificationsRead(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+}
+
+export function useNotificationPreference() {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["notifications", "preference"],
+    queryFn: () => client.getNotificationPreference(),
+  });
+}
+
+export function useUpdateNotificationPreference() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (value: NotificationPreferenceValue) => client.updateNotificationPreference(value),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
   });
 }

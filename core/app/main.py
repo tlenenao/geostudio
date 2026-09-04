@@ -44,6 +44,7 @@ from app.instance import routes as instance_routes
 from app.items import routes as items_routes
 from app.mapicons import routes as mapicons_routes
 from app.mcp.server import create_mcp_server
+from app.notifications import routes as notifications_routes
 from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
@@ -274,6 +275,7 @@ def create_app() -> FastAPI:
     app.include_router(harvest_routes.router)
     app.include_router(alerts_routes.router)
     app.include_router(reports_routes.router)
+    app.include_router(notifications_routes.router)
     if is_etl_enabled():
         app.include_router(pipelines_routes.router)
     if is_export_enabled():

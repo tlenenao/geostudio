@@ -144,11 +144,10 @@ const AUTOMATISATION_OPS_CATALOG = {
 // CSS explicite (minmax(360px,1fr), au lieu d'un `1fr` nu sans plancher
 // réel) et relevé le seuil de useNarrowViewport.ts en conséquence (899px)
 // — la famine de colonne centrale documentée par la revue transverse SP-30l
-// (round 2, 2026-09-02) est corrigée. Seul l'écran Cartes conserve un
-// wideBoundaryKnownIssue, pour un défaut pré-existant et sans rapport avec ce
-// mécanisme (colonne browse trop étroite pour LayersPanel — cf. son entrée
-// ci-dessous ; le second défaut historiquement bundlé ici, le titre de
-// couche à largeur nulle, est corrigé par SP-36).
+// (round 2, 2026-09-02) est corrigée. SP-36 puis SP-37 ont depuis fermé les
+// deux défauts pré-existants et sans rapport de l'écran Cartes (titre de
+// couche à largeur nulle ; colonne browse trop étroite pour LayersPanel) —
+// plus aucun écran de ce fichier ne porte de wideBoundaryKnownIssue.
 
 const SCREENS: Array<{
   name: string;
@@ -166,6 +165,10 @@ const SCREENS: Array<{
   // seuil" de cet écran — réservé à un défaut pré-existant, distinct du
   // mécanisme corrigé par SP-33 ci-dessus. Jamais un moyen de faire
   // disparaître un échec sans le documenter.
+  // Échappatoire délibérée : aucun SCREENS n'en a plus besoin depuis SP-37
+  // (l'écran Cartes était le seul consommateur), mais le champ et la
+  // branche `test.skip()` qui le lit restent en place pour le prochain
+  // écran qui en aurait besoin — pas du code mort à retirer.
   wideBoundaryKnownIssue?: string;
 }> = [
   {
@@ -178,22 +181,15 @@ const SCREENS: Array<{
   {
     name: "Cartes",
     path: "/maps/map-1",
-    // SP-36 (docs/superpowers/plans/2026-09-03-sp36-layerspanel-titre-flex-wrap.md) :
-    // le <span> de titre d'une couche vector/feature à largeur de layout
-    // nulle (mécanisme (b), flex-1 truncate + sibling basis-full toujours
-    // déployé) est corrigé — flex-wrap ajouté à la ligne (LayersPanel.tsx).
-    // Ré-mesuré empiriquement (pas supposé) : plus aucun offenseur sur
-    // l'onglet "Couches" à 390px avec la vérification de clip désormais
-    // active. Seul le mécanisme (a) — la colonne browse (~249px de large à
-    // 900px) trop étroite pour le contenu de LayersPanel — persiste, et
-    // seulement dans la grille desktop (900px) : offenseur unique mesuré
-    // DIV.overflow-y-auto.border-r.border-rule (scrollWidth 290 >
-    // clientWidth 249), sans rapport avec la famine de colonne centrale
-    // corrigée par SP-33. À 390px (layout mobile en onglets, la colonne
-    // "Couches" occupe toute la largeur disponible) ce mécanisme ne
-    // reproduit pas.
-    wideBoundaryKnownIssue:
-      'Cartes : 1 offenseur pré-existant (colonne browse trop étroite pour le contenu de LayersPanel) — sans rapport avec la famine de colonne centrale corrigée par SP-33 ; le titre de couche à largeur nulle est corrigé par SP-36. Tracké CLAUDE.md/lot "Carte".',
+    // SP-36 a fermé le mécanisme (b) (titre de couche à largeur nulle).
+    // SP-37 (docs/superpowers/specs/2026-09-04-sp37-layerspanel-colonne-browse-design.md)
+    // ferme le mécanisme (a) restant (colonne browse trop étroite pour le
+    // contenu de LayersPanel) : deux offenseurs distincts trouvés et
+    // corrigés — la ligne d'ajout de champ de PopupEditor.tsx (flex-wrap
+    // manquant) et le champ de fichier d'upload d'icône de
+    // MapSymbologyEditor.tsx (aucune classe de largeur). Ré-mesuré
+    // empiriquement après les deux correctifs : plus aucun offenseur, ni à
+    // 390px ni à 900px. Le lot "Carte" est clos (CLAUDE.md).
   },
   {
     name: "Apps & sites",
@@ -287,12 +283,11 @@ for (const screen of SCREENS) {
 //
 // SP-33 (docs/superpowers/specs/2026-09-02-sp33-triptychlayout-colonne-centrale-design.md) :
 // plancher explicite sur la colonne centrale + seuil relevé à 899px
-// (WIDE_BOUNDARY_WIDTH = 900 ci-dessus) — tous les écrans passent
-// désormais sans wideBoundaryKnownIssue, sauf Cartes (1 offenseur
-// pré-existant, sans rapport avec ce chantier, cf. son entrée dans
-// SCREENS — SP-36 a fermé le second défaut historiquement bundlé avec
-// celui-ci) et Tâches/Paramètres (aucune grille TriptychLayout ne s'y
-// rend, jamais concernés).
+// (WIDE_BOUNDARY_WIDTH = 900 ci-dessus). SP-36 puis SP-37 ont depuis fermé
+// les deux défauts pré-existants et sans rapport de l'écran Cartes (cf.
+// son entrée dans SCREENS) — plus aucun écran de ce fichier ne porte de
+// wideBoundaryKnownIssue. Tâches/Paramètres n'ont jamais été concernés
+// (aucune grille TriptychLayout ne s'y rend).
 for (const screen of SCREENS) {
   test(`${screen.name} à 900 px (juste au-dessus du seuil relevé) : aucun contenu clippé`, async ({
     page,
@@ -331,4 +326,44 @@ test("700 px (bande 391-899, sous le seuil relevé) : mode étroit, pas la grill
   await expect(page.getByRole("navigation", { name: "Navigation" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Domaines" })).toHaveCount(0);
   await expect(page.getByRole("tab").first()).toBeVisible();
+});
+
+// SP-37 (docs/superpowers/specs/2026-09-04-sp37-layerspanel-colonne-browse-design.md) :
+// contrairement aux offenseurs génériques mesurés par les deux boucles
+// ci-dessus (déclenchés par le simple chargement de la page), celui-ci
+// n'apparaît qu'une fois la section "Ajouter des icônes" de
+// MapSymbologyEditor.tsx ouverte et un champ icône recalculé — d'où un test
+// dédié plutôt qu'une entrée SCREENS générique. Valeurs de domaine COURTES
+// ("A"/"B") délibérément : l'offenseur (un <input type="file"> sans classe
+// de largeur) est inconditionnel, indépendant de la longueur du texte —
+// contrairement à l'offenseur de PopupEditor.tsx (Task 1 de ce plan), pas
+// besoin d'un texte long pour le démontrer.
+test("Cartes à 900 px : la section icônes de la symbologie ne clippe pas une fois ouverte", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: WIDE_BOUNDARY_WIDTH, height: WIDE_HEIGHT });
+  await mockCore(page);
+  await page.route("**/collections/communes/aggregate", async (route) => {
+    await route.fulfill({
+      json: { categoryKey: "type_zone", rows: [{ type_zone: "A" }, { type_zone: "B" }] },
+    });
+  });
+  await page.goto("/maps/map-1");
+
+  await page.getByRole("button", { name: "Ajouter des icônes" }).click();
+  await page.getByLabel("Champ icône").fill("type_zone");
+  await page.getByRole("button", { name: "Recalculer les valeurs" }).click();
+  await expect(page.getByLabel("Ajouter une icône au tenant (PNG ou SVG)")).toBeVisible();
+
+  // Ancre le mécanisme réellement gardé par le groupe générique 900px
+  // ci-dessus pour "Cartes" (Task 1, PopupEditor.tsx) : cette ligne "Ajouter
+  // un champ" ne rend que si le popup de la fixture map-1 a
+  // value !== undefined && !advanced (PopupEditor.tsx:79-80). Sans cette
+  // assertion, un futur changement de la fixture qui viderait ou
+  // avancerait ce popup ferait toujours passer le test générique — plus
+  // rien à cliper, donc plus rien à garder — sans qu'aucun test ne le
+  // signale.
+  await expect(page.getByLabel("Nom du champ à ajouter")).toBeVisible();
+
+  await expectNoClippedContent(page);
 });

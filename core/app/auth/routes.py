@@ -115,11 +115,12 @@ def _user_json(user: User, role_slug: str) -> dict[str, Any]:
 def get_users(
     page: int = 1,
     pageSize: int = 50,
+    q: str | None = None,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     require_privilege(session, user, Privilege.ADMIN_USERS_MANAGE.value)
-    users, total = list_users(session, tenant_id=user.tenant_id, page=page, page_size=pageSize)
+    users, total = list_users(session, tenant_id=user.tenant_id, page=page, page_size=pageSize, q=q)
     result = []
     for u in users:
         role = get_role(session, tenant_id=user.tenant_id, role_id=u.role_id)

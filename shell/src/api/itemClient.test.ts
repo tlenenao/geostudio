@@ -3414,3 +3414,44 @@ test("listRoles/createRole/updateRole/deleteRole round-trip", async () => {
   expect(updated.name).toBe("Support+");
   await expect(client.deleteRole("r1")).resolves.toBeUndefined();
 });
+
+test("listUsers/updateUserRole round-trip, avec recherche et pagination dans la query string", async () => {
+  let lastUrl = "";
+  const users = [
+    { id: "u1", username: "alice", roleSlug: "admin" },
+    { id: "u2", username: "bob", roleSlug: "reader" },
+  ];
+  server.use(
+    http.get("https://core.test/users", ({ request }) => {
+      lastUrl = request.url;
+      return HttpResponse.json({ users, total: 2 });
+    }),
+    http.patch("https://core.test/users/u2", async ({ request }) => {
+      const body = (await request.json()) as { roleId: string };
+      return HttpResponse.json({ id: "u2", username: "bob", roleSlug: body.roleId });
+    }),
+  );
+  const client = makeClient();
+  const page = await client.listUsers({ page: 2, pageSize: 25, q: "ali" });
+  expect(page).toEqual({ users, total: 2 });
+  const url = new URL(lastUrl);
+  expect(url.searchParams.get("page")).toBe("2");
+  expect(url.searchParams.get("pageSize")).toBe("25");
+  expect(url.searchParams.get("q")).toBe("ali");
+
+  const updated = await client.updateUserRole("u2", "admin");
+  expect(updated).toEqual({ id: "u2", username: "bob", roleSlug: "admin" });
+});
+
+test("listUsers omet q de la query string quand il n'est pas fourni", async () => {
+  let lastUrl = "";
+  server.use(
+    http.get("https://core.test/users", ({ request }) => {
+      lastUrl = request.url;
+      return HttpResponse.json({ users: [], total: 0 });
+    }),
+  );
+  await makeClient().listUsers({ page: 1, pageSize: 50 });
+  const url = new URL(lastUrl);
+  expect(url.searchParams.has("q")).toBe(false);
+});

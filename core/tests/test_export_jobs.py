@@ -4,6 +4,7 @@ import socket
 import threading
 
 import pytest
+from sqlalchemy import select
 
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
@@ -11,6 +12,8 @@ from app.db import init_db, make_engine, make_session_factory
 from app.export import jobs as export_jobs
 from app.export import repository as export_repo
 from app.items.repository import create_item
+from app.notifications import repository as notifications_repo
+from app.notifications.models import Notification
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -403,3 +406,110 @@ def test_launch_and_navigate_real_chromium_waits_for_export_ready(tmp_path, chro
             page._geostudio_playwright.stop()
     finally:
         server.shutdown()
+
+
+def test_success_writes_a_notification_for_the_requester(db_session, monkeypatch):
+    session, tenant, user, item = db_session
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
+    session.commit()
+    monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url: _FakePage())
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
+
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+
+    notification = session.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+    assert notification is not None
+    assert notification.recipient_user_id == user.id
+    assert notification.kind == "export"
+    assert notification.status == "success"
+    assert notification.item_resource_type == "map"
+    assert notification.item_title == "Carte test"
+
+
+def test_failure_writes_a_notification(db_session, monkeypatch):
+    session, tenant, user, item = db_session
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
+    session.commit()
+
+    def _boom(url):
+        raise RuntimeError("navigation timeout")
+
+    monkeypatch.setattr(export_jobs, "_launch_and_navigate", _boom)
+
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+
+    notification = session.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+    assert notification is not None
+    assert notification.status == "failure"
+    assert "navigation timeout" in notification.error_message
+    # Revue finale SP-39 (I3) : resource_type vaut None dans la branche
+    # d'échec (config non chargé), mais l'item existe toujours — la
+    # notification doit rester cliquable (repli sur item.resourceType),
+    # pas la seule des 5 sortes de notification jamais cliquable.
+    assert notification.item_resource_type == "map"
+
+
+def test_report_triggered_export_does_not_write_an_export_notification(db_session, monkeypatch):
+    """job.page_id renseigné == rendu interne au sweep de rapports — la
+    notification sera écrite comme kind="report" par _notify_pending_reports
+    (Tâche 8), jamais ici (sinon double notification pour le même événement,
+    cf. spec §3.1)."""
+    session, tenant, user, item = db_session
+    job = export_repo.create_job(
+        session,
+        tenant_id=tenant.id,
+        item_id=item.id,
+        user_id=user.id,
+        format="pdf",
+        page_id="page-1",
+    )
+    session.commit()
+    monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url: _FakePage())
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
+
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+
+    notification = session.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+    assert notification is None
+
+
+def test_notification_write_failure_does_not_affect_job_status(db_session, monkeypatch):
+    """I2 (revue finale SP-39) : une erreur dans l'écriture de la
+    notification ne doit jamais affecter le statut du job lui-même. Boom
+    réel (viole une contrainte NOT NULL, SAWarning-as-error sous pytest ou
+    IntegrityError hors pytest) plutôt qu'une exception Python qui ne
+    toucherait jamais la session — cf. test_report_jobs.py pour la même
+    falsification."""
+    session, tenant, user, item = db_session
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
+    session.commit()
+    monkeypatch.setattr(export_jobs, "_launch_and_navigate", lambda url: _FakePage())
+    monkeypatch.setattr(export_jobs, "s3_client_from_env", lambda: _FakeUploadS3Client())
+
+    def _boom(session, **kwargs):
+        session.add(
+            Notification(
+                tenant_id=tenant.id,
+                recipient_user_id=user.id,
+                kind="x",
+                status="failure",
+                item_title="x",
+            )
+        )
+        session.flush()
+
+    monkeypatch.setattr(notifications_repo, "create_notification", _boom)
+
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+
+    session.expire_all()  # cf. test_render_export_task_marks_done_on_success pour la raison
+    fetched = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
+    assert fetched.status == "done"
+    notification = session.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
+    assert notification is None

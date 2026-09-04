@@ -1038,7 +1038,7 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   `useNarrowViewport.ts` + `shell/e2e/triptych-narrow.spec.ts`) de deux
   défauts pré-existants et sans rapport sur l'écran Cartes (colonne
   `browse` trop étroite pour `LayersPanel` ; `<span>` de titre
-  `LayersPanel` à largeur nulle — cf. lot **Carte** ci-dessous) : ce test
+  `LayersPanel` à largeur nulle — cf. `### Livré`/SP-36 et SP-37) : ce test
   reste seul `test.skip()` de `triptych-narrow.spec.ts`. Un commentaire
   devenu stale dans
   `shell/e2e/item-detail-panels.spec.ts` (deux occurrences citant encore
@@ -1335,6 +1335,241 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   dépendance d'ordre sur le stub `matchMedia` de ce fichier, sans
   `vi.unstubAllGlobals()`, était déjà documentée comme risque latent —
   cf. entrée SP-30l). **Ready to merge.**
+- **SP-37 — LayersPanel, colonne browse à 900px** (4 tâches + vérification
+  finale, spec
+  `docs/superpowers/specs/2026-09-04-sp37-layerspanel-colonne-browse-design.md`,
+  plan
+  `docs/superpowers/plans/2026-09-04-sp37-layerspanel-colonne-browse.md` —
+  ferme le dernier mécanisme ouvert du lot **Carte** : la colonne `browse`
+  de `TriptychLayout.tsx` qui clippait le contenu de `LayersPanel` à
+  900px, tracké depuis SP-28, mesuré par SP-36/Task 3) : deux offenseurs
+  réels trouvés et corrigés, dont un dont l'hypothèse initiale de la spec
+  s'est révélée fausse — vérifiée avant d'être écrite dans le plan, pas
+  après coup. Le premier offenseur, `PopupEditor.tsx:160` (la ligne
+  d'ajout de champ), corrigé par `flex-wrap` — même mécanisme que SP-36.
+  Pour le second, l'hypothèse initiale de la spec visait
+  `MapSymbologyEditor.tsx:575` (la ligne valeur d'icône `span`+`button`) :
+  testée pendant l'écriture de la spec, elle ne reproduisait pas (son
+  texte passe à la ligne, ne force aucune largeur). Le vrai second
+  offenseur, trouvé à sa place : `MapSymbologyEditor.tsx:695`, un
+  `<input type="file">` d'upload d'icône sans aucune classe de largeur —
+  mécanisme distinct, pas un défaut de flex-wrap mais un plancher de
+  largeur de contrôle natif ; `min-w-0` seul testé et jugé insuffisant,
+  `w-full` requis. Fix intégré au passage, à la demande de Tanguy : les
+  deux `border-t` restants non tokenisés de `LayerPicker.tsx` (dette
+  extraite de SP-30c/SP-34) s'écrivent désormais `border-t border-rule`.
+  `triptych-narrow.spec.ts` (Task 4, écran Cartes) porte désormais le
+  commentaire suivant, mot pour mot :
+  « SP-36 a fermé le mécanisme (b) (titre de couche à largeur nulle).
+  SP-37 (docs/superpowers/specs/2026-09-04-sp37-layerspanel-colonne-browse-design.md)
+  ferme le mécanisme (a) restant (colonne browse trop étroite pour le
+  contenu de LayersPanel) : deux offenseurs distincts trouvés et
+  corrigés — la ligne d'ajout de champ de PopupEditor.tsx (flex-wrap
+  manquant) et le champ de fichier d'upload d'icône de
+  MapSymbologyEditor.tsx (aucune classe de largeur). Ré-mesuré
+  empiriquement après les deux correctifs : plus aucun offenseur, ni à
+  390px ni à 900px. Le lot "Carte" est clos (CLAUDE.md). » Aucun
+  changement sous `core/` (`git diff --stat` scopé aux commits de ce
+  plan vide ; le seul diff `core/` relevé par la commande littérale du
+  plan sur `main...HEAD` est un commit `core/uv.lock` antérieur à
+  l'ouverture de ce plan, sans rapport). E2E 143 tests/138 passed/5
+  skipped/0 failed → **144 tests/140 passed/4 skipped/0 failed** (le
+  skip Cartes à 900px retiré par Task 4, plus le nouveau test permanent
+  de Task 2 — exactement l'arithmétique prédite par le plan, confirmée
+  et non simplement recopiée). Vitest shell **inchangé** (221
+  fichiers/1848 tests — un premier run complet a de nouveau montré le
+  même échec isolé et déjà documenté sur `MapEditorPage.test.tsx`,
+  reconfirmé flaky par ré-exécution isolée puis complète, 0 échec les
+  deux fois). Couverture shell **90,51 %** (seuil 88) — identique à la
+  référence SP-33, aucune régression. Défaut de texte de plan trouvé et
+  corrigé, pas un échec : la Step 4 du texte de Task 4 prédisait que le
+  run complet montrerait « tous les tests passent sauf le skip Catalogue
+  pré-existant » — prédiction périmée, le skip Catalogue avait déjà été
+  fermé par SP-33 ; le seul skip réel du fichier avant Task 4 était
+  Cartes lui-même (celui que cette tâche retire) — le résultat
+  réellement observé était donc 0 skip, strictement meilleur que la
+  prédiction du plan, pas un échec. **Ready to merge.**
+- **SP-38 — page d'administration des utilisateurs** (4 tâches + vérification
+  finale, spec `docs/superpowers/specs/2026-09-04-sp38-admin-utilisateurs-design.md`,
+  plan `docs/superpowers/plans/2026-09-04-sp38-admin-utilisateurs.md` — ferme
+  le chantier 4.21 de la vague 4
+  (`docs/vision/2026-08-20-revue-projet-et-plan-daction.md`) : le cœur avait
+  déjà `GET`/`PATCH /users` (livrés et testés par SP-31, sans que son entrée
+  CLAUDE.md le documente comme tel) ; seule l'UI manquait. Unique ajout côté
+  cœur : le paramètre de recherche `q` sur `GET /users`/`list_users()`,
+  nécessaire pour que la recherche fonctionne à n'importe quelle échelle de
+  tenant — un filtrage côté client sur une seule page de résultats paginés
+  n'aurait cherché que dans la page déjà chargée. Côté shell :
+  `UserSummary`/`client.listUsers`/`client.updateUserRole` sur `ItemClient`
+  (+ `useUsers`/`useUpdateUserRole`), puis `UsersAdminPage` (`/admin/users`,
+  `RequirePrivilege privilege="admin.users.manage"`) — sélecteur de rôle
+  natif inline par ligne (erreur générique par ligne sur échec, `rowError`),
+  recherche, pagination Précédent/Suivant, panneau d'aide anti-lockout
+  statique, patron `TriptychLayout` identique à `RolesAdminPage` — découverte
+  depuis `AdminExtensionsPage`. Aucun nouveau spec E2E (chantier UI de faible
+  risque, déjà couvert par les tests d'intégration cœur en `TestClient` et
+  les tests shell mockés MSW). Suite cœur **2093 passed / 5 skipped / 0
+  failed** (`CORE_TEST_DATABASE_URL` pointé vers le conteneur `postgis-test`
+  local, port 5433 — sans lui, 168 tests postgis/qgis skippent silencieusement
+  au lieu des 5 skips qgis réels ; le chiffre de baseline du plan, 1899
+  passed/3 skipped, s'est révélé lui-même périmé/inexact à la vérification —
+  le diff réel depuis le commit d'ouverture du plan ne touche que
+  `core/app/auth/routes.py`, `core/app/users/repository.py`,
+  `core/openapi.json` et un seul fichier de test [+26 lignes, Task 1] :
+  aucune régression, aucune activité concurrente détectée). Vitest shell
+  **222 fichiers/1858 tests, 0 échec**, couverture 90,51 % (seuil 88,
+  identique à la référence SP-33/34/36/37). `npm run build` propre. E2E
+  **144 tests/140 passed/4 skipped/0 failed** — inchangé vs la référence
+  SP-37, confirmé via `test-results/.last-run.json` (`status: "passed"`,
+  `failedTests: []`), pas la seule fin de la sortie du reporter `list`.
+  Contrôle manuel de bout en bout (Step 5, recommandé non bloquant) **non
+  exécuté** : aucune stack `docker compose up -d` disponible dans cet
+  environnement, non démarrée spécialement pour ce plan (décision actée par
+  le brief lui-même). **Ready to merge.**
+  **Revue finale de branche (opus) : 2 Important + 1 lot de Minor groupés,
+  tous fermés et re-vérifiés.** (1) La route `/admin/users` n'admet que le
+  privilège `admin.users.manage`, mais `UsersAdminPage` dépend aussi de
+  `GET /roles` (gardé côté cœur par le privilège **distinct**
+  `admin.roles.manage`) pour peupler chaque sélecteur de rôle — un rôle sur
+  mesure porteur du premier privilège sans le second obtenait un
+  `usersQuery` en succès et un `rolesQuery` en 403 silencieux : le garde de
+  rendu `{usersQuery.data && rolesQuery.data && (<table>…)}` ne produisait
+  alors ni table ni message, une page blanche sans explication. Corrigé par
+  une alerte dédiée (`role="alert"`, même style que celle de
+  `usersQuery.isError`) qui nomme explicitement les deux privilèges en jeu.
+  (2) `useUpdateUserRole` n'invalidait que `["users"]` ; rien n'empêche un
+  admin de changer son propre rôle depuis cette page (seule garde serveur :
+  anti-lockout sur le dernier titulaire des privilèges sensibles, pas une
+  interdiction de l'auto-rétrogradation), auquel cas `useMe()` (`["me"]`)
+  continuait de servir l'ancien jeu de privilèges en cache — nav, domaines
+  et `RequirePrivilege` restaient faux dans tout le shell jusqu'à un
+  rechargement complet. Corrigé par l'ajout d'une seconde invalidation
+  `["me"]` dans le même `onSuccess`. Lot de Minor groupé, à la recommandation
+  du reviewer : `rowError` était effacé sans condition en tête de
+  `handleRoleChange`, donc changer le rôle de la ligne B faisait disparaître
+  un message d'erreur encore valide sur la ligne A — scopé pour ne
+  s'effacer que si l'erreur affichée appartient à la ligne en cours de
+  modification ; l'indicateur `pending`/`disabled` par ligne dépendait de
+  `updateUserRole.isPending`/`variables?.id`, un seul objet de mutation
+  partagé dont `variables` ne survit que pour le dernier appel invoqué —
+  remplacé par un état local `pendingUserId`, posé avant `mutateAsync` et
+  effacé en `finally` — correct pour un changement à la fois ; avec deux
+  lignes en vol simultanément, le dernier posé gagne (état scalaire, limite
+  assumée, non testée) ; `rowError`
+  survivait un changement de page ou de recherche sans lien visible avec ce
+  qui s'affichait — effacé désormais aux trois points d'entrée (recherche,
+  Précédent, Suivant). Deux nouveaux tests ajoutés à
+  `UsersAdminPage.test.tsx` pour les deux branches d'erreur (échec `/users`,
+  échec `/roles` — la seconde vérifie explicitement l'absence de
+  `<table>`) : suite passée de 7 à **9 tests, tous verts**
+  (`npx vitest run src/pages/UsersAdminPage.test.tsx`). `npx tsc --noEmit`
+  propre. Suite shell complète relancée (piège n°6) : **222 fichiers/1860
+  tests, 0 échec** — aucune régression sur `hooks.test.ts` ni aucun autre
+  consommateur de `useUpdateUserRole`. Suivis non bloquants documentés,
+  non corrigés dans cette passe : pas d'état vide explicite sur une
+  recherche à zéro résultat ; le lien de découverte depuis
+  `AdminExtensionsPage` est gardé sur `admin.extensions.manage`, pas sur
+  `admin.users.manage` lui-même — un rôle sur mesure porteur du seul
+  privilège que cette page nomme dans sa propre garde de route ne peut pas
+  la découvrir depuis le hub, la même classe de défaut « livré mais
+  inatteignable » que ce SP existe pour combler, à reprendre dans une
+  future session ; recherche sans anti-rebond à chaque frappe, dette de
+  famille partagée avec le patron déjà existant de `CatalogPage`, pas
+  nouvelle ici ; collision possible d'`aria-label` si deux utilisateurs
+  partagent le même nom d'utilisateur. **Ready to merge.**
+
+- **SP-39 — notifications in-app** (12 tâches, spec
+  `docs/superpowers/specs/2026-09-04-sp39-notifications-in-app-design.md`,
+  plan `docs/superpowers/plans/2026-09-04-sp39-notifications-in-app.md` —
+  ferme le chantier 4.19 de la vague 4
+  (`docs/vision/2026-08-20-revue-projet-et-plan-daction.md`, document non
+  modifié — même règle que SP-38 §2.7/§3.3) : un run de pipeline (ou tout
+  autre job des 4 autres familles) en échec est désormais signalé dans une
+  cloche persistante du shell même si l'utilisateur a quitté le panneau de
+  suivi. Nouveau domaine `core/app/notifications/` (modèle, migration 0031,
+  dépôt, 6 routes self-service `/notifications*` **inconditionnelles**, sans
+  flag de capacité — vérifié genuinely unconditional contre le fichier réel,
+  pas seulement le diff) écrit en best-effort par les **5** tâches
+  procrastinate existantes (ingestion, pipeline, export, export d'app,
+  rapport), chacune dans un bloc `try/except` séparé de celui qui committe
+  le statut du job (`app/db.py::request_scoped_session` fait rollback de
+  tout le bloc `with` sur exception — violer cette séparation aurait
+  silencieusement annulé un statut de job déjà écrit). Garde
+  anti-double-notification sur `export/jobs.py` : aucune notification
+  `kind="export"` quand `job.page_id is not None` (rendu interne au sweep
+  de rapports, notifié `kind="report"` à sa place). Côté shell :
+  `NotificationBell` dans `TopBar` (badge masqué à zéro, popover, sélecteur
+  de préférence `all`/`failures_only`/`none` persisté par utilisateur,
+  clic sur une notification avec item → `useOpenItem` + marquage lu ; sans
+  item → non cliquable), sondage `refetchInterval: 45_000` via React Query
+  (pas le patron de boucle manuelle plafonnée des jobs individuels — forme
+  de problème différente, sondage indéfini monté une fois pour toute la
+  session). E2E 144/4/0 → **inchangé** (aucun nouveau spec E2E, décision
+  explicite de la spec §5.3). Vitest shell 222→**223 fichiers, 1865
+  tests**, 0 échec, couverture 90,32 % (seuil 88). Suite cœur
+  **2120 passed / 5 skipped / 0 failed** (mesuré avec un conteneur
+  `postgis-test` réel, driver `+psycopg` — pas `+psycopg2`, dont l'usage a
+  fait échouer à tort `test_cdc_consumer_postgis.py` lors d'un premier run
+  de cette clôture, corrigé en cours de vérification, sans rapport avec ce
+  plan) ; l'échec intermittent préexistant
+  `test_features_rls.py::test_scope_preserves_original_sql_error`
+  (documenté depuis SP-29a) ne s'est pas reproduit sur ce run. Migration
+  0031 testée dans les deux sens sur une base Postgres réellement non vide
+  (piège n°8) : `postgis-test` s'est révélé être un schéma construit par
+  `Base.metadata.create_all()` (aucune table `alembic_version`), donc
+  **pas** sûr d'y lancer Alembic directement — un tenant/rôles/utilisateur/
+  notification réels ont été insérés dans une base Postgres temporaire
+  séparée (`sp39_migration_test`, même conteneur, détruite après coup) pour
+  vérifier `upgrade head` → `downgrade -1` → `upgrade head` sans toucher au
+  schéma de test partagé par les autres tâches.
+  **Deux bugs `UnboundLocalError` réels trouvés sur la classe de défaut
+  « variable référencée par l'appel `_notify` de la branche d'échec,
+  jamais garantie liée si l'échec survient avant son affectation
+  normale »** — le bloc `try/except` séparé garantit le statut du job,
+  mais pas, par lui-même, que l'appel de notification ne plante pas avant
+  d'atteindre son propre `try/except` : (1) `app/ingestion/tasks.py`,
+  trouvé par la revue finale de la Tâche 4 (texte littéral du plan
+  fautif, pas une déviation de l'implémenteur), corrigé en initialisant
+  `created_by`/`collection_title` à `None` et en gardant l'appel sur
+  `created_by is not None` — fermé et re-vérifié par falsification
+  indépendante (retrait du correctif → crash reproduit) ; (2)
+  `app/pipelines/jobs.py`, cette fois trouvé et corrigé **proactivement**
+  par l'implémenteur de la Tâche 5 avant même la revue (même mécanisme,
+  `item_id`), la revue ayant ensuite retracé tout le flux de contrôle pour
+  confirmer qu'aucun chemin non lié ne subsiste. Les trois autres sites
+  d'écriture (export, export d'app, rapport) ont chacun leurs variables
+  affectées **avant** le `try` qu'elles gardent — vérifié explicitement,
+  pas supposé, aucun correctif nécessaire là. **1 Important accepté comme
+  dette non bloquante, non corrigé** (Tâche 8, plan-mandaté) : les deux
+  sites d'écriture du sweep de rapports (`_notify_pending_reports`/
+  `_record_trigger_failure`) partagent la même session/transaction que les
+  lignes run+audit qu'ils ne doivent pas affecter — à la différence du
+  patron `app/pipelines/jobs.py::_notify` (session isolée) — texte du plan
+  explicite (« malgré le commit partagé »), risque étroit et de faible
+  probabilité sous Postgres réel, mirroring un patron déjà présent
+  ailleurs dans ce même fichier ; candidat à un futur correctif transverse
+  sur les 5 sites d'écriture, pas traité ici. **Un vrai écart spec/schéma
+  trouvé et correctement contourné** (Tâche 8) : la spec SP-39 affirme que
+  `payload.channels` « peut être vide », mais
+  `ReportSchedulePayload._require_at_least_one_channel` l'interdit
+  réellement (contrainte délibérément testée) — le scénario littéral du
+  brief était donc irréalisable via l'API de persistance réelle ;
+  contourné par un test qui monkeypatche `get_config_by_item` pour prouver
+  l'invariant de code sans toucher à la validation produit (changer le
+  validateur serait une vraie décision produit, hors périmètre de cette
+  tâche). Revues par tâche systématiques (11 tâches de code, 1 tâche
+  mécanique de régénération OpenAPI/TS faite directement) : **0 Critique
+  sur l'ensemble du plan**, 2 Important trouvés et fermés (les deux
+  `UnboundLocalError` ci-dessus), 1 Important accepté comme dette
+  documentée (session partagée du sweep de rapports), une vingtaine de
+  Minor documentés par tâche (recette de contrôle non uniformisée entre
+  tâches sœurs, `aria-label` partagé entre 3 éléments du popover de
+  notifications une fois ouvert — à corriger dans une future tâche —,
+  tests de limite de pagination absents, etc.). Revue finale de branche
+  **non lancée séparément** dans ce plan : la vérification finale (Tâche
+  12, ci-dessus) a servi de filet de clôture, conformément à la
+  granularité déjà pratiquée sur SP-38 pour un chantier de risque
+  comparable. **Ready to merge.**
 
 ### Conventions tranchées (2026-09-01)
 
@@ -1392,13 +1627,12 @@ rétroactif en masse :
   la colonne centrale de `TriptychLayout.tsx` sur 6 des 8 écrans de
   référence). Les huit critères de sortie du §7 sont désormais tous acquis
   (le 8e, « aucun écran ne clippe au-dessus du seuil relevé », vérifié par
-  `shell/e2e/triptych-narrow.spec.ts` à 900px sur les 5 écrans qui rendent
-  réellement la grille et la font passer — Cartes reste en `test.skip()`
-  pour un défaut pré-existant et sans rapport avec ce défaut de layout
-  (mécanisme (b), le titre de couche à largeur nulle, résolu par SP-36 —
-  seul (a), la colonne `browse` trop étroite pour `LayersPanel`, subsiste),
-  Tâches/Paramètres ne rendent aucune grille à vérifier (`<EmptyState>`
-  seul), cf. `### Livré`/SP-33 et le lot **Carte** ci-dessous). Reste, par
+  `shell/e2e/triptych-narrow.spec.ts` à 900px sur les 6 écrans qui rendent
+  réellement la grille et la font passer — Cartes incluse depuis SP-37, qui
+  a retiré son `test.skip()` (les deux mécanismes du lot « Carte » sont
+  clos : (b) par SP-36, (a) par SP-37) —, Tâches/Paramètres ne rendent
+  aucune grille à vérifier (`<EmptyState>` seul), cf. `### Livré`/SP-33,
+  SP-36 et SP-37). Reste, par
   ailleurs, hors traitement par aucun plan
   SP-30 à ce jour : les
   permissions de collection et le profil « Lecteur » qui restent à
@@ -1666,26 +1900,6 @@ rétroactif en masse :
   nuages de points). Non planifié.
 - Reste **SP-20** : garde d'egress sur l'appel LLM sortant (vague 6.2) — 4e
   surface sortante, les trois autres en ont une.
-- Reste lot **Carte** (bug UI, pas une fonctionnalité manquante) — **la
-  moitié « titre à largeur nulle » est résolue, cf. `### Livré`/SP-36** :
-  dans `LayersPanel.tsx`, le `<span>` de titre d'une couche
-  `vector`/`feature` pouvait avoir une largeur de layout nulle (mécanisme
-  (b), interaction flex `flex-1 truncate` + sibling `basis-full` toujours
-  déployé pour ces deux kinds) — trouvé par SP-28/Task 4, corrigé par
-  SP-36 (`flex-wrap` sur le `<li>`). Reste ouvert, sans autre lieu de
-  suivi que cette entrée, le second mécanisme historiquement bundlé avec
-  le premier : la colonne `browse` trop étroite pour le contenu de
-  `LayersPanel` (mécanisme (a)) — mesuré par SP-36/Task 3 : reproduit à
-  900px (grille desktop, un seul offenseur `DIV.overflow-y-auto.border-r.
-  border-rule`, scrollWidth 290 > clientWidth 249 — la colonne `browse`
-  rendant aussi étroite qu'~249px dans la bande 900-959px, juste
-  au-dessus du seuil relevé par SP-33, pas seulement son ancien maximum
-  fixe de 280px), mais ne reproduit **pas** à 390px (layout mobile en
-  onglets, où la colonne "Couches" occupe toute la largeur disponible).
-  *Éditeur de symbologie pour les couches `kind: "feature"` résolu par
-  SP-28. Jenks sur le widget carte des apps/dashboards résolu par
-  SP-27/Task 19 : le widget délègue désormais toute la compilation de
-  peinture à `MapView`, même pipeline que l'éditeur.*
 - Questions produit ouvertes (comparatif §8) : **Q2** (premiers utilisateurs
   réels — la seule qui puisse réordonner le phasage), Q10 (temps réel), Q11
   (offline).

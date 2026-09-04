@@ -333,6 +333,30 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async deleteRole(..._args: unknown[]) {
       return unsupported();
     },
+    async listUsers(..._args: unknown[]) {
+      return unsupported();
+    },
+    async updateUserRole(..._args: unknown[]) {
+      return unsupported();
+    },
+    async listNotifications(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getUnreadNotificationCount(..._args: unknown[]) {
+      return unsupported();
+    },
+    async markNotificationRead(..._args: unknown[]) {
+      return unsupported();
+    },
+    async markAllNotificationsRead(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getNotificationPreference(..._args: unknown[]) {
+      return unsupported();
+    },
+    async updateNotificationPreference(..._args: unknown[]) {
+      return unsupported();
+    },
     // getAuthToken?() et getCoreUrl?() sont optionnels sur ItemClient et
     // n'ont pas de sens sans backend réel (aucun jeton, aucune base URL de
     // cœur) : omis intentionnellement plutôt qu'implémentés pour rejeter.

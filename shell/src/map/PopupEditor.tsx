@@ -157,7 +157,7 @@ export function PopupEditor({
                 </li>
               ))}
           </ul>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <input
               aria-label="Nom du champ à ajouter"
               list={`${listId}-titre`}

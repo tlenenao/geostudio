@@ -16,11 +16,66 @@ from app.db import make_engine, make_session_factory, request_scoped_session
 from app.export import repository as export_repo
 from app.export.rendering import RenderPage, render_export
 from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
+from app.items import repository as items_repo
 from app.jobs import app
+from app.notifications import repository as notifications_repo
 
 logger = logging.getLogger(__name__)
 
 _CONTENT_TYPE = {"png": "image/png", "pdf": "application/pdf"}
+
+
+def _notify(
+    session_factory,
+    *,
+    tenant_id: str,
+    item_id: str,
+    user_id: str,
+    page_id: str | None,
+    resource_type: str | None,
+    status: str,
+    error: str | None = None,
+) -> None:
+    """Écrit la notification in-app de fin d'export — best-effort, jamais
+    bloquant : son propre bloc try/except, séparé de celui qui commite
+    mark_done/mark_error, pour qu'un échec ici ne fasse jamais rollback d'un
+    changement de statut de job déjà réussi (même patron que
+    app.ingestion.tasks._notify et app.pipelines.jobs._notify, SP-39).
+
+    Garde anti-double-notification : un job dont `page_id` est renseigné est
+    un rendu interne au sweep de rapports (app/reports/jobs.py:153) — il sera
+    notifié comme kind="report" par _notify_pending_reports (Tâche 8), jamais
+    ici (spec §3.1).
+
+    Sur le chemin d'échec, `resource_type` vaut None (le `config` qui porte
+    `.kind` n'est chargé que dans le bloc `try`, indisponible dans le
+    `except`) — repli sur `item.resourceType` (revue finale SP-39, I3) : sans
+    ça, une notification d'échec d'export était la seule des 5 sortes jamais
+    cliquable, même quand l'item existe toujours et que
+    `NotificationBell.tsx` aurait pu la rendre cliquable (elle rend un
+    `<div>` non cliquable dès que `item_resource_type` est None)."""
+    if page_id is not None:
+        return
+    try:
+        with request_scoped_session(session_factory) as session:
+            item = items_repo.get_item(session, tenant_id=tenant_id, item_id=item_id)
+            title = item.title if item is not None else item_id
+            resolved_resource_type = resource_type or (
+                item.resourceType if item is not None else None
+            )
+            notifications_repo.create_notification(
+                session,
+                tenant_id=tenant_id,
+                recipient_user_id=user_id,
+                kind="export",
+                status=status,
+                item_id=item_id,
+                item_resource_type=resolved_resource_type,
+                item_title=title,
+                error_message=error,
+            )
+    except Exception:
+        logger.exception("export job : échec de l'écriture de la notification")
 
 
 def _session_factory():
@@ -153,7 +208,26 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
         )
         with request_scoped_session(session_factory) as session:
             export_repo.mark_done(session, job_id=job_id, result_key=result_key)
+        _notify(
+            session_factory,
+            tenant_id=tenant_id,
+            item_id=item_id,
+            user_id=user_id,
+            page_id=page_id,
+            resource_type="map" if config.kind == "map" else "app",
+            status="success",
+        )
     except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("export job %s : erreur inattendue", job_id)
         with request_scoped_session(session_factory) as session:
             export_repo.mark_error(session, job_id=job_id, error=str(exc))
+        _notify(
+            session_factory,
+            tenant_id=tenant_id,
+            item_id=item_id,
+            user_id=user_id,
+            page_id=page_id,
+            resource_type=None,
+            status="failure",
+            error=str(exc),
+        )

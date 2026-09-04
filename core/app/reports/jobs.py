@@ -28,6 +28,7 @@ from app.ingestion.storage import generate_presigned_get_url
 from app.items import repository as items_repo
 from app.items.models import Item
 from app.jobs import app
+from app.notifications import repository as notifications_repo
 from app.reports import repository as reports_repo
 from app.reports.ctx import encode_analytics_context
 from app.sharing.authorization import can
@@ -70,7 +71,62 @@ def _audit_trigger_failure(session, *, tenant_id: str, item_id: str, error: str)
     )
 
 
-def _record_trigger_failure(session, *, tenant_id: str, item_id: str, error: str) -> None:
+def _notify(
+    session_factory,
+    *,
+    tenant_id: str,
+    item_id: str,
+    status: str,
+    error: str | None = None,
+) -> None:
+    """Écrit la notification in-app de rapport — best-effort, jamais bloquant,
+    dans SA PROPRE session isolée du sweep (revue finale SP-39, I1) : ce
+    helper n'est appelé qu'APRÈS que l'appelant (_record_trigger_failure,
+    _notify_pending_reports) a déjà committé son propre run+audit sur SA
+    propre session — jamais en partageant sa transaction. Avant ce correctif,
+    la même session servait aux deux : un DBAPIError réel dans
+    create_notification (son session.flush() interne) empoisonnait la
+    transaction, et le session.commit()/mark_notified qui suivait levait à
+    son tour — perdant les lignes run+audit déjà en attente ET, pour
+    _record_trigger_failure, laissant l'exception s'échapper dans la boucle
+    multi-tenant de _trigger_due_reports (elle n'attrape que ReportTriggerError
+    et Exception autour de l'appel à _record_trigger_failure lui-même, pas
+    une exception levée PAR lui) — abortant le balayage pour tous les tenants
+    restants de ce tick. Isoler l'écriture dans sa propre
+    request_scoped_session (même patron que app.pipelines.jobs._notify /
+    app.export.jobs._notify / app.appexport.jobs._notify /
+    app.ingestion.tasks._notify) rend les deux impossibles : son
+    commit/rollback est local à cette session, jamais à celle de l'appelant,
+    qui a déjà committé avant cet appel."""
+    try:
+        with request_scoped_session(session_factory) as session:
+            owner = _owner_user(session, tenant_id=tenant_id, item_id=item_id)
+            item = items_repo.get_item(session, tenant_id=tenant_id, item_id=item_id)
+            notifications_repo.create_notification(
+                session,
+                tenant_id=tenant_id,
+                recipient_user_id=owner.id,
+                kind="report",
+                status=status,
+                item_id=item_id,
+                item_resource_type="report",
+                item_title=item.title if item is not None else item_id,
+                error_message=error,
+            )
+    except Exception:
+        # Best-effort (Global Constraints) : couvre à la fois
+        # ReportTriggerError (propriétaire introuvable — item supprimé entre
+        # l'échec initial et ce point, rien à notifier, le run+audit déjà
+        # écrits par l'appelant suffisent) ET toute erreur inattendue.
+        logger.exception(
+            "rapport %s : échec de l'écriture de la notification",
+            item_id,
+        )
+
+
+def _record_trigger_failure(
+    session, *, tenant_id: str, item_id: str, error: str, session_factory
+) -> None:
     """Chemin d'échec unique du déclenchement (ReportTriggerError attendue ou
     erreur inattendue) : on annule d'abord les écritures partielles de cette
     itération (un export_jobs créé juste avant l'échec, par exemple), puis on
@@ -84,7 +140,12 @@ def _record_trigger_failure(session, *, tenant_id: str, item_id: str, error: str
     raisonnement qu'AlertRule, qui persiste toujours une évaluation
     (state="error") pour que la cadence soit respectée en échec comme en
     succès. Le run est marqué notifié immédiatement : aucun rendu n'a été mis
-    en file, il n'y a rien à notifier — l'audit report.run porte l'échec."""
+    en file, il n'y a rien à notifier — l'audit report.run porte l'échec.
+
+    La notification in-app est écrite APRÈS ce commit, via _notify (session
+    isolée, revue finale SP-39/I1) — jamais sur `session` : voir le docstring
+    de _notify pour la raison exacte (transaction empoisonnée + abort du
+    sweep multi-tenant, les deux modes de défaillance que ça évite)."""
     session.rollback()
     run = reports_repo.create_run(
         session,
@@ -95,6 +156,7 @@ def _record_trigger_failure(session, *, tenant_id: str, item_id: str, error: str
     reports_repo.mark_notified(session, run_id=run.id)
     _audit_trigger_failure(session, tenant_id=tenant_id, item_id=item_id, error=error)
     session.commit()
+    _notify(session_factory, tenant_id=tenant_id, item_id=item_id, status="failure", error=error)
 
 
 def _trigger_due_reports(session_factory) -> None:
@@ -196,7 +258,11 @@ def _trigger_due_reports(session_factory) -> None:
             except ReportTriggerError as exc:
                 logger.warning("report %s trigger failed: %s", item_id, exc)
                 _record_trigger_failure(
-                    session, tenant_id=tenant_id, item_id=item_id, error=str(exc)
+                    session,
+                    tenant_id=tenant_id,
+                    item_id=item_id,
+                    error=str(exc),
+                    session_factory=session_factory,
                 )
             except Exception as exc:
                 # Jumeau du filet large d'app.alerts.jobs : tout ce qui est
@@ -213,6 +279,7 @@ def _trigger_due_reports(session_factory) -> None:
                     tenant_id=tenant_id,
                     item_id=item_id,
                     error=f"erreur interne : {exc}",
+                    session_factory=session_factory,
                 )
         export_repo.reclaim_stuck_jobs(session)
         session.commit()
@@ -263,10 +330,10 @@ def _notify_pending_reports(session_factory) -> None:
             # s'échappait de _notify_pending_reports AVANT mark_notified :
             # list_unnotified_runs étant cross-tenant et non ordonnée, un seul
             # run cassé bloquait définitivement la notification de tous les
-            # rapports de tous les tenants, à chaque balayage — exactement la
-            # contrainte « une notification est tentée une fois par run,
-            # jamais rejouée, même en échec » que ce filet garantit désormais
-            # aussi pour le chemin d'erreur inattendue.
+            # rapports de tous les tenants, à chaque balayage — ce filet
+            # empêche l'abort du sweep, même si l'isolation de la notification
+            # (revue finale SP-39, I1) change la garantie de delivery :
+            # voir le docstring de mark_notified ci-dessous.
             try:
                 report_config = configs_repo.get_config_by_item(session, run.report_item_id)
                 if report_config is None or report_config.kind != "report":
@@ -283,6 +350,17 @@ def _notify_pending_reports(session_factory) -> None:
                 )
                 title = item.title if item is not None else run.report_item_id
                 result_url = _presigned_url_for_job(job)
+                # Session isolée du sweep (revue finale SP-39, I1) : voir le
+                # docstring de _notify — ne jamais écrire cette notification
+                # sur `session`, qui porte aussi le mark_notified/commit du
+                # `finally` ci-dessous.
+                _notify(
+                    session_factory,
+                    tenant_id=run.tenant_id,
+                    item_id=run.report_item_id,
+                    status="success" if job.status == "done" else "failure",
+                    error=job.error,
+                )
                 message = (
                     f"Rapport « {title} » : {job.status}."
                     + (f" Lien : {result_url}" if result_url else "")
@@ -354,10 +432,15 @@ def _notify_pending_reports(session_factory) -> None:
                     )
             finally:
                 # Posé après la tentative, quel que soit le résultat par canal
-                # ET quelle que soit l'erreur inattendue ci-dessus — une
-                # notification n'est jamais rejouée au tick suivant (design
-                # SP-17b §2, cf. le risque documenté "webhook cassé de façon
-                # permanente ne doit pas devenir un déni de service").
+                # ET quelle que soit l'erreur inattendue ci-dessus. L'écriture
+                # de notification in-app est désormais isolée (revue finale
+                # SP-39, I1) dans sa propre session : en cas de crash entre
+                # cette écriture et mark_notified ci-dessous, un prochain tick
+                # peut réécrire une seconde notification pour le même run —
+                # compromis accepté au profit de l'isolation de session. Les
+                # webhooks/emails (enregistrés dans l'audit sur `session`)
+                # conservent leur garantie "tentés une fois" tant que ce
+                # `finally` s'exécute (design SP-17b §2).
                 reports_repo.mark_notified(session, run_id=run.id)
                 session.commit()
 

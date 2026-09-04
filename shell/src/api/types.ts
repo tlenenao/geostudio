@@ -63,6 +63,26 @@ export type Role = {
   privileges: string[];
 };
 
+export type UserSummary = {
+  id: string;
+  username: string;
+  roleSlug: string;
+};
+
+export type NotificationSummary = {
+  id: string;
+  kind: "ingestion" | "pipeline" | "export" | "appexport" | "report";
+  status: "success" | "failure";
+  itemId: string | null;
+  itemResourceType: ResourceType | null;
+  itemTitle: string;
+  errorMessage: string | null;
+  createdAt: string;
+  readAt: string | null;
+};
+
+export type NotificationPreferenceValue = "all" | "failuresOnly" | "none";
+
 export type PrivilegeCatalogEntry = {
   privilege: string;
   domain: string;
@@ -281,6 +301,23 @@ export interface ItemClient {
   createRole(input: RoleCreateInput): Promise<Role>;
   updateRole(id: string, patch: RolePatchInput): Promise<Role>;
   deleteRole(id: string): Promise<void>;
+  listUsers(params: {
+    page: number;
+    pageSize: number;
+    q?: string;
+  }): Promise<{ users: UserSummary[]; total: number }>;
+  updateUserRole(id: string, roleId: string): Promise<UserSummary>;
+  listNotifications(params: {
+    page: number;
+    pageSize: number;
+  }): Promise<{ notifications: NotificationSummary[]; total: number }>;
+  getUnreadNotificationCount(): Promise<number>;
+  markNotificationRead(id: string): Promise<NotificationSummary>;
+  markAllNotificationsRead(): Promise<void>;
+  getNotificationPreference(): Promise<NotificationPreferenceValue>;
+  updateNotificationPreference(
+    value: NotificationPreferenceValue,
+  ): Promise<NotificationPreferenceValue>;
   getInstanceInfo(): Promise<InstanceInfo>;
   copilotTurn(
     itemId: string,

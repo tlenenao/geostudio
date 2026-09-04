@@ -46,6 +46,8 @@ import type {
   MapIconOut,
   MapLayer,
   Me,
+  NotificationSummary,
+  NotificationPreferenceValue,
   Page,
   PipelineOpsCatalog,
   PipelinePayload,
@@ -63,6 +65,7 @@ import type {
   Sharing,
   Theme,
   UpdatePatch,
+  UserSummary,
   Variable,
 } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
@@ -331,6 +334,14 @@ function buildArcgisItemsUrl(
   return qs ? `${base}?${qs}` : base;
 }
 
+function _preferenceToCore(value: NotificationPreferenceValue): string {
+  return value === "failuresOnly" ? "failures_only" : value;
+}
+
+function _preferenceFromCore(value: string): NotificationPreferenceValue {
+  return value === "failures_only" ? "failuresOnly" : (value as NotificationPreferenceValue);
+}
+
 export function createItemClient(opts: {
   coreUrl: string;
   getToken: () => string | undefined;
@@ -577,6 +588,66 @@ export function createItemClient(opts: {
 
     async deleteRole(id: string): Promise<void> {
       await request<void>("DELETE", `/roles/${id}`);
+    },
+
+    async listUsers(params: {
+      page: number;
+      pageSize: number;
+      q?: string;
+    }): Promise<{ users: UserSummary[]; total: number }> {
+      const query = new URLSearchParams({
+        page: String(params.page),
+        pageSize: String(params.pageSize),
+      });
+      if (params.q) query.set("q", params.q);
+      return request<{ users: UserSummary[]; total: number }>("GET", `/users?${query.toString()}`);
+    },
+
+    async updateUserRole(id: string, roleId: string): Promise<UserSummary> {
+      return request<UserSummary>("PATCH", `/users/${id}`, { roleId });
+    },
+
+    async listNotifications(params: {
+      page: number;
+      pageSize: number;
+    }): Promise<{ notifications: NotificationSummary[]; total: number }> {
+      const query = new URLSearchParams({
+        page: String(params.page),
+        pageSize: String(params.pageSize),
+      });
+      return request<{ notifications: NotificationSummary[]; total: number }>(
+        "GET",
+        `/notifications?${query.toString()}`,
+      );
+    },
+
+    async getUnreadNotificationCount(): Promise<number> {
+      const { count } = await request<{ count: number }>("GET", "/notifications/unread-count");
+      return count;
+    },
+
+    async markNotificationRead(id: string): Promise<NotificationSummary> {
+      return request<NotificationSummary>("POST", `/notifications/${id}/read`);
+    },
+
+    async markAllNotificationsRead(): Promise<void> {
+      await request<void>("POST", "/notifications/read-all");
+    },
+
+    async getNotificationPreference(): Promise<NotificationPreferenceValue> {
+      const { value } = await request<{ value: string }>("GET", "/notifications/preference");
+      return _preferenceFromCore(value);
+    },
+
+    async updateNotificationPreference(
+      value: NotificationPreferenceValue,
+    ): Promise<NotificationPreferenceValue> {
+      const { value: updated } = await request<{ value: string }>(
+        "PATCH",
+        "/notifications/preference",
+        { value: _preferenceToCore(value) },
+      );
+      return _preferenceFromCore(updated);
     },
 
     async getInstanceInfo(): Promise<InstanceInfo> {
