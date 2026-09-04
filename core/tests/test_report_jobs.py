@@ -15,6 +15,7 @@ from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory
 from app.export import repository as export_repo
 from app.items import repository as items_repo
+from app.notifications import repository as notifications_repo
 from app.notifications.models import Notification
 from app.reports import jobs as report_jobs
 from app.reports import repository as reports_repo
@@ -981,7 +982,11 @@ def test_trigger_failure_writes_a_failure_notification(monkeypatch):
 
     with Session() as s:
         report_jobs._record_trigger_failure(
-            s, tenant_id=tenant.id, item_id=report_id, error="bookmark not readable"
+            s,
+            tenant_id=tenant.id,
+            item_id=report_id,
+            error="bookmark not readable",
+            session_factory=Session,
         )
         s.commit()
 
@@ -993,3 +998,159 @@ def test_trigger_failure_writes_a_failure_notification(monkeypatch):
         assert notification.status == "failure"
         assert notification.item_title == "Broken report"
         assert notification.error_message == "bookmark not readable"
+
+
+def test_record_trigger_failure_survives_a_notification_write_that_poisons_its_own_session(
+    monkeypatch,
+):
+    """Revue finale SP-39 (I1, falsification + I2) : create_notification est
+    remplacé par une écriture qui viole une contrainte NOT NULL et fait
+    échouer session.flush() pour de vrai (pas un monkeypatch qui se contente
+    de lever une exception Python sans jamais toucher la session — ça ne
+    prouverait rien, cf. le vieux code qui attrapait déjà cette exception-là
+    sans jamais planter). Avant le correctif (l'écriture de notification
+    partageait `session` avec le run+audit), un DBAPIError ici empoisonnait
+    la transaction et faisait échouer le session.commit() qui suit,
+    perdant le run+audit déjà en attente. Après le correctif (session
+    isolée dans _notify), le run+audit survivent intacts, et le
+    session.commit() de l'appelant ne lève jamais."""
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        report_id = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="Broken report"
+        ).id
+        s.commit()
+        tenant_id = tenant.id
+        owner_id = owner.id
+
+    def _boom(session, **kwargs):
+        session.add(
+            Notification(
+                tenant_id=tenant_id,
+                recipient_user_id=owner_id,
+                kind="x",
+                status="failure",
+                item_title="x",
+            )
+        )  # id manquant (NOT NULL, pas de générateur) -> IntegrityError réel au flush()
+        session.flush()
+
+    monkeypatch.setattr(notifications_repo, "create_notification", _boom)
+
+    with Session() as s:
+        report_jobs._record_trigger_failure(
+            s,
+            tenant_id=tenant_id,
+            item_id=report_id,
+            error="bookmark not readable",
+            session_factory=Session,
+        )
+        s.commit()  # ne doit jamais lever : jamais touchée par _boom (session isolée)
+
+    with Session() as s:
+        run = reports_repo.get_latest_run(s, tenant_id=tenant_id, report_item_id=report_id)
+        assert run is not None
+        assert run.export_job_id is None
+        assert run.notified_at is not None
+        rows = (
+            s.execute(
+                select(AuditLog).where(
+                    AuditLog.action == "report.run", AuditLog.object_id == report_id
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].payload["success"] is False
+        # La notification elle-même n'a jamais été écrite (le boom l'en a
+        # empêchée) — best-effort, mais le run+audit ci-dessus a bien survécu.
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant_id))
+        assert notification is None
+
+
+def test_notify_pending_reports_survives_a_notification_write_that_poisons_its_own_session(
+    monkeypatch,
+):
+    """Second site du même I1 : _notify_pending_reports partageait aussi sa
+    session entre l'écriture de notification et le mark_notified/commit du
+    `finally`. Même falsification que le test ci-dessus, appliquée à ce
+    second appelant."""
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        app_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard"
+        )
+        report_id = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="Weekly report"
+        ).id
+        config = BuilderConfig.model_validate(
+            {
+                "kind": "report",
+                "report": {
+                    "bookmarkItemId": "bookmark-x",
+                    "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+                    "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+                },
+            }
+        )
+        configs_repo.create_config(s, config, item_id=report_id, tenant_id=tenant.id)
+        job = export_repo.create_job(
+            s, tenant_id=tenant.id, item_id=app_item.id, user_id=owner.id, format="pdf"
+        )
+        export_repo.mark_done(s, job_id=job.id, result_key="renders/job-3.pdf")
+        run = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id
+        )
+        s.commit()
+        tenant_id = tenant.id
+        owner_id = owner.id
+        run_id = run.id
+
+    def _boom(session, **kwargs):
+        session.add(
+            Notification(
+                tenant_id=tenant_id,
+                recipient_user_id=owner_id,
+                kind="x",
+                status="failure",
+                item_title="x",
+            )
+        )
+        session.flush()
+
+    monkeypatch.setattr(notifications_repo, "create_notification", _boom)
+    monkeypatch.setattr(report_jobs, "send_webhook", lambda channel, *, payload: None)
+    monkeypatch.setattr(
+        report_jobs, "_presigned_url_for_job", lambda job: "https://s3.test/renders/job-3.pdf"
+    )
+
+    report_jobs._notify_pending_reports(Session)  # ne doit jamais lever
+
+    with Session() as s:
+        fetched = reports_repo.get_run(s, tenant_id=tenant_id, run_id=run_id)
+        # mark_notified/commit sur la session du sweep ont bien réussi : la
+        # session isolée de _notify n'a jamais pu les empoisonner.
+        assert fetched.notified_at is not None
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant_id))
+        assert notification is None
