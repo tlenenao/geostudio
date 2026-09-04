@@ -63,6 +63,12 @@ export type Role = {
   privileges: string[];
 };
 
+export type UserSummary = {
+  id: string;
+  username: string;
+  roleSlug: string;
+};
+
 export type PrivilegeCatalogEntry = {
   privilege: string;
   domain: string;
@@ -281,6 +287,12 @@ export interface ItemClient {
   createRole(input: RoleCreateInput): Promise<Role>;
   updateRole(id: string, patch: RolePatchInput): Promise<Role>;
   deleteRole(id: string): Promise<void>;
+  listUsers(params: {
+    page: number;
+    pageSize: number;
+    q?: string;
+  }): Promise<{ users: UserSummary[]; total: number }>;
+  updateUserRole(id: string, roleId: string): Promise<UserSummary>;
   getInstanceInfo(): Promise<InstanceInfo>;
   copilotTurn(
     itemId: string,

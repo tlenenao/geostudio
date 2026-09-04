@@ -97,6 +97,26 @@ export function useDeleteRole() {
   });
 }
 
+export function useUsers(params: { page: number; pageSize: number; q?: string }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["users", params],
+    queryFn: () => client.listUsers(params),
+  });
+}
+
+export function useUpdateUserRole() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; roleId: string }) =>
+      client.updateUserRole(vars.id, vars.roleId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+}
+
 export function useInstanceInfo() {
   const client = useItemClientInternal();
   return useQuery({
