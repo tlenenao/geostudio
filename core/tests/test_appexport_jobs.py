@@ -229,9 +229,10 @@ def test_disabled_flag_writes_no_notification(monkeypatch, tmp_path):
 def test_notification_write_failure_does_not_affect_job_status(monkeypatch, tmp_path):
     """I2 (revue finale SP-39) : une erreur dans l'écriture de la
     notification ne doit jamais affecter le statut du job lui-même. Boom
-    réel (viole une contrainte NOT NULL, fait échouer session.flush() pour
-    de vrai) plutôt qu'une exception Python qui ne toucherait jamais la
-    session — cf. test_report_jobs.py pour la même falsification."""
+    réel (viole une contrainte NOT NULL, SAWarning-as-error sous pytest ou
+    IntegrityError hors pytest) plutôt qu'une exception Python qui ne
+    toucherait jamais la session — cf. test_report_jobs.py pour la même
+    falsification."""
     Session, tenant_id, job_id = _setup(monkeypatch, tmp_path)
     monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
     monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)

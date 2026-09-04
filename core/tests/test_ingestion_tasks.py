@@ -201,9 +201,10 @@ def test_failure_writes_a_notification_with_no_item(env, monkeypatch):
 def test_notification_write_failure_does_not_affect_job_status(env, monkeypatch):
     """I2 (revue finale SP-39) : une erreur dans l'écriture de la
     notification ne doit jamais affecter le statut du job lui-même. Boom
-    réel (viole une contrainte NOT NULL, fait échouer session.flush() pour
-    de vrai) plutôt qu'une exception Python qui ne toucherait jamais la
-    session — cf. test_report_jobs.py pour la même falsification."""
+    réel (viole une contrainte NOT NULL, SAWarning-as-error sous pytest ou
+    IntegrityError hors pytest) plutôt qu'une exception Python qui ne
+    toucherait jamais la session — cf. test_report_jobs.py pour la même
+    falsification."""
     app, Session, tenant, user = env
     geojson = (
         b'{"type":"FeatureCollection","features":[{"type":"Feature",'
