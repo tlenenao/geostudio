@@ -27,6 +27,9 @@ export function AdminExtensionsPage() {
               <Link to="/admin/roles" className="text-accent hover:underline">
                 Rôles et privilèges →
               </Link>
+              <Link to="/admin/users" className="text-accent hover:underline">
+                Utilisateurs →
+              </Link>
             </Panel>
           ),
         }}
