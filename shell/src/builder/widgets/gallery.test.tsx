@@ -42,6 +42,8 @@ const publishedItem: Item = {
   isPublished: true,
   keywords: ["risques"],
   permissions: OWNER_PERMISSIONS,
+  license: "",
+  language: "fr",
 };
 
 test("gallery calls listPublicItems with the author's fixed filter props", () => {
