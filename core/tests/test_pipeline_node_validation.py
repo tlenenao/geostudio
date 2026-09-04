@@ -67,14 +67,19 @@ def env(monkeypatch):
         # created_at/updated_at/attachment_fields n'ont pas de défaut SQL
         # (seulement Python-side via l'ORM, cf. app.collections.models._now
         # et attachment_fields=list — SP-40) : un INSERT brut doit les
-        # fournir explicitement, sans quoi SQLite lève NOT NULL.
+        # fournir explicitement, sans quoi SQLite lève NOT NULL. Même chose
+        # pour license/license_uri/producer/contact/update_frequency/
+        # lineage/language/version (SP-41, défauts Python-side uniquement,
+        # cf. app.collections.models.Collection).
         s.execute(
             text(
                 "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
                 "description, pk_column, geometry_column, is_public, editable, "
-                "attachment_fields, created_at, updated_at) "
+                "attachment_fields, license, license_uri, producer, contact, "
+                "update_frequency, lineage, language, version, created_at, updated_at) "
                 "VALUES ('readable', :t, :o, 'readable', 'Readable', '', 'id', NULL, 1, 1, "
-                "'[]', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                "'[]', '', '', '', '', '', '', 'fr', '', "
+                "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
             ),
             {"t": tenant.id, "o": owner.id},
         )
@@ -82,9 +87,11 @@ def env(monkeypatch):
             text(
                 "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
                 "description, pk_column, geometry_column, is_public, editable, "
-                "attachment_fields, created_at, updated_at) "
+                "attachment_fields, license, license_uri, producer, contact, "
+                "update_frequency, lineage, language, version, created_at, updated_at) "
                 "VALUES ('writable', :t, :o, 'writable', 'Writable', '', 'id', NULL, 0, 1, "
-                "'[]', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                "'[]', '', '', '', '', '', '', 'fr', '', "
+                "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
             ),
             {"t": tenant.id, "o": owner.id},
         )
@@ -92,9 +99,11 @@ def env(monkeypatch):
             text(
                 "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
                 "description, pk_column, geometry_column, is_public, editable, "
-                "attachment_fields, created_at, updated_at) "
+                "attachment_fields, license, license_uri, producer, contact, "
+                "update_frequency, lineage, language, version, created_at, updated_at) "
                 "VALUES ('locked', :t, :o, 'locked', 'Locked', '', 'id', NULL, 0, 0, "
-                "'[]', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                "'[]', '', '', '', '', '', '', 'fr', '', "
+                "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
             ),
             {"t": tenant.id, "o": other.id},
         )
