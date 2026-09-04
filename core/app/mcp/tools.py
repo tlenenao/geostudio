@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import json
 from typing import Literal
 
 import httpx
@@ -14,6 +15,7 @@ from app.analytics.aggregate import (
     _measure_label,
     run_collection_aggregate,
 )
+from app.attachments import repository as attachments_repo
 from app.audit.writer import write_audit
 from app.auth.dependency import admin_subs, is_etl_enabled, is_read_only_mode
 from app.collections import repository as collections_repo
@@ -229,6 +231,50 @@ def register_tools(server: FastMCP, session_factory) -> None:
         with request_scoped_session(session_factory) as session:
             user = _resolve_actor(session, access_token)
             return {"username": user.username, "tenantId": user.tenant_id}
+
+    @server.tool(structured_output=False)
+    async def list_attachments(
+        ctx: Context, collectionId: str, fid: str, fieldKey: str | None = None
+    ) -> str:
+        """List the metadata of files attached to one entity of a collection
+        (chantier 4.12) — read-only, never returns file bytes: fileUrl points
+        to the REST proxy-read the caller fetches separately, same pattern as
+        ItemRead.thumbnailUrl. Deliberately absent from the copilot's
+        ALLOWED_MCP_TOOL_NAMES (app/copilot/tools_allowlist.py).
+
+        Returns a JSON-encoded array (rather than a typed list[dict]) because
+        FastMCP's unstructured-content conversion fragments a returned Python
+        list into one content block per element instead of one block holding
+        the whole array — verified empirically against mcp==1.29.1, not
+        assumed. structured_output=False avoids a second, incompatible
+        failure mode: the structured-output path would otherwise try to
+        validate this pre-serialized string against a list[dict] schema."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = _resolve_actor(session, access_token)
+            _require_collection_read(session, user=user, collection_id=collectionId)
+            rows = attachments_repo.list_attachments(
+                session,
+                tenant_id=user.tenant_id,
+                collection_id=collectionId,
+                fid=fid,
+                field_key=fieldKey,
+            )
+            return json.dumps(
+                [
+                    {
+                        "id": a.id,
+                        "fieldKey": a.field_key,
+                        "filename": a.filename,
+                        "contentType": a.content_type,
+                        "byteSize": a.byte_size,
+                        "fileUrl": (
+                            f"/collections/{collectionId}/items/{fid}/attachments/{a.id}/file"
+                        ),
+                    }
+                    for a in rows
+                ]
+            )
 
     @server.tool()
     async def list_items(
