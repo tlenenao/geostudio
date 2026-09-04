@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Link, useSearchParams } from "react-router-dom";
-import { useItem, useUpdateItem, useUploadThumbnail } from "../api/hooks";
+import { useItem, useMetadataCatalog, useUpdateItem, useUploadThumbnail } from "../api/hooks";
 import { RESOURCE_TYPE_LABELS } from "../api/resourceTypes";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
@@ -43,6 +43,7 @@ export function ItemDetailPage({
 
   const update = useUpdateItem(pk);
   const thumbnail = useUploadThumbnail(pk);
+  const catalogQuery = useMetadataCatalog();
 
   if (query.isLoading) return <p role="status">Chargement…</p>;
   if (query.isError || !query.data)
@@ -54,7 +55,13 @@ export function ItemDetailPage({
 
   const item = query.data;
 
-  async function save(v: { title: string; abstract: string; keywords: string[] }) {
+  async function save(v: {
+    title: string;
+    abstract: string;
+    keywords: string[];
+    license: string;
+    language: string;
+  }) {
     try {
       await update.mutateAsync(v);
       closePanel();
@@ -130,7 +137,15 @@ export function ItemDetailPage({
                   {hasPermission(item, "write") ? (
                     <>
                       <MetadataForm
-                        initial={{ title: item.title, abstract: item.abstract, keywords: [] }}
+                        initial={{
+                          title: item.title,
+                          abstract: item.abstract,
+                          keywords: item.keywords ?? [],
+                          license: item.license,
+                          language: item.language,
+                        }}
+                        licenses={catalogQuery.data?.licenses ?? []}
+                        languages={catalogQuery.data?.languages ?? []}
                         onSubmit={(v) => void save(v)}
                         onCancel={closePanel}
                         pending={update.isPending}
@@ -150,7 +165,15 @@ export function ItemDetailPage({
                     // pourquoi (doctrine §6.2, cf. ItemActions.tsx).
                     <Locked reason={t("locked.needWrite")}>
                       <MetadataForm
-                        initial={{ title: item.title, abstract: item.abstract, keywords: [] }}
+                        initial={{
+                          title: item.title,
+                          abstract: item.abstract,
+                          keywords: item.keywords ?? [],
+                          license: item.license,
+                          language: item.language,
+                        }}
+                        licenses={catalogQuery.data?.licenses ?? []}
+                        languages={catalogQuery.data?.languages ?? []}
                         onSubmit={closePanel}
                         onCancel={closePanel}
                         pending={false}

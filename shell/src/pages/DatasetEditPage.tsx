@@ -2,7 +2,14 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { useDatasetConfig, useItem, useItems, useSaveDataset, useUpdateItem } from "../api/hooks";
+import {
+  useDatasetConfig,
+  useItem,
+  useItems,
+  useMetadataCatalog,
+  useSaveDataset,
+  useUpdateItem,
+} from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { CrossFilterLink, DatasetColumnMeta, DatasetConfig } from "../api/types";
 import { mergeDatasetSchema } from "../lib/datasetSchema";
@@ -19,6 +26,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
   const configQuery = useDatasetConfig(pk);
   const save = useSaveDataset(pk);
   const updateItem = useUpdateItem(pk);
+  const catalogQuery = useMetadataCatalog();
   const client = useItemClient();
   const navigate = useNavigate();
   const [draft, setDraft] = useState<DatasetConfig | null>(null);
@@ -150,7 +158,11 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                   title: item.title,
                   abstract: item.abstract,
                   keywords: item.keywords ?? [],
+                  license: item.license,
+                  language: item.language,
                 }}
+                licenses={catalogQuery.data?.licenses ?? []}
+                languages={catalogQuery.data?.languages ?? []}
                 onSubmit={(v) => updateItem.mutate(v)}
                 onCancel={() => {}}
                 pending={updateItem.isPending}
