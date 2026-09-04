@@ -8,6 +8,7 @@ from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig, DataSource, Layout, LayoutItem, Page
 from app.db import init_db, make_engine, make_session_factory
 from app.items.repository import create_item
+from app.notifications import repository as notifications_repo
 from app.notifications.models import Notification
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
@@ -222,4 +223,40 @@ def test_disabled_flag_writes_no_notification(monkeypatch, tmp_path):
 
     with Session() as s:
         notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant_id))
+    assert notification is None
+
+
+def test_notification_write_failure_does_not_affect_job_status(monkeypatch, tmp_path):
+    """I2 (revue finale SP-39) : une erreur dans l'écriture de la
+    notification ne doit jamais affecter le statut du job lui-même. Boom
+    réel (viole une contrainte NOT NULL, fait échouer session.flush() pour
+    de vrai) plutôt qu'une exception Python qui ne toucherait jamais la
+    session — cf. test_report_jobs.py pour la même falsification."""
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
+
+    with Session() as s:
+        user_id = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id).user_id
+
+    def _boom(session, **kwargs):
+        session.add(
+            Notification(
+                tenant_id=tenant_id,
+                recipient_user_id=user_id,
+                kind="x",
+                status="failure",
+                item_title="x",
+            )
+        )
+        session.flush()
+
+    monkeypatch.setattr(notifications_repo, "create_notification", _boom)
+
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+        notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant_id))
+    assert job.status == "done"
     assert notification is None
