@@ -45,13 +45,24 @@ def _notify(
     Garde anti-double-notification : un job dont `page_id` est renseigné est
     un rendu interne au sweep de rapports (app/reports/jobs.py:153) — il sera
     notifié comme kind="report" par _notify_pending_reports (Tâche 8), jamais
-    ici (spec §3.1)."""
+    ici (spec §3.1).
+
+    Sur le chemin d'échec, `resource_type` vaut None (le `config` qui porte
+    `.kind` n'est chargé que dans le bloc `try`, indisponible dans le
+    `except`) — repli sur `item.resourceType` (revue finale SP-39, I3) : sans
+    ça, une notification d'échec d'export était la seule des 5 sortes jamais
+    cliquable, même quand l'item existe toujours et que
+    `NotificationBell.tsx` aurait pu la rendre cliquable (elle rend un
+    `<div>` non cliquable dès que `item_resource_type` est None)."""
     if page_id is not None:
         return
     try:
         with request_scoped_session(session_factory) as session:
             item = items_repo.get_item(session, tenant_id=tenant_id, item_id=item_id)
             title = item.title if item is not None else item_id
+            resolved_resource_type = resource_type or (
+                item.resourceType if item is not None else None
+            )
             notifications_repo.create_notification(
                 session,
                 tenant_id=tenant_id,
@@ -59,7 +70,7 @@ def _notify(
                 kind="export",
                 status=status,
                 item_id=item_id,
-                item_resource_type=resource_type,
+                item_resource_type=resolved_resource_type,
                 item_title=title,
                 error_message=error,
             )
