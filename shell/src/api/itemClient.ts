@@ -1577,6 +1577,19 @@ export function createItemClient(opts: {
       return `${coreUrl}/collections/${collectionId}/items/${fid}/attachments/${attachmentId}/file`;
     },
 
+    async downloadAttachment(
+      collectionId: string,
+      fid: string,
+      attachmentId: string,
+    ): Promise<{ blob: Blob; filename: string }> {
+      return requestBlob(
+        coreUrl,
+        getToken,
+        "GET",
+        `/collections/${collectionId}/items/${fid}/attachments/${attachmentId}/file`,
+      );
+    },
+
     async getCollection(collectionId: string): Promise<CollectionAdmin> {
       return request<CollectionAdmin>("GET", `/collections/${collectionId}`);
     },

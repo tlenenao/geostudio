@@ -1358,22 +1358,35 @@ test("the popup survives a config change that keeps the layer but changes someth
 // getAuthToken), jamais useItemClient()/React Query — MapView fonctionne
 // aussi hors ItemClientProvider.
 test("fetches and shows the entity's attachments when the layer's popup declares an attachmentField", async () => {
-  const fetchMock = vi.fn().mockResolvedValue({
-    ok: true,
-    json: async () => ({
-      attachments: [
-        {
-          id: "a1",
-          fieldKey: "photos",
-          filename: "a.jpg",
-          contentType: "image/jpeg",
-          byteSize: 1,
-          createdAt: "",
-        },
-      ],
-    }),
+  const blob = new Blob(["x"]);
+  // Un seul fetch mocké sert deux requêtes distinctes (SP-40 Task 21) : la
+  // liste des pièces jointes (`GET .../attachments?fieldKey=...`) au clic
+  // sur l'entité, PUIS le fichier individuel (`GET .../attachments/{id}/file`)
+  // au clic sur son nom — authentifié via fetch+blob, plus un `<a href>` nu.
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url.endsWith("/file")) {
+      return Promise.resolve({ ok: true, blob: async () => blob });
+    }
+    return Promise.resolve({
+      ok: true,
+      json: async () => ({
+        attachments: [
+          {
+            id: "a1",
+            fieldKey: "photos",
+            filename: "a.jpg",
+            contentType: "image/jpeg",
+            byteSize: 1,
+            createdAt: "",
+          },
+        ],
+      }),
+    });
   });
   vi.stubGlobal("fetch", fetchMock);
+  const createObjectURL = vi.fn().mockReturnValue("blob:fake");
+  const revokeObjectURL = vi.fn();
+  vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
   render(
     <MapView
       config={tiled({
@@ -1401,10 +1414,12 @@ test("fetches and shows the entity's attachments when the layer's popup declares
     { headers: { Authorization: "Bearer tok" } },
   );
   await screen.findByText("Pièces jointes");
-  expect(screen.getByRole("link", { name: "a.jpg" })).toHaveAttribute(
-    "href",
+  await userEvent.click(screen.getByRole("button", { name: "a.jpg" }));
+  expect(fetchMock).toHaveBeenCalledWith(
     "http://core.test/collections/communes/items/19272/attachments/a1/file",
+    { headers: { Authorization: "Bearer tok" } },
   );
+  expect(createObjectURL).toHaveBeenCalledWith(blob);
 });
 
 test("does not fetch the entity's attachments when the popup does not declare an attachmentField", () => {
