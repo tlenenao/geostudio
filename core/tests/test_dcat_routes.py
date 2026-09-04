@@ -243,6 +243,10 @@ def test_dcat_dataset_publisher_uses_producer_when_declared(env):
     client.patch("/collections/incidents", json={"producer": "Ma Régie"})
     res = client.get("/dcat/datasets/incidents")
     assert res.json()["dct:publisher"]["foaf:name"] == "Ma Régie"
+    # SP-41, correctif de revue finale : un producteur déclaré obtient une IRI
+    # de publisher distincte (par collection), pas l'IRI partagée à l'échelle
+    # du tenant.
+    assert res.json()["dct:publisher"]["@id"] == "http://testserver/dcat/publisher/incidents"
 
 
 def test_dcat_dataset_without_declared_metadata_omits_optional_fields(env):
