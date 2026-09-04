@@ -101,6 +101,8 @@ export const fr = {
   "notifications.kindAppexport": "Export d'app",
   "notifications.kindReport": "Rapport",
   "notifications.deletedItem": "Élément supprimé",
+  "notifications.loadError": "Échec du chargement des notifications.",
+  "notifications.actionError": "Échec de l'action. Réessayez.",
 
   // Administration des rôles
   "roles.title": "Rôles",
