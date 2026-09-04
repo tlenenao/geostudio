@@ -225,7 +225,13 @@ def test_confirm_rejects_a_dangerous_extension(client):
     assert res.status_code == 400
 
 
-def test_confirm_sanitizes_a_non_ascii_filename(client):
+def test_confirm_preserves_a_non_ascii_filename_unmutilated(client):
+    """Renommé depuis test_confirm_sanitizes_a_non_ascii_filename (Task 21) :
+    le correctif de revue finale (Important #2) arrête d'assainir le nom
+    STOCKÉ — un nom non-ASCII (CJK ici, un accent français ailleurs, cf.
+    test_attachments_read_routes.py) doit survivre intact, pas mutilé
+    définitivement. Seul l'en-tête Content-Disposition à la lecture encode
+    correctement la valeur (RFC 6266, _content_disposition_header)."""
     api, _Session, tenant, _user, s3 = client
     key = f"{tenant.id}/col1/f1/abc-photo.jpg"
     s3.heads[key] = {"ContentLength": 10}
@@ -234,6 +240,58 @@ def test_confirm_sanitizes_a_non_ascii_filename(client):
         json={"key": key, "fieldKey": "photos", "filename": "文件.png", "contentType": "image/png"},
     )
     assert res.status_code == 201
-    # Le nom stocké est assaini (ASCII sûr), jamais le nom brut non-ASCII.
-    assert res.json()["filename"] != "文件.png"
-    assert res.json()["filename"].endswith(".png")
+    assert res.json()["filename"] == "文件.png"
+
+
+def test_presign_rejects_an_invalid_content_type(client):
+    api, *_ = client
+    res = api.post(
+        "/collections/col1/items/f1/attachments/presign",
+        json={"fieldKey": "photos", "filename": "a.png", "contentType": "image/文件"},
+    )
+    assert res.status_code == 400
+
+
+def test_confirm_rejects_an_invalid_content_type(client):
+    api, _Session, tenant, _user, _s3 = client
+    key = f"{tenant.id}/col1/f1/abc-a.png"
+    res = api.post(
+        "/collections/col1/items/f1/attachments",
+        json={
+            "key": key,
+            "fieldKey": "photos",
+            "filename": "a.png",
+            "contentType": "n'importe quoi",
+        },
+    )
+    assert res.status_code == 400
+
+
+def test_presign_rejects_a_dangerous_extension_with_a_trailing_dot(client):
+    """Contournement fermé par la revue finale (fix bonus) : "malware.exe."
+    a pour extension os.path.splitext ".", jamais dans la liste noire sans
+    le rstrip(" .") — puis Windows tronque le point final à l'enregistrement,
+    redonnant "malware.exe" sur le poste de la victime."""
+    api, *_ = client
+    res = api.post(
+        "/collections/col1/items/f1/attachments/presign",
+        json={
+            "fieldKey": "photos",
+            "filename": "malware.exe.",
+            "contentType": "application/octet-stream",
+        },
+    )
+    assert res.status_code == 400
+
+
+def test_presign_sanitizes_the_s3_key_for_a_non_ascii_filename(client):
+    """La clé S3 (jamais affichée, jamais le nom du fichier téléchargé) reste
+    assainie même après le correctif Important #2 ci-dessus — c'est un
+    problème différent (une clé S3 sûre), pas régressé par ce correctif."""
+    api, *_ = client
+    res = api.post(
+        "/collections/col1/items/f1/attachments/presign",
+        json={"fieldKey": "photos", "filename": "文件.png", "contentType": "image/png"},
+    )
+    assert res.status_code == 200
+    assert "文件" not in res.json()["key"]

@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import uuid
+from urllib.parse import quote
 
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -64,6 +65,13 @@ _DANGEROUS_EXTENSIONS = frozenset(
         ".app",
     }
 )
+# Forme MIME minimale (type/subtype, jetons RFC 2045 usuels) — un contentType
+# hors ASCII fait lever la même UnicodeEncodeError que le nom de fichier
+# (Starlette encode les en-têtes en latin-1), mais sur Content-Type cette
+# fois. Revue finale de branche (Important #1, SP-40 Task 21).
+_CONTENT_TYPE_PATTERN = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$"
+)
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -80,9 +88,33 @@ def _sanitize_filename(filename: str) -> str:
 
 
 def _reject_dangerous_extension(filename: str) -> None:
-    ext = os.path.splitext(filename)[1].lower()
+    # rstrip(" .") ferme un contournement réel (revue finale, fix bonus) :
+    # "evil.exe." a pour extension os.path.splitext ".", jamais refusée, et
+    # Windows tronque le point final à l'enregistrement — servi tel quel, le
+    # fichier redevient "evil.exe" sur le poste de la victime.
+    ext = os.path.splitext(filename.rstrip(" ."))[1].lower()
     if ext in _DANGEROUS_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"extension de fichier non autorisée : {ext}")
+
+
+def _reject_invalid_content_type(content_type: str) -> None:
+    if not _CONTENT_TYPE_PATTERN.match(content_type):
+        raise HTTPException(status_code=400, detail="type de contenu invalide")
+
+
+def _content_disposition_header(filename: str) -> str:
+    """RFC 6266 : filename= est un repli ASCII sûr (pour un client qui ne
+    comprendrait pas filename*), filename*=UTF-8''<percent-encodé> porte
+    la valeur EXACTE et est compris par tous les navigateurs modernes —
+    contrairement à un simple assainissement appliqué au stockage (Task 21,
+    régression sur les noms accentués), le nom brut n'est jamais mutilé en
+    base ; seul cet en-tête encode la valeur correctement (Starlette encode
+    les en-têtes en latin-1). quote(..., safe="") empêche aussi l'injection
+    de paramètres via un guillemet ou un CR/LF dans le nom brut : aucun des
+    deux composants de l'en-tête ne peut plus les porter."""
+    ascii_fallback = _sanitize_filename(filename)
+    encoded = quote(filename, safe="")
+    return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded}"
 
 
 def get_s3_client():  # overridé dans main.py quand S3_* est configuré
@@ -143,6 +175,7 @@ def presign_attachment(
     col = _get_writable_collection(session, user, collection_id)
     _require_declared_field(col, body.fieldKey)
     _reject_dangerous_extension(body.filename)
+    _reject_invalid_content_type(body.contentType)
     bucket = get_attachments_bucket()
     ensure_uploads_bucket(s3, bucket)
     safe_filename = _sanitize_filename(body.filename)
@@ -167,6 +200,7 @@ def confirm_attachment(
     col = _get_writable_collection(session, user, collection_id)
     _require_declared_field(col, body.fieldKey)
     _reject_dangerous_extension(body.filename)
+    _reject_invalid_content_type(body.contentType)
     # Même garde anti-confused-deputy que POST /uploads (app/ingestion/routes.py) :
     # la clé est censée venir du présigné ci-dessus, toujours préfixée par le
     # tenant de l'appelant.
@@ -193,7 +227,15 @@ def confirm_attachment(
         collection_id=collection_id,
         fid=fid,
         field_key=body.fieldKey,
-        filename=_sanitize_filename(body.filename),
+        # Nom brut préservé (pas _sanitize_filename ici) : le nom stocké est
+        # celui affiché/téléchargé par l'utilisateur — un accent français
+        # (« Relevé été.pdf ») était déjà encodable en latin-1 et ne cassait
+        # jamais Content-Disposition ; l'assainir aurait mutilé ce cas de
+        # façon définitive et irréversible (revue finale, Important #2). Seul
+        # _content_disposition_header (lecture, ci-dessous) a besoin d'un
+        # repli ASCII, calculé à la volée, jamais stocké. La clé S3 du
+        # presigné (ligne ~155), elle, reste assainie : problème différent.
+        filename=body.filename,
         content_type=body.contentType,
         byte_size=size,
         s3_key=body.key,
@@ -264,15 +306,7 @@ def read_attachment_file(
             # fichier utilisateur authentifié.
             "Cache-Control": "private, max-age=3600",
             "X-Content-Type-Options": "nosniff",
-            # _sanitize_filename appliqué aussi ici (pas seulement à l'upload,
-            # Steps 2/3) : défense en profondeur pour une ligne déjà en base
-            # avec un nom hors ASCII (ex. insérée avant ce correctif, ou par
-            # un chemin qui contournerait la validation d'entrée) — sans
-            # cette garde, Content-Disposition lève UnicodeEncodeError à la
-            # lecture (Starlette encode les en-têtes en latin-1).
-            "Content-Disposition": (
-                f'attachment; filename="{_sanitize_filename(attachment.filename)}"'
-            ),
+            "Content-Disposition": _content_disposition_header(attachment.filename),
         },
     )
 
