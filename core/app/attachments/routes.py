@@ -15,19 +15,20 @@ import os
 import uuid
 
 from botocore.exceptions import ClientError
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.attachments import repository as attachments_repo
 from app.attachments.models import Attachment
 from app.attachments.schemas import (
     AttachmentConfirmRequest,
+    AttachmentList,
     AttachmentPresignRequest,
     AttachmentPresignResponse,
     AttachmentRead,
 )
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user
+from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections.repository import get_access_facts
 from app.collections.routes import get_readable_collection
 from app.db import get_session
@@ -165,3 +166,95 @@ def confirm_attachment(
     )
     session.commit()
     return _attachment_json(attachment)
+
+
+@router.get(
+    "/collections/{collection_id}/items/{fid}/attachments",
+    response_model=AttachmentList,
+)
+def list_attachments_route(
+    collection_id: str,
+    fid: str,
+    fieldKey: str | None = None,
+    user: User | None = Depends(get_current_user_optional),
+    session: Session = Depends(get_session),
+):
+    col = get_readable_collection(session, user, collection_id)
+    rows = attachments_repo.list_attachments(
+        session, tenant_id=col.tenant_id, collection_id=collection_id, fid=fid, field_key=fieldKey
+    )
+    return AttachmentList(attachments=[_attachment_json(a) for a in rows])
+
+
+@router.get("/collections/{collection_id}/items/{fid}/attachments/{attachment_id}/file")
+def read_attachment_file(
+    collection_id: str,
+    fid: str,
+    attachment_id: str,
+    user: User | None = Depends(get_current_user_optional),
+    session: Session = Depends(get_session),
+    s3=Depends(get_s3_client),
+) -> Response:
+    col = get_readable_collection(session, user, collection_id)
+    attachment = attachments_repo.get_attachment(
+        session,
+        tenant_id=col.tenant_id,
+        collection_id=collection_id,
+        fid=fid,
+        attachment_id=attachment_id,
+    )
+    if attachment is None:
+        raise HTTPException(status_code=404, detail="attachment not found")
+    bucket = get_attachments_bucket()
+    try:
+        obj = s3.get_object(Bucket=bucket, Key=attachment.s3_key)
+    except ClientError as exc:
+        raise HTTPException(status_code=404, detail="attachment file not found") from exc
+    return Response(
+        content=obj["Body"].read(),
+        media_type=attachment.content_type,
+        headers={
+            # Mêmes trois en-têtes que GET /map-icons/{id}/file
+            # (app/mapicons/routes.py) — patron déjà établi pour servir un
+            # fichier utilisateur authentifié.
+            "Cache-Control": "private, max-age=3600",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": f'attachment; filename="{attachment.filename}"',
+        },
+    )
+
+
+@router.delete(
+    "/collections/{collection_id}/items/{fid}/attachments/{attachment_id}", status_code=204
+)
+def delete_attachment_route(
+    collection_id: str,
+    fid: str,
+    attachment_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+    s3=Depends(get_s3_client),
+) -> None:
+    col = _get_writable_collection(session, user, collection_id)
+    ok = attachments_repo.delete_attachment(
+        session,
+        s3,
+        get_attachments_bucket(),
+        tenant_id=col.tenant_id,
+        collection_id=collection_id,
+        fid=fid,
+        attachment_id=attachment_id,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="attachment not found")
+    write_audit(
+        session,
+        tenant_id=col.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="attachment.delete",
+        object_type="attachment",
+        object_id=attachment_id,
+        payload={"collection": collection_id, "fid": fid},
+    )
+    session.commit()
