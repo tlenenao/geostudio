@@ -51,11 +51,21 @@ class CollectionPermissions(BaseModel):
     share: bool
 
 
+class AttachmentFieldSpec(BaseModel):
+    """Un champ `attachment` déclaré sur une collection (chantier 4.12) —
+    pas une colonne SQL réelle, juste un slot nommé fusionné dans
+    GET /collections/{id}/schema (app/collections/schema_json.py)."""
+
+    key: str
+    label: str
+
+
 class CollectionPatch(BaseModel):
     title: str | None = None
     description: str | None = None
     isPublic: bool | None = None
     editable: bool | None = None
+    attachmentFields: list[AttachmentFieldSpec] | None = None
 
 
 class EmptyCollectionColumn(BaseModel):
