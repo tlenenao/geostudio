@@ -3,6 +3,7 @@ import pytest
 
 from app.db import init_db, make_engine, make_session_factory
 from app.notifications import repository as notifications_repo
+from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -191,6 +192,109 @@ def test_mark_all_notifications_read_respects_preference_filter(env):
     session.refresh(failure)
     assert success.read_at is None
     assert failure.read_at is not None
+
+
+def test_list_notifications_paginates_beyond_the_first_page(env):
+    """I5 (revue finale SP-39, spec §6) : aucun test n'exerçait page=2 avant
+    ce correctif — tous les tests de pagination existants s'arrêtaient à
+    page=1."""
+    session, tenant, user, _other = env
+    n1 = _create(session, tenant_id=tenant.id, recipient_user_id=user.id)
+    n2 = _create(session, tenant_id=tenant.id, recipient_user_id=user.id)
+    n3 = _create(session, tenant_id=tenant.id, recipient_user_id=user.id)
+    session.commit()
+
+    page1, total1 = notifications_repo.list_notifications(
+        session,
+        tenant_id=tenant.id,
+        recipient_user_id=user.id,
+        preference="all",
+        page=1,
+        page_size=2,
+    )
+    page2, total2 = notifications_repo.list_notifications(
+        session,
+        tenant_id=tenant.id,
+        recipient_user_id=user.id,
+        preference="all",
+        page=2,
+        page_size=2,
+    )
+    assert total1 == 3
+    assert total2 == 3
+    assert [r.id for r in page1] == [n3.id, n2.id]
+    assert [r.id for r in page2] == [n1.id]
+
+
+def test_notifications_are_isolated_by_tenant_even_with_the_same_relative_role(env):
+    """I5 (revue finale SP-39, spec §6) : les 22 tests précédents de ce
+    fichier partagent tous le même tenant — seule l'isolation
+    inter-DESTINATAIRE (même tenant) était couverte, jamais l'isolation
+    inter-TENANT. Tenant B a un utilisateur portant le même username/rôle
+    relatif que le user du tenant A — la notification du tenant A ne doit
+    être ni visible, ni comptable, ni marquable-lue depuis le tenant B."""
+    session, tenant, user, _other = env
+    tenant_b = Tenant(id="tenant-b", slug="tenant-b", name="Tenant B")
+    session.add(tenant_b)
+    session.flush()
+    user_b = get_or_create_user(
+        session,
+        tenant_id=tenant_b.id,
+        oidc_sub="a",  # même oidc_sub relatif que `user` du tenant A (scopé par tenant)
+        username="alice",
+        email=None,
+        first_name="",
+        last_name="",
+    )
+    notif_a = _create(session, tenant_id=tenant.id, recipient_user_id=user.id)
+    session.commit()
+
+    rows, total = notifications_repo.list_notifications(
+        session,
+        tenant_id=tenant_b.id,
+        recipient_user_id=user_b.id,
+        preference="all",
+        page=1,
+        page_size=20,
+    )
+    assert rows == []
+    assert total == 0
+
+    assert (
+        notifications_repo.count_unread_notifications(
+            session, tenant_id=tenant_b.id, recipient_user_id=user_b.id, preference="all"
+        )
+        == 0
+    )
+
+    # Ni avec le mauvais recipient_user_id...
+    assert (
+        notifications_repo.mark_notification_read(
+            session,
+            tenant_id=tenant_b.id,
+            recipient_user_id=user_b.id,
+            notification_id=notif_a.id,
+        )
+        is None
+    )
+    # ...ni même avec le BON recipient_user_id mais le mauvais tenant : la
+    # portée tenant seule doit suffire à bloquer, indépendamment du
+    # recipient_user_id passé.
+    assert (
+        notifications_repo.mark_notification_read(
+            session,
+            tenant_id=tenant_b.id,
+            recipient_user_id=user.id,
+            notification_id=notif_a.id,
+        )
+        is None
+    )
+    # La notification reste bien lisible/marquable depuis son propre tenant.
+    own_tenant_result = notifications_repo.mark_notification_read(
+        session, tenant_id=tenant.id, recipient_user_id=user.id, notification_id=notif_a.id
+    )
+    assert own_tenant_result is not None
+    assert own_tenant_result.read_at is not None
 
 
 def test_notification_preference_defaults_to_all_and_round_trips(env):
