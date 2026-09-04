@@ -15,7 +15,7 @@ import { HeatmapLayer, HexagonLayer } from "@deck.gl/aggregation-layers";
 import { ColumnLayer } from "@deck.gl/layers";
 import { Tile3DLayer } from "@deck.gl/geo-layers";
 import { Tiles3DLoader } from "@loaders.gl/3d-tiles";
-import type { DataRecord, MapConfig, MapLayer, ThemeColors } from "../api/types";
+import type { AttachmentSummary, DataRecord, MapConfig, MapLayer, ThemeColors } from "../api/types";
 import { MapLegend } from "./MapLegend";
 import { MapMeasureSketchToolbar } from "./MapMeasureSketchToolbar";
 import { MapPopup } from "./MapPopup";
@@ -963,8 +963,17 @@ export const MapView = forwardRef<
     layerId: string;
     properties: Record<string, unknown>;
     lngLat: { lng: number; lat: number };
+    // Identité de l'entité cliquée, dérivée de `pkColumn` (uniquement pour
+    // les couches `vector` — cf. handlePopup) : nécessaire pour retrouver
+    // ses pièces jointes (chantier 4.12), absente pour tout le reste.
+    fid: string | undefined;
   } | null>(null);
   const [popupPoint, setPopupPoint] = useState<{ x: number; y: number } | null>(null);
+  // Pièces jointes de l'entité dont le popup est ouvert (chantier 4.12) :
+  // remplies par l'effet de fetch juste avant le `return` final, jamais lues
+  // directement depuis `popup` — ce n'est pas une projection pure de l'état
+  // déjà là, mais le résultat d'un appel réseau asynchrone.
+  const [popupAttachments, setPopupAttachments] = useState<AttachmentSummary[]>([]);
   // Un `useRef` assigné dans un effet ne provoque AUCUN rendu : la barre
   // d'outils conditionnée à `mapRef.current` ne se monterait jamais au
   // premier rendu. On garde donc l'instance dans un état, posé depuis le
@@ -1048,7 +1057,14 @@ export const MapView = forwardRef<
     ) => {
       const layer = layersRef.current.find((l) => l.id === layerId);
       if (!layer || !("popup" in layer) || !layer.popup) return;
-      setPopup({ layerId, properties, lngLat });
+      // Seules les couches `vector` portent `pkColumn`/`collectionId` : une
+      // couche `feature` (GeoJSON externe) n'a pas de collection, donc
+      // jamais de pièces jointes possibles (chantier 4.12).
+      const fid =
+        layer.kind === "vector" && layer.pkColumn && properties[layer.pkColumn] != null
+          ? String(properties[layer.pkColumn])
+          : undefined;
+      setPopup({ layerId, properties, lngLat, fid });
     },
     [],
   );
@@ -1305,6 +1321,38 @@ export const MapView = forwardRef<
   // n'ont pas de champ `popup` du tout).
   const popupConfig = popupLayer && "popup" in popupLayer ? popupLayer.popup : undefined;
 
+  // Pièces jointes de l'entité dont le popup est ouvert (chantier 4.12) :
+  // fetch NU via getCoreUrl/getAuthToken, jamais useItemClient()/React Query
+  // — ce composant fonctionne aussi hors ItemClientProvider (export
+  // statique, cf. son commentaire d'en-tête général sur exportRender/SP-17a
+  // et les usages standalone de MapView). Placé ICI, après le calcul de
+  // popupConfig/popupLayer ci-dessus (dont il dépend) et avant le `return`
+  // final : il n'y a aucun `return` conditionnel plus haut dans ce
+  // composant, donc cet ordre respecte les règles des Hooks (jamais après
+  // un `return` conditionnel).
+  useEffect(() => {
+    setPopupAttachments([]);
+    if (!popup || !popupConfig?.attachmentField || popup.fid === undefined) return;
+    if (!popupLayer || popupLayer.kind !== "vector") return;
+    const coreUrl = getCoreUrlRef.current?.();
+    if (!coreUrl) return;
+    const token = getAuthTokenRef.current?.();
+    const url = `${coreUrl}/collections/${popupLayer.collectionId}/items/${popup.fid}/attachments?fieldKey=${encodeURIComponent(popupConfig.attachmentField)}`;
+    let cancelled = false;
+    fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((res) => (res.ok ? res.json() : { attachments: [] }))
+      .then((data: { attachments?: AttachmentSummary[] }) => {
+        if (!cancelled) setPopupAttachments(data.attachments ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setPopupAttachments([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [popup?.layerId, popup?.fid, popupConfig?.attachmentField]);
+
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" data-testid="map-container" />
@@ -1315,6 +1363,12 @@ export const MapView = forwardRef<
           x={popupPoint.x}
           y={popupPoint.y}
           onClose={() => setPopup(null)}
+          attachments={popupAttachments}
+          attachmentFileUrl={(attachmentId) =>
+            popupLayer && popupLayer.kind === "vector" && popup.fid !== undefined
+              ? `${getCoreUrlRef.current?.() ?? ""}/collections/${popupLayer.collectionId}/items/${popup.fid}/attachments/${attachmentId}/file`
+              : ""
+          }
         />
       )}
       {interactiveTools && readyMap && (

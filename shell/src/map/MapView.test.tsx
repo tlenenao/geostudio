@@ -1354,6 +1354,124 @@ test("the popup survives a config change that keeps the layer but changes someth
   expect(screen.getByRole("dialog")).toBeInTheDocument();
 });
 
+// Pièces jointes de l'entité cliquée (chantier 4.12) : fetch nu (getCoreUrl/
+// getAuthToken), jamais useItemClient()/React Query — MapView fonctionne
+// aussi hors ItemClientProvider.
+test("fetches and shows the entity's attachments when the layer's popup declares an attachmentField", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      attachments: [
+        {
+          id: "a1",
+          fieldKey: "photos",
+          filename: "a.jpg",
+          contentType: "image/jpeg",
+          byteSize: 1,
+          createdAt: "",
+        },
+      ],
+    }),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        pkColumn: "code",
+        popup: { attachmentField: "photos" },
+      })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "communes", {
+      features: [{ id: 7, properties: { code: "19272", nom: "Tulle" } }],
+      lngLat: { lng: 12, lat: 34 },
+    }),
+  );
+  expect(fetchMock).toHaveBeenCalledWith(
+    "http://core.test/collections/communes/items/19272/attachments?fieldKey=photos",
+    { headers: { Authorization: "Bearer tok" } },
+  );
+  await screen.findByText("Pièces jointes");
+  expect(screen.getByRole("link", { name: "a.jpg" })).toHaveAttribute(
+    "href",
+    "http://core.test/collections/communes/items/19272/attachments/a1/file",
+  );
+});
+
+test("does not fetch the entity's attachments when the popup does not declare an attachmentField", () => {
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", pkColumn: "code", popup: { titleField: "nom" } })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "communes", {
+      features: [{ id: 7, properties: { code: "19272", nom: "Tulle" } }],
+      lngLat: { lng: 12, lat: 34 },
+    }),
+  );
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test("does not fetch attachments for a feature layer even when attachmentField is configured", () => {
+  // Les couches `feature` (GeoJSON externe) n'ont pas de collection : jamais
+  // de pièces jointes possibles, quel que soit le popup déclaré.
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  const cfg: MapConfig = {
+    ...config,
+    layers: [
+      {
+        id: "pts",
+        title: "Points",
+        visible: true,
+        kind: "feature",
+        url: "https://fs/pts",
+        popup: { attachmentField: "photos" },
+      },
+    ],
+  };
+  render(<MapView config={cfg} getAuthToken={() => "tok"} getCoreUrl={() => "http://core.test"} />);
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "pts", {
+      features: [{ id: 7, properties: { nom: "Parc" } }],
+      lngLat: { lng: 1, lat: 2 },
+    }),
+  );
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test("does not fetch attachments when the clicked feature has no value for the layer's pkColumn", () => {
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        pkColumn: "code",
+        popup: { attachmentField: "photos" },
+      })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "communes", {
+      features: [{ id: 7, properties: { nom: "Tulle" } }],
+      lngLat: { lng: 12, lat: 34 },
+    }),
+  );
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
 // I5 de la revue finale SP-24 : avant `layersKey`, chaque frappe dans
 // PopupEditor produisait un nouveau tableau `config.layers` (même contenu
 // pertinent) qui détruisait puis recréait TOUTES les sources/couches
