@@ -48,14 +48,25 @@ export function DataProvider({
   // Resolve the primary-key column name for every distinct collection behind
   // those datasets, so table/map widgets can cross-filter by pk without
   // fetching a schema themselves (they only read ctx.data.pkColumn).
+  // Une source `type: "features"` sans `datasetId` porte directement son
+  // collectionId dans `layer` quand `service === "core"` (chantier 4.12,
+  // DataSourcePanel.tsx : champ « Collection » en saisie libre, ou
+  // previewConfig de DatasetPage.tsx pour /sites/{slug}, qui n'a pas de
+  // dataset enregistré) — résolu ici au même titre qu'un dataset partagé,
+  // pour que le widget carte connaisse pkColumn/collectionId dans les deux
+  // cas sans requête supplémentaire.
+  const directCollectionIds = sources
+    .filter((s) => s.type === "features" && s.service === "core" && !s.datasetId && s.layer)
+    .map((s) => s.layer);
   const collectionIds = [
-    ...new Set(
-      Object.values(datasets)
+    ...new Set([
+      ...Object.values(datasets)
         .filter(
           (d): d is Extract<DatasetConfig, { source: "collection" }> => d.source === "collection",
         )
         .map((d) => d.collectionId),
-    ),
+      ...directCollectionIds,
+    ]),
   ];
   const schemaResults = useQueries({
     queries: collectionIds.map((id) => ({
@@ -93,6 +104,12 @@ export function DataProvider({
     const r = results[i];
     const merged = mergedQueryFor(s);
     const dataset = s.datasetId ? datasets[s.datasetId] : undefined;
+    const directId =
+      s.type === "features" && s.service === "core" && !s.datasetId && s.layer
+        ? s.layer
+        : undefined;
+    const resolvedCollectionId =
+      dataset && dataset.source === "collection" ? dataset.collectionId : directId;
     const hasGeometry = dataset
       ? dataset.source === "arcgis"
         ? true
@@ -105,10 +122,8 @@ export function DataProvider({
       layer: s.layer,
       url: s.type === "features" ? client.featuresUrl(merged) : undefined,
       datasetId: s.datasetId,
-      pkColumn:
-        dataset && dataset.source === "collection"
-          ? pkByCollection[dataset.collectionId]
-          : undefined,
+      pkColumn: resolvedCollectionId ? pkByCollection[resolvedCollectionId] : undefined,
+      collectionId: resolvedCollectionId,
       resolvedSource: merged,
       hasGeometry,
     };

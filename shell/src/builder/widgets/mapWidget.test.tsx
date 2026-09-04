@@ -826,3 +826,19 @@ test("le widget carte fournit le chargeur d'icônes personnalisées à MapView",
   );
   expect(await screen.findByText(/loader:function/)).toBeInTheDocument();
 });
+
+test("map widget carries collectionId/pkColumn from ctx.data onto the feature layer (SP-40)", () => {
+  renderWidget({
+    props: { dataSourceId: "ds1" },
+    ctx: {
+      data: state({
+        url: "https://core.test/collections/parcs/items.geojson",
+        collectionId: "parcs",
+        pkColumn: "id",
+      }),
+    },
+  });
+  const layer = lastMapConfig().layers[0] as { collectionId?: string; pkColumn?: string };
+  expect(layer.collectionId).toBe("parcs");
+  expect(layer.pkColumn).toBe("id");
+});

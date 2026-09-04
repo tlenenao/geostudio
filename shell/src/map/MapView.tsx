@@ -1057,11 +1057,15 @@ export const MapView = forwardRef<
     ) => {
       const layer = layersRef.current.find((l) => l.id === layerId);
       if (!layer || !("popup" in layer) || !layer.popup) return;
-      // Seules les couches `vector` portent `pkColumn`/`collectionId` : une
-      // couche `feature` (GeoJSON externe) n'a pas de collection, donc
-      // jamais de pièces jointes possibles (chantier 4.12).
+      // `vector` ET `feature` peuvent porter `pkColumn`/`collectionId`
+      // (chantier 4.12 ; Tâche 19 : le widget carte de l'App Builder/
+      // `/sites/{slug}` construit toujours `kind: "feature"`, jamais
+      // `vector` — les deux champs y sont optionnels et absents pour une
+      // couche GeoJSON externe pure, qui reste donc sans pièces jointes).
       const fid =
-        layer.kind === "vector" && layer.pkColumn && properties[layer.pkColumn] != null
+        (layer.kind === "vector" || layer.kind === "feature") &&
+        layer.pkColumn &&
+        properties[layer.pkColumn] != null
           ? String(properties[layer.pkColumn])
           : undefined;
       setPopup({ layerId, properties, lngLat, fid });
@@ -1333,7 +1337,8 @@ export const MapView = forwardRef<
   useEffect(() => {
     setPopupAttachments([]);
     if (!popup || !popupConfig?.attachmentField || popup.fid === undefined) return;
-    if (!popupLayer || popupLayer.kind !== "vector") return;
+    if (!popupLayer || (popupLayer.kind !== "vector" && popupLayer.kind !== "feature")) return;
+    if (!popupLayer.collectionId) return;
     const coreUrl = getCoreUrlRef.current?.();
     if (!coreUrl) return;
     const token = getAuthTokenRef.current?.();
@@ -1365,7 +1370,9 @@ export const MapView = forwardRef<
           onClose={() => setPopup(null)}
           attachments={popupAttachments}
           attachmentFileUrl={(attachmentId) =>
-            popupLayer && popupLayer.kind === "vector" && popup.fid !== undefined
+            popupLayer &&
+            (popupLayer.kind === "vector" || popupLayer.kind === "feature") &&
+            popup.fid !== undefined
               ? `${getCoreUrlRef.current?.() ?? ""}/collections/${popupLayer.collectionId}/items/${popup.fid}/attachments/${attachmentId}/file`
               : ""
           }
