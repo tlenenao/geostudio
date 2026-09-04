@@ -171,19 +171,28 @@ aucun champ langue : pas d'impact sur `stac/serializers.py`.
 
 ## 3. Export DCAT-AP (`core/app/dcat/serializers.py`)
 
-Tout nouveau champ est **omis de la sortie s'il vaut `""`** (valeur par
+Tout nouveau champ **optionnel** (les six listés plus bas, plus la
+résolution de licence) est **omis de la sortie s'il vaut `""`** (valeur par
 défaut, §1.1) — comportement actuel préservé à l'identique pour toute
-collection qui ne touche pas ce nouveau formulaire (critère de sortie testé
-explicitement, §7).
+collection qui ne touche pas ce nouveau formulaire, à l'exception assumée et
+délibérée de `dct:language` ci-dessous, qui n'est structurellement jamais
+vide (critère de sortie testé explicitement, §7 — reformulé en conséquence).
 
 - `dct:license` : résolu depuis le catalogue si `license != ""` (URI DCAT-AP
   de §2.1, ou `license_uri` si `license == "other"` et `license_uri != ""`) ;
   sinon `LICENSE_OTHER` (inchangé) — même repli si `license == "other"` mais
   `license_uri == ""` (saisie incomplète, pas d'erreur bloquante).
-- `dct:language` : par `Collection` au lieu d'une constante — le catalogue
-  racine (`catalog()`) garde `"fr"` (c'est un choix de langue de l'instance,
-  pas d'un jeu), chaque `dataset()` porte sa propre langue résolue (toujours
-  non vide, §1.1).
+- `dct:language` : **toujours présent**, jamais omis — `language` n'a pas
+  d'état « non déclaré » (défaut `"fr"`, jamais vide, §1.1), donc ce champ
+  rejoint la même catégorie que `dct:accessRights`/`dct:publisher` (déjà
+  inconditionnels avant ce plan) plutôt que celle des six champs vraiment
+  optionnels ci-dessous. **Chaque `dataset()` gagne donc une clé
+  `dct:language` qu'il n'avait jamais avant ce plan, y compris pour une
+  collection qui ne déclare rien de nouveau** — précision volontaire de
+  l'export (le catalogue racine `catalog()` reste, lui, à `"fr"` fixe : c'est
+  un choix de langue de l'instance, pas d'un jeu), pas une régression au sens
+  du critère de non-régression §7.2, qui ne porte que sur les six champs
+  vraiment optionnels.
 - `dct:publisher` : `producer` si `producer != ""`, sinon `tenant.name`
   (comportement actuel).
 - `dct:accrualPeriodicity` : nouveau, `{"@id": <URI MDR-FREQ>}`, omis si
@@ -204,9 +213,12 @@ explicitement, §7).
 
 - `license` : id SPDX résolu depuis le catalogue (§2.1) si `license != ""`,
   sinon `"other"` (inchangé).
-- `providers` : nouveau tableau `[{"name": producer ou tenant.name, "roles": ["producer"]}]` —
-  toujours présent (cohérent avec `dct:publisher`, jamais vide car retombe sur
-  `tenant.name` si `producer == ""`).
+- `providers` : nouveau tableau `[{"name": producer, "roles": ["producer"]}]`,
+  ajouté **seulement si `producer != ""`** — pas de repli sur `tenant.name`
+  ici (à la différence de `dct:publisher`, déjà présent inconditionnellement
+  avant ce plan) : un repli inconditionnel romprait le critère de
+  non-régression §7.2 en ajoutant une clé `providers` même sur une collection
+  qui ne déclare rien de nouveau.
 - `extent.temporal` : `[[temporal_start ou None, temporal_end ou None]]` si au
   moins l'un des deux est renseigné (colonnes `Collection.temporal_start`/
   `temporal_end`, §1.1), sinon comportement actuel — repli sur le paramètre
@@ -270,8 +282,14 @@ sans reconstruction champ à champ — à confirmer, pas à supposer).
    `GET /dcat/datasets/{id}` avec `dct:license` pointant vers l'URI Etalab et
    de `GET /stac/collections/{id}` avec `"license": "etalab-2.0"`.
 2. Une collection sans aucun nouveau champ renseigné produit un export DCAT-AP
-   et STAC **identique** à celui d'avant ce plan (test de non-régression
-   explicite, comparaison de payload).
+   et STAC identique à celui d'avant ce plan **sur les six champs vraiment
+   optionnels** (`dct:accrualPeriodicity`, `dct:provenance`,
+   `dcat:contactPoint`, `dct:hasVersion`, `providers` STAC, emprise
+   temporelle déclarée) et sur `dct:license`/`license` STAC (repli sur le
+   comportement actuel) — **sauf `dct:language`, qui apparaît désormais
+   inconditionnellement** (§3, exception documentée et assumée, pas une
+   régression) ; test de non-régression explicite sur les six champs, pas sur
+   la totalité du payload.
 3. Producteur, contact, fréquence, généalogie, version et emprise temporelle
    apparaissent dans l'export dès qu'ils sont renseignés, absents sinon.
 4. Un item de n'importe quel type (map/app/dashboard/pipeline/…) édité via
