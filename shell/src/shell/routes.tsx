@@ -42,7 +42,7 @@ import type { ResourceType } from "../api/types";
 // unhandled promise rejection with no feedback to the user. Catch it and
 // surface it the same way HarvestSourcesAdminPage surfaces a failed mutation:
 // a local error flag rendered as a `role="alert"` paragraph.
-function useOpenItem() {
+export function useOpenItem() {
   const navigate = useNavigate();
   const client = useItemClient();
   const [openError, setOpenError] = useState(false);
