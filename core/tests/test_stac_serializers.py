@@ -118,3 +118,85 @@ def test_item_collection_wraps():
     assert ic["type"] == "FeatureCollection"
     assert ic["features"] == [it]
     ItemCollection.model_validate(ic)
+
+
+def test_collection_resolves_declared_license_to_spdx_id():
+    doc = s.collection(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        bbox=None,
+        temporal_start="2026-07-01T00:00:00Z",
+        license="etalab-2.0",
+    )
+    assert doc["license"] == "etalab-2.0"
+
+
+def test_collection_unknown_license_falls_back_to_other():
+    doc = s.collection(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        bbox=None,
+        temporal_start="2026-07-01T00:00:00Z",
+        license="",
+    )
+    assert doc["license"] == "other"
+
+
+def test_collection_providers_present_only_when_declared():
+    without = s.collection(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        bbox=None,
+        temporal_start="2026-07-01T00:00:00Z",
+    )
+    assert "providers" not in without
+
+    with_providers = s.collection(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        bbox=None,
+        temporal_start="2026-07-01T00:00:00Z",
+        providers=[{"name": "Ma Régie", "roles": ["producer"]}],
+    )
+    assert with_providers["providers"] == [{"name": "Ma Régie", "roles": ["producer"]}]
+
+
+def test_collection_declared_temporal_extent():
+    doc = s.collection(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        bbox=None,
+        temporal_start="2020-01-01",
+        temporal_end="2026-12-31",
+    )
+    assert doc["extent"]["temporal"]["interval"] == [["2020-01-01", "2026-12-31"]]
+
+
+def test_collection_temporal_extent_start_falls_back_when_only_end_declared():
+    # Défaut de la même classe que celui corrigé en DCAT (SP-41, commit
+    # e915f9ff) : ici la logique de repli vit dans app/stac/routes.py, sous
+    # forme de deux ternaires indépendants (pas une condition composite), donc
+    # ne perd pas temporal_start même quand seul temporal_end est déclaré. Ce
+    # test verrouille ce comportement au niveau serializer : passé tel quel
+    # depuis routes.py, temporal_start ne doit jamais devenir None simplement
+    # parce que temporal_end est renseigné.
+    doc = s.collection(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        bbox=None,
+        temporal_start="2026-01-01T00:00:00Z",  # repli déjà résolu par l'appelant
+        temporal_end="2026-12-31",
+    )
+    assert doc["extent"]["temporal"]["interval"] == [["2026-01-01T00:00:00Z", "2026-12-31"]]

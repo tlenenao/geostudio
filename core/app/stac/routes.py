@@ -97,7 +97,16 @@ def list_collections(
                 title=col.title,
                 description=col.description or "",
                 bbox=bbox,
-                temporal_start=_rfc3339(col.created_at),
+                temporal_start=(
+                    col.temporal_start.isoformat()
+                    if col.temporal_start
+                    else _rfc3339(col.created_at)
+                ),
+                temporal_end=col.temporal_end.isoformat() if col.temporal_end else None,
+                license=col.license,
+                providers=(
+                    [{"name": col.producer, "roles": ["producer"]}] if col.producer else None
+                ),
             )
         )
     return {
@@ -140,7 +149,12 @@ def get_collection(
         title=col.title,
         description=col.description or "",
         bbox=bbox,
-        temporal_start=_rfc3339(col.created_at),
+        temporal_start=(
+            col.temporal_start.isoformat() if col.temporal_start else _rfc3339(col.created_at)
+        ),
+        temporal_end=col.temporal_end.isoformat() if col.temporal_end else None,
+        license=col.license,
+        providers=[{"name": col.producer, "roles": ["producer"]}] if col.producer else None,
     )
 
 
