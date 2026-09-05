@@ -17,7 +17,9 @@ class IngestionJob(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    status: Mapped[str] = mapped_column(
+        String, nullable=False, default="pending", server_default="pending"
+    )
     # "pending" | "running" | "done" | "error"
     source_key: Mapped[str] = mapped_column(String, nullable=False)
     filename: Mapped[str] = mapped_column(String, nullable=False)
