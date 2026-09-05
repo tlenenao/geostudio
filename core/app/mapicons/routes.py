@@ -201,6 +201,17 @@ def delete_map_icon(
     icon = repo.get_icon(session, tenant_id=user.tenant_id, icon_id=icon_id)
     if icon is None:
         raise HTTPException(status_code=404, detail="icon not found")
+    # SP-42/F-securite-autorisation-13 : la lecture reste partagée à
+    # l'échelle du tenant (docstring de module), mais la suppression — qui
+    # supprime aussi l'objet S3, sans possibilité de restauration — est
+    # restreinte au créateur. maps.manage n'est PAS retenu comme bypass ici :
+    # le rôle prédéfini « Créateur » (le rôle par défaut de tout nouvel
+    # utilisateur non-admin) le porte déjà, ce qui aurait laissé le scénario
+    # exact de la trouvaille ouvert (Bob, Créateur par défaut, supprimant
+    # l'icône d'Alice). Voir le rapport SP-42 pour l'alternative envisagée
+    # et pourquoi elle a été écartée.
+    if icon.created_by != user.id:
+        raise HTTPException(status_code=403, detail="not allowed")
     title, category, s3_key = icon.title, icon.category, icon.s3_key
     # Base d'abord, S3 ensuite en best-effort : la transaction reste ouverte
     # jusqu'à la fin de la requête (request_scoped_session), donc supprimer
