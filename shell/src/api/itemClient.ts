@@ -49,8 +49,6 @@ import type {
   PipelineRun,
   PopupConfig,
   PrintLayoutConfig,
-  ReportRunStatus,
-  ReportSchedulePayload,
   ResourceType,
   Sharing,
   Theme,
@@ -65,6 +63,7 @@ import { createAlertsMethods } from "./domains/alerts";
 import { createAttachmentsMethods } from "./domains/attachments";
 import { createIdentityMethods } from "./domains/identity";
 import { createNotificationsMethods } from "./domains/notifications";
+import { createReportsMethods } from "./domains/reports";
 
 export type RawMapLayer = {
   id: string;
@@ -1052,56 +1051,7 @@ export function createItemClient(opts: {
 
     ...createAlertsMethods(base),
 
-    async createReportScheduleItem(input: {
-      title: string;
-      owner: string;
-      report: ReportSchedulePayload;
-    }): Promise<Item> {
-      const config = { version: 1, kind: "report", report: input.report };
-      const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
-        "POST",
-        `/configs`,
-        { title: input.title, config },
-      );
-      if (!data.itemId) throw new Error("createReportScheduleItem: core returned no itemId");
-      return {
-        pk: String(data.itemId),
-        resourceType: "report",
-        title: input.title,
-        abstract: "",
-        owner: input.owner,
-        thumbnailUrl: null,
-        date: "",
-        configId: String(data.id),
-        isPublished: false,
-        license: "",
-        language: "fr",
-        // On vient de créer cet objet : on en est le propriétaire.
-        permissions: OWNER_PERMISSIONS,
-      };
-    },
-
-    async getReportScheduleConfig(pk: string): Promise<ReportSchedulePayload> {
-      const data = await request<{ config?: { report?: ReportSchedulePayload } }>(
-        "GET",
-        `/configs/by-item/${pk}`,
-      );
-      if (!data.config?.report)
-        throw new Error("getReportScheduleConfig: config has no report payload");
-      return data.config.report;
-    },
-
-    async saveReportScheduleConfig(pk: string, payload: ReportSchedulePayload): Promise<void> {
-      await request<void>("PUT", `/configs/by-item/${pk}`, {
-        version: 1,
-        kind: "report",
-        report: payload,
-      });
-    },
-
-    async getReportRuns(pk: string): Promise<ReportRunStatus[]> {
-      return request<ReportRunStatus[]>("GET", `/reports/${pk}/runs`);
-    },
+    ...createReportsMethods(base),
 
     async getDatasetConfig(pk: string): Promise<DatasetConfig> {
       const resolved = await resolveDataset(pk);
