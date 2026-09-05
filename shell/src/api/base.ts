@@ -37,6 +37,30 @@ export const GEOMETRY_KINDS: Record<string, "point" | "line" | "polygon"> = {
   MultiPolygon: "polygon",
 };
 
+export async function requestBlob(
+  coreUrl: string,
+  getToken: () => string | undefined,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ blob: Blob; filename: string }> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const res = await fetch(`${coreUrl}${path}`, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`Request failed: ${res.status} ${method} ${path}`);
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  const filename = match ? match[1] : "export";
+  const blob = await res.blob();
+  return { blob, filename };
+}
+
 export function createBase(opts: {
   coreUrl: string;
   getToken: () => string | undefined;
