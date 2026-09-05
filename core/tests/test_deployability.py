@@ -52,8 +52,11 @@ preuve plus large qu'elle n'est :
 """
 
 import ast
+import base64
 import pathlib
 import re
+import shutil
+import subprocess
 
 import pytest
 import yaml
@@ -65,6 +68,7 @@ RELEASE = REPO / ".github/workflows/release.yml"
 ENV_EXAMPLE = REPO / ".env.example"
 BACKUP_SH = REPO / "deploy/backup/backup.sh"
 CORE_APP = REPO / "core/app"
+BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
 
 # Préfixe des images que nous publions nous-mêmes.
 OWN_IMAGE_RE = re.compile(r"ghcr\.io/[^/]+/(geostudio-[a-z0-9-]+)")
@@ -950,3 +954,44 @@ def test_base_and_prod_agree_on_admin_tool_router_names():
             f"{sorted(base_names - prod_names)}, seulement en prod = "
             f"{sorted(prod_names - base_names)}"
         )
+
+
+# ─── SP-42, lot infra critical (F-infra-ci-01) ─────────────────────────
+
+
+def test_bootstrap_env_generates_a_well_formed_core_secrets_master_key(tmp_path):
+    """SP-42/F-infra-ci-01 (critical) : `scripts/bootstrap-env.sh` (et donc
+    `scripts/install.sh`, qui l'invoque via `ensure_env_file()` puis ne
+    référence plus jamais cette variable) ne générait aucune valeur pour
+    `CORE_SECRETS_MASTER_KEY` — elle restait à la chaîne vide de
+    `.env.example`, que `core/app/secrets/crypto.py::load_master_key()`
+    refuse dès le premier appel de `create_app()` (`core/app/main.py`),
+    avant même la connexion DB : le cœur crash-loop sur toute installation
+    neuve suivant le flux documenté. Exécuté dans un répertoire jetable
+    (jamais le `.env` réel du dépôt) reproduisant la structure attendue par
+    le script (`scripts/bootstrap-env.sh` à côté de `.env.example`, appelé
+    depuis la racine)."""
+    (tmp_path / "scripts").mkdir()
+    shutil.copy(BOOTSTRAP_ENV_SH, tmp_path / "scripts" / "bootstrap-env.sh")
+    shutil.copy(ENV_EXAMPLE, tmp_path / ".env.example")
+    subprocess.run(
+        ["bash", "scripts/bootstrap-env.sh"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    env_text = (tmp_path / ".env").read_text()
+    match = re.search(r"^CORE_SECRETS_MASTER_KEY=(.*)$", env_text, re.MULTILINE)
+    assert match is not None, ".env généré doit contenir CORE_SECRETS_MASTER_KEY"
+    value = match.group(1).strip()
+    assert value, "CORE_SECRETS_MASTER_KEY ne doit pas être vide après bootstrap-env.sh"
+    try:
+        decoded = base64.b64decode(value, validate=True)
+    except Exception as exc:
+        pytest.fail(f"CORE_SECRETS_MASTER_KEY générée n'est pas du base64 valide : {exc}")
+    assert len(decoded) == 32, (
+        "CORE_SECRETS_MASTER_KEY doit décoder en 32 octets (exigence de "
+        "core/app/secrets/crypto.py::load_master_key()), a décodé en "
+        f"{len(decoded)} octet(s)"
+    )

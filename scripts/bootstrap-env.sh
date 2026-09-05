@@ -18,6 +18,15 @@ for var in PG_PASSWORD MINIO_PASSWORD KC_PASSWORD MARTIN_SECRET; do
   value="$(gen)"
   sed -i.bak "s|^${var}=.*|${var}=${value}|" .env
 done
+
+# CORE_SECRETS_MASTER_KEY : contrairement aux 4 secrets ci-dessus (chaînes
+# alphanumériques opaques), core/app/secrets/crypto.py::load_master_key()
+# exige exactement 32 octets *décodés* depuis du base64 — gen() (tronqué à
+# 32 caractères après filtrage de l'alphabet) ne le garantit pas, d'où une
+# génération dédiée.
+master_key="$(openssl rand -base64 32)"
+sed -i.bak "s|^CORE_SECRETS_MASTER_KEY=.*|CORE_SECRETS_MASTER_KEY=${master_key}|" .env
+
 rm -f .env.bak
 
 echo ".env généré avec des secrets forts. Éditez ACME_EMAIL/DOMAIN si besoin d'un déploiement public."
