@@ -55,8 +55,8 @@ from app.items import repository as items_repo
 from app.items.schemas import ItemPage, ItemRead
 from app.mcp import form_app
 from app.pipelines import repository as pipelines_repo
+from app.pipelines import service as pipelines_service
 from app.pipelines.jobs import run_pipeline_task
-from app.pipelines.routes import _require_data_manage_if_pipeline_writes_dataset
 from app.reports import repository as reports_repo
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.kind_registry import privilege_for_kind
@@ -957,7 +957,9 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 if facts is None or not can(session, user_id=user.id, action="write", item=facts):
                     raise ValueError("pipeline not found")
                 try:
-                    _require_data_manage_if_pipeline_writes_dataset(session, user, config)
+                    pipelines_service.require_data_manage_if_pipeline_writes_dataset(
+                        session, user, config
+                    )
                 except HTTPException as exc:
                     raise ValueError(exc.detail) from exc
                 run = pipelines_repo.create_run(
