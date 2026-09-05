@@ -1230,6 +1230,124 @@ def test_writer_dataset_creates_new_dataset_item(pg_engine, monkeypatch, tmp_pat
 
 
 @pytest.mark.postgis
+def test_run_pipeline_rejects_writer_dataset_without_data_manage_privilege(
+    pg_engine, monkeypatch, tmp_path
+):
+    # SP-43 Étape 9 (Step 6 du brief de tâche) : l'invariant critique SP-42
+    # (_write_dataset garde Privilege.DATA_MANAGE, point d'écriture unique
+    # convergent des 3 entrées REST/MCP/sweep, cf. son propre commentaire)
+    # n'avait jusqu'ici de test QUE via ces trois entrées
+    # (test_pipeline_routes.py::
+    # test_run_route_refuses_a_writer_dataset_pipeline_without_data_manage,
+    # test_pipeline_jobs.py::
+    # test_run_pipeline_task_refuses_writer_dataset_without_data_manage,
+    # test_mcp_tools_pipeline.py::
+    # test_run_pipeline_refuses_a_writer_dataset_pipeline_without_data_manage)
+    # — jamais par un appel direct à runtime.run_pipeline() dans CE fichier,
+    # celui qui refactore précisément le point de dispatch writer.dataset en
+    # registre. Un régresseur qui casserait la garde sans casser aucune des
+    # trois routes (ex. un chemin d'appel ajouté ailleurs qui recréerait
+    # writer.dataset sans passer par _write_dataset) resterait donc invisible
+    # ici sans ce test.
+    from app.roles.repository import ensure_built_in_roles
+    from app.users.repository import set_user_role
+
+    Base.metadata.create_all(pg_engine)
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        assert "data.manage" not in roles["analyst"].privileges
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=user.id,
+            role_id=roles["analyst"].id,
+            role_slug="analyst",
+        )
+        s.execute(
+            text(
+                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+                "description, pk_column, geometry_column, is_public, editable, "
+                "created_at, updated_at) "
+                "VALUES ('villes_out', :t, :o, 'villes_out', 'Villes out', "
+                "'', 'id', 'geometry', false, true, now(), now())"
+            ),
+            {"t": tenant.id, "o": user.id},
+        )
+        s.execute(
+            text(
+                "CREATE TABLE villes_out (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+                "region VARCHAR, pop INTEGER, geometry geometry(Point, 4326))"
+            )
+        )
+        apply_collection_ddl(s, "villes_out")
+        s.commit()
+
+        _write_partition(tmp_path, tenant_id=tenant.id, rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
+        monkeypatch.setattr(
+            runtime,
+            "_table_info_for_collection",
+            lambda session, collection_id: _table_info_for(collection_id),
+        )
+        monkeypatch.setattr(
+            runtime,
+            "_require_readable_collection_id",
+            lambda session, *, tenant_id, user, collection_id: collection_id,
+        )
+
+        payload = _dataset_pipeline_payload(
+            reader_collection="villes",
+            writer_collection="villes_out",
+            title="Mon dataset",
+        )
+        with pytest.raises(Exception, match="data.manage"):
+            runtime.run_pipeline(
+                s,
+                payload=payload,
+                tenant_id=tenant.id,
+                user=user,
+                endpoint_url="http://localhost:9000",
+                access_key="x",
+                secret_key="y",
+                base_uri=str(tmp_path),
+            )
+        s.rollback()
+
+        from app.items.models import Item
+
+        # La garde s'exécute avant toute écriture (require_privilege est la
+        # toute première ligne de _write_dataset, avant même
+        # _write_collection) : ni dataset catalogué, ni ligne insérée dans
+        # villes_out.
+        assert (
+            s.execute(
+                select(Item).where(Item.tenant_id == tenant.id, Item.resource_type == "dataset")
+            ).first()
+            is None
+        )
+        assert s.execute(text("SELECT count(*) FROM villes_out")).scalar_one() == 0
+
+    with pg_engine.begin() as conn:
+        conn.execute(
+            text(
+                "DROP TABLE villes_out; "
+                "TRUNCATE items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
+
+
+@pytest.mark.postgis
 def test_writer_dataset_updates_existing_dataset_preserving_metadata(
     pg_engine, monkeypatch, tmp_path
 ):
