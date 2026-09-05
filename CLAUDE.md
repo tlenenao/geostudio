@@ -1722,6 +1722,126 @@ bloqué par la seule vérification réelle des 5 tests `@pytest.mark.qgis`.
   shell 224 fichiers/~1900 tests, `tsc`/eslint/prettier propres ; E2E 143
   passed/4 skipped/0 failed. **Ready to merge.**
 
+- **SP-41 — métadonnées éditables et licence par jeu** (9 tâches + 1 lot de
+  correctifs de revue finale, spec
+  `docs/superpowers/specs/2026-09-04-sp41-metadonnees-licence-design.md`,
+  plan `docs/superpowers/plans/2026-09-04-sp41-metadonnees-licence.md` —
+  ferme le chantier 4.9) : une collection peut déclarer une licence
+  (résolue en URI DCAT-AP réelle et en identifiant SPDX pour STAC), un
+  producteur, un contact, une fréquence de mise à jour, une généalogie,
+  une langue, une version et une emprise temporelle ; un item quelconque
+  (map/app/dashboard/…) peut déclarer une licence et une langue ; **un bug
+  qui effaçait les mots-clés existants d'un item à chaque ouverture du
+  panneau Éditer est corrigé** (`ItemDetailPage.tsx` passait
+  `keywords: []` en dur au lieu de `item.keywords ?? []`). Nouveau module
+  cœur `app/catalog/` (catalogues curatés licences/fréquences/langues,
+  zéro dépendance, route `GET /metadata-catalog`) ; migration Alembic
+  0033 (10 colonnes `Collection` + 2 colonnes `Item`, convention
+  `str, default=""` sauf `language` `default="fr"`, testée upgrade/
+  downgrade/upgrade sur une base Postgres jetable réellement non vide) ;
+  câblage `PATCH`/`GET` sur les deux domaines ; export DCAT-AP et export
+  STAC reflètent les champs déclarés, avec omission des champs non
+  déclarés (sauf licence/langue, toujours présents — exception
+  documentée). Côté shell : `EditCollectionPanel` passe sur des onglets
+  (`ui/kit/Tabs`, Général/Métadonnées ouvertes/Pièces jointes) ;
+  `MetadataForm` (consommé par `ItemDetailPage` **et** `DatasetEditPage`,
+  ce dernier non listé par le brief, trouvé en cours de route) gagne
+  licence + langue.
+  **Défauts réels trouvés et corrigés en cours d'exécution** (piège n°3,
+  pas des déviations improvisées) : Task 1 a dû repositionner
+  `app.catalog` dans le contrat de couches (le brief demandait de
+  l'ajouter tout en bas, mais son propre code de route importe
+  `app.auth` — combinaison impossible) ; Task 3 a trouvé et corrigé un
+  crash `write_audit` (`date` non JSON-serializable, `model_dump(...,
+  mode="json")`) ; Task 5 a trouvé et corrigé un bug `dct:temporal` qui
+  perdait tout repli `dcat:startDate` quand seule `temporal_end` était
+  déclarée ; Task 7 a régénéré OpenAPI/TS et découvert que rendre
+  `license`/`language`/les 10 champs `Collection` obligatoires côté TS
+  cassait le typecheck de **14 fichiers de test** (le brief n'en
+  anticipait que 1-3) — les 13 non réclamés par aucune tâche corrigés
+  mécaniquement en suivi immédiat plutôt que différés ; Task 8 a trouvé
+  un test qui ne testait pas ce qu'il prétendait (conversion `UNSET→""`
+  jamais exercée) et un test cassé pré-existant de Task 7
+  (`itemClient.test.ts::createBookmarkItem`, fixture `toEqual` non mise
+  à jour) ; Task 10 (vérification finale) a trouvé et corrigé deux
+  défauts réels dans la suite cœur, non prévus par le brief :
+  `test_public_items_list.py` (allowlist non mise à jour pour
+  `license`/`language`, exposition publique jugée intentionnelle — but
+  même du chantier) et `test_pipeline_node_validation.py` (15 erreurs de
+  fixture, `INSERT` SQL brut non mis à jour pour 8 nouvelles colonnes
+  `NOT NULL`).
+  **Revue finale de branche (opus, diff scopé `core/`+`shell/` depuis
+  avant Task 1, 57 fichiers) : 1 Critical + 3 Important, tous fermés et
+  re-vérifiés indépendamment** — le Critical et deux des trois Important
+  n'étaient visibles qu'au niveau de la branche entière, aucune revue par
+  tâche ne pouvait les voir seule :
+  - **C1 (Critical)** : `extent.temporal` de l'export STAC émettait une
+    date nue (`"2020-01-01"`) au lieu d'un instant RFC 3339 dès qu'une
+    emprise temporelle était déclarée — un client STAC conforme (validé
+    empiriquement avec `Collection.model_validate(doc)`, le même
+    validateur que tout le reste du fichier de test) rejette alors le
+    document Collection **entier**, pas seulement le champ. Passé
+    inaperçu parce que les 5 nouveaux tests de Task 5/6 avaient
+    justement perdu cette validation que leurs voisins utilisent tous.
+    Corrigé (`T00:00:00Z`/`T23:59:59Z`), les 5 tests retrouvent leur
+    `model_validate`.
+  - **I2** : une emprise temporelle déclarée ne pouvait **jamais** être
+    effacée par `PATCH` — `temporalStart`/`temporalEnd` n'ont pas de
+    représentation « vide » non-`None` (contrairement aux 8 champs
+    texte), donc « champ omis » et « champ explicitement mis à `null` »
+    valaient tous deux `None` côté Python, exactement le payload envoyé
+    par `EditCollectionPanel` à chaque enregistrement. Corrigé via
+    `body.model_fields_set` (présence de la clé dans le JSON, même à
+    `null`) plutôt que `is not None`.
+  - **I3** : tous les producteurs déclarés collisionnent sur la **même**
+    IRI `dct:publisher` dans `GET /dcat/catalog` — un consommateur JSON-LD
+    qui fusionne le document en graphe RDF voit un seul `foaf:Agent` avec
+    N `foaf:name` incohérents. Corrigé par une IRI scoping par
+    `collection_id` (pas par le texte du producteur, pour éviter une
+    nouvelle collision entre producteurs au nom similaire) quand un
+    producteur est déclaré ; IRI partagée à l'échelle du tenant inchangée
+    sinon (non-régression).
+  - **I4** : les 12 nouvelles colonnes n'ont qu'un défaut Python-side
+    (`default=`), pas de `server_default=` — dérive de schéma entre
+    `Base.metadata.create_all()` (utilisé par toutes les suites SQLite)
+    et `alembic upgrade head` (déploiement réel), déjà payée une fois
+    dans ce même plan (`test_pipeline_node_validation.py`, Task 10) et
+    latente sur ~4 autres fichiers de test à `INSERT` SQL brut. Corrigé
+    en ajoutant `server_default` à l'identique de la migration 0033.
+  6 Minor documentés en suivi non bloquant : `EditCollectionPanel` sans
+  garde `??`/défaut sur les 10 nouveaux champs (même classe que le
+  correctif SP-40 sur `attachmentFields`, latent tant qu'aucun E2E
+  n'ouvre l'onglet Métadonnées ouvertes) ; sentinelle `UNSET`/libellé
+  dupliqués sans source commune entre `EditCollectionPanel` et
+  `MetadataForm` ; `resolve_language()` lève `KeyError` sans garde sur un
+  id de langue absent du catalogue (inatteignable via l'API aujourd'hui,
+  mais un futur rétrécissement du catalogue ou une écriture DB directe le
+  rendrait exploitable) ; `licenseUri` survit à un changement de licence
+  loin de `"other"` (sans conséquence, non documenté) ; les 3
+  consommateurs de `useMetadataCatalog()` ne gèrent pas `isError`
+  (contrôle silencieusement vide, pas de perte de données) ; le texte de
+  la spec §4 n'a pas été mis à jour pour refléter le repli
+  `dcat:startDate`/`created_at` quand seule `temporal_end` est déclarée
+  (comportement délibéré et testé, contradiction purement documentaire).
+  **Incident piège n°9 (session concurrente, sans conséquence sur le
+  contenu)** : une session concurrente (« SP-42 revue globale », même
+  arbre `dev`, pas de worktree) a absorbé le commit de Task 9 dans le
+  sien par une course `git add`/`git commit` — contenu vérifié
+  intégralement correct (`git show HEAD:<fichier>`, re-vérifié
+  indépendamment par la revue via diff scopé par pathspec), aucune
+  réécriture d'historique tentée. Le sous-agent du lot de correctifs de
+  revue finale a lui-même heurté une limite de session (HTTP 429) juste
+  après avoir commité les 4 correctifs, avant d'écrire son rapport — les
+  commits étaient intacts, la vérification finale (suite complète,
+  portes qualité, diff OpenAPI) et le rapport ont été complétés
+  directement par le contrôleur, puis re-revus indépendamment (0
+  Critical/Important/Minor).
+  Suite finale : cœur **2051 passed/178 skipped/0 failed** ; shell 224
+  fichiers/1906+ tests, `tsc`/lint/format propres ; E2E 142 passed/4
+  skipped/0 failed (référence stable depuis SP-38/39/40, pas de
+  régression). Diff OpenAPI confirmé vide sur les correctifs de revue
+  finale (routes STAC/DCAT sans `response_model`). **Ready to merge.**
+
 ### Conventions tranchées (2026-09-01)
 
 Trois dettes Minor répétées famille après famille (SP-30c→SP-30j) sans jamais
