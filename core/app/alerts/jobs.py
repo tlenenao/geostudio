@@ -25,7 +25,8 @@ from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook, AlertRul
 from app.db import request_scoped_session
 from app.items import repository as items_repo
 from app.jobs import app
-from app.jobs.common import resolve_owner_user, session_factory
+from app.jobs.common import resolve_owner_user
+from app.jobs.common import session_factory as _session_factory
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -248,7 +249,7 @@ def _notify(
 
 @app.task(queue="etl")
 def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
-    factory = session_factory()
+    factory = _session_factory()
 
     with request_scoped_session(factory) as session:
         evaluation = alerts_repo.get_evaluation(
@@ -437,7 +438,7 @@ def sweep_alert_rules_task(timestamp: int) -> None:
     if is_read_only_mode():
         logger.info("mode lecture seule : balayage d'alertes ignoré")
         return
-    factory = session_factory()
+    factory = _session_factory()
     with request_scoped_session(factory) as session:
         due = alerts_repo.list_due_rules(session)
         for item_id, tenant_id in due:
