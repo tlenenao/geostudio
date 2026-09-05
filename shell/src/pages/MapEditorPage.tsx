@@ -26,6 +26,14 @@ export function MapEditorPage({ pk }: { pk: string }) {
   // SP-42/F-shell-pages-04 : cf. commentaire jumeau sur DatasetEditPage.tsx —
   // même doctrine, même résidu documenté (permissions.write incomplet vs
   // garde de privilège de domaine).
+  //
+  // SP-42, revue finale (point 2, Critical) : `itemQuery.data` est
+  // `undefined` pendant tout le chargement ET en cas d'erreur — hasPermission
+  // renvoie alors `false`, verrouillant Enregistrer pour la mauvaise raison
+  // (pas "lecture seule", "pas encore chargé"). Le garde de rendu ci-dessous
+  // inclut désormais itemQuery.isLoading/isError (même patron que
+  // DatasetEditPage.tsx:52-58) : `readOnly` n'est calculé qu'une fois l'item
+  // effectivement résolu.
   const readOnly = !hasPermission(itemQuery.data, "write");
   const [draft, setDraft] = useState<MapConfig | null>(null);
   const mapViewRef = useRef<MapViewHandle>(null);
@@ -40,8 +48,9 @@ export function MapEditorPage({ pk }: { pk: string }) {
   // `draft` lags one render behind a successful load (it is synced in the
   // effect above), so keep showing the loader during that gap instead of
   // flashing the error.
-  if (query.isLoading || (!draft && !query.isError)) return <p role="status">Chargement…</p>;
-  if (query.isError || !draft)
+  if (query.isLoading || itemQuery.isLoading || (!draft && !query.isError))
+    return <p role="status">Chargement…</p>;
+  if (query.isError || itemQuery.isError || !draft || !itemQuery.data)
     return (
       <p role="alert" className="text-sm text-danger">
         Carte introuvable.

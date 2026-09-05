@@ -326,6 +326,43 @@ export async function mockCore(page: Page) {
     await route.fulfill({ json: { extensions: [] } });
   });
 
+  // SP-42, revue de la dernière passe de correctifs (point 2, Critical) :
+  // MapEditorPage/AppBuilderPage/PipelineBuilderPage/ReportEditPage appellent
+  // désormais toutes useItem(pk) (GET /items/{pk}) pour verrouiller
+  // Enregistrer sur permissions.write. "**/items*" ci-dessus (liste) ne
+  // matche jamais un id imbriqué : son dernier segment est un `*` simple, qui
+  // ne traverse pas "/" — un id qui n'a pas sa propre route dédiée plus bas
+  // (seuls "1"/"9"/"site-1" en ont une) restait donc totalement non mocké,
+  // et itemQuery finissait en erreur/jamais résolu. Filet générique — item
+  // propriétaire par défaut (permissions.write=true) pour ne rien changer au
+  // comportement des specs pré-existantes qui n'affirment pas sur les
+  // permissions elles-mêmes. Enregistré AVANT les routes spécifiques
+  // ci-dessous : en dernier arrivé gagne (Playwright), "1"/"9"/"site-1"
+  // gardent leur propre réponse avec état (titre édité, etc.), ce filet ne
+  // sert que les ids qu'aucune spec ne mocke explicitement (ex. "77",
+  // "map-1", "pipe-1").
+  await page.route(/https:\/\/core\.test\/items\/[^/?]+(\?.*)?$/, async (route) => {
+    const url = new URL(route.request().url());
+    const pk = url.pathname.split("/").pop()!;
+    await route.fulfill({
+      json: {
+        pk,
+        resourceType: "map",
+        title: pk,
+        abstract: "",
+        owner: "alice",
+        thumbnailUrl: null,
+        date: "2026-01-01",
+        configId: `cfg-${pk}`,
+        isPublished: false,
+        keywords: [],
+        permissions: { read: true, write: true, delete: true, share: true },
+        license: "",
+        language: "fr",
+      },
+    });
+  });
+
   // Scoped to the cœur's host (not "**/items/1"): the shell's own client-side
   // route is also "/items/1" (same path, different origin — localhost:4173
   // vs. https://core.test), so a path-only glob here would also intercept

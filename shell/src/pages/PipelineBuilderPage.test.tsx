@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -401,6 +401,68 @@ test("persisted mode: verrouille Enregistrer quand permissions.write est false (
   expect(
     screen.getByText("Modification réservée aux éditeurs de cet élément."),
   ).toBeInTheDocument();
+});
+
+test("persisted mode: reste en chargement tant que l'item n'est pas résolu, ne verrouille pas Enregistrer par erreur (SP-42, revue finale, point 2, Critical)", async () => {
+  // Graphe valide (reader -> writer) : un graphe vide désactiverait
+  // Enregistrer pour une tout autre raison (isPipelineValid), confondant ce
+  // test avec la validation locale plutôt qu'avec permissions.write.
+  const payload: PipelinePayload = {
+    nodes: [
+      {
+        id: "r1",
+        kind: "reader",
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: { collectionId: "villes" },
+        title: "Villes",
+      },
+      {
+        id: "w1",
+        kind: "writer",
+        op: "writer.collection",
+        x: 300,
+        y: 0,
+        params: { collectionId: "villes_propres" },
+        title: "Écriture",
+      },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+  };
+  let resolveItem!: (item: Item) => void;
+  let resolvePipelineConfig!: (payload: PipelinePayload) => void;
+  renderPage("p-1", {
+    getItem: vi.fn(
+      () =>
+        new Promise<Item>((resolve) => {
+          resolveItem = resolve;
+        }),
+    ),
+    getPipelineConfig: vi.fn(
+      () =>
+        new Promise<PipelinePayload>((resolve) => {
+          resolvePipelineConfig = resolve;
+        }),
+    ),
+  });
+
+  // Résout le config de pipeline SEUL, jamais l'item : avant le correctif,
+  // la page rendait déjà le builder complet avec Enregistrer verrouillé
+  // (permissions.write lu sur `undefined` => false) au lieu de rester en
+  // "Chargement…" comme son jumeau DatasetEditPage.tsx.
+  await act(async () => {
+    resolvePipelineConfig(payload);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("Chargement…");
+
+  await act(async () => {
+    resolveItem(OWNED_PIPELINE_ITEM);
+  });
+  const saveButton = await screen.findByRole("button", { name: "Enregistrer" });
+  expect(saveButton).toBeEnabled();
 });
 
 test("persisted mode: une config qui échoue à charger affiche une alerte et n'écrase pas l'existant (SP-42/F-shell-pages-05)", async () => {

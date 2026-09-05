@@ -56,6 +56,12 @@ export function PipelineBuilderPage({
   // même doctrine, même résidu documenté. `pk === null` = brouillon jamais
   // encore créé, rien à verrouiller (la garde de création est un sujet
   // distinct, F-shell-pages-01/F-securite-autorisation-01).
+  //
+  // SP-42, revue finale (point 2, Critical) : quand `pk !== null`,
+  // `itemQuery.data` est `undefined` pendant tout le chargement ET en cas
+  // d'erreur — hasPermission renvoie alors `false`, verrouillant Enregistrer
+  // pour la mauvaise raison. Le garde de rendu plus bas inclut désormais
+  // itemQuery.isLoading/isError (même patron que DatasetEditPage.tsx:52-58).
   const readOnly = pk !== null && !hasPermission(itemQuery.data, "write");
 
   const [draft, setDraft] = useState<PipelinePayload>(EMPTY_PAYLOAD);
@@ -67,14 +73,20 @@ export function PipelineBuilderPage({
     if (pk !== null && configQuery.data) setDraft(configQuery.data);
   }, [pk, configQuery.data]);
 
-  if (pk !== null && configQuery.isLoading) return <p role="status">Chargement…</p>;
+  if (pk !== null && (configQuery.isLoading || itemQuery.isLoading))
+    return <p role="status">Chargement…</p>;
   // SP-42 F-shell-pages-05 : sans cette garde, un pipeline existant dont le
   // chargement échoue (403 suite à une révocation de partage, item supprimé
   // mais lien conservé, panne réseau transitoire) s'affichait comme un
   // brouillon vide avec Enregistrer actif — un ré-enregistrement écrasait
   // silencieusement la configuration réelle. Même patron que
   // MapEditorPage.tsx pour son propre query.isError.
-  if (pk !== null && configQuery.isError)
+  //
+  // SP-42, revue finale (point 2, Critical) : itemQuery.isError/!itemQuery.data
+  // ajoutés pour la même raison que configQuery.isError — sans eux,
+  // `readOnly` se calculait sur `itemQuery.data === undefined` (=> verrouillé
+  // à tort) sans jamais bloquer le rendu complet.
+  if (pk !== null && (configQuery.isError || itemQuery.isError || !itemQuery.data))
     return (
       <p role="alert" className="text-sm text-danger">
         Pipeline introuvable.

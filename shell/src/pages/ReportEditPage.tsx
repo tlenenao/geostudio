@@ -50,6 +50,12 @@ export function ReportEditPage({
   // SP-42/F-shell-pages-04 : cf. commentaire jumeau sur DatasetEditPage.tsx —
   // même doctrine, même résidu documenté. `pk === null` = brouillon jamais
   // encore créé, rien à verrouiller.
+  //
+  // SP-42, revue finale (point 2, Critical) : quand `pk !== null`,
+  // `itemQuery.data` est `undefined` pendant tout le chargement ET en cas
+  // d'erreur — hasPermission renvoie alors `false`, verrouillant Enregistrer
+  // pour la mauvaise raison. Le garde de rendu plus bas inclut désormais
+  // itemQuery.isLoading/isError (même patron que DatasetEditPage.tsx:52-58).
   const readOnly = pk !== null && !hasPermission(itemQuery.data, "write");
 
   const [draft, setDraft] = useState<ReportSchedulePayload>(
@@ -61,11 +67,17 @@ export function ReportEditPage({
     if (pk !== null && configQuery.data) setDraft(configQuery.data);
   }, [pk, configQuery.data]);
 
-  if (pk !== null && configQuery.isLoading) return <p role="status">Chargement…</p>;
+  if (pk !== null && (configQuery.isLoading || itemQuery.isLoading))
+    return <p role="status">Chargement…</p>;
   // SP-42 F-shell-pages-05 : même garde que PipelineBuilderPage.tsx — sans
   // elle, un rapport existant dont le chargement échoue s'affichait comme un
   // brouillon vide avec Enregistrer actif (422 opaque à la sauvegarde).
-  if (pk !== null && configQuery.isError)
+  //
+  // SP-42, revue finale (point 2, Critical) : itemQuery.isError/!itemQuery.data
+  // ajoutés pour la même raison que configQuery.isError — sans eux,
+  // `readOnly` se calculait sur `itemQuery.data === undefined` (=> verrouillé
+  // à tort) sans jamais bloquer le rendu complet.
+  if (pk !== null && (configQuery.isError || itemQuery.isError || !itemQuery.data))
     return (
       <p role="alert" className="text-sm text-danger">
         Rapport introuvable.
