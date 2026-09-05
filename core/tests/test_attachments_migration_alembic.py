@@ -143,7 +143,7 @@ def test_migration_0032_upgrades_and_downgrades_on_a_real_non_empty_base(
             assert "attachments" in tables
         engine.dispose()
 
-        command.downgrade(alembic_cfg, "-1")
+        command.downgrade(alembic_cfg, "0031")
         engine = sa.create_engine(throwaway_database_url)
         with engine.begin() as conn:
             columns = {

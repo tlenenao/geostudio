@@ -156,7 +156,7 @@ def test_migration_0033_upgrades_and_downgrades_on_a_real_non_empty_base(
             assert item_row == ("", "fr")
         engine.dispose()
 
-        command.downgrade(alembic_cfg, "-1")
+        command.downgrade(alembic_cfg, "0032")
         engine = sa.create_engine(throwaway_database_url)
         with engine.begin() as conn:
             col_columns = {
