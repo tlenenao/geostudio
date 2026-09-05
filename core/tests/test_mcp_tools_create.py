@@ -216,6 +216,25 @@ def test_resolve_actor_does_not_bootstrap_admin_without_core_admin_subs(app_clie
         assert user.is_admin is False
 
 
+def test_resolve_actor_bootstraps_analyst_from_core_analyst_subs(app_client, monkeypatch):
+    # SP-42/F-securite-autorisation-03 : CORE_ANALYST_SUBS doit être
+    # appliquée sur le chemin MCP exactement comme CORE_ADMIN_SUBS
+    # ci-dessus — pas seulement sur le chemin REST (get_current_user).
+    # mock-sub est le subject fixe que MockTokenVerifier résout toujours
+    # (app/mcp/auth.py).
+    monkeypatch.setenv("CORE_ANALYST_SUBS", "mock-sub")
+    with app_client:
+        call_tool(app_client, "whoami", {})
+
+    with app_client.session_factory() as session:
+        from app.roles.models import Role
+        from app.users.models import User
+
+        user = session.get(User, app_client.mock_user.id)
+        role = session.get(Role, user.role_id)
+        assert role.slug == "analyst"
+
+
 def test_create_item_writes_audit_log_with_agent_actor(app_client):
     with app_client:
         call_tool(
