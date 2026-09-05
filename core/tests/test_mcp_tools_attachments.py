@@ -139,14 +139,19 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
     return payload["result"]
 
 
-def test_list_attachments_returns_metadata_and_file_url(app_client):
+def test_list_attachments_returns_metadata_without_a_file_url(app_client):
+    # SP-42, correctif 2 (F-coeur-federation-08) : fileUrl pointait vers
+    # GET /collections/{id}/items/{fid}/attachments/{aid}/file, gardée par
+    # l'audience OIDC du shell (CORE_OIDC_AUDIENCE) — un jeton MCP porte
+    # l'audience distincte CORE_MCP_AUDIENCE et reçoit systématiquement 401
+    # sur cette route. Le tool ne doit donc plus produire ce champ.
     with app_client:
         result = call_tool(app_client, "list_attachments", {"collectionId": "col1", "fid": "f1"})
     assert len(result) == 1
     row = result[0]
     assert row["filename"] == "a.jpg"
     assert row["fieldKey"] == "photos"
-    assert row["fileUrl"] == "/collections/col1/items/f1/attachments/" + row["id"] + "/file"
+    assert "fileUrl" not in row
 
 
 def test_list_attachments_filters_by_field_key(app_client):
