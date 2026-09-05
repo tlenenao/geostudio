@@ -7,9 +7,10 @@ from app.auth.dependency import get_current_user
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.ingestion import routes as ingestion_routes
 from app.main import create_app
+from app.roles.repository import ensure_built_in_roles
 from app.tenants.repository import get_or_create_default_tenant
 from app.terrain3d import routes as terrain3d_routes
-from app.users.repository import get_or_create_user
+from app.users.repository import get_or_create_user, set_user_role
 
 
 class _FakeS3Client:
@@ -61,6 +62,41 @@ def env(monkeypatch):
     )
     client = TestClient(app)
     return client, Session, tenant, alice, deferred, fake_s3
+
+
+def test_create_upload_refuses_a_reader_with_no_privilege(env):
+    # SP-42, revue des lots de correctifs 2/3bis (point 1, Critical) :
+    # create_terrain3d_upload ne consultait jusqu'ici que get_current_user —
+    # aucun privilège — alors que le job qu'il amorce aboutit
+    # (convert_terrain3d_task) à configs_repo.create_config(kind="terrain3d"),
+    # mappé sur catalog.manage. Un rôle « Lecteur » (0 privilège) obtenait
+    # donc 201 ici, exactement le trou fermé sur POST /configs par
+    # eafb02cc.
+    client, Session, tenant, alice, _deferred, _fake_s3 = env
+    with Session() as s:
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        assert roles["reader"].privileges == []
+        reader_role_id = roles["reader"].id
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=alice.id,
+            role_id=reader_role_id,
+            role_slug="reader",
+        )
+        s.commit()
+    # `get_current_user` est ici surchargé par `lambda: alice` (fixture
+    # `env`, patron d'origine du fichier) — le MÊME objet Python à chaque
+    # requête, jamais re-résolu depuis la base. Sans cette mise à jour en
+    # mémoire, require_privilege lirait encore l'ancien role_id (Créateur)
+    # de cet objet et le test ne prouverait rien.
+    alice.role_id = reader_role_id
+
+    r = client.post(
+        "/terrain3d/uploads",
+        json={"key": f"{tenant.id}/abc/dem.tif", "filename": "dem.tif", "title": "DEM"},
+    )
+    assert r.status_code == 403, r.text
 
 
 def test_presign_returns_upload_url_and_tenant_scoped_key(env):

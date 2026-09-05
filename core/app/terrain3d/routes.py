@@ -18,10 +18,12 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.configs import repository as configs_repo
+from app.configs.routes import _KIND_PRIVILEGE
 from app.db import get_session
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_put_url
 from app.items import repository as items_repo
+from app.roles.guards import require_privilege
 from app.sharing.authorization import can
 from app.terrain3d import repository as repo
 from app.terrain3d.schemas import (
@@ -76,6 +78,16 @@ def create_terrain3d_upload(
     user: User = Depends(get_current_user),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
 ) -> Terrain3DUploadCreated:
+    # SP-42, revue des lots de correctifs 2/3bis (point 1, Critical) : cette
+    # route ne consultait jusqu'ici que get_current_user — aucun privilège —
+    # alors que le job qu'elle crée aboutit (convert_terrain3d_task,
+    # app.terrain3d.jobs) à configs_repo.create_config(kind="terrain3d"),
+    # mappé sur catalog.manage (app.configs.routes::_KIND_PRIVILEGE). Un
+    # rôle « Lecteur » (0 privilège) obtenait donc 201 ici puis devenait
+    # propriétaire d'une config, exactement le trou fermé sur
+    # POST /configs par eafb02cc. Réutilise le mapping existant (single
+    # source of truth), pas une règle parallèle.
+    require_privilege(session, user, _KIND_PRIVILEGE["terrain3d"])
     # Même garde confused-deputy que app.ingestion.routes.create_upload_job :
     # la clé est censée venir du présigné ci-dessus, toujours préfixée par le
     # tenant de l'appelant.
