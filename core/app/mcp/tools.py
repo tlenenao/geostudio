@@ -74,6 +74,8 @@ READ_ONLY_TOOLS = {
     "set_sharing",
     "create_dataset",
     "create_bookmark",
+    "create_pipeline",
+    "run_pipeline",
 }
 
 

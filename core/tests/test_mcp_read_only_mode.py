@@ -117,7 +117,13 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
     return payload["result"]
 
 
-def test_read_only_tools_constant_matches_the_six_write_tools():
+def test_read_only_tools_constant_matches_the_eight_write_tools():
+    # SP-42, revue des lots de correctifs 2/3bis (point 5, Minor causé par
+    # nos propres correctifs) : cette constante (et cette assertion)
+    # figeaient "six write tools" alors que create_pipeline et run_pipeline
+    # portent désormais eux aussi le garde is_read_only_mode() — un
+    # inventaire faux gelé par un test, même classe de défaut déjà payée
+    # sur ce dépôt (SP-30g, SP-30i).
     assert READ_ONLY_TOOLS == {
         "save_app_config",
         "create_item",
@@ -125,6 +131,8 @@ def test_read_only_tools_constant_matches_the_six_write_tools():
         "set_sharing",
         "create_dataset",
         "create_bookmark",
+        "create_pipeline",
+        "run_pipeline",
     }
 
 
