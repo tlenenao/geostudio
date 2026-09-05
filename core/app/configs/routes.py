@@ -272,6 +272,15 @@ def rollback_config(
     candidate = repo.get_revision_config(session, config_id, request.version)
     if candidate is None:
         raise HTTPException(status_code=404, detail="config or version not found")
+    # SP-42, revue du lot de correctifs 1 (Important) : même trou que
+    # create_config/update_config avant eafb02cc, resté ouvert ici — le
+    # rollback rejoue "exactement la même séquence que update_config" (cf.
+    # commentaire ci-dessus) mais sautait ce garde. Volontairement APRÈS
+    # _require_access (mêmes ordres que create_config/update_config) et
+    # HORS du try/except ci-dessous : un privilège manquant est un refus
+    # d'autorisation (403), pas un problème de validité de la version
+    # restaurée (422) — les deux ne doivent pas se confondre.
+    _require_privilege_for_kind(session, user, candidate)
     try:
         _require_etl_enabled_for_pipeline(candidate)
         _require_export_enabled_for_report(candidate)

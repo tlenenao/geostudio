@@ -321,3 +321,32 @@ def test_analyst_can_create_and_reader_still_cannot_create_a_bookmark(env):
     _as(app, reader)
     resp = client.post("/configs", json={"title": "vue reader", "config": bookmark_body})
     assert resp.status_code == 403, resp.text
+
+
+def test_demoted_owner_can_no_longer_rollback_their_own_app_config(env):
+    # Revue du lot de correctifs 1 (Important) : POST /configs/{id}/rollback
+    # rejoue "exactement la même séquence que update_config" (son propre
+    # commentaire) mais sautait _require_privilege_for_kind — un
+    # utilisateur rétrogradé pouvait donc encore muter le contenu d'un item
+    # en restaurant une ancienne version. Même montage que
+    # test_demoted_owner_can_no_longer_update_their_own_app_config
+    # ci-dessus, sur /rollback plutôt que PUT.
+    app, client, creator, reader = env
+    _as(app, creator)
+    created = client.post("/configs", json={"title": "x", "config": _body("app")}).json()
+    config_id = created["id"]
+
+    Session = client.session_factory  # type: ignore[attr-defined]
+    with Session() as s:
+        set_user_role(
+            s,
+            tenant_id=creator.tenant_id,
+            user_id=creator.id,
+            role_id=reader.role_id,
+            role_slug="reader",
+        )
+        s.commit()
+
+    _as(app, creator)
+    resp = client.post(f"/configs/{config_id}/rollback", json={"version": 1})
+    assert resp.status_code == 403, resp.text
