@@ -538,6 +538,31 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   90,30 % (seuil 88) ; `npm run build` propre ; E2E ciblée (8 specs
   nommées par le plan) 10/10 ; E2E complète sans régression de compte
   (piège n°6).
+- **SP-45 — durcissement sécurité immédiat** (5 tâches, spec
+  `docs/superpowers/specs/2026-09-05-sp45-durcissement-securite-design.md`,
+  plan `docs/superpowers/plans/2026-09-05-sp45-durcissement-securite.md`)
+  — garde d'egress SSRF sur l'appel LLM sortant du copilote (GAP-02,
+  `app/copilot/egress.py`, patron des 3 gardes d'egress déjà existantes) ;
+  retrait de `MARTIN_SECRET`, réglée mais jamais consommée par `martin`
+  (GAP-41) ; rate-limit dédié sur `POST /collections/empty` (GAP-58) ;
+  rate limiter — clé anonyme par IP réelle (`ProxyHeadersMiddleware`,
+  requis puisque `core` n'est jamais exposé directement, seul Traefik
+  l'est), 2 routes ArcGIS live-query rattachées au groupe `harvest`,
+  sweep périodique du cache module-global (GAP-61) ; `restart:
+  unless-stopped` sur `traefik`, seul service durablement actif à en
+  être dépourvu (GAP-79). GAP-77 (purge d'historique git de la clé
+  privée `age` de test) et GAP-78 (réglages sécurité GitHub) — les deux
+  seules tâches destructrices/production du plan — laissées en attente
+  d'un accord explicite, **puis exécutées séparément après confirmation
+  de Tanguy** : `git filter-repo --replace-text` sur un clone miroir,
+  vérifié absent de `HEAD` et de tout ancêtre de branche avant
+  force-push des 26 branches d'origin (2 branches Dependabot apparues
+  entre le clone miroir initial et la vérification finale ont nécessité
+  un second passage, capturées à temps) ; `secret_scanning`/
+  `secret_scanning_push_protection`/`dependabot_security_updates` bascu-
+  lés à `enabled` via `gh api`. Suite finale (avant la purge, revérifiée
+  identique après réintégration du contenu sur le nouveau `dev` purgé) :
+  cœur 2022 passed/178 skipped/0 failed.
 
 ### Conventions tranchées (2026-09-01)
 
@@ -570,8 +595,9 @@ immédiat d'une session :
   production réels trouvés et corrigés au passage (`_lock_down()` bloquait
   `transform.qgis`, `fid` GeoPackage non filtré). Reste non câblé en CI
   (session manuelle uniquement).
-- Egress LLM du copilote (SP-20) sans garde SSRF — seule des 4 surfaces
-  sortantes à ne pas en avoir une (`REV-096`).
+- `REV-096` clos par **SP-45** : garde d'egress SSRF sur l'appel LLM
+  sortant du copilote (`app/copilot/egress.py`), même patron que les 3
+  autres surfaces sortantes.
 - `REV-097` clos par **SP-47** : `automation.secrets.manage` garde `/secrets`
   (OR avec `admin.secrets.manage`, rôle Créateur mis à jour — décision à
   confirmer a posteriori par Tanguy) ; `tasks.view`/`tasks.view_all` gardent
