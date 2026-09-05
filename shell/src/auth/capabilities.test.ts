@@ -109,15 +109,47 @@ describe("domainState", () => {
     expect(stateOf("data", analyst)).toBe("visible");
   });
 
-  it("montre le domaine analytique au créateur (sans SQL Lab, matrice §6.7) et à l'analyste, le masque au lecteur", () => {
-    // Changement de comportement assumé par cette tâche : l'ancien modèle
-    // masquait tout le domaine à qui n'était pas isAnalyst=true, y compris un
-    // créateur — la matrice §6.7 dit « ◐ sans SQL Lab », pas absent.
-    // L'accès à SQL Lab lui-même reste gardé séparément par RequirePrivilege
-    // sur la route /analytics/sql (analytics.sql_lab.access), pas ici.
+  it("masque le domaine analytique au lecteur et au créateur (pas de SQL Lab), le montre à l'analyste", () => {
+    // SP-42/F-securite-autorisation-08(a) : gaté sur analytics.sql_lab.access,
+    // pas analytics.view. /analytics/sql (RequirePrivilege du même nom,
+    // routes.tsx) est aujourd'hui l'unique destination de ce domaine — un
+    // Créateur (analytics.view sans sql_lab.access) voyait auparavant un
+    // domaine qui refusait systématiquement sa seule destination
+    // (falsifié : domainState === "visible" mais la route refuse). Revient
+    // sur le changement assumé par SP-30a (masquer sur analytics.view
+    // seul) une fois la divergence domaine/route constatée.
     expect(stateOf("analytics", reader)).toBe("hidden");
-    expect(stateOf("analytics", creator)).toBe("visible");
+    expect(stateOf("analytics", creator)).toBe("hidden");
     expect(stateOf("analytics", analyst)).toBe("visible");
+  });
+
+  it("masque le domaine Cartes au lecteur, le montre au créateur", () => {
+    // SP-42/F-shell-pages-03 : maps.manage distingue déjà Créateur de
+    // Lecteur côté catalogue de privilèges (core/app/roles/privileges.py) —
+    // seul ce domaine n'en tenait pas compte jusqu'ici.
+    expect(stateOf("maps", reader)).toBe("hidden");
+    expect(stateOf("maps", creator)).toBe("visible");
+  });
+
+  it("un domaine visible doit toujours pouvoir atteindre le privilège réellement gardé par sa destination (F-securite-autorisation-08)", () => {
+    // Cf. shell/src/shell/routes.tsx pour la garde RequirePrivilege réelle de
+    // chaque destination de DOMAIN_PATHS (domainRoutes.ts) — dupliqué ici
+    // faute de pouvoir importer routes.tsx (React Router) dans un test de
+    // logique pure. admin est délibérément absent : sa destination varie
+    // par profil (getDomainPath), déjà couvert par domainRoutes.test.ts.
+    const destinationPrivilege: Partial<Record<string, string>> = {
+      analytics: "analytics.sql_lab.access",
+    };
+    for (const profile of [admin, creator, analyst, reader]) {
+      for (const domain of DOMAINS) {
+        if (domain.id === "admin") continue;
+        const required = destinationPrivilege[domain.id];
+        if (!required) continue;
+        if (domainState(domain, profile) === "visible") {
+          expect(profile.privileges.has(required)).toBe(true);
+        }
+      }
+    }
   });
 
   it("le mode démo ne masque ni ne verrouille aucun domaine", () => {
@@ -134,6 +166,10 @@ describe("navigableDomains", () => {
     const etlOff: Profile = { ...creator, capabilities: { ...ALL_ON, etlEnabled: false } };
     const rendered = navigableDomains(etlOff);
     expect(rendered.map((r) => r.domain.id)).not.toContain("admin");
+    // "analytics" absent : `creator` n'a pas analytics.sql_lab.access
+    // (SP-42/F-securite-autorisation-08(a) ci-dessus), pas un effet de
+    // etlOff.
+    expect(rendered.map((r) => r.domain.id)).not.toContain("analytics");
     expect(rendered.find((r) => r.domain.id === "automation")?.state).toBe("locked");
     expect(rendered.map((r) => r.domain.id)).toEqual([
       "catalog",
@@ -141,7 +177,6 @@ describe("navigableDomains", () => {
       "data",
       "apps",
       "automation",
-      "analytics",
       "tasks",
       "settings",
     ]);
