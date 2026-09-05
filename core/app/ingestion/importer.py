@@ -158,7 +158,7 @@ def run_import(
     session.execute(text(insert_sql), params)
 
     info = introspect_table(session, table_name)
-    apply_collection_ddl(session, table_name)
+    apply_collection_ddl(session, table_name, tenant_id=tenant_id)
     col = collections_repo.create_collection(
         session,
         tenant_id=tenant_id,
