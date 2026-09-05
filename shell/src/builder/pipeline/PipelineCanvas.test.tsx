@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { PipelineEdge, PipelineNode, PipelineOpsCatalog } from "../../api/types";
 import { PipelineCanvas } from "./PipelineCanvas";
+import { expectAriaWired } from "../../test/expectAriaWired";
 
 // @xyflow/react appelle ResizeObserver sans garde — stub local à ce fichier
 // uniquement, même patron que EChart.test.tsx (cf. plan Global Constraints).
@@ -124,7 +125,14 @@ test("the edge's insert button is present and triggers onInsertOnEdge with the e
       opsCatalog={{}}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Insérer une étape sur cette arête" }));
+  const insertButton = screen.getByRole("button", { name: "Insérer une étape sur cette arête" });
+  expectAriaWired(insertButton, insertButton.getAttribute("aria-controls")!, false);
+  fireEvent.click(insertButton);
+  expectAriaWired(insertButton, insertButton.getAttribute("aria-controls")!, true);
+  expect(screen.getByRole("menu")).toHaveAttribute(
+    "id",
+    insertButton.getAttribute("aria-controls"),
+  );
   fireEvent.click(screen.getByRole("menuitem", { name: "Filtrer" }));
   expect(onInsertOnEdge).toHaveBeenCalledWith("e1", "transform.filter");
 });
