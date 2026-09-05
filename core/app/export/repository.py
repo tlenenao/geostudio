@@ -93,11 +93,12 @@ def reclaim_stuck_jobs(
     older_than_minutes (ancré sur started_at) — cf. la note de module sur
     _RUNNING_RECLAIM_MINUTES. Retourne les ids réclamés. Cross-tenant par
     construction (comme app.pipelines.repository.list_due_pipelines /
-    app.alerts.repository.list_due_rules) : un sweep périodique appelant
-    cette fonction devrait tourner une fois pour tous les tenants, pas par
-    tenant — mais AUCUN appelant périodique n'existe encore pour cette
-    fonction (TODO, cf. app/export/jobs.py) ; elle n'est aujourd'hui exercée
-    que par ses propres tests."""
+    app.alerts.repository.list_due_rules) : appelée une fois pour tous les
+    tenants, pas par tenant. Câblée en fin de tick par
+    app.reports.jobs._trigger_due_reports (SP-17b) — docstring corrigée
+    SP-49, elle affirmait encore à tort qu'aucun appelant périodique
+    n'existait (stale depuis le câblage, cf. aussi le docstring périmé
+    équivalent dans tests/test_export_repository.py)."""
     threshold = _now() - timedelta(minutes=older_than_minutes)
     rows = session.execute(select(ExportJob).where(ExportJob.status == "running")).scalars().all()
     reclaimed: list[str] = []

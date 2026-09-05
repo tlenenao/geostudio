@@ -91,11 +91,12 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
   `YYYY-MM-DD-spX…`.
 - **TDD systématique** ; chaque feature visible a sa spec E2E Playwright. La
   suite E2E complète est le filet de la migration : elle reste globalement
-  verte (dernière mesure, clôture SP-43 2026-09-05 : 141 passed / 4 skipped /
-  **1 failed** — `e2e/pipeline-builder.spec.ts:111`, timeout sur le bouton
-  « Exécuter », confirmé préexistant à SP-43 en checkoutant le commit
-  d'avant sa Tâche 1 ; cause non encore investiguée, ne pas imputer à un
-  futur travail sans vérifier d'abord si ce test échoue déjà sur `dev`).
+  verte (dernière mesure après intégration de SP-45/46/47/49, 2026-09-06 :
+  143 passed / 4 skipped / **1 failed** — `e2e/pipeline-builder.spec.ts:111`,
+  timeout sur le bouton « Exécuter », confirmé préexistant à SP-43 en
+  checkoutant le commit d'avant sa Tâche 1 ; cause non encore investiguée,
+  ne pas imputer à un futur travail sans vérifier d'abord si ce test échoue
+  déjà sur `dev`).
 - Exécution en **subagent-driven-development** : une revue par tâche **et** une
   revue finale de branche, systématiquement — ce ne sont pas les mêmes défauts
   (cf. `## Pièges récurrents`).
@@ -111,9 +112,10 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ```bash
 # shell (d'abord, car commitlint en dépend)
 cd shell && npm ci
-npm run test         # Vitest — dernier compte mesuré à la clôture SP-43
-                     # (2026-09-05) : 225 fichiers, 1944 tests, tous passed.
-npm run e2e          # Playwright — 141 passed / 4 skipped / 1 failed à la
+npm run test         # Vitest — dernier compte mesuré après intégration de
+                     # SP-45/46/47/49 sur dev (2026-09-06) : 226 fichiers,
+                     # 1963 tests, tous passed. Couverture 90,66 % (seuil 88).
+npm run e2e          # Playwright — 143 passed / 4 skipped / 1 failed à la
                      # même mesure (VITE_AUTH_MODE=mock) — l'échec
                      # (pipeline-builder.spec.ts:111) est préexistant à
                      # SP-43, cf. ## Comment on travaille.
@@ -133,8 +135,10 @@ pre-commit install --hook-type pre-commit --hook-type commit-msg
 
 # cœur
 cd core && uv sync
-uv run pytest        # dernier compte mesuré à la clôture SP-43 (2026-09-05) :
-                     # 2326 passed / 5 skipped / 0 failed, sur un conteneur
+uv run pytest        # dernier compte mesuré après intégration de
+                     # SP-45/46/47/49 sur dev (2026-09-06) :
+                     # 2390 passed / 5 skipped / 0 failed, couverture 93,90 %
+                     # (seuil 85), sur un conteneur
                      # postgis-test réel (CORE_TEST_DATABASE_URL positionné —
                      # sinon ~185 tests marqués postgis skippent silencieusement,
                      # piège vécu pendant la clôture de SP-43 elle-même). Piège
@@ -143,9 +147,17 @@ uv run pytest        # dernier compte mesuré à la clôture SP-43 (2026-09-05) 
                      # ALTER TABLE manuel, sinon des dizaines de tests
                      # échouent en cascade sur UndefinedColumn sans rapport
                      # avec le code sous revue. Les 5 skips = marqueur qgis
-                     # (sidecar réel requis). Deux échecs INTERMITTENTS déjà
-                     # documentés, à ne pas imputer à son propre travail sans
-                     # vérifier : test_features_rls.py::
+                     # (sidecar réel requis). Piège supplémentaire vécu à la
+                     # clôture de SP-49 : 2-3 sessions concurrentes lancées
+                     # sur des worktrees différents mais un même conteneur
+                     # postgis-test partagé produisent des dizaines
+                     # d'échecs/erreurs par collision (UniqueViolation sur
+                     # tenants_pkey, DuplicateTable) — aucun rapport avec le
+                     # code sous revue, confirmé en rejouant chaque test en
+                     # isolation (repasse au vert systématiquement une fois
+                     # la contention retombée). Deux échecs INTERMITTENTS
+                     # déjà documentés, à ne pas imputer à son propre travail
+                     # sans vérifier : test_features_rls.py::
                      # test_scope_preserves_original_sql_error (dérive
                      # psycopg2/transaction, non diagnostiquée) ;
                      # test_deployability.py::test_every_compose_substitution_is_documented
@@ -299,9 +311,10 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   (Administrateur/Créateur/Analyste/Lecteur) + rôles sur mesure,
   `User.role_id` remplace `is_analyst` (`is_admin` survit, synchronisé par
   la logique de rôle), `RequirePrivilege` remplace `RequireRole`. **2 des 18
-  privilèges (`automation.secrets.manage`, `tasks.view_all`) ne gardent
-  encore aucune route (`REV-097`)** — 8 des 10 trouvés par SP-42 ont été
-  refermés pendant cette même revue.
+  privilèges (`automation.secrets.manage`, `tasks.view_all`) ne gardaient
+  encore aucune route** — 8 des 10 trouvés par SP-42 ont été refermés
+  pendant cette même revue ; les 2 restants (`REV-097`) fermés par **SP-47**
+  (cf. `### Livré` plus bas).
 - **SP-32** — passerelle `/admin/martin`, `/admin/titiler`, `/admin/grafana` :
   jeton de lancement HMAC (60s, non révocable) → cookie
   `gs_admin_session` (HttpOnly/Secure/SameSite=Strict, premier cookie du
@@ -421,6 +434,110 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   à tout ce plan** (confirmé en checkoutant le commit d'avant la Tâche 1 —
   `e2e/pipeline-builder.spec.ts:111`, sans rapport, non corrigé, hors
   périmètre).
+- **SP-47** — ferme `REV-097` (les 2 des 18 privilèges sans route) et
+  `GAP-71`/`GAP-28` (`audit_log` en écriture seule, aucune vue d'usage) par
+  une seule construction : `require_any_privilege` (OR de privilèges,
+  `app/roles/guards.py`) ; garde de `/secrets` élargie à
+  `automation.secrets.manage` **OU** `admin.secrets.manage` ; rôle Créateur
+  gagne `automation.secrets.manage` (**décision produit à confirmer par
+  Tanguy a posteriori** — appliquée par défaut par la spec/le plan, cf.
+  décision §2.2 de la spec) ; nouveau domaine `app/usage/` (query-only sur
+  `audit_log`, jamais d'écriture — `app.audit.writer` reste l'unique point
+  d'écriture), `GET /usage/tasks` (`tasks.view` restreint à soi,
+  `tasks.view_all` = tenant entier) et `GET /usage/summary` (agrégats
+  activité-par-acteur + popularité-des-ressources, `tasks.view_all` seul) ;
+  `UsagePage` remplace `TasksComingSoonPage` sur `/tasks`. 3 fixtures miroir
+  du rôle Créateur trouvées et resynchronisées au-delà des 2 listées par le
+  plan (`DEFAULT_ME` e2e/mocks.ts, `BASE_PROFILE` DomainBar.test.tsx) — un
+  4e mirroir (`BUILT_IN_ROLE_PRIVILEGES["creator"]` lui-même dans
+  `test_roles_guards.py`/Task 1) a dû être corrigé en cours de plan : le
+  test `require_any_privilege` de la Tâche 1, écrit avant la Tâche 2,
+  utilisait un `creator` par défaut comme témoin « ne porte aucun des deux
+  privilèges » — cassé par la Tâche 2, corrigé en réassignant ce témoin au
+  rôle `reader` (zéro privilège). `lint-imports` : `app.usage` placé
+  au-dessus d'`app.roles`, aucune exemption nommée nécessaire. Suite
+  finale : core 2340 passed/5 skipped (qgis)/0 failed (postgis-test réel,
+  2 défauts d'environnement trouvés et corrigés en session — colonnes
+  SP-41/SP-42 manquantes sur ce conteneur, tables de jobs pipeline
+  résiduelles d'un run précédent) ; shell 226 fichiers/1952 tests ; E2E 143
+  passed/4 skipped/1 échec préexistant (`pipeline-builder.spec.ts:111`,
+  inchangé).
+- **SP-49** (7 tâches, 2026-09-06) — ferme GAP-56/63/64/76 (revue SP-42),
+  explicitement laissés hors périmètre de SP-43 : `downgrade()` de la
+  migration 0024 (report_runs.export_job_id) devient un no-op documenté
+  (retendre la contrainte NOT NULL était irrécupérable sur toute base
+  ayant une ligne `NULL`, situation normale de fonctionnement) ; index
+  manquants sur `alert_evaluations`/`pipeline_runs` (migration 0035) ;
+  batching des 3 balayages cron (`get_latest_runs_for_items`/
+  `get_latest_evaluations_for_items`, fenêtre `ROW_NUMBER() OVER`, une
+  requête au lieu d'une par pipeline/alerte/rapport) ; N+1 de
+  `GET /harvest/layers`/`feature-layers` fermé sur le patron de
+  `_permissions_by_id` (`get_access_facts_by_ids` + `decide()` en mémoire) ;
+  `get_job`/`mark_running` déplacés dans le bloc `try` d'export/appexport
+  (patron pipelines/ingestion, invariant SP-39 préservé) ; reprise
+  périodique des jobs appexport (`reclaim_stuck_jobs` existait, jamais
+  appelée) et ingestion (nouvelle, ancrée sur `updated_at` faute de
+  `started_at` dédié) ; `scripts/healthcheck_worker_stalled.py`
+  (`JobManager.get_stalled_jobs`, `async` sur cette version verrouillée
+  3.9.0, encapsulé `asyncio.run`) chaîné sur `worker`, seule sonde sur
+  `export-worker` (aucune avant), `pgrep -f server.py` sur `qgis-worker`
+  (aucune avant, pas de route HTTP de vivacité côté sidecar, hors
+  périmètre d'en ajouter une). **Revue finale de branche (piège CLAUDE.md
+  n°4) a trouvé un vrai croisement Tâche 2/Tâche 3** : l'index créé
+  `(tenant_id, <item>_id, created_at)` est ignoré par le batching de la
+  Tâche 3 (`WHERE <item>_id IN (...)` sans `tenant_id`, cross-tenant par
+  construction) — mesuré par `EXPLAIN ANALYZE` à échelle réaliste (2000
+  items, 300k runs, 2,5% sélectivité) : Seq Scan avant correction (28,6ms),
+  Bitmap Index Scan après réordonnancement `<item>_id` en tête (7,2ms, 4x),
+  sans rien coûter aux requêtes tenant_id+item_id existantes. Suite finale
+  (contention réelle mesurée : 2-3 sessions concurrentes sur le même
+  `postgis-test` partagé pendant cette clôture, cf. piège n°9 — chaque
+  échec de la première passe re-vérifié en isolation, confirmé transitoire
+  à chaque fois) : 2348 passed/5 skipped/0 failed. Reste hors périmètre,
+  assumé : N+1 de `configs_repo.list_configs_by_kind` sur
+  `_latest_revision` (trouvaille annexe, jamais assignée à ce plan),
+  pagination complète GAP-57, montée de version procrastinate future
+  (`nb_seconds` déprécié sur `get_stalled_jobs`).
+
+- **SP-46 — découvrabilité : navigation manquante** (5 tâches, spec
+  `docs/superpowers/specs/2026-09-05-sp46-navigation-manquante-design.md`,
+  plan `docs/superpowers/plans/2026-09-05-sp46-navigation-manquante.md`)
+  — ferme GAP-30/GAP-32/GAP-39/GAP-67 identifiés par l'analyse de gaps
+  SP-42 : quatre écrans complets et gardés côté serveur mais atteignables
+  uniquement en tapant leur URL à la main deviennent atteignables par un
+  lien réel : `AdminExtensionsPage.tsx` gagne un tableau `ADMIN_LINKS`
+  (déclarations `{to, label, privilege}`) filtré par
+  `useMe().data?.privileges`, remplaçant les cinq `<Link>` — trois
+  historiques (`/admin/infrastructure`, `/admin/roles`, `/admin/users`,
+  jusqu'ici affichés sans garde, GAP-67) et deux nouveaux
+  (`/admin/collections` GAP-30, `/admin/harvest` GAP-39, gardés dès leur
+  introduction) — doctrine identique à `capabilities.ts` : un privilège
+  manquant masque le lien, jamais ne le grise. `CatalogPage.tsx` gagne un
+  lien conditionnel `type === "pipeline" && !fixedType` vers `/reports`
+  sous le sélecteur de type (GAP-32, atterrissage du domaine
+  Automatisation uniquement — jamais sur `/`, `/bookmarks`, `/reports`
+  lui-même ou toute autre vue à `fixedType` fixé), sans garde de
+  privilège (`/reports` n'est protégée par aucun `RequirePrivilege`).
+  Aucun changement côté cœur (les quatre routes gardent exactement leur
+  garde/absence de garde déjà en vigueur) — diff OpenAPI/types TS vide,
+  vérifié. TDD strict : chaque test de masquage falsifié avant
+  correctif — en particulier GAP-67, où lancer la suite existante
+  **avant** correctif confirme que les deux tests `/admin/roles`/
+  `/admin/users` passaient déjà sans mocker aucun privilège (preuve
+  directe du bug), et où introduire `visibleLinks.map()` à côté des
+  liens en dur (transitoire, Tâches 1-2) produit une vraie duplication
+  observée (`getByRole` échoue en « multiple elements found ») une fois
+  les tests réécrits avec un privilège mocké — écart au texte du plan
+  (qui prédisait ces deux tests déjà verts à ce stade), refermé par le
+  Step suivant du plan lui-même (bascule complète vers `ADMIN_LINKS`,
+  suppression des `<Link>` en dur). `shell/e2e/admin-collections.spec.ts`
+  contenait déjà un test couvrant un scénario proche (non-admin, message
+  de refus sur navigation directe) — sans rapport direct avec le lien de
+  découverte depuis `AdminExtensionsPage`, mais confirmé non régressé.
+  Suite shell complète : 224 fichiers / 1908 tests, 0 échec ; couverture
+  90,30 % (seuil 88) ; `npm run build` propre ; E2E ciblée (8 specs
+  nommées par le plan) 10/10 ; E2E complète sans régression de compte
+  (piège n°6).
 
 ### Conventions tranchées (2026-09-01)
 
@@ -455,8 +572,11 @@ immédiat d'une session :
   (session manuelle uniquement).
 - Egress LLM du copilote (SP-20) sans garde SSRF — seule des 4 surfaces
   sortantes à ne pas en avoir une (`REV-096`).
-- 2 des 18 privilèges (`automation.secrets.manage`, `tasks.view_all`) ne
-  gardent encore aucune route (`REV-097`).
+- `REV-097` clos par **SP-47** : `automation.secrets.manage` garde `/secrets`
+  (OR avec `admin.secrets.manage`, rôle Créateur mis à jour — décision à
+  confirmer a posteriori par Tanguy) ; `tasks.view`/`tasks.view_all` gardent
+  `GET /usage/tasks`/`GET /usage/summary` (nouveau domaine `app/usage/`,
+  lecture seule sur `audit_log`).
 - `aria-expanded`/`aria-controls` : câblé par SP-43 sur 9 sites via
   `usePanelTrigger` (`REV-088` largement fermé — reste à vérifier au cas par
   cas sur tout futur déclencheur de panneau en ligne créé après SP-43, la

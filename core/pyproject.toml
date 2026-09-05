@@ -212,6 +212,7 @@ layers = [
     "app.terrain3d",
     "app.mapicons",
     "app.admin_tools",
+    "app.usage",
     "app.secrets",
     "app.cdc",
     "app.ingestion",

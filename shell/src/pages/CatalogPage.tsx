@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useItems, useMe } from "../api/hooks";
 import type { ItemScope, ResourceType } from "../api/types";
 import { RESOURCE_TYPE_LABELS, RESOURCE_TYPE_ORDER } from "../api/resourceTypes";
@@ -115,6 +115,11 @@ export function CatalogPage({
                     ))}
                   </select>
                 </label>
+              )}
+              {type === "pipeline" && !fixedType && (
+                <Link to="/reports" className="text-accent hover:underline">
+                  Rapports planifiés →
+                </Link>
               )}
               <label className="flex flex-col gap-1 text-sm text-ink">
                 Portée

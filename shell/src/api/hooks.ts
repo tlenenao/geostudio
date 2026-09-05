@@ -12,3 +12,4 @@ export * from "./domains/pipelines.hooks";
 export * from "./domains/alerts.hooks";
 export * from "./domains/reports.hooks";
 export * from "./domains/apps.hooks";
+export * from "./domains/usage.hooks";

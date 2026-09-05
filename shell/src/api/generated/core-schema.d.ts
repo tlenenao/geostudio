@@ -1374,6 +1374,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/usage/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Usage Summary */
+        get: operations["get_usage_summary_usage_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/usage/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Usage Tasks */
+        get: operations["list_usage_tasks_usage_tasks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -2827,6 +2861,63 @@ export interface components {
         UnreadCount: {
             /** Count */
             count: number;
+        };
+        /** UsageActorStatRead */
+        UsageActorStatRead: {
+            /** Actorid */
+            actorId: string | null;
+            /** Actorusername */
+            actorUsername: string | null;
+            /** Count */
+            count: number;
+        };
+        /** UsageResourceStatRead */
+        UsageResourceStatRead: {
+            /** Count */
+            count: number;
+            /** Objectid */
+            objectId: string;
+            /** Objecttype */
+            objectType: string;
+        };
+        /** UsageSummaryRead */
+        UsageSummaryRead: {
+            /** Byactor */
+            byActor: components["schemas"]["UsageActorStatRead"][];
+            /** Byresource */
+            byResource: components["schemas"]["UsageResourceStatRead"][];
+            /** Totalactions */
+            totalActions: number;
+            /** Windowend */
+            windowEnd: string;
+            /** Windowstart */
+            windowStart: string;
+        };
+        /** UsageTaskPage */
+        UsageTaskPage: {
+            /** Page */
+            page: number;
+            /** Pagesize */
+            pageSize: number;
+            /** Tasks */
+            tasks: components["schemas"]["UsageTaskRead"][];
+            /** Total */
+            total: number;
+        };
+        /** UsageTaskRead */
+        UsageTaskRead: {
+            /** Action */
+            action: string;
+            /** Actorid */
+            actorId: string | null;
+            /** Createdat */
+            createdAt: string;
+            /** Id */
+            id: number;
+            /** Objectid */
+            objectId: string;
+            /** Objecttype */
+            objectType: string;
         };
         /** UserRolePatch */
         UserRolePatch: {
@@ -6389,6 +6480,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IngestionJobStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_usage_summary_usage_summary_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                until?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageSummaryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_usage_tasks_usage_tasks_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+                actorId?: string | null;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageTaskPage"];
                 };
             };
             /** @description Validation Error */

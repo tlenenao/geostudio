@@ -8,6 +8,7 @@ from http import HTTPStatus
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app import db, observability
 from app.admin_tools import routes as admin_tools_routes
@@ -50,7 +51,7 @@ from app.notifications import routes as notifications_routes
 from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
-from app.ratelimit.limiter import RateLimiter, route_group
+from app.ratelimit.limiter import RateLimiter, caller_key, route_group
 from app.reports import routes as reports_routes
 from app.roles import routes as roles_routes
 from app.schemas_routes import router as schemas_router
@@ -60,6 +61,7 @@ from app.sharing import routes as sharing_routes
 from app.stac import routes as stac_routes
 from app.terrain3d import routes as terrain3d_routes
 from app.tileset3d import routes as tileset3d_routes
+from app.usage import routes as usage_routes
 
 _AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
 _EXPORT_PATH_RE = re.compile(
@@ -211,8 +213,11 @@ def create_app() -> FastAPI:
     async def rate_limit_guard(request: Request, call_next):
         group = route_group(request.url.path, request.method, _EXPORT_PATH_RE)
         if group is not None:
-            caller_key = request.headers.get("authorization", "")
-            if not rate_limiter.allow(caller_key, group):
+            caller_key_value = caller_key(
+                request.headers.get("authorization"),
+                request.client.host if request.client else None,
+            )
+            if not rate_limiter.allow(caller_key_value, group):
                 return JSONResponse(
                     status_code=429,
                     media_type="application/problem+json",
@@ -280,6 +285,7 @@ def create_app() -> FastAPI:
     app.include_router(alerts_routes.router)
     app.include_router(reports_routes.router)
     app.include_router(notifications_routes.router)
+    app.include_router(usage_routes.router)
     if is_etl_enabled():
         app.include_router(pipelines_routes.router)
     if is_export_enabled():
@@ -372,6 +378,14 @@ def create_app() -> FastAPI:
     # path as a prefix, so it must come after every app-specific route
     # above or it would shadow them (e.g. swallow "/health").
     app.mount("/", mcp_server.streamable_http_app())
+
+    # GAP-61.a : sans cette couche, request.client reflète l'IP du
+    # conteneur Traefik (seul point d'entrée réseau vers ce service — `core`
+    # n'expose aucun port hôte direct), identique pour tous les visiteurs,
+    # ce qui viderait caller_key() de son utilité pour les appelants
+    # anonymes. trusted_hosts="*" est sûr ici : gis-net est un réseau Docker
+    # interne, aucun tiers non maîtrisé ne peut y injecter X-Forwarded-For.
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
     return app
 

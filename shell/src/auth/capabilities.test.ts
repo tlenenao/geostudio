@@ -53,6 +53,7 @@ const creator: Profile = {
     "data.manage",
     "apps.manage",
     "automation.manage",
+    "automation.secrets.manage",
     "analytics.view",
     "tasks.view",
   ]),

@@ -9,9 +9,11 @@ les tâches d'embedding d'app.items/app.collections."""
 import logging
 import os
 
+from app.auth.dependency import is_read_only_mode
 from app.db import request_scoped_session
 from app.ingestion import repository as ingestion_repo
 from app.ingestion.importer import run_import
+from app.ingestion.models import IngestionJob
 from app.ingestion.parsers import IngestionParseError
 from app.ingestion.storage import download_object, make_s3_client
 from app.jobs import app
@@ -152,3 +154,38 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
             )
         else:
             logger.info("ingestion job %s : notification ignorée (destinataire inconnu)", job_id)
+
+
+@app.periodic(cron="*/15 * * * *")
+@app.task(queue="ingestion")
+def sweep_ingestion_jobs_task(timestamp: int) -> None:
+    """Réclame les ingestion_jobs restés "running" (worker tué en cours
+    d'import, aucun autre mécanisme ne les détectait avant — GAP-56.3,
+    SP-49). Cron aligné sur le balayage harvest existant (*/15) : l'ingestion
+    n'a pas de contrainte de fraîcheur aussi serrée que les balayages */5
+    (pipelines/alertes/rapports)."""
+    if is_read_only_mode():
+        logger.info("mode lecture seule : réclamation des jobs ingestion ignorée")
+        return
+    factory = session_factory()
+    with request_scoped_session(factory) as session:
+        reclaimed_ids = ingestion_repo.reclaim_stuck_jobs(session)
+        # tenant_id/created_by/collection_title lus AVANT de sortir du bloc
+        # de session (même discipline que run_ingestion_task) : les objets
+        # ORM ne sont plus utilisables une fois la session fermée.
+        jobs_for_notify = [
+            (job.tenant_id, job.created_by, job.collection_title)
+            for job_id in reclaimed_ids
+            if (job := session.get(IngestionJob, job_id)) is not None
+        ]
+        session.commit()
+    for tenant_id, created_by, collection_title in jobs_for_notify:
+        _notify(
+            factory,
+            tenant_id=tenant_id,
+            created_by=created_by,
+            status="failure",
+            item_id=None,
+            collection_title=collection_title,
+            error="ingestion timed out (worker crashed or hung)",
+        )

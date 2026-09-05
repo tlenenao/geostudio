@@ -48,8 +48,40 @@ export const fr = {
   "domainBar.label": "Domaines",
   "bottomNav.label": "Navigation",
   "bottomNav.more": "Plus",
-  "comingSoon.tasks": "Le centre de tâches arrive avec SP-31.",
   "comingSoon.settings": "Les paramètres d'instance arrivent avec SP-33.",
+
+  // UsagePage (/tasks) — journal d'activité (audit_log en lecture), pas un
+  // tableau de bord de supervision temps réel des jobs (SP-47 §7)
+  "usage.detail": "Détail",
+  "usage.myTasks": "Mes tâches récentes",
+  "usage.noTasks": "Aucune tâche récente.",
+  "usage.columnAction": "Action",
+  "usage.columnResource": "Ressource",
+  "usage.columnDate": "Date",
+  "usage.platformUsage": "Usage de la plateforme",
+  "usage.byActor": "Par utilisateur",
+  "usage.byResource": "Par ressource",
+  "usage.loadFailed": "Échec du chargement des tâches.",
+  "usage.summaryLoadFailed": "Échec du chargement de l'usage de la plateforme.",
+  "usage.previous": "Précédent",
+  "usage.next": "Suivant",
+  "usage.pageOf": "Page {page} / {totalPages}",
+  // Libellés français par action de JOB_AUDIT_ACTIONS
+  // (core/app/usage/service.py) — tenu synchronisé manuellement, comme
+  // BUILT_IN_ROLE_PRIVILEGES/CREATOR_ME (même classe de duplication
+  // assumée que les fixtures de rôle, cf. SP-47 Task 2).
+  "usageAction.ingestionJobCreate": "Import de données",
+  "usageAction.pipelineRun": "Exécution de pipeline",
+  "usageAction.exportCreate": "Création d'export",
+  "usageAction.exportRun": "Exécution d'export",
+  "usageAction.appexportCreate": "Export d'application",
+  "usageAction.reportRun": "Génération de rapport",
+  "usageAction.reportNotify": "Notification de rapport",
+  "usageAction.alertEvaluate": "Évaluation d'alerte",
+  "usageAction.alertNotify": "Notification d'alerte",
+  "usageAction.harvestSourceRun": "Moissonnage",
+  "usageAction.tileset3dJobCreate": "Traitement de jeu de tuiles 3D",
+  "usageAction.terrain3dJobCreate": "Traitement de terrain 3D",
 
   // Catalogue
   "catalog.count": "{n} éléments",

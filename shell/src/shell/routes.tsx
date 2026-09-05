@@ -21,7 +21,7 @@ import { HarvestSourcesAdminPage } from "../pages/HarvestSourcesAdminPage";
 import { RolesAdminPage } from "../pages/RolesAdminPage";
 import { UsersAdminPage } from "../pages/UsersAdminPage";
 import { KitGalleryPage } from "../pages/KitGalleryPage";
-import { TasksComingSoonPage } from "../pages/TasksComingSoonPage";
+import { UsagePage } from "../pages/UsagePage";
 import { SettingsComingSoonPage } from "../pages/SettingsComingSoonPage";
 import { RequireAuth } from "../auth/RequireAuth";
 import { RequirePrivilege } from "../auth/RequirePrivilege";
@@ -345,7 +345,17 @@ export function AppRoutes() {
           }
         />
         <Route path="/internal/kit-gallery" element={<KitGalleryPage />} />
-        <Route path="/tasks" element={<TasksComingSoonPage />} />
+        <Route
+          path="/tasks"
+          element={
+            <RequirePrivilege
+              privilege="tasks.view"
+              deniedMessage="Accès réservé — privilège tasks.view requis."
+            >
+              <UsagePage />
+            </RequirePrivilege>
+          }
+        />
         <Route path="/settings" element={<SettingsComingSoonPage />} />
       </Route>
       <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />

@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.features import routes as features_routes
 from app.main import _EXPORT_PATH_RE, create_app
-from app.ratelimit.limiter import _SWEEP_INTERVAL, RateLimiter, route_group
+from app.ratelimit.limiter import _SWEEP_INTERVAL, RateLimiter, caller_key, route_group
 
 
 def _fake_duckdb_factory():
@@ -113,6 +113,61 @@ def test_route_group_covers_harvest_writes():
     assert route_group("/harvest/sources/abc", "PATCH", _EXPORT_PATH_RE) == "harvest"
     assert route_group("/harvest/sources/abc", "DELETE", _EXPORT_PATH_RE) == "harvest"
     assert route_group("/harvest/sources/abc/run", "POST", _EXPORT_PATH_RE) == "harvest"
+
+
+def test_caller_key_uses_authorization_header_when_present():
+    assert caller_key("Bearer abc", "1.2.3.4") == "Bearer abc"
+
+
+def test_caller_key_falls_back_to_client_host_when_anonymous():
+    assert caller_key(None, "1.2.3.4") != caller_key(None, "5.6.7.8")
+
+
+def test_caller_key_anonymous_never_collides_with_a_real_token():
+    # La chaîne vide ne doit plus être une clé partagée par tout le monde.
+    assert caller_key(None, "1.2.3.4") != ""
+
+
+def test_anonymous_callers_have_independent_budgets_by_ip(monkeypatch):
+    client = _client(monkeypatch)
+    for _ in range(10):
+        client.post(
+            "/analytics/sql",
+            json={"sql": "select 1"},
+            headers={"X-Forwarded-For": "1.2.3.4"},
+        )
+    # 1.2.3.4 est épuisé, mais 5.6.7.8 démarre avec un budget frais — sans
+    # le fix, les deux partagent la même clé (chaîne vide) et le 2e appel
+    # échoue aussi en 429.
+    response = client.post(
+        "/analytics/sql",
+        json={"sql": "select 1"},
+        headers={"X-Forwarded-For": "5.6.7.8"},
+    )
+    assert response.status_code != 429
+
+
+def test_route_group_covers_arcgis_live_query_regardless_of_method():
+    assert route_group("/datasets/abc/arcgis/items", "GET", _EXPORT_PATH_RE) == "harvest"
+    assert route_group("/datasets/abc/arcgis/aggregate", "POST", _EXPORT_PATH_RE) == "harvest"
+
+
+def test_route_group_arcgis_export_routes_still_map_to_jobs():
+    # Non-régression : ces 2 routes étaient DÉJÀ couvertes (via
+    # _EXPORT_PATH_RE, groupe "jobs") avant ce correctif — l'analyse
+    # GAP-61 les comptait à tort parmi les 4 échappées (spec SP-45 §4).
+    assert route_group("/datasets/abc/arcgis/export", "POST", _EXPORT_PATH_RE) == "jobs"
+    assert route_group("/datasets/abc/arcgis/export/items", "GET", _EXPORT_PATH_RE) == "jobs"
+
+
+def test_route_group_covers_collections_empty():
+    assert route_group("/collections/empty", "POST", _EXPORT_PATH_RE) == "collections_empty"
+
+
+def test_route_group_ignores_get_on_collections_empty_path():
+    # Défensif : la route elle-même n'expose que POST, mais route_group()
+    # ne doit pas non plus limiter un verbe qui n'existe pas sur ce chemin.
+    assert route_group("/collections/empty", "GET", _EXPORT_PATH_RE) is None
 
 
 # Revue finale SP-26 (I4) : `_hits` grossissait sans borne sous une vraie

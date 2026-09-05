@@ -100,17 +100,28 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
             )
         return
 
-    with request_scoped_session(session_factory) as session:
-        job = appexport_repo.get_job(session, tenant_id=tenant_id, job_id=job_id)
-        if job is None:
-            logger.error("app export job %s introuvable (tenant %s)", job_id, tenant_id)
-            return
-        appexport_repo.mark_running(session, job_id=job_id)
-        item_id = job.item_id
-        mode = job.mode
-        user_id = job.user_id
+    # Toujours liés avant le premier bloc protégé : si get_job/mark_running
+    # lève avant leur affectation réelle, le handler `except` plus bas doit
+    # pouvoir les lire sans UnboundLocalError — même patron que
+    # app.pipelines.jobs.run_pipeline_task/app.ingestion.tasks.run_ingestion_task
+    # (GAP-56.1, SP-49 : ces deux appels étaient hors du bloc try ici, une
+    # exception transitoire remontait alors non gérée — ni mark_error, ni
+    # notification).
+    item_id: str | None = None
+    mode: str | None = None
+    user_id: str | None = None
 
     try:
+        with request_scoped_session(session_factory) as session:
+            job = appexport_repo.get_job(session, tenant_id=tenant_id, job_id=job_id)
+            if job is None:
+                logger.error("app export job %s introuvable (tenant %s)", job_id, tenant_id)
+                return
+            appexport_repo.mark_running(session, job_id=job_id)
+            item_id = job.item_id
+            mode = job.mode
+            user_id = job.user_id
+
         with request_scoped_session(session_factory) as session:
             config_read = configs_repo.get_config_by_item(session, item_id)
             if config_read is None:
@@ -149,3 +160,19 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
             status="failure",
             error=str(exc),
         )
+
+
+@app.periodic(cron="*/5 * * * *")
+@app.task(queue="appexport")
+def sweep_appexport_jobs_task(timestamp: int) -> None:
+    """Réclame les appexport_jobs restés "running" (export-worker/process
+    tué en cours de zip) : appexport_repo.reclaim_stuck_jobs existait déjà
+    mais n'était appelée par aucune tâche périodique (GAP-56.2, SP-49).
+    Cron aligné sur les 3 balayages */5 existants. Pas de notification :
+    reclaim_stuck_jobs n'en a jamais prévu (même contrat côté export, câblé
+    depuis SP-17b via le sweep de rapports — silencieux là aussi), rester
+    symétrique par défaut est le choix le moins risqué."""
+    factory = _session_factory()
+    with request_scoped_session(factory) as session:
+        appexport_repo.reclaim_stuck_jobs(session)
+        session.commit()

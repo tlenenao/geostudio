@@ -165,6 +165,29 @@ def test_plain_text_reply_with_no_tool_calls(client, monkeypatch):
     assert body == {"reply": "Ce dataset contient des incidents.", "clientOps": []}
 
 
+def test_copilot_turn_maps_egress_blocked_to_502(client, monkeypatch):
+    import app.copilot.routes as routes_module
+    from app.copilot.egress import EgressBlockedError
+
+    class _BlockedProvider:
+        async def chat(self, messages, tools):
+            raise EgressBlockedError("cible interne bloquée")
+
+    monkeypatch.setattr(routes_module, "get_llm_provider", lambda: _BlockedProvider())
+    resp = client.post(
+        "/copilot/turn",
+        json={
+            "itemId": "1",
+            "message": "explique ce dataset",
+            "history": [],
+            "mcpToken": "x",
+            "currentConfig": {},
+            "clientTools": [],
+        },
+    )
+    assert resp.status_code == 502
+
+
 def test_unallowlisted_tool_call_is_returned_as_client_op_not_executed(client, monkeypatch):
     import app.copilot.routes as routes_module
 

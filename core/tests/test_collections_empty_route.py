@@ -65,6 +65,22 @@ def test_creates_a_readable_empty_collection_for_a_regular_non_admin_user(pg_app
     assert pg_app.get(f"/collections/{body['id']}").status_code == 200
 
 
+def test_rate_limited_after_budget_exhausted(pg_app):
+    # Budget "collections_empty" = 5/60s (limiter.py) — la 6e création en
+    # boucle serrée doit être coupée, DDL réel ou pas.
+    for i in range(5):
+        resp = pg_app.post(
+            "/collections/empty",
+            json={"title": f"Requête {i}", "columns": [{"name": "x", "sqlType": "text"}]},
+        )
+        assert resp.status_code == 201
+    resp = pg_app.post(
+        "/collections/empty",
+        json={"title": "Requête 6", "columns": [{"name": "x", "sqlType": "text"}]},
+    )
+    assert resp.status_code == 429
+
+
 def test_rejects_an_unknown_sql_type_with_422(pg_app):
     resp = pg_app.post(
         "/collections/empty",

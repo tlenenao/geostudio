@@ -246,6 +246,12 @@ services:
       CORE_LLM_API_URL: ${CORE_LLM_API_URL:-}
       CORE_LLM_API_KEY: ${CORE_LLM_API_KEY:-}
       CORE_LLM_MODEL: ${CORE_LLM_MODEL:-gpt-4o-mini}
+      # Garde d'egress SSRF sur l'appel LLM sortant (GAP-02, SP-45) — même
+      # patron que CORE_PIPELINES_/HARVEST_/ALERTS_EGRESS_ALLOWLIST
+      # ci-dessous, mais propre au copilote (app/copilot/egress.py) : ce
+      # module tourne uniquement dans `core` (jamais `worker`), pas besoin
+      # de la répéter là-bas.
+      CORE_LLM_EGRESS_ALLOWLIST: ${CORE_LLM_EGRESS_ALLOWLIST:-}
       CORE_READ_ONLY_MODE: ${CORE_READ_ONLY_MODE:-false}
       CORE_ADMIN_SUBS: ${CORE_ADMIN_SUBS:-}
       # Rôle analyste (SP-11c) : sans cette ligne, `CORE_ANALYST_SUBS` dans
@@ -437,11 +443,19 @@ services:
         condition: service_started
     restart: unless-stopped
     # `procrastinate healthchecks` vérifie la connexion et le schéma de la
-    # file. Limite connue et assumée : un worker occupé par une tâche qui ne
-    # rend jamais la main reste « healthy » — cette sonde détecte un worker
-    # mort ou déconnecté de la base, pas un worker coincé.
+    # file — ne détecte pas un worker occupé par une tâche qui ne rend
+    # jamais la main. scripts.healthcheck_worker_stalled comble ce manque
+    # (GAP-76, SP-49) : interroge JobManager.get_stalled_jobs (job resté en
+    # 'doing' plus d'HEALTHCHECK_STALLED_SECONDS, 1h par défaut — nettement
+    # au-delà de la durée p99 connue d'un import GPKG 50k lignes ou d'un run
+    # de pipeline). Docker Compose n'autorise qu'un seul `healthcheck.test`
+    # par service : les deux commandes sont chaînées dans le même
+    # CMD-SHELL.
     healthcheck:
-      test: ["CMD", "python", "-m", "procrastinate", "--app", "app.jobs.app", "healthchecks"]
+      test: [
+          "CMD-SHELL",
+          "python -m procrastinate --app app.jobs.app healthchecks && python -m scripts.healthcheck_worker_stalled",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -481,6 +495,24 @@ services:
       - etl-scratch:/scratch
     networks: [gis-net]
     restart: unless-stopped
+    # Pas un worker procrastinate (`command` absent : l'image lance
+    # server.py, un serveur http.server minimal appelé en synchrone par
+    # pipelines/runtime.py — pas une file de jobs), donc pas de mécanisme de
+    # reclaim comparable à worker/export-worker ici (GAP-76, SP-49).
+    # server.py n'expose que `do_POST` (aucune route de vivacité HTTP,
+    # confirmé par lecture directe de deploy/qgis-worker/server.py) — ajouter
+    # une route au sidecar QGIS sort du périmètre fiabilité des jobs pour
+    # entrer dans le périmètre du composant le plus risqué du dépôt (spec
+    # SP-43 §5 Étape 9). Healthcheck de process a minima : avant ce
+    # correctif, aucune sonde du tout n'existait (confirmé, vérifié réel
+    # contre l'image construite localement — `pgrep -f server.py` matche le
+    # process CMD `python3 /app/server.py`).
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "server.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # Worker d'export Playwright (SP-17a, A25) — image dédiée (Chromium +
   # dépendances système), séparée du worker partagé pour ne pas l'alourdir
@@ -508,6 +540,12 @@ services:
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET}
       SHELL_BASE_URL: ${SHELL_BASE_URL:-http://shell:8300}
+      # scripts.healthcheck_worker_stalled : filtre sur la seule file que ce
+      # service consomme (GAP-76, SP-49) — contrairement à `worker`, ce
+      # service n'avait AUCUNE sonde du tout avant ce correctif (pas même
+      # `procrastinate healthchecks`), un manque plus sévère que « détecte
+      # un process mort seulement ».
+      HEALTHCHECK_QUEUE: export
     networks: [gis-net]
     depends_on:
       pgbouncer:
@@ -517,6 +555,12 @@ services:
       core:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-m", "scripts.healthcheck_worker_stalled"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   # Worker CDC (SP-11a) — même image que le cœur, process séparé (arbitrage
   # A16). Connexion DIRECTE à postgis:5432, PAS à pgbouncer:6432 : PgBouncer
@@ -710,3 +754,4 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./certs:/certs
     networks: [gis-net]
+    restart: unless-stopped

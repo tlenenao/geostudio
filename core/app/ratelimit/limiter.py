@@ -27,6 +27,18 @@ _LLM_RE = re.compile(r"^/mcp$|^/copilot/turn$")
 # réel (create/patch/delete/run) sont toutes des POST/PATCH/DELETE — la
 # distinction se fait donc par méthode, pas seulement par chemin.
 _HARVEST_RE = re.compile(r"^/harvest/")
+# GAP-58 (SP-45) : POST /collections/empty exécute un vrai CREATE TABLE
+# PostGIS (DDL), accessible à tout utilisateur muni du privilège
+# data.manage (pas seulement Administrateur) — aucun groupe existant ne le
+# couvrait avant ce correctif.
+_COLLECTIONS_EMPTY_RE = re.compile(r"^/collections/empty$")
+# GAP-61.b (SP-45) : les 2 routes de lecture ArcGIS live-query, seules
+# authentiquement échappées au rate limiter (analyse-gaps.md affirmait 4,
+# corrigé — 2 des 4 étaient déjà couvertes par _EXPORT_PATH_RE/"jobs").
+# Peu importe la méthode HTTP (contrairement à _HARVEST_RE) : les deux
+# déclenchent un appel sortant vers un service ArcGIS tiers, y compris la
+# lecture GET .../items.
+_ARCGIS_LIVE_QUERY_RE = re.compile(r"^/datasets/[^/]+/arcgis/(items|aggregate)$")
 
 # Budgets par groupe de coût réel (requêtes / 60s). Réutilise _EXPORT_PATH_RE
 # de app.main pour le groupe "jobs" plutôt que de le redéfinir ici.
@@ -35,8 +47,20 @@ _BUDGETS = {
     "llm": 20,
     "jobs": 15,
     "harvest": 10,
+    "collections_empty": 5,
 }
 _WINDOW_SECONDS = 60.0
+
+
+def caller_key(auth_header: str | None, client_host: str | None) -> str:
+    """Clé d'appelant pour le compteur glissant : l'en-tête Authorization
+    brut s'il existe (comportement inchangé pour tout appelant authentifié),
+    sinon l'IP réelle du visiteur (nécessite ProxyHeadersMiddleware côté
+    app.main, cf. commentaire dédié) — jamais la chaîne vide partagée par
+    tous les anonymes (GAP-61.a)."""
+    if auth_header:
+        return auth_header
+    return f"anon:{client_host or 'unknown'}"
 
 
 def route_group(path: str, method: str, export_path_re: re.Pattern[str]) -> str | None:
@@ -46,6 +70,10 @@ def route_group(path: str, method: str, export_path_re: re.Pattern[str]) -> str 
         return "llm"
     if export_path_re.match(path):
         return "jobs"
+    if method == "POST" and _COLLECTIONS_EMPTY_RE.match(path):
+        return "collections_empty"
+    if _ARCGIS_LIVE_QUERY_RE.match(path):
+        return "harvest"
     if _HARVEST_RE.match(path) and method != "GET":
         return "harvest"
     return None

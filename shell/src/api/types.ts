@@ -103,6 +103,31 @@ export type NotificationSummary = {
 
 export type NotificationPreferenceValue = "all" | "failuresOnly" | "none";
 
+export type UsageTask = {
+  id: number;
+  actorId: string | null;
+  action: string;
+  objectType: string;
+  objectId: string;
+  createdAt: string;
+};
+
+export type UsageActorStat = {
+  actorId: string | null;
+  actorUsername: string | null;
+  count: number;
+};
+
+export type UsageResourceStat = { objectType: string; objectId: string; count: number };
+
+export type UsageSummary = {
+  byActor: UsageActorStat[];
+  byResource: UsageResourceStat[];
+  totalActions: number;
+  windowStart: string;
+  windowEnd: string;
+};
+
 export type PrivilegeCatalogEntry = {
   privilege: string;
   domain: string;
@@ -361,6 +386,16 @@ export interface ItemClient {
   updateNotificationPreference(
     value: NotificationPreferenceValue,
   ): Promise<NotificationPreferenceValue>;
+  listUsageTasks(params: {
+    page: number;
+    pageSize: number;
+    actorId?: string;
+  }): Promise<{ tasks: UsageTask[]; total: number }>;
+  getUsageSummary(params?: {
+    since?: string;
+    until?: string;
+    limit?: number;
+  }): Promise<UsageSummary>;
   getInstanceInfo(): Promise<InstanceInfo>;
   copilotTurn(
     itemId: string,

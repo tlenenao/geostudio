@@ -227,3 +227,55 @@ def test_list_due_reports_respects_cron_cadence_against_last_run():
         s.commit()
 
         assert reports_repo.list_due_reports(s) == []
+
+
+def test_get_latest_runs_for_items_returns_the_most_recent_run_per_item():
+    # GAP-64.1 (SP-49) : batch de get_latest_run pour list_due_reports —
+    # même patron falsifié que app.pipelines.repository (ordre d'insertion
+    # différent de l'ordre chronologique attendu).
+    from datetime import timedelta
+
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        report_a = _seed_report(s, tenant_id=tenant.id, owner_id=user.id)
+        report_b = _seed_report(s, tenant_id=tenant.id, owner_id=user.id)
+        s.commit()
+        now = datetime.now(UTC)
+        run_a1 = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_a, export_job_id="job-a1"
+        )
+        run_a1.created_at = now - timedelta(minutes=30)
+        run_a2 = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_a, export_job_id="job-a2"
+        )
+        run_a2.created_at = now - timedelta(minutes=10)
+        run_a3 = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_a, export_job_id="job-a3"
+        )
+        run_a3.created_at = now - timedelta(minutes=20)
+        run_b1 = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_b, export_job_id="job-b1"
+        )
+        s.commit()
+
+        latest_by_item = reports_repo.get_latest_runs_for_items(s, item_ids=[report_a, report_b])
+
+        assert set(latest_by_item) == {report_a, report_b}
+        assert latest_by_item[report_a].id == run_a2.id
+        assert latest_by_item[report_b].id == run_b1.id
+
+
+def test_get_latest_runs_for_items_returns_empty_dict_for_empty_input():
+    Session = _make_session()
+    with Session() as s:
+        assert reports_repo.get_latest_runs_for_items(s, item_ids=[]) == {}

@@ -386,3 +386,41 @@ def test_list_due_pipelines_does_not_reclaim_run_that_just_started_after_long_qu
         repo.mark_running(s, run_id=run.id)
         s.commit()
         assert repo.list_due_pipelines(s) == []
+
+
+def test_get_latest_runs_for_items_returns_the_most_recent_run_per_item():
+    # GAP-64.1 (SP-49) : batch de get_latest_run pour list_due_pipelines —
+    # item A a 3 runs à des created_at DIFFÉRENTS de l'ordre d'insertion
+    # (falsifie un ROW_NUMBER() mal ordonné qui retournerait la dernière
+    # ligne insérée plutôt que la plus récente par date) ; item B a 1 seul
+    # run.
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        item_a = _make_pipeline_item(s, tenant_id=tenant.id)
+        item_b = _make_pipeline_item(s, tenant_id=tenant.id)
+        s.commit()
+        now = datetime.now(UTC)
+        run_a1 = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_a)
+        run_a1.created_at = now - timedelta(minutes=30)
+        run_a2 = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_a)
+        # run_a2 est inséré APRÈS run_a3 mais sa date est plus ancienne que
+        # celle de run_a3 : l'ordre d'insertion diffère de l'ordre
+        # chronologique attendu.
+        run_a2.created_at = now - timedelta(minutes=10)
+        run_a3 = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_a)
+        run_a3.created_at = now - timedelta(minutes=20)
+        run_b1 = repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_b)
+        s.commit()
+
+        latest_by_item = repo.get_latest_runs_for_items(s, item_ids=[item_a, item_b])
+
+        assert set(latest_by_item) == {item_a, item_b}
+        assert latest_by_item[item_a].id == run_a2.id
+        assert latest_by_item[item_b].id == run_b1.id
+
+
+def test_get_latest_runs_for_items_returns_empty_dict_for_empty_input():
+    Session = _make_session()
+    with Session() as s:
+        assert repo.get_latest_runs_for_items(s, item_ids=[]) == {}

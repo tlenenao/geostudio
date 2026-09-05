@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -14,6 +14,17 @@ def _now() -> datetime:
 
 class PipelineRun(Base):
     __tablename__ = "pipeline_runs"
+    # cf. 0035_alert_pipeline_run_indexes.py (GAP-63, SP-49) : couvre le
+    # filtre (tenant_id, pipeline_item_id) ET le tri created_at DESC de
+    # get_latest_run/list_runs, ET le WHERE pipeline_item_id IN (...) SANS
+    # tenant_id de get_latest_runs_for_items (cross-tenant par construction)
+    # — pipeline_item_id EN TÊTE (pas tenant_id), corrigé en revue finale de
+    # branche : vérifié par EXPLAIN que l'ordre inverse fait ignorer l'index
+    # par la requête batchée (Seq Scan complet), cf. le docstring de la
+    # migration 0035 pour la mesure.
+    __table_args__ = (
+        Index("ix_pipeline_runs_pipeline", "pipeline_item_id", "tenant_id", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)

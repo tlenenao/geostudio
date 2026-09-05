@@ -180,6 +180,27 @@ def test_fetch_query_caches_within_ttl(monkeypatch):
     assert calls["n"] == 2  # TTL expiré, nouvel appel réseau
 
 
+def test_expired_cache_entry_is_pruned_even_if_never_requeried(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(live_query.time, "monotonic", lambda: now[0])
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"features": []}))
+    )
+
+    live_query.fetch_query(client, "https://arcgis.example.com/svc", {"stale": "1"})
+    key = live_query._cache_key("https://arcgis.example.com/svc", {"stale": "1"})
+    assert key in live_query._cache
+
+    now[0] += live_query._CACHE_TTL_SECONDS + 1.0
+    # Balayage périodique déclenché par d'AUTRES clés, jamais celle qui a
+    # expiré — reproduit le patron de l'appelant réel qui ne revient jamais
+    # sur les mêmes params.
+    for i in range(live_query._SWEEP_INTERVAL):
+        live_query.fetch_query(client, "https://arcgis.example.com/svc", {"fresh": str(i)})
+
+    assert key not in live_query._cache
+
+
 def test_aggregate_response_no_groupby_single_row():
     raw = {"features": [{"attributes": {"m0": 42}}]}
     key, rows = live_query.aggregate_response(raw, group_by=[], measures=[("count", None, "total")])

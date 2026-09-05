@@ -123,9 +123,10 @@ def test_get_job_scoped_to_tenant():
     assert export_repo.get_job(session, tenant_id="other-tenant", job_id=job.id) is None
 
 
-# Finding I7 (revue finale) : reclaim_stuck_jobs — pas d'appelant périodique
-# encore câblé (TODO dans app/export/jobs.py), mais la fonction elle-même
-# doit fonctionner correctement, testée directement ici.
+# Finding I7 (revue finale) : reclaim_stuck_jobs — câblée en fin de tick par
+# app.reports.jobs._trigger_due_reports (SP-17b) ; ce commentaire affirmait
+# encore à tort qu'aucun appelant périodique n'existait (stale, corrigé
+# SP-49) — testée directement ici indépendamment de ce câblage.
 
 
 def test_reclaim_stuck_jobs_marks_old_running_jobs_as_error():

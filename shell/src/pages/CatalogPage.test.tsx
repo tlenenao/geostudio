@@ -133,6 +133,44 @@ test("fixedType locks the type filter and hides the selector", async () => {
   expect(screen.queryByLabelText("Type")).not.toBeInTheDocument();
 });
 
+test("propose un lien vers /reports quand le type de la barre de domaines est pipeline (atterrissage Automatisation)", async () => {
+  function wrapperWithPipelineType({ children }: { children: ReactNode }) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const client = createItemClient({
+      coreUrl: "https://core.test",
+      getToken: () => "test-token",
+    });
+    return (
+      <MemoryRouter initialEntries={["/?type=pipeline"]}>
+        <QueryClientProvider client={queryClient}>
+          <ItemClientProvider client={client}>{children}</ItemClientProvider>
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+  }
+
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper: wrapperWithPipelineType });
+  expect(await screen.findByRole("link", { name: "Rapports planifiés →" })).toHaveAttribute(
+    "href",
+    "/reports",
+  );
+});
+
+test("masque le lien vers /reports hors de l'atterrissage Automatisation (catalogue général)", async () => {
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
+  // Attendre un rendu stable (le sélecteur Type, toujours présent hors
+  // fixedType) avant l'assertion négative, plutôt qu'un sleep arbitraire.
+  await screen.findByRole("combobox", { name: "Type" });
+  expect(screen.queryByRole("link", { name: "Rapports planifiés →" })).not.toBeInTheDocument();
+});
+
+test("masque le lien vers /reports sur une vue à fixedType fixé (ex. /reports lui-même)", async () => {
+  render(<CatalogPage onOpenItem={() => {}} fixedType="report" />, { wrapper });
+  expect(screen.queryByRole("link", { name: "Rapports planifiés →" })).not.toBeInTheDocument();
+});
+
 test("prend le type initial depuis le paramètre d'URL ?type=", async () => {
   function wrapperWithInitialType({ children }: { children: ReactNode }) {
     const queryClient = new QueryClient({

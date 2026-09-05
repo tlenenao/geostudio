@@ -383,6 +383,12 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async updateNotificationPreference(..._args: unknown[]) {
       return unsupported();
     },
+    async listUsageTasks(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getUsageSummary(..._args: unknown[]) {
+      return unsupported();
+    },
     // getAuthToken?() et getCoreUrl?() sont optionnels sur ItemClient et
     // n'ont pas de sens sans backend réel (aucun jeton, aucune base URL de
     // cœur) : omis intentionnellement plutôt qu'implémentés pour rejeter.

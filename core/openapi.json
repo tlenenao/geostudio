@@ -4256,6 +4256,181 @@
         "title": "UnreadCount",
         "type": "object"
       },
+      "UsageActorStatRead": {
+        "properties": {
+          "actorId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actorid"
+          },
+          "actorUsername": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actorusername"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "actorId",
+          "actorUsername",
+          "count"
+        ],
+        "title": "UsageActorStatRead",
+        "type": "object"
+      },
+      "UsageResourceStatRead": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "objectId": {
+            "title": "Objectid",
+            "type": "string"
+          },
+          "objectType": {
+            "title": "Objecttype",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectType",
+          "objectId",
+          "count"
+        ],
+        "title": "UsageResourceStatRead",
+        "type": "object"
+      },
+      "UsageSummaryRead": {
+        "properties": {
+          "byActor": {
+            "items": {
+              "$ref": "#/components/schemas/UsageActorStatRead"
+            },
+            "title": "Byactor",
+            "type": "array"
+          },
+          "byResource": {
+            "items": {
+              "$ref": "#/components/schemas/UsageResourceStatRead"
+            },
+            "title": "Byresource",
+            "type": "array"
+          },
+          "totalActions": {
+            "title": "Totalactions",
+            "type": "integer"
+          },
+          "windowEnd": {
+            "title": "Windowend",
+            "type": "string"
+          },
+          "windowStart": {
+            "title": "Windowstart",
+            "type": "string"
+          }
+        },
+        "required": [
+          "byActor",
+          "byResource",
+          "totalActions",
+          "windowStart",
+          "windowEnd"
+        ],
+        "title": "UsageSummaryRead",
+        "type": "object"
+      },
+      "UsageTaskPage": {
+        "properties": {
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/UsageTaskRead"
+            },
+            "title": "Tasks",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tasks",
+          "total",
+          "page",
+          "pageSize"
+        ],
+        "title": "UsageTaskPage",
+        "type": "object"
+      },
+      "UsageTaskRead": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actorId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actorid"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "objectId": {
+            "title": "Objectid",
+            "type": "string"
+          },
+          "objectType": {
+            "title": "Objecttype",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "actorId",
+          "action",
+          "objectType",
+          "objectId",
+          "createdAt"
+        ],
+        "title": "UsageTaskRead",
+        "type": "object"
+      },
       "UserRolePatch": {
         "properties": {
           "roleId": {
@@ -9838,6 +10013,164 @@
           }
         },
         "summary": "Get Upload Job"
+      }
+    },
+    "/usage/summary": {
+      "get": {
+        "operationId": "get_usage_summary_usage_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageSummaryRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Usage Summary"
+      }
+    },
+    "/usage/tasks": {
+      "get": {
+        "operationId": "list_usage_tasks_usage_tasks_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actorId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actorid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageTaskPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Usage Tasks"
       }
     },
     "/users": {

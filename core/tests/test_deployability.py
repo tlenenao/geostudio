@@ -67,6 +67,7 @@ BASE = REPO / "docker-compose.yml"
 PROD = REPO / "docker-compose.prod.yml"
 RELEASE = REPO / ".github/workflows/release.yml"
 ENV_EXAMPLE = REPO / ".env.example"
+BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
 BACKUP_SH = REPO / "deploy/backup/backup.sh"
 CORE_APP = REPO / "core/app"
 BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
@@ -409,14 +410,14 @@ def test_every_compose_substitution_is_documented():
 # des deux compose. Liste fermée, comme ENV_WIRING_EXEMPTIONS/
 # BACKUP_EXCLUDED_BUCKETS ci-dessus : une nouvelle entrée est une décision
 # écrite, jamais un oubli qui se glisse en silence.
-DOCUMENTED_BUT_UNWIRED_EXEMPTIONS = {
-    # Dérive pré-existante documentée depuis SP-1d3/SP-9 : générée par
-    # scripts/bootstrap-env.sh (qui a besoin d'une ligne active pour son
-    # `sed`), mais consommée par aucun service — martin ne lit jamais
-    # MARTIN_SECRET. Hors périmètre à ces deux occasions passées ; toujours
-    # vrai (revue finale SP-21, item 2).
-    "MARTIN_SECRET",
-}
+# Vide depuis SP-45 (GAP-41) : MARTIN_SECRET, seule occupante depuis SP-21,
+# a été retirée des 3 emplacements (bootstrap-env.sh, .env.example, ici)
+# plutôt que câblée — l'accès à Martin est déjà protégé par
+# admin-auth@docker (forwardAuth Traefik), une seconde protection par
+# secret partagé aurait été redondante. Le mécanisme reste déclaré, pas
+# retiré : point d'extension pour une future dérive de même classe (nom
+# documenté, jamais consommé).
+DOCUMENTED_BUT_UNWIRED_EXEMPTIONS: set[str] = set()
 
 
 def test_every_documented_env_var_is_wired_or_declared_inert():
@@ -454,6 +455,19 @@ def test_every_documented_env_var_is_wired_or_declared_inert():
         "(`#VAR=valeur`, convention tâche 4) ou rejoindre "
         "DOCUMENTED_BUT_UNWIRED_EXEMPTIONS avec sa raison écrite."
     )
+
+
+def test_martin_secret_is_fully_removed():
+    """GAP-41 : MARTIN_SECRET était générée par bootstrap-env.sh et
+    documentée dans .env.example sans jamais être consommée par le service
+    martin (docker-compose.yml) — dérive connue depuis SP-1d3, jamais
+    corrigée avant ce test. Retirée plutôt que câblée : l'accès à Martin
+    est déjà protégé par admin-auth@docker (forwardAuth Traefik), une
+    seconde protection par secret partagé serait redondante et n'aurait
+    jamais rien protégé de plus (spec SP-45 §2)."""
+    assert "MARTIN_SECRET" not in ENV_EXAMPLE.read_text()
+    assert "MARTIN_SECRET" not in BOOTSTRAP_ENV_SH.read_text()
+    assert "MARTIN_SECRET" not in DOCUMENTED_BUT_UNWIRED_EXEMPTIONS
 
 
 def _resolve_effective_value(raw: str, var: str) -> str:
@@ -1046,3 +1060,12 @@ def test_keycloak_realm_enables_brute_force_protection():
         "permanentLockout ne doit pas passer à true par ce garde-fou — "
         "verrouillage permanent = décision produit distincte, hors périmètre."
     )
+
+
+def test_traefik_has_a_restart_policy():
+    """GAP-79 : traefik (point d'entrée public unique) était le seul
+    service durablement actif sans restart:, dans docker-compose.yml comme
+    dans son overlay prod (hérité, non redéclaré) — un crash de l'ingress
+    laissait toute l'instance publique indisponible jusqu'à intervention
+    manuelle."""
+    assert services(BASE)["traefik"].get("restart") == "unless-stopped"

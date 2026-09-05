@@ -153,6 +153,11 @@ def mark_missing_as_stale(
     session.flush()
 
 
+_LIST_RECORDS_LIMIT = 1000  # même plafond que _MAX_LIMIT (app.harvest.routes) —
+# garde-fou de volumétrie immédiat (GAP-64.2, SP-49), pas la pagination
+# complète de GAP-57 (curseur, page/page_size), hors périmètre ici.
+
+
 def list_layer_records(session: Session, *, tenant_id: str, q: str | None = None):
     stmt = (
         select(HarvestRecord.item_id, Item.title, HarvestRecord.tiles_url, HarvestRecord.layer_kind)
@@ -164,6 +169,7 @@ def list_layer_records(session: Session, *, tenant_id: str, q: str | None = None
     )
     if q:
         stmt = stmt.where(Item.title.ilike(f"%{q}%"))
+    stmt = stmt.limit(_LIST_RECORDS_LIMIT)
     return list(session.execute(stmt).all())
 
 
@@ -193,6 +199,7 @@ def list_feature_layer_records(session: Session, *, tenant_id: str, q: str | Non
     )
     if q:
         stmt = stmt.where(Item.title.ilike(f"%{q}%"))
+    stmt = stmt.limit(_LIST_RECORDS_LIMIT)
     return list(session.execute(stmt).all())
 
 

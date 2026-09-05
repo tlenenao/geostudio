@@ -238,6 +238,32 @@ def get_access_facts(session: Session, *, tenant_id: str, item_id: str) -> ItemA
     )
 
 
+def get_access_facts_by_ids(
+    session: Session, *, tenant_id: str, item_ids: list[str]
+) -> dict[str, ItemAccessFacts]:
+    """Batch de get_access_facts pour une liste d'item_id — remplace l'appel
+    par ligne dans GET /harvest/layers|feature-layers (GAP-64, SP-49), même
+    discipline que _permissions_by_id pour roles_for_items : une seule
+    requête ici, puis decide() (pure, sans I/O) par ligne chez l'appelant."""
+    if not item_ids:
+        return {}
+    rows = session.execute(
+        select(Item.id, Item.tenant_id, Item.owner_id, Item.is_public, Item.is_published).where(
+            Item.tenant_id == tenant_id, Item.id.in_(item_ids)
+        )
+    ).all()
+    return {
+        row.id: ItemAccessFacts(
+            id=row.id,
+            tenant_id=row.tenant_id,
+            owner_id=row.owner_id,
+            is_public=row.is_public,
+            is_published=row.is_published,
+        )
+        for row in rows
+    }
+
+
 def list_items(
     session: Session,
     *,

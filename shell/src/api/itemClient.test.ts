@@ -3634,3 +3634,93 @@ test("attachmentFileUrl construit l'URL du proxy-read", () => {
     "https://core.test/collections/col1/items/f1/attachments/att1/file",
   );
 });
+
+test("listUsageTasks builds the query string and returns tasks+total", async () => {
+  let lastUrl = "";
+  server.use(
+    http.get("https://core.test/usage/tasks", ({ request }) => {
+      lastUrl = request.url;
+      return HttpResponse.json({
+        tasks: [
+          {
+            id: 1,
+            actorId: "u1",
+            action: "pipeline.run",
+            objectType: "pipeline",
+            objectId: "p1",
+            createdAt: "2026-09-01T00:00:00Z",
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 50,
+      });
+    }),
+  );
+  const result = await makeClient().listUsageTasks({ page: 1, pageSize: 50 });
+  const url = new URL(lastUrl);
+  expect(url.searchParams.get("page")).toBe("1");
+  expect(url.searchParams.get("pageSize")).toBe("50");
+  expect(url.searchParams.has("actorId")).toBe(false);
+  expect(result.total).toBe(1);
+  expect(result.tasks[0].action).toBe("pipeline.run");
+});
+
+test("listUsageTasks passes actorId when provided", async () => {
+  let lastUrl = "";
+  server.use(
+    http.get("https://core.test/usage/tasks", ({ request }) => {
+      lastUrl = request.url;
+      return HttpResponse.json({ tasks: [], total: 0, page: 1, pageSize: 50 });
+    }),
+  );
+  await makeClient().listUsageTasks({ page: 1, pageSize: 50, actorId: "u2" });
+  const url = new URL(lastUrl);
+  expect(url.searchParams.get("actorId")).toBe("u2");
+});
+
+test("getUsageSummary sends since/until/limit as query params", async () => {
+  let lastUrl = "";
+  server.use(
+    http.get("https://core.test/usage/summary", ({ request }) => {
+      lastUrl = request.url;
+      return HttpResponse.json({
+        byActor: [{ actorId: "u1", actorUsername: "alice", count: 3 }],
+        byResource: [{ objectType: "collection", objectId: "c1", count: 2 }],
+        totalActions: 3,
+        windowStart: "2026-08-01T00:00:00Z",
+        windowEnd: "2026-09-01T00:00:00Z",
+      });
+    }),
+  );
+  const result = await makeClient().getUsageSummary({
+    since: "2026-08-01T00:00:00Z",
+    until: "2026-09-01T00:00:00Z",
+    limit: 10,
+  });
+  const url = new URL(lastUrl);
+  expect(url.searchParams.get("since")).toBe("2026-08-01T00:00:00Z");
+  expect(url.searchParams.get("until")).toBe("2026-09-01T00:00:00Z");
+  expect(url.searchParams.get("limit")).toBe("10");
+  expect(result.totalActions).toBe(3);
+  expect(result.byActor[0].actorUsername).toBe("alice");
+});
+
+test("getUsageSummary with no params sends no query string", async () => {
+  let lastUrl = "";
+  server.use(
+    http.get("https://core.test/usage/summary", ({ request }) => {
+      lastUrl = request.url;
+      return HttpResponse.json({
+        byActor: [],
+        byResource: [],
+        totalActions: 0,
+        windowStart: "2026-08-01T00:00:00Z",
+        windowEnd: "2026-09-01T00:00:00Z",
+      });
+    }),
+  );
+  await makeClient().getUsageSummary();
+  const url = new URL(lastUrl);
+  expect(url.search).toBe("");
+});

@@ -10,8 +10,11 @@ from app.audit.models import AuditLog
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
+from app.roles.privileges import Privilege
+from app.roles.repository import create_role, ensure_built_in_roles
 from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
+from app.users.models import User
 from app.users.repository import get_or_create_user
 
 BEARER_BODY = {
@@ -46,6 +49,13 @@ def env():
             first_name="",
             last_name="",
         )
+        # Rôle "reader" (zéro privilège) plutôt que le "creator" par défaut :
+        # depuis que le Créateur porte automation.secrets.manage (SP-47 §2.2),
+        # le "creator" par défaut ne fait plus un témoin valide de "utilisateur
+        # sans privilège de secrets" pour les 3 tests test_*_requires_admin
+        # ci-dessous.
+        built_in_roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        regular.role_id = built_in_roles["reader"].id
         s.commit()
     app = create_app()
 
@@ -175,6 +185,48 @@ def test_create_app_fails_fast_without_master_key(monkeypatch):
     monkeypatch.delenv("CORE_SECRETS_MASTER_KEY", raising=False)
     with pytest.raises(KeyError):
         create_app()
+
+
+def test_a_role_with_only_automation_secrets_manage_can_manage_secrets(env):
+    app, client, Session, admin, regular = env
+    with Session() as s:
+        tenant_id = admin.tenant_id
+        custom = create_role(
+            s,
+            tenant_id=tenant_id,
+            name="Secrets pipeline",
+            privileges=[Privilege.AUTOMATION_SECRETS_MANAGE.value],
+        )
+        target = s.get(User, regular.id)
+        assert target is not None
+        target.role_id = custom.id
+        s.commit()
+        s.refresh(target)
+
+    _as(app, target)
+    resp = client.post("/secrets", json=BEARER_BODY)
+    assert resp.status_code == 201, resp.text
+    resp = client.get("/secrets")
+    assert resp.status_code == 200
+    secret_id = resp.json()[0]["id"]
+    resp = client.delete(f"/secrets/{secret_id}")
+    assert resp.status_code == 204
+
+
+def test_a_role_with_neither_secrets_privilege_is_rejected(env):
+    app, client, Session, admin, regular = env
+    with Session() as s:
+        tenant_id = admin.tenant_id
+        custom = create_role(s, tenant_id=tenant_id, name="Sans secrets", privileges=[])
+        target = s.get(User, regular.id)
+        assert target is not None
+        target.role_id = custom.id
+        s.commit()
+        s.refresh(target)
+
+    _as(app, target)
+    resp = client.post("/secrets", json=BEARER_BODY)
+    assert resp.status_code == 403
 
 
 def test_create_concurrent_duplicate_race_returns_409(env, monkeypatch):

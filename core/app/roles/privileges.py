@@ -70,6 +70,7 @@ BUILT_IN_ROLE_PRIVILEGES: dict[str, list[str]] = {
         Privilege.DATA_MANAGE.value,
         Privilege.APPS_MANAGE.value,
         Privilege.AUTOMATION_MANAGE.value,
+        Privilege.AUTOMATION_SECRETS_MANAGE.value,
         Privilege.ANALYTICS_VIEW.value,
         Privilege.TASKS_VIEW.value,
     ],

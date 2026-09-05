@@ -261,3 +261,78 @@ def test_notification_write_failure_does_not_affect_job_status(monkeypatch, tmp_
         notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant_id))
     assert job.status == "done"
     assert notification is None
+
+
+def test_job_handles_get_job_failure_gracefully(monkeypatch, tmp_path):
+    # GAP-56.1 (SP-49) : get_job/mark_running étaient hors du bloc try — une
+    # exception ici remontait non gérée (pas de mark_error, pas de
+    # notification). Falsifié en session (avant correction, ce test échouait
+    # avec la RuntimeError non capturée plutôt que de constater
+    # job.status == "error").
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+    monkeypatch.setattr("app.appexport.jobs.s3_client_from_env", _fake_s3)
+
+    original_get_job = appexport_repo.get_job
+    calls = {"n": 0}
+
+    def _boom(session, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("db down")
+        return original_get_job(session, **kwargs)
+
+    monkeypatch.setattr(appexport_repo, "get_job", _boom)
+
+    build_app_export_task(job_id=job_id, tenant_id=tenant_id)
+
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+    assert job.status == "error"
+    assert "db down" in job.error
+
+
+def test_sweep_reclaims_a_stuck_job(monkeypatch, tmp_path):
+    # GAP-56.2 (SP-49) : appexport_repo.reclaim_stuck_jobs existait déjà
+    # (testée directement dans test_appexport_repository.py) mais n'était
+    # appelée par aucune tâche périodique — un job "running" restait bloqué
+    # pour toujours (export-worker/process tué en cours de zip). Symétrique
+    # au reclaim d'export (câblé via le sweep de rapports) : pas de
+    # notification prévue par le contrat existant de reclaim_stuck_jobs,
+    # donc rester symétrique par défaut est le choix le moins risqué.
+    from datetime import UTC, datetime, timedelta
+
+    from app.appexport.jobs import sweep_appexport_jobs_task
+    from app.appexport.models import AppExportJob
+
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+
+    with Session() as s:
+        appexport_repo.mark_running(s, job_id=job_id)
+        row = s.get(AppExportJob, job_id)
+        row.started_at = datetime.now(UTC) - timedelta(minutes=90)
+        s.commit()
+
+    sweep_appexport_jobs_task(timestamp=0)
+
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+    assert job.status == "error"
+
+
+def test_sweep_leaves_recent_running_jobs_alone(monkeypatch, tmp_path):
+    from app.appexport.jobs import sweep_appexport_jobs_task
+
+    Session, tenant_id, job_id = _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr("app.appexport.jobs._session_factory", lambda: Session)
+
+    with Session() as s:
+        appexport_repo.mark_running(s, job_id=job_id)  # started_at = maintenant
+        s.commit()
+
+    sweep_appexport_jobs_task(timestamp=0)
+
+    with Session() as s:
+        job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
+    assert job.status == "running"

@@ -33,6 +33,28 @@ Procédure de reprise sur perte totale (machine détruite/volée/disque mort).
   `apk add mc` dans son Dockerfile — c'est Midnight Commander sous Alpine,
   pas le client MinIO (cf. Task 1).
 
+## Avant une mise en production réelle
+
+Checklist minimale de variables `.env` à régler explicitement avant un
+déploiement réel (GAP-76, SP-49) — aucune ne bloque `docker compose up`,
+mais chacune retombe silencieusement sur un défaut de démo/dev sinon :
+
+- **`GRAFANA_ALERT_WEBHOOK_URL`** : vide par défaut, `docker-compose.yml`
+  retombe alors sur un localhost inatteignable
+  (`http://127.0.0.1:1/grafana-alert-webhook-not-configured`, décision
+  assumée — une chaîne vide ferait échouer le provisioning alerting de
+  Grafana au démarrage, cf. commentaire de `.env.example`). Sans cette
+  variable, les alertes SLO Grafana (dossier `deploy/observability/grafana/
+  provisioning/alerting/`) ne notifient personne.
+- `PG_PASSWORD`/`MINIO_PASSWORD`/secrets Keycloak : voir Prérequis
+  ci-dessous pour la restauration ; en déploiement initial, ne jamais garder
+  les valeurs générées par `./scripts/bootstrap-env.sh` sans les avoir
+  vérifiées (elles sont aléatoires, pas des placeholders faibles — mais à
+  confirmer, pas à supposer).
+- `CORE_SECRETS_MASTER_KEY` : requise dès le premier démarrage (garde
+  SP-15e/SP-26) — `./scripts/bootstrap-env.sh` la génère désormais
+  (`openssl rand -base64 32`, corrigé SP-42).
+
 ## Périmètre de la sauvegarde (ce qui revient, et ce qui ne revient pas)
 
 **Restauré** : la base Postgres complète (donc aussi les comptes Keycloak,
