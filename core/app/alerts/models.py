@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime
 
+import sqlalchemy as sa
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,6 +20,8 @@ class AlertEvaluation(Base):
     alert_rule_item_id: Mapped[str] = mapped_column(ForeignKey("items.id"), nullable=False)
     value: Mapped[float | None] = mapped_column(Float, nullable=True)
     state: Mapped[str] = mapped_column(String, nullable=False)
-    transitioned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    transitioned: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
     error: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
