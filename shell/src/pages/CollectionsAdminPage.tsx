@@ -191,7 +191,14 @@ export function CollectionsAdminPage() {
             <div className="flex flex-col gap-3 p-3">
               {registering && <RegisterCollectionPanel onClose={() => setRegistering(false)} />}
               {editing && (
-                <div {...editPanel.panelProps}>
+                // id seul (pas role="region" du hook) : EditCollectionPanel
+                // rend déjà un <section aria-label=…>, donc une région
+                // implicite nommée — un role="region" supplémentaire sur ce
+                // wrapper créerait une région imbriquée non nommée,
+                // redondante pour les lecteurs d'écran (vérifié contre le
+                // composant réel, cf. piège CLAUDE.md n°3 — le brief
+                // supposait un wrapper neutre).
+                <div id={editPanel.panelId}>
                   <EditCollectionPanel
                     key={editing.id}
                     collection={editing}
@@ -200,7 +207,7 @@ export function CollectionsAdminPage() {
                 </div>
               )}
               {sharing && (
-                <div {...sharingPanel.panelProps}>
+                <div id={sharingPanel.panelId}>
                   <CollectionSharePanel
                     key={sharing.id}
                     collectionId={sharing.id}
