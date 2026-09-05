@@ -22,7 +22,7 @@ from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
 from app.pipelines.ops.schemas import ops_catalog
 from app.pipelines.runtime import PipelineRuntimeError, preview_pipeline
 from app.roles.guards import require_privilege
-from app.roles.privileges import Privilege
+from app.roles.kind_registry import privilege_for_kind
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -62,7 +62,7 @@ def _pipeline_writes_dataset(config: ConfigRead) -> bool:
     nœud writer.dataset crée (app.pipelines.runtime::run_pipeline, branche
     else) ou mute (même fonction, branche p.datasetId is not None) une
     config kind="dataset" — mappée sur data.manage
-    (app.configs.routes::_KIND_PRIVILEGE) — sans jamais consulter ce
+    (app.roles.kind_registry::privilege_for_kind) — sans jamais consulter ce
     privilège sur l'appelant de /run : seul `write` sur l'item pipeline
     était exigé. Un Analyste (qui ne porte que data.view) à qui un pipeline
     est partagé en écriture créait donc des datasets. Réutilisé par le tool
@@ -75,8 +75,13 @@ def _pipeline_writes_dataset(config: ConfigRead) -> bool:
 def _require_data_manage_if_pipeline_writes_dataset(
     session: Session, user: User, config: ConfigRead
 ) -> None:
+    # SP-43 Étape 1 : consulte désormais le même registre que les 3 autres
+    # sites (app.configs.routes, app.mcp.tools, app.tileset3d/terrain3d.routes)
+    # au lieu de recopier Privilege.DATA_MANAGE.value en dur — seule la
+    # synchronisation manuelle documentée en commentaire garantissait
+    # jusqu'ici que cette valeur restait alignée sur le mapping "dataset".
     if _pipeline_writes_dataset(config):
-        require_privilege(session, user, Privilege.DATA_MANAGE.value)
+        require_privilege(session, user, privilege_for_kind("dataset"))
 
 
 def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests

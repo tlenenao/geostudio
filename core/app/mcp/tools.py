@@ -31,7 +31,7 @@ from app.configs.extension_permissions import (
 )
 from app.configs.pipeline_validation import validate_pipeline_payload
 from app.configs.repository import ConfigRead
-from app.configs.routes import _require_kind_matches_existing, _require_privilege_for_kind
+from app.configs.routes import _require_kind_matches_existing
 from app.configs.schemas import (
     BookmarkCrossFilterEntry,
     BookmarkPayload,
@@ -58,7 +58,8 @@ from app.pipelines import repository as pipelines_repo
 from app.pipelines.jobs import run_pipeline_task
 from app.pipelines.routes import _require_data_manage_if_pipeline_writes_dataset
 from app.reports import repository as reports_repo
-from app.roles.guards import has_privilege
+from app.roles.guards import has_privilege, require_privilege
+from app.roles.kind_registry import privilege_for_kind
 from app.roles.privileges import Privilege
 from app.sharing import repository as sharing_repo
 from app.sharing.authorization import ItemAccessFacts, can
@@ -199,13 +200,13 @@ def _require_config_privilege(session, config: BuilderConfig, *, user: User) -> 
     configs_repo.create_config/update_config directly (create_item,
     create_form_app, create_dataset, create_bookmark, create_pipeline,
     save_app_config) stayed wide open, since none of them go through those
-    REST handlers. Reuses app.configs.routes._require_privilege_for_kind
-    verbatim (the single source of truth for the kind->privilege mapping,
-    rather than a second table that could silently drift from it) but
-    raises ValueError instead of HTTPException, same rationale as
-    _require_access above."""
+    REST handlers. SP-43 Étape 1: consumes app.roles.kind_registry.
+    privilege_for_kind directly (the single source of truth for the
+    kind->privilege mapping, rather than a second table that could silently
+    drift from it) but raises ValueError instead of HTTPException, same
+    rationale as _require_access above."""
     try:
-        _require_privilege_for_kind(session, user, config)
+        require_privilege(session, user, privilege_for_kind(config.kind))
     except HTTPException as exc:
         raise ValueError(exc.detail) from exc
 
@@ -498,8 +499,8 @@ def register_tools(server: FastMCP, session_factory) -> None:
         config: BuilderConfig,
     ) -> ItemRead:
         """Create a new app or dashboard — mirrors POST /configs, including
-        its privilege guard (apps.manage, app.configs.routes::
-        _require_privilege_for_kind). The item's owner is always the
+        its privilege guard (apps.manage, app.roles.kind_registry::
+        privilege_for_kind). The item's owner is always the
         authenticated caller; there is no owner parameter to accept from
         the agent."""
         if is_read_only_mode():
