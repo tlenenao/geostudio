@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, date, datetime
 
+import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -23,19 +24,25 @@ class Collection(Base):
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     table_name: Mapped[str] = mapped_column(String, nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
-    description: Mapped[str] = mapped_column(String, default="")
+    description: Mapped[str] = mapped_column(String, default="", server_default="")
     pk_column: Mapped[str] = mapped_column(String, nullable=False)
     geometry_column: Mapped[str | None] = mapped_column(String, nullable=True)
     geometry_type: Mapped[str | None] = mapped_column(String, nullable=True)
     srid: Mapped[int | None] = mapped_column(Integer, nullable=True)
     feature_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
-    is_public: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    editable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_public: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=sa.false()
+    )
+    editable: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False, server_default=sa.true()
+    )
     # [{"key": str, "label": str}] — champs `attachment` déclarés (chantier
     # 4.12) ; pas de colonne SQL réelle par champ, cf.
     # docs/superpowers/specs/2026-09-04-sp40-pieces-jointes-design.md §3.1.
-    attachment_fields: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    attachment_fields: Mapped[list] = mapped_column(
+        JSON, default=list, nullable=False, server_default="[]"
+    )
     # Métadonnées ouvertes (chantier 4.9, docs/superpowers/specs/
     # 2026-09-04-sp41-metadonnees-licence-design.md §1.1). Convention
     # str/default="" (pas None) : un PATCH ne peut jamais distinguer un champ
