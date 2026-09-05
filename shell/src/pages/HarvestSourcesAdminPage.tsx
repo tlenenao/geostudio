@@ -125,7 +125,8 @@ export function HarvestSourcesAdminPage() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                {...editPanel.triggerProps}
+                                aria-controls={editPanel.panelId}
+                                aria-expanded={editing?.id === source.id}
                                 onClick={() => {
                                   setCreating(false);
                                   setEditing(source);

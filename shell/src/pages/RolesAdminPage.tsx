@@ -101,7 +101,8 @@ export function RolesAdminPage() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                {...editPanel.triggerProps}
+                                aria-controls={editPanel.panelId}
+                                aria-expanded={editing?.id === role.id}
                                 onClick={() => {
                                   setCreating(false);
                                   setEditing(role);

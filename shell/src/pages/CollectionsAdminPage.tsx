@@ -132,7 +132,8 @@ export function CollectionsAdminPage() {
                               type="button"
                               variant="outline"
                               size="sm"
-                              {...editPanel.triggerProps}
+                              aria-controls={editPanel.panelId}
+                              aria-expanded={editing?.id === col.id}
                               onClick={() => {
                                 setRegistering(false);
                                 setSharing(null);
@@ -157,7 +158,8 @@ export function CollectionsAdminPage() {
                               type="button"
                               variant="outline"
                               size="sm"
-                              {...sharingPanel.triggerProps}
+                              aria-controls={sharingPanel.panelId}
+                              aria-expanded={sharing?.id === col.id}
                               onClick={() => {
                                 setRegistering(false);
                                 setEditing(null);
