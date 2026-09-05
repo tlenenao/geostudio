@@ -25,6 +25,7 @@ import type {
   PipelineOpsCatalog,
 } from "../../api/types";
 import { genEdgeId, hasIncomingEdge, topologicalOrder, wouldCreateCycle } from "./graphOps";
+import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 
 // Les 6 op transform.* insérables sur une arête (cf. plan Task 6 — clic sur
 // le "+" d'une arête, pas de drag-drop précis sur le tracé SVG). SP-15c
@@ -108,6 +109,7 @@ function InsertOnEdgeButton({
   onInsert,
 }: EdgeProps & { onInsert: (edgeId: string, op: string) => void }) {
   const [open, setOpen] = useState(false);
+  const insertMenu = usePanelTrigger(open);
   const [edgePath, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY });
   const role = (data as { role?: string } | undefined)?.role;
   return (
@@ -129,13 +131,19 @@ function InsertOnEdgeButton({
           <button
             type="button"
             aria-label="Insérer une étape sur cette arête"
+            aria-expanded={insertMenu.triggerProps["aria-expanded"]}
+            aria-controls={insertMenu.triggerProps["aria-controls"]}
             className="h-5 w-5 rounded-full border border-rule bg-surface text-xs leading-none hover:bg-sunken"
             onClick={() => setOpen((o) => !o)}
           >
             +
           </button>
           {open && (
+            // role="menu" conservé (plus spécifique que role="region" du
+            // hook générique) — seul l'id du panneau est câblé ici, cf.
+            // consigne explicite du brief pour ce site.
             <ul
+              id={insertMenu.panelId}
               role="menu"
               className="absolute z-10 mt-1 rounded border border-rule bg-surface text-xs shadow"
             >
