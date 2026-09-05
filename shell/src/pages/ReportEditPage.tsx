@@ -62,6 +62,15 @@ export function ReportEditPage({
   }, [pk, configQuery.data]);
 
   if (pk !== null && configQuery.isLoading) return <p role="status">Chargement…</p>;
+  // SP-42 F-shell-pages-05 : même garde que PipelineBuilderPage.tsx — sans
+  // elle, un rapport existant dont le chargement échoue s'affichait comme un
+  // brouillon vide avec Enregistrer actif (422 opaque à la sauvegarde).
+  if (pk !== null && configQuery.isError)
+    return (
+      <p role="alert" className="text-sm text-danger">
+        Rapport introuvable.
+      </p>
+    );
 
   async function onSave() {
     setSaveError(null);

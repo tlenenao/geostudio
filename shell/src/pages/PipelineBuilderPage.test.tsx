@@ -389,6 +389,11 @@ test("persisted mode: verrouille Enregistrer quand permissions.write est false (
     getItem: vi
       .fn()
       .mockResolvedValue({ ...OWNED_PIPELINE_ITEM, permissions: READ_ONLY_PERMISSIONS }),
+    // Sans ce mock, getPipelineConfig est absent du client partiel : l'appel
+    // lève synchronement, configQuery devient isError, et le nouveau garde
+    // SP-42/F-shell-pages-05 masquerait la palette que ce test vérifie —
+    // sans rapport avec ce que ce test veut exercer (permissions.write).
+    getPipelineConfig: vi.fn().mockResolvedValue({ nodes: [], edges: [] }),
   });
   await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
   const saveButton = screen.getByRole("button", { name: "Enregistrer" });
@@ -396,4 +401,22 @@ test("persisted mode: verrouille Enregistrer quand permissions.write est false (
   expect(
     screen.getByText("Modification réservée aux éditeurs de cet élément."),
   ).toBeInTheDocument();
+});
+
+test("persisted mode: une config qui échoue à charger affiche une alerte et n'écrase pas l'existant (SP-42/F-shell-pages-05)", async () => {
+  const savePipelineConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage("p-1", {
+    getPipelineConfig: vi.fn().mockRejectedValue(new Error("403")),
+    savePipelineConfig,
+    // Isole le défaut sous test : sans ce mock, ConfigHistoryPanel affiche
+    // aussi un role="alert" (« Impossible de charger l'historique »),
+    // rendant le premier findByRole("alert") vrai pour la mauvaise raison
+    // (piège de méthode signalé par la falsification F-shell-pages-05).
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("introuvable");
+  expect(screen.queryByText("reader.collection")).not.toBeInTheDocument();
+  expect(savePipelineConfig).not.toHaveBeenCalled();
 });

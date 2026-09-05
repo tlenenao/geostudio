@@ -142,3 +142,21 @@ test("persisted mode: verrouille Enregistrer quand permissions.write est false (
     screen.getByText("Modification réservée aux éditeurs de cet élément."),
   ).toBeInTheDocument();
 });
+
+test("persisted mode: un rapport qui échoue à charger affiche une alerte et n'écrase pas l'existant (SP-42/F-shell-pages-05)", async () => {
+  const saveReportScheduleConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage("r-1", {
+    getItem: vi.fn().mockResolvedValue(item),
+    getReportScheduleConfig: vi.fn().mockRejectedValue(new Error("403")),
+    saveReportScheduleConfig,
+    // Isole le défaut sous test — même piège de méthode que
+    // PipelineBuilderPage.test.tsx (ConfigHistoryPanel affiche son propre
+    // role="alert" si listConfigRevisions n'est pas mocké).
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("introuvable");
+  expect(screen.queryByRole("heading", { name: "Programmer un rapport" })).not.toBeInTheDocument();
+  expect(saveReportScheduleConfig).not.toHaveBeenCalled();
+});
