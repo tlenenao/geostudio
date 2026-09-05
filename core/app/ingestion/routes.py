@@ -113,6 +113,13 @@ def create_upload_job(
     # (création de table PostGIS) au worker — réservé à data.manage, comme
     # POST /collections/empty (Créateur l'a, Lecteur non).
     require_privilege(session, user, Privilege.DATA_MANAGE.value)
+    # SP-42, revue de la dernière passe de correctifs (point 5, Important) :
+    # app.ingestion.importer::import_job crée AUSSI un
+    # Item(resource_type="map") + Config(kind="map") pour afficher le
+    # résultat (app.configs.routes::_KIND_PRIVILEGE mappe "map" sur
+    # maps.manage) — la garde ci-dessus ne couvrait que la moitié de ce que
+    # cette route crée réellement.
+    require_privilege(session, user, Privilege.MAPS_MANAGE.value)
     # La clé est censée venir du présigné (/uploads/presign), qui la préfixe
     # toujours par le tenant de l'appelant — un client qui en soumet une
     # sous le préfixe d'un AUTRE tenant (deviné, réutilisé depuis une fuite,
