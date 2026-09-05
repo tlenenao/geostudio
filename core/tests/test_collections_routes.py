@@ -670,6 +670,45 @@ def test_patch_collection_declares_attachment_fields(env):
     assert get_res.json()["attachmentFields"] == [{"key": "photos", "label": "Photos"}]
 
 
+def test_patch_collection_rejects_attachment_field_key_colliding_with_real_column(env):
+    # SP-42/F-coeur-contenu-03 : "titre" est déjà une colonne SQL réelle de
+    # INCIDENTS (fake_introspector) — sans cette garde, GET
+    # /collections/incidents/schema exposerait deux champs "titre" (un
+    # "string", un "attachment").
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+
+    res = client.patch(
+        "/collections/incidents", json={"attachmentFields": [{"key": "titre", "label": "Photo"}]}
+    )
+    assert res.status_code == 422
+    assert "titre" in res.json()["detail"]
+
+    schema = client.get("/collections/incidents/schema").json()
+    names = [f["name"] for f in schema["fields"]]
+    assert names.count("titre") == 1
+
+
+def test_patch_collection_rejects_duplicate_attachment_field_keys(env):
+    # Collision entre deux entrées attachmentFields elles-mêmes (pas besoin
+    # de DB, couvert par CollectionPatch._reject_duplicate_attachment_field_keys).
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+
+    res = client.patch(
+        "/collections/incidents",
+        json={
+            "attachmentFields": [
+                {"key": "photos", "label": "Photos"},
+                {"key": "photos", "label": "Autres photos"},
+            ]
+        },
+    )
+    assert res.status_code == 422
+
+
 def test_patch_collection_without_attachment_fields_leaves_them_unchanged(env):
     app, client, _Session, admin, _regular, _ddl = env
     _as(app, admin)

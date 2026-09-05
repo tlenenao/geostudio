@@ -2,7 +2,7 @@
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.catalog.metadata import validate_frequency_id, validate_language_id, validate_license_id
 
@@ -94,6 +94,24 @@ class CollectionPatch(BaseModel):
     @classmethod
     def _validate_language(cls, v: str | None) -> str | None:
         return validate_language_id(v)
+
+    @model_validator(mode="after")
+    def _reject_duplicate_attachment_field_keys(self) -> "CollectionPatch":
+        # SP-42/F-coeur-contenu-03 : la collision avec une colonne SQL réelle
+        # (ou pk_column/tenant_id/geometry_column) nécessite d'introspecter la
+        # table backing — un model_validator Pydantic n'a pas accès à la
+        # Session, cette partie-là est donc vérifiée dans patch_collection
+        # (app/collections/routes.py). Ce validateur-ci ne couvre que ce qui
+        # est vérifiable sans DB : deux entrées attachmentFields ne peuvent
+        # pas partager la même key, sans quoi GET /collections/{id}/schema
+        # exposerait deux champs "attachment" du même nom.
+        if self.attachmentFields is None:
+            return self
+        keys = [f.key for f in self.attachmentFields]
+        if len(keys) != len(set(keys)):
+            duplicates = sorted({k for k in keys if keys.count(k) > 1})
+            raise ValueError(f"duplicate attachmentFields key(s): {', '.join(duplicates)}")
+        return self
 
 
 class EmptyCollectionColumn(BaseModel):
