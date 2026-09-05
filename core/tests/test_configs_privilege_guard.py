@@ -11,13 +11,16 @@ régressé.
 import pytest
 from fastapi import Depends
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session as SASession
 
 from app import db
 from app.auth.dependency import get_current_user
 from app.collections.models import Collection
 from app.db import get_session, init_db, make_engine, make_session_factory, request_scoped_session
+from app.items import repository as items_repo
 from app.main import create_app
+from app.roles.privileges import Privilege
 from app.roles.repository import ensure_built_in_roles
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.models import User
@@ -189,3 +192,61 @@ def test_demoted_owner_can_no_longer_update_their_own_app_config(env):
 
     resp_by_item = client.put(f"/configs/by-item/{item_id}", json=_body("app"))
     assert resp_by_item.status_code == 403, resp_by_item.text
+
+
+def test_analyst_can_create_and_reader_still_cannot_create_a_bookmark(env):
+    # Revue du lot de correctifs 1 (Important), décision Tanguy : un
+    # bookmark est une « vue analytique enregistrée » (spec SP-14m), portée
+    # par analytics.view — pas catalog.manage (l'ancien mapping bloquait à
+    # tort l'Analyste, seul rôle prédéfini dont le domaine est justement
+    # l'Analytique). Preuve des deux côtés dans le même test : l'Analyste
+    # obtient de nouveau 201, le Lecteur reste à 403.
+    app, client, _creator, reader = env
+    Session = client.session_factory  # type: ignore[attr-defined]
+    with Session() as s:
+        roles = ensure_built_in_roles(s, tenant_id=reader.tenant_id)
+        assert Privilege.ANALYTICS_VIEW.value in roles["analyst"].privileges
+        assert Privilege.ANALYTICS_VIEW.value not in roles["reader"].privileges
+        analyst = get_or_create_user(
+            s,
+            tenant_id=reader.tenant_id,
+            oidc_sub="analyst-sub",
+            username="analyst",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        set_user_role(
+            s,
+            tenant_id=reader.tenant_id,
+            user_id=analyst.id,
+            role_id=roles["analyst"].id,
+            role_slug="analyst",
+        )
+        # L'app ciblée par le bookmark appartient à l'Analyste lui-même, pour
+        # que sa lisibilité ne dépende d'aucun partage/publication distinct
+        # du seul point testé ici (le privilège sur kind="bookmark").
+        item = items_repo.create_item(
+            s,
+            tenant_id=reader.tenant_id,
+            owner_id=analyst.id,
+            resource_type="app",
+            title="Cible analyste",
+        )
+        s.commit()
+        app_item_id = item.id
+
+    bookmark_body = {
+        "kind": "bookmark",
+        "bookmark": {"appId": app_item_id, "pageId": "p1"},
+    }
+
+    with Session() as s:
+        analyst = s.scalar(select(User).where(User.username == "analyst"))
+    _as(app, analyst)
+    resp = client.post("/configs", json={"title": "vue analyste", "config": bookmark_body})
+    assert resp.status_code == 201, resp.text
+
+    _as(app, reader)
+    resp = client.post("/configs", json={"title": "vue reader", "config": bookmark_body})
+    assert resp.status_code == 403, resp.text

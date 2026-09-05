@@ -101,8 +101,16 @@ def _require_export_enabled_for_report(config: BuilderConfig) -> None:
 # un rôle « Lecteur » (0 privilège) obtenait 201 sur POST /configs pour
 # n'importe quel kind. Mapping calé sur le domaine shell (capabilities.ts) :
 # dashboard/site partagent le domaine "apps" avec app (même runtime
-# AppRenderer, cf. CLAUDE.md règle d'architecture n°3) ; bookmark/tileset3d/
-# terrain3d n'ont pas de domaine dédié et retombent sur catalog.manage.
+# AppRenderer, cf. CLAUDE.md règle d'architecture n°3) ; tileset3d/terrain3d
+# n'ont pas de domaine dédié et retombent sur catalog.manage.
+#
+# bookmark -> analytics.view (décision Tanguy, revue du lot de correctifs 1,
+# SP-42) : un bookmark est une « vue analytique enregistrée » (spec
+# docs/superpowers/specs/2026-08-05-sp14m-bookmarks-vues-design.md), portée
+# par le domaine Analytique de la matrice de la refonte UI — PAS
+# catalog.manage, qui aurait bloqué l'Analyste (qui porte analytics.view
+# mais pas catalog.manage) tout en laissant passer un Lecteur si jamais un
+# rôle sur mesure portait catalog.manage sans analytics.view.
 _KIND_PRIVILEGE: dict[str, str] = {
     "app": Privilege.APPS_MANAGE.value,
     "dashboard": Privilege.APPS_MANAGE.value,
@@ -112,7 +120,7 @@ _KIND_PRIVILEGE: dict[str, str] = {
     "pipeline": Privilege.AUTOMATION_MANAGE.value,
     "alert": Privilege.AUTOMATION_MANAGE.value,
     "report": Privilege.AUTOMATION_MANAGE.value,
-    "bookmark": Privilege.CATALOG_MANAGE.value,
+    "bookmark": Privilege.ANALYTICS_VIEW.value,
     "tileset3d": Privilege.CATALOG_MANAGE.value,
     "terrain3d": Privilege.CATALOG_MANAGE.value,
 }
