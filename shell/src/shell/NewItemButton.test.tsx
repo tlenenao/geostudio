@@ -28,8 +28,37 @@ function AppBuilderProbe() {
   return <div>app-builder-{pk}</div>;
 }
 
-function Harness({ children }: { children: ReactNode }) {
+// SP-42/F-shell-pages-01 : NewItemButton lit désormais useMe() pour gater ses
+// options par privilège. Le profil par défaut servi par GET /me
+// (test/msw/handlers.ts) n'inclut pas apps.manage — historiquement sans
+// conséquence, seulement parce que rien ne le consultait avant ce correctif.
+// Seeder directement le cache React Query (au lieu de laisser la requête MSW
+// réelle résoudre de façon asynchrone) rend le profil disponible dès le
+// premier rendu, sans dépendance de timing sur les tests existants qui
+// n'affirment pas sur les privilèges eux-mêmes ; `staleTime: Infinity` évite
+// qu'un refetch d'arrière-plan écrase ce seed par la réponse MSW incomplète.
+const CREATOR_ME = {
+  id: "u1",
+  username: "alice",
+  firstName: "Alice",
+  lastName: "Martin",
+  email: "alice@example.com",
+  tenantId: "t1",
+  role: { id: "role-creator", name: "Créateur", slug: "creator" },
+  privileges: ["catalog.manage", "maps.manage", "data.view", "data.manage", "apps.manage"],
+  version: "0.1.0",
+  tenantSlug: "demo",
+};
+
+function makeQueryClient(privileges: string[] = CREATOR_ME.privileges) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient.setQueryDefaults(["me"], { staleTime: Infinity });
+  queryClient.setQueryData(["me"], { ...CREATOR_ME, privileges });
+  return queryClient;
+}
+
+function Harness({ children }: { children: ReactNode }) {
+  const queryClient = makeQueryClient();
   const client = createItemClient({
     coreUrl: "https://core.test",
     getToken: () => "t",
@@ -82,7 +111,7 @@ test("creates a Map and navigates to the editor route", async () => {
     const { pk } = useParams();
     return <div>map-{pk}</div>;
   }
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = makeQueryClient();
   const client = createItemClient({
     coreUrl: "https://core.test",
     getToken: () => "t",
@@ -259,7 +288,7 @@ test("creating a dataset posts collectionId and navigates to the dataset editor"
     const { pk } = useParams();
     return <div>dataset-{pk}</div>;
   }
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = makeQueryClient();
   const client = createItemClient({
     coreUrl: "https://core.test",
     getToken: () => "t",
@@ -303,7 +332,7 @@ test("creates an arcgis-sourced dataset from a feature-layer picker", async () =
     const { pk } = useParams();
     return <div>dataset-{pk}</div>;
   }
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = makeQueryClient();
   const client = createItemClient({
     coreUrl: "https://core.test",
     getToken: () => "t",
@@ -376,7 +405,7 @@ test("selecting Pipeline only asks for a title, and navigates to /pipelines/new 
     const state = location.state as { title?: string } | null;
     return <div>pipeline-new-{state?.title ?? ""}</div>;
   }
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = makeQueryClient();
   const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
   render(
     <QueryClientProvider client={queryClient}>
@@ -417,7 +446,7 @@ test("selecting « Dataset par requête visuelle » only asks for a title, and n
     const state = location.state as { title?: string } | null;
     return <div>visual-query-new-{state?.title ?? ""}</div>;
   }
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = makeQueryClient();
   const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
   render(
     <QueryClientProvider client={queryClient}>
@@ -456,4 +485,42 @@ test("the visual-query option is hidden when etlEnabled is false", async () => {
       screen.queryByRole("option", { name: "Dataset par requête visuelle" }),
     ).not.toBeInTheDocument(),
   );
+});
+
+test("SP-42/F-shell-pages-01 : masque tout le bouton pour un Lecteur (0 privilège, etlEnabled=false)", async () => {
+  const queryClient = makeQueryClient([]);
+  const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ItemClientProvider client={client}>
+        <MemoryRouter initialEntries={["/"]}>
+          <NewItemButton />
+        </MemoryRouter>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Nouveau" })).not.toBeInTheDocument(),
+  );
+});
+
+test("SP-42/F-shell-pages-01 : un profil ne portant que maps.manage ne voit que Map dans le sélecteur Type", async () => {
+  const queryClient = makeQueryClient(["maps.manage"]);
+  const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ItemClientProvider client={client}>
+        <MemoryRouter initialEntries={["/"]}>
+          <NewItemButton />
+        </MemoryRouter>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await userEvent.click(await screen.findByRole("button", { name: "Nouveau" }));
+  await waitFor(() => expect(screen.getByLabelText("Type")).toHaveValue("map"));
+  expect(screen.queryByRole("option", { name: "App" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "Dashboard" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "Site" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "Dataset partagé" })).not.toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "Map" })).toBeInTheDocument();
 });
