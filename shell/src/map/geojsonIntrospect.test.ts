@@ -106,6 +106,27 @@ describe("makeStatQueryFn", () => {
 describe("makeSampleFieldFn", () => {
   test("returns finite numeric values only, capped at the limit", async () => {
     const fc = fcWithValues("pop", [10, "n/a", 20, null, 30, 40]);
-    await expect(makeSampleFieldFn(fc)("pop", 2)).resolves.toEqual([10, 20]);
+    const sample = await makeSampleFieldFn(fc)("pop", 2);
+    // SP-42 F-shell-carte-05 : ne plus figer l'ordre en dur (slice(0, n)) —
+    // seule la longueur et l'appartenance à la population sont garanties
+    // maintenant que le tirage est aléatoire.
+    expect(sample).toHaveLength(2);
+    for (const v of sample) expect([10, 20, 30, 40]).toContain(v);
+  });
+
+  test("F-shell-carte-05 : échantillonne au hasard, pas les N premières valeurs triées du fichier", async () => {
+    // Sur une FeatureCollection triée (cas réel : export par date/région/
+    // ordre alphabétique), un slice(0, limit) ne verrait jamais rien
+    // au-delà de `limit` — biais réel démontré par la falsification :
+    // max échantillon 1999 au lieu de >4000 sur une population [0..4999].
+    const n = 5000;
+    const limit = 2000;
+    const fc = fcWithValues(
+      "value",
+      Array.from({ length: n }, (_, i) => i),
+    );
+    const sample = await makeSampleFieldFn(fc)("value", limit);
+    expect(sample).toHaveLength(limit);
+    expect(Math.max(...sample)).toBeGreaterThan(4000);
   });
 });

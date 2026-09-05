@@ -82,6 +82,24 @@ export function makeStatQueryFn(fc: GeoJSON.FeatureCollection): StatQueryFn {
   };
 }
 
+// SP-42 F-shell-carte-05 : un slice(0, limit) prend les N premières valeurs
+// dans l'ordre du fichier — pour un GeoJSON trié (date, région, alphabétique
+// — cas courant d'un export réel), l'échantillon ne couvre jamais que le
+// premier segment, jamais l'ensemble de la distribution. Côté cœur, le
+// chemin équivalent pour une couche vector (USING SAMPLE, aggregate.py) est
+// un tirage aléatoire ; mélange partiel de Fisher-Yates pour égaler cette
+// garantie ici.
+function sampleArray<T>(values: T[], limit: number): T[] {
+  if (values.length <= limit) return values;
+  const sample = values.slice();
+  const n = sample.length;
+  for (let i = 0; i < limit; i++) {
+    const j = i + Math.floor(Math.random() * (n - i));
+    [sample[i], sample[j]] = [sample[j], sample[i]];
+  }
+  return sample.slice(0, limit);
+}
+
 export function makeSampleFieldFn(fc: GeoJSON.FeatureCollection): SampleFieldFn {
-  return async (field, limit) => numericValues(fc, field).slice(0, limit);
+  return async (field, limit) => sampleArray(numericValues(fc, field), limit);
 }
