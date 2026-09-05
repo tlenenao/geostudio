@@ -111,6 +111,56 @@ def _alembic_config(db_url: str) -> Config:
     return cfg
 
 
+_CAST_SUFFIX_RE = re.compile(r"::\w+$")
+
+
+def _normalize_json_default(rendered: str | None) -> str | None:
+    """Réduit un rendu de `server_default` à sa valeur littérale nue, pour
+    comparer un défaut JSON réfléchi depuis Postgres (toujours casté,
+    ex. `"'[]'::json"`) à un défaut déclaré côté modèle en chaîne Python nue
+    (ex. `"[]"`, jamais casté — cf. `_compare_server_default` ci-dessous)."""
+    if rendered is None:
+        return None
+    stripped = _CAST_SUFFIX_RE.sub("", rendered.strip())
+    if len(stripped) >= 2 and stripped[0] == "'" and stripped[-1] == "'":
+        stripped = stripped[1:-1]
+    return stripped
+
+
+def _compare_server_default(
+    _migration_context: object,
+    inspected_column: object,
+    _metadata_column: object,
+    rendered_inspector_default: str | None,
+    _metadata_default: object,
+    rendered_metadata_default: str | None,
+) -> bool | None:
+    """Callable `compare_server_default` (forme documentée par
+    `EnvironmentContext.configure`, cf. alembic/runtime/environment.py) —
+    remplace le simple `True` initial. Nécessaire car
+    `PostgresqlImpl.compare_server_default` (alembic/ddl/postgresql.py)
+    exécute un vrai `SELECT ancien = nouveau` dès que les deux rendus
+    textuels diffèrent, et le type Postgres `json` (par opposition à
+    `jsonb`) n'a pas d'opérateur `=` : toute colonne JSON avec
+    `server_default` déclaré à la fois côté modèle et migration fait
+    planter `compare_metadata()` en `UndefinedFunction: operator does not
+    exist: json = unknown` — trouvé en écrivant la Tâche 5 SP-43 sur
+    `collections.attachment_fields` et `pipeline_runs.node_stats`, dès que
+    leur `server_default` manquant a été ajouté côté modèle.
+
+    Pour les colonnes JSON, compare une forme normalisée (insensible au
+    cast `::json` que Postgres ajoute toujours à la réflexion, jamais
+    présent côté modèle) sans jamais exécuter de SQL. Pour tout le reste,
+    retourne None : Alembic retombe alors sur son comparateur standard
+    (`PostgresqlImpl.compare_server_default`), comportement inchangé par
+    rapport à `compare_server_default=True`."""
+    if getattr(getattr(inspected_column, "type", None), "__visit_name__", "") == "JSON":
+        return _normalize_json_default(rendered_inspector_default) != _normalize_json_default(
+            rendered_metadata_default
+        )
+    return None
+
+
 def test_model_metadata_matches_migrated_schema(throwaway_database_url):
     cfg = _alembic_config(throwaway_database_url)
     # core/alembic/env.py lit inconditionnellement DATABASE_URL (pas l'option
@@ -136,7 +186,12 @@ def test_model_metadata_matches_migrated_schema(throwaway_database_url):
         # défauts serveur entre dialectes est jugé peu fiable en général) —
         # sans ce override, exactement les divergences que ce filet doit
         # attraper (server_default= oublié côté modèle) restent invisibles.
-        ctx = MigrationContext.configure(conn, opts={"compare_server_default": True})
+        # Callable plutôt que `True` nu : cf. _compare_server_default
+        # ci-dessus (contournement du piège de comparaison JSON de
+        # PostgresqlImpl, sans changer le comportement pour tout le reste).
+        ctx = MigrationContext.configure(
+            conn, opts={"compare_server_default": _compare_server_default}
+        )
         diff = compare_metadata(ctx, Base.metadata)
     engine.dispose()
 
