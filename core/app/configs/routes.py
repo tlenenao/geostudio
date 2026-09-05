@@ -373,6 +373,13 @@ def delete_config(
     if result is None or result.itemId is None:
         raise HTTPException(status_code=404, detail="config not found")
     _require_access(session, user=user, item_id=result.itemId, action="delete")
+    # SP-42, revue de la dernière passe de correctifs (point 6, Important) :
+    # can()/_require_access(action="delete") autorise déjà un partage
+    # "editor" — sans jamais consulter le privilège de domaine du kind
+    # ENREGISTRÉ (même garde que _require_privilege_for_kind sur PUT). Un
+    # Lecteur (0 privilège) à qui une map est partagée en editor détruisait
+    # donc une map qu'il n'a pas le droit d'éditer.
+    _require_privilege_for_kind(session, user, result.config)
 
     _delete_config_and_item(session, config_id, result.itemId, user.tenant_id)
     write_audit(
@@ -463,6 +470,9 @@ def delete_config_by_item(
     result = repo.get_config_by_item(session, item_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
+    # SP-42, revue de la dernière passe de correctifs (point 6, Important) :
+    # cf. commentaire jumeau sur delete_config ci-dessus.
+    _require_privilege_for_kind(session, user, result.config)
     _require_no_reverse_references(session, tenant_id=user.tenant_id, item_id=item_id)
     _delete_config_and_item(session, result.id, item_id, user.tenant_id)
     write_audit(
@@ -502,6 +512,9 @@ def delete_item(
     result = repo.get_config_by_item(session, item_id)
     if result is None:
         raise HTTPException(status_code=404, detail="item not found")
+    # SP-42, revue de la dernière passe de correctifs (point 6, Important) :
+    # cf. commentaire jumeau sur delete_config ci-dessus.
+    _require_privilege_for_kind(session, user, result.config)
     _require_no_reverse_references(session, tenant_id=user.tenant_id, item_id=item_id)
     _delete_config_and_item(session, result.id, item_id, user.tenant_id)
     write_audit(
