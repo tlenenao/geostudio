@@ -15,7 +15,8 @@ from app.configs import repository as configs_repo
 from app.configs.schemas import PipelinePayload
 from app.db import request_scoped_session
 from app.jobs import app
-from app.jobs.common import notify_best_effort, resolve_owner_user, session_factory
+from app.jobs.common import notify_best_effort, resolve_owner_user
+from app.jobs.common import session_factory as _session_factory
 from app.pipelines import repository as pipelines_repo
 from app.pipelines.runtime import NodeStat, PipelineRuntimeError, run_pipeline
 from app.users.models import User
@@ -139,7 +140,7 @@ def _make_progress_callback(
 
 @app.task(queue="etl")
 def run_pipeline_task(run_id: str, tenant_id: str) -> None:
-    factory = session_factory()
+    factory = _session_factory()
     # Toujours lié avant le premier bloc protégé : si get_run/mark_running
     # lève avant l'affectation réelle (ci-dessous), les handlers `except`
     # doivent pouvoir le lire sans UnboundLocalError (même piège que
@@ -226,7 +227,7 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
         return
     if not is_etl_enabled():
         return
-    factory = session_factory()
+    factory = _session_factory()
     with request_scoped_session(factory) as session:
         due = pipelines_repo.list_due_pipelines(session)
         for item_id, tenant_id in due:

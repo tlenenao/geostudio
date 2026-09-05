@@ -25,7 +25,8 @@ from app.export.jobs import render_export_task, s3_client_from_env
 from app.ingestion.storage import generate_presigned_get_url
 from app.items import repository as items_repo
 from app.jobs import app
-from app.jobs.common import notify_best_effort, resolve_owner_user, session_factory
+from app.jobs.common import notify_best_effort, resolve_owner_user
+from app.jobs.common import session_factory as _session_factory
 from app.reports import repository as reports_repo
 from app.reports.ctx import encode_analytics_context
 from app.sharing.authorization import can
@@ -451,6 +452,6 @@ def sweep_report_schedules_task(timestamp: int) -> None:
     if is_read_only_mode():
         logger.info("mode lecture seule : balayage de rapports planifiés ignoré")
         return
-    factory = session_factory()
+    factory = _session_factory()
     _trigger_due_reports(factory)
     _notify_pending_reports(factory)
