@@ -10,6 +10,7 @@ import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { NewItemButton } from "./NewItemButton";
+import { expectAriaWired } from "../test/expectAriaWired";
 
 vi.mock("../auth/useAuth", () => ({
   useAuth: () => ({
@@ -83,8 +84,15 @@ test("creates an App and navigates to the app builder", async () => {
       <NewItemButton />
     </Harness>,
   );
-  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  const newButton = screen.getByRole("button", { name: "Nouveau" });
+  expectAriaWired(newButton, newButton.getAttribute("aria-controls")!, false);
+  await userEvent.click(newButton);
   expect(screen.getByRole("dialog", { name: /nouvel/i })).toBeInTheDocument();
+  expectAriaWired(newButton, newButton.getAttribute("aria-controls")!, true);
+  expect(screen.getByRole("dialog", { name: /nouvel/i })).toHaveAttribute(
+    "id",
+    newButton.getAttribute("aria-controls"),
+  );
   await userEvent.type(screen.getByLabelText("Titre"), "My App");
   await userEvent.click(screen.getByRole("button", { name: "Créer" }));
   expect(await screen.findByText("app-builder-99")).toBeInTheDocument();

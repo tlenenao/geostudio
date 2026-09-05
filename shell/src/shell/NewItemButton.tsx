@@ -14,6 +14,7 @@ import { useAuth } from "../auth/useAuth";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
+import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { TEMPLATES } from "../builder/templates";
 import { isValidSlug, slugify } from "../lib/slug";
 
@@ -21,6 +22,7 @@ type Kind = "app" | "dashboard" | "map" | "site" | "dataset" | "pipeline" | "vis
 
 export function NewItemButton() {
   const [open, setOpen] = useState(false);
+  const drawerPanel = usePanelTrigger(open);
   const [kind, setKind] = useState<Kind>("app");
   const [title, setTitle] = useState("");
   const [templateId, setTemplateId] = useState("");
@@ -159,10 +161,15 @@ export function NewItemButton() {
 
   return (
     <>
-      <Button size="sm" onClick={() => setOpen(true)}>
+      <Button size="sm" {...drawerPanel.triggerProps} onClick={() => setOpen(true)}>
         Nouveau
       </Button>
-      <Drawer open={open} onOpenChange={(next) => !next && close()} title="Nouvel élément">
+      <Drawer
+        open={open}
+        onOpenChange={(next) => !next && close()}
+        title="Nouvel élément"
+        id={drawerPanel.panelId}
+      >
         <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm text-ink">
             Type
