@@ -21,7 +21,12 @@ from app.collections.introspection import (
 from app.collections.provisioning import create_empty_collection
 from app.collections.publication import remove_table_from_publication
 from app.collections.schema_json import table_info_to_schema
-from app.collections.schemas import CollectionCreate, CollectionPatch, EmptyCollectionCreate
+from app.collections.schemas import (
+    AttachmentFieldSpec,
+    CollectionCreate,
+    CollectionPatch,
+    EmptyCollectionCreate,
+)
 from app.configs import repository as configs_repo
 from app.db import core_table_names, get_session
 from app.roles.guards import has_privilege, privilege_required_error, require_privilege
@@ -448,12 +453,50 @@ def get_collection_schema(
     return table_info_to_schema(info, attachment_fields=col.attachment_fields)
 
 
+def _reject_attachment_field_collisions(
+    session: Session,
+    col,
+    attachment_fields: list[AttachmentFieldSpec],
+    introspect: Introspector,
+) -> None:
+    # SP-42/F-coeur-contenu-03 : AttachmentFieldSpec.key n'était validé ni
+    # contre les colonnes SQL réelles ni (ici, côté DB) contre pk_column/
+    # tenant_id/geometry_column — table_info_to_schema (schema_json.py)
+    # concatène colonnes introspectées et attachmentFields sans
+    # dédoublonnage, donc GET /collections/{id}/schema pouvait exposer deux
+    # champs du même nom (l'un "string", l'autre "attachment"). Le
+    # dédoublonnage ENTRE attachmentFields eux-mêmes est déjà couvert par
+    # CollectionPatch._reject_duplicate_attachment_field_keys (schemas.py,
+    # sans DB) ; ceci couvre la collision avec une colonne réelle, qui a
+    # besoin de l'introspecteur.
+    if not attachment_fields:
+        return
+    try:
+        info = introspect(session, col.table_name)
+    except (TableNotFound, UnsupportedTable):
+        # Table backing disparue/mutée : rien à valider contre — même
+        # discipline que get_extent_provider/get_collection_schema, qui ne
+        # font pas planter la requête pour cette raison ailleurs dans ce
+        # module. patch_collection continue normalement (l'écriture des
+        # autres champs ne doit pas dépendre de la table backing).
+        return
+    reserved = {info.pk_column, "tenant_id", info.geometry_column} | {c.name for c in info.columns}
+    collisions = sorted({spec.key for spec in attachment_fields if spec.key in reserved})
+    if collisions:
+        joined = ", ".join(collisions)
+        raise HTTPException(
+            status_code=422,
+            detail=f"attachmentFields key(s) collide with an existing column: {joined}",
+        )
+
+
 @router.patch("/collections/{collection_id}")
 def patch_collection(
     collection_id: str,
     body: CollectionPatch,
     user=Depends(get_current_user),
     session: Session = Depends(get_session),
+    introspect: Introspector = Depends(get_introspector),
 ):
     can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     col = get_readable_collection(
@@ -472,6 +515,8 @@ def patch_collection(
         actor_is_admin=user.is_admin,
     ):
         raise HTTPException(status_code=403, detail="write access required")
+    if body.attachmentFields is not None:
+        _reject_attachment_field_collisions(session, col, body.attachmentFields, introspect)
     text_changed = (body.title is not None and body.title != col.title) or (
         body.description is not None and body.description != col.description
     )
