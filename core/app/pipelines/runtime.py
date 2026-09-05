@@ -67,6 +67,8 @@ from app.pipelines.ops.schemas import (
     WriterDatasetParams,
     WriterExportParams,
 )
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -678,6 +680,16 @@ def _write_dataset(
     tenant_id: str,
     user: User,
 ) -> NodeStat:
+    # SP-42, revue de la dernière passe de correctifs (point 1, Critical) :
+    # POST /pipelines/{id}/run (app.pipelines.routes) et le tool MCP
+    # run_pipeline gardent déjà data.manage AVANT de déférer un pipeline
+    # writer.dataset — mais run_pipeline_sweep_task (cron */5,
+    # app.pipelines.jobs) défère run_pipeline_task directement, sans passer
+    # par aucune des deux routes. Ces trois entrées convergent TOUTES ici
+    # (le point d'écriture réel) : la garde vit donc à cet endroit plutôt
+    # que sur une quatrième route, pour ne plus jamais dépendre de la
+    # découverte d'un nouveau point d'entrée.
+    require_privilege(session, user, Privilege.DATA_MANAGE.value)
     p = WriterDatasetParams.model_validate(node.params)
     # Réutilise _write_collection TEL QUEL (même chemin d'écriture OGC
     # Features) : writer.dataset n'introduit aucune primitive d'écriture, il
