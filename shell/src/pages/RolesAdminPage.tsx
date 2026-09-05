@@ -6,6 +6,7 @@ import type { Role } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { CreateRolePanel } from "../shell/CreateRolePanel";
 import { EditRolePanel } from "../shell/EditRolePanel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
@@ -17,6 +18,7 @@ export function RolesAdminPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Role | null>(null);
   const [deleting, setDeleting] = useState<Role | null>(null);
+  const editPanel = usePanelTrigger(editing !== null);
 
   async function confirmDelete() {
     if (!deleting) return;
@@ -99,6 +101,7 @@ export function RolesAdminPage() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
+                                {...editPanel.triggerProps}
                                 onClick={() => {
                                   setCreating(false);
                                   setEditing(role);
@@ -132,7 +135,12 @@ export function RolesAdminPage() {
             <div className="flex flex-col gap-3 p-3">
               {creating && <CreateRolePanel onClose={() => setCreating(false)} />}
               {editing && (
-                <EditRolePanel key={editing.id} role={editing} onClose={() => setEditing(null)} />
+                // id seul (pas role="region") : EditRolePanel rend déjà un
+                // <section aria-label=…>, région implicite nommée — même
+                // correction que CollectionsAdminPage/HarvestSourcesAdminPage.
+                <div id={editPanel.panelId}>
+                  <EditRolePanel key={editing.id} role={editing} onClose={() => setEditing(null)} />
+                </div>
               )}
             </div>
           ),
