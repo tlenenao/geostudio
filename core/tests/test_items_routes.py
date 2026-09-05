@@ -93,6 +93,21 @@ def test_list_items_default_scope_all(client):
     assert body["pageSize"] == 12
 
 
+def test_list_items_page_zero_is_rejected(client):
+    # Regression (SP-42, F-coeur-contenu-02): page/pageSize had no lower
+    # bound — page=0 computes a negative OFFSET, which Postgres rejects with
+    # a 500 (InvalidRowCountInResultOffsetClause) instead of a clean 422.
+    _seed_item(client, title="One")
+    response = client.get("/items?page=0")
+    assert response.status_code == 422
+
+
+def test_list_items_negative_page_size_is_rejected(client):
+    _seed_item(client, title="One")
+    response = client.get("/items?pageSize=-1")
+    assert response.status_code == 422
+
+
 def test_patch_item_updates_title(client):
     item_id = _seed_item(client)
     response = client.patch(f"/items/{item_id}", json={"title": "Renamed"})

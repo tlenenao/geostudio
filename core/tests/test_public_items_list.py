@@ -125,6 +125,26 @@ def test_paginates(client):
     assert body["pageSize"] == 2
 
 
+def test_page_zero_is_rejected_instead_of_silently_wrong(client):
+    # Regression (SP-42, F-coeur-contenu-02): list_published_items pages by
+    # Python slicing (rows[(page-1)*page_size : ...]) — page=0 gave a
+    # negative start index instead of an error, returning silently wrong
+    # (empty, here) results rather than a clear 422.
+    for i in range(3):
+        item_id = _create_item(client, f"Item {i}")
+        _publish(client, item_id)
+
+    del client.app.dependency_overrides[get_current_user]
+    response = client.get("/public/items?page=0&pageSize=2")
+    assert response.status_code == 422
+
+
+def test_page_size_zero_is_rejected(client):
+    del client.app.dependency_overrides[get_current_user]
+    response = client.get("/public/items?pageSize=0")
+    assert response.status_code == 422
+
+
 def test_leakage_matrix_unpublished_other_tenant_and_default_published(client):
     # (1) Item non publié → absent.
     _create_item(client, "Non publie")

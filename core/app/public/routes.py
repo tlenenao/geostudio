@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.configs import repository as configs_repo
@@ -16,8 +16,12 @@ router = APIRouter(prefix="/public")
 def list_public_items(
     type: str | None = None,
     tag: str | None = None,
-    page: int = 1,
-    pageSize: int = 12,
+    page: int = Query(1, ge=1),
+    # Pas de borne haute, même choix que GET /items (cf. commentaire sur
+    # cette route dans app/items/routes.py) : le défaut démontré est
+    # l'absence de borne BASSE, pas l'absence de borne haute — ne pas en
+    # ajouter une non demandée par la trouvaille.
+    pageSize: int = Query(12, ge=1),
     session: Session = Depends(get_session),
 ) -> ItemPage:
     return items_repo.list_published_items(
