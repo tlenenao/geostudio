@@ -90,9 +90,12 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
   (`docs/superpowers/plans/`) → exécution TDD → E2E → review. Fichiers datés
   `YYYY-MM-DD-spX…`.
 - **TDD systématique** ; chaque feature visible a sa spec E2E Playwright. La
-  suite E2E complète est le filet de la migration : elle reste verte
-  (dernière mesure, clôture SP-41 2026-09-04 : 142 passed / 4 skipped /
-  0 failed — remesurée à la Tâche 18 de SP-42, ne pas tenir pour définitif).
+  suite E2E complète est le filet de la migration : elle reste globalement
+  verte (dernière mesure, clôture SP-43 2026-09-05 : 141 passed / 4 skipped /
+  **1 failed** — `e2e/pipeline-builder.spec.ts:111`, timeout sur le bouton
+  « Exécuter », confirmé préexistant à SP-43 en checkoutant le commit
+  d'avant sa Tâche 1 ; cause non encore investiguée, ne pas imputer à un
+  futur travail sans vérifier d'abord si ce test échoue déjà sur `dev`).
 - Exécution en **subagent-driven-development** : une revue par tâche **et** une
   revue finale de branche, systématiquement — ce ne sont pas les mêmes défauts
   (cf. `## Pièges récurrents`).
@@ -108,11 +111,12 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ```bash
 # shell (d'abord, car commitlint en dépend)
 cd shell && npm ci
-npm run test         # Vitest — dernier compte mesuré à la clôture SP-41
-                     # (2026-09-04) : 224 fichiers, 1906 tests. La Tâche 18 de
-                     # SP-42 remesure ; ne pas tenir ce chiffre pour définitif.
-npm run e2e          # Playwright — 142 passed / 4 skipped à la même mesure
-                     # (VITE_AUTH_MODE=mock).
+npm run test         # Vitest — dernier compte mesuré à la clôture SP-43
+                     # (2026-09-05) : 225 fichiers, 1944 tests, tous passed.
+npm run e2e          # Playwright — 141 passed / 4 skipped / 1 failed à la
+                     # même mesure (VITE_AUTH_MODE=mock) — l'échec
+                     # (pipeline-builder.spec.ts:111) est préexistant à
+                     # SP-43, cf. ## Comment on travaille.
                      # e2e-oidc/ : suite séparée contre un vrai Keycloak (SP-26)
 npm run build        # tsc --noEmit + vite build
 
@@ -129,11 +133,12 @@ pre-commit install --hook-type pre-commit --hook-type commit-msg
 
 # cœur
 cd core && uv sync
-uv run pytest        # dernier compte mesuré à la clôture SP-41 (2026-09-04) :
-                     # 2051 passed / 178 skipped / 0 failed, sur un conteneur
-                     # postgis-test réel. La Tâche 18 de SP-42 remesure ; ne
-                     # pas tenir ce chiffre pour définitif. Piège vécu par
-                     # SP-42 : ce conteneur n'est PAS tracké par Alembic —
+uv run pytest        # dernier compte mesuré à la clôture SP-43 (2026-09-05) :
+                     # 2326 passed / 5 skipped / 0 failed, sur un conteneur
+                     # postgis-test réel (CORE_TEST_DATABASE_URL positionné —
+                     # sinon ~185 tests marqués postgis skippent silencieusement,
+                     # piège vécu pendant la clôture de SP-43 elle-même). Piège
+                     # vécu par SP-42 : ce conteneur n'est PAS tracké par Alembic —
                      # après une migration qui ajoute des colonnes, il faut un
                      # ALTER TABLE manuel, sinon des dizaines de tests
                      # échouent en cascade sur UndefinedColumn sans rapport
@@ -371,6 +376,51 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   manuelle, pas encore câblés en CI (`CORE_TEST_QGIS_WORKER_URL` absent de
   tout workflow) — non retenu dans le périmètre de SP-44, à câbler
   séparément si voulu.
+- **SP-43** (10 tâches, subagent-driven-development, 2026-09-05) — ferme les
+  6 classes de duplication mécanique identifiées par sa spec : registre
+  `kind_registry.py::privilege_for_kind()` unique (5 sites réels, pas 4 —
+  `terrain3d/routes.py` était un 5e site non documenté, découvert en
+  session) ; comparateur `test_model_alembic_parity.py` modèle↔Alembic (24
+  `server_default=` manquants corrigés + 8 index/contraintes réels + 4
+  index fonctionnels pgvector/trgm filtrés nommément, `REV-175`) ; test
+  caractéristique `toFrontLayer()` ; fixture E2E de collection unique
+  (`mockCollection()` + `test_collections_json_contract.py`) ; module de
+  job partagé `app/jobs/common.py` (6 fichiers, invariant try/except SP-39
+  préservé) ; `aria-expanded`/`aria-controls` câblés sur 9 sites via
+  `usePanelTrigger`. Puis découpage des 3 fichiers les plus mélangés du
+  dépôt : `itemClient.ts` (1743→53 lignes, 15 domaines) + `hooks.ts`
+  (732→14 lignes, 11 domaines) ; `mcp/tools.py` (1135 lignes, 21 tools) en
+  11 domaines + 3 couches de service **partagées REST↔MCP pour la
+  première fois** (`items/service.py`, `configs/service.py`,
+  `pipelines/service.py`) ; `pipelines/runtime.py` en registres
+  `READERS`/`WRITERS` (corps des fonctions restés dans `runtime.py` par
+  nécessité — ~57 `monkeypatch.setattr(runtime, ...)` existants auraient
+  cessé de faire effet si déplacés, `registries.py` n'agrège que des
+  références). **Invariant critique `_write_dataset`/`Privilege.DATA_MANAGE`
+  (rouvert 3× avant SP-42 + 1× par la revue SP-42) vérifié intact
+  end-to-end** (REST/MCP/job passent tous par le même point de garde) —
+  testé par un nouvel appel direct à `run_pipeline()`, jamais couvert à ce
+  niveau avant. La revue finale de branche (croisement entre tâches,
+  piège CLAUDE.md n°4) a trouvé 2 Important corrigés : (1) Tâche 9 avait
+  recréé la classe de duplication que la Tâche 2 fermait, sur un fichier
+  voisin (`configs/routes.py`/`configs/service.py`, 3 gardes dupliquées) ;
+  (2) le câblage ARIA de la Tâche 7 utilisait une seule instance de hook
+  par page au lieu d'une par ligne sur 3 pages admin (`aria-expanded`
+  identique sur toutes les lignes dès qu'une était en édition). Un défaut
+  réel supplémentaire trouvé et corrigé **dans** la Tâche 9 elle-même :
+  `create_item` (MCP) dérivait silencieusement son `resource_type` depuis
+  `config.kind` (plus large, jamais vérifié égal) au lieu du `kind` typé du
+  tool, via le nouveau service partagé — gardé par un check explicite.
+  Écart pré-existant trouvé et **documenté sans être corrigé** (règle du
+  plan, jamais de correction silencieuse d'un écart accidentel outil↔route) :
+  `save_app_config` (MCP) saute les 7 validateurs par kind + 2 gardes de
+  capacité que la route REST équivalente exécute (`REV-174`). Suite finale :
+  core 2326 passed/5 skipped (qgis, sidecar absent de cette session,
+  jamais affirmés passés — déjà vérifiés réels par SP-44)/0 failed ; shell
+  1944 tests/225 fichiers ; E2E 141 passed/4 skipped/1 échec **préexistant
+  à tout ce plan** (confirmé en checkoutant le commit d'avant la Tâche 1 —
+  `e2e/pipeline-builder.spec.ts:111`, sans rapport, non corrigé, hors
+  périmètre).
 
 ### Conventions tranchées (2026-09-01)
 
@@ -392,10 +442,11 @@ cette décision a été fermée par SP-34 (cf. `### Livré` ci-dessus).
 ### Suivis et dette non bloquante
 
 Le détail complet (43 trouvailles confirmées non corrigées, 35 minor, 79
-gaps, et la dette héritée SP-29b→SP-40) vit dans
-**`docs/revue/2026-09-04-backlog.md`** (173 entrées `REV-nnn`, numérotation
-stable et citable — ne pas renuméroter, ajouter en fin de section). Ce qui,
-dans ce backlog, change le comportement immédiat d'une session :
+gaps, la dette héritée SP-29b→SP-40, et 2 trouvailles SP-43 documentées sans
+être corrigées) vit dans **`docs/revue/2026-09-04-backlog.md`** (175
+entrées `REV-nnn`, numérotation stable et citable — ne pas renuméroter,
+ajouter en fin de section). Ce qui, dans ce backlog, change le comportement
+immédiat d'une session :
 
 - Jalon **M14 atteint** (SP-44, `REV-095` clos) : les 5 tests
   `@pytest.mark.qgis` tournent contre un vrai sidecar — 2 défauts de
@@ -406,12 +457,18 @@ dans ce backlog, change le comportement immédiat d'une session :
   sortantes à ne pas en avoir une (`REV-096`).
 - 2 des 18 privilèges (`automation.secrets.manage`, `tasks.view_all`) ne
   gardent encore aucune route (`REV-097`).
-- `aria-expanded`/`aria-controls` sur les déclencheurs de panneau en ligne :
-  toujours pas posé, 5 familles SP-30 consécutives sans application
-  (`REV-088`).
+- `aria-expanded`/`aria-controls` : câblé par SP-43 sur 9 sites via
+  `usePanelTrigger` (`REV-088` largement fermé — reste à vérifier au cas par
+  cas sur tout futur déclencheur de panneau en ligne créé après SP-43, la
+  convention n'est pas outillée par un lint automatique).
 - Restauration de sauvegarde : runbook rejoué une fois, succès partiel —
   données confirmées, reconnexion OIDC réelle jamais vérifiée (`REV-164`,
   détail aussi ci-dessous).
+- `save_app_config` (MCP) saute les 7 validateurs par kind + 2 gardes de
+  capacité qu'exécute la route REST équivalente — pré-existant, trouvé et
+  documenté (pas corrigé) par SP-43 (`REV-174`).
+- 4 index fonctionnels pgvector/trgm non représentés dans `Base.metadata`,
+  filtrés nommément par le comparateur modèle/Alembic de SP-43 (`REV-175`).
 - Questions produit ouvertes (comparatif §8) : Q2 (premiers utilisateurs
   réels — la seule qui puisse réordonner le phasage), Q10 (temps réel,
   `REV-108`), Q11 (offline, `REV-120`).
