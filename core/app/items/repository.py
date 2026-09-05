@@ -434,11 +434,16 @@ def update_item(
     return _to_read(item, owner_username, permissions)
 
 
-def get_published_item(session: Session, *, item_id: str) -> ItemRead | None:
+def get_published_item(
+    session: Session, *, item_id: str, tenant_id: str = DEFAULT_TENANT_SLUG
+) -> ItemRead | None:
+    # tenant_id filtré explicitement (comme get_published_site_by_slug) : sans
+    # ce filtre, un item publié d'un AUTRE tenant serait servi tel quel par
+    # cette route publique anonyme — cf. SP-42/F-coeur-contenu-01.
     row = session.execute(
         select(Item, User.username)
         .join(User, User.id == Item.owner_id)
-        .where(Item.id == item_id, Item.is_published.is_(True))
+        .where(Item.id == item_id, Item.tenant_id == tenant_id, Item.is_published.is_(True))
     ).first()
     if row is None:
         return None
@@ -449,10 +454,10 @@ def get_published_item(session: Session, *, item_id: str) -> ItemRead | None:
 def get_published_site_by_slug(
     session: Session, *, slug: str, tenant_id: str = "default"
 ) -> ItemRead | None:
-    # tenant_id filtré explicitement (contrairement à get_published_item, qui
-    # ne le fait pas) : le slug n'est unique que PAR tenant (cf. slug_exists),
-    # donc sans ce filtre deux tenants pourraient se voler mutuellement leurs
-    # slugs via cette route publique.
+    # tenant_id filtré explicitement (même garde que get_published_item) : le
+    # slug n'est unique que PAR tenant (cf. slug_exists), donc sans ce filtre
+    # deux tenants pourraient se voler mutuellement leurs slugs via cette
+    # route publique.
     row = session.execute(
         select(Item, User.username)
         .join(User, User.id == Item.owner_id)
