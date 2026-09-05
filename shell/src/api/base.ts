@@ -5,7 +5,83 @@ import type {
   DatasetColumnMeta,
   FieldError,
   LayerSource,
+  MapLayer,
+  PopupConfig,
 } from "./types";
+
+// RawMapLayer/toFrontLayer vivent ici (et non dans domains/layers.ts) pour
+// éviter un cycle itemClient.ts <-> domains/layers.ts : itemClient.ts
+// ré-exporte les deux depuis ce module pour ne pas casser les imports
+// externes existants (tests, `from "./itemClient"`).
+export type RawMapLayer = {
+  id: string;
+  title: string;
+  visible: boolean;
+  kind: string;
+  tilesUrl?: string | null;
+  sourceLayer?: string | null;
+  url?: string | null;
+  opacity?: number | null;
+  deckType?: string | null;
+  dataUrl?: string | null;
+  paint?: Record<string, unknown> | null;
+  props?: Record<string, unknown> | null;
+  popup?: PopupConfig | null;
+  collectionId?: string | null;
+  geometryKind?: "point" | "line" | "polygon" | null;
+  pkColumn?: string | null;
+  renderAs?: "fill" | "circle" | "line" | null;
+  symbology?: import("../builder/widgets/mapSymbology").LayerSymbology | null;
+};
+
+export function toFrontLayer(l: RawMapLayer): MapLayer {
+  const base = { id: l.id, title: l.title, visible: l.visible };
+  switch (l.kind) {
+    case "vector":
+      return {
+        ...base,
+        kind: "vector",
+        tilesUrl: l.tilesUrl ?? "",
+        sourceLayer: l.sourceLayer ?? "",
+        ...(l.paint ? { paint: l.paint } : {}),
+        ...(l.collectionId ? { collectionId: l.collectionId } : {}),
+        ...(l.geometryKind ? { geometryKind: l.geometryKind } : {}),
+        ...(l.pkColumn ? { pkColumn: l.pkColumn } : {}),
+        ...(l.popup ? { popup: l.popup } : {}),
+        ...(l.symbology ? { symbology: l.symbology } : {}),
+      };
+    case "raster":
+      return {
+        ...base,
+        kind: "raster",
+        tilesUrl: l.tilesUrl ?? "",
+        ...(l.opacity != null ? { opacity: l.opacity } : {}),
+      };
+    case "deck":
+      return {
+        ...base,
+        kind: "deck",
+        deckType: (l.deckType ?? "heatmap") as "heatmap" | "hexbin" | "column",
+        dataUrl: l.dataUrl ?? "",
+        ...(l.props ? { props: l.props } : {}),
+      };
+    case "tiles3d":
+      return { ...base, kind: "tiles3d", url: l.url ?? "" };
+    case "feature":
+    default:
+      return {
+        ...base,
+        kind: "feature",
+        url: l.url ?? "",
+        ...(l.paint ? { paint: l.paint } : {}),
+        ...(l.collectionId ? { collectionId: l.collectionId } : {}),
+        ...(l.pkColumn ? { pkColumn: l.pkColumn } : {}),
+        ...(l.popup ? { popup: l.popup } : {}),
+        ...(l.renderAs ? { renderAs: l.renderAs } : {}),
+        ...(l.symbology ? { symbology: l.symbology } : {}),
+      };
+  }
+}
 
 // Erreurs partagées entre plusieurs domaines (features + exportsIngestion) :
 // vivent ici, jamais dans un domains/*.ts, pour éviter qu'un domaine importe
