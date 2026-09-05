@@ -112,3 +112,24 @@ def delete_all_for_feature(
         _delete_s3_object_best_effort(s3_client, bucket, attachment.s3_key)
         session.delete(attachment)
     session.flush()
+
+
+def delete_all_for_collection(
+    session: Session, s3_client, bucket: str, *, tenant_id: str, collection_id: str
+) -> None:
+    """Même patron que delete_all_for_feature, sans le filtre fid : purge
+    toutes les pièces jointes (lignes + objets S3) d'une collection avant sa
+    suppression — SP-42/F-securite-tenant-rls-03. Sans cet appel,
+    `DELETE /collections/{id}` échoue en 500 dès qu'une pièce jointe existe
+    (FK attachments.collection_id) et les objets S3 restent orphelins."""
+    rows = list(
+        session.scalars(
+            select(Attachment).where(
+                Attachment.tenant_id == tenant_id, Attachment.collection_id == collection_id
+            )
+        ).all()
+    )
+    for attachment in rows:
+        _delete_s3_object_best_effort(s3_client, bucket, attachment.s3_key)
+        session.delete(attachment)
+    session.flush()

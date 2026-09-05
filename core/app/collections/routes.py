@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import logging
+import os
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -7,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.attachments import repository as attachments_repo
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections import repository as repo
@@ -67,6 +69,25 @@ def get_table_lister() -> Callable[[Session], list[str]]:  # overridé en test
     from app.collections.introspection_pg import list_public_tables
 
     return list_public_tables
+
+
+def get_s3_client():  # overridé dans main.py quand S3_* est configuré
+    # Redéfini localement (comme app.attachments.routes.get_s3_client, cf.
+    # commentaire pyproject.toml sur "app.attachments.routes ->
+    # app.ingestion.storage") plutôt qu'importé depuis app.attachments —
+    # app.attachments est AU-DESSUS d'app.collections dans le contrat de
+    # couches, l'importer créerait une exemption de plus. Clé d'override
+    # DISTINCTE de attachments_routes.get_s3_client (SP-42/
+    # F-securite-tenant-rls-03) : unregister_collection en a besoin pour
+    # purger les pièces jointes d'une collection avant sa suppression.
+    raise RuntimeError("S3 client dependency not configured")
+
+
+def get_attachments_bucket() -> str:
+    # Duplique app.attachments.routes.get_attachments_bucket (même raison
+    # que get_s3_client ci-dessus : éviter une exemption de couches pour un
+    # simple accès à une variable d'environnement).
+    return os.environ.get("S3_ATTACHMENTS_BUCKET", "geostudio-attachments")
 
 
 def get_extent_provider():
@@ -511,6 +532,7 @@ def unregister_collection(
     collection_id: str,
     user=Depends(get_current_user),
     session: Session = Depends(get_session),
+    s3=Depends(get_s3_client),
 ):
     can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     col = get_readable_collection(
@@ -522,6 +544,18 @@ def unregister_collection(
     if not can_manage_collections:
         raise privilege_required_error(Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     remove_table_from_publication(session, col.table_name)
+    # SP-42/F-securite-tenant-rls-03 : sans cette purge explicite (lignes +
+    # objets S3), repo.delete_collection plantait en 500 (IntegrityError) dès
+    # qu'une pièce jointe existait sur une entité de la collection — la FK
+    # attachments.collection_id n'avait ondelete="CASCADE" que depuis la
+    # migration 0034, qui n'aurait supprimé que la ligne, jamais l'objet S3.
+    attachments_repo.delete_all_for_collection(
+        session,
+        s3,
+        get_attachments_bucket(),
+        tenant_id=col.tenant_id,
+        collection_id=col.id,
+    )
     repo.delete_collection(session, col)
     write_audit(
         session,
