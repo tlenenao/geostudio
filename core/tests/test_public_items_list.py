@@ -202,6 +202,14 @@ def test_never_exposes_a_sensitive_field(client):
         "owner",
         "thumbnailUrl",
         "date",
+        # updatedAt (SP-42/F-shell-api-07) : même famille que `date`
+        # (created_at) déjà whitelisté ci-dessus — un horodatage de
+        # dernière modification n'est pas plus sensible qu'un horodatage de
+        # création, et /public/items sert le même ItemRead que /items (pas
+        # de projection publique séparée qui choisirait d'exclure l'un
+        # plutôt que l'autre). Même décision que license/language (SP-41) :
+        # métadonnée publique par conception.
+        "updatedAt",
         "configId",
         "isPublished",
         "keywords",
