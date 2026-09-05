@@ -163,18 +163,21 @@ def _agg_expr(agg: str, field: str | None, p: float | None = None) -> str:
         # en DOUBLE les fusionnerait toutes sur NULL (donc 0 distinct).
         return f"COALESCE(COUNT(DISTINCT {_qi(field)}), 0)"
     col = f"TRY_CAST({_qi(field)} AS DOUBLE)"
+    # Indéfini n'est PAS zéro (design §3.1) : pas de COALESCE sur sum/avg/
+    # min/max non plus — un groupe sans aucune valeur castable (filtre vide,
+    # champ texte) doit rendre null comme median/percentile/stddev
+    # ci-dessous, sur le même fondement (« renvoyer 0 produirait un
+    # graphique faux plutôt qu'un trou »), pas 0 (valeur réelle possible,
+    # indistinguable d'une absence de donnée pour un consommateur — légende
+    # de symbologie classée min/max, graphique sur un sous-ensemble vide).
     if agg == "sum":
-        return f"COALESCE(SUM({col}), 0)"
+        return f"SUM({col})"
     if agg == "avg":
-        return f"COALESCE(AVG({col}), 0)"
+        return f"AVG({col})"
     if agg == "min":
-        return f"COALESCE(MIN({col}), 0)"
+        return f"MIN({col})"
     if agg == "max":
-        return f"COALESCE(MAX({col}), 0)"
-    # Indéfini n'est PAS zéro : pas de COALESCE sur les trois suivants
-    # (design §3.1). La médiane d'un ensemble vide et l'écart-type d'une
-    # ligne unique n'existent pas ; renvoyer 0 produirait un graphique faux
-    # plutôt qu'un trou.
+        return f"MAX({col})"
     if agg == "median":
         return f"QUANTILE_CONT({col}, 0.5)"
     if agg == "percentile":

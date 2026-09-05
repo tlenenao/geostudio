@@ -957,6 +957,28 @@ def test_median_of_a_group_without_castable_values_is_null_not_zero(tmp_path, co
     assert rows == [{"region": "Nord", "value": None}]
 
 
+@pytest.mark.parametrize("agg", ["sum", "avg", "min", "max"])
+def test_agg_of_a_group_without_castable_values_is_null_not_zero(tmp_path, conn, agg):
+    """Même fixture exacte que test_median_of_a_group_without_castable_values_
+    is_null_not_zero : median/percentile/stddev renvoient déjà null pour ce
+    cas (design §3.1, `_agg_expr` — « Indéfini n'est PAS zéro... renvoyer 0
+    produirait un graphique faux plutôt qu'un trou »), sum/avg/min/max
+    doivent suivre la même règle plutôt que de renvoyer 0 silencieusement."""
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "pas-un-nombre", None, lsn=1)])
+    request = AggregateRequestBody(groupBy="region", agg=agg, field="annee")
+
+    _category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert rows == [{"region": "Nord", "value": None}]
+
+
 def test_count_distinct_of_a_group_without_values_is_zero(tmp_path, conn):
     _write_partition(tmp_path, rows=[_row(1, "Nord", None, 10, lsn=1)])
     request = AggregateRequestBody(groupBy="region", agg="countDistinct", field="annee")
