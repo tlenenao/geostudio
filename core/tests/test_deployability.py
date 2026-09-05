@@ -956,7 +956,7 @@ def test_base_and_prod_agree_on_admin_tool_router_names():
         )
 
 
-# ─── SP-42, lot infra critical (F-infra-ci-01) ─────────────────────────
+# ─── SP-42, lot infra critical (F-infra-ci-01 / F-infra-ci-02) ─────────
 
 
 def test_bootstrap_env_generates_a_well_formed_core_secrets_master_key(tmp_path):
@@ -995,3 +995,24 @@ def test_bootstrap_env_generates_a_well_formed_core_secrets_master_key(tmp_path)
         "core/app/secrets/crypto.py::load_master_key()), a décodé en "
         f"{len(decoded)} octet(s)"
     )
+
+
+def test_keycloak_router_carries_security_and_rate_limit_middlewares():
+    """SP-42/F-infra-ci-02 (critical) : le routeur `keycloak` en production
+    ne portait aucun middleware — ni `security-headers@docker` (en-têtes de
+    sécurité sur la page de login : HSTS, nosniff, frame-deny, referrer-
+    policy), ni `rate-limit@docker` (frein de débit sur l'endpoint de
+    connexion/token OIDC, `POST .../protocol/openid-connect/token`) —
+    contrairement à tous les autres routeurs publics de cet overlay
+    (core/shell/martin/titiler/grafana). Keycloak n'est routé par Traefik
+    qu'en production — le fichier de base ne l'expose que par le port hôte
+    8180, sans aucun label Traefik — ce test ne porte donc que sur l'overlay
+    prod, contrairement aux règles admin-tools ci-dessus qui couvrent aussi
+    `base`."""
+    labels = _traefik_labels(services(PROD)["keycloak"])
+    middlewares = _router_middlewares(labels, "keycloak")
+    for required in ("security-headers@docker", "rate-limit@docker"):
+        assert required in middlewares, (
+            f"le routeur keycloak (prod) doit référencer {required} dans "
+            f"ses middlewares, a trouvé : {middlewares}"
+        )

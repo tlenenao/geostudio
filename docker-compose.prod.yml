@@ -102,6 +102,7 @@ services:
       - traefik.http.routers.keycloak.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/auth`)
       - traefik.http.routers.keycloak.entrypoints=web
       - traefik.http.routers.keycloak.priority=20
+      - traefik.http.routers.keycloak.middlewares=security-headers@docker,rate-limit@docker
       - traefik.http.services.keycloak.loadbalancer.server.port=8080
     # KC_HTTP_RELATIVE_PATH=/auth déplace tout le service HTTP de Keycloak
     # (y compris /health/ready) sous /auth ; le healthcheck de base
