@@ -3,9 +3,6 @@ import type {
   ActionMessage,
   AdminExtension,
   AdminToolName,
-  AlertEvaluation,
-  AlertRulePayload,
-  AlertRuleSummary,
   AppConfig,
   AppExportJobStatus,
   AppExportMode,
@@ -64,6 +61,7 @@ import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 import { OWNER_PERMISSIONS } from "../auth/permissions";
 import { createBase } from "./base";
+import { createAlertsMethods } from "./domains/alerts";
 import { createAttachmentsMethods } from "./domains/attachments";
 import { createIdentityMethods } from "./domains/identity";
 import { createNotificationsMethods } from "./domains/notifications";
@@ -1052,59 +1050,7 @@ export function createItemClient(opts: {
       );
     },
 
-    async createAlertRuleItem(input: {
-      title: string;
-      owner: string;
-      alert: AlertRulePayload;
-    }): Promise<Item> {
-      const config = { version: 1, kind: "alert", alert: input.alert };
-      const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
-        "POST",
-        `/configs`,
-        { title: input.title, config },
-      );
-      if (!data.itemId) throw new Error("createAlertRuleItem: core returned no itemId");
-      return {
-        pk: String(data.itemId),
-        resourceType: "alert",
-        title: input.title,
-        abstract: "",
-        owner: input.owner,
-        thumbnailUrl: null,
-        date: "",
-        configId: String(data.id),
-        isPublished: false,
-        license: "",
-        language: "fr",
-        // On vient de créer cet objet : on en est le propriétaire.
-        permissions: OWNER_PERMISSIONS,
-      };
-    },
-
-    async getAlertRuleConfig(pk: string): Promise<AlertRulePayload> {
-      const data = await request<{ config?: { alert?: AlertRulePayload } }>(
-        "GET",
-        `/configs/by-item/${pk}`,
-      );
-      if (!data.config?.alert) throw new Error("getAlertRuleConfig: config has no alert payload");
-      return data.config.alert;
-    },
-
-    async saveAlertRuleConfig(pk: string, payload: AlertRulePayload): Promise<void> {
-      await request<void>("PUT", `/configs/by-item/${pk}`, {
-        version: 1,
-        kind: "alert",
-        alert: payload,
-      });
-    },
-
-    async listAlertRulesForDataset(datasetItemId: string): Promise<AlertRuleSummary[]> {
-      return request<AlertRuleSummary[]>("GET", `/datasets/${datasetItemId}/alerts`);
-    },
-
-    async getAlertEvaluations(alertItemId: string): Promise<AlertEvaluation[]> {
-      return request<AlertEvaluation[]>("GET", `/alerts/${alertItemId}/evaluations`);
-    },
+    ...createAlertsMethods(base),
 
     async createReportScheduleItem(input: {
       title: string;
