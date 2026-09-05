@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -13,6 +13,11 @@ def _now() -> datetime:
 
 class ExportJob(Base):
     __tablename__ = "export_jobs"
+    # cf. 0021_export_jobs.py — jamais déclaré côté modèle avant SP-43
+    # Tâche 5 (trouvaille du comparateur de la Tâche 1, hors table du brief
+    # initial mais mécanique et sûre : additive, correspond exactement à
+    # l'index déjà posé par la migration).
+    __table_args__ = (Index("ix_export_jobs_tenant_id", "tenant_id", "id"),)
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
@@ -24,7 +29,9 @@ class ExportJob(Base):
     # uniquement par le sweep de app.reports.jobs.
     page_id: Mapped[str | None] = mapped_column(String, nullable=True)
     ctx: Mapped[str | None] = mapped_column(String, nullable=True)
-    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    status: Mapped[str] = mapped_column(
+        String, nullable=False, default="pending", server_default="pending"
+    )
     error: Mapped[str | None] = mapped_column(String, nullable=True)
     result_key: Mapped[str | None] = mapped_column(String, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
