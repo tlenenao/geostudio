@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Item, ItemClient, ReportSchedulePayload } from "../api/types";
@@ -141,6 +141,48 @@ test("persisted mode: verrouille Enregistrer quand permissions.write est false (
   expect(
     screen.getByText("Modification réservée aux éditeurs de cet élément."),
   ).toBeInTheDocument();
+});
+
+test("persisted mode: reste en chargement tant que l'item n'est pas résolu, ne verrouille pas Enregistrer par erreur (SP-42, revue finale, point 2, Critical)", async () => {
+  const payload: ReportSchedulePayload = {
+    bookmarkItemId: "bm-1",
+    refreshPolicy: { enabled: true, cron: "0 8 * * MON" },
+    channels: [{ kind: "webhook", url: "" }],
+  };
+  let resolveItem!: (item: Item) => void;
+  let resolveReportScheduleConfig!: (payload: ReportSchedulePayload) => void;
+  renderPage("r-1", {
+    getItem: vi.fn(
+      () =>
+        new Promise<Item>((resolve) => {
+          resolveItem = resolve;
+        }),
+    ),
+    getReportScheduleConfig: vi.fn(
+      () =>
+        new Promise<ReportSchedulePayload>((resolve) => {
+          resolveReportScheduleConfig = resolve;
+        }),
+    ),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+
+  // Résout le config de rapport SEUL, jamais l'item : avant le correctif,
+  // la page rendait déjà l'éditeur complet avec Enregistrer verrouillé
+  // (permissions.write lu sur `undefined` => false) au lieu de rester en
+  // "Chargement…" comme son jumeau DatasetEditPage.tsx.
+  await act(async () => {
+    resolveReportScheduleConfig(payload);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("Chargement…");
+
+  await act(async () => {
+    resolveItem(item);
+  });
+  const saveButton = await screen.findByRole("button", { name: "Enregistrer" });
+  expect(saveButton).toBeEnabled();
 });
 
 test("persisted mode: un rapport qui échoue à charger affiche une alerte et n'écrase pas l'existant (SP-42/F-shell-pages-05)", async () => {

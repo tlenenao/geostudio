@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -275,4 +275,53 @@ test("SP-42/F-shell-pages-04 : verrouille Enregistrer quand permissions.write es
   expect(
     screen.getByText("Modification réservée aux éditeurs de cet élément."),
   ).toBeInTheDocument();
+});
+
+test("SP-42, revue finale (point 2, Critical) : reste en chargement tant que l'item n'est pas résolu, ne verrouille pas Enregistrer par erreur", async () => {
+  let resolveItem!: (item: Item) => void;
+  let resolveMapConfig!: (config: MapConfig) => void;
+  renderEditor({
+    getItem: vi.fn(
+      () =>
+        new Promise<Item>((resolve) => {
+          resolveItem = resolve;
+        }),
+    ),
+    getMapConfig: vi.fn(
+      () =>
+        new Promise<MapConfig>((resolve) => {
+          resolveMapConfig = resolve;
+        }),
+    ),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+
+  // Résout le config de carte SEUL, jamais l'item : avant le correctif, la
+  // page rendait déjà l'éditeur complet avec Enregistrer verrouillé
+  // (permissions.write lu sur `undefined` => false, cf. hasPermission) dès
+  // que `draft` était posé, sans attendre itemQuery — au lieu de rester en
+  // "Chargement…" comme son jumeau DatasetEditPage.tsx.
+  await act(async () => {
+    resolveMapConfig(config);
+    // Laisse toutes les micro-tâches en attente se résoudre (react-query
+    // doit relire la donnée résolue et l'effet de synchronisation du
+    // brouillon doit avoir eu l'occasion de s'exécuter) — même patron que
+    // VisualQueryWizardPage.test.tsx.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("Chargement…");
+
+  resolveItem(OWNED_MAP_ITEM);
+  const saveButton = await screen.findByRole("button", { name: "Enregistrer" });
+  expect(saveButton).toBeEnabled();
+});
+
+test("SP-42, revue finale (point 2, Critical) : affiche une erreur si l'item ne charge pas, ne verrouille pas silencieusement", async () => {
+  renderEditor({
+    getItem: vi.fn().mockRejectedValue(new Error("boom")),
+    getMapConfig: vi.fn().mockResolvedValue(config),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  expect(await screen.findByRole("alert")).toHaveTextContent(/carte introuvable/i);
 });
