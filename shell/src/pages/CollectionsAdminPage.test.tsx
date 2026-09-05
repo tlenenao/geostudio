@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
+import { expectAriaWired } from "../test/expectAriaWired";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { CollectionsAdminPage } from "./CollectionsAdminPage";
@@ -189,8 +190,11 @@ test("edits a collection via the row action", async () => {
     }),
   );
   render(<Harness />);
-  await userEvent.click(await screen.findByRole("button", { name: "Éditer" }));
+  const editButton = await screen.findByRole("button", { name: "Éditer" });
+  expectAriaWired(editButton, editButton.getAttribute("aria-controls")!, false);
+  await userEvent.click(editButton);
   const titleInput = await screen.findByLabelText("Titre");
+  expectAriaWired(editButton, editButton.getAttribute("aria-controls")!, true);
   await userEvent.clear(titleInput);
   await userEvent.type(titleInput, "Incidents (v2)");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
@@ -327,8 +331,11 @@ test("shares a collection via the row action", async () => {
     }),
   );
   render(<Harness />);
-  await userEvent.click(await screen.findByRole("button", { name: "Partager" }));
+  const shareButton = await screen.findByRole("button", { name: "Partager" });
+  expectAriaWired(shareButton, shareButton.getAttribute("aria-controls")!, false);
+  await userEvent.click(shareButton);
   await userEvent.click(await screen.findByLabelText("Public"));
+  expectAriaWired(shareButton, shareButton.getAttribute("aria-controls")!, true);
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(putBody).toEqual({ public: true, groups: [] }));
 });
