@@ -17,10 +17,12 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.configs import repository as configs_repo
+from app.configs.routes import _KIND_PRIVILEGE
 from app.db import get_session
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket
 from app.items import repository as items_repo
+from app.roles.guards import require_privilege
 from app.sharing.authorization import can
 from app.tileset3d import repository as repo
 from app.tileset3d.schemas import (
@@ -93,6 +95,19 @@ def create_tileset3d_upload(
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_tileset3d_bucket),
 ) -> Tileset3DUploadCreated:
+    # SP-42, revue des lots de correctifs 2/3bis (point 1, Critical) : cette
+    # route (et complete_tileset3d_upload plus bas) ne consultait jusqu'ici
+    # que get_current_user — aucun privilège — alors que le job qu'elle
+    # amorce aboutit (via complete_tileset3d_upload -> convert_tileset3d_task,
+    # app.tileset3d.jobs) à configs_repo.create_config(kind="tileset3d"),
+    # mappé sur catalog.manage (app.configs.routes::_KIND_PRIVILEGE). Un
+    # rôle « Lecteur » (0 privilège) obtenait donc 201 ici puis devenait
+    # propriétaire d'une config, exactement le trou fermé sur POST /configs
+    # par eafb02cc. Gardé dès la création (pas seulement à la complétion)
+    # pour ne pas amorcer un upload multipart S3 pour un appelant qui n'ira
+    # de toute façon jamais au bout. Réutilise le mapping existant (single
+    # source of truth), pas une règle parallèle.
+    require_privilege(session, user, _KIND_PRIVILEGE["tileset3d"])
     ensure_uploads_bucket(s3, bucket)
     key = f"{user.tenant_id}/{uuid.uuid4().hex}/{body.filename}"
     mp = s3.create_multipart_upload(Bucket=bucket, Key=key)
@@ -159,6 +174,12 @@ def complete_tileset3d_upload(
     bucket: str = Depends(get_tileset3d_bucket),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
 ) -> None:
+    # SP-42, revue des lots de correctifs 2/3bis (point 1, Critical) : même
+    # garde qu'en création ci-dessus — défense en profondeur, au cas où le
+    # rôle de l'appelant aurait changé entre la création du job et sa
+    # complétion (c'est cet appel qui défère effectivement
+    # convert_tileset3d_task, celui qui crée la config).
+    require_privilege(session, user, _KIND_PRIVILEGE["tileset3d"])
     job = repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")

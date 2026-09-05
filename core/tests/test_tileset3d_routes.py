@@ -15,9 +15,10 @@ from app.configs.schemas import BuilderConfig, Tileset3DPayload
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.ingestion import routes as ingestion_routes
 from app.main import create_app
+from app.roles.repository import ensure_built_in_roles
 from app.tenants.repository import get_or_create_default_tenant
 from app.tileset3d import routes as tileset3d_routes
-from app.users.repository import get_or_create_user
+from app.users.repository import get_or_create_user, set_user_role
 
 
 class _FakeS3Client:
@@ -100,6 +101,61 @@ def env(monkeypatch):
     )
     client = TestClient(app)
     return client, Session, tenant, alice, deferred, fake_s3
+
+
+def _demote_alice_to_reader(env) -> None:
+    # `get_current_user` est surchargé par `lambda: alice` (patron d'origine
+    # de la fixture `env` de ce fichier) — le MÊME objet Python à chaque
+    # requête, jamais re-résolu depuis la base. On mute donc son role_id en
+    # mémoire après avoir committé le changement en base, sans quoi
+    # require_privilege lirait encore l'ancien role_id (Créateur).
+    client, Session, tenant, alice, *_ = env
+    with Session() as s:
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        assert roles["reader"].privileges == []
+        reader_role_id = roles["reader"].id
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=alice.id,
+            role_id=reader_role_id,
+            role_slug="reader",
+        )
+        s.commit()
+    alice.role_id = reader_role_id
+
+
+def test_create_upload_refuses_a_reader_with_no_privilege(env):
+    # SP-42, revue des lots de correctifs 2/3bis (point 1, Critical) :
+    # create_tileset3d_upload ne consultait jusqu'ici que get_current_user —
+    # aucun privilège — alors que le job qu'il amorce aboutit (via
+    # complete_tileset3d_upload -> convert_tileset3d_task) à
+    # configs_repo.create_config(kind="tileset3d"), mappé sur
+    # catalog.manage. Un rôle « Lecteur » (0 privilège) obtenait donc 201
+    # ici, exactement le trou fermé sur POST /configs par eafb02cc.
+    client, *_ = env
+    _demote_alice_to_reader(env)
+    r = client.post("/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"})
+    assert r.status_code == 403, r.text
+
+
+def test_complete_upload_refuses_a_reader_with_no_privilege(env):
+    # Même point, défense en profondeur sur complete_tileset3d_upload — le
+    # seul appel qui défère réellement convert_tileset3d_task (celui qui
+    # crée la config) : le job est créé pendant qu'alice détient encore le
+    # privilège (rôle Créateur par défaut), puis elle est rétrogradée avant
+    # d'appeler /complete, pour isoler le garde de cette route de celui de
+    # la création ci-dessus.
+    client, *_ = env
+    job_id = client.post(
+        "/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
+    ).json()["jobId"]
+    _demote_alice_to_reader(env)
+    r = client.post(
+        f"/tileset3d/uploads/{job_id}/complete",
+        json={"parts": [{"partNumber": 1, "etag": '"abc"'}]},
+    )
+    assert r.status_code == 403, r.text
 
 
 def test_create_upload_returns_job_id(env):
