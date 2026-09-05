@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.configs import repository as configs_repo
+from app.configs.repository import ConfigRead
 from app.db import get_session
 from app.items import repository as items_repo
 from app.pipelines import repository as pipelines_repo
@@ -20,6 +21,8 @@ from app.pipelines.jobs import run_pipeline_task
 from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
 from app.pipelines.ops.schemas import ops_catalog
 from app.pipelines.runtime import PipelineRuntimeError, preview_pipeline
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -47,11 +50,33 @@ def _require_pipeline_access(session: Session, *, user: User, item_id: str, acti
         raise HTTPException(status_code=403, detail="not allowed")
 
 
-def _require_pipeline_config(session: Session, item_id: str):
+def _require_pipeline_config(session: Session, item_id: str) -> ConfigRead:
     config = configs_repo.get_config_by_item(session, item_id)
     if config is None or config.config.kind != "pipeline":
         raise HTTPException(status_code=404, detail="pipeline not found")
     return config
+
+
+def _pipeline_writes_dataset(config: ConfigRead) -> bool:
+    """SP-42, revue des lots de correctifs 2/3bis (point 2, Important) : un
+    nœud writer.dataset crée (app.pipelines.runtime::run_pipeline, branche
+    else) ou mute (même fonction, branche p.datasetId is not None) une
+    config kind="dataset" — mappée sur data.manage
+    (app.configs.routes::_KIND_PRIVILEGE) — sans jamais consulter ce
+    privilège sur l'appelant de /run : seul `write` sur l'item pipeline
+    était exigé. Un Analyste (qui ne porte que data.view) à qui un pipeline
+    est partagé en écriture créait donc des datasets. Réutilisé par le tool
+    MCP run_pipeline (app.mcp.tools), même mapping."""
+    payload = config.config.pipeline
+    assert payload is not None  # garanti par config.config.kind == "pipeline"
+    return any(node.op == "writer.dataset" for node in payload.nodes)
+
+
+def _require_data_manage_if_pipeline_writes_dataset(
+    session: Session, user: User, config: ConfigRead
+) -> None:
+    if _pipeline_writes_dataset(config):
+        require_privilege(session, user, Privilege.DATA_MANAGE.value)
 
 
 def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
@@ -79,7 +104,8 @@ def run_pipeline_route(
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
 ) -> RunResponse:
     _require_pipeline_access(session, user=user, item_id=item_id, action="write")
-    _require_pipeline_config(session, item_id)
+    config = _require_pipeline_config(session, item_id)
+    _require_data_manage_if_pipeline_writes_dataset(session, user, config)
     run = pipelines_repo.create_run(session, tenant_id=user.tenant_id, pipeline_item_id=item_id)
     write_audit(
         session,
