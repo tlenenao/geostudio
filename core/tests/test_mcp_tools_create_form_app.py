@@ -2,8 +2,9 @@
 import pytest
 from sqlalchemy import text
 
+from app.roles.repository import ensure_built_in_roles
 from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
+from app.users.repository import get_or_create_user, set_user_role
 from tests.test_mcp_tools_create import call_tool, call_tool_expecting_error  # noqa: F401
 from tests.test_mcp_tools_query_features import (  # noqa: F401
     _register_incidents_collection,
@@ -125,3 +126,27 @@ def test_create_form_app_unknown_collection_errors(app_client):  # noqa: F811
             app_client, "create_form_app", {"collectionId": "nope"}
         )
     assert "not found" in error_text
+
+
+def test_reader_without_any_privilege_is_denied_on_create_form_app(app_client):  # noqa: F811
+    # SP-42, revue du lot de correctifs 1 (Critical) : create_form_app est le
+    # 6e site MCP appelant configs_repo.create_config sans jamais consulter
+    # de privilège — même trou que create_item/create_dataset/
+    # create_bookmark/create_pipeline/save_app_config, fermé ici par
+    # app.mcp.tools::_require_config_privilege (kind="app" -> apps.manage).
+    with app_client.session_factory() as session:
+        roles = ensure_built_in_roles(session, tenant_id=app_client.tenant.id)
+        set_user_role(
+            session,
+            tenant_id=app_client.tenant.id,
+            user_id=app_client.mock_user.id,
+            role_id=roles["reader"].id,
+            role_slug="reader",
+        )
+        session.commit()
+    with app_client:
+        collection_id = _register_incidents_collection(app_client)
+        error_text = call_tool_expecting_error(
+            app_client, "create_form_app", {"collectionId": collection_id}
+        )
+    assert "apps.manage" in error_text
