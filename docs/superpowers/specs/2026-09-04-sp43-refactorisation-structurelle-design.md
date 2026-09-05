@@ -4,7 +4,8 @@
 **Statut** : spec, prête à devenir un plan
 **Demandeur** : Tanguy (via SP-42, Tâche 15)
 **Documents liés** : `docs/superpowers/specs/2026-09-04-sp42-revue-globale-design.md`,
-`.superpowers/sdd/sp42-findings.jsonl` (35 `minor` + 74 `confirme` non corrigées),
+`.superpowers/sdd/sp42-findings.jsonl` (35 `minor` + 43 `confirme` non corrigées,
+74 confirmées au total − 31 corrigées par SP-42),
 `CLAUDE.md` §« Conventions tranchées (2026-09-01) » et §« Pièges récurrents ».
 
 **Portée de ce document** : un inventaire argumenté et un ordre d'exécution.
@@ -477,7 +478,8 @@ DuckDB) et code jamais exécuté en conditions réelles dans cet environnement
 - **Toute nouvelle fonctionnalité** : cette spec ne touche à rien qui ajoute
   une capacité utilisateur — uniquement à la structure interne du code déjà
   livré.
-- **La correction du reste des 74 trouvailles `confirme` non retenues ici**
+- **La correction du reste des 43 trouvailles `confirme` non corrigées non
+  retenues ici**
   (celles qui ne relèvent ni de duplication ni de patron divergent — ex.
   performance N+1 des balayages cron au-delà du patron partagé déjà couvert
   en §1.3/§3.3, index manquants sur `alert_evaluations`/`pipeline_runs`) :
