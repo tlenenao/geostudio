@@ -155,6 +155,43 @@ export function mockItemDetail(page: Page, pk: string, overrides: Record<string,
   });
 }
 
+// Fixture canonique du payload de collection servi par _collection_json()
+// (core/app/collections/routes.py) — SP-43 Étape 3, même patron que
+// mockMe() (SP-30l) pour la dérive équivalente sur GET /me. Les 23 clés
+// doivent rester synchronisées avec core/tests/test_collections_json_contract.py
+// (EXPECTED_KEYS) — un futur champ ajouté côté cœur doit être ajouté ici
+// ET dans ce test Python, sinon cette fixture redevient incomplète comme
+// les 3 littéraux qu'elle remplace (cf. spec SP-43 §1.5).
+const DEFAULT_COLLECTION = {
+  id: "points_interet",
+  title: "Points d'intérêt",
+  description: "",
+  tableName: "points_interet",
+  isPublic: false,
+  editable: true,
+  geometryType: "Point",
+  srid: 4326,
+  pkColumn: "id",
+  permissions: { read: true, write: true, delete: false, share: true },
+  featureCount: 0,
+  owner: "mockuser",
+  attachmentFields: [] as { key: string; label: string }[],
+  license: "",
+  licenseUri: "",
+  producer: "",
+  contact: "",
+  updateFrequency: "",
+  lineage: "",
+  language: "",
+  version: "",
+  temporalStart: null as string | null,
+  temporalEnd: null as string | null,
+};
+
+export function mockCollection(overrides: Partial<typeof DEFAULT_COLLECTION> = {}) {
+  return { ...DEFAULT_COLLECTION, ...overrides };
+}
+
 // Quatre profils canoniques (Task 17, plan roles-privileges-implementation) —
 // mêmes valeurs que BUILT_IN_ROLE_PRIVILEGES (core/app/roles/privileges.py)
 // et les fixtures admin/creator/analyst/reader de
