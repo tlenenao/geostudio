@@ -31,6 +31,7 @@ from app.configs.extension_permissions import (
 )
 from app.configs.pipeline_validation import validate_pipeline_payload
 from app.configs.repository import ConfigRead
+from app.configs.routes import _require_privilege_for_kind
 from app.configs.schemas import (
     BookmarkCrossFilterEntry,
     BookmarkPayload,
@@ -184,6 +185,24 @@ def _validate_pipeline(session, config: BuilderConfig, *, user: User) -> None:
     dataset/bookmark counterparts."""
     try:
         validate_pipeline_payload(session, config, user=user)
+    except HTTPException as exc:
+        raise ValueError(exc.detail) from exc
+
+
+def _require_config_privilege(session, config: BuilderConfig, *, user: User) -> None:
+    """SP-42/F-securite-autorisation-01 fixed POST/PUT /configs and
+    PUT /configs/by-item/{id} (commit eafb02cc) by adding a kind->privilege
+    guard in app.configs.routes — but every MCP tool below that calls
+    configs_repo.create_config/update_config directly (create_item,
+    create_form_app, create_dataset, create_bookmark, create_pipeline,
+    save_app_config) stayed wide open, since none of them go through those
+    REST handlers. Reuses app.configs.routes._require_privilege_for_kind
+    verbatim (the single source of truth for the kind->privilege mapping,
+    rather than a second table that could silently drift from it) but
+    raises ValueError instead of HTTPException, same rationale as
+    _require_access above."""
+    try:
+        _require_privilege_for_kind(session, user, config)
     except HTTPException as exc:
         raise ValueError(exc.detail) from exc
 
@@ -435,6 +454,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
             existing = configs_repo.get_config_by_item(session, itemId)
             if existing is None:
                 raise ValueError("config not found")
+            _require_config_privilege(session, config, user=user)
             _validate_extension_scope(session, config, tenant_id=user.tenant_id)
             result = configs_repo.update_config(
                 session, existing.id, config, tenant_id=user.tenant_id
@@ -460,14 +480,17 @@ def register_tools(server: FastMCP, session_factory) -> None:
         title: str,
         config: BuilderConfig,
     ) -> ItemRead:
-        """Create a new app or dashboard — mirrors POST /configs. The item's
-        owner is always the authenticated caller; there is no owner
-        parameter to accept from the agent."""
+        """Create a new app or dashboard — mirrors POST /configs, including
+        its privilege guard (apps.manage, app.configs.routes::
+        _require_privilege_for_kind). The item's owner is always the
+        authenticated caller; there is no owner parameter to accept from
+        the agent."""
         if is_read_only_mode():
             raise ValueError("Mode démo : lecture seule, écritures désactivées.")
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = _resolve_actor(session, access_token)
+            _require_config_privilege(session, config, user=user)
             _validate_extension_scope(session, config, tenant_id=user.tenant_id)
             item = items_repo.create_item(
                 session,
@@ -536,6 +559,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 schema=schema,
                 include_form=include_form,
             )
+            _require_config_privilege(session, config, user=user)
             _validate_extension_scope(session, config, tenant_id=user.tenant_id)
             item = items_repo.create_item(
                 session,
@@ -601,6 +625,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 reactsToExtent=reactsToExtent,
             )
             config = BuilderConfig(version=1, kind="dataset", dataset=payload)
+            _require_config_privilege(session, config, user=user)
             _validate_dataset(session, config, user=user)
             item = items_repo.create_item(
                 session,
@@ -663,6 +688,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 crossFilter=crossFilter or {},
             )
             config = BuilderConfig(version=1, kind="bookmark", bookmark=payload)
+            _require_config_privilege(session, config, user=user)
             _validate_bookmark(session, config, user=user)
             item = items_repo.create_item(
                 session,
@@ -857,6 +883,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 user = _resolve_actor(session, access_token)
                 payload = PipelinePayload(nodes=nodes, edges=edges)
                 config = BuilderConfig(version=1, kind="pipeline", pipeline=payload)
+                _require_config_privilege(session, config, user=user)
                 _validate_pipeline(session, config, user=user)
                 item = items_repo.create_item(
                     session,
