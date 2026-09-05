@@ -75,6 +75,31 @@ def _require_kind_unchanged(existing_kind: str, submitted_kind: str) -> None:
         raise http_exception_to_value_error(exc) from exc
 
 
+def _require_create_item_kind_matches_config(kind: str, config_kind: str) -> None:
+    """SP-43, revue de la Tâche 9 (1 Important, trouvé en revue) : `kind`
+    (paramètre du tool `create_item`, restreint par son type à
+    Literal["app", "dashboard"]) et `config.kind` (le Literal bien plus
+    large de BuilderConfig — 11 valeurs, dont "pipeline"/"report"/...)
+    n'étaient reliés par AUCUNE vérification après l'extraction vers
+    create_config_service : celle-ci calcule `resource_type` et choisit ses
+    gardes/validateurs depuis `config.kind` seul, jamais depuis `kind`. Sans
+    ce garde, un appelant MCP pouvait satisfaire la contrainte de type du
+    tool avec kind="app" tout en soumettant
+    config={"kind": "pipeline", "pipeline": {...}} : l'item créé aurait
+    resource_type="pipeline" (pas "app"), et la ligne d'audit écrite par ce
+    tool (payload={"kind": kind}) aurait décrit un kind différent de celui
+    réellement créé — un défaut d'intégrité d'audit dans une zone sensible
+    à la sécurité, introduit PENDANT ce découpage (contrairement à l'écart
+    pré-existant de save_app_config documenté plus haut, celui-ci est
+    nouveau et devait être corrigé, pas seulement documenté). Vérifié
+    qu'aucun usage légitime ne fait diverger les deux : ce tool ne crée que
+    des apps/dashboards (docstring de create_item), et les tests existants
+    (tests/test_mcp_tools_create.py) soumettent toujours kind==config.kind.
+    """
+    if config_kind != kind:
+        raise ValueError(f"create_item: config.kind ('{config_kind}') must match kind ('{kind}')")
+
+
 def register(server: FastMCP, session_factory) -> None:
     @server.tool()
     async def get_app_config(ctx: Context, itemId: str) -> ConfigRead:
@@ -138,6 +163,7 @@ def register(server: FastMCP, session_factory) -> None:
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, access_token)
+            _require_create_item_kind_matches_config(kind, config.kind)
             try:
                 created = create_config_service(session, config, title=title, user=user)
             except HTTPException as exc:

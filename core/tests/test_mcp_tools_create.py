@@ -189,6 +189,113 @@ def test_create_item_ignores_any_owner_argument_and_uses_the_caller_identity(app
         assert spoofed == []
 
 
+def test_create_item_rejects_a_config_kind_that_diverges_from_the_tool_kind(
+    app_client, monkeypatch
+):
+    """SP-43, revue de la Tâche 9 (1 Important) : create_item route
+    désormais à travers app.configs.service.create_config_service, qui
+    calcule resource_type et choisit ses gardes/validateurs depuis
+    config.kind, jamais depuis le paramètre `kind` du tool (restreint par
+    son type à Literal["app", "dashboard"]). Sans garde explicite, un
+    appelant MCP pouvait satisfaire la contrainte de type du tool avec
+    kind="app" tout en soumettant un config={"kind": "pipeline", ...}
+    complet et VALIDE (graphe reader->writer sur deux collections réelles,
+    CORE_ETL_ENABLED actif) : l'item créé aurait resource_type="pipeline"
+    (pas "app"), et la ligne d'audit de ce tool (payload={"kind": kind})
+    aurait décrit un kind différent de celui réellement créé — un défaut
+    d'intégrité d'audit introduit PENDANT le découpage SP-43 (pas
+    préexistant).
+
+    Falsifié en commentant temporairement le garde
+    (_require_create_item_kind_matches_config, appelé dans
+    app/mcp/tools/configs.py::create_item) : ce test échouait alors — pas
+    seulement "aucune erreur" mais l'appel réussissait bel et bien,
+    renvoyant un ItemRead, et un item resource_type="pipeline" titré
+    "Smuggled pipeline" existait réellement en base après coup (vérifié en
+    relançant ce test avec le garde désactivé avant de l'écrire
+    définitivement)."""
+    monkeypatch.setenv("CORE_ETL_ENABLED", "true")
+    with app_client.session_factory() as session:
+        from app.collections import repository as collections_repo
+
+        source = collections_repo.create_collection(
+            session,
+            tenant_id=app_client.tenant.id,
+            owner_id=app_client.mock_user.id,
+            table_name="villes_smuggle",
+            title="Villes",
+            description="",
+            is_public=True,
+            pk_column="id",
+            geometry_column="geom",
+            geometry_type="Point",
+            srid=4326,
+        )
+        target = collections_repo.create_collection(
+            session,
+            tenant_id=app_client.tenant.id,
+            owner_id=app_client.mock_user.id,
+            table_name="villes_propres_smuggle",
+            title="Villes propres",
+            description="",
+            is_public=True,
+            pk_column="id",
+            geometry_column="geom",
+            geometry_type="Point",
+            srid=4326,
+        )
+        session.commit()
+        source_id, target_id = source.id, target.id
+
+    pipeline_payload = {
+        "nodes": [
+            {
+                "id": "r1",
+                "kind": "reader",
+                "op": "reader.collection",
+                "params": {"collectionId": source_id},
+            },
+            {
+                "id": "w1",
+                "kind": "writer",
+                "op": "writer.collection",
+                "params": {"collectionId": target_id},
+            },
+        ],
+        "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+    }
+
+    with app_client:
+        error_text = call_tool_expecting_error(
+            app_client,
+            "create_item",
+            {
+                "kind": "app",
+                "title": "Smuggled pipeline",
+                "config": {"kind": "pipeline", "pipeline": pipeline_payload},
+            },
+        )
+    assert "config.kind" in error_text
+
+    with app_client.session_factory() as session:
+        from sqlalchemy import select
+
+        from app.items.models import Item
+
+        smuggled = session.scalars(select(Item).where(Item.title == "Smuggled pipeline")).all()
+        assert smuggled == [], (
+            "aucun item ne doit être créé quand config.kind diverge du kind du tool"
+        )
+
+    with app_client.session_factory() as session:
+        from sqlalchemy import select
+
+        from app.items.models import Item
+
+        smuggled = session.scalars(select(Item).where(Item.title == "Smuggled pipeline")).all()
+        assert smuggled == []
+
+
 def test_resolve_actor_bootstraps_admin_from_core_admin_subs(app_client, monkeypatch):
     # CORE_ADMIN_SUBS doit être appliquée (et rafraîchie) à chaque
     # get_or_create_user, y compris sur le chemin MCP — pas seulement sur le
