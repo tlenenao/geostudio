@@ -25,7 +25,7 @@ interfaces tierces, cf. piège n°3 CLAUDE.md) :
    seulement l'option de Config, sous peine de migrer silencieusement la
    mauvaise base (ou de lever un `KeyError`).
 2. `from app.db import Base` seul ne suffit PAS à peupler `Base.metadata` :
-   les 21 modules `models.py` du dépôt ne s'enregistrent qu'à l'import, et
+   les 22 modules `models.py` du dépôt ne s'enregistrent qu'à l'import, et
    rien n'importe le module `app.attachments.models` (ni
    `app.pipelines.models`, etc.) tant qu'on ne le fait pas explicitement —
    `core/alembic/env.py` lui-même n'en importe qu'une poignée (suffisant
@@ -34,9 +34,22 @@ interfaces tierces, cf. piège n°3 CLAUDE.md) :
    peuplement, `compare_metadata()` échoue même en `NoReferencedTableError`
    (clé étrangère vers une table absente du metadata) avant de produire un
    diff exploitable. Solution : appeler `app.db.core_table_names()`, la
-   fonction qui importe déjà les 21 modules pour ce même besoin ailleurs
+   fonction qui importe déjà les 22 modules pour ce même besoin ailleurs
    dans le cœur (`init_db`, denylist du registre de collections) — source
-   unique, pas de liste dupliquée à tenir à jour ici."""
+   unique, pas de liste dupliquée à tenir à jour ici.
+
+Un troisième piège, trouvé par la revue de cette même tâche (Important #1) :
+`compare_metadata()` enveloppe TOUJOURS les diffs de niveau colonne
+(`modify_type`/`modify_nullable`/`modify_default`/`modify_comment`, produits
+par `AlterColumnOp.to_diff_tuple()`, cf. `alembic/operations/ops.py`) dans
+une **sous-liste**, même pour un seul changement sur une seule colonne —
+`[('modify_type', ...)]`, jamais `('modify_type', ...)` nu. Seuls les ops de
+niveau table (`add_table`/`remove_table`/`add_column`/`add_constraint`/
+`remove_index`/...) reviennent en tuples nus au premier niveau. Un filtre
+qui teste `d[0] == "modify_type"` sans aplatir d'abord ne peut donc jamais
+s'activer : `d[0]` est alors le tuple imbriqué lui-même, jamais la chaîne.
+`_flatten_diff()` ci-dessous aplatit avant tout filtrage ; falsifié par
+`test_filter_real_diff_absorbs_a_nested_geometry_modify_type` plus bas."""
 
 import os
 import re
@@ -112,7 +125,7 @@ def test_model_metadata_matches_migrated_schema(throwaway_database_url):
         else:
             os.environ["DATABASE_URL"] = previous_database_url
 
-    # Peuple Base.metadata avec les 21 modules models.py du dépôt — sans quoi
+    # Peuple Base.metadata avec les 22 modules models.py du dépôt — sans quoi
     # compare_metadata() lève NoReferencedTableError sur la première clé
     # étrangère vers une table dont le module n'a jamais été importé.
     core_table_names()
@@ -127,17 +140,49 @@ def test_model_metadata_matches_migrated_schema(throwaway_database_url):
         diff = compare_metadata(ctx, Base.metadata)
     engine.dispose()
 
-    # Filtrer les types PostGIS/pgvector (géométrie, vector) : leur
-    # représentation SQLAlchemy générique diffère toujours du type natif
-    # Postgres et ne constitue jamais un vrai écart de schéma.
+    real_diff = _filter_real_diff(diff)
+    assert real_diff == [], (
+        "Schéma migré (Alembic head) et Base.metadata divergent : "
+        f"{real_diff}\nCorriger le server_default= manquant côté modèle "
+        "OU la migration manquante côté Alembic — ne jamais supprimer ce "
+        "test pour faire passer un diff réel."
+    )
+
+
+def _flatten_diff(diff_list: list) -> list:
+    """`compare_metadata()` renvoie une liste où chaque élément est SOIT un
+    tuple nu (ops de niveau table : add_table/remove_table/add_column/
+    add_constraint/remove_index/...), SOIT une sous-liste d'un ou plusieurs
+    tuples imbriqués (ops de niveau colonne : `AlterColumnOp.to_diff_tuple()`
+    empile modify_type/modify_nullable/modify_default/modify_comment pour
+    UNE colonne dans une seule sous-liste, même s'il n'y en a qu'un — cf.
+    `alembic/operations/ops.py`). Aplatir ici avant tout filtrage : sans ça,
+    `d[0] == "modify_type"` compare une chaîne à un tuple imbriqué et n'est
+    jamais vrai (Important #1, revue Tâche 1 SP-43)."""
+    flat: list = []
+    for item in diff_list:
+        if isinstance(item, list):
+            flat.extend(item)
+        else:
+            flat.append(item)
+    return flat
+
+
+def _filter_real_diff(diff: list) -> list:
+    """Aplatit puis retire le bruit structurel qui n'est jamais un vrai écart
+    de schéma imputable à nos modèles : types géométrie/pgvector (leur
+    représentation SQLAlchemy générique diffère toujours du type natif
+    Postgres) et tables système PostGIS (créées par `CREATE EXTENSION`,
+    jamais déclarées par nos modèles)."""
+    flat_diff = _flatten_diff(diff)
     ignored_kinds = {"geometry", "vector"}
 
     def _is_postgis_system_table(item: object) -> bool:
         return getattr(item, "name", None) in POSTGIS_SYSTEM_TABLES
 
-    real_diff = [
+    return [
         d
-        for d in diff
+        for d in flat_diff
         if not (
             d[0] == "modify_type"
             and (
@@ -145,16 +190,74 @@ def test_model_metadata_matches_migrated_schema(throwaway_database_url):
                 or getattr(d[5], "__visit_name__", "") in ignored_kinds
             )
         )
-        # spatial_ref_sys (etc.) : table système PostGIS créée par CREATE
-        # EXTENSION, jamais déclarée par nos modèles (cf.
-        # app.collections.routes.POSTGIS_SYSTEM_TABLES) — sera toujours
-        # "en trop" pour compare_metadata, indépendamment de tout défaut de
-        # nos modèles ; ne pas la laisser polluer le signal de la Tâche 5.
+        # spatial_ref_sys (etc.) : table système PostGIS, cf.
+        # app.collections.routes.POSTGIS_SYSTEM_TABLES — sera toujours "en
+        # trop" pour compare_metadata, indépendamment de tout défaut de nos
+        # modèles ; ne pas la laisser polluer le signal de la Tâche 5.
         and not (d[0] == "remove_table" and _is_postgis_system_table(d[1]))
     ]
-    assert real_diff == [], (
-        "Schéma migré (Alembic head) et Base.metadata divergent : "
-        f"{real_diff}\nCorriger le server_default= manquant côté modèle "
-        "OU la migration manquante côté Alembic — ne jamais supprimer ce "
-        "test pour faire passer un diff réel."
+
+
+class _FakeVisitedType:
+    """Imite un type SQLAlchemy dont `__visit_name__` identifie une colonne
+    géométrie/pgvector (les vrais `Geometry`/`Vector` portent cet attribut) —
+    fabriqué à la main pour ne pas dépendre de geoalchemy2/pgvector dans ce
+    test de filtrage isolé."""
+
+    def __init__(self, visit_name: str) -> None:
+        self.__visit_name__ = visit_name
+
+
+def test_filter_real_diff_absorbs_a_nested_geometry_modify_type() -> None:
+    """Falsification de la correction de l'Important #1 (revue Tâche 1
+    SP-43) : reproduit la forme RÉELLE d'un item modify_type retourné par
+    compare_metadata() — une sous-liste contenant un seul tuple, jamais un
+    tuple nu — pour une colonne dont le type divergent est reconnu comme
+    geometry/vector. AVANT la correction (filtre non aplati, testant
+    `d[0] == "modify_type"` directement sur l'élément de la liste externe),
+    cet item glissait tel quel dans real_diff car `d[0]` valait alors le
+    tuple imbriqué, jamais la chaîne "modify_type" : la condition était
+    donc toujours fausse et le filtre ne s'activait jamais. APRÈS
+    (`_filter_real_diff`, qui aplatit d'abord via `_flatten_diff`), l'item
+    est bien absorbé."""
+    fake_diff_item = [
+        (
+            "modify_type",
+            None,
+            "some_table",
+            "geom",
+            {
+                "existing_nullable": False,
+                "existing_server_default": None,
+                "existing_comment": None,
+            },
+            _FakeVisitedType("VARCHAR"),
+            _FakeVisitedType("geometry"),
+        )
+    ]
+    fake_diff = [fake_diff_item]
+
+    # Preuve du défaut AVANT correction : la version naïve (celle du commit
+    # initial de cette tâche, non aplatie) ne filtre RIEN — elle compare la
+    # sous-liste elle-même à la chaîne "modify_type", toujours faux.
+    naive_filtered = [
+        d
+        for d in fake_diff
+        if not (
+            d[0] == "modify_type"
+            and (
+                getattr(d[6], "__visit_name__", "") in {"geometry", "vector"}
+                if len(d) > 6
+                else False
+            )
+        )
+    ]
+    assert naive_filtered == fake_diff, (
+        "cette assertion documente le bug corrigé : la version naïve "
+        "(non aplatie) ne filtre jamais un modify_type imbriqué, puisque "
+        "d[0] y est une sous-liste et non la chaîne 'modify_type'"
     )
+
+    # La fonction réelle du fichier (corrigée, aplatit avant de filtrer)
+    # absorbe bien l'item fabriqué.
+    assert _filter_real_diff(fake_diff) == []
