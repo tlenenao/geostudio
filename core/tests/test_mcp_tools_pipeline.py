@@ -11,8 +11,9 @@ from app.configs.schemas import BuilderConfig, PipelinePayload
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.items import repository as items_repo
 from app.main import create_app
+from app.roles.repository import ensure_built_in_roles
 from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
+from app.users.repository import get_or_create_user, set_user_role
 from tests.test_mcp_tools_create import call_tool, call_tool_expecting_error  # noqa: F401
 
 READ_ONLY_MESSAGE = "Mode démo : lecture seule, écritures désactivées."
@@ -305,6 +306,60 @@ def test_explain_pipeline_refresh_policy_is_none_when_unset(app_client):
         result = call_tool(client, "explain_pipeline", {"pipelineId": created["pk"]})
 
     assert result["refreshPolicy"] is None
+
+
+def test_run_pipeline_refuses_a_writer_dataset_pipeline_without_data_manage(app_client):
+    # SP-42, revue des lots de correctifs 2/3bis (point 2, Important) :
+    # run_pipeline (mirrors POST /pipelines/{id}/run) n'exigeait que
+    # `write` sur l'item pipeline — jamais data.manage — alors qu'un nœud
+    # writer.dataset crée ou mute une config kind="dataset", mappée sur
+    # data.manage. mock_user (Créateur par défaut, qui porte
+    # automation.manage — nécessaire pour create_pipeline) est ici
+    # rétrogradé vers Analyste (data.view seul, pas data.manage) APRÈS
+    # avoir créé le pipeline : sans le garde ajouté à run_pipeline, il
+    # pourrait encore déclencher ce run.
+    client = app_client(etl_enabled=True)
+    with client:
+        source_id, _target_id = _register_collections(client)
+        created = call_tool(
+            client,
+            "create_pipeline",
+            {
+                "title": "Pipeline dataset",
+                "nodes": [
+                    {
+                        "id": "r1",
+                        "kind": "reader",
+                        "op": "reader.collection",
+                        "params": {"collectionId": source_id},
+                    },
+                    {
+                        "id": "w1",
+                        "kind": "writer",
+                        "op": "writer.dataset",
+                        "params": {"collectionId": source_id, "title": "sortie"},
+                    },
+                ],
+                "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+            },
+        )
+
+        with client.session_factory() as session:
+            roles = ensure_built_in_roles(session, tenant_id=client.tenant.id)
+            assert "data.manage" not in roles["analyst"].privileges
+            set_user_role(
+                session,
+                tenant_id=client.tenant.id,
+                user_id=client.mock_user.id,
+                role_id=roles["analyst"].id,
+                role_slug="analyst",
+            )
+            session.commit()
+
+        error_text = call_tool_expecting_error(
+            client, "run_pipeline", {"pipelineId": created["pk"]}
+        )
+    assert "data.manage" in error_text
 
 
 def test_run_pipeline_refuses_in_read_only_mode(app_client, monkeypatch):
