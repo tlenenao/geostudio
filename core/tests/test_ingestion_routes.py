@@ -128,6 +128,43 @@ def test_get_upload_job_404_for_unknown_job(env):
     assert client.get("/uploads/does-not-exist").status_code == 404
 
 
+def test_create_upload_job_rejects_a_reader_without_data_manage(env):
+    # SP-42, correctif 1 (F-securite-autorisation-01) : ce job déclenche du DDL
+    # (création de table PostGIS) au worker — un Lecteur (aucun privilège) ne
+    # doit pas pouvoir le déclencher, alors qu'un Créateur (data.manage) le peut
+    # toujours (cf. test_create_upload_job_defers_task_and_returns_job_id).
+    from app.roles.repository import ensure_built_in_roles
+    from app.users.repository import set_user_role
+
+    client, Session, tenant, alice, _deferred, _fake_s3 = env
+    with Session() as s:
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=alice.id,
+            role_id=roles["reader"].id,
+            role_slug=roles["reader"].slug,
+        )
+        s.commit()
+    # `alice` reste l'objet capturé par le dependency override du fixture
+    # (une seule instance detachée, jamais re-fetchée par requête) : le
+    # basculer en Lecteur nécessite de muter cette instance-là, pas seulement
+    # la ligne SQL sous-jacente.
+    alice.role_id = roles["reader"].id
+    alice.is_admin = False
+
+    r = client.post(
+        "/uploads",
+        json={
+            "key": "default/abc-villes.geojson",
+            "filename": "villes.geojson",
+            "collectionTitle": "Villes",
+        },
+    )
+    assert r.status_code == 403
+
+
 def test_get_upload_job_cross_tenant_returns_404(env):
     # repo.get_job filters by tenant_id (app/ingestion/repository.py) — a job
     # created under one tenant must be invisible (404, not the job's real
