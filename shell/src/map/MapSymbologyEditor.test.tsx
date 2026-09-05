@@ -1065,3 +1065,100 @@ test("« Retirer l'étiquette » n'efface que l'étiquette", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Retirer l'étiquette" }));
   expect(onChange).toHaveBeenLastCalledWith({ opacity: 90 });
 });
+
+// SP-42 F-shell-carte-02 : changer le champ d'un encodage data-driven (couleur,
+// taille, couleur de contour) doit invalider le domaine figé de l'ancien champ
+// — sinon le domaine de A reste appliqué à B, silencieusement, sans que le
+// bandeau « Classes non calculées » ne se redéclenche.
+test("changer le champ couleur invalide le domaine et computedAt figés", () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        color: {
+          field: "region",
+          mode: "categorical",
+          palette: "categorical-a",
+          domain: { kind: "categorical", values: ["Nord", "Sud"] },
+          computedAt: "2026-08-23T10:00:00Z",
+        },
+      }}
+      onChange={onChange}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Champ couleur"), {
+    target: { value: "population" },
+  });
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      color: expect.objectContaining({
+        field: "population",
+        domain: { kind: "categorical", values: [] },
+        computedAt: "",
+      }),
+    }),
+  );
+});
+
+test("changer le champ taille invalide le domaine et computedAt figés", () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        size: { field: "region", domain: { min: 10, max: 90 }, computedAt: "2026-08-23T10:00:00Z" },
+      }}
+      onChange={onChange}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Champ taille"), {
+    target: { value: "population" },
+  });
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      size: {
+        field: "population",
+        domain: { min: 0, max: 0 },
+        computedAt: "",
+      },
+    }),
+  );
+});
+
+test("changer le champ du contour invalide le domaine et computedAt figés", () => {
+  const onChange = vi.fn();
+  render(
+    <MapSymbologyEditor
+      {...baseProps}
+      value={{
+        stroke: {
+          color: {
+            field: "region",
+            mode: "categorical",
+            palette: "categorical-a",
+            domain: { kind: "categorical", values: ["Nord", "Sud"] },
+            computedAt: "2026-08-23T10:00:00Z",
+          },
+          width: { fixed: 1 },
+          style: "solid",
+        },
+      }}
+      onChange={onChange}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Champ du contour"), {
+    target: { value: "population" },
+  });
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      stroke: expect.objectContaining({
+        color: expect.objectContaining({
+          field: "population",
+          domain: { kind: "categorical", values: [] },
+          computedAt: "",
+        }),
+      }),
+    }),
+  );
+});

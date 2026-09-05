@@ -68,6 +68,11 @@ export function MapSymbologyEditor({
   const size = value?.size;
 
   function setColorField(patch: Partial<NonNullable<LayerSymbology["color"]>>) {
+    // SP-42 F-shell-carte-02 : changer de champ invalide le domaine figé de
+    // l'ancien champ — sinon le domaine de A reste appliqué à B en silence,
+    // et le bandeau « Classes non calculées » ne se redéclenche jamais
+    // puisqu'il ne teste que !computedAt.
+    const fieldChanged = patch.field !== undefined && patch.field !== (color?.field ?? "");
     onChange({
       ...value,
       color: {
@@ -75,8 +80,10 @@ export function MapSymbologyEditor({
         mode: color?.mode ?? "categorical",
         classification: color?.classification,
         palette: color?.palette ?? "categorical-a",
-        domain: color?.domain ?? { kind: "categorical", values: [] },
-        computedAt: color?.computedAt ?? "",
+        domain: fieldChanged
+          ? { kind: "categorical", values: [] }
+          : (color?.domain ?? { kind: "categorical", values: [] }),
+        computedAt: fieldChanged ? "" : (color?.computedAt ?? ""),
         ...patch,
       },
     });
@@ -119,7 +126,17 @@ export function MapSymbologyEditor({
 
   function setStrokeColorPatch(patch: Partial<ClassifiedEncoding>) {
     if (!stroke || "fixed" in stroke.color) return;
-    setStroke({ color: { ...stroke.color, ...patch } });
+    // SP-42 F-shell-carte-02 : même invalidation du domaine figé que
+    // setColorField sur changement de champ.
+    const current = stroke.color;
+    const fieldChanged = patch.field !== undefined && patch.field !== current.field;
+    setStroke({
+      color: {
+        ...current,
+        ...(fieldChanged ? { domain: { kind: "categorical", values: [] }, computedAt: "" } : {}),
+        ...patch,
+      },
+    });
   }
 
   async function recomputeStrokeDomain() {
@@ -331,16 +348,21 @@ export function MapSymbologyEditor({
           list={`${listId}-fields`}
           className={inputCls}
           value={size?.field ?? ""}
-          onChange={(e) =>
+          onChange={(e) => {
+            // SP-42 F-shell-carte-02 : même invalidation que la couleur/le
+            // contour sur changement de champ (ici recopiée délibérément
+            // avant ce correctif, pas un oubli de merge).
+            const nextField = e.target.value;
+            const fieldChanged = nextField !== (size?.field ?? "");
             onChange({
               ...value,
               size: {
-                field: e.target.value,
-                domain: size?.domain ?? { min: 0, max: 0 },
-                computedAt: size?.computedAt ?? "",
+                field: nextField,
+                domain: fieldChanged ? { min: 0, max: 0 } : (size?.domain ?? { min: 0, max: 0 }),
+                computedAt: fieldChanged ? "" : (size?.computedAt ?? ""),
               },
-            })
-          }
+            });
+          }}
         />
       </label>
       {size && (
