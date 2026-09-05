@@ -64,6 +64,7 @@ import { createAttachmentsMethods } from "./domains/attachments";
 import { createIdentityMethods } from "./domains/identity";
 import { createNotificationsMethods } from "./domains/notifications";
 import { createReportsMethods } from "./domains/reports";
+import { createTiles3dMethods } from "./domains/tiles3d";
 
 export type RawMapLayer = {
   id: string;
@@ -493,18 +494,6 @@ export function createItemClient(opts: {
       kind: "tiles3d" as const,
       url: `${coreUrl}/tileset3d/${item.pk}/tileset.json`,
     }));
-  }
-
-  async function fetchHostedTerrain3dSources(q?: string): Promise<{ id: string; title: string }[]> {
-    const query = new URLSearchParams({ type: "terrain3d", pageSize: "200" });
-    if (q) query.set("q", q);
-    const token = getToken();
-    const res = await fetch(`${coreUrl}/items?${query.toString()}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) throw new Error(`Request failed: ${res.status} /items`);
-    const data = (await res.json()) as { items?: { pk: string; title: string }[] };
-    return (data.items ?? []).map((item) => ({ id: item.pk, title: item.title }));
   }
 
   return {
@@ -1417,51 +1406,7 @@ export function createItemClient(opts: {
       return requestAnalyticsSql(coreUrl, getToken(), sql);
     },
 
-    async createTileset3DUpload(input: { filename: string; title: string }) {
-      return request<{ jobId: string }>("POST", "/tileset3d/uploads", input);
-    },
-
-    async presignTileset3DUploadPart(jobId: string, partNumber: number) {
-      return request<{ uploadUrl: string }>(
-        "POST",
-        `/tileset3d/uploads/${jobId}/parts/${partNumber}/presign`,
-      );
-    },
-
-    async completeTileset3DUpload(jobId: string, parts: { partNumber: number; etag: string }[]) {
-      await request<void>("POST", `/tileset3d/uploads/${jobId}/complete`, { parts });
-    },
-
-    async getTileset3DUploadJob(jobId: string) {
-      return request<{
-        status: "pending" | "finalizing" | "done" | "error";
-        errorMessage: string | null;
-        itemId: string | null;
-      }>("GET", `/tileset3d/uploads/${jobId}`);
-    },
-
-    async listHostedTerrain3DSources(q?: string) {
-      return fetchHostedTerrain3dSources(q);
-    },
-
-    async presignTerrain3DUpload(filename: string, contentType: string) {
-      return request<{ uploadUrl: string; key: string }>("POST", "/terrain3d/uploads/presign", {
-        filename,
-        contentType,
-      });
-    },
-
-    async createTerrain3DUpload(input: { key: string; filename: string; title: string }) {
-      return request<{ jobId: string }>("POST", "/terrain3d/uploads", input);
-    },
-
-    async getTerrain3DUploadJob(jobId: string) {
-      return request<{
-        status: "uploaded" | "converting" | "done" | "error";
-        errorMessage: string | null;
-        itemId: string | null;
-      }>("GET", `/terrain3d/uploads/${jobId}`);
-    },
+    ...createTiles3dMethods(base),
 
     getAuthToken: getToken,
     getCoreUrl: () => coreUrl,
