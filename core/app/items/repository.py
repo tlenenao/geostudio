@@ -134,6 +134,7 @@ def _to_read(
         owner=owner_username,
         thumbnailUrl=f"/items/{item.id}/thumbnail" if item.thumbnail_key else None,
         date=item.created_at.isoformat(),
+        updatedAt=item.updated_at.isoformat(),
         configId=None,
         isPublished=item.is_published,
         keywords=item.keywords or [],

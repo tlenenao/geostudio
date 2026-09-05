@@ -119,6 +119,24 @@ def test_patch_item_missing_returns_404(client):
     assert client.patch("/items/nope", json={"title": "x"}).status_code == 404
 
 
+def test_updated_at_changes_after_edit_but_date_stays_the_creation_date(client):
+    # SP-42 F-shell-api-07 : `date` reste `created_at` (rétrocompatibilité,
+    # affiché « Créé » ailleurs) ; `updatedAt` est le nouveau champ distinct
+    # que le shell doit lire pour son libellé « Modifié ».
+    import time
+
+    item_id = _seed_item(client)
+    before = client.get(f"/items/{item_id}").json()
+
+    time.sleep(1.1)  # au-delà de la granularité seconde du type colonne
+    patched = client.patch(f"/items/{item_id}", json={"title": "Renamed"})
+    assert patched.status_code == 200
+
+    after = client.get(f"/items/{item_id}").json()
+    assert after["date"] == before["date"]
+    assert after["updatedAt"] != before["updatedAt"]
+
+
 def test_get_item_defaults_license_and_language(client):
     item_id = _seed_item(client)
     body = client.get(f"/items/{item_id}").json()

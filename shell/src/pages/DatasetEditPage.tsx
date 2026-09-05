@@ -152,7 +152,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                 <dt>Type</dt>
                 <dd>Dataset</dd>
                 <dt>Modifié</dt>
-                <dd>{item.date || "—"}</dd>
+                <dd>{item.updatedAt || "—"}</dd>
               </dl>
             </Panel>
           ),

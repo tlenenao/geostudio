@@ -98,7 +98,7 @@ export function ReportEditPage({
                   <dt>Type</dt>
                   <dd>{RESOURCE_TYPE_LABELS[itemQuery.data.resourceType]}</dd>
                   <dt>Modifié</dt>
-                  <dd>{itemQuery.data.date || "—"}</dd>
+                  <dd>{itemQuery.data.updatedAt || "—"}</dd>
                 </dl>
               )}
             </Panel>

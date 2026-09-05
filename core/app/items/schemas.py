@@ -29,6 +29,11 @@ class ItemRead(BaseModel):
     owner: str
     thumbnailUrl: str | None
     date: str
+    # SP-42 F-shell-api-07 : `date` reste `created_at` (rétrocompatibilité —
+    # tout consommateur qui s'y fie aujourd'hui n'est pas affecté).
+    # `updatedAt` est le champ distinct que le shell doit lire pour un
+    # libellé « Modifié » qui change réellement après une édition.
+    updatedAt: str
     configId: str | None
     isPublished: bool
     keywords: list[str] = []
