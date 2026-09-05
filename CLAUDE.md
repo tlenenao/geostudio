@@ -225,9 +225,8 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   headless (`kind="pipeline"`, runtime DuckDB, file `etl`,
   `CORE_ETL_ENABLED`), `transform.qgis` en sidecar isolé (allowlist 50 ids),
   coffre de secrets AES-GCM, `reader.connector.rest/postgres` (dlt, garde
-  SSRF dédiée), canvas DAG, planification cron. **Les 5 tests
-  `@pytest.mark.qgis` n'ont jamais tourné contre un vrai sidecar — jalon M14
-  bloqué (`REV-095`).**
+  SSRF dédiée), canvas DAG, planification cron. Jalon M14 débloqué depuis par
+  **SP-44** (cf. `### Livré` plus bas).
 - **SP-16** (a+b) — exports secs CSV/XLSX/GeoJSON/GPKG ; `AlertRule` (8e
   kind, webhook/email sur transition d'état seulement). **Jalon M12** sous
   périmètre resserré — pas de SP-16c.
@@ -287,8 +286,8 @@ Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
   (`ImportFileButton`/`NewItemButton`/`Tileset3DUploadButton` sur
   `ui/kit/Drawer`). Clôturé par **SP-33**.
 
-**Jalons atteints : M1, M2, M4, M5, M11, M12, M13, M15, M16.** M14 reste
-bloqué (cf. SP-15, `REV-095`).
+**Jalons atteints : M1, M2, M4, M5, M11, M12, M13, M14, M15, M16.** M14
+débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
 
 - **SP-31** — rôles à privilèges : 18 privilèges catalogués
   (`app/roles/privileges.py`), 4 rôles prédéfinis immuables par tenant
@@ -353,6 +352,25 @@ bloqué (cf. SP-15, `REV-095`).
   passage unique pour l'écriture d'une config. Fermé au point d'écriture
   (`core/app/pipelines/runtime.py::_write_dataset`) ; c'est la motivation
   d'ouverture de la spec SP-43.**
+- **SP-44** — débloque le jalon **M14** (GAP-01, seul gap bloquant de SP-42) :
+  les 5 tests `@pytest.mark.qgis` exécutés pour la première fois pour de vrai
+  contre un sidecar `qgis-worker` réel et un `postgis-test` réel (réseau
+  Docker isolé dédié, aucune modification de l'hôte — pas de `sudo`). Ont
+  trouvé, en session, **2 défauts de production réels, jamais vus avant faute
+  d'avoir jamais exécuté ce chemin** : (1) `_lock_down()`
+  (`enable_external_access=false`) bloquait le `COPY TO` du `in.gpkg` du
+  sidecar — `transform.qgis` cassait pour toute exécution réelle, corrigé par
+  `SET allowed_directories` scopé au seul scratch partagé ; (2)
+  `_materialize_qgis_output()` ne filtrait pas `fid` (colonne imposée par la
+  spec GeoPackage sur tout `.gpkg` GDAL), rejetée par `writer.collection`
+  comme propriété inconnue — invisible via `writer.export` (pas de
+  validation de schéma). Un test de régression non marqué `qgis` (donc
+  toujours actif en CI) ajouté pour chacun, falsifié avant fix. Suite
+  complète (2298 tests hors `qgis`) + les 5 `qgis` rejoués verts après coup.
+  **M14 atteint.** Reste : ces 5 tests ne tournent toujours qu'en session
+  manuelle, pas encore câblés en CI (`CORE_TEST_QGIS_WORKER_URL` absent de
+  tout workflow) — non retenu dans le périmètre de SP-44, à câbler
+  séparément si voulu.
 
 ### Conventions tranchées (2026-09-01)
 
@@ -379,8 +397,11 @@ gaps, et la dette héritée SP-29b→SP-40) vit dans
 stable et citable — ne pas renuméroter, ajouter en fin de section). Ce qui,
 dans ce backlog, change le comportement immédiat d'une session :
 
-- Jalon **M14** bloqué : les 5 tests `@pytest.mark.qgis` n'ont jamais tourné
-  contre un vrai sidecar (`REV-095`).
+- Jalon **M14 atteint** (SP-44, `REV-095` clos) : les 5 tests
+  `@pytest.mark.qgis` tournent contre un vrai sidecar — 2 défauts de
+  production réels trouvés et corrigés au passage (`_lock_down()` bloquait
+  `transform.qgis`, `fid` GeoPackage non filtré). Reste non câblé en CI
+  (session manuelle uniquement).
 - Egress LLM du copilote (SP-20) sans garde SSRF — seule des 4 surfaces
   sortantes à ne pas en avoir une (`REV-096`).
 - 2 des 18 privilèges (`automation.secrets.manage`, `tasks.view_all`) ne
