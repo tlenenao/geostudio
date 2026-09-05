@@ -50,6 +50,6 @@ class NotificationPreference(Base):
 
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
-    value: Mapped[str] = mapped_column(String, nullable=False, default="all")
+    value: Mapped[str] = mapped_column(String, nullable=False, default="all", server_default="all")
     # "all" | "failures_only" | "none"
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
