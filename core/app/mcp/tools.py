@@ -56,6 +56,8 @@ from app.mcp import form_app
 from app.pipelines import repository as pipelines_repo
 from app.pipelines.jobs import run_pipeline_task
 from app.reports import repository as reports_repo
+from app.roles.guards import has_privilege
+from app.roles.privileges import Privilege
 from app.sharing import repository as sharing_repo
 from app.sharing.authorization import ItemAccessFacts, can
 from app.sharing.schemas import Sharing
@@ -110,7 +112,8 @@ def _require_collection_read(session, *, user: User, collection_id: str):
     )
     if col is None:
         raise ValueError("collection not found")
-    readable = can(
+    can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    readable = can_manage_collections or can(
         session,
         user_id=user.id,
         action="read",
