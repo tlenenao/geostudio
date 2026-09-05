@@ -574,6 +574,50 @@ test("getMapConfig reads renderAs on a feature (GeoJSON) layer", async () => {
   });
 });
 
+test("getMapConfig reads collectionId/pkColumn on a feature (GeoJSON) layer", async () => {
+  // SP-42 F-shell-carte-01 (4e occurrence du piège n°5) : toFrontLayer()
+  // restaure déjà collectionId/pkColumn pour une couche vector ; la couche
+  // feature les perdait au rechargement, cassant les pièces jointes/
+  // cross-filter d'une couche GeoJSON qui les porte.
+  server.use(
+    http.get("https://core.test/configs/by-item/77", () =>
+      HttpResponse.json({
+        id: "cfg-1",
+        itemId: "77",
+        kind: "map",
+        config: {
+          kind: "map",
+          map: {
+            basemap: { style: "https://demo/s.json" },
+            view: { center: [1, 47], zoom: 8 },
+            layers: [
+              {
+                id: "a",
+                title: "A",
+                visible: true,
+                kind: "feature",
+                url: "https://fs/a",
+                collectionId: "communes",
+                pkColumn: "id",
+              },
+            ],
+          },
+        },
+      }),
+    ),
+  );
+  const cfg = await makeClient().getMapConfig("77");
+  expect(cfg.layers[0]).toEqual({
+    id: "a",
+    title: "A",
+    visible: true,
+    kind: "feature",
+    url: "https://fs/a",
+    collectionId: "communes",
+    pkColumn: "id",
+  });
+});
+
 test("getMapConfig throws when the config has no map payload", async () => {
   server.use(
     http.get("https://core.test/configs/by-item/77", () =>

@@ -135,6 +135,8 @@ function toFrontLayer(l: RawMapLayer): MapLayer {
         kind: "feature",
         url: l.url ?? "",
         ...(l.paint ? { paint: l.paint } : {}),
+        ...(l.collectionId ? { collectionId: l.collectionId } : {}),
+        ...(l.pkColumn ? { pkColumn: l.pkColumn } : {}),
         ...(l.popup ? { popup: l.popup } : {}),
         ...(l.renderAs ? { renderAs: l.renderAs } : {}),
         ...(l.symbology ? { symbology: l.symbology } : {}),
