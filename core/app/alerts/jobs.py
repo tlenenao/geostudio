@@ -337,6 +337,20 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             return
         except Exception as exc:  # toute erreur inattendue finit "error", jamais un run zombie
             logger.exception("alert evaluation %s : erreur inattendue", evaluation_id)
+            # Si l'exception vient d'une vraie erreur DB survenue plus haut
+            # dans le chemin succès (ex. write_audit), la transaction
+            # Postgres est laissée "aborted" : toute nouvelle commande sur
+            # CETTE session échouerait avec InFailedSqlTransaction, une
+            # exception non interceptée qui s'échapperait de ce bloc except
+            # lui-même et laisserait l'évaluation "pending" pour toujours au
+            # lieu de "error" (cf. AlertEvaluationError, docstring : "always
+            # caught, always turns into an error evaluation row, never a
+            # crash"). rollback() rend la session réutilisable AVANT de
+            # retenter des écritures — même patron que
+            # app.reports.jobs._record_trigger_failure (ligne 149). Un
+            # rollback sur une session déjà saine (l'exception d'origine
+            # n'a jamais touché la DB) est un no-op sans effet de bord.
+            session.rollback()
             error_detail = f"erreur interne : {exc}"
             alerts_repo.mark_evaluated(
                 session,
