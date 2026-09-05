@@ -139,6 +139,54 @@ test("edits a source via the row action", async () => {
   await waitFor(() => expect(patched).toMatchObject({ url: "https://a (édité)" }));
 });
 
+test("aria-expanded est câblé par ligne, pas partagé entre toutes les lignes (revue finale SP-43, Important I2)", async () => {
+  // Fixture à 2 sources : le défaut trouvé en revue finale (aria-expanded
+  // posé une seule fois pour toute la page via {...editPanel.triggerProps}
+  // dans .map()) était invisible avec une seule source — tous les boutons
+  // Éditer basculaient aria-expanded="true" en même temps.
+  server.use(
+    http.get("https://core.test/harvest/sources", () =>
+      HttpResponse.json({
+        sources: [
+          {
+            id: "src-1",
+            type: "stac",
+            url: "https://a",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: null,
+            lastError: null,
+          },
+          {
+            id: "src-2",
+            type: "stac",
+            url: "https://b",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: null,
+            lastError: null,
+          },
+        ],
+      }),
+    ),
+  );
+
+  render(<Harness />);
+  const editButtons = await screen.findAllByRole("button", { name: "Éditer" });
+  expect(editButtons).toHaveLength(2);
+  editButtons.forEach((button) => expect(button).toHaveAttribute("aria-expanded", "false"));
+
+  await userEvent.click(editButtons[0]);
+  await screen.findByLabelText("URL");
+
+  expect(editButtons[0]).toHaveAttribute("aria-expanded", "true");
+  expect(editButtons[1]).toHaveAttribute("aria-expanded", "false");
+});
+
 test("cliquer « Ajouter une source » pendant l'édition ferme le panneau d'édition", async () => {
   server.use(
     http.get("https://core.test/harvest/sources", () =>

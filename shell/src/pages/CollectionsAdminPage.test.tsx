@@ -201,6 +201,32 @@ test("edits a collection via the row action", async () => {
   await waitFor(() => expect(patched).toMatchObject({ title: "Incidents (v2)" }));
 });
 
+test("aria-expanded est câblé par ligne, pas partagé entre toutes les lignes (revue finale SP-43, Important I2)", async () => {
+  // Fixture à 2 collections : le défaut trouvé en revue finale (aria-expanded
+  // posé une seule fois pour toute la page via {...editPanel.triggerProps}
+  // dans .map()) était invisible avec une seule ligne — toutes les lignes
+  // basculaient aria-expanded="true" en même temps.
+  const other: CollectionAdminFixture = { ...INCIDENTS, id: "parcs", title: "Parcs" };
+  server.use(
+    http.get("https://core.test/collections", () =>
+      HttpResponse.json({ collections: [INCIDENTS, other] }),
+    ),
+    http.get("https://core.test/collections/candidates", () =>
+      HttpResponse.json({ candidates: [] }),
+    ),
+  );
+  render(<Harness />);
+  const editButtons = await screen.findAllByRole("button", { name: "Éditer" });
+  expect(editButtons).toHaveLength(2);
+  editButtons.forEach((button) => expect(button).toHaveAttribute("aria-expanded", "false"));
+
+  await userEvent.click(editButtons[0]);
+  await screen.findByLabelText("Titre");
+
+  expect(editButtons[0]).toHaveAttribute("aria-expanded", "true");
+  expect(editButtons[1]).toHaveAttribute("aria-expanded", "false");
+});
+
 test("surfaces an alert when editing a collection fails", async () => {
   server.use(
     http.get("https://core.test/collections", () =>

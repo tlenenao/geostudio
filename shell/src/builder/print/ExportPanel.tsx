@@ -96,10 +96,12 @@ export function ExportPanel({ itemId }: { itemId: string }) {
         // seul survit) : pas d'Escape/backdrop à intercepter, Annuler ferme
         // explicitement sans exporter.
         // Panel (ui/kit) ne transmet ni id ni role (props non déclarées) —
-        // panelProps est posé sur un wrapper neutre plutôt que sur Panel
-        // lui-même (le brief supposait Panel transparent aux props ARIA,
-        // vérifié faux contre le composant réel, cf. piège CLAUDE.md n°3).
-        <div {...exportPanel.panelProps}>
+        // le wrapper neutre porte seulement id (pas role="region" du hook) :
+        // ce wrapper n'a pas de nom accessible (revue finale SP-43, Minor
+        // M1) — un role="region" sans étiquette est pire qu'une absence de
+        // région pour un lecteur d'écran ; même patron que les 5 autres
+        // sites corrigés par la Tâche 7 pour la même raison.
+        <div id={exportPanel.panelId}>
           <Panel className="flex flex-col gap-2">
             <p className="text-sm font-medium text-ink">Choisir le format d'export</p>
             <div className="flex justify-end gap-2">
