@@ -137,12 +137,83 @@ def _body(kind: str) -> dict:
         }
     if kind == "bookmark":
         return {"kind": "bookmark", "bookmark": {"appId": "does-not-matter", "pageId": "p1"}}
+    if kind == "site":
+        return {"kind": "site", "layout": {"type": "grid", "items": []}}
+    if kind == "dashboard":
+        return {"kind": "dashboard", "layout": {"type": "grid", "items": []}}
+    if kind == "alert":
+        return {
+            "kind": "alert",
+            "alert": {
+                "datasetItemId": "does-not-matter",
+                "query": {"agg": "count"},
+                "condition": {"expr": "value > 100"},
+                "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+            },
+        }
+    if kind == "report":
+        return {
+            "kind": "report",
+            "report": {
+                "bookmarkItemId": "does-not-matter",
+                "refreshPolicy": {"enabled": True, "cron": "0 8 * * MON"},
+                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+            },
+        }
+    if kind == "tileset3d":
+        return {
+            "kind": "tileset3d",
+            "tileset3d": {
+                "sourceKey": "does-not-matter/city.zip",
+                "tilesetJsonPath": "tileset.json",
+                "totalBytes": 1234,
+                "entryCount": 2,
+            },
+        }
+    if kind == "terrain3d":
+        return {
+            "kind": "terrain3d",
+            "terrain3d": {
+                "sourceKey": "does-not-matter/dem.tif",
+                "originalFilename": "dem.tif",
+            },
+        }
     raise AssertionError(f"unhandled kind in test helper: {kind}")
 
 
-@pytest.mark.parametrize("kind", ["app", "map", "dataset", "pipeline", "bookmark"])
-def test_reader_without_any_privilege_is_denied_on_create(env, kind):
+# SP-42, revue du lot de correctifs 1 (Important) : la version d'origine de
+# ce test ne couvrait que 5 des 11 kinds du catalogue, et son cas
+# "pipeline" passait pour la MAUVAISE raison — confirmé par le réviseur en
+# neutralisant _require_privilege_for_kind : le 403 provenait en réalité de
+# _require_etl_enabled_for_pipeline (CORE_ETL_ENABLED désactivé par défaut
+# dans cet environnement de test), pas du nouveau garde de privilège. Même
+# piège pour "report" (_require_export_enabled_for_report/
+# CORE_EXPORT_ENABLED). Les deux capacités sont donc explicitement
+# ACTIVÉES ici pour que seul le privilège manquant puisse produire le 403 —
+# et les 6 kinds jusqu'ici non testés (alert/report/site/dashboard/
+# tileset3d/terrain3d) sont ajoutés au paramétrage, couvrant les 11 kinds et
+# les 5 privilèges de _KIND_PRIVILEGE.
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "app",
+        "map",
+        "dataset",
+        "pipeline",
+        "bookmark",
+        "site",
+        "dashboard",
+        "alert",
+        "report",
+        "tileset3d",
+        "terrain3d",
+    ],
+)
+def test_reader_without_any_privilege_is_denied_on_create(env, kind, monkeypatch):
     app, client, _creator, reader = env
+    monkeypatch.setenv("CORE_ETL_ENABLED", "true")
+    monkeypatch.setenv("CORE_EXPORT_ENABLED", "true")
     _as(app, reader)
     resp = client.post("/configs", json={"title": "x", "config": _body(kind)})
     assert resp.status_code == 403, resp.text
