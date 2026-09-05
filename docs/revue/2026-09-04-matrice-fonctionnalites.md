@@ -4,6 +4,11 @@
 (`docs(plan): plan d'exécution de la revue globale en trois vagues (SP-42)`),
 sur la branche `dev`.
 
+**Version consultable :** <https://claude.ai/code/artifact/6010f351-a022-4074-8e20-60f1603781ac>
+— même source de données que ce document (`.superpowers/sdd/sp42-matrice.jsonl`),
+avec recherche plein texte, filtres par famille, par état et par surface, et tri
+par colonne. Les deux rendus ne peuvent donc pas diverger.
+
 ## Méthode
 
 Huit cartographes ont inventorié indépendamment les fonctionnalités du dépôt,
