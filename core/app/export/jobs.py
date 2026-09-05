@@ -12,13 +12,13 @@ from urllib.parse import quote
 from app.auth.dependency import is_export_enabled
 from app.auth.export_tokens import mint_export_token
 from app.configs import repository as configs_repo
-from app.db import make_engine, make_session_factory, request_scoped_session
+from app.db import request_scoped_session
 from app.export import repository as export_repo
 from app.export.rendering import RenderPage, render_export
 from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
 from app.items import repository as items_repo
 from app.jobs import app
-from app.notifications import repository as notifications_repo
+from app.jobs.common import notify_best_effort, session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,12 @@ def _notify(
     ça, une notification d'échec d'export était la seule des 5 sortes jamais
     cliquable, même quand l'item existe toujours et que
     `NotificationBell.tsx` aurait pu la rendre cliquable (elle rend un
-    `<div>` non cliquable dès que `item_resource_type` est None)."""
+    `<div>` non cliquable dès que `item_resource_type` est None).
+
+    SP-43 Tâche 6 : l'écriture proprement dite est désormais déléguée à
+    app.jobs.common.notify_best_effort — cette fonction ne garde que la
+    garde anti-double-notification et la résolution titre/resource_type
+    propres au domaine export (`user_id` est déjà résolu par l'appelant)."""
     if page_id is not None:
         return
     try:
@@ -63,24 +68,20 @@ def _notify(
             resolved_resource_type = resource_type or (
                 item.resourceType if item is not None else None
             )
-            notifications_repo.create_notification(
-                session,
-                tenant_id=tenant_id,
-                recipient_user_id=user_id,
-                kind="export",
-                status=status,
-                item_id=item_id,
-                item_resource_type=resolved_resource_type,
-                item_title=title,
-                error_message=error,
-            )
     except Exception:
-        logger.exception("export job : échec de l'écriture de la notification")
-
-
-def _session_factory():
-    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
-    return make_session_factory(engine)
+        logger.exception("export job : échec de la résolution du titre de notification")
+        return
+    notify_best_effort(
+        session_factory,
+        tenant_id=tenant_id,
+        recipient_user_id=user_id,
+        kind="export",
+        status=status,
+        item_id=item_id,
+        item_resource_type=resolved_resource_type,
+        item_title=title,
+        error=error,
+    )
 
 
 def s3_client_from_env():
@@ -139,14 +140,14 @@ def _launch_and_navigate(url: str) -> RenderPage:
 # run_pipeline_sweep_task le fait pour app.pipelines.
 @app.task(queue="export")
 def render_export_task(job_id: str, tenant_id: str) -> None:
-    session_factory = _session_factory()
+    factory = session_factory()
 
     if not is_export_enabled():
-        with request_scoped_session(session_factory) as session:
+        with request_scoped_session(factory) as session:
             export_repo.mark_error(session, job_id=job_id, error="export capability disabled")
         return
 
-    with request_scoped_session(session_factory) as session:
+    with request_scoped_session(factory) as session:
         job = export_repo.get_job(session, tenant_id=tenant_id, job_id=job_id)
         if job is None:
             logger.error("export job %s introuvable (tenant %s)", job_id, tenant_id)
@@ -156,7 +157,7 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
         page_id, ctx = job.page_id, job.ctx
 
     try:
-        with request_scoped_session(session_factory) as session:
+        with request_scoped_session(factory) as session:
             config = configs_repo.get_config_by_item(session, item_id)
             if config is None:
                 raise ValueError(f"export item '{item_id}' not found")
@@ -206,10 +207,10 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
             Body=content,
             ContentType=_CONTENT_TYPE[export_format],
         )
-        with request_scoped_session(session_factory) as session:
+        with request_scoped_session(factory) as session:
             export_repo.mark_done(session, job_id=job_id, result_key=result_key)
         _notify(
-            session_factory,
+            factory,
             tenant_id=tenant_id,
             item_id=item_id,
             user_id=user_id,
@@ -219,10 +220,10 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
         )
     except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("export job %s : erreur inattendue", job_id)
-        with request_scoped_session(session_factory) as session:
+        with request_scoped_session(factory) as session:
             export_repo.mark_error(session, job_id=job_id, error=str(exc))
         _notify(
-            session_factory,
+            factory,
             tenant_id=tenant_id,
             item_id=item_id,
             user_id=user_id,
