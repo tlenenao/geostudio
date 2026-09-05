@@ -472,3 +472,46 @@ def test_rollback_refuses_a_stored_revision_whose_kind_diverges_from_the_item(en
     _as(app, creator)
     resp = client.post(f"/configs/{config_id}/rollback", json={"version": 2})
     assert resp.status_code == 400, resp.text
+
+
+def test_editor_share_without_domain_privilege_cannot_delete_a_map(env):
+    # SP-42, revue de la dernière passe de correctifs (point 6, Important) :
+    # les trois routes DELETE (/configs/{id}, /configs/by-item/{id},
+    # /items/{id}) ne consultaient que can()/_require_access(action="delete")
+    # — un Lecteur (0 privilège) à qui une map est partagée en "editor"
+    # obtient "editor" in roles => decide() autorise delete, sans jamais
+    # consulter maps.manage. _require_privilege_for_kind consulte déjà le
+    # kind ENREGISTRÉ (result.config) sur PUT — même garde requise ici.
+    from app.sharing.models import Group, GroupMember, ItemShare
+
+    app, client, creator, reader = env
+    _as(app, creator)
+    created = client.post("/configs", json={"title": "x", "config": _body("map")}).json()
+    config_id = created["id"]
+    item_id = created["itemId"]
+
+    Session = client.session_factory  # type: ignore[attr-defined]
+    with Session() as s:
+        group = Group(id="g1", tenant_id=creator.tenant_id, name="Editors", created_by=creator.id)
+        s.add(group)
+        s.flush()
+        s.add(GroupMember(group_id=group.id, user_id=reader.id, tenant_id=creator.tenant_id))
+        s.add(
+            ItemShare(
+                item_id=item_id, group_id=group.id, tenant_id=creator.tenant_id, role="editor"
+            )
+        )
+        s.commit()
+
+    _as(app, reader)
+    resp = client.delete(f"/configs/{config_id}")
+    assert resp.status_code == 403, resp.text
+    resp_by_item = client.delete(f"/configs/by-item/{item_id}")
+    assert resp_by_item.status_code == 403, resp_by_item.text
+    resp_item = client.delete(f"/items/{item_id}")
+    assert resp_item.status_code == 403, resp_item.text
+
+    # Le créateur (maps.manage) peut toujours supprimer — non régressé.
+    _as(app, creator)
+    resp_owner = client.delete(f"/items/{item_id}")
+    assert resp_owner.status_code == 204, resp_owner.text
