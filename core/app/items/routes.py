@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -31,8 +31,13 @@ def list_items(
     q: str | None = None,
     type: str | None = None,
     scope: str = "all",
-    page: int = 1,
-    pageSize: int = 12,
+    page: int = Query(1, ge=1),
+    # Pas de borne haute : shell/src/api/itemClient.ts appelle déjà cette
+    # route avec pageSize=200 (sélecteurs de sources tileset3d/terrain3d) —
+    # vérifié avant d'écrire ce correctif (piège n°3 : le fix suggéré par la
+    # falsification citait `Query(100, ge=1)` de features/routes.py comme
+    # précédent mais lui ajoutait un `le=100` que ce précédent n'a pas).
+    pageSize: int = Query(12, ge=1),
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ItemPage:

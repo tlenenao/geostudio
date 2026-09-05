@@ -7589,6 +7589,7 @@
             "required": false,
             "schema": {
               "default": 1,
+              "minimum": 1,
               "title": "Page",
               "type": "integer"
             }
@@ -7599,6 +7600,7 @@
             "required": false,
             "schema": {
               "default": 12,
+              "minimum": 1,
               "title": "Pagesize",
               "type": "integer"
             }
@@ -8593,6 +8595,7 @@
             "required": false,
             "schema": {
               "default": 1,
+              "minimum": 1,
               "title": "Page",
               "type": "integer"
             }
@@ -8603,6 +8606,7 @@
             "required": false,
             "schema": {
               "default": 12,
+              "minimum": 1,
               "title": "Pagesize",
               "type": "integer"
             }
