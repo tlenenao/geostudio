@@ -165,6 +165,49 @@ def test_create_upload_job_rejects_a_reader_without_data_manage(env):
     assert r.status_code == 403
 
 
+def test_create_upload_job_rejects_data_manage_alone_without_maps_manage(env):
+    # SP-42, revue de la dernière passe de correctifs (point 5, Important) :
+    # cette route exige data.manage (DDL réel, création de la collection
+    # cible) mais app.ingestion.importer::import_job crée AUSSI un
+    # Item(resource_type="map") + Config(kind="map") pour afficher le
+    # résultat — donc maps.manage selon app.configs.routes::_KIND_PRIVILEGE.
+    # Un rôle sur mesure porteur de data.manage SEUL (sans maps.manage,
+    # combinaison réelle : les deux rôles prédéfinis qui portent
+    # data.manage — Créateur, Admin — portent aussi maps.manage, mais rien
+    # n'empêche un rôle sur mesure de séparer les deux) obtenait donc 201 et
+    # laissait le worker créer la map sans jamais consulter ce second
+    # privilège.
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.users.repository import set_user_role
+
+    client, Session, tenant, alice, _deferred, _fake_s3 = env
+    with Session() as s:
+        role = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Data seul",
+            privileges=[Privilege.DATA_MANAGE.value],
+        )
+        set_user_role(
+            s, tenant_id=tenant.id, user_id=alice.id, role_id=role.id, role_slug=role.slug
+        )
+        s.commit()
+        role_id = role.id
+    alice.role_id = role_id
+    alice.is_admin = False
+
+    r = client.post(
+        "/uploads",
+        json={
+            "key": "default/abc-villes.geojson",
+            "filename": "villes.geojson",
+            "collectionTitle": "Villes",
+        },
+    )
+    assert r.status_code == 403
+
+
 def test_get_upload_job_cross_tenant_returns_404(env):
     # repo.get_job filters by tenant_id (app/ingestion/repository.py) — a job
     # created under one tenant must be invisible (404, not the job's real
