@@ -2184,6 +2184,8 @@ export interface components {
             thumbnailUrl: string | null;
             /** Title */
             title: string;
+            /** Updatedat */
+            updatedAt: string;
         };
         /** ItemUpdatePatch */
         ItemUpdatePatch: {

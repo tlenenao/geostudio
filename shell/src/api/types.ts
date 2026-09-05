@@ -25,6 +25,10 @@ export type Item = {
   owner: string;
   thumbnailUrl: string | null;
   date: string;
+  // SP-42 F-shell-api-07 : `date` reste `created_at` (rétrocompatibilité) ;
+  // `updatedAt` est le champ à lire pour un « Modifié » qui change
+  // réellement après une édition (core/app/items/repository.py::_to_read).
+  updatedAt?: string;
   configId: string | null;
   isPublished: boolean;
   slug?: string;

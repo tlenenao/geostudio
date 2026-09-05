@@ -95,7 +95,7 @@ export function ItemDetailPage({
                 <dt>Type</dt>
                 <dd>{RESOURCE_TYPE_LABELS[item.resourceType]}</dd>
                 <dt>Modifié</dt>
-                <dd>{item.date || "—"}</dd>
+                <dd>{item.updatedAt || "—"}</dd>
               </dl>
             </Panel>
           ),

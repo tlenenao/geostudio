@@ -324,7 +324,7 @@ export function VisualQueryWizardPage({
                   <dt>Type</dt>
                   <dd>{RESOURCE_TYPE_LABELS[existingDatasetItemQuery.data.resourceType]}</dd>
                   <dt>Modifié</dt>
-                  <dd>{existingDatasetItemQuery.data.date || "—"}</dd>
+                  <dd>{existingDatasetItemQuery.data.updatedAt || "—"}</dd>
                 </dl>
               )}
             </Panel>
