@@ -10,9 +10,10 @@ from app.admin_tools.tokens import mint_launch_token, mint_session_token
 from app.auth.dependency import get_current_user
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
+from app.roles.repository import create_role
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.models import User
-from app.users.repository import get_or_create_user
+from app.users.repository import get_or_create_user, set_user_role
 
 _SECRET = "test-admin-tools-secret-padding-0123456"
 
@@ -166,6 +167,35 @@ def test_verify_rejects_expired_session_cookie(env):
     client.cookies.set("gs_admin_session", expired)
     response = client.get("/admin-tools/verify")
     assert response.status_code == 403
+
+
+def test_verify_rejects_revoked_privilege(env):
+    # SP-42 / F-securite-surfaces-03 : verify_admin_tool_session ne faisait
+    # que décoder/vérifier la signature HMAC du cookie — aucune requête
+    # base, aucun rappel de require_privilege/has_privilege. Un admin dont
+    # le privilège settings.instance.manage est retiré EN COURS de session
+    # (30 min de validité) gardait un accès live aux consoles
+    # Martin/Titiler/Grafana jusqu'à expiration du cookie.
+    client, _use_as, admin_id, _member_id, session_factory = env
+    token = mint_session_token(sub=admin_id)
+    client.cookies.set("gs_admin_session", token)
+    assert client.get("/admin-tools/verify").status_code == 200
+
+    with session_factory() as s:
+        tenant = get_or_create_default_tenant(s)
+        low_priv_role = create_role(s, tenant_id=tenant.id, name="Sans privilège", privileges=[])
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=admin_id,
+            role_id=low_priv_role.id,
+            role_slug=low_priv_role.slug,
+        )
+        s.commit()
+
+    # Même cookie (jamais invalidé) : doit désormais échouer.
+    response = client.get("/admin-tools/verify")
+    assert response.status_code == 403, response.text
 
 
 def test_launch_allowed_for_custom_role_with_settings_instance_manage(env):
