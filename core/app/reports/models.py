@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -13,6 +13,12 @@ def _now() -> datetime:
 
 class ReportRun(Base):
     __tablename__ = "report_runs"
+    # cf. 0023_report_runs.py — jamais déclaré côté modèle avant SP-43
+    # Tâche 5 (trouvaille du comparateur de la Tâche 1, hors table du brief
+    # initial — ni ce fichier ni cette colonne ne portent de server_default
+    # manquant, mais mécanique et sûre : additive, correspond exactement à
+    # l'index déjà posé par la migration).
+    __table_args__ = (Index("ix_report_runs_tenant_id", "tenant_id", "id"),)
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
