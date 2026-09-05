@@ -200,6 +200,16 @@ def _materialize_reader(
 
 
 def _lock_down(conn: duckdb.DuckDBPyConnection) -> None:
+    # allowed_directories doit être posé AVANT enable_external_access=false :
+    # c'est la seule échappatoire documentée par DuckDB ("List of
+    # directories/prefixes that are ALWAYS allowed to be queried — even when
+    # enable_external_access is false"), sans laquelle _execute_qgis_transform
+    # ne peut plus écrire in.gpkg vers _QGIS_SCRATCH_ROOT après ce
+    # verrouillage (PermissionException réelle, jamais vue avant faute
+    # d'avoir exécuté ce chemin contre une connexion réellement verrouillée —
+    # cf. M14/REV-095). Périmètre volontairement limité au seul répertoire
+    # scratch partagé avec le sidecar QGIS, pas un accès externe généralisé.
+    conn.execute(f"SET allowed_directories = ['{_QGIS_SCRATCH_ROOT}']")
     conn.execute("SET enable_external_access = false")
     conn.execute("SET lock_configuration = true")
 
@@ -349,7 +359,16 @@ def _materialize_qgis_output(conn, *, out_path: str, view_name: str, algorithm_i
     _materialize_reader fournit déjà pour les readers (cf. en-tête du
     module). Un ST_Read sans aucune colonne de type GEOMETRY (algorithme dont
     la sortie n'est pas une couche vecteur) lève une PipelineRuntimeError
-    propre, jamais un KeyError/IndexError silencieux."""
+    propre, jamais un KeyError/IndexError silencieux.
+
+    "fid" est systématiquement éliminée : c'est la colonne d'identifiant de
+    ligne imposée par la spec OGC GeoPackage elle-même (pas une convention
+    GDAL parmi d'autres) sur TOUT fichier .gpkg, y compris pour des
+    algorithmes qui ne préservent aucun identifiant source (ex.
+    native:dissolve) — vérifié empiriquement : un writer.collection en aval
+    la rejette comme "unknown property 'fid'", jamais rencontré par les
+    writers qui ne valident pas de schéma (export CSV), d'où son invisibilité
+    jusqu'ici contre un sidecar réel."""
     probe_cols = conn.execute(f"SELECT * FROM ST_Read('{out_path}') LIMIT 0").description
     geom_cols = [d[0] for d in probe_cols if d[1].id == "geometry"]
     if not geom_cols:
@@ -361,7 +380,7 @@ def _materialize_qgis_output(conn, *, out_path: str, view_name: str, algorithm_i
     # en cas de pluralité inattendue, la première suffit à ne jamais perdre
     # la géométrie silencieusement — cas non rencontré dans l'allowlist SP-15d.
     geom_col = geom_cols[0]
-    other_cols = [d[0] for d in probe_cols if d[0] != geom_col]
+    other_cols = [d[0] for d in probe_cols if d[0] != geom_col and d[0] != "fid"]
     select_list = ", ".join([_qi(c) for c in other_cols] + [f"{_qi(geom_col)} AS geometry"])
     conn.execute(
         f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT {select_list} FROM ST_Read('{out_path}')"

@@ -1938,6 +1938,66 @@ def test_execute_qgis_transform_raises_clean_error_on_non_json_error_body(tmp_pa
         )
 
 
+def test_execute_qgis_transform_writes_input_after_a_real_lock_down(tmp_path, monkeypatch):
+    """Regression, found running the 5 @pytest.mark.qgis tests for real for
+    the first time (M14/REV-095) : every other test in this file builds its
+    connection via _make_qgis_input_connection(), which never calls
+    _lock_down() — so none of them ever exercised the real interaction
+    between _prepare()'s SET enable_external_access=false and
+    _execute_qgis_transform's COPY (...) TO '{in_path}' write. Against a real
+    locked-down connection, that COPY raised a DuckDB PermissionException
+    ("file system operations are disabled by configuration"): every real
+    pipeline using transform.qgis was broken. Also covers the sibling bug:
+    "fid" is the row-id column the GeoPackage spec mandates on every .gpkg a
+    real qgis_process writes (even native:dissolve's, which preserves no
+    source id) — only a schema-validating writer (writer.collection, not
+    writer.export) rejects it, which is why it stayed invisible too."""
+    from app.configs.schemas import PipelineNode
+
+    monkeypatch.setattr(runtime, "_QGIS_SCRATCH_ROOT", str(tmp_path))
+    conn = _make_qgis_input_connection()
+    runtime._lock_down(conn)  # the real lockdown every other test here skips
+
+    def _fake_post(url, *, json, timeout):
+        out_path = json["inputs"]["OUTPUT"]
+        # Simule ce qu'un vrai sidecar qgis-worker écrit sur le volume
+        # scratch partagé, sur une connexion DuckDB séparée, non verrouillée
+        # — comme le process QGIS réel, hors de portée de la connexion
+        # `conn` du pipeline. "fid" n'est jamais fourni explicitement : GDAL
+        # l'ajoute lui-même (vérifié empiriquement) dès qu'on écrit un GPKG
+        # via COPY ... FORMAT GDAL, exactement ce qu'un writer.collection
+        # verrait d'un vrai qgis_process.
+        writer_conn = runtime.open_connection(
+            endpoint_url="http://localhost:9000", access_key="x", secret_key="y"
+        )
+        writer_conn.execute(
+            "COPY (SELECT 'a' AS region, ST_Point(1.0, 2.0) AS geom) "
+            f"TO '{out_path}' WITH (FORMAT GDAL, DRIVER 'GPKG')"
+        )
+        return _FakeQgisWorkerResponse(200, json_body={"results": {"OUTPUT": out_path}})
+
+    monkeypatch.setattr(runtime.httpx, "post", _fake_post)
+    node = PipelineNode(
+        id="t1",
+        kind="transform",
+        op="transform.qgis",
+        params={"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
+    )
+    runtime._execute_qgis_transform(
+        conn,
+        node,
+        input_view="input_view",
+        input_srid=4326,
+        qgis_worker_url="http://fake-qgis-worker",
+        qgis_worker_timeout_seconds=5,
+        scratch_run_id="run3",
+    )
+    cols = [d[0] for d in conn.execute("SELECT * FROM node_t1 LIMIT 0").description]
+    assert "fid" not in cols
+    assert "region" in cols
+    assert "geometry" in cols
+
+
 @pytest.mark.qgis
 def test_execute_qgis_transform_computes_centroids(tmp_path, monkeypatch, qgis_worker_url):
     """reader.collection (2 polygons) -> transform.qgis(native:centroids) ->
