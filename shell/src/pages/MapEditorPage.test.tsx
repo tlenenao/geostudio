@@ -4,8 +4,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { ItemClient, MapConfig } from "../api/types";
+import type { Item, ItemClient, MapConfig } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
+import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 import { mapInstances } from "../test/MockMaplibreMap";
 import { overlayInstances } from "../test/MockDeckgl";
 
@@ -73,11 +74,35 @@ const config: MapConfig = {
   layers: [{ id: "a", title: "Couche A", visible: true, kind: "feature", url: "u" }],
 };
 
+// Item par défaut de la carte "77" (seul pk utilisé par ce fichier) :
+// permissions.write=true, comme avant l'introduction du garde
+// SP-42/F-shell-pages-04 (aucun test existant n'affirme sur des permissions
+// restreintes — celui qui le fait le surcharge explicitement).
+const OWNED_MAP_ITEM: Item = {
+  pk: "77",
+  resourceType: "map",
+  title: "Carte",
+  abstract: "",
+  owner: "alice",
+  thumbnailUrl: null,
+  date: "2026-01-01",
+  configId: "cfg-77",
+  isPublished: false,
+  keywords: [],
+  permissions: OWNER_PERMISSIONS,
+  license: "",
+  language: "fr",
+};
+
 function renderEditor(client: Partial<ItemClient>, initialEntries: string[] = ["/maps/77"]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const merged: Partial<ItemClient> = {
+    getItem: vi.fn().mockResolvedValue(OWNED_MAP_ITEM),
+    ...client,
+  };
   return render(
     <QueryClientProvider client={qc}>
-      <ItemClientProvider client={client as ItemClient}>
+      <ItemClientProvider client={merged as ItemClient}>
         <MemoryRouter initialEntries={initialEntries}>
           <MapEditorPage pk="77" />
         </MemoryRouter>
@@ -237,4 +262,17 @@ test("sous viewport étroit, affiche trois onglets Couches/Carte/Inspecter avec 
   expect(tabs.map((t) => t.textContent)).toEqual(["Couches", "Carte", "Inspecter"]);
   const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
   expect(activeTab).toHaveTextContent("Carte");
+});
+
+test("SP-42/F-shell-pages-04 : verrouille Enregistrer quand permissions.write est false", async () => {
+  renderEditor({
+    getItem: vi.fn().mockResolvedValue({ ...OWNED_MAP_ITEM, permissions: READ_ONLY_PERMISSIONS }),
+    getMapConfig: vi.fn().mockResolvedValue(config),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  const saveButton = await screen.findByRole("button", { name: "Enregistrer" });
+  expect(saveButton).toBeDisabled();
+  expect(
+    screen.getByText("Modification réservée aux éditeurs de cet élément."),
+  ).toBeInTheDocument();
 });

@@ -12,12 +12,14 @@ import { useAuth } from "../auth/useAuth";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { ReportSchedulePayload } from "../api/types";
 import { RESOURCE_TYPE_LABELS } from "../api/resourceTypes";
+import { hasPermission } from "../auth/permissions";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { ReportScheduleEditor } from "../builder/report/ReportScheduleEditor";
 import { ReportRunPanel } from "../builder/report/ReportRunPanel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { t } from "../i18n";
 
 function defaultPayload(bookmarkItemId: string): ReportSchedulePayload {
   return {
@@ -45,6 +47,10 @@ export function ReportEditPage({
   const configQuery = useReportScheduleConfig(pk ?? "", { enabled: pk !== null });
   const createReport = useCreateReportSchedule();
   const saveReport = useSaveReportSchedule(pk ?? "");
+  // SP-42/F-shell-pages-04 : cf. commentaire jumeau sur DatasetEditPage.tsx —
+  // même doctrine, même résidu documenté. `pk === null` = brouillon jamais
+  // encore créé, rien à verrouiller.
+  const readOnly = pk !== null && !hasPermission(itemQuery.data, "write");
 
   const [draft, setDraft] = useState<ReportSchedulePayload>(
     defaultPayload(initialBookmarkItemId ?? ""),
@@ -132,10 +138,11 @@ export function ReportEditPage({
                   size="sm"
                   className="w-fit"
                   onClick={() => void onSave()}
-                  disabled={createReport.isPending || saveReport.isPending}
+                  disabled={createReport.isPending || saveReport.isPending || readOnly}
                 >
                   Enregistrer
                 </Button>
+                {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
                 {saveError && (
                   <p role="alert" className="text-sm text-danger">
                     {saveError}

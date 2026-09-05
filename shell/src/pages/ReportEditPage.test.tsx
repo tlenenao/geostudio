@@ -5,7 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Item, ItemClient, ReportSchedulePayload } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
-import { OWNER_PERMISSIONS } from "../auth/permissions";
+import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 import { ReportEditPage } from "./ReportEditPage";
 
 // ReportEditPage calls useAuth() for `username` on create — same mock as
@@ -122,4 +122,22 @@ test("sous viewport étroit, affiche trois onglets Catalogue/Rapport/Réglages a
   expect(tabs.map((t) => t.textContent)).toEqual(["Catalogue", "Rapport", "Réglages"]);
   const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
   expect(activeTab).toHaveTextContent("Rapport");
+});
+
+test("persisted mode: verrouille Enregistrer quand permissions.write est false (SP-42/F-shell-pages-04)", async () => {
+  const payload: ReportSchedulePayload = {
+    bookmarkItemId: "bm-1",
+    refreshPolicy: { enabled: true, cron: "0 8 * * MON" },
+    channels: [{ kind: "webhook", url: "" }],
+  };
+  renderPage("r-1", {
+    getItem: vi.fn().mockResolvedValue({ ...item, permissions: READ_ONLY_PERMISSIONS }),
+    getReportScheduleConfig: () => Promise.resolve(payload),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+  const saveButton = await screen.findByRole("button", { name: "Enregistrer" });
+  expect(saveButton).toBeDisabled();
+  expect(
+    screen.getByText("Modification réservée aux éditeurs de cet élément."),
+  ).toBeInTheDocument();
 });

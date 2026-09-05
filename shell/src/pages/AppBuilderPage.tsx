@@ -6,11 +6,13 @@ import {
   useAppConfig,
   useCreateDataset,
   useInstanceInfo,
+  useItem,
   useSaveApp,
   useUploadThumbnail,
 } from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { PrintLayoutConfig, RenderMode, WidgetItem } from "../api/types";
+import { hasPermission } from "../auth/permissions";
 import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppExportPanel } from "../builder/appexport/AppExportPanel";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
@@ -37,6 +39,7 @@ import { getConfigExpressionErrors } from "../builder/configExpressionErrors";
 import { Button } from "../ui/kit/Button";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useAuth } from "../auth/useAuth";
+import { t } from "../i18n";
 
 registerBuiltinWidgets();
 registerCounterExampleWidget();
@@ -46,6 +49,11 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const client = useItemClient();
   const query = useAppConfig(pk);
   const save = useSaveApp(pk);
+  const itemQuery = useItem(pk);
+  // SP-42/F-shell-pages-04 : cf. commentaire jumeau sur DatasetEditPage.tsx —
+  // même doctrine, même résidu documenté (permissions.write incomplet vs
+  // garde de privilège de domaine).
+  const readOnly = !hasPermission(itemQuery.data, "write");
   const thumbnail = useUploadThumbnail(pk);
   const instanceQuery = useInstanceInfo();
   const appExportEnabled = instanceQuery.data?.appExportEnabled === true;
@@ -442,11 +450,12 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                   <Button
                     size="sm"
                     className="w-fit"
-                    disabled={save.isPending || expressionErrors.length > 0}
+                    disabled={save.isPending || expressionErrors.length > 0 || readOnly}
                     onClick={() => save.mutate(draft)}
                   >
                     Enregistrer
                   </Button>
+                  {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
                   {expressionErrors.length > 0 && (
                     <span
                       role="alert"

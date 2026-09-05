@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useCreatePipeline,
+  useItem,
   usePipelineConfig,
   usePipelineOps,
   useSavePipeline,
@@ -16,6 +17,7 @@ import type {
   PipelineRefreshPolicy,
   PipelineRun,
 } from "../api/types";
+import { hasPermission } from "../auth/permissions";
 import { Button } from "../ui/kit/Button";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { PipelineCanvas } from "../builder/pipeline/PipelineCanvas";
@@ -27,6 +29,7 @@ import { PipelineScheduleEditor } from "../builder/pipeline/PipelineScheduleEdit
 import { genNodeId, insertNodeOnEdge } from "../builder/pipeline/graphOps";
 import { isPipelineValid, validatePipelineGraphLocally } from "../builder/pipeline/validation";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { t } from "../i18n";
 
 const EMPTY_PAYLOAD: PipelinePayload = { nodes: [], edges: [] };
 
@@ -46,8 +49,14 @@ export function PipelineBuilderPage({
   const client = useItemClient();
   const opsQuery = usePipelineOps();
   const configQuery = usePipelineConfig(pk ?? "", { enabled: pk !== null });
+  const itemQuery = useItem(pk ?? "", { enabled: pk !== null });
   const createPipeline = useCreatePipeline();
   const savePipeline = useSavePipeline(pk ?? "");
+  // SP-42/F-shell-pages-04 : cf. commentaire jumeau sur DatasetEditPage.tsx —
+  // même doctrine, même résidu documenté. `pk === null` = brouillon jamais
+  // encore créé, rien à verrouiller (la garde de création est un sujet
+  // distinct, F-shell-pages-01/F-securite-autorisation-01).
+  const readOnly = pk !== null && !hasPermission(itemQuery.data, "write");
 
   const [draft, setDraft] = useState<PipelinePayload>(EMPTY_PAYLOAD);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -207,10 +216,13 @@ export function PipelineBuilderPage({
                   size="sm"
                   className="w-fit"
                   onClick={() => void onSave()}
-                  disabled={!valid || createPipeline.isPending || savePipeline.isPending}
+                  disabled={
+                    !valid || createPipeline.isPending || savePipeline.isPending || readOnly
+                  }
                 >
                   Enregistrer
                 </Button>
+                {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
                 {saveError && (
                   <p role="alert" className="text-xs text-danger">
                     {saveError}
