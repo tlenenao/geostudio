@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections import repository as repo
+from app.collections.ddl import TenantColumnMismatch
 from app.collections.introspection import (
     Introspector,
     TableNotFound,
@@ -200,7 +201,10 @@ def register_collection(
         raise HTTPException(status_code=400, detail="table not found in schema public") from exc
     except UnsupportedTable as exc:
         raise HTTPException(status_code=400, detail=exc.reason) from exc
-    apply_ddl(session, info.table_name)
+    try:
+        apply_ddl(session, info.table_name, tenant_id=user.tenant_id)
+    except TenantColumnMismatch as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     col = repo.create_collection(
         session,
         tenant_id=user.tenant_id,

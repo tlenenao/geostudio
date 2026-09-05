@@ -65,7 +65,7 @@ def env():
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
     app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (
-        lambda session, table: None
+        lambda session, table, tenant_id=None: None
     )
     app.dependency_overrides[features_routes.get_rls_scope] = lambda: features_routes.null_rls_scope
     # ST_EstimatedExtent n'existe pas sur SQLite : stub d'emprise.

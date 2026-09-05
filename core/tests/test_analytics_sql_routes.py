@@ -99,7 +99,7 @@ def _build_env(tmp_path, *, with_analyst=False):
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
     app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (
-        lambda session, table: None
+        lambda session, table, tenant_id=None: None
     )
 
     def fake_duckdb_factory():

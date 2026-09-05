@@ -65,7 +65,7 @@ def env():
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
     ddl_calls: list[str] = []
     app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (
-        lambda session, table: ddl_calls.append(table)
+        lambda session, table, tenant_id=None: ddl_calls.append(table)
     )
     client = TestClient(app)
     return app, client, Session, admin, regular, ddl_calls
