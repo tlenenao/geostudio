@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
+import { expectAriaWired } from "../test/expectAriaWired";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { HarvestSourcesAdminPage } from "./HarvestSourcesAdminPage";
@@ -78,7 +79,10 @@ test("admin creates a STAC source and triggers a manual run", async () => {
     }),
   );
   render(<Harness />);
-  await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
+  const addButton = await screen.findByRole("button", { name: "Ajouter une source" });
+  expectAriaWired(addButton, addButton.getAttribute("aria-controls")!, false);
+  await userEvent.click(addButton);
+  expectAriaWired(addButton, addButton.getAttribute("aria-controls")!, true);
   await userEvent.type(await screen.findByLabelText("URL"), "https://stac.example.com/collections");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(created).not.toBeNull());
@@ -124,8 +128,11 @@ test("edits a source via the row action", async () => {
     }),
   );
   render(<Harness />);
-  await userEvent.click(await screen.findByRole("button", { name: "Éditer" }));
+  const editButton = await screen.findByRole("button", { name: "Éditer" });
+  expectAriaWired(editButton, editButton.getAttribute("aria-controls")!, false);
+  await userEvent.click(editButton);
   const urlInput = await screen.findByLabelText("URL");
+  expectAriaWired(editButton, editButton.getAttribute("aria-controls")!, true);
   await userEvent.clear(urlInput);
   await userEvent.type(urlInput, "https://a (édité)");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
