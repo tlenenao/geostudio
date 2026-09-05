@@ -40,8 +40,18 @@ class Collection(Base):
     # [{"key": str, "label": str}] — champs `attachment` déclarés (chantier
     # 4.12) ; pas de colonne SQL réelle par champ, cf.
     # docs/superpowers/specs/2026-09-04-sp40-pieces-jointes-design.md §3.1.
+    # server_default en sa.text(...) avec le cast explicite, pas une chaîne
+    # nue : le type Postgres `json` (par opposition à `jsonb`) n'a pas
+    # d'opérateur `=`, et le comparateur PG d'Alembic (compare_server_default,
+    # alembic/ddl/postgresql.py) exécute un vrai `SELECT ancien = nouveau`
+    # dès que les deux rendus textuels ne sont pas identiques — une chaîne
+    # nue "[]" y est rendue sans le "::json" que Postgres restitue toujours
+    # à la réflexion, ce qui déclenche justement cette comparaison et
+    # provoque `UndefinedFunction: operator does not exist: json = unknown`.
+    # Avec le texte déjà casté, le rendu correspond exactement à la valeur
+    # réfléchie et le comparateur sort avant d'exécuter le moindre SQL.
     attachment_fields: Mapped[list] = mapped_column(
-        JSON, default=list, nullable=False, server_default="[]"
+        JSON, default=list, nullable=False, server_default=sa.text("'[]'::json")
     )
     # Métadonnées ouvertes (chantier 4.9, docs/superpowers/specs/
     # 2026-09-04-sp41-metadonnees-licence-design.md §1.1). Convention
