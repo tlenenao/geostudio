@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect, type Page } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCore, mockItemDetail } from "./mocks";
 
 // SP-14b — E2E du contexte analytique global (cross-filter, emprise, plage
 // temporelle, restauration URL, non-régression). Chaque test appelle
@@ -248,21 +248,9 @@ test("map extent reactivity refetches a reactsToExtent dataset after the debounc
       },
     });
   });
-  await page.route("https://core.test/items/dataset-1", async (route) => {
-    await route.fulfill({
-      json: {
-        pk: "dataset-1",
-        resourceType: "dataset",
-        title: "Géo partagé",
-        abstract: "",
-        owner: "mockuser",
-        thumbnailUrl: null,
-        date: "2026-01-01",
-        configId: "cfg-dataset",
-        isPublished: false,
-        keywords: [],
-      },
-    });
+  await mockItemDetail(page, "dataset-1", {
+    title: "Géo partagé",
+    configId: "cfg-dataset",
   });
 
   // 1. Créer le dataset (dialog) et régler reactsToExtent via DatasetEditPage.
@@ -397,21 +385,9 @@ test("a date-range widget filters a timeField-bound dataset", async ({ page }) =
       },
     });
   });
-  await page.route("https://core.test/items/dataset-1", async (route) => {
-    await route.fulfill({
-      json: {
-        pk: "dataset-1",
-        resourceType: "dataset",
-        title: "Événements partagés",
-        abstract: "",
-        owner: "mockuser",
-        thumbnailUrl: null,
-        date: "2026-01-01",
-        configId: "cfg-dataset",
-        isPublished: false,
-        keywords: [],
-      },
-    });
+  await mockItemDetail(page, "dataset-1", {
+    title: "Événements partagés",
+    configId: "cfg-dataset",
   });
 
   await setupTimeFieldDatasetAndApp(page);
@@ -512,21 +488,9 @@ test("the analytics context in the URL restores on reload", async ({ page }) => 
       },
     });
   });
-  await page.route("https://core.test/items/dataset-1", async (route) => {
-    await route.fulfill({
-      json: {
-        pk: "dataset-1",
-        resourceType: "dataset",
-        title: "Événements partagés",
-        abstract: "",
-        owner: "mockuser",
-        thumbnailUrl: null,
-        date: "2026-01-01",
-        configId: "cfg-dataset",
-        isPublished: false,
-        keywords: [],
-      },
-    });
+  await mockItemDetail(page, "dataset-1", {
+    title: "Événements partagés",
+    configId: "cfg-dataset",
   });
 
   await setupTimeFieldDatasetAndApp(page);
@@ -1306,21 +1270,9 @@ test("a KPI shows a delta badge against the reference period", async ({ page }) 
       },
     });
   });
-  await page.route("https://core.test/items/dataset-1", async (route) => {
-    await route.fulfill({
-      json: {
-        pk: "dataset-1",
-        resourceType: "dataset",
-        title: "Événements partagés",
-        abstract: "",
-        owner: "mockuser",
-        thumbnailUrl: null,
-        date: "2026-01-01",
-        configId: "cfg-dataset",
-        isPublished: false,
-        keywords: [],
-      },
-    });
+  await mockItemDetail(page, "dataset-1", {
+    title: "Événements partagés",
+    configId: "cfg-dataset",
   });
 
   await page.goto("/");
@@ -1522,21 +1474,9 @@ test("chart compare-periods mode renders two aligned series", async ({ page }) =
       },
     });
   });
-  await page.route("https://core.test/items/dataset-1", async (route) => {
-    await route.fulfill({
-      json: {
-        pk: "dataset-1",
-        resourceType: "dataset",
-        title: "Événements partagés",
-        abstract: "",
-        owner: "mockuser",
-        thumbnailUrl: null,
-        date: "2026-01-01",
-        configId: "cfg-dataset",
-        isPublished: false,
-        keywords: [],
-      },
-    });
+  await mockItemDetail(page, "dataset-1", {
+    title: "Événements partagés",
+    configId: "cfg-dataset",
   });
 
   await page.goto("/");
@@ -1654,21 +1594,9 @@ test("indicator and chart behave exactly as before without the new SP-14e props,
       },
     });
   });
-  await page.route("https://core.test/items/dataset-1", async (route) => {
-    await route.fulfill({
-      json: {
-        pk: "dataset-1",
-        resourceType: "dataset",
-        title: "Événements partagés",
-        abstract: "",
-        owner: "mockuser",
-        thumbnailUrl: null,
-        date: "2026-01-01",
-        configId: "cfg-dataset",
-        isPublished: false,
-        keywords: [],
-      },
-    });
+  await mockItemDetail(page, "dataset-1", {
+    title: "Événements partagés",
+    configId: "cfg-dataset",
   });
 
   await page.goto("/");
@@ -2855,6 +2783,7 @@ test("a spatial cross-filter link propagates a bbox from one dataset's Table cli
         configId: `cfg-${id}`,
         isPublished: false,
         keywords: [],
+        permissions: { read: true, write: true, delete: true, share: true },
       },
     });
   });

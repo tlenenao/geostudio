@@ -124,6 +124,37 @@ export function mockMe(page: Page, overrides: Partial<typeof DEFAULT_ME> = {}) {
   });
 }
 
+// Fixture canonique de GET /items/{pk} — un vrai cœur renvoie TOUJOURS un
+// bloc `permissions` (SP-29a), jamais absent. Sans ce défaut par défaut, un
+// mock d'item construit à la main sert une forme que le cœur ne produit
+// jamais dès qu'une page consomme `hasPermission(item, ...)` — classe de
+// défaut documentée F-tests-06 (revue SP-42), qui a cassé 8 tests E2E dès
+// que DatasetEditPage a gagné un tel garde. Défaut "propriétaire" (les
+// quatre permissions à true) : les specs qui veulent un rôle restreint
+// passent `overrides.permissions`.
+const DEFAULT_ITEM_PERMISSIONS = { read: true, write: true, delete: true, share: true };
+
+export function mockItemDetail(page: Page, pk: string, overrides: Record<string, unknown> = {}) {
+  return page.route(`https://core.test/items/${pk}`, async (route) => {
+    await route.fulfill({
+      json: {
+        pk,
+        resourceType: "dataset",
+        title: "",
+        abstract: "",
+        owner: "mockuser",
+        thumbnailUrl: null,
+        date: "2026-01-01",
+        configId: null,
+        isPublished: false,
+        keywords: [],
+        permissions: DEFAULT_ITEM_PERMISSIONS,
+        ...overrides,
+      },
+    });
+  });
+}
+
 // Quatre profils canoniques (Task 17, plan roles-privileges-implementation) —
 // mêmes valeurs que BUILT_IN_ROLE_PRIVILEGES (core/app/roles/privileges.py)
 // et les fixtures admin/creator/analyst/reader de
