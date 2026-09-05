@@ -3,8 +3,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
-import type { AppConfig, ItemClient } from "../api/types";
+import type { AppConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
+import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 import { AppBuilderPage } from "./AppBuilderPage";
 import type { AuthState } from "../auth/useAuth";
 
@@ -53,11 +54,35 @@ beforeEach(() => {
   stubMatchMedia(false);
 });
 
+// Item par défaut de l'app "5" (seul pk utilisé par ce fichier) :
+// permissions.write=true, comme avant l'introduction du garde
+// SP-42/F-shell-pages-04 (aucun test existant n'affirme sur des permissions
+// restreintes — celui qui le fait le surcharge explicitement).
+const OWNED_APP_ITEM: Item = {
+  pk: "5",
+  resourceType: "app",
+  title: "App",
+  abstract: "",
+  owner: "tanguy",
+  thumbnailUrl: null,
+  date: "2026-01-01",
+  configId: "cfg-5",
+  isPublished: false,
+  keywords: [],
+  permissions: OWNER_PERMISSIONS,
+  license: "",
+  language: "fr",
+};
+
 function renderPage(client: Partial<ItemClient>) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const merged: Partial<ItemClient> = {
+    getItem: vi.fn().mockResolvedValue(OWNED_APP_ITEM),
+    ...client,
+  };
   return render(
     <QueryClientProvider client={qc}>
-      <ItemClientProvider client={client as ItemClient}>
+      <ItemClientProvider client={merged as ItemClient}>
         <AppBuilderPage pk="5" />
       </ItemClientProvider>
     </QueryClientProvider>,
@@ -519,4 +544,16 @@ test("sous viewport étroit, affiche trois onglets Structure/Canevas/Propriété
   expect(tabs.map((t) => t.textContent)).toEqual(["Structure", "Canevas", "Propriétés"]);
   const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
   expect(activeTab).toHaveTextContent("Canevas");
+});
+
+test("SP-42/F-shell-pages-04 : verrouille Enregistrer quand permissions.write est false", async () => {
+  renderPage({
+    getItem: vi.fn().mockResolvedValue({ ...OWNED_APP_ITEM, permissions: READ_ONLY_PERMISSIONS }),
+    getAppConfig: vi.fn().mockResolvedValue(config),
+  });
+  const saveButton = await screen.findByRole("button", { name: "Enregistrer" });
+  expect(saveButton).toBeDisabled();
+  expect(
+    screen.getByText("Modification réservée aux éditeurs de cet élément."),
+  ).toBeInTheDocument();
 });

@@ -4,8 +4,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { ItemClient, PipelineOpsCatalog, PipelinePayload } from "../api/types";
+import type { Item, ItemClient, PipelineOpsCatalog, PipelinePayload } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
+import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 import { PipelineBuilderPage } from "./PipelineBuilderPage";
 
 // PipelineBuilderPage renders PipelineNodeInspector -> PipelinePreviewPanel, which can mount
@@ -89,12 +90,34 @@ const CATALOG: PipelineOpsCatalog = {
   },
 };
 
+// Item par défaut d'un pipeline persisté (`pk="p-1"`, seul utilisé par les
+// tests "persisted mode" de ce fichier) : permissions.write=true, comme
+// avant l'introduction du garde SP-42/F-shell-pages-04 (aucun de ces tests
+// n'affirme sur des permissions restreintes — celui qui le fait le
+// surcharge explicitement via `overrides`).
+const OWNED_PIPELINE_ITEM: Item = {
+  pk: "p-1",
+  resourceType: "pipeline",
+  title: "Nettoyer villes",
+  abstract: "",
+  owner: "alice",
+  thumbnailUrl: null,
+  date: "2026-01-01",
+  configId: "cfg-p1",
+  isPublished: false,
+  keywords: [],
+  permissions: OWNER_PERMISSIONS,
+  license: "",
+  language: "fr",
+};
+
 function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client: Partial<ItemClient> = {
     getPipelineOps: () => Promise.resolve(CATALOG),
     listCollections: () => Promise.resolve([]),
     getPipelineRuns: vi.fn().mockResolvedValue([]),
+    getItem: vi.fn().mockResolvedValue(OWNED_PIPELINE_ITEM),
     ...overrides,
   };
   render(
@@ -359,4 +382,18 @@ test("sous viewport étroit, affiche trois onglets Étapes/Canevas/Propriétés 
   expect(tabs.map((t) => t.textContent)).toEqual(["Étapes", "Canevas", "Propriétés"]);
   const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
   expect(activeTab).toHaveTextContent("Canevas");
+});
+
+test("persisted mode: verrouille Enregistrer quand permissions.write est false (SP-42/F-shell-pages-04)", async () => {
+  renderPage("p-1", {
+    getItem: vi
+      .fn()
+      .mockResolvedValue({ ...OWNED_PIPELINE_ITEM, permissions: READ_ONLY_PERMISSIONS }),
+  });
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  const saveButton = screen.getByRole("button", { name: "Enregistrer" });
+  expect(saveButton).toBeDisabled();
+  expect(
+    screen.getByText("Modification réservée aux éditeurs de cet élément."),
+  ).toBeInTheDocument();
 });

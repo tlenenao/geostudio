@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef, useState } from "react";
-import { useInstanceInfo, useMapConfig, useSaveMap } from "../api/hooks";
+import { useInstanceInfo, useItem, useMapConfig, useSaveMap } from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { MapConfig, MapLayer, MapTerrainConfig, PrintLayoutConfig } from "../api/types";
+import { hasPermission } from "../auth/permissions";
 import { MapView, type MapViewHandle } from "../map/MapView";
 import { LayersPanel } from "../map/LayersPanel";
 import { BasemapSelect } from "../map/BasemapSelect";
@@ -15,11 +16,17 @@ import { Button } from "../ui/kit/Button";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useIsExportRender } from "../shell/useIsExportRender";
 import { markExportReady } from "../shell/exportReady";
+import { t } from "../i18n";
 
 export function MapEditorPage({ pk }: { pk: string }) {
   const client = useItemClient();
   const query = useMapConfig(pk);
   const save = useSaveMap(pk);
+  const itemQuery = useItem(pk);
+  // SP-42/F-shell-pages-04 : cf. commentaire jumeau sur DatasetEditPage.tsx —
+  // même doctrine, même résidu documenté (permissions.write incomplet vs
+  // garde de privilège de domaine).
+  const readOnly = !hasPermission(itemQuery.data, "write");
   const [draft, setDraft] = useState<MapConfig | null>(null);
   const mapViewRef = useRef<MapViewHandle>(null);
   const isExportRender = useIsExportRender();
@@ -159,11 +166,12 @@ export function MapEditorPage({ pk }: { pk: string }) {
               <Button
                 size="sm"
                 className="w-fit"
-                disabled={save.isPending}
+                disabled={save.isPending || readOnly}
                 onClick={() => save.mutate(draft)}
               >
                 Enregistrer
               </Button>
+              {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
               {save.isError && (
                 <p role="alert" className="text-sm text-danger">
                   Échec de l'enregistrement.
