@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime
 
+import sqlalchemy as sa
 from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
@@ -31,5 +32,7 @@ class Extension(Base):
     actions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     default_size: Mapped[dict] = mapped_column(JSON, nullable=False)
     permissions: Mapped[dict] = mapped_column(JSON, nullable=False)
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False, server_default=sa.true()
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
