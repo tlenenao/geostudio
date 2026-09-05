@@ -14,21 +14,18 @@ avec des droits élevés."""
 import logging
 import os
 
-from sqlalchemy import select
-
 from app.alerts.notify import NotifyError, send_email, send_webhook
 from app.audit.writer import write_audit
 from app.auth.dependency import is_export_enabled, is_read_only_mode
 from app.configs import repository as configs_repo
 from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook
-from app.db import make_engine, make_session_factory, request_scoped_session
+from app.db import request_scoped_session
 from app.export import repository as export_repo
 from app.export.jobs import render_export_task, s3_client_from_env
 from app.ingestion.storage import generate_presigned_get_url
 from app.items import repository as items_repo
-from app.items.models import Item
 from app.jobs import app
-from app.notifications import repository as notifications_repo
+from app.jobs.common import notify_best_effort, resolve_owner_user, session_factory
 from app.reports import repository as reports_repo
 from app.reports.ctx import encode_analytics_context
 from app.sharing.authorization import can
@@ -42,20 +39,15 @@ class ReportTriggerError(Exception):
     toujours transformé en entrée audit_log, jamais un plantage du sweep."""
 
 
-def _session_factory():
-    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
-    return make_session_factory(engine)
-
-
 def _owner_user(session, *, tenant_id: str, item_id: str) -> User:
-    owner_id = session.execute(
-        select(Item.owner_id).where(Item.id == item_id, Item.tenant_id == tenant_id)
-    ).scalar_one_or_none()
-    if owner_id is None:
-        raise ReportTriggerError(f"report schedule '{item_id}' not found")
-    user = session.get(User, owner_id)
-    assert user is not None
-    return user
+    # SP-43 Tâche 6 : corps migré vers app.jobs.common.resolve_owner_user
+    # (identique) ; ce thin wrapper ne fait que reconvertir son LookupError
+    # générique en ReportTriggerError, pour ne changer aucun comportement
+    # observable des appelants existants (_trigger_due_reports, _notify).
+    try:
+        return resolve_owner_user(session, tenant_id=tenant_id, item_id=item_id)
+    except LookupError as exc:
+        raise ReportTriggerError(str(exc)) from exc
 
 
 def _audit_trigger_failure(session, *, tenant_id: str, item_id: str, error: str) -> None:
@@ -97,31 +89,39 @@ def _notify(
     app.export.jobs._notify / app.appexport.jobs._notify /
     app.ingestion.tasks._notify) rend les deux impossibles : son
     commit/rollback est local à cette session, jamais à celle de l'appelant,
-    qui a déjà committé avant cet appel."""
+    qui a déjà committé avant cet appel.
+
+    SP-43 Tâche 6 : l'écriture proprement dite (session isolée, commit,
+    avaler toute exception) est désormais déléguée à
+    app.jobs.common.notify_best_effort — cette fonction ne garde que la
+    résolution owner+titre propre au domaine report, elle-même protégée par
+    son propre try/except (best-effort couvrant AUSSI ReportTriggerError :
+    propriétaire introuvable — item supprimé entre l'échec initial et ce
+    point, rien à notifier, le run+audit déjà écrits par l'appelant
+    suffisent)."""
     try:
         with request_scoped_session(session_factory) as session:
             owner = _owner_user(session, tenant_id=tenant_id, item_id=item_id)
             item = items_repo.get_item(session, tenant_id=tenant_id, item_id=item_id)
-            notifications_repo.create_notification(
-                session,
-                tenant_id=tenant_id,
-                recipient_user_id=owner.id,
-                kind="report",
-                status=status,
-                item_id=item_id,
-                item_resource_type="report",
-                item_title=item.title if item is not None else item_id,
-                error_message=error,
-            )
+            recipient_user_id = owner.id
+            item_title = item.title if item is not None else item_id
     except Exception:
-        # Best-effort (Global Constraints) : couvre à la fois
-        # ReportTriggerError (propriétaire introuvable — item supprimé entre
-        # l'échec initial et ce point, rien à notifier, le run+audit déjà
-        # écrits par l'appelant suffisent) ET toute erreur inattendue.
         logger.exception(
-            "rapport %s : échec de l'écriture de la notification",
+            "rapport %s : échec de la résolution du destinataire de notification",
             item_id,
         )
+        return
+    notify_best_effort(
+        session_factory,
+        tenant_id=tenant_id,
+        recipient_user_id=recipient_user_id,
+        kind="report",
+        status=status,
+        item_id=item_id,
+        item_resource_type="report",
+        item_title=item_title,
+        error=error,
+    )
 
 
 def _record_trigger_failure(
@@ -451,6 +451,6 @@ def sweep_report_schedules_task(timestamp: int) -> None:
     if is_read_only_mode():
         logger.info("mode lecture seule : balayage de rapports planifiés ignoré")
         return
-    session_factory = _session_factory()
-    _trigger_due_reports(session_factory)
-    _notify_pending_reports(session_factory)
+    factory = session_factory()
+    _trigger_due_reports(factory)
+    _notify_pending_reports(factory)
