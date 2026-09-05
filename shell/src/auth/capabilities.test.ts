@@ -109,25 +109,29 @@ describe("domainState", () => {
     expect(stateOf("data", analyst)).toBe("visible");
   });
 
-  it("masque le domaine analytique au lecteur et au créateur (pas de SQL Lab), le montre à l'analyste", () => {
-    // SP-42/F-securite-autorisation-08(a) : gaté sur analytics.sql_lab.access,
-    // pas analytics.view. /analytics/sql (RequirePrivilege du même nom,
-    // routes.tsx) est aujourd'hui l'unique destination de ce domaine — un
-    // Créateur (analytics.view sans sql_lab.access) voyait auparavant un
-    // domaine qui refusait systématiquement sa seule destination
-    // (falsifié : domainState === "visible" mais la route refuse). Revient
-    // sur le changement assumé par SP-30a (masquer sur analytics.view
-    // seul) une fois la divergence domaine/route constatée.
+  it("masque le domaine analytique au lecteur, le montre au créateur et à l'analyste", () => {
+    // SP-42, revue de la dernière passe de correctifs (points 7/8) : gaté
+    // sur analytics.view (pas analytics.sql_lab.access) — DOMAIN_PATHS.analytics
+    // (domainRoutes.ts) ne pointe plus vers /analytics/sql (qui exige
+    // sql_lab.access) mais vers /?type=bookmark, une destination que le
+    // Créateur peut réellement ouvrir. Un correctif antérieur avait gaté ce
+    // domaine sur sql_lab.access pour fermer la divergence domaine/route —
+    // rouvre la divergence dans l'autre sens (le domaine promettait
+    // Analytique à un Créateur qui ne pouvait rien y faire) sans la
+    // refermer par une nouvelle décision produit ; celle-ci change la
+    // destination plutôt que le gate.
     expect(stateOf("analytics", reader)).toBe("hidden");
-    expect(stateOf("analytics", creator)).toBe("hidden");
+    expect(stateOf("analytics", creator)).toBe("visible");
     expect(stateOf("analytics", analyst)).toBe("visible");
   });
 
-  it("masque le domaine Cartes au lecteur, le montre au créateur", () => {
-    // SP-42/F-shell-pages-03 : maps.manage distingue déjà Créateur de
-    // Lecteur côté catalogue de privilèges (core/app/roles/privileges.py) —
-    // seul ce domaine n'en tenait pas compte jusqu'ici.
-    expect(stateOf("maps", reader)).toBe("hidden");
+  it("ne masque ni ne verrouille jamais le domaine Cartes : sa destination (/?type=map) n'exige rien", () => {
+    // SP-42, revue de la dernière passe de correctifs (point 8) : un
+    // correctif antérieur (F-shell-pages-03) avait gaté ce domaine sur
+    // maps.manage par symétrie avec data/apps — mais sa seule destination
+    // n'a jamais eu de RequirePrivilege (routes.tsx). Retiré : reader et
+    // creator voient tous deux ce domaine.
+    expect(stateOf("maps", reader)).toBe("visible");
     expect(stateOf("maps", creator)).toBe("visible");
   });
 
@@ -137,9 +141,11 @@ describe("domainState", () => {
     // faute de pouvoir importer routes.tsx (React Router) dans un test de
     // logique pure. admin est délibérément absent : sa destination varie
     // par profil (getDomainPath), déjà couvert par domainRoutes.test.ts.
-    const destinationPrivilege: Partial<Record<string, string>> = {
-      analytics: "analytics.sql_lab.access",
-    };
+    // Vide aujourd'hui (SP-42, revue de la dernière passe de correctifs,
+    // points 7/8) : ni Cartes (/?type=map) ni Analytique (/?type=bookmark)
+    // n'ont plus de destination gardée — gardé comme filet pour un futur
+    // domaine dont la destination exigerait réellement un privilège.
+    const destinationPrivilege: Partial<Record<string, string>> = {};
     for (const profile of [admin, creator, analyst, reader]) {
       for (const domain of DOMAINS) {
         if (domain.id === "admin") continue;
@@ -166,10 +172,10 @@ describe("navigableDomains", () => {
     const etlOff: Profile = { ...creator, capabilities: { ...ALL_ON, etlEnabled: false } };
     const rendered = navigableDomains(etlOff);
     expect(rendered.map((r) => r.domain.id)).not.toContain("admin");
-    // "analytics" absent : `creator` n'a pas analytics.sql_lab.access
-    // (SP-42/F-securite-autorisation-08(a) ci-dessus), pas un effet de
+    // "analytics" présent : `creator` a analytics.view (SP-42, revue de la
+    // dernière passe de correctifs, points 7/8 ci-dessus) — pas un effet de
     // etlOff.
-    expect(rendered.map((r) => r.domain.id)).not.toContain("analytics");
+    expect(rendered.map((r) => r.domain.id)).toContain("analytics");
     expect(rendered.find((r) => r.domain.id === "automation")?.state).toBe("locked");
     expect(rendered.map((r) => r.domain.id)).toEqual([
       "catalog",
@@ -177,6 +183,7 @@ describe("navigableDomains", () => {
       "data",
       "apps",
       "automation",
+      "analytics",
       "tasks",
       "settings",
     ]);
