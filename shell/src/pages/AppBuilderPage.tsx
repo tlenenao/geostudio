@@ -6,11 +6,13 @@ import {
   useAppConfig,
   useCreateDataset,
   useInstanceInfo,
+  useItem,
   useSaveApp,
   useUploadThumbnail,
 } from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { PrintLayoutConfig, RenderMode, WidgetItem } from "../api/types";
+import { hasPermission } from "../auth/permissions";
 import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppExportPanel } from "../builder/appexport/AppExportPanel";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
@@ -37,6 +39,7 @@ import { getConfigExpressionErrors } from "../builder/configExpressionErrors";
 import { Button } from "../ui/kit/Button";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useAuth } from "../auth/useAuth";
+import { t } from "../i18n";
 
 registerBuiltinWidgets();
 registerCounterExampleWidget();
@@ -46,6 +49,18 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const client = useItemClient();
   const query = useAppConfig(pk);
   const save = useSaveApp(pk);
+  const itemQuery = useItem(pk);
+  // SP-42/F-shell-pages-04 : cf. commentaire jumeau sur DatasetEditPage.tsx —
+  // même doctrine, même résidu documenté (permissions.write incomplet vs
+  // garde de privilège de domaine).
+  //
+  // SP-42, revue finale (point 2, Critical) : `itemQuery.data` est
+  // `undefined` pendant tout le chargement ET en cas d'erreur — hasPermission
+  // renvoie alors `false`, verrouillant Enregistrer pour la mauvaise raison.
+  // Le garde de rendu plus bas inclut désormais itemQuery.isLoading/isError
+  // (même patron que DatasetEditPage.tsx:52-58) : `readOnly` n'est calculé
+  // qu'une fois l'item effectivement résolu.
+  const readOnly = !hasPermission(itemQuery.data, "write");
   const thumbnail = useUploadThumbnail(pk);
   const instanceQuery = useInstanceInfo();
   const appExportEnabled = instanceQuery.data?.appExportEnabled === true;
@@ -132,9 +147,16 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     }
   }, [selectedId, activeLayout]);
 
-  if (query.isLoading || !extensionsRegistered || (!draft && !query.isError))
+  if (query.isLoading || itemQuery.isLoading || !extensionsRegistered || (!draft && !query.isError))
     return <p role="status">Chargement…</p>;
-  if (query.isError || !draft || !activeLayout || !activePage)
+  if (
+    query.isError ||
+    itemQuery.isError ||
+    !draft ||
+    !activeLayout ||
+    !activePage ||
+    !itemQuery.data
+  )
     return (
       <p role="alert" className="text-sm text-danger">
         Application introuvable.
@@ -442,11 +464,12 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                   <Button
                     size="sm"
                     className="w-fit"
-                    disabled={save.isPending || expressionErrors.length > 0}
+                    disabled={save.isPending || expressionErrors.length > 0 || readOnly}
                     onClick={() => save.mutate(draft)}
                   >
                     Enregistrer
                   </Button>
+                  {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
                   {expressionErrors.length > 0 && (
                     <span
                       role="alert"

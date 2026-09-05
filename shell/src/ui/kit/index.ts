@@ -20,6 +20,7 @@ export { ColorField } from "./ColorField";
 export { NumberField } from "./NumberField";
 export { Select } from "./Select";
 export { Combobox } from "./Combobox";
+export { usePanelTrigger } from "./usePanelTrigger";
 export { Tabs } from "./Tabs";
 export { Tree, type TreeNode } from "./Tree";
 export { Table } from "./Table";

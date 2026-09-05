@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
+import { expectAriaWired } from "../test/expectAriaWired";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { RolesAdminPage } from "./RolesAdminPage";
@@ -100,6 +101,58 @@ test("admin crée un rôle sur mesure en cochant des privilèges", async () => {
   await waitFor(() => expect(screen.getByText("Support")).toBeInTheDocument());
   expect(created).not.toBeNull();
   expect(created!.privileges).toEqual(["admin.harvest.manage"]);
+});
+
+test("cliquer Éditer sur un rôle sur mesure câble aria-expanded/aria-controls", async () => {
+  server.use(
+    http.get("https://core.test/roles/catalog", () => HttpResponse.json(CATALOG)),
+    http.get("https://core.test/roles", () =>
+      HttpResponse.json([
+        {
+          id: "role-1",
+          name: "Support",
+          slug: "abc",
+          isBuiltIn: false,
+          privileges: ["admin.harvest.manage"],
+        },
+      ]),
+    ),
+  );
+
+  render(<Harness />);
+  const editButton = await screen.findByRole("button", { name: /éditer/i });
+  expectAriaWired(editButton, editButton.getAttribute("aria-controls")!, false);
+  await userEvent.click(editButton);
+  expect(await screen.findByLabelText(/nom/i)).toBeInTheDocument();
+  expectAriaWired(editButton, editButton.getAttribute("aria-controls")!, true);
+});
+
+test("aria-expanded est câblé par ligne, pas partagé entre toutes les lignes (revue finale SP-43, Important I2)", async () => {
+  // Fixture à 2 rôles sur mesure : le défaut trouvé en revue finale
+  // (aria-expanded posé une seule fois pour toute la page via
+  // {...editPanel.triggerProps} dans .map()) était invisible avec un seul
+  // rôle — tous les boutons Éditer basculaient aria-expanded="true" en
+  // même temps.
+  server.use(
+    http.get("https://core.test/roles/catalog", () => HttpResponse.json(CATALOG)),
+    http.get("https://core.test/roles", () =>
+      HttpResponse.json([
+        { id: "role-1", name: "Support", slug: "support", isBuiltIn: false, privileges: [] },
+        { id: "role-2", name: "Terrain", slug: "terrain", isBuiltIn: false, privileges: [] },
+      ]),
+    ),
+  );
+
+  render(<Harness />);
+  const editButtons = await screen.findAllByRole("button", { name: /éditer/i });
+  expect(editButtons).toHaveLength(2);
+  editButtons.forEach((button) => expect(button).toHaveAttribute("aria-expanded", "false"));
+
+  await userEvent.click(editButtons[0]);
+  await screen.findByLabelText(/nom/i);
+
+  expect(editButtons[0]).toHaveAttribute("aria-expanded", "true");
+  expect(editButtons[1]).toHaveAttribute("aria-expanded", "false");
 });
 
 test("un rôle prédéfini ne propose ni éditer ni supprimer", async () => {

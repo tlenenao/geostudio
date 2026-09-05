@@ -8,11 +8,11 @@ from app import db
 from app.auth.dependency import get_current_user
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
-from app.roles.repository import ensure_built_in_roles
+from app.roles.repository import create_role, ensure_built_in_roles
 from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.models import User
-from app.users.repository import get_or_create_user
+from app.users.repository import get_or_create_user, set_user_role
 
 
 @pytest.fixture()
@@ -82,6 +82,42 @@ def test_last_admin_cannot_be_demoted(env):
     app, client, _, admin, _regular, roles = env
     _as(app, admin)
     assert client.patch(f"/users/{admin.id}", json={"roleId": roles["reader"]}).status_code == 409
+
+
+def test_anti_lockout_blocks_the_last_holder_of_a_privilege_split_across_two_custom_roles(env):
+    # SP-42 / F-securite-autorisation-07 : la garde n'agissait qu'en
+    # CONJONCTION sur les deux privilèges anti-lockout à la fois — inerte
+    # dès qu'ils sont répartis sur deux rôles sur mesure distincts. R1 ne
+    # porte que admin.users.manage, R2 ne porte que admin.roles.manage ;
+    # aucun rôle du tenant ne les porte tous les deux à la fois.
+    #
+    # L'état de départ (Alice/R1, Bob/R2, personne ne détient les deux à la
+    # fois) est construit par appel direct au dépôt — PAS à travers la route
+    # PATCH /users elle-même gardée par ce même anti-lockout, qui bloquerait
+    # légitimement la transition intermédiaire "admin perd un des deux
+    # privilèges alors qu'il en est encore l'unique porteur conjoint". Cela
+    # représente un tenant déjà dans cette configuration (ex. atteint via
+    # CORE_ADMIN_SUBS), comme le note la trouvaille — le test exerce ensuite
+    # la VRAIE route HTTP gardée pour l'assertion.
+    app, client, Session, admin, regular, roles = env
+    with Session() as s:
+        r1 = create_role(s, tenant_id=admin.tenant_id, name="R1", privileges=["admin.users.manage"])
+        r2 = create_role(s, tenant_id=admin.tenant_id, name="R2", privileges=["admin.roles.manage"])
+        set_user_role(
+            s, tenant_id=admin.tenant_id, user_id=admin.id, role_id=r1.id, role_slug=r1.slug
+        )
+        set_user_role(
+            s, tenant_id=admin.tenant_id, user_id=regular.id, role_id=r2.id, role_slug=r2.slug
+        )
+        s.commit()
+
+    # admin (désormais seul porteur de admin.users.manage, via R1 seul)
+    # tente de se retirer ce privilège lui-même : avant le correctif, la
+    # précondition en conjonction ne portait jamais puisque R1 seul ne
+    # contient pas admin.roles.manage, laissant passer un 200.
+    _as(app, admin)
+    resp = client.patch(f"/users/{admin.id}", json={"roleId": roles["reader"]})
+    assert resp.status_code == 409, resp.text
 
 
 def test_patch_unknown_user_404_and_non_admin_403(env):

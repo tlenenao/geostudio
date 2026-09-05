@@ -27,6 +27,7 @@ from app.auth.dependency import (
     reject_admin_tools_without_secret,
     reject_mock_outside_development,
 )
+from app.catalog import routes as catalog_routes
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
 from app.collections import routes as collections_routes
 from app.configs import routes as configs_routes
@@ -268,6 +269,7 @@ def create_app() -> FastAPI:
     app.include_router(public_routes.router)
     app.include_router(schemas_router)
     app.include_router(collections_routes.router)
+    app.include_router(catalog_routes.router)
     app.include_router(features_routes.router)
     app.include_router(tiles_routes.router)
     app.include_router(attachments_routes.router)
@@ -343,6 +345,16 @@ def create_app() -> FastAPI:
         # même mécanisme que les cinq modules ci-dessus avec la clé
         # ingestion_routes.get_s3_client.
         app.dependency_overrides[attachments_routes.get_s3_client] = lambda: make_s3_client(
+            endpoint_url=s3_endpoint,
+            access_key=s3_access_key,
+            secret_key=s3_secret_key,
+        )
+        # Clé d'override DISTINCTE, de nouveau : collections_routes.get_s3_client
+        # est lui aussi un stub redéfini localement (SP-42/
+        # F-securite-tenant-rls-03, même raison que ci-dessus) — consommé par
+        # unregister_collection (purge des pièces jointes avant suppression
+        # d'une collection).
+        app.dependency_overrides[collections_routes.get_s3_client] = lambda: make_s3_client(
             endpoint_url=s3_endpoint,
             access_key=s3_access_key,
             secret_key=s3_secret_key,

@@ -11,8 +11,6 @@ Constraints)."""
 import logging
 import os
 
-from sqlalchemy import select
-
 from app.alerts import repository as alerts_repo
 from app.alerts.notify import NotifyError, send_email, send_webhook
 from app.analytics.aggregate import _measure_label, _measures_for, run_collection_aggregate
@@ -24,10 +22,11 @@ from app.collections.introspection_pg import introspect_table
 from app.configs import repository as configs_repo
 from app.configs.alert_condition import evaluate_condition
 from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook, AlertRulePayload
-from app.db import make_engine, make_session_factory, request_scoped_session
+from app.db import request_scoped_session
 from app.items import repository as items_repo
-from app.items.models import Item
 from app.jobs import app
+from app.jobs.common import resolve_owner_user
+from app.jobs.common import session_factory as _session_factory
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -68,11 +67,6 @@ def _previous_terminal_state(evaluations, *, current_evaluation_id: str) -> str 
     return None
 
 
-def _session_factory():
-    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
-    return make_session_factory(engine)
-
-
 def _analytics_base_uri() -> str:
     # Mirrors app.pipelines.jobs._analytics_base_uri exactly (same env var,
     # same fallback) — S3_CDC_BUCKET_BASE_URI is the test seam that points
@@ -98,14 +92,19 @@ def _owner_user(session, *, tenant_id: str, item_id: str) -> User:
     # Same double-verification pattern as app.pipelines.jobs._acting_user:
     # evaluation runs with the RULE OWNER's permissions, re-checked at
     # evaluation time, never an implicit admin bypass.
-    owner_id = session.execute(
-        select(Item.owner_id).where(Item.id == item_id, Item.tenant_id == tenant_id)
-    ).scalar_one_or_none()
-    if owner_id is None:
-        raise AlertEvaluationError(f"alert rule '{item_id}' not found")
-    user = session.get(User, owner_id)
-    assert user is not None
-    return user
+    #
+    # SP-43 Tâche 6 : corps migré vers app.jobs.common.resolve_owner_user
+    # (identique) ; ce thin wrapper reconvertit son LookupError générique en
+    # AlertEvaluationError — appelé depuis evaluate_alert_task, où cette
+    # exception détermine le RÉSULTAT de l'évaluation (state="error"), pas
+    # seulement une notification best-effort : ne jamais fusionner ce
+    # comportement avec _notify (forme propre, webhook/email par canal,
+    # HORS PÉRIMÈTRE de app.jobs.common.notify_best_effort — cf. note de
+    # conception de la Tâche 6).
+    try:
+        return resolve_owner_user(session, tenant_id=tenant_id, item_id=item_id)
+    except LookupError as exc:
+        raise AlertEvaluationError(str(exc)) from exc
 
 
 def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
@@ -250,9 +249,9 @@ def _notify(
 
 @app.task(queue="etl")
 def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
-    session_factory = _session_factory()
+    factory = _session_factory()
 
-    with request_scoped_session(session_factory) as session:
+    with request_scoped_session(factory) as session:
         evaluation = alerts_repo.get_evaluation(
             session, tenant_id=tenant_id, evaluation_id=evaluation_id
         )
@@ -261,7 +260,7 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             return
         item_id = evaluation.alert_rule_item_id
 
-    with request_scoped_session(session_factory) as session:
+    with request_scoped_session(factory) as session:
         try:
             payload = _get_alert_payload(session, item_id=item_id)
             user = _owner_user(session, tenant_id=tenant_id, item_id=item_id)
@@ -337,6 +336,20 @@ def evaluate_alert_task(evaluation_id: str, tenant_id: str) -> None:
             return
         except Exception as exc:  # toute erreur inattendue finit "error", jamais un run zombie
             logger.exception("alert evaluation %s : erreur inattendue", evaluation_id)
+            # Si l'exception vient d'une vraie erreur DB survenue plus haut
+            # dans le chemin succès (ex. write_audit), la transaction
+            # Postgres est laissée "aborted" : toute nouvelle commande sur
+            # CETTE session échouerait avec InFailedSqlTransaction, une
+            # exception non interceptée qui s'échapperait de ce bloc except
+            # lui-même et laisserait l'évaluation "pending" pour toujours au
+            # lieu de "error" (cf. AlertEvaluationError, docstring : "always
+            # caught, always turns into an error evaluation row, never a
+            # crash"). rollback() rend la session réutilisable AVANT de
+            # retenter des écritures — même patron que
+            # app.reports.jobs._record_trigger_failure (ligne 149). Un
+            # rollback sur une session déjà saine (l'exception d'origine
+            # n'a jamais touché la DB) est un no-op sans effet de bord.
+            session.rollback()
             error_detail = f"erreur interne : {exc}"
             alerts_repo.mark_evaluated(
                 session,
@@ -425,8 +438,8 @@ def sweep_alert_rules_task(timestamp: int) -> None:
     if is_read_only_mode():
         logger.info("mode lecture seule : balayage d'alertes ignoré")
         return
-    session_factory = _session_factory()
-    with request_scoped_session(session_factory) as session:
+    factory = _session_factory()
+    with request_scoped_session(factory) as session:
         due = alerts_repo.list_due_rules(session)
         for item_id, tenant_id in due:
             evaluation = alerts_repo.create_evaluation(

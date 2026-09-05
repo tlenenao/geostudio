@@ -9,6 +9,7 @@ import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { ImportFileButton } from "./ImportFileButton";
+import { expectAriaWired } from "../test/expectAriaWired";
 
 function MapProbe() {
   const { pk } = useParams();
@@ -60,7 +61,14 @@ test("uploads a file and navigates to the created map once the job is done", asy
       <ImportFileButton />
     </Harness>,
   );
-  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  const importButton = screen.getByRole("button", { name: "Importer un fichier" });
+  expectAriaWired(importButton, importButton.getAttribute("aria-controls")!, false);
+  await userEvent.click(importButton);
+  expectAriaWired(importButton, importButton.getAttribute("aria-controls")!, true);
+  expect(screen.getByRole("dialog")).toHaveAttribute(
+    "id",
+    importButton.getAttribute("aria-controls"),
+  );
   await userEvent.upload(screen.getByLabelText("Fichier à importer"), geojsonFile());
   await userEvent.type(screen.getByLabelText("Titre de la collection"), "Villes");
   await userEvent.click(screen.getByRole("button", { name: "Importer" }));
@@ -212,4 +220,34 @@ test("shows a layer picker for a multi-layer GeoPackage and imports the chosen l
   await userEvent.click(screen.getByRole("button", { name: "Continuer" }));
 
   await waitFor(() => expect(screen.getByText("map-100")).toBeInTheDocument());
+});
+
+test("SP-42/F-shell-pages-01 (fusion F-shell-pages-02) : masque le bouton pour un profil sans data.manage", async () => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient.setQueryDefaults(["me"], { staleTime: Infinity });
+  queryClient.setQueryData(["me"], {
+    id: "u1",
+    username: "alice",
+    firstName: "Alice",
+    lastName: "Martin",
+    email: "alice@example.com",
+    tenantId: "t1",
+    role: { id: "role-reader", name: "Lecteur", slug: "reader" },
+    privileges: [],
+    version: "0.1.0",
+    tenantSlug: "demo",
+  });
+  const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ItemClientProvider client={client}>
+        <MemoryRouter initialEntries={["/"]}>
+          <ImportFileButton />
+        </MemoryRouter>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Importer un fichier" })).not.toBeInTheDocument(),
+  );
 });

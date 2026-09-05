@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { mockCore, mockMe, ADMIN_ME } from "./mocks";
+import { mockCore, mockMe, mockCollection, ADMIN_ME } from "./mocks";
 
 test("un admin gère le cycle de vie complet d'une collection depuis le shell", async ({ page }) => {
   await mockCore(page);
@@ -35,23 +35,7 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
   await page.route("https://core.test/collections", async (route) => {
     if (route.request().method() === "POST") {
       registered = await route.request().postDataJSON();
-      await route.fulfill({
-        status: 201,
-        json: {
-          id: "points_interet",
-          title: "Points d'intérêt",
-          description: "",
-          tableName: "points_interet",
-          isPublic: false,
-          editable: true,
-          geometryType: "Point",
-          srid: 4326,
-          pkColumn: "id",
-          permissions: { read: true, write: true, delete: false, share: true },
-          featureCount: 0,
-          owner: "mockuser",
-        },
-      });
+      await route.fulfill({ status: 201, json: mockCollection() });
       return;
     }
     await route.fulfill({
@@ -59,22 +43,7 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
         collections: deleted
           ? []
           : registered
-            ? [
-                {
-                  id: "points_interet",
-                  title: patchedTitle ?? "Points d'intérêt",
-                  description: "",
-                  tableName: "points_interet",
-                  isPublic: false,
-                  editable: true,
-                  geometryType: "Point",
-                  srid: 4326,
-                  pkColumn: "id",
-                  permissions: { read: true, write: true, delete: false, share: true },
-                  featureCount: 0,
-                  owner: "mockuser",
-                },
-              ]
+            ? [mockCollection({ title: patchedTitle ?? "Points d'intérêt" })]
             : [],
       },
     });
@@ -85,22 +54,7 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
     if (method === "PATCH") {
       const body = await route.request().postDataJSON();
       patchedTitle = body.title ?? patchedTitle;
-      await route.fulfill({
-        json: {
-          id: "points_interet",
-          title: patchedTitle,
-          description: "",
-          tableName: "points_interet",
-          isPublic: false,
-          editable: true,
-          geometryType: "Point",
-          srid: 4326,
-          pkColumn: "id",
-          permissions: { read: true, write: true, delete: false, share: true },
-          featureCount: 0,
-          owner: "mockuser",
-        },
-      });
+      await route.fulfill({ json: mockCollection({ title: patchedTitle ?? "Points d'intérêt" }) });
       return;
     }
     if (method === "DELETE") {

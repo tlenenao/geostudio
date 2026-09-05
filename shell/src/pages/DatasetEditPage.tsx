@@ -2,10 +2,18 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { useDatasetConfig, useItem, useItems, useSaveDataset, useUpdateItem } from "../api/hooks";
+import {
+  useDatasetConfig,
+  useItem,
+  useItems,
+  useMetadataCatalog,
+  useSaveDataset,
+  useUpdateItem,
+} from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { CrossFilterLink, DatasetColumnMeta, DatasetConfig } from "../api/types";
 import { mergeDatasetSchema } from "../lib/datasetSchema";
+import { hasPermission } from "../auth/permissions";
 import { MetadataForm } from "../ui/MetadataForm";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
@@ -13,12 +21,14 @@ import { CrossFilterLinkEditor } from "../builder/CrossFilterLinkEditor";
 import { AlertRuleEditor } from "../builder/AlertRuleEditor";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { t } from "../i18n";
 
 export function DatasetEditPage({ pk }: { pk: string }) {
   const itemQuery = useItem(pk);
   const configQuery = useDatasetConfig(pk);
   const save = useSaveDataset(pk);
   const updateItem = useUpdateItem(pk);
+  const catalogQuery = useMetadataCatalog();
   const client = useItemClient();
   const navigate = useNavigate();
   const [draft, setDraft] = useState<DatasetConfig | null>(null);
@@ -47,6 +57,14 @@ export function DatasetEditPage({ pk }: { pk: string }) {
     );
 
   const item = itemQuery.data;
+  // SP-42/F-shell-pages-04 : un item partagé en lecture seule (permissions.write
+  // false, cas légitime du modèle de partage) ne doit pas laisser cliquer
+  // Enregistrer pour découvrir le 403 après coup — doctrine SP-29a
+  // (ItemActions/ItemDetailPage). Résidu documenté (rapport de lot) :
+  // permissions.write ne reflète que can()/decide(), pas la garde de
+  // privilège de domaine (PUT /configs) — ce correctif ne ferme donc pas
+  // tous les 403 possibles.
+  const readOnly = !hasPermission(item, "write");
 
   function setColumn(name: string, patch: DatasetColumnMeta) {
     setDraft((d) =>
@@ -134,7 +152,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                 <dt>Type</dt>
                 <dd>Dataset</dd>
                 <dt>Modifié</dt>
-                <dd>{item.date || "—"}</dd>
+                <dd>{item.updatedAt || "—"}</dd>
               </dl>
             </Panel>
           ),
@@ -150,7 +168,11 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                   title: item.title,
                   abstract: item.abstract,
                   keywords: item.keywords ?? [],
+                  license: item.license,
+                  language: item.language,
                 }}
+                licenses={catalogQuery.data?.licenses ?? []}
+                languages={catalogQuery.data?.languages ?? []}
                 onSubmit={(v) => updateItem.mutate(v)}
                 onCancel={() => {}}
                 pending={updateItem.isPending}
@@ -308,11 +330,12 @@ export function DatasetEditPage({ pk }: { pk: string }) {
               <Button
                 size="sm"
                 className="w-fit"
-                disabled={save.isPending}
+                disabled={save.isPending || readOnly}
                 onClick={() => save.mutate(draft)}
               >
                 Enregistrer les colonnes
               </Button>
+              {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
               {save.isError && (
                 <p role="alert" className="text-sm text-danger">
                   Échec de l'enregistrement.

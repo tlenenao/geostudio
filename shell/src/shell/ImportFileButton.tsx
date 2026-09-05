@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useItemClient } from "../api/hooks";
+import { useItemClient, useMe } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
+import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 
 type Phase = "form" | "uploading" | "selecting-layer" | "polling" | "error";
 type LayerInfo = { name: string; featureCount: number; geometryType: string };
@@ -26,6 +27,7 @@ function isLayeredFormat(filename: string): boolean {
 
 export function ImportFileButton() {
   const [open, setOpen] = useState(false);
+  const drawerPanel = usePanelTrigger(open);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [csvHeaders, setCsvHeaders] = useState<string[] | null>(null);
@@ -38,6 +40,17 @@ export function ImportFileButton() {
   const [error, setError] = useState("");
   const client = useItemClient();
   const navigate = useNavigate();
+  // SP-42/F-shell-pages-01 (fusion F-shell-pages-02) : cf. commentaire
+  // jumeau sur NewItemButton.tsx — même mécanisme, même TopBar. Un import
+  // aboutit toujours à POST /uploads (core/app/ingestion/routes.py),
+  // gardé par data.manage — jamais maps.manage, bien que la navigation
+  // finale ouvre /maps/{itemId} : la collection PostGIS créée par le
+  // worker est la ressource dont l'écriture compte ici, pas l'item Map.
+  const meQuery = useMe();
+  const privileges = meQuery.data?.privileges;
+  const canImport = privileges === undefined || privileges.includes("data.manage");
+
+  if (!canImport) return null;
 
   function close() {
     setOpen(false);
@@ -150,10 +163,20 @@ export function ImportFileButton() {
 
   return (
     <>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+      <Button
+        size="sm"
+        variant="outline"
+        {...drawerPanel.triggerProps}
+        onClick={() => setOpen(true)}
+      >
         Importer un fichier
       </Button>
-      <Drawer open={open} onOpenChange={(next) => !next && close()} title="Importer un fichier">
+      <Drawer
+        open={open}
+        onOpenChange={(next) => !next && close()}
+        title="Importer un fichier"
+        id={drawerPanel.panelId}
+      >
         {phase === "selecting-layer" ? (
           <form onSubmit={(e) => void confirmLayer(e)} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm text-ink">

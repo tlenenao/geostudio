@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCore, mockItemDetail } from "./mocks";
 
 test("create a dataset, edit a column label, then promote an app's inline source", async ({
   page,
@@ -68,21 +68,9 @@ test("create a dataset, edit a column label, then promote an app's inline source
     });
   });
 
-  await page.route("https://core.test/items/dataset-1", async (route) => {
-    await route.fulfill({
-      json: {
-        pk: "dataset-1",
-        resourceType: "dataset",
-        title: "Parcs partagés",
-        abstract: "",
-        owner: "mockuser",
-        thumbnailUrl: null,
-        date: "2026-01-01",
-        configId: "cfg-dataset",
-        isPublished: false,
-        keywords: [],
-      },
-    });
+  await mockItemDetail(page, "dataset-1", {
+    title: "Parcs partagés",
+    configId: "cfg-dataset",
   });
 
   await page.route("**/configs", async (route) => {

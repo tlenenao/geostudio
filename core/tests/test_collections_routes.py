@@ -3,10 +3,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db
+from app.attachments import repository as attachments_repo
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections import repository as repo
 from app.collections import routes as collections_routes
 from app.collections.introspection import ColumnInfo, TableInfo, TableNotFound, UnsupportedTable
+from app.configs import repository as configs_repo
+from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
@@ -26,6 +29,20 @@ def fake_introspector(session, table_name):
     if table_name != "incidents":
         raise TableNotFound(table_name)
     return INCIDENTS
+
+
+class _FakeS3Client:
+    """Stub minimal pour collections_routes.get_s3_client (SP-42/
+    F-securite-tenant-rls-03) : unregister_collection dépend désormais de
+    get_s3_client pour purger les pièces jointes avant suppression, donc TOUT
+    test de ce fichier qui appelle DELETE /collections/{id} a besoin de cet
+    override — sinon RuntimeError("S3 client dependency not configured")."""
+
+    def __init__(self):
+        self.deleted: list[str] = []
+
+    def delete_object(self, *, Bucket, Key):
+        self.deleted.append(Key)
 
 
 @pytest.fixture()
@@ -65,8 +82,9 @@ def env():
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
     ddl_calls: list[str] = []
     app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (
-        lambda session, table: ddl_calls.append(table)
+        lambda session, table, tenant_id=None: ddl_calls.append(table)
     )
+    app.dependency_overrides[collections_routes.get_s3_client] = lambda: _FakeS3Client()
     client = TestClient(app)
     return app, client, Session, admin, regular, ddl_calls
 
@@ -413,6 +431,76 @@ def test_patch_and_delete(env):
     assert client.get("/collections/incidents").status_code == 404
 
 
+def test_delete_collection_with_existing_attachment_returns_204_and_purges_it(env):
+    # SP-42/F-securite-tenant-rls-03 : avant correctif, la FK
+    # attachments.collection_id (sans ondelete) faisait échouer ce DELETE en
+    # 500 dès qu'une pièce jointe existait — la collection restait
+    # indésenregistrable, et l'objet S3 n'était de toute façon jamais purgé.
+    app, client, Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    s3_key = f"{admin.tenant_id}/incidents/f1/a.jpg"
+    with Session() as s:
+        attachments_repo.create_attachment(
+            s,
+            tenant_id=admin.tenant_id,
+            collection_id="incidents",
+            fid="f1",
+            field_key="photos",
+            filename="a.jpg",
+            content_type="image/jpeg",
+            byte_size=10,
+            s3_key=s3_key,
+            created_by=admin.id,
+        )
+        s.commit()
+
+    s3 = _FakeS3Client()
+    app.dependency_overrides[collections_routes.get_s3_client] = lambda: s3
+
+    response = client.delete("/collections/incidents")
+    assert response.status_code == 204
+    assert s3.deleted == [s3_key]
+
+    with Session() as s:
+        remaining = attachments_repo.list_attachments(
+            s, tenant_id=admin.tenant_id, collection_id="incidents", fid="f1"
+        )
+        assert remaining == []
+
+
+def test_delete_collection_refuses_when_a_dataset_still_references_it(env):
+    # SP-42/F-coeur-contenu-04 : sans cette garde, supprimer une collection
+    # encore référencée par un Dataset (dataset.collectionId) orphelinait ce
+    # Dataset silencieusement (204, aucun signal).
+    app, client, Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    with Session() as s:
+        dataset_item = repo.get_collection(s, tenant_id=admin.tenant_id, collection_id="incidents")
+        assert dataset_item is not None  # sanity : la collection existe bien
+        from app.items import repository as items_repo
+
+        item = items_repo.create_item(
+            s,
+            tenant_id=admin.tenant_id,
+            owner_id=admin.id,
+            resource_type="dataset",
+            title="Dataset sur incidents",
+        )
+        dataset_config = BuilderConfig.model_validate(
+            {"kind": "dataset", "dataset": {"source": "collection", "collectionId": "incidents"}}
+        )
+        configs_repo.create_config(s, dataset_config, item_id=item.id, tenant_id=admin.tenant_id)
+        s.commit()
+
+    response = client.delete("/collections/incidents")
+    assert response.status_code == 409
+    assert "dataset" in response.json()["detail"]
+    # la collection n'a pas été supprimée (refus, pas suppression partielle) :
+    assert client.get("/collections/incidents").status_code == 200
+
+
 def test_patch_by_non_owner_without_editor_role_returns_403(env):
     # patch_collection's own "write access required" 403 branch
     # (app/collections/routes.py) had no test at all before this review —
@@ -582,6 +670,45 @@ def test_patch_collection_declares_attachment_fields(env):
     assert get_res.json()["attachmentFields"] == [{"key": "photos", "label": "Photos"}]
 
 
+def test_patch_collection_rejects_attachment_field_key_colliding_with_real_column(env):
+    # SP-42/F-coeur-contenu-03 : "titre" est déjà une colonne SQL réelle de
+    # INCIDENTS (fake_introspector) — sans cette garde, GET
+    # /collections/incidents/schema exposerait deux champs "titre" (un
+    # "string", un "attachment").
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+
+    res = client.patch(
+        "/collections/incidents", json={"attachmentFields": [{"key": "titre", "label": "Photo"}]}
+    )
+    assert res.status_code == 422
+    assert "titre" in res.json()["detail"]
+
+    schema = client.get("/collections/incidents/schema").json()
+    names = [f["name"] for f in schema["fields"]]
+    assert names.count("titre") == 1
+
+
+def test_patch_collection_rejects_duplicate_attachment_field_keys(env):
+    # Collision entre deux entrées attachmentFields elles-mêmes (pas besoin
+    # de DB, couvert par CollectionPatch._reject_duplicate_attachment_field_keys).
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+
+    res = client.patch(
+        "/collections/incidents",
+        json={
+            "attachmentFields": [
+                {"key": "photos", "label": "Photos"},
+                {"key": "photos", "label": "Autres photos"},
+            ]
+        },
+    )
+    assert res.status_code == 422
+
+
 def test_patch_collection_without_attachment_fields_leaves_them_unchanged(env):
     app, client, _Session, admin, _regular, _ddl = env
     _as(app, admin)
@@ -600,3 +727,125 @@ def test_register_collection_defaults_attachment_fields_to_empty(env):
     _as(app, admin)
     res = client.post("/collections", json={"tableName": "incidents"})
     assert res.json()["attachmentFields"] == []
+
+
+def test_register_collection_defaults_open_metadata_to_empty(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    res = client.post("/collections", json={"tableName": "incidents"})
+    body = res.json()
+    assert body["license"] == ""
+    assert body["licenseUri"] == ""
+    assert body["producer"] == ""
+    assert body["contact"] == ""
+    assert body["updateFrequency"] == ""
+    assert body["lineage"] == ""
+    assert body["language"] == "fr"
+    assert body["version"] == ""
+    assert body["temporalStart"] is None
+    assert body["temporalEnd"] is None
+
+
+def test_patch_collection_declares_open_metadata(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+
+    res = client.patch(
+        "/collections/incidents",
+        json={
+            "license": "etalab-2.0",
+            "producer": "Ma Régie",
+            "contact": "contact@example.org",
+            "updateFrequency": "monthly",
+            "lineage": "Relevé terrain 2026",
+            "language": "en",
+            "version": "1.0",
+            "temporalStart": "2020-01-01",
+            "temporalEnd": "2026-12-31",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["license"] == "etalab-2.0"
+    assert body["producer"] == "Ma Régie"
+    assert body["contact"] == "contact@example.org"
+    assert body["updateFrequency"] == "monthly"
+    assert body["lineage"] == "Relevé terrain 2026"
+    assert body["language"] == "en"
+    assert body["version"] == "1.0"
+    assert body["temporalStart"] == "2020-01-01"
+    assert body["temporalEnd"] == "2026-12-31"
+
+    get_res = client.get("/collections/incidents")
+    assert get_res.json()["license"] == "etalab-2.0"
+
+
+def test_patch_collection_with_other_license_requires_uri(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+
+    res = client.patch(
+        "/collections/incidents",
+        json={"license": "other", "licenseUri": "https://example.org/my-license"},
+    )
+    assert res.status_code == 200
+    assert res.json()["licenseUri"] == "https://example.org/my-license"
+
+
+def test_patch_collection_rejects_unknown_license(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    res = client.patch("/collections/incidents", json={"license": "bogus"})
+    assert res.status_code == 422
+
+
+def test_patch_collection_rejects_unknown_language(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    res = client.patch("/collections/incidents", json={"language": "bogus"})
+    assert res.status_code == 422
+
+
+def test_patch_collection_without_open_metadata_leaves_it_unchanged(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    client.patch("/collections/incidents", json={"license": "etalab-2.0"})
+
+    res = client.patch("/collections/incidents", json={"title": "Nouveau titre"})
+    assert res.status_code == 200
+    assert res.json()["license"] == "etalab-2.0"
+
+
+def test_patch_collection_can_clear_a_declared_temporal_extent(env):
+    # Défaut de revue finale (SP-41) : temporalStart/temporalEnd sont typés
+    # date | None sans représentation "vide" non-None distincte, donc "champ
+    # omis" et "champ explicitement mis à null" valaient tous deux None côté
+    # Python — un PATCH {"temporalStart": null} ne pouvait jamais effacer une
+    # emprise déjà déclarée. C'est pourtant exactement le payload envoyé par
+    # EditCollectionPanel du shell (`temporalStart: temporalStart || null`).
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    client.patch(
+        "/collections/incidents",
+        json={"temporalStart": "2020-01-01", "temporalEnd": "2026-12-31"},
+    )
+
+    get_res = client.get("/collections/incidents")
+    assert get_res.json()["temporalStart"] == "2020-01-01"
+    assert get_res.json()["temporalEnd"] == "2026-12-31"
+
+    clear_res = client.patch(
+        "/collections/incidents",
+        json={"temporalStart": None, "temporalEnd": None},
+    )
+    assert clear_res.status_code == 200
+
+    final_res = client.get("/collections/incidents")
+    assert final_res.json()["temporalStart"] is None
+    assert final_res.json()["temporalEnd"] is None

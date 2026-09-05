@@ -1,64 +1,82 @@
 # GeoStudio
 
-**Plateforme d'applications géospatiales open-source** : cataloguer des données,
-créer des cartes, construire des applications et dashboards métier **sans code**
-— et à terme, la couche géospatiale de la data platform moderne (formats ouverts,
-API standards OGC, architecture AI-native via MCP).
+**Plateforme d'applications géospatiales open-source** : cataloguer des
+données, cartographier, construire des apps/dashboards/sites **sans code**,
+et automatiser leur mise à jour — avec un cœur pensé pour être piloté par un
+agent IA (serveur MCP natif) autant que par un humain.
 
-> **Statut : refondation en cours (pré-v0.1).** Ce dépôt est le fork de travail
-> issu de `gis-project`, restructuré pour exécuter la feuille de route « option C » :
-> le shell et son builder sont le produit ; le socle GeoNode est remplacé
-> progressivement par un cœur maison. Voir
-> [la feuille de route](docs/vision/2026-07-04-feuille-de-route-geostudio.md).
+[![Licence](https://img.shields.io/badge/licence-Apache--2.0-blue.svg)](LICENSE)
+[![CI](https://github.com/tlenenao/geostudio/actions/workflows/ci.yml/badge.svg)](https://github.com/tlenenao/geostudio/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/v/release/tlenenao/geostudio)](https://github.com/tlenenao/geostudio/releases)
 
 ---
 
-## Ce qui existe aujourd'hui
+## Ce que fait GeoStudio
 
-- **`shell/`** — le front React (TypeScript, Vite, MapLibre GL + deck.gl, ECharts) :
-  - catalogue d'items (cartes, apps, dashboards) : création, édition, partage,
-    publication, vignettes ;
-  - éditeur de cartes (tuiles vectorielles Martin, raster TiTiler, couches
-    deck.gl) ;
-  - **builder d'apps/dashboards no-code** : grille responsive par breakpoint,
-    widgets (carte, texte, image, bouton, table, indicateur, filtre, graphique,
-    navigation), bus d'actions, variables, multi-pages, thèmes, templates —
-    le tout rendu par un runtime unique config-driven (`AppConfig` JSON) ;
-  - SDK de widgets embryonnaire (`registerWidget`).
-- **`core/`** — le cœur naissant (Python/FastAPI, ex `builder-service`) :
-  persistance des configs d'apps **versionnées avec révisions et rollback**.
-  Il grossira en cœur complet (items, partage, OGC API Features, MCP) selon la
-  feuille de route.
-- **`docker-compose.yml`** — la stack de dev : PostGIS, PgBouncer, MinIO, Martin,
-  TiTiler, Keycloak, Traefik, cœur, shell. GeoNode, Superset, Redis et
-  pg_featureserv sont sortis (jalons M1 et SP-3c).
+Chaque point ci-dessous est une fonctionnalité qui fonctionne réellement de
+bout en bout aujourd'hui (testée, mergée) — pas une intention de feuille de
+route. Le détail complet, avec sa preuve dans le code, est dans
+[`docs/revue/2026-09-04-matrice-fonctionnalites.md`](docs/revue/2026-09-04-matrice-fonctionnalites.md).
 
-## Où va le projet
+- **Cataloguer et partager** ses données et ses productions : recherche
+  hybride (plein texte + sémantique), filtres par type/portée, partage par
+  groupe ou publication anonyme sur un site public à URL dédiée, permissions
+  fines calculées par élément (lire/écrire/supprimer/partager).
+- **Cartographier sans code** : couches vectorielles (tuiles servies par le
+  cœur) ou GeoJSON externe, symbologie déclarative (catégorielle, continue,
+  classée — quantile/intervalle égal/Jenks), contours et icônes
+  data-driven, étiquettes multi-champs, popups au clic avec gabarit Markdown
+  et pièces jointes, terrain 3D et tuiles 3D hébergées.
+- **Construire des apps, dashboards et sites** dans un builder no-code :
+  grille responsive multi-breakpoints, une trentaine de widgets (carte,
+  formulaire généré depuis un schéma, tableau, graphique, KPI, filtre,
+  cross-filter…), bus d'actions composées, variables typées, thèmes,
+  annuler/rétablir, export en bundle Statique/Connecté/Autoporté.
+- **Importer et gérer ses données** : GeoJSON, CSV, GeoPackage et Shapefile
+  zippé glissés-déposés deviennent une collection PostGIS avec RLS
+  multi-tenant automatique ; une table existante s'enregistre aussi comme
+  collection ; formulaires avec pièces jointes (photos, documents) par
+  entité.
+- **Automatiser sans code** : pipelines ETL en graphe (lecteurs REST/
+  Postgres, transformations spatiales via QGIS Processing, écritures),
+  exécution à la demande ou planifiée (cron), alertes de seuil notifiées par
+  email/webhook au changement d'état, rapports PDF planifiés d'une vue
+  enregistrée, cloche de notifications in-app.
+- **Analyser** : agrégations (regroupement, neuf mesures dont médiane et
+  percentile, filtres spatiaux/temporels) sur les collections ou sur un
+  service ArcGIS moissonné en direct, assistant de requête visuelle
+  (Filtrer → Joindre → Résumer) pour bâtir un nouveau dataset sans SQL, et
+  un SQL Lab en lecture seule sandboxé pour les utilisateurs analystes.
+- **Fédérer des sources externes** : moissonner STAC, ArcGIS Feature
+  Service, WMS/WMTS/WFS, CSW et CKAN (couches ajoutables directement à une
+  carte) ; exposer son propre catalogue via une API STAC native et un export
+  DCAT-AP, pour l'interopérabilité avec d'autres infrastructures de
+  données.
+- **Se piloter par un agent IA** : serveur MCP authentifié (OAuth 2.1 +
+  PKCE) exposant le catalogue, le partage et la création d'items à un agent
+  externe, et un copilote intégré au builder qui orchestre ces mêmes outils
+  en direct pour modifier une app pendant qu'on la regarde.
 
-| Jalon | Contenu |
-|---|---|
-| **M1 GeoNode-free** ✅ | Items/partage/publication dans le cœur ; GeoNode, Superset, Redis sortis |
-| **M2 AI-operable** | Serveur MCP : un agent crée un dashboard valide |
-| **M3 Les apps écrivent** | OGC API Features (CRUD) + widget Formulaire schema-driven |
-| **M4 Donnée→carte** | Upload GPKG/GeoJSON → carte stylée partageable en minutes |
-| **M5 SDK ouvrable** | Contrat de widget Web Components, chargement dynamique |
-| **M6 v0.1 publique** | CI, images versionnées, install docs, démo publique |
-| **M7 exploitable** | OpenTelemetry + dashboards/SLO packagés |
-| **M8 data platform** | CDC PostGIS → GeoParquet, analytique DuckDB |
-| **M9 catalogue ouvert** | API STAC, export DCAT-AP, moissonnage (STAC, WMS/WFS, CSW, CKAN) |
-| **M10 3D & print** | Couches 3D Tiles + terrain, export PNG/PDF mis en page |
+## Aperçu
 
-Détail, arbitrages techniques et estimations :
-[`docs/vision/2026-07-04-feuille-de-route-geostudio.md`](docs/vision/2026-07-04-feuille-de-route-geostudio.md).
+Ce dépôt ne contient pas encore de capture d'écran ou de GIF à publier ici —
+l'interface se découvre en lançant la stack locale ci-dessous (catalogue,
+éditeur de carte, builder d'app). Un mode démo en lecture seule existe
+(`CORE_READ_ONLY_MODE=true`) pour montrer une instance sans risquer
+d'écriture ; voir la variable dans `.env.example`.
 
-## Démarrage rapide (dev)
+## Essayer en cinq minutes
 
-Prérequis : Docker 24+, Node 20+, [uv](https://docs.astral.sh/uv/) (Python).
+Prérequis : Docker 24+, Node 20+, [uv](https://docs.astral.sh/uv/) (pour
+contribuer côté cœur — pas nécessaire pour seulement lancer la stack).
 
 ```bash
 ./scripts/bootstrap-env.sh   # génère .env avec des secrets forts (no-op si .env existe déjà)
 docker compose up -d         # stack complète — migrations du cœur appliquées automatiquement
 ```
+
+`bootstrap-env.sh` génère aussi `CORE_SECRETS_MASTER_KEY` (clé AES-GCM du
+coffre de secrets du cœur) — sans elle, le cœur refuse de démarrer.
 
 | Service | URL |
 |---|---|
@@ -68,154 +86,99 @@ docker compose up -d         # stack complète — migrations du cœur appliqué
 | Keycloak | http://localhost:8180 |
 | MinIO console | http://localhost:9001 |
 
-Pour peupler des données de démo (collections `incidents`/`points_interet`,
-publiques, éditables — utile pour explorer le catalogue et le builder sans
-importer ses propres données) : ouvrir http://localhost:8300 une fois en
-mode `mock` (par défaut — promeut automatiquement l'utilisateur `mockuser`
-admin dès la première requête authentifiée), puis :
+Par défaut, le mode d'authentification est `mock` (`mockuser` promu
+administrateur dès la première requête, aucun accès réseau à Keycloak
+nécessaire). Pour peupler des données de démonstration (collections
+publiques éditables, utiles pour explorer le catalogue et le builder sans
+importer ses propres données) :
 
 ```bash
 docker compose exec core python -m scripts.seed_demo
 ```
 
-Commande idempotente — relançable sans effet si les collections existent déjà.
+Pour déployer en production (images publiées, pas de build sur l'hôte,
+sauvegardes chiffrées planifiées, tunnel Tailscale Funnel en option), voir
+l'installeur guidé (`scripts/install.sh`) et
+[`CONTRIBUTING.md`](CONTRIBUTING.md) pour la marche à suivre complète côté
+développement. Pour une instance Keycloak déjà déployée, voir
+[`deploy/keycloak/README.md`](deploy/keycloak/README.md) et les runbooks
+sous [`docs/runbooks/`](docs/runbooks/).
 
-### Rôles : administrateur et analyste
+## Architecture en bref
 
-Deux variables d'environnement du cœur promeuvent des subs OIDC à un rôle
-au moment où l'utilisateur se connecte pour la première fois (elles
-n'affectent jamais un utilisateur déjà créé — repromouvoir ensuite passe
-par `PATCH /users`, voir plus bas) :
+Un **shell React** (TypeScript, Vite, MapLibre GL + deck.gl, ECharts) parle
+exclusivement à un **cœur Python/FastAPI** (monolithe modulaire) via une
+seule interface côté client (`ItemClient`) ; le cœur expose la même logique
+en REST, en API OGC Features, et en outils MCP pour un agent — jamais de
+logique dupliquée entre ces trois surfaces. Les données métier vivent dans
+PostGIS avec RLS par tenant ; les fichiers dans S3 (MinIO en dev) ; les jobs
+asynchrones (ingestion, pipelines, exports, alertes, rapports) tournent sur
+une file Postgres (`procrastinate`, pas de broker séparé) ; une réplication
+logique Postgres alimente un lakehouse GeoParquet pour l'analytique.
 
-- **`CORE_ADMIN_SUBS`** — liste de subs OIDC (séparés par des virgules)
-  promus **administrateur** au login : gestion des collections, des
-  extensions et des utilisateurs.
-- **`CORE_ANALYST_SUBS`** — même mécanique, miroir de `CORE_ADMIN_SUBS`,
-  pour le rôle **analyste** : un analyste peut exécuter du SQL en lecture
-  seule via `POST /analytics/sql`, borné aux collections qu'il a le droit
-  de lire (`can(read)`, RLS inchangée — l'endpoint ne contourne aucune
-  frontière de sécurité existante).
-
-**Un administrateur n'est pas analyste par défaut** : les deux rôles sont
-indépendants. Pour accorder le rôle analyste à un utilisateur, soit
-peupler `CORE_ANALYST_SUBS` avant sa première connexion, soit, une fois
-l'utilisateur créé, appeler `PATCH /users/{user_id}` avec
-`{"isAnalyst": true}` (réservé à un administrateur, comme pour `isAdmin`).
-
-### Vérifier le mode `oidc` réel (manuel)
-
-Le mode `mock` (`VITE_AUTH_MODE=mock`, `CORE_AUTH_MODE=mock`) suffit pour le
-développement courant et pour les 36 specs E2E — aucun accès réseau à
-Keycloak n'est nécessaire. Le mode `oidc` réel (utilisé en usage réel, pas en
-CI) se vérifie manuellement :
-
-1. `docker compose up -d` (stack complète, y compris `keycloak` avec le realm
-   `geostudio` importé automatiquement — voir `docker compose ps keycloak`
-   pour confirmer `healthy` ; `core` applique ses migrations Alembic
-   automatiquement à chaque démarrage de conteneur, aucune étape manuelle
-   requise).
-2. Construire et lancer le shell avec `CORE_AUTH_MODE=oidc` côté cœur et sans
-   `VITE_AUTH_MODE=mock` côté shell (retirer la variable ou la mettre à
-   `oidc`).
-3. Ouvrir http://localhost:8300 — être redirigé vers Keycloak
-   (`http://localhost:8180/realms/geostudio/...`), se connecter avec un des
-   utilisateurs de démo du realm importé.
-4. Après redirection retour vers le shell : le catalogue doit se charger
-   normalement (preuve que le token JWT émis par Keycloak est accepté par le
-   cœur — `CORE_OIDC_ISSUER`/`CORE_OIDC_AUDIENCE` validés côté
-   `app/auth/dependency.py`).
-5. Ouvrir les DevTools réseau, vérifier qu'un appel `GET /me` retourne un
-   `username` cohérent avec l'utilisateur Keycloak connecté (pas `mockuser`).
-
-Un échec à l'étape 3 (pas de redirection, ou erreur `invalid_redirect_uri`)
-indique un realm mal configuré (`Valid redirect URIs` du client
-`geostudio-shell` doit inclure exactement `http://localhost:8300/`). Un échec
-à l'étape 4 (401 du cœur après connexion réussie) indique un décalage entre
-l'`audience`/`issuer` attendus par le cœur (`CORE_OIDC_AUDIENCE`,
-`CORE_OIDC_ISSUER`) et ce que le realm émet réellement.
-
-### Vérifier le serveur MCP (manuel)
-
-Le serveur MCP (`/mcp`) n'a, à ce stade (SP-2a), aucun outil métier réel —
-juste `whoami`, qui prouve que l'authentification OAuth aboutit à la même
-identité que l'API REST du shell. Vérification manuelle :
-
-1. `docker compose up -d` (stack complète, `CORE_AUTH_MODE=oidc`, realm
-   `geostudio` importé).
-2. Avec un client MCP conforme à la spec *MCP Authorization* (ou
-   l'inspecteur MCP en ligne de commande), se connecter à
-   `http://localhost:8200/mcp`.
-3. Le client découvre `/.well-known/oauth-protected-resource/mcp`,
-   s'enregistre dynamiquement auprès de Keycloak (DCR), puis déclenche un
-   flow OAuth 2.1 + PKCE dans le navigateur — se connecter avec un des
-   utilisateurs de démo du realm (`alice`/`Demo1234!`).
-4. Une fois connecté, appeler l'outil `whoami` : la réponse doit contenir
-   `{"username": "alice", ...}` — la même identité que celle que `GET /me`
-   retournerait pour le même utilisateur côté API REST.
-
-Un échec à l'étape 3 avec une erreur de policy `Trusted Hosts` indique que
-le realm importé n'a pas la politique de dev de ce plan (Task 1) — vérifier
-`deploy/keycloak/geostudio-realm.json`. Un `401` à l'étape 4 indique un
-décalage entre `CORE_MCP_AUDIENCE` et l'audience réellement émise par le
-realm (vérifier que `geostudio-mcp-audience` est bien un scope par défaut
-du realm : `GET /admin/realms/geostudio/default-default-client-scopes`).
-
-#### Scénario complet (SP-2b) : créer un dashboard depuis un agent
-
-Une fois connecté (voir ci-dessus), un agent MCP peut maintenant :
-
-1. `list_items` — lister le catalogue.
-2. `get_app_config` sur un item existant — lire sa config.
-3. Lire la ressource `schema://app-config` (ou `GET /schemas/app-config`)
-   pour connaître la forme attendue d'un `AppConfig`.
-4. `create_item` avec un config valide contre ce schéma — crée un nouveau
-   dashboard, dont l'owner est l'utilisateur Keycloak connecté (jamais un
-   paramètre de l'outil).
-5. Ouvrir http://localhost:8300 dans le shell, se connecter avec le même
-   utilisateur : le dashboard créé par l'agent apparaît dans le catalogue et
-   s'ouvre normalement dans le builder — c'est le critère d'acceptation
-   final de la feuille de route pour SP-2 (« un agent crée un dashboard
-   valide qui s'ouvre dans le builder »).
-6. Vérifier `audit_log` (via un accès direct à la base, ou un futur outil
-   d'administration) : les lignes créées par cette séquence portent
-   `actor_kind = "agent"`, pas `"user"`.
-
-### Développement front (shell)
-
-```bash
-cd shell
-npm ci
-npm run test        # unitaires (Vitest)
-npm run e2e         # E2E (Playwright, auth mockée)
-npm run dev         # serveur de dev Vite
+```
+                     ┌──────────────┐
+   Navigateur ──────▶│    shell     │  (React, builder no-code)
+                     └──────┬───────┘
+                            │ REST / OGC API Features / MCP
+                     ┌──────▼───────┐        ┌─────────────┐
+                     │     core     │───────▶│   worker    │ (jobs procrastinate)
+                     │  (FastAPI)   │        │ cdc-worker  │ (CDC → GeoParquet)
+                     └──┬────┬───┬──┘        └─────────────┘
+                        │    │   │
+             ┌──────────┘    │   └──────────┐
+        ┌────▼────┐   ┌──────▼─────┐  ┌──────▼──────┐
+        │ postgis  │   │   minio    │  │  keycloak   │
+        │(pgbouncer)│  │   (S3)     │  │   (OIDC)    │
+        └──────────┘   └────────────┘  └─────────────┘
 ```
 
-### Développement cœur
+Martin (tuiles vectorielles) et TiTiler (raster/COG) sont utilisés en
+interne par le cœur, derrière Traefik. Cinq services supplémentaires
+n'existent que derrière un profil compose optionnel : `etl` (sidecar QGIS
+pour les transformations spatiales), `export` (rendu Playwright des
+exports/rapports), `appexport` (construction du bundle Autoporté),
+`observability` (Grafana/Prometheus/Loki/Tempo).
 
-```bash
-cd core
-uv sync
-uv run pytest
-uv run uvicorn app.main:app --reload --port 8200
-```
+## État du projet
 
-## Documentation
+**Version publiée : `v0.1.0`** — huit images `ghcr.io/tlenenao/geostudio-*`
+publiées sur le registre, anonymement téléchargeables, épinglées par tag
+(jamais `latest` en production). Le [`CHANGELOG.md`](CHANGELOG.md) suit le
+format Keep a Changelog.
+
+**Ce qui est stable** : le catalogue et le partage, l'éditeur de carte et sa
+symbologie, le builder d'apps/dashboards et son runtime, l'ingestion de
+fichiers géospatiaux, l'authentification OIDC, le modèle de rôles à
+privilèges, la CI (lint, types, tests, couverture, E2E, scan de
+vulnérabilités) et la release taguée. Ces surfaces ont chacune une suite de
+tests qui les couvre et sont vérifiées à chaque évolution du dépôt.
+
+**Ce qui ne l'est pas encore** : plusieurs fonctionnalités livrées et
+testées ne sont accessibles que par une URL directe faute de lien de
+navigation câblé (l'inventaire exact, avec sa preuve, est dans la matrice
+de fonctionnalités) ; la restauration d'une sauvegarde n'a jamais été
+rejouée de bout en bout ; la Content-Security-Policy tourne en mode
+« report-only », pas encore bloquant ; les transformations spatiales QGIS
+n'ont pas été exécutées contre un vrai sidecar dans un environnement de
+test. Ce dépôt documente ces manques explicitement plutôt que de les
+taire — voir la matrice et [`docs/revue/2026-09-04-backlog.md`](docs/revue/2026-09-04-backlog.md)
+pour le détail et le suivi.
+
+Ce projet est développé par une seule personne assistée d'agents Claude ; il
+n'y a pas d'équipe ni de support commercial derrière ce dépôt aujourd'hui.
+
+## Aller plus loin
 
 | Document | Rôle |
 |---|---|
-| [`docs/vision/2026-07-04-feuille-de-route-geostudio.md`](docs/vision/2026-07-04-feuille-de-route-geostudio.md) | **Référence** : phasage SP-1→SP-9, arbitrages, jalons |
-| [`docs/vision/2026-07-04-comparatif-projet-actuel-vs-vision.md`](docs/vision/2026-07-04-comparatif-projet-actuel-vs-vision.md) | La décision d'orientation (option C) et ses raisons |
-| [`docs/vision/2026-07-04-plateforme-webgis-nouvelle-generation.md`](docs/vision/2026-07-04-plateforme-webgis-nouvelle-generation.md) | La vision long terme (exploration 2026) |
-| [`docs/superpowers/specs/`](docs/superpowers/specs/) et [`plans/`](docs/superpowers/plans/) | Specs et plans datés de chaque sous-projet (SP-0x…) |
-| [`docs/archive/`](docs/archive/) | Études préalables (générations dépassées, conservées pour traçabilité) |
+| [`docs/revue/2026-09-04-matrice-fonctionnalites.md`](docs/revue/2026-09-04-matrice-fonctionnalites.md) | L'inventaire complet des fonctionnalités, avec preuve dans le code |
+| [`docs/vision/2026-07-04-feuille-de-route-geostudio.md`](docs/vision/2026-07-04-feuille-de-route-geostudio.md) | La feuille de route et les arbitrages produit |
+| [`docs/`](docs/) | Specs, plans et revues datés de chaque chantier |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Lancer les tests, convention de commits, process de pull request |
+| [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Code de conduite du projet |
+| [`CHANGELOG.md`](CHANGELOG.md) | Historique des versions |
 | [`CLAUDE.md`](CLAUDE.md) | Guide de travail pour les sessions de développement (Claude) |
-
-## Contribuer
-
-Les instructions pour lancer les tests, la convention de commits et le
-processus de pull request sont dans
-[`CONTRIBUTING.md`](CONTRIBUTING.md). Le code de conduite du projet est dans
-[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
 ## Licence
 

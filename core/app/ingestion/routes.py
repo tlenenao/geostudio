@@ -28,6 +28,8 @@ from app.ingestion.storage import (
     generate_presigned_put_url,
 )
 from app.ingestion.tasks import run_ingestion_task
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.users.models import User
 
 router = APIRouter()
@@ -107,6 +109,17 @@ def create_upload_job(
     user: User = Depends(get_current_user),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
 ) -> IngestionJobCreated:
+    # SP-42, correctif 1 (F-securite-autorisation-01) : ce job exécute du DDL
+    # (création de table PostGIS) au worker — réservé à data.manage, comme
+    # POST /collections/empty (Créateur l'a, Lecteur non).
+    require_privilege(session, user, Privilege.DATA_MANAGE.value)
+    # SP-42, revue de la dernière passe de correctifs (point 5, Important) :
+    # app.ingestion.importer::import_job crée AUSSI un
+    # Item(resource_type="map") + Config(kind="map") pour afficher le
+    # résultat (app.roles.kind_registry::privilege_for_kind mappe "map" sur
+    # maps.manage) — la garde ci-dessus ne couvrait que la moitié de ce que
+    # cette route crée réellement.
+    require_privilege(session, user, Privilege.MAPS_MANAGE.value)
     # La clé est censée venir du présigné (/uploads/presign), qui la préfixe
     # toujours par le tenant de l'appelant — un client qui en soumet une
     # sous le préfixe d'un AUTRE tenant (deviné, réutilisé depuis une fuite,

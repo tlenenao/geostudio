@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import logging
+import os
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -7,9 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.attachments import repository as attachments_repo
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections import repository as repo
+from app.collections.ddl import TenantColumnMismatch
 from app.collections.introspection import (
     Introspector,
     TableNotFound,
@@ -18,7 +21,13 @@ from app.collections.introspection import (
 from app.collections.provisioning import create_empty_collection
 from app.collections.publication import remove_table_from_publication
 from app.collections.schema_json import table_info_to_schema
-from app.collections.schemas import CollectionCreate, CollectionPatch, EmptyCollectionCreate
+from app.collections.schemas import (
+    AttachmentFieldSpec,
+    CollectionCreate,
+    CollectionPatch,
+    EmptyCollectionCreate,
+)
+from app.configs import repository as configs_repo
 from app.db import core_table_names, get_session
 from app.roles.guards import has_privilege, privilege_required_error, require_privilege
 from app.roles.privileges import Privilege
@@ -66,6 +75,25 @@ def get_table_lister() -> Callable[[Session], list[str]]:  # overridé en test
     from app.collections.introspection_pg import list_public_tables
 
     return list_public_tables
+
+
+def get_s3_client():  # overridé dans main.py quand S3_* est configuré
+    # Redéfini localement (comme app.attachments.routes.get_s3_client, cf.
+    # commentaire pyproject.toml sur "app.attachments.routes ->
+    # app.ingestion.storage") plutôt qu'importé depuis app.attachments —
+    # app.attachments est AU-DESSUS d'app.collections dans le contrat de
+    # couches, l'importer créerait une exemption de plus. Clé d'override
+    # DISTINCTE de attachments_routes.get_s3_client (SP-42/
+    # F-securite-tenant-rls-03) : unregister_collection en a besoin pour
+    # purger les pièces jointes d'une collection avant sa suppression.
+    raise RuntimeError("S3 client dependency not configured")
+
+
+def get_attachments_bucket() -> str:
+    # Duplique app.attachments.routes.get_attachments_bucket (même raison
+    # que get_s3_client ci-dessus : éviter une exemption de couches pour un
+    # simple accès à une variable d'environnement).
+    return os.environ.get("S3_ATTACHMENTS_BUCKET", "geostudio-attachments")
 
 
 def get_extent_provider():
@@ -133,6 +161,16 @@ def _collection_json(col, permissions, owner: str | None = None) -> dict:
         "featureCount": col.feature_count,
         "owner": owner,
         "attachmentFields": col.attachment_fields,
+        "license": col.license,
+        "licenseUri": col.license_uri,
+        "producer": col.producer,
+        "contact": col.contact,
+        "updateFrequency": col.update_frequency,
+        "lineage": col.lineage,
+        "language": col.language,
+        "version": col.version,
+        "temporalStart": col.temporal_start.isoformat() if col.temporal_start else None,
+        "temporalEnd": col.temporal_end.isoformat() if col.temporal_end else None,
     }
 
 
@@ -190,7 +228,10 @@ def register_collection(
         raise HTTPException(status_code=400, detail="table not found in schema public") from exc
     except UnsupportedTable as exc:
         raise HTTPException(status_code=400, detail=exc.reason) from exc
-    apply_ddl(session, info.table_name)
+    try:
+        apply_ddl(session, info.table_name, tenant_id=user.tenant_id)
+    except TenantColumnMismatch as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     col = repo.create_collection(
         session,
         tenant_id=user.tenant_id,
@@ -237,6 +278,12 @@ def create_empty_collection_route(
     introspect: Introspector = Depends(get_introspector),
     apply_ddl: Callable = Depends(get_ddl_applier),
 ):
+    # SP-42, correctif 1 (F-securite-autorisation-01) : cette route exécute du
+    # DDL (création de table PostGIS) — réservée à data.manage (Créateur
+    # l'a, Lecteur non), même privilège que POST /uploads.
+    # ADMIN_COLLECTIONS_MANAGE a été explicitement écarté ici : l'assistant de
+    # requête visuelle dépend de cette route pour tout utilisateur non-admin.
+    require_privilege(session, user, Privilege.DATA_MANAGE.value)
     col = create_empty_collection(
         session,
         tenant_id=user.tenant_id,
@@ -406,12 +453,50 @@ def get_collection_schema(
     return table_info_to_schema(info, attachment_fields=col.attachment_fields)
 
 
+def _reject_attachment_field_collisions(
+    session: Session,
+    col,
+    attachment_fields: list[AttachmentFieldSpec],
+    introspect: Introspector,
+) -> None:
+    # SP-42/F-coeur-contenu-03 : AttachmentFieldSpec.key n'était validé ni
+    # contre les colonnes SQL réelles ni (ici, côté DB) contre pk_column/
+    # tenant_id/geometry_column — table_info_to_schema (schema_json.py)
+    # concatène colonnes introspectées et attachmentFields sans
+    # dédoublonnage, donc GET /collections/{id}/schema pouvait exposer deux
+    # champs du même nom (l'un "string", l'autre "attachment"). Le
+    # dédoublonnage ENTRE attachmentFields eux-mêmes est déjà couvert par
+    # CollectionPatch._reject_duplicate_attachment_field_keys (schemas.py,
+    # sans DB) ; ceci couvre la collision avec une colonne réelle, qui a
+    # besoin de l'introspecteur.
+    if not attachment_fields:
+        return
+    try:
+        info = introspect(session, col.table_name)
+    except (TableNotFound, UnsupportedTable):
+        # Table backing disparue/mutée : rien à valider contre — même
+        # discipline que get_extent_provider/get_collection_schema, qui ne
+        # font pas planter la requête pour cette raison ailleurs dans ce
+        # module. patch_collection continue normalement (l'écriture des
+        # autres champs ne doit pas dépendre de la table backing).
+        return
+    reserved = {info.pk_column, "tenant_id", info.geometry_column} | {c.name for c in info.columns}
+    collisions = sorted({spec.key for spec in attachment_fields if spec.key in reserved})
+    if collisions:
+        joined = ", ".join(collisions)
+        raise HTTPException(
+            status_code=422,
+            detail=f"attachmentFields key(s) collide with an existing column: {joined}",
+        )
+
+
 @router.patch("/collections/{collection_id}")
 def patch_collection(
     collection_id: str,
     body: CollectionPatch,
     user=Depends(get_current_user),
     session: Session = Depends(get_session),
+    introspect: Introspector = Depends(get_introspector),
 ):
     can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     col = get_readable_collection(
@@ -430,6 +515,8 @@ def patch_collection(
         actor_is_admin=user.is_admin,
     ):
         raise HTTPException(status_code=403, detail="write access required")
+    if body.attachmentFields is not None:
+        _reject_attachment_field_collisions(session, col, body.attachmentFields, introspect)
     text_changed = (body.title is not None and body.title != col.title) or (
         body.description is not None and body.description != col.description
     )
@@ -438,9 +525,28 @@ def patch_collection(
         ("description", body.description),
         ("is_public", body.isPublic),
         ("editable", body.editable),
+        ("license", body.license),
+        ("license_uri", body.licenseUri),
+        ("producer", body.producer),
+        ("contact", body.contact),
+        ("update_frequency", body.updateFrequency),
+        ("lineage", body.lineage),
+        ("language", body.language),
+        ("version", body.version),
     ):
         if value is not None:
             setattr(col, attr, value)
+    # temporalStart/temporalEnd sont typés date | None sans représentation
+    # "vide" non-None distincte : la boucle générique ci-dessus ne peut pas
+    # distinguer "champ omis" de "champ explicitement mis à null" (les deux
+    # valent None côté Python). model_fields_set permet de savoir si la clé
+    # était présente dans le JSON de la requête, même avec une valeur null,
+    # ce qui permet d'effacer une emprise temporelle déjà déclarée (SP-41,
+    # correctif de revue finale).
+    if "temporalStart" in body.model_fields_set:
+        col.temporal_start = body.temporalStart
+    if "temporalEnd" in body.model_fields_set:
+        col.temporal_end = body.temporalEnd
     if body.attachmentFields is not None:
         col.attachment_fields = [f.model_dump() for f in body.attachmentFields]
     session.flush()
@@ -454,7 +560,7 @@ def patch_collection(
         action="collection.update",
         object_type="collection",
         object_id=col.id,
-        payload=body.model_dump(exclude_none=True),
+        payload=body.model_dump(exclude_none=True, mode="json"),
     )
     permissions = repo.collection_permissions_by_id(
         session,
@@ -472,6 +578,7 @@ def unregister_collection(
     collection_id: str,
     user=Depends(get_current_user),
     session: Session = Depends(get_session),
+    s3=Depends(get_s3_client),
 ):
     can_manage_collections = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     col = get_readable_collection(
@@ -482,7 +589,32 @@ def unregister_collection(
     # de le requêter une seconde fois via require_privilege().
     if not can_manage_collections:
         raise privilege_required_error(Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    # SP-42/F-coeur-contenu-04 : sans cette garde, supprimer une collection
+    # encore référencée par un Dataset (via dataset.collectionId) laissait ce
+    # Dataset orphelin silencieusement (204, aucun signal). Avant toute
+    # opération destructive (dépublication, purge des pièces jointes,
+    # suppression) : aucun effet de bord tant qu'une référence existe.
+    referencing = configs_repo.find_referencing_config_kinds(
+        session, tenant_id=col.tenant_id, collection_id=col.id
+    )
+    if referencing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"still referenced by config kind(s): {', '.join(referencing)}",
+        )
     remove_table_from_publication(session, col.table_name)
+    # SP-42/F-securite-tenant-rls-03 : sans cette purge explicite (lignes +
+    # objets S3), repo.delete_collection plantait en 500 (IntegrityError) dès
+    # qu'une pièce jointe existait sur une entité de la collection — la FK
+    # attachments.collection_id n'avait ondelete="CASCADE" que depuis la
+    # migration 0034, qui n'aurait supprimé que la ligne, jamais l'objet S3.
+    attachments_repo.delete_all_for_collection(
+        session,
+        s3,
+        get_attachments_bucket(),
+        tenant_id=col.tenant_id,
+        collection_id=col.id,
+    )
     repo.delete_collection(session, col)
     write_audit(
         session,

@@ -13,19 +13,15 @@ from collections.abc import Callable
 from app.auth.dependency import is_etl_enabled, is_read_only_mode
 from app.configs import repository as configs_repo
 from app.configs.schemas import PipelinePayload
-from app.db import make_engine, make_session_factory, request_scoped_session
+from app.db import request_scoped_session
 from app.jobs import app
-from app.notifications import repository as notifications_repo
+from app.jobs.common import notify_best_effort, resolve_owner_user
+from app.jobs.common import session_factory as _session_factory
 from app.pipelines import repository as pipelines_repo
 from app.pipelines.runtime import NodeStat, PipelineRuntimeError, run_pipeline
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
-
-
-def _session_factory():
-    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
-    return make_session_factory(engine)
 
 
 def _get_pipeline_payload(session, *, item_id: str) -> PipelinePayload:
@@ -43,22 +39,17 @@ def _acting_user(session, *, tenant_id: str, item_id: str) -> User:
     # l'identité du PROPRIÉTAIRE du pipeline, jamais un contournement admin
     # implicite : si le propriétaire a perdu l'accès à une collection depuis
     # la sauvegarde, le run échoue proprement (cf. _require_readable/
-    # writable_collection dans app.pipelines.runtime). ItemRead (le type que
-    # renvoie items_repo.get_item) ne porte pas owner_id (seulement
-    # owner=username, cf. app.items.repository._to_read) — on le relit donc
-    # directement sur le modèle ORM plutôt que de passer par ItemRead.
-    from sqlalchemy import select
-
-    from app.items.models import Item
-
-    owner_id = session.execute(
-        select(Item.owner_id).where(Item.id == item_id, Item.tenant_id == tenant_id)
-    ).scalar_one_or_none()
-    if owner_id is None:
-        raise ValueError(f"pipeline item '{item_id}' not found")
-    user = session.get(User, owner_id)
-    assert user is not None
-    return user
+    # writable_collection dans app.pipelines.runtime).
+    #
+    # SP-43 Tâche 6 : corps migré vers app.jobs.common.resolve_owner_user
+    # (identique) ; ce thin wrapper reconvertit son LookupError générique en
+    # ValueError, pour ne changer aucun comportement observable des
+    # appelants existants (run_pipeline_task attrape (PipelineRuntimeError,
+    # ValueError) explicitement).
+    try:
+        return resolve_owner_user(session, tenant_id=tenant_id, item_id=item_id)
+    except LookupError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def _owner_and_title(session, *, tenant_id: str, item_id: str) -> tuple[str, str]:
@@ -84,23 +75,30 @@ def _notify(
     bloquant : son propre bloc try/except, séparé de celui qui commite
     mark_succeeded/mark_failed, pour qu'un échec ici ne fasse jamais
     rollback d'un changement de statut de run déjà réussi (même patron que
-    app.ingestion.tasks._notify, SP-39/Tâche 4)."""
+    app.ingestion.tasks._notify, SP-39/Tâche 4).
+
+    SP-43 Tâche 6 : l'écriture proprement dite (session isolée, commit,
+    avaler toute exception) est désormais déléguée à
+    app.jobs.common.notify_best_effort — cette fonction ne garde que la
+    résolution owner+titre propre au domaine pipeline (_owner_and_title),
+    elle-même protégée par son propre try/except best-effort."""
     try:
         with request_scoped_session(session_factory) as session:
             owner_id, title = _owner_and_title(session, tenant_id=tenant_id, item_id=item_id)
-            notifications_repo.create_notification(
-                session,
-                tenant_id=tenant_id,
-                recipient_user_id=owner_id,
-                kind="pipeline",
-                status=status,
-                item_id=item_id,
-                item_resource_type="pipeline",
-                item_title=title,
-                error_message=error,
-            )
     except Exception:
-        logger.exception("pipeline run : échec de l'écriture de la notification")
+        logger.exception("pipeline run : échec de la résolution du destinataire de notification")
+        return
+    notify_best_effort(
+        session_factory,
+        tenant_id=tenant_id,
+        recipient_user_id=owner_id,
+        kind="pipeline",
+        status=status,
+        item_id=item_id,
+        item_resource_type="pipeline",
+        item_title=title,
+        error=error,
+    )
 
 
 def _s3_client_from_env():
@@ -142,7 +140,7 @@ def _make_progress_callback(
 
 @app.task(queue="etl")
 def run_pipeline_task(run_id: str, tenant_id: str) -> None:
-    session_factory = _session_factory()
+    factory = _session_factory()
     # Toujours lié avant le premier bloc protégé : si get_run/mark_running
     # lève avant l'affectation réelle (ci-dessous), les handlers `except`
     # doivent pouvoir le lire sans UnboundLocalError (même piège que
@@ -154,7 +152,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
     item_id: str | None = None
 
     try:
-        with request_scoped_session(session_factory) as session:
+        with request_scoped_session(factory) as session:
             run = pipelines_repo.get_run(session, tenant_id=tenant_id, run_id=run_id)
             if run is None:
                 logger.error("pipeline run %s introuvable (tenant %s)", run_id, tenant_id)
@@ -162,7 +160,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             pipelines_repo.mark_running(session, run_id=run_id)
             item_id = run.pipeline_item_id
 
-        with request_scoped_session(session_factory) as session:
+        with request_scoped_session(factory) as session:
             payload = _get_pipeline_payload(session, item_id=item_id)
             user = _acting_user(session, tenant_id=tenant_id, item_id=item_id)
             stats = run_pipeline(
@@ -181,23 +179,23 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                     os.environ.get("QGIS_WORKER_TIMEOUT_SECONDS", "600")
                 ),
                 on_node_complete=_make_progress_callback(
-                    session_factory, run_id=run_id, tenant_id=tenant_id
+                    factory, run_id=run_id, tenant_id=tenant_id
                 ),
             )
-        with request_scoped_session(session_factory) as session:
+        with request_scoped_session(factory) as session:
             pipelines_repo.mark_succeeded(
                 session,
                 run_id=run_id,
                 node_stats={s.nodeId: s.to_dict() for s in stats},
             )
         assert item_id is not None  # affecté ci-dessus, jamais atteint sinon (cf. return/raise)
-        _notify(session_factory, tenant_id=tenant_id, item_id=item_id, status="success")
+        _notify(factory, tenant_id=tenant_id, item_id=item_id, status="success")
     except (PipelineRuntimeError, ValueError) as exc:
-        with request_scoped_session(session_factory) as session:
+        with request_scoped_session(factory) as session:
             pipelines_repo.mark_failed(session, run_id=run_id, error=str(exc))
         if item_id is not None:
             _notify(
-                session_factory,
+                factory,
                 tenant_id=tenant_id,
                 item_id=item_id,
                 status="failure",
@@ -207,11 +205,11 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             logger.info("pipeline run %s : notification ignorée (item inconnu)", run_id)
     except Exception as exc:  # toute erreur inattendue finit "failed", jamais zombie
         logger.exception("pipeline run %s : erreur inattendue", run_id)
-        with request_scoped_session(session_factory) as session:
+        with request_scoped_session(factory) as session:
             pipelines_repo.mark_failed(session, run_id=run_id, error=f"erreur interne : {exc}")
         if item_id is not None:
             _notify(
-                session_factory,
+                factory,
                 tenant_id=tenant_id,
                 item_id=item_id,
                 status="failure",
@@ -229,8 +227,8 @@ def run_pipeline_sweep_task(timestamp: int) -> None:
         return
     if not is_etl_enabled():
         return
-    session_factory = _session_factory()
-    with request_scoped_session(session_factory) as session:
+    factory = _session_factory()
+    with request_scoped_session(factory) as session:
         due = pipelines_repo.list_due_pipelines(session)
         for item_id, tenant_id in due:
             run = pipelines_repo.create_run(session, tenant_id=tenant_id, pipeline_item_id=item_id)

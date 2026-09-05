@@ -129,6 +129,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async setExtensionEnabled(..._args: unknown[]) {
       return unsupported();
     },
+    async getMetadataCatalog(..._args: unknown[]) {
+      return unsupported();
+    },
     async listCollections(..._args: unknown[]) {
       return unsupported();
     },

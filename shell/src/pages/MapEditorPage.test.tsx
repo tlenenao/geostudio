@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { ItemClient, MapConfig } from "../api/types";
+import type { Item, ItemClient, MapConfig } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
+import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 import { mapInstances } from "../test/MockMaplibreMap";
 import { overlayInstances } from "../test/MockDeckgl";
 
@@ -73,11 +74,35 @@ const config: MapConfig = {
   layers: [{ id: "a", title: "Couche A", visible: true, kind: "feature", url: "u" }],
 };
 
+// Item par défaut de la carte "77" (seul pk utilisé par ce fichier) :
+// permissions.write=true, comme avant l'introduction du garde
+// SP-42/F-shell-pages-04 (aucun test existant n'affirme sur des permissions
+// restreintes — celui qui le fait le surcharge explicitement).
+const OWNED_MAP_ITEM: Item = {
+  pk: "77",
+  resourceType: "map",
+  title: "Carte",
+  abstract: "",
+  owner: "alice",
+  thumbnailUrl: null,
+  date: "2026-01-01",
+  configId: "cfg-77",
+  isPublished: false,
+  keywords: [],
+  permissions: OWNER_PERMISSIONS,
+  license: "",
+  language: "fr",
+};
+
 function renderEditor(client: Partial<ItemClient>, initialEntries: string[] = ["/maps/77"]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const merged: Partial<ItemClient> = {
+    getItem: vi.fn().mockResolvedValue(OWNED_MAP_ITEM),
+    ...client,
+  };
   return render(
     <QueryClientProvider client={qc}>
-      <ItemClientProvider client={client as ItemClient}>
+      <ItemClientProvider client={merged as ItemClient}>
         <MemoryRouter initialEntries={initialEntries}>
           <MapEditorPage pk="77" />
         </MemoryRouter>
@@ -237,4 +262,66 @@ test("sous viewport étroit, affiche trois onglets Couches/Carte/Inspecter avec 
   expect(tabs.map((t) => t.textContent)).toEqual(["Couches", "Carte", "Inspecter"]);
   const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
   expect(activeTab).toHaveTextContent("Carte");
+});
+
+test("SP-42/F-shell-pages-04 : verrouille Enregistrer quand permissions.write est false", async () => {
+  renderEditor({
+    getItem: vi.fn().mockResolvedValue({ ...OWNED_MAP_ITEM, permissions: READ_ONLY_PERMISSIONS }),
+    getMapConfig: vi.fn().mockResolvedValue(config),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  const saveButton = await screen.findByRole("button", { name: "Enregistrer" });
+  expect(saveButton).toBeDisabled();
+  expect(
+    screen.getByText("Modification réservée aux éditeurs de cet élément."),
+  ).toBeInTheDocument();
+});
+
+test("SP-42, revue finale (point 2, Critical) : reste en chargement tant que l'item n'est pas résolu, ne verrouille pas Enregistrer par erreur", async () => {
+  let resolveItem!: (item: Item) => void;
+  let resolveMapConfig!: (config: MapConfig) => void;
+  renderEditor({
+    getItem: vi.fn(
+      () =>
+        new Promise<Item>((resolve) => {
+          resolveItem = resolve;
+        }),
+    ),
+    getMapConfig: vi.fn(
+      () =>
+        new Promise<MapConfig>((resolve) => {
+          resolveMapConfig = resolve;
+        }),
+    ),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+
+  // Résout le config de carte SEUL, jamais l'item : avant le correctif, la
+  // page rendait déjà l'éditeur complet avec Enregistrer verrouillé
+  // (permissions.write lu sur `undefined` => false, cf. hasPermission) dès
+  // que `draft` était posé, sans attendre itemQuery — au lieu de rester en
+  // "Chargement…" comme son jumeau DatasetEditPage.tsx.
+  await act(async () => {
+    resolveMapConfig(config);
+    // Laisse toutes les micro-tâches en attente se résoudre (react-query
+    // doit relire la donnée résolue et l'effet de synchronisation du
+    // brouillon doit avoir eu l'occasion de s'exécuter) — même patron que
+    // VisualQueryWizardPage.test.tsx.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("Chargement…");
+
+  resolveItem(OWNED_MAP_ITEM);
+  const saveButton = await screen.findByRole("button", { name: "Enregistrer" });
+  expect(saveButton).toBeEnabled();
+});
+
+test("SP-42, revue finale (point 2, Critical) : affiche une erreur si l'item ne charge pas, ne verrouille pas silencieusement", async () => {
+  renderEditor({
+    getItem: vi.fn().mockRejectedValue(new Error("boom")),
+    getMapConfig: vi.fn().mockResolvedValue(config),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  expect(await screen.findByRole("alert")).toHaveTextContent(/carte introuvable/i);
 });

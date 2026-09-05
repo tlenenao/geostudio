@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.catalog.metadata import validate_language_id, validate_license_id
 
 
 class ItemPermissions(BaseModel):
@@ -27,9 +29,16 @@ class ItemRead(BaseModel):
     owner: str
     thumbnailUrl: str | None
     date: str
+    # SP-42 F-shell-api-07 : `date` reste `created_at` (rétrocompatibilité —
+    # tout consommateur qui s'y fie aujourd'hui n'est pas affecté).
+    # `updatedAt` est le champ distinct que le shell doit lire pour un
+    # libellé « Modifié » qui change réellement après une édition.
+    updatedAt: str
     configId: str | None
     isPublished: bool
     keywords: list[str] = []
+    license: str = ""
+    language: str = "fr"
     permissions: ItemPermissions
 
 
@@ -46,3 +55,15 @@ class ItemUpdatePatch(BaseModel):
     keywords: list[str] | None = None
     isPublished: bool | None = Field(default=None)
     slug: str | None = None
+    license: str | None = None
+    language: str | None = None
+
+    @field_validator("license")
+    @classmethod
+    def _validate_license(cls, v: str | None) -> str | None:
+        return validate_license_id(v)
+
+    @field_validator("language")
+    @classmethod
+    def _validate_language(cls, v: str | None) -> str | None:
+        return validate_language_id(v)

@@ -374,6 +374,36 @@ def test_a_failing_s3_delete_does_not_lose_the_database_delete(env):
     assert client.get("/map-icons").json() == []
 
 
+def test_a_non_owner_in_the_same_tenant_cannot_delete_someone_elses_icon(env):
+    # SP-42 / F-securite-autorisation-13 : delete_map_icon ne vérifiait ni
+    # created_by ni aucun privilège — tout utilisateur du même tenant
+    # pouvait supprimer l'icône (et l'objet S3) créée par n'importe qui
+    # d'autre. Bob n'a ici aucun rôle particulier : le rôle par défaut de
+    # tout nouvel utilisateur (Créateur) suffit à reproduire le trou.
+    app, client, Session, tenant, alice, _fake_s3 = env
+    _as(app, alice)
+    icon_id = _upload(client, title="Logo d'Alice").json()["id"]
+
+    with Session() as s:
+        bob = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        s.commit()
+
+    _as(app, bob)
+    response = client.delete(f"/map-icons/{icon_id}")
+    assert response.status_code == 403, response.text
+    # L'icône d'Alice doit toujours exister.
+    _as(app, alice)
+    assert [i["id"] for i in client.get("/map-icons").json()] == [icon_id]
+
+
 def test_map_icons_cannot_be_registered_as_a_business_collection(env):
     """core_table_names() est la denylist du registre de collections : sans
     l'import paresseux dans app/db.py, un admin pourrait exposer map_icons en

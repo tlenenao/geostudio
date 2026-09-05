@@ -24,7 +24,7 @@ from app.admin_tools.tokens import (
 )
 from app.auth.dependency import get_current_user
 from app.db import get_session
-from app.roles.guards import require_privilege
+from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.users.models import User
 
@@ -74,11 +74,24 @@ def bootstrap_admin_tool_session(tool: ToolName, _at: str) -> Response:
 
 
 @router.get("/admin-tools/verify")
-def verify_admin_tool_session(gs_admin_session: str | None = Cookie(default=None)) -> Response:
+def verify_admin_tool_session(
+    gs_admin_session: str | None = Cookie(default=None),
+    session: Session = Depends(get_session),
+) -> Response:
     if gs_admin_session is None:
         raise HTTPException(status_code=403, detail="no admin session")
     try:
-        decode_session_token(gs_admin_session)
+        claims = decode_session_token(gs_admin_session)
     except AdminToolsTokenError as exc:
         raise HTTPException(status_code=403, detail="invalid admin session") from exc
+    # SP-42/F-securite-surfaces-03 : le cookie de session (30 min) n'était
+    # jamais revérifié en base — une révocation du privilège en cours de
+    # session restait sans effet jusqu'à expiration. Appelée par le
+    # forwardAuth Traefik à CHAQUE sous-requête vers /admin/martin|titiler|
+    # grafana, cette route relit donc désormais le rôle courant de
+    # l'utilisateur à chaque appel, exactement comme le fait toute autre
+    # route gardée par require_privilege/has_privilege dans ce dépôt.
+    user = session.get(User, claims.sub)
+    if user is None or not has_privilege(session, user, Privilege.SETTINGS_INSTANCE_MANAGE.value):
+        raise HTTPException(status_code=403, detail="admin session revoked")
     return Response(status_code=200)

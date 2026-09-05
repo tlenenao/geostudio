@@ -2,7 +2,7 @@
 import pytest
 from sqlalchemy import text
 
-from app.collections.ddl import apply_collection_ddl
+from app.collections.ddl import TenantColumnMismatch, apply_collection_ddl
 
 pytestmark = pytest.mark.postgis
 
@@ -108,3 +108,74 @@ def test_rls_blocks_wrong_tenant(pg_table, pg_session_factory):
 
         with pytest.raises(sqlalchemy.exc.DBAPIError):
             session.execute(text("INSERT INTO t_rls (titre, tenant_id) VALUES ('b', 'default')"))
+
+
+@pytest.fixture()
+def pg_table_with_foreign_tenant_column(pg_engine):
+    # Table PRÉEXISTANTE portant déjà une colonne tenant_id peuplée par un
+    # autre système (pas créée par notre pipeline d'ingestion, qui se
+    # protège lui-même — cf. app/ingestion/importer.py:129-135).
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_rls_foreign"))
+        conn.execute(
+            text(
+                "CREATE TABLE t_rls_foreign (id serial PRIMARY KEY, tenant_id text NOT NULL, "
+                "geom geometry(Point, 4326))"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO t_rls_foreign (tenant_id, geom) VALUES "
+                "('acme', ST_SetSRID(ST_MakePoint(1, 1), 4326))"
+            )
+        )
+    yield "t_rls_foreign"
+    with pg_engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS t_rls_foreign"))
+
+
+def test_ddl_rejects_preexisting_tenant_column_with_foreign_values(
+    pg_table_with_foreign_tenant_column, pg_session_factory
+):
+    # SP-42/F-securite-tenant-rls-01 : ADD COLUMN IF NOT EXISTS est un no-op
+    # silencieux quand tenant_id existe déjà — sans cette garde, la policy
+    # RLS serait posée sur des valeurs étrangères ('acme' != 'default') et
+    # toutes les lectures sous RLS renverraient 0 ligne malgré un COUNT(*)
+    # hors RLS non nul.
+    with pg_session_factory() as session:
+        with pytest.raises(TenantColumnMismatch):
+            apply_collection_ddl(session, pg_table_with_foreign_tenant_column, tenant_id="default")
+        session.rollback()
+
+
+def test_ddl_accepts_preexisting_tenant_column_with_matching_values(
+    pg_table_with_foreign_tenant_column, pg_session_factory
+):
+    # Contre-épreuve : le même mécanisme ne doit pas refuser une table dont
+    # la colonne tenant_id préexistante correspond déjà au tenant appelant.
+    with pg_session_factory() as session:
+        apply_collection_ddl(session, pg_table_with_foreign_tenant_column, tenant_id="acme")
+        session.commit()
+
+
+def test_ddl_backfills_a_new_tenant_id_column_with_the_callers_tenant(pg_table, pg_session_factory):
+    # SP-42, revue de la dernière passe de correctifs (point 4, Important) :
+    # apply_collection_ddl stampait TOUJOURS le littéral DEFAULT 'default'
+    # sur une colonne tenant_id nouvellement ajoutée, quel que soit le
+    # tenant_id passé par l'appelant — celui-ci ne servait qu'à la garde
+    # TenantColumnMismatch, jamais à la valeur réellement écrite. Pour un
+    # tenant != "default" sur une table SANS colonne préexistante, les
+    # lignes déjà présentes (et toute ligne insérée sans préciser
+    # explicitement tenant_id) héritaient donc du mauvais tenant : COUNT(*)
+    # hors RLS comptait des lignes qu'aucune lecture sous RLS ne pouvait
+    # jamais voir pour ce tenant.
+    with pg_session_factory() as session:
+        session.execute(text("INSERT INTO t_rls (titre) VALUES ('a')"))
+        apply_collection_ddl(session, pg_table, tenant_id="acme")
+        session.commit()
+    with pg_session_factory() as session:
+        tenant_id = session.execute(text("SELECT tenant_id FROM t_rls")).scalar()
+        assert tenant_id == "acme"
+        session.execute(text("SET LOCAL ROLE gis_rls"))
+        session.execute(text("SET LOCAL app.tenant_id = 'acme'"))
+        assert session.execute(text("SELECT count(*) FROM t_rls")).scalar() == 1

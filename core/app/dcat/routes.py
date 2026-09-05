@@ -72,8 +72,18 @@ def _dataset_doc(*, base, col, introspect, bbox_provider, rls, session, publishe
         created_at=_rfc3339(col.created_at),
         updated_at=_rfc3339(col.updated_at),
         is_public=col.is_public,
-        publisher_name=publisher_name,
+        publisher_name=col.producer or publisher_name,
         bbox=bbox,
+        license=col.license,
+        license_uri=col.license_uri,
+        language=col.language,
+        update_frequency=col.update_frequency,
+        lineage=col.lineage,
+        contact=col.contact,
+        version=col.version,
+        temporal_start=col.temporal_start.isoformat() if col.temporal_start else None,
+        temporal_end=col.temporal_end.isoformat() if col.temporal_end else None,
+        producer_declared=bool(col.producer),
     )
 
 

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useCreatePipeline,
+  useItem,
   usePipelineConfig,
   usePipelineOps,
   useSavePipeline,
@@ -16,6 +17,7 @@ import type {
   PipelineRefreshPolicy,
   PipelineRun,
 } from "../api/types";
+import { hasPermission } from "../auth/permissions";
 import { Button } from "../ui/kit/Button";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { PipelineCanvas } from "../builder/pipeline/PipelineCanvas";
@@ -27,6 +29,7 @@ import { PipelineScheduleEditor } from "../builder/pipeline/PipelineScheduleEdit
 import { genNodeId, insertNodeOnEdge } from "../builder/pipeline/graphOps";
 import { isPipelineValid, validatePipelineGraphLocally } from "../builder/pipeline/validation";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { t } from "../i18n";
 
 const EMPTY_PAYLOAD: PipelinePayload = { nodes: [], edges: [] };
 
@@ -46,8 +49,20 @@ export function PipelineBuilderPage({
   const client = useItemClient();
   const opsQuery = usePipelineOps();
   const configQuery = usePipelineConfig(pk ?? "", { enabled: pk !== null });
+  const itemQuery = useItem(pk ?? "", { enabled: pk !== null });
   const createPipeline = useCreatePipeline();
   const savePipeline = useSavePipeline(pk ?? "");
+  // SP-42/F-shell-pages-04 : cf. commentaire jumeau sur DatasetEditPage.tsx —
+  // même doctrine, même résidu documenté. `pk === null` = brouillon jamais
+  // encore créé, rien à verrouiller (la garde de création est un sujet
+  // distinct, F-shell-pages-01/F-securite-autorisation-01).
+  //
+  // SP-42, revue finale (point 2, Critical) : quand `pk !== null`,
+  // `itemQuery.data` est `undefined` pendant tout le chargement ET en cas
+  // d'erreur — hasPermission renvoie alors `false`, verrouillant Enregistrer
+  // pour la mauvaise raison. Le garde de rendu plus bas inclut désormais
+  // itemQuery.isLoading/isError (même patron que DatasetEditPage.tsx:52-58).
+  const readOnly = pk !== null && !hasPermission(itemQuery.data, "write");
 
   const [draft, setDraft] = useState<PipelinePayload>(EMPTY_PAYLOAD);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -58,7 +73,25 @@ export function PipelineBuilderPage({
     if (pk !== null && configQuery.data) setDraft(configQuery.data);
   }, [pk, configQuery.data]);
 
-  if (pk !== null && configQuery.isLoading) return <p role="status">Chargement…</p>;
+  if (pk !== null && (configQuery.isLoading || itemQuery.isLoading))
+    return <p role="status">Chargement…</p>;
+  // SP-42 F-shell-pages-05 : sans cette garde, un pipeline existant dont le
+  // chargement échoue (403 suite à une révocation de partage, item supprimé
+  // mais lien conservé, panne réseau transitoire) s'affichait comme un
+  // brouillon vide avec Enregistrer actif — un ré-enregistrement écrasait
+  // silencieusement la configuration réelle. Même patron que
+  // MapEditorPage.tsx pour son propre query.isError.
+  //
+  // SP-42, revue finale (point 2, Critical) : itemQuery.isError/!itemQuery.data
+  // ajoutés pour la même raison que configQuery.isError — sans eux,
+  // `readOnly` se calculait sur `itemQuery.data === undefined` (=> verrouillé
+  // à tort) sans jamais bloquer le rendu complet.
+  if (pk !== null && (configQuery.isError || itemQuery.isError || !itemQuery.data))
+    return (
+      <p role="alert" className="text-sm text-danger">
+        Pipeline introuvable.
+      </p>
+    );
   if (opsQuery.isLoading || !opsQuery.data) return <p role="status">Chargement…</p>;
 
   const catalog = opsQuery.data;
@@ -207,10 +240,13 @@ export function PipelineBuilderPage({
                   size="sm"
                   className="w-fit"
                   onClick={() => void onSave()}
-                  disabled={!valid || createPipeline.isPending || savePipeline.isPending}
+                  disabled={
+                    !valid || createPipeline.isPending || savePipeline.isPending || readOnly
+                  }
                 >
                   Enregistrer
                 </Button>
+                {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
                 {saveError && (
                   <p role="alert" className="text-xs text-danger">
                     {saveError}

@@ -131,7 +131,7 @@ def env(tmp_path):
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
     app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (
-        lambda session, table: None
+        lambda session, table, tenant_id=None: None
     )
     fake_items_repo = make_fake_items_repo()
     app.dependency_overrides[features_routes.get_features_repo] = lambda: fake_items_repo

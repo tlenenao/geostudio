@@ -47,7 +47,7 @@ def _write_partition(base_dir, *, tenant_id="t1", collection_id="villes", rows):
     gdf.to_parquet(partition_dir / "part-1.parquet")
 
 
-def _row(id_, region, annee, pop, *, op="insert", lsn=1, x=0.0, y=0.0):
+def _row(id_, region, annee, pop, *, op="insert", lsn=1, seq=0, x=0.0, y=0.0):
     return {
         "id": id_,
         "region": region,
@@ -55,6 +55,7 @@ def _row(id_, region, annee, pop, *, op="insert", lsn=1, x=0.0, y=0.0):
         "pop": pop,
         "_op": op,
         "_lsn": lsn,
+        "_seq": seq,
         "_ts": 1.0,
         "geometry": Point(x, y),
     }
@@ -178,6 +179,34 @@ def test_reduces_to_current_state_last_lsn_wins_and_tombstone_excluded(tmp_path,
     )
 
     assert rows == [{"region": "Nord", "value": 999}]  # Sud entièrement supprimé
+
+
+def test_tie_on_same_lsn_keeps_the_later_added_row_not_the_first_seen(tmp_path, conn):
+    """core/app/cdc/consumer.py:54-70 documente que deux transactions
+    distinctes captées dans la même fenêtre de settle CDC peuvent partager
+    exactement la même valeur `_lsn` — c'est alors l'ORDRE D'AJOUT (`_seq`),
+    pas `_lsn`, qui doit départager la ligne la plus récente. "Nord" (msg,
+    ajoutée en premier) doit perdre face à "Nord" (extra, même _lsn, ajoutée
+    après)."""
+    _write_partition(
+        tmp_path,
+        rows=[
+            _row(1, "Nord", "2025", 10, lsn=5, seq=1),  # "msg" : ajoutée en premier
+            _row(1, "Nord", "2025", 999, lsn=5, seq=2),  # "extra" : même _lsn, ajoutée après
+        ],
+    )
+    request = AggregateRequestBody(groupBy="region", agg="sum", field="pop")
+
+    _category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert rows == [{"region": "Nord", "value": 999}]
 
 
 def test_attribute_filter_narrows_rows(tmp_path, conn):
@@ -412,6 +441,34 @@ def test_bucket_groups_rows_by_day(tmp_path, conn):
         {"annee": "2026-01-05 00:00:00", "value": 2},
         {"annee": "2026-01-06 00:00:00", "value": 1},
     ]
+
+
+def test_bucket_normalizes_timestamptz_offset_before_truncating(tmp_path, conn):
+    """Deux lignes représentant EXACTEMENT le même instant réel (23:30 UTC le
+    5 janvier 2026), écrites avec deux offsets différents comme le ferait le
+    CDC (backfill._pg_timestamp_str / wal2json), doivent tomber dans le MÊME
+    bucket 'day' — un TRY_CAST(... AS TIMESTAMP) nu jetterait silencieusement
+    l'offset et les séparerait en deux buckets distincts."""
+    _write_partition(
+        tmp_path,
+        rows=[
+            _row(1, "Nord", "2026-01-05 23:30:00+00", 1, lsn=1),
+            _row(2, "Sud", "2026-01-06 01:30:00+02", 1, lsn=1),  # même instant, 23:30 UTC
+        ],
+    )
+    request = AggregateRequestBody(groupBy="annee", bucket="day", agg="count")
+
+    category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert category_key == "annee"
+    assert rows == [{"annee": "2026-01-05 00:00:00", "value": 2}]
 
 
 def test_bucket_groups_rows_by_month(tmp_path, conn):
@@ -887,6 +944,28 @@ def test_stddev_of_a_single_row_group_is_null_not_zero(tmp_path, conn):
 def test_median_of_a_group_without_castable_values_is_null_not_zero(tmp_path, conn):
     _write_partition(tmp_path, rows=[_row(1, "Nord", "pas-un-nombre", None, lsn=1)])
     request = AggregateRequestBody(groupBy="region", agg="median", field="annee")
+
+    _category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert rows == [{"region": "Nord", "value": None}]
+
+
+@pytest.mark.parametrize("agg", ["sum", "avg", "min", "max"])
+def test_agg_of_a_group_without_castable_values_is_null_not_zero(tmp_path, conn, agg):
+    """Même fixture exacte que test_median_of_a_group_without_castable_values_
+    is_null_not_zero : median/percentile/stddev renvoient déjà null pour ce
+    cas (design §3.1, `_agg_expr` — « Indéfini n'est PAS zéro... renvoyer 0
+    produirait un graphique faux plutôt qu'un trou »), sum/avg/min/max
+    doivent suivre la même règle plutôt que de renvoyer 0 silencieusement."""
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "pas-un-nombre", None, lsn=1)])
+    request = AggregateRequestBody(groupBy="region", agg=agg, field="annee")
 
     _category_key, rows = run_collection_aggregate(
         conn,

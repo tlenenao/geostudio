@@ -10,17 +10,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
-from app.configs import repository as configs_repo
 from app.db import get_session
-from app.items import repository as items_repo
 from app.pipelines import repository as pipelines_repo
-from app.pipelines.jobs import run_pipeline_task
 from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
 from app.pipelines.ops.schemas import ops_catalog
 from app.pipelines.runtime import PipelineRuntimeError, preview_pipeline
-from app.sharing.authorization import can
+from app.pipelines.service import (
+    default_task_deferrer,
+    require_pipeline_access,
+    require_pipeline_config,
+    run_pipeline_service,
+)
 from app.users.models import User
 
 router = APIRouter()
@@ -39,26 +40,8 @@ class RunStatus(BaseModel):
     nodeStats: dict
 
 
-def _require_pipeline_access(session: Session, *, user: User, item_id: str, action: str) -> None:
-    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
-    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
-        raise HTTPException(status_code=404, detail="pipeline not found")
-    if action != "read" and not can(session, user_id=user.id, action=action, item=facts):
-        raise HTTPException(status_code=403, detail="not allowed")
-
-
-def _require_pipeline_config(session: Session, item_id: str):
-    config = configs_repo.get_config_by_item(session, item_id)
-    if config is None or config.config.kind != "pipeline":
-        raise HTTPException(status_code=404, detail="pipeline not found")
-    return config
-
-
 def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
-    def deferrer(run_id: str, tenant_id: str) -> None:
-        run_pipeline_task.defer(run_id=run_id, tenant_id=tenant_id)
-
-    return deferrer
+    return default_task_deferrer()
 
 
 @router.get("/pipelines/ops")
@@ -78,25 +61,8 @@ def run_pipeline_route(
     user: User = Depends(get_current_user),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
 ) -> RunResponse:
-    _require_pipeline_access(session, user=user, item_id=item_id, action="write")
-    _require_pipeline_config(session, item_id)
-    run = pipelines_repo.create_run(session, tenant_id=user.tenant_id, pipeline_item_id=item_id)
-    write_audit(
-        session,
-        tenant_id=user.tenant_id,
-        actor_id=user.id,
-        actor_kind="user",
-        action="pipeline.run",
-        object_type="pipeline_run",
-        object_id=run.id,
-        payload={"pipelineItemId": item_id},
-    )
-    # Commit avant de déférer : même raison que ingestion/routes.py
-    # (create_upload_job) — un worker pourrait ramasser la tâche avant que
-    # la ligne pipeline_runs ne soit visible autrement.
-    session.commit()
-    defer_task(run.id, user.tenant_id)
-    return RunResponse(runId=run.id)
+    run_id = run_pipeline_service(session, user=user, item_id=item_id, defer_task=defer_task)
+    return RunResponse(runId=run_id)
 
 
 @router.get("/pipelines/{item_id}/runs", response_model=list[RunStatus])
@@ -105,8 +71,8 @@ def list_pipeline_runs(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> list[RunStatus]:
-    _require_pipeline_access(session, user=user, item_id=item_id, action="read")
-    _require_pipeline_config(session, item_id)
+    require_pipeline_access(session, user=user, item_id=item_id, action="read")
+    require_pipeline_config(session, item_id)
     runs = pipelines_repo.list_runs(session, tenant_id=user.tenant_id, pipeline_item_id=item_id)
     return [
         RunStatus(
@@ -128,8 +94,8 @@ def preview_pipeline_route(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
-    _require_pipeline_access(session, user=user, item_id=item_id, action="read")
-    config = _require_pipeline_config(session, item_id)
+    require_pipeline_access(session, user=user, item_id=item_id, action="read")
+    config = require_pipeline_config(session, item_id)
     try:
         return preview_pipeline(
             session=session,

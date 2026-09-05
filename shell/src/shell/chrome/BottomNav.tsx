@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { navigableDomains, type Profile } from "../../auth/capabilities";
-import { DOMAIN_PATHS, isDomainActive } from "./domainRoutes";
+import { getDomainPath, isDomainActive } from "./domainRoutes";
 import { Popover } from "../../ui/kit/Popover";
 import { t } from "../../i18n";
 
@@ -17,7 +17,7 @@ export function BottomNav({ profile }: { profile: Profile }) {
   return (
     <nav aria-label={t("bottomNav.label")} className="flex items-center border-t border-rule">
       {fixed.map(({ domain }) => {
-        const path = DOMAIN_PATHS[domain.id];
+        const path = getDomainPath(domain.id, profile);
         // Même calcul d'actif que DomainBar (cf. isDomainActive) : plusieurs
         // domaines partagent le pathname "/" et ne diffèrent que par
         // ?type=, donc comparer aussi la recherche.
@@ -52,7 +52,7 @@ export function BottomNav({ profile }: { profile: Profile }) {
       >
         <div className="flex flex-col gap-1">
           {rest.map(({ domain }) => {
-            const path = DOMAIN_PATHS[domain.id];
+            const path = getDomainPath(domain.id, profile);
             // Même raison que pour `fixed` ci-dessus et que DomainBar :
             // `NavLink` réintroduirait plusieurs entrées actives à la fois
             // sur "/" (cf. isDomainActive).

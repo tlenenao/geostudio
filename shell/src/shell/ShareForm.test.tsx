@@ -23,6 +23,8 @@ const item: Item = {
   configId: null,
   isPublished: false,
   permissions: OWNER_PERMISSIONS,
+  license: "",
+  language: "fr",
 };
 
 function Harness({ children }: { children: ReactNode }) {

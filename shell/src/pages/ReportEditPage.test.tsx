@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Item, ItemClient, ReportSchedulePayload } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
-import { OWNER_PERMISSIONS } from "../auth/permissions";
+import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 import { ReportEditPage } from "./ReportEditPage";
 
 // ReportEditPage calls useAuth() for `username` on create — same mock as
@@ -55,11 +55,14 @@ const item: Item = {
   abstract: "",
   owner: "alice",
   thumbnailUrl: null,
-  date: "2026-08-31",
+  date: "2026-08-01",
+  updatedAt: "2026-08-31",
   configId: "cfg-r1",
   isPublished: false,
   keywords: [],
   permissions: OWNER_PERMISSIONS,
+  license: "",
+  language: "fr",
 };
 
 function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}) {
@@ -120,4 +123,82 @@ test("sous viewport étroit, affiche trois onglets Catalogue/Rapport/Réglages a
   expect(tabs.map((t) => t.textContent)).toEqual(["Catalogue", "Rapport", "Réglages"]);
   const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
   expect(activeTab).toHaveTextContent("Rapport");
+});
+
+test("persisted mode: verrouille Enregistrer quand permissions.write est false (SP-42/F-shell-pages-04)", async () => {
+  const payload: ReportSchedulePayload = {
+    bookmarkItemId: "bm-1",
+    refreshPolicy: { enabled: true, cron: "0 8 * * MON" },
+    channels: [{ kind: "webhook", url: "" }],
+  };
+  renderPage("r-1", {
+    getItem: vi.fn().mockResolvedValue({ ...item, permissions: READ_ONLY_PERMISSIONS }),
+    getReportScheduleConfig: () => Promise.resolve(payload),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+  const saveButton = await screen.findByRole("button", { name: "Enregistrer" });
+  expect(saveButton).toBeDisabled();
+  expect(
+    screen.getByText("Modification réservée aux éditeurs de cet élément."),
+  ).toBeInTheDocument();
+});
+
+test("persisted mode: reste en chargement tant que l'item n'est pas résolu, ne verrouille pas Enregistrer par erreur (SP-42, revue finale, point 2, Critical)", async () => {
+  const payload: ReportSchedulePayload = {
+    bookmarkItemId: "bm-1",
+    refreshPolicy: { enabled: true, cron: "0 8 * * MON" },
+    channels: [{ kind: "webhook", url: "" }],
+  };
+  let resolveItem!: (item: Item) => void;
+  let resolveReportScheduleConfig!: (payload: ReportSchedulePayload) => void;
+  renderPage("r-1", {
+    getItem: vi.fn(
+      () =>
+        new Promise<Item>((resolve) => {
+          resolveItem = resolve;
+        }),
+    ),
+    getReportScheduleConfig: vi.fn(
+      () =>
+        new Promise<ReportSchedulePayload>((resolve) => {
+          resolveReportScheduleConfig = resolve;
+        }),
+    ),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+
+  // Résout le config de rapport SEUL, jamais l'item : avant le correctif,
+  // la page rendait déjà l'éditeur complet avec Enregistrer verrouillé
+  // (permissions.write lu sur `undefined` => false) au lieu de rester en
+  // "Chargement…" comme son jumeau DatasetEditPage.tsx.
+  await act(async () => {
+    resolveReportScheduleConfig(payload);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("Chargement…");
+
+  await act(async () => {
+    resolveItem(item);
+  });
+  const saveButton = await screen.findByRole("button", { name: "Enregistrer" });
+  expect(saveButton).toBeEnabled();
+});
+
+test("persisted mode: un rapport qui échoue à charger affiche une alerte et n'écrase pas l'existant (SP-42/F-shell-pages-05)", async () => {
+  const saveReportScheduleConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage("r-1", {
+    getItem: vi.fn().mockResolvedValue(item),
+    getReportScheduleConfig: vi.fn().mockRejectedValue(new Error("403")),
+    saveReportScheduleConfig,
+    // Isole le défaut sous test — même piège de méthode que
+    // PipelineBuilderPage.test.tsx (ConfigHistoryPanel affiche son propre
+    // role="alert" si listConfigRevisions n'est pas mocké).
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("introuvable");
+  expect(screen.queryByRole("heading", { name: "Programmer un rapport" })).not.toBeInTheDocument();
+  expect(saveReportScheduleConfig).not.toHaveBeenCalled();
 });

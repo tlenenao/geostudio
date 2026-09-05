@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
+import { expectAriaWired } from "../test/expectAriaWired";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { HarvestSourcesAdminPage } from "./HarvestSourcesAdminPage";
@@ -78,7 +79,10 @@ test("admin creates a STAC source and triggers a manual run", async () => {
     }),
   );
   render(<Harness />);
-  await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
+  const addButton = await screen.findByRole("button", { name: "Ajouter une source" });
+  expectAriaWired(addButton, addButton.getAttribute("aria-controls")!, false);
+  await userEvent.click(addButton);
+  expectAriaWired(addButton, addButton.getAttribute("aria-controls")!, true);
   await userEvent.type(await screen.findByLabelText("URL"), "https://stac.example.com/collections");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(created).not.toBeNull());
@@ -124,12 +128,63 @@ test("edits a source via the row action", async () => {
     }),
   );
   render(<Harness />);
-  await userEvent.click(await screen.findByRole("button", { name: "Éditer" }));
+  const editButton = await screen.findByRole("button", { name: "Éditer" });
+  expectAriaWired(editButton, editButton.getAttribute("aria-controls")!, false);
+  await userEvent.click(editButton);
   const urlInput = await screen.findByLabelText("URL");
+  expectAriaWired(editButton, editButton.getAttribute("aria-controls")!, true);
   await userEvent.clear(urlInput);
   await userEvent.type(urlInput, "https://a (édité)");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(patched).toMatchObject({ url: "https://a (édité)" }));
+});
+
+test("aria-expanded est câblé par ligne, pas partagé entre toutes les lignes (revue finale SP-43, Important I2)", async () => {
+  // Fixture à 2 sources : le défaut trouvé en revue finale (aria-expanded
+  // posé une seule fois pour toute la page via {...editPanel.triggerProps}
+  // dans .map()) était invisible avec une seule source — tous les boutons
+  // Éditer basculaient aria-expanded="true" en même temps.
+  server.use(
+    http.get("https://core.test/harvest/sources", () =>
+      HttpResponse.json({
+        sources: [
+          {
+            id: "src-1",
+            type: "stac",
+            url: "https://a",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: null,
+            lastError: null,
+          },
+          {
+            id: "src-2",
+            type: "stac",
+            url: "https://b",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: null,
+            lastError: null,
+          },
+        ],
+      }),
+    ),
+  );
+
+  render(<Harness />);
+  const editButtons = await screen.findAllByRole("button", { name: "Éditer" });
+  expect(editButtons).toHaveLength(2);
+  editButtons.forEach((button) => expect(button).toHaveAttribute("aria-expanded", "false"));
+
+  await userEvent.click(editButtons[0]);
+  await screen.findByLabelText("URL");
+
+  expect(editButtons[0]).toHaveAttribute("aria-expanded", "true");
+  expect(editButtons[1]).toHaveAttribute("aria-expanded", "false");
 });
 
 test("cliquer « Ajouter une source » pendant l'édition ferme le panneau d'édition", async () => {

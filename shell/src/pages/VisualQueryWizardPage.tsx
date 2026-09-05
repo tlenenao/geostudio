@@ -170,6 +170,19 @@ export function VisualQueryWizardPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createdPipelinePk, createdDatasetPk]);
 
+  // SP-42 F-shell-pages-05 : sans cette garde, une requête existante dont le
+  // chargement échoue laissait l'utilisateur dans un cul-de-sac muet — le
+  // garde `!existingOutput` bloque bien la mutation (pas d'écrasement
+  // possible ici, contrairement à Pipeline/Rapport), mais rien n'explique
+  // pourquoi le bouton reste désactivé.
+  if (pipelinePk !== null && existingPipelineQuery.isError) {
+    return (
+      <p role="alert" className="text-sm text-danger">
+        Requête introuvable.
+      </p>
+    );
+  }
+
   if (pipelinePk !== null && unrecognizedShape) {
     return (
       <p role="alert" className="text-sm text-danger">
@@ -324,7 +337,7 @@ export function VisualQueryWizardPage({
                   <dt>Type</dt>
                   <dd>{RESOURCE_TYPE_LABELS[existingDatasetItemQuery.data.resourceType]}</dd>
                   <dt>Modifié</dt>
-                  <dd>{existingDatasetItemQuery.data.date || "—"}</dd>
+                  <dd>{existingDatasetItemQuery.data.updatedAt || "—"}</dd>
                 </dl>
               )}
             </Panel>

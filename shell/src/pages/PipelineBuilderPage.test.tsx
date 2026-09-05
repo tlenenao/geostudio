@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { ItemClient, PipelineOpsCatalog, PipelinePayload } from "../api/types";
+import type { Item, ItemClient, PipelineOpsCatalog, PipelinePayload } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
+import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 import { PipelineBuilderPage } from "./PipelineBuilderPage";
 
 // PipelineBuilderPage renders PipelineNodeInspector -> PipelinePreviewPanel, which can mount
@@ -89,12 +90,34 @@ const CATALOG: PipelineOpsCatalog = {
   },
 };
 
+// Item par défaut d'un pipeline persisté (`pk="p-1"`, seul utilisé par les
+// tests "persisted mode" de ce fichier) : permissions.write=true, comme
+// avant l'introduction du garde SP-42/F-shell-pages-04 (aucun de ces tests
+// n'affirme sur des permissions restreintes — celui qui le fait le
+// surcharge explicitement via `overrides`).
+const OWNED_PIPELINE_ITEM: Item = {
+  pk: "p-1",
+  resourceType: "pipeline",
+  title: "Nettoyer villes",
+  abstract: "",
+  owner: "alice",
+  thumbnailUrl: null,
+  date: "2026-01-01",
+  configId: "cfg-p1",
+  isPublished: false,
+  keywords: [],
+  permissions: OWNER_PERMISSIONS,
+  license: "",
+  language: "fr",
+};
+
 function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client: Partial<ItemClient> = {
     getPipelineOps: () => Promise.resolve(CATALOG),
     listCollections: () => Promise.resolve([]),
     getPipelineRuns: vi.fn().mockResolvedValue([]),
+    getItem: vi.fn().mockResolvedValue(OWNED_PIPELINE_ITEM),
     ...overrides,
   };
   render(
@@ -359,4 +382,103 @@ test("sous viewport étroit, affiche trois onglets Étapes/Canevas/Propriétés 
   expect(tabs.map((t) => t.textContent)).toEqual(["Étapes", "Canevas", "Propriétés"]);
   const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
   expect(activeTab).toHaveTextContent("Canevas");
+});
+
+test("persisted mode: verrouille Enregistrer quand permissions.write est false (SP-42/F-shell-pages-04)", async () => {
+  renderPage("p-1", {
+    getItem: vi
+      .fn()
+      .mockResolvedValue({ ...OWNED_PIPELINE_ITEM, permissions: READ_ONLY_PERMISSIONS }),
+    // Sans ce mock, getPipelineConfig est absent du client partiel : l'appel
+    // lève synchronement, configQuery devient isError, et le nouveau garde
+    // SP-42/F-shell-pages-05 masquerait la palette que ce test vérifie —
+    // sans rapport avec ce que ce test veut exercer (permissions.write).
+    getPipelineConfig: vi.fn().mockResolvedValue({ nodes: [], edges: [] }),
+  });
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  const saveButton = screen.getByRole("button", { name: "Enregistrer" });
+  expect(saveButton).toBeDisabled();
+  expect(
+    screen.getByText("Modification réservée aux éditeurs de cet élément."),
+  ).toBeInTheDocument();
+});
+
+test("persisted mode: reste en chargement tant que l'item n'est pas résolu, ne verrouille pas Enregistrer par erreur (SP-42, revue finale, point 2, Critical)", async () => {
+  // Graphe valide (reader -> writer) : un graphe vide désactiverait
+  // Enregistrer pour une tout autre raison (isPipelineValid), confondant ce
+  // test avec la validation locale plutôt qu'avec permissions.write.
+  const payload: PipelinePayload = {
+    nodes: [
+      {
+        id: "r1",
+        kind: "reader",
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: { collectionId: "villes" },
+        title: "Villes",
+      },
+      {
+        id: "w1",
+        kind: "writer",
+        op: "writer.collection",
+        x: 300,
+        y: 0,
+        params: { collectionId: "villes_propres" },
+        title: "Écriture",
+      },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+  };
+  let resolveItem!: (item: Item) => void;
+  let resolvePipelineConfig!: (payload: PipelinePayload) => void;
+  renderPage("p-1", {
+    getItem: vi.fn(
+      () =>
+        new Promise<Item>((resolve) => {
+          resolveItem = resolve;
+        }),
+    ),
+    getPipelineConfig: vi.fn(
+      () =>
+        new Promise<PipelinePayload>((resolve) => {
+          resolvePipelineConfig = resolve;
+        }),
+    ),
+  });
+
+  // Résout le config de pipeline SEUL, jamais l'item : avant le correctif,
+  // la page rendait déjà le builder complet avec Enregistrer verrouillé
+  // (permissions.write lu sur `undefined` => false) au lieu de rester en
+  // "Chargement…" comme son jumeau DatasetEditPage.tsx.
+  await act(async () => {
+    resolvePipelineConfig(payload);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(screen.queryByRole("button", { name: "Enregistrer" })).not.toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("Chargement…");
+
+  await act(async () => {
+    resolveItem(OWNED_PIPELINE_ITEM);
+  });
+  const saveButton = await screen.findByRole("button", { name: "Enregistrer" });
+  expect(saveButton).toBeEnabled();
+});
+
+test("persisted mode: une config qui échoue à charger affiche une alerte et n'écrase pas l'existant (SP-42/F-shell-pages-05)", async () => {
+  const savePipelineConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage("p-1", {
+    getPipelineConfig: vi.fn().mockRejectedValue(new Error("403")),
+    savePipelineConfig,
+    // Isole le défaut sous test : sans ce mock, ConfigHistoryPanel affiche
+    // aussi un role="alert" (« Impossible de charger l'historique »),
+    // rendant le premier findByRole("alert") vrai pour la mauvaise raison
+    // (piège de méthode signalé par la falsification F-shell-pages-05).
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("introuvable");
+  expect(screen.queryByText("reader.collection")).not.toBeInTheDocument();
+  expect(savePipelineConfig).not.toHaveBeenCalled();
 });

@@ -96,7 +96,7 @@ def _materialize(
 ) -> None:
     if not _has_any_file(conn, base_uri, tenant_id, name):
         raise SqlSandboxError(f"collection '{name}' has no data yet")
-    cte = _dedup_cte(table_info, base_uri, tenant_id, name)
+    cte = _dedup_cte(conn, table_info, base_uri, tenant_id, name)
     conn.execute(f"CREATE TEMP TABLE {_qi(name)} AS {cte} SELECT * FROM live")
 
 

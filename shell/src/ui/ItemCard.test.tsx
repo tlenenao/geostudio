@@ -17,6 +17,8 @@ const item: Item = {
   configId: null,
   isPublished: false,
   permissions: OWNER_PERMISSIONS,
+  license: "",
+  language: "fr",
 };
 
 test("renders title and type", () => {

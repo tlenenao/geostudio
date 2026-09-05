@@ -134,9 +134,12 @@ def _to_read(
         owner=owner_username,
         thumbnailUrl=f"/items/{item.id}/thumbnail" if item.thumbnail_key else None,
         date=item.created_at.isoformat(),
+        updatedAt=item.updated_at.isoformat(),
         configId=None,
         isPublished=item.is_published,
         keywords=item.keywords or [],
+        license=item.license,
+        language=item.language,
         permissions=permissions,
     )
 
@@ -391,6 +394,8 @@ def update_item(
     keywords: list[str] | None,
     is_published: bool | None,
     slug: str | None = None,
+    license: str | None = None,
+    language: str | None = None,
     current_user_id: str | None = None,
 ) -> ItemRead | None:
     item = session.execute(
@@ -414,6 +419,10 @@ def update_item(
         if slug_exists(session, tenant_id=tenant_id, slug=slug, exclude_item_id=item_id):
             raise SlugCollisionError(f"slug déjà utilisé: {slug!r}")
         item.slug = slug
+    if license is not None:
+        item.license = license
+    if language is not None:
+        item.language = language
     session.flush()
     session.refresh(item)
     owner_username = session.scalar(select(User.username).where(User.id == item.owner_id)) or ""
@@ -426,11 +435,16 @@ def update_item(
     return _to_read(item, owner_username, permissions)
 
 
-def get_published_item(session: Session, *, item_id: str) -> ItemRead | None:
+def get_published_item(
+    session: Session, *, item_id: str, tenant_id: str = DEFAULT_TENANT_SLUG
+) -> ItemRead | None:
+    # tenant_id filtré explicitement (comme get_published_site_by_slug) : sans
+    # ce filtre, un item publié d'un AUTRE tenant serait servi tel quel par
+    # cette route publique anonyme — cf. SP-42/F-coeur-contenu-01.
     row = session.execute(
         select(Item, User.username)
         .join(User, User.id == Item.owner_id)
-        .where(Item.id == item_id, Item.is_published.is_(True))
+        .where(Item.id == item_id, Item.tenant_id == tenant_id, Item.is_published.is_(True))
     ).first()
     if row is None:
         return None
@@ -441,10 +455,10 @@ def get_published_item(session: Session, *, item_id: str) -> ItemRead | None:
 def get_published_site_by_slug(
     session: Session, *, slug: str, tenant_id: str = "default"
 ) -> ItemRead | None:
-    # tenant_id filtré explicitement (contrairement à get_published_item, qui
-    # ne le fait pas) : le slug n'est unique que PAR tenant (cf. slug_exists),
-    # donc sans ce filtre deux tenants pourraient se voler mutuellement leurs
-    # slugs via cette route publique.
+    # tenant_id filtré explicitement (même garde que get_published_item) : le
+    # slug n'est unique que PAR tenant (cf. slug_exists), donc sans ce filtre
+    # deux tenants pourraient se voler mutuellement leurs slugs via cette
+    # route publique.
     row = session.execute(
         select(Item, User.username)
         .join(User, User.id == Item.owner_id)

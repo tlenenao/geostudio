@@ -20,43 +20,40 @@ from app.appexport.snapshot import write_snapshot
 from app.auth.dependency import is_appexport_enabled
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
-from app.db import make_engine, make_session_factory, request_scoped_session
+from app.db import request_scoped_session
 from app.ingestion.storage import ensure_uploads_bucket, make_s3_client
 from app.items import repository as items_repo
 from app.jobs import app
-from app.notifications import repository as notifications_repo
+from app.jobs.common import notify_best_effort
+from app.jobs.common import session_factory as _session_factory
 
 logger = logging.getLogger(__name__)
 
 
 def _notify(session_factory, *, tenant_id, item_id, user_id, status, error=None):
     """Écrit la notification in-app de fin d'export d'app — best-effort,
-    jamais bloquant : son propre bloc try/except, séparé de celui qui commite
-    mark_done/mark_error, pour qu'un échec ici ne fasse jamais rollback d'un
-    changement de statut de job déjà réussi (même patron que
-    app.export.jobs._notify / app.pipelines.jobs._notify, SP-39)."""
+    jamais bloquant (cf. app.jobs.common.notify_best_effort). SP-43 Tâche 6 :
+    ne garde ici que la résolution du titre de l'item propre au domaine
+    appexport (`user_id` est déjà résolu par l'appelant, lu sur le job),
+    elle-même protégée par son propre try/except best-effort."""
     try:
         with request_scoped_session(session_factory) as session:
             item = items_repo.get_item(session, tenant_id=tenant_id, item_id=item_id)
             title = item.title if item is not None else item_id
-            notifications_repo.create_notification(
-                session,
-                tenant_id=tenant_id,
-                recipient_user_id=user_id,
-                kind="appexport",
-                status=status,
-                item_id=item_id,
-                item_resource_type="app",
-                item_title=title,
-                error_message=error,
-            )
     except Exception:
-        logger.exception("app export job : échec de l'écriture de la notification")
-
-
-def _session_factory():
-    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
-    return make_session_factory(engine)
+        logger.exception("app export job : échec de la résolution du titre de notification")
+        return
+    notify_best_effort(
+        session_factory,
+        tenant_id=tenant_id,
+        recipient_user_id=user_id,
+        kind="appexport",
+        status=status,
+        item_id=item_id,
+        item_resource_type="app",
+        item_title=title,
+        error=error,
+    )
 
 
 def s3_client_from_env():

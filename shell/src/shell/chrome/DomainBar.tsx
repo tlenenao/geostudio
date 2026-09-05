@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Link, useLocation } from "react-router-dom";
 import { navigableDomains, type Profile } from "../../auth/capabilities";
-import { DOMAIN_PATHS, isDomainActive } from "./domainRoutes";
+import { getDomainPath, isDomainActive } from "./domainRoutes";
 import { t } from "../../i18n";
 
 export function DomainBar({ profile }: { profile: Profile }) {
@@ -14,7 +14,7 @@ export function DomainBar({ profile }: { profile: Profile }) {
       className="flex items-center gap-1 border-b border-rule px-4"
     >
       {domains.map(({ domain, state }) => {
-        const path = DOMAIN_PATHS[domain.id];
+        const path = getDomainPath(domain.id, profile);
         // Cf. isDomainActive (domainRoutes.ts) pour le détail : plusieurs
         // domaines partagent le pathname "/" et ne diffèrent que par ?type=,
         // d'où l'usage de `Link` plutôt que `NavLink`.

@@ -585,3 +585,51 @@ def test_evaluate_alert_task_reports_an_undefined_aggregate_instead_of_an_intern
         assert latest.state == "error"
         assert "pas de valeur définie" in latest.error
         assert "erreur interne" not in latest.error
+
+
+def test_evaluate_alert_task_recovers_from_a_poisoned_session_on_success_path(env, monkeypatch):
+    # Regression (SP-42, F-coeur-automatisation-03): evaluate_alert_task
+    # shares ONE session across the success path (mark_evaluated +
+    # write_audit) and the generic `except Exception` fallback. If the
+    # success path's write_audit (its FIRST call) raises a real DB error,
+    # the transaction is left aborted — the except block then retries
+    # mark_evaluated/write_audit on that SAME poisoned session, which
+    # raises a fresh InFailedSqlTransaction that escapes evaluate_alert_task
+    # entirely (uncaught), leaving the evaluation "pending" forever instead
+    # of "error" — contradicting AlertEvaluationError's own docstring
+    # ("always caught, always turns into an error evaluation row, never a
+    # crash"). A session.rollback() before the fallback's writes is the fix
+    # (same pattern already used by app.reports.jobs._record_trigger_failure).
+    app, Session, tenant, alert_item_id = env
+    monkeypatch.setattr(alert_jobs, "_measure_value", lambda session, *, user, payload: 5.0)
+    monkeypatch.setattr(alert_jobs, "evaluate_condition", lambda conn, expr, value: value > 2)
+
+    original_write_audit = alert_jobs.write_audit
+    call_count = {"n": 0}
+
+    def poisoning_write_audit(session, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            # A real DB error on the success path's write_audit call,
+            # aborting the current Postgres transaction.
+            session.execute(text("SELECT 1/0"))
+            return None
+        return original_write_audit(session, **kwargs)
+
+    monkeypatch.setattr(alert_jobs, "write_audit", poisoning_write_audit)
+
+    with Session() as s:
+        evaluation = alerts_repo.create_evaluation(
+            s, tenant_id=tenant.id, alert_rule_item_id=alert_item_id
+        )
+        s.commit()
+        evaluation_id = evaluation.id
+
+    # No exception should escape: AlertEvaluationError's own docstring
+    # promises "always caught, always turns into an error evaluation row,
+    # never a crash" — a poisoned session must not break that promise.
+    alert_jobs.evaluate_alert_task(evaluation_id=evaluation_id, tenant_id=tenant.id)
+
+    with Session() as s:
+        latest = alerts_repo.get_evaluation(s, tenant_id=tenant.id, evaluation_id=evaluation_id)
+        assert latest.state == "error"

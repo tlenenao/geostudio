@@ -67,6 +67,8 @@ from app.pipelines.ops.schemas import (
     WriterDatasetParams,
     WriterExportParams,
 )
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -189,7 +191,7 @@ def _materialize_reader(
     if geom_col:
         select_parts.append(f"{_qi(geom_col)} AS geometry")
     select_list = ", ".join(select_parts)
-    cte = _dedup_cte(table_info, base_uri, tenant_id, collection_id)
+    cte = _dedup_cte(conn, table_info, base_uri, tenant_id, collection_id)
     # TABLE, pas VIEW : comme app.analytics.sql_sandbox._materialize, il faut
     # matérialiser EAGERLY avant _lock_down — une VIEW resterait paresseuse et
     # ré-exécuterait read_parquet() (donc un accès disque) à chaque requête
@@ -197,7 +199,116 @@ def _materialize_reader(
     conn.execute(f"CREATE TEMP TABLE {_qi(view_name)} AS {cte} SELECT {select_list} FROM live")
 
 
+def _read_collection(
+    conn,
+    *,
+    session: Session,
+    tenant_id: str,
+    node_id: str,
+    params: dict,
+    view_name: str,
+    user: User,
+    base_uri: str,
+) -> int:
+    """reader.collection (registre READERS, app.pipelines.registries) —
+    corps identique à l'ancienne branche if/elif inline de _prepare()
+    (résolution _require_readable_collection_id + _table_info_for_collection
+    + _materialize_reader), seule sa forme change (fonction nommée plutôt que
+    branche inline, retourne le srid au lieu de l'écrire directement dans
+    srid_by_node — c'est l'appelant, _prepare(), qui l'affecte désormais).
+    Reste défini ICI (pas dans registries.py) : plusieurs tests
+    monkeypatchent `runtime._table_info_for_collection`/
+    `runtime._require_readable_collection_id` directement — un nom se
+    résout via le namespace du module où la fonction est DÉFINIE, jamais
+    celui d'où elle est appelée, donc ce déplacement préserve ces mocks."""
+    p = ReaderCollectionParams.model_validate(params)
+    table_name = _require_readable_collection_id(
+        session,
+        tenant_id=tenant_id,
+        user=user,
+        collection_id=p.collectionId,
+    )
+    table_info = _table_info_for_collection(session, table_name)
+    _materialize_reader(
+        conn,
+        view_name=view_name,
+        base_uri=base_uri,
+        tenant_id=tenant_id,
+        collection_id=p.collectionId,
+        table_info=table_info,
+    )
+    return table_info.srid or 4326
+
+
+def _read_connector_rest(
+    conn,
+    *,
+    session: Session,
+    tenant_id: str,
+    node_id: str,
+    params: dict,
+    view_name: str,
+    user: User,
+    base_uri: str,
+) -> int:
+    """reader.connector.rest (registre READERS) — même comportement que
+    l'ancienne branche inline de _prepare(). `user`/`base_uri` ignorés
+    (ce reader n'en a pas besoin) : présents uniquement pour que READERS
+    expose un appel uniforme à _prepare() (cf. app.pipelines.registries)."""
+    p = ReaderConnectorRestParams.model_validate(params)
+    try:
+        connector_runtime.materialize_rest_connector(
+            conn,
+            session=session,
+            tenant_id=tenant_id,
+            node_id=node_id,
+            params=p,
+            view_name=view_name,
+        )
+    except connector_runtime.ConnectorRuntimeError as exc:
+        raise PipelineRuntimeError(str(exc)) from exc
+    return 4326
+
+
+def _read_connector_postgres(
+    conn,
+    *,
+    session: Session,
+    tenant_id: str,
+    node_id: str,
+    params: dict,
+    view_name: str,
+    user: User,
+    base_uri: str,
+) -> int:
+    """reader.connector.postgres (registre READERS) — pendant de
+    _read_connector_rest ci-dessus, même rationale."""
+    p = ReaderConnectorPostgresParams.model_validate(params)
+    try:
+        connector_runtime.materialize_postgres_connector(
+            conn,
+            session=session,
+            tenant_id=tenant_id,
+            node_id=node_id,
+            params=p,
+            view_name=view_name,
+        )
+    except connector_runtime.ConnectorRuntimeError as exc:
+        raise PipelineRuntimeError(str(exc)) from exc
+    return 4326
+
+
 def _lock_down(conn: duckdb.DuckDBPyConnection) -> None:
+    # allowed_directories doit être posé AVANT enable_external_access=false :
+    # c'est la seule échappatoire documentée par DuckDB ("List of
+    # directories/prefixes that are ALWAYS allowed to be queried — even when
+    # enable_external_access is false"), sans laquelle _execute_qgis_transform
+    # ne peut plus écrire in.gpkg vers _QGIS_SCRATCH_ROOT après ce
+    # verrouillage (PermissionException réelle, jamais vue avant faute
+    # d'avoir exécuté ce chemin contre une connexion réellement verrouillée —
+    # cf. M14/REV-095). Périmètre volontairement limité au seul répertoire
+    # scratch partagé avec le sidecar QGIS, pas un accès externe généralisé.
+    conn.execute(f"SET allowed_directories = ['{_QGIS_SCRATCH_ROOT}']")
     conn.execute("SET enable_external_access = false")
     conn.execute("SET lock_configuration = true")
 
@@ -233,6 +344,17 @@ def _prepare(
     Retourne (ordre topologique, view_name par node.id, srid par node.id
     pour les readers, srid par node.id pour la vue __join des 3 op
     binaires) — writer nodes n'ont pas encore de vue."""
+    # Import local (pas au niveau module) : app.pipelines.registries importe
+    # app.pipelines.runtime à SON niveau module (pour référencer les
+    # fonctions ci-dessous par attribut, cf. son docstring) — si cet import
+    # était au niveau module ici, les deux modules se chargeraient l'un
+    # l'autre en même temps, chacun avant que l'autre ait fini de définir ce
+    # dont il a besoin (cycle réel). Différé à l'intérieur de la fonction,
+    # il ne se déclenche qu'à l'exécution, quand app.pipelines.runtime est
+    # déjà entièrement chargé (cf. registries.py pour le raisonnement
+    # complet).
+    from app.pipelines.registries import READERS
+
     ordered = compiler.topological_order(payload.nodes, payload.edges)
     view_by_node: dict[str, str] = {}
     srid_by_node: dict[str, int] = {}
@@ -241,54 +363,19 @@ def _prepare(
         if node.kind != "reader":
             continue
         view_name = f"node_{node.id}"
-        if node.op == "reader.collection":
-            p = ReaderCollectionParams.model_validate(node.params)
-            table_name = _require_readable_collection_id(
-                session,
-                tenant_id=tenant_id,
-                user=user,
-                collection_id=p.collectionId,
-            )
-            table_info = _table_info_for_collection(session, table_name)
-            _materialize_reader(
-                conn,
-                view_name=view_name,
-                base_uri=base_uri,
-                tenant_id=tenant_id,
-                collection_id=p.collectionId,
-                table_info=table_info,
-            )
-            srid_by_node[node.id] = table_info.srid or 4326
-        elif node.op == "reader.connector.rest":
-            p = ReaderConnectorRestParams.model_validate(node.params)
-            try:
-                connector_runtime.materialize_rest_connector(
-                    conn,
-                    session=session,
-                    tenant_id=tenant_id,
-                    node_id=node.id,
-                    params=p,
-                    view_name=view_name,
-                )
-            except connector_runtime.ConnectorRuntimeError as exc:
-                raise PipelineRuntimeError(str(exc)) from exc
-            srid_by_node[node.id] = 4326
-        elif node.op == "reader.connector.postgres":
-            p = ReaderConnectorPostgresParams.model_validate(node.params)
-            try:
-                connector_runtime.materialize_postgres_connector(
-                    conn,
-                    session=session,
-                    tenant_id=tenant_id,
-                    node_id=node.id,
-                    params=p,
-                    view_name=view_name,
-                )
-            except connector_runtime.ConnectorRuntimeError as exc:
-                raise PipelineRuntimeError(str(exc)) from exc
-            srid_by_node[node.id] = 4326
-        else:
+        reader_fn = READERS.get(node.op)
+        if reader_fn is None:
             raise PipelineRuntimeError(f"unknown reader op '{node.op}'")
+        srid_by_node[node.id] = reader_fn(
+            conn,
+            session=session,
+            tenant_id=tenant_id,
+            node_id=node.id,
+            params=node.params,
+            view_name=view_name,
+            user=user,
+            base_uri=base_uri,
+        )
         view_by_node[node.id] = view_name
 
     join_srid_by_node: dict[str, int] = {}
@@ -347,7 +434,16 @@ def _materialize_qgis_output(conn, *, out_path: str, view_name: str, algorithm_i
     _materialize_reader fournit déjà pour les readers (cf. en-tête du
     module). Un ST_Read sans aucune colonne de type GEOMETRY (algorithme dont
     la sortie n'est pas une couche vecteur) lève une PipelineRuntimeError
-    propre, jamais un KeyError/IndexError silencieux."""
+    propre, jamais un KeyError/IndexError silencieux.
+
+    "fid" est systématiquement éliminée : c'est la colonne d'identifiant de
+    ligne imposée par la spec OGC GeoPackage elle-même (pas une convention
+    GDAL parmi d'autres) sur TOUT fichier .gpkg, y compris pour des
+    algorithmes qui ne préservent aucun identifiant source (ex.
+    native:dissolve) — vérifié empiriquement : un writer.collection en aval
+    la rejette comme "unknown property 'fid'", jamais rencontré par les
+    writers qui ne valident pas de schéma (export CSV), d'où son invisibilité
+    jusqu'ici contre un sidecar réel."""
     probe_cols = conn.execute(f"SELECT * FROM ST_Read('{out_path}') LIMIT 0").description
     geom_cols = [d[0] for d in probe_cols if d[1].id == "geometry"]
     if not geom_cols:
@@ -359,7 +455,7 @@ def _materialize_qgis_output(conn, *, out_path: str, view_name: str, algorithm_i
     # en cas de pluralité inattendue, la première suffit à ne jamais perdre
     # la géométrie silencieusement — cas non rencontré dans l'allowlist SP-15d.
     geom_col = geom_cols[0]
-    other_cols = [d[0] for d in probe_cols if d[0] != geom_col]
+    other_cols = [d[0] for d in probe_cols if d[0] != geom_col and d[0] != "fid"]
     select_list = ", ".join([_qi(c) for c in other_cols] + [f"{_qi(geom_col)} AS geometry"])
     conn.execute(
         f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT {select_list} FROM ST_Read('{out_path}')"
@@ -678,6 +774,16 @@ def _write_dataset(
     tenant_id: str,
     user: User,
 ) -> NodeStat:
+    # SP-42, revue de la dernière passe de correctifs (point 1, Critical) :
+    # POST /pipelines/{id}/run (app.pipelines.routes) et le tool MCP
+    # run_pipeline gardent déjà data.manage AVANT de déférer un pipeline
+    # writer.dataset — mais run_pipeline_sweep_task (cron */5,
+    # app.pipelines.jobs) défère run_pipeline_task directement, sans passer
+    # par aucune des deux routes. Ces trois entrées convergent TOUTES ici
+    # (le point d'écriture réel) : la garde vit donc à cet endroit plutôt
+    # que sur une quatrième route, pour ne plus jamais dépendre de la
+    # découverte d'un nouveau point d'entrée.
+    require_privilege(session, user, Privilege.DATA_MANAGE.value)
     p = WriterDatasetParams.model_validate(node.params)
     # Réutilise _write_collection TEL QUEL (même chemin d'écriture OGC
     # Features) : writer.dataset n'introduit aucune primitive d'écriture, il
@@ -836,6 +942,13 @@ def run_pipeline(
     qgis_worker_timeout_seconds: int = 600,
     on_node_complete: Callable[["NodeStat"], None] | None = None,
 ) -> list[NodeStat]:
+    # Import local, même rationale que dans _prepare() : voir registries.py
+    # pour le raisonnement complet sur pourquoi cet import doit rester
+    # fonction-locale (jamais au niveau module) pour éviter un cycle réel
+    # avec app.pipelines.registries (qui importe app.pipelines.runtime, lui,
+    # à son niveau module).
+    from app.pipelines.registries import WRITERS
+
     conn = open_connection(endpoint_url=endpoint_url, access_key=access_key, secret_key=secret_key)
     try:
         ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
@@ -863,22 +976,22 @@ def run_pipeline(
             pred_id = compiler.predecessor_id(node.id, payload.edges)
             assert pred_id is not None
             view_by_node[node.id] = view_by_node[pred_id]
-            if node.op == "writer.collection":
-                stat = _write_collection(
-                    session,
-                    conn,
-                    node=node,
-                    view_by_node=view_by_node,
-                    tenant_id=tenant_id,
-                    user=user,
-                )
-            elif node.op == "writer.export":
+            writer_fn = WRITERS.get(node.op)
+            if writer_fn is None:
+                raise PipelineRuntimeError(f"unknown writer op '{node.op}'")
+            # writer.export a une signature hétérogène (pas de
+            # session/tenant_id/user, contrairement aux deux autres writers) :
+            # ce registre remplace seulement la SÉLECTION if/elif par un
+            # dict.get, jamais l'appel lui-même — chaque op continue de
+            # recevoir exactement les arguments qu'il recevait avant ce
+            # découpage.
+            if node.op == "writer.export":
                 assert s3_client is not None and exports_bucket is not None
-                stat = _write_export(
+                stat = writer_fn(
                     conn, s3_client, exports_bucket, node=node, view_by_node=view_by_node
                 )
-            elif node.op == "writer.dataset":
-                stat = _write_dataset(
+            else:
+                stat = writer_fn(
                     session,
                     conn,
                     node=node,

@@ -93,6 +93,21 @@ def test_list_items_default_scope_all(client):
     assert body["pageSize"] == 12
 
 
+def test_list_items_page_zero_is_rejected(client):
+    # Regression (SP-42, F-coeur-contenu-02): page/pageSize had no lower
+    # bound — page=0 computes a negative OFFSET, which Postgres rejects with
+    # a 500 (InvalidRowCountInResultOffsetClause) instead of a clean 422.
+    _seed_item(client, title="One")
+    response = client.get("/items?page=0")
+    assert response.status_code == 422
+
+
+def test_list_items_negative_page_size_is_rejected(client):
+    _seed_item(client, title="One")
+    response = client.get("/items?pageSize=-1")
+    assert response.status_code == 422
+
+
 def test_patch_item_updates_title(client):
     item_id = _seed_item(client)
     response = client.patch(f"/items/{item_id}", json={"title": "Renamed"})
@@ -102,6 +117,56 @@ def test_patch_item_updates_title(client):
 
 def test_patch_item_missing_returns_404(client):
     assert client.patch("/items/nope", json={"title": "x"}).status_code == 404
+
+
+def test_updated_at_changes_after_edit_but_date_stays_the_creation_date(client):
+    # SP-42 F-shell-api-07 : `date` reste `created_at` (rétrocompatibilité,
+    # affiché « Créé » ailleurs) ; `updatedAt` est le nouveau champ distinct
+    # que le shell doit lire pour son libellé « Modifié ».
+    import time
+
+    item_id = _seed_item(client)
+    before = client.get(f"/items/{item_id}").json()
+
+    time.sleep(1.1)  # au-delà de la granularité seconde du type colonne
+    patched = client.patch(f"/items/{item_id}", json={"title": "Renamed"})
+    assert patched.status_code == 200
+
+    after = client.get(f"/items/{item_id}").json()
+    assert after["date"] == before["date"]
+    assert after["updatedAt"] != before["updatedAt"]
+
+
+def test_get_item_defaults_license_and_language(client):
+    item_id = _seed_item(client)
+    body = client.get(f"/items/{item_id}").json()
+    assert body["license"] == ""
+    assert body["language"] == "fr"
+
+
+def test_patch_item_updates_license_and_language(client):
+    item_id = _seed_item(client)
+    response = client.patch(f"/items/{item_id}", json={"license": "cc-by-4.0", "language": "en"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["license"] == "cc-by-4.0"
+    assert body["language"] == "en"
+
+    get_body = client.get(f"/items/{item_id}").json()
+    assert get_body["license"] == "cc-by-4.0"
+    assert get_body["language"] == "en"
+
+
+def test_patch_item_rejects_unknown_license(client):
+    item_id = _seed_item(client)
+    response = client.patch(f"/items/{item_id}", json={"license": "bogus"})
+    assert response.status_code == 422
+
+
+def test_patch_item_rejects_unknown_language(client):
+    item_id = _seed_item(client)
+    response = client.patch(f"/items/{item_id}", json={"language": "bogus"})
+    assert response.status_code == 422
 
 
 def test_upload_and_read_thumbnail(client):

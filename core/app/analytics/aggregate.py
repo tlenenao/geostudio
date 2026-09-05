@@ -163,18 +163,21 @@ def _agg_expr(agg: str, field: str | None, p: float | None = None) -> str:
         # en DOUBLE les fusionnerait toutes sur NULL (donc 0 distinct).
         return f"COALESCE(COUNT(DISTINCT {_qi(field)}), 0)"
     col = f"TRY_CAST({_qi(field)} AS DOUBLE)"
+    # Indéfini n'est PAS zéro (design §3.1) : pas de COALESCE sur sum/avg/
+    # min/max non plus — un groupe sans aucune valeur castable (filtre vide,
+    # champ texte) doit rendre null comme median/percentile/stddev
+    # ci-dessous, sur le même fondement (« renvoyer 0 produirait un
+    # graphique faux plutôt qu'un trou »), pas 0 (valeur réelle possible,
+    # indistinguable d'une absence de donnée pour un consommateur — légende
+    # de symbologie classée min/max, graphique sur un sous-ensemble vide).
     if agg == "sum":
-        return f"COALESCE(SUM({col}), 0)"
+        return f"SUM({col})"
     if agg == "avg":
-        return f"COALESCE(AVG({col}), 0)"
+        return f"AVG({col})"
     if agg == "min":
-        return f"COALESCE(MIN({col}), 0)"
+        return f"MIN({col})"
     if agg == "max":
-        return f"COALESCE(MAX({col}), 0)"
-    # Indéfini n'est PAS zéro : pas de COALESCE sur les trois suivants
-    # (design §3.1). La médiane d'un ensemble vide et l'écart-type d'une
-    # ligne unique n'existent pas ; renvoyer 0 produirait un graphique faux
-    # plutôt qu'un trou.
+        return f"MAX({col})"
     if agg == "median":
         return f"QUANTILE_CONT({col}, 0.5)"
     if agg == "percentile":
@@ -370,13 +373,50 @@ def _run_sample(
     return _fetch_rows(conn, sql, where_params)
 
 
-def _dedup_cte(table_info: TableInfo, base_uri: str, tenant_id: str, collection_id: str) -> str:
+def _has_seq_column(conn: duckdb.DuckDBPyConnection, glob: str, *, union_by_name: bool) -> bool:
+    """Un GeoParquet écrit avant l'ajout de la colonne `_seq` (tie-break de
+    _dedup_cte ci-dessous) ne l'a pas. Si AUCUN fichier du glob ne la porte
+    (collection restée inactive depuis avant ce correctif), union_by_name=true
+    ne suffit pas : la colonne est alors absente du schéma tout court, et y
+    référer dans la CTE échouerait à la liaison (BinderException), pas
+    seulement renvoyer NULL. Vérifié à l'exécution plutôt que supposé."""
+    cols = conn.execute(
+        f"SELECT * FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true, "
+        f"union_by_name={str(union_by_name).lower()}) LIMIT 0"
+    ).description
+    return any(c[0] == "_seq" for c in cols)
+
+
+def _dedup_cte(
+    conn: duckdb.DuckDBPyConnection,
+    table_info: TableInfo,
+    base_uri: str,
+    tenant_id: str,
+    collection_id: str,
+) -> str:
     glob = f"{base_uri}/tenant_id={tenant_id}/collection_id={collection_id}/dt=*/*.parquet"
     pk = _qi(table_info.pk_column)
+    # `_seq` départage un `_lsn` ex-aequo par l'ORDRE D'AJOUT réel au buffer
+    # CDC (cf. app.cdc.consumer:54-70, app.cdc.buffer.CdcBufferManager.add) :
+    # le settle CDC peut tagger deux transactions distinctes avec la même
+    # LSN, et sans ce départage row_number() résolvait l'ex-aequo à la
+    # première ligne rencontrée par DuckDB — pas nécessairement la plus
+    # récente — servant silencieusement une valeur périmée. union_by_name=true
+    # tolère un mélange de fichiers écrits avant/après l'ajout de `_seq` dans
+    # la même collection (sans lui, un glob à schémas hétérogènes échoue
+    # purement et simplement) ; COALESCE(_seq, -1) traite une ligne sans
+    # `_seq` comme la plus ancienne possible, jamais pire que l'arbitraire
+    # d'avant ce correctif. Si AUCUN fichier de la collection ne porte encore
+    # `_seq` (collection inactive depuis avant ce correctif), la colonne est
+    # absente du schéma tout court : retomber sur `_lsn` seul plutôt que de
+    # référencer une colonne qui n'existe nulle part (échouerait à la liaison).
+    has_seq = _has_seq_column(conn, glob, union_by_name=True)
+    order_by = "_lsn DESC, COALESCE(_seq, -1) DESC" if has_seq else "_lsn DESC"
     return (
-        f"WITH raw AS (SELECT * FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true)), "
+        f"WITH raw AS (SELECT * FROM read_parquet({_sql_lit(glob)}, hive_partitioning=true, "
+        f"union_by_name=true)), "
         f"current AS (SELECT * FROM raw QUALIFY row_number() OVER "
-        f"(PARTITION BY {pk} ORDER BY _lsn DESC) = 1), "
+        f"(PARTITION BY {pk} ORDER BY {order_by}) = 1), "
         f"live AS (SELECT * FROM current WHERE _op != 'delete')"
     )
 
@@ -421,7 +461,7 @@ def run_collection_aggregate(
     if not _has_any_file(conn, base_uri, tenant_id, collection_id):
         return category_key, []
 
-    dedup_cte = _dedup_cte(table_info, base_uri, tenant_id, collection_id)
+    dedup_cte = _dedup_cte(conn, table_info, base_uri, tenant_id, collection_id)
     where_sql, where_params = _build_where(request, table_info)
 
     if request.bins is not None:
@@ -469,8 +509,26 @@ def run_collection_aggregate(
         # _validate_fields exige déjà exactement un groupBy quand bucket est
         # posé (voir plus haut) — narrowing explicite, pas une nouvelle règle.
         assert single_field is not None
+        # TRY_CAST(... AS TIMESTAMP) (naïf) jetterait silencieusement l'offset
+        # d'une chaîne TIMESTAMPTZ-like (vérifié empiriquement contre duckdb
+        # 1.5.5 : trois offsets différents produisent la même valeur naïve) —
+        # deux lignes représentant le même instant réel avec des offsets
+        # différents (backfill._pg_timestamp_str / wal2json écrivent
+        # l'offset natif Postgres) finiraient dans deux buckets distincts.
+        # Cast en TIMESTAMPTZ (qui interprète l'offset) puis normalisation
+        # explicite en UTC avant DATE_TRUNC. Le TimeZone GUC de session pilote
+        # l'interprétation d'une chaîne SANS offset (une colonne TIMESTAMP
+        # nue) lors de ce cast — DuckDB l'assume par défaut au fuseau LOCAL de
+        # la machine serveur (vérifié empiriquement : Europe/Paris ici),
+        # jamais UTC ; sans le fixer explicitement, le bucket d'une colonne
+        # TIMESTAMP nue dépendrait silencieusement du fuseau du serveur qui
+        # exécute la requête. Fixé à UTC pour que ce cast soit un no-op sur
+        # une chaîne sans offset (comportement inchangé) et normalise
+        # correctement une chaîne avec offset (le correctif visé).
+        conn.execute("SET TimeZone='UTC'")
         cat_expr = (
-            f"DATE_TRUNC({_sql_lit(request.bucket)}, TRY_CAST({_qi(single_field)} AS TIMESTAMP))"
+            f"DATE_TRUNC({_sql_lit(request.bucket)}, "
+            f"TRY_CAST({_qi(single_field)} AS TIMESTAMPTZ) AT TIME ZONE 'UTC')"
         )
     else:
         cat_expr = _qi(single_field) if single_field else "'Total'"

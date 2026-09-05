@@ -11,6 +11,7 @@ import type { HarvestSource } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { CreateHarvestSourcePanel } from "../shell/CreateHarvestSourcePanel";
 import { EditHarvestSourcePanel } from "../shell/EditHarvestSourcePanel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
@@ -24,6 +25,8 @@ export function HarvestSourcesAdminPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<HarvestSource | null>(null);
   const [deleting, setDeleting] = useState<HarvestSource | null>(null);
+  const createPanel = usePanelTrigger(creating);
+  const editPanel = usePanelTrigger(editing !== null);
 
   async function confirmDelete() {
     if (!deleting) return;
@@ -64,6 +67,7 @@ export function HarvestSourcesAdminPage() {
                 {!readOnly && (
                   <Button
                     size="sm"
+                    {...createPanel.triggerProps}
                     onClick={() => {
                       // Exclusivité mutuelle avec editing (décision 5, plan
                       // SP-30j) : plus de barrière modale pour l'empêcher.
@@ -121,6 +125,8 @@ export function HarvestSourcesAdminPage() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
+                                aria-controls={editPanel.panelId}
+                                aria-expanded={editing?.id === source.id}
                                 onClick={() => {
                                   setCreating(false);
                                   setEditing(source);
@@ -152,13 +158,23 @@ export function HarvestSourcesAdminPage() {
           label: "Détail",
           content: (
             <div className="flex flex-col gap-3 p-3">
-              {creating && <CreateHarvestSourcePanel onClose={() => setCreating(false)} />}
+              {/* id seul (pas role="region" du hook) : CreateHarvestSourcePanel/
+                  EditHarvestSourcePanel rendent déjà un <section aria-label=…>,
+                  donc une région implicite nommée — cf. même correction sur
+                  CollectionsAdminPage. */}
+              {creating && (
+                <div id={createPanel.panelId}>
+                  <CreateHarvestSourcePanel onClose={() => setCreating(false)} />
+                </div>
+              )}
               {editing && (
-                <EditHarvestSourcePanel
-                  key={editing.id}
-                  source={editing}
-                  onClose={() => setEditing(null)}
-                />
+                <div id={editPanel.panelId}>
+                  <EditHarvestSourcePanel
+                    key={editing.id}
+                    source={editing}
+                    onClose={() => setEditing(null)}
+                  />
+                </div>
               )}
             </div>
           ),

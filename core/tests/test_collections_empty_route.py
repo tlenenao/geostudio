@@ -74,3 +74,69 @@ def test_rejects_an_unknown_sql_type_with_422(pg_app):
         },
     )
     assert resp.status_code == 422
+
+
+def test_reader_without_data_manage_cannot_create_an_empty_collection(pg_engine):
+    # SP-42, correctif 1 (F-securite-autorisation-01) : cette route exécute du
+    # DDL (création de table PostGIS) — réservée à data.manage (Créateur
+    # l'a, Lecteur non), même privilège que POST /uploads.
+    from app.roles.repository import ensure_built_in_roles
+    from app.users.repository import set_user_role
+
+    Base.metadata.create_all(pg_engine)
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="r",
+            username="reader",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=user.id,
+            role_id=roles["reader"].id,
+            role_slug=roles["reader"].slug,
+        )
+        s.commit()
+    # Même détail que côté ingestion : l'objet retourné par le dependency
+    # override est une instance detachée figée, jamais re-fetchée par
+    # requête — la muter directement reflète le rôle changé côté DB.
+    user.role_id = roles["reader"].id
+    user.is_admin = False
+
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_current_user_optional] = lambda: user
+    client = TestClient(app)
+    try:
+        resp = client.post(
+            "/collections/empty",
+            json={
+                "title": "Ma requête",
+                "columns": [{"name": "commune", "sqlType": "text"}],
+                "geometryType": None,
+                "srid": None,
+            },
+        )
+        assert resp.status_code == 403
+    finally:
+        with pg_engine.begin() as conn:
+            conn.execute(
+                text(
+                    "TRUNCATE items, configs, config_revisions, collections, "
+                    "audit_log, users, tenants CASCADE"
+                )
+            )

@@ -12,8 +12,9 @@ from app.notifications import repository as notifications_repo
 from app.notifications.models import Notification
 from app.pipelines import jobs as pipeline_jobs
 from app.pipelines import repository as pipelines_repo
+from app.roles.repository import ensure_built_in_roles
 from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
+from app.users.repository import get_or_create_user, set_user_role
 
 pytestmark = pytest.mark.postgis
 
@@ -383,3 +384,85 @@ def test_run_pipeline_task_marks_run_failed_on_unexpected_exception_never_zombie
         fetched = pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id)
         assert fetched.status == "failed"
         assert fetched.error is not None
+
+
+def test_run_pipeline_task_refuses_writer_dataset_without_data_manage(env, monkeypatch):
+    # SP-42, revue de la dernière passe de correctifs (point 1, Critical) :
+    # POST /pipelines/{id}/run et le tool MCP run_pipeline gardaient déjà
+    # data.manage avant de déférer un pipeline writer.dataset — mais
+    # run_pipeline_sweep_task (cron */5, app.pipelines.jobs) défère
+    # run_pipeline_task directement, sans passer par AUCUNE des deux
+    # routes gardées. Un propriétaire de pipeline dont le rôle ne porte pas
+    # data.manage (ex. rétrogradé après la planification, ou un rôle sur
+    # mesure automation.manage seul) voyait donc son pipeline continuer
+    # d'écrire des configs "dataset" indéfiniment via le cron. La garde
+    # doit vivre dans app.pipelines.runtime::_write_dataset — le point
+    # d'écriture réel, commun aux TROIS entrées (REST, MCP, sweep) — pas
+    # sur une quatrième route.
+    app, Session, tenant, user, item_id = env
+
+    with Session() as s:
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        assert "data.manage" not in roles["analyst"].privileges
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=user.id,
+            role_id=roles["analyst"].id,
+            role_slug="analyst",
+        )
+        s.commit()
+
+    from app.configs.schemas import PipelinePayload
+
+    dataset_payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.dataset",
+                    "params": {"collectionId": "villes_propres", "title": "Sortie"},
+                },
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        }
+    )
+    monkeypatch.setattr(
+        pipeline_jobs, "_get_pipeline_payload", lambda session, item_id: dataset_payload
+    )
+
+    with Session() as s:
+        run = pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+        run_id = run.id
+
+    pipeline_jobs.run_pipeline_task.defer(run_id=run_id, tenant_id=tenant.id)
+    app.run_worker(wait=False, queues=["etl"])
+
+    with Session() as s:
+        fetched = pipelines_repo.get_run(s, tenant_id=tenant.id, run_id=run_id)
+        assert fetched.status == "failed"
+        assert fetched.error is not None and "data.manage" in fetched.error
+        # Jamais de dataset créé, jamais de ligne écrite dans la collection
+        # cible : la garde doit s'exécuter avant TOUTE écriture (même
+        # patron que _write_dataset, qui appelle _write_collection AVANT de
+        # créer/muter l'item dataset).
+        count = s.execute(text("SELECT count(*) FROM villes_propres")).scalar()
+        assert count == 0
+        from app.items.models import Item
+
+        dataset_items = (
+            s.execute(
+                select(Item).where(Item.tenant_id == tenant.id, Item.resource_type == "dataset")
+            )
+            .scalars()
+            .all()
+        )
+        assert dataset_items == []

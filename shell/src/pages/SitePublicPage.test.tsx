@@ -45,6 +45,8 @@ const siteItem: Item = {
   isPublished: true,
   slug: "mon-portail",
   permissions: READ_ONLY_PERMISSIONS,
+  license: "",
+  language: "fr",
 };
 
 const config: AppConfig = {

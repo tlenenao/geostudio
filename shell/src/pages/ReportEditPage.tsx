@@ -12,12 +12,14 @@ import { useAuth } from "../auth/useAuth";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { ReportSchedulePayload } from "../api/types";
 import { RESOURCE_TYPE_LABELS } from "../api/resourceTypes";
+import { hasPermission } from "../auth/permissions";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { ReportScheduleEditor } from "../builder/report/ReportScheduleEditor";
 import { ReportRunPanel } from "../builder/report/ReportRunPanel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { t } from "../i18n";
 
 function defaultPayload(bookmarkItemId: string): ReportSchedulePayload {
   return {
@@ -45,6 +47,16 @@ export function ReportEditPage({
   const configQuery = useReportScheduleConfig(pk ?? "", { enabled: pk !== null });
   const createReport = useCreateReportSchedule();
   const saveReport = useSaveReportSchedule(pk ?? "");
+  // SP-42/F-shell-pages-04 : cf. commentaire jumeau sur DatasetEditPage.tsx —
+  // même doctrine, même résidu documenté. `pk === null` = brouillon jamais
+  // encore créé, rien à verrouiller.
+  //
+  // SP-42, revue finale (point 2, Critical) : quand `pk !== null`,
+  // `itemQuery.data` est `undefined` pendant tout le chargement ET en cas
+  // d'erreur — hasPermission renvoie alors `false`, verrouillant Enregistrer
+  // pour la mauvaise raison. Le garde de rendu plus bas inclut désormais
+  // itemQuery.isLoading/isError (même patron que DatasetEditPage.tsx:52-58).
+  const readOnly = pk !== null && !hasPermission(itemQuery.data, "write");
 
   const [draft, setDraft] = useState<ReportSchedulePayload>(
     defaultPayload(initialBookmarkItemId ?? ""),
@@ -55,7 +67,22 @@ export function ReportEditPage({
     if (pk !== null && configQuery.data) setDraft(configQuery.data);
   }, [pk, configQuery.data]);
 
-  if (pk !== null && configQuery.isLoading) return <p role="status">Chargement…</p>;
+  if (pk !== null && (configQuery.isLoading || itemQuery.isLoading))
+    return <p role="status">Chargement…</p>;
+  // SP-42 F-shell-pages-05 : même garde que PipelineBuilderPage.tsx — sans
+  // elle, un rapport existant dont le chargement échoue s'affichait comme un
+  // brouillon vide avec Enregistrer actif (422 opaque à la sauvegarde).
+  //
+  // SP-42, revue finale (point 2, Critical) : itemQuery.isError/!itemQuery.data
+  // ajoutés pour la même raison que configQuery.isError — sans eux,
+  // `readOnly` se calculait sur `itemQuery.data === undefined` (=> verrouillé
+  // à tort) sans jamais bloquer le rendu complet.
+  if (pk !== null && (configQuery.isError || itemQuery.isError || !itemQuery.data))
+    return (
+      <p role="alert" className="text-sm text-danger">
+        Rapport introuvable.
+      </p>
+    );
 
   async function onSave() {
     setSaveError(null);
@@ -92,7 +119,7 @@ export function ReportEditPage({
                   <dt>Type</dt>
                   <dd>{RESOURCE_TYPE_LABELS[itemQuery.data.resourceType]}</dd>
                   <dt>Modifié</dt>
-                  <dd>{itemQuery.data.date || "—"}</dd>
+                  <dd>{itemQuery.data.updatedAt || "—"}</dd>
                 </dl>
               )}
             </Panel>
@@ -132,10 +159,11 @@ export function ReportEditPage({
                   size="sm"
                   className="w-fit"
                   onClick={() => void onSave()}
-                  disabled={createReport.isPending || saveReport.isPending}
+                  disabled={createReport.isPending || saveReport.isPending || readOnly}
                 >
                   Enregistrer
                 </Button>
+                {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
                 {saveError && (
                   <p role="alert" className="text-sm text-danger">
                     {saveError}

@@ -16,6 +16,8 @@ def test_context_has_expected_prefixes():
         "foaf": "http://xmlns.com/foaf/0.1/",
         "locn": "http://www.w3.org/ns/locn#",
         "xsd": "http://www.w3.org/2001/XMLSchema#",
+        "vcard": "http://www.w3.org/2006/vcard/ns#",
+        "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
     }
 
 
@@ -38,6 +40,67 @@ def test_publisher_is_valid_foaf_agent(dcat_shacl_shapes):
     assert len(g) > 0  # round-trip rdflib : parse sans exception, triples non vides
     conforms, _, text = validate(g, shacl_graph=dcat_shacl_shapes)
     assert conforms, text
+
+
+def test_publisher_id_distinct_per_producer_slug():
+    # SP-41, correctif de revue finale : sans producer_slug, deux jeux de
+    # données avec des producteurs déclarés différents partageaient la même
+    # @id dct:publisher — un consommateur JSON-LD qui fusionne
+    # GET /dcat/catalog en graphe RDF voyait un seul Agent avec N foaf:name
+    # incohérents. producer_slug rend l'IRI distincte par collection.
+    shared = s.publisher(base=BASE, name="Tenant par défaut")
+    assert shared["@id"] == f"{BASE}/dcat/publisher"
+
+    roads = s.publisher(base=BASE, name="Ma Régie", producer_slug="roads")
+    rivers = s.publisher(base=BASE, name="Autre Régie", producer_slug="rivers")
+    assert roads["@id"] == f"{BASE}/dcat/publisher/roads"
+    assert rivers["@id"] == f"{BASE}/dcat/publisher/rivers"
+    assert roads["@id"] != rivers["@id"]
+    assert roads["@id"] != shared["@id"]
+
+
+def test_dataset_publisher_id_distinct_when_producer_declared():
+    without_producer = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Tenant par défaut",
+        bbox=None,
+    )
+    assert without_producer["dct:publisher"]["@id"] == f"{BASE}/dcat/publisher"
+
+    with_producer_a = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Ma Régie",
+        bbox=None,
+        producer_declared=True,
+    )
+    with_producer_b = s.dataset(
+        base=BASE,
+        collection_id="rivers",
+        title="Rivières",
+        description="d",
+        created_at="2026-01-01T00:00:00Z",
+        updated_at="2026-01-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Autre Régie",
+        bbox=None,
+        producer_declared=True,
+    )
+    assert with_producer_a["dct:publisher"]["foaf:name"] == "Ma Régie"
+    assert with_producer_b["dct:publisher"]["foaf:name"] == "Autre Régie"
+    assert with_producer_a["dct:publisher"]["@id"] != with_producer_b["dct:publisher"]["@id"]
+    assert with_producer_a["dct:publisher"]["@id"] != without_producer["dct:publisher"]["@id"]
 
 
 def test_shacl_gate_actually_catches_violations(dcat_shacl_shapes):
@@ -179,3 +242,251 @@ def test_catalog_empty_dataset_list_still_valid(dcat_shacl_shapes):
     g.parse(data=json.dumps(cat), format="json-ld")
     conforms, _, text = validate(g, shacl_graph=dcat_shacl_shapes)
     assert conforms, text
+
+
+def test_dataset_resolves_declared_license():
+    doc = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-07-01T00:00:00Z",
+        updated_at="2026-07-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Default",
+        bbox=None,
+        license="etalab-2.0",
+    )
+    assert doc["dct:license"] == {"@id": "https://spdx.org/licenses/etalab-2.0.html"}
+
+
+def test_dataset_other_license_uses_declared_uri():
+    doc = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-07-01T00:00:00Z",
+        updated_at="2026-07-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Default",
+        bbox=None,
+        license="other",
+        license_uri="https://example.org/my-license",
+    )
+    assert doc["dct:license"] == {"@id": "https://example.org/my-license"}
+
+
+def test_dataset_other_license_without_uri_falls_back_to_license_other():
+    doc = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-07-01T00:00:00Z",
+        updated_at="2026-07-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Default",
+        bbox=None,
+        license="other",
+    )
+    assert doc["dct:license"] == {"@id": s.LICENSE_OTHER}
+
+
+def test_dataset_declared_language_overrides_default(dcat_shacl_shapes):
+    doc = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-07-01T00:00:00Z",
+        updated_at="2026-07-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Default",
+        bbox=None,
+        language="en",
+    )
+    assert doc["dct:language"] == {
+        "@id": "http://publications.europa.eu/resource/authority/language/ENG"
+    }
+    standalone = {**doc, "@context": s.CONTEXT}
+    g = rdflib.Graph()
+    g.parse(data=json.dumps(standalone), format="json-ld")
+    conforms, _, text = validate(g, shacl_graph=dcat_shacl_shapes)
+    assert conforms, text
+
+
+def test_dataset_omits_new_optional_fields_when_not_declared():
+    doc = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-07-01T00:00:00Z",
+        updated_at="2026-07-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Default",
+        bbox=None,
+    )
+    assert "dct:accrualPeriodicity" not in doc
+    assert "dct:provenance" not in doc
+    assert "dcat:contactPoint" not in doc
+    assert "dct:hasVersion" not in doc
+    assert doc["dct:temporal"] == {
+        "@type": "dct:PeriodOfTime",
+        "dcat:startDate": {"@value": "2026-07-01T00:00:00Z", "@type": "xsd:dateTime"},
+    }
+    # dct:language N'EST PAS dans cette liste d'omission : contrairement aux
+    # six champs ci-dessus, "language" n'a pas d'état non déclaré (défaut
+    # "fr", jamais vide) — il apparaît donc inconditionnellement, exception
+    # documentée à la spec §3/§7.2, pas une régression.
+    assert doc["dct:language"] == {
+        "@id": "http://publications.europa.eu/resource/authority/language/FRA"
+    }
+
+
+def test_dataset_declares_accrual_periodicity():
+    doc = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-07-01T00:00:00Z",
+        updated_at="2026-07-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Default",
+        bbox=None,
+        update_frequency="monthly",
+    )
+    assert doc["dct:accrualPeriodicity"] == {
+        "@id": "http://publications.europa.eu/resource/authority/frequency/MONTHLY"
+    }
+
+
+def test_dataset_declares_provenance():
+    doc = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-07-01T00:00:00Z",
+        updated_at="2026-07-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Default",
+        bbox=None,
+        lineage="Relevé terrain 2026",
+    )
+    assert doc["dct:provenance"] == {
+        "@type": "dct:ProvenanceStatement",
+        "rdfs:label": "Relevé terrain 2026",
+    }
+
+
+def test_dataset_contact_point_email_heuristic():
+    doc = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-07-01T00:00:00Z",
+        updated_at="2026-07-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Default",
+        bbox=None,
+        contact="contact@example.org",
+    )
+    assert doc["dcat:contactPoint"] == {
+        "@type": "vcard:Kind",
+        "vcard:hasEmail": "mailto:contact@example.org",
+    }
+
+
+def test_dataset_contact_point_plain_name():
+    doc = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-07-01T00:00:00Z",
+        updated_at="2026-07-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Default",
+        bbox=None,
+        contact="Service SIG",
+    )
+    assert doc["dcat:contactPoint"] == {"@type": "vcard:Kind", "vcard:fn": "Service SIG"}
+
+
+def test_dataset_declares_version():
+    doc = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-07-01T00:00:00Z",
+        updated_at="2026-07-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Default",
+        bbox=None,
+        version="2.1",
+    )
+    assert doc["dct:hasVersion"] == "2.1"
+
+
+def test_dataset_declared_temporal_extent():
+    doc = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-07-01T00:00:00Z",
+        updated_at="2026-07-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Default",
+        bbox=None,
+        temporal_start="2020-01-01",
+        temporal_end="2026-12-31",
+    )
+    assert doc["dct:temporal"] == {
+        "@type": "dct:PeriodOfTime",
+        "dcat:startDate": {"@value": "2020-01-01", "@type": "xsd:date"},
+        "dcat:endDate": {"@value": "2026-12-31", "@type": "xsd:date"},
+    }
+
+
+def test_dataset_declared_temporal_extent_start_only():
+    doc = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-07-01T00:00:00Z",
+        updated_at="2026-07-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Default",
+        bbox=None,
+        temporal_start="2020-01-01",
+    )
+    temporal = doc["dct:temporal"]
+    assert temporal["dcat:startDate"] == {"@value": "2020-01-01", "@type": "xsd:date"}
+    assert "dcat:endDate" not in temporal
+
+
+def test_dataset_declared_temporal_extent_end_only_falls_back_to_created_at():
+    doc = s.dataset(
+        base=BASE,
+        collection_id="roads",
+        title="Routes",
+        description="d",
+        created_at="2026-07-01T00:00:00Z",
+        updated_at="2026-07-01T00:00:00Z",
+        is_public=True,
+        publisher_name="Default",
+        bbox=None,
+        temporal_end="2026-12-31",
+    )
+    assert doc["dct:temporal"] == {
+        "@type": "dct:PeriodOfTime",
+        "dcat:startDate": {"@value": "2026-07-01T00:00:00Z", "@type": "xsd:dateTime"},
+        "dcat:endDate": {"@value": "2026-12-31", "@type": "xsd:date"},
+    }

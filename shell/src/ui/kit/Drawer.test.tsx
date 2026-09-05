@@ -24,6 +24,15 @@ test("side=left positionne le panneau à gauche", () => {
   expect(screen.getByRole("dialog", { name: "Explorateur" })).toHaveClass("left-0");
 });
 
+test("transmet id à DialogPrimitive.Content pour un aria-controls externe (usePanelTrigger)", () => {
+  render(
+    <Drawer open onOpenChange={() => {}} title="Explorateur" id="panel-r-abc">
+      <p>Contenu</p>
+    </Drawer>,
+  );
+  expect(screen.getByRole("dialog", { name: "Explorateur" })).toHaveAttribute("id", "panel-r-abc");
+});
+
 test("Échap appelle onOpenChange(false)", async () => {
   const onOpenChange = vi.fn();
   render(

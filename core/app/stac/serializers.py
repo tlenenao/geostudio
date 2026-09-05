@@ -4,6 +4,8 @@ ItemCollection / conformance) à partir de primitives. Zéro I/O, aucune
 dépendance runtime à stac-pydantic (qui reste une dépendance de test). Les
 liens sont construits depuis `base` = racine du serveur sans slash final."""
 
+from app.catalog.metadata import resolve_license
+
 STAC_VERSION = "1.0.0"
 
 CONFORMANCE_CLASSES = [
@@ -55,17 +57,21 @@ def collection(
     description: str,
     bbox: list[float] | None,
     temporal_start: str | None,
+    license: str = "",
+    providers: list[dict] | None = None,
+    temporal_end: str | None = None,
 ) -> dict:
+    entry = resolve_license(license) if license else None
     doc = {
         "type": "Collection",
         "stac_version": STAC_VERSION,
         "id": collection_id,
         "title": title,
         "description": description or title or "No description provided.",
-        "license": "other",
+        "license": entry.spdx_id if entry else "other",
         "extent": {
             "spatial": {"bbox": [bbox if bbox is not None else list(WORLD_BBOX)]},
-            "temporal": {"interval": [[temporal_start, None]]},
+            "temporal": {"interval": [[temporal_start, temporal_end]]},
         },
         "links": [
             {
@@ -82,6 +88,8 @@ def collection(
             },
         ],
     }
+    if providers:
+        doc["providers"] = providers
     if bbox is None:
         doc["note"] = "Emprise indisponible (pas de géométrie ou table vide) : repli emprise monde."
     return doc

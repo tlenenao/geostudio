@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -7,11 +7,11 @@ from app.auth.dependency import get_current_user
 from app.db import get_session
 from app.items import repository as repo
 from app.items.schemas import ItemPage, ItemRead, ItemUpdatePatch
+from app.items.service import get_item_service, get_sharing_service, set_sharing_service
 from app.items.slug import InvalidSlugError, SlugCollisionError
 from app.items.storage import InMemoryThumbnailStore, ThumbnailStore
-from app.sharing import repository as sharing_repo
 from app.sharing.authorization import can
-from app.sharing.schemas import GroupShare, Sharing
+from app.sharing.schemas import Sharing
 from app.users.models import User
 
 router = APIRouter()
@@ -31,8 +31,13 @@ def list_items(
     q: str | None = None,
     type: str | None = None,
     scope: str = "all",
-    page: int = 1,
-    pageSize: int = 12,
+    page: int = Query(1, ge=1),
+    # Pas de borne haute : shell/src/api/itemClient.ts appelle déjà cette
+    # route avec pageSize=200 (sélecteurs de sources tileset3d/terrain3d) —
+    # vérifié avant d'écrire ce correctif (piège n°3 : le fix suggéré par la
+    # falsification citait `Query(100, ge=1)` de features/routes.py comme
+    # précédent mais lui ajoutait un `le=100` que ce précédent n'a pas).
+    pageSize: int = Query(12, ge=1),
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ItemPage:
@@ -54,15 +59,7 @@ def get_item(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ItemRead:
-    facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
-    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
-        raise HTTPException(status_code=404, detail="item not found")
-    result = repo.get_item(
-        session, tenant_id=user.tenant_id, item_id=item_id, current_user_id=user.id
-    )
-    if result is None:
-        raise HTTPException(status_code=404, detail="item not found")
-    return result
+    return get_item_service(session, item_id=item_id, user=user)
 
 
 @router.patch("/items/{item_id}", response_model=ItemRead)
@@ -88,6 +85,8 @@ def update_item(
             keywords=patch.keywords,
             is_published=patch.isPublished,
             slug=patch.slug,
+            license=patch.license,
+            language=patch.language,
             current_user_id=user.id,
         )
     except SlugCollisionError as err:
@@ -166,14 +165,7 @@ def get_sharing(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Sharing:
-    facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
-    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
-        raise HTTPException(status_code=404, detail="item not found")
-    shares = sharing_repo.list_shares(session, item_id=item_id)
-    return Sharing(
-        public=facts.is_public,
-        groups=[GroupShare(groupId=s.group_id, role=s.role) for s in shares],
-    )
+    return get_sharing_service(session, item_id=item_id, user=user)
 
 
 @router.put("/items/{item_id}/sharing", status_code=status.HTTP_204_NO_CONTENT)
@@ -183,30 +175,5 @@ def set_sharing(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> Response:
-    facts = repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
-    if facts is None or not can(session, user_id=user.id, action="read", item=facts):
-        raise HTTPException(status_code=404, detail="item not found")
-    if not can(session, user_id=user.id, action="share", item=facts):
-        raise HTTPException(status_code=403, detail="not allowed to share this item")
-
-    ok = sharing_repo.replace_shares(
-        session,
-        tenant_id=user.tenant_id,
-        item_id=item_id,
-        shares=[(g.groupId, g.role) for g in body.groups],
-    )
-    if not ok:
-        raise HTTPException(status_code=404, detail="group not found")
-    repo.set_is_public(session, tenant_id=user.tenant_id, item_id=item_id, is_public=body.public)
-
-    write_audit(
-        session,
-        tenant_id=user.tenant_id,
-        actor_id=user.id,
-        actor_kind="user",
-        action="item.share",
-        object_type="item",
-        object_id=item_id,
-        payload={"public": body.public, "groups": [g.model_dump() for g in body.groups]},
-    )
+    set_sharing_service(session, item_id=item_id, user=user, sharing=body)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

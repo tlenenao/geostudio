@@ -26,6 +26,16 @@ const collection: CollectionAdmin = {
   featureCount: 2,
   owner: null,
   attachmentFields: [],
+  license: "",
+  licenseUri: "",
+  producer: "",
+  contact: "",
+  updateFrequency: "",
+  lineage: "",
+  language: "fr",
+  version: "",
+  temporalStart: null,
+  temporalEnd: null,
 };
 
 function renderCard(

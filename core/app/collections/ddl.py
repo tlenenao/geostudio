@@ -8,10 +8,32 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.collections.publication import add_table_to_publication
+from app.tenants.repository import DEFAULT_TENANT_SLUG
+
+
+class TenantColumnMismatch(Exception):
+    """La table à enregistrer porte déjà une colonne `tenant_id` dont au moins
+    une valeur ne correspond pas au tenant de l'appelant. Poser la policy RLS
+    dans ce cas rendrait ces lignes invisibles sous RLS (ou visibles à un
+    tenant qui n'est pas le leur) alors qu'un COUNT(*) hors RLS les compterait
+    quand même — cf. SP-42/F-securite-tenant-rls-01."""
 
 
 def quote_ident(session: Session, identifier: str) -> str:
     return session.get_bind().dialect.identifier_preparer.quote(identifier)
+
+
+def _quote_literal(value: str) -> str:
+    # SP-42, revue de la dernière passe de correctifs (point 4, Important) :
+    # `ALTER TABLE ... ADD COLUMN ... DEFAULT` est une instruction DDL — un
+    # paramètre lié (`:tenant_id`) y échoue systématiquement avec
+    # `IndeterminateDatatype` (vérifié empiriquement contre Postgres réel,
+    # psycopg 3) : Postgres n'accepte de paramètres que dans les
+    # instructions DML. Le littéral doit donc être interpolé, correctement
+    # échappé — un tenant_id vient de app.tenants (jamais saisi librement
+    # dans ce module), mais l'échappement est appliqué par défense en
+    # profondeur plutôt que par confiance dans l'appelant.
+    return "'" + value.replace("'", "''") + "'"
 
 
 _qi = quote_ident
@@ -23,11 +45,47 @@ def spatial_index_name(table_name: str) -> str:
     return f"ix_{table_name}_geom_gist"
 
 
-def apply_collection_ddl(session: Session, table_name: str) -> None:
+def _reject_preexisting_mismatched_tenant_column(
+    session: Session, table_name: str, tenant_id: str
+) -> None:
+    # ADD COLUMN IF NOT EXISTS (plus bas) est un no-op silencieux si la
+    # colonne existe déjà (cas d'une table PostGIS préexistante important
+    # déjà un identifiant "tenant_id" d'un autre système) : aucune valeur
+    # n'est alors réécrite, et la policy RLS posée juste après comparerait
+    # les valeurs préexistantes au tenant réel de l'appelant. Refuser ce cas
+    # plutôt que réécrire silencieusement : une réécriture aveugle
+    # corromprait un usage légitime où plusieurs tenants partagent déjà la
+    # même table physique (RLS par ligne, cf. UniqueConstraint
+    # tenant_id+table_name sur Collection).
+    has_column = session.execute(
+        text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = :t AND column_name = 'tenant_id'"
+        ),
+        {"t": table_name},
+    ).first()
+    if has_column is None:
+        return
+    t = _qi(session, table_name)
+    mismatched = session.execute(
+        text(f"SELECT 1 FROM public.{t} WHERE tenant_id IS DISTINCT FROM :tenant_id LIMIT 1"),
+        {"tenant_id": tenant_id},
+    ).first()
+    if mismatched is not None:
+        raise TenantColumnMismatch(
+            f"la table {table_name!r} porte déjà une colonne tenant_id avec des "
+            "valeurs qui ne correspondent pas au tenant de l'appelant"
+        )
+
+
+def apply_collection_ddl(
+    session: Session, table_name: str, *, tenant_id: str = DEFAULT_TENANT_SLUG
+) -> None:
+    _reject_preexisting_mismatched_tenant_column(session, table_name, tenant_id)
     t = _qi(session, table_name)
     stmts = [
         f"ALTER TABLE public.{t} ADD COLUMN IF NOT EXISTS tenant_id text "
-        "NOT NULL DEFAULT 'default'",
+        f"NOT NULL DEFAULT {_quote_literal(tenant_id)}",
         f"ALTER TABLE public.{t} ENABLE ROW LEVEL SECURITY",
         f"DROP POLICY IF EXISTS tenant_isolation ON public.{t}",
         f"CREATE POLICY tenant_isolation ON public.{t} "

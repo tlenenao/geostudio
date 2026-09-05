@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
+import { expectAriaWired } from "../test/expectAriaWired";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { CollectionsAdminPage } from "./CollectionsAdminPage";
@@ -189,12 +190,41 @@ test("edits a collection via the row action", async () => {
     }),
   );
   render(<Harness />);
-  await userEvent.click(await screen.findByRole("button", { name: "Éditer" }));
+  const editButton = await screen.findByRole("button", { name: "Éditer" });
+  expectAriaWired(editButton, editButton.getAttribute("aria-controls")!, false);
+  await userEvent.click(editButton);
   const titleInput = await screen.findByLabelText("Titre");
+  expectAriaWired(editButton, editButton.getAttribute("aria-controls")!, true);
   await userEvent.clear(titleInput);
   await userEvent.type(titleInput, "Incidents (v2)");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(patched).toMatchObject({ title: "Incidents (v2)" }));
+});
+
+test("aria-expanded est câblé par ligne, pas partagé entre toutes les lignes (revue finale SP-43, Important I2)", async () => {
+  // Fixture à 2 collections : le défaut trouvé en revue finale (aria-expanded
+  // posé une seule fois pour toute la page via {...editPanel.triggerProps}
+  // dans .map()) était invisible avec une seule ligne — toutes les lignes
+  // basculaient aria-expanded="true" en même temps.
+  const other: CollectionAdminFixture = { ...INCIDENTS, id: "parcs", title: "Parcs" };
+  server.use(
+    http.get("https://core.test/collections", () =>
+      HttpResponse.json({ collections: [INCIDENTS, other] }),
+    ),
+    http.get("https://core.test/collections/candidates", () =>
+      HttpResponse.json({ candidates: [] }),
+    ),
+  );
+  render(<Harness />);
+  const editButtons = await screen.findAllByRole("button", { name: "Éditer" });
+  expect(editButtons).toHaveLength(2);
+  editButtons.forEach((button) => expect(button).toHaveAttribute("aria-expanded", "false"));
+
+  await userEvent.click(editButtons[0]);
+  await screen.findByLabelText("Titre");
+
+  expect(editButtons[0]).toHaveAttribute("aria-expanded", "true");
+  expect(editButtons[1]).toHaveAttribute("aria-expanded", "false");
 });
 
 test("surfaces an alert when editing a collection fails", async () => {
@@ -327,8 +357,11 @@ test("shares a collection via the row action", async () => {
     }),
   );
   render(<Harness />);
-  await userEvent.click(await screen.findByRole("button", { name: "Partager" }));
+  const shareButton = await screen.findByRole("button", { name: "Partager" });
+  expectAriaWired(shareButton, shareButton.getAttribute("aria-controls")!, false);
+  await userEvent.click(shareButton);
   await userEvent.click(await screen.findByLabelText("Public"));
+  expectAriaWired(shareButton, shareButton.getAttribute("aria-controls")!, true);
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   await waitFor(() => expect(putBody).toEqual({ public: true, groups: [] }));
 });
@@ -426,4 +459,30 @@ test("sous viewport étroit, affiche trois onglets Catalogue/Collections/Détail
   expect(tabs.map((t) => t.textContent)).toEqual(["Catalogue", "Collections", "Détail"]);
   const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
   expect(activeTab).toHaveTextContent("Collections");
+});
+
+test("SP-42/F-securite-autorisation-06 : verrouille Éditer/Partager quand permissions.write/share sont faux", async () => {
+  const RESTRICTED = {
+    ...INCIDENTS,
+    id: "restricted",
+    title: "Restreinte",
+    permissions: { read: true, write: false, delete: false, share: false },
+  };
+  server.use(
+    http.get("https://core.test/collections", () =>
+      HttpResponse.json({ collections: [RESTRICTED] }),
+    ),
+  );
+  render(<Harness />);
+  const editButton = await screen.findByRole("button", { name: "Éditer" });
+  const shareButton = screen.getByRole("button", { name: "Partager" });
+  expect(editButton).toBeDisabled();
+  expect(shareButton).toBeDisabled();
+  expect(
+    screen.getByText("Modification réservée aux éditeurs de cet élément."),
+  ).toBeInTheDocument();
+  expect(screen.getByText("Partage réservé au propriétaire et aux éditeurs.")).toBeInTheDocument();
+  // Supprimer n'est pas concerné par cette trouvaille (le cœur ne gate pas
+  // la suppression sur write/share) : reste actionnable.
+  expect(screen.getByRole("button", { name: "Supprimer" })).not.toBeDisabled();
 });

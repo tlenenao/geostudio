@@ -893,6 +893,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/metadata-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Metadata Catalog */
+        get: operations["get_metadata_catalog_metadata_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/notifications": {
         parameters: {
             query?: never;
@@ -1733,14 +1750,34 @@ export interface components {
         CollectionPatch: {
             /** Attachmentfields */
             attachmentFields?: components["schemas"]["AttachmentFieldSpec"][] | null;
+            /** Contact */
+            contact?: string | null;
             /** Description */
             description?: string | null;
             /** Editable */
             editable?: boolean | null;
             /** Ispublic */
             isPublic?: boolean | null;
+            /** Language */
+            language?: string | null;
+            /** License */
+            license?: string | null;
+            /** Licenseuri */
+            licenseUri?: string | null;
+            /** Lineage */
+            lineage?: string | null;
+            /** Producer */
+            producer?: string | null;
+            /** Temporalend */
+            temporalEnd?: string | null;
+            /** Temporalstart */
+            temporalStart?: string | null;
             /** Title */
             title?: string | null;
+            /** Updatefrequency */
+            updateFrequency?: string | null;
+            /** Version */
+            version?: string | null;
         };
         /** ConfigRead */
         ConfigRead: {
@@ -1972,6 +2009,13 @@ export interface components {
             /** W */
             w: number;
         };
+        /** FrequencyCatalogEntry */
+        FrequencyCatalogEntry: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+        };
         /** GroupRead */
         GroupRead: {
             /** Id */
@@ -2117,6 +2161,16 @@ export interface components {
              * @default []
              */
             keywords: string[];
+            /**
+             * Language
+             * @default fr
+             */
+            language: string;
+            /**
+             * License
+             * @default
+             */
+            license: string;
             /** Owner */
             owner: string;
             permissions: components["schemas"]["ItemPermissions"];
@@ -2130,6 +2184,8 @@ export interface components {
             thumbnailUrl: string | null;
             /** Title */
             title: string;
+            /** Updatedat */
+            updatedAt: string;
         };
         /** ItemUpdatePatch */
         ItemUpdatePatch: {
@@ -2139,10 +2195,21 @@ export interface components {
             isPublished?: boolean | null;
             /** Keywords */
             keywords?: string[] | null;
+            /** Language */
+            language?: string | null;
+            /** License */
+            license?: string | null;
             /** Slug */
             slug?: string | null;
             /** Title */
             title?: string | null;
+        };
+        /** LanguageCatalogEntry */
+        LanguageCatalogEntry: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
         };
         /** LayerInfoOut */
         LayerInfoOut: {
@@ -2193,6 +2260,17 @@ export interface components {
             x: number;
             /** Y */
             y: number;
+        };
+        /** LicenseCatalogEntry */
+        LicenseCatalogEntry: {
+            /** Dcaturi */
+            dcatUri: string | null;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Spdxid */
+            spdxId: string;
         };
         /** MapConfig */
         MapConfig: {
@@ -2359,6 +2437,15 @@ export interface components {
             to: string;
             /** When */
             when?: string | null;
+        };
+        /** MetadataCatalog */
+        MetadataCatalog: {
+            /** Frequencies */
+            frequencies: components["schemas"]["FrequencyCatalogEntry"][];
+            /** Languages */
+            languages: components["schemas"]["LanguageCatalogEntry"][];
+            /** Licenses */
+            licenses: components["schemas"]["LicenseCatalogEntry"][];
         };
         /** NotificationPage */
         NotificationPage: {
@@ -5237,6 +5324,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_metadata_catalog_metadata_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataCatalog"];
                 };
             };
             /** @description Validation Error */

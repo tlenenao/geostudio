@@ -68,7 +68,7 @@ def env():
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector
     app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (
-        lambda session, table: None
+        lambda session, table, tenant_id=None: None
     )
     app.dependency_overrides[features_routes.get_rls_scope] = lambda: features_routes.null_rls_scope
     # ST_EstimatedExtent n'existe pas sur SQLite : stub d'emprise.
@@ -263,3 +263,38 @@ def test_single_item_and_404(env_repo):
     _register(app, client, admin)
     assert client.get("/stac/collections/incidents/items/1").json()["id"] == "1"
     assert client.get("/stac/collections/incidents/items/999").status_code == 404
+
+
+def test_stac_collection_reflects_declared_license(env):
+    app, client, admin, _regular, Session = env
+    _register(app, client, admin)
+    _as(app, admin)
+    client.patch("/collections/incidents", json={"license": "cc-by-4.0"})
+    res = client.get("/stac/collections/incidents")
+    assert res.json()["license"] == "CC-BY-4.0"
+
+
+def test_stac_collection_providers_only_when_producer_declared(env):
+    app, client, admin, _regular, Session = env
+    _register(app, client, admin)
+    res_without = client.get("/stac/collections/incidents")
+    assert "providers" not in res_without.json()
+
+    _as(app, admin)
+    client.patch("/collections/incidents", json={"producer": "Ma Régie"})
+    res_with = client.get("/stac/collections/incidents")
+    assert res_with.json()["providers"] == [{"name": "Ma Régie", "roles": ["producer"]}]
+
+
+def test_stac_collection_temporal_start_falls_back_when_only_end_declared(env):
+    # Même classe de défaut que celle corrigée côté DCAT (commit e915f9ff) :
+    # vérifie que déclarer seulement temporal_end ne fait pas disparaître le
+    # repli temporal_start (né de created_at) dans la réponse STAC.
+    app, client, admin, _regular, Session = env
+    _register(app, client, admin)
+    _as(app, admin)
+    client.patch("/collections/incidents", json={"temporalEnd": "2026-12-31"})
+    res = client.get("/stac/collections/incidents").json()
+    interval = res["extent"]["temporal"]["interval"][0]
+    assert interval[0] is not None  # repli sur created_at, pas perdu
+    assert interval[1] == "2026-12-31T23:59:59Z"

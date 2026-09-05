@@ -95,21 +95,25 @@ def patch_role(
         unknown = set(body.privileges) - set(ALL_PRIVILEGE_VALUES)
         if unknown:
             raise HTTPException(status_code=400, detail=f"unknown privileges: {sorted(unknown)}")
-        if set(_ANTI_LOCKOUT_PRIVILEGES).issubset(
-            set(role.privileges)
-        ) and would_orphan_privilege_holders(
-            session,
-            tenant_id=user.tenant_id,
-            privileges=_ANTI_LOCKOUT_PRIVILEGES,
-            role_id=role.id,
-            new_privileges=body.privileges,
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "this change would leave the tenant without anyone able to manage users/roles"
-                ),
-            )
+        # Évalué privilège par privilège (SP-42/F-securite-autorisation-07) :
+        # cf. le même correctif sur PATCH /users/{id} (app/auth/routes.py) —
+        # une précondition en conjonction sur les DEUX privilèges anti-lockout
+        # à la fois devient inerte dès qu'ils vivent sur deux rôles distincts.
+        for privilege in _ANTI_LOCKOUT_PRIVILEGES:
+            if privilege in role.privileges and would_orphan_privilege_holders(
+                session,
+                tenant_id=user.tenant_id,
+                privileges=[privilege],
+                role_id=role.id,
+                new_privileges=body.privileges,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "this change would leave the tenant without anyone able to manage "
+                        "users/roles"
+                    ),
+                )
     updated = update_role(
         session,
         tenant_id=user.tenant_id,

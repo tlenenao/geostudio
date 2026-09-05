@@ -236,3 +236,48 @@ def test_get_item_visible_via_group_share_succeeds(app_client):
         result = call_tool(app_client, "get_item", {"itemId": item_id})
 
     assert result["title"] == "Shared"
+
+
+def test_get_item_never_returns_a_thumbnail_url_to_an_mcp_caller(app_client):
+    # SP-42, correctif 2 (F-coeur-federation-08) : thumbnailUrl pointe vers
+    # GET /items/{id}/thumbnail, gardée par l'audience OIDC du shell
+    # (CORE_OIDC_AUDIENCE) — un jeton MCP porte l'audience distincte
+    # CORE_MCP_AUDIENCE et reçoit systématiquement 401 sur cette route. Le
+    # tool ne doit donc plus jamais produire cette URL, même quand l'item a
+    # bien une miniature (contrôle : la même donnée, lue via REST, la
+    # renvoie).
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id, title="Avec miniature")
+    with app_client.session_factory() as session:
+        items_repo.set_thumbnail_key(
+            session,
+            tenant_id=app_client.tenant.id,
+            item_id=item_id,
+            thumbnail_key="thumbs/x.png",
+        )
+        session.commit()
+
+    rest_resp = app_client.get(f"/items/{item_id}", headers={"Authorization": "Bearer anything"})
+    assert rest_resp.status_code == 200
+    assert rest_resp.json()["thumbnailUrl"] == f"/items/{item_id}/thumbnail"
+
+    with app_client:
+        result = call_tool(app_client, "get_item", {"itemId": item_id})
+
+    assert result["thumbnailUrl"] is None
+
+
+def test_list_items_never_returns_a_thumbnail_url_to_an_mcp_caller(app_client):
+    item_id = _seed_item(app_client, owner_id=app_client.mock_user.id, title="Avec miniature")
+    with app_client.session_factory() as session:
+        items_repo.set_thumbnail_key(
+            session,
+            tenant_id=app_client.tenant.id,
+            item_id=item_id,
+            thumbnail_key="thumbs/x.png",
+        )
+        session.commit()
+
+    with app_client:
+        result = call_tool(app_client, "list_items", {"scope": "mine"})
+
+    assert result["items"][0]["thumbnailUrl"] is None

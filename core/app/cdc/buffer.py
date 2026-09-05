@@ -7,6 +7,7 @@ non flushé, TOUTES tables confondues (confirmed_flush_lsn est une position
 dans le flux WAL global, pas par table) — safe_ack_lsn() porte cette
 garantie."""
 
+import itertools
 import time
 from dataclasses import dataclass, field
 
@@ -50,8 +51,14 @@ class CdcBufferManager:
 
     def __init__(self) -> None:
         self._buffers: dict[str, _TableBuffer] = {}
+        # Compteur monotone unique pour tout le manager (pas par table) :
+        # affecte `row.seq` dans l'ordre RÉEL d'ajout au buffer, seule donnée
+        # qui départage un `_lsn` ex-aequo produit par le settle CDC (cf.
+        # app.cdc.consumer:54-70, app.analytics.aggregate._dedup_cte).
+        self._seq_counter = itertools.count()
 
     def add(self, table_name: str, row: ChangeRow) -> None:
+        row.seq = next(self._seq_counter)
         self._buffers.setdefault(table_name, _TableBuffer()).add(row)
 
     def tables_due_for_flush(self) -> list[str]:

@@ -125,6 +125,26 @@ def test_paginates(client):
     assert body["pageSize"] == 2
 
 
+def test_page_zero_is_rejected_instead_of_silently_wrong(client):
+    # Regression (SP-42, F-coeur-contenu-02): list_published_items pages by
+    # Python slicing (rows[(page-1)*page_size : ...]) — page=0 gave a
+    # negative start index instead of an error, returning silently wrong
+    # (empty, here) results rather than a clear 422.
+    for i in range(3):
+        item_id = _create_item(client, f"Item {i}")
+        _publish(client, item_id)
+
+    del client.app.dependency_overrides[get_current_user]
+    response = client.get("/public/items?page=0&pageSize=2")
+    assert response.status_code == 422
+
+
+def test_page_size_zero_is_rejected(client):
+    del client.app.dependency_overrides[get_current_user]
+    response = client.get("/public/items?pageSize=0")
+    assert response.status_code == 422
+
+
 def test_leakage_matrix_unpublished_other_tenant_and_default_published(client):
     # (1) Item non publié → absent.
     _create_item(client, "Non publie")
@@ -182,8 +202,20 @@ def test_never_exposes_a_sensitive_field(client):
         "owner",
         "thumbnailUrl",
         "date",
+        # updatedAt (SP-42/F-shell-api-07) : même famille que `date`
+        # (created_at) déjà whitelisté ci-dessus — un horodatage de
+        # dernière modification n'est pas plus sensible qu'un horodatage de
+        # création, et /public/items sert le même ItemRead que /items (pas
+        # de projection publique séparée qui choisirait d'exclure l'un
+        # plutôt que l'autre). Même décision que license/language (SP-41) :
+        # métadonnée publique par conception.
+        "updatedAt",
         "configId",
         "isPublished",
         "keywords",
         "permissions",
+        # license/language (SP-41) : métadonnées publiques par conception,
+        # pas des champs sensibles.
+        "license",
+        "language",
     }

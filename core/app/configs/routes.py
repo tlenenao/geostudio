@@ -5,19 +5,21 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user, is_etl_enabled, is_export_enabled
+from app.auth.dependency import get_current_user
 from app.configs import repository as repo
 from app.configs.alert_validation import validate_alert_payload as _validate_alert_payload
 from app.configs.bookmark_validation import validate_bookmark_payload as _validate_bookmark_payload
 from app.configs.dataset_validation import validate_dataset_payload as _validate_dataset_payload
-from app.configs.extension_permissions import (
-    ExtensionPermissionError,
-    validate_extension_permissions,
-)
 from app.configs.pipeline_validation import validate_pipeline_payload as _validate_pipeline_payload
 from app.configs.report_validation import validate_report_payload as _validate_report_payload
 from app.configs.repository import ConfigRead, RevisionInfo
 from app.configs.schemas import BuilderConfig
+from app.configs.service import (
+    _require_etl_enabled_for_pipeline,
+    _require_export_enabled_for_report,
+    _validate_extension_scope,
+    create_config_service,
+)
 from app.configs.terrain3d_validation import (
     validate_terrain3d_payload as _validate_terrain3d_payload,
 )
@@ -27,7 +29,8 @@ from app.configs.tileset3d_validation import (
 from app.db import get_session
 from app.items import repository as items_repo
 from app.items.models import Item
-from app.items.slug import InvalidSlugError, SlugCollisionError
+from app.roles.guards import require_privilege
+from app.roles.kind_registry import privilege_for_kind
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -59,6 +62,19 @@ def _require_access(session: Session, *, user: User, item_id: str, action: str) 
         raise HTTPException(status_code=403, detail="not allowed")
 
 
+def _require_no_reverse_references(session: Session, *, tenant_id: str, item_id: str) -> None:
+    # SP-42/F-coeur-contenu-04 : sans cette garde, DELETE /items/{id} (ou
+    # /configs/by-item/{id}) supprimait un Dataset/Bookmark/Pipeline encore
+    # référencé par une AlertRule/un ReportSchedule/un autre Dataset,
+    # laissant une config orpheline silencieuse (204, aucun signal).
+    referencing = repo.find_referencing_config_kinds(session, tenant_id=tenant_id, item_id=item_id)
+    if referencing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"still referenced by config kind(s): {', '.join(referencing)}",
+        )
+
+
 def _delete_config_and_item(session: Session, config_id: str, item_id: str, tenant_id: str) -> None:
     from sqlalchemy import delete
 
@@ -72,26 +88,49 @@ def _delete_config_and_item(session: Session, config_id: str, item_id: str, tena
     session.flush()
 
 
-def _validate_extension_scope(session: Session, config: BuilderConfig, *, tenant_id: str) -> None:
-    try:
-        validate_extension_permissions(session, config, tenant_id=tenant_id)
-    except ExtensionPermissionError as err:
-        raise HTTPException(status_code=400, detail=str(err)) from err
+# _validate_extension_scope, _require_etl_enabled_for_pipeline et
+# _require_export_enabled_for_report vivent désormais uniquement dans
+# app.configs.service (importées ci-dessus) — revue finale SP-43 (Important
+# I1) : ce module en recréait des copies byte-équivalentes, rouvrant la
+# classe de défaut "même règle à N sites" que SP-43 devait fermer (create_
+# config utilisait déjà les copies de service.py, update_config/rollback
+# utilisaient celles-ci ; un changement appliqué à une seule copie aurait
+# fait diverger silencieusement create vs update).
 
 
-def _require_etl_enabled_for_pipeline(config: BuilderConfig) -> None:
-    if config.kind == "pipeline" and not is_etl_enabled():
-        raise HTTPException(status_code=403, detail="ETL capability disabled on this instance")
+# SP-43 Étape 1 : le mapping kind->privilège vit désormais dans
+# app.roles.kind_registry (privilege_for_kind), seule source de vérité,
+# consommée aussi par app.mcp.tools, app.tileset3d.routes,
+# app.terrain3d.routes et app.pipelines.routes — remplace le dict privé qui
+# vivait ici et que ces 4 autres sites couplaient chacun différemment (import
+# de nom privé, import du dict lui-même, recopie de valeur en dur), un défaut
+# rouvert 3 fois avant SP-42 (cf. spec SP-43 §1.1). Rationale du mapping
+# lui-même : voir la docstring de kind_registry.py.
+def _require_privilege_for_kind(session: Session, user: User, config: BuilderConfig) -> None:
+    require_privilege(session, user, privilege_for_kind(config.kind))
 
 
-def _require_export_enabled_for_report(config: BuilderConfig) -> None:
-    # Jumeau de la garde pipeline/ETL ci-dessus (revue finale SP-17b, I3) :
-    # sur une instance sans capacité export, un ReportSchedule pouvait être
-    # créé mais son rendu restait "pending" à jamais — rien ne dépile la file
-    # `export`, et export_repo.reclaim_stuck_jobs ne récupère que les
-    # "running". Mieux vaut refuser la création tout de suite.
-    if config.kind == "report" and not is_export_enabled():
-        raise HTTPException(status_code=403, detail="Export capability disabled on this instance")
+# SP-42, revue des lots de correctifs 2/3bis (point 3, Important) :
+# _require_privilege_for_kind ci-dessus se cale sur le kind SOUMIS dans la
+# requête, jamais sur celui déjà enregistré pour cet item — repo.update_config
+# ne compare (et ne mute) jamais Config.kind (vérifié par lecture directe de
+# app/configs/repository.py). Qui détient `write` sur un item "map" mais
+# seulement analytics.view (pas maps.manage — cas réel : l'Analyste) pouvait
+# donc écraser la config de cette map en soumettant kind="bookmark" : la
+# garde consultait alors le privilège du kind soumis, pas celui de l'item.
+# Sur toute mise à jour d'une config déjà existante (jamais à la création,
+# où il n'existe encore aucun kind enregistré à comparer), le kind soumis
+# doit être identique à celui déjà enregistré — sinon 400, avant même de
+# consulter le catalogue de privilèges.
+def _require_kind_matches_existing(existing_kind: str, submitted_kind: str) -> None:
+    if submitted_kind != existing_kind:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"config kind cannot change on update: item is '{existing_kind}', "
+                f"got '{submitted_kind}'"
+            ),
+        )
 
 
 @router.post("/configs", response_model=ConfigRead, status_code=status.HTTP_201_CREATED)
@@ -100,30 +139,9 @@ def create_config(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
-    _require_etl_enabled_for_pipeline(request.config)
-    _require_export_enabled_for_report(request.config)
-    _validate_extension_scope(session, request.config, tenant_id=user.tenant_id)
-    _validate_dataset_payload(session, request.config, user=user)
-    _validate_bookmark_payload(session, request.config, user=user)
-    _validate_pipeline_payload(session, request.config, user=user)
-    _validate_alert_payload(session, request.config, user=user)
-    _validate_report_payload(session, request.config, user=user)
-    _validate_tileset3d_payload(session, request.config, user=user)
-    _validate_terrain3d_payload(session, request.config, user=user)
-    try:
-        item = items_repo.create_item(
-            session,
-            tenant_id=user.tenant_id,
-            owner_id=user.id,
-            resource_type=request.config.kind,
-            title=request.title,
-            slug=request.slug,
-        )
-    except SlugCollisionError as err:
-        raise HTTPException(status_code=409, detail=str(err)) from err
-    except InvalidSlugError as err:
-        raise HTTPException(status_code=422, detail=str(err)) from err
-    result = repo.create_config(session, request.config, item_id=item.id, tenant_id=user.tenant_id)
+    created = create_config_service(
+        session, request.config, title=request.title, user=user, slug=request.slug
+    )
     write_audit(
         session,
         tenant_id=user.tenant_id,
@@ -131,7 +149,7 @@ def create_config(
         actor_kind="user",
         action="config.create",
         object_type="config",
-        object_id=result.id,
+        object_id=created.config.id,
         payload={"title": request.title, "kind": request.config.kind},
     )
     write_audit(
@@ -141,10 +159,10 @@ def create_config(
         actor_kind="user",
         action="item.create",
         object_type="item",
-        object_id=item.id,
+        object_id=created.item.id,
         payload={"title": request.title},
     )
-    return result
+    return created.config
 
 
 @router.get("/configs/{config_id}", response_model=ConfigRead)
@@ -171,6 +189,8 @@ def update_config(
     if existing is None or existing.itemId is None:
         raise HTTPException(status_code=404, detail="config not found")
     _require_access(session, user=user, item_id=existing.itemId, action="write")
+    _require_kind_matches_existing(existing.kind, config.kind)
+    _require_privilege_for_kind(session, user, config)
     _require_etl_enabled_for_pipeline(config)
     _require_export_enabled_for_report(config)
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
@@ -233,6 +253,24 @@ def rollback_config(
     candidate = repo.get_revision_config(session, config_id, request.version)
     if candidate is None:
         raise HTTPException(status_code=404, detail="config or version not found")
+    # SP-42, revue du lot de correctifs 1 (Important) : même trou que
+    # create_config/update_config avant eafb02cc, resté ouvert ici — le
+    # rollback rejoue "exactement la même séquence que update_config" (cf.
+    # commentaire ci-dessus) mais sautait ce garde. Volontairement APRÈS
+    # _require_access (mêmes ordres que create_config/update_config) et
+    # HORS du try/except ci-dessous : un privilège manquant est un refus
+    # d'autorisation (403), pas un problème de validité de la version
+    # restaurée (422) — les deux ne doivent pas se confondre.
+    #
+    # SP-42, revue des lots de correctifs 2/3bis (point 3) : même défense en
+    # profondeur qu'update_config/update_config_by_item ci-dessous — une
+    # révision stockée dont le kind diverge de celui de l'item (Config.kind,
+    # jamais muté par repo.update_config) ne peut apparaître qu'à travers une
+    # exploitation historique du même défaut ou un accès direct au
+    # repository ; /rollback ne doit pas la restaurer. Même raison de rang
+    # (400, hors du try/except) que le garde de privilège juste après.
+    _require_kind_matches_existing(existing.kind, candidate.kind)
+    _require_privilege_for_kind(session, user, candidate)
     try:
         _require_etl_enabled_for_pipeline(candidate)
         _require_export_enabled_for_report(candidate)
@@ -279,6 +317,13 @@ def delete_config(
     if result is None or result.itemId is None:
         raise HTTPException(status_code=404, detail="config not found")
     _require_access(session, user=user, item_id=result.itemId, action="delete")
+    # SP-42, revue de la dernière passe de correctifs (point 6, Important) :
+    # can()/_require_access(action="delete") autorise déjà un partage
+    # "editor" — sans jamais consulter le privilège de domaine du kind
+    # ENREGISTRÉ (même garde que _require_privilege_for_kind sur PUT). Un
+    # Lecteur (0 privilège) à qui une map est partagée en editor détruisait
+    # donc une map qu'il n'a pas le droit d'éditer.
+    _require_privilege_for_kind(session, user, result.config)
 
     _delete_config_and_item(session, config_id, result.itemId, user.tenant_id)
     write_audit(
@@ -331,6 +376,8 @@ def update_config_by_item(
     existing = repo.get_config_by_item(session, item_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="config not found")
+    _require_kind_matches_existing(existing.kind, config.kind)
+    _require_privilege_for_kind(session, user, config)
     _require_etl_enabled_for_pipeline(config)
     _require_export_enabled_for_report(config)
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
@@ -367,6 +414,10 @@ def delete_config_by_item(
     result = repo.get_config_by_item(session, item_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
+    # SP-42, revue de la dernière passe de correctifs (point 6, Important) :
+    # cf. commentaire jumeau sur delete_config ci-dessus.
+    _require_privilege_for_kind(session, user, result.config)
+    _require_no_reverse_references(session, tenant_id=user.tenant_id, item_id=item_id)
     _delete_config_and_item(session, result.id, item_id, user.tenant_id)
     write_audit(
         session,
@@ -405,6 +456,10 @@ def delete_item(
     result = repo.get_config_by_item(session, item_id)
     if result is None:
         raise HTTPException(status_code=404, detail="item not found")
+    # SP-42, revue de la dernière passe de correctifs (point 6, Important) :
+    # cf. commentaire jumeau sur delete_config ci-dessus.
+    _require_privilege_for_kind(session, user, result.config)
+    _require_no_reverse_references(session, tenant_id=user.tenant_id, item_id=item_id)
     _delete_config_and_item(session, result.id, item_id, user.tenant_id)
     write_audit(
         session,

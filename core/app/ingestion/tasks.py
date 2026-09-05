@@ -9,19 +9,19 @@ les tâches d'embedding d'app.items/app.collections."""
 import logging
 import os
 
-from app.db import make_engine, make_session_factory, request_scoped_session
+from app.db import request_scoped_session
 from app.ingestion import repository as ingestion_repo
 from app.ingestion.importer import run_import
 from app.ingestion.parsers import IngestionParseError
 from app.ingestion.storage import download_object, make_s3_client
 from app.jobs import app
-from app.notifications import repository as notifications_repo
+from app.jobs.common import notify_best_effort, session_factory
 
 logger = logging.getLogger(__name__)
 
 
 def _notify(
-    session_factory,
+    session_factory_fn,
     *,
     tenant_id: str,
     created_by: str,
@@ -31,24 +31,22 @@ def _notify(
     error: str | None = None,
 ) -> None:
     """Écrit la notification in-app de fin de job — best-effort, jamais
-    bloquant : son propre bloc try/except, séparé de celui qui commite
-    mark_done/mark_error, pour qu'un échec ici ne fasse jamais rollback d'un
-    changement de statut de job déjà réussi (cf. request_scoped_session)."""
-    try:
-        with request_scoped_session(session_factory) as session:
-            notifications_repo.create_notification(
-                session,
-                tenant_id=tenant_id,
-                recipient_user_id=created_by,
-                kind="ingestion",
-                status=status,
-                item_id=item_id,
-                item_resource_type="dataset" if item_id is not None else None,
-                item_title=collection_title,
-                error_message=error,
-            )
-    except Exception:
-        logger.exception("ingestion job : échec de l'écriture de la notification")
+    bloquant (cf. app.jobs.common.notify_best_effort). SP-43 Tâche 6 :
+    `created_by` est déjà résolu par l'appelant (lu sur le job, pas de
+    résolution owner à faire ici) — délégation directe, sans wrapper
+    try/except local (l'isolation est entièrement portée par
+    notify_best_effort)."""
+    notify_best_effort(
+        session_factory_fn,
+        tenant_id=tenant_id,
+        recipient_user_id=created_by,
+        kind="ingestion",
+        status=status,
+        item_id=item_id,
+        item_resource_type="dataset" if item_id is not None else None,
+        item_title=collection_title,
+        error=error,
+    )
 
 
 def _make_s3_client_from_env():
@@ -65,8 +63,7 @@ def _uploads_bucket() -> str:
 
 @app.task(queue="ingestion")
 def run_ingestion_task(job_id: str, tenant_id: str) -> None:
-    engine = make_engine(os.environ.get("DATABASE_URL", "sqlite+pysqlite:///:memory:"))
-    session_factory = make_session_factory(engine)
+    factory = session_factory()
 
     # Toujours liés avant le premier bloc protégé : si get_job/mark_running
     # lève avant leur affectation réelle (ligne ~78), le handler générique
@@ -76,7 +73,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
     collection_title: str | None = None
 
     try:
-        with request_scoped_session(session_factory) as session:
+        with request_scoped_session(factory) as session:
             job = ingestion_repo.get_job(session, tenant_id=tenant_id, job_id=job_id)
             if job is None:
                 logger.error("ingestion job %s introuvable (tenant %s)", job_id, tenant_id)
@@ -94,7 +91,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
 
         s3 = _make_s3_client_from_env()
         content = download_object(s3, bucket=_uploads_bucket(), key=source_key)
-        with request_scoped_session(session_factory) as session:
+        with request_scoped_session(factory) as session:
             result = run_import(
                 session,
                 tenant_id=tenant_id,
@@ -106,7 +103,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
                 lon_field=lon_field,
                 layer_name=layer_name,
             )
-        with request_scoped_session(session_factory) as session:
+        with request_scoped_session(factory) as session:
             ingestion_repo.mark_done(
                 session,
                 job_id=job_id,
@@ -114,7 +111,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
                 item_id=result.item_id,
             )
         _notify(
-            session_factory,
+            factory,
             tenant_id=tenant_id,
             created_by=created_by,
             status="success",
@@ -122,10 +119,10 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
             collection_title=collection_title,
         )
     except IngestionParseError as exc:
-        with request_scoped_session(session_factory) as session:
+        with request_scoped_session(factory) as session:
             ingestion_repo.mark_error(session, job_id=job_id, error_message=str(exc))
         _notify(
-            session_factory,
+            factory,
             tenant_id=tenant_id,
             created_by=created_by,
             status="failure",
@@ -135,7 +132,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
         )
     except Exception as exc:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("ingestion job %s : erreur inattendue", job_id)
-        with request_scoped_session(session_factory) as session:
+        with request_scoped_session(factory) as session:
             ingestion_repo.mark_error(
                 session, job_id=job_id, error_message=f"erreur interne : {exc}"
             )
@@ -145,7 +142,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
         # du job est déjà marqué "error" ci-dessus, best-effort préservé.
         if created_by is not None:
             _notify(
-                session_factory,
+                factory,
                 tenant_id=tenant_id,
                 created_by=created_by,
                 status="failure",

@@ -25,10 +25,16 @@ export type Item = {
   owner: string;
   thumbnailUrl: string | null;
   date: string;
+  // SP-42 F-shell-api-07 : `date` reste `created_at` (rétrocompatibilité) ;
+  // `updatedAt` est le champ à lire pour un « Modifié » qui change
+  // réellement après une édition (core/app/items/repository.py::_to_read).
+  updatedAt?: string;
   configId: string | null;
   isPublished: boolean;
   slug?: string;
   keywords?: string[];
+  license: string;
+  language: string;
   permissions: ItemPermissions;
 };
 
@@ -37,6 +43,20 @@ export type ItemPage = {
   total: number;
   page: number;
   pageSize: number;
+};
+
+export type LicenseCatalogEntry = {
+  id: string;
+  label: string;
+  dcatUri: string | null;
+  spdxId: string;
+};
+export type FrequencyCatalogEntry = { id: string; label: string };
+export type LanguageCatalogEntry = { id: string; label: string };
+export type MetadataCatalog = {
+  licenses: LicenseCatalogEntry[];
+  frequencies: FrequencyCatalogEntry[];
+  languages: LanguageCatalogEntry[];
 };
 
 export type RoleSummary = {
@@ -138,6 +158,8 @@ export type UpdatePatch = {
   keywords?: string[];
   isPublished?: boolean;
   slug?: string;
+  license?: string;
+  language?: string;
 };
 
 export type Group = { id: string; title: string };
@@ -376,6 +398,7 @@ export interface ItemClient {
   listActiveExtensions(): Promise<ExtensionManifest[]>;
   listAllExtensions(): Promise<AdminExtension[]>;
   setExtensionEnabled(id: string, enabled: boolean): Promise<void>;
+  getMetadataCatalog(): Promise<MetadataCatalog>;
   listCollections(): Promise<CollectionAdmin[]>;
   listCandidateTables(): Promise<CandidateTable[]>;
   createCollection(input: CollectionCreateInput): Promise<CollectionAdmin>;
@@ -673,6 +696,16 @@ export type CollectionAdmin = {
   featureCount: number | null;
   owner: string | null;
   attachmentFields: { key: string; label: string }[];
+  license: string;
+  licenseUri: string;
+  producer: string;
+  contact: string;
+  updateFrequency: string;
+  lineage: string;
+  language: string;
+  version: string;
+  temporalStart: string | null;
+  temporalEnd: string | null;
 };
 
 export type CandidateTable =
@@ -698,6 +731,16 @@ export type CollectionPatchInput = {
   isPublic?: boolean;
   editable?: boolean;
   attachmentFields?: { key: string; label: string }[];
+  license?: string;
+  licenseUri?: string;
+  producer?: string;
+  contact?: string;
+  updateFrequency?: string;
+  lineage?: string;
+  language?: string;
+  version?: string;
+  temporalStart?: string | null;
+  temporalEnd?: string | null;
 };
 
 export type HarvestSourceType =

@@ -227,6 +227,7 @@ layers = [
     "app.sharing",
     "app.instance",
     "app.roles",
+    "app.catalog",
     "app.auth",
     "app.audit",
     "app.users",
@@ -289,6 +290,18 @@ ignore_imports = [
     # pour éviter une deuxième exemption sur ce module — cf.
     # docs/superpowers/specs/2026-09-04-sp40-pieces-jointes-design.md §3.1.
     "app.attachments.routes -> app.ingestion.storage",
+    # SP-42/F-securite-tenant-rls-03 : unregister_collection
+    # (app.collections.routes, EN DESSOUS d'app.attachments dans ce contrat)
+    # doit purger les pièces jointes (lignes + objets S3) d'une collection
+    # AVANT sa suppression, sans quoi la FK attachments.collection_id fait
+    # échouer DELETE /collections/{id} en 500 dès qu'une pièce jointe existe.
+    # Le sens naturel du contrat est l'inverse (app.attachments.routes importe
+    # déjà get_readable_collection d'app.collections.routes) — mais purger les
+    # pièces jointes est une opération de app.attachments, pas duplicable sans
+    # duplication de logique réelle (contrairement à get_s3_client/
+    # get_attachments_bucket ci-dessus, redéfinis localement). Exemption
+    # nommée à l'arête exacte, comme les précédentes de ce bloc.
+    "app.collections.routes -> app.attachments.repository",
     "app.db -> app.configs.models",
     "app.db -> app.collections.models",
     "app.db -> app.items.models",

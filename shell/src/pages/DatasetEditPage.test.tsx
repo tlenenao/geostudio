@@ -7,7 +7,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import type { CollectionSchema, DatasetConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { DatasetEditPage } from "./DatasetEditPage";
-import { OWNER_PERMISSIONS } from "../auth/permissions";
+import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 
 const item: Item = {
   pk: "ds-1",
@@ -21,6 +21,8 @@ const item: Item = {
   isPublished: false,
   keywords: [],
   permissions: OWNER_PERMISSIONS,
+  license: "",
+  language: "fr",
 };
 
 const datasetConfig: DatasetConfig = {
@@ -341,4 +343,17 @@ test("sous viewport étroit, affiche trois onglets Catalogue/Dataset/Réglages a
   expect(tabs.map((t) => t.textContent)).toEqual(["Catalogue", "Dataset", "Réglages"]);
   const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
   expect(activeTab).toHaveTextContent("Dataset");
+});
+
+test("SP-42/F-shell-pages-04 : verrouille Enregistrer quand permissions.write est false", async () => {
+  renderPage({
+    getItem: vi.fn().mockResolvedValue({ ...item, permissions: READ_ONLY_PERMISSIONS }),
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn().mockResolvedValue(schema),
+  });
+  const saveButton = await screen.findByRole("button", { name: "Enregistrer les colonnes" });
+  expect(saveButton).toBeDisabled();
+  expect(
+    screen.getByText("Modification réservée aux éditeurs de cet élément."),
+  ).toBeInTheDocument();
 });

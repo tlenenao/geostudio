@@ -109,15 +109,53 @@ describe("domainState", () => {
     expect(stateOf("data", analyst)).toBe("visible");
   });
 
-  it("montre le domaine analytique au créateur (sans SQL Lab, matrice §6.7) et à l'analyste, le masque au lecteur", () => {
-    // Changement de comportement assumé par cette tâche : l'ancien modèle
-    // masquait tout le domaine à qui n'était pas isAnalyst=true, y compris un
-    // créateur — la matrice §6.7 dit « ◐ sans SQL Lab », pas absent.
-    // L'accès à SQL Lab lui-même reste gardé séparément par RequirePrivilege
-    // sur la route /analytics/sql (analytics.sql_lab.access), pas ici.
+  it("masque le domaine analytique au lecteur, le montre au créateur et à l'analyste", () => {
+    // SP-42, revue de la dernière passe de correctifs (points 7/8) : gaté
+    // sur analytics.view (pas analytics.sql_lab.access) — DOMAIN_PATHS.analytics
+    // (domainRoutes.ts) ne pointe plus vers /analytics/sql (qui exige
+    // sql_lab.access) mais vers /?type=bookmark, une destination que le
+    // Créateur peut réellement ouvrir. Un correctif antérieur avait gaté ce
+    // domaine sur sql_lab.access pour fermer la divergence domaine/route —
+    // rouvre la divergence dans l'autre sens (le domaine promettait
+    // Analytique à un Créateur qui ne pouvait rien y faire) sans la
+    // refermer par une nouvelle décision produit ; celle-ci change la
+    // destination plutôt que le gate.
     expect(stateOf("analytics", reader)).toBe("hidden");
     expect(stateOf("analytics", creator)).toBe("visible");
     expect(stateOf("analytics", analyst)).toBe("visible");
+  });
+
+  it("ne masque ni ne verrouille jamais le domaine Cartes : sa destination (/?type=map) n'exige rien", () => {
+    // SP-42, revue de la dernière passe de correctifs (point 8) : un
+    // correctif antérieur (F-shell-pages-03) avait gaté ce domaine sur
+    // maps.manage par symétrie avec data/apps — mais sa seule destination
+    // n'a jamais eu de RequirePrivilege (routes.tsx). Retiré : reader et
+    // creator voient tous deux ce domaine.
+    expect(stateOf("maps", reader)).toBe("visible");
+    expect(stateOf("maps", creator)).toBe("visible");
+  });
+
+  it("un domaine visible doit toujours pouvoir atteindre le privilège réellement gardé par sa destination (F-securite-autorisation-08)", () => {
+    // Cf. shell/src/shell/routes.tsx pour la garde RequirePrivilege réelle de
+    // chaque destination de DOMAIN_PATHS (domainRoutes.ts) — dupliqué ici
+    // faute de pouvoir importer routes.tsx (React Router) dans un test de
+    // logique pure. admin est délibérément absent : sa destination varie
+    // par profil (getDomainPath), déjà couvert par domainRoutes.test.ts.
+    // Vide aujourd'hui (SP-42, revue de la dernière passe de correctifs,
+    // points 7/8) : ni Cartes (/?type=map) ni Analytique (/?type=bookmark)
+    // n'ont plus de destination gardée — gardé comme filet pour un futur
+    // domaine dont la destination exigerait réellement un privilège.
+    const destinationPrivilege: Partial<Record<string, string>> = {};
+    for (const profile of [admin, creator, analyst, reader]) {
+      for (const domain of DOMAINS) {
+        if (domain.id === "admin") continue;
+        const required = destinationPrivilege[domain.id];
+        if (!required) continue;
+        if (domainState(domain, profile) === "visible") {
+          expect(profile.privileges.has(required)).toBe(true);
+        }
+      }
+    }
   });
 
   it("le mode démo ne masque ni ne verrouille aucun domaine", () => {
@@ -134,6 +172,10 @@ describe("navigableDomains", () => {
     const etlOff: Profile = { ...creator, capabilities: { ...ALL_ON, etlEnabled: false } };
     const rendered = navigableDomains(etlOff);
     expect(rendered.map((r) => r.domain.id)).not.toContain("admin");
+    // "analytics" présent : `creator` a analytics.view (SP-42, revue de la
+    // dernière passe de correctifs, points 7/8 ci-dessus) — pas un effet de
+    // etlOff.
+    expect(rendered.map((r) => r.domain.id)).toContain("analytics");
     expect(rendered.find((r) => r.domain.id === "automation")?.state).toBe("locked");
     expect(rendered.map((r) => r.domain.id)).toEqual([
       "catalog",

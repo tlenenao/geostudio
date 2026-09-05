@@ -52,8 +52,12 @@ preuve plus large qu'elle n'est :
 """
 
 import ast
+import base64
+import json
 import pathlib
 import re
+import shutil
+import subprocess
 
 import pytest
 import yaml
@@ -65,6 +69,8 @@ RELEASE = REPO / ".github/workflows/release.yml"
 ENV_EXAMPLE = REPO / ".env.example"
 BACKUP_SH = REPO / "deploy/backup/backup.sh"
 CORE_APP = REPO / "core/app"
+BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
+KEYCLOAK_REALM_JSON = REPO / "deploy/keycloak/geostudio-realm.json"
 
 # Préfixe des images que nous publions nous-mêmes.
 OWN_IMAGE_RE = re.compile(r"ghcr\.io/[^/]+/(geostudio-[a-z0-9-]+)")
@@ -950,3 +956,93 @@ def test_base_and_prod_agree_on_admin_tool_router_names():
             f"{sorted(base_names - prod_names)}, seulement en prod = "
             f"{sorted(prod_names - base_names)}"
         )
+
+
+# ─── SP-42, lot infra critical (F-infra-ci-01 / F-infra-ci-02) ─────────
+
+
+def test_bootstrap_env_generates_a_well_formed_core_secrets_master_key(tmp_path):
+    """SP-42/F-infra-ci-01 (critical) : `scripts/bootstrap-env.sh` (et donc
+    `scripts/install.sh`, qui l'invoque via `ensure_env_file()` puis ne
+    référence plus jamais cette variable) ne générait aucune valeur pour
+    `CORE_SECRETS_MASTER_KEY` — elle restait à la chaîne vide de
+    `.env.example`, que `core/app/secrets/crypto.py::load_master_key()`
+    refuse dès le premier appel de `create_app()` (`core/app/main.py`),
+    avant même la connexion DB : le cœur crash-loop sur toute installation
+    neuve suivant le flux documenté. Exécuté dans un répertoire jetable
+    (jamais le `.env` réel du dépôt) reproduisant la structure attendue par
+    le script (`scripts/bootstrap-env.sh` à côté de `.env.example`, appelé
+    depuis la racine)."""
+    (tmp_path / "scripts").mkdir()
+    shutil.copy(BOOTSTRAP_ENV_SH, tmp_path / "scripts" / "bootstrap-env.sh")
+    shutil.copy(ENV_EXAMPLE, tmp_path / ".env.example")
+    subprocess.run(
+        ["bash", "scripts/bootstrap-env.sh"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    env_text = (tmp_path / ".env").read_text()
+    match = re.search(r"^CORE_SECRETS_MASTER_KEY=(.*)$", env_text, re.MULTILINE)
+    assert match is not None, ".env généré doit contenir CORE_SECRETS_MASTER_KEY"
+    value = match.group(1).strip()
+    assert value, "CORE_SECRETS_MASTER_KEY ne doit pas être vide après bootstrap-env.sh"
+    try:
+        decoded = base64.b64decode(value, validate=True)
+    except Exception as exc:
+        pytest.fail(f"CORE_SECRETS_MASTER_KEY générée n'est pas du base64 valide : {exc}")
+    assert len(decoded) == 32, (
+        "CORE_SECRETS_MASTER_KEY doit décoder en 32 octets (exigence de "
+        "core/app/secrets/crypto.py::load_master_key()), a décodé en "
+        f"{len(decoded)} octet(s)"
+    )
+
+
+def test_keycloak_router_carries_security_and_rate_limit_middlewares():
+    """SP-42/F-infra-ci-02 (critical) : le routeur `keycloak` en production
+    ne portait aucun middleware — ni `security-headers@docker` (en-têtes de
+    sécurité sur la page de login : HSTS, nosniff, frame-deny, referrer-
+    policy), ni `rate-limit@docker` (frein de débit sur l'endpoint de
+    connexion/token OIDC, `POST .../protocol/openid-connect/token`) —
+    contrairement à tous les autres routeurs publics de cet overlay
+    (core/shell/martin/titiler/grafana). Keycloak n'est routé par Traefik
+    qu'en production — le fichier de base ne l'expose que par le port hôte
+    8180, sans aucun label Traefik — ce test ne porte donc que sur l'overlay
+    prod, contrairement aux règles admin-tools ci-dessus qui couvrent aussi
+    `base`."""
+    labels = _traefik_labels(services(PROD)["keycloak"])
+    middlewares = _router_middlewares(labels, "keycloak")
+    for required in ("security-headers@docker", "rate-limit@docker"):
+        assert required in middlewares, (
+            f"le routeur keycloak (prod) doit référencer {required} dans "
+            f"ses middlewares, a trouvé : {middlewares}"
+        )
+
+
+def test_keycloak_realm_enables_brute_force_protection():
+    """SP-42/F-infra-ci-02 (critical, second volet) :
+    `deploy/keycloak/geostudio-realm.json` déclarait `bruteForceProtected:
+    false` — aucune protection native contre le bourrage d'identifiants
+    côté Keycloak lui-même, indépendamment du rate-limit Traefik vérifié
+    ci-dessus (défense en profondeur : le edge et l'IdP protègent contre
+    des choses différentes). Seul ce bit d'activation change ici — tous les
+    réglages associés que ce realm porte déjà (`failureFactor: 30`,
+    `maxFailureWaitSeconds: 900`, `minimumQuickLoginWaitSeconds: 60`,
+    `waitIncrementSeconds: 60`, `quickLoginCheckMilliSeconds: 1000`,
+    `maxDeltaTimeSeconds: 43200`) sont les valeurs par défaut de Keycloak
+    lui-même (export d'un realm jamais réglé sur ce point) : ce garde-fou
+    n'introduit aucune politique de verrouillage plus agressive.
+    `permanentLockout` doit rester `false` — un verrouillage permanent
+    (nécessitant une intervention admin pour débloquer un compte) serait
+    une décision produit distincte, non prise ici."""
+    realm = json.loads(KEYCLOAK_REALM_JSON.read_text())
+    assert realm.get("bruteForceProtected") is True, (
+        "deploy/keycloak/geostudio-realm.json doit activer "
+        "bruteForceProtected — aucune protection anti-bourrage native sur "
+        "l'endpoint de login sinon."
+    )
+    assert realm.get("permanentLockout") is False, (
+        "permanentLockout ne doit pas passer à true par ce garde-fou — "
+        "verrouillage permanent = décision produit distincte, hors périmètre."
+    )
