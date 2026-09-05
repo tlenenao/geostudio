@@ -156,3 +156,26 @@ def test_ddl_accepts_preexisting_tenant_column_with_matching_values(
     with pg_session_factory() as session:
         apply_collection_ddl(session, pg_table_with_foreign_tenant_column, tenant_id="acme")
         session.commit()
+
+
+def test_ddl_backfills_a_new_tenant_id_column_with_the_callers_tenant(pg_table, pg_session_factory):
+    # SP-42, revue de la dernière passe de correctifs (point 4, Important) :
+    # apply_collection_ddl stampait TOUJOURS le littéral DEFAULT 'default'
+    # sur une colonne tenant_id nouvellement ajoutée, quel que soit le
+    # tenant_id passé par l'appelant — celui-ci ne servait qu'à la garde
+    # TenantColumnMismatch, jamais à la valeur réellement écrite. Pour un
+    # tenant != "default" sur une table SANS colonne préexistante, les
+    # lignes déjà présentes (et toute ligne insérée sans préciser
+    # explicitement tenant_id) héritaient donc du mauvais tenant : COUNT(*)
+    # hors RLS comptait des lignes qu'aucune lecture sous RLS ne pouvait
+    # jamais voir pour ce tenant.
+    with pg_session_factory() as session:
+        session.execute(text("INSERT INTO t_rls (titre) VALUES ('a')"))
+        apply_collection_ddl(session, pg_table, tenant_id="acme")
+        session.commit()
+    with pg_session_factory() as session:
+        tenant_id = session.execute(text("SELECT tenant_id FROM t_rls")).scalar()
+        assert tenant_id == "acme"
+        session.execute(text("SET LOCAL ROLE gis_rls"))
+        session.execute(text("SET LOCAL app.tenant_id = 'acme'"))
+        assert session.execute(text("SELECT count(*) FROM t_rls")).scalar() == 1

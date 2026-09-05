@@ -23,6 +23,19 @@ def quote_ident(session: Session, identifier: str) -> str:
     return session.get_bind().dialect.identifier_preparer.quote(identifier)
 
 
+def _quote_literal(value: str) -> str:
+    # SP-42, revue de la dernière passe de correctifs (point 4, Important) :
+    # `ALTER TABLE ... ADD COLUMN ... DEFAULT` est une instruction DDL — un
+    # paramètre lié (`:tenant_id`) y échoue systématiquement avec
+    # `IndeterminateDatatype` (vérifié empiriquement contre Postgres réel,
+    # psycopg 3) : Postgres n'accepte de paramètres que dans les
+    # instructions DML. Le littéral doit donc être interpolé, correctement
+    # échappé — un tenant_id vient de app.tenants (jamais saisi librement
+    # dans ce module), mais l'échappement est appliqué par défense en
+    # profondeur plutôt que par confiance dans l'appelant.
+    return "'" + value.replace("'", "''") + "'"
+
+
 _qi = quote_ident
 
 
@@ -72,7 +85,7 @@ def apply_collection_ddl(
     t = _qi(session, table_name)
     stmts = [
         f"ALTER TABLE public.{t} ADD COLUMN IF NOT EXISTS tenant_id text "
-        "NOT NULL DEFAULT 'default'",
+        f"NOT NULL DEFAULT {_quote_literal(tenant_id)}",
         f"ALTER TABLE public.{t} ENABLE ROW LEVEL SECURITY",
         f"DROP POLICY IF EXISTS tenant_isolation ON public.{t}",
         f"CREATE POLICY tenant_isolation ON public.{t} "
