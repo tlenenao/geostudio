@@ -8,6 +8,8 @@ from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections import repository as repo
 from app.collections import routes as collections_routes
 from app.collections.introspection import ColumnInfo, TableInfo, TableNotFound, UnsupportedTable
+from app.configs import repository as configs_repo
+from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
@@ -465,6 +467,38 @@ def test_delete_collection_with_existing_attachment_returns_204_and_purges_it(en
             s, tenant_id=admin.tenant_id, collection_id="incidents", fid="f1"
         )
         assert remaining == []
+
+
+def test_delete_collection_refuses_when_a_dataset_still_references_it(env):
+    # SP-42/F-coeur-contenu-04 : sans cette garde, supprimer une collection
+    # encore référencée par un Dataset (dataset.collectionId) orphelinait ce
+    # Dataset silencieusement (204, aucun signal).
+    app, client, Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    with Session() as s:
+        dataset_item = repo.get_collection(s, tenant_id=admin.tenant_id, collection_id="incidents")
+        assert dataset_item is not None  # sanity : la collection existe bien
+        from app.items import repository as items_repo
+
+        item = items_repo.create_item(
+            s,
+            tenant_id=admin.tenant_id,
+            owner_id=admin.id,
+            resource_type="dataset",
+            title="Dataset sur incidents",
+        )
+        dataset_config = BuilderConfig.model_validate(
+            {"kind": "dataset", "dataset": {"source": "collection", "collectionId": "incidents"}}
+        )
+        configs_repo.create_config(s, dataset_config, item_id=item.id, tenant_id=admin.tenant_id)
+        s.commit()
+
+    response = client.delete("/collections/incidents")
+    assert response.status_code == 409
+    assert "dataset" in response.json()["detail"]
+    # la collection n'a pas été supprimée (refus, pas suppression partielle) :
+    assert client.get("/collections/incidents").status_code == 200
 
 
 def test_patch_by_non_owner_without_editor_role_returns_403(env):

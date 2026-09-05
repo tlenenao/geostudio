@@ -61,6 +61,19 @@ def _require_access(session: Session, *, user: User, item_id: str, action: str) 
         raise HTTPException(status_code=403, detail="not allowed")
 
 
+def _require_no_reverse_references(session: Session, *, tenant_id: str, item_id: str) -> None:
+    # SP-42/F-coeur-contenu-04 : sans cette garde, DELETE /items/{id} (ou
+    # /configs/by-item/{id}) supprimait un Dataset/Bookmark/Pipeline encore
+    # référencé par une AlertRule/un ReportSchedule/un autre Dataset,
+    # laissant une config orpheline silencieuse (204, aucun signal).
+    referencing = repo.find_referencing_config_kinds(session, tenant_id=tenant_id, item_id=item_id)
+    if referencing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"still referenced by config kind(s): {', '.join(referencing)}",
+        )
+
+
 def _delete_config_and_item(session: Session, config_id: str, item_id: str, tenant_id: str) -> None:
     from sqlalchemy import delete
 
@@ -416,6 +429,7 @@ def delete_config_by_item(
     result = repo.get_config_by_item(session, item_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
+    _require_no_reverse_references(session, tenant_id=user.tenant_id, item_id=item_id)
     _delete_config_and_item(session, result.id, item_id, user.tenant_id)
     write_audit(
         session,
@@ -454,6 +468,7 @@ def delete_item(
     result = repo.get_config_by_item(session, item_id)
     if result is None:
         raise HTTPException(status_code=404, detail="item not found")
+    _require_no_reverse_references(session, tenant_id=user.tenant_id, item_id=item_id)
     _delete_config_and_item(session, result.id, item_id, user.tenant_id)
     write_audit(
         session,
