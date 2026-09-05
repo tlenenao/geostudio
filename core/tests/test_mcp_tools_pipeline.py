@@ -15,6 +15,8 @@ from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 from tests.test_mcp_tools_create import call_tool, call_tool_expecting_error  # noqa: F401
 
+READ_ONLY_MESSAGE = "Mode démo : lecture seule, écritures désactivées."
+
 
 @pytest.fixture()
 def app_client(monkeypatch, tmp_path):
@@ -303,3 +305,20 @@ def test_explain_pipeline_refresh_policy_is_none_when_unset(app_client):
         result = call_tool(client, "explain_pipeline", {"pipelineId": created["pk"]})
 
     assert result["refreshPolicy"] is None
+
+
+def test_run_pipeline_refuses_in_read_only_mode(app_client, monkeypatch):
+    # SP-42/F-coeur-federation-07 : run_pipeline exécute réellement le
+    # pipeline (job procrastinate run_pipeline_task déféré), contrairement à
+    # ses 7 tools-frères d'écriture, il n'était pas gardé par
+    # is_read_only_mode() — un agent MCP pouvait donc déclencher une
+    # exécution réelle sur une instance de démonstration publique.
+    client = app_client(etl_enabled=True)
+    with client:
+        source_id, target_id = _register_collections(client)
+        created = call_tool(client, "create_pipeline", _linear_pipeline_args(source_id, target_id))
+        monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+        error_text = call_tool_expecting_error(
+            client, "run_pipeline", {"pipelineId": created["pk"]}
+        )
+    assert READ_ONLY_MESSAGE in error_text
