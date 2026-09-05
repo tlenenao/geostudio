@@ -23,6 +23,14 @@ class ChangeRow:
     columns: dict  # colonnes métier ; {pk_column: pk_value} seulement si op == "delete"
     geometry_column: str | None
     geometry_wkb_hex: str | None  # hex EWKB ; None pour une tombstone ou une table sans géométrie
+    # Ordre d'ajout réel au buffer CDC (CdcBufferManager.add(), monotone,
+    # affecté APRÈS construction — cf. app.cdc.buffer). Départage un `_lsn`
+    # ex-aequo (app.cdc.consumer:54-70 : le settle peut tagger deux
+    # transactions distinctes avec la même LSN) dans app.analytics.aggregate
+    # ._dedup_cte. 0 par défaut pour les chemins qui n'écrivent jamais deux
+    # versions de la même PK (ex. app.appexport.snapshot, un seul insert par
+    # PK) : aucun ex-aequo possible là, donc aucun besoin de départage.
+    seq: int = 0
 
 
 def _decode_geometry(wkb_hex: str | None) -> BaseGeometry | None:
@@ -39,6 +47,7 @@ def build_geodataframe(rows: list[ChangeRow], *, srid: int) -> gpd.GeoDataFrame:
         record[row.pk_column] = row.pk_value
         record["_op"] = row.op
         record["_lsn"] = row.lsn
+        record["_seq"] = row.seq
         record["_ts"] = row.ts
         records.append(record)
         geometries.append(_decode_geometry(row.geometry_wkb_hex))

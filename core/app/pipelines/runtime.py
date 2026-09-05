@@ -189,7 +189,7 @@ def _materialize_reader(
     if geom_col:
         select_parts.append(f"{_qi(geom_col)} AS geometry")
     select_list = ", ".join(select_parts)
-    cte = _dedup_cte(table_info, base_uri, tenant_id, collection_id)
+    cte = _dedup_cte(conn, table_info, base_uri, tenant_id, collection_id)
     # TABLE, pas VIEW : comme app.analytics.sql_sandbox._materialize, il faut
     # matérialiser EAGERLY avant _lock_down — une VIEW resterait paresseuse et
     # ré-exécuterait read_parquet() (donc un accès disque) à chaque requête

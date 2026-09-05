@@ -47,7 +47,7 @@ def _write_partition(base_dir, *, tenant_id="t1", collection_id="villes", rows):
     gdf.to_parquet(partition_dir / "part-1.parquet")
 
 
-def _row(id_, region, annee, pop, *, op="insert", lsn=1, x=0.0, y=0.0):
+def _row(id_, region, annee, pop, *, op="insert", lsn=1, seq=0, x=0.0, y=0.0):
     return {
         "id": id_,
         "region": region,
@@ -55,6 +55,7 @@ def _row(id_, region, annee, pop, *, op="insert", lsn=1, x=0.0, y=0.0):
         "pop": pop,
         "_op": op,
         "_lsn": lsn,
+        "_seq": seq,
         "_ts": 1.0,
         "geometry": Point(x, y),
     }
@@ -178,6 +179,34 @@ def test_reduces_to_current_state_last_lsn_wins_and_tombstone_excluded(tmp_path,
     )
 
     assert rows == [{"region": "Nord", "value": 999}]  # Sud entièrement supprimé
+
+
+def test_tie_on_same_lsn_keeps_the_later_added_row_not_the_first_seen(tmp_path, conn):
+    """core/app/cdc/consumer.py:54-70 documente que deux transactions
+    distinctes captées dans la même fenêtre de settle CDC peuvent partager
+    exactement la même valeur `_lsn` — c'est alors l'ORDRE D'AJOUT (`_seq`),
+    pas `_lsn`, qui doit départager la ligne la plus récente. "Nord" (msg,
+    ajoutée en premier) doit perdre face à "Nord" (extra, même _lsn, ajoutée
+    après)."""
+    _write_partition(
+        tmp_path,
+        rows=[
+            _row(1, "Nord", "2025", 10, lsn=5, seq=1),  # "msg" : ajoutée en premier
+            _row(1, "Nord", "2025", 999, lsn=5, seq=2),  # "extra" : même _lsn, ajoutée après
+        ],
+    )
+    request = AggregateRequestBody(groupBy="region", agg="sum", field="pop")
+
+    _category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert rows == [{"region": "Nord", "value": 999}]
 
 
 def test_attribute_filter_narrows_rows(tmp_path, conn):
