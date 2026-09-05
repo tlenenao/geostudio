@@ -12,7 +12,13 @@ export const DOMAIN_PATHS: Record<DomainId, string> = {
   data: "/?type=dataset",
   apps: "/?type=app",
   automation: "/?type=pipeline",
-  analytics: "/analytics/sql",
+  // SP-42, revue de la dernière passe de correctifs (point 7) : ne pointe
+  // plus vers /analytics/sql (RequirePrivilege="analytics.sql_lab.access",
+  // hors d'atteinte d'un Créateur qui n'a qu'analytics.view — cf.
+  // capabilities.ts, DOMAINS["analytics"], qui redevient visible sur
+  // analytics.view). Rejoint le même patron que Cartes/Données/Apps &
+  // sites/Automatisation ci-dessus : catalogue filtré par type, sans garde.
+  analytics: "/?type=bookmark",
   tasks: "/tasks",
   admin: "/admin/extensions",
   settings: "/settings",

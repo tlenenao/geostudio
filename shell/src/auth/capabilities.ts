@@ -55,11 +55,14 @@ export type DomainDef = {
 // L'ordre de ce tableau est l'ordre d'affichage de la barre de domaines.
 export const DOMAINS: readonly DomainDef[] = [
   { id: "catalog", labelKey: "domain.catalog" },
-  // SP-42/F-shell-pages-03 : seul domaine de contenu (hors catalog/settings,
-  // ouverts par conception) qui n'exigeait aucun privilège, alors que
-  // maps.manage existe et distingue déjà Créateur (l'a) de Lecteur (ne l'a
-  // pas) — par symétrie avec data/apps ci-dessous.
-  { id: "maps", labelKey: "domain.maps", requiresPrivilege: "maps.manage" },
+  // SP-42, revue de la dernière passe de correctifs (point 8) : un
+  // correctif antérieur (F-shell-pages-03) avait gaté ce domaine sur
+  // maps.manage, par symétrie avec data/apps ci-dessous — mais sa seule
+  // destination (/?type=map, DOMAIN_PATHS.maps) n'a jamais eu de
+  // RequirePrivilege (routes.tsx) : le catalogue filtré par type est
+  // lisible par tout utilisateur authentifié. Retiré : l'entrée de domaine
+  // ne doit rien exiger de plus que ce que sa destination exige réellement.
+  { id: "maps", labelKey: "domain.maps" },
   { id: "data", labelKey: "domain.data", requiresPrivilege: "data.view" },
   { id: "apps", labelKey: "domain.apps", requiresPrivilege: "apps.manage" },
   {
@@ -68,14 +71,23 @@ export const DOMAINS: readonly DomainDef[] = [
     requiresPrivilege: "automation.manage",
     requiresCapability: "etlEnabled",
   },
-  // SP-42/F-securite-autorisation-08(a) : gaté sur analytics.sql_lab.access,
-  // pas analytics.view — /analytics/sql (RequirePrivilege du même nom,
-  // routes.tsx) est aujourd'hui l'unique destination de ce domaine ; un
-  // Créateur (analytics.view sans sql_lab.access) verrait sinon un domaine
-  // qui refuse systématiquement sa seule destination. Si un écran
-  // analytics.view-seul existe un jour, ce gate devra être revu en même
-  // temps que DOMAIN_PATHS.analytics (domainRoutes.ts).
-  { id: "analytics", labelKey: "domain.analytics", requiresPrivilege: "analytics.sql_lab.access" },
+  // Privilèges d'un Créateur (cf. BUILT_IN_ROLE_PRIVILEGES, core/app/roles/privileges.py,
+  // dupliqué en fixture dans capabilities.test.ts) — comprend analytics.view
+  // (le domaine Analytique lui est visible, sans analytics.sql_lab.access —
+  // SQL Lab reste hors d'atteinte, cf. RequirePrivilege sur /analytics/sql) ;
+  // ni admin.*.
+  //
+  // SP-42, revue de la dernière passe de correctifs (points 7/8) : un
+  // correctif antérieur avait regaté ce domaine sur
+  // analytics.sql_lab.access — retirant le domaine au Créateur et
+  // renversant cette décision sans nouvelle décision produit. Tranché à
+  // nouveau : le domaine reste visible sur analytics.view (donc au
+  // Créateur), mais DOMAIN_PATHS.analytics (domainRoutes.ts) ne pointe
+  // plus vers /analytics/sql (qui exige sql_lab.access, hors d'atteinte du
+  // Créateur) — il pointe vers /?type=bookmark, catalogue filtré comme les
+  // autres domaines de contenu (Cartes/Données/Apps & sites/Automatisation
+  // ci-dessus), gaté sur rien de plus que la lecture du catalogue.
+  { id: "analytics", labelKey: "domain.analytics", requiresPrivilege: "analytics.view" },
   { id: "tasks", labelKey: "domain.tasks", requiresPrivilege: "tasks.view" },
   {
     id: "admin",
