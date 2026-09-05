@@ -17,7 +17,7 @@ from app.analytics.aggregate import (
 )
 from app.attachments import repository as attachments_repo
 from app.audit.writer import write_audit
-from app.auth.dependency import admin_subs, is_etl_enabled, is_read_only_mode
+from app.auth.dependency import admin_subs, analyst_subs, is_etl_enabled, is_read_only_mode
 from app.collections import repository as collections_repo
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
@@ -85,6 +85,7 @@ def _resolve_actor(session, access_token) -> User:
         first_name=claims.get("given_name", ""),
         last_name=claims.get("family_name", ""),
         bootstrap_admin=access_token.subject in admin_subs(),
+        bootstrap_analyst=access_token.subject in analyst_subs(),
     )
 
 
