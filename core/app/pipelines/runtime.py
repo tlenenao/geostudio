@@ -942,6 +942,13 @@ def run_pipeline(
     qgis_worker_timeout_seconds: int = 600,
     on_node_complete: Callable[["NodeStat"], None] | None = None,
 ) -> list[NodeStat]:
+    # Import local, même rationale que dans _prepare() : voir registries.py
+    # pour le raisonnement complet sur pourquoi cet import doit rester
+    # fonction-locale (jamais au niveau module) pour éviter un cycle réel
+    # avec app.pipelines.registries (qui importe app.pipelines.runtime, lui,
+    # à son niveau module).
+    from app.pipelines.registries import WRITERS
+
     conn = open_connection(endpoint_url=endpoint_url, access_key=access_key, secret_key=secret_key)
     try:
         ordered, view_by_node, srid_by_node, join_srid_by_node = _prepare(
@@ -969,22 +976,22 @@ def run_pipeline(
             pred_id = compiler.predecessor_id(node.id, payload.edges)
             assert pred_id is not None
             view_by_node[node.id] = view_by_node[pred_id]
-            if node.op == "writer.collection":
-                stat = _write_collection(
-                    session,
-                    conn,
-                    node=node,
-                    view_by_node=view_by_node,
-                    tenant_id=tenant_id,
-                    user=user,
-                )
-            elif node.op == "writer.export":
+            writer_fn = WRITERS.get(node.op)
+            if writer_fn is None:
+                raise PipelineRuntimeError(f"unknown writer op '{node.op}'")
+            # writer.export a une signature hétérogène (pas de
+            # session/tenant_id/user, contrairement aux deux autres writers) :
+            # ce registre remplace seulement la SÉLECTION if/elif par un
+            # dict.get, jamais l'appel lui-même — chaque op continue de
+            # recevoir exactement les arguments qu'il recevait avant ce
+            # découpage.
+            if node.op == "writer.export":
                 assert s3_client is not None and exports_bucket is not None
-                stat = _write_export(
+                stat = writer_fn(
                     conn, s3_client, exports_bucket, node=node, view_by_node=view_by_node
                 )
-            elif node.op == "writer.dataset":
-                stat = _write_dataset(
+            else:
+                stat = writer_fn(
                     session,
                     conn,
                     node=node,
