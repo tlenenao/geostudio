@@ -247,6 +247,12 @@ def create_empty_collection_route(
     introspect: Introspector = Depends(get_introspector),
     apply_ddl: Callable = Depends(get_ddl_applier),
 ):
+    # SP-42, correctif 1 (F-securite-autorisation-01) : cette route exécute du
+    # DDL (création de table PostGIS) — réservée à data.manage (Créateur
+    # l'a, Lecteur non), même privilège que POST /uploads.
+    # ADMIN_COLLECTIONS_MANAGE a été explicitement écarté ici : l'assistant de
+    # requête visuelle dépend de cette route pour tout utilisateur non-admin.
+    require_privilege(session, user, Privilege.DATA_MANAGE.value)
     col = create_empty_collection(
         session,
         tenant_id=user.tenant_id,
