@@ -179,3 +179,38 @@ def test_query_features_on_private_unshared_collection_errors(app_client):
             {"collectionId": collection_id},
         )
     assert "not found" in error_text
+
+
+def test_query_features_sees_a_private_collection_via_admin_collections_manage(app_client):
+    # SP-42/F-coeur-federation-05 : _require_collection_read se prétendait
+    # miroir de get_readable_collection (app/collections/routes.py) mais
+    # n'appliquait jamais l'extension can_manage_collections (privilège
+    # admin.collections.manage, SP-35) — un rôle sur mesure porteur de ce
+    # seul privilège voit et gère la collection via REST (200) mais
+    # obtenait "collection not found" via tout outil MCP passant par
+    # _require_collection_read.
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.users.repository import set_user_role
+
+    with app_client:
+        collection_id = _register_private_incidents_collection_owned_by_other(app_client)
+
+        with app_client.session_factory() as session:
+            custom_role = create_role(
+                session,
+                tenant_id=app_client.tenant.id,
+                name="Gestionnaire de collections",
+                privileges=[Privilege.ADMIN_COLLECTIONS_MANAGE.value],
+            )
+            set_user_role(
+                session,
+                tenant_id=app_client.tenant.id,
+                user_id=app_client.mock_user.id,
+                role_id=custom_role.id,
+                role_slug=custom_role.slug,
+            )
+            session.commit()
+
+        result = call_tool(app_client, "query_features", {"collectionId": collection_id})
+    assert result["type"] == "FeatureCollection"
