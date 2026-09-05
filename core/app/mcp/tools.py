@@ -75,6 +75,23 @@ READ_ONLY_TOOLS = {
 }
 
 
+def _without_thumbnail_url(item: ItemRead) -> ItemRead:
+    """SP-42, correctif 2 (F-coeur-federation-08) : ItemRead.thumbnailUrl
+    pointe vers GET /items/{id}/thumbnail, gardée par l'audience OIDC du
+    shell (CORE_OIDC_AUDIENCE). Un jeton MCP porte l'audience distincte
+    CORE_MCP_AUDIENCE (app/mcp/auth.py) et reçoit systématiquement 401 sur
+    cette route — servir cette URL à un agent MCP promettrait un accès qui
+    échoue toujours. Plutôt que d'élargir une garde d'authentification (les
+    deux options qu'aurait demandé un mécanisme d'échange), on cesse de la
+    produire côté MCP ; le champ reste `str | None` côté schéma REST, donc
+    ce None ne casse aucun contrat de tool."""
+    return item.model_copy(update={"thumbnailUrl": None})
+
+
+def _without_thumbnail_urls(page: ItemPage) -> ItemPage:
+    return page.model_copy(update={"items": [_without_thumbnail_url(i) for i in page.items]})
+
+
 def _resolve_actor(session, access_token) -> User:
     claims = access_token.claims
     tenant = get_or_create_default_tenant(session)
@@ -241,9 +258,13 @@ def register_tools(server: FastMCP, session_factory) -> None:
         ctx: Context, collectionId: str, fid: str, fieldKey: str | None = None
     ) -> str:
         """List the metadata of files attached to one entity of a collection
-        (chantier 4.12) — read-only, never returns file bytes: fileUrl points
-        to the REST proxy-read the caller fetches separately, same pattern as
-        ItemRead.thumbnailUrl. Deliberately absent from the copilot's
+        (chantier 4.12) — read-only, never returns file bytes. No fileUrl:
+        the REST proxy-read it would point to
+        (GET /collections/{id}/items/{fid}/attachments/{aid}/file) is
+        gated by the shell's OIDC audience (CORE_OIDC_AUDIENCE), which an
+        MCP-audienced token (CORE_MCP_AUDIENCE) never satisfies — same
+        reason ItemRead.thumbnailUrl is omitted for MCP callers (SP-42,
+        F-coeur-federation-08). Deliberately absent from the copilot's
         ALLOWED_MCP_TOOL_NAMES (app/copilot/tools_allowlist.py).
 
         Returns a JSON-encoded array (rather than a typed list[dict]) because
@@ -272,9 +293,6 @@ def register_tools(server: FastMCP, session_factory) -> None:
                         "filename": a.filename,
                         "contentType": a.content_type,
                         "byteSize": a.byte_size,
-                        "fileUrl": (
-                            f"/collections/{collectionId}/items/{fid}/attachments/{a.id}/file"
-                        ),
                     }
                     for a in rows
                 ]
@@ -293,15 +311,17 @@ def register_tools(server: FastMCP, session_factory) -> None:
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = _resolve_actor(session, access_token)
-            return items_repo.list_items(
-                session,
-                tenant_id=user.tenant_id,
-                current_user_id=user.id,
-                q=q,
-                resource_type=type,
-                scope=scope,
-                page=page,
-                page_size=pageSize,
+            return _without_thumbnail_urls(
+                items_repo.list_items(
+                    session,
+                    tenant_id=user.tenant_id,
+                    current_user_id=user.id,
+                    q=q,
+                    resource_type=type,
+                    scope=scope,
+                    page=page,
+                    page_size=pageSize,
+                )
             )
 
     @server.tool()
@@ -320,15 +340,17 @@ def register_tools(server: FastMCP, session_factory) -> None:
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = _resolve_actor(session, access_token)
-            return items_repo.list_items(
-                session,
-                tenant_id=user.tenant_id,
-                current_user_id=user.id,
-                q=q,
-                resource_type=type,
-                scope=scope,
-                page=page,
-                page_size=pageSize,
+            return _without_thumbnail_urls(
+                items_repo.list_items(
+                    session,
+                    tenant_id=user.tenant_id,
+                    current_user_id=user.id,
+                    q=q,
+                    resource_type=type,
+                    scope=scope,
+                    page=page,
+                    page_size=pageSize,
+                )
             )
 
     @server.tool()
@@ -386,7 +408,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
             )
             if result is None:
                 raise ValueError("item not found")
-            return result
+            return _without_thumbnail_url(result)
 
     @server.tool()
     async def get_app_config(ctx: Context, itemId: str) -> ConfigRead:
@@ -481,7 +503,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 session, tenant_id=user.tenant_id, item_id=item.id, current_user_id=user.id
             )
             assert result is not None  # just created it, in the same transaction
-            return result
+            return _without_thumbnail_url(result)
 
     @server.tool()
     async def create_form_app(
@@ -549,7 +571,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 session, tenant_id=user.tenant_id, item_id=item.id, current_user_id=user.id
             )
             assert result is not None
-            return result
+            return _without_thumbnail_url(result)
 
     @server.tool()
     async def create_dataset(
@@ -614,7 +636,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 session, tenant_id=user.tenant_id, item_id=item.id, current_user_id=user.id
             )
             assert result is not None
-            return result
+            return _without_thumbnail_url(result)
 
     @server.tool()
     async def create_bookmark(
@@ -676,7 +698,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
                 session, tenant_id=user.tenant_id, item_id=item.id, current_user_id=user.id
             )
             assert result is not None  # just created it, in the same transaction
-            return result
+            return _without_thumbnail_url(result)
 
     @server.tool()
     async def run_analytics_query(
@@ -870,7 +892,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
                     session, tenant_id=user.tenant_id, item_id=item.id, current_user_id=user.id
                 )
                 assert result is not None
-                return result
+                return _without_thumbnail_url(result)
 
         @server.tool()
         async def run_pipeline(ctx: Context, pipelineId: str) -> dict:
