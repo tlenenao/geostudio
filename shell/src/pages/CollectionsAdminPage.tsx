@@ -3,6 +3,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useCollectionsAdmin, useDeleteCollection } from "../api/hooks";
 import type { CollectionAdmin } from "../api/types";
+import { Gate } from "../auth/Gate";
+import { Locked } from "../auth/Locked";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
@@ -10,6 +12,7 @@ import { CollectionSharePanel } from "../shell/CollectionSharePanel";
 import { EditCollectionPanel } from "../shell/EditCollectionPanel";
 import { RegisterCollectionPanel } from "../shell/RegisterCollectionPanel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { t } from "../i18n";
 
 export function CollectionsAdminPage() {
   const collectionsQuery = useCollectionsAdmin();
@@ -104,30 +107,61 @@ export function CollectionsAdminPage() {
                         <td className="py-2 text-ink">{col.featureCount ?? "—"}</td>
                         <td className="py-2 text-ink">{col.owner ?? "—"}</td>
                         <td className="py-2 flex gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setRegistering(false);
-                              setSharing(null);
-                              setEditing(col);
-                            }}
+                          {/* SP-42/F-securite-autorisation-06 : le cœur refuse
+                              PATCH/sharing sur can()/decide() (write/share),
+                              jamais reflété par can_manage_collections seul
+                              (qui n'ouvre que la visibilité de la liste) —
+                              proposer ces boutons sans condition produisait
+                              un 403 au clic pour un porteur non-propriétaire
+                              de admin.collections.manage. */}
+                          <Gate
+                            on={col}
+                            can="write"
+                            fallback={
+                              <Locked reason={t("locked.needWrite")}>
+                                <Button type="button" variant="outline" size="sm">
+                                  Éditer
+                                </Button>
+                              </Locked>
+                            }
                           >
-                            Éditer
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setRegistering(false);
-                              setEditing(null);
-                              setSharing(col);
-                            }}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setRegistering(false);
+                                setSharing(null);
+                                setEditing(col);
+                              }}
+                            >
+                              Éditer
+                            </Button>
+                          </Gate>
+                          <Gate
+                            on={col}
+                            can="share"
+                            fallback={
+                              <Locked reason={t("locked.needShare")}>
+                                <Button type="button" variant="outline" size="sm">
+                                  Partager
+                                </Button>
+                              </Locked>
+                            }
                           >
-                            Partager
-                          </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setRegistering(false);
+                                setEditing(null);
+                                setSharing(col);
+                              }}
+                            >
+                              Partager
+                            </Button>
+                          </Gate>
                           <Button
                             type="button"
                             variant="outline"

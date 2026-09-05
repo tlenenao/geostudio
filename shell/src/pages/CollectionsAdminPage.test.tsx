@@ -427,3 +427,29 @@ test("sous viewport étroit, affiche trois onglets Catalogue/Collections/Détail
   const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
   expect(activeTab).toHaveTextContent("Collections");
 });
+
+test("SP-42/F-securite-autorisation-06 : verrouille Éditer/Partager quand permissions.write/share sont faux", async () => {
+  const RESTRICTED = {
+    ...INCIDENTS,
+    id: "restricted",
+    title: "Restreinte",
+    permissions: { read: true, write: false, delete: false, share: false },
+  };
+  server.use(
+    http.get("https://core.test/collections", () =>
+      HttpResponse.json({ collections: [RESTRICTED] }),
+    ),
+  );
+  render(<Harness />);
+  const editButton = await screen.findByRole("button", { name: "Éditer" });
+  const shareButton = screen.getByRole("button", { name: "Partager" });
+  expect(editButton).toBeDisabled();
+  expect(shareButton).toBeDisabled();
+  expect(
+    screen.getByText("Modification réservée aux éditeurs de cet élément."),
+  ).toBeInTheDocument();
+  expect(screen.getByText("Partage réservé au propriétaire et aux éditeurs.")).toBeInTheDocument();
+  // Supprimer n'est pas concerné par cette trouvaille (le cœur ne gate pas
+  // la suppression sur write/share) : reste actionnable.
+  expect(screen.getByRole("button", { name: "Supprimer" })).not.toBeDisabled();
+});
