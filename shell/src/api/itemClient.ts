@@ -9,7 +9,6 @@ import type {
   AppConfig,
   AppExportJobStatus,
   AppExportMode,
-  AttachmentSummary,
   BookmarkPayload,
   CandidateTable,
   CollectionAdmin,
@@ -65,6 +64,7 @@ import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 import { OWNER_PERMISSIONS } from "../auth/permissions";
 import { createBase } from "./base";
+import { createAttachmentsMethods } from "./domains/attachments";
 import { createIdentityMethods } from "./domains/identity";
 import { createNotificationsMethods } from "./domains/notifications";
 
@@ -1439,66 +1439,7 @@ export function createItemClient(opts: {
       return request<CollectionSchema>("GET", `/collections/${collectionId}/schema`);
     },
 
-    async presignAttachmentUpload(
-      collectionId: string,
-      fid: string,
-      input: { fieldKey: string; filename: string; contentType: string },
-    ): Promise<{ uploadUrl: string; key: string }> {
-      return request<{ uploadUrl: string; key: string }>(
-        "POST",
-        `/collections/${collectionId}/items/${fid}/attachments/presign`,
-        input,
-      );
-    },
-
-    async confirmAttachmentUpload(
-      collectionId: string,
-      fid: string,
-      input: { key: string; fieldKey: string; filename: string; contentType: string },
-    ): Promise<AttachmentSummary> {
-      return request<AttachmentSummary>(
-        "POST",
-        `/collections/${collectionId}/items/${fid}/attachments`,
-        input,
-      );
-    },
-
-    async listAttachments(
-      collectionId: string,
-      fid: string,
-      fieldKey?: string,
-    ): Promise<AttachmentSummary[]> {
-      const qs = fieldKey ? `?fieldKey=${encodeURIComponent(fieldKey)}` : "";
-      const data = await request<{ attachments: AttachmentSummary[] }>(
-        "GET",
-        `/collections/${collectionId}/items/${fid}/attachments${qs}`,
-      );
-      return data.attachments;
-    },
-
-    async deleteAttachment(collectionId: string, fid: string, attachmentId: string): Promise<void> {
-      await request<void>(
-        "DELETE",
-        `/collections/${collectionId}/items/${fid}/attachments/${attachmentId}`,
-      );
-    },
-
-    attachmentFileUrl(collectionId: string, fid: string, attachmentId: string): string {
-      return `${coreUrl}/collections/${collectionId}/items/${fid}/attachments/${attachmentId}/file`;
-    },
-
-    async downloadAttachment(
-      collectionId: string,
-      fid: string,
-      attachmentId: string,
-    ): Promise<{ blob: Blob; filename: string }> {
-      return requestBlob(
-        coreUrl,
-        getToken,
-        "GET",
-        `/collections/${collectionId}/items/${fid}/attachments/${attachmentId}/file`,
-      );
-    },
+    ...createAttachmentsMethods(base),
 
     async getCollection(collectionId: string): Promise<CollectionAdmin> {
       return request<CollectionAdmin>("GET", `/collections/${collectionId}`);
