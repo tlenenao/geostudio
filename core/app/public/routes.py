@@ -7,6 +7,7 @@ from app.configs.repository import ConfigRead
 from app.db import get_session
 from app.items import repository as items_repo
 from app.items.schemas import ItemPage, ItemRead
+from app.tenants.repository import DEFAULT_TENANT_SLUG
 
 router = APIRouter(prefix="/public")
 
@@ -30,7 +31,7 @@ def list_public_items(
 
 @router.get("/items/{item_id}", response_model=ItemRead)
 def get_public_item(item_id: str, session: Session = Depends(get_session)) -> ItemRead:
-    result = items_repo.get_published_item(session, item_id=item_id)
+    result = items_repo.get_published_item(session, item_id=item_id, tenant_id=DEFAULT_TENANT_SLUG)
     if result is None:
         raise HTTPException(status_code=404, detail="item not found")
     return result
@@ -46,7 +47,7 @@ def get_public_site(slug: str, session: Session = Depends(get_session)) -> ItemR
 
 @router.get("/configs/by-item/{item_id}", response_model=ConfigRead)
 def get_public_config_by_item(item_id: str, session: Session = Depends(get_session)) -> ConfigRead:
-    item = items_repo.get_published_item(session, item_id=item_id)
+    item = items_repo.get_published_item(session, item_id=item_id, tenant_id=DEFAULT_TENANT_SLUG)
     if item is None:
         raise HTTPException(status_code=404, detail="item not found")
     result = configs_repo.get_config_by_item(session, item_id)
