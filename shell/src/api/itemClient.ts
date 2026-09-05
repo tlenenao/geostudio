@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type {
   ActionMessage,
-  AdminExtension,
-  AdminToolName,
   AppConfig,
   AppExportJobStatus,
   AppExportMode,
@@ -25,14 +23,10 @@ import type {
   DatasetConfig,
   ExportFormat,
   ExportJob,
-  ExtensionManifest,
   FeatureLayerSource,
   FieldError,
   GeoJSONFeatureInput,
   Group,
-  HarvestSource,
-  HarvestSourceCreateInput,
-  HarvestSourcePatchInput,
   InstanceInfo,
   Item,
   ItemClient,
@@ -61,6 +55,7 @@ import { OWNER_PERMISSIONS } from "../auth/permissions";
 import { createBase } from "./base";
 import { createAlertsMethods } from "./domains/alerts";
 import { createAttachmentsMethods } from "./domains/attachments";
+import { createExtensionsAdminToolsMethods } from "./domains/extensionsAdminTools";
 import { createIdentityMethods } from "./domains/identity";
 import { createNotificationsMethods } from "./domains/notifications";
 import { createReportsMethods } from "./domains/reports";
@@ -653,79 +648,7 @@ export function createItemClient(opts: {
       return data.layers ?? [];
     },
 
-    async listActiveExtensions(): Promise<ExtensionManifest[]> {
-      const token = getToken();
-      const res = await fetch(`${coreUrl}/extensions`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error(`Request failed: ${res.status} /extensions`);
-      const data = (await res.json()) as {
-        extensions?: Array<{
-          id: string;
-          tag: string;
-          label: string;
-          moduleUrl: string;
-          props: ExtensionManifest["props"];
-          events?: string[];
-          actions?: string[];
-          defaultSize: { w: number; h: number };
-          permissions?: { collections: string[] | "all" };
-        }>;
-      };
-      return (data.extensions ?? []).map((e) => ({
-        type: e.id,
-        tag: e.tag,
-        label: e.label,
-        moduleUrl: e.moduleUrl,
-        props: e.props,
-        events: e.events,
-        actions: e.actions,
-        defaultSize: e.defaultSize,
-        permissions: e.permissions,
-      }));
-    },
-
-    async listAllExtensions(): Promise<AdminExtension[]> {
-      const token = getToken();
-      const res = await fetch(`${coreUrl}/extensions?all=true`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error(`Request failed: ${res.status} /extensions`);
-      const data = (await res.json()) as {
-        extensions?: Array<{
-          id: string;
-          tag: string;
-          label: string;
-          moduleUrl: string;
-          props: ExtensionManifest["props"];
-          events?: string[];
-          actions?: string[];
-          defaultSize: { w: number; h: number };
-          permissions?: { collections: string[] | "all" };
-          enabled: boolean;
-        }>;
-      };
-      return (data.extensions ?? []).map((e) => ({
-        type: e.id,
-        tag: e.tag,
-        label: e.label,
-        moduleUrl: e.moduleUrl,
-        props: e.props,
-        events: e.events,
-        actions: e.actions,
-        defaultSize: e.defaultSize,
-        permissions: e.permissions,
-        enabled: e.enabled,
-      }));
-    },
-
-    async setExtensionEnabled(id: string, enabled: boolean): Promise<void> {
-      await request<void>("PATCH", `/extensions/${id}`, { enabled });
-    },
-
-    async launchAdminTool(tool: AdminToolName): Promise<{ url: string }> {
-      return request<{ url: string }>("POST", `/admin-tools/launch/${tool}`);
-    },
+    ...createExtensionsAdminToolsMethods(base),
 
     async listCollections(): Promise<CollectionAdmin[]> {
       const data = await request<{ collections: CollectionAdmin[] }>("GET", `/collections`);
@@ -760,27 +683,6 @@ export function createItemClient(opts: {
 
     async deleteCollection(id: string): Promise<void> {
       await request<void>("DELETE", `/collections/${id}`);
-    },
-
-    async listHarvestSources(): Promise<HarvestSource[]> {
-      const data = await request<{ sources: HarvestSource[] }>("GET", `/harvest/sources`);
-      return data.sources ?? [];
-    },
-
-    async createHarvestSource(input: HarvestSourceCreateInput): Promise<HarvestSource> {
-      return request<HarvestSource>("POST", `/harvest/sources`, input);
-    },
-
-    async updateHarvestSource(id: string, patch: HarvestSourcePatchInput): Promise<HarvestSource> {
-      return request<HarvestSource>("PATCH", `/harvest/sources/${id}`, patch);
-    },
-
-    async deleteHarvestSource(id: string): Promise<void> {
-      await request<void>("DELETE", `/harvest/sources/${id}`);
-    },
-
-    async runHarvestSource(id: string): Promise<void> {
-      await request<void>("POST", `/harvest/sources/${id}/run`);
     },
 
     async getCollectionSharing(id: string): Promise<Sharing> {
