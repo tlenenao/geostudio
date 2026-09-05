@@ -55,7 +55,11 @@ export type DomainDef = {
 // L'ordre de ce tableau est l'ordre d'affichage de la barre de domaines.
 export const DOMAINS: readonly DomainDef[] = [
   { id: "catalog", labelKey: "domain.catalog" },
-  { id: "maps", labelKey: "domain.maps" },
+  // SP-42/F-shell-pages-03 : seul domaine de contenu (hors catalog/settings,
+  // ouverts par conception) qui n'exigeait aucun privilège, alors que
+  // maps.manage existe et distingue déjà Créateur (l'a) de Lecteur (ne l'a
+  // pas) — par symétrie avec data/apps ci-dessous.
+  { id: "maps", labelKey: "domain.maps", requiresPrivilege: "maps.manage" },
   { id: "data", labelKey: "domain.data", requiresPrivilege: "data.view" },
   { id: "apps", labelKey: "domain.apps", requiresPrivilege: "apps.manage" },
   {
@@ -64,7 +68,14 @@ export const DOMAINS: readonly DomainDef[] = [
     requiresPrivilege: "automation.manage",
     requiresCapability: "etlEnabled",
   },
-  { id: "analytics", labelKey: "domain.analytics", requiresPrivilege: "analytics.view" },
+  // SP-42/F-securite-autorisation-08(a) : gaté sur analytics.sql_lab.access,
+  // pas analytics.view — /analytics/sql (RequirePrivilege du même nom,
+  // routes.tsx) est aujourd'hui l'unique destination de ce domaine ; un
+  // Créateur (analytics.view sans sql_lab.access) verrait sinon un domaine
+  // qui refuse systématiquement sa seule destination. Si un écran
+  // analytics.view-seul existe un jour, ce gate devra être revu en même
+  // temps que DOMAIN_PATHS.analytics (domainRoutes.ts).
+  { id: "analytics", labelKey: "domain.analytics", requiresPrivilege: "analytics.sql_lab.access" },
   { id: "tasks", labelKey: "domain.tasks", requiresPrivilege: "tasks.view" },
   {
     id: "admin",
