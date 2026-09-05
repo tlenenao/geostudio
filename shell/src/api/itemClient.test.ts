@@ -2,7 +2,13 @@
 import { Blob as NodeBlob } from "node:buffer";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
-import { createItemClient, FeatureValidationError, SqlQueryError } from "./itemClient";
+import {
+  createItemClient,
+  FeatureValidationError,
+  SqlQueryError,
+  toFrontLayer,
+  type RawMapLayer,
+} from "./itemClient";
 import type { DataSource } from "./types";
 import { OWNER_PERMISSIONS } from "../auth/permissions";
 
@@ -615,6 +621,87 @@ test("getMapConfig reads collectionId/pkColumn on a feature (GeoJSON) layer", as
     url: "https://fs/a",
     collectionId: "communes",
     pkColumn: "id",
+  });
+});
+
+// SP-43 Étape 2 : test caractéristique — pour chaque kind de MapLayer, un
+// RawMapLayer avec TOUS ses champs optionnels renseignés doit survivre
+// intégralement à toFrontLayer(). Filet contre une 5e perte de champ
+// silencieuse (les 4 précédentes : popup, symbology, renderAs,
+// collectionId/pkColumn — cf. les 4 tests de régression ci-dessus).
+describe("toFrontLayer characteristic test — no optional field is ever dropped", () => {
+  test("vector: every optional field survives", () => {
+    const raw: RawMapLayer = {
+      id: "v1",
+      title: "V",
+      visible: true,
+      kind: "vector",
+      tilesUrl: "https://t",
+      sourceLayer: "s",
+      paint: { "fill-color": "#fff" },
+      collectionId: "c1",
+      geometryKind: "polygon",
+      pkColumn: "id",
+      popup: { titleField: "nom", fields: [] },
+      symbology: { kind: "categorical", field: "type", categories: [] } as never,
+    };
+    const out = toFrontLayer(raw) as Record<string, unknown>;
+    expect(out.paint).toEqual(raw.paint);
+    expect(out.collectionId).toBe(raw.collectionId);
+    expect(out.geometryKind).toBe(raw.geometryKind);
+    expect(out.pkColumn).toBe(raw.pkColumn);
+    expect(out.popup).toEqual(raw.popup);
+    expect(out.symbology).toEqual(raw.symbology);
+  });
+
+  test("feature: every optional field survives", () => {
+    const raw: RawMapLayer = {
+      id: "f1",
+      title: "F",
+      visible: true,
+      kind: "feature",
+      url: "https://fs/a",
+      paint: { "fill-color": "#000" },
+      collectionId: "c2",
+      pkColumn: "fid",
+      popup: { titleField: "nom", fields: [] },
+      renderAs: "circle",
+      symbology: { kind: "categorical", field: "type", categories: [] } as never,
+    };
+    const out = toFrontLayer(raw) as Record<string, unknown>;
+    expect(out.paint).toEqual(raw.paint);
+    expect(out.collectionId).toBe(raw.collectionId);
+    expect(out.pkColumn).toBe(raw.pkColumn);
+    expect(out.popup).toEqual(raw.popup);
+    expect(out.renderAs).toBe(raw.renderAs);
+    expect(out.symbology).toEqual(raw.symbology);
+  });
+
+  test("raster: optional field (opacity) survives", () => {
+    const raw: RawMapLayer = {
+      id: "r1",
+      title: "R",
+      visible: true,
+      kind: "raster",
+      tilesUrl: "https://t",
+      opacity: 0.5,
+    };
+    const out = toFrontLayer(raw) as Record<string, unknown>;
+    expect(out.opacity).toBe(0.5);
+  });
+
+  test("deck: optional field (props) survives", () => {
+    const raw: RawMapLayer = {
+      id: "d1",
+      title: "D",
+      visible: true,
+      kind: "deck",
+      deckType: "heatmap",
+      dataUrl: "https://d",
+      props: { radius: 30 },
+    };
+    const out = toFrontLayer(raw) as Record<string, unknown>;
+    expect(out.props).toEqual(raw.props);
   });
 });
 

@@ -74,7 +74,7 @@ import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 import { OWNER_PERMISSIONS } from "../auth/permissions";
 
-type RawMapLayer = {
+export type RawMapLayer = {
   id: string;
   title: string;
   visible: boolean;
@@ -95,7 +95,7 @@ type RawMapLayer = {
   symbology?: import("../builder/widgets/mapSymbology").LayerSymbology | null;
 };
 
-function toFrontLayer(l: RawMapLayer): MapLayer {
+export function toFrontLayer(l: RawMapLayer): MapLayer {
   const base = { id: l.id, title: l.title, visible: l.visible };
   switch (l.kind) {
     case "vector":
