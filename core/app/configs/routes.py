@@ -28,6 +28,8 @@ from app.db import get_session
 from app.items import repository as items_repo
 from app.items.models import Item
 from app.items.slug import InvalidSlugError, SlugCollisionError
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -94,12 +96,40 @@ def _require_export_enabled_for_report(config: BuilderConfig) -> None:
         raise HTTPException(status_code=403, detail="Export capability disabled on this instance")
 
 
+# SP-42/F-securite-autorisation-01 : avant cette garde, aucune route de
+# création/mise à jour de config ne consultait le catalogue de privilèges —
+# un rôle « Lecteur » (0 privilège) obtenait 201 sur POST /configs pour
+# n'importe quel kind. Mapping calé sur le domaine shell (capabilities.ts) :
+# dashboard/site partagent le domaine "apps" avec app (même runtime
+# AppRenderer, cf. CLAUDE.md règle d'architecture n°3) ; bookmark/tileset3d/
+# terrain3d n'ont pas de domaine dédié et retombent sur catalog.manage.
+_KIND_PRIVILEGE: dict[str, str] = {
+    "app": Privilege.APPS_MANAGE.value,
+    "dashboard": Privilege.APPS_MANAGE.value,
+    "site": Privilege.APPS_MANAGE.value,
+    "map": Privilege.MAPS_MANAGE.value,
+    "dataset": Privilege.DATA_MANAGE.value,
+    "pipeline": Privilege.AUTOMATION_MANAGE.value,
+    "alert": Privilege.AUTOMATION_MANAGE.value,
+    "report": Privilege.AUTOMATION_MANAGE.value,
+    "bookmark": Privilege.CATALOG_MANAGE.value,
+    "tileset3d": Privilege.CATALOG_MANAGE.value,
+    "terrain3d": Privilege.CATALOG_MANAGE.value,
+}
+
+
+def _require_privilege_for_kind(session: Session, user: User, config: BuilderConfig) -> None:
+    privilege = _KIND_PRIVILEGE.get(config.kind, Privilege.CATALOG_MANAGE.value)
+    require_privilege(session, user, privilege)
+
+
 @router.post("/configs", response_model=ConfigRead, status_code=status.HTTP_201_CREATED)
 def create_config(
     request: CreateConfigRequest,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
+    _require_privilege_for_kind(session, user, request.config)
     _require_etl_enabled_for_pipeline(request.config)
     _require_export_enabled_for_report(request.config)
     _validate_extension_scope(session, request.config, tenant_id=user.tenant_id)
@@ -171,6 +201,7 @@ def update_config(
     if existing is None or existing.itemId is None:
         raise HTTPException(status_code=404, detail="config not found")
     _require_access(session, user=user, item_id=existing.itemId, action="write")
+    _require_privilege_for_kind(session, user, config)
     _require_etl_enabled_for_pipeline(config)
     _require_export_enabled_for_report(config)
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
@@ -331,6 +362,7 @@ def update_config_by_item(
     existing = repo.get_config_by_item(session, item_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="config not found")
+    _require_privilege_for_kind(session, user, config)
     _require_etl_enabled_for_pipeline(config)
     _require_export_enabled_for_report(config)
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)
