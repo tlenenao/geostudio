@@ -53,6 +53,7 @@ preuve plus large qu'elle n'est :
 
 import ast
 import base64
+import json
 import pathlib
 import re
 import shutil
@@ -69,6 +70,7 @@ ENV_EXAMPLE = REPO / ".env.example"
 BACKUP_SH = REPO / "deploy/backup/backup.sh"
 CORE_APP = REPO / "core/app"
 BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
+KEYCLOAK_REALM_JSON = REPO / "deploy/keycloak/geostudio-realm.json"
 
 # Préfixe des images que nous publions nous-mêmes.
 OWN_IMAGE_RE = re.compile(r"ghcr\.io/[^/]+/(geostudio-[a-z0-9-]+)")
@@ -1016,3 +1018,31 @@ def test_keycloak_router_carries_security_and_rate_limit_middlewares():
             f"le routeur keycloak (prod) doit référencer {required} dans "
             f"ses middlewares, a trouvé : {middlewares}"
         )
+
+
+def test_keycloak_realm_enables_brute_force_protection():
+    """SP-42/F-infra-ci-02 (critical, second volet) :
+    `deploy/keycloak/geostudio-realm.json` déclarait `bruteForceProtected:
+    false` — aucune protection native contre le bourrage d'identifiants
+    côté Keycloak lui-même, indépendamment du rate-limit Traefik vérifié
+    ci-dessus (défense en profondeur : le edge et l'IdP protègent contre
+    des choses différentes). Seul ce bit d'activation change ici — tous les
+    réglages associés que ce realm porte déjà (`failureFactor: 30`,
+    `maxFailureWaitSeconds: 900`, `minimumQuickLoginWaitSeconds: 60`,
+    `waitIncrementSeconds: 60`, `quickLoginCheckMilliSeconds: 1000`,
+    `maxDeltaTimeSeconds: 43200`) sont les valeurs par défaut de Keycloak
+    lui-même (export d'un realm jamais réglé sur ce point) : ce garde-fou
+    n'introduit aucune politique de verrouillage plus agressive.
+    `permanentLockout` doit rester `false` — un verrouillage permanent
+    (nécessitant une intervention admin pour débloquer un compte) serait
+    une décision produit distincte, non prise ici."""
+    realm = json.loads(KEYCLOAK_REALM_JSON.read_text())
+    assert realm.get("bruteForceProtected") is True, (
+        "deploy/keycloak/geostudio-realm.json doit activer "
+        "bruteForceProtected — aucune protection anti-bourrage native sur "
+        "l'endpoint de login sinon."
+    )
+    assert realm.get("permanentLockout") is False, (
+        "permanentLockout ne doit pas passer à true par ce garde-fou — "
+        "verrouillage permanent = décision produit distincte, hors périmètre."
+    )
