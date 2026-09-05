@@ -443,6 +443,34 @@ def test_bucket_groups_rows_by_day(tmp_path, conn):
     ]
 
 
+def test_bucket_normalizes_timestamptz_offset_before_truncating(tmp_path, conn):
+    """Deux lignes représentant EXACTEMENT le même instant réel (23:30 UTC le
+    5 janvier 2026), écrites avec deux offsets différents comme le ferait le
+    CDC (backfill._pg_timestamp_str / wal2json), doivent tomber dans le MÊME
+    bucket 'day' — un TRY_CAST(... AS TIMESTAMP) nu jetterait silencieusement
+    l'offset et les séparerait en deux buckets distincts."""
+    _write_partition(
+        tmp_path,
+        rows=[
+            _row(1, "Nord", "2026-01-05 23:30:00+00", 1, lsn=1),
+            _row(2, "Sud", "2026-01-06 01:30:00+02", 1, lsn=1),  # même instant, 23:30 UTC
+        ],
+    )
+    request = AggregateRequestBody(groupBy="annee", bucket="day", agg="count")
+
+    category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="t1",
+        collection_id="villes",
+        table_info=TABLE_INFO,
+        request=request,
+    )
+
+    assert category_key == "annee"
+    assert rows == [{"annee": "2026-01-05 00:00:00", "value": 2}]
+
+
 def test_bucket_groups_rows_by_month(tmp_path, conn):
     _write_partition(
         tmp_path,

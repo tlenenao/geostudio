@@ -506,8 +506,26 @@ def run_collection_aggregate(
         # _validate_fields exige déjà exactement un groupBy quand bucket est
         # posé (voir plus haut) — narrowing explicite, pas une nouvelle règle.
         assert single_field is not None
+        # TRY_CAST(... AS TIMESTAMP) (naïf) jetterait silencieusement l'offset
+        # d'une chaîne TIMESTAMPTZ-like (vérifié empiriquement contre duckdb
+        # 1.5.5 : trois offsets différents produisent la même valeur naïve) —
+        # deux lignes représentant le même instant réel avec des offsets
+        # différents (backfill._pg_timestamp_str / wal2json écrivent
+        # l'offset natif Postgres) finiraient dans deux buckets distincts.
+        # Cast en TIMESTAMPTZ (qui interprète l'offset) puis normalisation
+        # explicite en UTC avant DATE_TRUNC. Le TimeZone GUC de session pilote
+        # l'interprétation d'une chaîne SANS offset (une colonne TIMESTAMP
+        # nue) lors de ce cast — DuckDB l'assume par défaut au fuseau LOCAL de
+        # la machine serveur (vérifié empiriquement : Europe/Paris ici),
+        # jamais UTC ; sans le fixer explicitement, le bucket d'une colonne
+        # TIMESTAMP nue dépendrait silencieusement du fuseau du serveur qui
+        # exécute la requête. Fixé à UTC pour que ce cast soit un no-op sur
+        # une chaîne sans offset (comportement inchangé) et normalise
+        # correctement une chaîne avec offset (le correctif visé).
+        conn.execute("SET TimeZone='UTC'")
         cat_expr = (
-            f"DATE_TRUNC({_sql_lit(request.bucket)}, TRY_CAST({_qi(single_field)} AS TIMESTAMP))"
+            f"DATE_TRUNC({_sql_lit(request.bucket)}, "
+            f"TRY_CAST({_qi(single_field)} AS TIMESTAMPTZ) AT TIME ZONE 'UTC')"
         )
     else:
         cat_expr = _qi(single_field) if single_field else "'Total'"
