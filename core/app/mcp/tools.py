@@ -872,6 +872,8 @@ def register_tools(server: FastMCP, session_factory) -> None:
         async def run_pipeline(ctx: Context, pipelineId: str) -> dict:
             """Defer a run of a Pipeline — mirrors POST /pipelines/{id}/run.
             Only registered when CORE_ETL_ENABLED is on. SP-15a."""
+            if is_read_only_mode():
+                raise ValueError("Mode démo : lecture seule, écritures désactivées.")
             access_token = get_access_token()
             with request_scoped_session(session_factory) as session:
                 user = _resolve_actor(session, access_token)
