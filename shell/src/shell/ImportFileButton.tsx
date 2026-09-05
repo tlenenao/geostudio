@@ -5,6 +5,7 @@ import { useItemClient, useMe } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
+import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 
 type Phase = "form" | "uploading" | "selecting-layer" | "polling" | "error";
 type LayerInfo = { name: string; featureCount: number; geometryType: string };
@@ -26,6 +27,7 @@ function isLayeredFormat(filename: string): boolean {
 
 export function ImportFileButton() {
   const [open, setOpen] = useState(false);
+  const drawerPanel = usePanelTrigger(open);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [csvHeaders, setCsvHeaders] = useState<string[] | null>(null);
@@ -161,10 +163,20 @@ export function ImportFileButton() {
 
   return (
     <>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+      <Button
+        size="sm"
+        variant="outline"
+        {...drawerPanel.triggerProps}
+        onClick={() => setOpen(true)}
+      >
         Importer un fichier
       </Button>
-      <Drawer open={open} onOpenChange={(next) => !next && close()} title="Importer un fichier">
+      <Drawer
+        open={open}
+        onOpenChange={(next) => !next && close()}
+        title="Importer un fichier"
+        id={drawerPanel.panelId}
+      >
         {phase === "selecting-layer" ? (
           <form onSubmit={(e) => void confirmLayer(e)} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm text-ink">

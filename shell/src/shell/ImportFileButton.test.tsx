@@ -9,6 +9,7 @@ import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { ImportFileButton } from "./ImportFileButton";
+import { expectAriaWired } from "../test/expectAriaWired";
 
 function MapProbe() {
   const { pk } = useParams();
@@ -60,7 +61,14 @@ test("uploads a file and navigates to the created map once the job is done", asy
       <ImportFileButton />
     </Harness>,
   );
-  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  const importButton = screen.getByRole("button", { name: "Importer un fichier" });
+  expectAriaWired(importButton, importButton.getAttribute("aria-controls")!, false);
+  await userEvent.click(importButton);
+  expectAriaWired(importButton, importButton.getAttribute("aria-controls")!, true);
+  expect(screen.getByRole("dialog")).toHaveAttribute(
+    "id",
+    importButton.getAttribute("aria-controls"),
+  );
   await userEvent.upload(screen.getByLabelText("Fichier à importer"), geojsonFile());
   await userEvent.type(screen.getByLabelText("Titre de la collection"), "Villes");
   await userEvent.click(screen.getByRole("button", { name: "Importer" }));
