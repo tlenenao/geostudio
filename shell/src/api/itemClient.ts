@@ -30,9 +30,6 @@ import type {
   MapLayer,
   MetadataCatalog,
   Page,
-  PipelineOpsCatalog,
-  PipelinePayload,
-  PipelineRun,
   PopupConfig,
   PrintLayoutConfig,
   ResourceType,
@@ -52,6 +49,7 @@ import { createExportsIngestionMethods } from "./domains/exportsIngestion";
 import { createExtensionsAdminToolsMethods } from "./domains/extensionsAdminTools";
 import { createIdentityMethods } from "./domains/identity";
 import { createNotificationsMethods } from "./domains/notifications";
+import { createPipelinesMethods } from "./domains/pipelines";
 import { createReportsMethods } from "./domains/reports";
 import { createTiles3dMethods } from "./domains/tiles3d";
 
@@ -789,71 +787,7 @@ export function createItemClient(opts: {
       return data.config.bookmark;
     },
 
-    async createPipelineItem(input: {
-      title: string;
-      owner: string;
-      pipeline: PipelinePayload;
-    }): Promise<Item> {
-      const config = { version: 1, kind: "pipeline", pipeline: input.pipeline };
-      const data = await request<{ id: string | number; kind: string; itemId: string | null }>(
-        "POST",
-        `/configs`,
-        { title: input.title, config },
-      );
-      if (!data.itemId) throw new Error("createPipelineItem: core returned no itemId");
-      return {
-        pk: String(data.itemId),
-        resourceType: "pipeline",
-        title: input.title,
-        abstract: "",
-        owner: input.owner,
-        thumbnailUrl: null,
-        date: "",
-        configId: String(data.id),
-        isPublished: false,
-        license: "",
-        language: "fr",
-        // On vient de créer cet objet : on en est le propriétaire.
-        permissions: OWNER_PERMISSIONS,
-      };
-    },
-
-    async getPipelineConfig(pk: string): Promise<PipelinePayload> {
-      const data = await request<{ config?: { pipeline?: PipelinePayload } }>(
-        "GET",
-        `/configs/by-item/${pk}`,
-      );
-      if (!data.config?.pipeline)
-        throw new Error("getPipelineConfig: config has no pipeline payload");
-      return data.config.pipeline;
-    },
-
-    async savePipelineConfig(pk: string, payload: PipelinePayload): Promise<void> {
-      await request<void>("PUT", `/configs/by-item/${pk}`, {
-        version: 1,
-        kind: "pipeline",
-        pipeline: payload,
-      });
-    },
-
-    async getPipelineOps(): Promise<PipelineOpsCatalog> {
-      return request<PipelineOpsCatalog>("GET", "/pipelines/ops");
-    },
-
-    async runPipeline(pk: string): Promise<{ runId: string }> {
-      return request<{ runId: string }>("POST", `/pipelines/${pk}/run`);
-    },
-
-    async getPipelineRuns(pk: string): Promise<PipelineRun[]> {
-      return request<PipelineRun[]>("GET", `/pipelines/${pk}/runs`);
-    },
-
-    async previewPipeline(pk: string, upToNodeId: string): Promise<Record<string, unknown>[]> {
-      return request<Record<string, unknown>[]>(
-        "POST",
-        `/pipelines/${pk}/preview?upTo=${encodeURIComponent(upToNodeId)}`,
-      );
-    },
+    ...createPipelinesMethods(base),
 
     ...createAlertsMethods(base),
 
