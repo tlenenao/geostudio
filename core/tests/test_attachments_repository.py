@@ -189,6 +189,37 @@ def test_delete_all_for_feature_removes_only_that_entity(env):
     assert still_there is not None
 
 
+def test_delete_all_for_collection_removes_every_entity(env):
+    # SP-42/F-securite-tenant-rls-03 : unregister_collection appelle cette
+    # fonction avant de supprimer la Collection — elle doit purger TOUTES les
+    # pièces jointes de la collection, quel que soit le fid, contrairement à
+    # delete_all_for_feature qui filtre sur un seul.
+    session, tenant, user = env
+    _create(session, tenant_id=tenant.id, created_by=user.id, fid="f1", field_key="photos")
+    _create(session, tenant_id=tenant.id, created_by=user.id, fid="f2", field_key="documents")
+    session.commit()
+    s3 = _FakeS3Client()
+
+    attachments_repo.delete_all_for_collection(
+        session, s3, "geostudio-attachments", tenant_id=tenant.id, collection_id="col1"
+    )
+    session.commit()
+
+    assert (
+        attachments_repo.list_attachments(
+            session, tenant_id=tenant.id, collection_id="col1", fid="f1"
+        )
+        == []
+    )
+    assert (
+        attachments_repo.list_attachments(
+            session, tenant_id=tenant.id, collection_id="col1", fid="f2"
+        )
+        == []
+    )
+    assert len(s3.deleted) == 2
+
+
 def test_delete_swallows_s3_client_error_and_still_removes_the_row(env):
     from botocore.exceptions import ClientError
 

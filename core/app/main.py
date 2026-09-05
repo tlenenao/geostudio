@@ -349,6 +349,16 @@ def create_app() -> FastAPI:
             access_key=s3_access_key,
             secret_key=s3_secret_key,
         )
+        # Clé d'override DISTINCTE, de nouveau : collections_routes.get_s3_client
+        # est lui aussi un stub redéfini localement (SP-42/
+        # F-securite-tenant-rls-03, même raison que ci-dessus) — consommé par
+        # unregister_collection (purge des pièces jointes avant suppression
+        # d'une collection).
+        app.dependency_overrides[collections_routes.get_s3_client] = lambda: make_s3_client(
+            endpoint_url=s3_endpoint,
+            access_key=s3_access_key,
+            secret_key=s3_secret_key,
+        )
 
     @app.get("/health")
     def health() -> dict[str, str]:

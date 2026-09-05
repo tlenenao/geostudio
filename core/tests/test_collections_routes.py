@@ -3,6 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db
+from app.attachments import repository as attachments_repo
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections import repository as repo
 from app.collections import routes as collections_routes
@@ -26,6 +27,20 @@ def fake_introspector(session, table_name):
     if table_name != "incidents":
         raise TableNotFound(table_name)
     return INCIDENTS
+
+
+class _FakeS3Client:
+    """Stub minimal pour collections_routes.get_s3_client (SP-42/
+    F-securite-tenant-rls-03) : unregister_collection dépend désormais de
+    get_s3_client pour purger les pièces jointes avant suppression, donc TOUT
+    test de ce fichier qui appelle DELETE /collections/{id} a besoin de cet
+    override — sinon RuntimeError("S3 client dependency not configured")."""
+
+    def __init__(self):
+        self.deleted: list[str] = []
+
+    def delete_object(self, *, Bucket, Key):
+        self.deleted.append(Key)
 
 
 @pytest.fixture()
@@ -67,6 +82,7 @@ def env():
     app.dependency_overrides[collections_routes.get_ddl_applier] = lambda: (
         lambda session, table, tenant_id=None: ddl_calls.append(table)
     )
+    app.dependency_overrides[collections_routes.get_s3_client] = lambda: _FakeS3Client()
     client = TestClient(app)
     return app, client, Session, admin, regular, ddl_calls
 
@@ -411,6 +427,44 @@ def test_patch_and_delete(env):
     _as(app, admin)
     assert client.delete("/collections/incidents").status_code == 204
     assert client.get("/collections/incidents").status_code == 404
+
+
+def test_delete_collection_with_existing_attachment_returns_204_and_purges_it(env):
+    # SP-42/F-securite-tenant-rls-03 : avant correctif, la FK
+    # attachments.collection_id (sans ondelete) faisait échouer ce DELETE en
+    # 500 dès qu'une pièce jointe existait — la collection restait
+    # indésenregistrable, et l'objet S3 n'était de toute façon jamais purgé.
+    app, client, Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/collections", json={"tableName": "incidents"})
+    s3_key = f"{admin.tenant_id}/incidents/f1/a.jpg"
+    with Session() as s:
+        attachments_repo.create_attachment(
+            s,
+            tenant_id=admin.tenant_id,
+            collection_id="incidents",
+            fid="f1",
+            field_key="photos",
+            filename="a.jpg",
+            content_type="image/jpeg",
+            byte_size=10,
+            s3_key=s3_key,
+            created_by=admin.id,
+        )
+        s.commit()
+
+    s3 = _FakeS3Client()
+    app.dependency_overrides[collections_routes.get_s3_client] = lambda: s3
+
+    response = client.delete("/collections/incidents")
+    assert response.status_code == 204
+    assert s3.deleted == [s3_key]
+
+    with Session() as s:
+        remaining = attachments_repo.list_attachments(
+            s, tenant_id=admin.tenant_id, collection_id="incidents", fid="f1"
+        )
+        assert remaining == []
 
 
 def test_patch_by_non_owner_without_editor_role_returns_403(env):

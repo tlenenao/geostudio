@@ -33,7 +33,16 @@ class Attachment(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
-    collection_id: Mapped[str] = mapped_column(ForeignKey("collections.id"), nullable=False)
+    # ondelete="CASCADE" (SP-42/F-securite-tenant-rls-03) : filet de sécurité
+    # DB, en plus de la purge applicative explicite
+    # (attachments_repo.delete_all_for_collection, appelée par
+    # unregister_collection AVANT la suppression de la collection). Sans lui,
+    # DELETE /collections/{id} échouait en 500 (IntegrityError) dès qu'une
+    # pièce jointe existait — même patron que CollectionShare.collection_id
+    # (app/sharing/models.py).
+    collection_id: Mapped[str] = mapped_column(
+        ForeignKey("collections.id", ondelete="CASCADE"), nullable=False
+    )
     fid: Mapped[str] = mapped_column(String, nullable=False)
     field_key: Mapped[str] = mapped_column(String, nullable=False)
     filename: Mapped[str] = mapped_column(String, nullable=False)
