@@ -18,6 +18,7 @@ from app.configs.pipeline_validation import validate_pipeline_payload as _valida
 from app.configs.report_validation import validate_report_payload as _validate_report_payload
 from app.configs.repository import ConfigRead, RevisionInfo
 from app.configs.schemas import BuilderConfig
+from app.configs.service import create_config_service
 from app.configs.terrain3d_validation import (
     validate_terrain3d_payload as _validate_terrain3d_payload,
 )
@@ -27,7 +28,6 @@ from app.configs.tileset3d_validation import (
 from app.db import get_session
 from app.items import repository as items_repo
 from app.items.models import Item
-from app.items.slug import InvalidSlugError, SlugCollisionError
 from app.roles.guards import require_privilege
 from app.roles.kind_registry import privilege_for_kind
 from app.sharing.authorization import can
@@ -150,31 +150,9 @@ def create_config(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ConfigRead:
-    _require_privilege_for_kind(session, user, request.config)
-    _require_etl_enabled_for_pipeline(request.config)
-    _require_export_enabled_for_report(request.config)
-    _validate_extension_scope(session, request.config, tenant_id=user.tenant_id)
-    _validate_dataset_payload(session, request.config, user=user)
-    _validate_bookmark_payload(session, request.config, user=user)
-    _validate_pipeline_payload(session, request.config, user=user)
-    _validate_alert_payload(session, request.config, user=user)
-    _validate_report_payload(session, request.config, user=user)
-    _validate_tileset3d_payload(session, request.config, user=user)
-    _validate_terrain3d_payload(session, request.config, user=user)
-    try:
-        item = items_repo.create_item(
-            session,
-            tenant_id=user.tenant_id,
-            owner_id=user.id,
-            resource_type=request.config.kind,
-            title=request.title,
-            slug=request.slug,
-        )
-    except SlugCollisionError as err:
-        raise HTTPException(status_code=409, detail=str(err)) from err
-    except InvalidSlugError as err:
-        raise HTTPException(status_code=422, detail=str(err)) from err
-    result = repo.create_config(session, request.config, item_id=item.id, tenant_id=user.tenant_id)
+    created = create_config_service(
+        session, request.config, title=request.title, user=user, slug=request.slug
+    )
     write_audit(
         session,
         tenant_id=user.tenant_id,
@@ -182,7 +160,7 @@ def create_config(
         actor_kind="user",
         action="config.create",
         object_type="config",
-        object_id=result.id,
+        object_id=created.config.id,
         payload={"title": request.title, "kind": request.config.kind},
     )
     write_audit(
@@ -192,10 +170,10 @@ def create_config(
         actor_kind="user",
         action="item.create",
         object_type="item",
-        object_id=item.id,
+        object_id=created.item.id,
         payload={"title": request.title},
     )
-    return result
+    return created.config
 
 
 @router.get("/configs/{config_id}", response_model=ConfigRead)
