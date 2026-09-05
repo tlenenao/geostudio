@@ -68,6 +68,18 @@ export function PipelineBuilderPage({
   }, [pk, configQuery.data]);
 
   if (pk !== null && configQuery.isLoading) return <p role="status">Chargement…</p>;
+  // SP-42 F-shell-pages-05 : sans cette garde, un pipeline existant dont le
+  // chargement échoue (403 suite à une révocation de partage, item supprimé
+  // mais lien conservé, panne réseau transitoire) s'affichait comme un
+  // brouillon vide avec Enregistrer actif — un ré-enregistrement écrasait
+  // silencieusement la configuration réelle. Même patron que
+  // MapEditorPage.tsx pour son propre query.isError.
+  if (pk !== null && configQuery.isError)
+    return (
+      <p role="alert" className="text-sm text-danger">
+        Pipeline introuvable.
+      </p>
+    );
   if (opsQuery.isLoading || !opsQuery.data) return <p role="status">Chargement…</p>;
 
   const catalog = opsQuery.data;

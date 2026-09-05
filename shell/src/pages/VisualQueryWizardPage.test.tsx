@@ -624,3 +624,14 @@ describe("VisualQueryWizardPage — volet Catalogue et dégradation d'affichage"
     expect(activeTab).toHaveTextContent("Requête");
   });
 });
+
+describe("VisualQueryWizardPage — SP-42 F-shell-pages-05", () => {
+  test("une requête existante qui échoue à charger affiche une alerte plutôt qu'un cul-de-sac muet", async () => {
+    renderWizardEdit({
+      getPipelineConfig: vi.fn().mockRejectedValue(new Error("403")),
+    });
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("introuvable");
+    expect(screen.queryByLabelText("Collection de base")).not.toBeInTheDocument();
+  });
+});
