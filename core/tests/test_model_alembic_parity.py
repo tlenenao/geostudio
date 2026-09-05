@@ -223,17 +223,45 @@ def _flatten_diff(diff_list: list) -> list:
     return flat
 
 
+# Index fonctionnels/d'accès spécial créés par 0012_pgvector_embeddings.py
+# via op.execute() brut (jamais op.create_index()) : GIN trigram sur une
+# EXPRESSION ("(title || ' ' || abstract) gin_trgm_ops", pas une colonne),
+# et ivfflat (vector_cosine_ops, WITH (lists = 100)) sur `embedding`. Les
+# représenter fidèlement en Base.metadata exigerait un Index(text(...),
+# postgresql_using="gin"/"ivfflat", postgresql_ops={...}, postgresql_with=
+# {...}) jamais éprouvé ici ni ailleurs dans le dépôt — matérialiser ces 4
+# entrées sortirait du périmètre annoncé de la Tâche 5 (server_default=
+# uniquement) pour un risque sensiblement différent (une recherche
+# sémantique/texte cassée silencieusement n'a aucun test dédié à ce
+# comparateur). Décision actée en Tâche 5 (SP-43) : filtrer nommément ces 4
+# index (jamais un remove_index générique) et laisser la matérialisation
+# complète à une tâche dédiée si voulue — cf. rapport de la Tâche 5 pour la
+# recommandation détaillée au contrôleur.
+_KNOWN_FUNCTIONAL_INDEXES = {
+    "ix_collections_embedding",
+    "ix_collections_trgm",
+    "ix_items_embedding",
+    "ix_items_trgm",
+}
+
+
 def _filter_real_diff(diff: list) -> list:
     """Aplatit puis retire le bruit structurel qui n'est jamais un vrai écart
     de schéma imputable à nos modèles : types géométrie/pgvector (leur
     représentation SQLAlchemy générique diffère toujours du type natif
-    Postgres) et tables système PostGIS (créées par `CREATE EXTENSION`,
-    jamais déclarées par nos modèles)."""
+    Postgres), tables système PostGIS (créées par `CREATE EXTENSION`, jamais
+    déclarées par nos modèles), et les 4 index fonctionnels pgvector/trgm
+    nommément listés dans `_KNOWN_FUNCTIONAL_INDEXES` ci-dessus (créés par
+    op.execute() brut, hors périmètre de représentation SQLAlchemy fidèle
+    pour cette tâche)."""
     flat_diff = _flatten_diff(diff)
     ignored_kinds = {"geometry", "vector"}
 
     def _is_postgis_system_table(item: object) -> bool:
         return getattr(item, "name", None) in POSTGIS_SYSTEM_TABLES
+
+    def _is_known_functional_index(item: object) -> bool:
+        return getattr(item, "name", None) in _KNOWN_FUNCTIONAL_INDEXES
 
     return [
         d
@@ -250,6 +278,7 @@ def _filter_real_diff(diff: list) -> list:
         # trop" pour compare_metadata, indépendamment de tout défaut de nos
         # modèles ; ne pas la laisser polluer le signal de la Tâche 5.
         and not (d[0] == "remove_table" and _is_postgis_system_table(d[1]))
+        and not (d[0] == "remove_index" and _is_known_functional_index(d[1]))
     ]
 
 
@@ -316,3 +345,26 @@ def test_filter_real_diff_absorbs_a_nested_geometry_modify_type() -> None:
     # La fonction réelle du fichier (corrigée, aplatit avant de filtrer)
     # absorbe bien l'item fabriqué.
     assert _filter_real_diff(fake_diff) == []
+
+
+def test_filter_real_diff_absorbs_the_four_known_functional_indexes() -> None:
+    """Falsification de _KNOWN_FUNCTIONAL_INDEXES (décision Tâche 5 SP-43) :
+    un `remove_index` nommé comme l'un des 4 index fonctionnels
+    pgvector/trgm de 0012_pgvector_embeddings.py doit disparaître de
+    real_diff ; un `remove_index` sur un nom quelconque NON listé doit lui
+    survivre (le filtre est nommé, jamais un blanket `remove_index`)."""
+    known_index = sa.Index("ix_items_trgm", sa.Column("title", sa.String()))
+    unknown_index = sa.Index("ix_some_other_table_tenant_id", sa.Column("tenant_id", sa.String()))
+    fake_diff = [
+        ("remove_index", known_index),
+        ("remove_index", unknown_index),
+    ]
+
+    real_diff = _filter_real_diff(fake_diff)
+
+    assert real_diff == [("remove_index", unknown_index)], (
+        "l'index nommément listé (fonctionnel, créé par op.execute() brut) "
+        "doit être absorbé ; un remove_index sur un nom quelconque doit "
+        "rester visible — le filtre ne doit jamais devenir un blanket "
+        "'remove_index' générique"
+    )
