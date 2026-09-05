@@ -213,3 +213,33 @@ test("shows a layer picker for a multi-layer GeoPackage and imports the chosen l
 
   await waitFor(() => expect(screen.getByText("map-100")).toBeInTheDocument());
 });
+
+test("SP-42/F-shell-pages-01 (fusion F-shell-pages-02) : masque le bouton pour un profil sans data.manage", async () => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient.setQueryDefaults(["me"], { staleTime: Infinity });
+  queryClient.setQueryData(["me"], {
+    id: "u1",
+    username: "alice",
+    firstName: "Alice",
+    lastName: "Martin",
+    email: "alice@example.com",
+    tenantId: "t1",
+    role: { id: "role-reader", name: "Lecteur", slug: "reader" },
+    privileges: [],
+    version: "0.1.0",
+    tenantSlug: "demo",
+  });
+  const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ItemClientProvider client={client}>
+        <MemoryRouter initialEntries={["/"]}>
+          <ImportFileButton />
+        </MemoryRouter>
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Importer un fichier" })).not.toBeInTheDocument(),
+  );
+});

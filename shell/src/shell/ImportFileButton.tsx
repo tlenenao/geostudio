@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useItemClient } from "../api/hooks";
+import { useItemClient, useMe } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
@@ -38,6 +38,17 @@ export function ImportFileButton() {
   const [error, setError] = useState("");
   const client = useItemClient();
   const navigate = useNavigate();
+  // SP-42/F-shell-pages-01 (fusion F-shell-pages-02) : cf. commentaire
+  // jumeau sur NewItemButton.tsx — même mécanisme, même TopBar. Un import
+  // aboutit toujours à POST /uploads (core/app/ingestion/routes.py),
+  // gardé par data.manage — jamais maps.manage, bien que la navigation
+  // finale ouvre /maps/{itemId} : la collection PostGIS créée par le
+  // worker est la ressource dont l'écriture compte ici, pas l'item Map.
+  const meQuery = useMe();
+  const privileges = meQuery.data?.privileges;
+  const canImport = privileges === undefined || privileges.includes("data.manage");
+
+  if (!canImport) return null;
 
   function close() {
     setOpen(false);
