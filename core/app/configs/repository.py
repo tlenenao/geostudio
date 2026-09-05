@@ -155,6 +155,53 @@ def list_configs_by_kind_and_tenant(
     return result
 
 
+def find_referencing_config_kinds(
+    session: Session,
+    *,
+    tenant_id: str,
+    item_id: str | None = None,
+    collection_id: str | None = None,
+) -> list[str]:
+    """SP-42/F-coeur-contenu-04 : les kinds de config du même tenant qui
+    référencent encore `item_id` (via alert.datasetItemId /
+    report.bookmarkItemId / dataset.sourcePipelineId) ou `collection_id`
+    (via dataset.collectionId) — pour refuser une suppression qui
+    orphelinerait silencieusement une AlertRule/un ReportSchedule/un autre
+    Dataset. Même patron que GET /datasets/{item_id}/alerts
+    (app/alerts/routes.py) : un scan approximatif par kind, pas une vraie FK
+    — les configs sont des documents JSON versionnés. Dédupliqué, ordre
+    stable (alert, report, dataset)."""
+    found: list[str] = []
+    if item_id is not None:
+        for _rule_item_id, config in list_configs_by_kind_and_tenant(
+            session, kind="alert", tenant_id=tenant_id
+        ):
+            if config.alert is not None and config.alert.datasetItemId == item_id:
+                found.append("alert")
+                break
+        for _report_item_id, config in list_configs_by_kind_and_tenant(
+            session, kind="report", tenant_id=tenant_id
+        ):
+            if config.report is not None and config.report.bookmarkItemId == item_id:
+                found.append("report")
+                break
+    dataset_referenced = False
+    for _dataset_item_id, config in list_configs_by_kind_and_tenant(
+        session, kind="dataset", tenant_id=tenant_id
+    ):
+        if config.dataset is None:
+            continue
+        if item_id is not None and config.dataset.sourcePipelineId == item_id:
+            dataset_referenced = True
+            break
+        if collection_id is not None and config.dataset.collectionId == collection_id:
+            dataset_referenced = True
+            break
+    if dataset_referenced:
+        found.append("dataset")
+    return found
+
+
 def update_config(
     session: Session, config_id: str, config: BuilderConfig, *, tenant_id: str
 ) -> ConfigRead | None:

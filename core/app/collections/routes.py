@@ -22,6 +22,7 @@ from app.collections.provisioning import create_empty_collection
 from app.collections.publication import remove_table_from_publication
 from app.collections.schema_json import table_info_to_schema
 from app.collections.schemas import CollectionCreate, CollectionPatch, EmptyCollectionCreate
+from app.configs import repository as configs_repo
 from app.db import core_table_names, get_session
 from app.roles.guards import has_privilege, privilege_required_error, require_privilege
 from app.roles.privileges import Privilege
@@ -543,6 +544,19 @@ def unregister_collection(
     # de le requêter une seconde fois via require_privilege().
     if not can_manage_collections:
         raise privilege_required_error(Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+    # SP-42/F-coeur-contenu-04 : sans cette garde, supprimer une collection
+    # encore référencée par un Dataset (via dataset.collectionId) laissait ce
+    # Dataset orphelin silencieusement (204, aucun signal). Avant toute
+    # opération destructive (dépublication, purge des pièces jointes,
+    # suppression) : aucun effet de bord tant qu'une référence existe.
+    referencing = configs_repo.find_referencing_config_kinds(
+        session, tenant_id=col.tenant_id, collection_id=col.id
+    )
+    if referencing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"still referenced by config kind(s): {', '.join(referencing)}",
+        )
     remove_table_from_publication(session, col.table_name)
     # SP-42/F-securite-tenant-rls-03 : sans cette purge explicite (lignes +
     # objets S3), repo.delete_collection plantait en 500 (IntegrityError) dès
