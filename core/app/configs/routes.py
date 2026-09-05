@@ -29,7 +29,7 @@ from app.items import repository as items_repo
 from app.items.models import Item
 from app.items.slug import InvalidSlugError, SlugCollisionError
 from app.roles.guards import require_privilege
-from app.roles.privileges import Privilege
+from app.roles.kind_registry import privilege_for_kind
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -109,39 +109,16 @@ def _require_export_enabled_for_report(config: BuilderConfig) -> None:
         raise HTTPException(status_code=403, detail="Export capability disabled on this instance")
 
 
-# SP-42/F-securite-autorisation-01 : avant cette garde, aucune route de
-# création/mise à jour de config ne consultait le catalogue de privilèges —
-# un rôle « Lecteur » (0 privilège) obtenait 201 sur POST /configs pour
-# n'importe quel kind. Mapping calé sur le domaine shell (capabilities.ts) :
-# dashboard/site partagent le domaine "apps" avec app (même runtime
-# AppRenderer, cf. CLAUDE.md règle d'architecture n°3) ; tileset3d/terrain3d
-# n'ont pas de domaine dédié et retombent sur catalog.manage.
-#
-# bookmark -> analytics.view (décision Tanguy, revue du lot de correctifs 1,
-# SP-42) : un bookmark est une « vue analytique enregistrée » (spec
-# docs/superpowers/specs/2026-08-05-sp14m-bookmarks-vues-design.md), portée
-# par le domaine Analytique de la matrice de la refonte UI — PAS
-# catalog.manage, qui aurait bloqué l'Analyste (qui porte analytics.view
-# mais pas catalog.manage) tout en laissant passer un Lecteur si jamais un
-# rôle sur mesure portait catalog.manage sans analytics.view.
-_KIND_PRIVILEGE: dict[str, str] = {
-    "app": Privilege.APPS_MANAGE.value,
-    "dashboard": Privilege.APPS_MANAGE.value,
-    "site": Privilege.APPS_MANAGE.value,
-    "map": Privilege.MAPS_MANAGE.value,
-    "dataset": Privilege.DATA_MANAGE.value,
-    "pipeline": Privilege.AUTOMATION_MANAGE.value,
-    "alert": Privilege.AUTOMATION_MANAGE.value,
-    "report": Privilege.AUTOMATION_MANAGE.value,
-    "bookmark": Privilege.ANALYTICS_VIEW.value,
-    "tileset3d": Privilege.CATALOG_MANAGE.value,
-    "terrain3d": Privilege.CATALOG_MANAGE.value,
-}
-
-
+# SP-43 Étape 1 : le mapping kind->privilège vit désormais dans
+# app.roles.kind_registry (privilege_for_kind), seule source de vérité,
+# consommée aussi par app.mcp.tools, app.tileset3d.routes,
+# app.terrain3d.routes et app.pipelines.routes — remplace le dict privé qui
+# vivait ici et que ces 4 autres sites couplaient chacun différemment (import
+# de nom privé, import du dict lui-même, recopie de valeur en dur), un défaut
+# rouvert 3 fois avant SP-42 (cf. spec SP-43 §1.1). Rationale du mapping
+# lui-même : voir la docstring de kind_registry.py.
 def _require_privilege_for_kind(session: Session, user: User, config: BuilderConfig) -> None:
-    privilege = _KIND_PRIVILEGE.get(config.kind, Privilege.CATALOG_MANAGE.value)
-    require_privilege(session, user, privilege)
+    require_privilege(session, user, privilege_for_kind(config.kind))
 
 
 # SP-42, revue des lots de correctifs 2/3bis (point 3, Important) :

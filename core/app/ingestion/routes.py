@@ -116,7 +116,7 @@ def create_upload_job(
     # SP-42, revue de la dernière passe de correctifs (point 5, Important) :
     # app.ingestion.importer::import_job crée AUSSI un
     # Item(resource_type="map") + Config(kind="map") pour afficher le
-    # résultat (app.configs.routes::_KIND_PRIVILEGE mappe "map" sur
+    # résultat (app.roles.kind_registry::privilege_for_kind mappe "map" sur
     # maps.manage) — la garde ci-dessus ne couvrait que la moitié de ce que
     # cette route crée réellement.
     require_privilege(session, user, Privilege.MAPS_MANAGE.value)
