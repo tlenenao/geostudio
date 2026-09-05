@@ -146,13 +146,24 @@ def patch_user(
         raise HTTPException(status_code=400, detail="role not found")
     needed = [Privilege.ADMIN_USERS_MANAGE.value, Privilege.ADMIN_ROLES_MANAGE.value]
     current_role = get_role(session, tenant_id=user.tenant_id, role_id=target.role_id)
-    if (
-        current_role is not None
-        and set(needed).issubset(set(current_role.privileges))
-        and not set(needed).issubset(set(new_role.privileges))
-        and count_users_with_privileges(session, tenant_id=user.tenant_id, privileges=needed) == 1
-    ):
-        raise HTTPException(status_code=409, detail="cannot leave the tenant without an admin")
+    # Évalué privilège par privilège (SP-42/F-securite-autorisation-07) : une
+    # précondition en conjonction sur les DEUX privilèges à la fois devient
+    # inerte dès qu'ils vivent sur deux rôles distincts (cas normal avec des
+    # rôles sur mesure granulaires). Chaque privilège anti-lockout est donc
+    # protégé indépendamment, quel que soit le rôle qui le porte.
+    if current_role is not None:
+        for privilege in needed:
+            if (
+                privilege in current_role.privileges
+                and privilege not in new_role.privileges
+                and count_users_with_privileges(
+                    session, tenant_id=user.tenant_id, privileges=[privilege]
+                )
+                == 1
+            ):
+                raise HTTPException(
+                    status_code=409, detail="cannot leave the tenant without an admin"
+                )
     set_user_role(
         session,
         tenant_id=user.tenant_id,
