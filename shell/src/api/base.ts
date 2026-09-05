@@ -1,5 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { CrossFilterLink, DataRecord, DatasetColumnMeta, LayerSource } from "./types";
+import type {
+  CrossFilterLink,
+  DataRecord,
+  DatasetColumnMeta,
+  FieldError,
+  LayerSource,
+} from "./types";
+
+// Erreurs partagées entre plusieurs domaines (features + exportsIngestion) :
+// vivent ici, jamais dans un domains/*.ts, pour éviter qu'un domaine importe
+// un autre domaine. itemClient.ts les ré-exporte pour ne pas casser les
+// imports externes existants (`from "../../api/itemClient"`).
+export class FeatureValidationError extends Error {
+  errors: FieldError[];
+  constructor(errors: FieldError[]) {
+    super("feature validation failed");
+    this.name = "FeatureValidationError";
+    this.errors = errors;
+  }
+}
+
+export class SqlQueryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SqlQueryError";
+  }
+}
 
 export type ResolvedDataset = {
   source: "collection" | "arcgis";
