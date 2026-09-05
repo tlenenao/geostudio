@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ItemClient } from "../../api/types";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { ExportPanel } from "./ExportPanel";
+import { expectAriaWired } from "../../test/expectAriaWired";
 
 function renderPanel(overrides: Partial<ItemClient>) {
   const client: Partial<ItemClient> = { ...overrides };
@@ -107,12 +108,16 @@ describe("ExportPanel", () => {
     const createExport = vi.fn();
     renderPanel({ createExport, getExportJob: vi.fn() });
 
-    await userEvent.click(screen.getByRole("button", { name: "Exporter" }));
+    const exportButton = screen.getByRole("button", { name: "Exporter" });
+    expectAriaWired(exportButton, exportButton.getAttribute("aria-controls")!, false);
+    await userEvent.click(exportButton);
     expect(screen.getByText("Choisir le format d'export")).toBeInTheDocument();
+    expectAriaWired(exportButton, exportButton.getAttribute("aria-controls")!, true);
 
     await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
     expect(screen.queryByText("Choisir le format d'export")).not.toBeInTheDocument();
     expect(createExport).not.toHaveBeenCalled();
+    expectAriaWired(exportButton, exportButton.getAttribute("aria-controls")!, false);
   });
 
   it("le sélecteur de format n'est jamais une fenêtre modale (pas de role=dialog)", async () => {

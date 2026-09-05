@@ -4,6 +4,7 @@ import { useItemClient } from "../../api/hooks";
 import type { ExportFormat, ExportJob } from "../../api/types";
 import { Button } from "../../ui/kit/Button";
 import { Panel } from "../../ui/kit/Panel";
+import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 
 const POLL_INTERVAL_MS = 1500;
 // Fix round (finding I7) : ni PipelineRunPanel ni ImportFileButton (les deux
@@ -33,6 +34,7 @@ export function ExportPanel({ itemId }: { itemId: string }) {
   const [running, setRunning] = useState(false);
   const mountedRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exportPanel = usePanelTrigger(pickerOpen);
 
   useEffect(
     () => () => {
@@ -83,6 +85,7 @@ export function ExportPanel({ itemId }: { itemId: string }) {
       <Button
         size="sm"
         variant="outline"
+        {...exportPanel.triggerProps}
         onClick={() => setPickerOpen((open) => !open)}
         disabled={running}
       >
@@ -92,20 +95,36 @@ export function ExportPanel({ itemId }: { itemId: string }) {
         // Panneau en ligne, pas une fenêtre modale (spec §2.1, ConfirmDialog
         // seul survit) : pas d'Escape/backdrop à intercepter, Annuler ferme
         // explicitement sans exporter.
-        <Panel className="flex flex-col gap-2">
-          <p className="text-sm font-medium text-ink">Choisir le format d'export</p>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen(false)}>
-              Annuler
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => void onExport("png")}>
-              PNG
-            </Button>
-            <Button type="button" size="sm" onClick={() => void onExport("pdf")}>
-              PDF
-            </Button>
-          </div>
-        </Panel>
+        // Panel (ui/kit) ne transmet ni id ni role (props non déclarées) —
+        // panelProps est posé sur un wrapper neutre plutôt que sur Panel
+        // lui-même (le brief supposait Panel transparent aux props ARIA,
+        // vérifié faux contre le composant réel, cf. piège CLAUDE.md n°3).
+        <div {...exportPanel.panelProps}>
+          <Panel className="flex flex-col gap-2">
+            <p className="text-sm font-medium text-ink">Choisir le format d'export</p>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPickerOpen(false)}
+              >
+                Annuler
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void onExport("png")}
+              >
+                PNG
+              </Button>
+              <Button type="button" size="sm" onClick={() => void onExport("pdf")}>
+                PDF
+              </Button>
+            </div>
+          </Panel>
+        </div>
       )}
       {job?.status === "done" && job.resultUrl && (
         <a href={job.resultUrl} download className="text-sm text-accent underline">
