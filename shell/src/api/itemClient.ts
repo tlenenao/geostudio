@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import type {
-  ActionMessage,
-  AppConfig,
   BookmarkPayload,
   CollectionAdmin,
   CollectionSchema,
   ConfigRevisionInfo,
-  CopilotTurnResult,
   CreateKind,
   CreateBookmarkInput,
   CreateDatasetInput,
@@ -29,20 +26,18 @@ import type {
   MapIconOut,
   MapLayer,
   MetadataCatalog,
-  Page,
   PopupConfig,
   PrintLayoutConfig,
   ResourceType,
   Sharing,
-  Theme,
   UpdatePatch,
-  Variable,
 } from "./types";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { getTemplate } from "../builder/templates";
 import { OWNER_PERMISSIONS } from "../auth/permissions";
 import { createBase, FeatureValidationError, SqlQueryError } from "./base";
 import { createAlertsMethods } from "./domains/alerts";
+import { createAppsMethods } from "./domains/apps";
 import { createAttachmentsMethods } from "./domains/attachments";
 import { createCollectionsAdminMethods } from "./domains/collectionsAdmin";
 import { createExportsIngestionMethods } from "./domains/exportsIngestion";
@@ -835,88 +830,9 @@ export function createItemClient(opts: {
       });
     },
 
-    async getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig> {
-      const qs = mode ? `?mode=${mode}` : "";
-      const data = await request<{
-        config?: {
-          kind?: "app" | "dashboard";
-          theme?: Theme;
-          dataSources?: DataSource[];
-          messages?: ActionMessage[];
-          pages?: Page[];
-          variables?: Variable[];
-          layout?: AppConfig["layout"] | null;
-          navigationMode?: "tabs" | "story";
-          interactions?: "auto" | "manual";
-          printLayout?: PrintLayoutConfig | null;
-        };
-      }>("GET", `/configs/by-item/${pk}${qs}`);
-      const c = data.config;
-      if (!c?.layout) throw new Error("getAppConfig: config has no layout");
-      return {
-        kind: c.kind ?? "app",
-        theme: c.theme ?? {},
-        dataSources: c.dataSources ?? [],
-        messages: c.messages ?? [],
-        pages: c.pages,
-        variables: c.variables,
-        layout: c.layout,
-        navigationMode: c.navigationMode,
-        interactions: c.interactions,
-        printLayout: c.printLayout ?? null,
-      };
-    },
-
-    async getPublicAppConfig(pk: string): Promise<AppConfig> {
-      const data = await request<{
-        config?: {
-          kind?: "app" | "dashboard";
-          theme?: Theme;
-          dataSources?: DataSource[];
-          messages?: ActionMessage[];
-          pages?: Page[];
-          variables?: Variable[];
-          layout?: AppConfig["layout"] | null;
-          navigationMode?: "tabs" | "story";
-          interactions?: "auto" | "manual";
-        };
-      }>("GET", `/public/configs/by-item/${encodeURIComponent(pk)}`);
-      const c = data.config;
-      if (!c?.layout) throw new Error("getPublicAppConfig: config has no layout");
-      return {
-        kind: c.kind ?? "app",
-        theme: c.theme ?? {},
-        dataSources: c.dataSources ?? [],
-        messages: c.messages ?? [],
-        pages: c.pages,
-        variables: c.variables,
-        layout: c.layout,
-        navigationMode: c.navigationMode,
-        interactions: c.interactions,
-      };
-    },
-
-    async saveAppConfig(pk: string, config: AppConfig): Promise<void> {
-      await request<void>("PUT", `/configs/by-item/${pk}`, {
-        version: 1,
-        kind: config.kind,
-        theme: config.theme,
-        dataSources: config.dataSources,
-        messages: config.messages,
-        pages: config.pages,
-        variables: config.variables,
-        layout: config.layout,
-        navigationMode: config.navigationMode,
-        interactions: config.interactions,
-        printLayout: config.printLayout ?? null,
-      });
-    },
+    ...createAppsMethods(base),
 
     ...createExportsIngestionMethods(base),
-
-    async copilotTurn(itemId, payload): Promise<CopilotTurnResult> {
-      return request<CopilotTurnResult>("POST", "/copilot/turn", { itemId, ...payload });
-    },
 
     featuresUrl(source: DataSource): string {
       if (source.datasetId) {
