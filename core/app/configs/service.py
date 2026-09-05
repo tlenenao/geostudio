@@ -57,6 +57,14 @@ class CreatedConfig:
     config: ConfigRead
 
 
+# Ces 3 gardes (_require_etl_enabled_for_pipeline, _require_export_enabled_for_report,
+# _validate_extension_scope) sont importées telles quelles par app.configs.routes
+# (PUT /configs/{id}, /rollback) — revue finale SP-43 (Important I1) : Task 9 avait
+# recréé ici des copies byte-équivalentes de fonctions déjà définies dans routes.py,
+# rouvrant la classe de défaut "même règle à N sites" que SP-43 devait fermer. Ne pas
+# redupliquer : toute future modification de ces 3 gardes doit se faire ici, seule
+# source de vérité, aussi bien pour le chemin create (POST /configs, tools MCP
+# créateurs) que pour le chemin update (PUT /configs/{id}, /rollback).
 def _require_etl_enabled_for_pipeline(config: BuilderConfig) -> None:
     if config.kind == "pipeline" and not is_etl_enabled():
         raise HTTPException(status_code=403, detail="ETL capability disabled on this instance")
@@ -65,7 +73,9 @@ def _require_etl_enabled_for_pipeline(config: BuilderConfig) -> None:
 def _require_export_enabled_for_report(config: BuilderConfig) -> None:
     # Jumeau de la garde pipeline/ETL ci-dessus (revue finale SP-17b, I3) :
     # sur une instance sans capacité export, un ReportSchedule pouvait être
-    # créé mais son rendu restait "pending" à jamais.
+    # créé mais son rendu restait "pending" à jamais — rien ne dépile la file
+    # `export`, et export_repo.reclaim_stuck_jobs ne récupère que les
+    # "running". Mieux vaut refuser la création tout de suite.
     if config.kind == "report" and not is_export_enabled():
         raise HTTPException(status_code=403, detail="Export capability disabled on this instance")
 

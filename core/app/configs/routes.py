@@ -5,20 +5,21 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user, is_etl_enabled, is_export_enabled
+from app.auth.dependency import get_current_user
 from app.configs import repository as repo
 from app.configs.alert_validation import validate_alert_payload as _validate_alert_payload
 from app.configs.bookmark_validation import validate_bookmark_payload as _validate_bookmark_payload
 from app.configs.dataset_validation import validate_dataset_payload as _validate_dataset_payload
-from app.configs.extension_permissions import (
-    ExtensionPermissionError,
-    validate_extension_permissions,
-)
 from app.configs.pipeline_validation import validate_pipeline_payload as _validate_pipeline_payload
 from app.configs.report_validation import validate_report_payload as _validate_report_payload
 from app.configs.repository import ConfigRead, RevisionInfo
 from app.configs.schemas import BuilderConfig
-from app.configs.service import create_config_service
+from app.configs.service import (
+    _require_etl_enabled_for_pipeline,
+    _require_export_enabled_for_report,
+    _validate_extension_scope,
+    create_config_service,
+)
 from app.configs.terrain3d_validation import (
     validate_terrain3d_payload as _validate_terrain3d_payload,
 )
@@ -87,26 +88,14 @@ def _delete_config_and_item(session: Session, config_id: str, item_id: str, tena
     session.flush()
 
 
-def _validate_extension_scope(session: Session, config: BuilderConfig, *, tenant_id: str) -> None:
-    try:
-        validate_extension_permissions(session, config, tenant_id=tenant_id)
-    except ExtensionPermissionError as err:
-        raise HTTPException(status_code=400, detail=str(err)) from err
-
-
-def _require_etl_enabled_for_pipeline(config: BuilderConfig) -> None:
-    if config.kind == "pipeline" and not is_etl_enabled():
-        raise HTTPException(status_code=403, detail="ETL capability disabled on this instance")
-
-
-def _require_export_enabled_for_report(config: BuilderConfig) -> None:
-    # Jumeau de la garde pipeline/ETL ci-dessus (revue finale SP-17b, I3) :
-    # sur une instance sans capacité export, un ReportSchedule pouvait être
-    # créé mais son rendu restait "pending" à jamais — rien ne dépile la file
-    # `export`, et export_repo.reclaim_stuck_jobs ne récupère que les
-    # "running". Mieux vaut refuser la création tout de suite.
-    if config.kind == "report" and not is_export_enabled():
-        raise HTTPException(status_code=403, detail="Export capability disabled on this instance")
+# _validate_extension_scope, _require_etl_enabled_for_pipeline et
+# _require_export_enabled_for_report vivent désormais uniquement dans
+# app.configs.service (importées ci-dessus) — revue finale SP-43 (Important
+# I1) : ce module en recréait des copies byte-équivalentes, rouvrant la
+# classe de défaut "même règle à N sites" que SP-43 devait fermer (create_
+# config utilisait déjà les copies de service.py, update_config/rollback
+# utilisaient celles-ci ; un changement appliqué à une seule copie aurait
+# fait diverger silencieusement create vs update).
 
 
 # SP-43 Étape 1 : le mapping kind->privilège vit désormais dans
