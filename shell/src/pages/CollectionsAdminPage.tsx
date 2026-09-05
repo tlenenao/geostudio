@@ -8,6 +8,7 @@ import { Locked } from "../auth/Locked";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { CollectionSharePanel } from "../shell/CollectionSharePanel";
 import { EditCollectionPanel } from "../shell/EditCollectionPanel";
 import { RegisterCollectionPanel } from "../shell/RegisterCollectionPanel";
@@ -21,6 +22,8 @@ export function CollectionsAdminPage() {
   const [editing, setEditing] = useState<CollectionAdmin | null>(null);
   const [sharing, setSharing] = useState<CollectionAdmin | null>(null);
   const [deleting, setDeleting] = useState<CollectionAdmin | null>(null);
+  const editPanel = usePanelTrigger(editing !== null);
+  const sharingPanel = usePanelTrigger(sharing !== null);
 
   async function confirmDelete() {
     if (!deleting) return;
@@ -129,6 +132,7 @@ export function CollectionsAdminPage() {
                               type="button"
                               variant="outline"
                               size="sm"
+                              {...editPanel.triggerProps}
                               onClick={() => {
                                 setRegistering(false);
                                 setSharing(null);
@@ -153,6 +157,7 @@ export function CollectionsAdminPage() {
                               type="button"
                               variant="outline"
                               size="sm"
+                              {...sharingPanel.triggerProps}
                               onClick={() => {
                                 setRegistering(false);
                                 setEditing(null);
@@ -186,18 +191,22 @@ export function CollectionsAdminPage() {
             <div className="flex flex-col gap-3 p-3">
               {registering && <RegisterCollectionPanel onClose={() => setRegistering(false)} />}
               {editing && (
-                <EditCollectionPanel
-                  key={editing.id}
-                  collection={editing}
-                  onClose={() => setEditing(null)}
-                />
+                <div {...editPanel.panelProps}>
+                  <EditCollectionPanel
+                    key={editing.id}
+                    collection={editing}
+                    onClose={() => setEditing(null)}
+                  />
+                </div>
               )}
               {sharing && (
-                <CollectionSharePanel
-                  key={sharing.id}
-                  collectionId={sharing.id}
-                  onClose={() => setSharing(null)}
-                />
+                <div {...sharingPanel.panelProps}>
+                  <CollectionSharePanel
+                    key={sharing.id}
+                    collectionId={sharing.id}
+                    onClose={() => setSharing(null)}
+                  />
+                </div>
               )}
             </div>
           ),
