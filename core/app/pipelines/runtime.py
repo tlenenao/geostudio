@@ -199,6 +199,105 @@ def _materialize_reader(
     conn.execute(f"CREATE TEMP TABLE {_qi(view_name)} AS {cte} SELECT {select_list} FROM live")
 
 
+def _read_collection(
+    conn,
+    *,
+    session: Session,
+    tenant_id: str,
+    node_id: str,
+    params: dict,
+    view_name: str,
+    user: User,
+    base_uri: str,
+) -> int:
+    """reader.collection (registre READERS, app.pipelines.registries) —
+    corps identique à l'ancienne branche if/elif inline de _prepare()
+    (résolution _require_readable_collection_id + _table_info_for_collection
+    + _materialize_reader), seule sa forme change (fonction nommée plutôt que
+    branche inline, retourne le srid au lieu de l'écrire directement dans
+    srid_by_node — c'est l'appelant, _prepare(), qui l'affecte désormais).
+    Reste défini ICI (pas dans registries.py) : plusieurs tests
+    monkeypatchent `runtime._table_info_for_collection`/
+    `runtime._require_readable_collection_id` directement — un nom se
+    résout via le namespace du module où la fonction est DÉFINIE, jamais
+    celui d'où elle est appelée, donc ce déplacement préserve ces mocks."""
+    p = ReaderCollectionParams.model_validate(params)
+    table_name = _require_readable_collection_id(
+        session,
+        tenant_id=tenant_id,
+        user=user,
+        collection_id=p.collectionId,
+    )
+    table_info = _table_info_for_collection(session, table_name)
+    _materialize_reader(
+        conn,
+        view_name=view_name,
+        base_uri=base_uri,
+        tenant_id=tenant_id,
+        collection_id=p.collectionId,
+        table_info=table_info,
+    )
+    return table_info.srid or 4326
+
+
+def _read_connector_rest(
+    conn,
+    *,
+    session: Session,
+    tenant_id: str,
+    node_id: str,
+    params: dict,
+    view_name: str,
+    user: User,
+    base_uri: str,
+) -> int:
+    """reader.connector.rest (registre READERS) — même comportement que
+    l'ancienne branche inline de _prepare(). `user`/`base_uri` ignorés
+    (ce reader n'en a pas besoin) : présents uniquement pour que READERS
+    expose un appel uniforme à _prepare() (cf. app.pipelines.registries)."""
+    p = ReaderConnectorRestParams.model_validate(params)
+    try:
+        connector_runtime.materialize_rest_connector(
+            conn,
+            session=session,
+            tenant_id=tenant_id,
+            node_id=node_id,
+            params=p,
+            view_name=view_name,
+        )
+    except connector_runtime.ConnectorRuntimeError as exc:
+        raise PipelineRuntimeError(str(exc)) from exc
+    return 4326
+
+
+def _read_connector_postgres(
+    conn,
+    *,
+    session: Session,
+    tenant_id: str,
+    node_id: str,
+    params: dict,
+    view_name: str,
+    user: User,
+    base_uri: str,
+) -> int:
+    """reader.connector.postgres (registre READERS) — pendant de
+    _read_connector_rest ci-dessus, même rationale."""
+    p = ReaderConnectorPostgresParams.model_validate(params)
+    try:
+        connector_runtime.materialize_postgres_connector(
+            conn,
+            session=session,
+            tenant_id=tenant_id,
+            node_id=node_id,
+            params=p,
+            view_name=view_name,
+        )
+    except connector_runtime.ConnectorRuntimeError as exc:
+        raise PipelineRuntimeError(str(exc)) from exc
+    return 4326
+
+
 def _lock_down(conn: duckdb.DuckDBPyConnection) -> None:
     # allowed_directories doit être posé AVANT enable_external_access=false :
     # c'est la seule échappatoire documentée par DuckDB ("List of
@@ -245,6 +344,17 @@ def _prepare(
     Retourne (ordre topologique, view_name par node.id, srid par node.id
     pour les readers, srid par node.id pour la vue __join des 3 op
     binaires) — writer nodes n'ont pas encore de vue."""
+    # Import local (pas au niveau module) : app.pipelines.registries importe
+    # app.pipelines.runtime à SON niveau module (pour référencer les
+    # fonctions ci-dessous par attribut, cf. son docstring) — si cet import
+    # était au niveau module ici, les deux modules se chargeraient l'un
+    # l'autre en même temps, chacun avant que l'autre ait fini de définir ce
+    # dont il a besoin (cycle réel). Différé à l'intérieur de la fonction,
+    # il ne se déclenche qu'à l'exécution, quand app.pipelines.runtime est
+    # déjà entièrement chargé (cf. registries.py pour le raisonnement
+    # complet).
+    from app.pipelines.registries import READERS
+
     ordered = compiler.topological_order(payload.nodes, payload.edges)
     view_by_node: dict[str, str] = {}
     srid_by_node: dict[str, int] = {}
@@ -253,54 +363,19 @@ def _prepare(
         if node.kind != "reader":
             continue
         view_name = f"node_{node.id}"
-        if node.op == "reader.collection":
-            p = ReaderCollectionParams.model_validate(node.params)
-            table_name = _require_readable_collection_id(
-                session,
-                tenant_id=tenant_id,
-                user=user,
-                collection_id=p.collectionId,
-            )
-            table_info = _table_info_for_collection(session, table_name)
-            _materialize_reader(
-                conn,
-                view_name=view_name,
-                base_uri=base_uri,
-                tenant_id=tenant_id,
-                collection_id=p.collectionId,
-                table_info=table_info,
-            )
-            srid_by_node[node.id] = table_info.srid or 4326
-        elif node.op == "reader.connector.rest":
-            p = ReaderConnectorRestParams.model_validate(node.params)
-            try:
-                connector_runtime.materialize_rest_connector(
-                    conn,
-                    session=session,
-                    tenant_id=tenant_id,
-                    node_id=node.id,
-                    params=p,
-                    view_name=view_name,
-                )
-            except connector_runtime.ConnectorRuntimeError as exc:
-                raise PipelineRuntimeError(str(exc)) from exc
-            srid_by_node[node.id] = 4326
-        elif node.op == "reader.connector.postgres":
-            p = ReaderConnectorPostgresParams.model_validate(node.params)
-            try:
-                connector_runtime.materialize_postgres_connector(
-                    conn,
-                    session=session,
-                    tenant_id=tenant_id,
-                    node_id=node.id,
-                    params=p,
-                    view_name=view_name,
-                )
-            except connector_runtime.ConnectorRuntimeError as exc:
-                raise PipelineRuntimeError(str(exc)) from exc
-            srid_by_node[node.id] = 4326
-        else:
+        reader_fn = READERS.get(node.op)
+        if reader_fn is None:
             raise PipelineRuntimeError(f"unknown reader op '{node.op}'")
+        srid_by_node[node.id] = reader_fn(
+            conn,
+            session=session,
+            tenant_id=tenant_id,
+            node_id=node.id,
+            params=node.params,
+            view_name=view_name,
+            user=user,
+            base_uri=base_uri,
+        )
         view_by_node[node.id] = view_name
 
     join_srid_by_node: dict[str, int] = {}
