@@ -7,9 +7,9 @@ from app.auth.dependency import get_current_user
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
 from app.roles.privileges import Privilege
-from app.roles.repository import ensure_built_in_roles
+from app.roles.repository import create_role, ensure_built_in_roles
 from app.tenants.repository import get_or_create_default_tenant
-from app.users.repository import get_or_create_user
+from app.users.repository import get_or_create_user, set_user_role
 
 
 @pytest.fixture()
@@ -49,6 +49,7 @@ def env():
 
     app.dependency_overrides[db.get_session] = override_session
     client = TestClient(app)
+    client.session_factory = Session  # type: ignore[attr-defined]
     return app, client, admin, regular, role_ids
 
 
@@ -147,6 +148,33 @@ def test_removing_admin_roles_manage_from_the_only_holder_is_blocked(env):
 
     resp = client.patch(f"/roles/{created['id']}", json={"privileges": ["admin.users.manage"]})
     assert resp.status_code == 409
+
+
+def test_removing_admin_roles_manage_from_a_role_that_never_held_the_pair_is_blocked(env):
+    # SP-42 / F-securite-autorisation-07 : patch_role exigeait que le rôle
+    # édité porte les DEUX privilèges anti-lockout À LA FOIS avant même
+    # d'appeler would_orphan_privilege_holders — un rôle sur mesure ne
+    # portant QUE admin.roles.manage pouvait se faire retirer ce privilège
+    # sans qu'aucune garde ne s'exerce, même s'il en est le seul porteur
+    # restant du tenant. État construit par appel direct au dépôt (comme le
+    # scénario équivalent PATCH /users, cf. test_users_admin_routes.py) :
+    # aucun rôle du tenant ne porte les deux privilèges à la fois.
+    app, client, admin, regular, roles = env
+    Session = client.session_factory  # type: ignore[attr-defined]
+    with Session() as s:
+        r1 = create_role(s, tenant_id=admin.tenant_id, name="R1", privileges=["admin.users.manage"])
+        r2 = create_role(s, tenant_id=admin.tenant_id, name="R2", privileges=["admin.roles.manage"])
+        set_user_role(
+            s, tenant_id=admin.tenant_id, user_id=admin.id, role_id=r1.id, role_slug=r1.slug
+        )
+        set_user_role(
+            s, tenant_id=admin.tenant_id, user_id=regular.id, role_id=r2.id, role_slug=r2.slug
+        )
+        s.commit()
+
+    _as(app, admin)
+    resp = client.patch(f"/roles/{r2.id}", json={"privileges": []})
+    assert resp.status_code == 409, resp.text
 
 
 def test_moving_the_sole_conjoint_holder_off_a_custom_role_is_blocked(env):
