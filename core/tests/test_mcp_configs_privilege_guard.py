@@ -214,3 +214,57 @@ def test_reader_without_any_privilege_is_denied_on_create_pipeline(pipeline_app_
             },
         )
     assert "automation.manage" in error_text
+
+
+def test_save_app_config_refuses_a_submitted_kind_that_diverges_from_the_item(app_client):  # noqa: F811
+    # SP-42, revue des lots de correctifs 2/3bis (point 3, Important) : même
+    # défaut que sur la surface REST
+    # (test_configs_privilege_guard.py::
+    # test_analyst_cannot_escalate_privilege_by_submitting_a_different_kind_on_put)
+    # mais sur save_app_config, le seul tool MCP qui met à jour une config
+    # déjà existante (les autres — create_item, create_dataset,
+    # create_bookmark, create_pipeline, create_form_app — créent, il n'y a
+    # encore aucun kind enregistré à comparer). mock_user (Créateur par
+    # défaut) est ici rétrogradé vers Analyste (analytics.view, pas
+    # apps.manage) : sans le garde, il pourrait écraser la config "app"
+    # dont il reste propriétaire en soumettant kind="bookmark".
+    item_id = _seed_app_config(app_client)
+    with app_client.session_factory() as session:
+        roles = ensure_built_in_roles(session, tenant_id=app_client.tenant.id)
+        set_user_role(
+            session,
+            tenant_id=app_client.tenant.id,
+            user_id=app_client.mock_user.id,
+            role_id=roles["analyst"].id,
+            role_slug="analyst",
+        )
+        bookmark_target = items_repo.create_item(
+            session,
+            tenant_id=app_client.tenant.id,
+            owner_id=app_client.mock_user.id,
+            resource_type="app",
+            title="Cible du bookmark",
+        )
+        session.commit()
+        bookmark_target_id = bookmark_target.id
+
+    with app_client:
+        error_text = call_tool_expecting_error(
+            app_client,
+            "save_app_config",
+            {
+                "itemId": item_id,
+                "config": {
+                    "kind": "bookmark",
+                    "bookmark": {"appId": bookmark_target_id, "pageId": "p1"},
+                },
+            },
+        )
+    assert "kind" in error_text.lower()
+
+    # Non-régression : la config est restée "app", jamais écrasée par le
+    # "bookmark" refusé ci-dessus.
+    with app_client.session_factory() as session:
+        untouched = configs_repo.get_config_by_item(session, item_id)
+        assert untouched is not None
+        assert untouched.kind == "app"

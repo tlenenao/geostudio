@@ -144,6 +144,29 @@ def _require_privilege_for_kind(session: Session, user: User, config: BuilderCon
     require_privilege(session, user, privilege)
 
 
+# SP-42, revue des lots de correctifs 2/3bis (point 3, Important) :
+# _require_privilege_for_kind ci-dessus se cale sur le kind SOUMIS dans la
+# requête, jamais sur celui déjà enregistré pour cet item — repo.update_config
+# ne compare (et ne mute) jamais Config.kind (vérifié par lecture directe de
+# app/configs/repository.py). Qui détient `write` sur un item "map" mais
+# seulement analytics.view (pas maps.manage — cas réel : l'Analyste) pouvait
+# donc écraser la config de cette map en soumettant kind="bookmark" : la
+# garde consultait alors le privilège du kind soumis, pas celui de l'item.
+# Sur toute mise à jour d'une config déjà existante (jamais à la création,
+# où il n'existe encore aucun kind enregistré à comparer), le kind soumis
+# doit être identique à celui déjà enregistré — sinon 400, avant même de
+# consulter le catalogue de privilèges.
+def _require_kind_matches_existing(existing_kind: str, submitted_kind: str) -> None:
+    if submitted_kind != existing_kind:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"config kind cannot change on update: item is '{existing_kind}', "
+                f"got '{submitted_kind}'"
+            ),
+        )
+
+
 @router.post("/configs", response_model=ConfigRead, status_code=status.HTTP_201_CREATED)
 def create_config(
     request: CreateConfigRequest,
@@ -222,6 +245,7 @@ def update_config(
     if existing is None or existing.itemId is None:
         raise HTTPException(status_code=404, detail="config not found")
     _require_access(session, user=user, item_id=existing.itemId, action="write")
+    _require_kind_matches_existing(existing.kind, config.kind)
     _require_privilege_for_kind(session, user, config)
     _require_etl_enabled_for_pipeline(config)
     _require_export_enabled_for_report(config)
@@ -293,6 +317,15 @@ def rollback_config(
     # HORS du try/except ci-dessous : un privilège manquant est un refus
     # d'autorisation (403), pas un problème de validité de la version
     # restaurée (422) — les deux ne doivent pas se confondre.
+    #
+    # SP-42, revue des lots de correctifs 2/3bis (point 3) : même défense en
+    # profondeur qu'update_config/update_config_by_item ci-dessous — une
+    # révision stockée dont le kind diverge de celui de l'item (Config.kind,
+    # jamais muté par repo.update_config) ne peut apparaître qu'à travers une
+    # exploitation historique du même défaut ou un accès direct au
+    # repository ; /rollback ne doit pas la restaurer. Même raison de rang
+    # (400, hors du try/except) que le garde de privilège juste après.
+    _require_kind_matches_existing(existing.kind, candidate.kind)
     _require_privilege_for_kind(session, user, candidate)
     try:
         _require_etl_enabled_for_pipeline(candidate)
@@ -392,6 +425,7 @@ def update_config_by_item(
     existing = repo.get_config_by_item(session, item_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="config not found")
+    _require_kind_matches_existing(existing.kind, config.kind)
     _require_privilege_for_kind(session, user, config)
     _require_etl_enabled_for_pipeline(config)
     _require_export_enabled_for_report(config)

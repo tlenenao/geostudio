@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session as SASession
 from app import db
 from app.auth.dependency import get_current_user
 from app.collections.models import Collection
+from app.configs import repository as configs_repo
+from app.configs.schemas import BuilderConfig
 from app.db import get_session, init_db, make_engine, make_session_factory, request_scoped_session
 from app.items import repository as items_repo
 from app.main import create_app
@@ -350,3 +352,123 @@ def test_demoted_owner_can_no_longer_rollback_their_own_app_config(env):
     _as(app, creator)
     resp = client.post(f"/configs/{config_id}/rollback", json={"version": 1})
     assert resp.status_code == 403, resp.text
+
+
+def test_analyst_cannot_escalate_privilege_by_submitting_a_different_kind_on_put(env):
+    # SP-42, revue des lots de correctifs 2/3bis (point 3, Important) :
+    # _require_privilege_for_kind se cale sur le kind SOUMIS dans la
+    # requête, jamais sur celui déjà enregistré pour l'item — repo
+    # .update_config ne compare (et ne mute) jamais Config.kind. Un Analyste
+    # (qui ne porte que analytics.view/analytics.sql_lab.access/data.view/
+    # tasks.view, pas maps.manage) propriétaire d'une map — donc `write`
+    # dessus — pouvait écraser sa config en soumettant kind="bookmark" : la
+    # garde consultait alors analytics.view (qu'il porte) au lieu de
+    # maps.manage (qu'il ne porte pas). Créée directement via le repository,
+    # pas via POST /configs (qui refuserait la création elle-même — ce test
+    # cible la MISE À JOUR d'une config déjà existante).
+    app, client, _creator, reader = env
+    Session = client.session_factory  # type: ignore[attr-defined]
+    with Session() as s:
+        roles = ensure_built_in_roles(s, tenant_id=reader.tenant_id)
+        assert Privilege.MAPS_MANAGE.value not in roles["analyst"].privileges
+        assert Privilege.ANALYTICS_VIEW.value in roles["analyst"].privileges
+        analyst = get_or_create_user(
+            s,
+            tenant_id=reader.tenant_id,
+            oidc_sub="analyst-escalation-sub",
+            username="analyst-escalation",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        set_user_role(
+            s,
+            tenant_id=reader.tenant_id,
+            user_id=analyst.id,
+            role_id=roles["analyst"].id,
+            role_slug="analyst",
+        )
+        item = items_repo.create_item(
+            s,
+            tenant_id=reader.tenant_id,
+            owner_id=analyst.id,
+            resource_type="map",
+            title="Carte de l'analyste",
+        )
+        created = configs_repo.create_config(
+            s,
+            BuilderConfig(
+                version=1,
+                kind="map",
+                map={"basemap": {"style": "streets"}, "view": {"center": [0, 0], "zoom": 1}},
+            ),
+            item_id=item.id,
+            tenant_id=reader.tenant_id,
+        )
+        # Cible du bookmark : un app item que l'analyste possède lui-même
+        # (lisible sans dépendre d'un partage distinct) — sans lui,
+        # _validate_bookmark_payload rejetterait le payload en 422 "app not
+        # found" AVANT même d'atteindre la mise à jour, masquant la vraie
+        # question testée ici (le kind soumis peut-il diverger de celui de
+        # l'item ?) derrière un 422 accidentel plutôt qu'un succès réel.
+        bookmark_target = items_repo.create_item(
+            s,
+            tenant_id=reader.tenant_id,
+            owner_id=analyst.id,
+            resource_type="app",
+            title="Cible du bookmark",
+        )
+        s.commit()
+        config_id = created.id
+        item_id = item.id
+        analyst_id = analyst.id
+        bookmark_target_id = bookmark_target.id
+
+    with Session() as s:
+        analyst = s.get(User, analyst_id)
+        assert analyst is not None
+    _as(app, analyst)
+
+    bookmark_body = {
+        "kind": "bookmark",
+        "bookmark": {"appId": bookmark_target_id, "pageId": "p1"},
+    }
+    resp = client.put(f"/configs/{config_id}", json=bookmark_body)
+    assert resp.status_code == 400, resp.text
+
+    resp_by_item = client.put(f"/configs/by-item/{item_id}", json=bookmark_body)
+    assert resp_by_item.status_code == 400, resp_by_item.text
+
+    # Non-régression : la config de la map n'a pas bougé — toujours "map",
+    # jamais écrasée par le "bookmark" refusé ci-dessus.
+    with Session() as s:
+        untouched = configs_repo.get_config(s, config_id)
+        assert untouched is not None
+        assert untouched.kind == "map"
+
+
+def test_rollback_refuses_a_stored_revision_whose_kind_diverges_from_the_item(env):
+    # Défense en profondeur, même point : Config.kind n'est jamais muté par
+    # repo.update_config (vérifié par lecture directe du repository) — une
+    # révision stockée dont le kind diverge de celui de l'item ne peut donc
+    # apparaître qu'à travers un accès direct au repository (simulé ici) ou
+    # une exploitation historique du même défaut, avant ce correctif.
+    # /rollback ne doit pas la restaurer.
+    app, client, creator, _reader = env
+    _as(app, creator)
+    created = client.post("/configs", json={"title": "x", "config": _body("map")}).json()
+    config_id = created["id"]
+
+    Session = client.session_factory  # type: ignore[attr-defined]
+    with Session() as s:
+        configs_repo.update_config(
+            s,
+            config_id,
+            BuilderConfig(version=1, kind="bookmark", bookmark={"appId": "x", "pageId": "p1"}),
+            tenant_id=creator.tenant_id,
+        )
+        s.commit()
+
+    _as(app, creator)
+    resp = client.post(f"/configs/{config_id}/rollback", json={"version": 2})
+    assert resp.status_code == 400, resp.text

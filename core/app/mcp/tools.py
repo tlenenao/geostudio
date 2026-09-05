@@ -31,7 +31,7 @@ from app.configs.extension_permissions import (
 )
 from app.configs.pipeline_validation import validate_pipeline_payload
 from app.configs.repository import ConfigRead
-from app.configs.routes import _require_privilege_for_kind
+from app.configs.routes import _require_kind_matches_existing, _require_privilege_for_kind
 from app.configs.schemas import (
     BookmarkCrossFilterEntry,
     BookmarkPayload,
@@ -203,6 +203,19 @@ def _require_config_privilege(session, config: BuilderConfig, *, user: User) -> 
     _require_access above."""
     try:
         _require_privilege_for_kind(session, user, config)
+    except HTTPException as exc:
+        raise ValueError(exc.detail) from exc
+
+
+def _require_kind_unchanged(existing_kind: str, submitted_kind: str) -> None:
+    """SP-42, revue des lots de correctifs 2/3bis (point 3) : mirrors
+    app.configs.routes._require_kind_matches_existing for save_app_config,
+    the only MCP tool that updates an already-existing config (the other
+    call sites in this module all create — there is no existing kind to
+    compare yet) — raises ValueError instead of HTTPException, same
+    rationale as _require_config_privilege above."""
+    try:
+        _require_kind_matches_existing(existing_kind, submitted_kind)
     except HTTPException as exc:
         raise ValueError(exc.detail) from exc
 
@@ -454,6 +467,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
             existing = configs_repo.get_config_by_item(session, itemId)
             if existing is None:
                 raise ValueError("config not found")
+            _require_kind_unchanged(existing.kind, config.kind)
             _require_config_privilege(session, config, user=user)
             _validate_extension_scope(session, config, tenant_id=user.tenant_id)
             result = configs_repo.update_config(
