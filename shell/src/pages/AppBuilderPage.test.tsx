@@ -2,10 +2,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { AppConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
+import { getWidget, registerWidget } from "../builder/registry";
 import { AppBuilderPage } from "./AppBuilderPage";
 import type { AuthState } from "../auth/useAuth";
 
@@ -191,6 +193,62 @@ test("edits a position at the sm breakpoint and persists layouts.sm", async () =
   const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
   expect(saved.layout.items[0].x).toBe(0); // base untouched
   expect(saved.layout.items[0].layouts?.sm).toEqual({ x: 1, y: 0, w: 4, h: 2 });
+});
+
+// REV-054 : PropsPanel n'avait pas de key par widget sélectionné, donc les
+// états locaux transitoires d'un PropsPanel de widget (busy/erreur/mode
+// avancé — MapSymbologyEditor/PopupEditor en particulier) fuyaient d'un
+// widget à l'autre au changement de sélection dans le builder d'App
+// lui-même, pas seulement dans LayoutEditor (widgets conteneurs) — même
+// bug, deux sites à corriger, testés séparément.
+function registerProbeWidgetOnce() {
+  if (getWidget("probe")) return;
+  registerWidget({
+    type: "probe",
+    label: "Sonde",
+    defaultProps: {},
+    defaultSize: { w: 1, h: 1 },
+    PropsPanel: () => {
+      const [advanced, setAdvanced] = useState(false);
+      return (
+        <label>
+          Mode avancé
+          <input
+            type="checkbox"
+            checked={advanced}
+            onChange={(e) => setAdvanced(e.target.checked)}
+          />
+        </label>
+      );
+    },
+    Component: () => <div />,
+  });
+}
+
+test("REV-054 : changer de widget sélectionné remonte PropsPanel (pas de fuite d'état local transitoire)", async () => {
+  registerProbeWidgetOnce();
+  const withTwoProbes: AppConfig = {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [
+        { id: "w1", widget: "probe", x: 0, y: 0, w: 1, h: 1, props: {} },
+        { id: "w2", widget: "probe", x: 1, y: 0, w: 1, h: 1, props: {} },
+      ],
+    },
+  };
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(withTwoProbes) });
+
+  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+  await userEvent.click(screen.getByLabelText("Mode avancé"));
+  expect(screen.getByLabelText("Mode avancé")).toBeChecked();
+
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-w2" }));
+  expect(screen.getByLabelText("Mode avancé")).not.toBeChecked();
 });
 
 test("edits the theme's primary color and persists it", async () => {

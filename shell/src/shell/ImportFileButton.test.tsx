@@ -429,6 +429,43 @@ test("SP-42/F-shell-pages-01 (fusion F-shell-pages-02) : masque le bouton pour u
   );
 });
 
+test("REV-087 : Échap/Annuler n'abandonnent pas un import en vol (busy)", async () => {
+  server.use(
+    http.post("https://core.test/v1/uploads/presign", () =>
+      HttpResponse.json({
+        uploadUrl: "https://minio.test/upload-9",
+        key: "t/rev87-villes.geojson",
+      }),
+    ),
+    http.put("https://minio.test/upload-9", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/v1/uploads", () => HttpResponse.json({ jobId: "job-9" })),
+    http.get("https://core.test/v1/uploads/job-9", () =>
+      HttpResponse.json({
+        status: "pending",
+        errorMessage: null,
+        collectionId: null,
+        itemId: null,
+      }),
+    ),
+  );
+
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), geojsonFile());
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "Villes REV-087");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+
+  await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled());
+  await userEvent.keyboard("{Escape}");
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+});
+
 test("does not poll again or update state after the drawer is unmounted mid-import", async () => {
   let pollCalls = 0;
   server.use(

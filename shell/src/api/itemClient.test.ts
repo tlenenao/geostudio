@@ -251,6 +251,20 @@ test("deleteItem tolerates a 404 as success", async () => {
   await expect(makeClient().deleteItem("nope")).resolves.toBeUndefined();
 });
 
+test("deleteItem relaie le detail du 409 (kinds référençants) dans le message d'erreur", async () => {
+  server.use(
+    http.delete("https://core.test/v1/configs/by-item/:pk", () =>
+      HttpResponse.json(
+        { detail: "still referenced by config kind(s): app, alert" },
+        { status: 409 },
+      ),
+    ),
+  );
+  await expect(makeClient().deleteItem("used")).rejects.toThrow(
+    /still referenced by config kind\(s\): app, alert/,
+  );
+});
+
 test("listGroups maps name to title", async () => {
   const groups = await makeClient().listGroups();
   expect(groups).toEqual([

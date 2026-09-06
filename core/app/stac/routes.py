@@ -24,7 +24,7 @@ from app.features.routes import get_features_repo, get_rls_scope
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 from app.stac import serializers
-from app.stac.extent import estimated_bbox_4326
+from app.stac.extent import rls_scoped_bbox_4326
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ DEFAULT_LIMIT = 100
 
 
 def get_bbox_provider():  # overridé en test SQLite (ST_EstimatedExtent absent)
-    return estimated_bbox_4326
+    return rls_scoped_bbox_4326
 
 
 def _base(request: Request) -> str:

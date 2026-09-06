@@ -39,10 +39,37 @@ def decide(
 ) -> bool:
     """La règle d'autorisation, sans accès à la base.
 
-    Deux appelants : `can()` ci-dessous (une ligne, une requête de rôles) et
-    `app.items.repository._permissions()` (douze lignes, une requête de rôles
-    pour toutes). Ils doivent conclure pareil — `tests/test_sharing_decide.py`
-    le prouve sur le produit cartésien complet des situations.
+    Appelants réels (vérifié par lecture de code, pas par ce commentaire —
+    piège CLAUDE.md n°3/12, cette liste a déjà dérivé une fois) :
+
+    - `can()` ci-dessous (une ligne, une requête de rôles) ;
+    - `app.items.repository._permissions()` (via `_permissions_by_id`,
+      douze lignes, une requête de rôles pour toute une page) — pur
+      passe-plat vers `decide()`, aucune surcharge ;
+    - `app.collections.repository._collection_permissions()` (via
+      `collection_permissions_by_id`) — **surcharge délibérément** le
+      verdict de `decide()` pour deux actions : `delete` ignore `decide()`
+      et vaut `can_manage_collections` (privilège `admin.collections.manage`,
+      jamais un rôle de partage) ; `write` vaut
+      `col.editable and decide(...)` (une collection non éditable refuse
+      l'écriture même à un éditeur/au propriétaire). Seuls `read`/`share`
+      sont le verdict brut de `decide()` ;
+    - `app.harvest.routes` (`list_layers`/`list_feature_layers`, deux
+      appels directs — ajoutés par SP-49 pour éviter le N+1, sans passer
+      par `can()` ni par un `AccessFacts`) : appel direct, sans logique de
+      surcharge, donc en phase avec `decide()` par construction, pas par
+      preuve de parité.
+
+    **Portée de la preuve de parité** : `tests/test_sharing_decide.py`
+    prouve `can()` ≡ `decide()` sur le produit cartésien complet des
+    situations (`test_parity_with_can_over_every_situation`), et prouve la
+    parité `read`/`share` de `_permissions_by_id`/`collection_permissions_by_id`
+    avec `decide()` (`test_parity_with_items_permissions_by_id`,
+    `test_parity_with_collection_permissions_by_id` — ce dernier vérifie
+    aussi explicitement les deux surcharges `delete`/`write` ci-dessus).
+    Les deux appels directs d'`app.harvest.routes` ne sont couverts par
+    aucun test de parité dédié : ils ne réimplémentent rien à comparer,
+    ce sont des appels nus à cette fonction.
     """
     # Le rôle admin ne court-circuite QUE les collections (spec SP-3 §2) :
     # la sémantique de partage des items (SP-1, testée) ne bouge pas.

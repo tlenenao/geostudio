@@ -29,7 +29,7 @@ from app.ingestion.storage import (
 )
 from app.ingestion.tasks import run_ingestion_task
 from app.quotas.service import check_storage_quota_or_raise
-from app.roles.guards import require_privilege
+from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.users.models import User
 
@@ -185,7 +185,13 @@ def get_upload_job(
     user: User = Depends(get_current_user),
 ) -> IngestionJobStatus:
     job = repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
-    if job is None:
+    # REV-010 : le tenant seul ne suffit pas à autoriser la lecture — le
+    # statut/message d'erreur d'un job d'import est visible par son auteur,
+    # ou par tout porteur de data.manage (même patron d'exception que les
+    # autres surfaces de cette route, réservées à data.manage/maps.manage).
+    if job is None or (
+        job.created_by != user.id and not has_privilege(session, user, Privilege.DATA_MANAGE.value)
+    ):
         raise HTTPException(status_code=404, detail="job not found")
     return IngestionJobStatus(
         status=job.status,

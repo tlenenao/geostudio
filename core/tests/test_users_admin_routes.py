@@ -206,3 +206,86 @@ def test_list_users_filters_by_username(env):
 
     body_all = client.get("/v1/users").json()
     assert body_all["total"] == 3
+
+
+# REV-085 : GET /users appelait get_role() une fois PAR utilisateur de la
+# page (une requête par ligne) — même patron de garde-fou que
+# tests/test_harvest_layers_no_nplus1.py : le nombre de requêtes SQL ne doit
+# pas croître avec le nombre d'utilisateurs de la page.
+def _build_users(n_users: int):
+    from app.roles.repository import ensure_built_in_roles
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        ensure_built_in_roles(s, tenant_id=tenant.id)
+        admin = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="admin",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        for i in range(n_users):
+            get_or_create_user(
+                s,
+                tenant_id=tenant.id,
+                oidc_sub=f"u{i}",
+                username=f"user{i}",
+                email=None,
+                first_name="",
+                last_name="",
+            )
+        s.commit()
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    app.dependency_overrides[get_current_user] = lambda: admin
+    return engine, TestClient(app)
+
+
+def _count_queries(engine, fn):
+    from sqlalchemy import event
+
+    seen = 0
+
+    def bump(conn, cursor, statement, params, context, executemany):
+        nonlocal seen
+        seen += 1
+
+    event.listen(engine, "before_cursor_execute", bump)
+    try:
+        fn()
+    finally:
+        event.remove(engine, "before_cursor_execute", bump)
+    return seen
+
+
+@pytest.mark.parametrize("small,large", [(2, 12)])
+def test_list_users_query_count_does_not_grow_with_page_size(small, large):
+    counts = {}
+    for n in (small, large):
+        engine, client = _build_users(n)
+        try:
+
+            def call(client=client, n=n):
+                response = client.get(f"/v1/users?pageSize={n + 5}")
+                assert response.status_code == 200, response.text
+                assert response.json()["total"] == n + 1  # + l'admin de la fixture
+
+            counts[n] = _count_queries(engine, call)
+        finally:
+            engine.dispose()
+    assert counts[small] == counts[large], (
+        f"le nombre de requêtes croît avec le nombre d'utilisateurs : {counts} — "
+        "c'est un N+1, probablement get_role() appelé ligne par ligne"
+    )

@@ -254,6 +254,106 @@ def test_get_upload_job_cross_tenant_returns_404(env):
     assert response.status_code == 404
 
 
+def test_get_upload_job_other_user_same_tenant_returns_404(env):
+    # REV-010 : `get_upload_job` ne filtrait que par tenant_id — un autre
+    # utilisateur du MEME tenant (sans data.manage) pouvait lire le
+    # statut/message d'erreur du job d'import d'alice.
+    from app.users.repository import get_or_create_user
+
+    client, Session, tenant, alice, _deferred, _fake_s3 = env
+    job_id = client.post(
+        "/v1/uploads",
+        json={
+            "key": f"{tenant.id}/abc-villes.geojson",
+            "filename": "villes.geojson",
+            "collectionTitle": "Villes",
+        },
+    ).json()["jobId"]
+
+    with Session() as s:
+        from app.roles.repository import ensure_built_in_roles
+        from app.users.repository import set_user_role
+
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        bob = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=bob.id,
+            role_id=roles["reader"].id,
+            role_slug=roles["reader"].slug,
+        )
+        s.commit()
+        s.refresh(bob)
+    bob.role_id = roles["reader"].id
+    bob.is_admin = False
+
+    client.app.dependency_overrides[get_current_user] = lambda: bob
+    try:
+        response = client.get(f"/v1/uploads/{job_id}")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: alice
+    assert response.status_code == 404
+
+
+def test_get_upload_job_readable_by_holder_of_data_manage(env):
+    # REV-010 : un porteur de data.manage (ex. un Créateur) doit pouvoir lire
+    # le job d'un autre utilisateur du même tenant, même s'il ne l'a pas créé
+    # lui-même — c'est l'exception explicitement prévue par le correctif.
+    from app.users.repository import get_or_create_user
+
+    client, Session, tenant, alice, _deferred, _fake_s3 = env
+    job_id = client.post(
+        "/v1/uploads",
+        json={
+            "key": f"{tenant.id}/abc-villes.geojson",
+            "filename": "villes.geojson",
+            "collectionTitle": "Villes",
+        },
+    ).json()["jobId"]
+
+    with Session() as s:
+        from app.roles.repository import ensure_built_in_roles
+        from app.users.repository import set_user_role
+
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        carol = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="c",
+            username="carol",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=carol.id,
+            role_id=roles["creator"].id,
+            role_slug=roles["creator"].slug,
+        )
+        s.commit()
+        s.refresh(carol)
+    carol.role_id = roles["creator"].id
+    carol.is_admin = False
+
+    client.app.dependency_overrides[get_current_user] = lambda: carol
+    try:
+        response = client.get(f"/v1/uploads/{job_id}")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: alice
+    assert response.status_code == 200
+
+
 def test_create_upload_job_is_audited(env):
     client, Session, tenant, alice, _deferred, _fake_s3 = env
     client.post(

@@ -13,6 +13,7 @@ from app.analytics.aggregate import (
     AggregateMeasure,
     AggregateRequestBody,
     UnknownAggregateField,
+    _valid_column_names,
     run_collection_aggregate,
 )
 from app.collections.introspection import ColumnInfo, TableInfo
@@ -265,6 +266,40 @@ def test_empty_collection_returns_empty_rows_without_error(tmp_path, conn):
     )
     assert category_key == "region"
     assert rows == []
+
+
+def test_valid_column_names_excludes_tenant_id(tmp_path, conn):
+    # REV-014 : introspect_table (app.collections.introspection_pg) ne filtre
+    # jamais "tenant_id" hors des colonnes réelles d'une table (seule la
+    # colonne géométrie l'est) — _valid_column_names doit l'exclure
+    # explicitement, comme les trois autres surfaces de lecture de features
+    # (app.features.repository/tiles), pour qu'un groupBy/filtre sur
+    # "tenant_id" soit rejeté comme n'importe quel champ interne inconnu.
+    table_info_with_tenant_id = TableInfo(
+        table_name="villes",
+        pk_column="id",
+        geometry_column="geometry",
+        geometry_type="Point",
+        srid=4326,
+        columns=[
+            ColumnInfo(name="tenant_id", type="string", required=True),
+            ColumnInfo(name="region", type="string", required=True),
+        ],
+    )
+    assert "tenant_id" not in _valid_column_names(table_info_with_tenant_id)
+
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2025", 10, lsn=1)])
+    request = AggregateRequestBody(groupBy="tenant_id")
+    with pytest.raises(UnknownAggregateField) as exc_info:
+        run_collection_aggregate(
+            conn,
+            base_uri=str(tmp_path),
+            tenant_id="t1",
+            collection_id="villes",
+            table_info=table_info_with_tenant_id,
+            request=request,
+        )
+    assert exc_info.value.field == "groupBy"
 
 
 def test_unknown_group_by_field_raises_with_field_name(tmp_path, conn):

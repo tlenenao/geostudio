@@ -11,7 +11,14 @@ const SECTION_LABEL: Record<PipelineNodeKind, string> = {
   writer: t("pipelinePalette.sectionWriters"),
 };
 
-export function PipelinePalette() {
+// REV-060 (backlog 2026-09-04) : le drag-and-drop était l'unique moyen
+// d'ajouter une étape — pas de repli clavier/clic, contrairement à
+// WidgetPalette.tsx (App Builder) qui expose déjà un onClick pour le même
+// problème. `onAdd` ajoute le nœud à une position par défaut du canevas ;
+// le drag existant reste le chemin de placement précis, `onAdd` n'est
+// qu'un repli optionnel — le seul consommateur réel (PipelineBuilderPage)
+// le fournit toujours.
+export function PipelinePalette({ onAdd }: { onAdd?: (op: string) => void }) {
   const opsQuery = usePipelineOps();
   const catalog = opsQuery.data ?? {};
   const byKind: Record<PipelineNodeKind, string[]> = { reader: [], transform: [], writer: [] };
@@ -25,16 +32,18 @@ export function PipelinePalette() {
           <ul className="flex flex-col gap-1">
             {byKind[kind].map((op) => (
               <li key={op}>
-                <div
+                <button
+                  type="button"
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.setData(PIPELINE_OP_DND_TYPE, op);
                     e.dataTransfer.effectAllowed = "move";
                   }}
-                  className="cursor-grab rounded border border-rule bg-surface px-2 py-1 hover:bg-sunken"
+                  onClick={() => onAdd?.(op)}
+                  className="w-full cursor-grab rounded border border-rule bg-surface px-2 py-1 text-left text-ink hover:bg-sunken"
                 >
                   {op}
-                </div>
+                </button>
               </li>
             ))}
           </ul>

@@ -151,7 +151,7 @@ test("disables a non-registrable candidate and shows its reason", async () => {
   expect(poiOption).not.toBeDisabled();
 });
 
-test("disables the register submit button when the instance is in read-only demo mode", async () => {
+test("REV-089 : masque le bouton Enregistrer une table en mode démo lecture seule (supersède l'ancienne doctrine « soumission désactivée »)", async () => {
   server.use(
     http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
     http.get("https://core.test/v1/collections/candidates", () =>
@@ -170,9 +170,10 @@ test("disables the register submit button when the instance is in read-only demo
     http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
   );
   render(<Harness />);
-  await userEvent.click(await screen.findByRole("button", { name: "Enregistrer une table" }));
-  await userEvent.selectOptions(await screen.findByLabelText("Table"), "points_interet");
-  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled());
+  await screen.findByRole("heading", { name: "Collections" });
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Enregistrer une table" })).not.toBeInTheDocument(),
+  );
 });
 
 test("edits a collection via the row action", async () => {
@@ -246,21 +247,6 @@ test("surfaces an alert when editing a collection fails", async () => {
   await waitFor(() =>
     expect(screen.getByRole("alert")).toHaveTextContent("Échec de la mise à jour."),
   );
-});
-
-test("disables the edit submit button when the instance is in read-only demo mode", async () => {
-  server.use(
-    http.get("https://core.test/v1/collections", () =>
-      HttpResponse.json({ collections: [INCIDENTS] }),
-    ),
-    http.get("https://core.test/v1/collections/candidates", () =>
-      HttpResponse.json({ candidates: [] }),
-    ),
-    http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
-  );
-  render(<Harness />);
-  await userEvent.click(await screen.findByRole("button", { name: "Éditer" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled());
 });
 
 test("deletes a collection after confirming", async () => {
@@ -366,26 +352,13 @@ test("shares a collection via the row action", async () => {
   await waitFor(() => expect(putBody).toEqual({ public: true, groups: [] }));
 });
 
-test("disables the share submit button when the instance is in read-only demo mode", async () => {
-  server.use(
-    http.get("https://core.test/v1/collections", () =>
-      HttpResponse.json({ collections: [INCIDENTS] }),
-    ),
-    http.get("https://core.test/v1/collections/candidates", () =>
-      HttpResponse.json({ candidates: [] }),
-    ),
-    http.get("https://core.test/v1/groups", () =>
-      HttpResponse.json([{ id: "g1", name: "Équipe terrain" }]),
-    ),
-    http.get("https://core.test/v1/collections/incidents/sharing", () =>
-      HttpResponse.json({ public: false, groups: [] }),
-    ),
-    http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
-  );
-  render(<Harness />);
-  await userEvent.click(await screen.findByRole("button", { name: "Partager" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled());
-});
+// Les anciens tests "disables the edit/share submit button when the
+// instance is in read-only demo mode" testaient la doctrine superseded par
+// REV-089 : au lieu de rendre le déclencheur (Éditer/Partager) puis
+// désactiver sa soumission, la ligne masque désormais entièrement ces
+// boutons sous !readOnly (cf. test REV-089 plus haut, qui couvre déjà
+// Éditer/Partager/Supprimer avec cette même fixture INCIDENTS) — supprimés
+// comme irréalisables (le déclencheur n'existe plus dans le DOM).
 
 test("switching from edit to share on a different row closes the edit panel (exclusivité mutuelle)", async () => {
   const other: CollectionAdminFixture = { ...INCIDENTS, id: "parcs", title: "Parcs" };
@@ -485,6 +458,26 @@ test("SP-42/F-securite-autorisation-06 : verrouille Éditer/Partager quand permi
   // Supprimer n'est pas concerné par cette trouvaille (le cœur ne gate pas
   // la suppression sur write/share) : reste actionnable.
   expect(screen.getByRole("button", { name: "Supprimer" })).not.toBeDisabled();
+});
+
+test("REV-089 : masque les actions mutantes (Enregistrer/Éditer/Partager/Supprimer) en mode démo lecture seule, comme HarvestSourcesAdminPage", async () => {
+  server.use(
+    http.get("https://core.test/v1/collections", () =>
+      HttpResponse.json({ collections: [INCIDENTS] }),
+    ),
+    http.get("https://core.test/v1/collections/candidates", () =>
+      HttpResponse.json({ candidates: [] }),
+    ),
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
+  );
+  render(<Harness />);
+  await screen.findByText("Incidents");
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Enregistrer une table" })).not.toBeInTheDocument(),
+  );
+  expect(screen.queryByRole("button", { name: "Éditer" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Partager" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Supprimer" })).not.toBeInTheDocument();
 });
 
 test("GAP-40 : un champ de recherche relaie q à listCollections", async () => {

@@ -418,6 +418,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                   {t("appBuilder.propertiesLabel")}
                 </p>
                 <PropsPanel
+                  key={selected?.id ?? "none"}
                   item={selected}
                   dataSources={draft.dataSources}
                   theme={draft.theme}

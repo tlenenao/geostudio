@@ -105,17 +105,35 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
   (cf. `## Pièges récurrents`).
 - Commits **conventional** (`feat(shell): …`, `fix(core): …`), petits, un sujet.
 - Docs et messages utilisateur en **français** ; code/identifiants en anglais.
-- Branche de travail : `dev` ; `main` reçoit les états stables (merge).
+- Branche de travail : **`dev` uniquement, en local** (décision 2026-09-06,
+  après la découverte qu'un `main` local resté figé depuis avant la
+  réécriture d'historique de SP-45 divergeait de `origin/main` sur ~2000
+  commits — un artefact sans valeur, jamais un état à préserver). Ne pas
+  créer ni conserver de branche `main` locale. Promotion vers `main` = **PR
+  GitHub `origin/dev` → `origin/main`** (`git push origin dev` puis
+  `gh pr create --base main --head dev`), jamais un merge local suivi d'un
+  push direct sur `main`. Les worktrees/branches de travail éphémères
+  (`.claude/worktrees/agent-*`, branches de reprise) sont supprimés dès leur
+  fusion dans `dev` — ne pas laisser le dépôt accumuler des dizaines de
+  worktrees/branches orphelins (piège vécu le 2026-09-06 : 29 worktrees et
+  autant de branches locales périmées retrouvés en une seule session,
+  certains avec des fichiers root-owned laissés par des conteneurs Docker,
+  supprimables seulement avec confirmation explicite).
 - **À la clôture d'un SP** : une ligne dans `### Livré` ci-dessous, et l'entrée
   détaillée dans `docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md`
   (pas de récit long dans ce fichier — il est chargé à chaque session).
   **Obligatoire dans le même geste, jamais différé** : mettre à jour l'état
   des `GAP-nn` concernés dans `docs/revue/2026-09-04-analyse-gaps.md` (ouvert
-  → fermé, référence à la SP) et les colonnes concernées de
-  `docs/revue/2026-09-04-matrice-fonctionnalites.md`. Raison (piège n°12,
-  vécu le 2026-09-06) : ces deux documents sont restés des mois sans être
-  retouchés pendant que 17 SP fermaient des dizaines de gaps qu'ils
-  décrivent — le récit de `### Livré` était correct, mais ces deux
+  → fermé, référence à la SP), et **régénérer le bilan de fonctionnalités** —
+  `cd core && PYTHONPATH=. uv run python scripts/feature_health_cli.py --repo .. --write` —
+  après avoir ajouté à `docs/revue/inventaire-fonctionnalites.jsonl` toute
+  surface nouvellement livrée (route REST, outil MCP, route shell). La CI
+  refuse une surface non inventoriée (`core/tests/test_feature_inventory.py`) :
+  ce n'est plus une discipline, c'est une porte. La matrice datée
+  `2026-09-04-matrice-fonctionnalites.md` est **gelée** et ne se met plus à jour.
+  Raison (piège n°12, vécu le 2026-09-06) : ces deux documents sont restés des
+  mois sans être retouchés pendant que 17 SP fermaient des dizaines de gaps
+  qu'ils décrivent — le récit de `### Livré` était correct, mais ces deux
   documents-là, non consultés, avaient dérivé au point de contredire le code
   réel (`backlog.md` gardait 8 entrées `ouvert` déjà fermées). Ne pas laisser
   ces documents rejouer ce piège.
@@ -207,6 +225,15 @@ cd core && PYTHONPATH=. \
   CORE_SECRETS_MASTER_KEY="AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" \
   uv run python scripts/export_openapi.py openapi.json
 cd ../shell && npm run gen:api-types     # → src/api/generated/core-schema.d.ts
+
+# régénérer le bilan de fonctionnalités (SP-61) — À FAIRE à la clôture de
+# tout SP qui livre une surface nouvelle (route REST, outil MCP, route
+# shell), après l'avoir ajoutée à docs/revue/inventaire-fonctionnalites.jsonl.
+# La commande nue échoue en ModuleNotFoundError: scripts — il faut PYTHONPATH=. :
+cd core && PYTHONPATH=. uv run python scripts/feature_health_cli.py --repo .. --write
+# --check (sans --write) est la porte CI : sort en erreur si une surface
+# n'est pas inventoriée ou si la santé médiane passe sous le plancher mesuré
+# (core/scripts/feature_health_thresholds.json).
 
 # stack
 docker compose up -d # nécessite .env (cf. .env.example) ; 11 services par
@@ -1122,6 +1149,87 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   exclusion volontaire (fragilité `runtime.py` post-SP-43, ~57 monkeypatchs
   de test) ; `introspection_pg.py` n'avait rien à migrer (seul un appel à la
   fonction SQL native `quote_ident()`, pas le helper Python).
+- **SP-61** — remplace la matrice de fonctionnalités écrite à la main
+  (SP-42, gelée) par une commande rejouable
+  (`core/scripts/feature_health/`, stdlib seule, n'importe jamais `app`,
+  ni base ni `.env`) : quatre sous-scores mesurés sur le dépôt réel
+  (atteignabilité — lien shell entrant réel, GAP-80/`/analytics/sql`
+  retrouvés mécaniquement ; garde — index AST des 147 routes REST/27
+  outils MCP, résolution de garde en profondeur 2, `openapi.json` en
+  contre-témoin puisqu'il omet 26 routes réelles derrière un flag de
+  capacité ; tests — `core/coverage.xml`/`shell/coverage/
+  coverage-summary.json`/`test_deployability.py` ; dette ouverte —
+  `analyse-gaps.md`/`backlog.md` lus sans être dupliqués), agrégés en une
+  **santé** 0-100 pondérée (`None` = non applicable, jamais 0, poids
+  renormalisés) jamais moyennée avec la **priorité** déclarée
+  (`docs/revue/inventaire-fonctionnalites.jsonl`, 307 lignes amorcées
+  depuis la matrice SP-42 puis réconciliées à la main jusqu'à un
+  garde-fou CI vert), rendus HTML+Markdown depuis une source unique
+  (`docs/revue/bilan-fonctionnalites.{html,md}`) et un journal
+  append-only (`historique-sante.jsonl`). `core/tests/
+  test_feature_inventory.py` fait désormais échouer la CI dès qu'une
+  route REST, un outil MCP ou une route shell existe dans le code sans
+  ligne d'inventaire correspondante — la classe de dérive documentée par
+  le piège n°12 (17 SP sans qu'un document de revue soit retouché)
+  devient une porte, pas une discipline. Planchers mesurés et non
+  arrondis avec marge (doctrine `.coverage-threshold`/
+  `.bundle-size-threshold`) : santé médiane 93 (mesuré 93,05), santé
+  plancher priorité haute 40 (mesuré 40,0, tiré par 3 fonctionnalités de
+  déploiement/sauvegarde sans surface REST/MCP à garder). **3 défauts
+  réels trouvés et corrigés en cours de plan, pas de simples écarts de
+  texte de plan** : (1) revue de la Tâche 4 — `open_gaps()` scannait tout
+  le document `analyse-gaps.md` au lieu du seul tableau d'état et
+  matchait le statut par sous-chaîne, faisant passer GAP-03/39/46/47/67
+  pour ouverts alors qu'ils sont **Fermé** (3 avec des chemins de preuve
+  réels, qui auraient faussé le score de dette de fonctionnalités sans
+  rapport) — corrigé par un scan borné au tableau + un matching par mot
+  entier, avec au passage `open_revs()` qui perdait REV-164 (forme
+  alternative de la ligne État) et un mésaccord docstring/code sur la
+  pénalité « inconnu » (−10 documenté, −20 réellement appliqué, le code
+  avait raison) ; (2) revue de la Tâche 5 — description périmée d'une
+  entrée d'inventaire décrivant encore `UsagePage.tsx` (SP-47) comme un
+  placeholder « bientôt disponible » ; (3) revue finale de branche —
+  invariant `publiques` (Tâche 5) jamais recoupé contre l'ensemble réel
+  des routes sans garde de l'index AST (Tâche 2) : une déclaration
+  `publiques` erronée aurait pu rester invisible à tous les garde-fous
+  existants — épinglé par un nouveau test de bijection, et un test de
+  câblage CI (`test_feature_health_gate_runs_in_ci`) resserré après
+  falsification (il restait vert même quand le job réel invoquait
+  `--write` au lieu de `--check`, une sous-chaîne satisfaite ailleurs
+  dans `ci.yml`). Trouvaille auto-corrigée par la Tâche 8 elle-même,
+  avant tout commit : le premier jet de la nouvelle entrée `GAP-81`
+  (`/analytics/sql` inatteignable, même classe que GAP-80) citait des
+  chemins de preuve partagés (`routes.tsx`/`domainRoutes.ts`) qui
+  auraient silencieusement pénalisé le score de dette de 6
+  fonctionnalités sans rapport — repointé sur le seul
+  `SqlLabPage.tsx`, revérifié à un score modifié unique. **Incident de
+  process, sans rapport avec le code** : le premier sous-agent de la
+  Tâche 1 a travaillé et committé dans le checkout principal (`dev`) au
+  lieu du worktree dédié — repéré avant toute revue, corrigé par
+  cherry-pick du commit vers la branche du worktree puis
+  `git reset --hard` sur `dev` (rien n'était poussé). **2 trouvailles de
+  la revue finale de branche documentées sans être corrigées** (suivi
+  explicite de la revue elle-même, `REV-179`/`REV-180`) : le champ
+  `priorite_source` (304/307 priorités encore « amorcées », jamais
+  revues) est transporté par le payload JSON mais jamais affiché par
+  `bilan.js` ; rien ne garantit que les rendus committés aient bien été
+  régénérés après le dernier changement de code ou d'inventaire (aucun
+  mode `--check` de fraîcheur) — exactement la classe de dérive que ce
+  SP existe à combler, risque assumé et journalisé plutôt qu'étendu dans
+  cette branche. Câble aussi un gotcha d'exécution trouvé par les Tâches
+  6/7 : `feature_health_cli.py` exige `PYTHONPATH=.` pour résoudre son
+  propre paquet — absent du texte littéral du plan pour le job CI, ajouté
+  par la Tâche 8. Suite finale : cœur 2784 passed/5 skipped (qgis)/1
+  failed (`test_mcp_configs_bbox.py::
+  test_save_app_config_via_mcp_recomputes_item_bbox_without_http_route`,
+  préexistant et documenté depuis SP-50, `core/app/` non touché par
+  cette branche, diff vérifié vide) ; suite `feature_health` ciblée 182
+  passed ; diff `openapi.json`/`core-schema.d.ts` vide (vérifié, aucune
+  route ni modèle touché) ; `lint-imports` vert sans exemption nouvelle ;
+  `git diff --stat -- shell/` vide (aucun fichier shell touché, vérifié
+  plutôt que supposé). Reste hors périmètre, assumé : le blocage 3 de
+  GAP-72 (CSP `script-src` pour les widgets d'extension tiers, question
+  produit ouverte depuis SP-48) n'est pas concerné par ce SP.
 
 ### Conventions tranchées (2026-09-01)
 
@@ -1143,12 +1251,18 @@ cette décision a été fermée par SP-34 (cf. `### Livré` ci-dessus).
 ### Suivis et dette non bloquante
 
 Le détail complet (43 trouvailles confirmées non corrigées, 35 minor, 79
-gaps, la dette héritée SP-29b→SP-40, 2 trouvailles SP-43 et 3 trouvailles
-SP-57a documentées sans être corrigées) vit dans
-**`docs/revue/2026-09-04-backlog.md`** (178 entrées `REV-nnn`,
-numérotation stable et citable — ne pas renuméroter, ajouter en fin de
-section). Ce qui, dans ce backlog, change le comportement immédiat d'une
-session :
+gaps, la dette héritée SP-29b→SP-40, 2 trouvailles SP-43, 3 trouvailles
+SP-57a et 2 trouvailles de la revue finale de SP-61 documentées sans être
+corrigées) vit dans **`docs/revue/2026-09-04-backlog.md`** (181 entrées
+`REV-nnn` — 109 fermées, 9 partiellement fermées, 63 ouvertes après une passe
+de revérification hors-SP le 2026-09-06 : avant cette passe, seules 24
+fermetures étaient reflétées malgré des dizaines fermées depuis leur
+rédaction (2026-09-04/05) par 21 SP sans que le document ne soit jamais
+retouché — piège n°12 appliqué au backlog, pas seulement à la matrice de
+fonctionnalités qu'il visait à l'origine ; répartition par statut désormais
+en tête du document, numérotation stable et citable — ne pas renuméroter,
+ajouter en fin de section). Ce qui, dans ce backlog, change le comportement
+immédiat d'une session :
 
 - Jalon **M14 atteint** (SP-44, `REV-095` clos) : les 5 tests
   `@pytest.mark.qgis` tournent contre un vrai sidecar — 2 défauts de
@@ -1211,6 +1325,20 @@ session :
   contraste AA sur plusieurs pages, exclu et documenté plutôt que corrigé
   (`REV-176`) ; détecteur i18n limité à 4 répertoires (`REV-177`) ;
   échantillon a11y non exhaustif (`REV-178`).
+- **Bilan de fonctionnalités outillé (SP-61)** : `docs/revue/
+  2026-09-04-matrice-fonctionnalites.md` est **gelée**, ne plus l'éditer.
+  Le document vivant est `docs/revue/bilan-fonctionnalites.{html,md}`,
+  régénéré par `cd core && PYTHONPATH=. uv run python
+  scripts/feature_health_cli.py --repo .. --write` — obligatoire à la
+  clôture de tout SP après avoir ajouté à `docs/revue/
+  inventaire-fonctionnalites.jsonl` toute surface nouvellement livrée
+  (route REST, outil MCP, route shell) : `core/tests/
+  test_feature_inventory.py` fait échouer la CI si une surface existe
+  dans le code sans ligne d'inventaire, câblé dans le job `feature-health`
+  de `ci.yml`. Reste hors périmètre, journalisé (`REV-179`/`REV-180`) :
+  `priorite_source` (priorité amorcée vs. revue) jamais affiché dans le
+  bilan rendu ; aucun mode `--check` de fraîcheur entre le code/
+  l'inventaire et les rendus committés.
 - Questions produit ouvertes (comparatif §8) : Q2 (premiers utilisateurs
   réels — la seule qui puisse réordonner le phasage), Q10 (temps réel,
   `REV-108`), Q11 (offline, `REV-120`).

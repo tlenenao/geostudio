@@ -1,0 +1,108 @@
+<div class="page">
+  <div class="eyebrow"><span class="dot"></span> SP-61 &middot; bilan déterministe de qualité des fonctionnalités</div>
+  <h1 class="title">Bilan de fonctionnalités — GeoStudio</h1>
+  <p class="subtitle">
+    Chaque ligne est <strong>mesurée</strong>, pas jugée : la <strong>santé</strong> vient de quatre sous-scores
+    calculés (couverture de tests, atteignabilité, garde d'autorisation, dette ouverte), preuve à l'appui pour
+    chacun — et n'est <strong>jamais moyennée</strong> avec la <strong>priorité</strong>, qui reste une décision
+    produit déclarée. Généré le <span class="mono" id="genDate"></span> au commit
+    <span class="mono commit" id="genCommit"></span> — <strong>ne pas éditer à la main</strong>, ce fichier est
+    régénéré à chaque clôture de SP.
+  </p>
+
+  <div class="tabs" role="tablist" aria-label="Vue">
+    <button class="tab-btn" type="button" role="tab" id="tabBtn-bilan" aria-selected="true" aria-controls="panel-bilan" data-tab="bilan">Bilan <span class="c tabular" id="tabCountBilan"></span></button>
+    <button class="tab-btn" type="button" role="tab" id="tabBtn-evolution" aria-selected="false" aria-controls="panel-evolution" data-tab="evolution">Évolution</button>
+  </div>
+
+  <div class="tab-panel" id="panel-bilan" role="tabpanel" aria-labelledby="tabBtn-bilan">
+
+    <div class="stats">
+      <div class="stack-bar" id="stackBar" aria-hidden="true"></div>
+      <div class="tiles" id="tiles"></div>
+    </div>
+
+    <div class="fam-overview">
+      <div class="section-head">
+        <h2>Répartition par domaine</h2>
+        <span class="hint">cliquer un domaine pour filtrer le tableau</span>
+      </div>
+      <div class="fam-grid" id="famGrid"></div>
+    </div>
+
+    <div class="controls">
+      <div class="controls-inner">
+        <div class="search-row">
+          <div class="search-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.4-3.4"/></svg>
+            <input type="search" id="searchInput" placeholder="Rechercher — fonctionnalité, domaine, id, preuve…" autocomplete="off">
+          </div>
+          <span class="result-count" id="resultCount"></span>
+          <button class="reset-btn" id="resetBtn" type="button">Réinitialiser les filtres</button>
+        </div>
+        <div class="chip-groups">
+          <div class="chip-group" id="priChips"><span class="glabel">Priorité</span></div>
+          <div class="chip-group" id="healthChips"><span class="glabel">Santé</span></div>
+          <div class="chip-group" id="domChips"><span class="glabel">Domaine</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th class="cell-toggle"></th>
+            <th data-sort="fonctionnalite"><button type="button">Fonctionnalité <span class="arrow"></span></button></th>
+            <th data-sort="sante"><button type="button">Santé <span class="arrow"></span></button></th>
+            <th data-sort="delta"><button type="button">Δ <span class="arrow"></span></button></th>
+            <th data-sort="priorite"><button type="button">Priorité <span class="arrow"></span></button></th>
+            <th data-sort="tests"><button type="button">Tests <span class="arrow"></span></button></th>
+            <th data-sort="atteignabilite"><button type="button">Atteignabilité <span class="arrow"></span></button></th>
+            <th data-sort="garde"><button type="button">Garde <span class="arrow"></span></button></th>
+            <th data-sort="dette"><button type="button">Dette <span class="arrow"></span></button></th>
+            <th>Preuve</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="panel-evolution" role="tabpanel" aria-labelledby="tabBtn-evolution" hidden>
+
+    <div class="stats">
+      <div class="tiles" id="tilesEvolution"></div>
+    </div>
+
+    <div class="fam-overview">
+      <div class="section-head">
+        <h2>Améliorées depuis l'instantané précédent</h2>
+      </div>
+      <div class="table-wrap">
+        <table class="matrix">
+          <thead><tr><th>Fonctionnalité</th><th>Domaine</th><th>Δ</th></tr></thead>
+          <tbody id="tbodyImproved"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="fam-overview">
+      <div class="section-head">
+        <h2>Dégradées depuis l'instantané précédent</h2>
+      </div>
+      <div class="table-wrap">
+        <table class="matrix">
+          <thead><tr><th>Fonctionnalité</th><th>Domaine</th><th>Δ</th></tr></thead>
+          <tbody id="tbodyDegraded"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span>Rendu depuis <span class="mono">docs/revue/inventaire-fonctionnalites.jsonl</span> — embarqué ci-dessous,
+    aucune divergence possible avec le rendu Markdown du même passage.</span>
+    <span>Bilan SP-61 &middot; GeoStudio, Apache-2.0</span>
+  </footer>
+</div>

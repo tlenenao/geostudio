@@ -60,6 +60,10 @@ jobs:
       - run: uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools app/roles
       - run: uv run pytest --cov=app --cov-report=xml:coverage.xml
       - run: uv run python scripts/check_coverage.py coverage.xml .coverage-threshold
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-coverage
+          path: core/coverage.xml
       - name: Mypy (périmètre large, non bloquant)
         run: uv run mypy app/ || true
       - run: uv run lint-imports
@@ -180,6 +184,10 @@ jobs:
       - run: npm run format:check
       - run: npm run test -- --coverage
       - run: node scripts/check-coverage.mjs coverage/coverage-summary.json .coverage-threshold
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shell-coverage
+          path: shell/coverage/coverage-summary.json
       - run: npm run build:export-runtime
       - run: npx playwright install --with-deps chromium
       - run: npm run e2e
@@ -240,3 +248,50 @@ jobs:
       - run: npm ci
       - run: npm audit --audit-level=high --json > npm-audit.json || true
       - run: node scripts/check-npm-audit.mjs npm-audit.json
+
+  feature-health:
+    runs-on: ubuntu-latest
+    needs: [core, shell]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/download-artifact@v4
+        with: {name: core-coverage, path: core}
+      - uses: actions/download-artifact@v4
+        with: {name: shell-coverage, path: shell/coverage}
+      - run: uv sync
+        working-directory: core
+      - run: uv run python scripts/feature_health_cli.py --repo .. --check
+        working-directory: core
+        env:
+          PYTHONPATH: .
+
+  commitlint:
+    # REV-070 : miroir CI du hook local `commitlint` (commit-msg,
+    # .pre-commit-config.yaml) — aucune porte automatisée n'existait
+    # jusqu'ici pour un message de commit non conventionnel fusionné sans
+    # être passé par le hook local (ex. via l'UI GitHub). Ne tourne que sur
+    # pull_request : `github.event.pull_request.{base,head}.sha` n'existe
+    # pas sur push, et ce sont ces deux champs du payload d'événement —
+    # jamais une plage recalculée via l'API paginée `GET .../pulls/{n}/commits`
+    # — qui donnent une plage de commits exacte, sans la limite de
+    # pagination qui a déjà mordu ce dépôt une fois (cf. commentaire de
+    # gitleaks.yml, PR #75 : 59 commits, seule la moitié scannée par
+    # l'ancienne gitleaks-action v3 qui dérivait sa plage via cette même
+    # API). `fetch-depth: 0` (historique complet) est nécessaire ici,
+    # contrairement à gitleaks.yml qui scanne l'arbre de travail et n'a
+    # besoin d'aucun historique : commitlint doit relire chaque commit de
+    # la plage.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+        working-directory: shell
+      - name: commitlint (plage de commits de la PR)
+        run: npx --prefix shell commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }}

@@ -19,3 +19,14 @@ export function t(key: MessageKey, params?: Record<string, string | number>): st
     return value === undefined ? match : String(value);
   });
 }
+
+/**
+ * Résout une clé de message dont la provenance n'est pas garantie par le
+ * compilateur (ex. `labelKey` renvoyé par `GET /roles/catalog`) vers une
+ * clé réelle du catalogue, avec repli explicite sur `fallback` plutôt qu'un
+ * cast non sûr (`as MessageKey`) : une clé absente du catalogue rendait
+ * silencieusement une case à cocher sans libellé ni aria-label (REV-064).
+ */
+export function resolveMessageKey(key: string, fallback: MessageKey): MessageKey {
+  return Object.hasOwn(fr, key) ? (key as MessageKey) : fallback;
+}

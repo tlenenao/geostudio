@@ -51,6 +51,20 @@ def get_role(session: Session, *, tenant_id: str, role_id: str) -> Role | None:
     return session.scalar(select(Role).where(Role.tenant_id == tenant_id, Role.id == role_id))
 
 
+def roles_for_ids(session: Session, *, tenant_id: str, role_ids: Sequence[str]) -> dict[str, Role]:
+    """Batch de get_role pour une liste de role_id, en **une** requête — même
+    forme que app.sharing.repository::roles_for_items (REV-085) : élimine le
+    N+1 d'une requête get_role() par utilisateur de la page (GET /users).
+    Une clé absente du résultat signifie « rôle introuvable » — les
+    appelants utilisent `.get(role_id)`."""
+    if not role_ids:
+        return {}
+    rows = session.scalars(
+        select(Role).where(Role.tenant_id == tenant_id, Role.id.in_(list(role_ids)))
+    ).all()
+    return {role.id: role for role in rows}
+
+
 def list_roles(session: Session, *, tenant_id: str) -> list[Role]:
     return list(
         session.scalars(select(Role).where(Role.tenant_id == tenant_id).order_by(Role.name)).all()

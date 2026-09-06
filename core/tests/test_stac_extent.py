@@ -3,7 +3,7 @@ import pytest
 from sqlalchemy import text
 
 from app.collections.introspection import ColumnInfo, TableInfo
-from app.stac.extent import estimated_bbox_4326
+from app.stac.extent import rls_scoped_bbox_4326
 
 NO_GEOM = TableInfo(
     table_name="t",
@@ -17,7 +17,7 @@ NO_GEOM = TableInfo(
 
 def test_no_geometry_column_returns_none_without_db():
     # Chemin toujours exécuté (aucun accès SQL) : geometry_column None → None.
-    assert estimated_bbox_4326(session=None, info=NO_GEOM) is None
+    assert rls_scoped_bbox_4326(session=None, info=NO_GEOM) is None
 
 
 @pytest.mark.postgis
@@ -44,7 +44,7 @@ def test_estimated_bbox_reprojected(pg_session_factory):
         )
         s.execute(text("ANALYZE stac_extent_t"))
         s.commit()
-        bbox = estimated_bbox_4326(s, info)
+        bbox = rls_scoped_bbox_4326(s, info)
         assert bbox is not None
         assert bbox[0] == pytest.approx(1.0, abs=0.01)
         assert bbox[1] == pytest.approx(44.0, abs=0.01)
@@ -60,7 +60,7 @@ def test_estimated_bbox_reprojected_from_lambert93(pg_session_factory):
     # Lambert-93 (EPSG:2154, mètres) — contrairement à
     # test_estimated_bbox_reprojected (source déjà 4326, transform identité,
     # ne détecterait pas un ST_Transform supprimé par erreur). Si
-    # estimated_bbox_4326 ne transformait pas, la bbox retournée resterait en
+    # rls_scoped_bbox_4326 ne transformait pas, la bbox retournée resterait en
     # coordonnées métriques (~650000/~6860000), hors de tout intervalle
     # lon/lat valide — les assertions ci-dessous échoueraient toutes.
     info = TableInfo(
@@ -88,7 +88,7 @@ def test_estimated_bbox_reprojected_from_lambert93(pg_session_factory):
         )
         s.execute(text("ANALYZE stac_extent_lambert_t"))
         s.commit()
-        bbox = estimated_bbox_4326(s, info)
+        bbox = rls_scoped_bbox_4326(s, info)
         assert bbox is not None
         assert -5.0 <= bbox[0] <= 10.0
         assert 41.0 <= bbox[1] <= 52.0

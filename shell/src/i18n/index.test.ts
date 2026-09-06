@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
-import { t } from "./index";
+import { resolveMessageKey, t } from "./index";
 import { fr } from "./catalog.fr";
 
 describe("t", () => {
@@ -24,9 +24,32 @@ describe("t", () => {
     expect(t("catalog.count", { n: 68 })).toBe("68 éléments");
   });
 
-  it("rejette une clé inconnue à la compilation", () => {
+  it("rejette une clé inconnue à la compilation ; à l'exécution, sans validation, t() renvoie undefined", () => {
+    // REV-083 : la version précédente de ce test (`expect(() => t(...)).
+    // toBeDefined()`) n'exerçait rien à l'exécution — une fonction fléchée
+    // est toujours définie, qu'elle soit appelée ou non. Le vrai filet
+    // contre une clé inconnue est `@ts-expect-error` ci-dessous (erreur de
+    // compilation, cf. index.ts) ; `t()` lui-même ne valide rien à
+    // l'exécution — cette assertion observe ce comportement réel (aucune
+    // exception, `undefined` renvoyé) plutôt que de ne rien exercer.
     // @ts-expect-error clé absente du catalogue
-    expect(() => t("cle.inexistante")).toBeDefined();
+    expect(t("cle.inexistante")).toBeUndefined();
+  });
+});
+
+describe("resolveMessageKey", () => {
+  it("garde une clé qui existe réellement dans le catalogue", () => {
+    expect(resolveMessageKey("actions.edit", "roles.privilege.unknown")).toBe("actions.edit");
+  });
+
+  it("retombe sur le repli quand la clé est absente du catalogue (REV-064)", () => {
+    // Cas réel : `GET /roles/catalog` renvoie une labelKey que le shell ne
+    // connaît pas encore (dérive cœur/shell). Un cast non sûr laissait
+    // passer cette clé telle quelle jusqu'à `t()`, qui rendait `undefined`
+    // — case à cocher sans libellé ni aria-label, silencieusement.
+    expect(resolveMessageKey("roles.privilege.doesNotExist", "roles.privilege.unknown")).toBe(
+      "roles.privilege.unknown",
+    );
   });
 });
 

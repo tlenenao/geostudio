@@ -38,10 +38,14 @@ def register(server: FastMCP, session_factory) -> None:
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, access_token)
-            require_collection_read(session, user=user, collection_id=collectionId)
+            # REV-015 : la collection déjà renvoyée par require_collection_read
+            # portait son propre tenant_id — jusqu'ici jeté, remplacé par
+            # user.tenant_id là où la jumelle REST (list_attachments_route)
+            # utilise délibérément col.tenant_id.
+            col = require_collection_read(session, user=user, collection_id=collectionId)
             rows = attachments_repo.list_attachments(
                 session,
-                tenant_id=user.tenant_id,
+                tenant_id=col.tenant_id,
                 collection_id=collectionId,
                 fid=fid,
                 field_key=fieldKey,

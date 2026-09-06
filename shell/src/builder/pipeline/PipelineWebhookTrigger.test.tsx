@@ -32,6 +32,23 @@ test("le jeton généré s'affiche une seule fois avec un avertissement", async 
   expect(screen.getByText(/ne sera plus jamais affiché/)).toBeInTheDocument();
 });
 
+// REV-062 (backlog 2026-09-04) : le conteneur du jeton généré peint
+// `bg-surface` sans jamais poser `text-ink` — texte noir sur fond quasi
+// noir en ambiance sombre, faute d'un token de couleur de texte hérité
+// d'un ancêtre.
+test("the just-created token container carries the text-ink token alongside bg-surface", async () => {
+  const createPipelineWebhookToken = vi
+    .fn()
+    .mockResolvedValue({ id: "t1", token: "clear-value", createdAt: "2026-09-05T00:00:00Z" });
+  renderTrigger({ createPipelineWebhookToken });
+
+  fireEvent.click(await screen.findByText("Générer un jeton"));
+  const tokenText = await screen.findByText("clear-value");
+  const container = tokenText.closest(".bg-surface") as HTMLElement;
+  expect(container).not.toBeNull();
+  expect(container.className).toContain("text-ink");
+});
+
 test("liste les jetons existants et permet la révocation", async () => {
   const tokens: PipelineWebhookToken[] = [
     { id: "t1", createdAt: "2026-09-01T00:00:00Z", lastUsedAt: null },
