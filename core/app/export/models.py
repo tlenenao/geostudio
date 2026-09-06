@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -34,6 +34,11 @@ class ExportJob(Base):
     )
     error: Mapped[str | None] = mapped_column(String, nullable=True)
     result_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Additive, nullable (SP-58 Tâche 2, migration 0035) : les jobs terminés
+    # avant cette migration restent NULL, traités comme 0 par la somme de
+    # app.quotas.service::job_output_storage_bytes (limitation assumée,
+    # documentée en tête de la migration).
+    byte_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

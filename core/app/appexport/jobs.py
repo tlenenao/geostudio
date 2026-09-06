@@ -133,7 +133,11 @@ def build_app_export_task(job_id: str, tenant_id: str) -> None:
         )
 
         with request_scoped_session(session_factory) as session:
-            appexport_repo.mark_done(session, job_id=job_id, result_key=result_key)
+            # SP-58 Tâche 2 (GAP-73) : `zip_bytes` est déjà en mémoire — même
+            # rationale que app.export.jobs.
+            appexport_repo.mark_done(
+                session, job_id=job_id, result_key=result_key, byte_size=len(zip_bytes)
+            )
         _notify(
             session_factory, tenant_id=tenant_id, item_id=item_id, user_id=user_id, status="success"
         )

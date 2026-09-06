@@ -6,7 +6,7 @@ existe déjà, pas de migration à refaire)."""
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -34,6 +34,9 @@ class AppExportJob(Base):
     )
     error: Mapped[str | None] = mapped_column(String, nullable=True)
     result_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Additive, nullable (SP-58 Tâche 2, migration 0035) : même rationale
+    # que ExportJob.byte_size (app/export/models.py).
+    byte_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

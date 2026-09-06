@@ -66,12 +66,15 @@ def mark_running(session: Session, *, job_id: str) -> None:
     session.flush()
 
 
-def mark_done(session: Session, *, job_id: str, result_key: str) -> None:
+def mark_done(
+    session: Session, *, job_id: str, result_key: str, byte_size: int | None = None
+) -> None:
     job = session.get(ExportJob, job_id)
     if job is None:
         return
     job.status = "done"
     job.result_key = result_key
+    job.byte_size = byte_size
     job.finished_at = _now()
     session.flush()
 
