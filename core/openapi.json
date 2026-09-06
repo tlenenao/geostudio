@@ -3807,16 +3807,6 @@
             "title": "Showlegend",
             "type": "boolean"
           },
-          "showNorthArrow": {
-            "default": false,
-            "title": "Shownortharrow",
-            "type": "boolean"
-          },
-          "showScaleBar": {
-            "default": true,
-            "title": "Showscalebar",
-            "type": "boolean"
-          },
           "title": {
             "anyOf": [
               {

@@ -2903,16 +2903,6 @@ export interface components {
              * @default true
              */
             showLegend: boolean;
-            /**
-             * Shownortharrow
-             * @default false
-             */
-            showNorthArrow: boolean;
-            /**
-             * Showscalebar
-             * @default true
-             */
-            showScaleBar: boolean;
             /** Title */
             title?: string | null;
         };

@@ -10,8 +10,6 @@ def test_print_layout_defaults():
     assert layout.pageSize == "a4"
     assert layout.orientation == "portrait"
     assert layout.showLegend is True
-    assert layout.showScaleBar is True
-    assert layout.showNorthArrow is False
     assert layout.title is None
     assert layout.cartouche is None
 
