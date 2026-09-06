@@ -3757,6 +3757,71 @@
         "title": "PrivilegeCatalogEntry",
         "type": "object"
       },
+      "PurgeConfirmRequest": {
+        "properties": {
+          "confirmSlug": {
+            "title": "Confirmslug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmSlug"
+        ],
+        "title": "PurgeConfirmRequest",
+        "type": "object"
+      },
+      "PurgeReceiptResponse": {
+        "properties": {
+          "completedAt": {
+            "title": "Completedat",
+            "type": "string"
+          },
+          "counts": {
+            "additionalProperties": true,
+            "title": "Counts",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "requestedAt": {
+            "title": "Requestedat",
+            "type": "string"
+          },
+          "requestedByUserId": {
+            "title": "Requestedbyuserid",
+            "type": "string"
+          },
+          "tenantSlug": {
+            "title": "Tenantslug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenantSlug",
+          "requestedByUserId",
+          "requestedAt",
+          "completedAt",
+          "counts"
+        ],
+        "title": "PurgeReceiptResponse",
+        "type": "object"
+      },
+      "PurgeTriggeredResponse": {
+        "properties": {
+          "jobId": {
+            "title": "Jobid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId"
+        ],
+        "title": "PurgeTriggeredResponse",
+        "type": "object"
+      },
       "ReportRunStatus": {
         "properties": {
           "createdAt": {
@@ -5985,6 +6050,114 @@
           }
         },
         "summary": "Get Collection Tile"
+      }
+    },
+    "/compliance/purges/{purge_id}": {
+      "get": {
+        "operationId": "get_purge_status_compliance_purges__purge_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "purge_id",
+            "required": true,
+            "schema": {
+              "title": "Purge Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurgeReceiptResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Purge Status"
+      }
+    },
+    "/compliance/tenants/{tenant_id}/purge": {
+      "post": {
+        "operationId": "request_tenant_purge_compliance_tenants__tenant_id__purge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurgeConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurgeTriggeredResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Tenant Purge"
       }
     },
     "/compliance/users/{user_id}/erase": {

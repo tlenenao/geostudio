@@ -352,6 +352,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/compliance/purges/{purge_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Purge Status */
+        get: operations["get_purge_status_compliance_purges__purge_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/compliance/tenants/{tenant_id}/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Tenant Purge */
+        post: operations["request_tenant_purge_compliance_tenants__tenant_id__purge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/compliance/users/{user_id}/erase": {
         parameters: {
             query?: never;
@@ -2700,6 +2734,33 @@ export interface components {
             /** Privilege */
             privilege: string;
         };
+        /** PurgeConfirmRequest */
+        PurgeConfirmRequest: {
+            /** Confirmslug */
+            confirmSlug: string;
+        };
+        /** PurgeReceiptResponse */
+        PurgeReceiptResponse: {
+            /** Completedat */
+            completedAt: string;
+            /** Counts */
+            counts: {
+                [key: string]: unknown;
+            };
+            /** Id */
+            id: string;
+            /** Requestedat */
+            requestedAt: string;
+            /** Requestedbyuserid */
+            requestedByUserId: string;
+            /** Tenantslug */
+            tenantSlug: string;
+        };
+        /** PurgeTriggeredResponse */
+        PurgeTriggeredResponse: {
+            /** Jobid */
+            jobId: string;
+        };
         /** ReportRunStatus */
         ReportRunStatus: {
             /** Createdat */
@@ -3876,6 +3937,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_purge_status_compliance_purges__purge_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                purge_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurgeReceiptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_tenant_purge_compliance_tenants__tenant_id__purge_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurgeConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurgeTriggeredResponse"];
                 };
             };
             /** @description Validation Error */

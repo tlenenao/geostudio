@@ -89,8 +89,22 @@ def _delete_tenant_prefixed_objects(s3, bucket: str, tenant_id: str) -> int:
 
 
 def purge_tenant(
-    session: Session, s3, *, tenant_id: str, requested_by_user_id: str
+    session: Session,
+    s3,
+    *,
+    tenant_id: str,
+    requested_by_user_id: str,
+    receipt_id: str | None = None,
 ) -> PurgeReceipt:
+    """receipt_id : identifiant du reçu de purge à créer, connu par
+    l'appelant AVANT que cette fonction ne s'exécute (SP-58 Tâche 10) — la
+    route de déclenchement le génère et le renvoie au client comme jobId
+    immédiatement, pour que GET /compliance/purges/{purge_id} puisse
+    interroger ce même id pendant que le job tourne encore en tâche de
+    fond (aucune ligne PurgeReceipt n'existe tant que la purge n'est pas
+    terminée : son absence EST le signal "encore en cours"). Défaut
+    uuid4() : un appel direct (tests, scripts) sans passer par la route
+    reste possible sans en préciser un."""
     tenant = session.get(Tenant, tenant_id)
     tenant_slug = tenant.slug if tenant is not None else tenant_id
     started_at = datetime.now(UTC)
@@ -217,7 +231,7 @@ def purge_tenant(
     #    10) : sinon aucune trace de son tenant_slug ne survivrait.
     #    Volontairement sans FK vers tenants (cf. app/compliance/models.py).
     receipt = PurgeReceipt(
-        id=str(uuid.uuid4()),
+        id=receipt_id if receipt_id is not None else str(uuid.uuid4()),
         tenant_slug=tenant_slug,
         requested_by_user_id=requested_by_user_id,
         requested_at=started_at,

@@ -30,6 +30,9 @@ export function AdminExtensionsPage() {
               <Link to="/admin/users" className="text-accent hover:underline">
                 Utilisateurs →
               </Link>
+              <Link to="/admin/compliance" className="text-accent hover:underline">
+                Conformité (RGPD) →
+              </Link>
             </Panel>
           ),
         }}

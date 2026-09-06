@@ -3,6 +3,7 @@ import type {
   ItemClient,
   Me,
   PrivilegeCatalogEntry,
+  PurgeReceipt,
   Role,
   RoleCreateInput,
   RolePatchInput,
@@ -21,6 +22,9 @@ type IdentityMethods = Pick<
   | "deleteRole"
   | "listUsers"
   | "updateUserRole"
+  | "eraseUser"
+  | "requestTenantPurge"
+  | "getPurgeStatus"
 >;
 
 export function createIdentityMethods(base: ItemClientBase): IdentityMethods {
@@ -34,6 +38,7 @@ export function createIdentityMethods(base: ItemClientBase): IdentityMethods {
         role: RoleSummary;
         privileges: string[];
         version: string;
+        tenantId: string;
         tenantSlug: string;
       }>("GET", `/me`);
       return {
@@ -43,6 +48,7 @@ export function createIdentityMethods(base: ItemClientBase): IdentityMethods {
         role: data.role,
         privileges: data.privileges,
         version: data.version,
+        tenantId: data.tenantId,
         tenantSlug: data.tenantSlug,
       };
     },
@@ -82,6 +88,25 @@ export function createIdentityMethods(base: ItemClientBase): IdentityMethods {
 
     async updateUserRole(id: string, roleId: string): Promise<UserSummary> {
       return request<UserSummary>("PATCH", `/users/${id}`, { roleId });
+    },
+
+    async eraseUser(userId: string): Promise<void> {
+      await request<void>("POST", `/compliance/users/${userId}/erase`);
+    },
+
+    async requestTenantPurge(tenantId: string, confirmSlug: string): Promise<{ jobId: string }> {
+      return request<{ jobId: string }>("POST", `/compliance/tenants/${tenantId}/purge`, {
+        confirmSlug,
+      });
+    },
+
+    async getPurgeStatus(purgeId: string): Promise<PurgeReceipt | null> {
+      // 202 (encore en cours) et 200 (terminé) partagent le même chemin
+      // "réponse ok" côté fetch (Response.ok couvre tout 2xx) — seule la
+      // FORME du corps distingue les deux (cf. app/compliance/routes.py::
+      // get_purge_status) : un reçu réel porte "id", le corps 202 non.
+      const data = await request<Record<string, unknown>>("GET", `/compliance/purges/${purgeId}`);
+      return "id" in data ? (data as unknown as PurgeReceipt) : null;
     },
   };
 }
