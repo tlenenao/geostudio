@@ -107,6 +107,16 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 - **À la clôture d'un SP** : une ligne dans `### Livré` ci-dessous, et l'entrée
   détaillée dans `docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md`
   (pas de récit long dans ce fichier — il est chargé à chaque session).
+  **Obligatoire dans le même geste, jamais différé** : mettre à jour l'état
+  des `GAP-nn` concernés dans `docs/revue/2026-09-04-analyse-gaps.md` (ouvert
+  → fermé, référence à la SP) et les colonnes concernées de
+  `docs/revue/2026-09-04-matrice-fonctionnalites.md`. Raison (piège n°12,
+  vécu le 2026-09-06) : ces deux documents sont restés des mois sans être
+  retouchés pendant que 17 SP fermaient des dizaines de gaps qu'ils
+  décrivent — le récit de `### Livré` était correct, mais ces deux
+  documents-là, non consultés, avaient dérivé au point de contredire le code
+  réel (`backlog.md` gardait 8 entrées `ouvert` déjà fermées). Ne pas laisser
+  ces documents rejouer ce piège.
 
 ## Commandes
 
@@ -207,6 +217,21 @@ dans `docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md`** : à lire
 avant de reprendre un chantier ouvert ou de rouvrir une surface déjà livrée.
 Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
 `docs/superpowers/plans/`.
+
+### En cours
+
+- **SP-53** — Automatisation : compléter les éditeurs + déclenchement par
+  webhook (GAP-24/43/44/48/49/50). Lancé le 2026-09-06 en 5 subagents
+  parallèles dans des worktrees git dédiés (isolation garantie) : Track 1
+  webhook de déclenchement (GAP-24), Track 2 MCP alertes + `GET
+  /dcat/datasets/{id}` (GAP-48+GAP-62), Track 3 UX builder automatisation
+  (GAP-43/49/50), Track 4 dédup helper SQL `quote_ident` (GAP-15, volet 1),
+  Track 5 quick-wins shell (GAP-31/44 + pagination). **Résultats pas encore
+  fusionnés sur `dev`** au moment de cette entrée — au moins un track
+  (webhook) a été construit dans un worktree basé sur un commit antérieur à
+  SP-44 (dérive de base constatée en session, cause non élucidée), rebase
+  à faire avant fusion. Ne pas marquer ce chantier `Livré` avant revue finale
+  + fusion effective.
 
 ### Livré
 
