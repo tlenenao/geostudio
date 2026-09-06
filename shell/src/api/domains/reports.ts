@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { Item, ItemClient, ReportRunStatus, ReportSchedulePayload } from "../types";
+import type {
+  Item,
+  ItemClient,
+  PageParams,
+  ReportRunStatus,
+  ReportSchedulePayload,
+} from "../types";
 import type { ItemClientBase } from "../base";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
 
@@ -61,8 +67,12 @@ export function createReportsMethods(base: ItemClientBase): ReportsMethods {
       });
     },
 
-    async getReportRuns(pk: string): Promise<ReportRunStatus[]> {
-      return request<ReportRunStatus[]>("GET", `/reports/${pk}/runs`);
+    async getReportRuns(pk: string, params?: PageParams): Promise<ReportRunStatus[]> {
+      const query = new URLSearchParams();
+      if (params?.limit !== undefined) query.set("limit", String(params.limit));
+      if (params?.offset !== undefined) query.set("offset", String(params.offset));
+      const qs = query.toString();
+      return request<ReportRunStatus[]>("GET", `/reports/${pk}/runs${qs ? `?${qs}` : ""}`);
     },
   };
 }

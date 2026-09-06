@@ -154,6 +154,42 @@ test("does not poll again or update state after the panel is unmounted mid-run",
   errorSpy.mockRestore();
 });
 
+// SP-50 documentait ce manque côté shell (jamais corrigé) : GET
+// /pipelines/{id}/runs pagine déjà (limit/offset) mais ce panneau ne
+// l'envoyait jamais, tronquant silencieusement l'historique à la limite par
+// défaut du cœur (100).
+function runFixture(id: string): PipelineRun {
+  return {
+    id,
+    status: "succeeded",
+    startedAt: "2026-08-06T10:00:00Z",
+    finishedAt: "2026-08-06T10:00:02Z",
+    error: null,
+    nodeStats: {},
+  };
+}
+
+test("relaie limit: 100 au chargement initial", async () => {
+  const getPipelineRuns = vi.fn().mockResolvedValue([]);
+  renderPanel({ getPipelineRuns });
+  await waitFor(() => expect(getPipelineRuns).toHaveBeenCalledWith("p-1", { limit: 100 }));
+});
+
+test("un bouton « Charger plus » apparaît quand la page est pleine et agrandit la limite au clic", async () => {
+  const fullPage = Array.from({ length: 100 }, (_, i) => runFixture(`run-${i}`));
+  const getPipelineRuns = vi.fn().mockResolvedValue(fullPage);
+  renderPanel({ getPipelineRuns });
+  const loadMore = await screen.findByRole("button", { name: "Charger plus" });
+  await userEvent.click(loadMore);
+  await waitFor(() => expect(getPipelineRuns).toHaveBeenCalledWith("p-1", { limit: 200 }));
+});
+
+test("le bouton « Charger plus » n'apparaît pas quand la page renvoyée est incomplète", async () => {
+  renderPanel({ getPipelineRuns: vi.fn().mockResolvedValue([runFixture("run-0")]) });
+  await waitFor(() => expect(screen.getByText("succeeded")).toBeInTheDocument());
+  expect(screen.queryByRole("button", { name: "Charger plus" })).not.toBeInTheDocument();
+});
+
 test("calls onLatestRunChange with null when there is no run yet", async () => {
   const onLatestRunChange = vi.fn();
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
