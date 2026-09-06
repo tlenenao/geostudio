@@ -1267,6 +1267,7 @@ export const fr = {
   "alertRule.percentileLabel": "Centile",
   "alertRule.createButton": "Créer la règle",
   "alertRule.createError": "Échec de la création de la règle.",
+  "alertRule.loadMore": "Charger plus",
 
   // AnalyticsContextIndicator (builder)
   "analyticsContext.periodLabel": "Période : {from} → {to}",

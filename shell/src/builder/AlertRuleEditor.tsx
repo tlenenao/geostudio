@@ -10,15 +10,37 @@ import { Button } from "../ui/kit/Button";
 import { ANALYTICS_AGGREGATES, aggregateNeedsP, DEFAULT_PERCENTILE } from "./aggregates";
 import { PercentileInput } from "./PercentileInput";
 
+// GET /alerts/{id}/evaluations pagine déjà côté cœur (limit/offset, SP-50)
+// mais cette ligne tronquait silencieusement l'historique à la limite par
+// défaut du cœur (100) sans jamais l'envoyer ni exposer de contrôle — même
+// patron que ReportRunPanel/PipelineRunPanel (limite croissante, pas
+// d'offset).
+const EVALUATIONS_PAGE_SIZE = 100;
+
 function AlertRuleRow({ rule }: { rule: AlertRuleSummary }) {
-  const evaluationsQuery = useAlertEvaluations(rule.itemId);
-  const latest = evaluationsQuery.data?.[0];
+  const [limit, setLimit] = useState(EVALUATIONS_PAGE_SIZE);
+  const evaluationsQuery = useAlertEvaluations(rule.itemId, { limit });
+  const evaluations = evaluationsQuery.data ?? [];
+  const latest = evaluations[0];
   return (
-    <div className="flex items-center justify-between border-t border-rule py-1 text-xs">
-      <span>{rule.title}</span>
-      <span className={latest?.state === "firing" ? "font-semibold text-danger" : "text-ink-2"}>
-        {latest ? latest.state : "—"}
-      </span>
+    <div className="flex flex-col gap-1 border-t border-rule py-1 text-xs">
+      <div className="flex items-center justify-between">
+        <span>{rule.title}</span>
+        <span className={latest?.state === "firing" ? "font-semibold text-danger" : "text-ink-2"}>
+          {latest ? latest.state : "—"}
+        </span>
+      </div>
+      {evaluations.length >= limit && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={() => setLimit((l) => l + EVALUATIONS_PAGE_SIZE)}
+        >
+          {t("alertRule.loadMore")}
+        </Button>
+      )}
     </div>
   );
 }
