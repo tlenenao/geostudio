@@ -19,12 +19,14 @@
 // 3. (Ici) signinSilent({scope, forceIframeAuth: true}) — force
 //    oidc-client-ts sur sa branche iframe silencieuse (un vrai
 //    authorization_code frais via prompt=none), qui ne passe jamais par
-//    le chemin refresh-token défaillant. Vérifié statiquement contre le
-//    code source réel d'oidc-client-ts (le chemin iframe transmet bien
-//    scope), PAS vérifié de bout en bout (nécessite un vrai
-//    navigateur+iframe+session Keycloak, indisponible dans cet
-//    environnement) — risque résiduel documenté, à vérifier avant mise
-//    en production réelle.
+//    le chemin refresh-token défaillant. Vérifié EN BOUT EN BOUT contre
+//    un vrai navigateur+Keycloak 24+Traefik (REV-003, 2026-09) : même
+//    avec `X-Frame-Options: DENY` forcé sur /auth (middleware
+//    security-headers), signinSilent réussit sans accroc — prompt=none
+//    ne rend jamais de HTML dans l'iframe (uniquement une redirection,
+//    code ou erreur), et X-Frame-Options ne bloque que le RENDU d'un
+//    document dans une frame, jamais le suivi d'une redirection au
+//    travers. Aucun risque résiduel réel sur ce point précis.
 //
 // Contourne délibérément le useAuth() de l'app (../../auth/useAuth), qui
 // n'expose pas signinSilent — importe react-oidc-context directement,
