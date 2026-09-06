@@ -747,7 +747,7 @@ clone séparé, jetable en cas d'échec).
 
 ```bash
 git log --all -p -S "AGE-SECRET-KEY" --oneline | grep -c "^commit"
-git grep -n "AGE-SECRET-KEY-1PC2664KFMK5QC4TV02067DFVJ2XKK6XT4HY2TTGZ2RQHMZ9MSWTQV2NSY5" $(git rev-list --all) 2>/dev/null | head -5
+git grep -n "AGE-SECRET-KEY-REDACTED-VOIR-REV-171" $(git rev-list --all) 2>/dev/null | head -5
 ```
 
 Documenter le nombre de commits touchés dans le ledger de session.
@@ -758,14 +758,14 @@ Documenter le nombre de commits touchés dans le ledger de session.
 git clone --mirror https://github.com/tlenenao/geostudio.git /tmp/geostudio-mirror-purge
 cd /tmp/geostudio-mirror-purge
 pip install --user git-filter-repo  # ou: uv tool install git-filter-repo
-git filter-repo --replace-text <(echo "AGE-SECRET-KEY-1PC2664KFMK5QC4TV02067DFVJ2XKK6XT4HY2TTGZ2RQHMZ9MSWTQV2NSY5==>AGE-SECRET-KEY-REDACTED")
+git filter-repo --replace-text <(echo "AGE-SECRET-KEY-REDACTED-VOIR-REV-171==>AGE-SECRET-KEY-REDACTED")
 ```
 
 ### Sous-étape 3 : vérifier après, sur le mirror réécrit (avant tout push)
 
 ```bash
 cd /tmp/geostudio-mirror-purge
-git log --all -p -S "AGE-SECRET-KEY-1PC2664KFMK5QC4TV02067DFVJ2XKK6XT4HY2TTGZ2RQHMZ9MSWTQV2NSY5" | wc -l
+git log --all -p -S "AGE-SECRET-KEY-REDACTED-VOIR-REV-171" | wc -l
 # attendu : 0
 ```
 

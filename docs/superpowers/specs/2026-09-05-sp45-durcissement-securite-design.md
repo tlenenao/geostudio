@@ -237,7 +237,7 @@ dépassé, indépendamment de la clé en cours.
 ### Constat vérifié
 
 `git show 0b4733a1` contient littéralement (ligne ajoutée, pas seulement
-mentionnée) `AGE-SECRET-KEY-1PC2664KFMK5QC4TV02067DFVJ2XKK6XT4HY2TTGZ2RQHMZ9MSWTQV2NSY5`.
+mentionnée) `AGE-SECRET-KEY-REDACTED-VOIR-REV-171`.
 Confirmé absente de `HEAD` (`git grep -n "AGE-SECRET-KEY" HEAD` : vide,
 seules les mentions dans `docs/revue/2026-09-04-analyse-gaps.md` et
 `docs/revue/2026-09-04-backlog.md` — du texte à propos de la clé, pas la clé
@@ -261,10 +261,10 @@ opérations destructives). Procédure :
 
 1. Vérifier avant : `git log --all -p -S "AGE-SECRET-KEY" --oneline | grep
    -c "^commit"` (nombre de commits touchés par la chaîne).
-2. `git filter-repo --replace-text <(echo "AGE-SECRET-KEY-1PC2664KFMK5QC4TV02067DFVJ2XKK6XT4HY2TTGZ2RQHMZ9MSWTQV2NSY5==>AGE-SECRET-KEY-REDACTED")`
+2. `git filter-repo --replace-text <(echo "AGE-SECRET-KEY-REDACTED-VOIR-REV-171==>AGE-SECRET-KEY-REDACTED")`
    sur un clone miroir dédié (jamais sur le clone de travail principal).
 3. Vérifier après, sur le mirror réécrit : `git log --all -p -S
-   "AGE-SECRET-KEY-1PC2664KFMK5QC4TV02067DFVJ2XKK6XT4HY2TTGZ2RQHMZ9MSWTQV2NSY5"`
+   "AGE-SECRET-KEY-REDACTED-VOIR-REV-171"`
    retourne vide.
 4. `git push --force` du mirror réécrit vers `origin` (nécessite d'avertir
    tout autre porteur de clone — sessions concurrentes possibles, cf.
