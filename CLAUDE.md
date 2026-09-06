@@ -90,14 +90,16 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
   (`docs/superpowers/plans/`) → exécution TDD → E2E → review. Fichiers datés
   `YYYY-MM-DD-spX…`.
 - **TDD systématique** ; chaque feature visible a sa spec E2E Playwright. La
-  suite E2E complète est le filet de la migration : elle reste globalement
-  verte (dernière mesure après intégration complète de SP-48/50/57a/57b/
-  59/60, 2026-09-06 : 165 passed / 4 skipped / **1 failed** —
-  `e2e/pipeline-builder.spec.ts:105` (numéro de ligne flottant selon les
-  fichiers fusionnés autour, même test), timeout sur le bouton
-  « Exécuter », confirmé préexistant à SP-43 en checkoutant le commit
-  d'avant sa Tâche 1 ; cause non encore investiguée, ne pas imputer à un
-  futur travail sans vérifier d'abord si ce test échoue déjà sur `dev`).
+  suite E2E complète est le filet de la migration : elle est **entièrement
+  verte** depuis le 2026-09-06 (166 passed / 4 skipped / **0 failed**,
+  commit `a320c317`). L'échec longtemps réputé « préexistant, cause non
+  investiguée » (`e2e/pipeline-builder.spec.ts`, timeout sur le bouton
+  « Exécuter ») est diagnostiqué et corrigé : le test ne mockait jamais
+  `GET /configs/by-item/pipe-1`, le handler générique de `mocks.ts`
+  répondait une config `kind: "app"`, `getPipelineConfig` levait, React
+  Query réessayait, la page restait sur « Chargement… ». **Il n'y a donc
+  plus d'échec E2E « connu » à qui imputer une régression : tout rouge est
+  désormais réel.**
 - Exécution en **subagent-driven-development** : une revue par tâche **et** une
   revue finale de branche, systématiquement — ce ne sont pas les mêmes défauts
   (cf. `## Pièges récurrents`).
@@ -127,10 +129,9 @@ npm run test         # Vitest — dernier compte mesuré après intégration
                      # complète de SP-48/50/57a/57b/59/60 (2026-09-06) :
                      # 236 fichiers, 2074 tests, tous passed. Couverture
                      # 89,94 % (seuil 88).
-npm run e2e          # Playwright — 165 passed / 4 skipped / 1 failed à la
-                     # même mesure (VITE_AUTH_MODE=mock) — l'échec
-                     # (pipeline-builder.spec.ts:105) est préexistant,
-                     # cf. ## Comment on travaille.
+npm run e2e          # Playwright — 166 passed / 4 skipped / 0 failed
+                     # (VITE_AUTH_MODE=mock), suite entièrement verte
+                     # depuis le 2026-09-06.
                      # e2e-oidc/ : suite séparée contre un vrai Keycloak (SP-26)
 npm run build        # tsc --noEmit + vite build ; chunk d'entrée 624 Ko
                      # (seuil 630, relevé depuis 570 par le catalogue i18n
@@ -162,8 +163,12 @@ uv run pytest        # dernier compte mesuré après intégration complète de
                      # après une migration qui ajoute des colonnes, il faut un
                      # ALTER TABLE manuel, sinon des dizaines de tests
                      # échouent en cascade sur UndefinedColumn sans rapport
-                     # avec le code sous revue. Les 5 skips = marqueur qgis
-                     # (sidecar réel requis) — pour les exécuter vraiment :
+                     # avec le code sous revue. Les 5 skips = les 5 tests
+                     # qgis (3 dans test_qgis_worker_sidecar.py, 2 dans
+                     # test_pipeline_runtime.py — dont un aussi marqué
+                     # postgis) : conftest.py appelle pytest.skip() quand
+                     # CORE_TEST_QGIS_WORKER_URL manque, et un skip ne
+                     # rougit rien — pour les exécuter vraiment :
                      # `./scripts/run-qgis-tests.sh` (aucun sudo, ne touche
                      # pas l'hôte) ; la CI les exécute désormais elle aussi
                      # (job `core-qgis`). Piège supplémentaire vécu à la
