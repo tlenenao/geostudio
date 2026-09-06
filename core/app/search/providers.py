@@ -13,7 +13,7 @@ import os
 import random
 from typing import Protocol
 
-import httpx
+from app.search.egress import build_guarded_client
 
 EMBEDDING_DIM = 1536
 
@@ -39,13 +39,13 @@ class OpenAICompatibleProvider:
         self._api_url = api_url
         self._api_key = api_key
         self._model = model
+        self._client = build_guarded_client()
 
     def embed(self, text: str) -> list[float]:
-        response = httpx.post(
+        response = self._client.post(
             self._api_url,
             headers={"Authorization": f"Bearer {self._api_key}"},
             json={"input": text, "model": self._model},
-            timeout=10.0,
         )
         response.raise_for_status()
         return response.json()["data"][0]["embedding"]
