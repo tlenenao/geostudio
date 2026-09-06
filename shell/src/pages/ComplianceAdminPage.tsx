@@ -6,6 +6,7 @@ import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Panel } from "../ui/kit/Panel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { t } from "../i18n";
 
 // SP-58 (spec §3.3, risque §5) : anonymisation et purge sont DEUX actions
 // de nature radicalement différente (l'une limitée et réversible dans son
@@ -33,16 +34,12 @@ function EraseUserSection() {
 
   return (
     <Panel className="flex flex-col gap-3 border border-rule bg-surface p-4">
-      <h2 className="text-base font-semibold text-ink">Anonymiser un compte</h2>
-      <p className="text-sm text-ink-2">
-        Écrase le nom d&apos;utilisateur, l&apos;email et l&apos;identité de connexion d&apos;un
-        compte. Les objets qu&apos;il possède (cartes, collections, pièces jointes) restent intacts,
-        attribués au compte anonymisé. Effet limité — le tenant continue de fonctionner normalement.
-      </p>
+      <h2 className="text-base font-semibold text-ink">{t("compliance.eraseSectionTitle")}</h2>
+      <p className="text-sm text-ink-2">{t("compliance.eraseDescription")}</p>
       <label className="flex flex-col gap-1 text-sm text-ink">
-        Identifiant de l&apos;utilisateur (ou « me » pour votre propre compte)
+        {t("compliance.userIdLabel")}
         <Input
-          aria-label="Identifiant de l'utilisateur à anonymiser"
+          aria-label={t("compliance.userIdAria")}
           value={userId}
           onChange={(e) => {
             setUserId(e.target.value);
@@ -56,16 +53,16 @@ function EraseUserSection() {
         disabled={!userId.trim() || eraseUser.isPending}
         onClick={() => void handleErase()}
       >
-        Anonymiser ce compte
+        {t("compliance.eraseButton")}
       </Button>
       {result === "success" && (
         <p role="status" className="text-sm text-ink-2">
-          Compte anonymisé.
+          {t("compliance.eraseSuccess")}
         </p>
       )}
       {result === "error" && (
         <p role="alert" className="text-sm text-danger">
-          Échec de l&apos;anonymisation.
+          {t("compliance.eraseError")}
         </p>
       )}
     </Panel>
@@ -93,22 +90,23 @@ function PurgeTenantSection() {
       });
       setPurgeId(result.jobId);
     } catch {
-      setError("Échec du déclenchement de la purge.");
+      setError(t("compliance.purgeRequestError"));
     }
   }
 
   return (
     <Panel className="flex flex-col gap-3 border-2 border-danger bg-danger/5 p-4">
-      <h2 className="text-base font-semibold text-danger">Purger toutes les données du tenant</h2>
+      <h2 className="text-base font-semibold text-danger">{t("compliance.purgeSectionTitle")}</h2>
       <p className="text-sm text-ink">
-        Supprime <strong>irréversiblement</strong> toutes les données de ce tenant : items,
-        collections (y compris leurs tables), utilisateurs, rôles, pièces jointes, journal
-        d&apos;audit — puis le tenant lui-même. Aucune restauration possible après confirmation.
+        {t("compliance.purgeWarningBefore")} <strong>{t("compliance.purgeWarningEmphasis")}</strong>{" "}
+        {t("compliance.purgeWarningAfter")}
       </p>
       <label className="flex flex-col gap-1 text-sm text-ink">
-        Retapez le slug du tenant (<code>{tenantSlug || "…"}</code>) pour confirmer
+        {t("compliance.confirmSlugBefore")}
+        <code>{tenantSlug || "…"}</code>
+        {t("compliance.confirmSlugAfter")}
         <Input
-          aria-label="Confirmer le slug du tenant"
+          aria-label={t("compliance.confirmSlugAria")}
           value={confirmSlug}
           onChange={(e) => setConfirmSlug(e.target.value)}
         />
@@ -119,7 +117,7 @@ function PurgeTenantSection() {
         disabled={!slugMatches || requestPurge.isPending || purgeId !== null}
         onClick={() => void handlePurge()}
       >
-        Purger définitivement ce tenant
+        {t("compliance.purgeButton")}
       </Button>
       {error && (
         <p role="alert" className="text-sm text-danger">
@@ -128,12 +126,12 @@ function PurgeTenantSection() {
       )}
       {purgeId && statusQuery.data === null && (
         <p role="status" className="text-sm text-ink-2">
-          Purge en cours…
+          {t("compliance.purgeInProgress")}
         </p>
       )}
       {purgeId && statusQuery.data && (
         <p role="status" className="text-sm text-ink-2">
-          Purge terminée à {statusQuery.data.completedAt}.
+          {t("compliance.purgeCompleted", { completedAt: statusQuery.data.completedAt })}
         </p>
       )}
     </Panel>
@@ -146,24 +144,24 @@ export function ComplianceAdminPage() {
       <TriptychLayout
         browse={{
           id: "back",
-          label: "Catalogue",
+          label: t("domain.catalog"),
           content: (
             <Panel className="m-3 flex flex-col gap-3 text-sm">
               <Link to="/" className="text-accent hover:underline">
-                ← Retour au catalogue
+                {t("nav.backToCatalog")}
               </Link>
               <Link to="/admin/users" className="text-accent hover:underline">
-                Utilisateurs →
+                {t("extensions.linkUsers")}
               </Link>
             </Panel>
           ),
         }}
         work={{
           id: "compliance",
-          label: "Conformité",
+          label: t("compliance.title"),
           content: (
             <div className="flex h-full flex-col gap-6 overflow-y-auto p-4">
-              <h1 className="text-lg font-bold text-ink">Conformité (RGPD)</h1>
+              <h1 className="text-lg font-bold text-ink">{t("compliance.heading")}</h1>
               <EraseUserSection />
               <PurgeTenantSection />
             </div>
@@ -171,14 +169,10 @@ export function ComplianceAdminPage() {
         }}
         inspect={{
           id: "help",
-          label: "Détail",
+          label: t("compliance.detail"),
           content: (
             <div className="flex flex-col gap-2 p-3 text-sm text-ink-2">
-              <p>
-                Deux actions distinctes : anonymiser un compte (effet limité, réversible dans ses
-                conséquences pratiques) et purger tout le tenant (irréversible). Ne jamais confondre
-                l&apos;une avec l&apos;autre.
-              </p>
+              <p>{t("compliance.helpText")}</p>
             </div>
           ),
         }}

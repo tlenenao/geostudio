@@ -69,7 +69,7 @@ export function UsagePage() {
             <div className="flex h-full flex-col gap-6 overflow-y-auto p-4">
               <section className="flex flex-col gap-3">
                 <h1 className="text-lg font-bold text-ink">{t("usage.myTasks")}</h1>
-                {tasksQuery.isLoading && <p role="status">Chargement…</p>}
+                {tasksQuery.isLoading && <p role="status">{t("common.loading")}</p>}
                 {tasksQuery.isError && (
                   <p role="alert" className="text-sm text-danger">
                     {t("usage.loadFailed")}
@@ -166,10 +166,7 @@ export function UsagePage() {
           label: t("usage.detail"),
           content: (
             <div className="flex flex-col gap-2 p-3 text-sm text-ink-2">
-              <p>
-                Ce journal reflète les actions déclenchées (audit_log), pas un statut de job en
-                temps réel.
-              </p>
+              <p>{t("usage.helpText")}</p>
             </div>
           ),
         }}

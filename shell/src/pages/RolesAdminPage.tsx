@@ -36,11 +36,11 @@ export function RolesAdminPage() {
       <TriptychLayout
         browse={{
           id: "back",
-          label: "Catalogue",
+          label: t("domain.catalog"),
           content: (
             <Panel className="m-3 flex flex-col gap-3 text-sm">
               <Link to="/" className="text-accent hover:underline">
-                ← Retour au catalogue
+                {t("nav.backToCatalog")}
               </Link>
             </Panel>
           ),
@@ -62,24 +62,24 @@ export function RolesAdminPage() {
                   {t("roles.addRole")}
                 </Button>
               </div>
-              {rolesQuery.isLoading && <p role="status">Chargement…</p>}
+              {rolesQuery.isLoading && <p role="status">{t("common.loading")}</p>}
               {rolesQuery.isError && (
                 <p role="alert" className="text-sm text-danger">
-                  Échec du chargement des rôles.
+                  {t("roles.loadError")}
                 </p>
               )}
               {deleteRole.isError && (
                 <p role="alert" className="text-sm text-danger">
-                  Échec de la suppression.
+                  {t("roles.deleteError")}
                 </p>
               )}
               {rolesQuery.data && (
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-rule">
-                      <th className="py-2 text-ink">Nom</th>
-                      <th className="py-2 text-ink">Privilèges</th>
-                      <th className="py-2 text-ink">Actions</th>
+                      <th className="py-2 text-ink">{t("roles.columnName")}</th>
+                      <th className="py-2 text-ink">{t("roles.columnPrivileges")}</th>
+                      <th className="py-2 text-ink">{t("collectionsAdmin.columnActions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -108,7 +108,7 @@ export function RolesAdminPage() {
                                   setEditing(role);
                                 }}
                               >
-                                Éditer
+                                {t("collectionsAdmin.edit")}
                               </Button>
                               <Button
                                 type="button"
@@ -116,7 +116,7 @@ export function RolesAdminPage() {
                                 size="sm"
                                 onClick={() => setDeleting(role)}
                               >
-                                Supprimer
+                                {t("actions.delete")}
                               </Button>
                             </>
                           )}
@@ -131,7 +131,7 @@ export function RolesAdminPage() {
         }}
         inspect={{
           id: "detail",
-          label: "Détail",
+          label: t("roles.detail"),
           content: (
             <div className="flex flex-col gap-3 p-3">
               {creating && <CreateRolePanel onClose={() => setCreating(false)} />}
@@ -151,7 +151,7 @@ export function RolesAdminPage() {
         open={!!deleting}
         title={t("roles.deleteConfirmTitle")}
         message={deleting ? t("roles.deleteConfirmMessage", { name: deleting.name }) : ""}
-        confirmLabel="Supprimer"
+        confirmLabel={t("actions.delete")}
         pending={deleteRole.isPending}
         onCancel={() => setDeleting(null)}
         onConfirm={() => void confirmDelete()}

@@ -48,11 +48,11 @@ export function DatasetEditPage({ pk }: { pk: string }) {
   const otherDatasetsQuery = useItems({ type: "dataset", pageSize: 100 });
 
   if (itemQuery.isLoading || configQuery.isLoading || (!draft && !configQuery.isError))
-    return <p role="status">Chargement…</p>;
+    return <p role="status">{t("common.loading")}</p>;
   if (itemQuery.isError || configQuery.isError || !draft || !itemQuery.data)
     return (
       <p role="alert" className="text-sm text-danger">
-        Dataset partagé introuvable.
+        {t("datasetEdit.notFound")}
       </p>
     );
 
@@ -130,7 +130,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : "Échec de l'export.");
+      setExportError(err instanceof Error ? err.message : t("datasetEdit.exportError"));
     } finally {
       setExportingFormat(null);
     }
@@ -142,16 +142,16 @@ export function DatasetEditPage({ pk }: { pk: string }) {
         defaultTabId="dataset"
         browse={{
           id: "back",
-          label: "Catalogue",
+          label: t("domain.catalog"),
           content: (
             <Panel className="m-3 flex flex-col gap-3 text-sm">
               <Link to="/" className="text-accent hover:underline">
-                ← Retour au catalogue
+                {t("nav.backToCatalog")}
               </Link>
               <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs text-ink-2">
-                <dt>Type</dt>
-                <dd>Dataset</dd>
-                <dt>Modifié</dt>
+                <dt>{t("catalog.typeLabel")}</dt>
+                <dd>{t("datasetEdit.datasetLabel")}</dd>
+                <dt>{t("datasetEdit.modifiedLabel")}</dt>
                 <dd>{item.updatedAt || "—"}</dd>
               </dl>
             </Panel>
@@ -159,10 +159,12 @@ export function DatasetEditPage({ pk }: { pk: string }) {
         }}
         work={{
           id: "dataset",
-          label: "Dataset",
+          label: t("datasetEdit.datasetLabel"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h2 className="text-xl font-semibold text-ink">Dataset partagé — {item.title}</h2>
+              <h2 className="text-xl font-semibold text-ink">
+                {t("datasetEdit.heading", { title: item.title })}
+              </h2>
               <MetadataForm
                 initial={{
                   title: item.title,
@@ -178,21 +180,23 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                 pending={updateItem.isPending}
               />
               <div>
-                <p className="mb-1 text-xs font-medium text-ink-2">Colonnes</p>
-                {schemaQuery.isLoading && <p role="status">Chargement du schéma…</p>}
+                <p className="mb-1 text-xs font-medium text-ink-2">
+                  {t("datasetEdit.columnsLabel")}
+                </p>
+                {schemaQuery.isLoading && <p role="status">{t("datasetEdit.schemaLoading")}</p>}
                 {schemaQuery.isError && (
                   <p role="alert" className="text-sm text-danger">
-                    Collection source introuvable.
+                    {t("datasetEdit.sourceNotFound")}
                   </p>
                 )}
                 {merged.length > 0 && (
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-xs text-ink-2">
-                        <th className="p-1">Colonne</th>
-                        <th className="p-1">Libellé</th>
-                        <th className="p-1">Description</th>
-                        <th className="p-1">Format</th>
+                        <th className="p-1">{t("datasetEdit.columnHeader")}</th>
+                        <th className="p-1">{t("datasetEdit.labelHeader")}</th>
+                        <th className="p-1">{t("datasetEdit.descriptionHeader")}</th>
+                        <th className="p-1">{t("datasetEdit.formatHeader")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -201,7 +205,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                           <td className="p-1 font-mono text-xs">{f.name}</td>
                           <td className="p-1">
                             <input
-                              aria-label={`Libellé de ${f.name}`}
+                              aria-label={t("datasetEdit.labelAria", { name: f.name })}
                               className="h-8 w-full rounded border border-rule bg-surface px-2 text-xs text-ink"
                               value={f.label ?? ""}
                               onChange={(e) => setColumn(f.name, { label: e.target.value })}
@@ -209,7 +213,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                           </td>
                           <td className="p-1">
                             <input
-                              aria-label={`Description de ${f.name}`}
+                              aria-label={t("datasetEdit.descriptionAria", { name: f.name })}
                               className="h-8 w-full rounded border border-rule bg-surface px-2 text-xs text-ink"
                               value={f.description ?? ""}
                               onChange={(e) => setColumn(f.name, { description: e.target.value })}
@@ -217,7 +221,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                           </td>
                           <td className="p-1">
                             <input
-                              aria-label={`Format de ${f.name}`}
+                              aria-label={t("datasetEdit.formatAria", { name: f.name })}
                               className="h-8 w-full rounded border border-rule bg-surface px-2 text-xs text-ink"
                               value={f.format ?? ""}
                               onChange={(e) => setColumn(f.name, { format: e.target.value })}
@@ -229,16 +233,16 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                   </table>
                 )}
                 <label className="mt-2 flex flex-col gap-1 text-xs">
-                  Colonne temporelle
+                  {t("datasetEdit.timeFieldLabel")}
                   <select
-                    aria-label="Colonne temporelle"
+                    aria-label={t("datasetEdit.timeFieldLabel")}
                     className="h-8 w-full rounded border border-rule bg-surface px-2 text-xs text-ink"
                     value={draft.timeField ?? ""}
                     onChange={(e) =>
                       setDraft((d) => (d ? { ...d, timeField: e.target.value || null } : d))
                     }
                   >
-                    <option value="">— aucune —</option>
+                    <option value="">{t("datasetEdit.noneOption")}</option>
                     {merged.map((f) => (
                       <option key={f.name} value={f.name}>
                         {f.name}
@@ -249,16 +253,18 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                 <label className="flex items-center gap-2 text-xs">
                   <input
                     type="checkbox"
-                    aria-label="Réagir au déplacement de la carte"
+                    aria-label={t("datasetEdit.reactsToExtentLabel")}
                     checked={Boolean(draft.reactsToExtent)}
                     onChange={(e) =>
                       setDraft((d) => (d ? { ...d, reactsToExtent: e.target.checked } : d))
                     }
                   />
-                  Réagir au déplacement de la carte
+                  {t("datasetEdit.reactsToExtentLabel")}
                 </label>
                 <div className="mt-2 flex flex-col gap-2">
-                  <p className="text-xs font-medium text-ink-2">Liens cross-filter</p>
+                  <p className="text-xs font-medium text-ink-2">
+                    {t("datasetEdit.crossFilterLinksLabel")}
+                  </p>
                   {(draft.crossFilterLinks ?? []).map((link, i) => (
                     <CrossFilterLinkEditor
                       key={i}
@@ -276,7 +282,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                     className="w-fit"
                     onClick={addCrossFilterLink}
                   >
-                    Ajouter un lien
+                    {t("datasetEdit.addLink")}
                   </Button>
                 </div>
               </div>
@@ -285,17 +291,17 @@ export function DatasetEditPage({ pk }: { pk: string }) {
         }}
         inspect={{
           id: "settings",
-          label: "Réglages",
+          label: t("datasetEdit.settingsLabel"),
           content: (
             <div className="flex flex-col gap-4 p-3">
               <div className="flex flex-col gap-2">
-                <p className="text-xs font-medium text-ink-2">Export</p>
+                <p className="text-xs font-medium text-ink-2">{t("datasetEdit.exportLabel")}</p>
                 <div className="flex gap-2">
                   {exportFormats.map((format) => (
                     <button
                       key={format}
                       type="button"
-                      aria-label={`Exporter en ${format.toUpperCase()}`}
+                      aria-label={t("datasetEdit.exportAria", { format: format.toUpperCase() })}
                       disabled={exportingFormat === format}
                       className="rounded border border-rule px-2 py-1 text-xs text-ink hover:bg-sunken disabled:opacity-50"
                       onClick={() => void handleExport(format)}
@@ -324,7 +330,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                   className="w-fit"
                   onClick={() => navigate(`/datasets/visual-query/${draft.sourcePipelineId}/edit`)}
                 >
-                  Modifier la requête
+                  {t("datasetEdit.editQuery")}
                 </Button>
               )}
               <Button
@@ -333,12 +339,12 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                 disabled={save.isPending || readOnly}
                 onClick={() => save.mutate(draft)}
               >
-                Enregistrer les colonnes
+                {t("datasetEdit.saveColumns")}
               </Button>
               {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
               {save.isError && (
                 <p role="alert" className="text-sm text-danger">
-                  Échec de l'enregistrement.
+                  {t("actions.saveFailed")}
                 </p>
               )}
             </div>

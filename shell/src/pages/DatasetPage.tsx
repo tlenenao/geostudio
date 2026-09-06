@@ -5,6 +5,7 @@ import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { DatasetDownloadButtons } from "../builder/DatasetDownloadButtons";
 import type { AppConfig } from "../api/types";
+import { t } from "../i18n";
 
 registerBuiltinWidgets();
 
@@ -68,13 +69,13 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
   const attachmentField = schemaQuery.data?.fields.find((f) => f.type === "attachment")?.name;
 
   if (query.isLoading) {
-    return <p role="status">Chargement…</p>;
+    return <p role="status">{t("common.loading")}</p>;
   }
   if (query.isError || !query.data) {
     return (
       <div className="p-8 text-center">
         <p role="alert" className="text-sm text-slate-600">
-          Jeu de données introuvable.
+          {t("datasetPage.notFound")}
         </p>
       </div>
     );
@@ -85,7 +86,9 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
       <header className="flex flex-col gap-1">
         <h1 className="text-xl font-bold text-slate-900">{col.title}</h1>
         <p className="text-sm text-slate-600">{col.description}</p>
-        <p className="text-xs text-slate-500">{col.featureCount ?? 0} entités</p>
+        <p className="text-xs text-slate-500">
+          {t("datasetPage.featureCount", { n: col.featureCount ?? 0 })}
+        </p>
       </header>
       <DatasetDownloadButtons collectionId={collectionId} featureCount={col.featureCount} />
       <div className="h-[480px] w-full">

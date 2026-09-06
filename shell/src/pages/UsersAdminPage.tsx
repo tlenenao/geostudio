@@ -6,6 +6,7 @@ import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Panel } from "../ui/kit/Panel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { t } from "../i18n";
 
 const PAGE_SIZE = 50;
 
@@ -31,7 +32,7 @@ export function UsersAdminPage() {
     try {
       await updateUserRole.mutateAsync({ id: userId, roleId });
     } catch {
-      setRowError({ userId, message: "Échec de la mise à jour du rôle." });
+      setRowError({ userId, message: t("usersAdmin.roleUpdateError") });
     } finally {
       setPendingUserId(null);
     }
@@ -42,25 +43,25 @@ export function UsersAdminPage() {
       <TriptychLayout
         browse={{
           id: "back",
-          label: "Catalogue",
+          label: t("domain.catalog"),
           content: (
             <Panel className="m-3 flex flex-col gap-3 text-sm">
               <Link to="/" className="text-accent hover:underline">
-                ← Retour au catalogue
+                {t("nav.backToCatalog")}
               </Link>
             </Panel>
           ),
         }}
         work={{
           id: "users",
-          label: "Utilisateurs",
+          label: t("usersAdmin.title"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h1 className="text-lg font-bold text-ink">Utilisateurs</h1>
+              <h1 className="text-lg font-bold text-ink">{t("usersAdmin.title")}</h1>
               <label className="flex flex-col gap-1 text-sm text-ink">
-                Rechercher
+                {t("catalog.searchLabel")}
                 <Input
-                  aria-label="Rechercher"
+                  aria-label={t("catalog.searchLabel")}
                   value={q}
                   onChange={(e) => {
                     setQ(e.target.value);
@@ -69,24 +70,23 @@ export function UsersAdminPage() {
                   }}
                 />
               </label>
-              {usersQuery.isLoading && <p role="status">Chargement…</p>}
+              {usersQuery.isLoading && <p role="status">{t("common.loading")}</p>}
               {usersQuery.isError && (
                 <p role="alert" className="text-sm text-danger">
-                  Échec du chargement des utilisateurs.
+                  {t("usersAdmin.loadError")}
                 </p>
               )}
               {rolesQuery.isError && (
                 <p role="alert" className="text-sm text-danger">
-                  Le chargement des rôles a échoué (privilège « Gestion des rôles » requis en plus
-                  de « Gestion des utilisateurs » pour afficher cette page).
+                  {t("usersAdmin.rolesLoadError")}
                 </p>
               )}
               {usersQuery.data && rolesQuery.data && (
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-rule">
-                      <th className="py-2 text-ink">Nom d&apos;utilisateur</th>
-                      <th className="py-2 text-ink">Rôle</th>
+                      <th className="py-2 text-ink">{t("usersAdmin.usernameColumn")}</th>
+                      <th className="py-2 text-ink">{t("usersAdmin.roleColumn")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -98,7 +98,7 @@ export function UsersAdminPage() {
                           <td className="py-2 text-ink">{u.username}</td>
                           <td className="py-2">
                             <select
-                              aria-label={`Rôle de ${u.username}`}
+                              aria-label={t("usersAdmin.roleAria", { username: u.username })}
                               className="h-9 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
                               value={currentRole?.id ?? ""}
                               disabled={pending}
@@ -132,10 +132,10 @@ export function UsersAdminPage() {
                     setRowError(null);
                   }}
                 >
-                  Précédent
+                  {t("usage.previous")}
                 </Button>
                 <span className="text-sm text-ink-2">
-                  Page {page} / {totalPages}
+                  {t("usage.pageOf", { page, totalPages })}
                 </span>
                 <Button
                   size="sm"
@@ -146,7 +146,7 @@ export function UsersAdminPage() {
                     setRowError(null);
                   }}
                 >
-                  Suivant
+                  {t("usage.next")}
                 </Button>
               </div>
             </div>
@@ -154,14 +154,10 @@ export function UsersAdminPage() {
         }}
         inspect={{
           id: "help",
-          label: "Détail",
+          label: t("usersAdmin.detail"),
           content: (
             <div className="flex flex-col gap-2 p-3 text-sm text-ink-2">
-              <p>
-                Le dernier titulaire de la gestion des rôles et des utilisateurs ne peut pas être
-                rétrogradé : la tentative échoue pour préserver au moins un compte capable
-                d&apos;administrer le tenant.
-              </p>
+              <p>{t("usersAdmin.demotionProtectionText")}</p>
             </div>
           ),
         }}

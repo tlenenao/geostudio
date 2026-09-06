@@ -8,6 +8,7 @@ import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { t } from "../i18n";
 
 type SqlResult = { columns: string[]; rows: unknown[][]; truncated: boolean };
 
@@ -44,25 +45,25 @@ export function SqlLabPage() {
         defaultTabId="query"
         browse={{
           id: "back",
-          label: "Catalogue",
+          label: t("domain.catalog"),
           content: (
             <Panel className="m-3 flex flex-col gap-3 text-sm">
               <Link to="/" className="text-accent hover:underline">
-                ← Retour au catalogue
+                {t("nav.backToCatalog")}
               </Link>
             </Panel>
           ),
         }}
         work={{
           id: "query",
-          label: "Requête",
+          label: t("sqlLab.queryLabel"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
               <h1 className="text-lg font-bold text-ink">SQL Lab</h1>
               <label className="flex flex-col gap-1 text-sm text-ink">
-                Requête SQL
+                {t("sqlLab.sqlQueryLabel")}
                 <textarea
-                  aria-label="Requête SQL"
+                  aria-label={t("sqlLab.sqlQueryLabel")}
                   className="h-32 rounded-md border border-rule bg-surface p-2 font-mono text-xs text-ink"
                   value={sql}
                   onChange={(e) => setSql(e.target.value)}
@@ -74,7 +75,7 @@ export function SqlLabPage() {
                 disabled={!sql.trim() || run.isPending}
                 onClick={() => run.mutate(sql)}
               >
-                Exécuter
+                {t("sqlLab.runButton")}
               </Button>
               {run.isError && (
                 <p role="alert" className="text-sm text-danger">
@@ -107,7 +108,7 @@ export function SqlLabPage() {
                   </table>
                   {result.truncated && (
                     <p className="mt-1 text-xs text-ink-2">
-                      Résultat tronqué aux {result.rows.length} premières lignes.
+                      {t("sqlLab.truncatedMessage", { n: result.rows.length })}
                     </p>
                   )}
                 </div>
@@ -117,11 +118,11 @@ export function SqlLabPage() {
         }}
         inspect={{
           id: "history",
-          label: "Historique",
+          label: t("sqlLab.historyLabel"),
           content: (
             <div className="flex flex-col gap-2 p-3">
               {history.length === 0 ? (
-                <EmptyState title="Aucune requête exécutée pour l'instant." />
+                <EmptyState title={t("sqlLab.emptyHistory")} />
               ) : (
                 <ul className="flex flex-col gap-1">
                   {history.map((entry, i) => (
@@ -129,7 +130,7 @@ export function SqlLabPage() {
                       <span aria-hidden="true">{entry.status === "error" ? "✕" : "✓"}</span>
                       <button
                         type="button"
-                        aria-label={`Recharger la requête : ${entry.sql}`}
+                        aria-label={t("sqlLab.reloadQueryAria", { sql: entry.sql })}
                         className="text-left font-mono text-ink-2 hover:underline"
                         onClick={() => setSql(entry.sql)}
                       >

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { Button } from "../ui/kit/Button";
+import { t } from "../i18n";
 
 export type Bbox = [number, number, number, number]; // [minLon, minLat, maxLon, maxLat]
 
@@ -144,11 +145,11 @@ export function CatalogSpatialFilter({ onChange }: { onChange: (bbox: Bbox | nul
       <div
         ref={containerRef}
         role="img"
-        aria-label="Dessiner un rectangle de recherche spatiale"
+        aria-label={t("catalog.spatialDrawAria")}
         className="h-48 w-full rounded-md border border-rule"
       />
       <Button type="button" variant="outline" size="sm" onClick={clear} disabled={!bbox}>
-        Effacer
+        {t("common.clear")}
       </Button>
     </div>
   );

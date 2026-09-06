@@ -17,6 +17,7 @@ import { Input } from "../ui/input";
 import { useIsExportRender } from "../shell/useIsExportRender";
 import { markExportReady } from "../shell/exportReady";
 import { ExportPanel } from "../builder/print/ExportPanel";
+import { t } from "../i18n";
 
 registerBuiltinWidgets();
 registerCounterExampleWidget();
@@ -137,19 +138,19 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   }
 
   if (itemQuery.isLoading || (itemQuery.isSuccess && query.isLoading) || !extensionsRegistered) {
-    return <p role="status">Chargement…</p>;
+    return <p role="status">{t("common.loading")}</p>;
   }
   if (itemQuery.isError) {
     return (
       <p role="alert" className="text-sm text-red-600">
-        Accès refusé.
+        {t("appRuntime.accessDenied")}
       </p>
     );
   }
   if (query.isError || !query.data) {
     return (
       <p role="alert" className="text-sm text-red-600">
-        Application introuvable.
+        {t("appRuntime.notFound")}
       </p>
     );
   }
@@ -167,7 +168,7 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
           {exportEnabled && <ExportPanel itemId={pk} />}
           {query.data.interactions === "auto" && (
             <Button size="sm" variant="outline" onClick={() => setSaveDialogOpen(true)}>
-              Enregistrer la vue
+              {t("appRuntime.saveView")}
             </Button>
           )}
         </div>
@@ -202,20 +203,20 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
       <Dialog
         open={saveDialogOpen}
         onClose={() => setSaveDialogOpen(false)}
-        title="Enregistrer la vue"
+        title={t("appRuntime.saveView")}
       >
         <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
-            Nom de la vue
+            {t("appRuntime.viewNameLabel")}
             <Input
-              aria-label="Nom de la vue"
+              aria-label={t("appRuntime.viewNameLabel")}
               value={viewTitle}
               onChange={(e) => setViewTitle(e.target.value)}
             />
           </label>
           {createBookmark.isError && (
             <p role="alert" className="text-sm text-red-600">
-              Échec de l'enregistrement.
+              {t("actions.saveFailed")}
             </p>
           )}
           <div className="flex justify-end gap-2">
@@ -225,7 +226,7 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
               size="sm"
               onClick={() => setSaveDialogOpen(false)}
             >
-              Annuler
+              {t("confirmDialog.cancel")}
             </Button>
             <Button
               type="button"
@@ -233,7 +234,7 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
               disabled={createBookmark.isPending || !viewTitle.trim()}
               onClick={() => void saveView()}
             >
-              Enregistrer
+              {t("common.save")}
             </Button>
           </div>
         </div>

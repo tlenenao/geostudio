@@ -15,17 +15,17 @@ import { CatalogSpatialFilter, type Bbox } from "./CatalogSpatialFilter";
 
 const PAGE_SIZE = 12;
 const SCOPE_LABELS: Record<ItemScope, string> = {
-  all: "Tous",
-  mine: "Mes éléments",
-  shared: "Partagés avec moi",
-  public: "Publics",
+  all: t("catalog.allOption"),
+  mine: t("catalog.scopeMine"),
+  shared: t("catalog.scopeShared"),
+  public: t("catalog.scopePublic"),
 };
 const SORT_LABELS: Record<ItemSort, string> = {
-  date_desc: "Date de création (récent d'abord)",
-  date_asc: "Date de création (ancien d'abord)",
-  updated_desc: "Date de modification (récent d'abord)",
-  title_asc: "Titre (A→Z)",
-  title_desc: "Titre (Z→A)",
+  date_desc: t("catalog.sortDateDesc"),
+  date_asc: t("catalog.sortDateAsc"),
+  updated_desc: t("catalog.sortUpdatedDesc"),
+  title_asc: t("catalog.sortTitleAsc"),
+  title_desc: t("catalog.sortTitleDesc"),
 };
 const SORT_ORDER: ItemSort[] = ["date_desc", "date_asc", "updated_desc", "title_asc", "title_desc"];
 
@@ -112,13 +112,13 @@ export function CatalogPage({
         defaultTabId="catalog"
         browse={{
           id: "filter",
-          label: "Filtrer",
+          label: t("catalog.filterLabel"),
           content: (
             <div className="flex flex-col gap-4 p-3">
               <label className="flex flex-col gap-1 text-sm text-ink">
-                Rechercher
+                {t("catalog.searchLabel")}
                 <Input
-                  aria-label="Rechercher"
+                  aria-label={t("catalog.searchLabel")}
                   value={q}
                   onChange={(e) => {
                     setQ(e.target.value);
@@ -128,14 +128,14 @@ export function CatalogPage({
               </label>
               {!fixedType && (
                 <label className="flex flex-col gap-1 text-sm text-ink">
-                  Type
+                  {t("catalog.typeLabel")}
                   <select
-                    aria-label="Type"
+                    aria-label={t("catalog.typeLabel")}
                     className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                     value={type}
                     onChange={(e) => setType(e.target.value as ResourceType | "")}
                   >
-                    <option value="">Tous</option>
+                    <option value="">{t("catalog.allOption")}</option>
                     {RESOURCE_TYPE_ORDER.map((rt) => (
                       <option key={rt} value={rt}>
                         {RESOURCE_TYPE_LABELS[rt]}
@@ -146,13 +146,13 @@ export function CatalogPage({
               )}
               {type === "pipeline" && !fixedType && (
                 <Link to="/reports" className="text-accent hover:underline">
-                  Rapports planifiés →
+                  {t("catalog.scheduledReportsLink")}
                 </Link>
               )}
               <label className="flex flex-col gap-1 text-sm text-ink">
-                Portée
+                {t("catalog.scopeLabel")}
                 <select
-                  aria-label="Portée"
+                  aria-label={t("catalog.scopeLabel")}
                   className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                   value={scope}
                   onChange={(e) => {
@@ -168,9 +168,9 @@ export function CatalogPage({
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-sm text-ink">
-                Trier par
+                {t("catalog.sortByLabel")}
                 <select
-                  aria-label="Trier par"
+                  aria-label={t("catalog.sortByLabel")}
                   className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                   value={sort}
                   onChange={(e) => {
@@ -186,9 +186,9 @@ export function CatalogPage({
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-sm text-ink">
-                Propriétaire
+                {t("catalog.ownerLabel")}
                 <select
-                  aria-label="Propriétaire"
+                  aria-label={t("catalog.ownerLabel")}
                   className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                   value={ownerFilter}
                   onChange={(e) => {
@@ -196,7 +196,7 @@ export function CatalogPage({
                     setPage(1);
                   }}
                 >
-                  <option value="">Tous</option>
+                  <option value="">{t("catalog.allOption")}</option>
                   {(facetsQuery.data?.owners ?? []).map((o) => (
                     <option key={o.username} value={o.username}>
                       {o.username} ({o.count})
@@ -206,7 +206,7 @@ export function CatalogPage({
               </label>
               {(facetsQuery.data?.keywords.length ?? 0) > 0 && (
                 <div className="flex flex-col gap-1 text-sm text-ink">
-                  Mots-clés
+                  {t("catalog.keywordsLabel")}
                   <div className="flex flex-wrap gap-2">
                     {(facetsQuery.data?.keywords ?? []).map((k) => (
                       <button
@@ -223,7 +223,7 @@ export function CatalogPage({
                 </div>
               )}
               <div className="flex flex-col gap-1 text-sm text-ink">
-                Recherche spatiale
+                {t("catalog.spatialSearchLabel")}
                 <CatalogSpatialFilter
                   onChange={(bbox) => {
                     setSpatialBbox(bbox);
@@ -236,7 +236,7 @@ export function CatalogPage({
         }}
         work={{
           id: "catalog",
-          label: "Catalogue",
+          label: t("domain.catalog"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-6">
               {openError && (
@@ -244,17 +244,17 @@ export function CatalogPage({
                   {openError}
                 </p>
               )}
-              {query.isLoading && <p role="status">Chargement…</p>}
+              {query.isLoading && <p role="status">{t("common.loading")}</p>}
               {query.isError && (
                 <div role="alert" className="text-sm text-danger">
-                  Erreur de chargement.{" "}
+                  {t("catalog.loadError")}{" "}
                   <Button size="sm" variant="outline" onClick={() => void query.refetch()}>
-                    Réessayer
+                    {t("common.retry")}
                   </Button>
                 </div>
               )}
               {query.isSuccess && query.data.items.length === 0 && (
-                <p className="text-sm text-ink-3">Aucun élément.</p>
+                <p className="text-sm text-ink-3">{t("catalog.empty")}</p>
               )}
               {query.isSuccess && query.data.items.length > 0 && (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -275,10 +275,10 @@ export function CatalogPage({
                   disabled={page <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
-                  Précédent
+                  {t("usage.previous")}
                 </Button>
                 <span className="text-sm text-ink-2">
-                  Page {page} / {totalPages}
+                  {t("usage.pageOf", { page, totalPages })}
                 </span>
                 <Button
                   size="sm"
@@ -286,7 +286,7 @@ export function CatalogPage({
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                 >
-                  Suivant
+                  {t("usage.next")}
                 </Button>
               </div>
             </div>
@@ -294,26 +294,26 @@ export function CatalogPage({
         }}
         inspect={{
           id: "summary",
-          label: "Résumé",
+          label: t("catalog.summaryLabel"),
           content: (
             <Panel className="m-3 flex flex-col gap-2 text-sm">
               <p className="font-medium text-ink">
                 {t("catalog.count", { n: query.data?.total ?? 0 })}
               </p>
               <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs text-ink-2">
-                <dt>Recherche</dt>
+                <dt>{t("catalog.searchResultLabel")}</dt>
                 <dd>{q || "—"}</dd>
-                <dt>Type</dt>
-                <dd>{type ? RESOURCE_TYPE_LABELS[type] : "Tous"}</dd>
-                <dt>Portée</dt>
+                <dt>{t("catalog.typeLabel")}</dt>
+                <dd>{type ? RESOURCE_TYPE_LABELS[type] : t("catalog.allOption")}</dd>
+                <dt>{t("catalog.scopeLabel")}</dt>
                 <dd>{SCOPE_LABELS[scope]}</dd>
-                <dt>Trier par</dt>
+                <dt>{t("catalog.sortByLabel")}</dt>
                 <dd>{SORT_LABELS[sort]}</dd>
-                <dt>Propriétaire</dt>
-                <dd>{ownerFilter || "Tous"}</dd>
-                <dt>Mots-clés</dt>
+                <dt>{t("catalog.ownerLabel")}</dt>
+                <dd>{ownerFilter || t("catalog.allOption")}</dd>
+                <dt>{t("catalog.keywordsLabel")}</dt>
                 <dd>{selectedKeywords.length > 0 ? selectedKeywords.join(", ") : "—"}</dd>
-                <dt>Emprise spatiale</dt>
+                <dt>{t("catalog.spatialExtentLabel")}</dt>
                 <dd>{spatialBbox ? spatialBbox.map((n) => n.toFixed(2)).join(", ") : "—"}</dd>
               </dl>
             </Panel>
