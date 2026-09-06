@@ -155,6 +155,7 @@ export type ListItemsParams = {
   sort?: ItemSort;
   owner?: string;
   keywords?: string[];
+  bbox?: string; // "minLon,minLat,maxLon,maxLat"
 };
 
 export type OwnerFacet = { username: string; count: number };

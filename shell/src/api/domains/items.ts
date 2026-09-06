@@ -55,6 +55,7 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
       if (params.sort) q.set("sort", params.sort);
       if (params.owner) q.set("owner", params.owner);
       for (const keyword of params.keywords ?? []) q.append("keyword", keyword);
+      if (params.bbox) q.set("bbox", params.bbox);
       return request<ItemPage>("GET", `/items?${q.toString()}`);
     },
 

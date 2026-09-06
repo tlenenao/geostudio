@@ -11,6 +11,7 @@ import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { CatalogSpatialFilter, type Bbox } from "./CatalogSpatialFilter";
 
 const PAGE_SIZE = 12;
 const SCOPE_LABELS: Record<ItemScope, string> = {
@@ -63,6 +64,7 @@ export function CatalogPage({
   const [sort, setSort] = useState<ItemSort>("date_desc");
   const [ownerFilter, setOwnerFilter] = useState("");
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
+  const [spatialBbox, setSpatialBbox] = useState<Bbox | null>(null);
   const [page, setPage] = useState(1);
   // SP-30a review finale : la page n'était pas réinitialisée en changeant de
   // domaine via DomainBar (?type= change sans démontage de CatalogPage) —
@@ -85,6 +87,7 @@ export function CatalogPage({
       sort,
       owner: ownerFilter || undefined,
       keywords: selectedKeywords.length > 0 ? selectedKeywords : undefined,
+      bbox: spatialBbox ? spatialBbox.join(",") : undefined,
       me: requiresMe ? me.data?.username : undefined,
     },
     { enabled: !requiresMe || !!me.data },
@@ -214,6 +217,15 @@ export function CatalogPage({
                   </div>
                 </div>
               )}
+              <div className="flex flex-col gap-1 text-sm text-ink">
+                Recherche spatiale
+                <CatalogSpatialFilter
+                  onChange={(bbox) => {
+                    setSpatialBbox(bbox);
+                    setPage(1);
+                  }}
+                />
+              </div>
             </div>
           ),
         }}
@@ -296,6 +308,8 @@ export function CatalogPage({
                 <dd>{ownerFilter || "Tous"}</dd>
                 <dt>Mots-clés</dt>
                 <dd>{selectedKeywords.length > 0 ? selectedKeywords.join(", ") : "—"}</dd>
+                <dt>Emprise spatiale</dt>
+                <dd>{spatialBbox ? spatialBbox.map((n) => n.toFixed(2)).join(", ") : "—"}</dd>
               </dl>
             </Panel>
           ),
