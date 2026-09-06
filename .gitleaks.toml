@@ -51,3 +51,22 @@ regexes = [
   '''wrong-secret-padding-0123456789012''',
   '''a-different-secret-padding-0123456''',
 ]
+
+[[allowlists]]
+description = "Faux positifs `generic-api-key` sur des NOMS de variables, jamais une valeur : `s3_key = attachment.s3_key` (assignation Python, SP-40) et le couple de sentinelles `\"CORE_AUTH_MODE\", \"S3_ATTACHMENTS_BUCKET\"` (deux noms de variables d'environnement dans un tuple, SP-60). Les deux apparaissent dans un test et dans le plan qui le cite verbatim. `condition = \"AND\"` : sans lui, la condition par défaut est OR — le seul `paths` exempterait alors generic-api-key sur l'INTÉGRALITÉ de ces quatre fichiers, y compris une vraie clé qu'on y collerait plus tard (même piège que celui déjà documenté sur le bloc Grafana ci-dessus)."
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''core/tests/test_attachments_read_routes\.py''',
+  '''core/tests/test_deployability\.py''',
+  '''docs/superpowers/plans/2026-09-04-sp40-pieces-jointes\.md''',
+  '''docs/superpowers/plans/2026-09-06-sp60-perf-frontend\.md''',
+]
+# Ces regexes sont comparées au SECRET capturé par la règle, pas à la ligne
+# (`regexTarget` vaut "secret" par défaut) — d'où deux identifiants nus et
+# non le texte complet de la ligne : c'est précisément la démonstration que
+# la règle ne capture ici qu'un nom de variable.
+regexes = [
+  '''^attachment\.s3_key$''',
+  '''^S3_ATTACHMENTS_BUCKET$''',
+]
