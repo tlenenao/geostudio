@@ -4270,7 +4270,8 @@
                 "bearer_token": "#/components/schemas/BearerTokenPayload",
                 "oauth2_client_credentials": "#/components/schemas/OAuth2ClientCredentialsPayload",
                 "postgres_dsn": "#/components/schemas/PostgresDsnPayload",
-                "smtp": "#/components/schemas/SmtpCredentialsPayload"
+                "smtp": "#/components/schemas/SmtpCredentialsPayload",
+                "snowflake_dsn": "#/components/schemas/SnowflakeDsnPayload"
               },
               "propertyName": "kind"
             },
@@ -4292,6 +4293,9 @@
               },
               {
                 "$ref": "#/components/schemas/SmtpCredentialsPayload"
+              },
+              {
+                "$ref": "#/components/schemas/SnowflakeDsnPayload"
               }
             ],
             "title": "Payload"
@@ -4409,6 +4413,26 @@
           "fromAddress"
         ],
         "title": "SmtpCredentialsPayload",
+        "type": "object"
+      },
+      "SnowflakeDsnPayload": {
+        "description": "DSN SQLAlchemy complet vers un entrep\u00f4t Snowflake (GAP-16), forme\n`snowflake://user:password@account/database/schema?warehouse=...&role=...`\n(v\u00e9rifi\u00e9e contre le README du d\u00e9p\u00f4t snowflake-sqlalchemy, design \u00a72.2).\nComme postgres_dsn : le c\u0153ur ne parse ni ne valide ce DSN, il le passe\ntel quel \u00e0 sa.create_engine().",
+        "properties": {
+          "dsn": {
+            "title": "Dsn",
+            "type": "string"
+          },
+          "kind": {
+            "const": "snowflake_dsn",
+            "default": "snowflake_dsn",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dsn"
+        ],
+        "title": "SnowflakeDsnPayload",
         "type": "object"
       },
       "SqlQueryBody": {
@@ -10509,7 +10533,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/geo+json": {
                 "schema": {}
               }
             },
@@ -10568,7 +10592,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/geo+json": {
                 "schema": {}
               }
             },
@@ -10719,7 +10743,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/geo+json": {
                 "schema": {}
               }
             },
@@ -10768,7 +10792,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/geo+json": {
                 "schema": {}
               }
             },

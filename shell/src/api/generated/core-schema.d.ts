@@ -3050,7 +3050,7 @@ export interface components {
             /** Name */
             name: string;
             /** Payload */
-            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"];
+            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"];
         };
         /** ShareLinkCreated */
         ShareLinkCreated: {
@@ -3104,6 +3104,23 @@ export interface components {
             useTls: boolean;
             /** Username */
             username: string;
+        };
+        /**
+         * SnowflakeDsnPayload
+         * @description DSN SQLAlchemy complet vers un entrepôt Snowflake (GAP-16), forme
+         *     `snowflake://user:password@account/database/schema?warehouse=...&role=...`
+         *     (vérifiée contre le README du dépôt snowflake-sqlalchemy, design §2.2).
+         *     Comme postgres_dsn : le cœur ne parse ni ne valide ce DSN, il le passe
+         *     tel quel à sa.create_engine().
+         */
+        SnowflakeDsnPayload: {
+            /** Dsn */
+            dsn: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "snowflake_dsn";
         };
         /** SqlQueryBody */
         SqlQueryBody: {
@@ -6880,7 +6897,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/geo+json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -6914,7 +6931,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/geo+json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -6972,7 +6989,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/geo+json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -7007,7 +7024,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/geo+json": unknown;
                 };
             };
             /** @description Validation Error */
