@@ -421,6 +421,30 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   à tout ce plan** (confirmé en checkoutant le commit d'avant la Tâche 1 —
   `e2e/pipeline-builder.spec.ts:111`, sans rapport, non corrigé, hors
   périmètre).
+- **SP-56** — formats d'import manquants (GAP-09/GAP-29, chantier 4.14) :
+  XLSX (`parse_xlsx_latlon`, même contrat que le CSV, coercition
+  `datetime`→`isoformat()` — openpyxl rend des types Python natifs par
+  cellule, contrairement au CSV où tout est déjà une chaîne), KML/KMZ
+  (`parse_kml`, réutilise `_read_features` tel quel — GDAL/pyogrio lit KML
+  nativement, driver LIBKML ; `.kmz` se lit **directement**, sans le
+  préfixe `/vsizip/` qu'exige `.zip` Shapefile), GeoParquet
+  (`parse_geoparquet`, via `geopandas.read_parquet` — **pas** `pyogrio`,
+  aucun driver Parquet dans ce build ; aller-retour testé contre
+  `app.cdc.parquet_writer.write_geoparquet`, SP-11). Aucune nouvelle
+  dépendance (`pyogrio`/`geopandas`/`pyarrow`/`openpyxl` déjà présentes).
+  `POST /uploads/inspect` gagne `InspectResponse.fields` (XLSX) ;
+  `ImportFileButton.tsx` accepte les 9 extensions, nouvelle phase
+  `selecting-latlon` (parallèle à `selecting-layer`, sans re-upload).
+  **2 défauts réels trouvés par exécution, absents du texte du plan**
+  (piège CLAUDE.md n°3) : (1) une géométrie manquante revient de
+  `geopandas.read_parquet()` en `NaN` (float), pas en `None` — le
+  pseudo-code de la spec ne testait que `is None` ; (2) le driver KML de
+  GDAL impose un champ `"id"` sur **tout** Placemark (même minimal, sans
+  schéma personnalisé) — collision systématique avec la colonne `id` (PK
+  serial) de `run_import`, qui aurait cassé tout import KML sans
+  exception ; `parse_kml` renomme désormais `id`/`tenant_id`/`geom` en
+  `kml_id`/`kml_tenant_id`/`kml_geom`. Les deux corrigés et vérifiés par
+  falsification.
 
 ### Conventions tranchées (2026-09-01)
 
