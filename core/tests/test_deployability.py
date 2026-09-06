@@ -1225,3 +1225,15 @@ def test_base_worker_defaults_csp_mode_to_report_only():
         f"worker (base) doit fixer CORE_CSP_MODE à report-only par défaut "
         f"(GAP-72 ne visait que l'overlay prod), a trouvé : {env.get('CORE_CSP_MODE')!r}"
     )
+
+
+def test_shell_nginx_conf_no_longer_hardcodes_its_own_csp():
+    """SP-48/GAP-72 blocage 4 : shell/nginx.conf portait sa propre valeur
+    Content-Security-Policy-Report-Only, reconnue fausse par son propre
+    commentaire pour la topologie 'ports publiés directement' du fichier
+    de base — retirée plutôt que resynchronisée indéfiniment avec la
+    valeur Traefik (spec §3). Traefik (base et prod, cf. tests ci-dessus)
+    est désormais la seule source de CSP dans toute topologie qui passe
+    par lui — la seule documentée par ce dépôt."""
+    content = (REPO / "shell/nginx.conf").read_text()
+    assert "Content-Security-Policy" not in content
