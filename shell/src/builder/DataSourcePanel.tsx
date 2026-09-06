@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { DataSource } from "../api/types";
+import { useState } from "react";
+import type { DataRecord, DataSource } from "../api/types";
 import type { BucketGranularity } from "../lib/comparisonWindow";
 import { ANALYTICS_AGGREGATES, aggregateNeedsP, DEFAULT_PERCENTILE } from "./aggregates";
 import { PercentileInput } from "./PercentileInput";
@@ -41,6 +42,54 @@ function groupByDisplayValue(groupBy: unknown): string {
 
 const inputCls = "h-8 w-full rounded border border-slate-300 px-2 text-xs";
 const selectCls = "h-8 w-full rounded border border-slate-300 text-xs";
+
+function StaticRecordRow({
+  record,
+  onChange,
+  onRemove,
+}: {
+  record: DataRecord;
+  onChange: (properties: Record<string, unknown>) => void;
+  onRemove: () => void;
+}) {
+  const [text, setText] = useState(JSON.stringify(record.properties));
+  const [error, setError] = useState<string | null>(null);
+  function commit() {
+    try {
+      const parsed = JSON.parse(text);
+      setError(null);
+      onChange(parsed);
+    } catch {
+      setError("JSON invalide — modification non enregistrée.");
+    }
+  }
+  return (
+    <div className="flex flex-col gap-1 rounded border border-slate-200 p-1">
+      <div className="flex items-center gap-1">
+        <textarea
+          aria-label={`Propriétés de l'enregistrement ${record.id}`}
+          className="h-16 flex-1 rounded border border-slate-300 p-1 font-mono text-xs"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={commit}
+        />
+        <button
+          type="button"
+          aria-label={`Retirer l'enregistrement ${record.id}`}
+          className="text-xs text-red-600"
+          onClick={onRemove}
+        >
+          ✕
+        </button>
+      </div>
+      {error && (
+        <span role="alert" className="text-xs text-red-600">
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
 
 export function DataSourcePanel({
   sources,
@@ -294,6 +343,46 @@ export function DataSourcePanel({
                   onClick={() => setMeasures(s, [...measuresOf(s), { agg: "sum", field: "" }])}
                 >
                   + Mesure
+                </button>
+              </div>
+            )}
+            {s.type === "static" && (
+              <div className="mt-1 flex flex-col gap-1">
+                {(Array.isArray(s.query.records) ? (s.query.records as DataRecord[]) : []).map(
+                  (r) => (
+                    <StaticRecordRow
+                      key={r.id}
+                      record={r}
+                      onChange={(properties) =>
+                        patchQuery(s.id, {
+                          records: (s.query.records as DataRecord[]).map((x) =>
+                            x.id === r.id ? { ...x, properties } : x,
+                          ),
+                        })
+                      }
+                      onRemove={() =>
+                        patchQuery(s.id, {
+                          records: (s.query.records as DataRecord[]).filter((x) => x.id !== r.id),
+                        })
+                      }
+                    />
+                  ),
+                )}
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-100"
+                  onClick={() =>
+                    patchQuery(s.id, {
+                      records: [
+                        ...(Array.isArray(s.query.records)
+                          ? (s.query.records as DataRecord[])
+                          : []),
+                        { id: crypto.randomUUID(), properties: {} },
+                      ],
+                    })
+                  }
+                >
+                  Ajouter un enregistrement
                 </button>
               </div>
             )}

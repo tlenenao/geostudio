@@ -299,3 +299,70 @@ test("vider ou sortir des bornes le champ centile ne produit jamais une requête
   fireEvent.change(screen.getByLabelText("Centile (source s1)"), { target: { value: "99" } });
   expect((onChange.mock.calls.at(-1)![0] as DataSource[])[0].query.p).toBe(99);
 });
+
+test("a static source exposes a records editor, not the features/statistics fields", async () => {
+  const onChange = vi.fn();
+  render(
+    <DataSourcePanel
+      sources={[{ id: "s1", type: "static", service: "", layer: "", query: {} }]}
+      onChange={onChange}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Ajouter un enregistrement" })).toBeInTheDocument();
+  expect(screen.queryByLabelText(/Collection de la source/)).not.toBeInTheDocument();
+});
+
+test("adding a record pushes a new entry with an auto-generated id", async () => {
+  const onChange = vi.fn();
+  render(
+    <DataSourcePanel
+      sources={[{ id: "s1", type: "static", service: "", layer: "", query: {} }]}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter un enregistrement" }));
+  const [sources] = onChange.mock.calls[0];
+  expect(sources[0].query.records).toHaveLength(1);
+  expect(sources[0].query.records[0]).toMatchObject({ properties: {} });
+});
+
+test("editing a record's JSON on blur commits valid JSON, rejects invalid JSON with an alert", async () => {
+  const onChange = vi.fn();
+  const source: DataSource = {
+    id: "s1",
+    type: "static",
+    service: "",
+    layer: "",
+    query: { records: [{ id: "r1", properties: {} }] },
+  };
+  render(<DataSourcePanel sources={[source]} onChange={onChange} />);
+  const area = screen.getByLabelText(/Propriétés de l'enregistrement r1/);
+  // userEvent.type interprète les accolades littérales comme des modificateurs
+  // de touche (cf. sa doc "special characters") — fireEvent.change évite
+  // l'échappement et suffit ici, ce champ ne réagissant qu'au blur.
+  fireEvent.change(area, { target: { value: '{"name":"A"}' } });
+  fireEvent.blur(area);
+  await vi.waitFor(() => {
+    const [sources] = onChange.mock.calls.at(-1)!;
+    expect(sources[0].query.records[0].properties).toEqual({ name: "A" });
+  });
+
+  fireEvent.change(area, { target: { value: "{not json" } });
+  fireEvent.blur(area);
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+});
+
+test("removing a record drops it from query.records", async () => {
+  const onChange = vi.fn();
+  const source: DataSource = {
+    id: "s1",
+    type: "static",
+    service: "",
+    layer: "",
+    query: { records: [{ id: "r1", properties: {} }] },
+  };
+  render(<DataSourcePanel sources={[source]} onChange={onChange} />);
+  await userEvent.click(screen.getByRole("button", { name: /Retirer l'enregistrement r1/ }));
+  const [sources] = onChange.mock.calls[0];
+  expect(sources[0].query.records).toEqual([]);
+});
