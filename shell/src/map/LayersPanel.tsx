@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { MapLayer } from "../api/types";
@@ -11,6 +12,7 @@ import {
 import { LayerPicker } from "./LayerPicker";
 import { MapSymbologyEditor } from "./MapSymbologyEditor";
 import { PopupEditor } from "./PopupEditor";
+import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 
 // Une couche "feature" n'a pas de collection interrogeable : son schéma vient
 // du GeoJSON qu'elle pointe elle-même. Une seule requête partagée par les
@@ -146,6 +148,66 @@ function LayerSymbologyEditor({
   );
 }
 
+// GAP-45 : layer.paint fait un round-trip API complet (toFrontLayer()) et
+// sert de repli au rendu quand symbology est absent, mais aucune UI ne
+// l'écrivait jamais avant ce panneau — seul un document édité hors produit
+// (MCP/API) pouvait l'utiliser. Repliée par défaut (mode « Avancé »
+// explicite, pas un formulaire structuré par propriété MapLibre — rule
+// CLAUDE.md n°2, `paint` reste une échappatoire volontaire). État local
+// `draft` distinct de `layer.paint` tant que le JSON n'est pas valide, pour
+// ne jamais perdre la frappe de l'auteur sur une faute de frappe
+// temporaire ; un JSON invalide affiche une erreur sans jamais committer
+// une peinture cassée (onChangeLayer n'est appelé qu'après parse réussi).
+function LayerPaintAdvancedEditor({
+  layer,
+  onChangeLayer,
+}: {
+  layer: Extract<MapLayer, { kind: "vector" | "feature" }>;
+  onChangeLayer: (next: MapLayer) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const panel = usePanelTrigger(open);
+  const [draft, setDraft] = useState(() => JSON.stringify(layer.paint ?? {}, null, 2));
+  const [error, setError] = useState<string | null>(null);
+  function commit() {
+    try {
+      const parsed = JSON.parse(draft) as Record<string, unknown>;
+      setError(null);
+      onChangeLayer({ ...layer, paint: parsed });
+    } catch {
+      setError("JSON invalide — la peinture n'a pas été enregistrée.");
+    }
+  }
+  return (
+    <div className="basis-full pl-2">
+      <button
+        type="button"
+        {...panel.triggerProps}
+        className="text-xs underline"
+        onClick={() => setOpen((o) => !o)}
+      >
+        Avancé : peinture MapLibre
+      </button>
+      {open && (
+        <div id={panel.panelId}>
+          <textarea
+            aria-label="Peinture MapLibre (JSON)"
+            className="mt-1 h-24 w-full rounded-md border border-rule bg-surface p-2 font-mono text-xs"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+          />
+          {error && (
+            <p role="alert" className="text-xs text-danger">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function LayersPanel({
   layers,
   onChange,
@@ -243,6 +305,12 @@ export function LayersPanel({
                   }
                 />
                 <LayerSymbologyEditor
+                  layer={layer}
+                  onChangeLayer={(next) =>
+                    onChange(layers.map((l) => (l.id === layer.id ? next : l)))
+                  }
+                />
+                <LayerPaintAdvancedEditor
                   layer={layer}
                   onChangeLayer={(next) =>
                     onChange(layers.map((l) => (l.id === layer.id ? next : l)))

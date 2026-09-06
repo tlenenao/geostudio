@@ -178,6 +178,49 @@ test("une couche raster expose un contrôle d'opacité (GAP-35)", () => {
   expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ id: "r1", opacity: 0.4 })]);
 });
 
+test("un éditeur JSON avancé permet d'écrire layer.paint (GAP-45)", async () => {
+  const vectorLayers: MapLayer[] = [
+    {
+      id: "v1",
+      title: "V",
+      visible: true,
+      kind: "vector",
+      tilesUrl: "https://t",
+      sourceLayer: "s",
+    },
+  ];
+  const onChange = vi.fn();
+  renderPanel(vectorLayers, onChange);
+  await userEvent.click(screen.getByRole("button", { name: /avancé/i, expanded: false }));
+  const textarea = screen.getByRole("textbox", { name: /peinture maplibre/i });
+  fireEvent.change(textarea, { target: { value: '{"fill-color":"#f00"}' } });
+  fireEvent.blur(textarea);
+  expect(onChange).toHaveBeenCalledWith([
+    expect.objectContaining({ id: "v1", paint: { "fill-color": "#f00" } }),
+  ]);
+});
+
+test("un JSON invalide affiche une erreur sans appeler onChange (GAP-45)", async () => {
+  const vectorLayers: MapLayer[] = [
+    {
+      id: "v1",
+      title: "V",
+      visible: true,
+      kind: "vector",
+      tilesUrl: "https://t",
+      sourceLayer: "s",
+    },
+  ];
+  const onChange = vi.fn();
+  renderPanel(vectorLayers, onChange);
+  await userEvent.click(screen.getByRole("button", { name: /avancé/i, expanded: false }));
+  const textarea = screen.getByRole("textbox", { name: /peinture maplibre/i });
+  fireEvent.change(textarea, { target: { value: "{not json" } });
+  fireEvent.blur(textarea);
+  expect(onChange).not.toHaveBeenCalled();
+  expect(screen.getByRole("alert")).toBeInTheDocument();
+});
+
 test("a feature layer without a collection lists fields from its fetched GeoJSON in the popup editor", async () => {
   const onChange = vi.fn();
   const fc = {
