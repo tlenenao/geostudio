@@ -359,3 +359,13 @@ jobs:
         working-directory: core
         env:
           PYTHONPATH: .
+      # REV-181 : garde-fou de fraîcheur — les rendus committés
+      # (docs/revue/bilan-fonctionnalites.{html,md}) doivent avoir été
+      # régénérés après le dernier changement de code/inventaire. --check
+      # (ci-dessus) ne calcule que les planchers de santé/priorité ; ce mode
+      # est différent, il diffe les rendus recalculés en mémoire contre les
+      # fichiers committés.
+      - run: uv run python scripts/feature_health_cli.py --repo .. --check-fresh
+        working-directory: core
+        env:
+          PYTHONPATH: .
