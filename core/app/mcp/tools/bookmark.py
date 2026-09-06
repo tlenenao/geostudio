@@ -25,10 +25,12 @@ from app.mcp.tools.identity import (
     resolve_actor,
     without_thumbnail_url,
 )
+from app.mcp.tools.write_tools import write_tool
 
 
 def register(server: FastMCP, session_factory) -> None:
     @server.tool()
+    @write_tool
     async def create_bookmark(
         ctx: Context,
         title: str,
