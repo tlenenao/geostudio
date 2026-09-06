@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.configs import repository as configs_repo
-from app.pipelines.models import PipelineRun
+from app.pipelines.models import PipelineRun, PipelineWebhookToken
 
 
 def _now() -> datetime:
@@ -190,3 +190,69 @@ def list_due_pipelines(session: Session) -> list[tuple[str, str]]:
         if next_tick <= now:
             due.append((item_id, tenant_id))
     return due
+
+
+# --- PipelineWebhookToken (GAP-24, SP-53) ---
+
+
+def create_webhook_token(
+    session: Session, *, tenant_id: str, pipeline_item_id: str, token_hash: str, created_by: str
+) -> PipelineWebhookToken:
+    token = PipelineWebhookToken(
+        id=uuid.uuid4().hex,
+        tenant_id=tenant_id,
+        pipeline_item_id=pipeline_item_id,
+        token_hash=token_hash,
+        created_by=created_by,
+    )
+    session.add(token)
+    session.flush()
+    session.refresh(token)
+    return token
+
+
+def get_webhook_token(
+    session: Session, *, tenant_id: str, token_id: str
+) -> PipelineWebhookToken | None:
+    return session.execute(
+        select(PipelineWebhookToken).where(
+            PipelineWebhookToken.id == token_id, PipelineWebhookToken.tenant_id == tenant_id
+        )
+    ).scalar_one_or_none()
+
+
+def get_webhook_token_by_hash(session: Session, *, token_hash: str) -> PipelineWebhookToken | None:
+    # Cross-tenant par construction : au moment du déclenchement, un
+    # appelant externe ne connaît que le jeton, jamais le tenant à
+    # l'avance (index unique sur token_hash seul, migration 0035).
+    return session.execute(
+        select(PipelineWebhookToken).where(PipelineWebhookToken.token_hash == token_hash)
+    ).scalar_one_or_none()
+
+
+def delete_webhook_token(session: Session, token: PipelineWebhookToken) -> None:
+    session.delete(token)
+    session.flush()
+
+
+def touch_webhook_token(session: Session, token: PipelineWebhookToken) -> None:
+    token.last_used_at = _now()
+    session.flush()
+
+
+def list_webhook_tokens_for_pipeline(
+    session: Session, *, tenant_id: str, pipeline_item_id: str
+) -> list[PipelineWebhookToken]:
+    rows = (
+        session.execute(
+            select(PipelineWebhookToken)
+            .where(
+                PipelineWebhookToken.tenant_id == tenant_id,
+                PipelineWebhookToken.pipeline_item_id == pipeline_item_id,
+            )
+            .order_by(PipelineWebhookToken.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return list(rows)

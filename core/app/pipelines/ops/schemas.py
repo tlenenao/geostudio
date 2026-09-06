@@ -170,7 +170,7 @@ class ReaderConnectorRestParams(BaseModel):
     recordsPath: str | None = None
     paginator: Literal["none", "page_number", "cursor", "offset"] = "none"
     paginatorConfig: dict[str, Any] = Field(default_factory=dict)
-    secretName: str | None = None
+    secretName: str | None = Field(default=None, json_schema_extra={"format": "secret-name"})
 
 
 class ReaderConnectorPostgresParams(BaseModel):
@@ -180,7 +180,7 @@ class ReaderConnectorPostgresParams(BaseModel):
     `query` n'est validée SELECT-only qu'à l'exécution (app.pipelines.connector_runtime),
     jamais ici (forme seulement) ni à la sauvegarde (design §6)."""
 
-    secretName: str
+    secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
     query: str
 
 

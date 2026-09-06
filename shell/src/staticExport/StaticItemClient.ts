@@ -389,6 +389,24 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async getUsageSummary(..._args: unknown[]) {
       return unsupported();
     },
+    async listSecrets(..._args: unknown[]) {
+      return unsupported();
+    },
+    async createSecret(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteSecret(..._args: unknown[]) {
+      return unsupported();
+    },
+    async listPipelineWebhookTokens(..._args: unknown[]) {
+      return unsupported();
+    },
+    async createPipelineWebhookToken(..._args: unknown[]) {
+      return unsupported();
+    },
+    async revokePipelineWebhookToken(..._args: unknown[]) {
+      return unsupported();
+    },
     // getAuthToken?() et getCoreUrl?() sont optionnels sur ItemClient et
     // n'ont pas de sens sans backend réel (aucun jeton, aucune base URL de
     // cœur) : omis intentionnellement plutôt qu'implémentés pour rejeter.

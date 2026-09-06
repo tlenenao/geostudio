@@ -2930,6 +2930,40 @@ test("previewPipeline posts upTo as a query param and returns the row list", asy
   expect(rows).toEqual([{ id: 1, pop: 1200 }]);
 });
 
+test("listPipelineWebhookTokens calls GET /pipelines/{id}/webhook-tokens", async () => {
+  const tokens = [{ id: "t1", createdAt: "2026-09-05T00:00:00Z", lastUsedAt: null }];
+  server.use(
+    http.get("https://core.test/pipelines/p-8/webhook-tokens", () => HttpResponse.json(tokens)),
+  );
+  const result = await makeClient().listPipelineWebhookTokens("p-8");
+  expect(result).toEqual(tokens);
+});
+
+test("createPipelineWebhookToken POST retourne le jeton en clair", async () => {
+  server.use(
+    http.post("https://core.test/pipelines/p-9/webhook-tokens", () =>
+      HttpResponse.json(
+        { id: "t2", token: "clear-value", createdAt: "2026-09-05T00:00:00Z" },
+        { status: 201 },
+      ),
+    ),
+  );
+  const result = await makeClient().createPipelineWebhookToken("p-9");
+  expect(result).toEqual({ id: "t2", token: "clear-value", createdAt: "2026-09-05T00:00:00Z" });
+});
+
+test("revokePipelineWebhookToken calls DELETE /pipelines/{id}/webhook-tokens/{tokenId}", async () => {
+  let method = "";
+  server.use(
+    http.delete("https://core.test/pipelines/p-10/webhook-tokens/t3", ({ request }) => {
+      method = request.method;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  await makeClient().revokePipelineWebhookToken("p-10", "t3");
+  expect(method).toBe("DELETE");
+});
+
 test("createAlertRuleItem posts a kind=alert config and returns the item", async () => {
   let body: any;
   server.use(
@@ -3723,4 +3757,59 @@ test("getUsageSummary with no params sends no query string", async () => {
   await makeClient().getUsageSummary();
   const url = new URL(lastUrl);
   expect(url.search).toBe("");
+});
+
+// Coffre de secrets connecteur (GAP-43, SP-53) — patron MSW identique aux
+// tests createAlertRuleItem/getAlertRuleConfig ci-dessus, pas de "mockFetch"
+// dans ce dépôt (piège CLAUDE.md n°3, le texte littéral de la spec suppose
+// un helper qui n'existe pas ici).
+test("listSecrets calls GET /secrets", async () => {
+  server.use(
+    http.get("https://core.test/secrets", () =>
+      HttpResponse.json([
+        { id: "s1", name: "arcgis-key", kind: "api_key", createdAt: "t", updatedAt: "t" },
+      ]),
+    ),
+  );
+  const result = await makeClient().listSecrets();
+  expect(result).toEqual([
+    { id: "s1", name: "arcgis-key", kind: "api_key", createdAt: "t", updatedAt: "t" },
+  ]);
+});
+
+test("createSecret posts the payload and returns the summary (no ciphertext echoed back)", async () => {
+  let body: any;
+  server.use(
+    http.post("https://core.test/secrets", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json(
+        { id: "s2", name: "n", kind: "bearer_token", createdAt: "t", updatedAt: "t" },
+        { status: 201 },
+      );
+    }),
+  );
+  const result = await makeClient().createSecret({
+    name: "n",
+    payload: { kind: "bearer_token", token: "x" },
+  });
+  expect(body).toEqual({ name: "n", payload: { kind: "bearer_token", token: "x" } });
+  expect(result).toEqual({
+    id: "s2",
+    name: "n",
+    kind: "bearer_token",
+    createdAt: "t",
+    updatedAt: "t",
+  });
+});
+
+test("deleteSecret calls DELETE /secrets/{id}", async () => {
+  let method = "";
+  server.use(
+    http.delete("https://core.test/secrets/s1", ({ request }) => {
+      method = request.method;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  await makeClient().deleteSecret("s1");
+  expect(method).toBe("DELETE");
 });

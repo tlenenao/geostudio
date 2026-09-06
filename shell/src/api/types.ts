@@ -468,6 +468,9 @@ export interface ItemClient {
   getPipelineOps(): Promise<PipelineOpsCatalog>;
   runPipeline(pk: string): Promise<{ runId: string }>;
   getPipelineRuns(pk: string): Promise<PipelineRun[]>;
+  listPipelineWebhookTokens(pk: string): Promise<PipelineWebhookToken[]>;
+  createPipelineWebhookToken(pk: string): Promise<{ id: string; token: string; createdAt: string }>;
+  revokePipelineWebhookToken(pk: string, tokenId: string): Promise<void>;
   previewPipeline(pk: string, upToNodeId: string): Promise<Record<string, unknown>[]>;
   createAlertRuleItem(input: {
     title: string;
@@ -590,7 +593,37 @@ export interface ItemClient {
     errorMessage: string | null;
     itemId: string | null;
   }>;
+  // Coffre de secrets connecteur (GAP-43, SP-53) : le cœur ne rend jamais un
+  // payload déchiffré — listSecrets()/createSecret() ne portent que
+  // {id,name,kind,createdAt,updatedAt}, jamais le SecretPayload lui-même.
+  listSecrets(): Promise<SecretSummary[]>;
+  createSecret(input: { name: string; payload: SecretPayload }): Promise<SecretSummary>;
+  deleteSecret(id: string): Promise<void>;
 }
+
+export type SecretSummary = {
+  id: string;
+  name: string;
+  kind: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SecretPayload =
+  | { kind: "api_key"; location: "header" | "query"; key: string; value: string }
+  | { kind: "bearer_token"; token: string }
+  | { kind: "basic_auth"; username: string; password: string }
+  | { kind: "oauth2_client_credentials"; tokenUrl: string; clientId: string; clientSecret: string }
+  | { kind: "postgres_dsn"; dsn: string }
+  | {
+      kind: "smtp";
+      host: string;
+      port: number;
+      username: string;
+      password: string;
+      useTls: boolean;
+      fromAddress: string;
+    };
 
 export type RenderMode = "edit" | "preview" | "runtime";
 
@@ -1006,4 +1039,13 @@ export type PipelineRun = {
   finishedAt: string | null;
   error: string | null;
   nodeStats: Record<string, PipelineNodeStat>;
+};
+
+// Jeton de déclenchement webhook (GAP-24, SP-53) : jamais le jeton en clair
+// hors de la réponse de création (createPipelineWebhookToken) — la liste
+// (listPipelineWebhookTokens) ne porte que id/createdAt/lastUsedAt.
+export type PipelineWebhookToken = {
+  id: string;
+  createdAt: string;
+  lastUsedAt: string | null;
 };

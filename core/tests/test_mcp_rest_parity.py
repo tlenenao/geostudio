@@ -178,3 +178,97 @@ def test_run_pipeline_tool_matches_run_pipeline_route_except_actor_kind(
 
     assert any(e.actor_kind == "agent" for e in entries)
     assert any(e.actor_kind == "user" for e in entries)
+
+
+def test_run_alert_rule_tool_matches_sweep_alert_rules_task_effect_for_one_rule(
+    app_client,  # noqa: F811
+    monkeypatch,
+):
+    """run_alert_rule (GAP-48, SP-53) n'a aucune route REST "exécuter
+    maintenant" jumelle (une alerte s'évalue normalement par balayage
+    périodique, app/alerts/jobs.py::sweep_alert_rules_task) — la parité
+    comparée ici est donc l'effet observable du tool MCP sur une seule
+    règle contre l'effet du balayage restreint à cette même règle
+    (list_due_rules mocké pour ne renvoyer qu'elle), pas deux surfaces
+    REST/MCP d'une même route."""
+    from sqlalchemy import select
+
+    from app.alerts import jobs as alerts_jobs
+    from app.alerts import repository as alerts_repo
+    from app.alerts.models import AlertEvaluation
+    from app.configs import repository as configs_repo
+    from app.configs.schemas import BuilderConfig
+    from app.items import repository as items_repo
+
+    with app_client.session_factory() as session:
+        dataset_item = items_repo.create_item(
+            session,
+            tenant_id=app_client.tenant.id,
+            owner_id=app_client.mock_user.id,
+            resource_type="dataset",
+            title="Dataset",
+        )
+        dataset_config = BuilderConfig.model_validate(
+            {
+                "kind": "dataset",
+                "dataset": {"source": "collection", "collectionId": "incidents", "columns": {}},
+            }
+        )
+        configs_repo.create_config(
+            session, dataset_config, item_id=dataset_item.id, tenant_id=app_client.tenant.id
+        )
+        session.commit()
+        dataset_item_id = dataset_item.id
+
+    # Un seul "with app_client:" pour les deux appels MCP : le
+    # StreamableHTTPSessionManager sous-jacent ne supporte qu'un cycle
+    # démarrage/arrêt par instance (RuntimeError sur un 2e "with" séparé,
+    # constaté en écrivant ce test — piège CLAUDE.md n°3, jamais mentionné
+    # par la spec).
+    deferred_via_tool: list[dict] = []
+    monkeypatch.setattr(
+        alerts_jobs.evaluate_alert_task, "defer", lambda **kw: deferred_via_tool.append(kw)
+    )
+    with app_client:
+        created = call_tool(
+            app_client,
+            "create_alert_rule",
+            {
+                "title": "Parity rule",
+                "datasetItemId": dataset_item_id,
+                "query": {"agg": "count"},
+                "condition": {"expr": "value > 10"},
+                "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+            },
+        )
+        alert_item_id = created["pk"]
+
+        tool_result = call_tool(app_client, "run_alert_rule", {"alertRuleId": alert_item_id})
+    assert "evaluationId" in tool_result
+
+    # --- Effet du balayage cron pour cette seule règle ---
+    deferred_via_sweep = []
+    monkeypatch.setattr(
+        alerts_jobs.evaluate_alert_task, "defer", lambda **kw: deferred_via_sweep.append(kw)
+    )
+    monkeypatch.setattr(
+        alerts_repo, "list_due_rules", lambda session: [(alert_item_id, app_client.tenant.id)]
+    )
+    alerts_jobs.sweep_alert_rules_task(timestamp=0)
+
+    assert len(deferred_via_tool) == 1
+    assert len(deferred_via_sweep) == 1
+    assert deferred_via_tool[0]["tenant_id"] == deferred_via_sweep[0]["tenant_id"]
+
+    with app_client.session_factory() as session:
+        pending = session.scalars(
+            select(AlertEvaluation).where(
+                AlertEvaluation.tenant_id == app_client.tenant.id,
+                AlertEvaluation.alert_rule_item_id == alert_item_id,
+                AlertEvaluation.state == "pending",
+            )
+        ).all()
+    # Une ligne pending par déclenchement (tool + balayage) : le même effet
+    # observable des deux côtés, aucun raccourci parallèle.
+    assert len(pending) == 2

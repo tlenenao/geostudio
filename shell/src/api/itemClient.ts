@@ -21,6 +21,7 @@ import { createLayersMethods } from "./domains/layers";
 import { createNotificationsMethods } from "./domains/notifications";
 import { createPipelinesMethods } from "./domains/pipelines";
 import { createReportsMethods } from "./domains/reports";
+import { createSecretsMethods } from "./domains/secrets";
 import { createTiles3dMethods } from "./domains/tiles3d";
 import { createUsageMethods } from "./domains/usage";
 
@@ -49,6 +50,7 @@ export function createItemClient(opts: {
     ...createExportsIngestionMethods(base),
     ...createTiles3dMethods(base),
     ...createUsageMethods(base),
+    ...createSecretsMethods(base),
     getAuthToken: base.getToken,
     getCoreUrl: () => base.coreUrl,
   };

@@ -52,6 +52,11 @@ def test_pipelines_routes_absent_when_disabled(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=False)
     assert client.get("/pipelines/ops").status_code == 404
     assert client.post("/pipelines/does-not-exist/run").status_code == 404
+    # GAP-24, SP-53 : le routeur entier (y compris /trigger, sans
+    # Depends(get_current_user)) reste derrière la même garde
+    # is_etl_enabled() posée au niveau du montage du routeur (app.main).
+    assert client.post("/pipelines/does-not-exist/trigger").status_code == 404
+    assert client.get("/pipelines/does-not-exist/webhook-tokens").status_code == 404
 
 
 def test_get_pipelines_ops_returns_all_eighteen(monkeypatch):
@@ -255,6 +260,193 @@ def test_run_route_defers_job_and_returns_run_id(monkeypatch):
 def test_preview_route_rejects_unknown_pipeline(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     response = client.post("/pipelines/does-not-exist/preview?upTo=r1")
+    assert response.status_code == 404
+
+
+# --- Déclenchement de pipeline par webhook entrant (GAP-24, SP-53) ---
+
+
+def _seed_webhook_pipeline(client):
+    """Crée un pipeline directement via le repository (pas POST /configs,
+    qui exigerait une vraie collection PostGIS pour reader.collection) —
+    même simplification que test_run_route_refuses_a_writer_dataset_pipeline_
+    without_data_manage ci-dessus : ce module teste le routage HTTP, pas
+    l'exécution réelle du graphe."""
+    Session = client.session_factory  # type: ignore[attr-defined]
+    tenant = client.tenant  # type: ignore[attr-defined]
+    owner = client.user  # type: ignore[attr-defined]
+    with Session() as s:
+        item = items_repo.create_item(
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="pipeline",
+            title="Pipeline webhook",
+        )
+        configs_repo.create_config(
+            s,
+            BuilderConfig.model_validate(
+                {
+                    "version": 1,
+                    "kind": "pipeline",
+                    "pipeline": {
+                        "nodes": [
+                            {
+                                "id": "r1",
+                                "kind": "reader",
+                                "op": "reader.collection",
+                                "params": {"collectionId": "x"},
+                            },
+                            {
+                                "id": "w1",
+                                "kind": "writer",
+                                "op": "writer.export",
+                                "params": {"format": "csv", "key": "o.csv"},
+                            },
+                        ],
+                        "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+                    },
+                }
+            ),
+            item_id=item.id,
+            tenant_id=tenant.id,
+        )
+        s.commit()
+        return item.id
+
+
+def _promote_owner_to_admin(client):
+    # `get_current_user` est surchargé par `lambda: user` (patron d'origine
+    # de `_make_app`) — le MÊME objet Python à chaque requête, jamais
+    # re-résolu depuis la base (cf. commentaire de
+    # test_run_route_refuses_a_writer_dataset_pipeline_without_data_manage
+    # ci-dessus). Re-fetcher l'objet après la promotion et réassigner
+    # l'override, pas seulement muter la ligne en base.
+    Session = client.session_factory  # type: ignore[attr-defined]
+    tenant = client.tenant  # type: ignore[attr-defined]
+    owner = client.user  # type: ignore[attr-defined]
+    with Session() as s:
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        set_user_role(
+            s, tenant_id=tenant.id, user_id=owner.id, role_id=roles["admin"].id, role_slug="admin"
+        )
+        s.commit()
+        promoted = s.get(User, owner.id)
+        assert promoted is not None
+        s.expunge(promoted)
+    client.app.dependency_overrides[get_current_user] = lambda: promoted
+    client.app.dependency_overrides[get_current_user_optional] = lambda: promoted
+
+
+def test_post_webhook_tokens_requires_automation_secrets_manage_privilege(monkeypatch):
+    # _make_app() crée l'utilisateur par défaut avec le rôle "creator"
+    # (get_or_create_user, sans bootstrap_admin) — Créateur peut gérer des
+    # pipelines mais n'a pas automation.secrets.manage (admin-only,
+    # BUILT_IN_ROLE_PRIVILEGES) : un jeton de déclenchement est un secret
+    # d'automatisation, pas une capacité pipeline ordinaire.
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_webhook_pipeline(client)
+    response = client.post(f"/pipelines/{item_id}/webhook-tokens")
+    assert response.status_code == 403
+
+
+def test_post_webhook_tokens_returns_cleartext_token_once(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_webhook_pipeline(client)
+    _promote_owner_to_admin(client)
+
+    response = client.post(f"/pipelines/{item_id}/webhook-tokens")
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert "token" in body and body["token"]
+    assert "id" in body and "createdAt" in body
+
+
+def test_get_webhook_tokens_never_returns_token_or_hash(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_webhook_pipeline(client)
+    _promote_owner_to_admin(client)
+    client.post(f"/pipelines/{item_id}/webhook-tokens")
+
+    response = client.get(f"/pipelines/{item_id}/webhook-tokens")
+    assert response.status_code == 200
+    rows = response.json()
+    assert len(rows) == 1
+    for row in rows:
+        assert "token" not in row
+        assert "tokenHash" not in row
+        assert set(row) == {"id", "createdAt", "lastUsedAt"}
+
+
+def test_delete_webhook_token_route_revokes_it(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_webhook_pipeline(client)
+    _promote_owner_to_admin(client)
+    created = client.post(f"/pipelines/{item_id}/webhook-tokens").json()
+
+    delete_response = client.delete(f"/pipelines/{item_id}/webhook-tokens/{created['id']}")
+    assert delete_response.status_code == 204
+
+    list_response = client.get(f"/pipelines/{item_id}/webhook-tokens")
+    assert list_response.json() == []
+
+
+def test_trigger_route_has_no_get_current_user_dependency(monkeypatch):
+    # Sans en-tête Authorization du tout : 401, jamais une redirection OIDC
+    # (cette route est la seule du dépôt sans Depends(get_current_user)).
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_webhook_pipeline(client)
+    response = client.post(f"/pipelines/{item_id}/trigger")
+    assert response.status_code == 401
+
+
+def test_trigger_route_runs_the_pipeline_with_a_valid_token(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_webhook_pipeline(client)
+    _promote_owner_to_admin(client)
+    raw_token = client.post(f"/pipelines/{item_id}/webhook-tokens").json()["token"]
+
+    deferred = {}
+
+    def fake_deferrer(run_id, tenant_id):
+        deferred["run_id"] = run_id
+        deferred["tenant_id"] = tenant_id
+
+    from app.pipelines import routes as pipelines_routes
+
+    client.app.dependency_overrides[pipelines_routes.get_task_deferrer] = lambda: fake_deferrer
+
+    response = client.post(
+        f"/pipelines/{item_id}/trigger", headers={"Authorization": f"Bearer {raw_token}"}
+    )
+    assert response.status_code == 202, response.text
+    assert "runId" in response.json()
+    assert deferred["run_id"] == response.json()["runId"]
+
+
+def test_trigger_route_rejects_a_revoked_token(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_webhook_pipeline(client)
+    _promote_owner_to_admin(client)
+    created = client.post(f"/pipelines/{item_id}/webhook-tokens").json()
+    client.delete(f"/pipelines/{item_id}/webhook-tokens/{created['id']}")
+
+    response = client.post(
+        f"/pipelines/{item_id}/trigger", headers={"Authorization": f"Bearer {created['token']}"}
+    )
+    assert response.status_code == 404
+
+
+def test_trigger_route_rejects_a_token_scoped_to_a_different_pipeline(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_webhook_pipeline(client)
+    other_item_id = _seed_webhook_pipeline(client)
+    _promote_owner_to_admin(client)
+    raw_token = client.post(f"/pipelines/{item_id}/webhook-tokens").json()["token"]
+
+    response = client.post(
+        f"/pipelines/{other_item_id}/trigger", headers={"Authorization": f"Bearer {raw_token}"}
+    )
     assert response.status_code == 404
 
 

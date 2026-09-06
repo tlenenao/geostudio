@@ -17,11 +17,18 @@ export function EditHarvestSourcePanel({
   const readOnly = instanceQuery.data?.readOnly === true;
   const [url, setUrl] = useState(source.url);
   const [enabled, setEnabled] = useState(source.enabled);
+  const [intervalMinutes, setIntervalMinutes] = useState(
+    source.intervalMinutes != null ? String(source.intervalMinutes) : "",
+  );
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await updateSource.mutateAsync({ url, enabled });
+      await updateSource.mutateAsync({
+        url,
+        enabled,
+        ...(intervalMinutes ? { intervalMinutes: Number(intervalMinutes) } : {}),
+      });
       onClose();
     } catch {
       // surfaced via updateSource.isError
@@ -44,6 +51,16 @@ export function EditHarvestSourcePanel({
             onChange={(e) => setEnabled(e.target.checked)}
           />
           Actif
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-ink">
+          Intervalle de rafraîchissement (minutes)
+          <Input
+            aria-label="Intervalle de rafraîchissement (minutes)"
+            type="number"
+            min={1}
+            value={intervalMinutes}
+            onChange={(e) => setIntervalMinutes(e.target.value)}
+          />
         </label>
         {updateSource.isError && (
           <p role="alert" className="text-sm text-danger">

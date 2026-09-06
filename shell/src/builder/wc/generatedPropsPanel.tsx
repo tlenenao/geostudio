@@ -14,6 +14,23 @@ function permittedDataSources(dataSources: DataSource[], manifest: WcWidgetManif
   return dataSources.filter((ds) => allowed.has(ds.layer));
 }
 
+// Détecte un binding déjà écrit qui pointe vers une source devenue hors
+// périmètre (permissions resserrées après coup, config écrite par MCP en
+// contournant permittedDataSources() ci-dessus, widget copié depuis un autre
+// AppConfig) : le <select> se retrouve avec une value sans <option>
+// correspondante, silencieusement. GAP-49.
+function boundOutsidePermissions(
+  value: string,
+  dataSources: DataSource[],
+  manifest: WcWidgetManifest,
+): boolean {
+  const perm = manifest.permissions;
+  if (!perm || perm.collections === "all" || !value) return false;
+  const source = dataSources.find((ds) => ds.id === value);
+  if (!source) return false;
+  return !new Set(perm.collections).has(source.layer);
+}
+
 export function makeGeneratedPropsPanel(manifest: WcWidgetManifest) {
   return function GeneratedPropsPanel({
     props,
@@ -28,12 +45,19 @@ export function makeGeneratedPropsPanel(manifest: WcWidgetManifest) {
       <div className="flex flex-col gap-2 text-sm">
         {manifest.props.map((p) =>
           p.type === "dataSource" ? (
-            <DataSourceSelect
-              key={p.name}
-              value={String(props[p.name] ?? "")}
-              dataSources={permittedDataSources(dataSources, manifest)}
-              onChange={(id) => onChange({ ...props, [p.name]: id })}
-            />
+            <div key={p.name} className="flex flex-col gap-1">
+              <DataSourceSelect
+                value={String(props[p.name] ?? "")}
+                dataSources={permittedDataSources(dataSources, manifest)}
+                onChange={(id) => onChange({ ...props, [p.name]: id })}
+              />
+              {boundOutsidePermissions(String(props[p.name] ?? ""), dataSources, manifest) && (
+                <p role="alert" className="text-xs text-danger">
+                  Cette source est hors de ses permissions déclarées — la sauvegarde échouera tant
+                  qu&apos;une source autorisée n&apos;est pas choisie.
+                </p>
+              )}
+            </div>
           ) : (
             <label key={p.name} className="flex flex-col gap-1">
               {p.label}
