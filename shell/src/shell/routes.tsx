@@ -1,35 +1,89 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Routes, Route, Outlet, useNavigate, useParams, useLocation } from "react-router-dom";
-import { CatalogPage } from "../pages/CatalogPage";
-import { ItemDetailPage } from "../pages/ItemDetailPage";
-import { MapEditorPage } from "../pages/MapEditorPage";
-import { AppBuilderPage } from "../pages/AppBuilderPage";
-import { AppRuntimePage } from "../pages/AppRuntimePage";
-import { SitePublicPage } from "../pages/SitePublicPage";
-import { PublicItemPage } from "../pages/PublicItemPage";
-import { DatasetPage } from "../pages/DatasetPage";
-import { DatasetEditPage } from "../pages/DatasetEditPage";
-import { PipelineBuilderPage } from "../pages/PipelineBuilderPage";
-import { VisualQueryWizardPage } from "../pages/VisualQueryWizardPage";
-import { ReportEditPage } from "../pages/ReportEditPage";
-import { SqlLabPage } from "../pages/SqlLabPage";
-import { AdminExtensionsPage } from "../pages/AdminExtensionsPage";
-import { AdminInfrastructurePage } from "../pages/AdminInfrastructurePage";
-import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
-import { HarvestSourcesAdminPage } from "../pages/HarvestSourcesAdminPage";
-import { RolesAdminPage } from "../pages/RolesAdminPage";
-import { ComplianceAdminPage } from "../pages/ComplianceAdminPage";
-import { UsersAdminPage } from "../pages/UsersAdminPage";
-import { KitGalleryPage } from "../pages/KitGalleryPage";
-import { UsagePage } from "../pages/UsagePage";
-import { SettingsComingSoonPage } from "../pages/SettingsComingSoonPage";
 import { RequireAuth } from "../auth/RequireAuth";
 import { RequirePrivilege } from "../auth/RequirePrivilege";
 import { AppLayout } from "./AppLayout";
 import { useItemClient } from "../api/ItemClientProvider";
 import { encodeAnalyticsContext } from "../lib/analyticsContextUrl";
 import type { ResourceType } from "../api/types";
+
+// Découpage par route (Task 8, SP-60/GAP-68) : chaque page lourde part dans
+// son propre chunk, chargé seulement quand sa route est visitée — le chunk
+// d'entrée ne porte plus que le socle partagé (routeur, chrome, kit UI).
+// Patron identique à MapView (Task 7) : lazy() + import().then(pick export
+// nommé) — aucune page de shell/src/pages/ n'a d'export default (vérifié par
+// grep). <Suspense> unique autour de <Outlet/> dans ProtectedLayout (routes
+// protégées) et un second autour du retour de AppRoutes() pour les 4 routes
+// hors layout protégé (cf. plus bas) : React affiche le fallback pour
+// n'importe quel enfant suspendu, pas seulement le premier rendu.
+const CatalogPage = lazy(() =>
+  import("../pages/CatalogPage").then((m) => ({ default: m.CatalogPage })),
+);
+const ItemDetailPage = lazy(() =>
+  import("../pages/ItemDetailPage").then((m) => ({ default: m.ItemDetailPage })),
+);
+const MapEditorPage = lazy(() =>
+  import("../pages/MapEditorPage").then((m) => ({ default: m.MapEditorPage })),
+);
+const AppBuilderPage = lazy(() =>
+  import("../pages/AppBuilderPage").then((m) => ({ default: m.AppBuilderPage })),
+);
+const AppRuntimePage = lazy(() =>
+  import("../pages/AppRuntimePage").then((m) => ({ default: m.AppRuntimePage })),
+);
+const SitePublicPage = lazy(() =>
+  import("../pages/SitePublicPage").then((m) => ({ default: m.SitePublicPage })),
+);
+const PublicItemPage = lazy(() =>
+  import("../pages/PublicItemPage").then((m) => ({ default: m.PublicItemPage })),
+);
+const DatasetPage = lazy(() =>
+  import("../pages/DatasetPage").then((m) => ({ default: m.DatasetPage })),
+);
+const DatasetEditPage = lazy(() =>
+  import("../pages/DatasetEditPage").then((m) => ({ default: m.DatasetEditPage })),
+);
+const PipelineBuilderPage = lazy(() =>
+  import("../pages/PipelineBuilderPage").then((m) => ({ default: m.PipelineBuilderPage })),
+);
+const VisualQueryWizardPage = lazy(() =>
+  import("../pages/VisualQueryWizardPage").then((m) => ({ default: m.VisualQueryWizardPage })),
+);
+const ReportEditPage = lazy(() =>
+  import("../pages/ReportEditPage").then((m) => ({ default: m.ReportEditPage })),
+);
+const SqlLabPage = lazy(() =>
+  import("../pages/SqlLabPage").then((m) => ({ default: m.SqlLabPage })),
+);
+const AdminExtensionsPage = lazy(() =>
+  import("../pages/AdminExtensionsPage").then((m) => ({ default: m.AdminExtensionsPage })),
+);
+const AdminInfrastructurePage = lazy(() =>
+  import("../pages/AdminInfrastructurePage").then((m) => ({ default: m.AdminInfrastructurePage })),
+);
+const CollectionsAdminPage = lazy(() =>
+  import("../pages/CollectionsAdminPage").then((m) => ({ default: m.CollectionsAdminPage })),
+);
+const HarvestSourcesAdminPage = lazy(() =>
+  import("../pages/HarvestSourcesAdminPage").then((m) => ({ default: m.HarvestSourcesAdminPage })),
+);
+const RolesAdminPage = lazy(() =>
+  import("../pages/RolesAdminPage").then((m) => ({ default: m.RolesAdminPage })),
+);
+const ComplianceAdminPage = lazy(() =>
+  import("../pages/ComplianceAdminPage").then((m) => ({ default: m.ComplianceAdminPage })),
+);
+const UsersAdminPage = lazy(() =>
+  import("../pages/UsersAdminPage").then((m) => ({ default: m.UsersAdminPage })),
+);
+const KitGalleryPage = lazy(() =>
+  import("../pages/KitGalleryPage").then((m) => ({ default: m.KitGalleryPage })),
+);
+const UsagePage = lazy(() => import("../pages/UsagePage").then((m) => ({ default: m.UsagePage })));
+const SettingsComingSoonPage = lazy(() =>
+  import("../pages/SettingsComingSoonPage").then((m) => ({ default: m.SettingsComingSoonPage })),
+);
 
 // Shared by CatalogRoute (general catalog) and BookmarksRoute ("Mes vues"):
 // a bookmark has no editor (SP-14m — no edit flow for this kind), so opening
@@ -242,7 +296,9 @@ function ProtectedLayout() {
   return (
     <RequireAuth>
       <AppLayout>
-        <Outlet />
+        <Suspense fallback={<p role="status">Chargement…</p>}>
+          <Outlet />
+        </Suspense>
       </AppLayout>
     </RequireAuth>
   );
@@ -250,130 +306,132 @@ function ProtectedLayout() {
 
 export function AppRoutes() {
   return (
-    <Routes>
-      <Route element={<ProtectedLayout />}>
-        <Route path="/" element={<CatalogRoute />} />
-        <Route path="/items/:pk" element={<ItemDetailRoute />} />
-        <Route path="/bookmarks" element={<BookmarksRoute />} />
-        <Route path="/maps/:pk" element={<MapEditorRoute />} />
-        <Route path="/apps/:pk/edit" element={<AppBuilderRoute />} />
-        <Route path="/datasets/:pk/edit" element={<DatasetEditRoute />} />
-        <Route path="/pipelines/new" element={<PipelineNewRoute />} />
-        <Route path="/pipelines/:pk/edit" element={<PipelineEditRoute />} />
-        <Route path="/datasets/visual-query/new" element={<VisualQueryWizardNewRoute />} />
-        <Route
-          path="/datasets/visual-query/:pipelinePk/edit"
-          element={<VisualQueryWizardEditRoute />}
-        />
-        <Route path="/reports" element={<ReportsRoute />} />
-        <Route path="/reports/new" element={<ReportNewRoute />} />
-        <Route path="/reports/:pk/edit" element={<ReportEditRoute />} />
-        <Route
-          path="/analytics/sql"
-          element={
-            <RequirePrivilege
-              privilege="analytics.sql_lab.access"
-              deniedMessage="Accès réservé aux analystes."
-            >
-              <SqlLabPage />
-            </RequirePrivilege>
-          }
-        />
-        <Route
-          path="/admin/extensions"
-          element={
-            <RequirePrivilege
-              privilege="admin.extensions.manage"
-              deniedMessage="Accès réservé aux administrateurs."
-            >
-              <AdminExtensionsPage />
-            </RequirePrivilege>
-          }
-        />
-        <Route
-          path="/admin/collections"
-          element={
-            <RequirePrivilege
-              privilege="admin.collections.manage"
-              deniedMessage="Accès réservé aux administrateurs."
-            >
-              <CollectionsAdminPage />
-            </RequirePrivilege>
-          }
-        />
-        <Route
-          path="/admin/harvest"
-          element={
-            <RequirePrivilege
-              privilege="admin.harvest.manage"
-              deniedMessage="Accès réservé aux administrateurs."
-            >
-              <HarvestSourcesAdminPage />
-            </RequirePrivilege>
-          }
-        />
-        <Route
-          path="/admin/roles"
-          element={
-            <RequirePrivilege
-              privilege="admin.roles.manage"
-              deniedMessage="Accès réservé à la gestion des rôles."
-            >
-              <RolesAdminPage />
-            </RequirePrivilege>
-          }
-        />
-        <Route
-          path="/admin/users"
-          element={
-            <RequirePrivilege
-              privilege="admin.users.manage"
-              deniedMessage="Accès réservé à la gestion des utilisateurs."
-            >
-              <UsersAdminPage />
-            </RequirePrivilege>
-          }
-        />
-        <Route
-          path="/admin/compliance"
-          element={
-            <RequirePrivilege
-              privilege="compliance.manage"
-              deniedMessage="Accès réservé à la conformité (RGPD)."
-            >
-              <ComplianceAdminPage />
-            </RequirePrivilege>
-          }
-        />
-        <Route
-          path="/admin/infrastructure"
-          element={
-            <RequirePrivilege
-              privilege="settings.instance.manage"
-              deniedMessage="Accès réservé aux administrateurs."
-            >
-              <AdminInfrastructurePage />
-            </RequirePrivilege>
-          }
-        />
-        <Route path="/internal/kit-gallery" element={<KitGalleryPage />} />
-        <Route
-          path="/tasks"
-          element={
-            <RequirePrivilege
-              privilege="tasks.view"
-              deniedMessage="Accès réservé — privilège tasks.view requis."
-            >
-              <UsagePage />
-            </RequirePrivilege>
-          }
-        />
-        <Route path="/settings" element={<SettingsComingSoonPage />} />
-      </Route>
-      <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
-      <Route path="/sites/:slug" element={<SitePublicRoute />} />
-      <Route path="/public/items/:pk" element={<PublicItemRoute />} />
-      <Route path="/public/datasets/:collectionId" element={<DatasetRoute />} />
-    </Routes>
+    <Suspense fallback={<p role="status">Chargement…</p>}>
+      <Routes>
+        <Route element={<ProtectedLayout />}>
+          <Route path="/" element={<CatalogRoute />} />
+          <Route path="/items/:pk" element={<ItemDetailRoute />} />
+          <Route path="/bookmarks" element={<BookmarksRoute />} />
+          <Route path="/maps/:pk" element={<MapEditorRoute />} />
+          <Route path="/apps/:pk/edit" element={<AppBuilderRoute />} />
+          <Route path="/datasets/:pk/edit" element={<DatasetEditRoute />} />
+          <Route path="/pipelines/new" element={<PipelineNewRoute />} />
+          <Route path="/pipelines/:pk/edit" element={<PipelineEditRoute />} />
+          <Route path="/datasets/visual-query/new" element={<VisualQueryWizardNewRoute />} />
+          <Route
+            path="/datasets/visual-query/:pipelinePk/edit"
+            element={<VisualQueryWizardEditRoute />}
+          />
+          <Route path="/reports" element={<ReportsRoute />} />
+          <Route path="/reports/new" element={<ReportNewRoute />} />
+          <Route path="/reports/:pk/edit" element={<ReportEditRoute />} />
+          <Route
+            path="/analytics/sql"
+            element={
+              <RequirePrivilege
+                privilege="analytics.sql_lab.access"
+                deniedMessage="Accès réservé aux analystes."
+              >
+                <SqlLabPage />
+              </RequirePrivilege>
+            }
+          />
+          <Route
+            path="/admin/extensions"
+            element={
+              <RequirePrivilege
+                privilege="admin.extensions.manage"
+                deniedMessage="Accès réservé aux administrateurs."
+              >
+                <AdminExtensionsPage />
+              </RequirePrivilege>
+            }
+          />
+          <Route
+            path="/admin/collections"
+            element={
+              <RequirePrivilege
+                privilege="admin.collections.manage"
+                deniedMessage="Accès réservé aux administrateurs."
+              >
+                <CollectionsAdminPage />
+              </RequirePrivilege>
+            }
+          />
+          <Route
+            path="/admin/harvest"
+            element={
+              <RequirePrivilege
+                privilege="admin.harvest.manage"
+                deniedMessage="Accès réservé aux administrateurs."
+              >
+                <HarvestSourcesAdminPage />
+              </RequirePrivilege>
+            }
+          />
+          <Route
+            path="/admin/roles"
+            element={
+              <RequirePrivilege
+                privilege="admin.roles.manage"
+                deniedMessage="Accès réservé à la gestion des rôles."
+              >
+                <RolesAdminPage />
+              </RequirePrivilege>
+            }
+          />
+          <Route
+            path="/admin/users"
+            element={
+              <RequirePrivilege
+                privilege="admin.users.manage"
+                deniedMessage="Accès réservé à la gestion des utilisateurs."
+              >
+                <UsersAdminPage />
+              </RequirePrivilege>
+            }
+          />
+          <Route
+            path="/admin/compliance"
+            element={
+              <RequirePrivilege
+                privilege="compliance.manage"
+                deniedMessage="Accès réservé à la conformité (RGPD)."
+              >
+                <ComplianceAdminPage />
+              </RequirePrivilege>
+            }
+          />
+          <Route
+            path="/admin/infrastructure"
+            element={
+              <RequirePrivilege
+                privilege="settings.instance.manage"
+                deniedMessage="Accès réservé aux administrateurs."
+              >
+                <AdminInfrastructurePage />
+              </RequirePrivilege>
+            }
+          />
+          <Route path="/internal/kit-gallery" element={<KitGalleryPage />} />
+          <Route
+            path="/tasks"
+            element={
+              <RequirePrivilege
+                privilege="tasks.view"
+                deniedMessage="Accès réservé — privilège tasks.view requis."
+              >
+                <UsagePage />
+              </RequirePrivilege>
+            }
+          />
+          <Route path="/settings" element={<SettingsComingSoonPage />} />
+        </Route>
+        <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
+        <Route path="/sites/:slug" element={<SitePublicRoute />} />
+        <Route path="/public/items/:pk" element={<PublicItemRoute />} />
+        <Route path="/public/datasets/:collectionId" element={<DatasetRoute />} />
+      </Routes>
+    </Suspense>
   );
 }
