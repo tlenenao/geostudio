@@ -74,7 +74,8 @@ const KIND_LABELS: Record<SecretPayload["kind"], string> = {
 const ALL_KINDS = Object.keys(KIND_LABELS) as SecretPayload["kind"][];
 
 // Un formulaire minimal par variante, pas un générateur JSON Schema complet —
-// les 6 variantes de SecretPayload sont fixes et connues (design SP-53 §1).
+// les variantes de SecretPayload sont fixes et connues (design SP-53 §1 ;
+// 7 depuis GAP-16, snowflake_dsn).
 function SecretCreateForm({
   kindFilter,
   onCreated,
