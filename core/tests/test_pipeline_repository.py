@@ -123,6 +123,25 @@ def test_list_runs_ordered_most_recent_first():
         }
 
 
+def test_list_runs_respects_limit_and_offset():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        pipeline_item_id = _make_pipeline_item(s, tenant_id=tenant.id)
+        s.commit()
+        for _ in range(5):
+            repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id)
+        s.commit()
+        page = repo.list_runs(
+            s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id, limit=2, offset=0
+        )
+        assert len(page) == 2
+        page2 = repo.list_runs(
+            s, tenant_id=tenant.id, pipeline_item_id=pipeline_item_id, limit=2, offset=4
+        )
+        assert len(page2) == 1
+
+
 def test_mark_running_then_succeeded():
     Session = _make_session()
     with Session() as s:

@@ -80,15 +80,23 @@ def run_pipeline_route(
     return RunResponse(runId=run_id)
 
 
+_RUNS_MAX_LIMIT = 1000
+
+
 @router.get("/pipelines/{item_id}/runs", response_model=list[RunStatus])
 def list_pipeline_runs(
     item_id: str,
+    limit: int = Query(100, ge=1),
+    offset: int = Query(0, ge=0),
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> list[RunStatus]:
     require_pipeline_access(session, user=user, item_id=item_id, action="read")
     require_pipeline_config(session, item_id)
-    runs = pipelines_repo.list_runs(session, tenant_id=user.tenant_id, pipeline_item_id=item_id)
+    limit = min(limit, _RUNS_MAX_LIMIT)
+    runs = pipelines_repo.list_runs(
+        session, tenant_id=user.tenant_id, pipeline_item_id=item_id, limit=limit, offset=offset
+    )
     return [
         RunStatus(
             id=r.id,

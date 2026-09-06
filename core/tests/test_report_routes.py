@@ -101,6 +101,26 @@ def test_get_report_runs_returns_run_with_resolved_status_and_url():
     assert body[0]["resultUrl"] == "https://s3.test/presigned"
 
 
+def test_get_report_runs_accepts_limit_and_offset():
+    app, Session = _make_app_and_session()
+    with Session() as s:
+        tenant, user, report_id, _run_id = _seed(s)
+        for _ in range(4):
+            reports_repo.create_run(
+                s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=None
+            )
+        s.commit()
+    app.dependency_overrides[get_current_user] = lambda: user
+    client = TestClient(app)
+
+    resp = client.get(f"/reports/{report_id}/runs?limit=2&offset=0")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 2
+
+    resp2 = client.get(f"/reports/{report_id}/runs?limit=2&offset=4")
+    assert len(resp2.json()) == 1
+
+
 def test_get_report_runs_404s_for_unreadable_report():
     app, Session = _make_app_and_session()
     with Session() as s:

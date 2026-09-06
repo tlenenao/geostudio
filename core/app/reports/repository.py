@@ -52,12 +52,21 @@ def get_run(session: Session, *, tenant_id: str, run_id: str) -> ReportRun | Non
     ).scalar_one_or_none()
 
 
-def list_runs(session: Session, *, tenant_id: str, report_item_id: str) -> list[ReportRun]:
+def list_runs(
+    session: Session,
+    *,
+    tenant_id: str,
+    report_item_id: str,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[ReportRun]:
     rows = (
         session.execute(
             select(ReportRun)
             .where(ReportRun.tenant_id == tenant_id, ReportRun.report_item_id == report_item_id)
             .order_by(ReportRun.created_at.desc())
+            .limit(limit)
+            .offset(offset)
         )
         .scalars()
         .all()

@@ -478,6 +478,26 @@ def test_list_runs_route_rejects_unknown_pipeline(monkeypatch):
     assert response.status_code == 404
 
 
+def test_list_pipeline_runs_accepts_limit_and_offset(monkeypatch):
+    from app.pipelines import repository as pipelines_repo
+
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_webhook_pipeline(client)
+    Session = client.session_factory  # type: ignore[attr-defined]
+    tenant = client.tenant  # type: ignore[attr-defined]
+    with Session() as s:
+        for _ in range(5):
+            pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
+        s.commit()
+
+    resp = client.get(f"/pipelines/{item_id}/runs?limit=2&offset=0")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 2
+
+    resp2 = client.get(f"/pipelines/{item_id}/runs?limit=2&offset=4")
+    assert len(resp2.json()) == 1
+
+
 def test_get_qgis_algorithms_returns_full_allowlist(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     response = client.get("/pipelines/ops/qgis-algorithms")

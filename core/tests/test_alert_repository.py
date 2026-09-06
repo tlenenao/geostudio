@@ -203,6 +203,34 @@ def test_list_evaluations_orders_most_recent_first():
         assert [r.id for r in rows] == [second.id, first.id]
 
 
+def test_list_evaluations_respects_limit_and_offset():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        rule_id = _seed_alert_rule(s, tenant_id=tenant.id, owner_id=user.id)
+        for _ in range(5):
+            alerts_repo.create_evaluation(s, tenant_id=tenant.id, alert_rule_item_id=rule_id)
+        s.commit()
+
+        page = alerts_repo.list_evaluations(
+            s, tenant_id=tenant.id, alert_rule_item_id=rule_id, limit=2, offset=0
+        )
+        assert len(page) == 2
+        page2 = alerts_repo.list_evaluations(
+            s, tenant_id=tenant.id, alert_rule_item_id=rule_id, limit=2, offset=4
+        )
+        assert len(page2) == 1
+
+
 def test_get_latest_evaluations_for_items_returns_the_most_recent_evaluation_per_item():
     # GAP-64.1 (SP-49) : batch de get_latest_evaluation pour list_due_rules —
     # même patron falsifié que app.pipelines.repository (ordre d'insertion

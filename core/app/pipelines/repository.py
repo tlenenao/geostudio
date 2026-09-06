@@ -36,7 +36,14 @@ def get_run(session: Session, *, tenant_id: str, run_id: str) -> PipelineRun | N
     ).scalar_one_or_none()
 
 
-def list_runs(session: Session, *, tenant_id: str, pipeline_item_id: str) -> list[PipelineRun]:
+def list_runs(
+    session: Session,
+    *,
+    tenant_id: str,
+    pipeline_item_id: str,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[PipelineRun]:
     rows = (
         session.execute(
             select(PipelineRun)
@@ -44,6 +51,8 @@ def list_runs(session: Session, *, tenant_id: str, pipeline_item_id: str) -> lis
                 PipelineRun.tenant_id == tenant_id, PipelineRun.pipeline_item_id == pipeline_item_id
             )
             .order_by(PipelineRun.created_at.desc())
+            .limit(limit)
+            .offset(offset)
         )
         .scalars()
         .all()
