@@ -21,7 +21,7 @@
   },
   {
     "file": "src/pages/CollectionsAdminPage.tsx",
-    "line": 73,
+    "line": 82,
     "reason": "Pré-existant : setRegistering(true) ouvre RegisterCollectionPanel en ligne (registering && <RegisterCollectionPanel/>) sans aria-expanded/aria-controls, alors que ce même fichier câble déjà usePanelTrigger() pour ses panneaux editing/sharing voisins. Dette REV-088."
   },
   {
