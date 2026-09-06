@@ -16,6 +16,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 
+import geopandas as gpd
 import numpy as np
 import pyogrio
 import pyproj
@@ -297,6 +298,29 @@ def parse_kml(
 
 def _looks_like_zip(content: bytes) -> bool:
     return content[:2] == b"PK"
+
+
+def parse_geoparquet(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
+    # PAS pyogrio : pyogrio.list_drivers()["Parquet"] vaut None dans ce build
+    # (aucun driver OGR Parquet) — vérifié par exécution réelle (spec SP-56
+    # §3). geopandas.read_parquet() lit correctement un GeoParquet 1.0,
+    # y compris celui produit par app.cdc.parquet_writer.write_geoparquet
+    # (SP-11). Un seul fichier, pas de concept de couches multiples ici :
+    # ce format ne passe jamais par list_layers()/l'étape d'inspection.
+    with _temp_file(content, ".parquet") as path:
+        gdf = gpd.read_parquet(path)
+        if gdf.crs is not None and gdf.crs.to_epsg() != 4326:
+            gdf = gdf.to_crs(epsg=4326)
+        geom_col = gdf.geometry.name
+        for i, row in gdf.iterrows():
+            geom = row[geom_col]
+            # Une géométrie manquante revient de geopandas.read_parquet en
+            # NaN (float), pas None — vérifié par exécution réelle (écart
+            # avec le pseudo-code de la spec SP-56 §3.1, corrigé ici).
+            if geom is None or (isinstance(geom, float) and math.isnan(geom)):
+                raise IngestionParseError(f"entité {i} : géométrie manquante")
+            props = {k: _native_value(v) for k, v in row.items() if k != geom_col}
+            yield geom, props
 
 
 def list_layers(content: bytes, filename: str) -> list[LayerInfo]:

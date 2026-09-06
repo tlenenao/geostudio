@@ -18,6 +18,7 @@ from app.ingestion.parsers import (
     list_layers,
     parse_csv_latlon,
     parse_geojson,
+    parse_geoparquet,
     parse_gpkg,
     parse_kml,
     parse_shapefile_zip,
@@ -471,3 +472,76 @@ def test_list_layers_kmz_single_layer():
     layers = list_layers(_kmz_bytes(), "villes.kmz")
     assert len(layers) == 1
     assert layers[0].feature_count == 1
+
+
+def test_parse_geoparquet_yields_geometry_and_attributes(tmp_path):
+    import geopandas as gpd
+
+    gdf = gpd.GeoDataFrame(
+        {"nom": ["Paris", "Lyon"]},
+        geometry=[Point(2.35, 48.85), Point(4.83, 45.76)],
+        crs="EPSG:4326",
+    )
+    path = tmp_path / "villes.parquet"
+    gdf.to_parquet(path)
+    rows = list(parse_geoparquet(path.read_bytes()))
+    assert len(rows) == 2
+    geom0, props0 = rows[0]
+    assert geom0.geom_type == "Point"
+    assert (geom0.x, geom0.y) == pytest.approx((2.35, 48.85))
+    assert props0 == {"nom": "Paris"}
+
+
+def test_parse_geoparquet_reprojects_non_4326_crs(tmp_path):
+    import geopandas as gpd
+    import pyproj
+
+    transformer = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2154", always_xy=True)
+    x, y = transformer.transform(2.35, 48.85)
+    gdf = gpd.GeoDataFrame({"nom": ["Paris"]}, geometry=[Point(x, y)], crs="EPSG:2154")
+    path = tmp_path / "villes.parquet"
+    gdf.to_parquet(path)
+    rows = list(parse_geoparquet(path.read_bytes()))
+    geom, _props = rows[0]
+    assert geom.x == pytest.approx(2.35, abs=1e-6)
+    assert geom.y == pytest.approx(48.85, abs=1e-6)
+
+
+def test_parse_geoparquet_rejects_null_geometry(tmp_path):
+    import geopandas as gpd
+
+    gdf = gpd.GeoDataFrame(
+        {"nom": ["Paris", "Sans géométrie"]},
+        geometry=[Point(2.35, 48.85), None],
+        crs="EPSG:4326",
+    )
+    path = tmp_path / "villes.parquet"
+    gdf.to_parquet(path)
+    with pytest.raises(IngestionParseError, match="géométrie"):
+        list(parse_geoparquet(path.read_bytes()))
+
+
+def test_parse_geoparquet_round_trips_write_geoparquet_output(tmp_path):
+    from app.cdc.parquet_writer import ChangeRow, write_geoparquet
+
+    rows = [
+        ChangeRow(
+            op="insert",
+            lsn=1,
+            ts=1721212121.0,
+            pk_column="id",
+            pk_value=1,
+            columns={"id": 1, "titre": "a"},
+            geometry_column="geom",
+            geometry_wkb_hex=shapely.to_wkb(Point(2.3, 48.8), hex=True),
+        ),
+    ]
+    path = tmp_path / "batch.parquet"
+    write_geoparquet(rows, srid=4326, path=str(path))
+    parsed = list(parse_geoparquet(path.read_bytes()))
+    assert len(parsed) == 1
+    geom, props = parsed[0]
+    assert (geom.x, geom.y) == pytest.approx((2.3, 48.8))
+    assert props["titre"] == "a"
+    assert props["_op"] == "insert"
+    assert props["id"] == 1
