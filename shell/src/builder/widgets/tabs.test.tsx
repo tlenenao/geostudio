@@ -104,6 +104,27 @@ test("edit mode renders statically without an interactive tab bar switch", () =>
   expect(screen.queryByRole("button", { name: "Onglet 1" })).not.toBeInTheDocument();
 });
 
+test("edit mode renders the active tab's real content, not an empty band", () => {
+  const tabA: WidgetItem = {
+    id: "a",
+    widget: "text",
+    x: 0,
+    y: 0,
+    w: 4,
+    h: 2,
+    props: { text: "Contenu réel de l'onglet" },
+  };
+  const Tabs = getWidget("tabs")!.Component;
+  render(
+    <Tabs
+      props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [tabA] }] }}
+      ctx={{ mode: "edit" } as WidgetContext}
+    />,
+    { wrapper },
+  );
+  expect(screen.getByText("Contenu réel de l'onglet")).toBeInTheDocument();
+});
+
 test("PropsPanel adds a tab, selects it, and edits its label", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("tabs")!.PropsPanel;

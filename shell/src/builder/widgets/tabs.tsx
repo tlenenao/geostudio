@@ -140,7 +140,26 @@ export function registerTabsWidget(): void {
                 </span>
               ))}
             </div>
-            <div className="flex-1 bg-slate-50" />
+            <div className="min-h-0 flex-1">
+              <GridCanvas
+                items={active.items}
+                breakpoint={ctx.breakpoint ?? "lg"}
+                editable={false}
+                selectedId={null}
+                onSelect={() => {}}
+                onMoveItem={() => {}}
+                onRemoveItem={() => {}}
+                renderItem={(item) => (
+                  <WidgetHost
+                    item={item}
+                    mode="preview"
+                    pages={ctx.pages}
+                    navigate={ctx.navigate}
+                    breakpoint={ctx.breakpoint}
+                  />
+                )}
+              />
+            </div>
           </div>
         );
       }
