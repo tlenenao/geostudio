@@ -418,6 +418,11 @@ def test_parse_xlsx_latlon_empty_cell_becomes_none_property():
     assert props["notes"] is None
 
 
+def test_parse_xlsx_latlon_corrupted_file_raises_parse_error():
+    with pytest.raises(IngestionParseError, match="illisible"):
+        list(parse_xlsx_latlon(b"not a real xlsx", None, None))
+
+
 def _kml_bytes(name: str = "Paris", lon: float = 2.35, lat: float = 48.85) -> bytes:
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'

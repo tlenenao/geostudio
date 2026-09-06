@@ -2202,6 +2202,20 @@
       },
       "InspectResponse": {
         "properties": {
+          "fields": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fields"
+          },
           "layers": {
             "items": {
               "$ref": "#/components/schemas/LayerInfoOut"
@@ -2210,9 +2224,6 @@
             "type": "array"
           }
         },
-        "required": [
-          "layers"
-        ],
         "title": "InspectResponse",
         "type": "object"
       },

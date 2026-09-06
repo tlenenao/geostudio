@@ -12,6 +12,7 @@ import json
 import math
 import tempfile
 import warnings
+import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ import pyogrio
 import pyproj
 import shapely
 from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 from pyogrio.errors import DataLayerError, DataSourceError
 from pyproj.exceptions import ProjError
 from shapely.errors import ShapelyError
@@ -38,6 +40,7 @@ _LAT_NAMES = {"lat", "latitude", "y"}
 _LON_NAMES = {"lon", "lng", "longitude", "x"}
 _WGS84 = pyproj.CRS.from_epsg(4326)
 _OGR_ERRORS = (DataSourceError, DataLayerError)
+_XLSX_ERRORS = (zipfile.BadZipFile, InvalidFileException)
 
 
 def detect_lat_lon_fields(fieldnames: list[str]) -> tuple[str, str] | None:
@@ -138,7 +141,10 @@ def parse_xlsx_latlon(
     lat_field: str | None,
     lon_field: str | None,
 ) -> Iterator[tuple[BaseGeometry, dict]]:
-    wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    try:
+        wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except _XLSX_ERRORS as exc:
+        raise IngestionParseError(f"fichier XLSX illisible : {exc}") from exc
     ws = wb.active
     rows_iter = ws.iter_rows(values_only=True)
     try:
@@ -173,6 +179,24 @@ def parse_xlsx_latlon(
             if j not in (lat_idx, lon_idx)
         }
         yield Point(lon, lat), properties
+
+
+def read_xlsx_header_fields(content: bytes) -> list[str]:
+    """Lit uniquement la première ligne (en-têtes) d'un classeur XLSX, sans
+    charger tout le classeur — utilisé par POST /uploads/inspect pour
+    proposer la détection lat/lon côté shell avant de créer le job d'import
+    (même rôle que list_layers() pour GPKG/Shapefile/KML/KMZ, mais un XLSX
+    n'a pas de concept de couches : ce sont des noms de colonnes)."""
+    try:
+        wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except _XLSX_ERRORS as exc:
+        raise IngestionParseError(f"fichier XLSX illisible : {exc}") from exc
+    ws = wb.active
+    try:
+        header_row = next(ws.iter_rows(max_row=1, values_only=True))
+    except StopIteration:
+        raise IngestionParseError("classeur XLSX vide") from None
+    return [str(name) if name is not None else "" for name in header_row]
 
 
 @dataclass

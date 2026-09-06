@@ -11,7 +11,7 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.db import get_session
 from app.ingestion import repository as repo
-from app.ingestion.parsers import IngestionParseError, list_layers
+from app.ingestion.parsers import IngestionParseError, list_layers, read_xlsx_header_fields
 from app.ingestion.schemas import (
     IngestionJobCreate,
     IngestionJobCreated,
@@ -86,6 +86,12 @@ def inspect_upload(
         content = download_object(s3, bucket=bucket, key=body.key)
     except ClientError as exc:
         raise HTTPException(status_code=404, detail="objet introuvable") from exc
+    if body.filename.lower().endswith(".xlsx"):
+        try:
+            fields = read_xlsx_header_fields(content)
+        except IngestionParseError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return InspectResponse(layers=[], fields=fields)
     try:
         layers = list_layers(content, body.filename)
     except ValueError as exc:

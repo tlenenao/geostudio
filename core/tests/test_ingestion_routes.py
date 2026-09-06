@@ -302,7 +302,12 @@ def test_inspect_upload_returns_layers(env, tmp_path):
         "/uploads/inspect", json={"key": f"{tenant.id}/k.gpkg", "filename": "villes.gpkg"}
     )
     assert r.status_code == 200
-    assert r.json() == {"layers": [{"name": "villes", "featureCount": 1, "geometryType": "Point"}]}
+    # SP-56 : InspectResponse gagne un champ "fields" optionnel (peuplé pour
+    # .xlsx uniquement) — non-régression sur la forme "layers" existante.
+    assert r.json() == {
+        "layers": [{"name": "villes", "featureCount": 1, "geometryType": "Point"}],
+        "fields": None,
+    }
 
 
 def test_inspect_upload_rejects_foreign_tenant_key(env):
@@ -337,6 +342,71 @@ def test_inspect_upload_422_on_corrupt_file(env):
         "/uploads/inspect", json={"key": f"{tenant.id}/k.gpkg", "filename": "villes.gpkg"}
     )
     assert r.status_code == 422
+
+
+def _xlsx_bytes(headers: list[str]) -> bytes:
+    import io
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(headers)
+    ws.append(["Paris", 48.85, 2.35])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_inspect_upload_xlsx_returns_fields(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    fake_s3.objects[f"{tenant.id}/k.xlsx"] = _xlsx_bytes(["nom", "lat", "lon"])
+    r = client.post(
+        "/uploads/inspect", json={"key": f"{tenant.id}/k.xlsx", "filename": "villes.xlsx"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["fields"] == ["nom", "lat", "lon"]
+    assert body["layers"] == []
+
+
+def _kml_multi_layer_bytes() -> bytes:
+    return (
+        b'<?xml version="1.0" encoding="UTF-8"?>\n'
+        b'<kml xmlns="http://www.opengis.net/kml/2.2"><Document>'
+        b"<Folder><name>a</name><Placemark><name>Paris</name>"
+        b"<Point><coordinates>2.35,48.85,0</coordinates></Point></Placemark></Folder>"
+        b"<Folder><name>b</name><Placemark><name>Lyon</name>"
+        b"<Point><coordinates>4.83,45.76,0</coordinates></Point></Placemark></Folder>"
+        b"</Document></kml>"
+    )
+
+
+def test_inspect_upload_kml_returns_layers(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    fake_s3.objects[f"{tenant.id}/k.kml"] = _kml_multi_layer_bytes()
+    r = client.post(
+        "/uploads/inspect", json={"key": f"{tenant.id}/k.kml", "filename": "villes.kml"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["layers"]) == 2
+    assert body["fields"] is None
+
+
+def test_inspect_upload_parquet_returns_400_not_concerned(env, tmp_path):
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    gdf = gpd.GeoDataFrame({"nom": ["Paris"]}, geometry=[Point(2.35, 48.85)], crs="EPSG:4326")
+    path = tmp_path / "villes.parquet"
+    gdf.to_parquet(path)
+    fake_s3.objects[f"{tenant.id}/k.parquet"] = path.read_bytes()
+    r = client.post(
+        "/uploads/inspect", json={"key": f"{tenant.id}/k.parquet", "filename": "villes.parquet"}
+    )
+    assert r.status_code == 400
 
 
 def test_create_upload_job_accepts_layer_name(env):

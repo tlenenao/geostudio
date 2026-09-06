@@ -2112,8 +2112,10 @@ export interface components {
         };
         /** InspectResponse */
         InspectResponse: {
+            /** Fields */
+            fields?: string[] | null;
             /** Layers */
-            layers: components["schemas"]["LayerInfoOut"][];
+            layers?: components["schemas"]["LayerInfoOut"][];
         };
         /** ItemPage */
         ItemPage: {
