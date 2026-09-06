@@ -206,8 +206,28 @@ class LayerInfo:
     geometry_type: str
 
 
+# Extensions autorisées comme suffixe de fichier temporaire. Liste fermée
+# plutôt qu'une validation par motif : les cinq formats qui ont besoin d'un
+# fichier sur disque (GDAL/pyogrio ne lisent pas depuis la mémoire) sont
+# connus, et une liste se relit sans avoir à raisonner sur une regex.
+_ALLOWED_TEMP_SUFFIXES = frozenset({".gpkg", ".zip", ".kml", ".kmz", ".parquet"})
+
+
 @contextmanager
 def _temp_file(content: bytes, suffix: str) -> Iterator[str]:
+    """Écrit `content` dans un fichier temporaire portant `suffix` — GDAL
+    sélectionne son driver depuis l'extension, d'où le besoin d'un vrai
+    fichier nommé.
+
+    `suffix` est validé contre une liste fermée : c'est le point de passage
+    UNIQUE du domaine où un suffixe devient un chemin réel, et
+    `tempfile.NamedTemporaryFile` ne filtre rien du tout — un suffixe
+    contenant « / » écrit hors du répertoire temporaire. Aucun appelant
+    actuel ne peut y faire entrer une telle valeur (tous passent un
+    littéral), ce garde est là pour que le prochain ne le puisse pas
+    silencieusement."""
+    if suffix not in _ALLOWED_TEMP_SUFFIXES:
+        raise ValueError(f"suffixe de fichier temporaire non autorisé : {suffix!r}")
     with tempfile.NamedTemporaryFile(suffix=suffix) as tmp:
         tmp.write(content)
         tmp.flush()
@@ -376,7 +396,16 @@ def list_layers(content: bytes, filename: str) -> list[LayerInfo]:
     elif lower.endswith((".kml", ".kmz")):
         # Identité : PAS le wrap /vsizip/ de la branche .zip ci-dessus, cf.
         # parse_kml — un .kmz se lit tel quel.
-        suffix, wrap = (lower[lower.rfind(".") :], lambda p: p)
+        #
+        # Deux littéraux explicites, et non `lower[lower.rfind("."):]` comme
+        # auparavant : le résultat était en pratique toujours ".kml" ou
+        # ".kmz" (le dernier point est forcément celui de l'extension,
+        # puisque cette branche est gardée par endswith), donc non
+        # exploitable — mais c'était un flux « nom de fichier fourni par
+        # l'appelant → chemin du système de fichiers » que rien dans le code
+        # ne bornait, et que CodeQL signalait à juste titre comme
+        # py/path-injection. Même forme que parse_kml ci-dessus.
+        suffix, wrap = (".kmz" if lower.endswith(".kmz") else ".kml", lambda p: p)
     else:
         raise ValueError(f"format non concerné par l'inspection : {filename}")
     with _temp_file(content, suffix) as tmp_path:

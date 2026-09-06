@@ -7,6 +7,23 @@ from app.security.service import CspAllowlist
 from app.security.traefik_render import render_dynamic_conf
 
 
+def _csp_directives(header_value: str) -> dict[str, list[str]]:
+    """Découpe un en-tête CSP en {directive: [sources]}.
+
+    Assertion par SOURCE et non par sous-chaîne : `"https://tiles.example.com"
+    in header` passait aussi bien si l'hôte n'apparaissait que dans la
+    mauvaise directive (ou comme fragment d'un hôte plus long, par exemple
+    `https://tiles.example.com.evil.test`) — le test ne prouvait donc pas ce
+    qu'il annonçait. C'est aussi ce que CodeQL signalait ici sous
+    py/incomplete-url-substring-sanitization."""
+    directives: dict[str, list[str]] = {}
+    for chunk in header_value.split(";"):
+        parts = chunk.split()
+        if parts:
+            directives[parts[0]] = parts[1:]
+    return directives
+
+
 def _make_session():
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
@@ -24,8 +41,11 @@ def test_render_dynamic_conf_produces_parseable_yaml_enforce_mode():
     header_name = "Content-Security-Policy"
     headers = parsed["http"]["middlewares"]["csp-dynamic"]["headers"]["customResponseHeaders"]
     assert header_name in headers
-    assert "https://tiles.example.com" in headers[header_name]
-    assert "script-src 'self'" in headers[header_name]  # jamais élargi (blocage 3 non tranché)
+    directives = _csp_directives(headers[header_name])
+    assert "https://tiles.example.com" in directives["img-src"]
+    assert "https://tiles.example.com" in directives["connect-src"]
+    # jamais élargi (blocage 3 non tranché) : script-src n'a que 'self'.
+    assert directives["script-src"] == ["'self'"]
 
 
 def test_render_dynamic_conf_report_only_mode_uses_report_only_header_name():

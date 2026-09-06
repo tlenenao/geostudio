@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
+import contextlib
 import datetime
 import io
 import warnings
 import zipfile
+from contextlib import contextmanager
 
 import numpy as np
 import pytest
@@ -563,3 +565,70 @@ def test_parse_geoparquet_round_trips_write_geoparquet_output(tmp_path):
     assert props["titre"] == "a"
     assert props["_op"] == "insert"
     assert props["id"] == 1
+
+
+# --- Suffixe de fichier temporaire : aucune donnée utilisateur ne doit
+# atteindre un chemin du système de fichiers (alerte CodeQL py/path-injection
+# sur app/ingestion/parsers.py, `_temp_file(content, suffix)`).
+
+
+def test_list_layers_never_derives_its_temp_suffix_from_the_filename():
+    """`list_layers` recevait le nom de fichier fourni par l'appelant
+    (POST /uploads/inspect → body.filename) et en dérivait le suffixe du
+    fichier temporaire par `lower[lower.rfind("."):]`. Le résultat était en
+    pratique toujours ".kml" ou ".kmz" — le dernier point est forcément
+    celui de l'extension puisque la branche est gardée par endswith() —
+    donc non exploitable, mais un flux « entrée utilisateur → chemin » que
+    rien dans le code ne bornait explicitement. Ce test fixe le contrat :
+    le suffixe est choisi parmi deux littéraux, jamais découpé dans
+    l'entrée."""
+    from app.ingestion import parsers
+
+    seen: list[str] = []
+    real_temp_file = parsers._temp_file
+
+    @contextmanager
+    def _spy(content: bytes, suffix: str):
+        seen.append(suffix)
+        with real_temp_file(content, suffix) as path:
+            yield path
+
+    parsers._temp_file = _spy  # type: ignore[assignment]
+    try:
+        for filename in (
+            "a.kml",
+            "A.KMZ",
+            "../../etc/passwd.kml",
+            "x/../../tmp/evil.kmz",
+            "un.nom.avec.des.points.kml",
+        ):
+            with contextlib.suppress(IngestionParseError):
+                list_layers(b"pas un vrai kml", filename)
+    finally:
+        parsers._temp_file = real_temp_file  # type: ignore[assignment]
+
+    assert seen, "list_layers n'a jamais appelé _temp_file"
+    assert set(seen) <= {".kml", ".kmz"}, seen
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "/../../etc/passwd",
+        "x/y.kml",
+        ".kml/../../evil",
+        "..",
+    ],
+)
+def test_temp_file_refuses_a_suffix_that_is_not_a_bare_extension(suffix):
+    """Défense en profondeur au point de passage unique : `_temp_file` est le
+    seul endroit du domaine où un suffixe devient un chemin réel, et
+    `tempfile.NamedTemporaryFile` ne filtre RIEN (un suffixe contenant « / »
+    écrit hors du répertoire temporaire). Aucun appelant actuel ne peut y
+    faire entrer une telle valeur ; ce garde existe pour que le prochain ne
+    le puisse pas non plus en silence."""
+    from app.ingestion.parsers import _temp_file
+
+    with pytest.raises(ValueError, match="suffixe"):
+        with _temp_file(b"x", suffix):
+            pass
