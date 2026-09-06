@@ -3,7 +3,7 @@ import logging
 import os
 from collections.abc import Callable
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
@@ -38,6 +38,9 @@ from app.sharing.schemas import Sharing
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+MAX_LIMIT = 1000
+DEFAULT_LIMIT = 100
 
 # Tables système PostGIS : de simples tables Postgres ordinaires (PK simple,
 # pas de tenant_id) qui passeraient toutes les autres gardes. Les enregistrer
@@ -316,6 +319,8 @@ def create_empty_collection_route(
 @router.get("/collections")
 def list_collections(
     q: str | None = None,
+    limit: int = Query(DEFAULT_LIMIT, ge=1),
+    offset: int = Query(0, ge=0),
     user=Depends(get_current_user_optional),
     session: Session = Depends(get_session),
 ):
@@ -333,7 +338,10 @@ def list_collections(
         can_see_all=can_manage_collections,
         q=q,
     )
-    owner_ids = {c.owner_id for c in cols}
+    limit = min(limit, MAX_LIMIT)
+    total = len(cols)
+    cols_page = cols[offset : offset + limit]
+    owner_ids = {c.owner_id for c in cols_page}
     owners = (
         dict(session.execute(select(User.id, User.username).where(User.id.in_(owner_ids))).all())
         if owner_ids
@@ -345,12 +353,15 @@ def list_collections(
         current_user_id=user.id if user else None,
         actor_is_admin=bool(user and user.is_admin),
         can_manage_collections=can_manage_collections,
-        collections=cols,
+        collections=cols_page,
     )
     return {
         "collections": [
-            _collection_json(c, permissions_by_id[c.id], owner=owners.get(c.owner_id)) for c in cols
-        ]
+            _collection_json(c, permissions_by_id[c.id], owner=owners.get(c.owner_id))
+            for c in cols_page
+        ],
+        "numberMatched": total,
+        "numberReturned": len(cols_page),
     }
 
 

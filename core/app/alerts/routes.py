@@ -3,7 +3,7 @@
 update/delete of the rule itself are handled entirely by the generic
 /configs routes (app.configs.routes) — nothing bespoke needed there."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,8 @@ from app.sharing.authorization import can
 from app.users.models import User
 
 router = APIRouter()
+
+_EVALUATIONS_MAX_LIMIT = 1000
 
 
 class AlertRuleSummary(BaseModel):
@@ -68,12 +70,15 @@ def _require_alert_read_access(session: Session, *, user: User, item_id: str) ->
 @router.get("/alerts/{item_id}/evaluations", response_model=list[EvaluationStatus])
 def get_alert_evaluations(
     item_id: str,
+    limit: int = Query(100, ge=1),
+    offset: int = Query(0, ge=0),
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> list[EvaluationStatus]:
     _require_alert_read_access(session, user=user, item_id=item_id)
+    limit = min(limit, _EVALUATIONS_MAX_LIMIT)
     rows = alerts_repo.list_evaluations(
-        session, tenant_id=user.tenant_id, alert_rule_item_id=item_id
+        session, tenant_id=user.tenant_id, alert_rule_item_id=item_id, limit=limit, offset=offset
     )
     return [
         EvaluationStatus(

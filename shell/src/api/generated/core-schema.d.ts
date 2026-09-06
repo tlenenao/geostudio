@@ -3311,7 +3311,10 @@ export interface operations {
     };
     get_alert_evaluations_alerts__item_id__evaluations_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: {
                 authorization?: string;
             };
@@ -3381,6 +3384,8 @@ export interface operations {
         parameters: {
             query?: {
                 q?: string | null;
+                limit?: number;
+                offset?: number;
             };
             header?: {
                 authorization?: string;
@@ -4839,7 +4844,10 @@ export interface operations {
     };
     get_catalog_dcat_catalog_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: {
                 authorization?: string;
             };
@@ -6412,7 +6420,10 @@ export interface operations {
     };
     get_report_runs_route_reports__item_id__runs_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: {
                 authorization?: string;
             };
@@ -6791,7 +6802,10 @@ export interface operations {
     };
     list_collections_stac_collections_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: {
                 authorization?: string;
             };

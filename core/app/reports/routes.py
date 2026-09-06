@@ -6,7 +6,7 @@ reproduisant GET /alerts/{id}/evaluations."""
 
 import os
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,8 @@ from app.sharing.authorization import can
 from app.users.models import User
 
 router = APIRouter()
+
+_RUNS_MAX_LIMIT = 1000
 
 
 class ReportRunStatus(BaseModel):
@@ -51,13 +53,18 @@ def _require_report_read_access(session: Session, *, user: User, item_id: str) -
 @router.get("/reports/{item_id}/runs", response_model=list[ReportRunStatus])
 def get_report_runs_route(
     item_id: str,
+    limit: int = Query(100, ge=1),
+    offset: int = Query(0, ge=0),
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_exports_bucket),
 ) -> list[ReportRunStatus]:
     _require_report_read_access(session, user=user, item_id=item_id)
-    runs = reports_repo.list_runs(session, tenant_id=user.tenant_id, report_item_id=item_id)
+    limit = min(limit, _RUNS_MAX_LIMIT)
+    runs = reports_repo.list_runs(
+        session, tenant_id=user.tenant_id, report_item_id=item_id, limit=limit, offset=offset
+    )
     result: list[ReportRunStatus] = []
     for run in runs:
         if run.export_job_id is None:

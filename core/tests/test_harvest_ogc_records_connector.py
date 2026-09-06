@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 import httpx
+import pytest
 
-from app.harvest.connectors.base import HarvestedRecord
+from app.harvest.connectors.base import HarvestedRecord, HarvestFetchError
 from app.harvest.connectors.ogc_records import OgcRecordsConnector
 
 OGC_ROOT = "https://records.example.com/api"
@@ -93,11 +94,26 @@ def test_root_url_trailing_slash_is_stripped():
     assert list(_connector(handler).fetch(f"{OGC_ROOT}/")) == []
 
 
-def test_malformed_collections_returns_empty():
+def test_malformed_collections_raises_harvest_fetch_error():
+    # GAP-59.2 (SP-50) : /collections est le seul appel racine de ce
+    # connecteur (_list_collections) — illisible, il doit être signalé, pas
+    # rapporté comme un moissonnage réussi à zéro enregistrement. Les
+    # collections elles-mêmes (_collect_collection, ci-dessous) restent
+    # tolérantes, cf. test_collection_first_page_failure_is_ignored_others_
+    # continue, inchangé.
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"not json")
 
-    assert list(_connector(handler).fetch(OGC_ROOT)) == []
+    with pytest.raises(HarvestFetchError):
+        list(_connector(handler).fetch(OGC_ROOT))
+
+
+def test_collections_unreachable_raises_harvest_fetch_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    with pytest.raises(HarvestFetchError):
+        list(_connector(handler).fetch(OGC_ROOT))
 
 
 def test_collection_first_page_failure_is_ignored_others_continue():

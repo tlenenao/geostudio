@@ -22,10 +22,24 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT_SECONDS = 10.0
 _ALLOWLIST_ENV = "CORE_HARVEST_EGRESS_ALLOWLIST"
+_MAX_RESPONSE_BYTES_ENV = "CORE_HARVEST_MAX_RESPONSE_BYTES"
+_DEFAULT_MAX_RESPONSE_BYTES = 10 * 1024 * 1024  # 10 Mio
 
 
 class EgressBlockedError(Exception):
     """Cible réseau interdite (plage interne ou hors allowlist)."""
+
+
+class ResponseTooLargeError(Exception):
+    """Réponse distante dépassant CORE_HARVEST_MAX_RESPONSE_BYTES (GAP-59,
+    SP-50) — non capturée par les connecteurs, remonte jusqu'à
+    harvest_source qui la traite comme n'importe quelle autre exception de
+    connector.fetch() (source.last_status devient "error")."""
+
+
+def _max_response_bytes() -> int:
+    raw = os.environ.get(_MAX_RESPONSE_BYTES_ENV, "")
+    return int(raw) if raw.strip() else _DEFAULT_MAX_RESPONSE_BYTES
 
 
 def _allowlist() -> set[str]:
@@ -76,7 +90,26 @@ class _GuardedTransport(httpx.BaseTransport):
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         assert_egress_allowed(str(request.url))
-        return self._inner.handle_request(request)
+        response = self._inner.handle_request(request)
+        cap = _max_response_bytes()
+        chunks: list[bytes] = []
+        total = 0
+        try:
+            for chunk in response.stream:
+                total += len(chunk)
+                if total > cap:
+                    raise ResponseTooLargeError(
+                        f"réponse distante > {cap} octets pour {request.url}"
+                    )
+                chunks.append(chunk)
+        finally:
+            response.close()
+        return httpx.Response(
+            status_code=response.status_code,
+            headers=response.headers,
+            content=b"".join(chunks),
+            request=request,
+        )
 
 
 def build_guarded_client(timeout: float = _DEFAULT_TIMEOUT_SECONDS) -> httpx.Client:

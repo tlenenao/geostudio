@@ -115,6 +115,8 @@ def list_evaluations(
     *,
     tenant_id: str,
     alert_rule_item_id: str,
+    limit: int = 100,
+    offset: int = 0,
 ) -> list[AlertEvaluation]:
     rows = (
         session.execute(
@@ -124,6 +126,8 @@ def list_evaluations(
                 AlertEvaluation.alert_rule_item_id == alert_rule_item_id,
             )
             .order_by(AlertEvaluation.created_at.desc())
+            .limit(limit)
+            .offset(offset)
         )
         .scalars()
         .all()

@@ -91,6 +91,36 @@ def test_list_runs_orders_most_recent_first():
         assert [r.id for r in runs] == [second.id, first.id]
 
 
+def test_list_runs_respects_limit_and_offset():
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        report_id = _seed_report(s, tenant_id=tenant.id, owner_id=user.id)
+        for i in range(5):
+            reports_repo.create_run(
+                s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=f"job-{i}"
+            )
+        s.commit()
+
+        page = reports_repo.list_runs(
+            s, tenant_id=tenant.id, report_item_id=report_id, limit=2, offset=0
+        )
+        assert len(page) == 2
+        page2 = reports_repo.list_runs(
+            s, tenant_id=tenant.id, report_item_id=report_id, limit=2, offset=4
+        )
+        assert len(page2) == 1
+
+
 def test_get_latest_run_returns_none_when_no_run_exists():
     Session = _make_session()
     with Session() as s:
