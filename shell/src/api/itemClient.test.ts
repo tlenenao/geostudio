@@ -30,7 +30,7 @@ test("listItems sends the bearer token and scope", async () => {
   let auth: string | null = null;
   let url: string | null = null;
   server.use(
-    http.get("https://core.test/items", ({ request }) => {
+    http.get("https://core.test/v1/items", ({ request }) => {
       auth = request.headers.get("authorization");
       url = request.url;
       return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
@@ -45,7 +45,7 @@ test("listItems sends the bearer token and scope", async () => {
 test("listItems serializes sort/owner/keywords (repeated keyword param)", async () => {
   let url: string | null = null;
   server.use(
-    http.get("https://core.test/items", ({ request }) => {
+    http.get("https://core.test/v1/items", ({ request }) => {
       url = request.url;
       return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
     }),
@@ -64,7 +64,7 @@ test("listItems serializes sort/owner/keywords (repeated keyword param)", async 
 test("getItemFacets requests /items/facets with q/type/scope/owner", async () => {
   let url: string | null = null;
   server.use(
-    http.get("https://core.test/items/facets", ({ request }) => {
+    http.get("https://core.test/v1/items/facets", ({ request }) => {
       url = request.url;
       return HttpResponse.json({ owners: [], keywords: [] });
     }),
@@ -95,7 +95,7 @@ test("getItem missing returns 404 and throws", async () => {
 
 test("getMe maps camelCase fields", async () => {
   server.use(
-    http.get("https://core.test/me", () =>
+    http.get("https://core.test/v1/me", () =>
       HttpResponse.json({
         id: "u1",
         username: "alice",
@@ -123,7 +123,7 @@ test("getMe maps camelCase fields", async () => {
 
 test("getMe lit id/email/tenantId/capabilities en plus des champs existants", async () => {
   server.use(
-    http.get("https://core.test/me", () =>
+    http.get("https://core.test/v1/me", () =>
       HttpResponse.json({
         id: "u1",
         tenantId: "t1",
@@ -157,7 +157,7 @@ test("getMe lit id/email/tenantId/capabilities en plus des champs existants", as
 
 test("getMe surfaces the caller's privileges", async () => {
   server.use(
-    http.get("https://core.test/me", () =>
+    http.get("https://core.test/v1/me", () =>
       HttpResponse.json({
         id: "u1",
         username: "alice",
@@ -176,7 +176,7 @@ test("getMe surfaces the caller's privileges", async () => {
 test("createConfigItem does not send owner in the request body", async () => {
   let body: unknown;
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json(
         { id: "cfg-1", itemId: "99", kind: "app", version: 1, config: {} },
@@ -197,7 +197,7 @@ test("createConfigItem does not send owner in the request body", async () => {
 test("createConfigItem defaults interactions to auto for a new app", async () => {
   let posted: Record<string, unknown> | null = null;
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       posted = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json({ id: "cfg-1", kind: "app", itemId: "1" }, { status: 201 });
     }),
@@ -209,7 +209,7 @@ test("createConfigItem defaults interactions to auto for a new app", async () =>
 test("updateItem sends the patch camelCase, unchanged", async () => {
   let body: unknown;
   server.use(
-    http.patch("https://core.test/items/:pk", async ({ params, request }) => {
+    http.patch("https://core.test/v1/items/:pk", async ({ params, request }) => {
       body = await request.json();
       return HttpResponse.json({
         pk: String(params.pk),
@@ -232,7 +232,7 @@ test("updateItem sends the patch camelCase, unchanged", async () => {
 test("uploadThumbnail POSTs multipart form data", async () => {
   let method: string | null = null;
   server.use(
-    http.post("https://core.test/items/:pk/thumbnail", ({ request }) => {
+    http.post("https://core.test/v1/items/:pk/thumbnail", ({ request }) => {
       method = request.method;
       return new HttpResponse(null, { status: 204 });
     }),
@@ -244,7 +244,7 @@ test("uploadThumbnail POSTs multipart form data", async () => {
 test("deleteItem tolerates a 404 as success", async () => {
   server.use(
     http.delete(
-      "https://core.test/configs/by-item/:pk",
+      "https://core.test/v1/configs/by-item/:pk",
       () => new HttpResponse(null, { status: 404 }),
     ),
   );
@@ -261,7 +261,7 @@ test("listGroups maps name to title", async () => {
 
 test("createGroup crée un groupe (POST /groups)", async () => {
   server.use(
-    http.post("https://core.test/groups", async ({ request }) => {
+    http.post("https://core.test/v1/groups", async ({ request }) => {
       const body = (await request.json()) as { name: string };
       expect(body.name).toBe("Équipe SIG");
       return HttpResponse.json({ id: "g1", name: "Équipe SIG" }, { status: 201 });
@@ -273,7 +273,7 @@ test("createGroup crée un groupe (POST /groups)", async () => {
 
 test("addGroupMember pose un message clair sur un 404", async () => {
   server.use(
-    http.post("https://core.test/groups/g1/members", () =>
+    http.post("https://core.test/v1/groups/g1/members", () =>
       HttpResponse.json({ detail: "group or user not found" }, { status: 404 }),
     ),
   );
@@ -284,7 +284,10 @@ test("addGroupMember pose un message clair sur un 404", async () => {
 
 test("addGroupMember réussit (204) sans lever", async () => {
   server.use(
-    http.post("https://core.test/groups/g1/members", () => new HttpResponse(null, { status: 204 })),
+    http.post(
+      "https://core.test/v1/groups/g1/members",
+      () => new HttpResponse(null, { status: 204 }),
+    ),
   );
   await expect(makeClient().addGroupMember("g1", "u2")).resolves.toBeUndefined();
 });
@@ -297,7 +300,7 @@ test("getSharing passes through the core's Sharing shape directly", async () => 
 test("setSharing PUTs the sharing object as-is", async () => {
   let body: unknown;
   server.use(
-    http.put("https://core.test/items/:pk/sharing", async ({ request }) => {
+    http.put("https://core.test/v1/items/:pk/sharing", async ({ request }) => {
       body = await request.json();
       return new HttpResponse(null, { status: 204 });
     }),
@@ -311,7 +314,7 @@ test("setSharing PUTs the sharing object as-is", async () => {
 
 test("createShareLink crée un lien avec une échéance", async () => {
   server.use(
-    http.post("https://core.test/items/it1/share-links", async ({ request }) => {
+    http.post("https://core.test/v1/items/it1/share-links", async ({ request }) => {
       const body = (await request.json()) as { ttlDays: number };
       expect(body.ttlDays).toBe(30);
       return HttpResponse.json(
@@ -327,7 +330,7 @@ test("createShareLink crée un lien avec une échéance", async () => {
 
 test("listShareLinks retourne la liste avec son statut", async () => {
   server.use(
-    http.get("https://core.test/items/it1/share-links", () =>
+    http.get("https://core.test/v1/items/it1/share-links", () =>
       HttpResponse.json([
         { id: "sl1", expiresAt: "2026-10-05T00:00:00", revoked: false },
         { id: "sl2", expiresAt: "2026-09-10T00:00:00", revoked: true },
@@ -344,7 +347,7 @@ test("listShareLinks retourne la liste avec son statut", async () => {
 test("revokeShareLink DELETE le lien indiqué", async () => {
   let deletedPath = "";
   server.use(
-    http.delete("https://core.test/items/it1/share-links/:linkId", ({ params }) => {
+    http.delete("https://core.test/v1/items/it1/share-links/:linkId", ({ params }) => {
       deletedPath = String(params.linkId);
       return new HttpResponse(null, { status: 204 });
     }),
@@ -359,7 +362,7 @@ test("listLayerSources returns one tiled entry per core collection, and no Marti
   // collection. Une même collection n'apparaît plus qu'une fois.
   let auth: string | null = null;
   server.use(
-    http.get("https://core.test/collections", ({ request }) => {
+    http.get("https://core.test/v1/collections", ({ request }) => {
       auth = request.headers.get("authorization");
       return HttpResponse.json({
         collections: [
@@ -368,7 +371,7 @@ test("listLayerSources returns one tiled entry per core collection, and no Marti
         ],
       });
     }),
-    http.get("https://core.test/harvest/layers", () => HttpResponse.json({ layers: [] })),
+    http.get("https://core.test/v1/harvest/layers", () => HttpResponse.json({ layers: [] })),
   );
   const sources = await makeClient("abc").listLayerSources();
   expect(auth).toBe("Bearer abc");
@@ -380,19 +383,19 @@ test("listLayerSources returns one tiled entry per core collection, and no Marti
     collectionId: "communes",
     geometryKind: "polygon",
     pkColumn: "id",
-    tilesUrl: "https://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
+    tilesUrl: "https://core.test/v1/collections/communes/tiles/{z}/{x}/{y}.mvt",
   });
   expect(communes.sourceLayer).toBe("communes");
 });
 
 test("a collection without geometry type yields no geometryKind rather than a wrong one", async () => {
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({
         collections: [{ id: "sans_geom", title: "Sans géométrie", geometryType: null }],
       }),
     ),
-    http.get("https://core.test/harvest/layers", () => HttpResponse.json({ layers: [] })),
+    http.get("https://core.test/v1/harvest/layers", () => HttpResponse.json({ layers: [] })),
   );
   const sources = await makeClient().listLayerSources();
   expect(sources.find((s) => s.id === "sans_geom")?.geometryKind).toBeUndefined();
@@ -400,8 +403,8 @@ test("a collection without geometry type yields no geometryKind rather than a wr
 
 test("the Martin catalog is never fetched any more", async () => {
   server.use(
-    http.get("https://core.test/collections", () => HttpResponse.json({ collections: [] })),
-    http.get("https://core.test/harvest/layers", () => HttpResponse.json({ layers: [] })),
+    http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
+    http.get("https://core.test/v1/harvest/layers", () => HttpResponse.json({ layers: [] })),
   );
   const fetchSpy = vi.spyOn(globalThis, "fetch");
   await makeClient().listLayerSources();
@@ -413,7 +416,7 @@ test("the Martin catalog is never fetched any more", async () => {
 test("listActiveExtensions maps the core's /extensions response to ExtensionManifest[]", async () => {
   let auth: string | null = null;
   server.use(
-    http.get("https://core.test/extensions", ({ request }) => {
+    http.get("https://core.test/v1/extensions", ({ request }) => {
       auth = request.headers.get("authorization");
       return HttpResponse.json({
         extensions: [
@@ -451,10 +454,10 @@ test("listActiveExtensions maps the core's /extensions response to ExtensionMani
 
 test("listLayerSources still returns core collections when another layer service fails", async () => {
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({ collections: [{ id: "public.parcs", title: "Parcs" }] }),
     ),
-    http.get("https://core.test/harvest/layers", () => new HttpResponse(null, { status: 500 })),
+    http.get("https://core.test/v1/harvest/layers", () => new HttpResponse(null, { status: 500 })),
   );
   const sources = await makeClient().listLayerSources();
   expect(sources).toHaveLength(1);
@@ -464,11 +467,11 @@ test("listLayerSources still returns core collections when another layer service
 test("listLayerSources passes q to /collections", async () => {
   let collectionsUrl: string | null = null;
   server.use(
-    http.get("https://core.test/collections", ({ request }) => {
+    http.get("https://core.test/v1/collections", ({ request }) => {
       collectionsUrl = request.url;
       return HttpResponse.json({ collections: [{ id: "c1", title: "Communes" }] });
     }),
-    http.get("https://core.test/harvest/layers", () => HttpResponse.json({ layers: [] })),
+    http.get("https://core.test/v1/harvest/layers", () => HttpResponse.json({ layers: [] })),
   );
   const sources = await makeClient().listLayerSources({ q: "commun" });
   expect(collectionsUrl).toContain("q=commun");
@@ -477,9 +480,9 @@ test("listLayerSources passes q to /collections", async () => {
 
 test("listLayerSources throws when all services fail", async () => {
   server.use(
-    http.get("https://core.test/collections", () => new HttpResponse(null, { status: 500 })),
-    http.get("https://core.test/harvest/layers", () => new HttpResponse(null, { status: 500 })),
-    http.get("https://core.test/items", () => new HttpResponse(null, { status: 500 })),
+    http.get("https://core.test/v1/collections", () => new HttpResponse(null, { status: 500 })),
+    http.get("https://core.test/v1/harvest/layers", () => new HttpResponse(null, { status: 500 })),
+    http.get("https://core.test/v1/items", () => new HttpResponse(null, { status: 500 })),
   );
   await expect(makeClient().listLayerSources()).rejects.toThrow();
 });
@@ -487,7 +490,7 @@ test("listLayerSources throws when all services fail", async () => {
 test("createMapItem posts a map skeleton and returns a map Item", async () => {
   let body: any;
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-1", kind: "map", itemId: "77" }, { status: 201 });
     }),
@@ -501,7 +504,7 @@ test("createMapItem posts a map skeleton and returns a map Item", async () => {
 test("getMapConfig reads and maps the builder map config", async () => {
   // ConfigRead nests the builder config under "config"; the map is config.map.
   server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
+    http.get("https://core.test/v1/configs/by-item/77", () =>
       HttpResponse.json({
         id: "cfg-1",
         itemId: "77",
@@ -550,7 +553,7 @@ test("getMapConfig reads and maps the builder map config", async () => {
 // freshly-loaded map with a saved popup config could never show one.
 test("getMapConfig reads popup/collectionId/geometryKind/pkColumn on a vector layer", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
+    http.get("https://core.test/v1/configs/by-item/77", () =>
       HttpResponse.json({
         id: "cfg-1",
         itemId: "77",
@@ -610,7 +613,7 @@ test("getMapConfig reads symbology on a vector layer", async () => {
     },
   };
   server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
+    http.get("https://core.test/v1/configs/by-item/77", () =>
       HttpResponse.json({
         id: "cfg-1",
         itemId: "77",
@@ -656,7 +659,7 @@ test("getMapConfig reads symbology on a vector layer", async () => {
 
 test("getMapConfig reads popup on a feature (GeoJSON) layer", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
+    http.get("https://core.test/v1/configs/by-item/77", () =>
       HttpResponse.json({
         id: "cfg-1",
         itemId: "77",
@@ -698,7 +701,7 @@ test("getMapConfig reads popup on a feature (GeoJSON) layer", async () => {
 // MapView's default "fill" on reload and rendered nothing visible.
 test("getMapConfig reads renderAs on a feature (GeoJSON) layer", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
+    http.get("https://core.test/v1/configs/by-item/77", () =>
       HttpResponse.json({
         id: "cfg-1",
         itemId: "77",
@@ -740,7 +743,7 @@ test("getMapConfig reads collectionId/pkColumn on a feature (GeoJSON) layer", as
   // feature les perdait au rechargement, cassant les pièces jointes/
   // cross-filter d'une couche GeoJSON qui les porte.
   server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
+    http.get("https://core.test/v1/configs/by-item/77", () =>
       HttpResponse.json({
         id: "cfg-1",
         itemId: "77",
@@ -861,7 +864,7 @@ describe("toFrontLayer characteristic test — no optional field is ever dropped
 
 test("getMapConfig throws when the config has no map payload", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
+    http.get("https://core.test/v1/configs/by-item/77", () =>
       HttpResponse.json({
         id: "cfg-1",
         itemId: "77",
@@ -877,7 +880,7 @@ test("saveMapConfig PUTs the map config by item", async () => {
   let method = "";
   let body: any;
   server.use(
-    http.put("https://core.test/configs/by-item/77", async ({ request }) => {
+    http.put("https://core.test/v1/configs/by-item/77", async ({ request }) => {
       method = request.method;
       body = await request.json();
       return HttpResponse.json({ id: "cfg-1", itemId: "77", kind: "map", map: body.map });
@@ -896,7 +899,7 @@ test("saveMapConfig PUTs the map config by item", async () => {
 
 test("getMapConfig maps a tiles3d layer", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
+    http.get("https://core.test/v1/configs/by-item/77", () =>
       HttpResponse.json({
         id: "cfg-1",
         itemId: "77",
@@ -939,7 +942,7 @@ test("getMapConfig maps a tiles3d layer", async () => {
 
 test("getMapConfig reads terrain and camera pitch/bearing", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
+    http.get("https://core.test/v1/configs/by-item/77", () =>
       HttpResponse.json({
         id: "cfg-1",
         itemId: "77",
@@ -972,7 +975,7 @@ test("getMapConfig reads terrain and camera pitch/bearing", async () => {
 
 test("getMapConfig defaults terrain to null and omits pitch/bearing when absent", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
+    http.get("https://core.test/v1/configs/by-item/77", () =>
       HttpResponse.json({
         id: "cfg-1",
         itemId: "77",
@@ -998,7 +1001,7 @@ test("getMapConfig defaults terrain to null and omits pitch/bearing when absent"
 test("saveMapConfig sends terrain nested under map, not at the top level (unlike printLayout)", async () => {
   let body: any;
   server.use(
-    http.put("https://core.test/configs/by-item/77", async ({ request }) => {
+    http.put("https://core.test/v1/configs/by-item/77", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({});
     }),
@@ -1020,7 +1023,7 @@ test("saveMapConfig sends terrain nested under map, not at the top level (unlike
 test("createDatasetItem posts a dataset payload and returns a dataset Item", async () => {
   let body: any;
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-ds1", kind: "dataset", itemId: "ds-1" }, { status: 201 });
     }),
@@ -1043,7 +1046,7 @@ test("createDatasetItem posts a dataset payload and returns a dataset Item", asy
 
 test("getDatasetConfig reads the dataset payload from the by-item config", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/ds-2", () =>
+    http.get("https://core.test/v1/configs/by-item/ds-2", () =>
       HttpResponse.json({
         id: "cfg-ds2",
         itemId: "ds-2",
@@ -1073,7 +1076,7 @@ test("getDatasetConfig reads the dataset payload from the by-item config", async
 
 test("getDatasetConfig throws when the config has no dataset payload", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/ds-3", () =>
+    http.get("https://core.test/v1/configs/by-item/ds-3", () =>
       HttpResponse.json({ id: "cfg-ds3", itemId: "ds-3", kind: "app", config: { kind: "app" } }),
     ),
   );
@@ -1085,7 +1088,7 @@ test("resolveDataset (via getDatasetConfig) refait un fetch après expiration du
   try {
     let calls = 0;
     server.use(
-      http.get("https://core.test/configs/by-item/ds1", () => {
+      http.get("https://core.test/v1/configs/by-item/ds1", () => {
         calls += 1;
         return HttpResponse.json({
           id: "cfg",
@@ -1114,7 +1117,7 @@ test("resolveDataset (via getDatasetConfig) refait un fetch après expiration du
 test("invalidateDatasetCache force un nouveau fetch avant expiration du TTL", async () => {
   let calls = 0;
   server.use(
-    http.get("https://core.test/configs/by-item/ds1", () => {
+    http.get("https://core.test/v1/configs/by-item/ds1", () => {
       calls += 1;
       return HttpResponse.json({
         id: "cfg",
@@ -1136,7 +1139,7 @@ test("invalidateDatasetCache force un nouveau fetch avant expiration du TTL", as
 
 test("createBookmarkItem posts a bookmark payload and returns a bookmark Item", async () => {
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       const body = (await request.json()) as { title: string; config: unknown };
       expect(body.config).toEqual({
         version: 1,
@@ -1182,7 +1185,7 @@ test("createBookmarkItem posts a bookmark payload and returns a bookmark Item", 
 
 test("getBookmarkConfig reads the bookmark payload from the by-item config", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/bookmark-1", () =>
+    http.get("https://core.test/v1/configs/by-item/bookmark-1", () =>
       HttpResponse.json({
         id: "cfg-bookmark",
         itemId: "bookmark-1",
@@ -1213,7 +1216,7 @@ test("getBookmarkConfig reads the bookmark payload from the by-item config", asy
 
 test("getBookmarkConfig throws when the config has no bookmark payload", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/bookmark-2", () =>
+    http.get("https://core.test/v1/configs/by-item/bookmark-2", () =>
       HttpResponse.json({
         id: "cfg-x",
         itemId: "bookmark-2",
@@ -1229,7 +1232,7 @@ test("saveDatasetConfig PUTs the dataset config by item", async () => {
   let method = "";
   let body: any;
   server.use(
-    http.put("https://core.test/configs/by-item/ds-4", async ({ request }) => {
+    http.put("https://core.test/v1/configs/by-item/ds-4", async ({ request }) => {
       method = request.method;
       body = await request.json();
       return HttpResponse.json({
@@ -1252,7 +1255,7 @@ test("saveDatasetConfig PUTs the dataset config by item", async () => {
 
 test("getDatasetConfig/saveDatasetConfig round-trip timeField/reactsToExtent", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/ds-1", () =>
+    http.get("https://core.test/v1/configs/by-item/ds-1", () =>
       HttpResponse.json({
         config: {
           dataset: {
@@ -1272,7 +1275,7 @@ test("getDatasetConfig/saveDatasetConfig round-trip timeField/reactsToExtent", a
 
   let putBody: Record<string, unknown> | null = null;
   server.use(
-    http.put("https://core.test/configs/by-item/ds-1", async ({ request }) => {
+    http.put("https://core.test/v1/configs/by-item/ds-1", async ({ request }) => {
       putBody = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json({});
     }),
@@ -1283,7 +1286,7 @@ test("getDatasetConfig/saveDatasetConfig round-trip timeField/reactsToExtent", a
 
 test("getDatasetConfig includes crossFilterLinks from the wire response", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/ds-1", () =>
+    http.get("https://core.test/v1/configs/by-item/ds-1", () =>
       HttpResponse.json({
         id: "cfg-ds1",
         itemId: "ds-1",
@@ -1316,7 +1319,7 @@ test("getDatasetConfig includes crossFilterLinks from the wire response", async 
 
 test("getDatasetConfig defaults crossFilterLinks to an empty array when absent from the wire", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/ds-1", () =>
+    http.get("https://core.test/v1/configs/by-item/ds-1", () =>
       HttpResponse.json({
         id: "cfg-ds1",
         itemId: "ds-1",
@@ -1336,7 +1339,7 @@ test("getDatasetConfig defaults crossFilterLinks to an empty array when absent f
 test("saveDatasetConfig sends crossFilterLinks as-is and caches it for later reads", async () => {
   let posted: unknown;
   server.use(
-    http.put("https://core.test/configs/by-item/ds-1", async ({ request }) => {
+    http.put("https://core.test/v1/configs/by-item/ds-1", async ({ request }) => {
       posted = await request.json();
       return HttpResponse.json(undefined, { status: 204 });
     }),
@@ -1354,7 +1357,7 @@ test("saveDatasetConfig sends crossFilterLinks as-is and caches it for later rea
 
 test("featuresUrl resolves datasetId to the dataset's collectionId once cached", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/ds-5", () =>
+    http.get("https://core.test/v1/configs/by-item/ds-5", () =>
       HttpResponse.json({
         id: "cfg-ds5",
         itemId: "ds-5",
@@ -1377,7 +1380,7 @@ test("featuresUrl resolves datasetId to the dataset's collectionId once cached",
       datasetId: "ds-5",
       query: {},
     }),
-  ).toBe("https://core.test/collections//items");
+  ).toBe("https://core.test/v1/collections//items");
   await client.getDatasetConfig("ds-5"); // warms the cache
   expect(
     client.featuresUrl({
@@ -1388,12 +1391,12 @@ test("featuresUrl resolves datasetId to the dataset's collectionId once cached",
       datasetId: "ds-5",
       query: {},
     }),
-  ).toBe("https://core.test/collections/parcs/items");
+  ).toBe("https://core.test/v1/collections/parcs/items");
 });
 
 test("queryDataSource resolves datasetId to the dataset's collectionId before fetching features", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/ds-6", () =>
+    http.get("https://core.test/v1/configs/by-item/ds-6", () =>
       HttpResponse.json({
         id: "cfg-ds6",
         itemId: "ds-6",
@@ -1404,7 +1407,7 @@ test("queryDataSource resolves datasetId to the dataset's collectionId before fe
         },
       }),
     ),
-    http.get("https://core.test/collections/parcs/items", () =>
+    http.get("https://core.test/v1/collections/parcs/items", () =>
       HttpResponse.json({ features: [{ id: 1, properties: { nom: "Le Parc" } }] }),
     ),
   );
@@ -1421,7 +1424,7 @@ test("queryDataSource resolves datasetId to the dataset's collectionId before fe
 
 test("featuresUrl routes an arcgis-sourced dataset to /datasets/{datasetItemId}/arcgis/items", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/ds-arcgis-1", () =>
+    http.get("https://core.test/v1/configs/by-item/ds-arcgis-1", () =>
       HttpResponse.json({
         id: "cfg-arc1",
         itemId: "ds-arcgis-1",
@@ -1444,12 +1447,12 @@ test("featuresUrl routes an arcgis-sourced dataset to /datasets/{datasetItemId}/
       datasetId: "ds-arcgis-1",
       query: {},
     }),
-  ).toBe("https://core.test/datasets/ds-arcgis-1/arcgis/items");
+  ).toBe("https://core.test/v1/datasets/ds-arcgis-1/arcgis/items");
 });
 
 test("featuresUrl keys the arcgis proxy URL on the dataset item id, not the arcgis layer id", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/ds-999", () =>
+    http.get("https://core.test/v1/configs/by-item/ds-999", () =>
       HttpResponse.json({
         id: "cfg-arc999",
         itemId: "ds-999",
@@ -1472,12 +1475,12 @@ test("featuresUrl keys the arcgis proxy URL on the dataset item id, not the arcg
       datasetId: "ds-999",
       query: {},
     }),
-  ).toBe("https://core.test/datasets/ds-999/arcgis/items");
+  ).toBe("https://core.test/v1/datasets/ds-999/arcgis/items");
 });
 
 test("queryDataSource fetches features from the arcgis proxy for an arcgis-sourced dataset", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/ds-arcgis-2", () =>
+    http.get("https://core.test/v1/configs/by-item/ds-arcgis-2", () =>
       HttpResponse.json({
         id: "cfg-arc2",
         itemId: "ds-arcgis-2",
@@ -1488,7 +1491,7 @@ test("queryDataSource fetches features from the arcgis proxy for an arcgis-sourc
         },
       }),
     ),
-    http.get("https://core.test/datasets/ds-arcgis-2/arcgis/items", () =>
+    http.get("https://core.test/v1/datasets/ds-arcgis-2/arcgis/items", () =>
       HttpResponse.json({
         type: "FeatureCollection",
         features: [{ id: 1, properties: { nom: "Bât" } }],
@@ -1508,7 +1511,7 @@ test("queryDataSource fetches features from the arcgis proxy for an arcgis-sourc
 
 test("queryDataSource posts aggregate queries to the arcgis proxy for an arcgis-sourced dataset", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/ds-arcgis-3", () =>
+    http.get("https://core.test/v1/configs/by-item/ds-arcgis-3", () =>
       HttpResponse.json({
         id: "cfg-arc3",
         itemId: "ds-arcgis-3",
@@ -1519,7 +1522,7 @@ test("queryDataSource posts aggregate queries to the arcgis proxy for an arcgis-
         },
       }),
     ),
-    http.post("https://core.test/datasets/ds-arcgis-3/arcgis/aggregate", () =>
+    http.post("https://core.test/v1/datasets/ds-arcgis-3/arcgis/aggregate", () =>
       HttpResponse.json({ categoryKey: "group", rows: [{ group: "Total", value: 4 }] }),
     ),
   );
@@ -1536,7 +1539,7 @@ test("queryDataSource posts aggregate queries to the arcgis proxy for an arcgis-
 
 test("getDatasetConfig returns an arcgis-shaped DatasetConfig for an arcgis-sourced dataset", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/ds-arcgis-4", () =>
+    http.get("https://core.test/v1/configs/by-item/ds-arcgis-4", () =>
       HttpResponse.json({
         id: "cfg-arc4",
         itemId: "ds-arcgis-4",
@@ -1555,7 +1558,7 @@ test("getDatasetConfig returns an arcgis-shaped DatasetConfig for an arcgis-sour
 test("createDatasetItem with source=arcgis posts an arcgis dataset payload", async () => {
   let postBody: Record<string, unknown> | null = null;
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       postBody = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json({ id: "cfg-9", kind: "dataset", itemId: "ds-9" });
     }),
@@ -1573,7 +1576,7 @@ test("createDatasetItem with source=arcgis posts an arcgis dataset payload", asy
 
 test("listFeatureLayers fetches /harvest/feature-layers", async () => {
   server.use(
-    http.get("https://core.test/harvest/feature-layers", () =>
+    http.get("https://core.test/v1/harvest/feature-layers", () =>
       HttpResponse.json({ layers: [{ id: "layer-1", title: "Bâtiments" }] }),
     ),
   );
@@ -1583,7 +1586,7 @@ test("listFeatureLayers fetches /harvest/feature-layers", async () => {
 
 test("getAppConfig reads the app config (kind/theme/layout)", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/5", () =>
+    http.get("https://core.test/v1/configs/by-item/5", () =>
       HttpResponse.json({
         id: "cfg-5",
         itemId: "5",
@@ -1609,7 +1612,7 @@ test("getAppConfig reads the app config (kind/theme/layout)", async () => {
 
 test("getAppConfig throws when the config has no layout", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/5", () =>
+    http.get("https://core.test/v1/configs/by-item/5", () =>
       HttpResponse.json({
         id: "cfg-5",
         itemId: "5",
@@ -1624,7 +1627,7 @@ test("getAppConfig throws when the config has no layout", async () => {
 test("getAppConfig appends ?mode=runtime when a mode is passed", async () => {
   let requestedUrl = "";
   server.use(
-    http.get("https://core.test/configs/by-item/5", ({ request }) => {
+    http.get("https://core.test/v1/configs/by-item/5", ({ request }) => {
       requestedUrl = request.url;
       return HttpResponse.json({
         id: "cfg-5",
@@ -1646,7 +1649,7 @@ test("getAppConfig appends ?mode=runtime when a mode is passed", async () => {
 
 test("getAppConfigSchema récupère le schéma JSON depuis le cœur", async () => {
   server.use(
-    http.get("https://core.test/schemas/app-config", () =>
+    http.get("https://core.test/v1/schemas/app-config", () =>
       HttpResponse.json({ title: "BuilderConfig", type: "object", properties: {} }),
     ),
   );
@@ -1658,7 +1661,7 @@ test("getAppConfigSchema récupère le schéma JSON depuis le cœur", async () =
 test("saveAppConfig PUTs the app config by item", async () => {
   let body: any;
   server.use(
-    http.put("https://core.test/configs/by-item/5", async ({ request }) => {
+    http.put("https://core.test/v1/configs/by-item/5", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-5", itemId: "5", kind: "app", config: body });
     }),
@@ -1676,7 +1679,7 @@ test("saveAppConfig PUTs the app config by item", async () => {
 
 test("getAppConfig/saveAppConfig round-trip interactions", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/9", () =>
+    http.get("https://core.test/v1/configs/by-item/9", () =>
       HttpResponse.json({
         config: {
           kind: "app",
@@ -1691,7 +1694,7 @@ test("getAppConfig/saveAppConfig round-trip interactions", async () => {
 
   let putBody: Record<string, unknown> | null = null;
   server.use(
-    http.put("https://core.test/configs/by-item/9", async ({ request }) => {
+    http.put("https://core.test/v1/configs/by-item/9", async ({ request }) => {
       putBody = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json({});
     }),
@@ -1708,12 +1711,12 @@ test("featuresUrl builds the core items url", () => {
     layer: "public.parcs",
     query: {},
   });
-  expect(url).toBe("https://core.test/collections/public.parcs/items");
+  expect(url).toBe("https://core.test/v1/collections/public.parcs/items");
 });
 
 test("queryDataSource maps a feature collection to records", async () => {
   server.use(
-    http.get("https://core.test/collections/public.parcs/items", () =>
+    http.get("https://core.test/v1/collections/public.parcs/items", () =>
       HttpResponse.json({
         type: "FeatureCollection",
         features: [
@@ -1755,7 +1758,7 @@ test("queryDataSource returns inline records for a static source", async () => {
 test("queryDataSource throws when the feature request fails", async () => {
   server.use(
     http.get(
-      "https://core.test/collections/x/items",
+      "https://core.test/v1/collections/x/items",
       () => new HttpResponse(null, { status: 500 }),
     ),
   );
@@ -1778,7 +1781,7 @@ test("featuresUrl appends scalar query entries as sorted filter params", () => {
     layer: "parcs",
     query: { nom: "Parc A", limit: 10 },
   });
-  expect(url).toBe("https://core.test/collections/parcs/items?limit=10&nom=Parc+A");
+  expect(url).toBe("https://core.test/v1/collections/parcs/items?limit=10&nom=Parc+A");
 });
 
 test("featuresUrl omits empty/nullish query entries", () => {
@@ -1789,12 +1792,12 @@ test("featuresUrl omits empty/nullish query entries", () => {
     layer: "parcs",
     query: { nom: "", ville: undefined as unknown as string },
   });
-  expect(url).toBe("https://core.test/collections/parcs/items");
+  expect(url).toBe("https://core.test/v1/collections/parcs/items");
 });
 
 test("queryDataSource aggregates a statistics source by count per group", async () => {
   server.use(
-    http.post("https://core.test/collections/villes/aggregate", () =>
+    http.post("https://core.test/v1/collections/villes/aggregate", () =>
       HttpResponse.json({
         categoryKey: "region",
         rows: [
@@ -1820,7 +1823,7 @@ test("queryDataSource aggregates a statistics source by count per group", async 
 test("queryDataSource supports sum/avg/min/max aggregations per group", async () => {
   const run = async (agg: string) => {
     server.use(
-      http.post("https://core.test/collections/villes/aggregate", () =>
+      http.post("https://core.test/v1/collections/villes/aggregate", () =>
         HttpResponse.json({
           categoryKey: "region",
           rows: [
@@ -1861,7 +1864,7 @@ test("queryDataSource supports sum/avg/min/max aggregations per group", async ()
 
 test("queryDataSource pivots a statistics source into one column per split value", async () => {
   server.use(
-    http.post("https://core.test/collections/villes/aggregate", () =>
+    http.post("https://core.test/v1/collections/villes/aggregate", () =>
       HttpResponse.json({
         categoryKey: "region",
         rows: [
@@ -1886,7 +1889,7 @@ test("queryDataSource pivots a statistics source into one column per split value
 
 test("queryDataSource produces one wide column per measure", async () => {
   server.use(
-    http.post("https://core.test/collections/villes/aggregate", () =>
+    http.post("https://core.test/v1/collections/villes/aggregate", () =>
       HttpResponse.json({
         categoryKey: "region",
         rows: [{ region: "Nord", Population: 30, avg_rev: 6 }],
@@ -1914,7 +1917,7 @@ test("queryDataSource produces one wide column per measure", async () => {
 test("queryDataSource sends a bbox query key as body.bbox, not as a filter", async () => {
   let posted: Record<string, unknown> | null = null;
   server.use(
-    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+    http.post("https://core.test/v1/collections/villes/aggregate", async ({ request }) => {
       posted = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json({ categoryKey: "region", rows: [] });
     }),
@@ -1934,7 +1937,7 @@ test("queryDataSource sends a geomIntersects query key as body.geomIntersects", 
   const geom = { type: "Point", coordinates: [1, 2] };
   let posted: { geomIntersects?: unknown } | undefined;
   server.use(
-    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+    http.post("https://core.test/v1/collections/villes/aggregate", async ({ request }) => {
       posted = (await request.json()) as { geomIntersects?: unknown };
       return HttpResponse.json({ categoryKey: "group", rows: [] });
     }),
@@ -1952,7 +1955,7 @@ test("queryDataSource sends a geomIntersects query key as body.geomIntersects", 
 test("queryDataSource sends a bucket query key as body.bucket, not as a filter", async () => {
   let posted: Record<string, unknown> | null = null;
   server.use(
-    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+    http.post("https://core.test/v1/collections/villes/aggregate", async ({ request }) => {
       posted = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json({ categoryKey: "annee", rows: [] });
     }),
@@ -1971,7 +1974,7 @@ test("queryDataSource sends a bucket query key as body.bucket, not as a filter",
 test("queryDataSource sends an array groupBy as-is in the aggregate request body", async () => {
   let posted: Record<string, unknown> | null = null;
   server.use(
-    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+    http.post("https://core.test/v1/collections/villes/aggregate", async ({ request }) => {
       posted = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json({ categoryKey: ["region", "annee"], rows: [] });
     }),
@@ -1988,7 +1991,7 @@ test("queryDataSource sends an array groupBy as-is in the aggregate request body
 
 test("queryDataSource builds a composite id when categoryKey is a multi-field array", async () => {
   server.use(
-    http.post("https://core.test/collections/villes/aggregate", () =>
+    http.post("https://core.test/v1/collections/villes/aggregate", () =>
       HttpResponse.json({
         categoryKey: ["region", "annee"],
         rows: [{ region: "Nord", annee: "2025", value: 10 }],
@@ -2010,7 +2013,7 @@ test("queryDataSource builds a composite id when categoryKey is a multi-field ar
 test("queryDataSource sends a bins query key as body.bins, not as a filter", async () => {
   let posted: Record<string, unknown> | null = null;
   server.use(
-    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+    http.post("https://core.test/v1/collections/villes/aggregate", async ({ request }) => {
       posted = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json({ categoryKey: "bucketIndex", rows: [] });
     }),
@@ -2029,7 +2032,7 @@ test("queryDataSource sends a bins query key as body.bins, not as a filter", asy
 test("queryDataSource sends a percentile query's p as body.p, not as a filter", async () => {
   let posted: Record<string, unknown> | null = null;
   server.use(
-    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+    http.post("https://core.test/v1/collections/villes/aggregate", async ({ request }) => {
       posted = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json({ categoryKey: "region", rows: [] });
     }),
@@ -2048,7 +2051,7 @@ test("queryDataSource sends a percentile query's p as body.p, not as a filter", 
 test("queryDataSource carries a per-measure p into body.measures[i].p", async () => {
   let posted: Record<string, unknown> | null = null;
   server.use(
-    http.post("https://core.test/collections/villes/aggregate", async ({ request }) => {
+    http.post("https://core.test/v1/collections/villes/aggregate", async ({ request }) => {
       posted = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json({ categoryKey: "region", rows: [] });
     }),
@@ -2069,7 +2072,7 @@ test("queryDataSource carries a per-measure p into body.measures[i].p", async ()
 test("sampleCollectionField posts sample+field and returns bare numeric values", async () => {
   let posted: Record<string, unknown> | null = null;
   server.use(
-    http.post("https://core.test/collections/communes/aggregate", async ({ request }) => {
+    http.post("https://core.test/v1/collections/communes/aggregate", async ({ request }) => {
       posted = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json({ categoryKey: "value", rows: [{ value: 1 }, { value: 2.5 }] });
     }),
@@ -2084,7 +2087,7 @@ test("uploadMapIcon POSTs multipart form data with the bearer token", async () =
   let auth: string | null = null;
   let contentType: string | null = null;
   server.use(
-    http.post("https://core.test/map-icons", ({ request }) => {
+    http.post("https://core.test/v1/map-icons", ({ request }) => {
       method = request.method;
       auth = request.headers.get("authorization");
       contentType = request.headers.get("content-type");
@@ -2130,14 +2133,14 @@ test("listMapIcons reads the tenant library back", async () => {
     contentType: "image/png",
     createdAt: "2026-08-27T00:00:00Z",
   };
-  server.use(http.get("https://core.test/map-icons", () => HttpResponse.json([icon])));
+  server.use(http.get("https://core.test/v1/map-icons", () => HttpResponse.json([icon])));
   expect(await makeClient("abc").listMapIcons()).toEqual([icon]);
 });
 
 test("deleteMapIcon tolerates the 204 the core returns", async () => {
   let method: string | null = null;
   server.use(
-    http.delete("https://core.test/map-icons/:iconId", ({ request }) => {
+    http.delete("https://core.test/v1/map-icons/:iconId", ({ request }) => {
       method = request.method;
       return new HttpResponse(null, { status: 204 });
     }),
@@ -2154,7 +2157,7 @@ test("fetchMapIconBlob attaches the bearer token and returns the bytes", async (
   let auth: string | null = null;
   let url: string | null = null;
   server.use(
-    http.get("https://core.test/map-icons/:iconId/file", ({ request }) => {
+    http.get("https://core.test/v1/map-icons/:iconId/file", ({ request }) => {
       auth = request.headers.get("authorization");
       url = request.url;
       return new HttpResponse("PNGBYTES", { headers: { "Content-Type": "image/png" } });
@@ -2163,13 +2166,13 @@ test("fetchMapIconBlob attaches the bearer token and returns the bytes", async (
   const blob = await makeClient("tok").fetchMapIconBlob("i1");
   expect(await blob.text()).toBe("PNGBYTES");
   expect(auth).toBe("Bearer tok");
-  expect(url).toBe("https://core.test/map-icons/i1/file");
+  expect(url).toBe("https://core.test/v1/map-icons/i1/file");
 });
 
 test("fetchMapIconBlob throws on a non-ok response", async () => {
   server.use(
     http.get(
-      "https://core.test/map-icons/:iconId/file",
+      "https://core.test/v1/map-icons/:iconId/file",
       () => new HttpResponse(null, { status: 404 }),
     ),
   );
@@ -2184,12 +2187,12 @@ test("featuresUrl strips reserved statistics keys but keeps filter params", () =
     layer: "villes",
     query: { groupBy: "region", split: "annee", agg: "sum", field: "pop", annee_filtre: 2026 },
   });
-  expect(url).toBe("https://core.test/collections/villes/items?annee_filtre=2026");
+  expect(url).toBe("https://core.test/v1/collections/villes/items?annee_filtre=2026");
 });
 
 test("getAppConfig passes through the pages array when present", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/5", () =>
+    http.get("https://core.test/v1/configs/by-item/5", () =>
       HttpResponse.json({
         id: "cfg-5",
         itemId: "5",
@@ -2216,7 +2219,7 @@ test("getAppConfig passes through the pages array when present", async () => {
 test("saveAppConfig PUTs the pages array when present", async () => {
   let body: any;
   server.use(
-    http.put("https://core.test/configs/by-item/5", async ({ request }) => {
+    http.put("https://core.test/v1/configs/by-item/5", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-5", itemId: "5", kind: "app", config: body });
     }),
@@ -2235,7 +2238,7 @@ test("saveAppConfig PUTs the pages array when present", async () => {
 
 test("getAppConfig passes through the variables array when present", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/5", () =>
+    http.get("https://core.test/v1/configs/by-item/5", () =>
       HttpResponse.json({
         id: "cfg-5",
         itemId: "5",
@@ -2258,7 +2261,7 @@ test("getAppConfig passes through the variables array when present", async () =>
 test("saveAppConfig PUTs the variables array when present", async () => {
   let body: any;
   server.use(
-    http.put("https://core.test/configs/by-item/5", async ({ request }) => {
+    http.put("https://core.test/v1/configs/by-item/5", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-5", itemId: "5", kind: "app", config: body });
     }),
@@ -2278,7 +2281,7 @@ test("saveAppConfig PUTs the variables array when present", async () => {
 test("createConfigItem seeds the layout from a template when templateId is given", async () => {
   let body: any = null;
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({
         id: "cfg-1",
@@ -2302,7 +2305,7 @@ test("createConfigItem seeds the layout from a template when templateId is given
 test("createConfigItem falls back to an empty layout when templateId is unknown", async () => {
   let body: any = null;
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({
         id: "cfg-1",
@@ -2324,7 +2327,7 @@ test("createConfigItem falls back to an empty layout when templateId is unknown"
 
 test("getCollectionSchema returns the introspected fields", async () => {
   server.use(
-    http.get("https://core.test/collections/incidents/schema", () =>
+    http.get("https://core.test/v1/collections/incidents/schema", () =>
       HttpResponse.json({
         collection: "incidents",
         pk: "id",
@@ -2352,7 +2355,7 @@ test("createFeature sends a GeoJSON Feature with the bearer token and returns th
   let auth: string | null = null;
   let body: unknown;
   server.use(
-    http.post("https://core.test/collections/incidents/items", async ({ request }) => {
+    http.post("https://core.test/v1/collections/incidents/items", async ({ request }) => {
       auth = request.headers.get("authorization");
       body = await request.json();
       return HttpResponse.json({ id: 42 }, { status: 201 });
@@ -2370,7 +2373,7 @@ test("createFeature sends a GeoJSON Feature with the bearer token and returns th
 
 test("createFeature throws FeatureValidationError with field errors on 400", async () => {
   server.use(
-    http.post("https://core.test/collections/incidents/items", () =>
+    http.post("https://core.test/v1/collections/incidents/items", () =>
       HttpResponse.json(
         {
           errors: [{ field: "titre", code: "missing_required", message: "'titre' is required" }],
@@ -2390,7 +2393,7 @@ test("createFeature throws FeatureValidationError with field errors on 400", asy
 
 test("createFeature throws a plain Error with the server message on 403", async () => {
   server.use(
-    http.post("https://core.test/collections/incidents/items", () =>
+    http.post("https://core.test/v1/collections/incidents/items", () =>
       HttpResponse.json({ detail: "collection is not editable" }, { status: 403 }),
     ),
   );
@@ -2402,7 +2405,7 @@ test("createFeature throws a plain Error with the server message on 403", async 
 test("updateFeature sends a PUT and resolves on 204", async () => {
   let body: unknown;
   server.use(
-    http.put("https://core.test/collections/incidents/items/7", async ({ request }) => {
+    http.put("https://core.test/v1/collections/incidents/items/7", async ({ request }) => {
       body = await request.json();
       return new HttpResponse(null, { status: 204 });
     }),
@@ -2417,7 +2420,7 @@ test("updateFeature sends a PUT and resolves on 204", async () => {
 
 test("updateFeature throws a plain Error with the server message on 404", async () => {
   server.use(
-    http.put("https://core.test/collections/incidents/items/999", () =>
+    http.put("https://core.test/v1/collections/incidents/items/999", () =>
       HttpResponse.json({ detail: "feature not found" }, { status: 404 }),
     ),
   );
@@ -2433,7 +2436,7 @@ test("updateFeature throws a plain Error with the server message on 404", async 
 test("deleteFeature sends a DELETE and resolves on 204", async () => {
   let method: string | null = null;
   server.use(
-    http.delete("https://core.test/collections/incidents/items/7", ({ request }) => {
+    http.delete("https://core.test/v1/collections/incidents/items/7", ({ request }) => {
       method = request.method;
       return new HttpResponse(null, { status: 204 });
     }),
@@ -2444,7 +2447,7 @@ test("deleteFeature sends a DELETE and resolves on 204", async () => {
 
 test("getCollectionPermission returns permissions.write", async () => {
   server.use(
-    http.get("https://core.test/collections/incidents", () =>
+    http.get("https://core.test/v1/collections/incidents", () =>
       HttpResponse.json({
         id: "incidents",
         title: "Incidents",
@@ -2457,7 +2460,7 @@ test("getCollectionPermission returns permissions.write", async () => {
 
 test("getCollectionPermission defaults to false when permissions is absent", async () => {
   server.use(
-    http.get("https://core.test/collections/incidents", () =>
+    http.get("https://core.test/v1/collections/incidents", () =>
       HttpResponse.json({ id: "incidents", title: "Incidents" }),
     ),
   );
@@ -2466,7 +2469,7 @@ test("getCollectionPermission defaults to false when permissions is absent", asy
 
 test("getCollection returns the full collection metadata for a single id", async () => {
   server.use(
-    http.get("https://core.test/collections/parcs", () =>
+    http.get("https://core.test/v1/collections/parcs", () =>
       HttpResponse.json({
         id: "parcs",
         title: "Parcs",
@@ -2502,7 +2505,7 @@ test("getCollection returns the full collection metadata for a single id", async
 
 test("getCollection propagates a 404 for a non-public or unknown collection", async () => {
   server.use(
-    http.get("https://core.test/collections/private-x", () =>
+    http.get("https://core.test/v1/collections/private-x", () =>
       HttpResponse.json({ detail: "collection not found" }, { status: 404 }),
     ),
   );
@@ -2512,7 +2515,7 @@ test("getCollection propagates a 404 for a non-public or unknown collection", as
 test("createConfigItem seeds dataSources and messages from a template that defines them", async () => {
   let body: any = null;
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({
         id: "cfg-1",
@@ -2537,7 +2540,7 @@ test("createConfigItem seeds dataSources and messages from a template that defin
 test("createConfigItem seeds pages and navigationMode from a story template", async () => {
   let body: any = null;
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({
         id: "cfg-1",
@@ -2564,7 +2567,7 @@ test("createConfigItem seeds pages and navigationMode from a story template", as
 test("listAllExtensions requests all=true and keeps the enabled flag", async () => {
   let url: string | null = null;
   server.use(
-    http.get("https://core.test/extensions", ({ request }) => {
+    http.get("https://core.test/v1/extensions", ({ request }) => {
       url = request.url;
       return HttpResponse.json({
         extensions: [
@@ -2605,7 +2608,7 @@ test("listAllExtensions requests all=true and keeps the enabled flag", async () 
 test("setExtensionEnabled PATCHes the extension with the new enabled value", async () => {
   let body: unknown;
   server.use(
-    http.patch("https://core.test/extensions/acme.gauge", async ({ request }) => {
+    http.patch("https://core.test/v1/extensions/acme.gauge", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "acme.gauge" });
     }),
@@ -2616,7 +2619,7 @@ test("setExtensionEnabled PATCHes the extension with the new enabled value", asy
 
 test("launchAdminTool POSTs to /admin-tools/launch/{tool} and returns the url", async () => {
   server.use(
-    http.post("https://core.test/admin-tools/launch/martin", () =>
+    http.post("https://core.test/v1/admin-tools/launch/martin", () =>
       HttpResponse.json({ url: "https://core.test/admin-tools/session/martin?_at=abc" }),
     ),
   );
@@ -2626,7 +2629,7 @@ test("launchAdminTool POSTs to /admin-tools/launch/{tool} and returns the url", 
 
 test("listCollections returns the admin collection shape including owner", async () => {
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({
         collections: [
           {
@@ -2668,7 +2671,7 @@ test("listCollections returns the admin collection shape including owner", async
 
 test("listCollections relaie q en paramètre de recherche", async () => {
   server.use(
-    http.get("https://core.test/collections", ({ request }) => {
+    http.get("https://core.test/v1/collections", ({ request }) => {
       const url = new URL(request.url);
       expect(url.searchParams.get("q")).toBe("commune");
       return HttpResponse.json({ collections: [] });
@@ -2679,7 +2682,7 @@ test("listCollections relaie q en paramètre de recherche", async () => {
 
 test("listCollections sans paramètre reste rétrocompatible", async () => {
   server.use(
-    http.get("https://core.test/collections", ({ request }) => {
+    http.get("https://core.test/v1/collections", ({ request }) => {
       const url = new URL(request.url);
       expect(url.searchParams.has("q")).toBe(false);
       return HttpResponse.json({ collections: [] });
@@ -2690,7 +2693,7 @@ test("listCollections sans paramètre reste rétrocompatible", async () => {
 
 test("listCandidateTables returns the candidates array as-is", async () => {
   server.use(
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({
         candidates: [
           { tableName: "widgets", registrable: false, reason: "table has no primary key" },
@@ -2721,7 +2724,7 @@ test("listCandidateTables returns the candidates array as-is", async () => {
 test("createCollection POSTs the input and returns the created collection", async () => {
   let body: unknown;
   server.use(
-    http.post("https://core.test/collections", async ({ request }) => {
+    http.post("https://core.test/v1/collections", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({
         id: "points_interet",
@@ -2750,7 +2753,7 @@ test("createCollection POSTs the input and returns the created collection", asyn
 test("updateCollection PATCHes the patch and returns the updated collection", async () => {
   let body: unknown;
   server.use(
-    http.patch("https://core.test/collections/incidents", async ({ request }) => {
+    http.patch("https://core.test/v1/collections/incidents", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({
         id: "incidents",
@@ -2779,7 +2782,7 @@ test("updateCollection PATCHes the patch and returns the updated collection", as
 test("deleteCollection DELETEs the collection", async () => {
   let called = false;
   server.use(
-    http.delete("https://core.test/collections/incidents", () => {
+    http.delete("https://core.test/v1/collections/incidents", () => {
       called = true;
       return new HttpResponse(null, { status: 204 });
     }),
@@ -2790,7 +2793,7 @@ test("deleteCollection DELETEs the collection", async () => {
 
 test("getCollectionSharing passes through the core's Sharing shape directly", async () => {
   server.use(
-    http.get("https://core.test/collections/incidents/sharing", () =>
+    http.get("https://core.test/v1/collections/incidents/sharing", () =>
       HttpResponse.json({ public: false, groups: [{ groupId: "g1", role: "editor" }] }),
     ),
   );
@@ -2801,7 +2804,7 @@ test("getCollectionSharing passes through the core's Sharing shape directly", as
 test("setCollectionSharing PUTs the sharing object as-is", async () => {
   let body: unknown;
   server.use(
-    http.put("https://core.test/collections/incidents/sharing", async ({ request }) => {
+    http.put("https://core.test/v1/collections/incidents/sharing", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ public: false, groups: [] });
     }),
@@ -2816,7 +2819,7 @@ test("setCollectionSharing PUTs the sharing object as-is", async () => {
 test("getItemBySlug requests /public/sites/{slug} and returns the item", async () => {
   let url: string | null = null;
   server.use(
-    http.get("https://core.test/public/sites/mon-portail", ({ request }) => {
+    http.get("https://core.test/v1/public/sites/mon-portail", ({ request }) => {
       url = request.url;
       return HttpResponse.json({
         pk: "s1",
@@ -2833,7 +2836,7 @@ test("getItemBySlug requests /public/sites/{slug} and returns the item", async (
     }),
   );
   const item = await makeClient().getItemBySlug("mon-portail");
-  expect(url).toBe("https://core.test/public/sites/mon-portail");
+  expect(url).toBe("https://core.test/v1/public/sites/mon-portail");
   expect(item.slug).toBe("mon-portail");
   expect(item.pk).toBe("s1");
 });
@@ -2841,7 +2844,7 @@ test("getItemBySlug requests /public/sites/{slug} and returns the item", async (
 test("getItemBySlug propagates a 404 as a rejection", async () => {
   server.use(
     http.get(
-      "https://core.test/public/sites/nexiste-pas",
+      "https://core.test/v1/public/sites/nexiste-pas",
       () => new HttpResponse(null, { status: 404 }),
     ),
   );
@@ -2850,7 +2853,7 @@ test("getItemBySlug propagates a 404 as a rejection", async () => {
 
 test("getPublicAppConfig reads the wrapped ConfigRead shape (config.layout, not top-level)", async () => {
   server.use(
-    http.get("https://core.test/public/configs/by-item/s1", () =>
+    http.get("https://core.test/v1/public/configs/by-item/s1", () =>
       HttpResponse.json({
         id: "cfg-1",
         itemId: "s1",
@@ -2880,7 +2883,7 @@ test("getPublicAppConfig reads the wrapped ConfigRead shape (config.layout, not 
 
 test("getPublicAppConfig throws when the config has no layout", async () => {
   server.use(
-    http.get("https://core.test/public/configs/by-item/s1", () =>
+    http.get("https://core.test/v1/public/configs/by-item/s1", () =>
       HttpResponse.json({
         id: "cfg-1",
         itemId: "s1",
@@ -2895,7 +2898,7 @@ test("getPublicAppConfig throws when the config has no layout", async () => {
 test("createConfigItem transmits the slug in the POST body when given", async () => {
   let body: any;
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({
         id: "cfg-1",
@@ -2920,7 +2923,7 @@ test("createConfigItem transmits the slug in the POST body when given", async ()
 test("createConfigItem omits slug from the POST body when not given", async () => {
   let body: any;
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({
         id: "cfg-1",
@@ -2938,7 +2941,7 @@ test("createConfigItem omits slug from the POST body when not given", async () =
 test("listPublicItems calls GET /public/items with type/tag/page/pageSize", async () => {
   let url: string | null = null;
   server.use(
-    http.get("https://core.test/public/items", ({ request }) => {
+    http.get("https://core.test/v1/public/items", ({ request }) => {
       url = request.url;
       return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 6 });
     }),
@@ -2952,7 +2955,7 @@ test("listPublicItems calls GET /public/items with type/tag/page/pageSize", asyn
 
 test("listPublicItems round-trips keywords from the response", async () => {
   server.use(
-    http.get("https://core.test/public/items", () =>
+    http.get("https://core.test/v1/public/items", () =>
       HttpResponse.json({
         items: [
           {
@@ -2982,7 +2985,7 @@ test("runAnalyticsSql posts { sql } and returns columns/rows/truncated", async (
   let auth: string | null = null;
   let body: unknown;
   server.use(
-    http.post("https://core.test/analytics/sql", async ({ request }) => {
+    http.post("https://core.test/v1/analytics/sql", async ({ request }) => {
       auth = request.headers.get("authorization");
       body = await request.json();
       return HttpResponse.json({ columns: ["nom"], rows: [["Alice"]], truncated: false });
@@ -2996,7 +2999,7 @@ test("runAnalyticsSql posts { sql } and returns columns/rows/truncated", async (
 
 test("runAnalyticsSql throws SqlQueryError with the server message on 400", async () => {
   server.use(
-    http.post("https://core.test/analytics/sql", () =>
+    http.post("https://core.test/v1/analytics/sql", () =>
       HttpResponse.json(
         {
           errors: [
@@ -3020,7 +3023,7 @@ test("runAnalyticsSql throws SqlQueryError with the server message on 400", asyn
 
 test("runAnalyticsSql throws a plain Error on 403 (non-analyst)", async () => {
   server.use(
-    http.post("https://core.test/analytics/sql", () =>
+    http.post("https://core.test/v1/analytics/sql", () =>
       HttpResponse.json({ detail: "analyst role required" }, { status: 403 }),
     ),
   );
@@ -3030,7 +3033,7 @@ test("runAnalyticsSql throws a plain Error on 403 (non-analyst)", async () => {
 test("createPipelineItem posts a pipeline payload and returns a pipeline Item", async () => {
   let body: any;
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-p1", kind: "pipeline", itemId: "p-1" }, { status: 201 });
     }),
@@ -3085,7 +3088,7 @@ test("getPipelineConfig reads the pipeline payload from the by-item config", asy
     edges: [],
   };
   server.use(
-    http.get("https://core.test/configs/by-item/p-2", () =>
+    http.get("https://core.test/v1/configs/by-item/p-2", () =>
       HttpResponse.json({
         id: "cfg-p2",
         itemId: "p-2",
@@ -3100,7 +3103,7 @@ test("getPipelineConfig reads the pipeline payload from the by-item config", asy
 
 test("getPipelineConfig throws when the config has no pipeline payload", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/p-3", () =>
+    http.get("https://core.test/v1/configs/by-item/p-3", () =>
       HttpResponse.json({ id: "cfg-p3", itemId: "p-3", kind: "app", config: { kind: "app" } }),
     ),
   );
@@ -3111,7 +3114,7 @@ test("savePipelineConfig PUTs the pipeline payload wrapped in a kind=pipeline en
   let method = "";
   let body: any;
   server.use(
-    http.put("https://core.test/configs/by-item/p-4", async ({ request }) => {
+    http.put("https://core.test/v1/configs/by-item/p-4", async ({ request }) => {
       method = request.method;
       body = await request.json();
       return HttpResponse.json({});
@@ -3127,14 +3130,14 @@ test("getPipelineOps returns the op catalogue as-is", async () => {
   const catalog = {
     "reader.collection": { kind: "reader", paramsSchema: { properties: {}, required: [] } },
   };
-  server.use(http.get("https://core.test/pipelines/ops", () => HttpResponse.json(catalog)));
+  server.use(http.get("https://core.test/v1/pipelines/ops", () => HttpResponse.json(catalog)));
   const result = await makeClient().getPipelineOps();
   expect(result).toEqual(catalog);
 });
 
 test("runPipeline posts with no body and returns the runId", async () => {
   server.use(
-    http.post("https://core.test/pipelines/p-5/run", () =>
+    http.post("https://core.test/v1/pipelines/p-5/run", () =>
       HttpResponse.json({ runId: "run-1" }, { status: 202 }),
     ),
   );
@@ -3153,7 +3156,7 @@ test("getPipelineRuns returns the run history", async () => {
       nodeStats: {},
     },
   ];
-  server.use(http.get("https://core.test/pipelines/p-6/runs", () => HttpResponse.json(runs)));
+  server.use(http.get("https://core.test/v1/pipelines/p-6/runs", () => HttpResponse.json(runs)));
   const result = await makeClient().getPipelineRuns("p-6");
   expect(result).toEqual(runs);
 });
@@ -3161,7 +3164,7 @@ test("getPipelineRuns returns the run history", async () => {
 test("previewPipeline posts upTo as a query param and returns the row list", async () => {
   let url = "";
   server.use(
-    http.post("https://core.test/pipelines/p-7/preview", ({ request }) => {
+    http.post("https://core.test/v1/pipelines/p-7/preview", ({ request }) => {
       url = request.url;
       return HttpResponse.json([{ id: 1, pop: 1200 }]);
     }),
@@ -3174,7 +3177,7 @@ test("previewPipeline posts upTo as a query param and returns the row list", asy
 test("listPipelineWebhookTokens calls GET /pipelines/{id}/webhook-tokens", async () => {
   const tokens = [{ id: "t1", createdAt: "2026-09-05T00:00:00Z", lastUsedAt: null }];
   server.use(
-    http.get("https://core.test/pipelines/p-8/webhook-tokens", () => HttpResponse.json(tokens)),
+    http.get("https://core.test/v1/pipelines/p-8/webhook-tokens", () => HttpResponse.json(tokens)),
   );
   const result = await makeClient().listPipelineWebhookTokens("p-8");
   expect(result).toEqual(tokens);
@@ -3182,7 +3185,7 @@ test("listPipelineWebhookTokens calls GET /pipelines/{id}/webhook-tokens", async
 
 test("createPipelineWebhookToken POST retourne le jeton en clair", async () => {
   server.use(
-    http.post("https://core.test/pipelines/p-9/webhook-tokens", () =>
+    http.post("https://core.test/v1/pipelines/p-9/webhook-tokens", () =>
       HttpResponse.json(
         { id: "t2", token: "clear-value", createdAt: "2026-09-05T00:00:00Z" },
         { status: 201 },
@@ -3196,7 +3199,7 @@ test("createPipelineWebhookToken POST retourne le jeton en clair", async () => {
 test("revokePipelineWebhookToken calls DELETE /pipelines/{id}/webhook-tokens/{tokenId}", async () => {
   let method = "";
   server.use(
-    http.delete("https://core.test/pipelines/p-10/webhook-tokens/t3", ({ request }) => {
+    http.delete("https://core.test/v1/pipelines/p-10/webhook-tokens/t3", ({ request }) => {
       method = request.method;
       return new HttpResponse(null, { status: 204 });
     }),
@@ -3208,7 +3211,7 @@ test("revokePipelineWebhookToken calls DELETE /pipelines/{id}/webhook-tokens/{to
 test("createAlertRuleItem posts a kind=alert config and returns the item", async () => {
   let body: any;
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-a1", kind: "alert", itemId: "a-1" }, { status: 201 });
     }),
@@ -3245,7 +3248,7 @@ test("getAlertRuleConfig reads the alert payload from the by-item config", async
     messageTemplate: "Alert {ruleName}: value={value} ({state})",
   };
   server.use(
-    http.get("https://core.test/configs/by-item/a-2", () =>
+    http.get("https://core.test/v1/configs/by-item/a-2", () =>
       HttpResponse.json({
         id: "cfg-a2",
         itemId: "a-2",
@@ -3260,7 +3263,7 @@ test("getAlertRuleConfig reads the alert payload from the by-item config", async
 
 test("getAlertRuleConfig throws when the config has no alert payload", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/a-3", () =>
+    http.get("https://core.test/v1/configs/by-item/a-3", () =>
       HttpResponse.json({ id: "cfg-a3", itemId: "a-3", kind: "app", config: { kind: "app" } }),
     ),
   );
@@ -3271,7 +3274,7 @@ test("saveAlertRuleConfig PUTs the alert payload wrapped in a kind=alert envelop
   let method = "";
   let body: any;
   server.use(
-    http.put("https://core.test/configs/by-item/a-4", async ({ request }) => {
+    http.put("https://core.test/v1/configs/by-item/a-4", async ({ request }) => {
       method = request.method;
       body = await request.json();
       return HttpResponse.json({});
@@ -3292,7 +3295,7 @@ test("saveAlertRuleConfig PUTs the alert payload wrapped in a kind=alert envelop
 
 test("listAlertRulesForDataset calls GET /datasets/{id}/alerts", async () => {
   server.use(
-    http.get("https://core.test/datasets/ds-1/alerts", () =>
+    http.get("https://core.test/v1/datasets/ds-1/alerts", () =>
       HttpResponse.json([{ itemId: "a-1", title: "High counts" }]),
     ),
   );
@@ -3302,7 +3305,7 @@ test("listAlertRulesForDataset calls GET /datasets/{id}/alerts", async () => {
 
 test("getAlertEvaluations calls GET /alerts/{id}/evaluations", async () => {
   server.use(
-    http.get("https://core.test/alerts/a-1/evaluations", () =>
+    http.get("https://core.test/v1/alerts/a-1/evaluations", () =>
       HttpResponse.json([
         {
           id: "e1",
@@ -3322,7 +3325,7 @@ test("getAlertEvaluations calls GET /alerts/{id}/evaluations", async () => {
 test("exportDataSource posts the aggregate body and extracts the filename for a statistics source", async () => {
   let posted: unknown;
   server.use(
-    http.post("https://core.test/collections/parcs/export", async ({ request }) => {
+    http.post("https://core.test/v1/collections/parcs/export", async ({ request }) => {
       posted = await request.json();
       const url = new URL(request.url);
       expect(url.searchParams.get("format")).toBe("csv");
@@ -3349,7 +3352,7 @@ test("exportDataSource posts the aggregate body and extracts the filename for a 
 
 test("exportDataSource GETs the items-export route for a non-statistics source", async () => {
   server.use(
-    http.get("https://core.test/collections/parcs/export/items", ({ request }) => {
+    http.get("https://core.test/v1/collections/parcs/export/items", ({ request }) => {
       const url = new URL(request.url);
       expect(url.searchParams.get("format")).toBe("geojson");
       return new HttpResponse('{"type":"FeatureCollection","features":[]}', {
@@ -3373,13 +3376,13 @@ test("exportDataSource GETs the items-export route for a non-statistics source",
 
 test("exportDataSource dispatches to the arcgis export route for an arcgis-sourced dataset", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/ds1", () =>
+    http.get("https://core.test/v1/configs/by-item/ds1", () =>
       HttpResponse.json({
         config: { dataset: { source: "arcgis", arcgisItemId: "ext1", columns: {} } },
       }),
     ),
     http.post(
-      "https://core.test/datasets/ds1/arcgis/export",
+      "https://core.test/v1/datasets/ds1/arcgis/export",
       () =>
         new HttpResponse("a,b\n1,2\n", {
           headers: {
@@ -3404,7 +3407,7 @@ test("exportDataSource dispatches to the arcgis export route for an arcgis-sourc
 test("exportDataSource falls back to a generic filename when Content-Disposition is missing", async () => {
   server.use(
     http.get(
-      "https://core.test/collections/parcs/export/items",
+      "https://core.test/v1/collections/parcs/export/items",
       () => new HttpResponse("[]", { headers: { "Content-Type": "application/geo+json" } }),
     ),
   );
@@ -3422,15 +3425,18 @@ test("exportDataSource falls back to a generic filename when Content-Disposition
 test("downloadAttachment sends the bearer token and returns the blob and filename", async () => {
   let auth: string | null = null;
   server.use(
-    http.get("https://core.test/collections/col1/items/f1/attachments/att1/file", ({ request }) => {
-      auth = request.headers.get("authorization");
-      return new HttpResponse("binary-content", {
-        headers: {
-          "Content-Type": "image/jpeg",
-          "Content-Disposition": 'attachment; filename="photo.jpg"',
-        },
-      });
-    }),
+    http.get(
+      "https://core.test/v1/collections/col1/items/f1/attachments/att1/file",
+      ({ request }) => {
+        auth = request.headers.get("authorization");
+        return new HttpResponse("binary-content", {
+          headers: {
+            "Content-Type": "image/jpeg",
+            "Content-Disposition": 'attachment; filename="photo.jpg"',
+          },
+        });
+      },
+    ),
   );
   const { blob, filename } = await makeClient("tok").downloadAttachment("col1", "f1", "att1");
   expect(auth).toBe("Bearer tok");
@@ -3440,7 +3446,7 @@ test("downloadAttachment sends the bearer token and returns the blob and filenam
 
 test("getMapConfig reads printLayout from the top level of the config, not nested under map", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/77", () =>
+    http.get("https://core.test/v1/configs/by-item/77", () =>
       HttpResponse.json({
         id: "cfg-1",
         itemId: "77",
@@ -3472,7 +3478,7 @@ test("getMapConfig reads printLayout from the top level of the config, not neste
 test("saveMapConfig sends printLayout back at the top level, sibling of map", async () => {
   let body: any;
   server.use(
-    http.put("https://core.test/configs/by-item/77", async ({ request }) => {
+    http.put("https://core.test/v1/configs/by-item/77", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({});
     }),
@@ -3502,7 +3508,7 @@ test("saveMapConfig sends printLayout back at the top level, sibling of map", as
 
 test("getAppConfig reads printLayout", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/5", () =>
+    http.get("https://core.test/v1/configs/by-item/5", () =>
       HttpResponse.json({
         config: {
           kind: "app",
@@ -3522,7 +3528,7 @@ test("getAppConfig reads printLayout", async () => {
 test("saveAppConfig round-trips printLayout without dropping it", async () => {
   let body: any;
   server.use(
-    http.put("https://core.test/configs/by-item/5", async ({ request }) => {
+    http.put("https://core.test/v1/configs/by-item/5", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({});
     }),
@@ -3542,7 +3548,7 @@ test("createExport POSTs itemId and format", async () => {
   let body: any;
   let method = "";
   server.use(
-    http.post("https://core.test/export", async ({ request }) => {
+    http.post("https://core.test/v1/export", async ({ request }) => {
       method = request.method;
       body = await request.json();
       return HttpResponse.json({ jobId: "job-1" }, { status: 202 });
@@ -3556,7 +3562,7 @@ test("createExport POSTs itemId and format", async () => {
 
 test("getExportJob GETs the job status by id", async () => {
   server.use(
-    http.get("https://core.test/export/jobs/job-1", () =>
+    http.get("https://core.test/v1/export/jobs/job-1", () =>
       HttpResponse.json({
         id: "job-1",
         status: "done",
@@ -3577,7 +3583,7 @@ test("getExportJob GETs the job status by id", async () => {
 test("createEmptyCollection posts to /collections/empty and returns the created id", async () => {
   let body: unknown;
   server.use(
-    http.post("https://core.test/collections/empty", async ({ request }) => {
+    http.post("https://core.test/v1/collections/empty", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "query_abc123" }, { status: 201 });
     }),
@@ -3600,7 +3606,7 @@ test("createEmptyCollection posts to /collections/empty and returns the created 
 test("createTileset3DUpload posts filename/title and returns jobId", async () => {
   let body: unknown;
   server.use(
-    http.post("https://core.test/tileset3d/uploads", async ({ request }) => {
+    http.post("https://core.test/v1/tileset3d/uploads", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ jobId: "job-1" }, { status: 201 });
     }),
@@ -3615,7 +3621,7 @@ test("createTileset3DUpload posts filename/title and returns jobId", async () =>
 
 test("presignTileset3DUploadPart posts to the job/part route and returns an upload URL", async () => {
   server.use(
-    http.post("https://core.test/tileset3d/uploads/job-1/parts/2/presign", () =>
+    http.post("https://core.test/v1/tileset3d/uploads/job-1/parts/2/presign", () =>
       HttpResponse.json({ uploadUrl: "https://minio.test/part-2" }),
     ),
   );
@@ -3626,7 +3632,7 @@ test("presignTileset3DUploadPart posts to the job/part route and returns an uplo
 test("completeTileset3DUpload posts the parts list", async () => {
   let body: unknown;
   server.use(
-    http.post("https://core.test/tileset3d/uploads/job-1/complete", async ({ request }) => {
+    http.post("https://core.test/v1/tileset3d/uploads/job-1/complete", async ({ request }) => {
       body = await request.json();
       return new HttpResponse(null, { status: 204 });
     }),
@@ -3637,7 +3643,7 @@ test("completeTileset3DUpload posts the parts list", async () => {
 
 test("getTileset3DUploadJob returns the job status", async () => {
   server.use(
-    http.get("https://core.test/tileset3d/uploads/job-1", () =>
+    http.get("https://core.test/v1/tileset3d/uploads/job-1", () =>
       HttpResponse.json({ status: "done", errorMessage: null, itemId: "item-1" }),
     ),
   );
@@ -3647,7 +3653,7 @@ test("getTileset3DUploadJob returns the job status", async () => {
 
 test("listHostedTerrain3DSources lists terrain3d items via /items", async () => {
   server.use(
-    http.get("https://core.test/items", ({ request }) => {
+    http.get("https://core.test/v1/items", ({ request }) => {
       expect(new URL(request.url).searchParams.get("type")).toBe("terrain3d");
       return HttpResponse.json({ items: [{ pk: "t-1", title: "Relief du massif" }] });
     }),
@@ -3659,7 +3665,7 @@ test("listHostedTerrain3DSources lists terrain3d items via /items", async () => 
 test("presignTerrain3DUpload posts to the terrain3d-specific presign route", async () => {
   let body: unknown;
   server.use(
-    http.post("https://core.test/terrain3d/uploads/presign", async ({ request }) => {
+    http.post("https://core.test/v1/terrain3d/uploads/presign", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ uploadUrl: "https://minio.test/put", key: "tenant/x/dem.tif" });
     }),
@@ -3672,7 +3678,7 @@ test("presignTerrain3DUpload posts to the terrain3d-specific presign route", asy
 test("createTerrain3DUpload posts key/filename/title and returns jobId", async () => {
   let body: unknown;
   server.use(
-    http.post("https://core.test/terrain3d/uploads", async ({ request }) => {
+    http.post("https://core.test/v1/terrain3d/uploads", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ jobId: "job-1" }, { status: 201 });
     }),
@@ -3688,7 +3694,7 @@ test("createTerrain3DUpload posts key/filename/title and returns jobId", async (
 
 test("getTerrain3DUploadJob returns the job status", async () => {
   server.use(
-    http.get("https://core.test/terrain3d/uploads/job-1", () =>
+    http.get("https://core.test/v1/terrain3d/uploads/job-1", () =>
       HttpResponse.json({ status: "done", errorMessage: null, itemId: "t-1" }),
     ),
   );
@@ -3699,9 +3705,9 @@ test("getTerrain3DUploadJob returns the job status", async () => {
 test("listLayerSources includes hosted tileset3d items", async () => {
   server.use(
     http.get("https://martin.test/catalog", () => HttpResponse.json({ tiles: {} })),
-    http.get("https://core.test/collections", () => HttpResponse.json({ collections: [] })),
-    http.get("https://core.test/harvest/layers", () => HttpResponse.json({ layers: [] })),
-    http.get("https://core.test/items", ({ request }) => {
+    http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
+    http.get("https://core.test/v1/harvest/layers", () => HttpResponse.json({ layers: [] })),
+    http.get("https://core.test/v1/items", ({ request }) => {
       expect(new URL(request.url).searchParams.get("type")).toBe("tileset3d");
       return HttpResponse.json({
         items: [
@@ -3729,16 +3735,16 @@ test("listLayerSources includes hosted tileset3d items", async () => {
     title: "Ville",
     service: "tileset3d",
     kind: "tiles3d",
-    url: "https://core.test/tileset3d/t1/tileset.json",
+    url: "https://core.test/v1/tileset3d/t1/tileset.json",
   });
 });
 
 test("listConfigRevisions résout la config par item puis lit ses révisions", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/app-1", () =>
+    http.get("https://core.test/v1/configs/by-item/app-1", () =>
       HttpResponse.json({ id: "cfg-1", itemId: "app-1", kind: "app", config: { kind: "app" } }),
     ),
-    http.get("https://core.test/configs/cfg-1/revisions", () =>
+    http.get("https://core.test/v1/configs/cfg-1/revisions", () =>
       HttpResponse.json([
         { version: 1, created_at: "2026-08-01T10:00:00" },
         { version: 2, created_at: "2026-08-02T11:00:00" },
@@ -3755,10 +3761,10 @@ test("listConfigRevisions résout la config par item puis lit ses révisions", a
 test("rollbackConfig poste la version demandée sur la config résolue", async () => {
   let posted: { version: number } | null = null;
   server.use(
-    http.get("https://core.test/configs/by-item/app-1", () =>
+    http.get("https://core.test/v1/configs/by-item/app-1", () =>
       HttpResponse.json({ id: "cfg-1", itemId: "app-1", kind: "app", config: { kind: "app" } }),
     ),
-    http.post("https://core.test/configs/cfg-1/rollback", async ({ request }) => {
+    http.post("https://core.test/v1/configs/cfg-1/rollback", async ({ request }) => {
       posted = (await request.json()) as { version: number };
       return HttpResponse.json({});
     }),
@@ -3770,11 +3776,11 @@ test("rollbackConfig poste la version demandée sur la config résolue", async (
 
 test("rollbackConfig propage l'erreur quand le serveur refuse la version", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/app-1", () =>
+    http.get("https://core.test/v1/configs/by-item/app-1", () =>
       HttpResponse.json({ id: "cfg-1", itemId: "app-1", kind: "app", config: { kind: "app" } }),
     ),
     http.post(
-      "https://core.test/configs/cfg-1/rollback",
+      "https://core.test/v1/configs/cfg-1/rollback",
       () => new HttpResponse(null, { status: 422 }),
     ),
   );
@@ -3787,14 +3793,16 @@ test("getAuthToken exposes the client's current token", () => {
   expect(client.getAuthToken?.()).toBe("secret-token");
 });
 
-test("getCoreUrl exposes the client's configured core API origin", () => {
+test("getCoreUrl exposes the client's configured core API origin, versioned under /v1", () => {
+  // SP-57b : nouveau contrat — createBase() ajoute /v1 une seule fois à la
+  // source (pas une régression, cf. spec §2.4/plan Task 6 Step 1).
   const client = makeClient("secret-token");
-  expect(client.getCoreUrl?.()).toBe("https://core.test");
+  expect(client.getCoreUrl?.()).toBe("https://core.test/v1");
 });
 
 test("getPrivilegeCatalog returns the catalog as-is", async () => {
   server.use(
-    http.get("https://core.test/roles/catalog", () =>
+    http.get("https://core.test/v1/roles/catalog", () =>
       HttpResponse.json([
         {
           privilege: "admin.harvest.manage",
@@ -3820,18 +3828,18 @@ test("listRoles/createRole/updateRole/deleteRole round-trip", async () => {
     },
   ];
   server.use(
-    http.get("https://core.test/roles", () => HttpResponse.json(roles)),
-    http.post("https://core.test/roles", async ({ request }) => {
+    http.get("https://core.test/v1/roles", () => HttpResponse.json(roles)),
+    http.post("https://core.test/v1/roles", async ({ request }) => {
       const body = (await request.json()) as { name: string; privileges: string[] };
       const created = { id: "r2", slug: "def", isBuiltIn: false, ...body };
       roles = [...roles, created];
       return HttpResponse.json(created, { status: 201 });
     }),
-    http.patch("https://core.test/roles/r1", async ({ request }) => {
+    http.patch("https://core.test/v1/roles/r1", async ({ request }) => {
       const patch = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json({ ...roles[0], ...patch });
     }),
-    http.delete("https://core.test/roles/r1", () => new HttpResponse(null, { status: 204 })),
+    http.delete("https://core.test/v1/roles/r1", () => new HttpResponse(null, { status: 204 })),
   );
   const client = makeClient();
   expect(await client.listRoles()).toEqual(roles);
@@ -3849,11 +3857,11 @@ test("listUsers/updateUserRole round-trip, avec recherche et pagination dans la 
     { id: "u2", username: "bob", roleSlug: "reader" },
   ];
   server.use(
-    http.get("https://core.test/users", ({ request }) => {
+    http.get("https://core.test/v1/users", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({ users, total: 2 });
     }),
-    http.patch("https://core.test/users/u2", async ({ request }) => {
+    http.patch("https://core.test/v1/users/u2", async ({ request }) => {
       const body = (await request.json()) as { roleId: string };
       return HttpResponse.json({ id: "u2", username: "bob", roleSlug: body.roleId });
     }),
@@ -3873,7 +3881,7 @@ test("listUsers/updateUserRole round-trip, avec recherche et pagination dans la 
 test("listUsers omet q de la query string quand il n'est pas fourni", async () => {
   let lastUrl = "";
   server.use(
-    http.get("https://core.test/users", ({ request }) => {
+    http.get("https://core.test/v1/users", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({ users: [], total: 0 });
     }),
@@ -3886,7 +3894,7 @@ test("listUsers omet q de la query string quand il n'est pas fourni", async () =
 test("presignAttachmentUpload appelle la route presign avec le bon corps", async () => {
   server.use(
     http.post(
-      "https://core.test/collections/col1/items/f1/attachments/presign",
+      "https://core.test/v1/collections/col1/items/f1/attachments/presign",
       async ({ request }) => {
         const body = await request.json();
         expect(body).toEqual({ fieldKey: "photos", filename: "a.jpg", contentType: "image/jpeg" });
@@ -3906,14 +3914,14 @@ test("presignAttachmentUpload appelle la route presign avec le bon corps", async
 test("attachmentFileUrl construit l'URL du proxy-read", () => {
   const client = makeClient();
   expect(client.attachmentFileUrl("col1", "f1", "att1")).toBe(
-    "https://core.test/collections/col1/items/f1/attachments/att1/file",
+    "https://core.test/v1/collections/col1/items/f1/attachments/att1/file",
   );
 });
 
 test("listUsageTasks builds the query string and returns tasks+total", async () => {
   let lastUrl = "";
   server.use(
-    http.get("https://core.test/usage/tasks", ({ request }) => {
+    http.get("https://core.test/v1/usage/tasks", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({
         tasks: [
@@ -3944,7 +3952,7 @@ test("listUsageTasks builds the query string and returns tasks+total", async () 
 test("listUsageTasks passes actorId when provided", async () => {
   let lastUrl = "";
   server.use(
-    http.get("https://core.test/usage/tasks", ({ request }) => {
+    http.get("https://core.test/v1/usage/tasks", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({ tasks: [], total: 0, page: 1, pageSize: 50 });
     }),
@@ -3957,7 +3965,7 @@ test("listUsageTasks passes actorId when provided", async () => {
 test("getUsageSummary sends since/until/limit as query params", async () => {
   let lastUrl = "";
   server.use(
-    http.get("https://core.test/usage/summary", ({ request }) => {
+    http.get("https://core.test/v1/usage/summary", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({
         byActor: [{ actorId: "u1", actorUsername: "alice", count: 3 }],
@@ -3984,7 +3992,7 @@ test("getUsageSummary sends since/until/limit as query params", async () => {
 test("getUsageSummary with no params sends no query string", async () => {
   let lastUrl = "";
   server.use(
-    http.get("https://core.test/usage/summary", ({ request }) => {
+    http.get("https://core.test/v1/usage/summary", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({
         byActor: [],
@@ -4006,7 +4014,7 @@ test("getUsageSummary with no params sends no query string", async () => {
 // un helper qui n'existe pas ici).
 test("listSecrets calls GET /secrets", async () => {
   server.use(
-    http.get("https://core.test/secrets", () =>
+    http.get("https://core.test/v1/secrets", () =>
       HttpResponse.json([
         { id: "s1", name: "arcgis-key", kind: "api_key", createdAt: "t", updatedAt: "t" },
       ]),
@@ -4021,7 +4029,7 @@ test("listSecrets calls GET /secrets", async () => {
 test("createSecret posts the payload and returns the summary (no ciphertext echoed back)", async () => {
   let body: any;
   server.use(
-    http.post("https://core.test/secrets", async ({ request }) => {
+    http.post("https://core.test/v1/secrets", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json(
         { id: "s2", name: "n", kind: "bearer_token", createdAt: "t", updatedAt: "t" },
@@ -4046,7 +4054,7 @@ test("createSecret posts the payload and returns the summary (no ciphertext echo
 test("deleteSecret calls DELETE /secrets/{id}", async () => {
   let method = "";
   server.use(
-    http.delete("https://core.test/secrets/s1", ({ request }) => {
+    http.delete("https://core.test/v1/secrets/s1", ({ request }) => {
       method = request.method;
       return new HttpResponse(null, { status: 204 });
     }),
@@ -4057,7 +4065,7 @@ test("deleteSecret calls DELETE /secrets/{id}", async () => {
 
 test("sampleDataSourceField résout collectionId via resolveDataset puis échantillonne", async () => {
   server.use(
-    http.get("https://core.test/configs/by-item/ds1", () =>
+    http.get("https://core.test/v1/configs/by-item/ds1", () =>
       HttpResponse.json({
         id: "cfg-ds1",
         itemId: "ds1",
@@ -4068,7 +4076,7 @@ test("sampleDataSourceField résout collectionId via resolveDataset puis échant
         },
       }),
     ),
-    http.post("https://core.test/collections/communes/aggregate", () =>
+    http.post("https://core.test/v1/collections/communes/aggregate", () =>
       HttpResponse.json({ categoryKey: "value", rows: [{ value: 1 }, { value: 2 }] }),
     ),
   );
@@ -4082,7 +4090,7 @@ test("sampleDataSourceField résout collectionId via resolveDataset puis échant
 
 test("sampleDataSourceField utilise directement layer quand datasetId est absent", async () => {
   server.use(
-    http.post("https://core.test/collections/communes/aggregate", () =>
+    http.post("https://core.test/v1/collections/communes/aggregate", () =>
       HttpResponse.json({ categoryKey: "value", rows: [{ value: 3 }] }),
     ),
   );

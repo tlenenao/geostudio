@@ -172,7 +172,15 @@ export function createBase(opts: {
   coreUrl: string;
   getToken: () => string | undefined;
 }): ItemClientBase {
-  const { coreUrl, getToken } = opts;
+  // SP-57b : point unique de redéfinition — l'API du cœur est versionnée
+  // sous /v1 (health/mcp exceptés, jamais atteints par ce client). Tous les
+  // consommateurs (request()/requestBlob() ci-dessous ET les fichiers de
+  // domaine qui construisent leur propre fetch avec `base.coreUrl`, ex.
+  // layers.ts/exportsIngestion.ts/extensionsAdminTools.ts/items.ts/
+  // features.ts) lisent ce champ déjà versionné — aucun besoin d'éditer ces
+  // fichiers individuellement (cf. spec SP-57b §1.3/§2.4).
+  const coreUrl = `${opts.coreUrl}/v1`;
+  const { getToken } = opts;
 
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const token = getToken();
