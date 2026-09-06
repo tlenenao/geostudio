@@ -1241,7 +1241,7 @@ Le détail complet (43 trouvailles confirmées non corrigées, 35 minor, 79
 gaps, la dette héritée SP-29b→SP-40, 2 trouvailles SP-43, 3 trouvailles
 SP-57a et 2 trouvailles de la revue finale de SP-61 documentées sans être
 corrigées) vit dans **`docs/revue/2026-09-04-backlog.md`** (181 entrées
-`REV-nnn` — 103 fermées, 9 partiellement fermées, 69 ouvertes après une passe
+`REV-nnn` — 109 fermées, 9 partiellement fermées, 63 ouvertes après une passe
 de revérification hors-SP le 2026-09-06 : avant cette passe, seules 24
 fermetures étaient reflétées malgré des dizaines fermées depuis leur
 rédaction (2026-09-04/05) par 21 SP sans que le document ne soit jamais
