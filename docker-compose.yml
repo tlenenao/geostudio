@@ -301,6 +301,13 @@ services:
       # jeton de lancement (60s) et le cookie de session (30 min) qu'il
       # bootstrap. Même convention que CORE_EXPORT_TOKEN_SECRET.
       CORE_ADMIN_TOOLS_TOKEN_SECRET: ${CORE_ADMIN_TOOLS_TOKEN_SECRET:-}
+      # SP-58 : capacité instance-wide optionnelle (quotas par tenant) + 3
+      # limites, chacune vide = pas de limite configurée même capacité
+      # active (cf. app/quotas/service.py, spec §3.1).
+      CORE_QUOTAS_ENABLED: ${CORE_QUOTAS_ENABLED:-false}
+      CORE_QUOTA_MAX_ITEMS_PER_TENANT: ${CORE_QUOTA_MAX_ITEMS_PER_TENANT:-}
+      CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT: ${CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT:-}
+      CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT: ${CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT:-}
       S3_TERRAIN3D_BUCKET: geostudio-terrain3d
       # Titiler sert les tuiles terrain-RGB depuis le COG hébergé (proxy
       # read_terrain3d_tile, app/terrain3d/routes.py) — appel interne, jamais

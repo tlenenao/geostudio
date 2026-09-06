@@ -30,6 +30,7 @@ const BASE_PROFILE: Profile = {
     tileset3dEnabled: false,
     terrain3dEnabled: false,
     copilotEnabled: false,
+    quotasEnabled: false,
   },
 };
 

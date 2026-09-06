@@ -136,3 +136,21 @@ def usage_for_tenant(session: Session, s3, tenant_id: str) -> UsageSnapshot:
         user_count=count_users_for_tenant(session, tenant_id),
         storage_bytes=storage,
     )
+
+
+def max_items_per_tenant() -> int | None:
+    """CORE_QUOTA_MAX_ITEMS_PER_TENANT — None = pas de limite configurée,
+    même quand CORE_QUOTAS_ENABLED est actif (spec §3.1, décision : une
+    seule limite instance-wide, appliquée identiquement à tout tenant)."""
+    raw = os.environ.get("CORE_QUOTA_MAX_ITEMS_PER_TENANT", "")
+    return int(raw) if raw else None
+
+
+def max_collections_per_tenant() -> int | None:
+    raw = os.environ.get("CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT", "")
+    return int(raw) if raw else None
+
+
+def max_storage_bytes_per_tenant() -> int | None:
+    raw = os.environ.get("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "")
+    return int(raw) if raw else None

@@ -3014,6 +3014,10 @@
             "title": "Exportenabled",
             "type": "boolean"
           },
+          "quotasEnabled": {
+            "title": "Quotasenabled",
+            "type": "boolean"
+          },
           "readOnly": {
             "title": "Readonly",
             "type": "boolean"
@@ -3035,7 +3039,8 @@
           "tileset3dEnabled",
           "terrain3dEnabled",
           "copilotEnabled",
-          "adminToolsEnabled"
+          "adminToolsEnabled",
+          "quotasEnabled"
         ],
         "title": "MeCapabilities",
         "type": "object"

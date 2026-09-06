@@ -128,6 +128,7 @@ export type InstanceInfo = {
   terrain3dEnabled: boolean;
   copilotEnabled: boolean;
   adminToolsEnabled: boolean;
+  quotasEnabled: boolean;
 };
 
 export type AdminToolName = "martin" | "titiler" | "grafana";

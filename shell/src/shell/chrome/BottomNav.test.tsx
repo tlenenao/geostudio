@@ -38,6 +38,7 @@ const PROFILE: Profile = {
     tileset3dEnabled: false,
     terrain3dEnabled: false,
     copilotEnabled: false,
+    quotasEnabled: false,
   },
 };
 

@@ -11,6 +11,9 @@ from app.quotas.service import (
     count_items_for_tenant,
     count_users_for_tenant,
     job_output_storage_bytes,
+    max_collections_per_tenant,
+    max_items_per_tenant,
+    max_storage_bytes_per_tenant,
     tenant_prefixed_storage_bytes,
     usage_for_tenant,
 )
@@ -219,3 +222,21 @@ def test_usage_for_tenant_aggregates_counts_and_storage(env, monkeypatch):
     # 4 buckets tenant-préfixés interrogés avec le même préfixe : seul
     # celui qui porte réellement un objet sous ce préfixe contribue.
     assert snapshot.storage_bytes == 500
+
+
+def test_limit_readers_default_to_none_when_unset(monkeypatch):
+    monkeypatch.delenv("CORE_QUOTA_MAX_ITEMS_PER_TENANT", raising=False)
+    monkeypatch.delenv("CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT", raising=False)
+    monkeypatch.delenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", raising=False)
+    assert max_items_per_tenant() is None
+    assert max_collections_per_tenant() is None
+    assert max_storage_bytes_per_tenant() is None
+
+
+def test_limit_readers_parse_configured_values(monkeypatch):
+    monkeypatch.setenv("CORE_QUOTA_MAX_ITEMS_PER_TENANT", "1000")
+    monkeypatch.setenv("CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT", "50")
+    monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "10737418240")
+    assert max_items_per_tenant() == 1000
+    assert max_collections_per_tenant() == 50
+    assert max_storage_bytes_per_tenant() == 10737418240

@@ -35,6 +35,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       tileset3dEnabled,
       terrain3dEnabled: instanceQuery.data?.terrain3dEnabled === true,
       copilotEnabled: instanceQuery.data?.copilotEnabled === true,
+      quotasEnabled: instanceQuery.data?.quotasEnabled === true,
     },
   };
 

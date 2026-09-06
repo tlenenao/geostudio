@@ -2408,6 +2408,8 @@ export interface components {
             etlEnabled: boolean;
             /** Exportenabled */
             exportEnabled: boolean;
+            /** Quotasenabled */
+            quotasEnabled: boolean;
             /** Readonly */
             readOnly: boolean;
             /** Terrain3Denabled */

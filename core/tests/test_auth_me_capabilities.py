@@ -26,6 +26,7 @@ CAPABILITY_KEYS = {
     "terrain3dEnabled",
     "copilotEnabled",
     "adminToolsEnabled",
+    "quotasEnabled",
 }
 
 
@@ -129,6 +130,7 @@ _CAPABILITY_PROBES = [
     # docstring dans app/auth/dependency.py) — pas "true"/"false".
     ("CORE_LLM_PROVIDER", "copilotEnabled", "openai", ""),
     ("CORE_ADMIN_TOOLS_ENABLED", "adminToolsEnabled", "true", "false"),
+    ("CORE_QUOTAS_ENABLED", "quotasEnabled", "true", "false"),
 ]
 
 
