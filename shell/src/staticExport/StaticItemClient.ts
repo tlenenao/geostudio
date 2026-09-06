@@ -117,6 +117,15 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async setSharing(..._args: unknown[]) {
       return unsupported();
     },
+    async createShareLink(..._args: unknown[]) {
+      return unsupported();
+    },
+    async listShareLinks(..._args: unknown[]) {
+      return unsupported();
+    },
+    async revokeShareLink(..._args: unknown[]) {
+      return unsupported();
+    },
     async listLayerSources(..._args: unknown[]) {
       return unsupported();
     },

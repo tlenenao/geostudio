@@ -268,6 +268,50 @@ test("setSharing PUTs the sharing object as-is", async () => {
   expect(body).toEqual({ public: false, groups: [{ groupId: "10", role: "viewer" }] });
 });
 
+test("createShareLink crée un lien avec une échéance", async () => {
+  server.use(
+    http.post("https://core.test/items/it1/share-links", async ({ request }) => {
+      const body = (await request.json()) as { ttlDays: number };
+      expect(body.ttlDays).toBe(30);
+      return HttpResponse.json(
+        { url: "https://core.test/share-links/eyJ...", expiresAt: "2026-10-05T00:00:00" },
+        { status: 201 },
+      );
+    }),
+  );
+  const link = await makeClient().createShareLink("it1", 30);
+  expect(link.url).toContain("/share-links/");
+  expect(link.expiresAt).toBe("2026-10-05T00:00:00");
+});
+
+test("listShareLinks retourne la liste avec son statut", async () => {
+  server.use(
+    http.get("https://core.test/items/it1/share-links", () =>
+      HttpResponse.json([
+        { id: "sl1", expiresAt: "2026-10-05T00:00:00", revoked: false },
+        { id: "sl2", expiresAt: "2026-09-10T00:00:00", revoked: true },
+      ]),
+    ),
+  );
+  const links = await makeClient().listShareLinks("it1");
+  expect(links).toEqual([
+    { id: "sl1", expiresAt: "2026-10-05T00:00:00", revoked: false },
+    { id: "sl2", expiresAt: "2026-09-10T00:00:00", revoked: true },
+  ]);
+});
+
+test("revokeShareLink DELETE le lien indiqué", async () => {
+  let deletedPath = "";
+  server.use(
+    http.delete("https://core.test/items/it1/share-links/:linkId", ({ params }) => {
+      deletedPath = String(params.linkId);
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  await makeClient().revokeShareLink("it1", "sl1");
+  expect(deletedPath).toBe("sl1");
+});
+
 test("listLayerSources returns one tiled entry per core collection, and no Martin source", async () => {
   // Martin sort du sélecteur (spec SP-24 §3.7) : il se connecte en
   // propriétaire des tables, donc hors RLS, et n'a aucune notion de

@@ -36,6 +36,9 @@ type ItemsMethods = Pick<
   | "addGroupMember"
   | "getSharing"
   | "setSharing"
+  | "createShareLink"
+  | "listShareLinks"
+  | "revokeShareLink"
   | "listConfigRevisions"
   | "rollbackConfig"
   | "createBookmarkItem"
@@ -188,6 +191,28 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
 
     async setSharing(pk: string, sharing: Sharing): Promise<void> {
       await request<void>("PUT", `/items/${pk}/sharing`, sharing);
+    },
+
+    async createShareLink(
+      itemId: string,
+      ttlDays: number,
+    ): Promise<{ url: string; expiresAt: string }> {
+      return request<{ url: string; expiresAt: string }>("POST", `/items/${itemId}/share-links`, {
+        ttlDays,
+      });
+    },
+
+    async listShareLinks(
+      itemId: string,
+    ): Promise<{ id: string; expiresAt: string; revoked: boolean }[]> {
+      return request<{ id: string; expiresAt: string; revoked: boolean }[]>(
+        "GET",
+        `/items/${itemId}/share-links`,
+      );
+    },
+
+    async revokeShareLink(itemId: string, linkId: string): Promise<void> {
+      await request<void>("DELETE", `/items/${itemId}/share-links/${linkId}`);
     },
 
     async listConfigRevisions(pk: string): Promise<ConfigRevisionInfo[]> {

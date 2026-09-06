@@ -402,6 +402,11 @@ export interface ItemClient {
   addGroupMember(groupId: string, userId: string): Promise<void>;
   getSharing(pk: string): Promise<Sharing>;
   setSharing(pk: string, sharing: Sharing): Promise<void>;
+  // GAP-12 (chantier 4.23) : lien de partage à échéance, révocable — distinct
+  // du partage groupe/rôle plat ci-dessus (présenté à un tiers externe).
+  createShareLink(itemId: string, ttlDays: number): Promise<{ url: string; expiresAt: string }>;
+  listShareLinks(itemId: string): Promise<{ id: string; expiresAt: string; revoked: boolean }[]>;
+  revokeShareLink(itemId: string, linkId: string): Promise<void>;
   listLayerSources(params?: { q?: string }): Promise<LayerSource[]>;
   sampleCollectionField(collectionId: string, field: string, limit: number): Promise<number[]>;
   // Un SEUL appel : le cœur reçoit les octets (D7). Pas de presign, donc pas

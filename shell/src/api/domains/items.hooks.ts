@@ -187,6 +187,37 @@ export function useSetSharing(pk: string) {
   });
 }
 
+export function useShareLinks(itemId: string, options?: { enabled?: boolean }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["shareLinks", itemId],
+    queryFn: () => client.listShareLinks(itemId),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useCreateShareLink(itemId: string) {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ttlDays: number) => client.createShareLink(itemId, ttlDays),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["shareLinks", itemId] });
+    },
+  });
+}
+
+export function useRevokeShareLink(itemId: string) {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (linkId: string) => client.revokeShareLink(itemId, linkId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["shareLinks", itemId] });
+    },
+  });
+}
+
 export function useCreateBookmark() {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();

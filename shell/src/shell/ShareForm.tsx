@@ -3,12 +3,112 @@ import { useEffect, useState } from "react";
 import {
   useAddGroupMember,
   useCreateGroup,
+  useCreateShareLink,
   useGroups,
+  useRevokeShareLink,
   useSetSharing,
+  useShareLinks,
   useSharing,
 } from "../api/hooks";
 import type { Item, ShareRole } from "../api/types";
 import { Button } from "../ui/kit/Button";
+
+const MAX_SHARE_LINK_TTL_DAYS = 30;
+
+// GAP-12 (chantier 4.23) : section distincte du partage groupe/rôle plat
+// ci-dessus — un lien de partage est présenté à un tiers externe, révocable
+// à tout moment. La consommation anonyme du lien (côté visiteur sans
+// compte) reste hors périmètre (spec §9) : ce panneau ne fait que
+// créer/lister/révoquer, il ne rend aucune page publique.
+function ShareLinksPanel({ itemId }: { itemId: string }) {
+  const linksQuery = useShareLinks(itemId);
+  const createLink = useCreateShareLink(itemId);
+  const revokeLink = useRevokeShareLink(itemId);
+  const [ttlDays, setTtlDays] = useState(7);
+  const [lastCreatedUrl, setLastCreatedUrl] = useState<string | null>(null);
+
+  async function handleCreate() {
+    createLink.reset();
+    setLastCreatedUrl(null);
+    try {
+      const link = await createLink.mutateAsync(ttlDays);
+      setLastCreatedUrl(link.url);
+    } catch {
+      /* surfaced via createLink.isError */
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-rule pt-2">
+      <p className="text-xs font-medium text-ink-2">Liens à échéance</p>
+      {linksQuery.isLoading && <p role="status">Chargement…</p>}
+      {linksQuery.isError && (
+        <p role="alert" className="text-xs text-danger">
+          Échec du chargement des liens.
+        </p>
+      )}
+      {linksQuery.data && linksQuery.data.length > 0 && (
+        <ul className="flex flex-col gap-1 text-xs">
+          {linksQuery.data.map((link) => {
+            const expired = new Date(link.expiresAt).getTime() < Date.now();
+            const status = link.revoked ? "révoqué" : expired ? "expiré" : "actif";
+            return (
+              <li key={link.id} className="flex items-center justify-between gap-2">
+                <span>
+                  {link.id} — {status} (échéance {link.expiresAt})
+                </span>
+                {!link.revoked && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={revokeLink.isPending}
+                    onClick={() => revokeLink.mutate(link.id)}
+                  >
+                    Révoquer
+                  </Button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div className="flex items-center gap-2">
+        <label className="flex items-center gap-1 text-xs text-ink">
+          <input
+            type="number"
+            aria-label="Durée du lien (jours)"
+            min={1}
+            max={MAX_SHARE_LINK_TTL_DAYS}
+            className="h-8 w-16 rounded-md border border-rule bg-surface px-2 text-xs text-ink"
+            value={ttlDays}
+            onChange={(e) => setTtlDays(Number(e.target.value))}
+          />
+          jour(s)
+        </label>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={createLink.isPending || ttlDays < 1 || ttlDays > MAX_SHARE_LINK_TTL_DAYS}
+          onClick={() => void handleCreate()}
+        >
+          Créer un lien
+        </Button>
+      </div>
+      {createLink.isError && (
+        <p role="alert" className="text-xs text-danger">
+          Échec de la création du lien.
+        </p>
+      )}
+      {lastCreatedUrl && (
+        <p className="text-xs text-ink">
+          Lien créé : <span className="break-all">{lastCreatedUrl}</span>
+        </p>
+      )}
+    </div>
+  );
+}
 
 // GAP-42/65 : formulaire d'ajout de groupe + contrôle d'ajout de membre par
 // groupe. L'API AddMemberRequest attend un userId exact (un UUID), pas un
@@ -197,6 +297,8 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
               </p>
             )}
           </div>
+
+          <ShareLinksPanel itemId={item.pk} />
 
           {setSharing.isError && (
             <p role="alert" className="text-sm text-danger">
