@@ -6,6 +6,7 @@ type SetVariable = (name: string, value: unknown) => void;
 
 const VariablesContext = createContext<Record<string, unknown>>({});
 const SetVariableContext = createContext<SetVariable>(() => {});
+const VariableDefsContext = createContext<Variable[]>([]);
 
 export function VariablesProvider({
   variables,
@@ -42,9 +43,11 @@ export function VariablesProvider({
   }
 
   return (
-    <SetVariableContext.Provider value={setVariable}>
-      <VariablesContext.Provider value={values}>{children}</VariablesContext.Provider>
-    </SetVariableContext.Provider>
+    <VariableDefsContext.Provider value={variables}>
+      <SetVariableContext.Provider value={setVariable}>
+        <VariablesContext.Provider value={values}>{children}</VariablesContext.Provider>
+      </SetVariableContext.Provider>
+    </VariableDefsContext.Provider>
   );
 }
 
@@ -54,4 +57,8 @@ export function useVariables(): Record<string, unknown> {
 
 export function useSetVariable(): SetVariable {
   return useContext(SetVariableContext);
+}
+
+export function useVariableDefs(): Variable[] {
+  return useContext(VariableDefsContext);
 }

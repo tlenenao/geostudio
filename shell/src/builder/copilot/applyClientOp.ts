@@ -85,10 +85,12 @@ export function applyClientOp(
     }
     case "setFilter": {
       const dataSourceId = String(raw.args.dataSourceId ?? "");
-      const query = (raw.args.query ?? {}) as Record<string, unknown>;
+      const patch = (raw.args.query ?? {}) as Record<string, unknown>;
       return {
         ...config,
-        dataSources: config.dataSources.map((s) => (s.id === dataSourceId ? { ...s, query } : s)),
+        dataSources: config.dataSources.map((s) =>
+          s.id === dataSourceId ? { ...s, query: { ...s.query, ...patch } } : s,
+        ),
       };
     }
     default:

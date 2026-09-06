@@ -20,7 +20,7 @@ export function registerTabsWidget(): void {
     // Son seul champ, `tabs`, est array-shaped — hors de portée pour
     // updateWidgetProps en v1 (cf. Global Constraints). Rien à lister ici.
     configSchema: [],
-    PropsPanel: ({ props, onChange, dataSources }) => {
+    PropsPanel: ({ props, onChange, dataSources, variables }) => {
       const { tabs } = props as TabsProps;
       const [activeId, setActiveId] = useState(tabs[0]?.id);
       const active = tabs.find((t) => t.id === activeId) ?? tabs[0];
@@ -113,6 +113,7 @@ export function registerTabsWidget(): void {
             onChange={setActiveItems}
             dataSources={dataSources}
             breakpoint="lg"
+            variables={variables}
           />
         </div>
       );
@@ -140,7 +141,26 @@ export function registerTabsWidget(): void {
                 </span>
               ))}
             </div>
-            <div className="flex-1 bg-slate-50" />
+            <div className="min-h-0 flex-1">
+              <GridCanvas
+                items={active.items}
+                breakpoint={ctx.breakpoint ?? "lg"}
+                editable={false}
+                selectedId={null}
+                onSelect={() => {}}
+                onMoveItem={() => {}}
+                onRemoveItem={() => {}}
+                renderItem={(item) => (
+                  <WidgetHost
+                    item={item}
+                    mode="preview"
+                    pages={ctx.pages}
+                    navigate={ctx.navigate}
+                    breakpoint={ctx.breakpoint}
+                  />
+                )}
+              />
+            </div>
           </div>
         );
       }
@@ -167,6 +187,7 @@ export function registerTabsWidget(): void {
               selectedId={null}
               onSelect={() => {}}
               onMoveItem={() => {}}
+              onRemoveItem={() => {}}
               renderItem={(item) => (
                 <WidgetHost
                   item={item}

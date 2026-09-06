@@ -20,7 +20,7 @@ export function registerModalWidget(): void {
     defaultSize: { w: 3, h: 1 },
     configSchema: [{ name: "title", type: "string", label: "Titre", default: "Modale" }],
     actions: ["open", "close"],
-    PropsPanel: ({ props, onChange, dataSources }) => {
+    PropsPanel: ({ props, onChange, dataSources, variables }) => {
       const { title, items, wide } = props as ModalProps;
       return (
         <div className="flex flex-col gap-2 text-sm">
@@ -47,6 +47,7 @@ export function registerModalWidget(): void {
             onChange={(next) => onChange({ title, items: next, wide })}
             dataSources={dataSources}
             breakpoint="lg"
+            variables={variables}
           />
         </div>
       );
@@ -75,6 +76,7 @@ export function registerModalWidget(): void {
               selectedId={null}
               onSelect={() => {}}
               onMoveItem={() => {}}
+              onRemoveItem={() => {}}
               renderItem={(item) => (
                 <WidgetHost
                   item={item}

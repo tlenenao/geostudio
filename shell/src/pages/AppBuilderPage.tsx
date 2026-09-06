@@ -36,6 +36,7 @@ import { getWidget } from "../builder/registry";
 import { BREAKPOINTS, nextFreePosition, type Breakpoint } from "../builder/grid";
 import { getPages, getPageLayout, setPageLayout } from "../builder/pages";
 import { getConfigExpressionErrors } from "../builder/configExpressionErrors";
+import { pruneMessagesForIds } from "../builder/actionMessages";
 import { Button } from "../ui/kit/Button";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useAuth } from "../auth/useAuth";
@@ -104,6 +105,11 @@ export function AppBuilderPage({ pk }: { pk: string }) {
         target instanceof HTMLTextAreaElement ||
         (target instanceof HTMLElement && target.isContentEditable);
       if (isTextField) return;
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
+        e.preventDefault();
+        removeSelected();
+        return;
+      }
       if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
       e.preventDefault();
       if (e.shiftKey) redo();
@@ -111,7 +117,11 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [undo, redo]);
+    // removeSelected n'est pas listée : c'est une function declaration hoisted et stable
+    // (redéfinie identiquement à chaque rendu, capture les mêmes dépendances que le reste
+    // du composant) — l'ajouter au tableau ne changerait rien.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undo, redo, selectedId]);
 
   const pages = useMemo(() => (draft ? getPages(draft) : []), [draft]);
   // Validate activePageId against the current draft's pages rather than
@@ -188,6 +198,21 @@ export function AppBuilderPage({ pk }: { pk: string }) {
       return setPageLayout(d, activePage, { ...layout, items: [...layout.items, item] });
     });
     setSelectedId(id);
+  }
+
+  function removeSelected() {
+    if (!selectedId || !activePage) return;
+    const id = selectedId;
+    setDraft((d) => {
+      if (!d) return d;
+      const layout = getPageLayout(d, activePage);
+      const next = setPageLayout(d, activePage, {
+        ...layout,
+        items: layout.items.filter((i) => i.id !== id),
+      });
+      return { ...next, messages: pruneMessagesForIds(next.messages, [id]) };
+    });
+    setSelectedId(null);
   }
 
   async function captureThumbnail() {
@@ -275,7 +300,13 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     );
 
   const setVariables = (variables: typeof draft.variables) =>
-    setDraft((d) => (d ? { ...d, variables } : d));
+    setDraft((d) => {
+      if (!d) return d;
+      const before = new Set((d.variables ?? []).map((v) => v.id));
+      const after = new Set((variables ?? []).map((v) => v.id));
+      const removedIds = [...before].filter((id) => !after.has(id)).map((id) => `var:${id}`);
+      return { ...d, variables, messages: pruneMessagesForIds(d.messages, removedIds) };
+    });
 
   function setPrintLayout(printLayout: PrintLayoutConfig | null) {
     setDraft((d) => (d ? { ...d, printLayout } : d));
@@ -386,6 +417,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                   item={selected}
                   dataSources={draft.dataSources}
                   theme={draft.theme}
+                  variables={draft.variables ?? []}
                   onChange={updateSelectedProps}
                   onVisibleWhenChange={updateSelectedVisibleWhen}
                 />
