@@ -3,14 +3,15 @@
 create_item, create_form_app (SP-43 Étape 8 — extrait de
 app/mcp/tools.py). create_item et create_form_app réutilisent
 app.configs.service.create_config_service, partagée avec POST /configs
-(app/configs/routes.py). save_app_config reste un tool autonome —
-**écart pré-existant, non corrigé par SP-43** : contrairement à
-PUT /configs/by-item/{id} (app/configs/routes.py::update_config_by_item),
-save_app_config n'exécute PAS les 7 validateurs par kind
-(dataset/bookmark/pipeline/alert/report/tileset3d/terrain3d) ni les 2
-gardes de capacité (ETL/export) — seulement le garde de privilège et la
-portée d'extension. Documenté ici plutôt que "corrigé" au passage (règle
-explicite du plan SP-43, spec §6) ; candidat de backlog séparé."""
+(app/configs/routes.py). save_app_config reste un tool autonome, mais
+exécute désormais (REV-174) exactement la même séquence de gardes de
+capacité + validateurs par kind que PUT /configs/by-item/{id}
+(app/configs/routes.py::update_config_by_item), importés depuis les mêmes
+modules source — jamais dupliqués localement : les 2 gardes de capacité
+(_require_etl_enabled_for_pipeline, _require_export_enabled_for_report)
+depuis app.configs.service (seule source de vérité depuis la revue finale
+SP-43), les 7 validateurs par kind depuis leurs modules
+app.configs.<kind>_validation respectifs, comme routes.py."""
 
 from typing import Literal
 
@@ -24,14 +25,29 @@ from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
 from app.collections.schema_json import table_info_to_schema
 from app.configs import repository as configs_repo
+from app.configs.alert_validation import validate_alert_payload as _validate_alert_payload
+from app.configs.bookmark_validation import validate_bookmark_payload as _validate_bookmark_payload
+from app.configs.dataset_validation import validate_dataset_payload as _validate_dataset_payload
 from app.configs.extension_permissions import (
     ExtensionPermissionError,
     validate_extension_permissions,
 )
+from app.configs.pipeline_validation import validate_pipeline_payload as _validate_pipeline_payload
+from app.configs.report_validation import validate_report_payload as _validate_report_payload
 from app.configs.repository import ConfigRead
 from app.configs.routes import _require_kind_matches_existing
 from app.configs.schemas import BuilderConfig
-from app.configs.service import create_config_service
+from app.configs.service import (
+    _require_etl_enabled_for_pipeline,
+    _require_export_enabled_for_report,
+    create_config_service,
+)
+from app.configs.terrain3d_validation import (
+    validate_terrain3d_payload as _validate_terrain3d_payload,
+)
+from app.configs.tileset3d_validation import (
+    validate_tileset3d_payload as _validate_tileset3d_payload,
+)
 from app.db import request_scoped_session
 from app.items import repository as items_repo
 from app.items.schemas import ItemRead
@@ -71,6 +87,38 @@ def _require_kind_unchanged(existing_kind: str, submitted_kind: str) -> None:
     the only MCP tool that updates an already-existing config."""
     try:
         _require_kind_matches_existing(existing_kind, submitted_kind)
+    except HTTPException as exc:
+        raise http_exception_to_value_error(exc) from exc
+
+
+def _require_capabilities_for_save(config: BuilderConfig) -> None:
+    """REV-174 : mirrors the 2 instance-capability guards that
+    update_config_by_item runs before writing (_require_etl_enabled_for_pipeline,
+    _require_export_enabled_for_report — both imported from app.configs.service,
+    their sole source of truth since the SP-43 final review), which
+    save_app_config used to skip entirely."""
+    try:
+        _require_etl_enabled_for_pipeline(config)
+        _require_export_enabled_for_report(config)
+    except HTTPException as exc:
+        raise http_exception_to_value_error(exc) from exc
+
+
+def _validate_payload_by_kind(session, config: BuilderConfig, *, user: User) -> None:
+    """REV-174 : mirrors the 7 per-kind payload validators that
+    update_config_by_item runs before writing, in the same order, imported
+    from the same modules as app.configs.routes — save_app_config used to
+    skip all 7, letting an MCP agent write a dataset pointing at an unreadable
+    collection, a pipeline/report bypassing its capability guard's sibling
+    structural checks, etc."""
+    try:
+        _validate_dataset_payload(session, config, user=user)
+        _validate_bookmark_payload(session, config, user=user)
+        _validate_pipeline_payload(session, config, user=user)
+        _validate_alert_payload(session, config, user=user)
+        _validate_report_payload(session, config, user=user)
+        _validate_tileset3d_payload(session, config, user=user)
+        _validate_terrain3d_payload(session, config, user=user)
     except HTTPException as exc:
         raise http_exception_to_value_error(exc) from exc
 
@@ -128,7 +176,9 @@ def register(server: FastMCP, session_factory) -> None:
                 raise ValueError("config not found")
             _require_kind_unchanged(existing.kind, config.kind)
             _require_config_privilege(session, config, user=user)
+            _require_capabilities_for_save(config)
             _validate_extension_scope(session, config, tenant_id=user.tenant_id)
+            _validate_payload_by_kind(session, config, user=user)
             result = configs_repo.update_config(
                 session, existing.id, config, tenant_id=user.tenant_id
             )
