@@ -108,7 +108,7 @@ test("SP-55 : trie le catalogue par titre (A→Z)", async ({ page }) => {
 
 test("SP-55 : filtre le catalogue par mot-clé", async ({ page }) => {
   await mockCore(page);
-  await page.route("https://core.test/items/facets*", async (route) => {
+  await page.route("https://core.test/v1/items/facets*", async (route) => {
     await route.fulfill({
       json: { owners: [], keywords: [{ keyword: "important", count: 1 }] },
     });

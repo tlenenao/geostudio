@@ -47,7 +47,7 @@ test("admin creates a STAC source and triggers a manual run", async () => {
   let created: Record<string, unknown> | null = null;
   let ran = false;
   server.use(
-    http.get("https://core.test/harvest/sources", () =>
+    http.get("https://core.test/v1/harvest/sources", () =>
       HttpResponse.json({
         sources: created
           ? [
@@ -66,14 +66,14 @@ test("admin creates a STAC source and triggers a manual run", async () => {
           : [],
       }),
     ),
-    http.post("https://core.test/harvest/sources", async ({ request }) => {
+    http.post("https://core.test/v1/harvest/sources", async ({ request }) => {
       created = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json(
         { id: "src-1", ...created, lastRunAt: null, lastStatus: null, lastError: null },
         { status: 201 },
       );
     }),
-    http.post("https://core.test/harvest/sources/src-1/run", () => {
+    http.post("https://core.test/v1/harvest/sources/src-1/run", () => {
       ran = true;
       return HttpResponse.json({ status: "queued" }, { status: 202 });
     }),
@@ -95,7 +95,7 @@ test("admin creates a STAC source and triggers a manual run", async () => {
 test("edits a source via the row action", async () => {
   let patched: unknown;
   server.use(
-    http.get("https://core.test/harvest/sources", () =>
+    http.get("https://core.test/v1/harvest/sources", () =>
       HttpResponse.json({
         sources: [
           {
@@ -112,7 +112,7 @@ test("edits a source via the row action", async () => {
         ],
       }),
     ),
-    http.patch("https://core.test/harvest/sources/src-1", async ({ request }) => {
+    http.patch("https://core.test/v1/harvest/sources/src-1", async ({ request }) => {
       patched = await request.json();
       return HttpResponse.json({
         id: "src-1",
@@ -145,7 +145,7 @@ test("aria-expanded est câblé par ligne, pas partagé entre toutes les lignes 
   // dans .map()) était invisible avec une seule source — tous les boutons
   // Éditer basculaient aria-expanded="true" en même temps.
   server.use(
-    http.get("https://core.test/harvest/sources", () =>
+    http.get("https://core.test/v1/harvest/sources", () =>
       HttpResponse.json({
         sources: [
           {
@@ -189,7 +189,7 @@ test("aria-expanded est câblé par ligne, pas partagé entre toutes les lignes 
 
 test("cliquer « Ajouter une source » pendant l'édition ferme le panneau d'édition", async () => {
   server.use(
-    http.get("https://core.test/harvest/sources", () =>
+    http.get("https://core.test/v1/harvest/sources", () =>
       HttpResponse.json({
         sources: [
           {
@@ -219,7 +219,7 @@ test("cliquer « Ajouter une source » pendant l'édition ferme le panneau d'éd
 
 test("cliquer « Éditer » pendant la création ferme le panneau d'ajout", async () => {
   server.use(
-    http.get("https://core.test/harvest/sources", () =>
+    http.get("https://core.test/v1/harvest/sources", () =>
       HttpResponse.json({
         sources: [
           {
@@ -249,7 +249,7 @@ test("cliquer « Éditer » pendant la création ferme le panneau d'ajout", asyn
 
 test("supprimer la source en cours d'édition ferme le panneau Éditer (croisement editing/deleting)", async () => {
   server.use(
-    http.get("https://core.test/harvest/sources", () =>
+    http.get("https://core.test/v1/harvest/sources", () =>
       HttpResponse.json({
         sources: [
           {
@@ -266,7 +266,7 @@ test("supprimer la source en cours d'édition ferme le panneau Éditer (croiseme
         ],
       }),
     ),
-    http.delete("https://core.test/harvest/sources/src-1", () =>
+    http.delete("https://core.test/v1/harvest/sources/src-1", () =>
       HttpResponse.text("", { status: 204 }),
     ),
   );
@@ -286,7 +286,7 @@ test("supprimer la source en cours d'édition ferme le panneau Éditer (croiseme
 test("delete removes the source from the list", async () => {
   let deleted = false;
   server.use(
-    http.get("https://core.test/harvest/sources", () =>
+    http.get("https://core.test/v1/harvest/sources", () =>
       HttpResponse.json({
         sources: deleted
           ? []
@@ -305,7 +305,7 @@ test("delete removes the source from the list", async () => {
             ],
       }),
     ),
-    http.delete("https://core.test/harvest/sources/src-1", () => {
+    http.delete("https://core.test/v1/harvest/sources/src-1", () => {
       deleted = true;
       return HttpResponse.text("", { status: 204 });
     }),
@@ -324,8 +324,8 @@ test("delete removes the source from the list", async () => {
 
 test("masque les boutons d'écriture en mode démo (read-only)", async () => {
   server.use(
-    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
-    http.get("https://core.test/harvest/sources", () =>
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
+    http.get("https://core.test/v1/harvest/sources", () =>
       HttpResponse.json({
         sources: [
           {
@@ -354,8 +354,8 @@ test("masque les boutons d'écriture en mode démo (read-only)", async () => {
 test("sends the selected type (arcgis) on creation", async () => {
   let body: unknown = null;
   server.use(
-    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
-    http.post("https://core.test/harvest/sources", async ({ request }) => {
+    http.get("https://core.test/v1/harvest/sources", () => HttpResponse.json({ sources: [] })),
+    http.post("https://core.test/v1/harvest/sources", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json(
         {
@@ -391,8 +391,8 @@ test("sends the selected type (arcgis) on creation", async () => {
 test("envoie le type WMS et force le mode référence (copie désactivée)", async () => {
   let body: unknown = null;
   server.use(
-    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
-    http.post("https://core.test/harvest/sources", async ({ request }) => {
+    http.get("https://core.test/v1/harvest/sources", () => HttpResponse.json({ sources: [] })),
+    http.post("https://core.test/v1/harvest/sources", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json(
         {
@@ -423,7 +423,7 @@ test("envoie le type WMS et force le mode référence (copie désactivée)", asy
 
 test("garde le mode copie disponible pour WFS", async () => {
   server.use(
-    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
+    http.get("https://core.test/v1/harvest/sources", () => HttpResponse.json({ sources: [] })),
   );
   render(<Harness />);
   await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
@@ -435,8 +435,8 @@ test("garde le mode copie disponible pour WFS", async () => {
 test("envoie le type CSW et force le mode référence (copie désactivée)", async () => {
   let body: unknown = null;
   server.use(
-    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
-    http.post("https://core.test/harvest/sources", async ({ request }) => {
+    http.get("https://core.test/v1/harvest/sources", () => HttpResponse.json({ sources: [] })),
+    http.post("https://core.test/v1/harvest/sources", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json(
         {
@@ -472,7 +472,7 @@ test("envoie le type CSW et force le mode référence (copie désactivée)", asy
 
 test("garde le mode copie désactivé pour OGC API - Records", async () => {
   server.use(
-    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
+    http.get("https://core.test/v1/harvest/sources", () => HttpResponse.json({ sources: [] })),
   );
   render(<Harness />);
   await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
@@ -484,8 +484,8 @@ test("garde le mode copie désactivé pour OGC API - Records", async () => {
 test("envoie le type CKAN en mode copie", async () => {
   let body: unknown = null;
   server.use(
-    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
-    http.post("https://core.test/harvest/sources", async ({ request }) => {
+    http.get("https://core.test/v1/harvest/sources", () => HttpResponse.json({ sources: [] })),
+    http.post("https://core.test/v1/harvest/sources", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json(
         {
@@ -521,7 +521,7 @@ test("envoie le type CKAN en mode copie", async () => {
 
 test("garde le mode copie disponible pour CKAN", async () => {
   server.use(
-    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
+    http.get("https://core.test/v1/harvest/sources", () => HttpResponse.json({ sources: [] })),
   );
   render(<Harness />);
   await userEvent.click(await screen.findByRole("button", { name: "Ajouter une source" }));
@@ -533,7 +533,7 @@ test("garde le mode copie disponible pour CKAN", async () => {
 test("sous viewport étroit, affiche trois onglets Catalogue/Moissonnage/Détail avec Moissonnage actif par défaut", async () => {
   stubMatchMedia(true);
   server.use(
-    http.get("https://core.test/harvest/sources", () => HttpResponse.json({ sources: [] })),
+    http.get("https://core.test/v1/harvest/sources", () => HttpResponse.json({ sources: [] })),
   );
   render(<Harness />);
   const tabs = await screen.findAllByRole("tab");

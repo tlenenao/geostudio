@@ -16,7 +16,7 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
   // rationale as "/items/1"/"/items/9" and "/admin/extensions" elsewhere in
   // this suite). Registered after mockCore(page), so its more specific
   // pattern wins over mockCore's own "**/collections*" catch-all.
-  await page.route("https://core.test/collections/candidates", async (route) => {
+  await page.route("https://core.test/v1/collections/candidates", async (route) => {
     await route.fulfill({
       json: {
         candidates: [
@@ -32,7 +32,7 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
     });
   });
 
-  await page.route("https://core.test/collections", async (route) => {
+  await page.route("https://core.test/v1/collections", async (route) => {
     if (route.request().method() === "POST") {
       registered = await route.request().postDataJSON();
       await route.fulfill({ status: 201, json: mockCollection() });
@@ -49,7 +49,7 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
     });
   });
 
-  await page.route("https://core.test/collections/points_interet**", async (route) => {
+  await page.route("https://core.test/v1/collections/points_interet**", async (route) => {
     const method = route.request().method();
     if (method === "PATCH") {
       const body = await route.request().postDataJSON();
@@ -74,7 +74,7 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
     await route.fallback();
   });
 
-  await page.route("https://core.test/groups", async (route) => {
+  await page.route("https://core.test/v1/groups", async (route) => {
     await route.fulfill({ json: [{ id: "g1", name: "Équipe terrain" }] });
   });
 
@@ -145,7 +145,7 @@ test("un utilisateur non-admin ne voit pas le lien Collections et une navigation
 }) => {
   await mockCore(page);
   let collectionsAdminCalled = false;
-  await page.route("https://core.test/collections", async (route) => {
+  await page.route("https://core.test/v1/collections", async (route) => {
     collectionsAdminCalled = true;
     await route.fulfill({ json: { collections: [] } });
   });

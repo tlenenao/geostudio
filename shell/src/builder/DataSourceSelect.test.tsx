@@ -41,7 +41,7 @@ test("selects a data source and emits its id", async () => {
 
 test("picking a shared dataset not yet inline calls onAdd then onChange with the new source id", async () => {
   server.use(
-    http.get("https://core.test/items*", ({ request }) => {
+    http.get("https://core.test/v1/items*", ({ request }) => {
       const url = new URL(request.url);
       if (url.searchParams.get("type") !== "dataset")
         return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
@@ -88,7 +88,7 @@ test("picking a shared dataset not yet inline calls onAdd then onChange with the
 
 test("a shared dataset already referenced inline is not listed twice", async () => {
   server.use(
-    http.get("https://core.test/items*", () =>
+    http.get("https://core.test/v1/items*", () =>
       HttpResponse.json({
         items: [
           {

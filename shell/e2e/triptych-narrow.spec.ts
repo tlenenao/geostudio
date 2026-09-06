@@ -208,7 +208,7 @@ const SCREENS: Array<{
     name: "Automatisation",
     path: "/pipelines/new",
     before: (p) =>
-      p.route("https://core.test/pipelines/ops", async (route) => {
+      p.route("https://core.test/v1/pipelines/ops", async (route) => {
         await route.fulfill({ json: AUTOMATISATION_OPS_CATALOG });
       }),
     // Le mock ci-dessus fait quitter à la page son état "Chargement…" (cf.

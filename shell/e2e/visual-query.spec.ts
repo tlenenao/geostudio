@@ -3,13 +3,13 @@ import { test, expect, type Page } from "@playwright/test";
 import { mockCore } from "./mocks";
 
 async function mockVisualQueryFlow(page: Page) {
-  await page.route("https://core.test/instance", async (route) => {
+  await page.route("https://core.test/v1/instance", async (route) => {
     await route.fulfill({ json: { readOnly: false, etlEnabled: true } });
   });
 
   // Liste des collections pour le sélecteur "Collection de base" — réutilise
   // le schéma "incidents" déjà mocké par mockCore() (titre: string, gravite: enum).
-  await page.route("https://core.test/collections*", async (route) => {
+  await page.route("https://core.test/v1/collections*", async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     await route.fulfill({
       json: {
@@ -33,12 +33,12 @@ async function mockVisualQueryFlow(page: Page) {
     });
   });
 
-  await page.route("https://core.test/collections/empty", async (route) => {
+  await page.route("https://core.test/v1/collections/empty", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
     await route.fulfill({ status: 201, json: { id: "query_out" } });
   });
 
-  await page.route("https://core.test/collections/query_out/schema", async (route) => {
+  await page.route("https://core.test/v1/collections/query_out/schema", async (route) => {
     await route.fulfill({
       json: {
         collection: "query_out",
@@ -63,7 +63,7 @@ async function mockVisualQueryFlow(page: Page) {
     columns: {},
   };
 
-  await page.route("https://core.test/configs", async (route) => {
+  await page.route("https://core.test/v1/configs", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
     const body = route.request().postDataJSON();
     if (body?.config?.kind === "pipeline") {
@@ -77,7 +77,7 @@ async function mockVisualQueryFlow(page: Page) {
     return route.fallback(); // laisse mockCore() gérer "dataset" (renvoie toujours itemId "dataset-1") et les autres kinds
   });
 
-  await page.route("https://core.test/configs/by-item/dataset-1", async (route) => {
+  await page.route("https://core.test/v1/configs/by-item/dataset-1", async (route) => {
     const method = route.request().method();
     if (method === "PUT") {
       const body = route.request().postDataJSON();
@@ -99,7 +99,7 @@ async function mockVisualQueryFlow(page: Page) {
     }
   });
 
-  await page.route("https://core.test/configs/by-item/pipeline-vq1", async (route) => {
+  await page.route("https://core.test/v1/configs/by-item/pipeline-vq1", async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     await route.fulfill({
       json: {
@@ -111,7 +111,7 @@ async function mockVisualQueryFlow(page: Page) {
     });
   });
 
-  await page.route("https://core.test/items/dataset-1", async (route) => {
+  await page.route("https://core.test/v1/items/dataset-1", async (route) => {
     await route.fulfill({
       json: {
         pk: "dataset-1",
@@ -128,16 +128,16 @@ async function mockVisualQueryFlow(page: Page) {
     });
   });
 
-  await page.route("https://core.test/datasets/dataset-1/alerts", async (route) => {
+  await page.route("https://core.test/v1/datasets/dataset-1/alerts", async (route) => {
     await route.fulfill({ json: [] });
   });
 
-  await page.route("https://core.test/pipelines/pipeline-vq1/run", async (route) => {
+  await page.route("https://core.test/v1/pipelines/pipeline-vq1/run", async (route) => {
     await route.fulfill({ status: 202, json: { runId: "run-1" } });
   });
 
   let runPolls = 0;
-  await page.route("https://core.test/pipelines/pipeline-vq1/runs", async (route) => {
+  await page.route("https://core.test/v1/pipelines/pipeline-vq1/runs", async (route) => {
     runPolls += 1;
     const status = runPolls < 2 ? "running" : "succeeded";
     await route.fulfill({

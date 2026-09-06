@@ -21,7 +21,7 @@ function renderBar() {
 
 test("affiche la version et le tenant depuis /me", async () => {
   server.use(
-    http.get("https://core.test/me", () =>
+    http.get("https://core.test/v1/me", () =>
       HttpResponse.json({
         id: "u1",
         username: "alice",

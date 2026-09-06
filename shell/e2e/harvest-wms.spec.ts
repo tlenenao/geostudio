@@ -18,7 +18,7 @@ test("un admin déclare une source WMS, la moissonne, et affiche la couche raste
   // Couches raster exposées par /harvest/layers après moissonnage.
   const rasterLayers: { id: string; title: string; kind: "raster"; tilesUrl: string }[] = [];
 
-  await page.route("https://core.test/harvest/sources", async (route) => {
+  await page.route("https://core.test/v1/harvest/sources", async (route) => {
     if (route.request().method() === "POST") {
       created = await route.request().postDataJSON();
       await route.fulfill({
@@ -58,7 +58,7 @@ test("un admin déclare une source WMS, la moissonne, et affiche la couche raste
     });
   });
 
-  await page.route("https://core.test/harvest/sources/src-1/run", async (route) => {
+  await page.route("https://core.test/v1/harvest/sources/src-1/run", async (route) => {
     runCount += 1;
     harvestedById.set(`${CAPS}#topp:states`, {
       pk: "ext-wms-1",
@@ -81,7 +81,7 @@ test("un admin déclare une source WMS, la moissonne, et affiche la couche raste
     await route.fulfill({ status: 202, json: { status: "queued" } });
   });
 
-  await page.route("https://core.test/items*", async (route) => {
+  await page.route("https://core.test/v1/items*", async (route) => {
     const url = new URL(route.request().url());
     const type = url.searchParams.get("type");
     // LayerPicker also fires a hosted-tileset3d lookup (`?type=tileset3d`,
@@ -95,7 +95,7 @@ test("un admin déclare une source WMS, la moissonne, et affiche la couche raste
     await route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 12 } });
   });
 
-  await page.route("https://core.test/harvest/layers*", async (route) => {
+  await page.route("https://core.test/v1/harvest/layers*", async (route) => {
     const url = new URL(route.request().url());
     const q = url.searchParams.get("q");
     const layers = q

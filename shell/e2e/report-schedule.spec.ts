@@ -13,7 +13,7 @@ test("programmer un rapport sur un signet, voir son historique d'exécutions", a
   // SP-17b, I3) : l'entrée « Programmer un rapport » ne s'affiche que si
   // GET /instance annonce exportEnabled, et le cœur refuse la création en 403
   // sinon. Le défaut de mockCore ne porte que readOnly.
-  await page.route("https://core.test/instance", async (route) => {
+  await page.route("https://core.test/v1/instance", async (route) => {
     await route.fulfill({ json: { readOnly: false, etlEnabled: false, exportEnabled: true } });
   });
 

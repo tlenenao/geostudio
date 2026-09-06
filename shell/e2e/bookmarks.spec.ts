@@ -91,7 +91,7 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
       },
     });
   });
-  await page.route("https://core.test/items/dataset-1", async (route) => {
+  await page.route("https://core.test/v1/items/dataset-1", async (route) => {
     await route.fulfill({
       json: {
         pk: "dataset-1",
@@ -258,7 +258,7 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
       },
     });
   });
-  await page.route("https://core.test/configs/by-item/bookmark-1", async (route) => {
+  await page.route("https://core.test/v1/configs/by-item/bookmark-1", async (route) => {
     await route.fulfill({
       json: {
         id: "cfg-bookmark",

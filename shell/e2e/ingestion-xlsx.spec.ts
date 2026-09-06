@@ -30,7 +30,7 @@ async function mockXlsxIngestionFlow(page: Page) {
       });
     }
   });
-  await page.route("https://core.test/items/91", async (route) => {
+  await page.route("https://core.test/v1/items/91", async (route) => {
     await route.fulfill({
       json: {
         pk: "91",
@@ -67,7 +67,7 @@ async function mockXlsxIngestionFlow(page: Page) {
                 title: "Villes XLSX",
                 visible: true,
                 kind: "feature",
-                url: "https://core.test/collections/ingest_xlsx/items",
+                url: "https://core.test/v1/collections/ingest_xlsx/items",
               },
             ],
           },

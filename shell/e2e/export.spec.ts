@@ -25,7 +25,7 @@ test("exporter une carte en PDF depuis la visionneuse : le job atteint 'done' et
   // absent → false) — ajoutée après mockCore(), donc prioritaire (Playwright
   // exécute le gestionnaire le plus récemment enregistré en premier), même
   // patron que les surcharges "site portal" en fin de mocks.ts.
-  await page.route("https://core.test/instance", async (route) => {
+  await page.route("https://core.test/v1/instance", async (route) => {
     await route.fulfill({ json: { readOnly: false, etlEnabled: false, exportEnabled: true } });
   });
 
@@ -103,7 +103,7 @@ test("le rendu ?exportRender=1 a une hauteur non nulle (régression C1 — chaî
   // jsdom (Vitest) n'a pas de moteur de mise en page et ne peut pas détecter
   // cette classe de régression ; seul un vrai navigateur Playwright le peut.
   await mockCore(page);
-  await page.route("https://core.test/instance", async (route) => {
+  await page.route("https://core.test/v1/instance", async (route) => {
     await route.fulfill({ json: { readOnly: false, etlEnabled: false, exportEnabled: true } });
   });
 
@@ -121,7 +121,7 @@ test("le rendu ?exportRender=1 a une hauteur non nulle (régression C1 — chaî
 test("le bouton Exporter est absent quand la capacité est désactivée", async ({ page }) => {
   await mockCore(page);
 
-  await page.route("https://core.test/instance", async (route) => {
+  await page.route("https://core.test/v1/instance", async (route) => {
     await route.fulfill({ json: { readOnly: false, etlEnabled: false, exportEnabled: false } });
   });
 

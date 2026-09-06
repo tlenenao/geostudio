@@ -78,10 +78,10 @@ function Harness() {
 test("lists collections and registers a new one via the panel", async () => {
   let posted: unknown;
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({ collections: [INCIDENTS] }),
     ),
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({
         candidates: [
           {
@@ -94,7 +94,7 @@ test("lists collections and registers a new one via the panel", async () => {
         ],
       }),
     ),
-    http.post("https://core.test/collections", async ({ request }) => {
+    http.post("https://core.test/v1/collections", async ({ request }) => {
       posted = await request.json();
       return HttpResponse.json({ ...INCIDENTS, id: "points_interet", title: "points_interet" });
     }),
@@ -114,8 +114,8 @@ test("lists collections and registers a new one via the panel", async () => {
 
 test("shows an empty-state message when there are no candidate tables", async () => {
   server.use(
-    http.get("https://core.test/collections", () => HttpResponse.json({ collections: [] })),
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({ candidates: [] }),
     ),
   );
@@ -126,8 +126,8 @@ test("shows an empty-state message when there are no candidate tables", async ()
 
 test("disables a non-registrable candidate and shows its reason", async () => {
   server.use(
-    http.get("https://core.test/collections", () => HttpResponse.json({ collections: [] })),
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({
         candidates: [
           { tableName: "widgets", registrable: false, reason: "table has no primary key" },
@@ -153,8 +153,8 @@ test("disables a non-registrable candidate and shows its reason", async () => {
 
 test("disables the register submit button when the instance is in read-only demo mode", async () => {
   server.use(
-    http.get("https://core.test/collections", () => HttpResponse.json({ collections: [] })),
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({
         candidates: [
           {
@@ -167,7 +167,7 @@ test("disables the register submit button when the instance is in read-only demo
         ],
       }),
     ),
-    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
   );
   render(<Harness />);
   await userEvent.click(await screen.findByRole("button", { name: "Enregistrer une table" }));
@@ -178,13 +178,13 @@ test("disables the register submit button when the instance is in read-only demo
 test("edits a collection via the row action", async () => {
   let patched: unknown;
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({ collections: [INCIDENTS] }),
     ),
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({ candidates: [] }),
     ),
-    http.patch("https://core.test/collections/incidents", async ({ request }) => {
+    http.patch("https://core.test/v1/collections/incidents", async ({ request }) => {
       patched = await request.json();
       return HttpResponse.json({ ...INCIDENTS, title: "Incidents (v2)" });
     }),
@@ -208,10 +208,10 @@ test("aria-expanded est câblé par ligne, pas partagé entre toutes les lignes 
   // basculaient aria-expanded="true" en même temps.
   const other: CollectionAdminFixture = { ...INCIDENTS, id: "parcs", title: "Parcs" };
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({ collections: [INCIDENTS, other] }),
     ),
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({ candidates: [] }),
     ),
   );
@@ -229,13 +229,13 @@ test("aria-expanded est câblé par ligne, pas partagé entre toutes les lignes 
 
 test("surfaces an alert when editing a collection fails", async () => {
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({ collections: [INCIDENTS] }),
     ),
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({ candidates: [] }),
     ),
-    http.patch("https://core.test/collections/incidents", () =>
+    http.patch("https://core.test/v1/collections/incidents", () =>
       HttpResponse.json({}, { status: 500 }),
     ),
   );
@@ -250,13 +250,13 @@ test("surfaces an alert when editing a collection fails", async () => {
 
 test("disables the edit submit button when the instance is in read-only demo mode", async () => {
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({ collections: [INCIDENTS] }),
     ),
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({ candidates: [] }),
     ),
-    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
   );
   render(<Harness />);
   await userEvent.click(await screen.findByRole("button", { name: "Éditer" }));
@@ -266,13 +266,13 @@ test("disables the edit submit button when the instance is in read-only demo mod
 test("deletes a collection after confirming", async () => {
   let deleteCalled = false;
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({ collections: [INCIDENTS] }),
     ),
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({ candidates: [] }),
     ),
-    http.delete("https://core.test/collections/incidents", () => {
+    http.delete("https://core.test/v1/collections/incidents", () => {
       deleteCalled = true;
       return new HttpResponse(null, { status: 204 });
     }),
@@ -286,14 +286,14 @@ test("deletes a collection after confirming", async () => {
 
 test("supprimer la ligne en cours d'édition ferme le panneau Éditer (croisement editing/deleting)", async () => {
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({ collections: [INCIDENTS] }),
     ),
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({ candidates: [] }),
     ),
     http.delete(
-      "https://core.test/collections/incidents",
+      "https://core.test/v1/collections/incidents",
       () => new HttpResponse(null, { status: 204 }),
     ),
   );
@@ -310,18 +310,18 @@ test("supprimer la ligne en cours d'édition ferme le panneau Éditer (croisemen
 
 test("supprimer la ligne en cours de partage ferme le panneau Partager (croisement sharing/deleting)", async () => {
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({ collections: [INCIDENTS] }),
     ),
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({ candidates: [] }),
     ),
-    http.get("https://core.test/groups", () => HttpResponse.json([])),
-    http.get("https://core.test/collections/incidents/sharing", () =>
+    http.get("https://core.test/v1/groups", () => HttpResponse.json([])),
+    http.get("https://core.test/v1/collections/incidents/sharing", () =>
       HttpResponse.json({ public: false, groups: [] }),
     ),
     http.delete(
-      "https://core.test/collections/incidents",
+      "https://core.test/v1/collections/incidents",
       () => new HttpResponse(null, { status: 204 }),
     ),
   );
@@ -339,19 +339,19 @@ test("supprimer la ligne en cours de partage ferme le panneau Partager (croiseme
 test("shares a collection via the row action", async () => {
   let putBody: unknown;
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({ collections: [INCIDENTS] }),
     ),
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({ candidates: [] }),
     ),
-    http.get("https://core.test/groups", () =>
+    http.get("https://core.test/v1/groups", () =>
       HttpResponse.json([{ id: "g1", name: "Équipe terrain" }]),
     ),
-    http.get("https://core.test/collections/incidents/sharing", () =>
+    http.get("https://core.test/v1/collections/incidents/sharing", () =>
       HttpResponse.json({ public: false, groups: [] }),
     ),
-    http.put("https://core.test/collections/incidents/sharing", async ({ request }) => {
+    http.put("https://core.test/v1/collections/incidents/sharing", async ({ request }) => {
       putBody = await request.json();
       return HttpResponse.json({ public: true, groups: [] });
     }),
@@ -368,19 +368,19 @@ test("shares a collection via the row action", async () => {
 
 test("disables the share submit button when the instance is in read-only demo mode", async () => {
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({ collections: [INCIDENTS] }),
     ),
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({ candidates: [] }),
     ),
-    http.get("https://core.test/groups", () =>
+    http.get("https://core.test/v1/groups", () =>
       HttpResponse.json([{ id: "g1", name: "Équipe terrain" }]),
     ),
-    http.get("https://core.test/collections/incidents/sharing", () =>
+    http.get("https://core.test/v1/collections/incidents/sharing", () =>
       HttpResponse.json({ public: false, groups: [] }),
     ),
-    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
   );
   render(<Harness />);
   await userEvent.click(await screen.findByRole("button", { name: "Partager" }));
@@ -390,17 +390,17 @@ test("disables the share submit button when the instance is in read-only demo mo
 test("switching from edit to share on a different row closes the edit panel (exclusivité mutuelle)", async () => {
   const other: CollectionAdminFixture = { ...INCIDENTS, id: "parcs", title: "Parcs" };
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({ collections: [INCIDENTS, other] }),
     ),
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({ candidates: [] }),
     ),
-    http.get("https://core.test/groups", () => HttpResponse.json([])),
-    http.get("https://core.test/collections/parcs/sharing", () =>
+    http.get("https://core.test/v1/groups", () => HttpResponse.json([])),
+    http.get("https://core.test/v1/collections/parcs/sharing", () =>
       HttpResponse.json({ public: false, groups: [] }),
     ),
-    http.get("https://core.test/collections/incidents/sharing", () =>
+    http.get("https://core.test/v1/collections/incidents/sharing", () =>
       HttpResponse.json({ public: false, groups: [] }),
     ),
   );
@@ -452,7 +452,7 @@ test("switching from edit to share on a different row closes the edit panel (exc
 test("sous viewport étroit, affiche trois onglets Catalogue/Collections/Détail avec Collections actif par défaut", async () => {
   stubMatchMedia(true);
   server.use(
-    http.get("https://core.test/collections", () => HttpResponse.json({ collections: [] })),
+    http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
   );
   render(<Harness />);
   const tabs = await screen.findAllByRole("tab");
@@ -469,7 +469,7 @@ test("SP-42/F-securite-autorisation-06 : verrouille Éditer/Partager quand permi
     permissions: { read: true, write: false, delete: false, share: false },
   };
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({ collections: [RESTRICTED] }),
     ),
   );
@@ -490,7 +490,7 @@ test("SP-42/F-securite-autorisation-06 : verrouille Éditer/Partager quand permi
 test("GAP-40 : un champ de recherche relaie q à listCollections", async () => {
   let lastUrl = "";
   server.use(
-    http.get("https://core.test/collections", ({ request }) => {
+    http.get("https://core.test/v1/collections", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({ collections: [INCIDENTS] });
     }),

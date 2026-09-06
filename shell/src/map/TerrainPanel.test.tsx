@@ -25,7 +25,7 @@ function Harness({ children }: { children: ReactNode }) {
 
 function setInstance(terrain3dEnabled: boolean) {
   server.use(
-    http.get(`${CORE_URL}/instance`, () =>
+    http.get(`${CORE_URL}/v1/instance`, () =>
       HttpResponse.json({ readOnly: false, terrain3dEnabled }),
     ),
   );
@@ -156,7 +156,7 @@ test("unchecking the box emits null", async () => {
 
 test("selecting a hosted DEM sets tilesUrl to the terrain3d proxy URL", async () => {
   server.use(
-    http.get(`${CORE_URL}/items`, () =>
+    http.get(`${CORE_URL}/v1/items`, () =>
       HttpResponse.json({
         items: [{ pk: "t-1", title: "Relief du massif" }],
         total: 1,
@@ -175,7 +175,7 @@ test("selecting a hosted DEM sets tilesUrl to the terrain3d proxy URL", async ()
 
   await waitFor(() =>
     expect(onChange).toHaveBeenCalledWith({
-      tilesUrl: `${CORE_URL}/terrain3d/t-1/tiles/{z}/{x}/{y}.png`,
+      tilesUrl: `${CORE_URL}/v1/terrain3d/t-1/tiles/{z}/{x}/{y}.png`,
       encoding: "terrarium",
       exaggeration: 1,
     }),
@@ -184,7 +184,7 @@ test("selecting a hosted DEM sets tilesUrl to the terrain3d proxy URL", async ()
 
 test("external URL field remains usable and independent of the hosted picker", async () => {
   server.use(
-    http.get(`${CORE_URL}/items`, () =>
+    http.get(`${CORE_URL}/v1/items`, () =>
       HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 200 }),
     ),
   );

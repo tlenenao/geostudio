@@ -96,7 +96,7 @@ test("un viewer ne voit pas les boutons d'écriture ; une écriture forcée est 
 
   // Écriture forcée (contournement de l'UI, ex. devtools) : le serveur refuse.
   const status = await page.evaluate(async () => {
-    const res = await fetch("https://core.test/collections/incidents/items", {
+    const res = await fetch("https://core.test/v1/collections/incidents/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

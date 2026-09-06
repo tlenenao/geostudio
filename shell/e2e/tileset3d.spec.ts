@@ -4,7 +4,7 @@ import { mockCore } from "./mocks";
 
 async function mockTileset3DUploadFlow(page: Page) {
   let jobPolls = 0;
-  await page.route("https://core.test/instance", async (route) => {
+  await page.route("https://core.test/v1/instance", async (route) => {
     await route.fulfill({ json: { readOnly: false, tileset3dEnabled: true } });
   });
   await page.route("**/tileset3d/uploads/job-1/parts/1/presign", async (route) => {
@@ -29,7 +29,7 @@ async function mockTileset3DUploadFlow(page: Page) {
       await route.fulfill({ json: { status: "done", errorMessage: null, itemId: "t1" } });
     }
   });
-  await page.route("https://core.test/items?*", async (route) => {
+  await page.route("https://core.test/v1/items?*", async (route) => {
     const url = new URL(route.request().url());
     if (url.searchParams.get("type") !== "tileset3d") return route.fallback();
     await route.fulfill({
@@ -53,7 +53,7 @@ async function mockTileset3DUploadFlow(page: Page) {
       },
     });
   });
-  await page.route("https://core.test/tileset3d/t1/tileset.json", async (route) => {
+  await page.route("https://core.test/v1/tileset3d/t1/tileset.json", async (route) => {
     await route.fulfill({
       json: {
         asset: { version: "1.0" },
@@ -106,7 +106,7 @@ test("upload a tileset, add it to a map via LayerPicker, the proxy request succe
   await page
     .getByRole("searchbox", { name: "Rechercher une source de couche" })
     .fill("Ville de test E2E");
-  const tilesetRequest = page.waitForResponse("https://core.test/tileset3d/t1/tileset.json");
+  const tilesetRequest = page.waitForResponse("https://core.test/v1/tileset3d/t1/tileset.json");
   await page.getByRole("button", { name: /Ville de test E2E/ }).click();
   const response = await tilesetRequest;
   expect(response.status()).toBe(200);

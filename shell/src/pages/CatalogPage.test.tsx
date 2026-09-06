@@ -59,7 +59,7 @@ function wrapper({ children }: { children: ReactNode }) {
 
 function mockCatalogItems() {
   server.use(
-    http.get("https://core.test/items", ({ request }) => {
+    http.get("https://core.test/v1/items", ({ request }) => {
       const url = new URL(request.url);
       const q = url.searchParams.get("q");
       const all = [
@@ -112,7 +112,7 @@ test("filters by search term", async () => {
 test("filters the catalog by scope", async () => {
   let lastUrl = "";
   server.use(
-    http.get("https://core.test/items", ({ request }) => {
+    http.get("https://core.test/v1/items", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
     }),
@@ -124,7 +124,7 @@ test("filters the catalog by scope", async () => {
 
 function mockFacets() {
   server.use(
-    http.get("https://core.test/items/facets", () =>
+    http.get("https://core.test/v1/items/facets", () =>
       HttpResponse.json({
         owners: [
           { username: "alice", count: 3 },
@@ -143,7 +143,7 @@ test("trie le catalogue (sélecteur Trier par)", async () => {
   let lastUrl = "";
   mockFacets();
   server.use(
-    http.get("https://core.test/items", ({ request }) => {
+    http.get("https://core.test/v1/items", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
     }),
@@ -157,7 +157,7 @@ test("filtre par propriétaire (facette peuplée par useItemFacets)", async () =
   let lastUrl = "";
   mockFacets();
   server.use(
-    http.get("https://core.test/items", ({ request }) => {
+    http.get("https://core.test/v1/items", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
     }),
@@ -179,7 +179,7 @@ test("filtre par mot-clé (chip à bascule, peuplé par useItemFacets)", async (
   let lastUrl = "";
   mockFacets();
   server.use(
-    http.get("https://core.test/items", ({ request }) => {
+    http.get("https://core.test/v1/items", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
     }),
@@ -199,7 +199,7 @@ test("SP-55 : dessiner un rectangle sur CatalogSpatialFilter filtre le catalogue
   let lastUrl = "";
   mockFacets();
   server.use(
-    http.get("https://core.test/items", ({ request }) => {
+    http.get("https://core.test/v1/items", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
     }),
@@ -228,7 +228,7 @@ test("le filtre Type propose les douze types plus « Tous »", () => {
 test("fixedType locks the type filter and hides the selector", async () => {
   let lastUrl = "";
   server.use(
-    http.get("https://core.test/items", ({ request }) => {
+    http.get("https://core.test/v1/items", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
     }),
@@ -308,7 +308,7 @@ test("setType met à jour la query au changement de filtre (history réelle test
   // en E2E via `page.goBack()` (Task 6).
   let lastUrl = "";
   server.use(
-    http.get("https://core.test/items", ({ request }) => {
+    http.get("https://core.test/v1/items", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
     }),
@@ -324,7 +324,7 @@ test("setType met à jour la query au changement de filtre (history réelle test
 test("réinitialise la page à 1 quand le type change (navigation DomainBar)", async () => {
   let lastUrl = "";
   server.use(
-    http.get("https://core.test/items", ({ request }) => {
+    http.get("https://core.test/v1/items", ({ request }) => {
       lastUrl = request.url;
       // total > pageSize pour que le bouton "Suivant" ne soit pas désactivé
       // (avec total: 0, totalPages vaut 1 et page 1 >= totalPages).

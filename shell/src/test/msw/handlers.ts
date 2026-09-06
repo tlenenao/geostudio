@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { http, HttpResponse } from "msw";
 
-const CORE = "https://core.test";
+// SP-57b : coreUrl porte désormais /v1 (createBase(), point unique) — les
+// handlers par défaut de ce fichier doivent matcher le chemin réel que
+// request()/requestBlob() appellent désormais.
+const CORE = "https://core.test/v1";
 
 function item(pk: string, type = "app", title = `Item ${pk}`) {
   return {

@@ -5,7 +5,7 @@ import { ADMIN_ME, mockCore, mockMe } from "./mocks";
 test("persona Créateur : voit ses tâches, pas la section usage plateforme", async ({ page }) => {
   await mockCore(page);
   await mockMe(page); // défaut = creator, cf. DEFAULT_ME (mocks.ts) — porte tasks.view
-  await page.route("https://core.test/usage/tasks**", async (route) => {
+  await page.route("https://core.test/v1/usage/tasks**", async (route) => {
     await route.fulfill({
       json: {
         tasks: [
@@ -34,10 +34,10 @@ test("persona Créateur : voit ses tâches, pas la section usage plateforme", as
 test("persona Administrateur : voit les deux sections", async ({ page }) => {
   await mockCore(page);
   await mockMe(page, ADMIN_ME);
-  await page.route("https://core.test/usage/tasks**", async (route) => {
+  await page.route("https://core.test/v1/usage/tasks**", async (route) => {
     await route.fulfill({ json: { tasks: [], total: 0, page: 1, pageSize: 50 } });
   });
-  await page.route("https://core.test/usage/summary**", async (route) => {
+  await page.route("https://core.test/v1/usage/summary**", async (route) => {
     await route.fulfill({
       json: {
         byActor: [{ actorId: "u1", actorUsername: "alice", count: 3 }],
