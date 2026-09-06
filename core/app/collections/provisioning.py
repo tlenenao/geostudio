@@ -17,10 +17,10 @@ from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.collections import repository as collections_repo
-from app.collections.ddl import quote_ident
 from app.collections.introspection import Introspector
 from app.collections.models import Collection
 from app.collections.schemas import EmptyCollectionColumn
+from app.sql_ident import quote_ident
 
 
 def create_empty_collection(

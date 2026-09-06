@@ -139,7 +139,7 @@ def get_feature_counter():
     de toute façon qu'après apply_ddl, déjà passé à ce stade."""
     from sqlalchemy import text as _text
 
-    from app.collections.ddl import quote_ident
+    from app.sql_ident import quote_ident
 
     def counter(session, table_name):
         if session.get_bind().dialect.name != "postgresql":

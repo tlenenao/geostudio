@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.collections import repository as collections_repo
-from app.collections.ddl import apply_collection_ddl, quote_ident
+from app.collections.ddl import apply_collection_ddl
 from app.collections.extent import table_extent
 from app.collections.introspection_pg import introspect_table
 from app.configs import repository as configs_repo
@@ -31,6 +31,7 @@ from app.ingestion.parsers import (
     parse_xlsx_latlon,
 )
 from app.items import repository as items_repo
+from app.sql_ident import quote_ident
 
 # Doit rester synchronisé avec shell/src/map/basemaps.ts DEFAULT_BASEMAP.style.
 _DEFAULT_BASEMAP_STYLE = "https://demotiles.maplibre.org/style.json"
