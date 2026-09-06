@@ -91,12 +91,11 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
   `YYYY-MM-DD-spX…`.
 - **TDD systématique** ; chaque feature visible a sa spec E2E Playwright. La
   suite E2E complète est le filet de la migration : elle reste globalement
-  verte (dernière mesure après intégration de SP-45/46/47/49/52/53/55/56/58/
-  51/54, 2026-09-06 : 156 passed / 4 skipped / **1 failed** —
-  `e2e/pipeline-builder.spec.ts:111`, timeout sur le bouton « Exécuter »,
-  confirmé préexistant à SP-43 en checkoutant le commit d'avant sa Tâche 1 ;
-  cause non encore investiguée, ne pas imputer à un futur travail sans
-  vérifier d'abord si ce test échoue déjà sur `dev`).
+  verte (dernière mesure après SP-57a, 2026-09-06 : 165 passed / 4 skipped /
+  **1 failed** — `e2e/pipeline-builder.spec.ts:111`, timeout sur le bouton
+  « Exécuter », confirmé préexistant à SP-43 en checkoutant le commit
+  d'avant sa Tâche 1 ; cause non encore investiguée, ne pas imputer à un
+  futur travail sans vérifier d'abord si ce test échoue déjà sur `dev`).
 - Exécution en **subagent-driven-development** : une revue par tâche **et** une
   revue finale de branche, systématiquement — ce ne sont pas les mêmes défauts
   (cf. `## Pièges récurrents`).
@@ -112,11 +111,10 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ```bash
 # shell (d'abord, car commitlint en dépend)
 cd shell && npm ci
-npm run test         # Vitest — dernier compte mesuré après intégration
-                     # complète de SP-45/46/47/49/52/53/55/56/58/51/54
-                     # (2026-09-06) : 235 fichiers, 2064 tests, tous passed.
-                     # Couverture 90,51 % (seuil 88).
-npm run e2e          # Playwright — 156 passed / 4 skipped / 1 failed à la
+npm run test         # Vitest — dernier compte mesuré après SP-57a
+                     # (2026-09-06) : 236 fichiers, 2069 tests, tous passed.
+                     # Couverture 90,03 % (seuil 88).
+npm run e2e          # Playwright — 165 passed / 4 skipped / 1 failed à la
                      # même mesure (VITE_AUTH_MODE=mock) — l'échec
                      # (pipeline-builder.spec.ts:111) est préexistant à
                      # SP-43, cf. ## Comment on travaille.
@@ -790,6 +788,41 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   (`sampleDataSourceField` de SP-51 et les méthodes de SP-54 sont des
   entrées distinctes de l'interface `ItemClient`, `invalidateDatasetCache`
   est la seule méthode de SP-54 dans `base.ts`, jamais touché par SP-51).
+- **SP-57a** — i18n complète + audit d'accessibilité (vague 5, GAP-14,
+  spec `docs/superpowers/specs/2026-09-06-sp57a-i18n-a11y-design.md`,
+  plan `docs/superpowers/plans/2026-09-06-sp57a-i18n-a11y.md`), 11 tâches :
+  **volet i18n** — détecteur de couverture (`shell/scripts/
+  check-i18n-coverage.mjs`, filtre commentaires/imports/argument littéral
+  de `t(`, câblé en garde permanente dans `npm run lint`) posé et falsifié
+  avant toute migration ; baseline réelle mesurée à 99 fichiers/798
+  occurrences (pas les 110 théoriques de GAP-14 — plusieurs des 19
+  fichiers déjà "migrés" par SP-29a/SP-30 avaient des chaînes résiduelles
+  non détectées par le script, faute d'accent ou de mot listé) ;
+  `pages/`/`shell/`/`builder/` (racine + 8 sous-dossiers)/`map/` migrés en
+  7 lots séquentiels vers `t()`, 1343 clés au catalogue final (aucune
+  dupliquée, aucune vide), aucun changement de texte affiché. **Volet
+  a11y** — `@axe-core/playwright` branché sur la suite E2E existante,
+  échantillon de 9 pages (une par famille de layout du triptyque + une
+  page publique). 2 violations `serious` réelles trouvées et corrigées :
+  contrôle d'attribution MapLibre imbriquant du contenu focusable dans un
+  `role="img"` décoratif (`CatalogSpatialFilter`, `attributionControl:
+  false`) ; classe Tailwind brute `text-slate-400` (2.33:1, très sous le
+  seuil AA 4.5:1) utilisée pour le texte des états vides sur **17
+  fichiers** de `src/builder/` au lieu d'un token de l'ambiance —
+  remplacée par `text-ink-2` (7.94:1, déjà le token de texte secondaire du
+  design system, SP-34). 1 violation `serious` documentée et exclue (pas
+  corrigée, hors budget) : le token `--gs-ink-3` lui-même (3.65:1,
+  réutilisé par ~20 fichiers) — corriger sa valeur changerait l'ambiance
+  visuelle de tout le shell (`REV-176`). Filets falsifiés systématiquement
+  (détecteur i18n, garde `npm run lint`, audit a11y — injection délibérée
+  d'un défaut, confirmation d'échec, retrait). Suite finale : shell 236
+  fichiers/2069 tests, couverture 90,03 % (seuil 88) ; `npm run build`
+  propre ; E2E 165 passed/4 skipped/1 échec préexistant
+  (`e2e/pipeline-builder.spec.ts:111`, sans rapport). Reste hors périmètre,
+  assumé : extension du détecteur i18n à `ui/`/`api/`/`auth/`/
+  `staticExport/` (`REV-177`), extension de l'audit a11y au reste du
+  catalogue de routes + `eslint-plugin-jsx-a11y` en complément statique
+  (`REV-178`).
 
 ### Conventions tranchées (2026-09-01)
 
@@ -811,11 +844,12 @@ cette décision a été fermée par SP-34 (cf. `### Livré` ci-dessus).
 ### Suivis et dette non bloquante
 
 Le détail complet (43 trouvailles confirmées non corrigées, 35 minor, 79
-gaps, la dette héritée SP-29b→SP-40, et 2 trouvailles SP-43 documentées sans
-être corrigées) vit dans **`docs/revue/2026-09-04-backlog.md`** (175
-entrées `REV-nnn`, numérotation stable et citable — ne pas renuméroter,
-ajouter en fin de section). Ce qui, dans ce backlog, change le comportement
-immédiat d'une session :
+gaps, la dette héritée SP-29b→SP-40, 2 trouvailles SP-43 et 3 trouvailles
+SP-57a documentées sans être corrigées) vit dans
+**`docs/revue/2026-09-04-backlog.md`** (178 entrées `REV-nnn`,
+numérotation stable et citable — ne pas renuméroter, ajouter en fin de
+section). Ce qui, dans ce backlog, change le comportement immédiat d'une
+session :
 
 - Jalon **M14 atteint** (SP-44, `REV-095` clos) : les 5 tests
   `@pytest.mark.qgis` tournent contre un vrai sidecar — 2 défauts de
@@ -842,6 +876,14 @@ immédiat d'une session :
   documenté (pas corrigé) par SP-43 (`REV-174`).
 - 4 index fonctionnels pgvector/trgm non représentés dans `Base.metadata`,
   filtrés nommément par le comparateur modèle/Alembic de SP-43 (`REV-175`).
+- i18n (SP-29a) et audit d'accessibilité (SP-57a) outillés : `npm run lint`
+  échoue désormais sur toute chaîne française codée en dur hors
+  `pages/shell/builder/map` (garde permanente, `shell/scripts/
+  check-i18n-coverage.mjs`) ; `shell/e2e/a11y-audit.spec.ts` audite 9 pages
+  représentatives (axe-core). Token `--gs-ink-3` sous le seuil de
+  contraste AA sur plusieurs pages, exclu et documenté plutôt que corrigé
+  (`REV-176`) ; détecteur i18n limité à 4 répertoires (`REV-177`) ;
+  échantillon a11y non exhaustif (`REV-178`).
 - Questions produit ouvertes (comparatif §8) : Q2 (premiers utilisateurs
   réels — la seule qui puisse réordonner le phasage), Q10 (temps réel,
   `REV-108`), Q11 (offline, `REV-120`).
