@@ -5,6 +5,7 @@ import type {
   AlertRuleSummary,
   Item,
   ItemClient,
+  PageParams,
 } from "../types";
 import type { ItemClientBase } from "../base";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
@@ -71,8 +72,18 @@ export function createAlertsMethods(base: ItemClientBase): AlertsMethods {
       return request<AlertRuleSummary[]>("GET", `/datasets/${datasetItemId}/alerts`);
     },
 
-    async getAlertEvaluations(alertItemId: string): Promise<AlertEvaluation[]> {
-      return request<AlertEvaluation[]>("GET", `/alerts/${alertItemId}/evaluations`);
+    async getAlertEvaluations(
+      alertItemId: string,
+      params?: PageParams,
+    ): Promise<AlertEvaluation[]> {
+      const query = new URLSearchParams();
+      if (params?.limit !== undefined) query.set("limit", String(params.limit));
+      if (params?.offset !== undefined) query.set("offset", String(params.offset));
+      const qs = query.toString();
+      return request<AlertEvaluation[]>(
+        "GET",
+        `/alerts/${alertItemId}/evaluations${qs ? `?${qs}` : ""}`,
+      );
     },
   };
 }

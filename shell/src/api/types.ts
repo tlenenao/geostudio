@@ -382,6 +382,12 @@ export type MapIconOut = {
   createdAt: string;
 };
 
+// Pagination générique pour les endpoints déjà paginés côté serveur mais dont
+// les fonctions shell n'envoyaient jusqu'ici jamais `limit`/`offset` (SP-50,
+// constat non corrigé côté shell) : GET /collections, GET /reports/{id}/runs,
+// GET /pipelines/{id}/runs, GET /alerts/{id}/evaluations.
+export type PageParams = { limit?: number; offset?: number };
+
 export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
   getItemFacets(
@@ -482,7 +488,7 @@ export interface ItemClient {
   listAllExtensions(): Promise<AdminExtension[]>;
   setExtensionEnabled(id: string, enabled: boolean): Promise<void>;
   getMetadataCatalog(): Promise<MetadataCatalog>;
-  listCollections(params?: { q?: string }): Promise<CollectionAdmin[]>;
+  listCollections(params?: { q?: string } & PageParams): Promise<CollectionAdmin[]>;
   listCandidateTables(): Promise<CandidateTable[]>;
   createCollection(input: CollectionCreateInput): Promise<CollectionAdmin>;
   createEmptyCollection(input: CreateEmptyCollectionInput): Promise<{ id: string }>;
@@ -515,7 +521,7 @@ export interface ItemClient {
   savePipelineConfig(pk: string, payload: PipelinePayload): Promise<void>;
   getPipelineOps(): Promise<PipelineOpsCatalog>;
   runPipeline(pk: string): Promise<{ runId: string }>;
-  getPipelineRuns(pk: string): Promise<PipelineRun[]>;
+  getPipelineRuns(pk: string, params?: PageParams): Promise<PipelineRun[]>;
   listPipelineWebhookTokens(pk: string): Promise<PipelineWebhookToken[]>;
   createPipelineWebhookToken(pk: string): Promise<{ id: string; token: string; createdAt: string }>;
   revokePipelineWebhookToken(pk: string, tokenId: string): Promise<void>;
@@ -528,7 +534,7 @@ export interface ItemClient {
   getAlertRuleConfig(pk: string): Promise<AlertRulePayload>;
   saveAlertRuleConfig(pk: string, payload: AlertRulePayload): Promise<void>;
   listAlertRulesForDataset(datasetItemId: string): Promise<AlertRuleSummary[]>;
-  getAlertEvaluations(alertItemId: string): Promise<AlertEvaluation[]>;
+  getAlertEvaluations(alertItemId: string, params?: PageParams): Promise<AlertEvaluation[]>;
   createReportScheduleItem(input: {
     title: string;
     owner: string;
@@ -536,7 +542,7 @@ export interface ItemClient {
   }): Promise<Item>;
   getReportScheduleConfig(pk: string): Promise<ReportSchedulePayload>;
   saveReportScheduleConfig(pk: string, payload: ReportSchedulePayload): Promise<void>;
-  getReportRuns(pk: string): Promise<ReportRunStatus[]>;
+  getReportRuns(pk: string, params?: PageParams): Promise<ReportRunStatus[]>;
   listFeatureLayers(params?: { q?: string }): Promise<FeatureLayerSource[]>;
   getDatasetConfig(pk: string): Promise<DatasetConfig>;
   saveDatasetConfig(pk: string, config: DatasetConfig): Promise<void>;

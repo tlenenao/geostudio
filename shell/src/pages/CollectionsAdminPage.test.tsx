@@ -503,3 +503,39 @@ test("GAP-40 : un champ de recherche relaie q à listCollections", async () => {
   );
   await waitFor(() => expect(new URL(lastUrl).searchParams.get("q")).toBe("inci"));
 });
+
+// GET /collections pagine déjà côté cœur (limit/offset, SP-50) mais aucun
+// consommateur shell n'exploitait ces paramètres — cette page tronquait
+// silencieusement toute liste au-delà de la limite par défaut du cœur (100)
+// sans que rien ne le signale à l'écran.
+test("un bouton « Charger plus » apparaît quand la page est pleine et relaie une limite agrandie", async () => {
+  const many = Array.from({ length: 100 }, (_, i) => ({
+    ...INCIDENTS,
+    id: `c${i}`,
+    title: `Collection ${i}`,
+  }));
+  let lastUrl = "";
+  server.use(
+    http.get("https://core.test/v1/collections", ({ request }) => {
+      lastUrl = request.url;
+      return HttpResponse.json({ collections: many });
+    }),
+  );
+  render(<Harness />);
+  await screen.findByText("Collection 0");
+  expect(new URL(lastUrl).searchParams.get("limit")).toBe("100");
+  const loadMore = await screen.findByRole("button", { name: "Charger plus" });
+  await userEvent.click(loadMore);
+  await waitFor(() => expect(new URL(lastUrl).searchParams.get("limit")).toBe("200"));
+});
+
+test("le bouton « Charger plus » n'apparaît pas quand la page renvoyée est incomplète", async () => {
+  server.use(
+    http.get("https://core.test/v1/collections", () =>
+      HttpResponse.json({ collections: [INCIDENTS] }),
+    ),
+  );
+  render(<Harness />);
+  await screen.findByText("Incidents");
+  expect(screen.queryByRole("button", { name: "Charger plus" })).not.toBeInTheDocument();
+});

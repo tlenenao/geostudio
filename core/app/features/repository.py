@@ -12,8 +12,8 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.collections.ddl import quote_ident
 from app.collections.introspection import ColumnInfo, TableInfo
+from app.sql_ident import quote_ident
 
 
 @dataclass(frozen=True)

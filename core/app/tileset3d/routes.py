@@ -150,8 +150,16 @@ def presign_tileset3d_part(
 ) -> Tileset3DPartPresignResponse:
     if part_number < 1:
         raise HTTPException(status_code=422, detail="partNumber must be >= 1")
+    # REV-002 : cette route ne consultait jusqu'ici que get_current_user +
+    # tenant — aucun privilège, aucune vérification que l'appelant est le
+    # créateur du job — alors que create_tileset3d_upload/
+    # complete_tileset3d_upload exigent déjà toutes deux ce privilège. Un
+    # Lecteur (ou n'importe quel autre utilisateur du tenant) pouvait donc
+    # obtenir une URL presignée réelle pour pousser des octets (upload_part)
+    # dans le job multipart de quelqu'un d'autre.
+    require_privilege(session, user, privilege_for_kind("tileset3d"))
     job = repo.get_job(session, tenant_id=user.tenant_id, job_id=job_id)
-    if job is None:
+    if job is None or job.created_by != user.id:
         raise HTTPException(status_code=404, detail="job not found")
     url = s3.generate_presigned_url(
         "upload_part",

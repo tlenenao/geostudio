@@ -173,6 +173,32 @@ def test_compact_partition_writes_merged_file_before_deleting_originals_on_crash
     ]  # résultat inchangé malgré le doublon
 
 
+def test_run_compaction_cycle_isolates_partition_errors_and_continues():
+    """Une partition dont la fusion échoue (fichier .parquet corrompu, ex.)
+    ne doit pas interrompre tout le cycle — les autres partitions doivent
+    quand même être compactées, et l'échec doit être compté (REV-025)."""
+    client = _FakeS3Client()
+    client.objects[f"{PARTITION}part-a.parquet"] = _geoparquet_bytes(
+        [{"id": 1, "titre": "a", "_op": "insert", "_lsn": 1, "_ts": 1.0, "geometry": Point(0, 0)}]
+    )
+    client.objects[f"{PARTITION}part-b.parquet"] = _geoparquet_bytes(
+        [{"id": 1, "titre": "b", "_op": "update", "_lsn": 2, "_ts": 2.0, "geometry": Point(1, 1)}]
+    )
+    bad_prefix = "cdc/tenant_id=t2/collection_id=c9/dt=2026-07-18/"
+    client.objects[f"{bad_prefix}part-a.parquet"] = b"not a valid geoparquet file"
+    client.objects[f"{bad_prefix}part-b.parquet"] = b"not a valid geoparquet file either"
+
+    report = run_compaction_cycle(client, bucket="b", size_threshold_bytes=20000)
+
+    assert report.partitions_scanned == 2
+    assert report.partitions_compacted == 1  # la bonne partition, malgré l'échec de l'autre
+    assert report.partitions_failed == 1
+    assert report.files_removed == 2
+    # la partition en échec garde ses fichiers originaux intacts (rien perdu)
+    assert f"{bad_prefix}part-a.parquet" in client.objects
+    assert f"{bad_prefix}part-b.parquet" in client.objects
+
+
 def test_run_compaction_cycle_reports_across_partitions():
     client = _FakeS3Client()
     client.objects[f"{PARTITION}part-a.parquet"] = _geoparquet_bytes(
@@ -186,4 +212,6 @@ def test_run_compaction_cycle_reports_across_partitions():
 
     report = run_compaction_cycle(client, bucket="b", size_threshold_bytes=20000)
 
-    assert report == CompactionReport(partitions_scanned=2, partitions_compacted=1, files_removed=2)
+    assert report == CompactionReport(
+        partitions_scanned=2, partitions_compacted=1, files_removed=2, partitions_failed=0
+    )

@@ -57,10 +57,18 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
 @router.post("/terrain3d/uploads/presign", response_model=Terrain3DPresignResponse)
 def presign_terrain3d_upload(
     body: Terrain3DPresignRequest,
+    session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
     s3=Depends(get_s3_client),
     bucket: str = Depends(get_terrain3d_bucket),
 ) -> Terrain3DPresignResponse:
+    # REV-002 : cette route ne consultait jusqu'ici que get_current_user —
+    # aucun privilège — alors que create_terrain3d_upload (qui suit
+    # forcément dans tout flux réel) exige déjà ce même privilège. Un
+    # Lecteur (0 privilège) obtenait donc une URL S3 présignée réelle sans
+    # jamais pouvoir compléter le job, mais en consommant du stockage S3
+    # sans aucun privilège.
+    require_privilege(session, user, privilege_for_kind("terrain3d"))
     ensure_uploads_bucket(s3, bucket)
     key = f"{user.tenant_id}/{uuid.uuid4().hex}/{body.filename}"
     url = generate_presigned_put_url(

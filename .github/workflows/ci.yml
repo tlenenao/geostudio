@@ -64,6 +64,74 @@ jobs:
         run: uv run mypy app/ || true
       - run: uv run lint-imports
 
+  # Les 5 tests @pytest.mark.qgis exigent un vrai sidecar qgis-worker et un
+  # /scratch partagé avec lui. Faute de ce câblage, ils skippaient
+  # silencieusement en CI depuis SP-15d (2026-08-06) — SP-44 les a exécutés
+  # une fois à la main (2 bugs de production réels trouvés à cette
+  # occasion), mais laissait le câblage CI hors périmètre. Job séparé, et
+  # non une étape du job `core` : l'image de base QGIS pèse 11 Go, la faire
+  # peser sur le job principal rallongerait chaque exécution de CI.
+  core-qgis:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core
+    env:
+      CORE_TEST_DATABASE_URL: postgresql+psycopg://gis:gis@localhost:5432/gis_test
+      CORE_TEST_QGIS_WORKER_URL: http://localhost:8300
+      # Chemin ABSOLU et identique des deux côtés du montage : le process
+      # pytest écrit le .gpkg d'entrée depuis le runner, le sidecar le relit
+      # depuis son conteneur au même chemin. app/pipelines/runtime.py code
+      # « /scratch » en dur (_QGIS_SCRATCH_ROOT), donc ce chemin-là n'est pas
+      # libre.
+      CORE_TEST_QGIS_SCRATCH_DIR: /scratch
+    steps:
+      - uses: actions/checkout@v7
+      - name: Libérer du disque (image QGIS 11 Go)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h /
+      - name: Build postgis+pgvector image
+        run: docker build -t geostudio-postgis-ci:latest ../deploy/postgis
+      - name: Start Postgres
+        run: |
+          docker run -d --name ci-postgres \
+            -e POSTGRES_USER=gis -e POSTGRES_PASSWORD=gis -e POSTGRES_DB=gis_test \
+            -p 5432:5432 geostudio-postgis-ci:latest \
+            -c wal_level=logical \
+            -c output_plugin_libraries=wal2json,pgoutput,test_decoding
+          for i in $(seq 1 30); do
+            docker exec ci-postgres pg_isready -U gis && break
+            sleep 2
+          done
+      - name: Build qgis-worker image
+        run: docker build -t geostudio-qgis-worker:ci ../deploy/qgis-worker
+      - name: Start qgis-worker sur un /scratch partagé
+        run: |
+          # 0777 : le sidecar tourne en uid 1001 (qgis) et pytest sous
+          # l'utilisateur du runner, dont l'uid n'est garanti par aucun
+          # contrat GitHub. La recette locale (scripts/run-qgis-tests.sh)
+          # préserve elle l'égalité d'uid réelle avec la production ; ici on
+          # relâche les permissions plutôt que de parier dessus.
+          sudo mkdir -p /scratch && sudo chmod 0777 /scratch
+          docker run -d --name ci-qgis-worker \
+            -e QT_QPA_PLATFORM=offscreen \
+            -v /scratch:/scratch \
+            -p 8300:8000 geostudio-qgis-worker:ci
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+              http://localhost:8300/run -H 'Content-Type: application/json' \
+              -d '{"algorithmId":"pas-dans-l-allowlist","inputs":{}}' || true)
+            # 403 = le sidecar répond ET applique son allowlist : c'est la
+            # sonde de vivacité, il n'expose aucune route de santé.
+            [ "$code" = "403" ] && break
+            sleep 2
+          done
+          [ "$code" = "403" ]
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync
+      - run: uv run pytest -m qgis -q
+
   core-deps-audit:
     runs-on: ubuntu-latest
     defaults:

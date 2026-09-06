@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
+import { t } from "../i18n";
 import { Button } from "./kit/Button";
 import { Input } from "./kit/Input";
 import { Select } from "./kit/Select";
@@ -40,7 +41,7 @@ export function MetadataForm({
   const [language, setLanguage] = useState(initial.language);
 
   const licenseOptions = [
-    { value: UNSET, label: "Aucune licence déclarée" },
+    { value: UNSET, label: t("editCollection.noLicenseOption") },
     ...licenses.map((l) => ({ value: l.id, label: l.label })),
   ];
   const languageOptions = languages.map((l) => ({ value: l.id, label: l.label }));
@@ -68,18 +69,18 @@ export function MetadataForm({
         <Input aria-label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
       </label>
       <label className="flex flex-col gap-1 text-sm text-ink">
-        Résumé
+        {t("catalog.summaryLabel")}
         <textarea
-          aria-label="Résumé"
+          aria-label={t("catalog.summaryLabel")}
           className="min-h-20 rounded-md border border-rule bg-surface px-3 py-2 text-sm text-ink"
           value={abstract}
           onChange={(e) => setAbstract(e.target.value)}
         />
       </label>
       <label className="flex flex-col gap-1 text-sm text-ink">
-        Mots-clés
+        {t("catalog.keywordsLabel")}
         <Input
-          aria-label="Mots-clés"
+          aria-label={t("catalog.keywordsLabel")}
           value={keywords}
           onChange={(e) => setKeywords(e.target.value)}
         />
@@ -104,10 +105,10 @@ export function MetadataForm({
       </label>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>
-          Annuler
+          {t("confirmDialog.cancel")}
         </Button>
         <Button type="submit" size="sm" disabled={pending || !title.trim()}>
-          Enregistrer
+          {t("common.save")}
         </Button>
       </div>
     </form>

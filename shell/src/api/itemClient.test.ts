@@ -2685,10 +2685,27 @@ test("listCollections sans paramètre reste rétrocompatible", async () => {
     http.get("https://core.test/v1/collections", ({ request }) => {
       const url = new URL(request.url);
       expect(url.searchParams.has("q")).toBe(false);
+      expect(url.searchParams.has("limit")).toBe(false);
+      expect(url.searchParams.has("offset")).toBe(false);
       return HttpResponse.json({ collections: [] });
     }),
   );
   await makeClient().listCollections();
+});
+
+// SP-50 documentait ce manque côté shell (jamais corrigé) : le cœur pagine
+// déjà GET /collections (limit/offset, réponse numberMatched/numberReturned)
+// mais aucune fonction shell ne les envoyait.
+test("listCollections relaie limit/offset en paramètres de requête", async () => {
+  server.use(
+    http.get("https://core.test/v1/collections", ({ request }) => {
+      const url = new URL(request.url);
+      expect(url.searchParams.get("limit")).toBe("50");
+      expect(url.searchParams.get("offset")).toBe("100");
+      return HttpResponse.json({ collections: [] });
+    }),
+  );
+  await makeClient().listCollections({ limit: 50, offset: 100 });
 });
 
 test("listCandidateTables returns the candidates array as-is", async () => {
@@ -3161,6 +3178,20 @@ test("getPipelineRuns returns the run history", async () => {
   expect(result).toEqual(runs);
 });
 
+// SP-50 documentait ce manque côté shell (jamais corrigé) : GET
+// /pipelines/{id}/runs pagine déjà (limit/offset) côté cœur.
+test("getPipelineRuns relaie limit/offset en paramètres de requête", async () => {
+  server.use(
+    http.get("https://core.test/v1/pipelines/p-6/runs", ({ request }) => {
+      const url = new URL(request.url);
+      expect(url.searchParams.get("limit")).toBe("100");
+      expect(url.searchParams.get("offset")).toBe("100");
+      return HttpResponse.json([]);
+    }),
+  );
+  await makeClient().getPipelineRuns("p-6", { limit: 100, offset: 100 });
+});
+
 test("previewPipeline posts upTo as a query param and returns the row list", async () => {
   let url = "";
   server.use(
@@ -3320,6 +3351,49 @@ test("getAlertEvaluations calls GET /alerts/{id}/evaluations", async () => {
   );
   const evaluations = await makeClient().getAlertEvaluations("a-1");
   expect(evaluations[0].state).toBe("firing");
+});
+
+// SP-50 documentait ce manque côté shell (jamais corrigé) : GET
+// /alerts/{id}/evaluations pagine déjà (limit/offset) côté cœur.
+test("getAlertEvaluations relaie limit/offset en paramètres de requête", async () => {
+  server.use(
+    http.get("https://core.test/v1/alerts/a-1/evaluations", ({ request }) => {
+      const url = new URL(request.url);
+      expect(url.searchParams.get("limit")).toBe("50");
+      expect(url.searchParams.get("offset")).toBe("50");
+      return HttpResponse.json([]);
+    }),
+  );
+  await makeClient().getAlertEvaluations("a-1", { limit: 50, offset: 50 });
+});
+
+test("getReportRuns calls GET /reports/{id}/runs", async () => {
+  const runs = [
+    {
+      id: "run-1",
+      status: "done",
+      createdAt: "2026-09-01T00:00:00Z",
+      resultUrl: "https://minio.test/report.pdf",
+      error: null,
+    },
+  ];
+  server.use(http.get("https://core.test/v1/reports/r-1/runs", () => HttpResponse.json(runs)));
+  const result = await makeClient().getReportRuns("r-1");
+  expect(result).toEqual(runs);
+});
+
+// SP-50 documentait ce manque côté shell (jamais corrigé) : GET
+// /reports/{id}/runs pagine déjà (limit/offset) côté cœur.
+test("getReportRuns relaie limit/offset en paramètres de requête", async () => {
+  server.use(
+    http.get("https://core.test/v1/reports/r-1/runs", ({ request }) => {
+      const url = new URL(request.url);
+      expect(url.searchParams.get("limit")).toBe("25");
+      expect(url.searchParams.get("offset")).toBe("75");
+      return HttpResponse.json([]);
+    }),
+  );
+  await makeClient().getReportRuns("r-1", { limit: 25, offset: 75 });
 });
 
 test("exportDataSource posts the aggregate body and extracts the filename for a statistics source", async () => {

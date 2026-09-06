@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { t } from "../i18n";
 import { Button } from "./button";
 import { Dialog } from "./dialog";
 
@@ -24,7 +25,7 @@ export function ConfirmDialog({
       <p className="mb-4 text-sm text-slate-600">{message}</p>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>
-          Annuler
+          {t("confirmDialog.cancel")}
         </Button>
         <Button type="button" size="sm" disabled={pending} onClick={onConfirm}>
           {confirmLabel}

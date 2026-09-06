@@ -6,6 +6,7 @@ import type {
   CollectionPatchInput,
   CreateEmptyCollectionInput,
   ItemClient,
+  PageParams,
   Sharing,
 } from "../types";
 import type { ItemClientBase } from "../base";
@@ -25,9 +26,16 @@ type CollectionsAdminMethods = Pick<
 export function createCollectionsAdminMethods(base: ItemClientBase): CollectionsAdminMethods {
   const { request } = base;
   return {
-    async listCollections(params?: { q?: string }): Promise<CollectionAdmin[]> {
-      const qs = params?.q ? `?q=${encodeURIComponent(params.q)}` : "";
-      const data = await request<{ collections: CollectionAdmin[] }>("GET", `/collections${qs}`);
+    async listCollections(params?: { q?: string } & PageParams): Promise<CollectionAdmin[]> {
+      const query = new URLSearchParams();
+      if (params?.q) query.set("q", params.q);
+      if (params?.limit !== undefined) query.set("limit", String(params.limit));
+      if (params?.offset !== undefined) query.set("offset", String(params.offset));
+      const qs = query.toString();
+      const data = await request<{ collections: CollectionAdmin[] }>(
+        "GET",
+        `/collections${qs ? `?${qs}` : ""}`,
+      );
       return data.collections ?? [];
     },
 

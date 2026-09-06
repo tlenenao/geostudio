@@ -133,7 +133,7 @@ async function mockVisualQueryFlow(page: Page) {
   });
 
   let runPolls = 0;
-  await page.route("https://core.test/v1/pipelines/pipeline-vq1/runs", async (route) => {
+  await page.route("https://core.test/v1/pipelines/pipeline-vq1/runs*", async (route) => {
     runPolls += 1;
     const status = runPolls < 2 ? "running" : "succeeded";
     await route.fulfill({

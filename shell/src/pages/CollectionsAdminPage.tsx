@@ -15,9 +15,15 @@ import { RegisterCollectionPanel } from "../shell/RegisterCollectionPanel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 
+// GET /collections pagine déjà côté cœur (limit/offset, SP-50) mais tronquait
+// silencieusement au-delà de sa limite par défaut (100) sans exposer de
+// contrôle ici — REV pagination, correctif shell.
+const PAGE_SIZE = 100;
+
 export function CollectionsAdminPage() {
   const [q, setQ] = useState("");
-  const collectionsQuery = useCollectionsAdmin({ q });
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const collectionsQuery = useCollectionsAdmin({ q, limit });
   const deleteCollection = useDeleteCollection();
   const [registering, setRegistering] = useState(false);
   const [editing, setEditing] = useState<CollectionAdmin | null>(null);
@@ -84,7 +90,14 @@ export function CollectionsAdminPage() {
                 placeholder={t("collectionsAdmin.searchPlaceholder")}
                 className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                 value={q}
-                onChange={(e) => setQ(e.target.value)}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  // Une recherche qui change redémarre depuis la première
+                  // page (même patron que UsersAdminPage) : sinon "Charger
+                  // plus" cliqué avant de chercher laisserait une limite
+                  // agrandie invisible pour la nouvelle recherche.
+                  setLimit(PAGE_SIZE);
+                }}
               />
               {collectionsQuery.isLoading && <p role="status">{t("common.loading")}</p>}
               {collectionsQuery.isError && (
@@ -196,6 +209,17 @@ export function CollectionsAdminPage() {
                     ))}
                   </tbody>
                 </table>
+              )}
+              {collectionsQuery.data && collectionsQuery.data.length >= limit && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="self-start"
+                  onClick={() => setLimit((l) => l + PAGE_SIZE)}
+                >
+                  {t("collectionsAdmin.loadMore")}
+                </Button>
               )}
             </div>
           ),

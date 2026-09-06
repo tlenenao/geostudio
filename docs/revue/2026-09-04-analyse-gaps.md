@@ -35,6 +35,123 @@ et une recherche web sur sept produits concurrents (référentiel 2).
 
 ---
 
+## Mise à jour de clôture — 2026-09-06
+
+Ce document a été rédigé le 2026-09-04/05, **avant** l'exécution de SP-43 à
+SP-60. `CLAUDE.md` § Livré affirme la fermeture d'un grand nombre des gaps
+ci-dessous ; conformément au piège n°12 de `CLAUDE.md` (« le récit prime trop
+souvent sur le code ») cette mise à jour **revérifie directement dans le code
+un échantillon significatif** plutôt que de recopier `CLAUDE.md` tel quel —
+env. 30 gaps sur 79 ont été revérifiés par grep/lecture directe pendant cette
+passe (référentiels 1, 3, 4 — le référentiel 2, benchmark concurrentiel, n'est
+par nature pas vérifiable dans le code de GeoStudio et reste donc jugé sur la
+narration produit) ; le reste s'appuie sur les entrées très spécifiques de
+`CLAUDE.md` § Livré (qui citent systématiquement fichier/ligne ou test), déjà
+recoupées au code par les sessions qui les ont écrites. Un écart trouvé et
+corrigé pendant cette passe : rien d'invalidé, mais une fausse alerte notable
+— `git branch --contains`/`git tag --contains` sur la clé `age` purgée
+(GAP-77) remontaient un temps la branche locale `main` et le tag local
+`v0.1.0`, tous deux de simples reliquats locaux non resynchronisés depuis la
+purge (force-push) ; `git merge-base --is-ancestor` contre `origin/main`,
+`origin/dev` et le tag `v0.1.0` **d'origin** confirme la purge réellement
+effective sur le dépôt public — GAP-77 reste fermé.
+
+**Correction post-passe (2026-09-06, plus tard le même jour)** : SP-53
+(« Automatisation : compléter les éditeurs + déclenchement par webhook »,
+GAP-24/43/44/48/49/50) était en réalité **déjà fusionnée sur `dev`**
+(`06821047`) au moment où cette section a été écrite — fusionnée par une
+session concurrente avant même la rédaction de cette passe, sans qu'aucune
+ligne `### Livré` de `CLAUDE.md` ne l'indique encore. Découvert quelques
+heures plus tard en tentant de rebaser 5 subagents lancés par erreur sur ce
+même périmètre déjà clos (2 des 5 se sont révélés entièrement redondants).
+Les 6 gaps ci-dessous sont donc **fermés**, pas « en cours ». GAP-31
+(capacités `/me`) est un chantier distinct, non couvert par SP-53 — fermé
+séparément le même jour (Track 5 du lancement redondant, seul non
+redondant). GAP-62 (reste) et GAP-15 (volet 1, dédup `quote_ident`) sont
+également fermés le même jour, seule partie utile récupérée des 2 tracks
+restants.
+
+| GAP | État | Fermé par / statut détaillé |
+|---|---|---|
+| GAP-01 | **Fermé** | SP-44 (5 tests qgis exécutés contre sidecar réel) + câblage CI le 2026-09-06 (job `core-qgis`, `scripts/run-qgis-tests.sh`, garde dans `test_deployability.py`) |
+| GAP-02 | **Fermé** | SP-45 (`app/copilot/egress.py`) |
+| GAP-03 | **Fermé** | SP-47 (`automation.secrets.manage`/`tasks.view_all` gardent des routes) |
+| GAP-04 | Ouvert | Aucune SP n'a traité `stac-api-validator` en CI |
+| GAP-05 | **Fermé** | SP-55 (tri/facettes `CatalogPage`) |
+| GAP-06 | **Fermé** | SP-55 (recherche spatiale, `CatalogSpatialFilter`) |
+| GAP-07 | **Fermé** | SP-55 (SEO : sitemap/robots/og, vérification Traefik bout-en-bout restant à faire en prod) |
+| GAP-08 | Ouvert | Géocodage BAN non traité |
+| GAP-09 | **Fermé** | SP-56 (XLSX/KML-KMZ/GeoParquet) |
+| GAP-10 | Ouvert | Animation temporelle non traitée |
+| GAP-11 | **Fermé** | SP-58 (quotas, cf. GAP-73) |
+| GAP-12 | **Fermé** | SP-54 (liens de partage à échéance, `share_link`) |
+| GAP-13 | **Fermé** | SP-52 (widget `variableInput`) |
+| GAP-14 | **Fermé (avec dette résiduelle)** | SP-57a (i18n 7 lots, a11y échantillon 9 pages) + SP-57b (`/v1/`, `docs/adr/`, contribution). Reste : détecteur i18n limité à 4 répertoires (REV-177), échantillon a11y non exhaustif (REV-178), token `--gs-ink-3` sous seuil AA non corrigé (REV-176) |
+| GAP-15 | **Partiel** | 6.3 (`itemClient.ts` 1743→53 lignes) fermé par SP-43 ; 6.1 (dédup `quote_ident`) **fermé** le 2026-09-06 sur 11 fichiers (`core/app/sql_ident.py`) — `pipelines/{compiler,connector_runtime,runtime}.py` exclus volontairement (fragilité `runtime.py` post-SP-43), `introspection_pg.py` sans duplication réelle à migrer |
+| GAP-16 à GAP-23 | Ouvert | Référentiel 2 (benchmark), aucune décision produit prise |
+| GAP-24 | **Fermé** | SP-53 (`06821047`) — jeton opaque + `POST /pipelines/{id}/trigger` |
+| GAP-25 à GAP-27 | Ouvert | Référentiel 2 (benchmark), aucune décision produit prise |
+| GAP-28 | **Fermé** | SP-47 (domaine `app/usage/`, `GET /usage/summary`) |
+| GAP-29 | **Partiel** | Formats fermés (GAP-09/SP-56) ; écart de largeur de couverture face au marché (450+ connecteurs FME) reste réel, question de positionnement produit non « fermable » par du code |
+| GAP-30 | **Fermé** | SP-46 (`ADMIN_LINKS`) |
+| GAP-31 | **Fermé** | 2026-09-06 (hors SP-53) — `AppLayout.tsx` vers `useMe().capabilities` |
+| GAP-32 | **Fermé** | SP-46 (lien `/reports` depuis `CatalogPage`) |
+| GAP-33 | **Fermé** | SP-52 (retrait `moveItem`/`resizeItem`/`styleFor`, vérifié absent de `grid.ts`) |
+| GAP-34 | Ouvert | Décision produit non tranchée (implémenter le rendu ou retirer du schéma) |
+| GAP-35 | **Fermé** | SP-51 (contrôle d'opacité raster) |
+| GAP-36 | **Fermé** | SP-51 (UI d'auteur couche `deck`) |
+| GAP-37 | Ouvert | `scripts/generate-pmtiles.sh` toujours orphelin |
+| GAP-38 | **Fermé** | SP-54 (`app_config_json_schema()` source unique, vérifié dans `mcp/tools/__init__.py` + `schemas_routes.py`) |
+| GAP-39 | **Fermé** | SP-46 (lien `/admin/harvest`) |
+| GAP-40 | **Fermé** | SP-54 (`listCollections(params?)`, `search_collections` MCP) |
+| GAP-41 | **Fermé** | SP-45 (`MARTIN_SECRET` retiré, vérifié absent de `docker-compose.yml`/`bootstrap-env.sh`) |
+| GAP-42 | **Fermé** | SP-54 (`createGroup`/`addGroupMember`) |
+| GAP-43 | **Fermé** | SP-53 (`06821047`) — sélecteur de secret `PipelineNodeInspector`/`SecretParamSelect` |
+| GAP-44 | **Fermé** | SP-53 (`06821047`) — `intervalMinutes` sur les panneaux moissonnage |
+| GAP-45 | **Fermé** | SP-51 (éditeur JSON replié, mode avancé, vérifié dans `LayersPanel.tsx`) |
+| GAP-46 | **Fermé** | SP-51 (vérifié déjà résolu par la spec elle-même, aucun code touché nécessaire) |
+| GAP-47 | **Fermé** | SP-54 (`query_features` relaie `geomIntersects`) |
+| GAP-48 | **Fermé** | SP-53 (`06821047`) — `create_alert_rule`/`run_alert_rule` MCP |
+| GAP-49 | **Fermé** | SP-53 (`06821047`) — avertissement de binding hors permissions déclarées |
+| GAP-50 | **Fermé** | SP-53 (`06821047`) — `AlertRuleEditor` : canal e-mail + requête configurable |
+| GAP-51 | **Fermé** | SP-52 (éditeur d'enregistrements JSON, vérifié dans `DataSourcePanel.tsx`) |
+| GAP-52 | **Fermé** | SP-51 (basemap/terrain/caméra/Jenks ; palette déjà existante) |
+| GAP-53 | **Fermé** | SP-51 (`interactiveTools` sur `MapEditorPage`) |
+| GAP-54 | **Fermé (limitation connue assumée)** | SP-52 (aperçu du contenu réel de l'onglet actif, vérifié dans `tabs.tsx`) — le canevas principal en édition reste figé sur le premier onglet, documenté par la spec |
+| GAP-55 | Ouvert | Éditeur d'actions narratif toujours limité à un payload de centrage carte |
+| GAP-56 | **Fermé** | SP-49 (reprise de jobs export/appexport/ingestion, vérifié dans `ingestion/repository.py`/`appexport/jobs.py`) |
+| GAP-57 | **Fermé côté cœur, en cours côté shell** | SP-50 ferme la pagination serveur (`/collections`, `/stac/collections`, `/dcat/catalog`, 3 historiques) ; la consommation shell (`limit`/`offset` jamais envoyés) est en cours dans SP-53 (Track 5), worktree non fusionné |
+| GAP-58 | **Fermé** | SP-45 (rate-limit dédié `collections_empty`, vérifié dans `ratelimit/limiter.py`) |
+| GAP-59 | **Fermé** | SP-50 (plafond de taille + signalement d'échec sur les 8 connecteurs) |
+| GAP-60 | **Fermé** | SP-50 (liens STAC items) |
+| GAP-61 | **Fermé** | SP-45 (`caller_key` par IP réelle via `ProxyHeadersMiddleware`, vérifié dans `ratelimit/limiter.py`) |
+| GAP-62 | **Fermé** | Listes dégradées (SP-50) ; `GET /dcat/datasets/{id}` fermé le 2026-09-06 (hors SP-53) |
+| GAP-63 | **Fermé** | SP-43 (comparateur modèle/Alembic, 24 `server_default`) + SP-49 (downgrade 0024 no-op documenté, index `alert_evaluations`/`pipeline_runs`) |
+| GAP-64 | **Fermé** | SP-49 (batching des 3 balayages cron + N+1 harvest) |
+| GAP-65 | **Fermé** | SP-54 (`getMe()` capabilities/id/email/tenantId, vérifié dans `auth/routes.py`) |
+| GAP-66 | **Fermé** | SP-52 (suppression widget, `setFilter` fusion, purge variable orpheline) |
+| GAP-67 | **Fermé** | SP-46 (`ADMIN_LINKS` filtré par privilège, vérifié dans `AdminExtensionsPage.tsx`) |
+| GAP-68 | **Fermé** | SP-60 (24 routes `lazy()` vérifiées dans `routes.tsx`, sondages annulés au démontage, bundle 3,2 Mo→562,6 Ko) |
+| GAP-69 | **Fermé** | SP-60 (REV-073/075/076/077) + SP-43 (fixture E2E de collection unique) |
+| GAP-70 | **Partiel** | SP-59 ferme le script de restauration (`deploy/backup/restore.sh`, vérifié présent) et la parité des 7 buckets ; la vérification OIDC réelle reste non rejouée (REV-164, limite d'environnement) |
+| GAP-71 | **Fermé** | SP-47 (`app/usage/`, lecture seule sur `audit_log`) |
+| GAP-72 | **Partiel** | SP-48 ferme `img-src`/`connect-src` en enforcing (`CORE_CSP_MODE`, vérifié dans `docker-compose.yml`/`security/jobs.py`) ; `script-src` widgets d'extension tiers reste une décision produit ouverte (`traefik_render.py:29`, toujours `'self'` en dur, gardé par 2 tests intentionnels) |
+| GAP-73 | **Fermé** | SP-58 (`CORE_QUOTAS_ENABLED`, vérifié dans `auth/dependency.py`) |
+| GAP-74 | **Fermé** | SP-58 (`purge_tenant`, vérifié dans `compliance/jobs.py`) |
+| GAP-75 | **Fermé** | SP-59 (`scripts/rotate_secrets_master_key.py`, vérifié présent) |
+| GAP-76 | **Fermé** | SP-49 (même correctif que GAP-56) |
+| GAP-77 | **Fermé** | SP-45 — revérifié ce jour contre `origin/main`/`origin/dev`/tag `v0.1.0` d'origin (voir encadré ci-dessus, fausse alerte locale écartée) |
+| GAP-78 | **Fermé** | SP-45 (`secret_scanning`/`dependabot_security_updates` enabled) |
+| GAP-79 | **Fermé** | SP-45 (`restart:` sur `traefik`, vérifié absent d'aucune contre-mention dans `docker-compose.yml`) |
+
+**Décompte au 2026-09-06** : sur 79 gaps, **~48 fermés**, **7 en cours**
+(SP-53, non fusionnés), **~6 partiels** (fermeture partielle documentée
+ligne par ligne ci-dessus), **~18 ouverts** — dont la quasi-totalité du
+référentiel 2 (benchmark concurrentiel, décisions produit non prises) et
+quelques items isolés (GAP-04, GAP-08, GAP-10, GAP-34, GAP-37, GAP-55).
+
+---
+
 ## Référentiel 1 — Feuille de route interne
 
 Confrontation au phasage SP-1→SP-20, aux 40 arbitrages §8 et aux jalons
@@ -339,3 +456,24 @@ sérieux (dette de sécurité, de fiabilité et de découvrabilité plutôt que 
 trous fonctionnels béants — le produit couvre une surface fonctionnelle très
 large, cf. les 247 lignes `livre` de la matrice), le reste confort/dette
 technique à traiter au rythme normal du backlog.
+
+## Addendum — trouvaille postérieure au 2026-09-04
+
+### GAP-80 — `/bookmarks` inatteignable (même classe que GAP-30/32/39/67)
+
+Trouvé le 2026-09-06 (session concurrente `revue-71`, en validant un calcul
+annexe — vérifié à la main, pas déduit d'un grep de mot). La route
+`/bookmarks` (`shell/src/shell/routes.tsx:315`) n'a **aucun point d'entrée** :
+le littéral `"/bookmarks"` n'apparaît qu'à sa propre déclaration dans tout
+`shell/src/` — aucun `<Link>`, aucun `navigate()`, aucune entrée de nav.
+Pourtant `useCreateBookmark` est bien câblé (`shell/src/pages/
+AppRuntimePage.tsx:114`) : un utilisateur peut créer un signet et ne jamais
+pouvoir le retrouver. Fonctionnalité livrée par **SP-14m** (jalon M11) —
+absente des 13 lignes « inerte » recensées par SP-42 (référentiel 3
+ci-dessus), donc non comptée dans le total de 79. Même mécanisme que SP-46
+(GAP-30/32/39/67, « livré mais inatteignable ») : à traiter avec le même
+patron (lien réel depuis un écran pertinent, pas de garde de privilège
+nécessaire ici puisque `/bookmarks` n'en a aucune côté route).
+
+- **Coût estimé** : 1-2 (mécanique, même patron que SP-46).
+- **État** : ouvert.

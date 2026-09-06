@@ -2,6 +2,7 @@
 import type {
   Item,
   ItemClient,
+  PageParams,
   PipelineOpsCatalog,
   PipelinePayload,
   PipelineRun,
@@ -82,8 +83,12 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
       return request<{ runId: string }>("POST", `/pipelines/${pk}/run`);
     },
 
-    async getPipelineRuns(pk: string): Promise<PipelineRun[]> {
-      return request<PipelineRun[]>("GET", `/pipelines/${pk}/runs`);
+    async getPipelineRuns(pk: string, params?: PageParams): Promise<PipelineRun[]> {
+      const query = new URLSearchParams();
+      if (params?.limit !== undefined) query.set("limit", String(params.limit));
+      if (params?.offset !== undefined) query.set("offset", String(params.offset));
+      const qs = query.toString();
+      return request<PipelineRun[]>("GET", `/pipelines/${pk}/runs${qs ? `?${qs}` : ""}`);
     },
 
     async previewPipeline(pk: string, upToNodeId: string): Promise<Record<string, unknown>[]> {

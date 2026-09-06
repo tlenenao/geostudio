@@ -28,8 +28,9 @@ def run_compaction_cycle_task(timestamp: int) -> None:
     storage.ensure_cdc_bucket(client, bucket)
     report = compaction.run_compaction_cycle(client, bucket=bucket)
     logger.info(
-        "compaction cycle: %s partitions scanned, %s compacted, %s files removed",
+        "compaction cycle: %s partitions scanned, %s compacted, %s files removed, %s failed",
         report.partitions_scanned,
         report.partitions_compacted,
         report.files_removed,
+        report.partitions_failed,
     )

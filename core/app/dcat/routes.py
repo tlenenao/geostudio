@@ -73,25 +73,25 @@ def _visible_collections(session: Session, user, tenant: Tenant):
 
 
 def _resolve_bbox(session, col, *, introspect, bbox_provider, rls):
-    """Calcule l'emprise d'une collection, sans dégradation (utilisé par
-    get_dataset : une collection cassée en détail par id reste hors
-    périmètre de GAP-62, spec §2.2/§6)."""
     info = introspect(session, col.table_name)
     with rls(session, col.tenant_id):
         return bbox_provider(session, info)
 
 
 def _resolve_bbox_degrading(session, col, *, introspect, bbox_provider, rls):
-    """Même calcul, mais dégrade à bbox=None (au lieu de laisser remonter)
-    pour TableNotFound/UnsupportedTable/DBAPIError — utilisé par get_catalog
-    pour qu'une collection cassée ne fasse pas échouer tout le catalogue
-    (GAP-62)."""
+    """Même calcul que _resolve_bbox, mais dégrade à bbox=None (au lieu de
+    laisser remonter) pour TableNotFound/UnsupportedTable/DBAPIError — même
+    patron que app.collections.routes.get_collection. Utilisé par
+    get_catalog (pour qu'une collection cassée ne fasse pas échouer tout le
+    catalogue) et par get_dataset (GAP-62, reste) pour qu'une collection
+    présente mais dont la table est cassée réponde toujours 200 plutôt que
+    500."""
     try:
         return _resolve_bbox(
             session, col, introspect=introspect, bbox_provider=bbox_provider, rls=rls
         )
     except (TableNotFound, UnsupportedTable, DBAPIError) as exc:
-        logger.warning("dcat catalog: extent lookup failed for collection %s: %s", col.id, exc)
+        logger.warning("dcat: extent lookup failed for collection %s: %s", col.id, exc)
         return None
 
 
@@ -178,7 +178,13 @@ def get_dataset(
     )  # 404 non-fuyant
     base = _base(request)
     tenant = _resolve_tenant(session, user)
-    bbox = _resolve_bbox(session, col, introspect=introspect, bbox_provider=bbox_provider, rls=rls)
-    doc = _dataset_doc(base=base, col=col, bbox=bbox, publisher_name=tenant.name)
+    doc = _dataset_doc(
+        base=base,
+        col=col,
+        bbox=_resolve_bbox_degrading(
+            session, col, introspect=introspect, bbox_provider=bbox_provider, rls=rls
+        ),
+        publisher_name=tenant.name,
+    )
     doc["@context"] = serializers.CONTEXT
     return JSONResponse(content=doc, media_type=MEDIA_TYPE)

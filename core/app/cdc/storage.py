@@ -41,8 +41,17 @@ def list_objects(client, *, bucket: str, prefix: str) -> list[dict]:
     return objects
 
 
+_DELETE_OBJECTS_MAX_KEYS = 1000  # limite dure de l'API S3 DeleteObjects (cf. REV-025)
+
+
 def delete_objects(client, *, bucket: str, keys: list[str]) -> None:
-    client.delete_objects(Bucket=bucket, Delete={"Objects": [{"Key": k} for k in keys]})
+    """Découpe en lots de ≤1000 clés — un vrai S3/MinIO rejette tout appel
+    DeleteObjects au-delà (une seule partition très fragmentée dépasserait
+    aisément ce seuil et bloquerait toute la compaction sans ce découpage,
+    cf. test dédié)."""
+    for start in range(0, len(keys), _DELETE_OBJECTS_MAX_KEYS):
+        chunk = keys[start : start + _DELETE_OBJECTS_MAX_KEYS]
+        client.delete_objects(Bucket=bucket, Delete={"Objects": [{"Key": k} for k in chunk]})
 
 
 def upload_bytes(client, *, bucket: str, key: str, data: bytes) -> None:

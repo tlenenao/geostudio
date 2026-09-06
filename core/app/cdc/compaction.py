@@ -12,6 +12,7 @@ Un crash entre les deux laisse des doublons inoffensifs (le lecteur réduit
 par (pk, max(_lsn))), jamais de perte ni de suppression partielle
 dangereuse — aucun verrou ni coordination avec le worker CDC nécessaire."""
 
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -22,6 +23,8 @@ import pandas as pd
 
 from app.cdc import storage
 from app.ingestion.storage import download_object
+
+logger = logging.getLogger(__name__)
 
 CDC_PREFIX = "cdc/"
 DEFAULT_SIZE_THRESHOLD_BYTES = 32 * 1024 * 1024
@@ -34,6 +37,7 @@ class CompactionReport:
     partitions_scanned: int
     partitions_compacted: int
     files_removed: int
+    partitions_failed: int = 0
 
 
 def group_by_partition(objects: list[dict]) -> dict[str, list[dict]]:
@@ -88,15 +92,27 @@ def run_compaction_cycle(
     objects = storage.list_objects(client, bucket=bucket, prefix=CDC_PREFIX)
     groups = group_by_partition(objects)
     partitions_compacted = 0
+    partitions_failed = 0
     files_removed = 0
     for partition_prefix, files in groups.items():
-        merged_count = compact_partition(
-            client,
-            bucket=bucket,
-            partition_prefix=partition_prefix,
-            files=files,
-            size_threshold_bytes=size_threshold_bytes,
-        )
+        try:
+            merged_count = compact_partition(
+                client,
+                bucket=bucket,
+                partition_prefix=partition_prefix,
+                files=files,
+                size_threshold_bytes=size_threshold_bytes,
+            )
+        except Exception:
+            # Isolation par partition (REV-025) : une partition trop
+            # fragmentée ou corrompue ne doit jamais bloquer la compaction
+            # des autres tenants/collections pour tout le cycle.
+            partitions_failed += 1
+            logger.exception(
+                "compaction cycle: échec de la compaction de la partition %s, ignorée",
+                partition_prefix,
+            )
+            continue
         if merged_count:
             partitions_compacted += 1
             files_removed += merged_count
@@ -104,4 +120,5 @@ def run_compaction_cycle(
         partitions_scanned=len(groups),
         partitions_compacted=partitions_compacted,
         files_removed=files_removed,
+        partitions_failed=partitions_failed,
     )

@@ -120,9 +120,13 @@ const DEFAULT_ME = {
   // GAP-65 (1/3) : Me.capabilities est désormais lu par getMe() (doublon
   // délibéré de GET /instance) — sans ce champ, cette fixture redeviendrait
   // incomplète face au vrai MeResponse du cœur (précédent SP-43 §1.5,
-  // mockCollection). Aucune spec E2E existante ne lit me.capabilities
-  // aujourd'hui (elles passent toutes par useInstanceInfo()/GET /instance),
-  // donc ces valeurs par défaut n'affectent aucun comportement observé.
+  // mockCollection). GAP-31 : AppLayout.tsx lit désormais readOnly et
+  // tileset3dEnabled d'ici (au lieu de GET /instance) pour la bannière
+  // démo et le bouton "Nouveau tileset 3D" du TopBar — ces deux champs
+  // affectent donc un comportement observé ; les autres composants qui
+  // lisent encore useInstanceInfo() directement (form.tsx,
+  // Tileset3DUploadButton, TerrainPanel, pages d'admin...) restent inchangés
+  // et continuent d'exiger leur propre surcharge de GET /instance.
   capabilities: {
     readOnly: false,
     etlEnabled: false,
@@ -132,12 +136,22 @@ const DEFAULT_ME = {
     terrain3dEnabled: false,
     copilotEnabled: false,
     adminToolsEnabled: false,
+    quotasEnabled: false,
   },
 };
 
 export function mockMe(page: Page, overrides: Partial<typeof DEFAULT_ME> = {}) {
   return page.route("**/me", async (route) => {
-    await route.fulfill({ json: { ...DEFAULT_ME, ...overrides } });
+    await route.fulfill({
+      json: {
+        ...DEFAULT_ME,
+        ...overrides,
+        // Fusion superficielle dédiée à `capabilities` : un appelant qui ne
+        // veut basculer qu'un seul indicateur (ex. `{ readOnly: true }`) ne
+        // doit pas avoir à recopier tous les autres champs par défaut.
+        capabilities: { ...DEFAULT_ME.capabilities, ...overrides.capabilities },
+      },
+    });
   });
 }
 

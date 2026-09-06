@@ -7,8 +7,8 @@ bornée au tenant."""
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.collections.ddl import quote_ident
 from app.collections.introspection import TableInfo
+from app.sql_ident import quote_ident
 
 
 def table_extent(session: Session, info: TableInfo) -> list[float] | None:

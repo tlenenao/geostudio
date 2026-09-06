@@ -301,6 +301,10 @@ export const fr = {
   "collectionsAdmin.deleteTitle": "Supprimer la collection",
   "collectionsAdmin.deleteMessage":
     "Désenregistrer « {title} » ? La table PostGIS ne sera pas supprimée.",
+  // Pagination (SP-50 documentait ce manque, jamais corrigé côté shell) :
+  // GET /collections tronque silencieusement au-delà de sa limite par
+  // défaut sans ce bouton.
+  "collectionsAdmin.loadMore": "Charger plus",
 
   // ComplianceAdminPage
   "compliance.title": "Conformité",
@@ -1049,6 +1053,10 @@ export const fr = {
   "pipelineRun.runFailed": "Échec du lancement du pipeline.",
   "pipelineRun.running": "Exécution…",
   "pipelineRun.runButton": "Exécuter",
+  // GET /pipelines/{id}/runs pagine déjà côté cœur (limit/offset, SP-50) —
+  // ce bouton évite de tronquer silencieusement l'historique au-delà de la
+  // limite par défaut du cœur (100).
+  "pipelineRun.loadMore": "Charger plus",
 
   // PipelineWebhookTrigger (builder/pipeline)
   "pipelineWebhook.heading": "Déclenchement par webhook",
@@ -1164,6 +1172,10 @@ export const fr = {
   "reportRun.loadRunsFailed": "Impossible de charger l'historique des exécutions.",
   "reportRun.empty": "Aucune exécution pour l'instant.",
   "reportRun.download": "Télécharger",
+  // GET /reports/{id}/runs pagine déjà côté cœur (limit/offset, SP-50) — ce
+  // bouton évite de tronquer silencieusement l'historique au-delà de la
+  // limite par défaut du cœur (100).
+  "reportRun.loadMore": "Charger plus",
 
   // ReportScheduleEditor (builder/report)
   "reportSchedule.targetedViewLabel": "Vue ciblée :",
@@ -1633,4 +1645,8 @@ export const fr = {
   "popupEditor.templateLabel": "Gabarit",
   "popupEditor.exprHint":
     "Markdown ; chaque ${expression} est évaluée sur l'entité cliquée, par exemple ${record.nom}.",
+
+  // ThumbnailUpload (ui) — REV-177 : extension du détecteur i18n à src/ui/
+  "thumbnailUpload.notAnImageError": "Le fichier doit être une image.",
+  "thumbnailUpload.tooLargeError": "L'image dépasse 2 Mo.",
 } as const;

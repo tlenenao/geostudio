@@ -15,7 +15,7 @@
     "gen:lucide-icons": "node scripts/gen-lucide-icons.mjs",
     "build:export-runtime": "vite build --config vite.export.config.ts",
     "lint": "eslint . && npm run lint:i18n",
-    "lint:i18n": "node scripts/check-i18n-coverage.mjs src/pages src/shell src/builder src/map",
+    "lint:i18n": "node scripts/check-i18n-coverage.mjs src/pages src/shell src/builder src/map src/ui src/api src/auth src/staticExport",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

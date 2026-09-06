@@ -97,6 +97,30 @@ l'analyse des manques (`analyse-gaps.md`) et au backlog (`backlog.md`), et il
 se périme au même rythme que tout inventaire figé sur un dépôt qui continue
 d'avancer.
 
+### Mise à jour de clôture — 2026-09-06
+
+Le rendu ci-dessous (et son JSONL source, `.superpowers/sdd/sp42-matrice-
+notee.jsonl`) **n'a pas été régénéré** depuis sa rédaction — les lignes
+`inerte`/`partiel`/`absent` qui suivent restent celles du 2026-09-04, même
+quand SP-43 à SP-60 (et SP-53, en cours) les ont depuis fait passer à
+`livré`. Une régénération complète du JSONL source est un chantier à part
+(nécessite de rejouer les 8 cartographes ou un équivalent), hors périmètre de
+cette passe de mise à jour documentaire. En attendant, l'état réel — vérifié
+directement dans le code le 2026-09-06, pas recopié depuis `CLAUDE.md` — des
+familles concernées est tenu à jour dans **`docs/revue/2026-09-04-analyse-
+gaps.md`** (nouvelle section « Mise à jour de clôture — 2026-09-06 », tableau
+GAP-nn → État) : les 13 lignes `inerte` (GAP-30 à GAP-42) sont **toutes
+fermées** (SP-46, SP-45, SP-54) sauf GAP-31 (en cours, SP-53) ; la quasi
+totalité des lignes `partiel`/`absent` de la famille Automatisation
+(GAP-43/44/48/49/50) est **en cours** (SP-53, worktrees non fusionnés au
+2026-09-06) ; les familles Cartes (GAP-35/36/45/46/52/53), Catalogue
+(GAP-05/06/07/40), Fédération (GAP-57/59/60/62 — 62 partiel), Administration
+(GAP-71/73/74) et Infrastructure (GAP-41/58/61/68/69/72/77/78/79 — 72
+partiel) sont très majoritairement passées à `livré` depuis. **Ne pas
+recompter les états `inerte`/`partiel` ci-dessous comme le décompte actuel du
+produit** — consulter `analyse-gaps.md` pour le statut par GAP, seule source
+tenue à jour ligne par ligne à cette date.
+
 ## Catalogue
 
 *Domaines de cartographie regroupés ici : Catalogue, Catalogue/Items, Catalogue/Métadonnées, Catalogue/Portails publics, Navigation, Recherche.*

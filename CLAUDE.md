@@ -90,14 +90,16 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
   (`docs/superpowers/plans/`) → exécution TDD → E2E → review. Fichiers datés
   `YYYY-MM-DD-spX…`.
 - **TDD systématique** ; chaque feature visible a sa spec E2E Playwright. La
-  suite E2E complète est le filet de la migration : elle reste globalement
-  verte (dernière mesure après intégration complète de SP-48/50/57a/57b/
-  59/60, 2026-09-06 : 165 passed / 4 skipped / **1 failed** —
-  `e2e/pipeline-builder.spec.ts:105` (numéro de ligne flottant selon les
-  fichiers fusionnés autour, même test), timeout sur le bouton
-  « Exécuter », confirmé préexistant à SP-43 en checkoutant le commit
-  d'avant sa Tâche 1 ; cause non encore investiguée, ne pas imputer à un
-  futur travail sans vérifier d'abord si ce test échoue déjà sur `dev`).
+  suite E2E complète est le filet de la migration : elle est **entièrement
+  verte** depuis le 2026-09-06 (166 passed / 4 skipped / **0 failed**,
+  commit `a320c317`). L'échec longtemps réputé « préexistant, cause non
+  investiguée » (`e2e/pipeline-builder.spec.ts`, timeout sur le bouton
+  « Exécuter ») est diagnostiqué et corrigé : le test ne mockait jamais
+  `GET /configs/by-item/pipe-1`, le handler générique de `mocks.ts`
+  répondait une config `kind: "app"`, `getPipelineConfig` levait, React
+  Query réessayait, la page restait sur « Chargement… ». **Il n'y a donc
+  plus d'échec E2E « connu » à qui imputer une régression : tout rouge est
+  désormais réel.**
 - Exécution en **subagent-driven-development** : une revue par tâche **et** une
   revue finale de branche, systématiquement — ce ne sont pas les mêmes défauts
   (cf. `## Pièges récurrents`).
@@ -107,6 +109,16 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 - **À la clôture d'un SP** : une ligne dans `### Livré` ci-dessous, et l'entrée
   détaillée dans `docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md`
   (pas de récit long dans ce fichier — il est chargé à chaque session).
+  **Obligatoire dans le même geste, jamais différé** : mettre à jour l'état
+  des `GAP-nn` concernés dans `docs/revue/2026-09-04-analyse-gaps.md` (ouvert
+  → fermé, référence à la SP) et les colonnes concernées de
+  `docs/revue/2026-09-04-matrice-fonctionnalites.md`. Raison (piège n°12,
+  vécu le 2026-09-06) : ces deux documents sont restés des mois sans être
+  retouchés pendant que 17 SP fermaient des dizaines de gaps qu'ils
+  décrivent — le récit de `### Livré` était correct, mais ces deux
+  documents-là, non consultés, avaient dérivé au point de contredire le code
+  réel (`backlog.md` gardait 8 entrées `ouvert` déjà fermées). Ne pas laisser
+  ces documents rejouer ce piège.
 
 ## Commandes
 
@@ -117,10 +129,9 @@ npm run test         # Vitest — dernier compte mesuré après intégration
                      # complète de SP-48/50/57a/57b/59/60 (2026-09-06) :
                      # 236 fichiers, 2074 tests, tous passed. Couverture
                      # 89,94 % (seuil 88).
-npm run e2e          # Playwright — 165 passed / 4 skipped / 1 failed à la
-                     # même mesure (VITE_AUTH_MODE=mock) — l'échec
-                     # (pipeline-builder.spec.ts:105) est préexistant,
-                     # cf. ## Comment on travaille.
+npm run e2e          # Playwright — 166 passed / 4 skipped / 0 failed
+                     # (VITE_AUTH_MODE=mock), suite entièrement verte
+                     # depuis le 2026-09-06.
                      # e2e-oidc/ : suite séparée contre un vrai Keycloak (SP-26)
 npm run build        # tsc --noEmit + vite build ; chunk d'entrée 624 Ko
                      # (seuil 630, relevé depuis 570 par le catalogue i18n
@@ -152,8 +163,15 @@ uv run pytest        # dernier compte mesuré après intégration complète de
                      # après une migration qui ajoute des colonnes, il faut un
                      # ALTER TABLE manuel, sinon des dizaines de tests
                      # échouent en cascade sur UndefinedColumn sans rapport
-                     # avec le code sous revue. Les 5 skips = marqueur qgis
-                     # (sidecar réel requis). Piège supplémentaire vécu à la
+                     # avec le code sous revue. Les 5 skips = les 5 tests
+                     # qgis (3 dans test_qgis_worker_sidecar.py, 2 dans
+                     # test_pipeline_runtime.py — dont un aussi marqué
+                     # postgis) : conftest.py appelle pytest.skip() quand
+                     # CORE_TEST_QGIS_WORKER_URL manque, et un skip ne
+                     # rougit rien — pour les exécuter vraiment :
+                     # `./scripts/run-qgis-tests.sh` (aucun sudo, ne touche
+                     # pas l'hôte) ; la CI les exécute désormais elle aussi
+                     # (job `core-qgis`). Piège supplémentaire vécu à la
                      # clôture de SP-49 : 2-3 sessions concurrentes lancées
                      # sur des worktrees différents mais un même conteneur
                      # postgis-test partagé produisent des dizaines
@@ -391,10 +409,12 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   validation de schéma). Un test de régression non marqué `qgis` (donc
   toujours actif en CI) ajouté pour chacun, falsifié avant fix. Suite
   complète (2298 tests hors `qgis`) + les 5 `qgis` rejoués verts après coup.
-  **M14 atteint.** Reste : ces 5 tests ne tournent toujours qu'en session
-  manuelle, pas encore câblés en CI (`CORE_TEST_QGIS_WORKER_URL` absent de
-  tout workflow) — non retenu dans le périmètre de SP-44, à câbler
-  séparément si voulu.
+  **M14 atteint.** Câblage CI, laissé hors périmètre par SP-44, fermé
+  depuis (2026-09-06, commit `122c6394`) : job `core-qgis` dans `ci.yml`
+  (séparé du job `core` — image de base QGIS de 11 Go),
+  `scripts/run-qgis-tests.sh` pour la même exécution en local sans sudo,
+  et `test_ci_actually_runs_the_qgis_marked_tests` qui interdit le retour
+  au skip silencieux.
 - **SP-43** (10 tâches, subagent-driven-development, 2026-09-05) — ferme les
   6 classes de duplication mécanique identifiées par sa spec : registre
   `kind_registry.py::privilege_for_kind()` unique (5 sites réels, pas 4 —
@@ -1067,6 +1087,41 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   `staticExport/` (`REV-177`), extension de l'audit a11y au reste du
   catalogue de routes + `eslint-plugin-jsx-a11y` en complément statique
   (`REV-178`).
+- **SP-53** — Automatisation : compléter les éditeurs + déclenchement par
+  webhook (GAP-24/43/44/48/49/50), merge `06821047`. Sélecteur de secret
+  pour connecteurs pipeline (`SecretParamSelect`, GAP-43) ; `intervalMinutes`
+  exposé sur les panneaux de moissonnage (GAP-44) ; avertissement de
+  binding de widget hors permissions déclarées (GAP-49) ; canal e-mail +
+  requête configurable sur `AlertRuleEditor` (GAP-50) ; `create_alert_rule`/
+  `run_alert_rule` côté MCP (GAP-48) ; déclenchement de pipeline par webhook
+  entrant — `PipelineWebhookToken` haché, `POST /pipelines/{id}/trigger`
+  seule route du dépôt sans `Depends(get_current_user)`, réutilise
+  `run_pipeline_service` (jamais un 3e chemin d'écriture), génération/
+  révocation gardée par `Privilege.AUTOMATION_SECRETS_MANAGE` (GAP-24).
+  **Ce chantier a été mené et fusionné par une session concurrente avant
+  que ce fichier ne le documente** — trouvé après coup (2026-09-06) au
+  moment de rebaser 5 subagents lancés en parallèle sur le même périmètre,
+  sans savoir qu'il était déjà clos : 2 des 5 tracks (webhook complet, UX
+  builder complet) se sont révélés entièrement redondants une fois le
+  merge `06821047` repéré dans l'historique (piège n°12 à l'envers — cette
+  fois le code était en avance sur ce fichier, pas l'inverse — abandonnés
+  sans fusion). Leçon retenue : avant de lancer plusieurs subagents sur un
+  chantier listé « restant » dans la feuille de route révisée, vérifier
+  `git log` pour un merge déjà présent, pas seulement l'absence d'une ligne
+  `### Livré` ici.
+- **GAP-62 (reste) + GAP-15 (volet 1)** — fermés le 2026-09-06, seule partie
+  utile récupérée des 2 tracks restants du lancement ci-dessus. `GET
+  /dcat/datasets/{id}` dégrade désormais à `bbox=None` sur collection cassée
+  (même patron que `get_catalog`/`get_collection`, `_resolve_bbox_degrading`
+  partagée) — 2 tests écrits contre un worktree périmé (pré-SP-57b, sans
+  préfixe `/v1/`) corrigés en les rebasant. `core/app/sql_ident.py` factorise
+  le helper de quoting d'identifiant dupliqué sur 11 fichiers (2 fonctions
+  distinctes gardées, Postgres session-based vs DuckDB systématique — pas
+  fusionnées, comportements réellement différents) ; `core/app/pipelines/
+  {compiler,connector_runtime,runtime}.py` gardent leur propre copie locale,
+  exclusion volontaire (fragilité `runtime.py` post-SP-43, ~57 monkeypatchs
+  de test) ; `introspection_pg.py` n'avait rien à migrer (seul un appel à la
+  fonction SQL native `quote_ident()`, pas le helper Python).
 
 ### Conventions tranchées (2026-09-01)
 
@@ -1098,8 +1153,9 @@ session :
 - Jalon **M14 atteint** (SP-44, `REV-095` clos) : les 5 tests
   `@pytest.mark.qgis` tournent contre un vrai sidecar — 2 défauts de
   production réels trouvés et corrigés au passage (`_lock_down()` bloquait
-  `transform.qgis`, `fid` GeoPackage non filtré). Reste non câblé en CI
-  (session manuelle uniquement).
+  `transform.qgis`, `fid` GeoPackage non filtré). **Câblés en CI depuis le
+  2026-09-06** (job `core-qgis`) — ils ne skippent plus par défaut ; en
+  local, `scripts/run-qgis-tests.sh` (aucun sudo, ne touche pas l'hôte).
 - `REV-073`/`REV-075`/`REV-076`/`REV-077` clos par **SP-60** (GAP-69) :
   gardes de borne basse sur les extracteurs de `test_deployability.py`,
   ancre positive sur `triptych-narrow.spec.ts`, tests « lisible
