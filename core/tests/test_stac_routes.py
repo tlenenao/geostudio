@@ -110,6 +110,86 @@ def test_collections_list_shows_registered(env):
     assert body["collections"][0]["license"] == "other"
 
 
+def test_stac_collections_list_is_paginated(env):
+    app, client, admin, _regular, _Session = env
+
+    def introspector_for_many(session, table_name):
+        return TableInfo(
+            table_name=table_name,
+            pk_column="id",
+            geometry_column="geom",
+            geometry_type="Point",
+            srid=4326,
+            columns=[],
+        )
+
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: introspector_for_many
+    _as(app, admin)
+    for i in range(3):
+        resp = client.post("/collections", json={"tableName": f"t{i}", "isPublic": True})
+        assert resp.status_code == 201
+
+    body = client.get("/stac/collections?limit=2&offset=0").json()
+    assert len(body["collections"]) == 2
+    rels = {link["rel"]: link["href"] for link in body["links"]}
+    assert "offset=2" in rels["next"]
+
+    body2 = client.get("/stac/collections?limit=2&offset=2").json()
+    assert len(body2["collections"]) == 1
+    assert "next" not in {link["rel"] for link in body2["links"]}
+
+
+def test_broken_collection_degrades_instead_of_failing_whole_catalog(env, caplog):
+    app, client, admin, _regular, _Session = env
+    _register(app, client, admin, public=True)
+
+    info2 = TableInfo(
+        table_name="incidents2",
+        pk_column="id",
+        geometry_column="geom",
+        geometry_type="Point",
+        srid=4326,
+        columns=[],
+    )
+
+    def introspector_with_incidents2(session, table_name):
+        if table_name == "incidents2":
+            return info2
+        return fake_introspector(session, table_name)
+
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: (
+        introspector_with_incidents2
+    )
+    _as(app, admin)
+    resp = client.post("/collections", json={"tableName": "incidents2", "isPublic": True})
+    assert resp.status_code == 201
+
+    def flaky_bbox_provider(session, info):
+        if info.table_name == "incidents2":
+            raise TableNotFound("gone")
+        return [1.0, 44.0, 2.0, 45.0]
+
+    app.dependency_overrides[stac_routes.get_bbox_provider] = lambda: flaky_bbox_provider
+    with caplog.at_level("WARNING"):
+        list_resp = client.get("/stac/collections")
+    assert list_resp.status_code == 200
+    ids = [c["id"] for c in list_resp.json()["collections"]]
+    assert set(ids) == {"incidents", "incidents2"}
+    assert "extent lookup failed" in caplog.text
+
+
+def test_broken_collection_code_bug_is_not_swallowed(env):
+    app, client, admin, _regular, _Session = env
+    _register(app, client, admin, public=True)
+
+    def buggy_provider(session, info):
+        raise TypeError("bug")
+
+    app.dependency_overrides[stac_routes.get_bbox_provider] = lambda: buggy_provider
+    with pytest.raises(TypeError):
+        client.get("/stac/collections")
+
+
 def test_collection_detail_and_leakproof_404(env):
     app, client, admin, _regular, _Session = env
     _register(app, client, admin, public=False)
@@ -207,6 +287,48 @@ def test_custom_role_with_collections_manage_reaches_collection_detail(env):
         resp = client.get("/stac/collections/incidents")
         assert resp.status_code == 200
         assert resp.json()["id"] == "incidents"
+
+
+def test_custom_role_with_collections_manage_reaches_items(env):
+    # Round 3 : GET /stac/collections/{id} et /schema (déjà corrigés)
+    # laissaient encore /stac/collections/{id}/items et /items/{feature_id}
+    # sur l'ancien get_readable_collection() sans can_manage_collections.
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.users.repository import set_user_role
+
+    app, client, admin, regular, Session = env
+    _register(app, client, admin, public=False)
+    repo = make_fake_repo()
+    app.dependency_overrides[features_routes.get_features_repo] = lambda: repo
+
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        custom = create_role(
+            s,
+            tenant_id=tenant.id,
+            name="Gestionnaire de collections",
+            privileges=[Privilege.ADMIN_COLLECTIONS_MANAGE.value],
+        )
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=regular.id,
+            role_id=custom.id,
+            role_slug=custom.slug,
+        )
+        s.commit()
+        regular_id = regular.id
+
+    with Session() as s:
+        from app.users.models import User
+
+        custom_user = s.get(User, regular_id)
+        assert custom_user is not None and custom_user.is_admin is False
+        _as(app, custom_user)
+
+        assert client.get("/stac/collections/incidents/items").status_code == 200
+        assert client.get("/stac/collections/incidents/items/1").status_code == 200
 
 
 FEAT = {
