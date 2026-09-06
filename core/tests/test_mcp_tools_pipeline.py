@@ -362,6 +362,27 @@ def test_run_pipeline_refuses_a_writer_dataset_pipeline_without_data_manage(app_
     assert "data.manage" in error_text
 
 
+def test_create_pipeline_refuses_in_read_only_mode(app_client, monkeypatch):
+    # REV-008 : contrairement à run_pipeline (couvert par le test suivant),
+    # create_pipeline n'avait jamais de test runtime dédié pour son garde
+    # is_read_only_mode() — seul test_read_only_tools_constant_matches_the_
+    # ten_write_tools (test_mcp_read_only_mode.py) le mentionnait, une simple
+    # égalité d'ensemble qui ne prouve rien sur le corps de la fonction.
+    # Vérification faite en lisant app/mcp/tools/pipelines.py avant d'écrire
+    # ce test : le garde `if is_read_only_mode(): raise ValueError(...)`
+    # existe déjà dans create_pipeline — ce test est donc un test de
+    # RÉGRESSION (il passe du premier coup), pas un test qui prouve un bug
+    # corrigé ici, contrairement à son homologue run_pipeline.
+    client = app_client(etl_enabled=True)
+    with client:
+        source_id, target_id = _register_collections(client)
+        monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+        error_text = call_tool_expecting_error(
+            client, "create_pipeline", _linear_pipeline_args(source_id, target_id)
+        )
+    assert READ_ONLY_MESSAGE in error_text
+
+
 def test_run_pipeline_refuses_in_read_only_mode(app_client, monkeypatch):
     # SP-42/F-coeur-federation-07 : run_pipeline exécute réellement le
     # pipeline (job procrastinate run_pipeline_task déféré), contrairement à
