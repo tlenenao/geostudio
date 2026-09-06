@@ -29,7 +29,12 @@ def test_ensure_built_in_roles_is_idempotent_and_covers_the_four_profiles():
         tenant = get_or_create_default_tenant(s)
         roles = ensure_built_in_roles(s, tenant_id=tenant.id)
         assert set(roles) == {"admin", "creator", "analyst", "reader"}
-        assert roles["admin"].privileges == [p.value for p in Privilege]
+        # compliance.manage exclu même de l'Administrateur (SP-58 Tâche 8,
+        # spec §3.3, décision explicite : purge de tenant, irréversible —
+        # jamais glissé silencieusement dans un rôle prédéfini).
+        assert roles["admin"].privileges == [
+            p.value for p in Privilege if p != Privilege.COMPLIANCE_MANAGE
+        ]
         assert roles["reader"].privileges == []
         assert all(r.is_built_in for r in roles.values())
         again = ensure_built_in_roles(s, tenant_id=tenant.id)
