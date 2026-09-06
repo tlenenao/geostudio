@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import socket
 
+import httpx
 import pytest
 
 from app.harvest.egress import (
@@ -74,3 +75,36 @@ def test_guarded_client_transport_blocks_before_connection():
     with client:
         with pytest.raises(EgressBlockedError):
             client.get("http://127.0.0.1:9/x")
+
+
+def test_guarded_transport_rejects_oversized_response(monkeypatch):
+    from app.harvest.egress import ResponseTooLargeError, _GuardedTransport
+
+    monkeypatch.setenv("CORE_HARVEST_MAX_RESPONSE_BYTES", "10")
+
+    def handler(request):
+        return httpx.Response(200, content=b"x" * 1000)
+
+    inner = httpx.MockTransport(handler)
+    # Contourne assert_egress_allowed (bloquerait un hôte de test interne) :
+    # construire le client directement avec _GuardedTransport(inner), sans
+    # passer par build_guarded_client() qui compose HTTPTransport() en dur.
+    monkeypatch.setattr("app.harvest.egress.assert_egress_allowed", lambda url: None)
+    client = httpx.Client(transport=_GuardedTransport(inner))
+    with pytest.raises(ResponseTooLargeError):
+        client.get("http://test/")
+
+
+def test_guarded_transport_allows_response_within_limit(monkeypatch):
+    from app.harvest.egress import _GuardedTransport
+
+    monkeypatch.setenv("CORE_HARVEST_MAX_RESPONSE_BYTES", "10000")
+    monkeypatch.setattr("app.harvest.egress.assert_egress_allowed", lambda url: None)
+
+    def handler(request):
+        return httpx.Response(200, content=b"ok", headers={"content-type": "application/json"})
+
+    client = httpx.Client(transport=_GuardedTransport(httpx.MockTransport(handler)))
+    resp = client.get("http://test/")
+    assert resp.status_code == 200
+    assert resp.content == b"ok"

@@ -300,6 +300,9 @@ services:
       # `_allowlist()` de chaque module).
       CORE_PIPELINES_EGRESS_ALLOWLIST: ${CORE_PIPELINES_EGRESS_ALLOWLIST:-}
       CORE_HARVEST_EGRESS_ALLOWLIST: ${CORE_HARVEST_EGRESS_ALLOWLIST:-}
+      # Plafond de taille de réponse du moissonnage (GAP-59, SP-50) — défaut
+      # Python 10 Mio si absent/vide, cf. app/harvest/egress.py.
+      CORE_HARVEST_MAX_RESPONSE_BYTES: ${CORE_HARVEST_MAX_RESPONSE_BYTES:-}
       CORE_ALERTS_EGRESS_ALLOWLIST: ${CORE_ALERTS_EGRESS_ALLOWLIST:-}
       CORE_SECRETS_MASTER_KEY: ${CORE_SECRETS_MASTER_KEY}
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
@@ -453,6 +456,9 @@ services:
       # d'alerte (notify.py) tournent dans ce process.
       CORE_PIPELINES_EGRESS_ALLOWLIST: ${CORE_PIPELINES_EGRESS_ALLOWLIST:-}
       CORE_HARVEST_EGRESS_ALLOWLIST: ${CORE_HARVEST_EGRESS_ALLOWLIST:-}
+      # Plafond de taille de réponse du moissonnage (GAP-59, SP-50) — défaut
+      # Python 10 Mio si absent/vide, cf. app/harvest/egress.py.
+      CORE_HARVEST_MAX_RESPONSE_BYTES: ${CORE_HARVEST_MAX_RESPONSE_BYTES:-}
       CORE_ALERTS_EGRESS_ALLOWLIST: ${CORE_ALERTS_EGRESS_ALLOWLIST:-}
       CORE_TILESET3D_MAX_ENTRY_BYTES: ${CORE_TILESET3D_MAX_ENTRY_BYTES:-2147483648}
       S3_TERRAIN3D_BUCKET: geostudio-terrain3d
