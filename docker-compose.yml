@@ -8,6 +8,11 @@ volumes:
   keycloak-data:
   etl-scratch:
   appexport-runtime:
+  # SP-48/GAP-72 : partagé entre `worker` (écrivain, tâche périodique
+  # refresh_csp_dynamic_conf_task) et `traefik` (lecteur, provider fichier)
+  # — le seul moyen de pousser une CSP calculée dynamiquement à Traefik
+  # sans redémarrer le conteneur à chaque changement d'allowlist.
+  csp-dynamic-conf:
 
 services:
 
@@ -145,7 +150,7 @@ services:
       - traefik.http.routers.martin.entrypoints=websecure
       - traefik.http.routers.martin.tls.certresolver=letsencrypt
       - traefik.http.routers.martin.priority=15
-      - traefik.http.routers.martin.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-martin@docker
+      - traefik.http.routers.martin.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-martin@docker,csp-dynamic@file
       - traefik.http.middlewares.strip-admin-martin.stripprefix.prefixes=/admin/martin
       - traefik.http.middlewares.admin-auth.forwardauth.address=http://core:8200/admin-tools/verify
       - traefik.http.services.martin.loadbalancer.server.port=3000
@@ -201,7 +206,7 @@ services:
       - traefik.http.routers.titiler.entrypoints=websecure
       - traefik.http.routers.titiler.tls.certresolver=letsencrypt
       - traefik.http.routers.titiler.priority=15
-      - traefik.http.routers.titiler.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-titiler@docker
+      - traefik.http.routers.titiler.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-titiler@docker,csp-dynamic@file
       - traefik.http.middlewares.strip-admin-titiler.stripprefix.prefixes=/admin/titiler
       - traefik.http.services.titiler.loadbalancer.server.port=8000
 
@@ -374,7 +379,7 @@ services:
       - traefik.http.routers.core.entrypoints=websecure
       - traefik.http.routers.core.tls.certresolver=letsencrypt
       - traefik.http.routers.core.priority=10
-      - traefik.http.routers.core.middlewares=security-headers@docker,rate-limit@docker,strip-api@docker
+      - traefik.http.routers.core.middlewares=security-headers@docker,rate-limit@docker,strip-api@docker,csp-dynamic@file
       - traefik.http.services.core.loadbalancer.server.port=8200
       - traefik.http.middlewares.strip-api.stripprefix.prefixes=/api
       - traefik.http.middlewares.security-headers.headers.stsSeconds=31536000
@@ -397,7 +402,7 @@ services:
       - traefik.http.routers.seo-static.tls.certresolver=letsencrypt
       - traefik.http.routers.seo-static.priority=20
       - traefik.http.routers.seo-static.service=core
-      - traefik.http.routers.seo-static.middlewares=security-headers@docker,rate-limit@docker,seo-static-rewrite@docker
+      - traefik.http.routers.seo-static.middlewares=security-headers@docker,rate-limit@docker,seo-static-rewrite@docker,csp-dynamic@file
       - traefik.http.middlewares.seo-static-rewrite.replacepathregex.regex=^/(sitemap\.xml|robots\.txt)$$
       - traefik.http.middlewares.seo-static-rewrite.replacepathregex.replacement=/public/$$1
       - traefik.http.routers.seo-bots.rule=Host(`${DOMAIN}`) && PathPrefix(`/sites/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
@@ -405,7 +410,7 @@ services:
       - traefik.http.routers.seo-bots.tls.certresolver=letsencrypt
       - traefik.http.routers.seo-bots.priority=25
       - traefik.http.routers.seo-bots.service=core
-      - traefik.http.routers.seo-bots.middlewares=security-headers@docker,rate-limit@docker,seo-bots-rewrite@docker
+      - traefik.http.routers.seo-bots.middlewares=security-headers@docker,rate-limit@docker,seo-bots-rewrite@docker,csp-dynamic@file
       - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.regex=^/sites/([^/]+)$$
       - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.replacement=/public/sites/$$1/social-preview
 
@@ -477,9 +482,16 @@ services:
       # SP-21 existe pour éliminer (revue finale SP-21, item 5, dont ce
       # service était le second angle mort).
       S3_EXPORTS_BUCKET: geostudio-exports
+      # SP-48/GAP-72 : lu par refresh_csp_dynamic_conf_task (tâche
+      # périodique, ce process). "report-only" par défaut ici (fichier de
+      # base, hors overlay prod) — l'overlay prod fixe "enforce" par défaut
+      # (Task 5), cohérent avec le fait que GAP-72 et son commentaire
+      # d'origine ne visaient que docker-compose.prod.yml.
+      CORE_CSP_MODE: ${CORE_CSP_MODE:-report-only}
     volumes:
       - etl-scratch:/scratch
       - appexport-runtime:/export-runtime:ro
+      - csp-dynamic-conf:/csp-dynamic
     networks: [gis-net]
     depends_on:
       pgbouncer:
@@ -687,7 +699,7 @@ services:
       - traefik.http.routers.grafana.entrypoints=websecure
       - traefik.http.routers.grafana.tls.certresolver=letsencrypt
       - traefik.http.routers.grafana.priority=15
-      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker
+      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,csp-dynamic@file
       - traefik.http.services.grafana.loadbalancer.server.port=3000
 
   postgres-exporter:
@@ -777,7 +789,7 @@ services:
       - traefik.http.routers.shell.entrypoints=websecure
       - traefik.http.routers.shell.tls.certresolver=letsencrypt
       - traefik.http.routers.shell.priority=1
-      - traefik.http.routers.shell.middlewares=security-headers@docker,rate-limit@docker
+      - traefik.http.routers.shell.middlewares=security-headers@docker,rate-limit@docker,csp-dynamic@file
       - traefik.http.services.shell.loadbalancer.server.port=8300
 
   # ─── Ingress ───────────────────────────────────────────
@@ -787,6 +799,15 @@ services:
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
+      # SP-48/GAP-72 : provider fichier additif au provider Docker —
+      # permet à refresh_csp_dynamic_conf_task (worker) de pousser une CSP
+      # recalculée sans jamais redémarrer ce conteneur. Vérifié
+      # empiriquement contre un vrai traefik:v3.0.4 (piège CLAUDE.md n°3,
+      # cf. ledger de session) : les deux providers coexistent, le
+      # rechargement à chaud fonctionne, une middleware @file est
+      # utilisable par un routeur bout-en-bout.
+      - --providers.file.directory=/csp-dynamic
+      - --providers.file.watch=true
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
@@ -798,5 +819,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./certs:/certs
+      - csp-dynamic-conf:/csp-dynamic
     networks: [gis-net]
     restart: unless-stopped

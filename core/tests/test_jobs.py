@@ -67,3 +67,4 @@ def test_import_paths_registers_all_domain_tasks():
     assert "app.collections.jobs.embed_collection_task" in task_names
     assert "app.cdc.jobs.run_compaction_cycle_task" in task_names
     assert "app.harvest.jobs.run_harvest_task" in task_names
+    assert "app.security.jobs.refresh_csp_dynamic_conf_task" in task_names

@@ -1122,3 +1122,135 @@ def test_seo_router_is_not_gated_by_admin_auth(compose, router):
         f"{router} ({compose.name}) ne doit jamais référencer admin-auth@docker "
         f"(route publique), a trouvé : {middlewares}"
     )
+
+
+# ─── SP-48/GAP-72 : CSP calculée dynamiquement, poussée par Traefik via un
+# provider fichier additif au provider Docker existant ───────────────────
+
+
+def test_csp_dynamic_conf_volume_is_shared_between_worker_and_traefik():
+    assert "csp-dynamic-conf" in (load_yaml(BASE).get("volumes") or {})
+    worker_volumes = services(BASE)["worker"].get("volumes") or []
+    traefik_volumes = services(BASE)["traefik"].get("volumes") or []
+    assert any("csp-dynamic-conf" in v for v in worker_volumes), (
+        f"worker (base) doit monter csp-dynamic-conf, a trouvé : {worker_volumes}"
+    )
+    assert any("csp-dynamic-conf" in v for v in traefik_volumes), (
+        f"traefik (base) doit monter csp-dynamic-conf, a trouvé : {traefik_volumes}"
+    )
+
+
+def test_traefik_command_enables_file_provider_with_watch():
+    command = services(BASE)["traefik"]["command"]
+    assert "--providers.file.watch=true" in command
+    assert any(c.startswith("--providers.file.directory=") for c in command)
+
+
+def test_prod_traefik_command_also_enables_file_provider():
+    """docker-compose.prod.yml déclare son propre bloc traefik: command: —
+    la fusion Compose remplace cette liste entièrement plutôt que de la
+    concaténer (vérifié contre `docker compose config` réel, cf. ledger de
+    session) : ce bloc doit donc recopier --providers.docker=true/
+    --entrypoints.web.address=:80 en plus des 2 nouvelles entrées, sinon
+    l'overlay prod perdrait silencieusement le provider Docker (piège
+    CLAUDE.md n°2)."""
+    command = services(PROD)["traefik"]["command"]
+    assert "--providers.file.watch=true" in command
+    assert any(c.startswith("--providers.file.directory=") for c in command)
+    assert "--providers.docker=true" in command, (
+        "l'overlay prod ne doit jamais perdre --providers.docker=true en "
+        "ajoutant le provider fichier (command: remplace, ne fusionne pas)"
+    )
+
+
+def test_prod_traefik_volumes_also_carries_csp_dynamic_conf():
+    """docker-compose.prod.yml déclare traefik: volumes: !override — un
+    remplacement intégral (pas une fusion) : csp-dynamic-conf doit donc être
+    redéclaré explicitement ici, sinon traefik (prod) perdrait
+    silencieusement l'accès au fragment de CSP calculée que worker écrit."""
+    traefik_volumes = services(PROD)["traefik"].get("volumes") or []
+    assert any("csp-dynamic-conf" in v for v in traefik_volumes), (
+        f"traefik (prod) doit monter csp-dynamic-conf, a trouvé : {traefik_volumes}"
+    )
+
+
+CSP_DYNAMIC_ROUTERS = (
+    (BASE, "core"),
+    (BASE, "shell"),
+    (BASE, "seo-static"),
+    (BASE, "seo-bots"),
+    (BASE, "martin"),
+    (BASE, "titiler"),
+    (BASE, "grafana"),
+    (PROD, "core"),
+    (PROD, "shell"),
+    (PROD, "seo-static"),
+    (PROD, "seo-bots"),
+    (PROD, "martin"),
+    (PROD, "titiler"),
+    (PROD, "grafana"),
+    (PROD, "keycloak"),
+)
+
+
+@pytest.mark.parametrize(("compose_path", "router"), CSP_DYNAMIC_ROUTERS)
+def test_every_router_carrying_security_headers_also_carries_csp_dynamic(compose_path, router):
+    """Chaque routeur qui référence déjà security-headers@docker aujourd'hui
+    doit gagner csp-dynamic@file — même périmètre, pas une nouvelle
+    décision de portée (GAP-72 ne change pas QUI est protégé, seulement
+    COMMENT la CSP est calculée). `grafana` est un routeur défini sur le
+    service `otel-lgtm` (labels), d'où la recherche par nom de routeur
+    plutôt que par nom de service, comme test_grafana_router_has_no_stripprefix_middleware
+    ci-dessus."""
+    all_labels = {name: _traefik_labels(svc) for name, svc in services(compose_path).items()}
+    labels = next(
+        l for l in all_labels.values() if f"traefik.http.routers.{router}.middlewares" in l
+    )
+    middlewares = _router_middlewares(labels, router)
+    assert "security-headers@docker" in middlewares, (
+        f"{router} ({compose_path.name}) doit toujours référencer "
+        f"security-headers@docker (non-régression), a trouvé : {middlewares}"
+    )
+    assert "csp-dynamic@file" in middlewares, (
+        f"{router} ({compose_path.name}) doit référencer csp-dynamic@file, "
+        f"a trouvé : {middlewares}"
+    )
+
+
+def test_prod_overlay_no_longer_hardcodes_a_static_csp_header():
+    """SP-48/GAP-72 : la valeur Content-Security-Policy-Report-Only fixée en
+    dur sur security-headers (docker-compose.prod.yml, posée à SP-26/3.3)
+    est retirée — remplacée par la valeur calculée dynamiquement portée par
+    csp-dynamic@file (cf. tests ci-dessus)."""
+    labels = _traefik_labels(services(PROD)["core"])
+    assert not any(
+        "Content-Security-Policy" in k and "customResponseHeaders" in k for k in labels
+    ), "la CSP doit venir de csp-dynamic@file, plus d'une valeur statique sur security-headers"
+
+
+def test_prod_overlay_defaults_csp_mode_to_enforce():
+    env = services(PROD)["worker"].get("environment") or {}
+    assert env.get("CORE_CSP_MODE") == "${CORE_CSP_MODE:-enforce}", (
+        f"worker (prod) doit fixer CORE_CSP_MODE à enforce par défaut "
+        f"(rollback opérateur possible via .env.prod), a trouvé : {env.get('CORE_CSP_MODE')!r}"
+    )
+
+
+def test_base_worker_defaults_csp_mode_to_report_only():
+    env = services(BASE)["worker"].get("environment") or {}
+    assert env.get("CORE_CSP_MODE") == "${CORE_CSP_MODE:-report-only}", (
+        f"worker (base) doit fixer CORE_CSP_MODE à report-only par défaut "
+        f"(GAP-72 ne visait que l'overlay prod), a trouvé : {env.get('CORE_CSP_MODE')!r}"
+    )
+
+
+def test_shell_nginx_conf_no_longer_hardcodes_its_own_csp():
+    """SP-48/GAP-72 blocage 4 : shell/nginx.conf portait sa propre valeur
+    Content-Security-Policy-Report-Only, reconnue fausse par son propre
+    commentaire pour la topologie 'ports publiés directement' du fichier
+    de base — retirée plutôt que resynchronisée indéfiniment avec la
+    valeur Traefik (spec §3). Traefik (base et prod, cf. tests ci-dessus)
+    est désormais la seule source de CSP dans toute topologie qui passe
+    par lui — la seule documentée par ce dépôt."""
+    content = (REPO / "shell/nginx.conf").read_text()
+    assert "Content-Security-Policy" not in content
