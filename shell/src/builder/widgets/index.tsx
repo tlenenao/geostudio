@@ -20,6 +20,7 @@ import { registerSliderFilterWidget } from "./sliderFilter";
 import { registerTabsWidget } from "./tabs";
 import { registerModalWidget } from "./modal";
 import { registerDrawerWidget } from "./drawer";
+import { registerVariableInputWidget } from "./variableInput";
 
 // Replaces {{var:nom}} tokens from ctx.variables (always, regardless of any
 // bound source), then {{champ}} tokens from the record's properties (only
@@ -197,4 +198,5 @@ export function registerBuiltinWidgets(): void {
   registerTabsWidget();
   registerModalWidget();
   registerDrawerWidget();
+  registerVariableInputWidget();
 }

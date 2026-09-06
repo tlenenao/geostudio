@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import type { DataSource, WidgetItem } from "../api/types";
+import type { DataSource, Variable, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
 import { moveItemAt, nextFreePosition, type Breakpoint } from "./grid";
 import { WidgetPalette } from "./WidgetPalette";
@@ -15,11 +15,13 @@ export function LayoutEditor({
   onChange,
   dataSources,
   breakpoint,
+  variables,
 }: {
   items: WidgetItem[];
   onChange: (items: WidgetItem[]) => void;
   dataSources: DataSource[];
   breakpoint: Breakpoint;
+  variables?: Variable[];
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = items.find((i) => i.id === selectedId) ?? null;
@@ -78,6 +80,7 @@ export function LayoutEditor({
       <PropsPanel
         item={selected}
         dataSources={dataSources}
+        variables={variables ?? []}
         onChange={updateSelectedProps}
         onVisibleWhenChange={updateSelectedVisibleWhen}
       />

@@ -417,6 +417,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                   item={selected}
                   dataSources={draft.dataSources}
                   theme={draft.theme}
+                  variables={draft.variables ?? []}
                   onChange={updateSelectedProps}
                   onVisibleWhenChange={updateSelectedVisibleWhen}
                 />

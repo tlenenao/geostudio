@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import type { Variable } from "../api/types";
-import { VariablesProvider, useVariables, useSetVariable } from "./VariablesContext";
+import {
+  VariablesProvider,
+  useVariables,
+  useSetVariable,
+  useVariableDefs,
+} from "./VariablesContext";
 
 function Probe() {
   const values = useVariables();
@@ -75,4 +80,14 @@ test("useVariables and useSetVariable carry non-string values (number, bool, obj
   expect(screen.getByText("count:0")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "set-number" }));
   expect(screen.getByText("count:42")).toBeInTheDocument();
+});
+
+test("useVariableDefs exposes the raw Variable[] passed to the provider", () => {
+  const variables: Variable[] = [{ id: "v1", name: "seuil", type: "number", initialValue: 0 }];
+  const { result } = renderHook(() => useVariableDefs(), {
+    wrapper: ({ children }) => (
+      <VariablesProvider variables={variables}>{children}</VariablesProvider>
+    ),
+  });
+  expect(result.current).toEqual(variables);
 });

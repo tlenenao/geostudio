@@ -22,7 +22,7 @@ export function registerDrawerWidget(): void {
       { name: "side", type: "string", label: "Côté", default: "right" },
     ],
     actions: ["open", "close"],
-    PropsPanel: ({ props, onChange, dataSources }) => {
+    PropsPanel: ({ props, onChange, dataSources, variables }) => {
       const { title, items, side } = props as DrawerProps;
       return (
         <div className="flex flex-col gap-2 text-sm">
@@ -52,6 +52,7 @@ export function registerDrawerWidget(): void {
             onChange={(next) => onChange({ title, items: next, side })}
             dataSources={dataSources}
             breakpoint="lg"
+            variables={variables}
           />
         </div>
       );

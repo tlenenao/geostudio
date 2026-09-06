@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { DataSource, Theme, WidgetItem } from "../api/types";
+import type { DataSource, Theme, Variable, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
 import { validateExpression } from "./expr";
 
@@ -7,12 +7,14 @@ export function PropsPanel({
   item,
   dataSources,
   theme,
+  variables,
   onChange,
   onVisibleWhenChange,
 }: {
   item: WidgetItem | null;
   dataSources: DataSource[];
   theme?: Theme;
+  variables?: Variable[];
   onChange: (props: Record<string, unknown>) => void;
   onVisibleWhenChange: (expr: string) => void;
 }) {
@@ -46,6 +48,7 @@ export function PropsPanel({
         props={item.props}
         dataSources={dataSources}
         theme={theme}
+        variables={variables ?? []}
         onChange={(p) => onChange(p)}
       />
     </div>

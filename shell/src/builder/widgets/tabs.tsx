@@ -20,7 +20,7 @@ export function registerTabsWidget(): void {
     // Son seul champ, `tabs`, est array-shaped — hors de portée pour
     // updateWidgetProps en v1 (cf. Global Constraints). Rien à lister ici.
     configSchema: [],
-    PropsPanel: ({ props, onChange, dataSources }) => {
+    PropsPanel: ({ props, onChange, dataSources, variables }) => {
       const { tabs } = props as TabsProps;
       const [activeId, setActiveId] = useState(tabs[0]?.id);
       const active = tabs.find((t) => t.id === activeId) ?? tabs[0];
@@ -113,6 +113,7 @@ export function registerTabsWidget(): void {
             onChange={setActiveItems}
             dataSources={dataSources}
             breakpoint="lg"
+            variables={variables}
           />
         </div>
       );
