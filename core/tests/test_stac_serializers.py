@@ -21,7 +21,7 @@ def test_conformance_lists_all_classes():
 
 
 def test_catalog_is_valid_and_links_children():
-    cat = s.catalog(base=BASE, collection_ids=["roads", "rivers"])
+    cat = s.catalog(base=BASE, root="http://testserver", collection_ids=["roads", "rivers"])
     assert cat["type"] == "Catalog"
     assert cat["stac_version"] == "1.0.0"
     assert set(cat["conformsTo"]) == EXPECTED_CONFORMANCE
@@ -30,6 +30,14 @@ def test_catalog_is_valid_and_links_children():
     assert rels["data"] == f"{BASE}/stac/collections"
     assert rels["search"] == f"{BASE}/stac/search"
     assert rels["conformance"] == f"{BASE}/stac/conformance"
+    # stac-api-validator (REV-098/GAP-04) exige un service-desc/service-doc
+    # sur la page d'atterrissage — root, pas base : /openapi.json et /docs
+    # vivent hors du préfixe /v1 (montés directement sur l'app FastAPI).
+    assert rels["service-desc"] == "http://testserver/openapi.json"
+    assert rels["service-doc"] == "http://testserver/docs"
+    types = {link["rel"]: link["type"] for link in cat["links"]}
+    assert types["service-desc"] == "application/json"
+    assert types["service-doc"] == "text/html"
     children = [link["href"] for link in cat["links"] if link["rel"] == "child"]
     assert children == [f"{BASE}/stac/collections/roads", f"{BASE}/stac/collections/rivers"]
     # stac-pydantic Catalog ne connaît pas conformsTo (champ STAC-API) : le

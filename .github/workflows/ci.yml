@@ -132,6 +132,100 @@ jobs:
       - run: uv sync
       - run: uv run pytest -m qgis -q
 
+  # A20 (feuille de route §8) promet une conformité STAC « vérifiée par
+  # stac-api-validator en CI » — jamais mis en place jusqu'ici (SP-12a avait
+  # tranché pour un smoke non bloquant faute de temps, REV-098/GAP-04).
+  # Démarre un vrai process `core` (mock auth, sans Traefik/Keycloak/MinIO —
+  # aucun des trois n'est nécessaire pour le seul chemin de lecture STAC) et
+  # l'interroge avec l'outil réel plutôt qu'un smoke test maison.
+  #
+  # Conformité vérifiée pour de vrai (uvx --from stac-api-validator, version
+  # verrouillée par ../uv.lock — piège CLAUDE.md n°3 : la syntaxe CLI a été
+  # relue depuis le --help réel de l'outil, jamais supposée) :
+  #   - core/collections/features : bloquant, premier passage propre après
+  #     2 correctifs légers (2026-09-06) — landing page sans lien
+  #     service-desc/service-doc (ajoutés, app/stac/serializers.py) et les 4
+  #     endpoints GeoJSON répondaient en application/json au lieu
+  #     d'application/geo+json (GeoJSONResponse dédiée, app/stac/routes.py).
+  #   - item-search : NON bloquant (continue-on-error) — le premier passage
+  #     réel a trouvé ~25 erreurs de conformité réelles et non triviales,
+  #     pas des faux positifs : validation RFC 3339 de `datetime` bien plus
+  #     laxiste que le spec STAC (accepte des formats invalides, renvoie 500
+  #     au lieu de 400 sur plusieurs entrées malformées), `bbox` n'est pas
+  #     validé (lat1>lat2 accepté), `limit` négatif renvoie 422 (Pydantic)
+  #     au lieu de 400, bbox+intersects combinés ensemble sans rejet. Fermer
+  #     ça est un chantier à part entière (réécriture de _parse_dt/
+  #     _collection_in_datetime/_parse_bbox dans app/stac/routes.py) — hors
+  #     périmètre de ce câblage CI. Le job reste vert (erreurs visibles dans
+  #     les logs, jamais bloquantes) jusqu'à ce chantier ; à repasser en
+  #     bloquant une fois fermé.
+  stac-conformance:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core
+    env:
+      DATABASE_URL: postgresql+psycopg://gis:gis@localhost:5432/gis_stac
+      CORE_AUTH_MODE: mock
+      CORE_ENV: development
+      CORE_SECRETS_MASTER_KEY: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build postgis+pgvector image
+        run: docker build -t geostudio-postgis-ci:latest ../deploy/postgis
+      - name: Start Postgres
+        run: |
+          docker run -d --name ci-postgres \
+            -e POSTGRES_USER=gis -e POSTGRES_PASSWORD=gis -e POSTGRES_DB=gis_stac \
+            -p 5432:5432 geostudio-postgis-ci:latest
+          for i in $(seq 1 30); do
+            docker exec ci-postgres pg_isready -U gis && break
+            sleep 2
+          done
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync
+      - run: uv run alembic upgrade head
+      - name: Créer une table physique et une collection STAC de démonstration
+        run: |
+          docker exec ci-postgres psql -U gis -d gis_stac -c "
+            CREATE TABLE stac_ci_demo (id serial PRIMARY KEY, name text, geom geometry(Point, 4326));
+            INSERT INTO stac_ci_demo (name, geom) VALUES
+              ('a', ST_SetSRID(ST_MakePoint(1.0, 44.0), 4326)),
+              ('b', ST_SetSRID(ST_MakePoint(2.0, 45.0), 4326)),
+              ('c', ST_SetSRID(ST_MakePoint(3.0, 46.0), 4326));
+          "
+      - name: Démarrer core en arrière-plan (mode mock — pas de Keycloak/Traefik/MinIO)
+        run: |
+          nohup uv run uvicorn app.main:app --host 0.0.0.0 --port 8200 \
+            > core-stac.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8200/health > /dev/null && break
+            sleep 2
+          done
+          curl -sf http://localhost:8200/health
+      - name: Enregistrer la collection publique via l'API (mode mock = admin)
+        run: |
+          curl -sf -X POST http://localhost:8200/v1/collections \
+            -H "Authorization: Bearer ci-stac-validator" \
+            -H "Content-Type: application/json" \
+            -d '{"tableName":"stac_ci_demo","isPublic":true}'
+      - name: stac-api-validator — core/collections/features (bloquant)
+        run: |
+          uvx --from stac-api-validator stac-api-validator \
+            --root-url http://localhost:8200/v1/stac \
+            --conformance core --conformance collections --conformance features \
+            --collection stac_ci_demo
+      - name: stac-api-validator — item-search (non bloquant, cf. commentaire du job)
+        continue-on-error: true
+        run: |
+          uvx --from stac-api-validator stac-api-validator \
+            --root-url http://localhost:8200/v1/stac \
+            --conformance item-search \
+            --collection stac_ci_demo
+      - name: Logs de core en cas d'échec
+        if: failure()
+        run: cat core-stac.log
+
   core-deps-audit:
     runs-on: ubuntu-latest
     defaults:

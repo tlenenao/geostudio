@@ -23,13 +23,19 @@ def conformance() -> dict:
     return {"conformsTo": list(CONFORMANCE_CLASSES)}
 
 
-def catalog(*, base: str, collection_ids: list[str]) -> dict:
+def catalog(*, base: str, root: str, collection_ids: list[str]) -> dict:
     links = [
         {"rel": "self", "type": "application/json", "href": f"{base}/stac"},
         {"rel": "root", "type": "application/json", "href": f"{base}/stac"},
         {"rel": "conformance", "type": "application/json", "href": f"{base}/stac/conformance"},
         {"rel": "data", "type": "application/json", "href": f"{base}/stac/collections"},
         {"rel": "search", "type": "application/geo+json", "href": f"{base}/stac/search"},
+        # stac-api-validator (REV-098/GAP-04) exige ces deux liens sur la page
+        # d'atterrissage (Core conformance). `root` (jamais `base`) : le
+        # document OpenAPI et Swagger UI sont montés hors du préfixe /v1, sur
+        # l'app FastAPI racine — app/main.py ne les nested pas sous v1_router.
+        {"rel": "service-desc", "type": "application/json", "href": f"{root}/openapi.json"},
+        {"rel": "service-doc", "type": "text/html", "href": f"{root}/docs"},
     ]
     for cid in collection_ids:
         links.append(
