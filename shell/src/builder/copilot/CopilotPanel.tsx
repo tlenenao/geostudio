@@ -8,17 +8,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/ItemClientProvider";
 import type { AppConfig, CopilotMessage } from "../../api/types";
+import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 import { applyClientOp, type RawClientOp } from "./applyClientOp";
 import { buildClientToolSchemas } from "./clientTools";
 import { useMcpToken } from "./useMcpToken";
 
 const OP_LABELS: Record<string, string> = {
-  addWidget: "Widget ajouté",
-  updateWidgetProps: "Widget modifié",
-  removeWidget: "Widget supprimé",
-  addDataSource: "Source de données ajoutée",
-  setFilter: "Filtre modifié",
+  addWidget: t("copilot.opWidgetAdded"),
+  updateWidgetProps: t("copilot.opWidgetUpdated"),
+  removeWidget: t("copilot.opWidgetRemoved"),
+  addDataSource: t("copilot.opDataSourceAdded"),
+  setFilter: t("copilot.opFilterUpdated"),
 };
 
 export function CopilotPanel({
@@ -69,7 +70,9 @@ export function CopilotPanel({
       setHistory([...nextHistory, { role: "assistant", content: result.reply }]);
       if (result.clientOps.length > 0) {
         setLastOpsSummary(
-          result.clientOps.map((o) => OP_LABELS[o.op] ?? `Action inconnue ignorée : ${o.op}`),
+          result.clientOps.map(
+            (o) => OP_LABELS[o.op] ?? t("copilot.opUnknownIgnored", { op: o.op }),
+          ),
         );
         setDraft((d) => {
           if (!d) return d;
@@ -82,7 +85,7 @@ export function CopilotPanel({
         setLastOpsSummary([]);
       }
     } catch {
-      setError("Échec de la requête au copilote.");
+      setError(t("copilot.requestFailed"));
     } finally {
       setSending(false);
     }
@@ -99,14 +102,14 @@ export function CopilotPanel({
       </div>
       <label className="flex flex-col gap-1">
         <textarea
-          aria-label="Message au copilote"
+          aria-label={t("copilot.messageAria")}
           className="min-h-16 rounded-md border border-rule bg-surface p-2 text-sm text-ink"
           value={input}
           onChange={(e) => setInput(e.target.value)}
         />
       </label>
       <Button size="sm" disabled={sending || !input.trim()} onClick={() => void send()}>
-        Envoyer
+        {t("copilot.send")}
       </Button>
       {lastOpsSummary.length > 0 && (
         <ul className="text-xs text-ink-2">

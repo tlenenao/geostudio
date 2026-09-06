@@ -3,18 +3,19 @@ import type { CollectionSchema } from "../../api/types";
 import { DEFAULT_PERCENTILE } from "../aggregates";
 import { PercentileInput } from "../PercentileInput";
 import { MetricConfig, MetricFunction, SummaryConfig } from "./inferSchema";
+import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 
 const FUNCTION_LABELS: Record<MetricFunction, string> = {
-  count: "Compter",
-  countDistinct: "Compter les valeurs distinctes",
-  sum: "Somme",
-  avg: "Moyenne",
-  median: "Médiane",
-  percentile: "Centile",
-  stddev: "Écart-type",
-  min: "Minimum",
-  max: "Maximum",
+  count: t("querySummaryBuilder.functionCount"),
+  countDistinct: t("querySummaryBuilder.functionCountDistinct"),
+  sum: t("querySummaryBuilder.functionSum"),
+  avg: t("querySummaryBuilder.functionAvg"),
+  median: t("querySummaryBuilder.functionMedian"),
+  percentile: t("querySummaryBuilder.functionPercentile"),
+  stddev: t("querySummaryBuilder.functionStddev"),
+  min: t("querySummaryBuilder.functionMin"),
+  max: t("querySummaryBuilder.functionMax"),
 };
 
 // sum/avg/min/max n'ont de sens que sur une colonne numérique — defaulter sur
@@ -74,23 +75,23 @@ export function QuerySummaryBuilder({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-xs font-medium text-ink-2">Regrouper par</p>
+      <p className="text-xs font-medium text-ink-2">{t("querySummaryBuilder.groupByHeading")}</p>
       {schema.fields.map((f) => (
         <label key={f.name} className="flex items-center gap-2 text-xs">
           <input
             type="checkbox"
-            aria-label={`Regrouper par ${f.name}`}
+            aria-label={t("querySummaryBuilder.groupByAria", { name: f.name })}
             checked={value.groupBy.includes(f.name)}
             onChange={(e) => toggleGroupBy(f.name, e.target.checked)}
           />
           {f.name}
         </label>
       ))}
-      <p className="text-xs font-medium text-ink-2">Métriques</p>
+      <p className="text-xs font-medium text-ink-2">{t("querySummaryBuilder.metricsHeading")}</p>
       {value.metrics.map((metric, i) => (
         <div key={i} className="flex items-center gap-2">
           <select
-            aria-label={`Fonction de la métrique ${i + 1}`}
+            aria-label={t("querySummaryBuilder.metricFunctionAria", { n: i + 1 })}
             className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
             value={metric.function}
             onChange={(e) => updateMetric(i, { function: e.target.value as MetricFunction })}
@@ -103,7 +104,7 @@ export function QuerySummaryBuilder({
           </select>
           {metric.function !== "count" && (
             <select
-              aria-label={`Colonne de la métrique ${i + 1}`}
+              aria-label={t("querySummaryBuilder.metricColumnAria", { n: i + 1 })}
               className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
               value={metric.sourceColumn ?? ""}
               onChange={(e) => updateMetric(i, { sourceColumn: e.target.value })}
@@ -117,7 +118,7 @@ export function QuerySummaryBuilder({
           )}
           {metric.function === "percentile" && (
             <PercentileInput
-              label={`Centile de la métrique ${i + 1}`}
+              label={t("querySummaryBuilder.metricPercentileLabel", { n: i + 1 })}
               // `??` ne remplace pas NaN (seulement null/undefined) — Number.isFinite
               // couvre aussi ce cas, en plus de null.
               value={Number.isFinite(metric.p) ? (metric.p as number) : DEFAULT_PERCENTILE}
@@ -127,7 +128,7 @@ export function QuerySummaryBuilder({
         </div>
       ))}
       <Button type="button" size="sm" variant="outline" onClick={addMetric}>
-        Ajouter une métrique
+        {t("querySummaryBuilder.addMetricButton")}
       </Button>
     </div>
   );

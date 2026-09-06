@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/ItemClientProvider";
 import type { ReportRunStatus } from "../../api/types";
+import { t } from "../../i18n";
 
 const STATUS_LABEL: Record<ReportRunStatus["status"], string> = {
-  pending: "En attente",
-  running: "En cours",
-  done: "Terminé",
-  error: "Échec",
-  unknown: "Inconnu",
+  pending: t("reportRun.statusPending"),
+  running: t("reportRun.statusRunning"),
+  done: t("reportRun.statusDone"),
+  error: t("reportRun.statusError"),
+  unknown: t("reportRun.statusUnknown"),
 };
 
 // Rythmes de sondage. PipelineRunPanel s'arrête net dès que le run quitte
@@ -66,14 +67,14 @@ export function ReportRunPanel({ reportId }: { reportId: string }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium">Historique des exécutions</h3>
+      <h3 className="text-sm font-medium">{t("reportRun.heading")}</h3>
       {hasError && (
         <p role="alert" className="text-sm text-danger">
-          Impossible de charger l'historique des exécutions.
+          {t("reportRun.loadRunsFailed")}
         </p>
       )}
       {!hasError && runs.length === 0 && (
-        <p className="text-sm text-ink-2">Aucune exécution pour l'instant.</p>
+        <p className="text-sm text-ink-2">{t("reportRun.empty")}</p>
       )}
       <ul className="flex flex-col gap-1">
         {runs.map((run) => (
@@ -87,7 +88,7 @@ export function ReportRunPanel({ reportId }: { reportId: string }) {
                 target="_blank"
                 rel="noreferrer"
               >
-                Télécharger
+                {t("reportRun.download")}
               </a>
             )}
             {run.error && <span className="text-danger">{run.error}</span>}
