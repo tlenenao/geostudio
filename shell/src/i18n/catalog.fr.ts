@@ -1342,4 +1342,88 @@ export const fr = {
   "dataSourceSelect.label": "Source de données",
   "dataSourceSelect.noneOption": "Aucune",
   "dataSourceSelect.sharedGroupLabel": "Datasets partagés",
+
+  // DatasetDownloadButtons (builder)
+  "datasetDownload.geojsonButton": "Télécharger GeoJSON",
+  "datasetDownload.csvButton": "Télécharger CSV",
+  "datasetDownload.tooLarge":
+    "Jeu de données trop volumineux pour l'export CSV navigateur — export serveur à venir (SP-15).",
+
+  // ExplorerDrawer (builder)
+  "explorerDrawer.closeAria": "Fermer le panneau",
+  "explorerDrawer.heading": "Entités — {value}",
+  "explorerDrawer.layerTitle": "Entités",
+  "explorerDrawer.empty": "Aucune entité",
+  "explorerDrawer.limitMessage":
+    "Affinez le contexte (période, emprise, filtre) pour voir l'ensemble des entités — {limit} premières affichées.",
+  "explorerDrawer.viewRecordAria": "Voir {value}",
+  "explorerDrawer.prevPageAria": "Page précédente",
+  "explorerDrawer.previous": "Précédent",
+  "explorerDrawer.pageOf": "Page {page} / {totalPages}",
+  "explorerDrawer.nextPageAria": "Page suivante",
+  "explorerDrawer.next": "Suivant",
+
+  // NavigationPanel (builder)
+  "navigationPanel.modeLabel": "Mode de navigation",
+  "navigationPanel.tabsOption": "Onglets",
+  "navigationPanel.storyOption": "Story (chapitres)",
+  "navigationPanel.enterActionsHeading": "Actions à l'entrée du chapitre « {name} ».",
+  "navigationPanel.removeActionAria": "Retirer l'action {id}",
+  "navigationPanel.conditionAria": "Condition de l'action {id}",
+  "navigationPanel.emptyEnterActions": "Aucune action à l'entrée.",
+  "navigationPanel.addToChapterButton": "Ajouter à ce chapitre",
+
+  // PageManager (builder)
+  "pageManager.openAria": "Ouvrir la page {id}",
+  "pageManager.renameAria": "Renommer la page {id}",
+  "pageManager.moveUpAria": "Monter la page {id}",
+  "pageManager.moveDownAria": "Descendre la page {id}",
+  "pageManager.removeAria": "Retirer la page {id}",
+  "pageManager.addButton": "Ajouter une page",
+
+  // PropsPanel (builder)
+  "propsPanel.noWidgetSelected": "Aucun widget sélectionné.",
+  "propsPanel.unknownWidget": "Widget inconnu : {widget}",
+  "propsPanel.visibleWhenLabel": "Condition d'affichage",
+  "propsPanel.visibleWhenAria": "Condition d'affichage (visibleWhen)",
+
+  // ThemePanel (builder)
+  "themePanel.fontSystem": "Système",
+  "themePanel.fontSerif": "Serif",
+  "themePanel.fontMonospace": "Monospace",
+  "themePanel.radiusSquare": "Carré",
+  "themePanel.radiusLight": "Léger",
+  "themePanel.radiusStandard": "Standard",
+  "themePanel.radiusRounded": "Arrondi",
+  "themePanel.radiusVeryRounded": "Très arrondi",
+  "themePanel.spaceCompact": "Compact",
+  "themePanel.spaceStandard": "Standard",
+  "themePanel.spaceAiry": "Aéré",
+  "themePanel.colorPrimary": "Couleur primaire",
+  "themePanel.colorBackground": "Couleur de fond",
+  "themePanel.colorSurface": "Couleur de surface",
+  "themePanel.colorText": "Couleur du texte",
+  "themePanel.colorMuted": "Couleur atténuée",
+  "themePanel.colorBorder": "Couleur de bordure",
+  "themePanel.fontLabel": "Police",
+  "themePanel.radiusFieldLabel": "Arrondi",
+  "themePanel.spaceLabel": "Espacement",
+
+  // VariablesPanel (builder)
+  "variablesPanel.typeString": "Texte",
+  "variablesPanel.typeNumber": "Nombre",
+  "variablesPanel.typeBool": "Booléen",
+  "variablesPanel.typeDate": "Date",
+  "variablesPanel.typeRecord": "Enregistrement",
+  "variablesPanel.typeList": "Liste",
+  "variablesPanel.renameAria": "Renommer la variable {id}",
+  "variablesPanel.typeAria": "Type de la variable {id}",
+  "variablesPanel.initialValueAria": "Valeur initiale de la variable {id}",
+  "variablesPanel.definedByWiring": "Définie par câblage d'action",
+  "variablesPanel.removeAria": "Retirer la variable {id}",
+  "variablesPanel.addButton": "Ajouter une variable",
+
+  // WidgetHost (builder)
+  "widgetHost.crashedFallback": "Erreur du widget",
+  "widgetHost.unknownWidget": "Widget inconnu : {widget}",
 } as const;

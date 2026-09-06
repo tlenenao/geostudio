@@ -10,6 +10,7 @@ import { useAnalyticsContext } from "./AnalyticsContext";
 import { useAuth } from "../auth/useAuth";
 import { evaluateExpression } from "./expr";
 import { resolveExprBindings } from "./exprBindings";
+import { t } from "../i18n";
 
 class WidgetErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -23,7 +24,7 @@ class WidgetErrorBoundary extends Component<{ children: ReactNode }, { failed: b
     if (this.state.failed) {
       return (
         <div className="flex h-full items-center justify-center bg-red-50 text-xs text-red-600">
-          Erreur du widget
+          {t("widgetHost.crashedFallback")}
         </div>
       );
     }
@@ -58,7 +59,7 @@ export function WidgetHost({
   if (!def) {
     return (
       <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">
-        Widget inconnu : {item.widget}
+        {t("widgetHost.unknownWidget", { widget: item.widget })}
       </div>
     );
   }

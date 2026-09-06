@@ -1,12 +1,4 @@
 [
-  "src/builder/DatasetDownloadButtons.tsx",
-  "src/builder/ExplorerDrawer.tsx",
-  "src/builder/NavigationPanel.tsx",
-  "src/builder/PageManager.tsx",
-  "src/builder/PropsPanel.tsx",
-  "src/builder/ThemePanel.tsx",
-  "src/builder/VariablesPanel.tsx",
-  "src/builder/WidgetHost.tsx",
   "src/map/BasemapSelect.tsx",
   "src/map/CameraControls.tsx",
   "src/map/FieldClassificationPicker.tsx",
