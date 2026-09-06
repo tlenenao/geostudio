@@ -60,6 +60,15 @@ export function CatalogSpatialFilter({ onChange }: { onChange: (bbox: Bbox | nul
       style: DEFAULT_BASEMAP.style,
       center: [2.35, 46.6],
       zoom: 4,
+      // Contrôle d'attribution désactivé (audit a11y SP-57a) : ce mini-fond
+      // de carte est un widget de sélection décoratif (`role="img"` sur son
+      // conteneur, cf. plus bas) — le contrôle par défaut de MapLibre y
+      // insère un `<summary>`/`<a>` interactifs et focusables, ce que
+      // axe-core signale à juste titre (`nested-interactive`, serious) :
+      // du contenu interactif ne doit jamais être imbriqué dans un élément
+      // dont le rôle ARIA implique l'absence d'interaction. L'attribution
+      // réelle reste portée par la carte principale de l'éditeur.
+      attributionControl: false,
       // dragPan désactivé : un simple clic-glisser doit dessiner le
       // rectangle (mousedown/mousemove/mouseup ci-dessous), pas déplacer la
       // vue sous le curseur pendant le geste — les deux gestionnaires
