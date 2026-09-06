@@ -218,6 +218,36 @@ test("listGroups maps name to title", async () => {
   ]);
 });
 
+test("createGroup crée un groupe (POST /groups)", async () => {
+  server.use(
+    http.post("https://core.test/groups", async ({ request }) => {
+      const body = (await request.json()) as { name: string };
+      expect(body.name).toBe("Équipe SIG");
+      return HttpResponse.json({ id: "g1", name: "Équipe SIG" }, { status: 201 });
+    }),
+  );
+  const group = await makeClient().createGroup("Équipe SIG");
+  expect(group).toEqual({ id: "g1", title: "Équipe SIG" });
+});
+
+test("addGroupMember pose un message clair sur un 404", async () => {
+  server.use(
+    http.post("https://core.test/groups/g1/members", () =>
+      HttpResponse.json({ detail: "group or user not found" }, { status: 404 }),
+    ),
+  );
+  await expect(makeClient().addGroupMember("g1", "u2")).rejects.toThrow(
+    /groupe.*n'existe pas.*créateur/i,
+  );
+});
+
+test("addGroupMember réussit (204) sans lever", async () => {
+  server.use(
+    http.post("https://core.test/groups/g1/members", () => new HttpResponse(null, { status: 204 })),
+  );
+  await expect(makeClient().addGroupMember("g1", "u2")).resolves.toBeUndefined();
+});
+
 test("getSharing passes through the core's Sharing shape directly", async () => {
   const sharing = await makeClient().getSharing("7");
   expect(sharing).toEqual({ public: true, groups: [{ groupId: "10", role: "editor" }] });

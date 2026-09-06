@@ -392,6 +392,14 @@ export interface ItemClient {
   uploadThumbnail(pk: string, file: File): Promise<void>;
   deleteItem(pk: string): Promise<void>;
   listGroups(): Promise<Group[]>;
+  // GAP-42/65 : POST /groups + POST /groups/{id}/members existaient et
+  // étaient testés côté cœur, mais aucune UI/MCP ne les exposait —
+  // ShareForm.tsx ne pouvait qu'afficher des groupes déjà créés hors
+  // produit. addGroupMember réserve le succès au créateur du groupe
+  // (404 côté cœur si non — comportement délibéré, message clair ici
+  // plutôt que masqué).
+  createGroup(name: string): Promise<Group>;
+  addGroupMember(groupId: string, userId: string): Promise<void>;
   getSharing(pk: string): Promise<Sharing>;
   setSharing(pk: string, sharing: Sharing): Promise<void>;
   listLayerSources(params?: { q?: string }): Promise<LayerSource[]>;

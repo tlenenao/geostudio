@@ -32,6 +32,8 @@ READ_ONLY_TOOLS = {
     "create_bookmark",
     "create_pipeline",
     "run_pipeline",
+    "create_group",
+    "add_group_member",
 }
 
 

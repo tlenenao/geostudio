@@ -147,6 +147,25 @@ export function useGroups(options?: { enabled?: boolean }) {
   });
 }
 
+export function useCreateGroup() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => client.createGroup(name),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["groups"] });
+    },
+  });
+}
+
+export function useAddGroupMember() {
+  const client = useItemClientInternal();
+  return useMutation({
+    mutationFn: ({ groupId, userId }: { groupId: string; userId: string }) =>
+      client.addGroupMember(groupId, userId),
+  });
+}
+
 export function useSharing(pk: string, options?: { enabled?: boolean }) {
   const client = useItemClientInternal();
   return useQuery({
