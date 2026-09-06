@@ -1105,3 +1105,39 @@ def test_seo_router_is_not_gated_by_admin_auth(compose, router):
         f"{router} ({compose.name}) ne doit jamais référencer admin-auth@docker "
         f"(route publique), a trouvé : {middlewares}"
     )
+
+
+def test_core_env_vars_extractor_has_not_silently_regressed_to_empty():
+    """REV-076/F-tests-04 : core_env_vars() est la clé de voûte de
+    test_every_core_env_var_is_wired_to_a_service — si elle régressait vers
+    l'ensemble vide, ce test resterait vert par construction
+    (unwired = vide - vide - exemptions = vide). Plancher choisi
+    confortablement sous la mesure réelle (68 au 2026-09-06), jamais un
+    nombre exact fragile."""
+    found = core_env_vars()
+    assert len(found) >= 60, (
+        f"core_env_vars() n'a trouvé que {len(found)} variable(s) — "
+        "régression probable de l'extraction AST, pas une baisse légitime "
+        "du nombre de variables lues par core/app/"
+    )
+    for sentinel in ("CORE_AUTH_MODE", "S3_ATTACHMENTS_BUCKET"):
+        assert sentinel in found, f"{sentinel} doit apparaître dans core_env_vars()"
+
+
+def test_compose_substitutions_extractor_has_not_silently_regressed_to_empty():
+    """Même garde que ci-dessus pour compose_substitutions(), clé de voûte
+    de test_every_compose_substitution_is_documented."""
+    found = compose_substitutions()
+    assert len(found) >= 55, (
+        f"compose_substitutions() n'a trouvé que {len(found)} variable(s) — "
+        "régression probable de la regex ${VAR}, pas une baisse légitime"
+    )
+
+
+def test_documented_env_vars_extractor_has_not_silently_regressed_to_empty():
+    """Même garde pour documented_env_vars(), y compris commentées."""
+    found = documented_env_vars(include_commented=True)
+    assert len(found) >= 65, (
+        f"documented_env_vars() n'a trouvé que {len(found)} variable(s) — "
+        "régression probable de la regex sur .env.example"
+    )
