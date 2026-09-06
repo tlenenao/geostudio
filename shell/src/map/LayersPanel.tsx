@@ -296,8 +296,8 @@ export function LayersPanel({
                           layers.map((l) =>
                             l.id === layer.id
                               ? {
-                                  ...l,
-                                  props: { ...l.props, radiusPixels: Number(e.target.value) },
+                                  ...layer,
+                                  props: { ...layer.props, radiusPixels: Number(e.target.value) },
                                 }
                               : l,
                           ),
@@ -320,7 +320,10 @@ export function LayersPanel({
                         onChange(
                           layers.map((l) =>
                             l.id === layer.id
-                              ? { ...l, props: { ...l.props, radius: Number(e.target.value) } }
+                              ? {
+                                  ...layer,
+                                  props: { ...layer.props, radius: Number(e.target.value) },
+                                }
                               : l,
                           ),
                         )
@@ -344,8 +347,8 @@ export function LayersPanel({
                           layers.map((l) =>
                             l.id === layer.id
                               ? {
-                                  ...l,
-                                  props: { ...l.props, elevationScale: Number(e.target.value) },
+                                  ...layer,
+                                  props: { ...layer.props, elevationScale: Number(e.target.value) },
                                 }
                               : l,
                           ),

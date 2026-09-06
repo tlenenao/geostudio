@@ -108,6 +108,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async sampleCollectionField(..._args: unknown[]) {
       return unsupported();
     },
+    async sampleDataSourceField(..._args: unknown[]) {
+      return unsupported();
+    },
     async uploadMapIcon(..._args: unknown[]) {
       return unsupported();
     },
