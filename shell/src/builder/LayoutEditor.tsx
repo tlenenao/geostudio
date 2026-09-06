@@ -55,6 +55,11 @@ export function LayoutEditor({
     onChange(items.map((i) => (i.id === id ? moveItemAt(i, breakpoint, dx, dy) : i)));
   }
 
+  function handleRemove(id: string) {
+    onChange(items.filter((i) => i.id !== id));
+    if (selectedId === id) setSelectedId(null);
+  }
+
   return (
     <div className="flex flex-col gap-2">
       <WidgetPalette onAdd={addWidget} exclude={NESTED_EXCLUDE} />
@@ -66,6 +71,7 @@ export function LayoutEditor({
           selectedId={selectedId}
           onSelect={setSelectedId}
           onMoveItem={handleMove}
+          onRemoveItem={handleRemove}
           renderItem={(item) => <WidgetHost item={item} mode="edit" />}
         />
       </div>

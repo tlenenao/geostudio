@@ -440,6 +440,83 @@ test("Ctrl+Shift+Z redoes an undone GridCanvas move", async () => {
   expect(saved.layout.items[0].x).toBe(1);
 });
 
+test("the remove button on GridCanvas removes the selected widget", async () => {
+  const withItem: AppConfig = {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [{ id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } }],
+    },
+  };
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem) });
+
+  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer widget-w1" }));
+  expect(screen.queryByRole("button", { name: "Sélectionner widget-w1" })).not.toBeInTheDocument();
+});
+
+test("Backspace with a widget selected removes it, ignored while typing", async () => {
+  const withItem: AppConfig = {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [{ id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } }],
+    },
+  };
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem) });
+
+  await userEvent.click(await screen.findByRole("button", { name: "Sélectionner widget-w1" }));
+  await userEvent.keyboard("{Backspace}");
+  expect(screen.queryByRole("button", { name: "Sélectionner widget-w1" })).not.toBeInTheDocument();
+});
+
+test("removing a widget prunes any ActionsPanel message wired to it", async () => {
+  // La disparition visuelle de la ligne dans ActionsPanel ne prouve rien à
+  // elle seule : `resolvesOnThisPage` (ActionsPanel.tsx) masque déjà tout
+  // message dont from/to ne résout plus dans `items`, que `config.messages`
+  // ait été purgé ou non (vérifié par falsification : la ligne disparaît de
+  // l'affichage même quand la purge est désactivée). L'assertion qui compte
+  // est sur l'objet réellement sauvegardé.
+  const withMessage: AppConfig = {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [{ id: "m1", from: "w1", event: "changed", to: "w2", action: "setFilter" }],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [
+        { id: "w1", widget: "filter", x: 0, y: 0, w: 4, h: 2, props: {} },
+        { id: "w2", widget: "list", x: 4, y: 0, w: 4, h: 2, props: {} },
+      ],
+    },
+  };
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(withMessage), saveAppConfig });
+
+  await screen.findByRole("button", { name: "Sélectionner widget-w1" });
+  expect(screen.getByText("Filtre.changed → Liste.setFilter")).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-w1" }));
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer widget-w1" }));
+
+  expect(screen.queryByText("Filtre.changed → Liste.setFilter")).not.toBeInTheDocument();
+  expect(screen.getByText("Aucune action.")).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
+  expect(saved.messages).toEqual([]);
+});
+
 test("a burst of keystrokes in visibleWhen collapses into one undo step once blurred", async () => {
   // Seeds an already-existing widget (mirrors the GridCanvas tests above)
   // rather than adding one via the palette click just before typing: adding

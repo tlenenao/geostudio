@@ -75,6 +75,7 @@ export function registerModalWidget(): void {
               selectedId={null}
               onSelect={() => {}}
               onMoveItem={() => {}}
+              onRemoveItem={() => {}}
               renderItem={(item) => (
                 <WidgetHost
                   item={item}

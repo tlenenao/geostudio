@@ -102,6 +102,7 @@ export function registerDrawerWidget(): void {
                 selectedId={null}
                 onSelect={() => {}}
                 onMoveItem={() => {}}
+                onRemoveItem={() => {}}
                 renderItem={(item) => (
                   <WidgetHost
                     item={item}
