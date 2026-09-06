@@ -16,6 +16,12 @@ class DataSource(BaseModel):
     type: str
     service: str
     layer: str
+    # GAP-19 (SDK d'embedding) : une source de données peut référencer un
+    # item "dataset" (app.configs.guest_access en a besoin pour résoudre la
+    # portée d'un jeton de lien de partage) plutôt qu'une couche directe.
+    # Champ additif, rétrocompatible — BuilderConfig est stocké en JSON
+    # (ConfigRevision.data), aucune migration nécessaire.
+    datasetId: str | None = None
     query: dict = Field(default_factory=dict)
 
 
