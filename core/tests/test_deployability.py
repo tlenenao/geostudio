@@ -1034,6 +1034,44 @@ def test_keycloak_router_carries_security_and_rate_limit_middlewares():
         )
 
 
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+@pytest.mark.parametrize("router", ["core", "shell"])
+def test_public_app_router_carries_security_and_rate_limit_middlewares(compose, router):
+    """REV-073/F-tests-03 : les routeurs core et shell portent aujourd'hui
+    security-headers@docker et rate-limit@docker (vérifié par grep direct
+    sur les deux fichiers compose), mais aucun test ne le garantissait —
+    contrairement au routeur keycloak (test au-dessus) et aux 3 routeurs
+    admin. Une régression qui retirerait un de ces deux middlewares d'un
+    des deux routeurs serait aujourd'hui invisible."""
+    labels = _traefik_labels(services(compose)[router])
+    middlewares = _router_middlewares(labels, router)
+    for required in ("security-headers@docker", "rate-limit@docker"):
+        assert required in middlewares, (
+            f"le routeur {router} ({compose.name}) doit référencer {required} "
+            f"dans ses middlewares, a trouvé : {middlewares}"
+        )
+
+
+def test_security_headers_middleware_defines_the_expected_directives():
+    """Complément REV-073 : le routeur peut référencer security-headers@docker
+    sans que la définition elle-même porte les 4 directives attendues (par
+    ex. si un futur refactor renomme les clés de label sans y penser)."""
+    labels = _traefik_labels(services(PROD)["core"])
+    assert labels["traefik.http.middlewares.security-headers.headers.stsSeconds"] == "31536000"
+    assert labels["traefik.http.middlewares.security-headers.headers.contentTypeNosniff"] == "true"
+    assert labels["traefik.http.middlewares.security-headers.headers.frameDeny"] == "true"
+    assert (
+        "traefik.http.middlewares.security-headers.headers.referrerPolicy" in labels
+    )
+
+
+def test_rate_limit_middleware_defines_average_and_burst():
+    """Complément REV-073, symétrique au test ci-dessus pour rate-limit."""
+    labels = _traefik_labels(services(PROD)["core"])
+    assert labels["traefik.http.middlewares.rate-limit.ratelimit.average"] == "100"
+    assert labels["traefik.http.middlewares.rate-limit.ratelimit.burst"] == "200"
+
+
 def test_keycloak_realm_enables_brute_force_protection():
     """SP-42/F-infra-ci-02 (critical, second volet) :
     `deploy/keycloak/geostudio-realm.json` déclarait `bruteForceProtected:
