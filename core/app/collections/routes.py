@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.attachments import repository as attachments_repo
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user, get_current_user_optional
+from app.auth.dependency import get_current_user, get_current_user_optional, is_quotas_enabled
 from app.collections import repository as repo
 from app.collections.ddl import TenantColumnMismatch
 from app.collections.introspection import (
@@ -29,6 +29,7 @@ from app.collections.schemas import (
 )
 from app.configs import repository as configs_repo
 from app.db import core_table_names, get_session
+from app.quotas.service import check_quota_or_raise
 from app.roles.guards import has_privilege, privilege_required_error, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
@@ -284,6 +285,11 @@ def create_empty_collection_route(
     # ADMIN_COLLECTIONS_MANAGE a été explicitement écarté ici : l'assistant de
     # requête visuelle dépend de cette route pour tout utilisateur non-admin.
     require_privilege(session, user, Privilege.DATA_MANAGE.value)
+    # SP-58 Tâche 5 (GAP-73/GAP-11) : même patron que create_config_service
+    # (app.configs.service) — capacité éteinte par défaut, comportement
+    # inchangé.
+    if is_quotas_enabled():
+        check_quota_or_raise(session, tenant_id=user.tenant_id, kind="collections")
     col = create_empty_collection(
         session,
         tenant_id=user.tenant_id,

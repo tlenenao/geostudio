@@ -14,6 +14,7 @@ from app.auth.dependency import (
     is_copilot_enabled,
     is_etl_enabled,
     is_export_enabled,
+    is_quotas_enabled,
     is_read_only_mode,
     is_terrain3d_enabled,
     is_tileset3d_enabled,
@@ -47,6 +48,7 @@ class MeCapabilities(BaseModel):
     terrain3dEnabled: bool
     copilotEnabled: bool
     adminToolsEnabled: bool
+    quotasEnabled: bool
 
 
 class RoleSummary(BaseModel):
@@ -99,6 +101,7 @@ def get_me(
             terrain3dEnabled=is_terrain3d_enabled(),
             copilotEnabled=is_copilot_enabled(),
             adminToolsEnabled=is_admin_tools_enabled(),
+            quotasEnabled=is_quotas_enabled(),
         ),
     )
 

@@ -666,6 +666,44 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   vérifiées directement sur le port du service `core` (200, contenu
   correct, `PUBLIC_BASE_URL` résolu). À revérifier contre une stack Docker
   standard avant mise en production.
+- **SP-58** — conformité RGPD (spec
+  `docs/superpowers/specs/2026-09-05-sp58-conformite-rgpd-design.md`, plan
+  `docs/superpowers/plans/2026-09-05-sp58-conformite-rgpd.md`), 10 tâches :
+  compteurs et mesure de stockage par tenant (`GET /admin/usage`, 4
+  buckets tenant-préfixés paginés + 2 buckets de sortie de job via
+  `byte_size`, migration 0035) ; capacité `CORE_QUOTAS_ENABLED` + 3
+  limites instance-wide, garde appliquée aux 6 points de création réels
+  (items/collections/stockage — tileset3d/terrain3d/ingestion ne
+  connaissaient pas la taille du fichier confirmé avant cette tâche, un
+  `head_object` a dû être ajouté à chacun) ; anonymisation d'utilisateur
+  (`POST /compliance/users/{id}/erase`, RGPD Art. 17 — écrase l'identité,
+  préserve les objets possédés, migration 0036 `users.erased_at`) ;
+  privilège `compliance.manage` (19e, domaine `settings`, **exclu même de
+  l'Administrateur** — `list(ALL_PRIVILEGE_VALUES)` l'y aurait glissé
+  silencieusement sans exclusion explicite) ; `purge_tenant` — suppression
+  complète et irréversible d'un tenant (27 tables tenant-scoped réelles,
+  énumérées via `Base.registry.mappers`, pas une liste recopiée à la main
+  — 5 tables manquaient au texte de la spec : `collection_shares`/
+  `pipeline_runs`/`report_runs`/`harvest_records`/`alert_evaluations`),
+  **DROP réel de la table dynamique de chaque collection** (trouvaille :
+  aucun code existant du dépôt, `unregister_collection` compris, ne le
+  faisait jamais) ; route de déclenchement asynchrone avec confirmation
+  par slug (jamais une case à cocher), `GET /compliance/purges/{id}` (202
+  tant qu'aucun `purge_receipts` n'existe — pas de ligne de statut
+  intermédiaire dans ce plan, limitation de portée assumée) ; UI
+  `ComplianceAdminPage` avec anonymisation et purge dans deux panneaux
+  visuellement distincts (jamais rapprochés, risque explicite de la
+  spec). Garde anti-lockout ajoutée à l'anonymisation au-delà du texte du
+  plan (trouvée nécessaire à l'exécution, falsifiée comme le reste) : le
+  dernier titulaire d'un privilège anti-lockout ne peut pas s'auto-effacer
+  (changer `oidc_sub` l'empêcherait de jamais se reconnecter). Trouvaille
+  au passage : `GET /me` ne renvoyait jamais `tenantId` au shell (seulement
+  `tenantSlug`) alors que le cœur le sert déjà — chemin de lecture oublié
+  (piège CLAUDE.md n°5), corrigé. **Rappel de priorité (spec §0, à ne pas
+  oublier en relisant cette ligne plus tard)** : ce chantier reste noté
+  par la feuille de route révisée comme pertinent seulement dès qu'un
+  tenant externe réel est onboardé (question produit Q2, toujours
+  ouverte) — livrer ce plan ne tranche pas cette question.
 
 ### Conventions tranchées (2026-09-01)
 

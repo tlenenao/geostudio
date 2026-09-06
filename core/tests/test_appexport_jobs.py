@@ -117,6 +117,10 @@ def test_job_succeeds_and_marks_done(monkeypatch, tmp_path):
         job = appexport_repo.get_job(s, tenant_id=tenant_id, job_id=job_id)
     assert job.status == "done"
     assert job.result_key == f"appexports/{job_id}.zip"
+    # SP-58 Tâche 2 (GAP-73) : la taille du bundle zip écrit sur S3 doit
+    # être tracée (bucket geostudio-appexports non préfixé par tenant_id).
+    assert job.byte_size is not None
+    assert job.byte_size > 0
 
 
 def test_job_guard_rejection_marks_error(monkeypatch, tmp_path):

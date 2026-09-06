@@ -64,6 +64,7 @@ def test_instance_reports_export_disabled_by_default(env):
         "terrain3dEnabled": False,
         "copilotEnabled": False,
         "adminToolsEnabled": False,
+        "quotasEnabled": False,
     }
 
 

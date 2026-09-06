@@ -54,6 +54,7 @@ def test_instance_defaults_to_read_write(env):
         "terrain3dEnabled": False,
         "copilotEnabled": False,
         "adminToolsEnabled": False,
+        "quotasEnabled": False,
     }
 
 
@@ -70,6 +71,7 @@ def test_instance_reports_read_only_without_needing_auth(env, monkeypatch):
         "terrain3dEnabled": False,
         "copilotEnabled": False,
         "adminToolsEnabled": False,
+        "quotasEnabled": False,
     }
 
 

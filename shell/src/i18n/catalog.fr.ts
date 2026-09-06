@@ -163,4 +163,5 @@ export const fr = {
   "roles.privilege.adminExtensionsManage": "Gérer les extensions",
   "roles.privilege.adminSecretsManage": "Voir les noms de secrets (administration)",
   "roles.privilege.settingsInstanceManage": "Gérer les paramètres d'instance et de tenant",
+  "roles.privilege.complianceManage": "Purger toutes les données d'un tenant (RGPD, irréversible)",
 } as const;

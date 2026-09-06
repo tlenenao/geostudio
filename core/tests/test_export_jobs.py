@@ -171,6 +171,10 @@ def test_render_export_task_marks_done_on_success(db_session, monkeypatch):
     refreshed = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
     assert refreshed.status == "done"
     assert refreshed.result_key is not None
+    # SP-58 Tâche 2 (GAP-73) : la taille du rendu écrit sur S3 doit être
+    # tracée pour permettre la mesure de stockage par tenant (le bucket
+    # geostudio-exports n'est pas préfixé par tenant_id, cf. spec §1.4).
+    assert refreshed.byte_size == len(b"PNGDATA")
     assert uploaded["bucket"] == "geostudio-exports"
     assert uploaded["body"] == b"PNGDATA"
     # Le bucket doit être créé (via ensure_uploads_bucket) AVANT l'upload —

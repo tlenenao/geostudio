@@ -72,6 +72,7 @@ export type Me = {
   role: RoleSummary;
   privileges: string[];
   version: string;
+  tenantId: string;
   tenantSlug: string;
 };
 
@@ -87,6 +88,15 @@ export type UserSummary = {
   id: string;
   username: string;
   roleSlug: string;
+};
+
+export type PurgeReceipt = {
+  id: string;
+  tenantSlug: string;
+  requestedByUserId: string;
+  requestedAt: string;
+  completedAt: string;
+  counts: Record<string, number>;
 };
 
 export type NotificationSummary = {
@@ -153,6 +163,7 @@ export type InstanceInfo = {
   terrain3dEnabled: boolean;
   copilotEnabled: boolean;
   adminToolsEnabled: boolean;
+  quotasEnabled: boolean;
 };
 
 export type AdminToolName = "martin" | "titiler" | "grafana";
@@ -388,6 +399,9 @@ export interface ItemClient {
     q?: string;
   }): Promise<{ users: UserSummary[]; total: number }>;
   updateUserRole(id: string, roleId: string): Promise<UserSummary>;
+  eraseUser(userId: string): Promise<void>;
+  requestTenantPurge(tenantId: string, confirmSlug: string): Promise<{ jobId: string }>;
+  getPurgeStatus(purgeId: string): Promise<PurgeReceipt | null>;
   listNotifications(params: {
     page: number;
     pageSize: number;

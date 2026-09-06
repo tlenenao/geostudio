@@ -22,6 +22,7 @@ export type InstanceCapabilities = {
   tileset3dEnabled: boolean;
   terrain3dEnabled: boolean;
   copilotEnabled: boolean;
+  quotasEnabled: boolean;
 };
 
 export type Profile = {

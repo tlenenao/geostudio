@@ -368,6 +368,15 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async updateUserRole(..._args: unknown[]) {
       return unsupported();
     },
+    async eraseUser(..._args: unknown[]) {
+      return unsupported();
+    },
+    async requestTenantPurge(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getPurgeStatus(..._args: unknown[]) {
+      return unsupported();
+    },
     async listNotifications(..._args: unknown[]) {
       return unsupported();
     },

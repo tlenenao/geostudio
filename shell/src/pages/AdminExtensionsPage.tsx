@@ -19,6 +19,7 @@ const ADMIN_LINKS: { to: string; label: string; privilege: string }[] = [
   { to: "/admin/users", label: "Utilisateurs →", privilege: "admin.users.manage" },
   { to: "/admin/collections", label: "Collections →", privilege: "admin.collections.manage" },
   { to: "/admin/harvest", label: "Moissonnage →", privilege: "admin.harvest.manage" },
+  { to: "/admin/compliance", label: "Conformité (RGPD) →", privilege: "compliance.manage" },
 ];
 
 export function AdminExtensionsPage() {

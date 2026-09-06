@@ -220,7 +220,13 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
             ContentType=_CONTENT_TYPE[export_format],
         )
         with request_scoped_session(factory) as session:
-            export_repo.mark_done(session, job_id=job_id, result_key=result_key)
+            # SP-58 Tâche 2 (GAP-73) : `content` est déjà en mémoire (le
+            # rendu vient d'être produit ci-dessus) — len() suffit, pas
+            # besoin d'un head_object après upload (bucket non
+            # tenant-préfixé, cf. spec §1.4/§3.1).
+            export_repo.mark_done(
+                session, job_id=job_id, result_key=result_key, byte_size=len(content)
+            )
         _notify(
             factory,
             tenant_id=tenant_id,

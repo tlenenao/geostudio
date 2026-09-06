@@ -81,3 +81,36 @@ export function useUpdateUserRole() {
     },
   });
 }
+
+export function useEraseUser() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => client.eraseUser(userId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+}
+
+export function useRequestTenantPurge() {
+  const client = useItemClientInternal();
+  return useMutation({
+    mutationFn: (vars: { tenantId: string; confirmSlug: string }) =>
+      client.requestTenantPurge(vars.tenantId, vars.confirmSlug),
+  });
+}
+
+export function usePurgeStatus(purgeId: string | null) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["purge-status", purgeId],
+    queryFn: () => client.getPurgeStatus(purgeId as string),
+    enabled: purgeId !== null,
+    // Le statut ne change jamais spontanément côté client — seul un
+    // nouveau GET peut le faire avancer de "en cours" à "terminé" : un
+    // sondage court est le seul moyen de le savoir (même patron que
+    // NotificationBell, cf. CLAUDE.md SP-39).
+    refetchInterval: (query) => (query.state.data ? false : 3000),
+  });
+}

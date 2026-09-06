@@ -107,6 +107,15 @@ def is_admin_tools_enabled() -> bool:
     return os.environ.get("CORE_ADMIN_TOOLS_ENABLED", "false").lower() == "true"
 
 
+def is_quotas_enabled() -> bool:
+    """CORE_QUOTAS_ENABLED (SP-58) — capacité instance-wide optionnelle,
+    même convention que is_admin_tools_enabled : lue à chaque appel, sans
+    cache. Défaut false : une instance qui monte en version n'applique
+    aucune limite tant qu'elle n'a pas explicitement activé la capacité
+    (design SP-58 §3.1)."""
+    return os.environ.get("CORE_QUOTAS_ENABLED", "false").lower() == "true"
+
+
 def reject_admin_tools_without_secret() -> None:
     """Appelée une fois au démarrage (create_app()), même patron que
     reject_mock_outside_development() ci-dessus : échec rapide et lisible

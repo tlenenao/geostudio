@@ -64,6 +64,7 @@ def test_instance_reports_etl_disabled_by_default(env):
         "terrain3dEnabled": False,
         "copilotEnabled": False,
         "adminToolsEnabled": False,
+        "quotasEnabled": False,
     }
 
 
@@ -80,4 +81,5 @@ def test_instance_reports_etl_enabled(env, monkeypatch):
         "terrain3dEnabled": False,
         "copilotEnabled": False,
         "adminToolsEnabled": False,
+        "quotasEnabled": False,
     }

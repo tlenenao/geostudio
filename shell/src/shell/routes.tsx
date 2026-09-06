@@ -19,6 +19,7 @@ import { AdminInfrastructurePage } from "../pages/AdminInfrastructurePage";
 import { CollectionsAdminPage } from "../pages/CollectionsAdminPage";
 import { HarvestSourcesAdminPage } from "../pages/HarvestSourcesAdminPage";
 import { RolesAdminPage } from "../pages/RolesAdminPage";
+import { ComplianceAdminPage } from "../pages/ComplianceAdminPage";
 import { UsersAdminPage } from "../pages/UsersAdminPage";
 import { KitGalleryPage } from "../pages/KitGalleryPage";
 import { UsagePage } from "../pages/UsagePage";
@@ -330,6 +331,17 @@ export function AppRoutes() {
               deniedMessage="Accès réservé à la gestion des utilisateurs."
             >
               <UsersAdminPage />
+            </RequirePrivilege>
+          }
+        />
+        <Route
+          path="/admin/compliance"
+          element={
+            <RequirePrivilege
+              privilege="compliance.manage"
+              deniedMessage="Accès réservé à la conformité (RGPD)."
+            >
+              <ComplianceAdminPage />
             </RequirePrivilege>
           }
         />
