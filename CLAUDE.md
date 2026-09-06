@@ -1240,10 +1240,16 @@ cette décision a été fermée par SP-34 (cf. `### Livré` ci-dessus).
 Le détail complet (43 trouvailles confirmées non corrigées, 35 minor, 79
 gaps, la dette héritée SP-29b→SP-40, 2 trouvailles SP-43, 3 trouvailles
 SP-57a et 2 trouvailles de la revue finale de SP-61 documentées sans être
-corrigées) vit dans **`docs/revue/2026-09-04-backlog.md`** (180 entrées
-`REV-nnn`, numérotation stable et citable — ne pas renuméroter, ajouter en
-fin de section). Ce qui, dans ce backlog, change le comportement immédiat
-d'une session :
+corrigées) vit dans **`docs/revue/2026-09-04-backlog.md`** (181 entrées
+`REV-nnn` — 103 fermées, 9 partiellement fermées, 69 ouvertes après une passe
+de revérification hors-SP le 2026-09-06 : avant cette passe, seules 24
+fermetures étaient reflétées malgré des dizaines fermées depuis leur
+rédaction (2026-09-04/05) par 21 SP sans que le document ne soit jamais
+retouché — piège n°12 appliqué au backlog, pas seulement à la matrice de
+fonctionnalités qu'il visait à l'origine ; répartition par statut désormais
+en tête du document, numérotation stable et citable — ne pas renuméroter,
+ajouter en fin de section). Ce qui, dans ce backlog, change le comportement
+immédiat d'une session :
 
 - Jalon **M14 atteint** (SP-44, `REV-095` clos) : les 5 tests
   `@pytest.mark.qgis` tournent contre un vrai sidecar — 2 défauts de
