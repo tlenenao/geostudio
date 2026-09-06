@@ -222,6 +222,14 @@ layers = [
     "app.attachments",
     "app.collections",
     "app.configs",
+    # app.quotas (SP-58) : compteurs/mesure de stockage par tenant
+    # (GAP-73/GAP-11). Placé juste sous app.configs : c'est le point de
+    # création le plus haut qui doit l'importer (create_config_service) —
+    # tout site plus haut peut donc l'importer librement. Les 3 imports vers
+    # le haut qu'il lui reste (collections/export/appexport.models, pour
+    # compter/sommer) sont nommés en exemption ci-dessous, même patron que
+    # app.analytics plus bas dans ce contrat.
+    "app.quotas",
     "app.extensions",
     "app.items",
     "app.sharing",
@@ -236,6 +244,13 @@ layers = [
     "app.analytics",
 ]
 ignore_imports = [
+    # app.quotas (SP-58) sait compter/sommer des lignes appartenant à des
+    # modules au-dessus de lui dans ce contrat (Collection, puis
+    # ExportJob/AppExportJob à la Tâche 3) — lecture pure de modèles, même
+    # rationale que les exemptions app.analytics.* -> app.collections.
+    # introspection plus bas. Les deux entrées export/appexport arrivent
+    # avec la Tâche 3 (import-linter échoue sur une exemption non utilisée).
+    "app.quotas.service -> app.collections.models",
     # `app.analytics` est placé au plus bas du contrat (ajouté par SP-22) : il
     # est consommé par sept modules (configs, features, alerts, appexport,
     # harvest, pipelines, mcp) et ne doit lui-même rien tirer d'au-dessus.
