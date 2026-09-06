@@ -1,5 +1,5 @@
 {
   "ponderations": {"tests": 0.30, "atteignabilite": 0.25, "garde": 0.25, "dette": 0.20},
   "plancher_priorite_haute": 40,
-  "plancher_sante_mediane": 93
+  "plancher_sante_mediane": 96
 }
