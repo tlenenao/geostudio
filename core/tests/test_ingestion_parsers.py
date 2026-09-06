@@ -19,6 +19,7 @@ from app.ingestion.parsers import (
     parse_csv_latlon,
     parse_geojson,
     parse_gpkg,
+    parse_kml,
     parse_shapefile_zip,
     parse_xlsx_latlon,
 )
@@ -414,3 +415,59 @@ def test_parse_xlsx_latlon_empty_cell_becomes_none_property():
     rows = list(parse_xlsx_latlon(content, None, None))
     _geom, props = rows[0]
     assert props["notes"] is None
+
+
+def _kml_bytes(name: str = "Paris", lon: float = 2.35, lat: float = 48.85) -> bytes:
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>'
+        f"<Placemark><name>{name}</name>"
+        f"<Point><coordinates>{lon},{lat},0</coordinates></Point>"
+        "</Placemark></Document></kml>"
+    ).encode()
+
+
+def _kmz_bytes(name: str = "Paris", lon: float = 2.35, lat: float = 48.85) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("doc.kml", _kml_bytes(name, lon, lat))
+    return buf.getvalue()
+
+
+def test_parse_kml_yields_geometry_and_properties():
+    rows = list(parse_kml(_kml_bytes()))
+    assert len(rows) == 1
+    geom, props = rows[0]
+    assert geom.geom_type == "Point"
+    assert (geom.x, geom.y) == pytest.approx((2.35, 48.85))
+    assert props["Name"] == "Paris"
+
+
+def test_parse_kmz_yields_same_result_as_kml_without_vsizip():
+    # Un .kmz est un zip contenant un doc.kml, mais se lit DIRECTEMENT par
+    # pyogrio (driver LIBKML détecté sur l'extension .kmz elle-même) —
+    # contrairement à .zip (Shapefile) qui exige le préfixe /vsizip/. Si le
+    # code préfixait /vsizip/ sur ce chemin par erreur, GDAL lèverait "n'est
+    # pas un fichier kmz valide" et ce test échouerait (cf. Step 3 du plan).
+    rows = list(parse_kml(_kmz_bytes()))
+    assert len(rows) == 1
+    geom, props = rows[0]
+    assert (geom.x, geom.y) == pytest.approx((2.35, 48.85))
+    assert props["Name"] == "Paris"
+
+
+def test_parse_kml_corrupted_file_raises_parse_error():
+    with pytest.raises(IngestionParseError, match="illisible"):
+        list(parse_kml(b"not a real kml"))
+
+
+def test_list_layers_kml_single_layer():
+    layers = list_layers(_kml_bytes(), "villes.kml")
+    assert len(layers) == 1
+    assert layers[0].feature_count == 1
+
+
+def test_list_layers_kmz_single_layer():
+    layers = list_layers(_kmz_bytes(), "villes.kmz")
+    assert len(layers) == 1
+    assert layers[0].feature_count == 1

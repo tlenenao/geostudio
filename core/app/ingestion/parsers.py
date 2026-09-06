@@ -11,6 +11,7 @@ import io
 import json
 import math
 import tempfile
+import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -227,7 +228,20 @@ def _read_features(path: str, layer_name: str | None) -> Iterator[tuple[BaseGeom
             f"couche '{layer_name}' introuvable — couches disponibles : {', '.join(available)}"
         )
     try:
-        meta, _index, geometry, field_data = pyogrio.raw.read(path, layer=layer_name, force_2d=True)
+        # pyogrio/numpy émet un DeprecationWarning interne ("generic unit for
+        # NumPy timedelta") sur des champs datetime NaT (rencontré en
+        # pratique sur les champs begin/end du schéma KML par défaut) —
+        # vérifié par exécution réelle (SP-56), quirk de la bibliothèque
+        # tierce, sans rapport avec la validité des données lues.
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=".*generic.*unit for NumPy timedelta.*",
+                category=DeprecationWarning,
+            )
+            meta, _index, geometry, field_data = pyogrio.raw.read(
+                path, layer=layer_name, force_2d=True
+            )
     except _OGR_ERRORS as exc:
         raise IngestionParseError(f"couche '{layer_name}' illisible : {exc}") from exc
 
@@ -265,12 +279,36 @@ def parse_shapefile_zip(
         yield from _read_features(f"/vsizip/{path}", layer_name)
 
 
+def parse_kml(
+    content: bytes,
+    layer_name: str | None = None,
+) -> Iterator[tuple[BaseGeometry, dict]]:
+    # Un .kmz est un zip contenant un doc.kml, mais GDAL/pyogrio le détecte
+    # et le lit DIRECTEMENT sur l'extension .kmz elle-même — PAS de préfixe
+    # /vsizip/ ici, contrairement à parse_shapefile_zip (.zip) : ce préfixe
+    # casserait la lecture ("n'est pas un fichier kmz valide"), vérifié par
+    # exécution réelle avant d'écrire ce code (spec SP-56 §Contexte). Le
+    # suffixe temporaire distingue .kml/.kmz uniquement pour que GDAL
+    # sélectionne le bon driver depuis l'extension.
+    suffix = ".kmz" if _looks_like_zip(content) else ".kml"
+    with _temp_file(content, suffix) as path:
+        yield from _read_features(path, layer_name)
+
+
+def _looks_like_zip(content: bytes) -> bool:
+    return content[:2] == b"PK"
+
+
 def list_layers(content: bytes, filename: str) -> list[LayerInfo]:
     lower = filename.lower()
     if lower.endswith(".gpkg"):
         suffix, wrap = ".gpkg", (lambda p: p)
     elif lower.endswith(".zip"):
         suffix, wrap = ".zip", (lambda p: f"/vsizip/{p}")
+    elif lower.endswith((".kml", ".kmz")):
+        # Identité : PAS le wrap /vsizip/ de la branche .zip ci-dessus, cf.
+        # parse_kml — un .kmz se lit tel quel.
+        suffix, wrap = (lower[lower.rfind(".") :], lambda p: p)
     else:
         raise ValueError(f"format non concerné par l'inspection : {filename}")
     with _temp_file(content, suffix) as tmp_path:
