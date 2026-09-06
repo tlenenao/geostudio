@@ -58,22 +58,35 @@ mais chacune retombe silencieusement sur un défaut de démo/dev sinon :
 ## Périmètre de la sauvegarde (ce qui revient, et ce qui ne revient pas)
 
 **Restauré** : la base Postgres complète (donc aussi les comptes Keycloak,
-même base `gis`), et cinq buckets MinIO — `thumbnails`, `uploads`, `cdc`,
-`tileset3d`, `terrain3d`.
+même base `gis`), et sept buckets MinIO — `thumbnails`, `uploads`, `cdc`,
+`tileset3d`, `terrain3d`, `mapicons`, `attachments`. **Correction SP-59** :
+cette section n'en listait que cinq jusqu'ici (`mapicons`/`attachments`
+ajoutés à `deploy/backup/backup.sh` après SP-33/SP-40, jamais reportés ici
+ni côté restauration) — `restore.sh` (§3-4 ci-dessous) et cette liste sont
+désormais synchronisés avec ce que `backup.sh` sauvegarde réellement,
+garanti par `test_restore_recreates_every_bucket_backup_mirrors`.
 
 **Volontairement non restauré** : les buckets `exports` et `appexports`. Ils
 ne contiennent que des artefacts régénérables — un PDF de rapport planifié,
 un bundle d'export d'app. Après restauration, un lien de téléchargement
 émis avant la perte sera mort : c'est attendu, l'export se re-demande.
 
-**Non prouvé à ce jour (SP-21)** : ce runbook n'a **jamais été rejoué de bout
-en bout**. Le périmètre ci-dessus est vérifié mécaniquement
-(`core/tests/test_deployability.py`), mais personne n'a encore observé une
-restauration réussie — en particulier, personne n'a vérifié qu'un item
-`tileset3d` reste affichable après restauration. C'est le chantier 1.4 du
-plan d'action, renvoyé à la vague 2.
+**Ce qui est prouvé, ce qui ne l'est pas (dernière mesure : SP-Deploy-b,
+détail complet §6)** : la survie des données à travers un cycle complet
+destruction→restauration a été observée une fois, en environnement isolé
+(`CORE_AUTH_MODE=mock`) — voir §6 pour le détail exact de ce qui a été
+vérifié. La reconnexion utilisateur via un vrai flux OIDC/Keycloak, et
+l'affichage correct d'un item `tileset3d` après restauration, **restent non
+vérifiés** à ce jour — voir la checklist OIDC en fin de document (§7,
+SP-59) pour rejouer cet exercice correctement la prochaine fois qu'un
+environnement Keycloak réel est disponible.
 
 ## 1. Récupérer et déchiffrer la dernière archive
+
+Cette étape reste manuelle (SP-59 ne la scripte pas, spec §6) — elle produit
+le répertoire `<horodatage>/` que `restore.sh` (chemin recommandé pour les
+étapes 3+4 ci-dessous, `deploy/backup/restore.sh`, SP-59) consomme ensuite en
+lecture seule.
 
 ```bash
 mc alias set offsite "$BACKUP_S3_ENDPOINT" "$BACKUP_S3_ACCESS_KEY" "$BACKUP_S3_SECRET_KEY"
@@ -93,6 +106,24 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps postgis minio
 ```
 
 ## 3. Restaurer Postgres (restaure aussi Keycloak — même base `gis`)
+
+**Chemin recommandé (SP-59)** : les étapes 3 et 4 ci-dessous sont désormais
+scriptées ensemble par `deploy/backup/restore.sh`, embarqué dans l'image
+`backup` — sa liste de buckets MinIO est tenue synchronisée avec
+`deploy/backup/backup.sh` par un test dédié
+(`core/tests/test_deployability.py::test_restore_recreates_every_bucket_backup_mirrors`),
+ce que les commandes recopiées à la main ci-dessous ne garantissent pas :
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm \
+  -v "$(pwd)/<horodatage>:/backup/restore:ro" \
+  --entrypoint /usr/local/bin/restore.sh backup <horodatage>
+```
+
+**Repli** : si l'image `backup` en service a été construite/publiée avant
+SP-59 (ne contient pas encore `restore.sh` — cf. §5 de la spec SP-59, risque
+de version d'image), les commandes détaillées ci-dessous restent le chemin
+de dépannage documenté, étape par étape :
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm \
@@ -125,10 +156,17 @@ conséquence, la restauration continue.
 
 ## 4. Recréer les buckets MinIO et les repeupler
 
+**Chemin recommandé (SP-59)** : couvert par la même invocation de
+`restore.sh` que l'étape 3 ci-dessus — rien de plus à exécuter ici si le
+script est disponible dans l'image `backup` en service.
+
+**Repli** (commandes détaillées, si `restore.sh` n'est pas encore dans
+l'image en service) :
+
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps --entrypoint sh backup -c "
   mc alias set local http://minio:9000 \$MINIO_USER \$MINIO_PASSWORD
-  mc mb --ignore-existing local/\$S3_THUMBNAILS_BUCKET local/\$S3_UPLOADS_BUCKET local/\$S3_CDC_BUCKET local/\$S3_TILESET3D_BUCKET local/\$S3_TERRAIN3D_BUCKET
+  mc mb --ignore-existing local/\$S3_THUMBNAILS_BUCKET local/\$S3_UPLOADS_BUCKET local/\$S3_CDC_BUCKET local/\$S3_TILESET3D_BUCKET local/\$S3_TERRAIN3D_BUCKET local/\$S3_MAPICONS_BUCKET local/\$S3_ATTACHMENTS_BUCKET
 "
 docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm \
   -v "$(pwd)/<horodatage>/minio:/backup/restore-minio:ro" --no-deps --entrypoint sh backup -c "
@@ -140,24 +178,32 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm \
 "
 ```
 
-**Note :** la commande `mc mb` ci-dessus recrée les cinq buckets déclarés dans
+**Note :** la commande `mc mb` ci-dessus recrée les sept buckets déclarés dans
 la section « Périmètre de la sauvegarde » ci-dessus, en lisant les mêmes variables
 d'environnement que `deploy/backup/backup.sh` (`S3_THUMBNAILS_BUCKET`,
 `S3_UPLOADS_BUCKET`, `S3_CDC_BUCKET`, `S3_TILESET3D_BUCKET`,
-`S3_TERRAIN3D_BUCKET`) plutôt que des noms de buckets recopiés en dur — ces
-cinq variables sont déjà injectées dans le service `backup` par
-`docker-compose.prod.yml`, dans lequel cette commande tourne
-(`docker compose run --rm ... backup`).
+`S3_TERRAIN3D_BUCKET`, `S3_MAPICONS_BUCKET`, `S3_ATTACHMENTS_BUCKET`) plutôt
+que des noms de buckets recopiés en dur — ces sept variables sont déjà
+injectées dans le service `backup` par `docker-compose.prod.yml`, dans
+lequel cette commande tourne (`docker compose run --rm ... backup`).
+**Correction SP-59** : cette commande n'en listait que cinq jusqu'ici — les
+deux derniers buckets (`mapicons`, `attachments`) n'étaient jamais recréés,
+silencieusement (cf. la correction de la section « Périmètre » ci-dessus).
 
 Ajouter un bucket au périmètre de sauvegarde demande **trois** changements,
 pas un (la version précédente de cette note promettait « une seule liste » —
 c'est faux, et c'est le genre de promesse qui laisse une restauration
 incomplète) : la liste de `deploy/backup/backup.sh`, l'`environment:` du
-service `backup` dans `docker-compose.yml`, et la ligne `mc mb` ci-dessus,
-qui nomme ses cinq variables une par une. Seul le second est outillé
+service `backup` dans `docker-compose.yml`, et la ligne `mc mb` ci-dessus (ou
+la liste équivalente dans `deploy/backup/restore.sh`, chemin recommandé). Le
+premier est outillé côté sauvegarde
 (`test_backup_covers_every_bucket_the_core_uses`, qui compare les buckets lus
-par `core/app/` à ceux que `backup.sh` sauvegarde) ; les deux autres restent
-à la charge du rédacteur.
+par `core/app/` à ceux que `backup.sh` sauvegarde) et, depuis SP-59, côté
+restauration scriptée
+(`test_restore_recreates_every_bucket_backup_mirrors`, qui compare
+`backup.sh` à `restore.sh`) ; la commande `mc mb` ci-dessus (repli manuel,
+non scripté) reste à la charge du rédacteur — c'est exactement pourquoi
+`restore.sh` est désormais le chemin recommandé.
 
 **Bug trouvé en exécutant réellement cette étape (Task 2, Step 2)** : si
 l'archive ne contient aucun bucket (cas d'un environnement où aucun fichier
@@ -233,3 +279,64 @@ ouvert, à couvrir lors d'un futur exercice de restauration grandeur nature
 (ou de la première restauration réelle en production).
 
 Détail de l'exécution : rapport `.superpowers/sdd/task-2-report.md`.
+
+## 7. Checklist de vérification OIDC réelle (SP-59)
+
+**Statut constaté à la clôture (Tâche 8 du plan SP-59, 2026-09-06) :
+checklist rédigée, NON rejouée dans cette session.** Constat réel de
+l'environnement d'exécution (`docker info` fonctionne, mais) : aucun realm
+Keycloak réel ni stack complète ne tournait dans ce worktree au moment de
+la clôture ; `.env` n'y a jamais été bootstrappé ; les ports 9000/9001
+(service `minio` de ce compose) étaient déjà occupés par un conteneur
+appartenant à une autre session concurrente sur la même machine ; la charge
+machine mesurée au même instant (`uptime`) affichait une charge moyenne de
+10 à 29 sur 6 à 13 processus `pytest` concurrents d'autres sessions —
+construire les images `core`/`worker` et piloter une reconnexion OIDC
+navigateur réelle dans ces conditions n'était pas une vérification fiable
+à tenter dans cette session. Même limite d'environnement déjà rencontrée et
+documentée honnêtement par SP-55 (volet SEO/Traefik) et SP-32 avant sa
+session de levée. **Ne pas présumer cette checklist exécutée par défaut** :
+relire ce paragraphe avant de citer cette section comme une preuve.
+
+Objectif : couvrir la moitié du critère §7-5 laissée ouverte par
+l'exécution SP-Deploy-b (§6 ci-dessus) — la reconnexion utilisateur via un
+**vrai** flux OIDC/Keycloak après restauration, jamais `CORE_AUTH_MODE=mock`
+pour cet exercice précis (à la différence de l'exercice SP-Deploy-b déjà
+documenté plus haut dans ce même fichier).
+
+**Préconditions** :
+- Un realm Keycloak réel et accessible (le realm `geostudio` provisionné
+  par ce dépôt convient), avec au moins un utilisateur de test capable de
+  s'authentifier par mot de passe.
+- `CORE_AUTH_MODE=oidc` explicitement — jamais `mock` — sur toute la durée
+  de l'exercice.
+- Un accès navigateur réel au shell (pas seulement `curl`/l'API).
+- Docker fonctionnel sur la machine d'exécution (constat préalable,
+  Tâche 8 du plan SP-59).
+
+**Séquence** :
+1. Sur la stack de départ (avant tout sinistre), créer — ou confirmer
+   l'existence d' — un utilisateur Keycloak de test, et se connecter avec
+   ce compte via le flux de connexion réel du shell (pas mock).
+2. Toujours avec ce compte, créer un item de test (ex. une collection vide
+   ou une carte), en noter l'identifiant.
+3. Déclencher un backup réel (`deploy/backup/backup.sh` via le service
+   `backup`, ou attendre son cycle planifié).
+4. Détruire totalement l'environnement (`docker compose down -v` — volumes
+   compris).
+5. Restaurer via `restore.sh` (§3-4 ci-dessus, chemin recommandé) puis
+   démarrer le reste de la stack (§5 ci-dessus).
+6. Se connecter à nouveau via le shell, avec le **même compte Keycloak**,
+   par un flux de connexion navigateur réel (redirection OIDC complète —
+   pas un jeton mock, pas un `Authorization: Bearer` fabriqué à la main).
+7. Confirmer que l'item créé à l'étape 2, avant le sinistre, est visible et
+   accessible **par ce compte reconnecté** — pas seulement en base ou via
+   un jeton de test.
+
+**Ce qui clôt réellement cette checklist** : succès des 7 étapes
+ci-dessus, en particulier l'étape 6 (redirection OIDC complète, pas de
+`CORE_AUTH_MODE=mock`) et l'étape 7 (donnée visible par le compte
+reconnecté, pas seulement par l'API). Un échec à l'étape 6 (impossible de
+se reconnecter) est le signal le plus grave possible de ce runbook — à
+documenter précisément (message d'erreur réel), jamais à arrondir en
+« probablement OK ».

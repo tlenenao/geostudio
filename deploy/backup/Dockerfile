@@ -10,9 +10,10 @@ RUN apk add --no-cache postgresql16-client age curl jq bash tzdata python3 \
   && chmod +x /usr/local/bin/mc
 
 COPY backup.sh /usr/local/bin/backup.sh
+COPY restore.sh /usr/local/bin/restore.sh
 COPY retention.py /usr/local/bin/retention.py
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/backup.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/backup.sh /usr/local/bin/restore.sh /usr/local/bin/entrypoint.sh
 
 # Cette image est désormais PUBLIÉE sur ghcr.io (SP-21) — c'est un acte de
 # distribution du client MinIO `mc`, sous AGPL. La notice voyage donc avec
