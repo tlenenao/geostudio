@@ -42,8 +42,14 @@ def test_render_dynamic_conf_produces_parseable_yaml_enforce_mode():
     headers = parsed["http"]["middlewares"]["csp-dynamic"]["headers"]["customResponseHeaders"]
     assert header_name in headers
     directives = _csp_directives(headers[header_name])
-    assert "https://tiles.example.com" in directives["img-src"]
-    assert "https://tiles.example.com" in directives["connect-src"]
+    # Égalité exacte de la liste de sources, et non une appartenance : elle
+    # attrape à la fois l'hôte manquant ET une directive élargie par
+    # inadvertance, ce qu'un `in` laisse passer. Écarte au passage le motif
+    # `"<url>" in <expr>` que CodeQL signale
+    # (py/incomplete-url-substring-sanitization) — il ne distingue pas une
+    # appartenance exacte d'une recherche de sous-chaîne.
+    assert directives["img-src"] == ["'self'", "blob:", "data:", "https://tiles.example.com"]
+    assert directives["connect-src"] == ["'self'", "https://tiles.example.com"]
     # jamais élargi (blocage 3 non tranché) : script-src n'a que 'self'.
     assert directives["script-src"] == ["'self'"]
 

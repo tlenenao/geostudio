@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
+name: "GeoStudio — périmètre CodeQL"
+
+# Le workflow déclare analyser « le cœur (Python) et le shell (JS/TS) »
+# (.github/workflows/codeql.yml). `docs/` n'en fait pas partie : c'est de la
+# documentation, plus un artefact HTML GÉNÉRÉ de 550 Ko
+# (docs/revue/2026-09-04-matrice-fonctionnalites.html, bilan de qualité local)
+# qui embarque son propre JavaScript de tri/filtrage.
+#
+# Cet artefact déclenchait 2 alertes js/xss-through-dom sur ses trois
+# `tbody.innerHTML = …`. Vérifié avant d'exclure, plutôt que supposé : la
+# source signalée est le bloc `<script type="application/json"
+# id="matrix-data">` figé dans le fichier au moment de la génération — donc
+# du contenu du dépôt, jamais une entrée d'attaquant à l'exécution — et
+# chaque champ texte passe par la fonction `esc()` du rapport avant d'être
+# concaténé. CodeQL ne reconnaît simplement pas cet assainisseur écrit à la
+# main.
+#
+# Exclusion volontairement limitée à `docs/` : tout le reste (core/, shell/,
+# deploy/, .github/) continue d'être analysé, y compris les fichiers de test,
+# où des alertes réelles ont déjà été trouvées et corrigées.
+paths-ignore:
+  - "docs/**"
