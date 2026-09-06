@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Audit d'accessibilité automatisé (axe-core), SP-57a volet 5.2 (GAP-14).
-// Échantillon de 9 pages, une par famille de layout du triptyque (SP-30) +
-// une page publique — portée assumée, pas l'exhaustivité du catalogue de
-// routes (spec §3.2). Chaque violation critical/serious non exclue
-// explicitement ci-dessous doit être corrigée, jamais silencieusement
-// ignorée.
+// Échantillon élargi (REV-178) : les 9 pages d'origine, une par famille de
+// layout du triptyque (SP-30) + une page publique, complétées par 8 pages
+// jusqu'ici hors échantillon — l'édition d'item par type non encore
+// couverte (Dataset + Alertes, Rapport, Requête visuelle — Pipeline l'était
+// déjà via PipelineBuilderPage) et les familles Administration restées
+// hors échantillon (Extensions, Infrastructure, Rôles, Utilisateurs,
+// Moissonnage — seule CollectionsAdminPage l'était). Reste un choix de
+// portée assumé, pas l'exhaustivité du catalogue de routes (spec §3.2,
+// REV-178) : ~17 pages sur >100 routes. Chaque violation critical/serious
+// non exclue explicitement ci-dessous doit être corrigée, jamais
+// silencieusement ignorée.
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { ADMIN_ME, ANALYST_ME, mockCollection, mockCore, mockMe } from "./mocks";
+import { ADMIN_ME, ANALYST_ME, mockCollection, mockCore, mockItemDetail, mockMe } from "./mocks";
 
 // Violations `moderate`/`minor`, ou `critical`/`serious` dont la correction
 // dépasserait le budget de cette tâche (spec §3.3) — chaque entrée nomme la
@@ -292,5 +298,213 @@ test.describe("audit d'accessibilité (axe-core)", () => {
     await page.goto("/tasks");
     await expect(page.getByText("Mes tâches récentes")).toBeVisible();
     await runAxeAudit(page, "UsagePage");
+  });
+
+  // --- Échantillon élargi (REV-178) ------------------------------------
+
+  test("DatasetEditPage (édition d'un dataset partagé, alertes incluses)", async ({ page }) => {
+    await mockCore(page);
+    // Host-scoped (jamais "**/items*") : le shell a lui-même une route
+    // client "/items/dataset-a11y" via ItemDetailPage — même rationale que
+    // "/items/1"/"/items/9" documentée dans mocks.ts.
+    await page.route("https://core.test/v1/items/dataset-a11y", async (route) => {
+      await route.fulfill({
+        json: {
+          pk: "dataset-a11y",
+          resourceType: "dataset",
+          title: "Points d'intérêt (partagé)",
+          abstract: "",
+          owner: "mockuser",
+          thumbnailUrl: null,
+          date: "2026-01-01",
+          configId: "cfg-dataset-a11y",
+          isPublished: false,
+          keywords: [],
+          permissions: { read: true, write: true, delete: true, share: true },
+        },
+      });
+    });
+    await page.route("https://core.test/v1/configs/by-item/dataset-a11y", async (route) => {
+      await route.fulfill({
+        json: {
+          id: "cfg-dataset-a11y",
+          itemId: "dataset-a11y",
+          kind: "dataset",
+          config: {
+            kind: "dataset",
+            // "incidents" : collection dont le schéma est déjà mocké par
+            // défaut dans mockCore() (mocks.ts) — pas besoin d'un mock de
+            // schéma dédié.
+            dataset: { source: "collection", collectionId: "incidents", columns: {} },
+          },
+        },
+      });
+    });
+    // AlertRuleEditor (section « Alertes » de ce panneau, SP-16b) — liste
+    // vide, pas de règle existante à afficher.
+    await page.route("https://core.test/v1/datasets/dataset-a11y/alerts", async (route) => {
+      await route.fulfill({ json: [] });
+    });
+    await page.route("https://core.test/v1/metadata-catalog", async (route) => {
+      await route.fulfill({ json: { licenses: [], languages: [] } });
+    });
+    await page.goto("/datasets/dataset-a11y/edit");
+    await expect(
+      page.getByRole("heading", { name: "Dataset partagé — Points d'intérêt (partagé)" }),
+    ).toBeVisible();
+    await runAxeAudit(page, "DatasetEditPage");
+  });
+
+  test("ReportEditPage (édition d'un rapport planifié)", async ({ page }) => {
+    await mockCore(page);
+    await mockItemDetail(page, "report-a11y", {
+      resourceType: "report",
+      title: "Rapport hebdomadaire",
+    });
+    await page.route("https://core.test/v1/configs/by-item/report-a11y", async (route) => {
+      await route.fulfill({
+        json: {
+          id: "cfg-report-a11y",
+          itemId: "report-a11y",
+          kind: "report",
+          config: {
+            kind: "report",
+            report: {
+              bookmarkItemId: "bookmark-1",
+              refreshPolicy: { enabled: true, cron: "0 8 * * MON" },
+              channels: [{ kind: "webhook", url: "https://example.test/hook" }],
+            },
+          },
+        },
+      });
+    });
+    await page.route("https://core.test/v1/reports/report-a11y/runs*", async (route) => {
+      await route.fulfill({ json: [] });
+    });
+    await page.goto("/reports/report-a11y/edit");
+    await expect(page.getByRole("heading", { name: "Modifier le rapport planifié" })).toBeVisible();
+    await runAxeAudit(page, "ReportEditPage");
+  });
+
+  test("VisualQueryWizardPage (assistant Filtrer→Joindre→Résumer, brouillon)", async ({ page }) => {
+    await mockCore(page);
+    await page.goto("/datasets/visual-query/new");
+    await expect(page.getByRole("heading", { name: "Nouvelle requête visuelle" })).toBeVisible();
+    await runAxeAudit(page, "VisualQueryWizardPage");
+  });
+
+  test("AdminExtensionsPage (famille Administration — extensions)", async ({ page }) => {
+    await mockCore(page);
+    await mockMe(page, ADMIN_ME);
+    // Host-scoped — même rationale que admin-extensions.spec.ts : la route
+    // client "/admin/extensions" collisionnerait avec un glob non scopé.
+    await page.route("https://core.test/v1/extensions**", async (route) => {
+      if (route.request().method() === "PATCH") {
+        await route.fulfill({ json: { id: "acme.gauge", enabled: false } });
+        return;
+      }
+      await route.fulfill({
+        json: {
+          extensions: [
+            {
+              id: "acme.gauge",
+              tag: "gauge-extension-widget",
+              label: "Jauge (extension)",
+              moduleUrl: "https://example.com/gauge.js",
+              props: [],
+              events: [],
+              actions: [],
+              defaultSize: { w: 2, h: 2 },
+              permissions: { collections: "all" },
+              enabled: true,
+            },
+          ],
+        },
+      });
+    });
+    await page.goto("/admin/extensions");
+    await expect(page.getByRole("heading", { name: "Extensions" })).toBeVisible();
+    await runAxeAudit(page, "AdminExtensionsPage");
+  });
+
+  test("AdminInfrastructurePage (famille Administration — outils protégés)", async ({ page }) => {
+    await mockCore(page);
+    await mockMe(page, ADMIN_ME);
+    await page.route("https://core.test/v1/instance", async (route) => {
+      await route.fulfill({ json: { readOnly: false, adminToolsEnabled: true } });
+    });
+    await page.goto("/admin/infrastructure");
+    await expect(page.getByRole("heading", { name: "Outils d'infrastructure" })).toBeVisible();
+    await runAxeAudit(page, "AdminInfrastructurePage");
+  });
+
+  test("RolesAdminPage (famille Administration — rôles à privilèges)", async ({ page }) => {
+    await mockCore(page);
+    await mockMe(page, ADMIN_ME);
+    await page.route("https://core.test/v1/roles", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({
+        json: [
+          {
+            id: "role-admin",
+            name: "Administrateur",
+            slug: "admin",
+            isBuiltIn: true,
+            privileges: ["admin.roles.manage"],
+          },
+          {
+            id: "role-1",
+            name: "Support",
+            slug: "support",
+            isBuiltIn: false,
+            privileges: ["data.view"],
+          },
+        ],
+      });
+    });
+    await page.goto("/admin/roles");
+    await expect(page.getByRole("heading", { name: "Rôles" })).toBeVisible();
+    await runAxeAudit(page, "RolesAdminPage");
+  });
+
+  test("UsersAdminPage (famille Administration — utilisateurs)", async ({ page }) => {
+    await mockCore(page);
+    await mockMe(page, ADMIN_ME);
+    await page.route("https://core.test/v1/roles", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({
+        json: [
+          { id: "role-admin", name: "Administrateur", slug: "admin", isBuiltIn: true },
+          { id: "role-reader", name: "Lecteur", slug: "reader", isBuiltIn: true },
+        ],
+      });
+    });
+    await page.route("https://core.test/v1/users**", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({
+        json: {
+          users: [
+            { id: "u1", username: "alice", roleSlug: "admin" },
+            { id: "u2", username: "bob", roleSlug: "reader" },
+          ],
+          total: 2,
+        },
+      });
+    });
+    await page.goto("/admin/users");
+    await expect(page.getByRole("heading", { name: "Utilisateurs" })).toBeVisible();
+    await runAxeAudit(page, "UsersAdminPage");
+  });
+
+  test("HarvestSourcesAdminPage (famille Administration — moissonnage)", async ({ page }) => {
+    await mockCore(page);
+    await mockMe(page, ADMIN_ME);
+    await page.route("https://core.test/v1/harvest/sources", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({ json: { sources: [] } });
+    });
+    await page.goto("/admin/harvest");
+    await expect(page.getByRole("heading", { name: "Moissonnage" })).toBeVisible();
+    await runAxeAudit(page, "HarvestSourcesAdminPage");
   });
 });

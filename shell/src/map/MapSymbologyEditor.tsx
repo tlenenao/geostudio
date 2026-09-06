@@ -645,7 +645,11 @@ export function MapSymbologyEditor({
                       <button
                         key={li.name}
                         type="button"
-                        role="img"
+                        // Pas de `role="img"` : ce bouton est cliquable
+                        // (choisit l'icône), sa sémantique native de bouton
+                        // ne doit pas être écrasée par un rôle
+                        // non-interactif (même classe de défaut que
+                        // l'attribution MapLibre corrigée par SP-57a).
                         aria-label={li.name}
                         title={li.name}
                         className="h-6 w-6 rounded border border-rule-2"
@@ -667,7 +671,7 @@ export function MapSymbologyEditor({
                       <span key={ci.id} className="flex items-center gap-1">
                         <button
                           type="button"
-                          role="img"
+                          // Idem ci-dessus : bouton cliquable, pas de `role="img"`.
                           aria-label={ci.title}
                           className="h-6 w-6 rounded border border-rule-2"
                           onClick={() => assignIcon(editingValue, { source: "custom", id: ci.id })}

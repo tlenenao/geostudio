@@ -1,6 +1,7 @@
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 import eslintConfigPrettier from "eslint-config-prettier";
 import globals from "globals";
 
@@ -91,6 +92,33 @@ export default tseslint.config(
     // interdit par la règle no-restricted-syntax ci-dessus.
     files: ["src/builder/widgets/richSection.tsx", "src/map/MapPopup.tsx"],
     rules: { "no-restricted-syntax": "off" },
+  },
+  {
+    // eslint-plugin-jsx-a11y (REV-178) — complément statique de l'audit
+    // runtime axe-core (e2e/a11y-audit.spec.ts, échantillon de pages) :
+    // ruleset recommandé du plugin, qui attrape des défauts structurels
+    // (attributs ARIA invalides, `<img>` sans alt, gestionnaire de clic sans
+    // équivalent clavier, …) sur TOUT fichier JSX du shell, pas seulement
+    // les pages échantillonnées par la suite E2E. Scopé à `src/**/*.tsx`
+    // (jamais `*.ts` sans JSX, ni `e2e/`/`scripts/`) — un `.tsx` sans aucun
+    // élément concerné par une règle ne déclenche simplement rien.
+    files: ["src/**/*.tsx"],
+    ...jsxA11y.flatConfigs.recommended,
+    rules: {
+      ...jsxA11y.flatConfigs.recommended.rules,
+      // `Input`/`Select` (shell/src/ui/kit/) sont des composants maison —
+      // `Input` relaie ses props tel quel sur un `<input>` natif, `Select`
+      // pose `aria-label` directement sur son déclencheur Radix
+      // (`SelectPrimitive.Trigger`, un `<button>`) : les deux sont déjà
+      // correctement nommés indépendamment du `<label>` qui les enveloppe
+      // visuellement (ex. MetadataForm.tsx). Sans cette option, la règle ne
+      // reconnaît que les éléments natifs et signale ces deux composants
+      // comme des `<label>` orphelins alors qu'ils ne le sont pas.
+      "jsx-a11y/label-has-associated-control": [
+        "error",
+        { controlComponents: ["Input", "Select"] },
+      ],
+    },
   },
   {
     // `no-explicit-any` (activé par `tseslint.configs.recommended`, hors
