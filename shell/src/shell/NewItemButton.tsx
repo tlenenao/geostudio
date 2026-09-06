@@ -17,6 +17,7 @@ import { Drawer } from "../ui/kit/Drawer";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { TEMPLATES } from "../builder/templates";
 import { isValidSlug, slugify } from "../lib/slug";
+import { t } from "../i18n";
 
 type Kind = "app" | "dashboard" | "map" | "site" | "dataset" | "pipeline" | "visual-query";
 
@@ -162,19 +163,19 @@ export function NewItemButton() {
   return (
     <>
       <Button size="sm" {...drawerPanel.triggerProps} onClick={() => setOpen(true)}>
-        Nouveau
+        {t("newItem.button")}
       </Button>
       <Drawer
         open={open}
         onOpenChange={(next) => !next && close()}
-        title="Nouvel élément"
+        title={t("newItem.drawerTitle")}
         id={drawerPanel.panelId}
       >
         <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm text-ink">
-            Type
+            {t("catalog.typeLabel")}
             <select
-              aria-label="Type"
+              aria-label={t("catalog.typeLabel")}
               className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
               value={kind}
               onChange={(e) => {
@@ -182,28 +183,32 @@ export function NewItemButton() {
                 setTemplateId("");
               }}
             >
-              {canCreateApp && <option value="app">App</option>}
-              {canCreateApp && <option value="dashboard">Dashboard</option>}
-              {canCreateMap && <option value="map">Map</option>}
-              {canCreateApp && <option value="site">Site</option>}
-              {canCreateDataset && <option value="dataset">Dataset partagé</option>}
-              {etlEnabled && <option value="visual-query">Dataset par requête visuelle</option>}
-              {etlEnabled && <option value="pipeline">Pipeline</option>}
+              {canCreateApp && <option value="app">{t("newItem.appOption")}</option>}
+              {canCreateApp && <option value="dashboard">{t("newItem.dashboardOption")}</option>}
+              {canCreateMap && <option value="map">{t("newItem.mapOption")}</option>}
+              {canCreateApp && <option value="site">{t("newItem.siteOption")}</option>}
+              {canCreateDataset && (
+                <option value="dataset">{t("newItem.datasetSharedOption")}</option>
+              )}
+              {etlEnabled && (
+                <option value="visual-query">{t("newItem.datasetVisualQueryOption")}</option>
+              )}
+              {etlEnabled && <option value="pipeline">{t("newItem.pipelineOption")}</option>}
             </select>
           </label>
           {kind !== "map" && kind !== "dataset" && kind !== "pipeline" && (
             <label className="flex flex-col gap-1 text-sm text-ink">
-              Modèle
+              {t("newItem.templateLabel")}
               <select
-                aria-label="Modèle"
+                aria-label={t("newItem.templateLabel")}
                 className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                 value={templateId}
                 onChange={(e) => setTemplateId(e.target.value)}
               >
-                <option value="">Vide</option>
-                {TEMPLATES.filter((t) => t.kind === kind).map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
+                <option value="">{t("newItem.emptyTemplateOption")}</option>
+                {TEMPLATES.filter((tpl) => tpl.kind === kind).map((tpl) => (
+                  <option key={tpl.id} value={tpl.id}>
+                    {tpl.name}
                   </option>
                 ))}
               </select>
@@ -211,28 +216,28 @@ export function NewItemButton() {
           )}
           {kind === "dataset" && (
             <label className="flex flex-col gap-1 text-sm text-ink">
-              Type de source
+              {t("newItem.datasetSourceTypeLabel")}
               <select
-                aria-label="Type de source"
+                aria-label={t("newItem.datasetSourceTypeLabel")}
                 className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                 value={datasetSource}
                 onChange={(e) => setDatasetSource(e.target.value as "collection" | "arcgis")}
               >
-                <option value="collection">Collection</option>
-                <option value="arcgis">ArcGIS Feature Service</option>
+                <option value="collection">{t("newItem.sourceCollectionOption")}</option>
+                <option value="arcgis">{t("harvest.typeArcgis")}</option>
               </select>
             </label>
           )}
           {kind === "dataset" && datasetSource === "collection" && (
             <label className="flex flex-col gap-1 text-sm text-ink">
-              Collection source
+              {t("newItem.collectionSourceLabel")}
               <select
-                aria-label="Collection source"
+                aria-label={t("newItem.collectionSourceLabel")}
                 className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                 value={collectionId}
                 onChange={(e) => setCollectionId(e.target.value)}
               >
-                <option value="">Choisir…</option>
+                <option value="">{t("visualQuery.chooseOption")}</option>
                 {(collectionsQuery.data ?? []).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.title}
@@ -243,14 +248,14 @@ export function NewItemButton() {
           )}
           {kind === "dataset" && datasetSource === "arcgis" && (
             <label className="flex flex-col gap-1 text-sm text-ink">
-              Couche ArcGIS
+              {t("newItem.arcgisLayerLabel")}
               <select
-                aria-label="Couche ArcGIS"
+                aria-label={t("newItem.arcgisLayerLabel")}
                 className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                 value={arcgisItemId}
                 onChange={(e) => setArcgisItemId(e.target.value)}
               >
-                <option value="">Choisir…</option>
+                <option value="">{t("visualQuery.chooseOption")}</option>
                 {(featureLayersQuery.data ?? []).map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.title}
@@ -258,22 +263,23 @@ export function NewItemButton() {
                 ))}
               </select>
               {featureLayersQuery.data?.length === 0 && (
-                <span className="text-xs text-ink-2">
-                  Aucune couche moissonnée. Configurez une source de moissonnage ArcGIS (mode
-                  référence) dans l'administration.
-                </span>
+                <span className="text-xs text-ink-2">{t("newItem.noHarvestedLayers")}</span>
               )}
             </label>
           )}
           <label className="flex flex-col gap-1 text-sm text-ink">
-            Titre
-            <Input aria-label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
+            {t("visualQuery.titleLabel")}
+            <Input
+              aria-label={t("visualQuery.titleLabel")}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
           </label>
           {kind === "site" && (
             <label className="flex flex-col gap-1 text-sm text-ink">
-              Slug
+              {t("newItem.slugLabel")}
               <Input
-                aria-label="Slug"
+                aria-label={t("newItem.slugLabel")}
                 value={slug}
                 onChange={(e) => {
                   setSlug(e.target.value);
@@ -281,20 +287,18 @@ export function NewItemButton() {
                 }}
               />
               {slug && !isValidSlug(slug) && (
-                <span className="text-xs text-danger">
-                  Slug invalide (minuscules, chiffres, tirets).
-                </span>
+                <span className="text-xs text-danger">{t("newItem.invalidSlugMessage")}</span>
               )}
             </label>
           )}
           {(create.isError || createMap.isError || createDataset.isError) && (
             <p role="alert" className="text-sm text-danger">
-              Échec de la création.
+              {t("newItem.createFailed")}
             </p>
           )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={close}>
-              Annuler
+              {t("confirmDialog.cancel")}
             </Button>
             <Button
               type="submit"
@@ -308,7 +312,7 @@ export function NewItemButton() {
                 (kind === "dataset" && datasetSource === "arcgis" && !arcgisItemId)
               }
             >
-              Créer
+              {t("newItem.createButton")}
             </Button>
           </div>
         </form>

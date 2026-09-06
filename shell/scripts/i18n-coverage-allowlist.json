@@ -64,17 +64,5 @@
   "src/map/MapView.tsx",
   "src/map/PopupEditor.tsx",
   "src/map/Terrain3DUploadButton.tsx",
-  "src/map/TerrainPanel.tsx",
-  "src/shell/CollectionSharePanel.tsx",
-  "src/shell/CreateHarvestSourcePanel.tsx",
-  "src/shell/CreateRolePanel.tsx",
-  "src/shell/EditCollectionPanel.tsx",
-  "src/shell/EditHarvestSourcePanel.tsx",
-  "src/shell/EditRolePanel.tsx",
-  "src/shell/ImportFileButton.tsx",
-  "src/shell/NewItemButton.tsx",
-  "src/shell/RegisterCollectionPanel.tsx",
-  "src/shell/ShareForm.tsx",
-  "src/shell/Tileset3DUploadButton.tsx",
-  "src/shell/routes.tsx"
+  "src/map/TerrainPanel.tsx"
 ]

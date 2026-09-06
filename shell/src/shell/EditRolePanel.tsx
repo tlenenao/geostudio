@@ -41,8 +41,13 @@ export function EditRolePanel({ role, onClose }: { role: Role; onClose: () => vo
   }
 
   return (
-    <section aria-label={`Éditer ${role.name}`} className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold text-ink">Éditer {role.name}</h2>
+    <section
+      aria-label={t("roles.editHeading", { name: role.name })}
+      className="flex flex-col gap-3"
+    >
+      <h2 className="text-sm font-semibold text-ink">
+        {t("roles.editHeading", { name: role.name })}
+      </h2>
       <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("roles.nameLabel")}
@@ -71,15 +76,15 @@ export function EditRolePanel({ role, onClose }: { role: Role; onClose: () => vo
         </fieldset>
         {updateRole.isError && (
           <p role="alert" className="text-sm text-danger">
-            Échec de la mise à jour.
+            {t("roles.updateFailed")}
           </p>
         )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
-            Annuler
+            {t("confirmDialog.cancel")}
           </Button>
           <Button type="submit" size="sm" disabled={!name || updateRole.isPending}>
-            Enregistrer
+            {t("common.save")}
           </Button>
         </div>
       </form>
