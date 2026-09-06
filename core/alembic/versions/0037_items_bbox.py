@@ -5,8 +5,8 @@ nullables sur items — bbox_min_x/min_y/max_x/max_y. NULL sur les 4 =
 réévaluée depuis ce SP). Recalculées par
 app.configs.bbox::recompute_item_bbox, jamais posées directement ailleurs.
 
-Revision ID: 0035
-Revises: 0034
+Revision ID: 0037
+Revises: 0036
 Create Date: 2026-09-05
 """
 
@@ -14,8 +14,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0035"
-down_revision = "0034"
+revision = "0037"
+down_revision = "0036"
 branch_labels = None
 depends_on = None
 
