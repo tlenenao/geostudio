@@ -144,6 +144,18 @@ test("unsaved mode: Aperçu and Exécuter are absent (no pipelineId yet)", async
   expect(screen.queryByRole("button", { name: "Exécuter" })).not.toBeInTheDocument();
 });
 
+// REV-060 : clicking a palette entry must add a node to the canvas — the
+// keyboard/click fallback to drag-and-drop. Before this fix, PipelinePalette
+// rendered a non-interactive <div draggable>, so this click was a no-op and
+// the op text appeared exactly once (the palette entry itself).
+test("unsaved mode: clicking a palette entry adds a node to the canvas", async () => {
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(screen.getAllByText("reader.collection")).toHaveLength(1);
+  await userEvent.click(screen.getByRole("button", { name: "reader.collection" }));
+  await waitFor(() => expect(screen.getAllByText("reader.collection").length).toBeGreaterThan(1));
+});
+
 test("persisted mode: loads the existing graph and shows Exécuter", async () => {
   const payload: PipelinePayload = {
     nodes: [

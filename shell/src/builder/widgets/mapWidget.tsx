@@ -42,7 +42,7 @@ function geometryFromPayload(p: unknown): unknown | null {
 
 function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
   return (
-    <div className="absolute bottom-2 right-2 z-10 flex flex-col gap-2 rounded-md bg-white/90 p-2 text-xs shadow">
+    <div className="absolute bottom-2 right-2 z-10 flex flex-col gap-2 rounded-md bg-surface/90 p-2 text-xs text-ink shadow">
       {legend.color?.kind === "categorical" && (
         <ul>
           {legend.color.entries.map((e) => (

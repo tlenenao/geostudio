@@ -149,7 +149,7 @@ function SecretCreateForm({
   return (
     <form
       onSubmit={(e) => void submit(e)}
-      className="flex flex-col gap-2 rounded border border-rule bg-sunken p-2"
+      className="flex flex-col gap-2 rounded border border-rule bg-sunken p-2 text-ink"
     >
       <label className="flex flex-col gap-1 text-xs">
         {t("secretParamSelect.nameLabel")}

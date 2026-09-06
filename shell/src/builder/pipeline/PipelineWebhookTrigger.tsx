@@ -54,7 +54,7 @@ export function PipelineWebhookTrigger({ pipelineId }: { pipelineId: string }) {
       {justCreated && (
         <div
           role="status"
-          className="flex flex-col gap-1 rounded border border-rule bg-surface p-2"
+          className="flex flex-col gap-1 rounded border border-rule bg-surface p-2 text-ink"
         >
           <p className="font-mono">{justCreated.token}</p>
           <p className="text-danger">{t("pipelineWebhook.tokenWarning")}</p>
