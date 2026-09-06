@@ -241,6 +241,28 @@ test("Jenks option is absent from the widget's PropsPanel classification select"
 // sélectionnable, cf. DataSourceSelect qui filtre sur `type === "features"`)
 // postait alors vers `/collections//aggregate`. Le repli doit utiliser
 // `dataSource.layer`, qui porte l'id de collection dans ce cas.
+test("PropsPanel expose un sélecteur de fond de carte (GAP-52/basemap)", () => {
+  const onChange = vi.fn();
+  renderPropsPanel({ props: { dataSourceId: "" }, onChange });
+  const select = screen.getByRole("combobox", { name: "Fond de carte" });
+  fireEvent.change(select, {
+    target: { value: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json" },
+  });
+  expect(onChange).toHaveBeenCalledWith(
+    expect.objectContaining({
+      basemapStyle: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+    }),
+  );
+});
+
+test("Component utilise props.basemapStyle s'il est défini (GAP-52/basemap)", async () => {
+  renderWidget({
+    props: { dataSourceId: "ds1", basemapStyle: "https://custom/style.json" },
+  });
+  await screen.findByTestId("mapview");
+  expect(lastMapConfig().basemap.style).toBe("https://custom/style.json");
+});
+
 test("recompute works for a plain collection-backed source (no datasetId), via dataSource.layer", async () => {
   const queryDataSource = vi.fn().mockResolvedValue([{ id: "", properties: { min: 0, max: 100 } }]);
   const onChange = vi.fn();

@@ -18,6 +18,7 @@ import type { MapViewHandle } from "../../map/MapView";
 import { ExplorerMenu } from "./ExplorerMenu";
 import { PopupEditor } from "../../map/PopupEditor";
 import { MapSymbologyEditor } from "../../map/MapSymbologyEditor";
+import { BasemapSelect } from "../../map/BasemapSelect";
 
 const MapView = lazy(() => import("../../map/MapView").then((m) => ({ default: m.MapView })));
 const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
@@ -193,6 +194,10 @@ export function registerMapWidget(): void {
             dataSources={dataSources.filter((s) => s.type === "features")}
             onChange={(id) => onChange({ ...props, dataSourceId: id })}
           />
+          <BasemapSelect
+            value={String(props.basemapStyle ?? DEFAULT_STYLE)}
+            onChange={(style) => onChange({ ...props, basemapStyle: style })}
+          />
           <MapSymbologyEditor
             value={props.symbology as LayerSymbology | undefined}
             availableFields={[]} // PropsPanel has no schema (registry.ts) — same PopupEditor precedent
@@ -286,7 +291,7 @@ export function registerMapWidget(): void {
       });
 
       const config: MapConfig = {
-        basemap: { style: DEFAULT_STYLE },
+        basemap: { style: String(props.basemapStyle ?? DEFAULT_STYLE) },
         view: { center: [2.4, 46.6], zoom: 5 },
         layers: url
           ? [
