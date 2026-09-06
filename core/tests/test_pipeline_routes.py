@@ -338,14 +338,36 @@ def _promote_owner_to_admin(client):
     client.app.dependency_overrides[get_current_user_optional] = lambda: promoted
 
 
+def _demote_owner_to_reader(client):
+    # Même patron que _promote_owner_to_admin ci-dessus (re-fetch + réassigne
+    # l'override, get_current_user n'est jamais re-résolu depuis la base).
+    # reader (zéro privilège) est le témoin correct pour « ne porte pas
+    # automation.secrets.manage » depuis SP-47 : ce privilège a été ajouté
+    # au rôle Créateur (défaut de _make_app), qui ne convient donc plus
+    # comme témoin d'absence.
+    Session = client.session_factory  # type: ignore[attr-defined]
+    tenant = client.tenant  # type: ignore[attr-defined]
+    owner = client.user  # type: ignore[attr-defined]
+    with Session() as s:
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        set_user_role(
+            s, tenant_id=tenant.id, user_id=owner.id, role_id=roles["reader"].id, role_slug="reader"
+        )
+        s.commit()
+        demoted = s.get(User, owner.id)
+        assert demoted is not None
+        s.expunge(demoted)
+    client.app.dependency_overrides[get_current_user] = lambda: demoted
+    client.app.dependency_overrides[get_current_user_optional] = lambda: demoted
+
+
 def test_post_webhook_tokens_requires_automation_secrets_manage_privilege(monkeypatch):
-    # _make_app() crée l'utilisateur par défaut avec le rôle "creator"
-    # (get_or_create_user, sans bootstrap_admin) — Créateur peut gérer des
-    # pipelines mais n'a pas automation.secrets.manage (admin-only,
-    # BUILT_IN_ROLE_PRIVILEGES) : un jeton de déclenchement est un secret
-    # d'automatisation, pas une capacité pipeline ordinaire.
+    # SP-47 (déjà fusionné sur dev) a donné automation.secrets.manage au
+    # rôle Créateur (défaut de _make_app) — reader (zéro privilège) est
+    # désormais le témoin correct pour « ne porte pas ce privilège ».
     client = _make_app(monkeypatch, etl_enabled=True)
     item_id = _seed_webhook_pipeline(client)
+    _demote_owner_to_reader(client)
     response = client.post(f"/pipelines/{item_id}/webhook-tokens")
     assert response.status_code == 403
 
