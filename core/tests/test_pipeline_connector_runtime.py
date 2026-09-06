@@ -382,7 +382,10 @@ def test_materialize_rest_connector_drops_dlt_plumbing_columns(conn, session, te
     assert cols == {"id", "name"}
 
 
-from app.pipelines.ops.schemas import ReaderConnectorPostgresParams  # noqa: E402
+from app.pipelines.ops.schemas import (  # noqa: E402
+    ReaderConnectorPostgresParams,
+    ReaderConnectorSnowflakeParams,
+)
 
 
 def _pg_dsn(pg_engine) -> str:
@@ -488,3 +491,107 @@ def test_materialize_postgres_connector_missing_secret_raises(conn, session, ten
             params=params,
             view_name="node_p4",
         )
+
+
+def test_materialize_snowflake_connector_rejects_non_select(conn, session, tenant):
+    params = ReaderConnectorSnowflakeParams(secretName="does-not-matter", query="DELETE FROM towns")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
+        connector_runtime.materialize_snowflake_connector(
+            conn,
+            session=session,
+            tenant_id=tenant.id,
+            node_id="sf1",
+            params=params,
+            view_name="node_sf1",
+        )
+
+
+def test_materialize_snowflake_connector_wrong_secret_kind_raises(conn, session, tenant, user):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="bearer-secret",
+        kind="bearer_token",
+        payload={"kind": "bearer_token", "token": "tok"},
+    )
+    params = ReaderConnectorSnowflakeParams(secretName="bearer-secret", query="SELECT 1")
+    with pytest.raises(
+        connector_runtime.ConnectorRuntimeError, match="not usable by reader.connector.snowflake"
+    ):
+        connector_runtime.materialize_snowflake_connector(
+            conn,
+            session=session,
+            tenant_id=tenant.id,
+            node_id="sf2",
+            params=params,
+            view_name="node_sf2",
+        )
+
+
+def test_materialize_snowflake_connector_missing_secret_raises(conn, session, tenant):
+    params = ReaderConnectorSnowflakeParams(secretName="does-not-exist", query="SELECT 1")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
+        connector_runtime.materialize_snowflake_connector(
+            conn,
+            session=session,
+            tenant_id=tenant.id,
+            node_id="sf3",
+            params=params,
+            view_name="node_sf3",
+        )
+
+
+def test_snowflake_dialect_resolves_lazily_without_network():
+    # Vérifie la forme du DSN (design §2.2/§3.3) sans se connecter à un
+    # compte réel : sa.create_engine() est paresseux (aucun appel réseau
+    # avant .connect()) — ce test échouerait si snowflake-sqlalchemy
+    # n'était pas installé, ou si le DSN n'était pas de la forme attendue.
+    # Aucune fixture DB nécessaire (pas de session, pas de connexion) —
+    # import local de sqlalchemy, même convention que le `from sqlalchemy
+    # import text` local de test_materialize_postgres_connector_round_trips_query
+    # dans ce même fichier (aucun import sqlalchemy au niveau module ici).
+    import sqlalchemy as sa
+
+    engine = sa.create_engine(
+        "snowflake://u:s3cr3t-pass@myaccount/mydb/myschema?warehouse=wh1&role=role1"
+    )
+    try:
+        assert engine.dialect.name == "snowflake"
+        assert "s3cr3t-pass" not in str(engine.url)  # le mot de passe est masqué par défaut
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.snowflake
+def test_materialize_snowflake_connector_round_trips_query(
+    conn, session, tenant, user, snowflake_test_dsn
+):
+    # MANUEL UNIQUEMENT (design §12/§3.3, Global Constraints) : requiert un
+    # compte Snowflake réel, jamais câblé en CI. La table `sp_gap16_towns`
+    # doit exister dans le schéma/warehouse référencé par
+    # CORE_TEST_SNOWFLAKE_DSN avec au moins les colonnes (id int, name
+    # varchar) — à créer manuellement une fois avant de lancer ce test :
+    #   CREATE OR REPLACE TABLE sp_gap16_towns (id INT, name VARCHAR);
+    #   INSERT INTO sp_gap16_towns VALUES (1, 'Nord'), (2, 'Sud');
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="warehouse-sf",
+        kind="snowflake_dsn",
+        payload={"kind": "snowflake_dsn", "dsn": snowflake_test_dsn},
+    )
+    params = ReaderConnectorSnowflakeParams(
+        secretName="warehouse-sf", query="SELECT id, name FROM sp_gap16_towns ORDER BY id"
+    )
+    connector_runtime.materialize_snowflake_connector(
+        conn,
+        session=session,
+        tenant_id=tenant.id,
+        node_id="sf4",
+        params=params,
+        view_name="node_sf4",
+    )
+    rows = conn.execute("SELECT id, name FROM node_sf4 ORDER BY id").fetchall()
+    assert rows == [(1, "Nord"), (2, "Sud")]
