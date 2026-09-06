@@ -30,6 +30,7 @@ const CORE_PRIVILEGE_LABEL_KEYS = [
   "roles.privilege.adminSecretsManage",
   "roles.privilege.settingsInstanceManage",
   "roles.privilege.complianceManage",
+  "roles.privilege.dataViewSensitive",
 ];
 
 describe("catalogue de privilèges (miroir core/app/roles/privileges.py)", () => {
