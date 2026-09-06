@@ -65,6 +65,15 @@ def delete_secret(session: Session, secret: ConnectorSecret) -> None:
     session.flush()
 
 
+def list_all_secrets(session: Session) -> list[ConnectorSecret]:
+    """Cross-tenant, à la différence de toute autre fonction de ce
+    module — réservé au script de rotation de la clé maître
+    (scripts/rotate_secrets_master_key.py). Ne JAMAIS appeler depuis une
+    route HTTP ou un outil MCP : retournerait les secrets de tous les
+    tenants à un seul appelant."""
+    return list(session.scalars(select(ConnectorSecret)).all())
+
+
 def get_secret_payload(session: Session, *, tenant_id: str, name: str) -> SecretPayload | None:
     """Déchiffre. Usage interne uniquement (ex. futur runtime SP-15f) —
     jamais appelé depuis un handler de route qui sérialise sa sortie en
