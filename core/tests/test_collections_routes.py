@@ -112,6 +112,35 @@ def test_register_and_get(env):
     assert client.get("/collections/incidents").status_code == 200
 
 
+def test_list_collections_is_paginated(env):
+    app, client, _Session, admin, _regular, _ddl = env
+    _as(app, admin)
+
+    def introspector_for_many(session, table_name):
+        return TableInfo(
+            table_name=table_name,
+            pk_column="id",
+            geometry_column="geom",
+            geometry_type="Point",
+            srid=4326,
+            columns=[],
+        )
+
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: introspector_for_many
+
+    for i in range(150):
+        resp = client.post("/collections", json={"tableName": f"t{i}"})
+        assert resp.status_code == 201
+
+    body = client.get("/collections").json()
+    assert len(body["collections"]) == 100  # DEFAULT_LIMIT, pas 150
+    assert body["numberMatched"] == 150
+    assert body["numberReturned"] == 100
+
+    body2 = client.get("/collections?limit=100&offset=100").json()
+    assert len(body2["collections"]) == 50
+
+
 def test_register_unknown_table_400_and_duplicate_409(env):
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
