@@ -10,7 +10,7 @@ from collections.abc import Iterable
 import httpx
 
 from app.harvest.connectors import ows
-from app.harvest.connectors.base import HarvestedRecord
+from app.harvest.connectors.base import HarvestedRecord, HarvestFetchError
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +42,13 @@ class WfsConnector:
             response = client.get(caps_url, timeout=ows._DEFAULT_TIMEOUT_SECONDS)
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            logger.warning("wfs harvest: échec de récupération de %s : %s", caps_url, exc)
-            return []
+            # Racine injoignable (GAP-59.2, SP-50) : seul point d'échec de ce
+            # connecteur (un unique appel GetCapabilities), doit être
+            # signalé plutôt que rapporté comme un moissonnage réussi à
+            # zéro enregistrement.
+            raise HarvestFetchError(
+                f"document racine WFS injoignable ou illisible : {caps_url} ({exc})"
+            ) from exc
         root = ows.parse_capabilities(response.content)
         if root is None:
             return []

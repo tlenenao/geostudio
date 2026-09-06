@@ -12,7 +12,7 @@ from urllib.parse import quote
 import httpx
 
 from app.harvest.connectors import ows
-from app.harvest.connectors.base import HarvestedRecord
+from app.harvest.connectors.base import HarvestedRecord, HarvestFetchError
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,11 @@ class CswConnector:
     def _fetch(self, client, base_url: str) -> list[HarvestedRecord]:
         root, iso = self._first_page(client, base_url)
         if root is None:
-            return []
+            # Racine injoignable/illisible : ISO et son repli DC ont déjà
+            # tous les deux échoué dans _first_page (GAP-59.2, SP-50) — les
+            # pages suivantes (_fetch_page dans la boucle ci-dessous)
+            # restent, elles, tolérantes (résultat partiel conservé).
+            raise HarvestFetchError(f"document racine CSW injoignable ou illisible : {base_url}")
         extractor = _extract_iso if iso else _extract_dc
         records: list[HarvestedRecord] = []
         start_position = 1

@@ -2,9 +2,10 @@
 import json
 
 import httpx
+import pytest
 
 from app.harvest.connectors import get_connector
-from app.harvest.connectors.base import HarvestedRecord
+from app.harvest.connectors.base import HarvestedRecord, HarvestFetchError
 from app.harvest.connectors.wfs import WfsConnector
 
 CAPS = "https://ows.example.com/geoserver/wfs?service=WFS&request=GetCapabilities"
@@ -46,6 +47,18 @@ def test_feature_type_becomes_vector_record():
         f"&typeNames=topp:tasmania_roads&outputFormat=application/json&srsName=EPSG:4326"
     )
     assert r.bbox == [145.0, -43.6, 148.5, -40.5]
+
+
+def test_raises_when_capabilities_unreachable():
+    # GAP-59.2 (SP-50) : le seul appel racine (GetCapabilities) est
+    # injoignable — doit être signalé, jamais rapporté comme un
+    # moissonnage réussi à zéro enregistrement.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    connector = WfsConnector(client=httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(HarvestFetchError):
+        list(connector.fetch(CAPS))
 
 
 def _feature(i):
