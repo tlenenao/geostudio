@@ -569,6 +569,37 @@ def test_release_gate_starts_postgres_like_ci():
     )
 
 
+def test_ci_actually_runs_the_qgis_marked_tests():
+    """Les 5 tests `@pytest.mark.qgis` skippent SILENCIEUSEMENT dès que
+    CORE_TEST_QGIS_WORKER_URL est absent (tests/conftest.py) — un skip ne
+    rougit aucune CI. Ils ont ainsi dormi de SP-15d (2026-08-06) à SP-44
+    (2026-09-05), où leur première exécution réelle a trouvé DEUX bugs de
+    production (`_lock_down()` bloquait le COPY du sidecar ; `fid` GeoPackage
+    non filtré). Ce test interdit le retour à cet état : si le job disparaît,
+    ou cesse de fournir l'une des deux variables, la CI rougit au lieu de
+    reprendre le skip.
+
+    Ne vérifie que le câblage déclaré, jamais l'exécution — c'est le parti de
+    tout ce fichier."""
+    doc = yaml.safe_load(CI.read_text())
+    job = doc["jobs"].get("core-qgis")
+    assert job is not None, (
+        "ci.yml n'a plus de job `core-qgis` : les 5 tests @pytest.mark.qgis "
+        "sont redevenus silencieusement skippés en CI."
+    )
+    env = job.get("env", {})
+    for var in ("CORE_TEST_QGIS_WORKER_URL", "CORE_TEST_QGIS_SCRATCH_DIR"):
+        assert env.get(var), (
+            f"ci.yml (core-qgis) ne fournit pas {var} — les fixtures de "
+            "tests/conftest.py skippent alors les 5 tests sans rien signaler."
+        )
+    runs = " ".join(st.get("run", "") for st in job["steps"])
+    assert "-m qgis" in runs, (
+        "ci.yml (core-qgis) ne sélectionne plus les tests marqués qgis "
+        "(`pytest -m qgis`)."
+    )
+
+
 # Buckets volontairement hors sauvegarde, avec la raison. `exports` et
 # `appexports` ne contiennent que des artefacts régénérables : un PDF de
 # rapport ou un bundle d'app se re-demande en un clic.
