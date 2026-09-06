@@ -75,38 +75,6 @@ def roles_for_collections(
     return {k: frozenset(v) for k, v in out.items()}
 
 
-def has_any_editor_role(session: Session, *, tenant_id: str, user_id: str) -> bool:
-    """Un signal d'orientation pour le badge de rôle affiché côté shell
-    (« Créateur » vs « Lecteur ») — jamais une frontière de sécurité, jamais
-    stocké : recalculé à chaque `GET /me`. Vrai dès qu'un rôle `editor` existe
-    quelque part pour cet utilisateur, item ou collection."""
-    item_hit = session.execute(
-        select(ItemShare.item_id)
-        .join(GroupMember, GroupMember.group_id == ItemShare.group_id)
-        .where(
-            ItemShare.tenant_id == tenant_id,
-            ItemShare.role == "editor",
-            GroupMember.user_id == user_id,
-            GroupMember.tenant_id == tenant_id,
-        )
-        .limit(1)
-    ).first()
-    if item_hit is not None:
-        return True
-    collection_hit = session.execute(
-        select(CollectionShare.collection_id)
-        .join(GroupMember, GroupMember.group_id == CollectionShare.group_id)
-        .where(
-            CollectionShare.tenant_id == tenant_id,
-            CollectionShare.role == "editor",
-            GroupMember.user_id == user_id,
-            GroupMember.tenant_id == tenant_id,
-        )
-        .limit(1)
-    ).first()
-    return collection_hit is not None
-
-
 def create_group(session: Session, *, tenant_id: str, name: str, created_by: str) -> Group:
     group = Group(id=uuid.uuid4().hex, tenant_id=tenant_id, name=name, created_by=created_by)
     session.add(group)
