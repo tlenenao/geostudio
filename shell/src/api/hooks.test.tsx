@@ -48,7 +48,7 @@ function wrapper({ children }: { children: ReactNode }) {
 
 test("useItems returns the mapped page", async () => {
   server.use(
-    http.get("https://core.test/items", () =>
+    http.get("https://core.test/v1/items", () =>
       HttpResponse.json({
         items: [
           {
@@ -92,14 +92,16 @@ test("useMe returns the current user", async () => {
 });
 
 test("useInstanceInfo returns readOnly from the core", async () => {
-  server.use(http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })));
+  server.use(
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
+  );
   const { result } = renderHook(() => useInstanceInfo(), { wrapper });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   expect(result.current.data?.readOnly).toBe(true);
 });
 
 test("useInstanceInfo degrades fail-open (data stays undefined, never a false positive) on network failure", async () => {
-  server.use(http.get("https://core.test/instance", () => HttpResponse.error()));
+  server.use(http.get("https://core.test/v1/instance", () => HttpResponse.error()));
   const { result } = renderHook(() => useInstanceInfo(), { wrapper });
   await waitFor(() => expect(result.current.isError).toBe(true));
   expect(result.current.data?.readOnly).not.toBe(true);
@@ -107,7 +109,7 @@ test("useInstanceInfo degrades fail-open (data stays undefined, never a false po
 
 test("useInstanceInfo returns exportEnabled from the core", async () => {
   server.use(
-    http.get("https://core.test/instance", () =>
+    http.get("https://core.test/v1/instance", () =>
       HttpResponse.json({ readOnly: false, etlEnabled: false, exportEnabled: true }),
     ),
   );
@@ -316,7 +318,7 @@ test("useSaveApp saves an app config", async () => {
 
 test("useCollectionsAdmin returns the mapped collections", async () => {
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({
         collections: [
           {
@@ -344,7 +346,7 @@ test("useCollectionsAdmin returns the mapped collections", async () => {
 
 test("useCandidateTables returns the candidates list", async () => {
   server.use(
-    http.get("https://core.test/collections/candidates", () =>
+    http.get("https://core.test/v1/collections/candidates", () =>
       HttpResponse.json({
         candidates: [
           { tableName: "widgets", registrable: false, reason: "table has no primary key" },
@@ -361,7 +363,7 @@ test("useCandidateTables returns the candidates list", async () => {
 
 test("useCollectionSharing returns the collection's sharing", async () => {
   server.use(
-    http.get("https://core.test/collections/incidents/sharing", () =>
+    http.get("https://core.test/v1/collections/incidents/sharing", () =>
       HttpResponse.json({ public: true, groups: [] }),
     ),
   );
@@ -372,7 +374,7 @@ test("useCollectionSharing returns the collection's sharing", async () => {
 
 test("useHarvestSources returns the mapped sources", async () => {
   server.use(
-    http.get("https://core.test/harvest/sources", () =>
+    http.get("https://core.test/v1/harvest/sources", () =>
       HttpResponse.json({
         sources: [
           {
@@ -398,7 +400,7 @@ test("useHarvestSources returns the mapped sources", async () => {
 test("useCreateHarvestSource posts the input and invalidates the list", async () => {
   let posted: unknown;
   server.use(
-    http.post("https://core.test/harvest/sources", async ({ request }) => {
+    http.post("https://core.test/v1/harvest/sources", async ({ request }) => {
       posted = await request.json();
       return HttpResponse.json(
         {
@@ -429,7 +431,7 @@ test("useCreateHarvestSource posts the input and invalidates the list", async ()
 test("useRunHarvestSource posts to the run endpoint", async () => {
   let called = false;
   server.use(
-    http.post("https://core.test/harvest/sources/src-1/run", () => {
+    http.post("https://core.test/v1/harvest/sources/src-1/run", () => {
       called = true;
       return HttpResponse.json({ status: "queued" }, { status: 202 });
     }),

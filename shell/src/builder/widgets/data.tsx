@@ -8,6 +8,7 @@ import { useSetCrossFilter } from "../AnalyticsContext";
 import { evaluateExpression } from "../expr";
 import type { DataRecord } from "../../api/types";
 import { ExplorerMenu } from "./ExplorerMenu";
+import { t } from "../../i18n";
 
 type CalculatedColumn = { label: string; expr: string };
 type TableColumn = string | CalculatedColumn;
@@ -23,12 +24,12 @@ function firstField(records: DataRecord[]): string | undefined {
 export function registerDataWidgets(): void {
   registerWidget({
     type: "list",
-    label: "Liste",
+    label: t("widgetData.listPaletteLabel"),
     defaultProps: { dataSourceId: "", titleField: "" },
     defaultSize: { w: 4, h: 4 },
     configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "titleField", type: "string", label: "Champ titre", default: "" },
+      { name: "dataSourceId", type: "dataSource", label: t("widgetData.dataSource"), default: "" },
+      { name: "titleField", type: "string", label: t("widgetData.titleField"), default: "" },
     ],
     events: ["itemSelected"],
     actions: ["setFilter"],
@@ -40,9 +41,9 @@ export function registerDataWidgets(): void {
           onChange={(id) => onChange({ ...props, dataSourceId: id })}
         />
         <label className="flex flex-col gap-1">
-          Champ titre
+          {t("widgetData.titleField")}
           <input
-            aria-label="Champ titre"
+            aria-label={t("widgetData.titleField")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.titleField ?? "")}
             onChange={(e) => onChange({ ...props, titleField: e.target.value })}
@@ -59,10 +60,10 @@ export function registerDataWidgets(): void {
       });
       const data = ctx.data;
       if (!data || data.loading)
-        return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
-      if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
+        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+      if (data.error) return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
       if (data.records.length === 0)
-        return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
+        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.noData")}</p>;
       const field = String(props.titleField || firstField(data.records) || "");
 
       function selectRecord(r: DataRecord) {
@@ -105,12 +106,12 @@ export function registerDataWidgets(): void {
 
   registerWidget({
     type: "table",
-    label: "Table",
+    label: t("widgetData.tablePaletteLabel"),
     defaultProps: { dataSourceId: "", columns: [], pageSize: 10 },
     defaultSize: { w: 6, h: 4 },
     configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "pageSize", type: "number", label: "Lignes par page", default: 10 },
+      { name: "dataSourceId", type: "dataSource", label: t("widgetData.dataSource"), default: "" },
+      { name: "pageSize", type: "number", label: t("widgetData.pageSizeConfig"), default: 10 },
     ],
     events: ["itemSelected"],
     actions: ["setFilter"],
@@ -125,7 +126,11 @@ export function registerDataWidgets(): void {
       function addCalculatedColumn() {
         onChange({
           ...props,
-          columns: [...plainColumns, ...calculatedColumns, { label: "Nouvelle colonne", expr: "" }],
+          columns: [
+            ...plainColumns,
+            ...calculatedColumns,
+            { label: t("widgetData.newColumnDefault"), expr: "" },
+          ],
         });
       }
       function updateCalculatedColumn(index: number, patch: Partial<CalculatedColumn>) {
@@ -147,9 +152,9 @@ export function registerDataWidgets(): void {
             onChange={(id) => onChange({ ...props, dataSourceId: id })}
           />
           <label className="flex flex-col gap-1">
-            Colonnes (séparées par des virgules)
+            {t("widgetData.columnsLabel")}
             <input
-              aria-label="Colonnes"
+              aria-label={t("widgetData.columnsAria")}
               className="h-9 rounded-md border border-slate-300 px-2"
               value={plainColumns.join(",")}
               onChange={(e) =>
@@ -165,18 +170,18 @@ export function registerDataWidgets(): void {
           {calculatedColumns.map((col, i) => (
             <div key={i} className="flex flex-col gap-1 rounded border border-slate-200 p-2">
               <label className="flex flex-col gap-1">
-                Libellé
+                {t("widgetData.calcColumnLabelText")}
                 <input
-                  aria-label={`Libellé de la colonne calculée ${i + 1}`}
+                  aria-label={t("widgetData.calcColumnLabelAria", { n: i + 1 })}
                   className="h-9 rounded-md border border-slate-300 px-2"
                   value={col.label}
                   onChange={(e) => updateCalculatedColumn(i, { label: e.target.value })}
                 />
               </label>
               <label className="flex flex-col gap-1">
-                Expression
+                {t("widgetData.calcColumnExprText")}
                 <input
-                  aria-label={`Expression de la colonne calculée ${i + 1}`}
+                  aria-label={t("widgetData.calcColumnExprAria", { n: i + 1 })}
                   className="h-9 rounded-md border border-slate-300 px-2 font-mono"
                   value={col.expr}
                   onChange={(e) => updateCalculatedColumn(i, { expr: e.target.value })}
@@ -187,7 +192,7 @@ export function registerDataWidgets(): void {
                 className="self-start text-xs text-red-600 underline"
                 onClick={() => removeCalculatedColumn(i)}
               >
-                Supprimer la colonne
+                {t("widgetData.removeCalcColumn")}
               </button>
             </div>
           ))}
@@ -196,7 +201,7 @@ export function registerDataWidgets(): void {
             className="self-start rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
             onClick={addCalculatedColumn}
           >
-            Ajouter une colonne calculée
+            {t("widgetData.addCalcColumn")}
           </button>
         </div>
       );
@@ -213,10 +218,10 @@ export function registerDataWidgets(): void {
       const [page, setPage] = useState(0);
       const data = ctx.data;
       if (!data || data.loading)
-        return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
-      if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
+        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+      if (data.error) return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
       if (data.records.length === 0)
-        return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
+        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.noData")}</p>;
       const rawColumns = (props.columns as TableColumn[] | undefined) ?? [];
       const columns: TableColumn[] = rawColumns.length
         ? rawColumns
@@ -332,18 +337,16 @@ export function registerDataWidgets(): void {
                 disabled={current === 0}
                 onClick={() => setPage(current - 1)}
               >
-                Précédent
+                {t("widgetData.previous")}
               </button>
-              <span>
-                Page {current + 1} / {pageCount}
-              </span>
+              <span>{t("widgetData.pageOf", { page: current + 1, totalPages: pageCount })}</span>
               <button
                 type="button"
                 className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
                 disabled={current >= pageCount - 1}
                 onClick={() => setPage(current + 1)}
               >
-                Suivant
+                {t("widgetData.next")}
               </button>
             </div>
           )}

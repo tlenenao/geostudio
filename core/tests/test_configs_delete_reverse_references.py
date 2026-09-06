@@ -82,16 +82,16 @@ def _setup(monkeypatch, tmp_path):
 def test_delete_item_refuses_when_an_alert_rule_still_references_it(monkeypatch, tmp_path):
     client, dataset_item_id, rule_item_id = _setup(monkeypatch, tmp_path)
 
-    response = client.delete(f"/items/{dataset_item_id}")
+    response = client.delete(f"/v1/items/{dataset_item_id}")
 
     assert response.status_code == 409
     assert "alert" in response.json()["detail"]
     # ni le Dataset ni sa config n'ont été supprimés (refus, pas suppression
     # partielle) :
-    assert client.get(f"/items/{dataset_item_id}").status_code == 200
-    assert client.get(f"/configs/by-item/{dataset_item_id}").status_code == 200
+    assert client.get(f"/v1/items/{dataset_item_id}").status_code == 200
+    assert client.get(f"/v1/configs/by-item/{dataset_item_id}").status_code == 200
     # l'AlertRule référençant toujours ce Dataset n'a pas été altérée :
-    still_referenced = client.get(f"/configs/by-item/{rule_item_id}").json()
+    still_referenced = client.get(f"/v1/configs/by-item/{rule_item_id}").json()
     assert still_referenced["config"]["alert"]["datasetItemId"] == dataset_item_id
 
 
@@ -100,17 +100,17 @@ def test_delete_config_by_item_refuses_when_an_alert_rule_still_references_it(
 ):
     client, dataset_item_id, _rule_item_id = _setup(monkeypatch, tmp_path)
 
-    response = client.delete(f"/configs/by-item/{dataset_item_id}")
+    response = client.delete(f"/v1/configs/by-item/{dataset_item_id}")
 
     assert response.status_code == 409
-    assert client.get(f"/items/{dataset_item_id}").status_code == 200
+    assert client.get(f"/v1/items/{dataset_item_id}").status_code == 200
 
 
 def test_delete_item_succeeds_once_the_referencing_alert_rule_is_gone(monkeypatch, tmp_path):
     # Contre-épreuve : une fois la seule référence levée, la suppression du
     # Dataset redevient possible (pas un verrou permanent).
     client, dataset_item_id, rule_item_id = _setup(monkeypatch, tmp_path)
-    assert client.delete(f"/items/{rule_item_id}").status_code == 204
+    assert client.delete(f"/v1/items/{rule_item_id}").status_code == 204
 
-    response = client.delete(f"/items/{dataset_item_id}")
+    response = client.delete(f"/v1/items/{dataset_item_id}")
     assert response.status_code == 204

@@ -5,6 +5,7 @@ import { useInstanceInfo, useLaunchAdminTool } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { t } from "../i18n";
 
 const PROTECTED_TOOLS: { tool: AdminToolName; label: string }[] = [
   { tool: "martin", label: "Martin" },
@@ -26,25 +27,23 @@ export function AdminInfrastructurePage() {
       <TriptychLayout
         browse={{
           id: "back",
-          label: "Catalogue",
+          label: t("domain.catalog"),
           content: (
             <Panel className="m-3 flex flex-col gap-3 text-sm">
               <Link to="/" className="text-accent hover:underline">
-                ← Retour au catalogue
+                {t("nav.backToCatalog")}
               </Link>
             </Panel>
           ),
         }}
         work={{
           id: "infrastructure",
-          label: "Infrastructure",
+          label: t("infrastructure.title"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h1 className="text-lg font-bold text-ink">Outils d'infrastructure</h1>
+              <h1 className="text-lg font-bold text-ink">{t("infrastructure.heading")}</h1>
               {!adminToolsEnabled && (
-                <p className="text-sm text-ink-2">
-                  Non activé sur cette instance (CORE_ADMIN_TOOLS_ENABLED).
-                </p>
+                <p className="text-sm text-ink-2">{t("infrastructure.disabled")}</p>
               )}
               {adminToolsEnabled && (
                 <div className="flex flex-wrap gap-2">
@@ -74,20 +73,19 @@ export function AdminInfrastructurePage() {
                   rel="noopener noreferrer"
                   className="text-accent hover:underline"
                 >
-                  Console MinIO
+                  {t("infrastructure.minioConsole")}
                 </a>{" "}
-                — accès direct, non protégé par ce garde-fou ; fonctionne seulement si le port 9001
-                est exposé sur cet hôte.
+                {t("infrastructure.minioNote")}
               </p>
               {launch.isError && (
                 <p role="alert" className="text-sm text-danger">
-                  Échec de l'ouverture de l'outil.
+                  {t("infrastructure.launchError")}
                 </p>
               )}
             </div>
           ),
         }}
-        inspect={{ id: "detail", label: "Détail", content: null }}
+        inspect={{ id: "detail", label: t("infrastructure.detail"), content: null }}
       />
     </div>
   );

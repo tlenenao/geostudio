@@ -81,7 +81,7 @@ def test_terrain3d_config_round_trips(client_env):
         s.commit()
         item_id = item.id
 
-    by_item = client.get(f"/configs/by-item/{item_id}")
+    by_item = client.get(f"/v1/configs/by-item/{item_id}")
     assert by_item.status_code == 200
     body = by_item.json()["config"]
     assert body["kind"] == "terrain3d"
@@ -93,7 +93,7 @@ def test_terrain3d_config_round_trips(client_env):
 
 def test_terrain3d_config_requires_terrain3d_payload(client):
     created = client.post(
-        "/configs",
+        "/v1/configs",
         json={"title": "Cassé", "config": {"kind": "terrain3d"}},
     )
     assert created.status_code == 422

@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useInstanceInfo, useItem, useMapConfig, useSaveMap } from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { MapConfig, MapLayer, MapTerrainConfig, PrintLayoutConfig } from "../api/types";
 import { hasPermission } from "../auth/permissions";
-import { MapView, type MapViewHandle } from "../map/MapView";
+import type { MapViewHandle } from "../map/MapView";
+// Lazy, comme mapWidget.tsx/ExplorerDrawer.tsx : un import statique ici
+// neutralisait leur propre lazy() de MapView (Rollup ne peut isoler un
+// module dans son propre chunk tant qu'un site l'importe statiquement),
+// visible au build via le warning INEFFECTIVE_DYNAMIC_IMPORT (GAP-68).
+const MapView = lazy(() => import("../map/MapView").then((m) => ({ default: m.MapView })));
 import { LayersPanel } from "../map/LayersPanel";
 import { BasemapSelect } from "../map/BasemapSelect";
 import { TerrainPanel } from "../map/TerrainPanel";
@@ -49,11 +54,11 @@ export function MapEditorPage({ pk }: { pk: string }) {
   // effect above), so keep showing the loader during that gap instead of
   // flashing the error.
   if (query.isLoading || itemQuery.isLoading || (!draft && !query.isError))
-    return <p role="status">Chargement…</p>;
+    return <p role="status">{t("common.loading")}</p>;
   if (query.isError || itemQuery.isError || !draft || !itemQuery.data)
     return (
       <p role="alert" className="text-sm text-danger">
-        Carte introuvable.
+        {t("mapEditor.notFound")}
       </p>
     );
 
@@ -93,14 +98,16 @@ export function MapEditorPage({ pk }: { pk: string }) {
   if (isExportRender) {
     return (
       <div className="relative h-full w-full">
-        <MapView
-          config={draft}
-          onReady={markExportReady}
-          hideLegend
-          getAuthToken={client.getAuthToken}
-          getCoreUrl={client.getCoreUrl}
-          loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
-        />
+        <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
+          <MapView
+            config={draft}
+            onReady={markExportReady}
+            hideLegend
+            getAuthToken={client.getAuthToken}
+            getCoreUrl={client.getCoreUrl}
+            loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
+          />
+        </Suspense>
         {draft.printLayout?.title && (
           <div className="absolute left-2 top-2 rounded bg-white/90 px-2 py-1 text-sm font-medium">
             {draft.printLayout.title}
@@ -130,7 +137,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
         defaultTabId="map"
         browse={{
           id: "layers",
-          label: "Couches",
+          label: t("mapEditor.layersLabel"),
           content: (
             <div className="p-3">
               <LayersPanel layers={draft.layers} onChange={setLayers} />
@@ -139,23 +146,26 @@ export function MapEditorPage({ pk }: { pk: string }) {
         }}
         work={{
           id: "map",
-          label: "Carte",
+          label: t("mapEditor.mapLabel"),
           content: (
             <div className="relative h-full w-full">
-              <MapView
-                ref={mapViewRef}
-                config={draft}
-                onViewChange={setView}
-                getAuthToken={client.getAuthToken}
-                getCoreUrl={client.getCoreUrl}
-                loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
-              />
+              <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
+                <MapView
+                  ref={mapViewRef}
+                  config={draft}
+                  onViewChange={setView}
+                  interactiveTools
+                  getAuthToken={client.getAuthToken}
+                  getCoreUrl={client.getCoreUrl}
+                  loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
+                />
+              </Suspense>
             </div>
           ),
         }}
         inspect={{
           id: "settings",
-          label: "Inspecter",
+          label: t("mapEditor.inspectLabel"),
           content: (
             <div className="flex flex-col gap-4 p-3">
               <BasemapSelect value={draft.basemap.style} onChange={setStyle} />
@@ -178,12 +188,12 @@ export function MapEditorPage({ pk }: { pk: string }) {
                 disabled={save.isPending || readOnly}
                 onClick={() => save.mutate(draft)}
               >
-                Enregistrer
+                {t("common.save")}
               </Button>
               {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
               {save.isError && (
                 <p role="alert" className="text-sm text-danger">
-                  Échec de l'enregistrement.
+                  {t("actions.saveFailed")}
                 </p>
               )}
             </div>

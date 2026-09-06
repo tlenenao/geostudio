@@ -151,7 +151,7 @@ def seed(env):
 
 
 def test_layers_returns_only_raster_records_of_visible_items(seed):
-    resp = seed.client.get("/harvest/layers")
+    resp = seed.client.get("/v1/harvest/layers")
     assert resp.status_code == 200
     layers = resp.json()["layers"]
     ids = {layer["id"] for layer in layers}
@@ -164,6 +164,6 @@ def test_layers_returns_only_raster_records_of_visible_items(seed):
 
 
 def test_layers_filters_by_q(seed):
-    resp = seed.client.get("/harvest/layers", params={"q": "zzz-nomatch"})
+    resp = seed.client.get("/v1/harvest/layers", params={"q": "zzz-nomatch"})
     assert resp.status_code == 200
     assert resp.json()["layers"] == []

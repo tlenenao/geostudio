@@ -7,6 +7,7 @@ import { LayoutEditor } from "../LayoutEditor";
 import { GridCanvas } from "../GridCanvas";
 import { WidgetHost } from "../WidgetHost";
 import { Dialog } from "../../ui/dialog";
+import { t } from "../../i18n";
 
 type ModalProps = { title: string; items: WidgetItem[]; wide?: boolean };
 
@@ -15,19 +16,21 @@ const inputCls = "h-9 rounded-md border border-slate-300 px-2 text-sm";
 export function registerModalWidget(): void {
   registerWidget({
     type: "modal",
-    label: "Modale",
+    label: t("widgetModal.paletteLabel"),
     defaultProps: { title: "Modale", items: [] },
     defaultSize: { w: 3, h: 1 },
-    configSchema: [{ name: "title", type: "string", label: "Titre", default: "Modale" }],
+    configSchema: [
+      { name: "title", type: "string", label: t("widgetModal.titleConfig"), default: "Modale" },
+    ],
     actions: ["open", "close"],
-    PropsPanel: ({ props, onChange, dataSources }) => {
+    PropsPanel: ({ props, onChange, dataSources, variables }) => {
       const { title, items, wide } = props as ModalProps;
       return (
         <div className="flex flex-col gap-2 text-sm">
           <label className="flex flex-col gap-1">
-            Titre
+            {t("widgetModal.titleConfig")}
             <input
-              aria-label="Titre de la modale"
+              aria-label={t("widgetModal.titleAria")}
               className={inputCls}
               value={title}
               onChange={(e) => onChange({ title: e.target.value, items, wide })}
@@ -36,17 +39,18 @@ export function registerModalWidget(): void {
           <label className="flex items-center gap-2 text-xs">
             <input
               type="checkbox"
-              aria-label="Modale large"
+              aria-label={t("widgetModal.wideToggle")}
               checked={Boolean(wide)}
               onChange={(e) => onChange({ title, items, wide: e.target.checked })}
             />
-            Modale large
+            {t("widgetModal.wideToggle")}
           </label>
           <LayoutEditor
             items={items}
             onChange={(next) => onChange({ title, items: next, wide })}
             dataSources={dataSources}
             breakpoint="lg"
+            variables={variables}
           />
         </div>
       );
@@ -59,8 +63,8 @@ export function registerModalWidget(): void {
 
       if (ctx.mode === "edit") {
         return (
-          <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">
-            Modale : {title}
+          <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-ink-2">
+            {t("widgetModal.editPreview", { title })}
           </div>
         );
       }
@@ -75,6 +79,7 @@ export function registerModalWidget(): void {
               selectedId={null}
               onSelect={() => {}}
               onMoveItem={() => {}}
+              onRemoveItem={() => {}}
               renderItem={(item) => (
                 <WidgetHost
                   item={item}

@@ -31,7 +31,8 @@ from app.harvest.schemas import HarvestSourceCreate, HarvestSourcePatch
 from app.items import repository as items_repo
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
-from app.sharing.authorization import can
+from app.sharing.authorization import can, decide
+from app.sharing.repository import roles_for_items
 from app.users.models import User
 
 router = APIRouter()
@@ -164,10 +165,32 @@ def list_layers(
     session: Session = Depends(get_session),
 ):
     rows = repo.list_layer_records(session, tenant_id=user.tenant_id, q=q)
+    facts_by_id = items_repo.get_access_facts_by_ids(
+        session, tenant_id=user.tenant_id, item_ids=[row[0] for row in rows]
+    )
+    remaining_ids = [
+        item_id
+        for item_id, facts in facts_by_id.items()
+        if not (facts.owner_id == user.id or facts.is_public or facts.is_published)
+    ]
+    roles_by_id = roles_for_items(
+        session, tenant_id=user.tenant_id, user_id=user.id, item_ids=remaining_ids
+    )
     layers = []
     for item_id, title, tiles_url, _layer_kind in rows:
-        facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
-        if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        facts = facts_by_id.get(item_id)
+        if facts is None:
+            continue
+        allowed = decide(
+            action="read",
+            kind="item",
+            is_owner=facts.owner_id == user.id,
+            is_public=facts.is_public,
+            is_published=facts.is_published,
+            roles=roles_by_id.get(item_id, frozenset()),
+            actor_is_admin=False,
+        )
+        if not allowed:
             continue
         layers.append({"id": item_id, "title": title, "kind": "raster", "tilesUrl": tiles_url})
     return {"layers": layers}
@@ -180,10 +203,32 @@ def list_feature_layers(
     session: Session = Depends(get_session),
 ):
     rows = repo.list_feature_layer_records(session, tenant_id=user.tenant_id, q=q)
+    facts_by_id = items_repo.get_access_facts_by_ids(
+        session, tenant_id=user.tenant_id, item_ids=[row[0] for row in rows]
+    )
+    remaining_ids = [
+        item_id
+        for item_id, facts in facts_by_id.items()
+        if not (facts.owner_id == user.id or facts.is_public or facts.is_published)
+    ]
+    roles_by_id = roles_for_items(
+        session, tenant_id=user.tenant_id, user_id=user.id, item_ids=remaining_ids
+    )
     layers = []
     for item_id, title, _external_url in rows:
-        facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
-        if facts is None or not can(session, user_id=user.id, action="read", item=facts):
+        facts = facts_by_id.get(item_id)
+        if facts is None:
+            continue
+        allowed = decide(
+            action="read",
+            kind="item",
+            is_owner=facts.owner_id == user.id,
+            is_public=facts.is_public,
+            is_published=facts.is_published,
+            roles=roles_by_id.get(item_id, frozenset()),
+            actor_is_admin=False,
+        )
+        if not allowed:
             continue
         layers.append({"id": item_id, "title": title})
     return {"layers": layers}

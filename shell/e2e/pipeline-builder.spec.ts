@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect, type Page } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCollection, mockCore } from "./mocks";
 
 const OPS_CATALOG = {
   "reader.collection": {
@@ -35,49 +35,43 @@ const OPS_CATALOG = {
 };
 
 async function mockPipelineFlow(page: Page) {
-  await page.route("https://core.test/instance", async (route) => {
+  await page.route("https://core.test/v1/instance", async (route) => {
     await route.fulfill({ json: { readOnly: false, etlEnabled: true } });
   });
-  await page.route("https://core.test/pipelines/ops", async (route) => {
+  await page.route("https://core.test/v1/pipelines/ops", async (route) => {
     await route.fulfill({ json: OPS_CATALOG });
   });
-  await page.route("https://core.test/collections*", async (route) => {
+  await page.route("https://core.test/v1/collections*", async (route) => {
     await route.fulfill({
       json: {
         collections: [
-          {
+          mockCollection({
             id: "villes",
             title: "Villes",
-            description: "",
             tableName: "villes",
             isPublic: true,
-            editable: true,
             geometryType: null,
             srid: null,
-            pkColumn: "id",
             permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 10,
             owner: "alice",
-          },
-          {
+          }),
+          mockCollection({
             id: "villes_propres",
             title: "Villes propres",
-            description: "",
             tableName: "villes_propres",
             isPublic: true,
-            editable: true,
             geometryType: null,
             srid: null,
-            pkColumn: "id",
             permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 0,
             owner: "alice",
-          },
+          }),
         ],
       },
     });
   });
-  await page.route("https://core.test/configs", async (route) => {
+  await page.route("https://core.test/v1/configs", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
     const body = await route.request().postDataJSON();
     if (body?.config?.kind !== "pipeline") return route.fallback();
@@ -87,10 +81,10 @@ async function mockPipelineFlow(page: Page) {
     });
   });
   let runPolls = 0;
-  await page.route("https://core.test/pipelines/pipe-1/run", async (route) => {
+  await page.route("https://core.test/v1/pipelines/pipe-1/run", async (route) => {
     await route.fulfill({ status: 202, json: { runId: "run-1" } });
   });
-  await page.route("https://core.test/pipelines/pipe-1/runs", async (route) => {
+  await page.route("https://core.test/v1/pipelines/pipe-1/runs", async (route) => {
     runPolls += 1;
     const status = runPolls < 2 ? "running" : "succeeded";
     await route.fulfill({
@@ -253,7 +247,7 @@ test("un auteur planifie un pipeline existant sans écrire de cron à la main", 
       edges: [{ id: "e1", from: "r1", to: "w1" }],
     },
   };
-  await page.route("https://core.test/configs/by-item/pipe-1", async (route) => {
+  await page.route("https://core.test/v1/configs/by-item/pipe-1", async (route) => {
     const method = route.request().method();
     if (method === "GET") {
       await route.fulfill({

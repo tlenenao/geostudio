@@ -76,37 +76,37 @@ def env():
 def test_routes_absent_when_disabled(monkeypatch):
     monkeypatch.setenv("CORE_ADMIN_TOOLS_ENABLED", "false")
     client = TestClient(create_app())
-    response = client.post("/admin-tools/launch/martin")
+    response = client.post("/v1/admin-tools/launch/martin")
     assert response.status_code == 404
 
 
 def test_launch_requires_admin(env):
     client, use_as, _admin_id, member_id, _sf = env
     use_as(member_id)
-    response = client.post("/admin-tools/launch/martin")
+    response = client.post("/v1/admin-tools/launch/martin")
     assert response.status_code == 403
 
 
 def test_launch_rejects_unknown_tool(env):
     client, use_as, admin_id, _member_id, _sf = env
     use_as(admin_id)
-    response = client.post("/admin-tools/launch/not-a-real-tool")
+    response = client.post("/v1/admin-tools/launch/not-a-real-tool")
     assert response.status_code == 422
 
 
 def test_launch_returns_session_url_for_admin(env):
     client, use_as, admin_id, _member_id, _sf = env
     use_as(admin_id)
-    response = client.post("/admin-tools/launch/martin")
+    response = client.post("/v1/admin-tools/launch/martin")
     assert response.status_code == 200
     url = response.json()["url"]
-    assert url.startswith("http://localhost:8200/admin-tools/session/martin?_at=")
+    assert url.startswith("http://localhost:8200/v1/admin-tools/session/martin?_at=")
 
 
 def test_session_redirects_and_sets_cookie_on_valid_token(env):
     client, _use_as, admin_id, _member_id, _sf = env
     token = mint_launch_token(sub=admin_id, tool="martin")
-    response = client.get(f"/admin-tools/session/martin?_at={token}", follow_redirects=False)
+    response = client.get(f"/v1/admin-tools/session/martin?_at={token}", follow_redirects=False)
     assert response.status_code == 302
     assert response.headers["location"] == "/admin/martin/"
     set_cookie = response.headers["set-cookie"]
@@ -131,14 +131,14 @@ def test_session_rejects_expired_launch_token(env):
         _SECRET,
         algorithm="HS256",
     )
-    response = client.get(f"/admin-tools/session/martin?_at={expired}", follow_redirects=False)
+    response = client.get(f"/v1/admin-tools/session/martin?_at={expired}", follow_redirects=False)
     assert response.status_code == 401
 
 
 def test_session_rejects_tool_mismatch(env):
     client, _use_as, admin_id, _member_id, _sf = env
     token = mint_launch_token(sub=admin_id, tool="martin")
-    response = client.get(f"/admin-tools/session/titiler?_at={token}", follow_redirects=False)
+    response = client.get(f"/v1/admin-tools/session/titiler?_at={token}", follow_redirects=False)
     assert response.status_code == 401
 
 
@@ -146,13 +146,13 @@ def test_verify_accepts_valid_session_cookie(env):
     client, _use_as, admin_id, _member_id, _sf = env
     token = mint_session_token(sub=admin_id)
     client.cookies.set("gs_admin_session", token)
-    response = client.get("/admin-tools/verify")
+    response = client.get("/v1/admin-tools/verify")
     assert response.status_code == 200
 
 
 def test_verify_rejects_missing_cookie(env):
     client, _use_as, _admin_id, _member_id, _sf = env
-    response = client.get("/admin-tools/verify")
+    response = client.get("/v1/admin-tools/verify")
     assert response.status_code == 403
 
 
@@ -165,7 +165,7 @@ def test_verify_rejects_expired_session_cookie(env):
         algorithm="HS256",
     )
     client.cookies.set("gs_admin_session", expired)
-    response = client.get("/admin-tools/verify")
+    response = client.get("/v1/admin-tools/verify")
     assert response.status_code == 403
 
 
@@ -179,7 +179,7 @@ def test_verify_rejects_revoked_privilege(env):
     client, _use_as, admin_id, _member_id, session_factory = env
     token = mint_session_token(sub=admin_id)
     client.cookies.set("gs_admin_session", token)
-    assert client.get("/admin-tools/verify").status_code == 200
+    assert client.get("/v1/admin-tools/verify").status_code == 200
 
     with session_factory() as s:
         tenant = get_or_create_default_tenant(s)
@@ -194,7 +194,7 @@ def test_verify_rejects_revoked_privilege(env):
         s.commit()
 
     # Même cookie (jamais invalidé) : doit désormais échouer.
-    response = client.get("/admin-tools/verify")
+    response = client.get("/v1/admin-tools/verify")
     assert response.status_code == 403, response.text
 
 
@@ -224,7 +224,7 @@ def test_launch_allowed_for_custom_role_with_settings_instance_manage(env):
         s.commit()
 
     use_as(member_id)
-    response = client.post("/admin-tools/launch/martin")
+    response = client.post("/v1/admin-tools/launch/martin")
     assert response.status_code == 200
 
 
@@ -254,5 +254,5 @@ def test_launch_rejected_for_custom_role_without_settings_instance_manage(env):
         s.commit()
 
     use_as(member_id)
-    response = client.post("/admin-tools/launch/martin")
+    response = client.post("/v1/admin-tools/launch/martin")
     assert response.status_code == 403

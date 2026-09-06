@@ -12,7 +12,7 @@ from urllib.parse import urljoin
 
 import httpx
 
-from app.harvest.connectors.base import HarvestedRecord
+from app.harvest.connectors.base import HarvestedRecord, HarvestFetchError
 
 logger = logging.getLogger(__name__)
 
@@ -53,18 +53,26 @@ class OgcRecordsConnector:
         return records[:_MAX_OGC_RECORDS]
 
 
-def _get_json(client, url: str):
+def _get_json(client, url: str, *, root: bool = False):
     try:
         response = client.get(url, timeout=_DEFAULT_TIMEOUT_SECONDS)
         response.raise_for_status()
         return response.json()
     except (httpx.HTTPError, ValueError) as exc:
+        if root:
+            raise HarvestFetchError(
+                f"document racine OGC Records injoignable ou illisible : {url} ({exc})"
+            ) from exc
         logger.warning("ogc-records harvest: échec de récupération de %s : %s", url, exc)
         return None
 
 
 def _list_collections(client, root_url: str) -> list[str]:
-    doc = _get_json(client, f"{root_url}/collections")
+    # /collections est le seul appel racine de ce connecteur (GAP-59.2,
+    # SP-50) : _get_json lève désormais si injoignable/illisible. Les
+    # collections elles-mêmes (_collect_collection) restent tolérantes
+    # (root=False, comportement inchangé).
+    doc = _get_json(client, f"{root_url}/collections", root=True)
     if not isinstance(doc, dict) or not isinstance(doc.get("collections"), list):
         return []
     ids: list[str] = []

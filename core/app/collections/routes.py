@@ -3,14 +3,14 @@ import logging
 import os
 from collections.abc import Callable
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.attachments import repository as attachments_repo
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user, get_current_user_optional
+from app.auth.dependency import get_current_user, get_current_user_optional, is_quotas_enabled
 from app.collections import repository as repo
 from app.collections.ddl import TenantColumnMismatch
 from app.collections.introspection import (
@@ -29,6 +29,7 @@ from app.collections.schemas import (
 )
 from app.configs import repository as configs_repo
 from app.db import core_table_names, get_session
+from app.quotas.service import check_quota_or_raise
 from app.roles.guards import has_privilege, privilege_required_error, require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can
@@ -37,6 +38,9 @@ from app.sharing.schemas import Sharing
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+MAX_LIMIT = 1000
+DEFAULT_LIMIT = 100
 
 # Tables système PostGIS : de simples tables Postgres ordinaires (PK simple,
 # pas de tenant_id) qui passeraient toutes les autres gardes. Les enregistrer
@@ -284,6 +288,11 @@ def create_empty_collection_route(
     # ADMIN_COLLECTIONS_MANAGE a été explicitement écarté ici : l'assistant de
     # requête visuelle dépend de cette route pour tout utilisateur non-admin.
     require_privilege(session, user, Privilege.DATA_MANAGE.value)
+    # SP-58 Tâche 5 (GAP-73/GAP-11) : même patron que create_config_service
+    # (app.configs.service) — capacité éteinte par défaut, comportement
+    # inchangé.
+    if is_quotas_enabled():
+        check_quota_or_raise(session, tenant_id=user.tenant_id, kind="collections")
     col = create_empty_collection(
         session,
         tenant_id=user.tenant_id,
@@ -310,6 +319,8 @@ def create_empty_collection_route(
 @router.get("/collections")
 def list_collections(
     q: str | None = None,
+    limit: int = Query(DEFAULT_LIMIT, ge=1),
+    offset: int = Query(0, ge=0),
     user=Depends(get_current_user_optional),
     session: Session = Depends(get_session),
 ):
@@ -327,7 +338,10 @@ def list_collections(
         can_see_all=can_manage_collections,
         q=q,
     )
-    owner_ids = {c.owner_id for c in cols}
+    limit = min(limit, MAX_LIMIT)
+    total = len(cols)
+    cols_page = cols[offset : offset + limit]
+    owner_ids = {c.owner_id for c in cols_page}
     owners = (
         dict(session.execute(select(User.id, User.username).where(User.id.in_(owner_ids))).all())
         if owner_ids
@@ -339,12 +353,15 @@ def list_collections(
         current_user_id=user.id if user else None,
         actor_is_admin=bool(user and user.is_admin),
         can_manage_collections=can_manage_collections,
-        collections=cols,
+        collections=cols_page,
     )
     return {
         "collections": [
-            _collection_json(c, permissions_by_id[c.id], owner=owners.get(c.owner_id)) for c in cols
-        ]
+            _collection_json(c, permissions_by_id[c.id], owner=owners.get(c.owner_id))
+            for c in cols_page
+        ],
+        "numberMatched": total,
+        "numberReturned": len(cols_page),
     }
 
 
@@ -410,7 +427,9 @@ def get_collection(
     )[col.id]
     body = _collection_json(col, permissions)
     body["itemType"] = "feature"
-    base = str(request.base_url).rstrip("/")
+    # request.base_url ne porte jamais /v1 (juste scheme://host/) — ce
+    # routeur est nesté sous /v1 (SP-57b), l'ajouter explicitement ici.
+    base = str(request.base_url).rstrip("/") + "/v1"
     body["links"] = [
         {"rel": "self", "type": "application/json", "href": f"{base}/collections/{col.id}"},
         {

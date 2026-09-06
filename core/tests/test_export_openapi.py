@@ -12,5 +12,6 @@ def test_main_writes_valid_openapi_json(tmp_path):
         schema = json.load(f)
 
     assert schema["openapi"].startswith("3.")
-    assert "/configs" in schema["paths"]
-    assert "/me" in schema["paths"]
+    assert "/v1/configs" in schema["paths"]
+    assert "/v1/me" in schema["paths"]
+    assert "/health" in schema["paths"]

@@ -13,7 +13,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import httpx
 
-from app.harvest.connectors.base import HarvestedRecord
+from app.harvest.connectors.base import HarvestedRecord, HarvestFetchError
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,10 @@ class CkanConnector:
                 break
             params = [*base_params, ("start", str(start)), ("rows", str(_PAGE_SIZE))]
             page_url = f"{endpoint}?{urlencode(params)}"
-            doc = _get_json(client, page_url)
+            # La première page (pages==1, start==0) est la racine (GAP-59.2,
+            # SP-50) : injoignable/illisible, elle doit être signalée — les
+            # pages suivantes (pagination) restent tolérantes (root=False).
+            doc = _get_json(client, page_url, root=(pages == 1))
             result = doc.get("result") if isinstance(doc, dict) else None
             if not isinstance(result, dict):
                 break
@@ -100,12 +103,16 @@ class CkanConnector:
         return records[:_MAX_CKAN_DATASETS]
 
 
-def _get_json(client, url: str):
+def _get_json(client, url: str, *, root: bool = False):
     try:
         response = client.get(url, timeout=_DEFAULT_TIMEOUT_SECONDS)
         response.raise_for_status()
         return response.json()
     except (httpx.HTTPError, ValueError) as exc:
+        if root:
+            raise HarvestFetchError(
+                f"document racine CKAN injoignable ou illisible : {url} ({exc})"
+            ) from exc
         logger.warning("ckan harvest: échec de récupération de %s : %s", url, exc)
         return None
 

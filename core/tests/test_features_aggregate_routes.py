@@ -105,7 +105,7 @@ def _as(app, user):
 
 def _register(app, client, admin, public=False):
     _as(app, admin)
-    return client.post("/collections", json={"tableName": "villes", "isPublic": public}).json()
+    return client.post("/v1/collections", json={"tableName": "villes", "isPublic": public}).json()
 
 
 def test_aggregate_returns_wide_rows_for_a_readable_collection(env):
@@ -138,7 +138,7 @@ def test_aggregate_returns_wide_rows_for_a_readable_collection(env):
     )
 
     response = client.post(
-        f"/collections/{col['id']}/aggregate",
+        f"/v1/collections/{col['id']}/aggregate",
         json={"groupBy": "region", "agg": "sum", "field": "pop"},
     )
 
@@ -154,7 +154,7 @@ def test_aggregate_returns_wide_rows_for_a_readable_collection(env):
 def test_aggregate_on_unregistered_collection_returns_404(env):
     _app, client, _admin, regular, _tmp_path, _tenant_id = env
     _as(_app, regular)
-    response = client.post("/collections/does-not-exist/aggregate", json={"groupBy": "region"})
+    response = client.post("/v1/collections/does-not-exist/aggregate", json={"groupBy": "region"})
     assert response.status_code == 404
 
 
@@ -162,7 +162,7 @@ def test_aggregate_on_private_collection_by_non_owner_returns_404(env):
     app, client, admin, regular, _tmp_path, _tenant_id = env
     col = _register(app, client, admin, public=False)
     _as(app, regular)
-    response = client.post(f"/collections/{col['id']}/aggregate", json={"groupBy": "region"})
+    response = client.post(f"/v1/collections/{col['id']}/aggregate", json={"groupBy": "region"})
     assert response.status_code == 404  # cohérent avec GET /collections/{id}/items
 
 
@@ -185,7 +185,7 @@ def test_aggregate_unknown_group_by_field_returns_400(env):
             },
         ],
     )
-    response = client.post(f"/collections/{col['id']}/aggregate", json={"groupBy": "inconnu"})
+    response = client.post(f"/v1/collections/{col['id']}/aggregate", json={"groupBy": "inconnu"})
     assert response.status_code == 400
 
 
@@ -210,7 +210,7 @@ def test_aggregate_sample_returns_bare_values(env):
     )
 
     response = client.post(
-        f"/collections/{col['id']}/aggregate", json={"field": "pop", "sample": 10}
+        f"/v1/collections/{col['id']}/aggregate", json={"field": "pop", "sample": 10}
     )
 
     assert response.status_code == 200

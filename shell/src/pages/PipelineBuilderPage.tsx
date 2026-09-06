@@ -26,6 +26,7 @@ import { PipelinePalette, PIPELINE_OP_DND_TYPE } from "../builder/pipeline/Pipel
 import { PipelinePreviewPanel } from "../builder/pipeline/PipelinePreviewPanel";
 import { PipelineRunPanel } from "../builder/pipeline/PipelineRunPanel";
 import { PipelineScheduleEditor } from "../builder/pipeline/PipelineScheduleEditor";
+import { PipelineWebhookTrigger } from "../builder/pipeline/PipelineWebhookTrigger";
 import { genNodeId, insertNodeOnEdge } from "../builder/pipeline/graphOps";
 import { isPipelineValid, validatePipelineGraphLocally } from "../builder/pipeline/validation";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
@@ -74,7 +75,7 @@ export function PipelineBuilderPage({
   }, [pk, configQuery.data]);
 
   if (pk !== null && (configQuery.isLoading || itemQuery.isLoading))
-    return <p role="status">Chargement…</p>;
+    return <p role="status">{t("common.loading")}</p>;
   // SP-42 F-shell-pages-05 : sans cette garde, un pipeline existant dont le
   // chargement échoue (403 suite à une révocation de partage, item supprimé
   // mais lien conservé, panne réseau transitoire) s'affichait comme un
@@ -89,10 +90,10 @@ export function PipelineBuilderPage({
   if (pk !== null && (configQuery.isError || itemQuery.isError || !itemQuery.data))
     return (
       <p role="alert" className="text-sm text-danger">
-        Pipeline introuvable.
+        {t("pipelineBuilder.notFound")}
       </p>
     );
-  if (opsQuery.isLoading || !opsQuery.data) return <p role="status">Chargement…</p>;
+  if (opsQuery.isLoading || !opsQuery.data) return <p role="status">{t("common.loading")}</p>;
 
   const catalog = opsQuery.data;
   const validation = validatePipelineGraphLocally(draft.nodes, draft.edges, catalog);
@@ -147,7 +148,7 @@ export function PipelineBuilderPage({
       }
       await savePipeline.mutateAsync(draft);
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Échec de l'enregistrement.");
+      setSaveError(e instanceof Error ? e.message : t("actions.saveFailed"));
     }
   }
 
@@ -165,16 +166,18 @@ export function PipelineBuilderPage({
         defaultTabId="canvas"
         browse={{
           id: "steps",
-          label: "Étapes",
+          label: t("pipelineBuilder.stepsLabel"),
           content: <PipelinePalette />,
         }}
         work={{
           id: "canvas",
-          label: "Canevas",
+          label: t("appBuilder.canvasLabel"),
           content: (
             <div className="flex h-full flex-col overflow-hidden">
               <div className="border-b border-rule p-2">
-                <h2 className="text-lg font-semibold text-ink">{initialTitle ?? "Pipeline"}</h2>
+                <h2 className="text-lg font-semibold text-ink">
+                  {initialTitle ?? t("pipelineBuilder.defaultTitle")}
+                </h2>
               </div>
               <div className="flex-1 overflow-auto p-2">
                 <PipelineCanvas
@@ -195,12 +198,14 @@ export function PipelineBuilderPage({
         }}
         inspect={{
           id: "props",
-          label: "Propriétés",
+          label: t("appBuilder.propertiesLabel"),
           content: (
             <div className="flex flex-col gap-1 p-2">
               {selectedNode && catalog[selectedNode.op] && (
                 <>
-                  <p className="mb-1 text-xs font-medium text-ink-2">Nœud sélectionné</p>
+                  <p className="mb-1 text-xs font-medium text-ink-2">
+                    {t("pipelineBuilder.selectedNodeLabel")}
+                  </p>
                   <PipelineNodeInspector
                     key={selectedNode.id}
                     node={selectedNode}
@@ -213,17 +218,22 @@ export function PipelineBuilderPage({
               )}
               {pk !== null && (
                 <>
-                  <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Exécution</p>
+                  <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
+                    {t("pipelineBuilder.executionLabel")}
+                  </p>
                   <PipelineRunPanel pipelineId={pk} onLatestRunChange={setLatestRun} />
                 </>
               )}
               {pk !== null && (
                 <>
-                  <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Planification</p>
+                  <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
+                    {t("pipelineBuilder.scheduleLabel")}
+                  </p>
                   <PipelineScheduleEditor
                     value={draft.refreshPolicy ?? null}
                     onChange={setRefreshPolicy}
                   />
+                  <PipelineWebhookTrigger pipelineId={pk} />
                 </>
               )}
               {pk !== null && (
@@ -244,7 +254,7 @@ export function PipelineBuilderPage({
                     !valid || createPipeline.isPending || savePipeline.isPending || readOnly
                   }
                 >
-                  Enregistrer
+                  {t("common.save")}
                 </Button>
                 {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
                 {saveError && (

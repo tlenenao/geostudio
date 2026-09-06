@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCollection, mockCore } from "./mocks";
 
 test("créer une règle d'alerte et voir son état firing sur DatasetEditPage", async ({ page }) => {
   await mockCore(page);
@@ -10,20 +10,14 @@ test("créer une règle d'alerte et voir son état firing sur DatasetEditPage", 
     await route.fulfill({
       json: {
         collections: [
-          {
+          mockCollection({
             id: "incidents",
             title: "Incidents",
-            description: "",
             tableName: "incidents",
             isPublic: true,
-            editable: true,
-            geometryType: "Point",
-            srid: 4326,
-            pkColumn: "id",
             permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 3,
-            owner: "mockuser",
-          },
+          }),
         ],
       },
     });
@@ -51,7 +45,7 @@ test("créer une règle d'alerte et voir son état firing sur DatasetEditPage", 
       },
     });
   });
-  await page.route("https://core.test/items/dataset-1", async (route) => {
+  await page.route("https://core.test/v1/items/dataset-1", async (route) => {
     await route.fulfill({
       json: {
         pk: "dataset-1",

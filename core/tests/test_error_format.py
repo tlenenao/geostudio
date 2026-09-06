@@ -20,6 +20,8 @@ def test_unhandled_exception_returns_problem_json(monkeypatch):
     app.router.routes.insert(0, app.router.routes.pop())
 
     client = TestClient(app, raise_server_exceptions=False)
+    # /__boom est ajoutée directement sur app.router (pas sur v1_router) par
+    # ce test — elle vit donc à la racine, jamais sous /v1.
     response = client.get("/__boom")
     assert response.status_code == 500
     assert response.headers["content-type"] == "application/problem+json"
@@ -33,7 +35,7 @@ def test_unhandled_exception_returns_problem_json(monkeypatch):
 def test_plain_http_exception_returns_problem_json(monkeypatch):
     monkeypatch.setenv("CORE_AUTH_MODE", "mock")
     client = TestClient(create_app())
-    response = client.get("/collections/does-not-exist/items/does-not-exist")
+    response = client.get("/v1/collections/does-not-exist/items/does-not-exist")
     assert response.headers["content-type"] == "application/problem+json"
     body = response.json()
     assert body["status"] == response.status_code
@@ -54,7 +56,7 @@ def test_validation_exception_carries_top_level_errors(monkeypatch):
     # /analytics/sql exige get_current_user (Bearer requis) ; en mode mock
     # le contenu du jeton n'est pas vérifié, seul le préfixe "Bearer " l'est.
     response = client.post(
-        "/analytics/sql",
+        "/v1/analytics/sql",
         json={"sql": "not valid sql at all"},
         headers={"Authorization": "Bearer mock"},
     )

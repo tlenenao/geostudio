@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect, type Page } from "@playwright/test";
-import { mockCore, mockItemDetail } from "./mocks";
+import { mockCollection, mockCore, mockItemDetail } from "./mocks";
 
 // SP-14b — E2E du contexte analytique global (cross-filter, emprise, plage
 // temporelle, restauration URL, non-régression). Chaque test appelle
@@ -180,20 +180,14 @@ test("map extent reactivity refetches a reactsToExtent dataset after the debounc
     await route.fulfill({
       json: {
         collections: [
-          {
+          mockCollection({
             id: "geo",
             title: "Géo",
-            description: "",
             tableName: "geo",
             isPublic: true,
-            editable: true,
-            geometryType: "Point",
-            srid: 4326,
-            pkColumn: "id",
             permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 1,
-            owner: "mockuser",
-          },
+          }),
         ],
       },
     });
@@ -322,20 +316,16 @@ test("a date-range widget filters a timeField-bound dataset", async ({ page }) =
     await route.fulfill({
       json: {
         collections: [
-          {
+          mockCollection({
             id: "events",
             title: "Événements",
-            description: "",
             tableName: "events",
             isPublic: true,
-            editable: true,
             geometryType: null,
             srid: null,
-            pkColumn: "id",
             permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 2,
-            owner: "mockuser",
-          },
+          }),
         ],
       },
     });
@@ -425,20 +415,16 @@ test("the analytics context in the URL restores on reload", async ({ page }) => 
     await route.fulfill({
       json: {
         collections: [
-          {
+          mockCollection({
             id: "events",
             title: "Événements",
-            description: "",
             tableName: "events",
             isPublic: true,
-            editable: true,
             geometryType: null,
             srid: null,
-            pkColumn: "id",
             permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 2,
-            owner: "mockuser",
-          },
+          }),
         ],
       },
     });
@@ -1195,20 +1181,16 @@ test("a KPI shows a delta badge against the reference period", async ({ page }) 
     await route.fulfill({
       json: {
         collections: [
-          {
+          mockCollection({
             id: "events",
             title: "Événements",
-            description: "",
             tableName: "events",
             isPublic: true,
-            editable: true,
             geometryType: null,
             srid: null,
-            pkColumn: "id",
             permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 2,
-            owner: "mockuser",
-          },
+          }),
         ],
       },
     });
@@ -1391,20 +1373,16 @@ test("chart compare-periods mode renders two aligned series", async ({ page }) =
     await route.fulfill({
       json: {
         collections: [
-          {
+          mockCollection({
             id: "events",
             title: "Événements",
-            description: "",
             tableName: "events",
             isPublic: true,
-            editable: true,
             geometryType: null,
             srid: null,
-            pkColumn: "id",
             permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 2,
-            owner: "mockuser",
-          },
+          }),
         ],
       },
     });
@@ -1529,20 +1507,16 @@ test("indicator and chart behave exactly as before without the new SP-14e props,
     await route.fulfill({
       json: {
         collections: [
-          {
+          mockCollection({
             id: "events",
             title: "Événements",
-            description: "",
             tableName: "events",
             isPublic: true,
-            editable: true,
             geometryType: null,
             srid: null,
-            pkColumn: "id",
             permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 2,
-            owner: "mockuser",
-          },
+          }),
         ],
       },
     });
@@ -2769,7 +2743,7 @@ test("a spatial cross-filter link propagates a bbox from one dataset's Table cli
     }));
     await route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 100 } });
   });
-  await page.route("https://core.test/items/dataset-*", async (route) => {
+  await page.route("https://core.test/v1/items/dataset-*", async (route) => {
     const id = route.request().url().split("/").pop()!;
     await route.fulfill({
       json: {

@@ -117,6 +117,41 @@ def test_query_features_returns_geojson_for_a_readable_collection(app_client):
     assert result["features"][0]["properties"]["titre"] == "Nid de poule"
 
 
+def test_query_features_relays_geom_intersects(app_client):
+    """GAP-47 (reste) : select_features() supporte déjà l'intersection
+    géométrique, et la route REST équivalente la relaie déjà — query_features
+    (MCP) ne proposait qu'un bbox grossier avant ce correctif."""
+    with app_client:
+        collection_id = _register_incidents_collection(app_client)
+        # Le point inséré par _register_incidents_collection est (2.3, 48.8) —
+        # intersection exacte avec ce même point.
+        result = call_tool(
+            app_client,
+            "query_features",
+            {
+                "collectionId": collection_id,
+                "geomIntersects": {"type": "Point", "coordinates": [2.3, 48.8]},
+            },
+        )
+    assert result["numberReturned"] == 1
+    assert result["features"][0]["properties"]["titre"] == "Nid de poule"
+
+
+def test_query_features_geom_intersects_excludes_non_matching(app_client):
+    with app_client:
+        collection_id = _register_incidents_collection(app_client)
+        # Un point loin de (2.3, 48.8) ne doit rien retourner.
+        result = call_tool(
+            app_client,
+            "query_features",
+            {
+                "collectionId": collection_id,
+                "geomIntersects": {"type": "Point", "coordinates": [-70.0, 10.0]},
+            },
+        )
+    assert result["numberReturned"] == 0
+
+
 def test_query_features_unknown_collection_errors(app_client):
     with app_client:
         error_text = call_tool_expecting_error(

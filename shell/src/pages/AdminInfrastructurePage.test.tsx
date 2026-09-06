@@ -43,7 +43,7 @@ function Harness() {
 
 test("affiche les trois boutons protégés et le lien MinIO quand la capacité est active", async () => {
   server.use(
-    http.get("https://core.test/instance", () => HttpResponse.json({ adminToolsEnabled: true })),
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ adminToolsEnabled: true })),
   );
   render(<Harness />);
   await screen.findByRole("button", { name: "Martin" });
@@ -55,7 +55,9 @@ test("affiche les trois boutons protégés et le lien MinIO quand la capacité e
 
 test("masque les trois boutons protégés quand la capacité est désactivée, garde le lien MinIO", async () => {
   server.use(
-    http.get("https://core.test/instance", () => HttpResponse.json({ adminToolsEnabled: false })),
+    http.get("https://core.test/v1/instance", () =>
+      HttpResponse.json({ adminToolsEnabled: false }),
+    ),
   );
   render(<Harness />);
   await screen.findByRole("link", { name: /MinIO/ });
@@ -65,8 +67,8 @@ test("masque les trois boutons protégés quand la capacité est désactivée, g
 test("cliquer sur Martin appelle launch et ouvre l'URL retournée dans un nouvel onglet", async () => {
   const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
   server.use(
-    http.get("https://core.test/instance", () => HttpResponse.json({ adminToolsEnabled: true })),
-    http.post("https://core.test/admin-tools/launch/martin", () =>
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ adminToolsEnabled: true })),
+    http.post("https://core.test/v1/admin-tools/launch/martin", () =>
       HttpResponse.json({ url: "https://core.test/admin-tools/session/martin?_at=abc" }),
     ),
   );

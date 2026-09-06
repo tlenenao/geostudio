@@ -5,6 +5,7 @@ import type {
   CreateBookmarkInput,
   CreateKind,
   Item,
+  ItemFacets,
   ItemPage,
   ListItemsParams,
   Sharing,
@@ -16,6 +17,18 @@ export function useItems(params: ListItemsParams, opts?: { enabled?: boolean }) 
   return useQuery({
     queryKey: ["items", params],
     queryFn: () => client.listItems(params),
+    enabled: opts?.enabled ?? true,
+  });
+}
+
+export function useItemFacets(
+  params: Pick<ListItemsParams, "q" | "type" | "scope" | "owner">,
+  opts?: { enabled?: boolean },
+) {
+  const client = useItemClientInternal();
+  return useQuery<ItemFacets>({
+    queryKey: ["item-facets", params],
+    queryFn: () => client.getItemFacets(params),
     enabled: opts?.enabled ?? true,
   });
 }
@@ -147,6 +160,25 @@ export function useGroups(options?: { enabled?: boolean }) {
   });
 }
 
+export function useCreateGroup() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => client.createGroup(name),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["groups"] });
+    },
+  });
+}
+
+export function useAddGroupMember() {
+  const client = useItemClientInternal();
+  return useMutation({
+    mutationFn: ({ groupId, userId }: { groupId: string; userId: string }) =>
+      client.addGroupMember(groupId, userId),
+  });
+}
+
 export function useSharing(pk: string, options?: { enabled?: boolean }) {
   const client = useItemClientInternal();
   return useQuery({
@@ -164,6 +196,37 @@ export function useSetSharing(pk: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["sharing", pk] });
       void queryClient.invalidateQueries({ queryKey: ["items"] });
+    },
+  });
+}
+
+export function useShareLinks(itemId: string, options?: { enabled?: boolean }) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["shareLinks", itemId],
+    queryFn: () => client.listShareLinks(itemId),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useCreateShareLink(itemId: string) {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ttlDays: number) => client.createShareLink(itemId, ttlDays),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["shareLinks", itemId] });
+    },
+  });
+}
+
+export function useRevokeShareLink(itemId: string) {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (linkId: string) => client.revokeShareLink(itemId, linkId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["shareLinks", itemId] });
     },
   });
 }

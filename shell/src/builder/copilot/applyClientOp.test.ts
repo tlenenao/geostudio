@@ -115,6 +115,36 @@ describe("applyClientOp", () => {
     expect(config.dataSources[0].query).toEqual({ status: "open" });
   });
 
+  it("setFilter merges into the existing query instead of replacing it", () => {
+    let config = applyClientOp(
+      {
+        op: "addDataSource",
+        args: { id: "ds1", type: "statistics", service: "core", layer: "incidents" },
+      },
+      emptyConfig(),
+      "page-1",
+    );
+    config = applyClientOp(
+      {
+        op: "setFilter",
+        args: { dataSourceId: "ds1", query: { groupBy: "category", agg: "sum", field: "amount" } },
+      },
+      config,
+      "page-1",
+    );
+    config = applyClientOp(
+      { op: "setFilter", args: { dataSourceId: "ds1", query: { status: "active" } } },
+      config,
+      "page-1",
+    );
+    expect(config.dataSources[0].query).toEqual({
+      groupBy: "category",
+      agg: "sum",
+      field: "amount",
+      status: "active",
+    });
+  });
+
   it("an unknown op name is a no-op, never throws", () => {
     const config = emptyConfig();
     const result = applyClientOp({ op: "deleteEverything", args: {} }, config, "page-1");

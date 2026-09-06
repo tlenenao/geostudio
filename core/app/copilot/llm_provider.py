@@ -11,6 +11,8 @@ from typing import Any, Protocol
 
 import httpx
 
+from app.copilot.egress import build_guarded_async_client
+
 # Plafond par appel, sous le budget global du tour (app.copilot.routes).
 LLM_CALL_TIMEOUT_SECONDS = 30.0
 
@@ -92,7 +94,7 @@ class OpenAICompatibleLLMProvider:
         if self._client is not None:
             response = await self._client.post(self._api_url, headers=headers, json=payload)
         else:
-            async with httpx.AsyncClient(timeout=LLM_CALL_TIMEOUT_SECONDS) as client:
+            async with build_guarded_async_client(timeout=LLM_CALL_TIMEOUT_SECONDS) as client:
                 response = await client.post(self._api_url, headers=headers, json=payload)
         response.raise_for_status()
         choice = response.json()["choices"][0]["message"]

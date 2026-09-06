@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/ItemClientProvider";
 import type { AppConfig, AppExportJobStatus, AppExportMode } from "../../api/types";
+import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 import { Panel } from "../../ui/kit/Panel";
 import { collectWidgetTypes, WRITE_CAPABLE_WIDGET_TYPES } from "./collectWidgetTypes";
@@ -41,7 +42,7 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
     setJob(latest);
     if (latest.status !== "pending" && latest.status !== "running") return;
     if (attempt + 1 >= MAX_POLL_ATTEMPTS) {
-      setError("Export toujours en cours, réessayer plus tard.");
+      setError(t("appExport.stillRunning"));
       return;
     }
     await new Promise<void>((resolve) => {
@@ -61,7 +62,7 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
       const { jobId } = await client.createAppExport(itemId, mode);
       await poll(jobId);
     } catch {
-      if (mountedRef.current) setError("Échec de l'export.");
+      if (mountedRef.current) setError(t("appExport.exportFailed"));
     } finally {
       if (mountedRef.current) setRunning(false);
     }
@@ -91,26 +92,26 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
         onClick={() => setPickerOpen((open) => !open)}
         disabled={running}
       >
-        Exporter
+        {t("appExport.exportButton")}
       </Button>
       {pickerOpen && (
         // Panneau en ligne, pas une fenêtre modale (spec §2.1, ConfirmDialog
         // seul survit) : pas d'Escape/backdrop à intercepter, Fermer ferme
         // explicitement sans exporter.
         <Panel className="flex flex-col gap-2">
-          <p className="text-sm font-medium text-ink">Choisir le mode d'export</p>
+          <p className="text-sm font-medium text-ink">{t("appExport.chooseModeHeading")}</p>
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen(false)}>
-              Fermer
+              {t("appExport.close")}
             </Button>
             <Button type="button" size="sm" onClick={() => onChooseMode("static")}>
-              Statique
+              {t("appExport.modeStatic")}
             </Button>
             <Button type="button" size="sm" onClick={() => onChooseMode("connected")}>
-              Connecté
+              {t("appExport.modeConnected")}
             </Button>
             <Button type="button" size="sm" onClick={() => onChooseMode("standalone")}>
-              Autoporté
+              {t("appExport.modeStandalone")}
             </Button>
           </div>
         </Panel>
@@ -120,28 +121,25 @@ export function AppExportPanel({ itemId, config }: { itemId: string; config: App
           role="alert"
           className="rounded border border-warn-soft bg-warn-soft p-2 text-sm text-warn"
         >
-          <p>
-            Cette app contient un widget Formulaire — toute écriture sera désactivée dans
-            l&apos;export faute de session authentifiée.
-          </p>
+          <p>{t("appExport.writeWidgetWarning")}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <Button size="sm" onClick={() => void runExport(pendingWarningMode)}>
-              Exporter quand même
+              {t("appExport.exportAnyway")}
             </Button>
             <Button size="sm" variant="outline" onClick={() => setPendingWarningMode(null)}>
-              Ne pas exporter
+              {t("appExport.doNotExport")}
             </Button>
           </div>
         </div>
       )}
       {job?.status === "done" && job.resultUrl && (
         <a href={job.resultUrl} download className="text-sm text-accent underline">
-          Télécharger le bundle
+          {t("appExport.downloadBundle")}
         </a>
       )}
       {(error || job?.status === "error") && (
         <p role="alert" className="text-sm text-danger">
-          {error ?? job?.error ?? "Échec de l'export."}
+          {error ?? job?.error ?? t("appExport.exportFailed")}
         </p>
       )}
     </div>

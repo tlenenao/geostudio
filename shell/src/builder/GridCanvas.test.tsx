@@ -20,6 +20,7 @@ function renderCanvas(over: Partial<React.ComponentProps<typeof GridCanvas>> = {
       selectedId={null}
       onSelect={over.onSelect ?? vi.fn()}
       onMoveItem={over.onMoveItem ?? vi.fn()}
+      onRemoveItem={over.onRemoveItem ?? vi.fn()}
       renderItem={(item) => <div>widget-{item.id}</div>}
       {...over}
     />,
@@ -46,6 +47,13 @@ test("the move handle nudges the item by one cell", async () => {
   expect(onMoveItem).toHaveBeenCalledWith("a", 1, 0);
 });
 
+test("the remove button removes the selected item", async () => {
+  const onRemoveItem = vi.fn();
+  renderCanvas({ selectedId: "a", onRemoveItem });
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer widget-a" }));
+  expect(onRemoveItem).toHaveBeenCalledWith("a");
+});
+
 test("positions items at the active breakpoint and exposes data hooks", () => {
   const bpItems: WidgetItem[] = [
     {
@@ -67,6 +75,7 @@ test("positions items at the active breakpoint and exposes data hooks", () => {
       selectedId={null}
       onSelect={vi.fn()}
       onMoveItem={vi.fn()}
+      onRemoveItem={vi.fn()}
       renderItem={(item) => <div>widget-{item.id}</div>}
     />,
   );

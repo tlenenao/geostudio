@@ -90,7 +90,7 @@ function wrap(children: ReactNode, initial = "/") {
 
 test("navigates from catalog to app builder on open (app item)", async () => {
   server.use(
-    http.get("https://core.test/items", () =>
+    http.get("https://core.test/v1/items", () =>
       HttpResponse.json({
         items: [
           {
@@ -116,25 +116,25 @@ test("navigates from catalog to app builder on open (app item)", async () => {
   expect(await screen.findByText("app-builder-1")).toBeInTheDocument();
 });
 
-test("renders the app builder route at /apps/:pk/edit", () => {
+test("renders the app builder route at /apps/:pk/edit", async () => {
   wrap(<AppRoutes />, "/apps/42/edit");
-  expect(screen.getByText("app-builder-42")).toBeInTheDocument();
+  expect(await screen.findByText("app-builder-42")).toBeInTheDocument();
 });
 
-test("renders the app runtime route at /apps/:pk", () => {
+test("renders the app runtime route at /apps/:pk", async () => {
   wrap(<AppRoutes />, "/apps/42");
-  expect(screen.getByText("app-runtime-42-none")).toBeInTheDocument();
+  expect(await screen.findByText("app-runtime-42-none")).toBeInTheDocument();
 });
 
-test("renders the app runtime route with a pageId at /apps/:pk/:pageId", () => {
+test("renders the app runtime route with a pageId at /apps/:pk/:pageId", async () => {
   wrap(<AppRoutes />, "/apps/42/xyz");
-  expect(screen.getByText("app-runtime-42-xyz")).toBeInTheDocument();
+  expect(await screen.findByText("app-runtime-42-xyz")).toBeInTheDocument();
 });
 
-test("the runtime route renders without going through the auth gate", () => {
+test("the runtime route renders without going through the auth gate", async () => {
   authState.isAuthenticated = false;
   wrap(<AppRoutes />, "/apps/42");
-  expect(screen.getByText("app-runtime-42-none")).toBeInTheDocument();
+  expect(await screen.findByText("app-runtime-42-none")).toBeInTheDocument();
   authState.isAuthenticated = true;
 });
 
@@ -143,7 +143,7 @@ test("renders the admin extensions route at /admin/extensions", async () => {
   // handler MSW par défaut de /me ne porte pas admin.extensions.manage, il
   // faut le surcharger et attendre la résolution avant d'affirmer sur le contenu.
   server.use(
-    http.get("https://core.test/me", () =>
+    http.get("https://core.test/v1/me", () =>
       HttpResponse.json({
         id: "u1",
         username: "alice",
@@ -173,7 +173,7 @@ test("protected routes still require authentication", () => {
 test("renders the bookmarks catalog at /bookmarks, filtered to type=bookmark", async () => {
   let lastUrl = "";
   server.use(
-    http.get("https://core.test/items", ({ request }) => {
+    http.get("https://core.test/v1/items", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({
         items: [
@@ -202,7 +202,7 @@ test("renders the bookmarks catalog at /bookmarks, filtered to type=bookmark", a
 
 test("opening a bookmark navigates to its app+page+ctx URL, not an editor", async () => {
   server.use(
-    http.get("https://core.test/items", () =>
+    http.get("https://core.test/v1/items", () =>
       HttpResponse.json({
         items: [
           {
@@ -222,7 +222,7 @@ test("opening a bookmark navigates to its app+page+ctx URL, not an editor", asyn
         pageSize: 12,
       }),
     ),
-    http.get("https://core.test/configs/by-item/bm-1", () =>
+    http.get("https://core.test/v1/configs/by-item/bm-1", () =>
       HttpResponse.json({
         id: "cfg-bm-1",
         itemId: "bm-1",
@@ -246,7 +246,7 @@ test("opening a bookmark navigates to its app+page+ctx URL, not an editor", asyn
   expect(await screen.findByText(/^app-runtime-42-page-1$/)).toBeInTheDocument();
 });
 
-test("exportRender=1 on a protected map route hides AppLayout's header/nav chrome (Task 10 fix round 1)", () => {
+test("exportRender=1 on a protected map route hides AppLayout's header/nav chrome (Task 10 fix round 1)", async () => {
   // Regression for the Critical review finding: MapEditorPage's own nude-chrome
   // guard only controls what MapEditorPage renders, not AppLayout sitting above
   // it in ProtectedLayout. Render through the REAL AppRoutes -> ProtectedLayout
@@ -254,7 +254,7 @@ test("exportRender=1 on a protected map route hides AppLayout's header/nav chrom
   // point here is AppLayout's chrome, not MapEditorPage's own content) so this
   // actually exercises the integration gap the unit tests missed.
   wrap(<AppRoutes />, "/maps/77?exportRender=1");
-  expect(screen.getByText("map-editor-77")).toBeInTheDocument();
+  expect(await screen.findByText("map-editor-77")).toBeInTheDocument();
   expect(screen.queryByText("GeoStudio")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /déconnexion/i })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Catalogue" })).not.toBeInTheDocument();
@@ -262,7 +262,7 @@ test("exportRender=1 on a protected map route hides AppLayout's header/nav chrom
 
 test("without exportRender, the same map route still renders AppLayout's header/nav chrome normally", async () => {
   wrap(<AppRoutes />, "/maps/77");
-  expect(screen.getByText("map-editor-77")).toBeInTheDocument();
+  expect(await screen.findByText("map-editor-77")).toBeInTheDocument();
   expect(screen.getByText("GeoStudio")).toBeInTheDocument();
   // Le sign-out n'est plus un bouton direct de l'en-tête (ancien chrome) :
   // il vit désormais dans le Popover d'AccountMenu (Task 9), qu'il faut
@@ -274,7 +274,7 @@ test("without exportRender, the same map route still renders AppLayout's header/
 
 test("opening an alert navigates to its dataset's edit page, not a generic app editor", async () => {
   server.use(
-    http.get("https://core.test/items", () =>
+    http.get("https://core.test/v1/items", () =>
       HttpResponse.json({
         items: [
           {
@@ -294,7 +294,7 @@ test("opening an alert navigates to its dataset's edit page, not a generic app e
         pageSize: 12,
       }),
     ),
-    http.get("https://core.test/configs/by-item/al-1", () =>
+    http.get("https://core.test/v1/configs/by-item/al-1", () =>
       HttpResponse.json({
         id: "cfg-al-1",
         itemId: "al-1",
@@ -321,7 +321,7 @@ test("opening an alert navigates to its dataset's edit page, not a generic app e
 
 test("opening an external item navigates to its item detail page", async () => {
   server.use(
-    http.get("https://core.test/items", () =>
+    http.get("https://core.test/v1/items", () =>
       HttpResponse.json({
         items: [
           {
@@ -349,7 +349,7 @@ test("opening an external item navigates to its item detail page", async () => {
 
 test("a failed alert config fetch surfaces an error instead of silently doing nothing", async () => {
   server.use(
-    http.get("https://core.test/items", () =>
+    http.get("https://core.test/v1/items", () =>
       HttpResponse.json({
         items: [
           {
@@ -370,7 +370,7 @@ test("a failed alert config fetch surfaces an error instead of silently doing no
       }),
     ),
     http.get(
-      "https://core.test/configs/by-item/al-1",
+      "https://core.test/v1/configs/by-item/al-1",
       () => new HttpResponse(null, { status: 500 }),
     ),
   );
@@ -384,7 +384,7 @@ test("a failed alert config fetch surfaces an error instead of silently doing no
 
 test("a failed bookmark config fetch surfaces an error instead of silently doing nothing", async () => {
   server.use(
-    http.get("https://core.test/items", () =>
+    http.get("https://core.test/v1/items", () =>
       HttpResponse.json({
         items: [
           {
@@ -405,7 +405,7 @@ test("a failed bookmark config fetch surfaces an error instead of silently doing
       }),
     ),
     http.get(
-      "https://core.test/configs/by-item/bm-1",
+      "https://core.test/v1/configs/by-item/bm-1",
       () => new HttpResponse(null, { status: 500 }),
     ),
   );

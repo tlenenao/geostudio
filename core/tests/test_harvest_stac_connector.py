@@ -3,7 +3,7 @@ import httpx
 import pytest
 
 from app.harvest.connectors import get_connector
-from app.harvest.connectors.base import HarvestedRecord
+from app.harvest.connectors.base import HarvestedRecord, HarvestFetchError
 from app.harvest.connectors.stac import StacConnector
 
 API_COLLECTIONS = {
@@ -142,12 +142,36 @@ def test_fetch_caps_number_of_collections():
     assert len(records) == 500
 
 
-def test_fetch_returns_empty_on_http_error_without_raising():
+def test_fetch_raises_when_root_document_unreachable():
+    # GAP-59.2 (SP-50) : le document racine (premier appel, depth==0)
+    # injoignable/illisible doit être signalé, jamais rapporté comme un
+    # moissonnage réussi à zéro enregistrement.
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500)
 
-    records = list(_connector(handler).fetch("https://stac.example.com/collections"))
-    assert records == []
+    with pytest.raises(HarvestFetchError):
+        list(_connector(handler).fetch("https://stac.example.com/collections"))
+
+
+def test_fetch_still_tolerates_a_broken_child_link():
+    # Un lien "child" cassé PLUS PROFOND dans l'arborescence (depth>0) reste
+    # toléré — comportement existant et voulu (docstring du module),
+    # distinct du document racine ci-dessus. Le catalogue racine est valide,
+    # seul l'un des deux enfants répond en erreur : les collections de
+    # l'AUTRE enfant valide doivent quand même être renvoyées.
+    docs = {
+        "https://stac.example.com/catalog.json": CATALOG_ROOT,
+        "https://stac.example.com/child-collection.json": CHILD_COLLECTION,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "https://stac.example.com/child-catalog.json":
+            return httpx.Response(500)
+        return httpx.Response(200, json=docs[url])
+
+    records = list(_connector(handler).fetch("https://stac.example.com/catalog.json"))
+    assert {r.external_id for r in records} == {"parcels"}
 
 
 def test_fetch_skips_malformed_collection_entries_and_keeps_valid_ones():
@@ -187,8 +211,15 @@ def test_fetch_returns_empty_on_non_object_top_level_json():
 
 
 def test_fetch_returns_empty_on_null_top_level_json():
+    # httpx.Response(200, json=None) produit un corps VIDE (indiscernable du
+    # défaut non-fourni), pas le littéral JSON "null" — piège découvert en
+    # session (SP-50/GAP-59.2, piège CLAUDE.md n°3) : ce test croyait tester
+    # un document racine qui PARSE en non-dict, alors qu'il testait en
+    # réalité un corps vide (ValueError de response.json(), même chemin
+    # qu'une erreur HTTP racine — cf. test_fetch_raises_when_root_document_
+    # unreachable). Corrigé pour envoyer le littéral "null" réel.
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=None)
+        return httpx.Response(200, content=b"null", headers={"content-type": "application/json"})
 
     records = list(_connector(handler).fetch("https://stac.example.com/collections"))
     assert records == []

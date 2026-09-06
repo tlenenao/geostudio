@@ -202,6 +202,26 @@ layers = [
     "app.mcp",
     "app.copilot",
     "app.public",
+    # app.compliance (SP-58) : anonymisation d'utilisateur + purge de tenant
+    # (RGPD, GAP-74). Placé très haut dans le contrat — purge_tenant doit
+    # pouvoir importer les modèles/repositories de presque tout le reste de
+    # l'application (items, collections, attachments, export/appexport,
+    # tileset3d/terrain3d, ingestion, notifications, secrets, harvest,
+    # mapicons, extensions, sharing, roles, users, tenants, audit) pour
+    # supprimer les lignes d'un tenant dans l'ordre FK-safe — aucune place
+    # plus basse ne permettrait ces imports sans dizaines d'exemptions.
+    # Consommé uniquement par app.main (montage du routeur) et le worker de
+    # jobs — jamais par app.mcp (décision explicite spec SP-58 §2.2 :
+    # vérifiée par grep en clôture de plan, pas par ce contrat).
+    "app.compliance",
+    # app.security (SP-48/GAP-72) : calcule l'allowlist CSP dynamique
+    # (img-src/connect-src/script-src) depuis des données déjà écrites par
+    # trois modules distincts (HarvestSource, Config/ConfigRevision,
+    # Extension) — même raison structurelle qu'app.compliance ci-dessus,
+    # placé juste après pour la même rationale (aucune place plus basse ne
+    # permettrait ces imports sans dizaines d'exemptions). Consommé
+    # uniquement par le worker (tâche périodique) — jamais par app.mcp.
+    "app.security",
     "app.harvest",
     "app.pipelines",
     "app.reports",
@@ -212,6 +232,7 @@ layers = [
     "app.terrain3d",
     "app.mapicons",
     "app.admin_tools",
+    "app.usage",
     "app.secrets",
     "app.cdc",
     "app.ingestion",
@@ -222,6 +243,14 @@ layers = [
     "app.attachments",
     "app.collections",
     "app.configs",
+    # app.quotas (SP-58) : compteurs/mesure de stockage par tenant
+    # (GAP-73/GAP-11). Placé juste sous app.configs : c'est le point de
+    # création le plus haut qui doit l'importer (create_config_service) —
+    # tout site plus haut peut donc l'importer librement. Les 3 imports vers
+    # le haut qu'il lui reste (collections/export/appexport.models, pour
+    # compter/sommer) sont nommés en exemption ci-dessous, même patron que
+    # app.analytics plus bas dans ce contrat.
+    "app.quotas",
     "app.extensions",
     "app.items",
     "app.sharing",
@@ -236,6 +265,13 @@ layers = [
     "app.analytics",
 ]
 ignore_imports = [
+    # app.quotas (SP-58) sait compter/sommer des lignes appartenant à des
+    # modules au-dessus de lui dans ce contrat (Collection, ExportJob,
+    # AppExportJob) — lecture pure de modèles, même rationale que les
+    # exemptions app.analytics.* -> app.collections.introspection plus bas.
+    "app.quotas.service -> app.collections.models",
+    "app.quotas.service -> app.export.models",
+    "app.quotas.service -> app.appexport.models",
     # `app.analytics` est placé au plus bas du contrat (ajouté par SP-22) : il
     # est consommé par sept modules (configs, features, alerts, appexport,
     # harvest, pipelines, mcp) et ne doit lui-même rien tirer d'au-dessus.
@@ -251,6 +287,19 @@ ignore_imports = [
     # échouer le contrat.
     "app.analytics.aggregate -> app.collections.introspection",
     "app.analytics.sql_sandbox -> app.collections.introspection",
+    # Même classe de cycle que ci-dessus, pour `app.configs.bbox` (SP-55
+    # §2.3, GAP-06) : `app.collections.dataset_validation`/`routes`
+    # importent déjà `app.configs` (validation de payload dataset), donc
+    # `app.collections` doit rester AU-DESSUS d'`app.configs` dans ce
+    # contrat — mais le recalcul d'emprise spatiale d'un item map (posé au
+    # point d'écriture unique de `app.configs.repository`, pas dupliqué
+    # côté route/MCP) a besoin de `table_extent`/`introspect_table`
+    # (`app.collections`). Nommées au module près : tout autre import
+    # d'`app.collections` depuis `app.configs` reste interdit.
+    "app.configs.bbox -> app.collections.extent",
+    "app.configs.bbox -> app.collections.introspection",
+    "app.configs.bbox -> app.collections.introspection_pg",
+    "app.configs.bbox -> app.collections.models",
     # `app.auth` est bas dans le contrat car `app.auth.dependency` (surtout
     # `get_current_user`) est consommé par la quasi-totalité des modules —
     # il doit rester proche de la fondation. app.roles doit être AU-DESSUS
@@ -324,4 +373,5 @@ ignore_imports = [
     "app.db -> app.mapicons.models",
     "app.db -> app.roles.models",
     "app.db -> app.attachments.models",
+    "app.db -> app.compliance.models",
 ]

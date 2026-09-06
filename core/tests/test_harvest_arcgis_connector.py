@@ -2,10 +2,11 @@
 import json
 
 import httpx
+import pytest
 
 from app.harvest.connectors import get_connector
 from app.harvest.connectors.arcgis import ArcgisConnector
-from app.harvest.connectors.base import HarvestedRecord
+from app.harvest.connectors.base import HarvestedRecord, HarvestFetchError
 
 SERVICE = "https://gis.example.com/arcgis/rest/services/Foo/FeatureServer"
 
@@ -88,6 +89,20 @@ def test_fetch_non_object_service_response_returns_empty():
 
     transport = httpx.MockTransport(handler)
     assert list(ArcgisConnector(client=httpx.Client(transport=transport)).fetch(SERVICE)) == []
+
+
+def test_fetch_raises_when_root_service_document_unreachable():
+    # GAP-59.2 (SP-50) : le tout premier appel (métadonnées du service,
+    # depth "racine") injoignable doit être signalé — distinct des couches
+    # (par-layer) qui restent tolérantes, cf.
+    # test_fetch_layer_meta_error_skips_that_layer ci-dessous, inchangé.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    transport = httpx.MockTransport(handler)
+    connector = ArcgisConnector(client=httpx.Client(transport=transport))
+    with pytest.raises(HarvestFetchError):
+        list(connector.fetch(SERVICE))
 
 
 def test_fetch_layer_meta_error_skips_that_layer():

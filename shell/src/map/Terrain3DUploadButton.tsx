@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Panel } from "../ui/kit/Panel";
+import { t } from "../i18n";
 
 const DEFAULT_POLL_INTERVAL_MS = 1500;
 // Un job de conversion qui n'atteint jamais un état terminal ne doit pas
@@ -29,6 +30,16 @@ export function Terrain3DUploadButton({
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState("");
   const client = useItemClient();
+  const mountedRef = useRef(true);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
 
   function close() {
     setOpen(false);
@@ -41,7 +52,9 @@ export function Terrain3DUploadButton({
   async function poll(jobId: string) {
     const deadline = Date.now() + POLL_TIMEOUT_MS;
     for (;;) {
+      if (!mountedRef.current) return;
       const job = await client.getTerrain3DUploadJob(jobId);
+      if (!mountedRef.current) return;
       if (job.status === "done" && job.itemId) {
         onUploaded(job.itemId);
         close();
@@ -49,15 +62,18 @@ export function Terrain3DUploadButton({
       }
       if (job.status === "error") {
         setPhase("error");
-        setError(job.errorMessage ?? "Échec de la conversion du DEM.");
+        setError(job.errorMessage ?? t("terrain3dUpload.conversionErrorFallback"));
         return;
       }
       if (Date.now() >= deadline) {
         setPhase("error");
-        setError("La conversion du DEM prend trop de temps. Réessayez plus tard.");
+        setError(t("terrain3dUpload.timeoutError"));
         return;
       }
-      await new Promise((r) => setTimeout(r, pollIntervalMs));
+      await new Promise<void>((resolve) => {
+        timerRef.current = setTimeout(resolve, pollIntervalMs);
+      });
+      if (!mountedRef.current) return;
     }
   }
 
@@ -86,7 +102,7 @@ export function Terrain3DUploadButton({
       await poll(jobId);
     } catch (e) {
       setPhase("error");
-      setError(e instanceof Error ? e.message : "Échec de l'envoi du DEM.");
+      setError(e instanceof Error ? e.message : t("terrain3dUpload.uploadErrorFallback"));
     }
   }
 
@@ -116,27 +132,35 @@ export function Terrain3DUploadButton({
   return (
     <div className="flex flex-col gap-2">
       <Button size="sm" variant="outline" className="w-fit" onClick={toggle} disabled={busy}>
-        Nouveau DEM
+        {t("terrain3dUpload.newButton")}
       </Button>
       {open && (
         <Panel className="flex flex-col gap-3">
-          <h4 className="text-sm font-semibold text-ink">Nouveau DEM</h4>
+          <h4 className="text-sm font-semibold text-ink">{t("terrain3dUpload.newButton")}</h4>
           <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm text-ink">
-              Fichier DEM (GeoTIFF)
+              {t("terrain3dUpload.fileLabel")}
               <input
-                aria-label="Fichier DEM (GeoTIFF)"
+                aria-label={t("terrain3dUpload.fileLabel")}
                 type="file"
                 accept=".tif,.tiff"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               />
             </label>
             <label className="flex flex-col gap-1 text-sm text-ink">
-              Titre
-              <Input aria-label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
+              {t("terrain3dUpload.titleLabel")}
+              <Input
+                aria-label={t("terrain3dUpload.titleLabel")}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
             </label>
-            {phase === "uploading" && <p className="text-sm text-ink-2">Envoi du fichier…</p>}
-            {phase === "converting" && <p className="text-sm text-ink-2">Conversion en COG…</p>}
+            {phase === "uploading" && (
+              <p className="text-sm text-ink-2">{t("terrain3dUpload.uploadingStatus")}</p>
+            )}
+            {phase === "converting" && (
+              <p className="text-sm text-ink-2">{t("terrain3dUpload.convertingStatus")}</p>
+            )}
             {phase === "error" && (
               <p role="alert" className="text-sm text-danger">
                 {error}
@@ -144,10 +168,10 @@ export function Terrain3DUploadButton({
             )}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" size="sm" onClick={close} disabled={busy}>
-                Annuler
+                {t("terrain3dUpload.cancelButton")}
               </Button>
               <Button type="submit" size="sm" disabled={busy || !file || !title.trim()}>
-                {busy ? "Envoi…" : "Importer"}
+                {busy ? t("terrain3dUpload.busyButton") : t("terrain3dUpload.submitButton")}
               </Button>
             </div>
           </form>

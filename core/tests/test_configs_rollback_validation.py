@@ -86,11 +86,11 @@ def _alert_body(dataset_item_id: str) -> dict:
 
 def test_rollback_to_a_version_referencing_a_deleted_dataset_is_rejected(client):
     dataset_item_id = _create_dataset_item(client)
-    created = client.post("/configs", json=_alert_body(dataset_item_id)).json()
+    created = client.post("/v1/configs", json=_alert_body(dataset_item_id)).json()
     assert created["version"] == 1
 
     # v2 : toujours valide, référence le même dataset.
-    update = client.put(f"/configs/{created['id']}", json=_alert_body(dataset_item_id)["config"])
+    update = client.put(f"/v1/configs/{created['id']}", json=_alert_body(dataset_item_id)["config"])
     assert update.status_code == 200
     assert update.json()["version"] == 2
 
@@ -99,27 +99,27 @@ def test_rollback_to_a_version_referencing_a_deleted_dataset_is_rejected(client)
         s.execute(delete(Item).where(Item.id == dataset_item_id))
         s.commit()
 
-    rollback = client.post(f"/configs/{created['id']}/rollback", json={"version": 1})
+    rollback = client.post(f"/v1/configs/{created['id']}/rollback", json={"version": 1})
     assert rollback.status_code == 422
     assert "dataset not found" in rollback.json()["detail"]
 
     # Aucune version n'a été écrite.
-    fetched = client.get(f"/configs/{created['id']}")
+    fetched = client.get(f"/v1/configs/{created['id']}")
     assert fetched.status_code == 200
     assert fetched.json()["version"] == 2
 
 
 def test_rollback_to_a_still_valid_version_succeeds_and_bumps_version(client):
     dataset_item_id = _create_dataset_item(client)
-    created = client.post("/configs", json=_alert_body(dataset_item_id)).json()
+    created = client.post("/v1/configs", json=_alert_body(dataset_item_id)).json()
 
-    update = client.put(f"/configs/{created['id']}", json=_alert_body(dataset_item_id)["config"])
+    update = client.put(f"/v1/configs/{created['id']}", json=_alert_body(dataset_item_id)["config"])
     assert update.status_code == 200
     assert update.json()["version"] == 2
 
-    rollback = client.post(f"/configs/{created['id']}/rollback", json={"version": 1})
+    rollback = client.post(f"/v1/configs/{created['id']}/rollback", json={"version": 1})
     assert rollback.status_code == 200
     assert rollback.json()["version"] == 3
 
-    fetched = client.get(f"/configs/{created['id']}")
+    fetched = client.get(f"/v1/configs/{created['id']}")
     assert fetched.json()["version"] == 3

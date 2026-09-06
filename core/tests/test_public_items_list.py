@@ -51,7 +51,7 @@ def client():
 
 def _create_item(client, title: str, kind: str = "app") -> str:
     response = client.post(
-        "/configs",
+        "/v1/configs",
         json={"title": title, "config": {"kind": kind, "layout": {"type": "grid", "items": []}}},
     )
     assert response.status_code == 201, response.text
@@ -59,7 +59,7 @@ def _create_item(client, title: str, kind: str = "app") -> str:
 
 
 def _publish(client, item_id: str) -> None:
-    response = client.patch(f"/items/{item_id}", json={"isPublished": True})
+    response = client.patch(f"/v1/items/{item_id}", json={"isPublished": True})
     assert response.status_code == 200, response.text
 
 
@@ -68,7 +68,7 @@ def test_anonymous_can_list_published_items(client):
     _publish(client, item_id)
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/items")
+    response = client.get("/v1/public/items")
     assert response.status_code == 200
     titles = [i["title"] for i in response.json()["items"]]
     assert titles == ["Publie"]
@@ -78,7 +78,7 @@ def test_unpublished_item_is_absent(client):
     _create_item(client, "Brouillon")
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/items")
+    response = client.get("/v1/public/items")
     assert response.status_code == 200
     assert response.json()["items"] == []
 
@@ -90,7 +90,7 @@ def test_filters_by_type(client):
     _publish(client, dash_id)
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/items?type=dashboard")
+    response = client.get("/v1/public/items?type=dashboard")
     assert response.status_code == 200
     titles = [i["title"] for i in response.json()["items"]]
     assert titles == ["Un dashboard"]
@@ -98,13 +98,13 @@ def test_filters_by_type(client):
 
 def test_filters_by_tag(client):
     tagged_id = _create_item(client, "Avec tag")
-    client.patch(f"/items/{tagged_id}", json={"keywords": ["risques"]})
+    client.patch(f"/v1/items/{tagged_id}", json={"keywords": ["risques"]})
     _publish(client, tagged_id)
     untagged_id = _create_item(client, "Sans tag")
     _publish(client, untagged_id)
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/items?tag=risques")
+    response = client.get("/v1/public/items?tag=risques")
     assert response.status_code == 200
     titles = [i["title"] for i in response.json()["items"]]
     assert titles == ["Avec tag"]
@@ -116,7 +116,7 @@ def test_paginates(client):
         _publish(client, item_id)
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/items?page=1&pageSize=2")
+    response = client.get("/v1/public/items?page=1&pageSize=2")
     assert response.status_code == 200
     body = response.json()
     assert body["total"] == 3
@@ -135,13 +135,13 @@ def test_page_zero_is_rejected_instead_of_silently_wrong(client):
         _publish(client, item_id)
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/items?page=0&pageSize=2")
+    response = client.get("/v1/public/items?page=0&pageSize=2")
     assert response.status_code == 422
 
 
 def test_page_size_zero_is_rejected(client):
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/items?pageSize=0")
+    response = client.get("/v1/public/items?pageSize=0")
     assert response.status_code == 422
 
 
@@ -180,7 +180,7 @@ def test_leakage_matrix_unpublished_other_tenant_and_default_published(client):
     _publish(client, published_id)
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/items")
+    response = client.get("/v1/public/items")
     assert response.status_code == 200
     titles = [i["title"] for i in response.json()["items"]]
     assert titles == ["Publie default"]
@@ -191,7 +191,7 @@ def test_never_exposes_a_sensitive_field(client):
     _publish(client, item_id)
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/items")
+    response = client.get("/v1/public/items")
     body = response.json()["items"][0]
     assert set(body.keys()) == {
         "pk",
@@ -218,4 +218,8 @@ def test_never_exposes_a_sensitive_field(client):
         # pas des champs sensibles.
         "license",
         "language",
+        # bbox (SP-55, GAP-06) : emprise spatiale calculée côté serveur,
+        # jamais soumise par le client — même statut public que date/
+        # updatedAt, pas une donnée sensible propre à /items.
+        "bbox",
     }

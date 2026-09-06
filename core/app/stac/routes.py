@@ -6,14 +6,17 @@ permission existantes (list_visible_collections, get_readable_collection,
 
 import base64
 import json
+import logging
 from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.auth.dependency import get_current_user_optional
+from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.repository import list_visible_collections
 from app.collections.routes import get_introspector, get_readable_collection
 from app.db import get_session
@@ -22,6 +25,8 @@ from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 from app.stac import serializers
 from app.stac.extent import estimated_bbox_4326
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/stac", tags=["stac"])
 
@@ -34,7 +39,9 @@ def get_bbox_provider():  # overridé en test SQLite (ST_EstimatedExtent absent)
 
 
 def _base(request: Request) -> str:
-    return str(request.base_url).rstrip("/")
+    # request.base_url ne porte jamais /v1 (juste scheme://host/) — ce
+    # routeur est nesté sous /v1 (SP-57b), l'ajouter explicitement.
+    return str(request.base_url).rstrip("/") + "/v1"
 
 
 def _rfc3339(dt) -> str:
@@ -79,17 +86,27 @@ def conformance():
 @router.get("/collections")
 def list_collections(
     request: Request,
+    limit: int = Query(DEFAULT_LIMIT, ge=1),
+    offset: int = Query(0, ge=0),
     user=Depends(get_current_user_optional),
     session: Session = Depends(get_session),
     introspect=Depends(get_introspector),
     bbox_provider=Depends(get_bbox_provider),
     rls=Depends(get_rls_scope),
 ):
+    limit = min(limit, MAX_LIMIT)
+    cols = _visible_collections(session, user)
+    total = len(cols)
+    cols_page = cols[offset : offset + limit]
     docs = []
-    for col in _visible_collections(session, user):
-        info = introspect(session, col.table_name)
-        with rls(session, col.tenant_id):
-            bbox = bbox_provider(session, info)
+    for col in cols_page:
+        try:
+            info = introspect(session, col.table_name)
+            with rls(session, col.tenant_id):
+                bbox = bbox_provider(session, info)
+        except (TableNotFound, UnsupportedTable, DBAPIError) as exc:
+            logger.warning("stac catalog: extent lookup failed for collection %s: %s", col.id, exc)
+            bbox = None
         docs.append(
             serializers.collection(
                 base=_base(request),
@@ -111,16 +128,25 @@ def list_collections(
                 ),
             )
         )
+    links = [
+        {
+            "rel": "self",
+            "type": "application/json",
+            "href": f"{_base(request)}/stac/collections",
+        },
+        {"rel": "root", "type": "application/json", "href": f"{_base(request)}/stac"},
+    ]
+    if offset + len(cols_page) < total:
+        links.append(
+            {
+                "rel": "next",
+                "type": "application/json",
+                "href": str(request.url.include_query_params(limit=limit, offset=offset + limit)),
+            }
+        )
     return {
         "collections": docs,
-        "links": [
-            {
-                "rel": "self",
-                "type": "application/json",
-                "href": f"{_base(request)}/stac/collections",
-            },
-            {"rel": "root", "type": "application/json", "href": f"{_base(request)}/stac"},
-        ],
+        "links": links,
     }
 
 
@@ -187,7 +213,14 @@ def list_items(
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    col = get_readable_collection(
+        session,
+        user,
+        collection_id,
+        can_manage_collections=bool(
+            user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+        ),
+    )
     info = introspect(session, col.table_name)
     limit = min(limit, MAX_LIMIT)
     parsed_bbox = _parse_bbox(bbox)
@@ -227,7 +260,14 @@ def get_item(
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    col = get_readable_collection(
+        session,
+        user,
+        collection_id,
+        can_manage_collections=bool(
+            user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+        ),
+    )
     info = introspect(session, col.table_name)
     with rls(session, col.tenant_id):
         feature = repo.get_feature(session, info, fid=feature_id)

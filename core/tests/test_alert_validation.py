@@ -58,7 +58,7 @@ def _alert_body(dataset_item_id: str, *, query: dict | None = None) -> dict:
 
 def test_create_alert_rule_rejects_a_nonexistent_dataset(monkeypatch, tmp_path):
     client, *_ = _client_and_user(monkeypatch, tmp_path)
-    resp = client.post("/configs", json=_alert_body("does-not-exist"))
+    resp = client.post("/v1/configs", json=_alert_body("does-not-exist"))
     assert resp.status_code == 422
     assert resp.json()["detail"] == "dataset not found"
 
@@ -75,7 +75,7 @@ def test_create_alert_rule_rejects_a_non_dataset_item(monkeypatch, tmp_path):
         )
         s.commit()
         other_item_id = item.id
-    resp = client.post("/configs", json=_alert_body(other_item_id))
+    resp = client.post("/v1/configs", json=_alert_body(other_item_id))
     assert resp.status_code == 422
     assert resp.json()["detail"] == "dataset not found"
 
@@ -92,7 +92,7 @@ def test_create_alert_rule_succeeds_against_a_readable_dataset(monkeypatch, tmp_
         )
         s.commit()
         dataset_item_id = item.id
-    resp = client.post("/configs", json=_alert_body(dataset_item_id))
+    resp = client.post("/v1/configs", json=_alert_body(dataset_item_id))
     assert resp.status_code == 201
     assert resp.json()["kind"] == "alert"
 
@@ -113,13 +113,13 @@ def test_create_alert_rule_rejects_a_percentile_query_without_p(monkeypatch, tmp
         dataset_item_id = item.id
 
     resp = client.post(
-        "/configs",
+        "/v1/configs",
         json=_alert_body(dataset_item_id, query={"agg": "percentile", "field": "amount"}),
     )
     assert resp.status_code == 422
 
     resp = client.post(
-        "/configs",
+        "/v1/configs",
         json=_alert_body(
             dataset_item_id,
             query={"measures": [{"agg": "percentile", "field": "amount", "label": "value"}]},
@@ -129,7 +129,7 @@ def test_create_alert_rule_rejects_a_percentile_query_without_p(monkeypatch, tmp
 
     # Le même agrégat avec un `p` valide reste acceptable.
     resp = client.post(
-        "/configs",
+        "/v1/configs",
         json=_alert_body(dataset_item_id, query={"agg": "percentile", "field": "amount", "p": 90}),
     )
     assert resp.status_code == 201

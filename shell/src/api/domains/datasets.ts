@@ -119,13 +119,23 @@ type DatasetsMethods = Pick<
   | "getDatasetConfig"
   | "saveDatasetConfig"
   | "queryDataSource"
+  | "sampleDataSourceField"
+  | "invalidateDatasetCache"
   | "featuresUrl"
   | "exportDataSource"
   | "getCollectionSchema"
 >;
 
 export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
-  const { request, coreUrl, getToken, resolveDataset, datasetCache, fetchGeoJsonFeatures } = base;
+  const {
+    request,
+    coreUrl,
+    getToken,
+    resolveDataset,
+    datasetCache,
+    invalidateDatasetCache,
+    fetchGeoJsonFeatures,
+  } = base;
   return {
     async createDatasetItem(input: CreateDatasetInput): Promise<Item> {
       const dataset: DatasetConfig =
@@ -253,6 +263,25 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
         return data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row }));
       }
       return fetchGeoJsonFeatures(buildFeaturesUrl(coreUrl, resolved));
+    },
+
+    invalidateDatasetCache(pk?: string): void {
+      invalidateDatasetCache(pk);
+    },
+
+    async sampleDataSourceField(
+      source: { layer: string; datasetId?: string },
+      field: string,
+      limit: number,
+    ): Promise<number[]> {
+      const resolved = source.datasetId ? await resolveDataset(source.datasetId) : null;
+      const collectionId = resolved?.collectionId ?? source.layer;
+      const data = await request<{ categoryKey: string | string[]; rows: { value: number }[] }>(
+        "POST",
+        `/collections/${collectionId}/aggregate`,
+        { field, sample: limit },
+      );
+      return data.rows.map((r) => Number(r.value));
     },
 
     async exportDataSource(

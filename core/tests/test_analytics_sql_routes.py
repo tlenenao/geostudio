@@ -124,7 +124,7 @@ def _as(app, user):
 
 def _register(app, client, admin, public=False):
     _as(app, admin)
-    return client.post("/collections", json={"tableName": "villes", "isPublic": public}).json()
+    return client.post("/v1/collections", json={"tableName": "villes", "isPublic": public}).json()
 
 
 @pytest.fixture()
@@ -195,7 +195,7 @@ def env_with_analyst_and_private(tmp_path):
 def test_non_analyst_gets_403(env):
     app, client, _admin, regular, _tmp, _tid, _Session = env
     _as(app, regular)  # regular : ni admin ni analyste
-    resp = client.post("/analytics/sql", json={"sql": "SELECT 1"})
+    resp = client.post("/v1/analytics/sql", json={"sql": "SELECT 1"})
     assert resp.status_code == 403
 
 
@@ -205,7 +205,7 @@ def test_admin_can_access_sql_lab(env):
     # accède à SQL Lab sans devoir être en plus analyste.
     app, client, admin, _r, _tmp, _tid, _Session = env
     _as(app, admin)
-    resp = client.post("/analytics/sql", json={"sql": "SELECT 1"})
+    resp = client.post("/v1/analytics/sql", json={"sql": "SELECT 1"})
     assert resp.status_code == 200
 
 
@@ -213,7 +213,7 @@ def test_analyst_queries_readable_view(env_with_analyst):
     app, client, analyst, tmp_path, tenant_id, col, Session = env_with_analyst
     _as(app, analyst)
     resp = client.post(
-        "/analytics/sql",
+        "/v1/analytics/sql",
         json={
             "sql": (
                 f"SELECT region, sum(pop) AS total FROM {col['id']} GROUP BY region ORDER BY region"
@@ -235,7 +235,7 @@ def test_analyst_cannot_reach_unauthorized_collection(env_with_analyst_and_priva
     # → non matérialisée → "table introuvable" → 400 (jamais de fuite).
     app, client, analyst, private_col, _Session = env_with_analyst_and_private
     _as(app, analyst)
-    resp = client.post("/analytics/sql", json={"sql": f"SELECT * FROM {private_col['id']}"})
+    resp = client.post("/v1/analytics/sql", json={"sql": f"SELECT * FROM {private_col['id']}"})
     assert resp.status_code == 400
 
 
@@ -281,21 +281,21 @@ def test_custom_role_with_collections_manage_reaches_private_collection(
         assert custom_user is not None and custom_user.is_admin is False
         _as(app, custom_user)
 
-        resp = client.post("/analytics/sql", json={"sql": f"SELECT * FROM {private_col['id']}"})
+        resp = client.post("/v1/analytics/sql", json={"sql": f"SELECT * FROM {private_col['id']}"})
         assert resp.status_code == 200
 
 
 def test_invalid_sql_returns_400(env_with_analyst):
     app, client, analyst, *rest = env_with_analyst
     _as(app, analyst)
-    resp = client.post("/analytics/sql", json={"sql": "DROP TABLE villes"})
+    resp = client.post("/v1/analytics/sql", json={"sql": "DROP TABLE villes"})
     assert resp.status_code == 400
 
 
 def test_rejected_sql_attempt_is_audited(env_with_analyst):
     app, client, analyst, tmp_path, tenant_id, col, Session = env_with_analyst
     _as(app, analyst)
-    resp = client.post("/analytics/sql", json={"sql": "DROP TABLE villes"})
+    resp = client.post("/v1/analytics/sql", json={"sql": "DROP TABLE villes"})
     assert resp.status_code == 400
 
     # Le trail doit persister malgré le rollback de request_scoped_session sur

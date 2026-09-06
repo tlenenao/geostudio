@@ -14,7 +14,7 @@ gen() {
   echo
 }
 
-for var in PG_PASSWORD MINIO_PASSWORD KC_PASSWORD MARTIN_SECRET; do
+for var in PG_PASSWORD MINIO_PASSWORD KC_PASSWORD; do
   value="$(gen)"
   sed -i.bak "s|^${var}=.*|${var}=${value}|" .env
 done

@@ -147,16 +147,28 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
             export_repo.mark_error(session, job_id=job_id, error="export capability disabled")
         return
 
-    with request_scoped_session(factory) as session:
-        job = export_repo.get_job(session, tenant_id=tenant_id, job_id=job_id)
-        if job is None:
-            logger.error("export job %s introuvable (tenant %s)", job_id, tenant_id)
-            return
-        export_repo.mark_running(session, job_id=job_id)
-        item_id, user_id, export_format = job.item_id, job.user_id, job.format
-        page_id, ctx = job.page_id, job.ctx
+    # Toujours liés avant le premier bloc protégé : si get_job/mark_running
+    # lève avant leur affectation réelle, le handler `except` plus bas doit
+    # pouvoir les lire sans UnboundLocalError — même patron que
+    # app.pipelines.jobs.run_pipeline_task/app.ingestion.tasks.run_ingestion_task
+    # (GAP-56.1, SP-49 : ces deux appels étaient hors du bloc try ici, une
+    # exception transitoire remontait alors non gérée — ni mark_error, ni
+    # notification).
+    item_id: str | None = None
+    user_id: str | None = None
+    export_format: str | None = None
+    page_id = None
 
     try:
+        with request_scoped_session(factory) as session:
+            job = export_repo.get_job(session, tenant_id=tenant_id, job_id=job_id)
+            if job is None:
+                logger.error("export job %s introuvable (tenant %s)", job_id, tenant_id)
+                return
+            export_repo.mark_running(session, job_id=job_id)
+            item_id, user_id, export_format = job.item_id, job.user_id, job.format
+            page_id, ctx = job.page_id, job.ctx
+
         with request_scoped_session(factory) as session:
             config = configs_repo.get_config_by_item(session, item_id)
             if config is None:
@@ -208,7 +220,13 @@ def render_export_task(job_id: str, tenant_id: str) -> None:
             ContentType=_CONTENT_TYPE[export_format],
         )
         with request_scoped_session(factory) as session:
-            export_repo.mark_done(session, job_id=job_id, result_key=result_key)
+            # SP-58 Tâche 2 (GAP-73) : `content` est déjà en mémoire (le
+            # rendu vient d'être produit ci-dessus) — len() suffit, pas
+            # besoin d'un head_object après upload (bucket non
+            # tenant-préfixé, cf. spec §1.4/§3.1).
+            export_repo.mark_done(
+                session, job_id=job_id, result_key=result_key, byte_size=len(content)
+            )
         _notify(
             factory,
             tenant_id=tenant_id,

@@ -30,6 +30,32 @@ test("Onglets switches which nested widget is visible", async ({ page }) => {
   await expect(page.getByText("Contenu A")).toBeHidden();
 });
 
+test("a Tabs widget shows its active tab's content directly on the edit canvas", async ({
+  page,
+}) => {
+  await mockCore(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Nouveau" }).click();
+  await page.getByRole("dialog", { name: "Nouvel élément" }).getByLabel("Type").selectOption("app");
+  await page.getByLabel("Titre").fill("App onglets aperçu");
+  await page.getByRole("button", { name: "Créer" }).click();
+  await expect(page).toHaveURL(/\/apps\/9\/edit$/);
+
+  await page.getByRole("button", { name: "Onglets" }).click();
+  const propsPanel = page.locator("aside").filter({ hasText: "Propriétés" });
+  await propsPanel.getByRole("button", { name: "Texte" }).click();
+  await propsPanel.getByLabel("Texte du widget").fill("Contenu du premier onglet");
+
+  // Le panneau Propriétés a lui-même un aperçu (son propre LayoutEditor
+  // imbriqué) qui affiche déjà ce texte — l'assertion qui compte porte donc
+  // spécifiquement sur le canevas principal (<main>), pas n'importe où sur
+  // la page, sans quoi ce test resterait vert même si le canevas principal
+  // continuait à n'afficher qu'un bandeau vide (confirmé par falsification).
+  const canvas = page.locator("main");
+  await expect(canvas.getByText("Contenu du premier onglet")).toBeVisible();
+});
+
 test("Bouton opens a Modale via the action bus, and Escape closes it", async ({ page }) => {
   await mockCore(page);
   await page.goto("/");

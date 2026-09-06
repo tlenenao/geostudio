@@ -67,7 +67,9 @@ BASE = REPO / "docker-compose.yml"
 PROD = REPO / "docker-compose.prod.yml"
 RELEASE = REPO / ".github/workflows/release.yml"
 ENV_EXAMPLE = REPO / ".env.example"
+BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
 BACKUP_SH = REPO / "deploy/backup/backup.sh"
+RESTORE_SH = REPO / "deploy/backup/restore.sh"
 CORE_APP = REPO / "core/app"
 BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
 KEYCLOAK_REALM_JSON = REPO / "deploy/keycloak/geostudio-realm.json"
@@ -409,14 +411,14 @@ def test_every_compose_substitution_is_documented():
 # des deux compose. Liste fermée, comme ENV_WIRING_EXEMPTIONS/
 # BACKUP_EXCLUDED_BUCKETS ci-dessus : une nouvelle entrée est une décision
 # écrite, jamais un oubli qui se glisse en silence.
-DOCUMENTED_BUT_UNWIRED_EXEMPTIONS = {
-    # Dérive pré-existante documentée depuis SP-1d3/SP-9 : générée par
-    # scripts/bootstrap-env.sh (qui a besoin d'une ligne active pour son
-    # `sed`), mais consommée par aucun service — martin ne lit jamais
-    # MARTIN_SECRET. Hors périmètre à ces deux occasions passées ; toujours
-    # vrai (revue finale SP-21, item 2).
-    "MARTIN_SECRET",
-}
+# Vide depuis SP-45 (GAP-41) : MARTIN_SECRET, seule occupante depuis SP-21,
+# a été retirée des 3 emplacements (bootstrap-env.sh, .env.example, ici)
+# plutôt que câblée — l'accès à Martin est déjà protégé par
+# admin-auth@docker (forwardAuth Traefik), une seconde protection par
+# secret partagé aurait été redondante. Le mécanisme reste déclaré, pas
+# retiré : point d'extension pour une future dérive de même classe (nom
+# documenté, jamais consommé).
+DOCUMENTED_BUT_UNWIRED_EXEMPTIONS: set[str] = set()
 
 
 def test_every_documented_env_var_is_wired_or_declared_inert():
@@ -454,6 +456,19 @@ def test_every_documented_env_var_is_wired_or_declared_inert():
         "(`#VAR=valeur`, convention tâche 4) ou rejoindre "
         "DOCUMENTED_BUT_UNWIRED_EXEMPTIONS avec sa raison écrite."
     )
+
+
+def test_martin_secret_is_fully_removed():
+    """GAP-41 : MARTIN_SECRET était générée par bootstrap-env.sh et
+    documentée dans .env.example sans jamais être consommée par le service
+    martin (docker-compose.yml) — dérive connue depuis SP-1d3, jamais
+    corrigée avant ce test. Retirée plutôt que câblée : l'accès à Martin
+    est déjà protégé par admin-auth@docker (forwardAuth Traefik), une
+    seconde protection par secret partagé serait redondante et n'aurait
+    jamais rien protégé de plus (spec SP-45 §2)."""
+    assert "MARTIN_SECRET" not in ENV_EXAMPLE.read_text()
+    assert "MARTIN_SECRET" not in BOOTSTRAP_ENV_SH.read_text()
+    assert "MARTIN_SECRET" not in DOCUMENTED_BUT_UNWIRED_EXEMPTIONS
 
 
 def _resolve_effective_value(raw: str, var: str) -> str:
@@ -576,6 +591,22 @@ def test_backup_covers_every_bucket_the_core_uses():
         f"buckets utilisés par le cœur et jamais sauvegardés : {sorted(missing)}. "
         "Les ajouter à la boucle de miroir de deploy/backup/backup.sh, ou à "
         "BACKUP_EXCLUDED_BUCKETS avec la raison écrite."
+    )
+
+
+def test_restore_recreates_every_bucket_backup_mirrors():
+    """Miroir de test_backup_covers_every_bucket_the_core_uses, dans l'autre
+    sens : un bucket sauvegardé par backup.sh et absent de restore.sh
+    produirait une restauration incomplète et silencieuse (spec SP-59
+    §1.2b — trouvé réellement dérivé au moment de l'écriture de cette
+    spec, entre backup.sh et le runbook manuel : 5 buckets recréés contre 7
+    réellement sauvegardés)."""
+    backed_up = set(re.findall(r"\$\{(S3_[A-Z0-9_]*_BUCKET)", BACKUP_SH.read_text()))
+    restored = set(re.findall(r"\$\{(S3_[A-Z0-9_]*_BUCKET)", RESTORE_SH.read_text()))
+    missing = backed_up - restored
+    assert not missing, (
+        f"buckets sauvegardés par backup.sh et jamais recréés par restore.sh : "
+        f"{sorted(missing)}."
     )
 
 
@@ -1020,6 +1051,44 @@ def test_keycloak_router_carries_security_and_rate_limit_middlewares():
         )
 
 
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+@pytest.mark.parametrize("router", ["core", "shell"])
+def test_public_app_router_carries_security_and_rate_limit_middlewares(compose, router):
+    """REV-073/F-tests-03 : les routeurs core et shell portent aujourd'hui
+    security-headers@docker et rate-limit@docker (vérifié par grep direct
+    sur les deux fichiers compose), mais aucun test ne le garantissait —
+    contrairement au routeur keycloak (test au-dessus) et aux 3 routeurs
+    admin. Une régression qui retirerait un de ces deux middlewares d'un
+    des deux routeurs serait aujourd'hui invisible."""
+    labels = _traefik_labels(services(compose)[router])
+    middlewares = _router_middlewares(labels, router)
+    for required in ("security-headers@docker", "rate-limit@docker"):
+        assert required in middlewares, (
+            f"le routeur {router} ({compose.name}) doit référencer {required} "
+            f"dans ses middlewares, a trouvé : {middlewares}"
+        )
+
+
+def test_security_headers_middleware_defines_the_expected_directives():
+    """Complément REV-073 : le routeur peut référencer security-headers@docker
+    sans que la définition elle-même porte les 4 directives attendues (par
+    ex. si un futur refactor renomme les clés de label sans y penser)."""
+    labels = _traefik_labels(services(PROD)["core"])
+    assert labels["traefik.http.middlewares.security-headers.headers.stsSeconds"] == "31536000"
+    assert labels["traefik.http.middlewares.security-headers.headers.contentTypeNosniff"] == "true"
+    assert labels["traefik.http.middlewares.security-headers.headers.frameDeny"] == "true"
+    assert (
+        "traefik.http.middlewares.security-headers.headers.referrerPolicy" in labels
+    )
+
+
+def test_rate_limit_middleware_defines_average_and_burst():
+    """Complément REV-073, symétrique au test ci-dessus pour rate-limit."""
+    labels = _traefik_labels(services(PROD)["core"])
+    assert labels["traefik.http.middlewares.rate-limit.ratelimit.average"] == "100"
+    assert labels["traefik.http.middlewares.rate-limit.ratelimit.burst"] == "200"
+
+
 def test_keycloak_realm_enables_brute_force_protection():
     """SP-42/F-infra-ci-02 (critical, second volet) :
     `deploy/keycloak/geostudio-realm.json` déclarait `bruteForceProtected:
@@ -1045,4 +1114,217 @@ def test_keycloak_realm_enables_brute_force_protection():
     assert realm.get("permanentLockout") is False, (
         "permanentLockout ne doit pas passer à true par ce garde-fou — "
         "verrouillage permanent = décision produit distincte, hors périmètre."
+    )
+
+
+def test_traefik_has_a_restart_policy():
+    """GAP-79 : traefik (point d'entrée public unique) était le seul
+    service durablement actif sans restart:, dans docker-compose.yml comme
+    dans son overlay prod (hérité, non redéclaré) — un crash de l'ingress
+    laissait toute l'instance publique indisponible jusqu'à intervention
+    manuelle."""
+    assert services(BASE)["traefik"].get("restart") == "unless-stopped"
+
+
+SEO_ROUTERS = ("seo-static", "seo-bots")
+
+
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+@pytest.mark.parametrize("router", SEO_ROUTERS)
+def test_seo_router_priority_above_shell_catch_all_and_distinct_from_admin(compose, router):
+    """SP-55 GAP-07 (chantier 4.10) : sitemap.xml/robots.txt/aperçu social
+    doivent gagner contre le catch-all shell (priorité 1) — une régression
+    de priorité les ferait silencieusement absorber par le SPA (200 sur le
+    HTML de l'app plutôt que le XML/texte/HTML minimal attendu). Distincte
+    aussi de 15 (routeurs admin martin/titiler/grafana) : Traefik ne
+    refuserait pas de démarrer sur une collision, le comportement de
+    départage deviendrait juste non documenté."""
+    labels = _traefik_labels(services(compose)["core"])
+    priority = int(labels[f"traefik.http.routers.{router}.priority"])
+    assert priority > 1, f"{router} ({compose.name}) doit primer sur le catch-all shell (priorité 1)"
+    assert priority != 15, f"{router} ({compose.name}) ne doit pas collisionner avec les routeurs admin (15)"
+
+
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+@pytest.mark.parametrize("router", SEO_ROUTERS)
+def test_seo_router_is_not_gated_by_admin_auth(compose, router):
+    """Contrairement aux routeurs admin (martin/titiler/grafana), les
+    routes SEO sont PUBLIQUES par construction (sitemap/robots/aperçu
+    social sont faits pour être lus par des robots anonymes) — une
+    régression qui leur ajouterait admin-auth@docker les rendrait
+    inaccessibles à ces robots, silencieusement (Traefik démarre quand
+    même)."""
+    labels = _traefik_labels(services(compose)["core"])
+    middlewares = _router_middlewares(labels, router)
+    assert "admin-auth@docker" not in middlewares, (
+        f"{router} ({compose.name}) ne doit jamais référencer admin-auth@docker "
+        f"(route publique), a trouvé : {middlewares}"
+    )
+
+
+# ─── SP-48/GAP-72 : CSP calculée dynamiquement, poussée par Traefik via un
+# provider fichier additif au provider Docker existant ───────────────────
+
+
+def test_csp_dynamic_conf_volume_is_shared_between_worker_and_traefik():
+    assert "csp-dynamic-conf" in (load_yaml(BASE).get("volumes") or {})
+    worker_volumes = services(BASE)["worker"].get("volumes") or []
+    traefik_volumes = services(BASE)["traefik"].get("volumes") or []
+    assert any("csp-dynamic-conf" in v for v in worker_volumes), (
+        f"worker (base) doit monter csp-dynamic-conf, a trouvé : {worker_volumes}"
+    )
+    assert any("csp-dynamic-conf" in v for v in traefik_volumes), (
+        f"traefik (base) doit monter csp-dynamic-conf, a trouvé : {traefik_volumes}"
+    )
+
+
+def test_traefik_command_enables_file_provider_with_watch():
+    command = services(BASE)["traefik"]["command"]
+    assert "--providers.file.watch=true" in command
+    assert any(c.startswith("--providers.file.directory=") for c in command)
+
+
+def test_prod_traefik_command_also_enables_file_provider():
+    """docker-compose.prod.yml déclare son propre bloc traefik: command: —
+    la fusion Compose remplace cette liste entièrement plutôt que de la
+    concaténer (vérifié contre `docker compose config` réel, cf. ledger de
+    session) : ce bloc doit donc recopier --providers.docker=true/
+    --entrypoints.web.address=:80 en plus des 2 nouvelles entrées, sinon
+    l'overlay prod perdrait silencieusement le provider Docker (piège
+    CLAUDE.md n°2)."""
+    command = services(PROD)["traefik"]["command"]
+    assert "--providers.file.watch=true" in command
+    assert any(c.startswith("--providers.file.directory=") for c in command)
+    assert "--providers.docker=true" in command, (
+        "l'overlay prod ne doit jamais perdre --providers.docker=true en "
+        "ajoutant le provider fichier (command: remplace, ne fusionne pas)"
+    )
+
+
+def test_prod_traefik_volumes_also_carries_csp_dynamic_conf():
+    """docker-compose.prod.yml déclare traefik: volumes: !override — un
+    remplacement intégral (pas une fusion) : csp-dynamic-conf doit donc être
+    redéclaré explicitement ici, sinon traefik (prod) perdrait
+    silencieusement l'accès au fragment de CSP calculée que worker écrit."""
+    traefik_volumes = services(PROD)["traefik"].get("volumes") or []
+    assert any("csp-dynamic-conf" in v for v in traefik_volumes), (
+        f"traefik (prod) doit monter csp-dynamic-conf, a trouvé : {traefik_volumes}"
+    )
+
+
+CSP_DYNAMIC_ROUTERS = (
+    (BASE, "core"),
+    (BASE, "shell"),
+    (BASE, "seo-static"),
+    (BASE, "seo-bots"),
+    (BASE, "martin"),
+    (BASE, "titiler"),
+    (BASE, "grafana"),
+    (PROD, "core"),
+    (PROD, "shell"),
+    (PROD, "seo-static"),
+    (PROD, "seo-bots"),
+    (PROD, "martin"),
+    (PROD, "titiler"),
+    (PROD, "grafana"),
+    (PROD, "keycloak"),
+)
+
+
+@pytest.mark.parametrize(("compose_path", "router"), CSP_DYNAMIC_ROUTERS)
+def test_every_router_carrying_security_headers_also_carries_csp_dynamic(compose_path, router):
+    """Chaque routeur qui référence déjà security-headers@docker aujourd'hui
+    doit gagner csp-dynamic@file — même périmètre, pas une nouvelle
+    décision de portée (GAP-72 ne change pas QUI est protégé, seulement
+    COMMENT la CSP est calculée). `grafana` est un routeur défini sur le
+    service `otel-lgtm` (labels), d'où la recherche par nom de routeur
+    plutôt que par nom de service, comme test_grafana_router_has_no_stripprefix_middleware
+    ci-dessus."""
+    all_labels = {name: _traefik_labels(svc) for name, svc in services(compose_path).items()}
+    labels = next(
+        l for l in all_labels.values() if f"traefik.http.routers.{router}.middlewares" in l
+    )
+    middlewares = _router_middlewares(labels, router)
+    assert "security-headers@docker" in middlewares, (
+        f"{router} ({compose_path.name}) doit toujours référencer "
+        f"security-headers@docker (non-régression), a trouvé : {middlewares}"
+    )
+    assert "csp-dynamic@file" in middlewares, (
+        f"{router} ({compose_path.name}) doit référencer csp-dynamic@file, "
+        f"a trouvé : {middlewares}"
+    )
+
+
+def test_prod_overlay_no_longer_hardcodes_a_static_csp_header():
+    """SP-48/GAP-72 : la valeur Content-Security-Policy-Report-Only fixée en
+    dur sur security-headers (docker-compose.prod.yml, posée à SP-26/3.3)
+    est retirée — remplacée par la valeur calculée dynamiquement portée par
+    csp-dynamic@file (cf. tests ci-dessus)."""
+    labels = _traefik_labels(services(PROD)["core"])
+    assert not any(
+        "Content-Security-Policy" in k and "customResponseHeaders" in k for k in labels
+    ), "la CSP doit venir de csp-dynamic@file, plus d'une valeur statique sur security-headers"
+
+
+def test_prod_overlay_defaults_csp_mode_to_enforce():
+    env = services(PROD)["worker"].get("environment") or {}
+    assert env.get("CORE_CSP_MODE") == "${CORE_CSP_MODE:-enforce}", (
+        f"worker (prod) doit fixer CORE_CSP_MODE à enforce par défaut "
+        f"(rollback opérateur possible via .env.prod), a trouvé : {env.get('CORE_CSP_MODE')!r}"
+    )
+
+
+def test_base_worker_defaults_csp_mode_to_report_only():
+    env = services(BASE)["worker"].get("environment") or {}
+    assert env.get("CORE_CSP_MODE") == "${CORE_CSP_MODE:-report-only}", (
+        f"worker (base) doit fixer CORE_CSP_MODE à report-only par défaut "
+        f"(GAP-72 ne visait que l'overlay prod), a trouvé : {env.get('CORE_CSP_MODE')!r}"
+    )
+
+
+def test_shell_nginx_conf_no_longer_hardcodes_its_own_csp():
+    """SP-48/GAP-72 blocage 4 : shell/nginx.conf portait sa propre valeur
+    Content-Security-Policy-Report-Only, reconnue fausse par son propre
+    commentaire pour la topologie 'ports publiés directement' du fichier
+    de base — retirée plutôt que resynchronisée indéfiniment avec la
+    valeur Traefik (spec §3). Traefik (base et prod, cf. tests ci-dessus)
+    est désormais la seule source de CSP dans toute topologie qui passe
+    par lui — la seule documentée par ce dépôt."""
+    content = (REPO / "shell/nginx.conf").read_text()
+    assert "Content-Security-Policy" not in content
+
+
+def test_core_env_vars_extractor_has_not_silently_regressed_to_empty():
+    """REV-076/F-tests-04 : core_env_vars() est la clé de voûte de
+    test_every_core_env_var_is_wired_to_a_service — si elle régressait vers
+    l'ensemble vide, ce test resterait vert par construction
+    (unwired = vide - vide - exemptions = vide). Plancher choisi
+    confortablement sous la mesure réelle (68 au 2026-09-06), jamais un
+    nombre exact fragile."""
+    found = core_env_vars()
+    assert len(found) >= 60, (
+        f"core_env_vars() n'a trouvé que {len(found)} variable(s) — "
+        "régression probable de l'extraction AST, pas une baisse légitime "
+        "du nombre de variables lues par core/app/"
+    )
+    for sentinel in ("CORE_AUTH_MODE", "S3_ATTACHMENTS_BUCKET"):
+        assert sentinel in found, f"{sentinel} doit apparaître dans core_env_vars()"
+
+
+def test_compose_substitutions_extractor_has_not_silently_regressed_to_empty():
+    """Même garde que ci-dessus pour compose_substitutions(), clé de voûte
+    de test_every_compose_substitution_is_documented."""
+    found = compose_substitutions()
+    assert len(found) >= 55, (
+        f"compose_substitutions() n'a trouvé que {len(found)} variable(s) — "
+        "régression probable de la regex ${VAR}, pas une baisse légitime"
+    )
+
+
+def test_documented_env_vars_extractor_has_not_silently_regressed_to_empty():
+    """Même garde pour documented_env_vars(), y compris commentées."""
+    found = documented_env_vars(include_commented=True)
+    assert len(found) >= 65, (
+        f"documented_env_vars() n'a trouvé que {len(found)} variable(s) — "
+        "régression probable de la regex sur .env.example"
     )

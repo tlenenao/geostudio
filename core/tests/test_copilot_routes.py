@@ -111,7 +111,7 @@ def test_route_is_not_mounted_when_copilot_disabled(monkeypatch):
     init_db(engine)
     app = create_app()
     resp = TestClient(app).post(
-        "/copilot/turn",
+        "/v1/copilot/turn",
         json={
             "itemId": "1",
             "message": "hi",
@@ -128,7 +128,7 @@ def test_rejects_unauthenticated_request(client, monkeypatch):
     monkeypatch.setenv("CORE_AUTH_MODE", "oidc")  # bypass the mock-mode auto-accept
     client.headers.pop("Authorization", None)
     resp = client.post(
-        "/copilot/turn",
+        "/v1/copilot/turn",
         json={
             "itemId": "1",
             "message": "hi",
@@ -150,7 +150,7 @@ def test_plain_text_reply_with_no_tool_calls(client, monkeypatch):
         lambda: FakeLLMProvider(responses=[LLMTurn(text="Ce dataset contient des incidents.")]),
     )
     resp = client.post(
-        "/copilot/turn",
+        "/v1/copilot/turn",
         json={
             "itemId": "1",
             "message": "explique ce dataset",
@@ -163,6 +163,29 @@ def test_plain_text_reply_with_no_tool_calls(client, monkeypatch):
     assert resp.status_code == 200
     body = resp.json()
     assert body == {"reply": "Ce dataset contient des incidents.", "clientOps": []}
+
+
+def test_copilot_turn_maps_egress_blocked_to_502(client, monkeypatch):
+    import app.copilot.routes as routes_module
+    from app.copilot.egress import EgressBlockedError
+
+    class _BlockedProvider:
+        async def chat(self, messages, tools):
+            raise EgressBlockedError("cible interne bloquée")
+
+    monkeypatch.setattr(routes_module, "get_llm_provider", lambda: _BlockedProvider())
+    resp = client.post(
+        "/v1/copilot/turn",
+        json={
+            "itemId": "1",
+            "message": "explique ce dataset",
+            "history": [],
+            "mcpToken": "x",
+            "currentConfig": {},
+            "clientTools": [],
+        },
+    )
+    assert resp.status_code == 502
 
 
 def test_unallowlisted_tool_call_is_returned_as_client_op_not_executed(client, monkeypatch):
@@ -181,7 +204,7 @@ def test_unallowlisted_tool_call_is_returned_as_client_op_not_executed(client, m
         ),
     )
     resp = client.post(
-        "/copilot/turn",
+        "/v1/copilot/turn",
         json={
             "itemId": "1",
             "message": "ajoute un widget texte",
@@ -210,7 +233,7 @@ def test_allowlisted_mcp_tool_call_is_executed_via_loopback(client, monkeypatch)
         ),
     )
     resp = client.post(
-        "/copilot/turn",
+        "/v1/copilot/turn",
         json={
             "itemId": "1",
             "message": "liste mes items",
@@ -239,7 +262,7 @@ def test_hits_max_iterations_gracefully(client, monkeypatch):
         ),
     )
     resp = client.post(
-        "/copilot/turn",
+        "/v1/copilot/turn",
         json={
             "itemId": "1",
             "message": "boucle",
@@ -270,7 +293,7 @@ def test_replayed_tool_call_arguments_are_a_json_string_not_a_dict(client, monke
     )
     monkeypatch.setattr(routes_module, "get_llm_provider", lambda: provider)
     resp = client.post(
-        "/copilot/turn",
+        "/v1/copilot/turn",
         json={
             "itemId": "1",
             "message": "liste mes items",
@@ -303,7 +326,7 @@ def test_system_message_serialises_the_config_as_real_json(client, monkeypatch):
         "layout": {"items": [{"id": "w1", "type": "text", "hidden": None}]},
     }
     resp = client.post(
-        "/copilot/turn",
+        "/v1/copilot/turn",
         json={
             "itemId": "1",
             "message": "explique",
@@ -352,12 +375,12 @@ async def test_synchronous_provider_call_does_not_block_the_event_loop(monkeypat
             # partagée, et deux requêtes concurrentes se disputeraient la
             # création du tenant par défaut (artefact de test, sans rapport
             # avec ce qu'on mesure ici).
-            warmup = await http_client.post("/copilot/turn", json=body)
+            warmup = await http_client.post("/v1/copilot/turn", json=body)
             assert warmup.status_code == 200
 
             responses = await asyncio.gather(
-                http_client.post("/copilot/turn", json=body),
-                http_client.post("/copilot/turn", json=body),
+                http_client.post("/v1/copilot/turn", json=body),
+                http_client.post("/v1/copilot/turn", json=body),
             )
     assert [r.status_code for r in responses] == [200, 200]
     # On mesure le **recouvrement** des deux appels, pas la durée totale du
@@ -387,7 +410,7 @@ def test_turn_rejects_an_mcp_token_belonging_to_another_user(client, monkeypatch
     monkeypatch.setattr(routes_module, "get_llm_provider", lambda: provider)
 
     resp = client.post(
-        "/copilot/turn",
+        "/v1/copilot/turn",
         json={
             "itemId": "1",
             "message": "salut",
@@ -414,7 +437,7 @@ def test_turn_rejects_an_unreadable_mcp_token(client, monkeypatch):
     monkeypatch.setattr(routes_module, "get_llm_provider", lambda: provider)
 
     resp = client.post(
-        "/copilot/turn",
+        "/v1/copilot/turn",
         json={
             "itemId": "1",
             "message": "salut",
@@ -443,7 +466,7 @@ def test_route_is_not_mounted_in_read_only_mode(monkeypatch):
     init_db(engine)
     app = create_app()
     resp = TestClient(app).post(
-        "/copilot/turn",
+        "/v1/copilot/turn",
         json={
             "itemId": "1",
             "message": "hi",
@@ -499,7 +522,7 @@ def test_oversized_or_ill_formed_input_is_rejected(client, monkeypatch, override
     }
     body.update(override)
 
-    resp = client.post("/copilot/turn", json=body)
+    resp = client.post("/v1/copilot/turn", json=body)
 
     assert resp.status_code == 422
     assert provider.calls == []
@@ -512,7 +535,7 @@ def test_oversized_current_config_is_rejected(client, monkeypatch):
     monkeypatch.setattr(routes_module, "get_llm_provider", lambda: provider)
 
     resp = client.post(
-        "/copilot/turn",
+        "/v1/copilot/turn",
         json={
             "itemId": "1",
             "message": "salut",
@@ -536,7 +559,7 @@ def test_a_realistic_turn_still_passes_the_new_bounds(client, monkeypatch):
     monkeypatch.setattr(routes_module, "get_llm_provider", lambda: provider)
 
     resp = client.post(
-        "/copilot/turn",
+        "/v1/copilot/turn",
         json={
             "itemId": "42",
             "message": "Ajoute un indicateur du nombre d'incidents et titre-le « Incidents 2026 ».",
@@ -625,8 +648,8 @@ def test_the_config_block_is_fenced_with_an_unpredictable_marker(client, monkeyp
         "clientTools": [],
     }
 
-    assert client.post("/copilot/turn", json=body).status_code == 200
-    assert client.post("/copilot/turn", json=body).status_code == 200
+    assert client.post("/v1/copilot/turn", json=body).status_code == 200
+    assert client.post("/v1/copilot/turn", json=body).status_code == 200
 
     first, second = provider.calls[0][0]["content"], provider.calls[1][0]["content"]
     marker_1 = re.search(r"<<<(CONFIG-[0-9a-f]{16})", first).group(1)
@@ -669,7 +692,7 @@ async def test_turn_exceeding_the_global_budget_returns_504_without_waiting_for_
         ) as http_client:
             started = time.monotonic()
             resp = await http_client.post(
-                "/copilot/turn",
+                "/v1/copilot/turn",
                 json={
                     "itemId": "1",
                     "message": "explique",
@@ -711,7 +734,7 @@ async def test_llm_call_is_really_cancelled_when_the_budget_expires(monkeypatch)
             headers={"Authorization": "Bearer mock:alice"},
         ) as http_client:
             resp = await http_client.post(
-                "/copilot/turn",
+                "/v1/copilot/turn",
                 json={
                     "itemId": "1",
                     "message": "explique",

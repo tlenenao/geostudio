@@ -33,9 +33,18 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async getPublicAppConfig() {
       return config;
     },
+    async getAppConfigSchema(..._args: unknown[]) {
+      return unsupported();
+    },
     async queryDataSource(source: DataSource): Promise<DataRecord[]> {
       return (source.query.records as DataRecord[] | undefined) ?? [];
     },
+    // Pas de cache dataset en export statique (queryDataSource lit
+    // directement source.query.records, jamais resolveDataset()) —
+    // no-op plutôt qu'un rejet : signature synchrone (void, pas Promise),
+    // même prudence que featuresUrl() ci-dessous vis-à-vis d'un appel
+    // synchrone pendant un rendu.
+    invalidateDatasetCache(): void {},
     // Must NOT throw: unlike every other method here, this one has a
     // non-Promise signature and can be called synchronously during render
     // (e.g. ExplorerDrawer.tsx builds a MapConfig on every render whenever
@@ -64,6 +73,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
 
     // --- Reste de l'interface : aucun backend, rejet explicite ---
     async listItems(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getItemFacets(..._args: unknown[]) {
       return unsupported();
     },
     async getItem(..._args: unknown[]) {
@@ -96,16 +108,34 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async listGroups(..._args: unknown[]) {
       return unsupported();
     },
+    async createGroup(..._args: unknown[]) {
+      return unsupported();
+    },
+    async addGroupMember(..._args: unknown[]) {
+      return unsupported();
+    },
     async getSharing(..._args: unknown[]) {
       return unsupported();
     },
     async setSharing(..._args: unknown[]) {
       return unsupported();
     },
+    async createShareLink(..._args: unknown[]) {
+      return unsupported();
+    },
+    async listShareLinks(..._args: unknown[]) {
+      return unsupported();
+    },
+    async revokeShareLink(..._args: unknown[]) {
+      return unsupported();
+    },
     async listLayerSources(..._args: unknown[]) {
       return unsupported();
     },
     async sampleCollectionField(..._args: unknown[]) {
+      return unsupported();
+    },
+    async sampleDataSourceField(..._args: unknown[]) {
       return unsupported();
     },
     async uploadMapIcon(..._args: unknown[]) {
@@ -365,6 +395,15 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async updateUserRole(..._args: unknown[]) {
       return unsupported();
     },
+    async eraseUser(..._args: unknown[]) {
+      return unsupported();
+    },
+    async requestTenantPurge(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getPurgeStatus(..._args: unknown[]) {
+      return unsupported();
+    },
     async listNotifications(..._args: unknown[]) {
       return unsupported();
     },
@@ -381,6 +420,30 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
       return unsupported();
     },
     async updateNotificationPreference(..._args: unknown[]) {
+      return unsupported();
+    },
+    async listUsageTasks(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getUsageSummary(..._args: unknown[]) {
+      return unsupported();
+    },
+    async listSecrets(..._args: unknown[]) {
+      return unsupported();
+    },
+    async createSecret(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteSecret(..._args: unknown[]) {
+      return unsupported();
+    },
+    async listPipelineWebhookTokens(..._args: unknown[]) {
+      return unsupported();
+    },
+    async createPipelineWebhookToken(..._args: unknown[]) {
+      return unsupported();
+    },
+    async revokePipelineWebhookToken(..._args: unknown[]) {
       return unsupported();
     },
     // getAuthToken?() et getCoreUrl?() sont optionnels sur ItemClient et

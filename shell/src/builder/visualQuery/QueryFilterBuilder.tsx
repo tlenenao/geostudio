@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { CollectionSchema } from "../../api/types";
 import { FilterOperator, FilterRow } from "./compileFilter";
+import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 
 const OPERATOR_LABELS: Record<FilterOperator, string> = {
-  eq: "égal à",
-  neq: "différent de",
-  gt: "supérieur à",
-  gte: "supérieur ou égal à",
-  lt: "inférieur à",
-  lte: "inférieur ou égal à",
-  contains: "contient",
+  eq: t("queryFilterBuilder.operatorEq"),
+  neq: t("queryFilterBuilder.operatorNeq"),
+  gt: t("queryFilterBuilder.operatorGt"),
+  gte: t("queryFilterBuilder.operatorGte"),
+  lt: t("queryFilterBuilder.operatorLt"),
+  lte: t("queryFilterBuilder.operatorLte"),
+  contains: t("queryFilterBuilder.operatorContains"),
 };
 
 export function QueryFilterBuilder({
@@ -40,7 +41,7 @@ export function QueryFilterBuilder({
         return (
           <div key={i} className="flex items-center gap-2">
             <select
-              aria-label={`Colonne du filtre ${i + 1}`}
+              aria-label={t("queryFilterBuilder.columnAria", { n: i + 1 })}
               className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
               value={row.column}
               onChange={(e) => updateRow(i, { column: e.target.value })}
@@ -52,7 +53,7 @@ export function QueryFilterBuilder({
               ))}
             </select>
             <select
-              aria-label={`Opérateur du filtre ${i + 1}`}
+              aria-label={t("queryFilterBuilder.operatorAria", { n: i + 1 })}
               className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
               value={row.operator}
               onChange={(e) => updateRow(i, { operator: e.target.value as FilterOperator })}
@@ -64,7 +65,7 @@ export function QueryFilterBuilder({
               ))}
             </select>
             <input
-              aria-label={`Valeur du filtre ${i + 1}`}
+              aria-label={t("queryFilterBuilder.valueAria", { n: i + 1 })}
               inputMode={isNumeric ? "numeric" : undefined}
               className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
               value={row.value}
@@ -72,17 +73,17 @@ export function QueryFilterBuilder({
             />
             <button
               type="button"
-              aria-label={`Supprimer le filtre ${i + 1}`}
+              aria-label={t("queryFilterBuilder.removeAria", { n: i + 1 })}
               className="text-xs text-danger"
               onClick={() => removeRow(i)}
             >
-              Supprimer
+              {t("queryFilterBuilder.removeButton")}
             </button>
           </div>
         );
       })}
       <Button type="button" size="sm" variant="outline" onClick={addRow}>
-        Ajouter un filtre
+        {t("queryFilterBuilder.addButton")}
       </Button>
     </div>
   );

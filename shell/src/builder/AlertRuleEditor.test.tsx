@@ -65,6 +65,69 @@ test("shows an error banner instead of a silent empty list when the rules fetch 
   );
 });
 
+test("le canal email envoie AlertChannelEmail avec smtpSecretName choisi via SecretParamSelect", async () => {
+  const listAlertRulesForDataset = vi.fn().mockResolvedValue([]);
+  const createAlertRuleItem = vi.fn().mockResolvedValue({ pk: "rule-3" });
+  const listSecrets = vi
+    .fn()
+    .mockResolvedValue([
+      { id: "s1", name: "smtp-prod", kind: "smtp", createdAt: "", updatedAt: "" },
+    ]);
+  renderWithClient({ listAlertRulesForDataset, createAlertRuleItem, listSecrets });
+
+  await userEvent.type(await screen.findByLabelText("Nom de la règle"), "R");
+  await userEvent.type(screen.getByLabelText("Condition (expression)"), "value > 1");
+  await userEvent.selectOptions(screen.getByLabelText("Canal"), "email");
+  await userEvent.type(screen.getByLabelText("Destinataire"), "a@b.c");
+  await waitFor(() =>
+    expect(screen.getByRole("option", { name: "smtp-prod" })).toBeInTheDocument(),
+  );
+  await userEvent.selectOptions(screen.getByLabelText("secretName"), "smtp-prod");
+  await userEvent.click(screen.getByRole("button", { name: "Créer la règle" }));
+
+  await waitFor(() => expect(createAlertRuleItem).toHaveBeenCalledTimes(1));
+  const call = createAlertRuleItem.mock.calls[0][0];
+  expect(call.alert.channels).toEqual([
+    { kind: "email", to: "a@b.c", smtpSecretName: "smtp-prod" },
+  ]);
+});
+
+test("la requête envoyée reflète agg/field/p choisis, pas {agg:'count'} figé", async () => {
+  const listAlertRulesForDataset = vi.fn().mockResolvedValue([]);
+  const createAlertRuleItem = vi.fn().mockResolvedValue({ pk: "rule-4" });
+  renderWithClient({ listAlertRulesForDataset, createAlertRuleItem });
+
+  await userEvent.type(await screen.findByLabelText("Nom de la règle"), "R");
+  await userEvent.type(screen.getByLabelText("Condition (expression)"), "value > 1");
+  await userEvent.click(screen.getByLabelText("URL du webhook"));
+  await userEvent.type(screen.getByLabelText("URL du webhook"), "https://example.test/hook");
+  await userEvent.selectOptions(screen.getByLabelText("Agrégat"), "percentile");
+  await userEvent.type(screen.getByLabelText("Champ"), "amount");
+  await userEvent.clear(screen.getByLabelText("Centile"));
+  await userEvent.type(screen.getByLabelText("Centile"), "90");
+  await userEvent.click(screen.getByRole("button", { name: "Créer la règle" }));
+
+  await waitFor(() => expect(createAlertRuleItem).toHaveBeenCalledTimes(1));
+  const call = createAlertRuleItem.mock.calls[0][0];
+  expect(call.alert.query).toEqual({ agg: "percentile", field: "amount", p: 90 });
+});
+
+test("l'agrégat count n'envoie ni field ni p", async () => {
+  const listAlertRulesForDataset = vi.fn().mockResolvedValue([]);
+  const createAlertRuleItem = vi.fn().mockResolvedValue({ pk: "rule-5" });
+  renderWithClient({ listAlertRulesForDataset, createAlertRuleItem });
+
+  await userEvent.type(await screen.findByLabelText("Nom de la règle"), "R");
+  await userEvent.type(screen.getByLabelText("Condition (expression)"), "value > 1");
+  await userEvent.click(screen.getByLabelText("URL du webhook"));
+  await userEvent.type(screen.getByLabelText("URL du webhook"), "https://example.test/hook");
+  await userEvent.click(screen.getByRole("button", { name: "Créer la règle" }));
+
+  await waitFor(() => expect(createAlertRuleItem).toHaveBeenCalledTimes(1));
+  const call = createAlertRuleItem.mock.calls[0][0];
+  expect(call.alert.query).toEqual({ agg: "count" });
+});
+
 test("shows a save error inline instead of failing silently", async () => {
   const listAlertRulesForDataset = vi.fn().mockResolvedValue([]);
   const createAlertRuleItem = vi.fn().mockRejectedValue(new Error("Request failed: 422"));

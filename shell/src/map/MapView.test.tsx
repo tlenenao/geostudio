@@ -1202,6 +1202,29 @@ test("a tile url under the core API's base path carries the session bearer token
   });
 });
 
+// SP-57b : coreUrl porte désormais /v1 (createBase(), point unique) — le
+// contrat réel devient "https://hote.test/api/v1" (composition de l'ancien
+// C1 SP-24 ET du nouveau préfixe de version). Ce test prouve que la
+// détection d'URL hébergée fonctionne toujours quand coreUrl porte les deux
+// segments à la fois, pas seulement l'un ou l'autre isolément.
+test("a tile url under the core API's base path AND the /v1 prefix carries the session bearer token", () => {
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        tilesUrl: "https://hote.test/api/v1/collections/communes/tiles/{z}/{x}/{y}.mvt",
+      })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "https://hote.test/api/v1"}
+    />,
+  );
+  const t = mapInstances[0].opts.transformRequest!;
+  expect(t("https://hote.test/api/v1/collections/communes/tiles/1/2/3.mvt")).toEqual({
+    url: "https://hote.test/api/v1/collections/communes/tiles/1/2/3.mvt",
+    headers: { Authorization: "Bearer tok" },
+  });
+});
+
 test("a same-origin url outside the core API's base path gets no token", () => {
   render(
     <MapView

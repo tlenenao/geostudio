@@ -83,7 +83,7 @@ def _as(app, user):
 def _register(app, client, admin, *, public=False, description=""):
     _as(app, admin)
     client.post(
-        "/collections",
+        "/v1/collections",
         json={"tableName": "incidents", "isPublic": public, "description": description},
     )
 
@@ -91,7 +91,7 @@ def _register(app, client, admin, *, public=False, description=""):
 def test_catalog_content_type_and_shape(env):
     app, client, admin, _regular, _Session = env
     _register(app, client, admin, public=True, description="Réseau routier")
-    resp = client.get("/dcat/catalog")
+    resp = client.get("/v1/dcat/catalog")
     assert resp.headers["content-type"] == "application/ld+json"
     body = resp.json()
     assert body["@type"] == "dcat:Catalog"
@@ -103,10 +103,90 @@ def test_catalog_content_type_and_shape(env):
     assert len(ds["dcat:distribution"]) == 2
 
 
+def test_dcat_catalog_is_paginated(env):
+    app, client, admin, _regular, _Session = env
+
+    def introspector_for_many(session, table_name):
+        return TableInfo(
+            table_name=table_name,
+            pk_column="id",
+            geometry_column="geom",
+            geometry_type="Point",
+            srid=4326,
+            columns=[],
+        )
+
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: introspector_for_many
+    _as(app, admin)
+    for i in range(3):
+        resp = client.post("/v1/collections", json={"tableName": f"t{i}", "isPublic": True})
+        assert resp.status_code == 201
+
+    body = client.get("/v1/dcat/catalog?limit=2&offset=0").json()
+    assert len(body["dcat:dataset"]) == 2
+    rels = {link["rel"]: link["href"] for link in body.get("links", [])}
+    assert "offset=2" in rels["next"]
+
+    body2 = client.get("/v1/dcat/catalog?limit=2&offset=2").json()
+    assert len(body2["dcat:dataset"]) == 1
+    assert "next" not in {link["rel"] for link in body2.get("links", [])}
+
+
+def test_broken_collection_degrades_instead_of_failing_whole_catalog(env, caplog):
+    app, client, admin, _regular, _Session = env
+    _register(app, client, admin, public=True)
+
+    info2 = TableInfo(
+        table_name="incidents2",
+        pk_column="id",
+        geometry_column="geom",
+        geometry_type="Point",
+        srid=4326,
+        columns=[],
+    )
+
+    def introspector_with_incidents2(session, table_name):
+        if table_name == "incidents2":
+            return info2
+        return fake_introspector(session, table_name)
+
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: (
+        introspector_with_incidents2
+    )
+    _as(app, admin)
+    resp = client.post("/v1/collections", json={"tableName": "incidents2", "isPublic": True})
+    assert resp.status_code == 201
+
+    def flaky_bbox_provider(session, info):
+        if info.table_name == "incidents2":
+            raise TableNotFound("gone")
+        return [1.0, 44.0, 2.0, 45.0]
+
+    app.dependency_overrides[dcat_routes.get_bbox_provider] = lambda: flaky_bbox_provider
+    with caplog.at_level("WARNING"):
+        catalog_resp = client.get("/v1/dcat/catalog")
+    assert catalog_resp.status_code == 200
+    ids = [d["dct:identifier"] for d in catalog_resp.json()["dcat:dataset"]]
+    assert set(ids) == {"incidents", "incidents2"}
+    assert "extent lookup failed" in caplog.text
+
+
+def test_broken_collection_code_bug_is_not_swallowed(env):
+    app, client, admin, _regular, _Session = env
+    _register(app, client, admin, public=True)
+
+    def buggy_provider(session, info):
+        raise TypeError("bug")
+
+    app.dependency_overrides[dcat_routes.get_bbox_provider] = lambda: buggy_provider
+    with pytest.raises(TypeError):
+        client.get("/v1/dcat/catalog")
+
+
 def test_catalog_reflects_restricted_access_rights(env):
     app, client, admin, _regular, _Session = env
     _register(app, client, admin, public=False)
-    resp = client.get("/dcat/catalog")  # vue admin : voit sa propre collection non publique
+    resp = client.get("/v1/dcat/catalog")  # vue admin : voit sa propre collection non publique
     ds = resp.json()["dcat:dataset"][0]
     assert ds["dct:accessRights"]["@id"].endswith("/RESTRICTED")
 
@@ -114,7 +194,7 @@ def test_catalog_reflects_restricted_access_rights(env):
 def test_dataset_detail_is_self_contained_with_context(env):
     app, client, admin, _regular, _Session = env
     _register(app, client, admin, public=True)
-    resp = client.get("/dcat/datasets/incidents")
+    resp = client.get("/v1/dcat/datasets/incidents")
     assert resp.headers["content-type"] == "application/ld+json"
     body = resp.json()
     assert body["@context"] == {
@@ -133,11 +213,11 @@ def test_dataset_detail_404_non_leaking(env):
     app, client, admin, _regular, _Session = env
     _register(app, client, admin, public=False)
     _as(app, admin)
-    assert client.get("/dcat/datasets/nope").status_code == 404
+    assert client.get("/v1/dcat/datasets/nope").status_code == 404
     # Anonyme sur collection non publique → 404 non-fuyant.
     app.dependency_overrides.pop(get_current_user)
     app.dependency_overrides.pop(get_current_user_optional)
-    assert client.get("/dcat/datasets/incidents").status_code == 404
+    assert client.get("/v1/dcat/datasets/incidents").status_code == 404
 
 
 def test_anonymous_catalog_shows_public_only_no_leak(env):
@@ -145,7 +225,7 @@ def test_anonymous_catalog_shows_public_only_no_leak(env):
     _register(app, client, admin, public=False)
     app.dependency_overrides.pop(get_current_user, None)
     app.dependency_overrides.pop(get_current_user_optional, None)
-    assert client.get("/dcat/catalog").json()["dcat:dataset"] == []
+    assert client.get("/v1/dcat/catalog").json()["dcat:dataset"] == []
 
 
 def test_custom_role_with_collections_manage_sees_a_private_collection_in_catalog(env):
@@ -181,7 +261,7 @@ def test_custom_role_with_collections_manage_sees_a_private_collection_in_catalo
         assert custom_user is not None and custom_user.is_admin is False
         _as(app, custom_user)
 
-        resp = client.get("/dcat/catalog")
+        resp = client.get("/v1/dcat/catalog")
         assert [d["dct:identifier"] for d in resp.json()["dcat:dataset"]] == ["incidents"]
 
 
@@ -222,7 +302,7 @@ def test_custom_role_with_collections_manage_reaches_dataset_detail(env):
         assert custom_user is not None and custom_user.is_admin is False
         _as(app, custom_user)
 
-        resp = client.get("/dcat/datasets/incidents")
+        resp = client.get("/v1/dcat/datasets/incidents")
         assert resp.status_code == 200
         assert resp.json()["dct:identifier"] == "incidents"
 
@@ -231,8 +311,8 @@ def test_dcat_dataset_reflects_declared_license(env):
     app, client, admin, _regular, Session = env
     _register(app, client, admin)
     _as(app, admin)
-    client.patch("/collections/incidents", json={"license": "etalab-2.0"})
-    res = client.get("/dcat/datasets/incidents")
+    client.patch("/v1/collections/incidents", json={"license": "etalab-2.0"})
+    res = client.get("/v1/dcat/datasets/incidents")
     assert res.json()["dct:license"] == {"@id": "https://spdx.org/licenses/etalab-2.0.html"}
 
 
@@ -240,19 +320,19 @@ def test_dcat_dataset_publisher_uses_producer_when_declared(env):
     app, client, admin, _regular, Session = env
     _register(app, client, admin)
     _as(app, admin)
-    client.patch("/collections/incidents", json={"producer": "Ma Régie"})
-    res = client.get("/dcat/datasets/incidents")
+    client.patch("/v1/collections/incidents", json={"producer": "Ma Régie"})
+    res = client.get("/v1/dcat/datasets/incidents")
     assert res.json()["dct:publisher"]["foaf:name"] == "Ma Régie"
     # SP-41, correctif de revue finale : un producteur déclaré obtient une IRI
     # de publisher distincte (par collection), pas l'IRI partagée à l'échelle
     # du tenant.
-    assert res.json()["dct:publisher"]["@id"] == "http://testserver/dcat/publisher/incidents"
+    assert res.json()["dct:publisher"]["@id"] == "http://testserver/v1/dcat/publisher/incidents"
 
 
 def test_dcat_dataset_without_declared_metadata_omits_optional_fields(env):
     app, client, admin, _regular, Session = env
     _register(app, client, admin)
-    res = client.get("/dcat/datasets/incidents")
+    res = client.get("/v1/dcat/datasets/incidents")
     body = res.json()
     assert body["dct:license"] == {
         "@id": "http://publications.europa.eu/resource/authority/licence/OTHER"

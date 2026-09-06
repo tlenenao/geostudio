@@ -19,6 +19,7 @@ const BASE_PROFILE: Profile = {
     "data.manage",
     "apps.manage",
     "automation.manage",
+    "automation.secrets.manage",
     "analytics.view",
     "tasks.view",
   ]),
@@ -30,6 +31,7 @@ const BASE_PROFILE: Profile = {
     tileset3dEnabled: false,
     terrain3dEnabled: false,
     copilotEnabled: false,
+    quotasEnabled: false,
   },
 };
 

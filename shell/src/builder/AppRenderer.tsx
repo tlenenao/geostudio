@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppConfig, RenderMode, Variable } from "../api/types";
+import { t } from "../i18n";
 import { GridCanvas } from "./GridCanvas";
 import { WidgetHost } from "./WidgetHost";
 import { moveItemAt, breakpointForWidth, type Breakpoint } from "./grid";
 import { getPages, getPageLayout, setPageLayout } from "./pages";
+import { pruneMessagesForIds } from "./actionMessages";
 import { DataProvider } from "./DataContext";
 import { ActionBus } from "./ActionBus";
 import { ActionBusProvider, useBusAction } from "./ActionBusContext";
@@ -154,6 +156,13 @@ export function AppRenderer({
     onChange(setPageLayout(config, activePageId, { ...activeLayout, items }));
   }
 
+  function handleRemove(id: string) {
+    if (!onChange) return;
+    const items = activeLayout.items.filter((it) => it.id !== id);
+    const next = setPageLayout(config, activePageId, { ...activeLayout, items });
+    onChange({ ...next, messages: pruneMessagesForIds(next.messages, [id]) });
+  }
+
   return (
     <div
       ref={containerRef}
@@ -168,10 +177,10 @@ export function AppRenderer({
             disabled={chapterIndex <= 0}
             onClick={() => handleNavigate(pages[chapterIndex - 1].id)}
           >
-            Précédent
+            {t("appRenderer.prevButton")}
           </button>
           <span className="text-[var(--gs-color-muted)]">
-            Chapitre {chapterIndex + 1} / {pages.length}
+            {t("appRenderer.chapterLabel", { n: chapterIndex + 1, total: pages.length })}
           </span>
           <button
             type="button"
@@ -179,7 +188,7 @@ export function AppRenderer({
             disabled={chapterIndex >= pages.length - 1}
             onClick={() => handleNavigate(pages[chapterIndex + 1].id)}
           >
-            Suivant
+            {t("appRenderer.nextButton")}
           </button>
         </nav>
       )}
@@ -206,6 +215,7 @@ export function AppRenderer({
                     selectedId={selectedId}
                     onSelect={(id) => onSelect?.(id)}
                     onMoveItem={handleMove}
+                    onRemoveItem={handleRemove}
                     renderItem={(item) => (
                       <WidgetHost
                         item={item}

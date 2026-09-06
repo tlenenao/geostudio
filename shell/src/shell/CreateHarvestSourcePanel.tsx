@@ -4,6 +4,7 @@ import { useCreateHarvestSource, useInstanceInfo } from "../api/hooks";
 import type { HarvestSourceType } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
+import { t } from "../i18n";
 
 const COPY_TYPES: HarvestSourceType[] = ["stac", "arcgis", "wfs", "ckan"];
 
@@ -14,13 +15,20 @@ export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
   const [type, setType] = useState<HarvestSourceType>("stac");
   const [url, setUrl] = useState("");
   const [mode, setMode] = useState<"reference" | "copy">("reference");
+  const [intervalMinutes, setIntervalMinutes] = useState("");
   const copyAllowed = COPY_TYPES.includes(type);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!url) return;
     try {
-      await createSource.mutateAsync({ type, url, mode, enabled: true });
+      await createSource.mutateAsync({
+        type,
+        url,
+        mode,
+        enabled: true,
+        ...(intervalMinutes ? { intervalMinutes: Number(intervalMinutes) } : {}),
+      });
       onClose();
     } catch {
       // surfaced via createSource.isError
@@ -28,13 +36,13 @@ export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <section aria-label="Ajouter une source" className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold text-ink">Ajouter une source</h2>
+    <section aria-label={t("harvest.addSource")} className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold text-ink">{t("harvest.addSource")}</h2>
       <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm text-ink">
-          Type
+          {t("catalog.typeLabel")}
           <select
-            aria-label="Type"
+            aria-label={t("catalog.typeLabel")}
             className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
             value={type}
             onChange={(e) => {
@@ -43,45 +51,59 @@ export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
               if (!COPY_TYPES.includes(next)) setMode("reference");
             }}
           >
-            <option value="stac">STAC</option>
-            <option value="arcgis">ArcGIS Feature Service</option>
-            <option value="wms">WMS</option>
-            <option value="wfs">WFS</option>
-            <option value="wmts">WMTS</option>
-            <option value="csw">CSW</option>
-            <option value="ogc-records">OGC API - Records</option>
-            <option value="ckan">CKAN</option>
+            <option value="stac">{t("harvest.typeStac")}</option>
+            <option value="arcgis">{t("harvest.typeArcgis")}</option>
+            <option value="wms">{t("harvest.typeWms")}</option>
+            <option value="wfs">{t("harvest.typeWfs")}</option>
+            <option value="wmts">{t("harvest.typeWmts")}</option>
+            <option value="csw">{t("harvest.typeCsw")}</option>
+            <option value="ogc-records">{t("harvest.typeOgcRecords")}</option>
+            <option value="ckan">{t("harvest.typeCkan")}</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-sm text-ink">
-          URL
-          <Input aria-label="URL" value={url} onChange={(e) => setUrl(e.target.value)} />
+          {t("harvest.columnUrl")}
+          <Input
+            aria-label={t("harvest.columnUrl")}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
         </label>
         <label className="flex flex-col gap-1 text-sm text-ink">
-          Mode
+          {t("harvest.columnMode")}
           <select
-            aria-label="Mode"
+            aria-label={t("harvest.columnMode")}
             className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
             value={mode}
             onChange={(e) => setMode(e.target.value as "reference" | "copy")}
           >
-            <option value="reference">Référence</option>
+            <option value="reference">{t("harvest.modeReference")}</option>
             <option value="copy" disabled={!copyAllowed}>
-              Copie
+              {t("harvest.modeCopy")}
             </option>
           </select>
         </label>
+        <label className="flex flex-col gap-1 text-sm text-ink">
+          {t("harvest.intervalLabel")}
+          <Input
+            aria-label={t("harvest.intervalLabel")}
+            type="number"
+            min={1}
+            value={intervalMinutes}
+            onChange={(e) => setIntervalMinutes(e.target.value)}
+          />
+        </label>
         {createSource.isError && (
           <p role="alert" className="text-sm text-danger">
-            Échec de la création.
+            {t("harvest.createFailed")}
           </p>
         )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
-            Annuler
+            {t("confirmDialog.cancel")}
           </Button>
           <Button type="submit" size="sm" disabled={!url || createSource.isPending || readOnly}>
-            Enregistrer
+            {t("common.save")}
           </Button>
         </div>
       </form>

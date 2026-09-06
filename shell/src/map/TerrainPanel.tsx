@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { MapTerrainConfig } from "../api/types";
 import { useInstanceInfo, useItemClient } from "../api/hooks";
 import { Terrain3DUploadButton } from "./Terrain3DUploadButton";
+import { t } from "../i18n";
 
 export function TerrainPanel({
   value,
@@ -66,28 +67,28 @@ export function TerrainPanel({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Terrain 3D</p>
+      <p className="mb-1 mt-3 text-xs font-medium text-ink-2">{t("terrainPanel.heading")}</p>
       <label className="flex items-center gap-2 text-sm">
         <input
-          aria-label="Activer le terrain 3D"
+          aria-label={t("terrainPanel.enableLabel")}
           type="checkbox"
           checked={enabled}
           onChange={(e) => toggle(e.target.checked)}
         />
-        Activer le terrain 3D
+        {t("terrainPanel.enableLabel")}
       </label>
       {enabled && value && (
         <>
           {terrain3dEnabled && (
             <>
               <label className="flex flex-col gap-1 text-sm">
-                DEM hébergé
+                {t("terrainPanel.hostedLabel")}
                 <select
-                  aria-label="DEM hébergé"
+                  aria-label={t("terrainPanel.hostedLabel")}
                   defaultValue=""
                   onChange={(e) => selectHosted(e.target.value)}
                 >
-                  <option value="">— choisir un DEM hébergé —</option>
+                  <option value="">{t("terrainPanel.chooseHostedOption")}</option>
                   {hostedSources.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.title}
@@ -104,9 +105,9 @@ export function TerrainPanel({
             </>
           )}
           <label className="flex flex-col gap-1 text-sm">
-            URL de tuiles terrain (terrain-RGB, encodage terrarium)
+            {t("terrainPanel.tilesUrlLabel")}
             <input
-              aria-label="URL de tuiles terrain"
+              aria-label={t("terrainPanel.tilesUrlAria")}
               type="text"
               placeholder="https://…/{z}/{x}/{y}.png"
               value={value.tilesUrl}
@@ -116,7 +117,7 @@ export function TerrainPanel({
           <label className="flex flex-col gap-1 text-sm">
             Exaggeration
             <input
-              aria-label="Exaggeration du terrain"
+              aria-label={t("terrainPanel.exaggerationAria")}
               type="number"
               step={0.1}
               min={0}

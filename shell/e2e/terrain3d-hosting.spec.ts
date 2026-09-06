@@ -4,7 +4,7 @@ import { mockCore } from "./mocks";
 
 async function mockTerrain3DUploadFlow(page: Page) {
   let jobPolls = 0;
-  await page.route("https://core.test/instance", async (route) => {
+  await page.route("https://core.test/v1/instance", async (route) => {
     await route.fulfill({ json: { readOnly: false, terrain3dEnabled: true } });
   });
   // Route dédiée terrain3d (jamais la générique **/uploads/presign) : c'est
@@ -30,7 +30,7 @@ async function mockTerrain3DUploadFlow(page: Page) {
       await route.fulfill({ json: { status: "done", errorMessage: null, itemId: "d1" } });
     }
   });
-  await page.route("https://core.test/items?*", async (route) => {
+  await page.route("https://core.test/v1/items?*", async (route) => {
     const url = new URL(route.request().url());
     if (url.searchParams.get("type") !== "terrain3d") return route.fallback();
     await route.fulfill({
@@ -54,7 +54,7 @@ async function mockTerrain3DUploadFlow(page: Page) {
       },
     });
   });
-  await page.route("https://core.test/terrain3d/d1/tiles/*/*/*.png", async (route) => {
+  await page.route("https://core.test/v1/terrain3d/d1/tiles/*/*/*.png", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "image/png",

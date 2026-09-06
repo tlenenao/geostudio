@@ -19,6 +19,17 @@ class HarvestedRecord:
     copy_filename: str | None = None
 
 
+class HarvestFetchError(Exception):
+    """Le document racine d'une source de moissonnage est injoignable ou
+    illisible (réseau, HTTP, JSON/XML malformé) — distinct d'un document
+    enfant tolérable (lien cassé plus profond dans l'arborescence, cf.
+    docstring de chaque connecteur). Levée uniquement pour le tout premier
+    accès réseau d'un fetch(), jamais pour un enfant découvert en cours de
+    parcours. Propagée telle quelle par harvest_source (déjà un except
+    Exception large, app/harvest/service.py) — source.last_status passe
+    "error" au lieu d'"ok" avec zéro enregistrement (SP-50, GAP-59)."""
+
+
 class HarvestConnector(Protocol):
     type: str
     supports_copy: bool

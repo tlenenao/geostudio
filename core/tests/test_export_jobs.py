@@ -171,6 +171,10 @@ def test_render_export_task_marks_done_on_success(db_session, monkeypatch):
     refreshed = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
     assert refreshed.status == "done"
     assert refreshed.result_key is not None
+    # SP-58 Tâche 2 (GAP-73) : la taille du rendu écrit sur S3 doit être
+    # tracée pour permettre la mesure de stockage par tenant (le bucket
+    # geostudio-exports n'est pas préfixé par tenant_id, cf. spec §1.4).
+    assert refreshed.byte_size == len(b"PNGDATA")
     assert uploaded["bucket"] == "geostudio-exports"
     assert uploaded["body"] == b"PNGDATA"
     # Le bucket doit être créé (via ensure_uploads_bucket) AVANT l'upload —
@@ -513,3 +517,35 @@ def test_notification_write_failure_does_not_affect_job_status(db_session, monke
     assert fetched.status == "done"
     notification = session.scalar(select(Notification).where(Notification.tenant_id == tenant.id))
     assert notification is None
+
+
+def test_render_export_task_handles_get_job_failure_gracefully(db_session, monkeypatch):
+    # GAP-56.1 (SP-49) : get_job/mark_running étaient hors du bloc try — une
+    # exception ici remontait non gérée (pas de mark_error, pas de
+    # notification), contrairement à app.pipelines.jobs/app.ingestion.tasks
+    # qui placent ces deux appels DANS le try. Falsifié en session (avant
+    # correction, ce test échouait avec la RuntimeError non capturée plutôt
+    # que de constater job.status == "error").
+    session, tenant, user, item = db_session
+    job = export_repo.create_job(
+        session, tenant_id=tenant.id, item_id=item.id, user_id=user.id, format="png"
+    )
+    session.commit()
+
+    original_get_job = export_repo.get_job
+    calls = {"n": 0}
+
+    def _boom(session, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("db down")
+        return original_get_job(session, **kwargs)
+
+    monkeypatch.setattr(export_repo, "get_job", _boom)
+
+    export_jobs.render_export_task(job_id=job.id, tenant_id=tenant.id)
+
+    session.expire_all()
+    fetched = export_repo.get_job(session, tenant_id=tenant.id, job_id=job.id)
+    assert fetched.status == "error"
+    assert "db down" in fetched.error

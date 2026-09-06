@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { Variable, VariableType } from "../api/types";
+import { t } from "../i18n";
 
 const TYPE_LABELS: Record<VariableType, string> = {
-  string: "Texte",
-  number: "Nombre",
-  bool: "Booléen",
-  date: "Date",
-  record: "Enregistrement",
-  list: "Liste",
+  string: t("variablesPanel.typeString"),
+  number: t("variablesPanel.typeNumber"),
+  bool: t("variablesPanel.typeBool"),
+  date: t("variablesPanel.typeDate"),
+  record: t("variablesPanel.typeRecord"),
+  list: t("variablesPanel.typeList"),
 };
 
 function defaultValueFor(type: VariableType): Variable["initialValue"] {
@@ -65,13 +66,13 @@ export function VariablesPanel({
             className="flex items-center gap-1 rounded border border-slate-200 p-1 text-xs"
           >
             <input
-              aria-label={`Renommer la variable ${v.id}`}
+              aria-label={t("variablesPanel.renameAria", { id: v.id })}
               className="w-16 rounded border border-slate-300 px-1"
               defaultValue={v.name}
               onChange={(e) => rename(v.id, e.target.value)}
             />
             <select
-              aria-label={`Type de la variable ${v.id}`}
+              aria-label={t("variablesPanel.typeAria", { id: v.id })}
               className="rounded border border-slate-300 px-1"
               value={type}
               onChange={(e) => setType(v.id, e.target.value as VariableType)}
@@ -84,7 +85,7 @@ export function VariablesPanel({
             </select>
             {type === "string" && (
               <input
-                aria-label={`Valeur initiale de la variable ${v.id}`}
+                aria-label={t("variablesPanel.initialValueAria", { id: v.id })}
                 className="w-16 rounded border border-slate-300 px-1"
                 defaultValue={String(v.initialValue ?? "")}
                 onChange={(e) => setInitialValue(v.id, e.target.value)}
@@ -92,7 +93,7 @@ export function VariablesPanel({
             )}
             {type === "number" && (
               <input
-                aria-label={`Valeur initiale de la variable ${v.id}`}
+                aria-label={t("variablesPanel.initialValueAria", { id: v.id })}
                 type="number"
                 className="w-16 rounded border border-slate-300 px-1"
                 defaultValue={Number(v.initialValue ?? 0)}
@@ -101,7 +102,7 @@ export function VariablesPanel({
             )}
             {type === "bool" && (
               <input
-                aria-label={`Valeur initiale de la variable ${v.id}`}
+                aria-label={t("variablesPanel.initialValueAria", { id: v.id })}
                 type="checkbox"
                 checked={Boolean(v.initialValue)}
                 onChange={(e) => setInitialValue(v.id, e.target.checked)}
@@ -109,7 +110,7 @@ export function VariablesPanel({
             )}
             {type === "date" && (
               <input
-                aria-label={`Valeur initiale de la variable ${v.id}`}
+                aria-label={t("variablesPanel.initialValueAria", { id: v.id })}
                 type="date"
                 className="rounded border border-slate-300 px-1"
                 defaultValue={String(v.initialValue ?? "")}
@@ -117,11 +118,11 @@ export function VariablesPanel({
               />
             )}
             {(type === "record" || type === "list") && (
-              <span className="text-slate-400">Définie par câblage d'action</span>
+              <span className="text-ink-2">{t("variablesPanel.definedByWiring")}</span>
             )}
             <button
               type="button"
-              aria-label={`Retirer la variable ${v.id}`}
+              aria-label={t("variablesPanel.removeAria", { id: v.id })}
               className="text-red-600"
               onClick={() => remove(v.id)}
             >
@@ -136,7 +137,7 @@ export function VariablesPanel({
           className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-100"
           onClick={addVariable}
         >
-          Ajouter une variable
+          {t("variablesPanel.addButton")}
         </button>
       </li>
     </ul>

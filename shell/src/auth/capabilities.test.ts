@@ -16,6 +16,7 @@ const ALL_ON: InstanceCapabilities = {
   tileset3dEnabled: true,
   terrain3dEnabled: true,
   copilotEnabled: true,
+  quotasEnabled: true,
 };
 
 // Miroir de BUILT_IN_ROLE_PRIVILEGES (core/app/roles/privileges.py) — mêmes
@@ -53,6 +54,7 @@ const creator: Profile = {
     "data.manage",
     "apps.manage",
     "automation.manage",
+    "automation.secrets.manage",
     "analytics.view",
     "tasks.view",
   ]),

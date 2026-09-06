@@ -46,18 +46,18 @@ def client():
 
 
 def test_create_and_list_groups(client):
-    create = client.post("/groups", json={"name": "Reviewers"})
+    create = client.post("/v1/groups", json={"name": "Reviewers"})
     assert create.status_code == 201
     body = create.json()
     assert body["name"] == "Reviewers"
 
-    listed = client.get("/groups")
+    listed = client.get("/v1/groups")
     assert listed.status_code == 200
     assert [g["name"] for g in listed.json()] == ["Reviewers"]
 
 
 def test_add_member(client):
-    group_id = client.post("/groups", json={"name": "Reviewers"}).json()["id"]
+    group_id = client.post("/v1/groups", json={"name": "Reviewers"}).json()["id"]
     with client.session_factory() as session:
         bob = get_or_create_user(
             session,
@@ -71,7 +71,7 @@ def test_add_member(client):
         session.commit()
         session.refresh(bob)
 
-    response = client.post(f"/groups/{group_id}/members", json={"userId": bob.id})
+    response = client.post(f"/v1/groups/{group_id}/members", json={"userId": bob.id})
     assert response.status_code == 204
 
 
@@ -80,7 +80,7 @@ def test_add_member_cross_tenant_user_returns_404(client):
 
     from app.tenants.models import Tenant
 
-    group_id = client.post("/groups", json={"name": "Reviewers"}).json()["id"]
+    group_id = client.post("/v1/groups", json={"name": "Reviewers"}).json()["id"]
     with client.session_factory() as session:
         other_tenant = Tenant(
             id=uuid.uuid4().hex, slug=f"other-{uuid.uuid4().hex[:8]}", name="Other"
@@ -99,7 +99,7 @@ def test_add_member_cross_tenant_user_returns_404(client):
         session.commit()
         session.refresh(mallory)
 
-    response = client.post(f"/groups/{group_id}/members", json={"userId": mallory.id})
+    response = client.post(f"/v1/groups/{group_id}/members", json={"userId": mallory.id})
     assert response.status_code == 404
 
 
@@ -116,12 +116,12 @@ def test_add_member_to_unknown_group_returns_404(client):
         )
         session.commit()
         session.refresh(bob)
-    response = client.post("/groups/nope/members", json={"userId": bob.id})
+    response = client.post("/v1/groups/nope/members", json={"userId": bob.id})
     assert response.status_code == 404
 
 
 def test_add_member_by_non_creator_returns_404(client):
-    group_id = client.post("/groups", json={"name": "Reviewers"}).json()["id"]
+    group_id = client.post("/v1/groups", json={"name": "Reviewers"}).json()["id"]
     with client.session_factory() as session:
         bob = get_or_create_user(
             session,
@@ -137,7 +137,7 @@ def test_add_member_by_non_creator_returns_404(client):
 
     client.app.dependency_overrides[get_current_user] = lambda: bob
     try:
-        response = client.post(f"/groups/{group_id}/members", json={"userId": bob.id})
+        response = client.post(f"/v1/groups/{group_id}/members", json={"userId": bob.id})
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
     assert response.status_code == 404
@@ -148,7 +148,7 @@ def test_create_group_writes_audit_log(client):
 
     from app.audit.models import AuditLog
 
-    client.post("/groups", json={"name": "Reviewers"})
+    client.post("/v1/groups", json={"name": "Reviewers"})
     with client.session_factory() as session:
         actions = {r.action for r in session.scalars(select(AuditLog)).all()}
         assert "group.create" in actions

@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 import httpx
+import pytest
 
-from app.harvest.connectors.base import HarvestedRecord
+from app.harvest.connectors.base import HarvestedRecord, HarvestFetchError
 from app.harvest.connectors.csw import CswConnector
 
 CSW_BASE = "https://geonetwork.example.com/geonetwork/srv/eng/csw"
@@ -265,11 +266,16 @@ def test_xxe_on_first_page_neutralised_and_falls_back_to_dublin_core():
     assert [r.external_id for r in records] == ["dc-1"]
 
 
-def test_both_attempts_fail_returns_empty():
+def test_both_attempts_fail_raises_harvest_fetch_error():
+    # GAP-59.2 (SP-50) : ISO puis DC échouent tous les deux (repli déjà
+    # tenté par _first_page) — la racine est bien injoignable, doit être
+    # signalée, pas rapportée comme un moissonnage réussi à zéro
+    # enregistrement.
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500)
 
-    assert list(_connector(handler).fetch(CSW_BASE)) == []
+    with pytest.raises(HarvestFetchError):
+        list(_connector(handler).fetch(CSW_BASE))
 
 
 def test_next_page_failure_keeps_partial_results():

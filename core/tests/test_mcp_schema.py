@@ -20,10 +20,20 @@ def test_schema_http_endpoint_returns_builder_config_json_schema(monkeypatch):
     app.dependency_overrides[db.get_session] = override_session
     client = TestClient(app)
 
-    response = client.get("/schemas/app-config")
+    response = client.get("/v1/schemas/app-config")
 
     assert response.status_code == 200
     body = response.json()
     assert body["title"] == "BuilderConfig"
     assert "properties" in body
     engine.dispose()
+
+
+def test_rest_and_mcp_schema_never_diverge():
+    from app.configs.schemas import app_config_json_schema
+    from app.schemas_routes import get_app_config_schema
+
+    # La ressource MCP (app/mcp/tools/__init__.py::app_config_schema) et la
+    # route REST doivent appeler la même fonction — ce test compare leurs
+    # sorties directement, sans dépendre du protocole MCP.
+    assert get_app_config_schema() == app_config_json_schema()

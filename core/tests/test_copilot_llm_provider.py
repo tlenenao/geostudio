@@ -130,6 +130,21 @@ async def test_openai_compatible_provider_sends_tools_in_openai_shape():
 
 
 @pytest.mark.anyio
+async def test_openai_compatible_provider_blocks_ssrf_target_when_unguarded():
+    # http_client=None : chemin réellement emprunté en production, celui
+    # que get_llm_provider() construit.
+    provider = OpenAICompatibleLLMProvider(
+        api_url="http://169.254.169.254/latest/meta-data/",
+        api_key="test-key",
+        model="gpt-4o-mini",
+    )
+    from app.copilot.egress import EgressBlockedError
+
+    with pytest.raises(EgressBlockedError):
+        await provider.chat(messages=[], tools=[])
+
+
+@pytest.mark.anyio
 async def test_openai_compatible_provider_tolerates_tools_without_description_or_schema():
     import json as json_module
 

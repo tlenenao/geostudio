@@ -15,6 +15,7 @@ import { Button } from "../ui/kit/Button";
 import { FieldClassificationPicker, type ClassifiedEncoding } from "./FieldClassificationPicker";
 import { labelCls, inputCls } from "./formFieldStyles";
 import type { ThemeColors } from "../api/types";
+import { t } from "../i18n";
 
 // Éditeur partagé par les DEUX surfaces (éditeur de cartes et PropsPanel du
 // widget carte) — même précédent que PopupEditor.tsx (SP-24). Les deux
@@ -277,7 +278,7 @@ export function MapSymbologyEditor({
         { runStatistics, sampleField },
       );
       if (domain.kind !== "categorical") {
-        setIconError("Ce champ n'a pas de valeurs catégorielles exploitables.");
+        setIconError(t("mapSymbology.notCategoricalError"));
         return;
       }
       onChange({
@@ -306,12 +307,12 @@ export function MapSymbologyEditor({
     <div className="flex flex-col gap-2 text-sm">
       <FieldClassificationPicker
         labels={{
-          field: "Champ couleur",
-          palette: "Palette",
-          mode: "Type de couleur",
-          method: "Méthode de classification",
-          classes: "Nombre de classes",
-          recompute: "Recalculer les classes",
+          field: t("mapSymbology.colorFieldLabel"),
+          palette: t("mapSymbology.colorPaletteLabel"),
+          mode: t("mapSymbology.colorModeLabel"),
+          method: t("mapSymbology.colorMethodLabel"),
+          classes: t("mapSymbology.colorClassesLabel"),
+          recompute: t("mapSymbology.colorRecomputeButton"),
         }}
         listId={listId}
         themeColors={themeColors}
@@ -338,13 +339,13 @@ export function MapSymbologyEditor({
           className="self-start text-xs text-danger underline"
           onClick={clearColor}
         >
-          Retirer la couleur
+          {t("mapSymbology.removeColorButton")}
         </button>
       )}
       <label className={labelCls}>
-        Champ taille
+        {t("mapSymbology.sizeFieldLabel")}
         <input
-          aria-label="Champ taille"
+          aria-label={t("mapSymbology.sizeFieldLabel")}
           list={`${listId}-fields`}
           className={inputCls}
           value={size?.field ?? ""}
@@ -371,7 +372,7 @@ export function MapSymbologyEditor({
           className="self-start text-xs text-danger underline"
           onClick={clearSize}
         >
-          Retirer la taille
+          {t("mapSymbology.removeSizeButton")}
         </button>
       )}
       {size?.field && (
@@ -384,7 +385,9 @@ export function MapSymbologyEditor({
             disabled={busy === "size"}
             onClick={() => void recomputeSize()}
           >
-            {busy === "size" ? "Calcul…" : "Recalculer la taille"}
+            {busy === "size"
+              ? t("mapSymbology.computingButton")
+              : t("mapSymbology.recomputeSizeButton")}
           </Button>
           {sizeError && (
             <p role="alert" className="text-xs text-danger">
@@ -392,22 +395,23 @@ export function MapSymbologyEditor({
             </p>
           )}
           {!size.computedAt && (
-            <p className="text-xs text-warn">
-              Taille non calculée — cliquez sur « Recalculer la taille ».
-            </p>
+            <p className="text-xs text-warn">{t("mapSymbology.sizeNotComputedHint")}</p>
           )}
           {size.computedAt && (
             <p className="text-xs text-ink-3">
-              Taille calculée le {new Date(size.computedAt).toLocaleString()} : {size.domain.min} –{" "}
-              {size.domain.max}
+              {t("mapSymbology.sizeComputedAtText", {
+                date: new Date(size.computedAt).toLocaleString(),
+                min: size.domain.min,
+                max: size.domain.max,
+              })}
             </p>
           )}
         </>
       )}
       <label className={labelCls}>
-        Opacité
+        {t("mapSymbology.opacityLabel")}
         <input
-          aria-label="Opacité"
+          aria-label={t("mapSymbology.opacityLabel")}
           type="range"
           min={0}
           max={100}
@@ -425,7 +429,7 @@ export function MapSymbologyEditor({
           className="self-start"
           onClick={() => setStroke({})}
         >
-          Ajouter un contour
+          {t("mapSymbology.addStrokeButton")}
         </Button>
       )}
       {stroke && (
@@ -451,7 +455,7 @@ export function MapSymbologyEditor({
                 setStroke({ color: { fixed: "#000000" } });
               }}
             >
-              Couleur de contour fixe
+              {t("mapSymbology.strokeFixedButton")}
             </button>
             <button
               type="button"
@@ -481,14 +485,14 @@ export function MapSymbologyEditor({
                 });
               }}
             >
-              Couleur de contour par attribut
+              {t("mapSymbology.strokeByAttributeButton")}
             </button>
           </div>
           {strokeColorIsFixed ? (
             <label className={labelCls}>
-              Couleur de contour
+              {t("mapSymbology.strokeColorLabel")}
               <input
-                aria-label="Couleur de contour"
+                aria-label={t("mapSymbology.strokeColorLabel")}
                 type="color"
                 value={"fixed" in stroke.color ? stroke.color.fixed : "#000000"}
                 onChange={(e) => setStroke({ color: { fixed: e.target.value } })}
@@ -505,12 +509,12 @@ export function MapSymbologyEditor({
               // Testing Library qui matche exact. Vérifié mécaniquement
               // (cf. rapport de tâche), pas seulement à l'œil.
               labels={{
-                field: "Champ du contour",
-                palette: "Couleurs du contour",
-                mode: "Type de valeurs du contour",
-                method: "Méthode de répartition du contour",
-                classes: "Nombre de tranches du contour",
-                recompute: "Recalculer le contour",
+                field: t("mapSymbology.strokeFieldLabel"),
+                palette: t("mapSymbology.strokePaletteLabel"),
+                mode: t("mapSymbology.strokeModeLabel"),
+                method: t("mapSymbology.strokeMethodLabel"),
+                classes: t("mapSymbology.strokeClassesLabel"),
+                recompute: t("mapSymbology.strokeRecomputeButton"),
               }}
               listId={listId}
               themeColors={themeColors}
@@ -523,9 +527,9 @@ export function MapSymbologyEditor({
             />
           )}
           <label className={labelCls}>
-            Épaisseur de contour (px)
+            {t("mapSymbology.strokeWidthLabel")}
             <input
-              aria-label="Épaisseur de contour (px)"
+              aria-label={t("mapSymbology.strokeWidthLabel")}
               type="number"
               min={0}
               max={20}
@@ -535,16 +539,16 @@ export function MapSymbologyEditor({
             />
           </label>
           <label className={labelCls}>
-            Style de contour
+            {t("mapSymbology.strokeStyleLabel")}
             <select
-              aria-label="Style de contour"
+              aria-label={t("mapSymbology.strokeStyleLabel")}
               className={inputCls}
               value={stroke.style}
               onChange={(e) => setStroke({ style: e.target.value as StrokeStyle })}
             >
-              <option value="solid">Plein</option>
-              <option value="dashed">Tirets</option>
-              <option value="dotted">Pointillés</option>
+              <option value="solid">{t("mapSymbology.strokeStyleSolidOption")}</option>
+              <option value="dashed">{t("mapSymbology.strokeStyleDashedOption")}</option>
+              <option value="dotted">{t("mapSymbology.strokeStyleDottedOption")}</option>
             </select>
           </label>
           <button
@@ -552,7 +556,7 @@ export function MapSymbologyEditor({
             className="self-start text-xs text-danger underline"
             onClick={() => clearEncoding("stroke")}
           >
-            Retirer le contour
+            {t("mapSymbology.removeStrokeButton")}
           </button>
         </div>
       )}
@@ -564,15 +568,15 @@ export function MapSymbologyEditor({
           className="self-start"
           onClick={() => setIconDraft(true)}
         >
-          Ajouter des icônes
+          {t("mapSymbology.addIconsButton")}
         </Button>
       )}
       {(icon || iconDraft) && (
         <div className="flex flex-col gap-2 border-l-2 border-rule-2 pl-2">
           <label className={labelCls}>
-            Champ icône
+            {t("mapSymbology.iconFieldLabel")}
             <input
-              aria-label="Champ icône"
+              aria-label={t("mapSymbology.iconFieldLabel")}
               list={`${listId}-fields`}
               className={inputCls}
               value={iconField}
@@ -587,7 +591,9 @@ export function MapSymbologyEditor({
             disabled={iconBusy || !iconField}
             onClick={() => void recomputeIconDomain()}
           >
-            {iconBusy ? "Calcul…" : "Recalculer les valeurs"}
+            {iconBusy
+              ? t("mapSymbology.computingButton")
+              : t("mapSymbology.recomputeIconValuesButton")}
           </Button>
           {iconError && <p className="text-xs text-danger">{iconError}</p>}
 
@@ -598,15 +604,16 @@ export function MapSymbologyEditor({
                 <span className="text-xs font-medium">{v}</span>
                 <button
                   type="button"
-                  aria-label={`Choisir l'icône de ${v}`}
+                  aria-label={t("mapSymbology.chooseIconAria", { value: v })}
                   className="rounded-md border border-rule px-2 py-1 text-xs"
                   onClick={() => setEditingValue(editingValue === v ? null : v)}
                 >
                   {assigned
                     ? assigned.source === "lucide"
                       ? assigned.name
-                      : (customIcons.find((c) => c.id === assigned.id)?.title ?? "icône")
-                    : "Aucune"}
+                      : (customIcons.find((c) => c.id === assigned.id)?.title ??
+                        t("mapSymbology.unknownIconLabel"))
+                    : t("mapSymbology.noIconAssignedLabel")}
                 </button>
               </div>
             );
@@ -617,7 +624,9 @@ export function MapSymbologyEditor({
               noms accessibles dupliqués, donc un getByRole ambigu. */}
           {editingValue !== null && (
             <div className="flex flex-col gap-1" data-testid="icon-grid">
-              <p className="text-xs">Icône pour « {editingValue} »</p>
+              <p className="text-xs">
+                {t("mapSymbology.iconForValueText", { value: editingValue })}
+              </p>
               {(
                 [
                   "generic",
@@ -650,7 +659,9 @@ export function MapSymbologyEditor({
               ))}
               {customIcons.length > 0 && (
                 <div className="flex flex-col gap-1">
-                  <h4 className="text-[10px] uppercase text-ink-3">Bibliothèque du tenant</h4>
+                  <h4 className="text-[10px] uppercase text-ink-3">
+                    {t("mapSymbology.customIconsHeading")}
+                  </h4>
                   <div className="flex flex-wrap gap-1">
                     {customIcons.map((ci) => (
                       <span key={ci.id} className="flex items-center gap-1">
@@ -664,7 +675,7 @@ export function MapSymbologyEditor({
                         {deleteCustomIcon && (
                           <button
                             type="button"
-                            aria-label={`Supprimer l'icône ${ci.title}`}
+                            aria-label={t("mapSymbology.deleteIconAria", { title: ci.title })}
                             className="text-[10px] text-danger underline"
                             onClick={() => {
                               // Fix I3 (Part B) de la revue finale SP-27 : le cœur ne fait
@@ -680,7 +691,7 @@ export function MapSymbologyEditor({
                               // confirmation, qui nomme la conséquence, est demandée ici.
                               if (
                                 !window.confirm(
-                                  `Cette icône est peut-être utilisée par des cartes existantes ; la supprimer la fera disparaître sans avertissement sur ces cartes. Supprimer « ${ci.title} » ?`,
+                                  t("mapSymbology.deleteIconConfirm", { title: ci.title }),
                                 )
                               )
                                 return;
@@ -711,9 +722,9 @@ export function MapSymbologyEditor({
 
           {uploadCustomIcon && (
             <label className={labelCls}>
-              Ajouter une icône au tenant (PNG ou SVG)
+              {t("mapSymbology.uploadIconLabel")}
               <input
-                aria-label="Ajouter une icône au tenant (PNG ou SVG)"
+                aria-label={t("mapSymbology.uploadIconLabel")}
                 type="file"
                 className="w-full"
                 accept="image/png,image/svg+xml"
@@ -744,7 +755,7 @@ export function MapSymbologyEditor({
                 clearEncoding("icon");
               }}
             >
-              Retirer les icônes
+              {t("mapSymbology.removeIconsButton")}
             </button>
           )}
         </div>
@@ -769,15 +780,15 @@ export function MapSymbologyEditor({
             })
           }
         >
-          Ajouter une étiquette
+          {t("mapSymbology.addLabelButton")}
         </Button>
       )}
       {value?.label && (
         <div className="flex flex-col gap-2 border-l-2 border-rule-2 pl-2">
           <label className={labelCls}>
-            Gabarit d'étiquette
+            {t("mapSymbology.labelTemplateLabel")}
             <textarea
-              aria-label="Gabarit d'étiquette"
+              aria-label={t("mapSymbology.labelTemplateLabel")}
               className={inputCls}
               rows={2}
               value={value.label.template}
@@ -786,13 +797,11 @@ export function MapSymbologyEditor({
               }
             />
           </label>
-          <p className="text-xs text-ink-3">
-            {'Syntaxe : ${record.nom}, ${record.pop > 10000 ? "ville" : "commune"}'}
-          </p>
+          <p className="text-xs text-ink-3">{t("mapSymbology.labelSyntaxHint")}</p>
           <label className={labelCls}>
-            Taille du texte (px)
+            {t("mapSymbology.labelSizeLabel")}
             <input
-              aria-label="Taille du texte (px)"
+              aria-label={t("mapSymbology.labelSizeLabel")}
               type="number"
               min={8}
               max={32}
@@ -807,9 +816,9 @@ export function MapSymbologyEditor({
             />
           </label>
           <label className={labelCls}>
-            Couleur du texte
+            {t("mapSymbology.labelColorLabel")}
             <input
-              aria-label="Couleur du texte"
+              aria-label={t("mapSymbology.labelColorLabel")}
               type="color"
               value={value.label.color}
               onChange={(e) =>
@@ -822,7 +831,7 @@ export function MapSymbologyEditor({
             className="self-start text-xs text-danger underline"
             onClick={() => clearEncoding("label")}
           >
-            Retirer l'étiquette
+            {t("mapSymbology.removeLabelButton")}
           </button>
         </div>
       )}

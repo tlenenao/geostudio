@@ -78,7 +78,7 @@ def test_get_notifications_returns_only_the_caller_s_own(client):
         )
         s.commit()
 
-    res = api.get("/notifications")
+    res = api.get("/v1/notifications")
     assert res.status_code == 200
     body = res.json()
     assert body["total"] == 1
@@ -100,15 +100,15 @@ def test_unread_count_reflects_current_preference(client):
         )
         s.commit()
 
-    assert api.get("/notifications/unread-count").json() == {"count": 1}
-    patch = api.patch("/notifications/preference", json={"value": "failures_only"})
+    assert api.get("/v1/notifications/unread-count").json() == {"count": 1}
+    patch = api.patch("/v1/notifications/preference", json={"value": "failures_only"})
     assert patch.status_code == 200
-    assert api.get("/notifications/unread-count").json() == {"count": 0}
+    assert api.get("/v1/notifications/unread-count").json() == {"count": 0}
 
 
 def test_patch_preference_rejects_unknown_value(client):
     api, *_ = client
-    res = api.patch("/notifications/preference", json={"value": "bogus"})
+    res = api.patch("/v1/notifications/preference", json={"value": "bogus"})
     assert res.status_code == 400
 
 
@@ -138,17 +138,17 @@ def test_mark_read_then_read_all(client):
         s.commit()
         n1_id = n1.id
 
-    read_res = api.post(f"/notifications/{n1_id}/read")
+    read_res = api.post(f"/v1/notifications/{n1_id}/read")
     assert read_res.status_code == 200
     assert read_res.json()["readAt"] is not None
-    assert api.get("/notifications/unread-count").json() == {"count": 1}
+    assert api.get("/v1/notifications/unread-count").json() == {"count": 1}
 
-    all_res = api.post("/notifications/read-all")
+    all_res = api.post("/v1/notifications/read-all")
     assert all_res.status_code == 204
-    assert api.get("/notifications/unread-count").json() == {"count": 0}
+    assert api.get("/v1/notifications/unread-count").json() == {"count": 0}
 
 
 def test_mark_read_unknown_id_is_404(client):
     api, *_ = client
-    res = api.post("/notifications/does-not-exist/read")
+    res = api.post("/v1/notifications/does-not-exist/read")
     assert res.status_code == 404

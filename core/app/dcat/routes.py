@@ -4,13 +4,16 @@ permission existantes (list_visible_collections, get_readable_collection,
 404 non-fuyant) et l'emprise STAC (app.stac.extent.estimated_bbox_4326) —
 aucun nouveau calcul d'emprise, aucune écriture, aucune surface shell/MCP."""
 
+import logging
 from datetime import UTC
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.auth.dependency import get_current_user_optional
+from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.repository import list_visible_collections
 from app.collections.routes import get_introspector, get_readable_collection
 from app.db import get_session
@@ -23,7 +26,12 @@ from app.tenants.models import Tenant
 
 router = APIRouter(prefix="/dcat", tags=["dcat"])
 
+logger = logging.getLogger(__name__)
+
 MEDIA_TYPE = "application/ld+json"
+
+MAX_LIMIT = 1000
+DEFAULT_LIMIT = 100
 
 
 def get_bbox_provider():  # overridé en test SQLite (ST_EstimatedExtent absent)
@@ -31,7 +39,11 @@ def get_bbox_provider():  # overridé en test SQLite (ST_EstimatedExtent absent)
 
 
 def _base(request: Request) -> str:
-    return str(request.base_url).rstrip("/")
+    # request.base_url ne porte jamais /v1 (juste scheme://host/) — ce
+    # routeur (comme /collections, /stac) est nesté sous /v1 (SP-57b), et
+    # tous les hrefs construits à partir de cette base (serializers.py)
+    # référencent des routes désormais sous /v1.
+    return str(request.base_url).rstrip("/") + "/v1"
 
 
 def _rfc3339(dt) -> str:
@@ -60,10 +72,30 @@ def _visible_collections(session: Session, user, tenant: Tenant):
     return sorted(cols, key=lambda c: c.id)
 
 
-def _dataset_doc(*, base, col, introspect, bbox_provider, rls, session, publisher_name):
+def _resolve_bbox(session, col, *, introspect, bbox_provider, rls):
+    """Calcule l'emprise d'une collection, sans dégradation (utilisé par
+    get_dataset : une collection cassée en détail par id reste hors
+    périmètre de GAP-62, spec §2.2/§6)."""
     info = introspect(session, col.table_name)
     with rls(session, col.tenant_id):
-        bbox = bbox_provider(session, info)
+        return bbox_provider(session, info)
+
+
+def _resolve_bbox_degrading(session, col, *, introspect, bbox_provider, rls):
+    """Même calcul, mais dégrade à bbox=None (au lieu de laisser remonter)
+    pour TableNotFound/UnsupportedTable/DBAPIError — utilisé par get_catalog
+    pour qu'une collection cassée ne fasse pas échouer tout le catalogue
+    (GAP-62)."""
+    try:
+        return _resolve_bbox(
+            session, col, introspect=introspect, bbox_provider=bbox_provider, rls=rls
+        )
+    except (TableNotFound, UnsupportedTable, DBAPIError) as exc:
+        logger.warning("dcat catalog: extent lookup failed for collection %s: %s", col.id, exc)
+        return None
+
+
+def _dataset_doc(*, base, col, bbox, publisher_name):
     return serializers.dataset(
         base=base,
         collection_id=col.id,
@@ -90,28 +122,39 @@ def _dataset_doc(*, base, col, introspect, bbox_provider, rls, session, publishe
 @router.get("/catalog")
 def get_catalog(
     request: Request,
+    limit: int = Query(DEFAULT_LIMIT, ge=1),
+    offset: int = Query(0, ge=0),
     user=Depends(get_current_user_optional),
     session: Session = Depends(get_session),
     introspect=Depends(get_introspector),
     bbox_provider=Depends(get_bbox_provider),
     rls=Depends(get_rls_scope),
 ):
+    limit = min(limit, MAX_LIMIT)
     base = _base(request)
     tenant = _resolve_tenant(session, user)
     cols = _visible_collections(session, user, tenant)
+    total = len(cols)
+    cols_page = cols[offset : offset + limit]
     datasets = [
         _dataset_doc(
             base=base,
             col=col,
-            introspect=introspect,
-            bbox_provider=bbox_provider,
-            rls=rls,
-            session=session,
+            bbox=_resolve_bbox_degrading(
+                session, col, introspect=introspect, bbox_provider=bbox_provider, rls=rls
+            ),
             publisher_name=tenant.name,
         )
-        for col in cols
+        for col in cols_page
     ]
     doc = serializers.catalog(base=base, tenant_name=tenant.name, datasets=datasets)
+    if offset + len(cols_page) < total:
+        doc["links"] = [
+            {
+                "rel": "next",
+                "href": str(request.url.include_query_params(limit=limit, offset=offset + limit)),
+            }
+        ]
     return JSONResponse(content=doc, media_type=MEDIA_TYPE)
 
 
@@ -135,14 +178,7 @@ def get_dataset(
     )  # 404 non-fuyant
     base = _base(request)
     tenant = _resolve_tenant(session, user)
-    doc = _dataset_doc(
-        base=base,
-        col=col,
-        introspect=introspect,
-        bbox_provider=bbox_provider,
-        rls=rls,
-        session=session,
-        publisher_name=tenant.name,
-    )
+    bbox = _resolve_bbox(session, col, introspect=introspect, bbox_provider=bbox_provider, rls=rls)
+    doc = _dataset_doc(base=base, col=col, bbox=bbox, publisher_name=tenant.name)
     doc["@context"] = serializers.CONTEXT
     return JSONResponse(content=doc, media_type=MEDIA_TYPE)

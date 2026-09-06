@@ -7,6 +7,7 @@ import {
   type CrossFilterValue,
 } from "./AnalyticsContext";
 import { useDatasets } from "./DataContext";
+import { t } from "../i18n";
 
 const chipCls =
   "flex items-center gap-1 rounded-full border border-[var(--gs-color-border)] px-2 py-1";
@@ -38,16 +39,24 @@ export function AnalyticsContextIndicator() {
     <div className="flex flex-wrap items-center gap-2 border-b border-[var(--gs-color-border)] bg-[var(--gs-color-surface)] p-2 text-xs text-[var(--gs-color-text)]">
       {ctx.timeRange && (
         <span className={chipCls}>
-          Période : {ctx.timeRange.from} → {ctx.timeRange.to}
-          <button type="button" aria-label="Effacer la période" onClick={() => setTimeRange(null)}>
+          {t("analyticsContext.periodLabel", { from: ctx.timeRange.from, to: ctx.timeRange.to })}
+          <button
+            type="button"
+            aria-label={t("analyticsContext.clearPeriodAria")}
+            onClick={() => setTimeRange(null)}
+          >
             ×
           </button>
         </span>
       )}
       {ctx.extent && (
         <span className={chipCls}>
-          Emprise carte active
-          <button type="button" aria-label="Effacer l'emprise" onClick={() => setExtent(null)}>
+          {t("analyticsContext.extentActive")}
+          <button
+            type="button"
+            aria-label={t("analyticsContext.clearExtentAria")}
+            onClick={() => setExtent(null)}
+          >
             ×
           </button>
         </span>
@@ -69,7 +78,7 @@ export function AnalyticsContextIndicator() {
             )}
             <button
               type="button"
-              aria-label={`Effacer le filtre ${entry.field}`}
+              aria-label={t("analyticsContext.clearCrossFilterAria", { field: entry.field })}
               onClick={() => clearCrossFilter(datasetId)}
             >
               ×
@@ -79,7 +88,7 @@ export function AnalyticsContextIndicator() {
       })}
       {chipCount >= 2 && (
         <button type="button" className="ml-auto underline" onClick={clearAll}>
-          Tout effacer
+          {t("analyticsContext.clearAllButton")}
         </button>
       )}
     </div>

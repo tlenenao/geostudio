@@ -471,3 +471,12 @@ class BuilderConfig(BaseModel):
         if self.kind == "terrain3d" and self.terrain3d is None:
             raise ValueError("terrain3d config requires a terrain3d payload")
         return self
+
+
+def app_config_json_schema() -> dict:
+    """Schéma JSON de BuilderConfig — source unique, consommée par
+    GET /schemas/app-config (schemas_routes.py) et la ressource MCP
+    schema://app-config (mcp/tools/__init__.py). Les deux existaient
+    jusqu'ici en deux implémentations parallèles qui rappelaient chacune
+    model_json_schema() indépendamment (GAP-38, SP-42)."""
+    return BuilderConfig.model_json_schema()

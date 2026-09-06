@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
+import { vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
@@ -26,21 +27,21 @@ function zipFile() {
 test("uploads a small (single-part) tileset and closes on success", async () => {
   let completedParts: unknown;
   server.use(
-    http.post("https://core.test/tileset3d/uploads", () =>
+    http.post("https://core.test/v1/tileset3d/uploads", () =>
       HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
     ),
-    http.post("https://core.test/tileset3d/uploads/job-1/parts/1/presign", () =>
+    http.post("https://core.test/v1/tileset3d/uploads/job-1/parts/1/presign", () =>
       HttpResponse.json({ uploadUrl: "https://minio.test/part-1" }),
     ),
     http.put(
       "https://minio.test/part-1",
       () => new HttpResponse(null, { status: 200, headers: { ETag: '"etag-1"' } }),
     ),
-    http.post("https://core.test/tileset3d/uploads/job-1/complete", async ({ request }) => {
+    http.post("https://core.test/v1/tileset3d/uploads/job-1/complete", async ({ request }) => {
       completedParts = await request.json();
       return new HttpResponse(null, { status: 204 });
     }),
-    http.get("https://core.test/tileset3d/uploads/job-1", () =>
+    http.get("https://core.test/v1/tileset3d/uploads/job-1", () =>
       HttpResponse.json({ status: "done", errorMessage: null, itemId: "item-1" }),
     ),
   );
@@ -63,10 +64,10 @@ test("uploads a small (single-part) tileset and closes on success", async () => 
 
 test("surfaces a job error instead of closing", async () => {
   server.use(
-    http.post("https://core.test/tileset3d/uploads", () =>
+    http.post("https://core.test/v1/tileset3d/uploads", () =>
       HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
     ),
-    http.post("https://core.test/tileset3d/uploads/job-1/parts/1/presign", () =>
+    http.post("https://core.test/v1/tileset3d/uploads/job-1/parts/1/presign", () =>
       HttpResponse.json({ uploadUrl: "https://minio.test/part-1" }),
     ),
     http.put(
@@ -74,10 +75,10 @@ test("surfaces a job error instead of closing", async () => {
       () => new HttpResponse(null, { status: 200, headers: { ETag: '"etag-1"' } }),
     ),
     http.post(
-      "https://core.test/tileset3d/uploads/job-1/complete",
+      "https://core.test/v1/tileset3d/uploads/job-1/complete",
       () => new HttpResponse(null, { status: 204 }),
     ),
-    http.get("https://core.test/tileset3d/uploads/job-1", () =>
+    http.get("https://core.test/v1/tileset3d/uploads/job-1", () =>
       HttpResponse.json({
         status: "error",
         errorMessage: "aucun tileset.json à la racine de l'archive",
@@ -107,10 +108,10 @@ test("gives up on a job that never finishes, and lets the dialog be closed again
   // "finalizing" compte comme busy), un job procrastinate bloqué/perdu
   // rendait la boîte de dialogue définitivement infermable.
   server.use(
-    http.post("https://core.test/tileset3d/uploads", () =>
+    http.post("https://core.test/v1/tileset3d/uploads", () =>
       HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
     ),
-    http.post("https://core.test/tileset3d/uploads/job-1/parts/1/presign", () =>
+    http.post("https://core.test/v1/tileset3d/uploads/job-1/parts/1/presign", () =>
       HttpResponse.json({ uploadUrl: "https://minio.test/part-1" }),
     ),
     http.put(
@@ -118,11 +119,11 @@ test("gives up on a job that never finishes, and lets the dialog be closed again
       () => new HttpResponse(null, { status: 200, headers: { ETag: '"etag-1"' } }),
     ),
     http.post(
-      "https://core.test/tileset3d/uploads/job-1/complete",
+      "https://core.test/v1/tileset3d/uploads/job-1/complete",
       () => new HttpResponse(null, { status: 204 }),
     ),
     // Never terminal: the job stays "finalizing" for every poll.
-    http.get("https://core.test/tileset3d/uploads/job-1", () =>
+    http.get("https://core.test/v1/tileset3d/uploads/job-1", () =>
       HttpResponse.json({ status: "finalizing", errorMessage: null, itemId: null }),
     ),
   );
@@ -157,13 +158,13 @@ test("blocks closing (Annuler, Escape, outside pointerdown) while an upload is i
     releaseCreate = resolve;
   });
   server.use(
-    http.post("https://core.test/tileset3d/uploads", async () => {
+    http.post("https://core.test/v1/tileset3d/uploads", async () => {
       // Held open deliberately: keeps phase at "uploading" so the test can
       // assert the close guard while the request chain is still in flight.
       await createGate;
       return HttpResponse.json({ jobId: "job-1" }, { status: 201 });
     }),
-    http.post("https://core.test/tileset3d/uploads/job-1/parts/1/presign", () =>
+    http.post("https://core.test/v1/tileset3d/uploads/job-1/parts/1/presign", () =>
       HttpResponse.json({ uploadUrl: "https://minio.test/part-1" }),
     ),
     http.put(
@@ -171,10 +172,10 @@ test("blocks closing (Annuler, Escape, outside pointerdown) while an upload is i
       () => new HttpResponse(null, { status: 200, headers: { ETag: '"etag-1"' } }),
     ),
     http.post(
-      "https://core.test/tileset3d/uploads/job-1/complete",
+      "https://core.test/v1/tileset3d/uploads/job-1/complete",
       () => new HttpResponse(null, { status: 204 }),
     ),
-    http.get("https://core.test/tileset3d/uploads/job-1", () =>
+    http.get("https://core.test/v1/tileset3d/uploads/job-1", () =>
       HttpResponse.json({ status: "done", errorMessage: null, itemId: "item-1" }),
     ),
   );
@@ -218,4 +219,47 @@ test("blocks closing (Annuler, Escape, outside pointerdown) while an upload is i
   await waitFor(() =>
     expect(screen.queryByText("Nouveau tileset 3D", { selector: "h2" })).not.toBeInTheDocument(),
   );
+});
+
+test("does not poll again or update state after the drawer is unmounted mid-finalize", async () => {
+  let pollCalls = 0;
+  server.use(
+    http.post("https://core.test/v1/tileset3d/uploads", () =>
+      HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
+    ),
+    http.post("https://core.test/v1/tileset3d/uploads/job-1/parts/1/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/part-1" }),
+    ),
+    http.put(
+      "https://minio.test/part-1",
+      () => new HttpResponse(null, { status: 200, headers: { ETag: '"etag-1"' } }),
+    ),
+    http.post(
+      "https://core.test/v1/tileset3d/uploads/job-1/complete",
+      () => new HttpResponse(null, { status: 204 }),
+    ),
+    http.get("https://core.test/v1/tileset3d/uploads/job-1", () => {
+      pollCalls += 1;
+      return HttpResponse.json({ status: "running", errorMessage: null, itemId: null });
+    }),
+  );
+
+  const { unmount } = render(
+    <Harness>
+      <Tileset3DUploadButton pollTimeoutMs={5 * 60 * 1000} />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByText("Nouveau tileset 3D"));
+  await userEvent.upload(screen.getByLabelText("Archive du tileset (.zip)"), zipFile());
+  await userEvent.type(screen.getByLabelText("Titre"), "Ville");
+  await userEvent.click(screen.getByText("Importer"));
+
+  await waitFor(() => expect(pollCalls).toBeGreaterThanOrEqual(1));
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const callsAtUnmount = pollCalls;
+  unmount();
+  await new Promise((r) => setTimeout(r, 2000));
+  expect(pollCalls).toBe(callsAtUnmount);
+  expect(errorSpy).not.toHaveBeenCalled();
+  errorSpy.mockRestore();
 });

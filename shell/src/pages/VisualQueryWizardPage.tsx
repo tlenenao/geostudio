@@ -24,6 +24,7 @@ import {
   decompilePipelineToWizardState,
 } from "../builder/visualQuery/compilePipeline";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { t } from "../i18n";
 
 // Compare le schéma de sortie recompilé (déduit de l'état courant du
 // formulaire) au schéma réel de la collection de sortie déjà provisionnée,
@@ -143,7 +144,7 @@ export function VisualQueryWizardPage({
             // "succeeded") : ne pas laisser l'écran "Exécution de la
             // requête…" affiché indéfiniment — revenir au formulaire avec un
             // message d'erreur explicite (Important 2).
-            setError(latest.error ?? "L'exécution du pipeline a échoué.");
+            setError(latest.error ?? t("visualQuery.pipelineFailedError"));
             setCreatedPipelinePk(null);
             setCreatedDatasetPk(null);
             return;
@@ -158,7 +159,7 @@ export function VisualQueryWizardPage({
         // exactement le bug que le commentaire ci-dessus dit avoir corrigé
         // pour le cas "failed".
         if (cancelled) return;
-        setError("L'exécution du pipeline a échoué.");
+        setError(t("visualQuery.pipelineFailedError"));
         setCreatedPipelinePk(null);
         setCreatedDatasetPk(null);
       }
@@ -178,7 +179,7 @@ export function VisualQueryWizardPage({
   if (pipelinePk !== null && existingPipelineQuery.isError) {
     return (
       <p role="alert" className="text-sm text-danger">
-        Requête introuvable.
+        {t("visualQuery.notFound")}
       </p>
     );
   }
@@ -186,10 +187,9 @@ export function VisualQueryWizardPage({
   if (pipelinePk !== null && unrecognizedShape) {
     return (
       <p role="alert" className="text-sm text-danger">
-        Cette requête a été modifiée dans l'éditeur avancé et ne peut plus être ouverte dans
-        l'assistant.{" "}
+        {t("visualQuery.unrecognizedShapeText")}{" "}
         <a className="underline" href={`/pipelines/${pipelinePk}/edit`}>
-          Ouvrir dans l'éditeur avancé
+          {t("visualQuery.openInAdvancedEditor")}
         </a>
         .
       </p>
@@ -262,7 +262,7 @@ export function VisualQueryWizardPage({
         // donc inferredOutput (calculé à partir de baseSchema) l'est aussi.
         const inferred = inferredOutput!;
         const { id: newCollectionId } = await client.createEmptyCollection({
-          title: `${title} (données)`,
+          title: t("visualQuery.datasetTitleTemplate", { title }),
           columns: inferred.columns.map((c) => ({ name: c.name, sqlType: c.sqlType })),
           geometryType: inferred.geometryType,
           srid: inferred.srid,
@@ -283,7 +283,7 @@ export function VisualQueryWizardPage({
           datasetPk,
         );
         const pipelineItem = await client.createPipelineItem({
-          title: `Requête — ${title}`,
+          title: t("visualQuery.pipelineTitleTemplate", { title }),
           owner: username ?? "",
           pipeline,
         });
@@ -300,7 +300,7 @@ export function VisualQueryWizardPage({
       setCreatedPipelinePk(pipelinePkToRun);
       setCreatedDatasetPk(datasetPk);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Échec de l'enregistrement.");
+      setError(e instanceof Error ? e.message : t("actions.saveFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -314,7 +314,7 @@ export function VisualQueryWizardPage({
   if (createdPipelinePk && createdDatasetPk) {
     return (
       <div className="flex flex-col gap-2 p-4">
-        <p>Exécution de la requête…</p>
+        <p>{t("visualQuery.runningQuery")}</p>
         <PipelineRunPanel pipelineId={createdPipelinePk} />
       </div>
     );
@@ -326,17 +326,17 @@ export function VisualQueryWizardPage({
         defaultTabId="query"
         browse={{
           id: "back",
-          label: "Catalogue",
+          label: t("domain.catalog"),
           content: (
             <Panel className="m-3 flex flex-col gap-3 text-sm">
               <Link to="/" className="text-accent hover:underline">
-                ← Retour au catalogue
+                {t("nav.backToCatalog")}
               </Link>
               {existingDatasetItemQuery.data && (
                 <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs text-ink-2">
-                  <dt>Type</dt>
+                  <dt>{t("catalog.typeLabel")}</dt>
                   <dd>{RESOURCE_TYPE_LABELS[existingDatasetItemQuery.data.resourceType]}</dd>
-                  <dt>Modifié</dt>
+                  <dt>{t("datasetEdit.modifiedLabel")}</dt>
                   <dd>{existingDatasetItemQuery.data.updatedAt || "—"}</dd>
                 </dl>
               )}
@@ -345,16 +345,16 @@ export function VisualQueryWizardPage({
         }}
         work={{
           id: "query",
-          label: "Requête",
+          label: t("visualQuery.queryLabel"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
               <h2 className="text-lg font-semibold text-ink">
-                {pipelinePk !== null ? "Modifier la requête" : "Nouvelle requête visuelle"}
+                {pipelinePk !== null ? t("visualQuery.editHeading") : t("visualQuery.newHeading")}
               </h2>
               <label className="flex flex-col gap-1 text-sm">
-                Titre
+                {t("visualQuery.titleLabel")}
                 <Input
-                  aria-label="Titre"
+                  aria-label={t("visualQuery.titleLabel")}
                   value={title}
                   onChange={(e) => {
                     setTitle(e.target.value);
@@ -363,9 +363,9 @@ export function VisualQueryWizardPage({
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm">
-                Collection de base
+                {t("visualQuery.baseCollectionLabel")}
                 <select
-                  aria-label="Collection de base"
+                  aria-label={t("visualQuery.baseCollectionLabel")}
                   className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                   value={baseCollectionId}
                   onChange={(e) => {
@@ -382,7 +382,7 @@ export function VisualQueryWizardPage({
                     setSummary(null);
                   }}
                 >
-                  <option value="">Choisir…</option>
+                  <option value="">{t("visualQuery.chooseOption")}</option>
                   {(collectionsQuery.data ?? []).map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.title}
@@ -393,11 +393,15 @@ export function VisualQueryWizardPage({
               {baseSchema && (
                 <>
                   <div>
-                    <p className="mb-1 text-xs font-medium text-ink-2">Filtrer</p>
+                    <p className="mb-1 text-xs font-medium text-ink-2">
+                      {t("visualQuery.filterLabel")}
+                    </p>
                     <QueryFilterBuilder schema={baseSchema} rows={filters} onChange={setFilters} />
                   </div>
                   <div>
-                    <p className="mb-1 text-xs font-medium text-ink-2">Joindre</p>
+                    <p className="mb-1 text-xs font-medium text-ink-2">
+                      {t("visualQuery.joinLabel")}
+                    </p>
                     {join ? (
                       <div className="flex flex-col gap-2">
                         <QueryJoinPicker
@@ -413,7 +417,7 @@ export function VisualQueryWizardPage({
                           variant="outline"
                           onClick={() => setJoin(null)}
                         >
-                          Supprimer la jointure
+                          {t("visualQuery.removeJoin")}
                         </Button>
                       </div>
                     ) : (
@@ -423,12 +427,14 @@ export function VisualQueryWizardPage({
                         variant="outline"
                         onClick={() => setJoin({ collectionId: "", on: "", how: "inner" })}
                       >
-                        Ajouter une jointure
+                        {t("visualQuery.addJoin")}
                       </Button>
                     )}
                   </div>
                   <div>
-                    <p className="mb-1 text-xs font-medium text-ink-2">Résumer</p>
+                    <p className="mb-1 text-xs font-medium text-ink-2">
+                      {t("visualQuery.summarizeLabel")}
+                    </p>
                     {summary ? (
                       <div className="flex flex-col gap-2">
                         <QuerySummaryBuilder
@@ -442,7 +448,7 @@ export function VisualQueryWizardPage({
                           variant="outline"
                           onClick={() => setSummary(null)}
                         >
-                          Supprimer le résumé
+                          {t("visualQuery.removeSummary")}
                         </Button>
                       </div>
                     ) : (
@@ -452,7 +458,7 @@ export function VisualQueryWizardPage({
                         variant="outline"
                         onClick={() => setSummary({ groupBy: [], metrics: [] })}
                       >
-                        Ajouter un résumé
+                        {t("visualQuery.addSummary")}
                       </Button>
                     )}
                   </div>
@@ -463,21 +469,21 @@ export function VisualQueryWizardPage({
         }}
         inspect={{
           id: "settings",
-          label: "Réglages",
+          label: t("datasetEdit.settingsLabel"),
           content: (
             <div className="flex flex-col gap-4 p-3">
               {baseSchema && (
                 <div>
-                  <p className="mb-1 text-xs font-medium text-ink-2">Planifier</p>
+                  <p className="mb-1 text-xs font-medium text-ink-2">
+                    {t("visualQuery.scheduleLabel")}
+                  </p>
                   <PipelineScheduleEditor value={refreshPolicy} onChange={setRefreshPolicy} />
                 </div>
               )}
               <div className="flex flex-col gap-2 border-t border-rule pt-3">
                 {pipelinePk !== null && outputSchemaMismatch && (
                   <p role="alert" className="text-sm text-danger">
-                    La structure de sortie a changé (colonnes ou géométrie) : cette modification ne
-                    peut pas être enregistrée sur la requête existante. Créez une nouvelle requête à
-                    la place.
+                    {t("visualQuery.outputMismatchText")}
                   </p>
                 )}
                 {error && (
@@ -500,7 +506,9 @@ export function VisualQueryWizardPage({
                   }
                   onClick={() => void handleCreate()}
                 >
-                  {pipelinePk !== null ? "Mettre à jour" : "Créer"}
+                  {pipelinePk !== null
+                    ? t("visualQuery.updateButton")
+                    : t("visualQuery.createButton")}
                 </Button>
               </div>
             </div>

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCollection, mockCore } from "./mocks";
 
 test("déclarer un incident : créer sans code, créer/voir/modifier/supprimer une entité", async ({
   page,
@@ -59,18 +59,15 @@ test("un viewer ne voit pas les boutons d'écriture ; une écriture forcée est 
   // "**/collections/incidents" (permissions.write:true) déjà enregistré par mockCore.
   await page.route("**/collections/incidents", async (route) => {
     await route.fulfill({
-      json: {
+      json: mockCollection({
         id: "incidents",
         title: "Incidents",
-        description: "",
         tableName: "incidents",
         isPublic: true,
-        editable: true,
         geometryType: null,
         srid: null,
-        pkColumn: "id",
         permissions: { read: true, write: false, delete: false, share: false },
-      },
+      }),
     });
   });
   await page.route("**/collections/incidents/items*", async (route) => {
@@ -96,7 +93,7 @@ test("un viewer ne voit pas les boutons d'écriture ; une écriture forcée est 
 
   // Écriture forcée (contournement de l'UI, ex. devtools) : le serveur refuse.
   const status = await page.evaluate(async () => {
-    const res = await fetch("https://core.test/collections/incidents/items", {
+    const res = await fetch("https://core.test/v1/collections/incidents/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

@@ -4,6 +4,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db import init_db, make_engine, make_session_factory
 from app.secrets import repository as repo
+from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -161,3 +162,42 @@ def test_get_secret_payload_round_trip_for_every_kind(
 def test_get_secret_payload_missing_name_returns_none(session, tenant_and_user):
     tenant, _user = tenant_and_user
     assert repo.get_secret_payload(session, tenant_id=tenant.id, name="nope") is None
+
+
+def test_list_all_secrets_spans_every_tenant(session, tenant_and_user):
+    # Seule fonction cross-tenant de ce module (design §3.1) — réservée au
+    # script de rotation de la clé maître, jamais à une route/outil MCP.
+    tenant_a, user_a = tenant_and_user
+    tenant_b = Tenant(id="tenant-b", slug="tenant-b", name="Tenant B")
+    session.add(tenant_b)
+    session.flush()
+    user_b = get_or_create_user(
+        session,
+        tenant_id=tenant_b.id,
+        oidc_sub="b",
+        username="bob",
+        email=None,
+        first_name="",
+        last_name="",
+    )
+    repo.create_secret(
+        session,
+        tenant_id=tenant_a.id,
+        created_by=user_a.id,
+        name="a-secret",
+        kind="bearer_token",
+        ciphertext=b"ca",
+        nonce=b"na",
+    )
+    repo.create_secret(
+        session,
+        tenant_id=tenant_b.id,
+        created_by=user_b.id,
+        name="b-secret",
+        kind="bearer_token",
+        ciphertext=b"cb",
+        nonce=b"nb",
+    )
+    all_secrets = repo.list_all_secrets(session)
+    assert {s.tenant_id for s in all_secrets} == {tenant_a.id, tenant_b.id}
+    assert len(all_secrets) == 2

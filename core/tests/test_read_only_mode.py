@@ -43,7 +43,7 @@ def env():
 
 
 def test_instance_defaults_to_read_write(env):
-    response = env.get("/instance")
+    response = env.get("/v1/instance")
     assert response.status_code == 200
     assert response.json() == {
         "readOnly": False,
@@ -54,12 +54,13 @@ def test_instance_defaults_to_read_write(env):
         "terrain3dEnabled": False,
         "copilotEnabled": False,
         "adminToolsEnabled": False,
+        "quotasEnabled": False,
     }
 
 
 def test_instance_reports_read_only_without_needing_auth(env, monkeypatch):
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
-    response = env.get("/instance")
+    response = env.get("/v1/instance")
     assert response.status_code == 200
     assert response.json() == {
         "readOnly": True,
@@ -70,17 +71,18 @@ def test_instance_reports_read_only_without_needing_auth(env, monkeypatch):
         "terrain3dEnabled": False,
         "copilotEnabled": False,
         "adminToolsEnabled": False,
+        "quotasEnabled": False,
     }
 
 
 @pytest.mark.parametrize(
     "method,path",
     [
-        ("POST", "/configs"),
-        ("PATCH", "/collections/does-not-exist"),
-        ("DELETE", "/configs/does-not-exist"),
-        ("PUT", "/collections/does-not-exist/items/1"),
-        ("POST", "/extensions"),
+        ("POST", "/v1/configs"),
+        ("PATCH", "/v1/collections/does-not-exist"),
+        ("DELETE", "/v1/configs/does-not-exist"),
+        ("PUT", "/v1/collections/does-not-exist/items/1"),
+        ("POST", "/v1/extensions"),
     ],
 )
 def test_read_only_mode_blocks_every_mutation_even_for_admin(env, monkeypatch, method, path):
@@ -101,13 +103,13 @@ def test_read_only_mode_blocks_every_mutation_even_for_admin(env, monkeypatch, m
 
 def test_read_only_mode_does_not_affect_reads(env, monkeypatch):
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
-    assert env.get("/items").status_code == 200
-    assert env.get("/me").status_code == 200
+    assert env.get("/v1/items").status_code == 200
+    assert env.get("/v1/me").status_code == 200
 
 
 def test_read_only_mode_off_by_default_leaves_mutations_working(env):
     response = env.post(
-        "/configs",
+        "/v1/configs",
         json={"title": "T", "config": {"kind": "app", "layout": {"type": "grid", "items": []}}},
     )
     assert response.status_code == 201
@@ -119,7 +121,7 @@ def test_read_only_mode_does_not_block_the_aggregate_endpoint(env, monkeypatch):
     le exempter du garde read-only évite de casser tout widget Graphique/
     Indicateur dans une démo publique."""
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
-    response = env.post("/collections/does-not-exist/aggregate", json={"groupBy": "x"})
+    response = env.post("/v1/collections/does-not-exist/aggregate", json={"groupBy": "x"})
     assert (
         response.status_code == 404
     )  # jamais 403 : passé le garde, arrêté par get_readable_collection
@@ -146,7 +148,7 @@ def test_analytics_sql_is_exempt_from_read_only(env, monkeypatch):
         fake_duckdb_factory
     )
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
-    response = env.post("/analytics/sql", json={"sql": "SELECT 1"})
+    response = env.post("/v1/analytics/sql", json={"sql": "SELECT 1"})
     assert response.status_code == 200
     assert response.json() != {"detail": READ_ONLY_MESSAGE}
 
@@ -157,10 +159,10 @@ def test_read_only_mode_does_not_block_export_endpoints(env, monkeypatch):
     cette exemption, une démo publique en lecture seule casserait le bouton
     Exporter de tout widget analytique."""
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
-    resp = env.post("/collections/does-not-exist/export?format=csv", json={"groupBy": "x"})
+    resp = env.post("/v1/collections/does-not-exist/export?format=csv", json={"groupBy": "x"})
     assert (
         resp.status_code == 404
     )  # jamais 403 : passé le garde, arrêté par get_readable_collection
 
-    resp = env.post("/datasets/does-not-exist/arcgis/export?format=csv", json={"groupBy": "x"})
+    resp = env.post("/v1/datasets/does-not-exist/arcgis/export?format=csv", json={"groupBy": "x"})
     assert resp.status_code == 404

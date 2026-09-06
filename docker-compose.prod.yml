@@ -57,9 +57,9 @@ services:
       - traefik.http.routers.martin.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/admin/martin`)
       - traefik.http.routers.martin.entrypoints=web
       - traefik.http.routers.martin.priority=15
-      - traefik.http.routers.martin.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-martin@docker
+      - traefik.http.routers.martin.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-martin@docker,csp-dynamic@file
       - traefik.http.middlewares.strip-admin-martin.stripprefix.prefixes=/admin/martin
-      - traefik.http.middlewares.admin-auth.forwardauth.address=http://core:8200/admin-tools/verify
+      - traefik.http.middlewares.admin-auth.forwardauth.address=http://core:8200/v1/admin-tools/verify
       - traefik.http.services.martin.loadbalancer.server.port=3000
 
   titiler:
@@ -74,7 +74,7 @@ services:
       - traefik.http.routers.titiler.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/admin/titiler`)
       - traefik.http.routers.titiler.entrypoints=web
       - traefik.http.routers.titiler.priority=15
-      - traefik.http.routers.titiler.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-titiler@docker
+      - traefik.http.routers.titiler.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-titiler@docker,csp-dynamic@file
       - traefik.http.middlewares.strip-admin-titiler.stripprefix.prefixes=/admin/titiler
       - traefik.http.services.titiler.loadbalancer.server.port=8000
 
@@ -102,7 +102,7 @@ services:
       - traefik.http.routers.keycloak.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/auth`)
       - traefik.http.routers.keycloak.entrypoints=web
       - traefik.http.routers.keycloak.priority=20
-      - traefik.http.routers.keycloak.middlewares=security-headers@docker,rate-limit@docker
+      - traefik.http.routers.keycloak.middlewares=security-headers@docker,rate-limit@docker,csp-dynamic@file
       - traefik.http.services.keycloak.loadbalancer.server.port=8080
     # KC_HTTP_RELATIVE_PATH=/auth déplace tout le service HTTP de Keycloak
     # (y compris /health/ready) sous /auth ; le healthcheck de base
@@ -135,7 +135,7 @@ services:
       - traefik.http.routers.grafana.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/admin/grafana`)
       - traefik.http.routers.grafana.entrypoints=web
       - traefik.http.routers.grafana.priority=15
-      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker
+      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,csp-dynamic@file
       - traefik.http.services.grafana.loadbalancer.server.port=3000
 
   core:
@@ -152,40 +152,57 @@ services:
       # lui-même (TLS + hôte public). Le rappel /mcp du copilote (SP-20)
       # doit rester local au process.
       CORE_INTERNAL_BASE_URL: http://localhost:8200
+      # SP-55 GAP-07 : domaine public du SHELL (sitemap.xml/robots.txt/
+      # aperçu social) — même hôte public que CORE_BASE_URL ci-dessus (un
+      # seul domaine public en production, cf. Task 3), mais SANS le
+      # suffixe /api : le shell sert `/`, pas le cœur.
+      PUBLIC_BASE_URL: https://${GEOSTUDIO_PUBLIC_HOST}
     labels: !override
       - traefik.enable=true
       - traefik.http.routers.core.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/api`)
       - traefik.http.routers.core.entrypoints=web
       - traefik.http.routers.core.priority=10
-      - traefik.http.routers.core.middlewares=security-headers@docker,rate-limit@docker,compress@docker,strip-api@docker
+      - traefik.http.routers.core.middlewares=security-headers@docker,rate-limit@docker,compress@docker,strip-api@docker,csp-dynamic@file
       - traefik.http.services.core.loadbalancer.server.port=8200
       - traefik.http.middlewares.strip-api.stripprefix.prefixes=/api
       - traefik.http.middlewares.security-headers.headers.stsSeconds=31536000
       - traefik.http.middlewares.security-headers.headers.contentTypeNosniff=true
       - traefik.http.middlewares.security-headers.headers.frameDeny=true
       - traefik.http.middlewares.security-headers.headers.referrerPolicy=strict-origin-when-cross-origin
-      # CSP en Report-Only pendant la vérification empirique (Step 3-4
-      # ci-dessous) contre MapLibre/deck.gl/Keycloak/une extension tierce —
-      # bascule en enforcing (Step 5) une fois confirmée (SP-26/3.3). Les
-      # valeurs ${GEOSTUDIO_PUBLIC_HOST}/keycloak reprennent les mêmes
-      # variables que le reste de ce fichier.
-      #
-      # 4 blocages concrets à vérifier/autoriser AVANT bascule en enforcing
-      # (revue finale SP-26, I5), invisibles en Report-Only hors rapport de
-      # violation : (1) `img-src` bloque les tuiles raster WMS/WMTS
-      # moissonnées et le terrain raster-dem externes (hôte arbitraire par
-      # conception) ; (2) `connect-src` bloque les URL de tileset 3D
-      # externes (couche `tiles3d`, même raison) ; (3) `script-src 'self'`
-      # bloque les widgets d'extension tiers (SP-8c, JS depuis leur propre
-      # origine) ; (4) `shell/nginx.conf`'s `connect-src 'self'` est FAUX
-      # pour le compose de BASE (hors cet overlay) où `shell`/`core` sont
-      # deux origines distinctes — déjà correct ICI (Traefik prime, `core`
-      # same-origin `/api`), à corriger là-bas avant enforcing.
-      - "traefik.http.middlewares.security-headers.headers.customResponseHeaders.Content-Security-Policy-Report-Only=default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://${GEOSTUDIO_PUBLIC_HOST}; img-src 'self' data: blob: https://${GEOSTUDIO_PUBLIC_HOST}; worker-src 'self' blob:; frame-src https://${GEOSTUDIO_PUBLIC_HOST}; object-src 'none'"
+      # SP-48/GAP-72 : la CSP n'est plus une valeur statique posée ici — elle
+      # est désormais calculée dynamiquement (HarvestSource/MapConfig/
+      # Extension déjà en base) et poussée par le provider fichier Traefik
+      # (middleware csp-dynamic@file, cf. service `traefik` ci-dessous),
+      # référencée par `middlewares=` ci-dessus. `CORE_CSP_MODE` (défaut
+      # `enforce` dans cet overlay) choisit entre Content-Security-Policy
+      # et Content-Security-Policy-Report-Only sans redéployer d'image.
+      # Blocage 3 (script-src pour les widgets d'extension tiers) reste
+      # ouvert — décision produit non tranchée, spec SP-48 §4 : script-src
+      # reste 'self' quel que soit CORE_CSP_MODE.
       - traefik.http.middlewares.security-headers.headers.customResponseHeaders.Permissions-Policy=camera=(), microphone=(), payment=(), usb=()
       - traefik.http.middlewares.rate-limit.ratelimit.average=100
       - traefik.http.middlewares.rate-limit.ratelimit.burst=200
       - traefik.http.middlewares.compress.compress=true
+      # SP-55 GAP-07 : mêmes routeurs que le fichier de base
+      # (docker-compose.yml), adaptés aux conventions de cet overlay
+      # (GEOSTUDIO_PUBLIC_HOST, entrypoint web, pas de tls.certresolver —
+      # `labels: !override` remplace intégralement la liste du fichier de
+      # base, donc ces deux routeurs doivent être redéclarés ici pour ne
+      # pas disparaître silencieusement en production, piège CLAUDE.md n°2).
+      - traefik.http.routers.seo-static.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && (Path(`/sitemap.xml`) || Path(`/robots.txt`))
+      - traefik.http.routers.seo-static.entrypoints=web
+      - traefik.http.routers.seo-static.priority=20
+      - traefik.http.routers.seo-static.service=core
+      - traefik.http.routers.seo-static.middlewares=security-headers@docker,rate-limit@docker,compress@docker,seo-static-rewrite@docker,csp-dynamic@file
+      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.regex=^/(sitemap\.xml|robots\.txt)$$
+      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.replacement=/v1/public/$$1
+      - traefik.http.routers.seo-bots.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/sites/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
+      - traefik.http.routers.seo-bots.entrypoints=web
+      - traefik.http.routers.seo-bots.priority=25
+      - traefik.http.routers.seo-bots.service=core
+      - traefik.http.routers.seo-bots.middlewares=security-headers@docker,rate-limit@docker,compress@docker,seo-bots-rewrite@docker,csp-dynamic@file
+      - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.regex=^/sites/([^/]+)$$
+      - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.replacement=/v1/public/sites/$$1/social-preview
 
   # worker/cdc-worker sont la MÊME image que core (docker-compose.yml:
   # `build: ./core` pour les trois, processus séparés par `command:`) —
@@ -194,6 +211,13 @@ services:
   worker:
     image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
     build: !reset null
+    environment:
+      # SP-48/GAP-72 : "enforce" par défaut en production (contrairement au
+      # fichier de base, "report-only") — rollback opérateur possible sans
+      # redéployer d'image en réglant CORE_CSP_MODE=report-only dans
+      # .env.prod si l'allowlist calculée s'avère avoir un faux positif
+      # imprévu.
+      CORE_CSP_MODE: ${CORE_CSP_MODE:-enforce}
 
   cdc-worker:
     image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
@@ -229,17 +253,30 @@ services:
       - traefik.http.routers.shell.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`)
       - traefik.http.routers.shell.entrypoints=web
       - traefik.http.routers.shell.priority=1
-      - traefik.http.routers.shell.middlewares=security-headers@docker,rate-limit@docker,compress@docker
+      - traefik.http.routers.shell.middlewares=security-headers@docker,rate-limit@docker,compress@docker,csp-dynamic@file
       - traefik.http.services.shell.loadbalancer.server.port=8300
 
   traefik:
+    # command: est intégralement remplacé par la fusion Compose (jamais
+    # concaténé) — recopier l'intégralité de la commande de base plutôt
+    # que de n'ajouter que les 2 nouvelles entrées SP-48/GAP-72, sinon
+    # --providers.docker=true/--entrypoints.web.address=:80 disparaîtraient
+    # silencieusement (piège CLAUDE.md n°2, vérifié contre
+    # `docker compose config` réel).
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
+      - --providers.file.directory=/csp-dynamic
+      - --providers.file.watch=true
       - --entrypoints.web.address=:80
     ports: !reset []
+    # volumes: !override remplace intégralement la liste de base (pas de
+    # fusion) — csp-dynamic-conf doit donc être redéclaré ici explicitement,
+    # sinon traefik (prod) perdrait silencieusement l'accès au fragment de
+    # CSP calculée que worker écrit (même piège que command: ci-dessus).
     volumes: !override
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - csp-dynamic-conf:/csp-dynamic
 
   tunnel:
     image: tailscale/tailscale:v1.102.3

@@ -2,6 +2,7 @@
 import type { DataSource } from "../../api/types";
 import { DataSourceSelect } from "../DataSourceSelect";
 import type { WcWidgetManifest } from "./manifest";
+import { t } from "../../i18n";
 
 // Filtre d'autorat, pas une frontière de sécurité : n'affecte que les sources
 // proposées dans ce panneau. Le module WC arbitraire chargé par l'extension
@@ -12,6 +13,23 @@ function permittedDataSources(dataSources: DataSource[], manifest: WcWidgetManif
   if (!perm || perm.collections === "all") return dataSources;
   const allowed = new Set(perm.collections);
   return dataSources.filter((ds) => allowed.has(ds.layer));
+}
+
+// Détecte un binding déjà écrit qui pointe vers une source devenue hors
+// périmètre (permissions resserrées après coup, config écrite par MCP en
+// contournant permittedDataSources() ci-dessus, widget copié depuis un autre
+// AppConfig) : le <select> se retrouve avec une value sans <option>
+// correspondante, silencieusement. GAP-49.
+function boundOutsidePermissions(
+  value: string,
+  dataSources: DataSource[],
+  manifest: WcWidgetManifest,
+): boolean {
+  const perm = manifest.permissions;
+  if (!perm || perm.collections === "all" || !value) return false;
+  const source = dataSources.find((ds) => ds.id === value);
+  if (!source) return false;
+  return !new Set(perm.collections).has(source.layer);
 }
 
 export function makeGeneratedPropsPanel(manifest: WcWidgetManifest) {
@@ -28,12 +46,18 @@ export function makeGeneratedPropsPanel(manifest: WcWidgetManifest) {
       <div className="flex flex-col gap-2 text-sm">
         {manifest.props.map((p) =>
           p.type === "dataSource" ? (
-            <DataSourceSelect
-              key={p.name}
-              value={String(props[p.name] ?? "")}
-              dataSources={permittedDataSources(dataSources, manifest)}
-              onChange={(id) => onChange({ ...props, [p.name]: id })}
-            />
+            <div key={p.name} className="flex flex-col gap-1">
+              <DataSourceSelect
+                value={String(props[p.name] ?? "")}
+                dataSources={permittedDataSources(dataSources, manifest)}
+                onChange={(id) => onChange({ ...props, [p.name]: id })}
+              />
+              {boundOutsidePermissions(String(props[p.name] ?? ""), dataSources, manifest) && (
+                <p role="alert" className="text-xs text-danger">
+                  {t("generatedPropsPanel.outOfPermissions")}
+                </p>
+              )}
+            </div>
           ) : (
             <label key={p.name} className="flex flex-col gap-1">
               {p.label}

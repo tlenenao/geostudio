@@ -75,7 +75,9 @@ test("assemble TopBar, DomainBar et StatusBar autour du contenu", async () => {
 });
 
 test("shows the read-only demo banner when the instance is in read-only mode", async () => {
-  server.use(http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })));
+  server.use(
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
+  );
   renderLayout();
   expect(
     await screen.findByText(

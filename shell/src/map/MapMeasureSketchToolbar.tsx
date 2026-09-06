@@ -10,6 +10,7 @@ import {
   type LngLat,
   type SketchShape,
 } from "./measureSketch";
+import { t } from "../i18n";
 
 export type ToolbarMode = "idle" | "measure-distance" | "measure-area" | "sketch";
 
@@ -36,11 +37,11 @@ type SketchTool = "freehand" | "rect" | "circle" | "polygon" | "text" | null;
 // QUE les tracés libres, au singulier codé en dur — rectangles, cercles et
 // polygones n'avaient aucun retour visuel.
 const SHAPE_LABELS: Record<SketchShape["kind"], [string, string]> = {
-  freehand: ["tracé", "tracés"],
-  rect: ["rectangle", "rectangles"],
-  circle: ["cercle", "cercles"],
-  polygon: ["polygone", "polygones"],
-  text: ["texte", "textes"],
+  freehand: [t("mapMeasure.shapeFreehandSingular"), t("mapMeasure.shapeFreehandPlural")],
+  rect: [t("mapMeasure.shapeRectSingular"), t("mapMeasure.shapeRectPlural")],
+  circle: [t("mapMeasure.shapeCircleSingular"), t("mapMeasure.shapeCirclePlural")],
+  polygon: [t("mapMeasure.shapePolygonSingular"), t("mapMeasure.shapePolygonPlural")],
+  text: [t("mapMeasure.shapeTextSingular"), t("mapMeasure.shapeTextPlural")],
 };
 const SHAPE_ORDER: SketchShape["kind"][] = ["freehand", "rect", "circle", "polygon", "text"];
 
@@ -186,9 +187,7 @@ export function MapMeasureSketchToolbar({
         },
       } as never);
     } else {
-      console.warn(
-        'MapMeasureSketchToolbar: texte de croquis non rendu sur la carte — le style du fond de carte ne déclare pas de "glyphs" (text-field l\'exige). Les formes et les mesures restent affichées.',
-      );
+      console.warn(t("mapMeasure.textLayerUnsupportedWarning"));
     }
     return () => {
       // Les couches d'abord : MapLibre refuse de retirer une source encore
@@ -292,7 +291,7 @@ export function MapMeasureSketchToolbar({
       if (current !== "sketch") return;
       const tool = sketchToolRef.current;
       if (tool === "text") {
-        const text = window.prompt("Texte du marqueur :");
+        const text = window.prompt(t("mapMeasure.textPromptMessage"));
         if (text)
           setShapes((s) => [...s, { kind: "text", at: lngLat, text, color: colorRef.current }]);
         return;
@@ -424,7 +423,7 @@ export function MapMeasureSketchToolbar({
           aria-pressed={mode === "measure-distance"}
           onClick={() => startMode("measure-distance")}
         >
-          Mesurer
+          {t("mapMeasure.measureButton")}
         </button>
         <button
           type="button"
@@ -432,10 +431,10 @@ export function MapMeasureSketchToolbar({
           aria-pressed={mode === "measure-area"}
           onClick={() => startMode("measure-area")}
         >
-          Surface
+          {t("mapMeasure.areaButton")}
         </button>
         <button type="button" className={buttonCls} onClick={clearAll}>
-          Effacer tout
+          {t("mapMeasure.clearAllButton")}
         </button>
       </div>
       {distance !== null && <p>{formatDistance(distance)}</p>}
@@ -450,17 +449,17 @@ export function MapMeasureSketchToolbar({
             setPoints([]);
           }}
         >
-          Croquis
+          {t("mapMeasure.sketchButton")}
         </button>
         {mode === "sketch" && (
           <>
             {(
               [
-                ["freehand", "Tracé libre"],
-                ["rect", "Rectangle"],
-                ["circle", "Cercle"],
-                ["polygon", "Polygone"],
-                ["text", "Texte"],
+                ["freehand", t("mapMeasure.toolFreehand")],
+                ["rect", t("mapMeasure.toolRect")],
+                ["circle", t("mapMeasure.toolCircle")],
+                ["polygon", t("mapMeasure.toolPolygon")],
+                ["text", t("mapMeasure.toolText")],
               ] as [Exclude<SketchTool, null>, string][]
             ).map(([tool, label]) => (
               <button
@@ -479,7 +478,7 @@ export function MapMeasureSketchToolbar({
               </button>
             ))}
             <input
-              aria-label="Couleur du croquis"
+              aria-label={t("mapMeasure.sketchColorAria")}
               type="color"
               value={color}
               onChange={(e) => setColor(e.target.value)}
@@ -487,7 +486,7 @@ export function MapMeasureSketchToolbar({
           </>
         )}
       </div>
-      {pendingCorner && <p className="text-ink-3">Cliquez le second point…</p>}
+      {pendingCorner && <p className="text-ink-3">{t("mapMeasure.secondPointHint")}</p>}
       {sketchTool === "polygon" && polygonPoints.length >= 3 && (
         <button
           type="button"
@@ -500,7 +499,7 @@ export function MapMeasureSketchToolbar({
             setPolygonPoints([]);
           }}
         >
-          Terminer le polygone
+          {t("mapMeasure.finishPolygonButton")}
         </button>
       )}
       {shapes.length > 0 && (

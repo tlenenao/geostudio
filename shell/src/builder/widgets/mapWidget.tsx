@@ -13,11 +13,15 @@ import {
   symbologyToPaintInputs,
 } from "./mapSymbology";
 import type { LayerSymbology, LegendSpec } from "./mapSymbology";
-import type { MapConfig, PopupConfig } from "../../api/types";
+import type { MapConfig, MapTerrainConfig, PopupConfig } from "../../api/types";
 import type { MapViewHandle } from "../../map/MapView";
 import { ExplorerMenu } from "./ExplorerMenu";
 import { PopupEditor } from "../../map/PopupEditor";
 import { MapSymbologyEditor } from "../../map/MapSymbologyEditor";
+import { BasemapSelect } from "../../map/BasemapSelect";
+import { TerrainPanel } from "../../map/TerrainPanel";
+import { CameraControls } from "../../map/CameraControls";
+import { t } from "../../i18n";
 
 const MapView = lazy(() => import("../../map/MapView").then((m) => ({ default: m.MapView })));
 const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
@@ -94,7 +98,7 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
         </div>
       )}
       {legend.stroke?.kind === "categorical" && (
-        <ul aria-label="Contour">
+        <ul aria-label={t("widgetMap.strokeLegendAria")}>
           {legend.stroke.entries.map((e) => (
             <li key={e.value} className="flex items-center gap-1">
               <span
@@ -113,7 +117,7 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
           savait décrire que le cas catégoriel — miroir exact des blocs
           legend.color juste au-dessus. */}
       {legend.stroke?.kind === "classed" && (
-        <ul aria-label="Contour">
+        <ul aria-label={t("widgetMap.strokeLegendAria")}>
           {legend.stroke.classes.map((c, i) => (
             <li key={i} className="flex items-center gap-1">
               <span
@@ -126,7 +130,7 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
         </ul>
       )}
       {legend.stroke?.kind === "numeric" && (
-        <div aria-label="Contour">
+        <div aria-label={t("widgetMap.strokeLegendAria")}>
           <div
             className="h-2 w-24 rounded border-2"
             style={{
@@ -139,7 +143,7 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
         </div>
       )}
       {legend.icon && (
-        <ul aria-label="Icônes">
+        <ul aria-label={t("widgetMap.iconLegendAria")}>
           {legend.icon.entries.map((e) => (
             <li key={e.value} className="flex items-center gap-1">
               <span aria-hidden="true" className="text-base">
@@ -157,11 +161,16 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
 export function registerMapWidget(): void {
   registerWidget({
     type: "map",
-    label: "Carte",
+    label: t("widgetMap.paletteLabel"),
     defaultProps: { dataSourceId: "" },
     defaultSize: { w: 6, h: 6 },
     configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
+      {
+        name: "dataSourceId",
+        type: "dataSource",
+        label: t("widgetMap.dataSourceConfig"),
+        default: "",
+      },
     ],
     events: ["extentChanged", "itemSelected"],
     actions: ["flyTo", "highlight"],
@@ -193,6 +202,21 @@ export function registerMapWidget(): void {
             dataSources={dataSources.filter((s) => s.type === "features")}
             onChange={(id) => onChange({ ...props, dataSourceId: id })}
           />
+          <BasemapSelect
+            value={String(props.basemapStyle ?? DEFAULT_STYLE)}
+            onChange={(style) => onChange({ ...props, basemapStyle: style })}
+          />
+          <TerrainPanel
+            value={(props.terrain as MapTerrainConfig | null) ?? null}
+            onChange={(terrain) => onChange({ ...props, terrain })}
+          />
+          <CameraControls
+            pitch={Number(props.cameraPitch ?? 0)}
+            bearing={Number(props.cameraBearing ?? 0)}
+            onChange={({ pitch, bearing }) =>
+              onChange({ ...props, cameraPitch: pitch, cameraBearing: bearing })
+            }
+          />
           <MapSymbologyEditor
             value={props.symbology as LayerSymbology | undefined}
             availableFields={[]} // PropsPanel has no schema (registry.ts) — same PopupEditor precedent
@@ -216,16 +240,20 @@ export function registerMapWidget(): void {
                 query,
               })
             }
-            // Jenks a besoin d'un collectionId résolu pour échantillonner un
-            // champ ; ce host n'en a pas (portée volontairement non
-            // élargie ici, cf. brief I5) — l'option est masquée plutôt que
-            // de laisser l'auteur la choisir puis échouer au clic.
-            jenksAvailable={false}
-            sampleField={async () => {
-              throw new Error(
-                "Jenks sur le widget carte nécessite un collectionId résolu — non câblé",
-              );
-            }}
+            // GAP-52 (4/4) : Jenks fonctionne désormais sur ce host via
+            // ItemClient.sampleDataSourceField (résout collectionId depuis
+            // dataSource.layer ou datasetId, symétrique de queryStatistics
+            // ci-dessus) — `?.()` obligatoire (défaut n°5, brief Task 12) :
+            // un ItemClient de test partiel n'implémente pas forcément cette
+            // méthode.
+            jenksAvailable={true}
+            sampleField={(field, limit) =>
+              client.sampleDataSourceField?.(
+                { layer: dataSource?.layer ?? "", datasetId },
+                field,
+                limit,
+              ) ?? Promise.reject(new Error(t("widgetMap.sampleFieldUnavailable")))
+            }
             // `?.()` OBLIGATOIRE, pas cosmétique (défaut n° 5 de la brief
             // Task 12) : ce PropsPanel est rendu inconditionnellement, et
             // `renderPropsPanel` (mapWidget.test.tsx:126) le monte avec
@@ -265,7 +293,7 @@ export function registerMapWidget(): void {
         handle.current?.highlight(geometryFromPayload(payload));
       });
 
-      if (ctx.data?.error) return <p className="text-xs text-red-600">Erreur de données</p>;
+      if (ctx.data?.error) return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
       const url = ctx.data?.url;
 
       const symbology = props.symbology as LayerSymbology | undefined;
@@ -286,13 +314,19 @@ export function registerMapWidget(): void {
       });
 
       const config: MapConfig = {
-        basemap: { style: DEFAULT_STYLE },
-        view: { center: [2.4, 46.6], zoom: 5 },
+        basemap: { style: String(props.basemapStyle ?? DEFAULT_STYLE) },
+        terrain: (props.terrain as MapTerrainConfig | null) ?? null,
+        view: {
+          center: [2.4, 46.6],
+          zoom: 5,
+          pitch: Number(props.cameraPitch ?? 0),
+          bearing: Number(props.cameraBearing ?? 0),
+        },
         layers: url
           ? [
               {
                 id: `ds-${String(props.dataSourceId)}`,
-                title: "Données",
+                title: t("widgetMap.layerTitle"),
                 visible: true,
                 kind: "feature",
                 url,
@@ -313,7 +347,9 @@ export function registerMapWidget(): void {
             resolvedSource={ctx.data?.resolvedSource}
             hasGeometry={ctx.data?.hasGeometry}
           />
-          <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
+          <Suspense
+            fallback={<div className="text-xs text-ink-2">{t("widgetMap.loadingFallback")}</div>}
+          >
             <MapView
               ref={handle}
               config={config}

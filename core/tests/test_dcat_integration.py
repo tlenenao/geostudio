@@ -67,12 +67,12 @@ def pg_app(pg_engine):
 
 def _seed(app, client, public):
     client.post(
-        "/collections",
+        "/v1/collections",
         json={"tableName": "dcat_roads", "isPublic": public, "description": "Réseau routier"},
     )
     for lon, lat in [(1.0, 44.0), (2.0, 45.0), (3.0, 46.0)]:
         client.post(
-            "/collections/dcat_roads/items",
+            "/v1/collections/dcat_roads/items",
             json={
                 "type": "Feature",
                 "properties": {"n": "x"},
@@ -85,7 +85,7 @@ def test_full_dcat_dump_is_shacl_valid_with_real_bbox(pg_app, dcat_shacl_shapes)
     app, client = pg_app
     _seed(app, client, public=True)
 
-    cat = client.get("/dcat/catalog")
+    cat = client.get("/v1/dcat/catalog")
     assert cat.headers["content-type"] == "application/ld+json"
     body = cat.json()
     ds = body["dcat:dataset"][0]
@@ -104,7 +104,7 @@ def test_full_dcat_dump_is_shacl_valid_with_real_bbox(pg_app, dcat_shacl_shapes)
 def test_dataset_detail_is_shacl_valid_standalone(pg_app, dcat_shacl_shapes):
     app, client = pg_app
     _seed(app, client, public=True)
-    body = client.get("/dcat/datasets/dcat_roads").json()
+    body = client.get("/v1/dcat/datasets/dcat_roads").json()
     g = rdflib.Graph()
     g.parse(data=json.dumps(body), format="json-ld")
     conforms, _, text_ = validate(g, shacl_graph=dcat_shacl_shapes)
@@ -116,7 +116,7 @@ def test_anonymous_sees_public_only_no_leak(pg_app):
     _seed(app, client, public=False)  # non publique
     app.dependency_overrides.pop(get_current_user)
     app.dependency_overrides.pop(get_current_user_optional)
-    assert client.get("/dcat/catalog").json()["dcat:dataset"] == []
+    assert client.get("/v1/dcat/catalog").json()["dcat:dataset"] == []
     # Collection non publique → 404 non-fuyant (indistinguable d'inexistante).
-    assert client.get("/dcat/datasets/dcat_roads").status_code == 404
-    assert client.get("/dcat/datasets/does-not-exist").status_code == 404
+    assert client.get("/v1/dcat/datasets/dcat_roads").status_code == 404
+    assert client.get("/v1/dcat/datasets/does-not-exist").status_code == 404

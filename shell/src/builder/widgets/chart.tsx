@@ -21,31 +21,32 @@ import {
 } from "./chartOption";
 import { ExplorerMenu } from "./ExplorerMenu";
 import type { DataRecord, DataSource, DatasetConfig } from "../../api/types";
+import { t } from "../../i18n";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
 
 const CHART_TYPES: [string, string][] = [
-  ["bar", "Barres"],
-  ["line", "Lignes"],
-  ["area", "Aires"],
-  ["scatter", "Nuage de points"],
-  ["pie", "Camembert"],
-  ["doughnut", "Anneau"],
-  ["radar", "Radar"],
-  ["heatmap", "Carte de chaleur"],
-  ["gauge", "Jauge"],
-  ["boxplot", "Boîte à moustaches"],
-  ["sankey", "Flux (sankey)"],
-  ["treemap", "Zones hiérarchiques (treemap)"],
-  ["sunburst", "Soleil hiérarchique (sunburst)"],
-  ["funnel", "Entonnoir"],
-  ["histogram", "Histogramme"],
+  ["bar", t("widgetChart.typeBar")],
+  ["line", t("widgetChart.typeLine")],
+  ["area", t("widgetChart.typeArea")],
+  ["scatter", t("widgetChart.typeScatter")],
+  ["pie", t("widgetChart.typePie")],
+  ["doughnut", t("widgetChart.typeDoughnut")],
+  ["radar", t("widgetChart.typeRadar")],
+  ["heatmap", t("widgetChart.typeHeatmap")],
+  ["gauge", t("widgetChart.typeGauge")],
+  ["boxplot", t("widgetChart.typeBoxplot")],
+  ["sankey", t("widgetChart.typeSankey")],
+  ["treemap", t("widgetChart.typeTreemap")],
+  ["sunburst", t("widgetChart.typeSunburst")],
+  ["funnel", t("widgetChart.typeFunnel")],
+  ["histogram", t("widgetChart.typeHistogram")],
 ];
 const AXIS_TYPES: [string, string][] = [
-  ["category", "Catégorie"],
-  ["value", "Valeur"],
-  ["time", "Temps"],
-  ["log", "Logarithmique"],
+  ["category", t("widgetChart.axisCategory")],
+  ["value", t("widgetChart.axisValue")],
+  ["time", t("widgetChart.axisTime")],
+  ["log", t("widgetChart.axisLog")],
 ];
 
 const labelCls = "flex flex-col gap-1";
@@ -61,7 +62,7 @@ function toComparePoints(records: DataRecord[] | undefined, timeField: string): 
 export function registerChartWidget(): void {
   registerWidget({
     type: "chart",
-    label: "Graphique",
+    label: t("widgetChart.paletteLabel"),
     defaultProps: {
       dataSourceId: "",
       chartType: "bar",
@@ -80,29 +81,39 @@ export function registerChartWidget(): void {
       comparePeriod: "previous",
     },
     configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "chartType", type: "string", label: "Type de graphique", default: "bar" },
-      { name: "categoryField", type: "string", label: "Champ catégorie", default: "" },
-      { name: "valueField", type: "string", label: "Champ valeur", default: "" },
-      { name: "stack", type: "boolean", label: "Empilé", default: false },
-      { name: "legend", type: "boolean", label: "Légende", default: true },
-      { name: "zoom", type: "boolean", label: "Zoom", default: false },
-      { name: "xAxisType", type: "string", label: "Type d'axe X", default: "category" },
-      { name: "yAxisType", type: "string", label: "Type d'axe Y", default: "value" },
-      { name: "yAxisFormat", type: "string", label: "Format axe Y", default: "" },
-      { name: "yAxisUnit", type: "string", label: "Unité axe Y", default: "" },
-      { name: "title", type: "string", label: "Titre", default: "" },
+      { name: "dataSourceId", type: "dataSource", label: t("widgetChart.dataSource"), default: "" },
+      { name: "chartType", type: "string", label: t("widgetChart.chartType"), default: "bar" },
+      { name: "categoryField", type: "string", label: t("widgetChart.categoryField"), default: "" },
+      { name: "valueField", type: "string", label: t("widgetChart.valueField"), default: "" },
+      { name: "stack", type: "boolean", label: t("widgetChart.stackConfig"), default: false },
+      { name: "legend", type: "boolean", label: t("widgetChart.legendConfig"), default: true },
+      { name: "zoom", type: "boolean", label: t("widgetChart.zoomConfig"), default: false },
+      { name: "xAxisType", type: "string", label: t("widgetChart.xAxisType"), default: "category" },
+      { name: "yAxisType", type: "string", label: t("widgetChart.yAxisType"), default: "value" },
+      {
+        name: "yAxisFormat",
+        type: "string",
+        label: t("widgetChart.yAxisFormatConfig"),
+        default: "",
+      },
+      { name: "yAxisUnit", type: "string", label: t("widgetChart.yAxisUnitConfig"), default: "" },
+      { name: "title", type: "string", label: t("widgetChart.title"), default: "" },
       {
         name: "advancedOption",
         type: "string",
-        label: "Option ECharts avancée (JSON)",
+        label: t("widgetChart.advancedOption"),
         default: "",
       },
-      { name: "compareEnabled", type: "boolean", label: "Comparaison de période", default: false },
+      {
+        name: "compareEnabled",
+        type: "boolean",
+        label: t("widgetChart.compareConfig"),
+        default: false,
+      },
       {
         name: "comparePeriod",
         type: "string",
-        label: "Période de comparaison",
+        label: t("widgetChart.comparePeriodConfig"),
         default: "previous",
       },
     ],
@@ -128,9 +139,9 @@ export function registerChartWidget(): void {
             onChange={(id) => set({ dataSourceId: id })}
           />
           <label className={labelCls}>
-            Type de graphique
+            {t("widgetChart.chartType")}
             <select
-              aria-label="Type de graphique"
+              aria-label={t("widgetChart.chartType")}
               className={inputCls}
               value={chartType}
               onChange={(e) => set({ chartType: e.target.value })}
@@ -145,18 +156,18 @@ export function registerChartWidget(): void {
           {showCategoryValue && (
             <>
               <label className={labelCls}>
-                Champ catégorie / X
+                {t("widgetChart.categoryFieldLabel")}
                 <input
-                  aria-label="Champ catégorie"
+                  aria-label={t("widgetChart.categoryField")}
                   className={inputCls}
                   value={String(props.categoryField ?? "")}
                   onChange={(e) => set({ categoryField: e.target.value })}
                 />
               </label>
               <label className={labelCls}>
-                Champ valeur (camembert / jauge / comparaison)
+                {t("widgetChart.valueFieldLabel")}
                 <input
-                  aria-label="Champ valeur"
+                  aria-label={t("widgetChart.valueField")}
                   className={inputCls}
                   value={String(props.valueField ?? "")}
                   onChange={(e) => set({ valueField: e.target.value })}
@@ -167,18 +178,18 @@ export function registerChartWidget(): void {
           {showSankeyEncodings && (
             <>
               <label className={labelCls}>
-                Champ source
+                {t("widgetChart.sourceField")}
                 <input
-                  aria-label="Champ source"
+                  aria-label={t("widgetChart.sourceField")}
                   className={inputCls}
                   value={String(encodings.source ?? "")}
                   onChange={(e) => setEncodings({ source: e.target.value })}
                 />
               </label>
               <label className={labelCls}>
-                Champ cible
+                {t("widgetChart.targetField")}
                 <input
-                  aria-label="Champ cible"
+                  aria-label={t("widgetChart.targetField")}
                   className={inputCls}
                   value={String(encodings.target ?? "")}
                   onChange={(e) => setEncodings({ target: e.target.value })}
@@ -188,11 +199,11 @@ export function registerChartWidget(): void {
           )}
           {showHierarchyEncodings && (
             <div className={labelCls}>
-              <span>Niveaux (hiérarchie)</span>
+              <span>{t("widgetChart.levelsLabel")}</span>
               {levels.map((lvl, i) => (
                 <div key={i} className="flex items-center gap-1">
                   <input
-                    aria-label={`Niveau ${i + 1}`}
+                    aria-label={t("widgetChart.levelN", { n: i + 1 })}
                     className={inputCls}
                     value={lvl}
                     onChange={(e) =>
@@ -201,7 +212,7 @@ export function registerChartWidget(): void {
                   />
                   <button
                     type="button"
-                    aria-label={`Retirer le niveau ${i + 1}`}
+                    aria-label={t("widgetChart.removeLevel", { n: i + 1 })}
                     className="text-xs text-red-600"
                     onClick={() => setEncodings({ levels: levels.filter((_, j) => j !== i) })}
                   >
@@ -215,7 +226,7 @@ export function registerChartWidget(): void {
                   className="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-100"
                   onClick={() => setEncodings({ levels: [...levels, ""] })}
                 >
-                  + Niveau
+                  {t("widgetChart.addLevel")}
                 </button>
               )}
             </div>
@@ -225,30 +236,30 @@ export function registerChartWidget(): void {
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  aria-label="Comparer les périodes"
+                  aria-label={t("widgetChart.compareToggle")}
                   checked={Boolean(props.compareEnabled)}
                   onChange={(e) => set({ compareEnabled: e.target.checked })}
                 />
-                Comparer les périodes
+                {t("widgetChart.compareToggle")}
               </label>
               <label className={labelCls}>
-                Période de référence
+                {t("widgetChart.referencePeriodLabel")}
                 <select
-                  aria-label="Période de référence"
+                  aria-label={t("widgetChart.referencePeriodLabel")}
                   className={inputCls}
                   value={String(props.comparePeriod ?? "previous")}
                   onChange={(e) => set({ comparePeriod: e.target.value })}
                 >
-                  <option value="previous">Période précédente</option>
-                  <option value="sameLastYear">Même période l'an dernier</option>
+                  <option value="previous">{t("widgetChart.periodPrevious")}</option>
+                  <option value="sameLastYear">{t("widgetChart.periodSameLastYear")}</option>
                 </select>
               </label>
             </>
           )}
           <label className={labelCls}>
-            Type d'axe X
+            {t("widgetChart.xAxisType")}
             <select
-              aria-label="Type d'axe X"
+              aria-label={t("widgetChart.xAxisType")}
               className={inputCls}
               value={String(props.xAxisType ?? "category")}
               onChange={(e) => set({ xAxisType: e.target.value })}
@@ -261,9 +272,9 @@ export function registerChartWidget(): void {
             </select>
           </label>
           <label className={labelCls}>
-            Type d'axe Y
+            {t("widgetChart.yAxisType")}
             <select
-              aria-label="Type d'axe Y"
+              aria-label={t("widgetChart.yAxisType")}
               className={inputCls}
               value={String(props.yAxisType ?? "value")}
               onChange={(e) => set({ yAxisType: e.target.value })}
@@ -276,18 +287,18 @@ export function registerChartWidget(): void {
             </select>
           </label>
           <label className={labelCls}>
-            Unité de l'axe Y
+            {t("widgetChart.yAxisUnitLabel")}
             <input
-              aria-label="Unité de l'axe Y"
+              aria-label={t("widgetChart.yAxisUnitLabel")}
               className={inputCls}
               value={String(props.yAxisUnit ?? "")}
               onChange={(e) => set({ yAxisUnit: e.target.value })}
             />
           </label>
           <label className={labelCls}>
-            Titre
+            {t("widgetChart.title")}
             <input
-              aria-label="Titre du graphique"
+              aria-label={t("widgetChart.titleAria")}
               className={inputCls}
               value={String(props.title ?? "")}
               onChange={(e) => set({ title: e.target.value })}
@@ -296,34 +307,34 @@ export function registerChartWidget(): void {
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              aria-label="Empiler les séries"
+              aria-label={t("widgetChart.stackToggle")}
               checked={Boolean(props.stack)}
               onChange={(e) => set({ stack: e.target.checked })}
             />
-            Empiler les séries
+            {t("widgetChart.stackToggle")}
           </label>
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              aria-label="Afficher la légende"
+              aria-label={t("widgetChart.legendToggle")}
               checked={props.legend !== false}
               onChange={(e) => set({ legend: e.target.checked })}
             />
-            Afficher la légende
+            {t("widgetChart.legendToggle")}
           </label>
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              aria-label="Activer le zoom"
+              aria-label={t("widgetChart.zoomToggle")}
               checked={Boolean(props.zoom)}
               onChange={(e) => set({ zoom: e.target.checked })}
             />
-            Activer le zoom
+            {t("widgetChart.zoomToggle")}
           </label>
           <label className={labelCls}>
-            Option ECharts avancée (JSON)
+            {t("widgetChart.advancedOption")}
             <textarea
-              aria-label="Option ECharts avancée (JSON)"
+              aria-label={t("widgetChart.advancedOption")}
               className="rounded-md border border-slate-300 p-2 font-mono text-xs"
               rows={4}
               placeholder='{"color":["#f00"]}'
@@ -413,9 +424,9 @@ export function registerChartWidget(): void {
 
       if (compareActive) {
         if (currentQuery.isLoading || referenceQuery.isLoading)
-          return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
+          return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
         if (currentQuery.isError || referenceQuery.isError)
-          return <p className="text-xs text-red-600">Erreur de données</p>;
+          return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
         const timeField = (dataset as DatasetConfig).timeField as string;
         const option = buildCompareOption(
           props as unknown as ChartProps,
@@ -431,7 +442,11 @@ export function registerChartWidget(): void {
               resolvedSource={data?.resolvedSource}
               hasGeometry={data?.hasGeometry}
             />
-            <Suspense fallback={<div className="text-xs text-slate-400">Graphique…</div>}>
+            <Suspense
+              fallback={
+                <div className="text-xs text-ink-2">{t("widgetChart.loadingFallback")}</div>
+              }
+            >
               <EChart option={option} />
             </Suspense>
           </div>
@@ -439,10 +454,10 @@ export function registerChartWidget(): void {
       }
 
       if (!data || data.loading)
-        return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
-      if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
+        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+      if (data.error) return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
       if (data.records.length === 0)
-        return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
+        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.noData")}</p>;
       const option = buildOption(props as unknown as ChartProps, data.records);
       function handleClick(params: ClickParams) {
         const resolved = resolveClickFilter(chartType, props as unknown as ChartProps, params);
@@ -459,7 +474,9 @@ export function registerChartWidget(): void {
             resolvedSource={data.resolvedSource}
             hasGeometry={data.hasGeometry}
           />
-          <Suspense fallback={<div className="text-xs text-slate-400">Graphique…</div>}>
+          <Suspense
+            fallback={<div className="text-xs text-ink-2">{t("widgetChart.loadingFallback")}</div>}
+          >
             <EChart option={option} onClick={handleClick} />
           </Suspense>
         </div>

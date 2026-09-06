@@ -9,7 +9,9 @@ set_sharing_service et app.configs.service.create_config_service)."""
 from fastapi import HTTPException
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
+from pydantic import BaseModel
 
+from app.collections import repository as collections_repo
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
 from app.db import request_scoped_session
@@ -25,6 +27,14 @@ from app.mcp.tools.identity import (
     without_thumbnail_url,
     without_thumbnail_urls,
 )
+from app.roles.guards import has_privilege
+from app.roles.privileges import Privilege
+
+
+class CollectionSearchResult(BaseModel):
+    id: str
+    title: str
+    description: str
 
 
 def _parse_bbox_tuple(raw: str) -> tuple[float, float, float, float]:
@@ -94,10 +104,36 @@ def register(server: FastMCP, session_factory) -> None:
             )
 
     @server.tool()
+    async def search_collections(
+        ctx: Context, q: str | None = None, page: int = 1, pageSize: int = 12
+    ) -> list[CollectionSearchResult]:
+        """Search collections (hybrid trigram + vector ranking on q, same
+        mechanism as search_catalog for items) — collections were never
+        searchable from an agent before this tool (GAP-40/47)."""
+        access_token = get_access_token()
+        with request_scoped_session(session_factory) as session:
+            user = resolve_actor(session, access_token)
+            can_see_all = has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
+            cols = collections_repo.list_visible_collections(
+                session,
+                tenant_id=user.tenant_id,
+                user_id=user.id,
+                can_see_all=can_see_all,
+                q=q,
+            )
+            start = (page - 1) * pageSize
+            page_cols = cols[start : start + pageSize]
+            return [
+                CollectionSearchResult(id=c.id, title=c.title, description=c.description)
+                for c in page_cols
+            ]
+
+    @server.tool()
     async def query_features(
         ctx: Context,
         collectionId: str,
         bbox: str | None = None,
+        geomIntersects: dict | None = None,
         filters: dict[str, str] | None = None,
         limit: int = 100,
         offset: int = 0,
@@ -105,7 +141,10 @@ def register(server: FastMCP, session_factory) -> None:
         """Read features from a collection — mirrors GET
         /collections/{id}/items (bbox, attribute filters, pagination), same
         permissions/RLS. No natural-language-to-filter translation: filters
-        are structured field=value pairs, like any OGC client (SP-7 MCP v1)."""
+        are structured field=value pairs, like any OGC client (SP-7 MCP v1).
+        geomIntersects: a GeoJSON geometry object (already parsed, unlike the
+        REST route's query-string form) — relayed to select_features exactly
+        like bbox/filters (GAP-47)."""
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, access_token)
@@ -125,6 +164,7 @@ def register(server: FastMCP, session_factory) -> None:
                         limit=min(limit, 1000),
                         offset=offset,
                         bbox=parsed_bbox,
+                        geom_intersects=geomIntersects,
                         filters=filters or None,
                     )
             except FilterError as exc:

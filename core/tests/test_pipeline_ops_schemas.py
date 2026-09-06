@@ -504,3 +504,15 @@ def test_writer_collection_mode_description_reaches_ops_catalog():
     catalog = ops_catalog()
     assert catalog["writer.collection"]["paramsSchema"]["properties"]["mode"]["description"]
     assert catalog["writer.dataset"]["paramsSchema"]["properties"]["mode"]["description"]
+
+
+def test_reader_connector_rest_secret_name_has_secret_name_format():
+    # GAP-43 : secretName n'a aujourd'hui aucun format déclaré, retombe dans
+    # un <input type="text"> libre côté shell.
+    schema = ops_catalog()["reader.connector.rest"]["paramsSchema"]
+    assert schema["properties"]["secretName"]["format"] == "secret-name"
+
+
+def test_reader_connector_postgres_secret_name_has_secret_name_format():
+    schema = ops_catalog()["reader.connector.postgres"]["paramsSchema"]
+    assert schema["properties"]["secretName"]["format"] == "secret-name"

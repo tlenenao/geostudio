@@ -22,6 +22,14 @@ _STAT_TYPES = {"count", "sum", "avg", "min", "max", "stddev"}
 _FIELD_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 _cache: dict[str, tuple[float, dict]] = {}
+# GAP-61.c (SP-45) : une entrée de _cache n'était retirée que si sa clé
+# était RELUE après expiration — une clé jamais réinterrogée restait dans
+# _cache indéfiniment (fuite mémoire non bornée). Même patron que
+# app.ratelimit.limiter.RateLimiter._sweep : balayage complet périodique
+# plutôt qu'à chaque appel (qui serait O(clés distinctes) sur le chemin
+# chaud de chaque requête).
+_SWEEP_INTERVAL = 50
+_calls_since_sweep = 0
 
 
 class ArcgisQueryError(Exception):
@@ -129,7 +137,14 @@ def _cache_key(external_url: str, params: dict[str, str]) -> str:
     return f"{external_url}?{urlencode(sorted(params.items()))}"
 
 
+def _sweep(now: float) -> None:
+    stale_keys = [key for key, (expires_at, _) in _cache.items() if now >= expires_at]
+    for key in stale_keys:
+        del _cache[key]
+
+
 def fetch_query(client: httpx.Client, external_url: str, params: dict[str, str]) -> dict:
+    global _calls_since_sweep
     key = _cache_key(external_url, params)
     cached = _cache.get(key)
     if cached is not None:
@@ -141,6 +156,10 @@ def fetch_query(client: httpx.Client, external_url: str, params: dict[str, str])
     response.raise_for_status()
     data = response.json()
     _cache[key] = (time.monotonic() + _CACHE_TTL_SECONDS, data)
+    _calls_since_sweep += 1
+    if _calls_since_sweep >= _SWEEP_INTERVAL:
+        _sweep(time.monotonic())
+        _calls_since_sweep = 0
     return data
 
 

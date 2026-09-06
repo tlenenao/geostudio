@@ -69,16 +69,16 @@ def _as(app, user):
 def test_create_requires_admin(env):
     app, client, _, _admin, regular = env
     _as(app, regular)
-    assert client.post("/harvest/sources", json=SOURCE_BODY).status_code == 403
+    assert client.post("/v1/harvest/sources", json=SOURCE_BODY).status_code == 403
 
 
 def test_create_and_list(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
-    r = client.post("/harvest/sources", json=SOURCE_BODY)
+    r = client.post("/v1/harvest/sources", json=SOURCE_BODY)
     assert r.status_code == 201
     assert r.json()["type"] == "stac"
-    listed = client.get("/harvest/sources").json()["sources"]
+    listed = client.get("/v1/harvest/sources").json()["sources"]
     assert [s["url"] for s in listed] == ["https://stac.example.com/collections"]
 
 
@@ -86,21 +86,21 @@ def test_create_copy_mode_on_supporting_connector_succeeds(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
     body = {**SOURCE_BODY, "mode": "copy"}
-    assert client.post("/harvest/sources", json=body).status_code == 201
+    assert client.post("/v1/harvest/sources", json=body).status_code == 201
 
 
 def test_create_copy_mode_on_unknown_type_is_422(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
     body = {**SOURCE_BODY, "type": "arcgis-fs"}
-    assert client.post("/harvest/sources", json=body).status_code == 422
+    assert client.post("/v1/harvest/sources", json=body).status_code == 422
 
 
 def test_create_arcgis_source_is_accepted(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
     resp = client.post(
-        "/harvest/sources",
+        "/v1/harvest/sources",
         json={
             "type": "arcgis",
             "url": "https://gis.example.com/arcgis/rest/services/Foo/FeatureServer",
@@ -115,7 +115,7 @@ def test_create_unknown_type_is_rejected(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
     resp = client.post(
-        "/harvest/sources",
+        "/v1/harvest/sources",
         json={
             "type": "geonode-legacy",
             "url": "https://x",
@@ -130,7 +130,7 @@ def test_create_metadata_source_is_accepted(env, type_):
     app, client, _, admin, _regular = env
     _as(app, admin)
     resp = client.post(
-        "/harvest/sources",
+        "/v1/harvest/sources",
         json={
             "type": type_,
             "url": "https://catalog.example.com/x",
@@ -146,7 +146,7 @@ def test_copy_mode_rejected_for_metadata_connectors(env, type_):
     app, client, _, admin, _regular = env
     _as(app, admin)
     resp = client.post(
-        "/harvest/sources",
+        "/v1/harvest/sources",
         json={
             "type": type_,
             "url": "https://catalog.example.com/x",
@@ -161,7 +161,7 @@ def test_create_ows_source_is_accepted(env, type_):
     app, client, _, admin, _regular = env
     _as(app, admin)
     resp = client.post(
-        "/harvest/sources",
+        "/v1/harvest/sources",
         json={
             "type": type_,
             "url": "https://ows.example.com/x?request=GetCapabilities",
@@ -177,7 +177,7 @@ def test_copy_mode_rejected_for_raster_connectors(env, type_):
     app, client, _, admin, _regular = env
     _as(app, admin)
     resp = client.post(
-        "/harvest/sources",
+        "/v1/harvest/sources",
         json={
             "type": type_,
             "url": "https://ows.example.com/x",
@@ -191,7 +191,7 @@ def test_copy_mode_accepted_for_wfs(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
     resp = client.post(
-        "/harvest/sources",
+        "/v1/harvest/sources",
         json={
             "type": "wfs",
             "url": "https://ows.example.com/wfs",
@@ -204,14 +204,14 @@ def test_copy_mode_accepted_for_wfs(env):
 def test_patch_requires_admin_and_toggles_enabled(env):
     app, client, _, admin, regular = env
     _as(app, admin)
-    created = client.post("/harvest/sources", json=SOURCE_BODY).json()
+    created = client.post("/v1/harvest/sources", json=SOURCE_BODY).json()
     _as(app, regular)
     assert (
-        client.patch(f"/harvest/sources/{created['id']}", json={"enabled": False}).status_code
+        client.patch(f"/v1/harvest/sources/{created['id']}", json={"enabled": False}).status_code
         == 403
     )
     _as(app, admin)
-    r = client.patch(f"/harvest/sources/{created['id']}", json={"enabled": False})
+    r = client.patch(f"/v1/harvest/sources/{created['id']}", json={"enabled": False})
     assert r.status_code == 200
     assert r.json()["enabled"] is False
 
@@ -221,15 +221,15 @@ def test_patch_interval_minutes_zero_is_422(env):
     # <= 0 rendrait list_due_sources() perpétuellement "due", cf. revue finale.
     app, client, _, admin, _regular = env
     _as(app, admin)
-    created = client.post("/harvest/sources", json=SOURCE_BODY).json()
-    r = client.patch(f"/harvest/sources/{created['id']}", json={"intervalMinutes": 0})
+    created = client.post("/v1/harvest/sources", json=SOURCE_BODY).json()
+    r = client.patch(f"/v1/harvest/sources/{created['id']}", json={"intervalMinutes": 0})
     assert r.status_code == 422
 
 
 def test_get_and_patch_cross_tenant_returns_404(env):
     app, client, Session, admin, _regular = env
     _as(app, admin)
-    created = client.post("/harvest/sources", json=SOURCE_BODY).json()
+    created = client.post("/v1/harvest/sources", json=SOURCE_BODY).json()
 
     with Session() as s:
         other_tenant = Tenant(id=uuid.uuid4().hex, slug="other", name="Other")
@@ -248,9 +248,9 @@ def test_get_and_patch_cross_tenant_returns_404(env):
         s.commit()
 
     _as(app, other_admin)
-    assert client.get(f"/harvest/sources/{created['id']}").status_code == 404
+    assert client.get(f"/v1/harvest/sources/{created['id']}").status_code == 404
     assert (
-        client.patch(f"/harvest/sources/{created['id']}", json={"enabled": False}).status_code
+        client.patch(f"/v1/harvest/sources/{created['id']}", json={"enabled": False}).status_code
         == 404
     )
 
@@ -258,15 +258,15 @@ def test_get_and_patch_cross_tenant_returns_404(env):
 def test_delete_source(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
-    created = client.post("/harvest/sources", json=SOURCE_BODY).json()
-    assert client.delete(f"/harvest/sources/{created['id']}").status_code == 204
-    assert client.get("/harvest/sources").json()["sources"] == []
+    created = client.post("/v1/harvest/sources", json=SOURCE_BODY).json()
+    assert client.delete(f"/v1/harvest/sources/{created['id']}").status_code == 204
+    assert client.get("/v1/harvest/sources").json()["sources"] == []
 
 
 def test_run_defers_a_task_and_is_audited(env):
     app, client, Session, admin, _regular = env
     _as(app, admin)
-    created = client.post("/harvest/sources", json=SOURCE_BODY).json()
+    created = client.post("/v1/harvest/sources", json=SOURCE_BODY).json()
     deferred = []
     from app.harvest import routes as harvest_routes
 
@@ -277,7 +277,7 @@ def test_run_defers_a_task_and_is_audited(env):
         return deferrer
 
     app.dependency_overrides[harvest_routes.get_task_deferrer] = fake_deferrer
-    r = client.post(f"/harvest/sources/{created['id']}/run")
+    r = client.post(f"/v1/harvest/sources/{created['id']}/run")
     assert r.status_code == 202
     assert deferred == [(created["id"], admin.tenant_id)]
 
@@ -294,21 +294,21 @@ def test_run_defers_a_task_and_is_audited(env):
 def test_run_missing_source_is_404(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
-    assert client.post("/harvest/sources/does-not-exist/run").status_code == 404
+    assert client.post("/v1/harvest/sources/does-not-exist/run").status_code == 404
 
 
 def test_mutations_blocked_in_read_only_mode(env, monkeypatch):
     app, client, _, admin, _regular = env
     _as(app, admin)
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
-    assert client.post("/harvest/sources", json=SOURCE_BODY).status_code == 403
+    assert client.post("/v1/harvest/sources", json=SOURCE_BODY).status_code == 403
 
 
 def test_create_ckan_source_is_accepted(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
     resp = client.post(
-        "/harvest/sources",
+        "/v1/harvest/sources",
         json={
             "type": "ckan",
             "url": "https://demo.data.gouv.fr",
@@ -323,7 +323,7 @@ def test_copy_mode_accepted_for_ckan(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
     resp = client.post(
-        "/harvest/sources",
+        "/v1/harvest/sources",
         json={
             "type": "ckan",
             "url": "https://demo.data.gouv.fr",

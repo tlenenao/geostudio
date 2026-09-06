@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { http, HttpResponse } from "msw";
 
-const CORE = "https://core.test";
+// SP-57b : coreUrl porte désormais /v1 (createBase(), point unique) — les
+// handlers par défaut de ce fichier doivent matcher le chemin réel que
+// request()/requestBlob() appellent désormais.
+const CORE = "https://core.test/v1";
 
 function item(pk: string, type = "app", title = `Item ${pk}`) {
   return {
@@ -22,6 +25,13 @@ export const handlers = [
   http.get(`${CORE}/items`, () =>
     HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 }),
   ),
+  // Déclaré AVANT /items/:pk (même piège que côté cœur, routes.py::
+  // get_item_facets) : sans ce handler dédié, MSW matcherait
+  // GET /items/facets sur /items/:pk (pk="facets") et retournerait un item
+  // fictif sans owners/keywords, faisant planter tout composant qui lit
+  // useItemFacets() sans mocker explicitement cette route (CatalogPage,
+  // SP-55 Tâche 3).
+  http.get(`${CORE}/items/facets`, () => HttpResponse.json({ owners: [], keywords: [] })),
   http.get(`${CORE}/items/:pk`, ({ params }) => {
     if (params.pk === "404") return new HttpResponse(null, { status: 404 });
     return HttpResponse.json(item(String(params.pk)));
@@ -93,4 +103,5 @@ export const handlers = [
     HttpResponse.json({ public: true, groups: [{ groupId: "10", role: "editor" }] }),
   ),
   http.put(`${CORE}/items/:pk/sharing`, () => new HttpResponse(null, { status: 204 })),
+  http.get(`${CORE}/items/:pk/share-links`, () => HttpResponse.json([])),
 ];

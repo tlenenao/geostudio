@@ -49,3 +49,27 @@ def test_load_master_key_wrong_length_raises(monkeypatch):
     monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", short_key)
     with pytest.raises(RuntimeError, match="32 bytes"):
         crypto.load_master_key()
+
+
+def test_encrypt_decrypt_with_explicit_key_ignores_env(monkeypatch):
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", TEST_KEY_B64)
+    other_key = base64.b64decode(base64.b64encode(bytes(range(1, 33))))
+    ciphertext, nonce = crypto.encrypt({"token": "x"}, key=other_key)
+    # déchiffrer avec la clé de l'env (différente) échoue
+    with pytest.raises(InvalidTag):
+        crypto.decrypt(ciphertext, nonce)
+    # déchiffrer avec la même clé explicite réussit
+    assert crypto.decrypt(ciphertext, nonce, key=other_key) == {"token": "x"}
+
+
+def test_decode_key_material_rejects_wrong_length():
+    with pytest.raises(RuntimeError):
+        crypto.decode_key_material(base64.b64encode(b"short").decode(), source="TEST_VAR")
+
+
+def test_existing_env_based_round_trip_still_works(monkeypatch):
+    # non-régression explicite : le comportement par défaut (key=None) est
+    # inchangé après le refactor.
+    monkeypatch.setenv("CORE_SECRETS_MASTER_KEY", TEST_KEY_B64)
+    ciphertext, nonce = crypto.encrypt({"token": "s3cr3t"})
+    assert crypto.decrypt(ciphertext, nonce) == {"token": "s3cr3t"}

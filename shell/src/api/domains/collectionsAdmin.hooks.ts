@@ -3,11 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "../ItemClientProvider";
 import type { CollectionCreateInput, CollectionPatchInput, Sharing } from "../types";
 
-export function useCollectionsAdmin(options?: { enabled?: boolean }) {
+export function useCollectionsAdmin(options?: { q?: string; enabled?: boolean }) {
   const client = useItemClientInternal();
   return useQuery({
-    queryKey: ["collections", "admin"],
-    queryFn: () => client.listCollections(),
+    queryKey: ["collections", "admin", options?.q ?? ""],
+    queryFn: () => client.listCollections(options?.q ? { q: options.q } : undefined),
     enabled: options?.enabled ?? true,
   });
 }

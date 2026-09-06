@@ -15,7 +15,7 @@ test("un analyste exécute une requête SQL, voit le résultat, et recharge une 
   // intercept the browser's document navigation and break rendering (same
   // rationale as "/admin/extensions" and "/admin/collections" elsewhere in
   // this suite, see admin-extensions.spec.ts).
-  await page.route("https://core.test/analytics/sql", async (route) => {
+  await page.route("https://core.test/v1/analytics/sql", async (route) => {
     posted = await route.request().postDataJSON();
     await route.fulfill({
       json: { columns: ["nom", "surface"], rows: [["Parc A", 12]], truncated: false },
@@ -46,7 +46,7 @@ test("une erreur SQL affiche le message du serveur et conserve le texte dans l'�
 }) => {
   await mockCore(page);
   await mockMe(page, ANALYST_ME);
-  await page.route("https://core.test/analytics/sql", async (route) => {
+  await page.route("https://core.test/v1/analytics/sql", async (route) => {
     await route.fulfill({
       status: 400,
       json: {
@@ -67,7 +67,7 @@ test("un utilisateur non-analyste ne voit pas le lien SQL Lab et reçoit un mess
 }) => {
   await mockCore(page);
   let sqlCalled = false;
-  await page.route("https://core.test/analytics/sql", async (route) => {
+  await page.route("https://core.test/v1/analytics/sql", async (route) => {
     sqlCalled = true;
     await route.fulfill({ json: { columns: [], rows: [], truncated: false } });
   });

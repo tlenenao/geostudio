@@ -36,6 +36,7 @@ import { getWidget } from "../builder/registry";
 import { BREAKPOINTS, nextFreePosition, type Breakpoint } from "../builder/grid";
 import { getPages, getPageLayout, setPageLayout } from "../builder/pages";
 import { getConfigExpressionErrors } from "../builder/configExpressionErrors";
+import { pruneMessagesForIds } from "../builder/actionMessages";
 import { Button } from "../ui/kit/Button";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useAuth } from "../auth/useAuth";
@@ -104,6 +105,11 @@ export function AppBuilderPage({ pk }: { pk: string }) {
         target instanceof HTMLTextAreaElement ||
         (target instanceof HTMLElement && target.isContentEditable);
       if (isTextField) return;
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
+        e.preventDefault();
+        removeSelected();
+        return;
+      }
       if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
       e.preventDefault();
       if (e.shiftKey) redo();
@@ -111,7 +117,11 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [undo, redo]);
+    // removeSelected n'est pas listée : c'est une function declaration hoisted et stable
+    // (redéfinie identiquement à chaque rendu, capture les mêmes dépendances que le reste
+    // du composant) — l'ajouter au tableau ne changerait rien.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undo, redo, selectedId]);
 
   const pages = useMemo(() => (draft ? getPages(draft) : []), [draft]);
   // Validate activePageId against the current draft's pages rather than
@@ -148,7 +158,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   }, [selectedId, activeLayout]);
 
   if (query.isLoading || itemQuery.isLoading || !extensionsRegistered || (!draft && !query.isError))
-    return <p role="status">Chargement…</p>;
+    return <p role="status">{t("common.loading")}</p>;
   if (
     query.isError ||
     itemQuery.isError ||
@@ -159,7 +169,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   )
     return (
       <p role="alert" className="text-sm text-danger">
-        Application introuvable.
+        {t("appBuilder.notFound")}
       </p>
     );
 
@@ -188,6 +198,21 @@ export function AppBuilderPage({ pk }: { pk: string }) {
       return setPageLayout(d, activePage, { ...layout, items: [...layout.items, item] });
     });
     setSelectedId(id);
+  }
+
+  function removeSelected() {
+    if (!selectedId || !activePage) return;
+    const id = selectedId;
+    setDraft((d) => {
+      if (!d) return d;
+      const layout = getPageLayout(d, activePage);
+      const next = setPageLayout(d, activePage, {
+        ...layout,
+        items: layout.items.filter((i) => i.id !== id),
+      });
+      return { ...next, messages: pruneMessagesForIds(next.messages, [id]) };
+    });
+    setSelectedId(null);
   }
 
   async function captureThumbnail() {
@@ -275,7 +300,13 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     );
 
   const setVariables = (variables: typeof draft.variables) =>
-    setDraft((d) => (d ? { ...d, variables } : d));
+    setDraft((d) => {
+      if (!d) return d;
+      const before = new Set((d.variables ?? []).map((v) => v.id));
+      const after = new Set((variables ?? []).map((v) => v.id));
+      const removedIds = [...before].filter((id) => !after.has(id)).map((id) => `var:${id}`);
+      return { ...d, variables, messages: pruneMessagesForIds(d.messages, removedIds) };
+    });
 
   function setPrintLayout(printLayout: PrintLayoutConfig | null) {
     setDraft((d) => (d ? { ...d, printLayout } : d));
@@ -290,24 +321,26 @@ export function AppBuilderPage({ pk }: { pk: string }) {
           defaultTabId="canvas"
           browse={{
             id: "structure",
-            label: "Structure",
+            label: t("appBuilder.structureLabel"),
             content: (
               <div className="flex flex-col gap-1 p-2">
-                <p className="mb-1 text-xs font-medium text-ink-2">Pages</p>
+                <p className="mb-1 text-xs font-medium text-ink-2">{t("appBuilder.pagesLabel")}</p>
                 <PageManager
                   pages={pages}
                   activePageId={activePage}
                   onChange={setPages}
                   onSelectPage={setActivePageId}
                 />
-                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Widgets</p>
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
+                  {t("appBuilder.widgetsLabel")}
+                </p>
                 <WidgetPalette onAdd={addWidget} />
               </div>
             ),
           }}
           work={{
             id: "canvas",
-            label: "Canevas",
+            label: t("appBuilder.canvasLabel"),
             content: (
               <div className="flex h-full flex-col overflow-hidden">
                 <div className="flex flex-wrap items-center gap-2 border-b border-rule p-2">
@@ -316,21 +349,21 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     variant={mode === "edit" ? "default" : "outline"}
                     onClick={() => setMode("edit")}
                   >
-                    Édition
+                    {t("appBuilder.editMode")}
                   </Button>
                   <Button
                     size="sm"
                     variant={mode === "preview" ? "default" : "outline"}
                     onClick={() => setMode("preview")}
                   >
-                    Aperçu
+                    {t("appBuilder.previewMode")}
                   </Button>
                   <div className="ml-2 flex items-center gap-1">
                     <Button size="sm" variant="outline" disabled={!canUndo} onClick={undo}>
-                      Annuler
+                      {t("appBuilder.undo")}
                     </Button>
                     <Button size="sm" variant="outline" disabled={!canRedo} onClick={redo}>
-                      Rétablir
+                      {t("appBuilder.redo")}
                     </Button>
                   </div>
                   <div className="ml-2 flex items-center gap-1">
@@ -339,7 +372,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                         key={bp}
                         size="sm"
                         variant={breakpoint === bp ? "default" : "outline"}
-                        aria-label={`Éditer en ${bp}`}
+                        aria-label={t("appBuilder.editBreakpointAria", { bp })}
                         onClick={() => setBreakpoint(bp)}
                       >
                         {bp}
@@ -353,11 +386,11 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     disabled={thumbnail.isPending}
                     onClick={() => void captureThumbnail()}
                   >
-                    Capturer une miniature
+                    {t("appBuilder.captureThumbnail")}
                   </Button>
                   {thumbnail.isError && (
                     <span role="alert" className="text-sm text-danger">
-                      Échec de la capture.
+                      {t("appBuilder.captureError")}
                     </span>
                   )}
                 </div>
@@ -378,18 +411,23 @@ export function AppBuilderPage({ pk }: { pk: string }) {
           }}
           inspect={{
             id: "props",
-            label: "Propriétés",
+            label: t("appBuilder.propertiesLabel"),
             content: (
               <aside className="flex flex-col gap-1 p-2">
-                <p className="mb-1 text-xs font-medium text-ink-2">Propriétés</p>
+                <p className="mb-1 text-xs font-medium text-ink-2">
+                  {t("appBuilder.propertiesLabel")}
+                </p>
                 <PropsPanel
                   item={selected}
                   dataSources={draft.dataSources}
                   theme={draft.theme}
+                  variables={draft.variables ?? []}
                   onChange={updateSelectedProps}
                   onVisibleWhenChange={updateSelectedVisibleWhen}
                 />
-                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Sources de données</p>
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
+                  {t("appBuilder.dataSourcesLabel")}
+                </p>
                 <DataSourcePanel
                   sources={draft.dataSources}
                   onChange={setSources}
@@ -398,38 +436,50 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                 />
                 {createDataset.isError && (
                   <p role="alert" className="text-xs text-danger">
-                    Échec de la promotion.
+                    {t("appBuilder.promoteError")}
                   </p>
                 )}
-                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Actions</p>
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
+                  {t("appBuilder.actionsLabel")}
+                </p>
                 <ActionsPanel
                   items={activeLayout.items}
                   variables={draft.variables ?? []}
                   messages={draft.messages}
                   onChange={setMessages}
                 />
-                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Navigation</p>
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
+                  {t("appBuilder.navigationLabel")}
+                </p>
                 <NavigationPanel
                   navigationMode={draft.navigationMode ?? "tabs"}
                   onNavigationModeChange={setNavigationMode}
                   page={pages.find((p) => p.id === activePage) ?? pages[0]}
                   onPageChange={setActivePageOnEnter}
                 />
-                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Interactions</p>
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
+                  {t("appBuilder.interactionsLabel")}
+                </p>
                 <label className="flex items-center gap-2 text-xs">
                   <input
                     type="checkbox"
-                    aria-label="Interactions automatiques (cross-filter)"
+                    aria-label={t("appBuilder.autoInteractionsLabel")}
                     checked={draft.interactions === "auto"}
                     onChange={(e) => setInteractions(e.target.checked ? "auto" : "manual")}
                   />
-                  Interactions automatiques (cross-filter)
+                  {t("appBuilder.autoInteractionsLabel")}
                 </label>
-                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Variables</p>
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
+                  {t("appBuilder.variablesLabel")}
+                </p>
                 <VariablesPanel variables={draft.variables ?? []} onChange={setVariables} />
-                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Thème</p>
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
+                  {t("appBuilder.themeLabel")}
+                </p>
                 <ThemePanel theme={draft.theme} onChange={setTheme} />
-                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Impression</p>
+                <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
+                  {t("appBuilder.printLabel")}
+                </p>
                 <PrintLayoutPanel value={draft.printLayout ?? null} onChange={setPrintLayout} />
                 <div className="mt-3">
                   <ConfigHistoryPanel
@@ -445,13 +495,17 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                 </div>
                 {appExportEnabled && (
                   <>
-                    <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Export standalone</p>
+                    <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
+                      {t("appBuilder.exportStandaloneLabel")}
+                    </p>
                     <AppExportPanel itemId={pk} config={draft} />
                   </>
                 )}
                 {copilotEnabled && (
                   <>
-                    <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Copilote</p>
+                    <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
+                      {t("appBuilder.copilotLabel")}
+                    </p>
                     <CopilotPanel
                       itemId={pk}
                       config={draft}
@@ -467,13 +521,13 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     disabled={save.isPending || expressionErrors.length > 0 || readOnly}
                     onClick={() => save.mutate(draft)}
                   >
-                    Enregistrer
+                    {t("appBuilder.save")}
                   </Button>
                   {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
                   {expressionErrors.length > 0 && (
                     <span
                       role="alert"
-                      aria-label="Erreur de condition d'affichage"
+                      aria-label={t("appBuilder.expressionErrorAria")}
                       className="text-sm text-danger"
                     >
                       {expressionErrors[0]}
@@ -481,7 +535,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                   )}
                   {save.isError && (
                     <span role="alert" className="text-sm text-danger">
-                      Échec de l'enregistrement.
+                      {t("actions.saveFailed")}
                     </span>
                   )}
                 </div>

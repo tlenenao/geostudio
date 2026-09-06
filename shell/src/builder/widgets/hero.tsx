@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { registerWidget } from "../registry";
+import { t } from "../../i18n";
 
 const labelCls = "flex flex-col gap-1";
 const inputCls = "h-9 rounded-md border border-slate-300 px-2";
@@ -21,7 +22,7 @@ export function isSafeHref(href: string): boolean {
 export function registerHeroWidget(): void {
   registerWidget({
     type: "hero",
-    label: "Hero",
+    label: t("widgetHero.paletteLabel"),
     defaultProps: {
       title: "Titre",
       subtitle: "",
@@ -32,12 +33,17 @@ export function registerHeroWidget(): void {
     },
     defaultSize: { w: 12, h: 3 },
     configSchema: [
-      { name: "title", type: "string", label: "Titre", default: "Titre" },
-      { name: "subtitle", type: "string", label: "Sous-titre", default: "" },
-      { name: "backgroundImageUrl", type: "string", label: "Image de fond (URL)", default: "" },
-      { name: "ctaLabel", type: "string", label: "Libellé du bouton", default: "" },
-      { name: "ctaHref", type: "string", label: "Lien du bouton", default: "" },
-      { name: "align", type: "string", label: "Alignement", default: "left" },
+      { name: "title", type: "string", label: t("widgetHero.titleConfig"), default: "Titre" },
+      { name: "subtitle", type: "string", label: t("widgetHero.subtitleConfig"), default: "" },
+      {
+        name: "backgroundImageUrl",
+        type: "string",
+        label: t("widgetHero.bgImageConfig"),
+        default: "",
+      },
+      { name: "ctaLabel", type: "string", label: t("widgetHero.ctaLabelConfig"), default: "" },
+      { name: "ctaHref", type: "string", label: t("widgetHero.ctaHrefConfig"), default: "" },
+      { name: "align", type: "string", label: t("widgetHero.alignConfig"), default: "left" },
     ],
     events: ["cta"],
     PropsPanel: ({ props, onChange }) => {
@@ -45,60 +51,60 @@ export function registerHeroWidget(): void {
       return (
         <div className="flex flex-col gap-2 text-sm">
           <label className={labelCls}>
-            Titre du bandeau
+            {t("widgetHero.titleBanner")}
             <input
-              aria-label="Titre du bandeau"
+              aria-label={t("widgetHero.titleBanner")}
               className={inputCls}
               value={String(props.title ?? "")}
               onChange={(e) => set({ title: e.target.value })}
             />
           </label>
           <label className={labelCls}>
-            Sous-titre
+            {t("widgetHero.subtitleConfig")}
             <input
-              aria-label="Sous-titre"
+              aria-label={t("widgetHero.subtitleConfig")}
               className={inputCls}
               value={String(props.subtitle ?? "")}
               onChange={(e) => set({ subtitle: e.target.value })}
             />
           </label>
           <label className={labelCls}>
-            URL de l'image de fond
+            {t("widgetHero.bgImageLabel")}
             <input
-              aria-label="URL de l'image de fond"
+              aria-label={t("widgetHero.bgImageLabel")}
               className={inputCls}
               value={String(props.backgroundImageUrl ?? "")}
               onChange={(e) => set({ backgroundImageUrl: e.target.value })}
             />
           </label>
           <label className={labelCls}>
-            Libellé du CTA
+            {t("widgetHero.ctaLabelText")}
             <input
-              aria-label="Libellé du CTA"
+              aria-label={t("widgetHero.ctaLabelText")}
               className={inputCls}
               value={String(props.ctaLabel ?? "")}
               onChange={(e) => set({ ctaLabel: e.target.value })}
             />
           </label>
           <label className={labelCls}>
-            Lien du CTA
+            {t("widgetHero.ctaHrefText")}
             <input
-              aria-label="Lien du CTA"
+              aria-label={t("widgetHero.ctaHrefText")}
               className={inputCls}
               value={String(props.ctaHref ?? "")}
               onChange={(e) => set({ ctaHref: e.target.value })}
             />
           </label>
           <label className={labelCls}>
-            Alignement
+            {t("widgetHero.alignConfig")}
             <select
-              aria-label="Alignement"
+              aria-label={t("widgetHero.alignConfig")}
               className={inputCls}
               value={String(props.align ?? "left")}
               onChange={(e) => set({ align: e.target.value })}
             >
-              <option value="left">Gauche</option>
-              <option value="center">Centre</option>
+              <option value="left">{t("widgetHero.alignLeft")}</option>
+              <option value="center">{t("widgetHero.alignCenter")}</option>
             </select>
           </label>
         </div>

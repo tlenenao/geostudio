@@ -10,6 +10,7 @@ export function GridCanvas({
   selectedId,
   onSelect,
   onMoveItem,
+  onRemoveItem,
   renderItem,
 }: {
   items: WidgetItem[];
@@ -18,6 +19,7 @@ export function GridCanvas({
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onMoveItem: (id: string, dxCells: number, dyCells: number) => void;
+  onRemoveItem: (id: string) => void;
   renderItem: (item: WidgetItem) => ReactNode;
 }) {
   return (
@@ -97,6 +99,17 @@ export function GridCanvas({
                   }}
                 >
                   ↑
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Supprimer widget-${item.id}`}
+                  className="bg-red-600 px-1 text-xs text-white"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveItem(item.id);
+                  }}
+                >
+                  ✕
                 </button>
               </div>
             )}

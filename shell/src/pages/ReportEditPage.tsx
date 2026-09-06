@@ -68,7 +68,7 @@ export function ReportEditPage({
   }, [pk, configQuery.data]);
 
   if (pk !== null && (configQuery.isLoading || itemQuery.isLoading))
-    return <p role="status">Chargement…</p>;
+    return <p role="status">{t("common.loading")}</p>;
   // SP-42 F-shell-pages-05 : même garde que PipelineBuilderPage.tsx — sans
   // elle, un rapport existant dont le chargement échoue s'affichait comme un
   // brouillon vide avec Enregistrer actif (422 opaque à la sauvegarde).
@@ -80,7 +80,7 @@ export function ReportEditPage({
   if (pk !== null && (configQuery.isError || itemQuery.isError || !itemQuery.data))
     return (
       <p role="alert" className="text-sm text-danger">
-        Rapport introuvable.
+        {t("reportEdit.notFound")}
       </p>
     );
 
@@ -89,7 +89,7 @@ export function ReportEditPage({
     try {
       if (pk === null) {
         const item = await createReport.mutateAsync({
-          title: "Rapport planifié",
+          title: t("reportEdit.defaultTitle"),
           owner: username ?? "",
           report: draft,
         });
@@ -98,7 +98,7 @@ export function ReportEditPage({
       }
       await saveReport.mutateAsync(draft);
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Échec de l'enregistrement.");
+      setSaveError(e instanceof Error ? e.message : t("actions.saveFailed"));
     }
   }
 
@@ -108,17 +108,17 @@ export function ReportEditPage({
         defaultTabId="report"
         browse={{
           id: "back",
-          label: "Catalogue",
+          label: t("domain.catalog"),
           content: (
             <Panel className="m-3 flex flex-col gap-3 text-sm">
               <Link to="/" className="text-accent hover:underline">
-                ← Retour au catalogue
+                {t("nav.backToCatalog")}
               </Link>
               {itemQuery.data && (
                 <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs text-ink-2">
-                  <dt>Type</dt>
+                  <dt>{t("catalog.typeLabel")}</dt>
                   <dd>{RESOURCE_TYPE_LABELS[itemQuery.data.resourceType]}</dd>
-                  <dt>Modifié</dt>
+                  <dt>{t("datasetEdit.modifiedLabel")}</dt>
                   <dd>{itemQuery.data.updatedAt || "—"}</dd>
                 </dl>
               )}
@@ -127,11 +127,11 @@ export function ReportEditPage({
         }}
         work={{
           id: "report",
-          label: "Rapport",
+          label: t("reportEdit.reportLabel"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
               <h2 className="text-lg font-semibold text-ink">
-                {pk === null ? "Programmer un rapport" : "Modifier le rapport planifié"}
+                {pk === null ? t("actions.scheduleReport") : t("reportEdit.editHeading")}
               </h2>
               <ReportScheduleEditor
                 value={draft}
@@ -143,7 +143,7 @@ export function ReportEditPage({
         }}
         inspect={{
           id: "settings",
-          label: "Réglages",
+          label: t("datasetEdit.settingsLabel"),
           content: (
             <div className="flex flex-col gap-4 p-3">
               {pk !== null && <ReportRunPanel reportId={pk} />}
@@ -161,7 +161,7 @@ export function ReportEditPage({
                   onClick={() => void onSave()}
                   disabled={createReport.isPending || saveReport.isPending || readOnly}
                 >
-                  Enregistrer
+                  {t("common.save")}
                 </Button>
                 {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
                 {saveError && (

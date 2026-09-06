@@ -13,8 +13,8 @@ import uuid
 from datetime import UTC, datetime
 
 import croniter
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, aliased
 
 from app.configs import repository as configs_repo
 from app.reports.models import ReportRun
@@ -52,12 +52,21 @@ def get_run(session: Session, *, tenant_id: str, run_id: str) -> ReportRun | Non
     ).scalar_one_or_none()
 
 
-def list_runs(session: Session, *, tenant_id: str, report_item_id: str) -> list[ReportRun]:
+def list_runs(
+    session: Session,
+    *,
+    tenant_id: str,
+    report_item_id: str,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[ReportRun]:
     rows = (
         session.execute(
             select(ReportRun)
             .where(ReportRun.tenant_id == tenant_id, ReportRun.report_item_id == report_item_id)
             .order_by(ReportRun.created_at.desc())
+            .limit(limit)
+            .offset(offset)
         )
         .scalars()
         .all()
@@ -76,6 +85,26 @@ def get_latest_run(session: Session, *, tenant_id: str, report_item_id: str) -> 
         .scalars()
         .first()
     )
+
+
+def get_latest_runs_for_items(session: Session, *, item_ids: list[str]) -> dict[str, ReportRun]:
+    """Batch de get_latest_run pour une liste d'item_id — remplace l'appel
+    par itération de list_due_reports (GAP-64, SP-49), même patron que
+    app.pipelines.repository.get_latest_runs_for_items."""
+    if not item_ids:
+        return {}
+    rn = (
+        func.row_number()
+        .over(
+            partition_by=ReportRun.report_item_id,
+            order_by=ReportRun.created_at.desc(),
+        )
+        .label("rn")
+    )
+    subq = select(ReportRun, rn).where(ReportRun.report_item_id.in_(item_ids)).subquery()
+    rr = aliased(ReportRun, subq)
+    rows = session.execute(select(rr).where(subq.c.rn == 1)).scalars().all()
+    return {r.report_item_id: r for r in rows}
 
 
 def mark_notified(session: Session, *, run_id: str) -> None:
@@ -102,14 +131,15 @@ def list_due_reports(session: Session) -> list[tuple[str, str]]:
     tenant_id en clair."""
     now = datetime.now(UTC)
     due: list[tuple[str, str]] = []
-    for item_id, tenant_id, config in configs_repo.list_configs_by_kind(session, kind="report"):
-        payload = config.report
-        if payload is None:
-            continue
-        policy = payload.refreshPolicy
-        if not policy.enabled:
-            continue
-        latest = get_latest_run(session, tenant_id=tenant_id, report_item_id=item_id)
+    candidates = [
+        (item_id, tenant_id, config)
+        for item_id, tenant_id, config in configs_repo.list_configs_by_kind(session, kind="report")
+        if config.report is not None and config.report.refreshPolicy.enabled
+    ]
+    latest_by_item = get_latest_runs_for_items(session, item_ids=[c[0] for c in candidates])
+    for item_id, tenant_id, config in candidates:
+        policy = config.report.refreshPolicy
+        latest = latest_by_item.get(item_id)
         if latest is None:
             due.append((item_id, tenant_id))
             continue

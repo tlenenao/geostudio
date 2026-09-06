@@ -32,14 +32,14 @@ function renderButton(onUploaded: () => void) {
 
 test("uploads a DEM and calls onUploaded once the conversion job is done", async () => {
   server.use(
-    http.post(`${CORE_URL}/terrain3d/uploads/presign`, () =>
+    http.post(`${CORE_URL}/v1/terrain3d/uploads/presign`, () =>
       HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" }),
     ),
     http.put(`${CORE_URL}/fake-s3-put`, () => new HttpResponse(null, { status: 200 })),
-    http.post(`${CORE_URL}/terrain3d/uploads`, () =>
+    http.post(`${CORE_URL}/v1/terrain3d/uploads`, () =>
       HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
     ),
-    http.get(`${CORE_URL}/terrain3d/uploads/job-1`, () =>
+    http.get(`${CORE_URL}/v1/terrain3d/uploads/job-1`, () =>
       HttpResponse.json({ status: "done", errorMessage: null, itemId: "t-1" }),
     ),
   );
@@ -57,14 +57,14 @@ test("uploads a DEM and calls onUploaded once the conversion job is done", async
 
 test("shows the conversion error message and does not call onUploaded", async () => {
   server.use(
-    http.post(`${CORE_URL}/terrain3d/uploads/presign`, () =>
+    http.post(`${CORE_URL}/v1/terrain3d/uploads/presign`, () =>
       HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" }),
     ),
     http.put(`${CORE_URL}/fake-s3-put`, () => new HttpResponse(null, { status: 200 })),
-    http.post(`${CORE_URL}/terrain3d/uploads`, () =>
+    http.post(`${CORE_URL}/v1/terrain3d/uploads`, () =>
       HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
     ),
-    http.get(`${CORE_URL}/terrain3d/uploads/job-1`, () =>
+    http.get(`${CORE_URL}/v1/terrain3d/uploads/job-1`, () =>
       HttpResponse.json({ status: "error", errorMessage: "GeoTIFF illisible", itemId: null }),
     ),
   );
@@ -83,7 +83,7 @@ test("shows the conversion error message and does not call onUploaded", async ()
 
 test("désactive Annuler pendant un envoi en cours (plus d'Escape/backdrop à gérer — panneau en ligne)", async () => {
   server.use(
-    http.post(`${CORE_URL}/terrain3d/uploads/presign`, () =>
+    http.post(`${CORE_URL}/v1/terrain3d/uploads/presign`, () =>
       HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" }),
     ),
     http.put(`${CORE_URL}/fake-s3-put`, () => new Promise(() => {})), // never resolves: stays "uploading"
@@ -107,15 +107,15 @@ test("presigns on the terrain3d route with the file's real content type", async 
   // SignatureDoesNotMatch.
   let presignBody: unknown = null;
   server.use(
-    http.post(`${CORE_URL}/terrain3d/uploads/presign`, async ({ request }) => {
+    http.post(`${CORE_URL}/v1/terrain3d/uploads/presign`, async ({ request }) => {
       presignBody = await request.json();
       return HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" });
     }),
     http.put(`${CORE_URL}/fake-s3-put`, () => new HttpResponse(null, { status: 200 })),
-    http.post(`${CORE_URL}/terrain3d/uploads`, () =>
+    http.post(`${CORE_URL}/v1/terrain3d/uploads`, () =>
       HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
     ),
-    http.get(`${CORE_URL}/terrain3d/uploads/job-1`, () =>
+    http.get(`${CORE_URL}/v1/terrain3d/uploads/job-1`, () =>
       HttpResponse.json({ status: "done", errorMessage: null, itemId: "t-1" }),
     ),
   );
@@ -134,7 +134,7 @@ test("presigns on the terrain3d route with the file's real content type", async 
 
 test('le déclencheur "Nouveau DEM" ne masque pas un envoi/une conversion en cours (submit()/poll() tourneraient en arrière-plan sans rien pour le refléter)', async () => {
   server.use(
-    http.post(`${CORE_URL}/terrain3d/uploads/presign`, () =>
+    http.post(`${CORE_URL}/v1/terrain3d/uploads/presign`, () =>
       HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" }),
     ),
     http.put(`${CORE_URL}/fake-s3-put`, () => new Promise(() => {})), // never resolves: stays "uploading"
@@ -171,4 +171,43 @@ test("le formulaire n'est jamais une fenêtre modale (pas de role=dialog)", asyn
   await userEvent.click(screen.getByRole("button", { name: /nouveau dem/i }));
   expect(await screen.findByLabelText(/fichier dem/i)).toBeInTheDocument();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("does not poll again or update state after the component is unmounted mid-conversion", async () => {
+  let pollCalls = 0;
+  server.use(
+    http.post(`${CORE_URL}/v1/terrain3d/uploads/presign`, () =>
+      HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" }),
+    ),
+    http.put(`${CORE_URL}/fake-s3-put`, () => new HttpResponse(null, { status: 200 })),
+    http.post(`${CORE_URL}/v1/terrain3d/uploads`, () =>
+      HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
+    ),
+    http.get(`${CORE_URL}/v1/terrain3d/uploads/job-1`, () => {
+      pollCalls += 1;
+      return HttpResponse.json({ status: "converting", errorMessage: null, itemId: null });
+    }),
+  );
+  const onUploaded = vi.fn();
+  const { unmount } = render(
+    <Harness>
+      <Terrain3DUploadButton onUploaded={onUploaded} pollIntervalMs={0} />
+    </Harness>,
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: /nouveau dem/i }));
+  const file = new File([new Uint8Array(16)], "dem.tif", { type: "application/octet-stream" });
+  await userEvent.upload(screen.getByLabelText(/fichier dem/i), file);
+  await userEvent.type(screen.getByLabelText(/titre/i), "Relief");
+  await userEvent.click(screen.getByRole("button", { name: /importer/i }));
+
+  await waitFor(() => expect(pollCalls).toBeGreaterThanOrEqual(1));
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const callsAtUnmount = pollCalls;
+  unmount();
+  await new Promise((r) => setTimeout(r, 500));
+  expect(pollCalls).toBe(callsAtUnmount);
+  expect(onUploaded).not.toHaveBeenCalled();
+  expect(errorSpy).not.toHaveBeenCalled();
+  errorSpy.mockRestore();
 });

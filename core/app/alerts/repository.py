@@ -9,8 +9,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import croniter
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, aliased
 
 from app.alerts.models import AlertEvaluation
 from app.configs import repository as configs_repo
@@ -52,6 +52,32 @@ def mark_evaluated(
     session.flush()
 
 
+def get_latest_evaluations_for_items(
+    session: Session, *, item_ids: list[str]
+) -> dict[str, AlertEvaluation]:
+    """Batch de get_latest_evaluation pour une liste d'item_id — remplace
+    l'appel par itération de list_due_rules (GAP-64, SP-49), même patron que
+    app.pipelines.repository.get_latest_runs_for_items."""
+    if not item_ids:
+        return {}
+    rn = (
+        func.row_number()
+        .over(
+            partition_by=AlertEvaluation.alert_rule_item_id,
+            order_by=AlertEvaluation.created_at.desc(),
+        )
+        .label("rn")
+    )
+    subq = (
+        select(AlertEvaluation, rn)
+        .where(AlertEvaluation.alert_rule_item_id.in_(item_ids))
+        .subquery()
+    )
+    ae = aliased(AlertEvaluation, subq)
+    rows = session.execute(select(ae).where(subq.c.rn == 1)).scalars().all()
+    return {r.alert_rule_item_id: r for r in rows}
+
+
 def get_evaluation(
     session: Session, *, tenant_id: str, evaluation_id: str
 ) -> AlertEvaluation | None:
@@ -89,6 +115,8 @@ def list_evaluations(
     *,
     tenant_id: str,
     alert_rule_item_id: str,
+    limit: int = 100,
+    offset: int = 0,
 ) -> list[AlertEvaluation]:
     rows = (
         session.execute(
@@ -98,6 +126,8 @@ def list_evaluations(
                 AlertEvaluation.alert_rule_item_id == alert_rule_item_id,
             )
             .order_by(AlertEvaluation.created_at.desc())
+            .limit(limit)
+            .offset(offset)
         )
         .scalars()
         .all()
@@ -111,14 +141,15 @@ def list_due_rules(session: Session) -> list[tuple[str, str]]:
     list_due_pipelines): the tuple carries tenant_id in clear."""
     now = datetime.now(UTC)
     due: list[tuple[str, str]] = []
-    for item_id, tenant_id, config in configs_repo.list_configs_by_kind(session, kind="alert"):
-        payload = config.alert
-        if payload is None:
-            continue
-        policy = payload.refreshPolicy
-        if not policy.enabled:
-            continue
-        latest = get_latest_evaluation(session, tenant_id=tenant_id, alert_rule_item_id=item_id)
+    candidates = [
+        (item_id, tenant_id, config)
+        for item_id, tenant_id, config in configs_repo.list_configs_by_kind(session, kind="alert")
+        if config.alert is not None and config.alert.refreshPolicy.enabled
+    ]
+    latest_by_item = get_latest_evaluations_for_items(session, item_ids=[c[0] for c in candidates])
+    for item_id, tenant_id, config in candidates:
+        policy = config.alert.refreshPolicy
+        latest = latest_by_item.get(item_id)
         if latest is None:
             due.append((item_id, tenant_id))
             continue

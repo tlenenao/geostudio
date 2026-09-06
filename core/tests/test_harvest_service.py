@@ -264,6 +264,41 @@ def test_connector_fetch_failure_sets_error_status_without_raising(
     assert "boom" in source.last_error
 
 
+def test_harvest_fetch_error_from_connector_sets_error_status_without_raising(
+    session, tenant_and_user, monkeypatch
+):
+    # GAP-59.2 (SP-50) : un document racine de moissonnage injoignable lève
+    # désormais HarvestFetchError côté connecteur (8 connecteurs) — vérifie
+    # que harvest_source() la traite exactement comme n'importe quelle autre
+    # exception de connector.fetch() (aucune modification de service.py
+    # n'était nécessaire, son except Exception large la capture déjà).
+    from app.harvest.connectors.base import HarvestFetchError
+
+    tenant, user = tenant_and_user
+
+    def _raise(t):
+        connector = Mock()
+        connector.fetch = Mock(
+            side_effect=HarvestFetchError("document racine injoignable : https://a")
+        )
+        return connector
+
+    monkeypatch.setattr(service, "get_connector", _raise)
+    source = harvest_repo.create_source(
+        session,
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        type="stac",
+        url="https://a",
+        mode="reference",
+        enabled=True,
+        interval_minutes=None,
+    )
+    service.harvest_source(session, source)  # ne doit pas lever
+    assert source.last_status == "error"
+    assert "document racine injoignable" in source.last_error
+
+
 def test_copy_mode_fetch_copy_failure_sets_error_status_without_raising(
     session, tenant_and_user, monkeypatch
 ):

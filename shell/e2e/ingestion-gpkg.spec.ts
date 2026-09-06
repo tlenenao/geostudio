@@ -37,7 +37,7 @@ async function mockGpkgIngestionFlow(page: Page) {
       });
     }
   });
-  await page.route("https://core.test/items/88", async (route) => {
+  await page.route("https://core.test/v1/items/88", async (route) => {
     await route.fulfill({
       json: {
         pk: "88",
@@ -74,7 +74,7 @@ async function mockGpkgIngestionFlow(page: Page) {
                 title: "Réseau",
                 visible: true,
                 kind: "feature",
-                url: "https://core.test/collections/ingest_multi/items",
+                url: "https://core.test/v1/collections/ingest_multi/items",
               },
             ],
           },

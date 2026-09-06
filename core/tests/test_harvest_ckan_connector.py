@@ -2,8 +2,9 @@
 import json
 
 import httpx
+import pytest
 
-from app.harvest.connectors.base import HarvestedRecord
+from app.harvest.connectors.base import HarvestedRecord, HarvestFetchError
 from app.harvest.connectors.ckan import CkanConnector
 
 PORTAL = "https://demo.data.gouv.fr"
@@ -289,18 +290,25 @@ def test_missing_result_returns_empty():
     assert list(_connector(handler).fetch(PORTAL)) == []
 
 
-def test_invalid_json_page_returns_empty():
+def test_invalid_json_first_page_raises_harvest_fetch_error():
+    # GAP-59.2 (SP-50) : la première page (start=0, racine de la pagination)
+    # injoignable/illisible doit être signalée, pas rapportée comme un
+    # moissonnage réussi à zéro enregistrement — cf.
+    # test_next_page_failure_keeps_partial_results ci-dessous, inchangé
+    # (une page SUIVANTE en échec reste tolérante).
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"not json")
 
-    assert list(_connector(handler).fetch(PORTAL)) == []
+    with pytest.raises(HarvestFetchError):
+        list(_connector(handler).fetch(PORTAL))
 
 
-def test_http_error_returns_empty():
+def test_http_error_on_first_page_raises_harvest_fetch_error():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500)
 
-    assert list(_connector(handler).fetch(PORTAL)) == []
+    with pytest.raises(HarvestFetchError):
+        list(_connector(handler).fetch(PORTAL))
 
 
 def test_next_page_failure_keeps_partial_results():

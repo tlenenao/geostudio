@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { MapLayer } from "../api/types";
@@ -11,6 +12,8 @@ import {
 import { LayerPicker } from "./LayerPicker";
 import { MapSymbologyEditor } from "./MapSymbologyEditor";
 import { PopupEditor } from "./PopupEditor";
+import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
+import { t } from "../i18n";
 
 // Une couche "feature" n'a pas de collection interrogeable : son schéma vient
 // du GeoJSON qu'elle pointe elle-même. Une seule requête partagée par les
@@ -93,7 +96,7 @@ function LayerSymbologyEditor({
   const featureGeojson = useFeatureLayerGeoJson(layer);
   const fc = featureGeojson.data;
   const notReady = async (): Promise<never> => {
-    throw new Error("La couche GeoJSON n'est pas encore chargée");
+    throw new Error(t("layersPanel.geojsonNotLoadedError"));
   };
   return (
     <MapSymbologyEditor
@@ -146,6 +149,66 @@ function LayerSymbologyEditor({
   );
 }
 
+// GAP-45 : layer.paint fait un round-trip API complet (toFrontLayer()) et
+// sert de repli au rendu quand symbology est absent, mais aucune UI ne
+// l'écrivait jamais avant ce panneau — seul un document édité hors produit
+// (MCP/API) pouvait l'utiliser. Repliée par défaut (mode « Avancé »
+// explicite, pas un formulaire structuré par propriété MapLibre — rule
+// CLAUDE.md n°2, `paint` reste une échappatoire volontaire). État local
+// `draft` distinct de `layer.paint` tant que le JSON n'est pas valide, pour
+// ne jamais perdre la frappe de l'auteur sur une faute de frappe
+// temporaire ; un JSON invalide affiche une erreur sans jamais committer
+// une peinture cassée (onChangeLayer n'est appelé qu'après parse réussi).
+function LayerPaintAdvancedEditor({
+  layer,
+  onChangeLayer,
+}: {
+  layer: Extract<MapLayer, { kind: "vector" | "feature" }>;
+  onChangeLayer: (next: MapLayer) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const panel = usePanelTrigger(open);
+  const [draft, setDraft] = useState(() => JSON.stringify(layer.paint ?? {}, null, 2));
+  const [error, setError] = useState<string | null>(null);
+  function commit() {
+    try {
+      const parsed = JSON.parse(draft) as Record<string, unknown>;
+      setError(null);
+      onChangeLayer({ ...layer, paint: parsed });
+    } catch {
+      setError(t("layersPanel.paintInvalidJson"));
+    }
+  }
+  return (
+    <div className="basis-full pl-2">
+      <button
+        type="button"
+        {...panel.triggerProps}
+        className="text-xs underline"
+        onClick={() => setOpen((o) => !o)}
+      >
+        {t("layersPanel.paintAdvancedButton")}
+      </button>
+      {open && (
+        <div id={panel.panelId}>
+          <textarea
+            aria-label={t("layersPanel.paintAria")}
+            className="mt-1 h-24 w-full rounded-md border border-rule bg-surface p-2 font-mono text-xs"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+          />
+          {error && (
+            <p role="alert" className="text-xs text-danger">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function LayersPanel({
   layers,
   onChange,
@@ -180,7 +243,7 @@ export function LayersPanel({
             <span className="flex-1 truncate">{layer.title}</span>
             <button
               type="button"
-              aria-label={`Monter ${layer.title}`}
+              aria-label={t("layersPanel.moveUpAria", { title: layer.title })}
               disabled={i === 0}
               className="px-1 disabled:opacity-30"
               onClick={() => move(i, -1)}
@@ -189,7 +252,7 @@ export function LayersPanel({
             </button>
             <button
               type="button"
-              aria-label={`Descendre ${layer.title}`}
+              aria-label={t("layersPanel.moveDownAria", { title: layer.title })}
               disabled={i === layers.length - 1}
               className="px-1 disabled:opacity-30"
               onClick={() => move(i, 1)}
@@ -198,7 +261,11 @@ export function LayersPanel({
             </button>
             <button
               type="button"
-              aria-label={`${layer.visible ? "Masquer" : "Afficher"} ${layer.title}`}
+              aria-label={
+                layer.visible
+                  ? t("layersPanel.hideAria", { title: layer.title })
+                  : t("layersPanel.showAria", { title: layer.title })
+              }
               className="px-1"
               onClick={() => toggle(layer.id)}
             >
@@ -206,12 +273,121 @@ export function LayersPanel({
             </button>
             <button
               type="button"
-              aria-label={`Retirer ${layer.title}`}
+              aria-label={t("layersPanel.removeAria", { title: layer.title })}
               className="px-1 text-danger"
               onClick={() => remove(layer.id)}
             >
               ✕
             </button>
+            {layer.kind === "deck" && (
+              <div className="basis-full pl-2">
+                {/* Clés de props alignées sur l'API réelle des layers deck.gl
+                    sous-jacents (buildDeckLayer, MapView.tsx) — vérifiées
+                    contre les .d.ts installés, pas devinées : HeatmapLayer
+                    n'a pas de prop "radius" (radiusPixels), HexagonLayer a
+                    "radius" (mètres), ColumnLayer a "elevationScale". */}
+                {layer.deckType === "heatmap" && (
+                  <label className="flex flex-col gap-1 text-sm">
+                    {t("layersPanel.radiusPixelsLabel")}
+                    <input
+                      aria-label={t("layersPanel.radiusPixelsLabel")}
+                      type="number"
+                      min={1}
+                      value={Number(
+                        (layer.props as { radiusPixels?: number } | undefined)?.radiusPixels ?? 30,
+                      )}
+                      onChange={(e) =>
+                        onChange(
+                          layers.map((l) =>
+                            l.id === layer.id
+                              ? {
+                                  ...layer,
+                                  props: { ...layer.props, radiusPixels: Number(e.target.value) },
+                                }
+                              : l,
+                          ),
+                        )
+                      }
+                    />
+                  </label>
+                )}
+                {layer.deckType === "hexbin" && (
+                  <label className="flex flex-col gap-1 text-sm">
+                    {t("layersPanel.radiusMetersLabel")}
+                    <input
+                      aria-label={t("layersPanel.radiusMetersLabel")}
+                      type="number"
+                      min={1}
+                      value={Number(
+                        (layer.props as { radius?: number } | undefined)?.radius ?? 1000,
+                      )}
+                      onChange={(e) =>
+                        onChange(
+                          layers.map((l) =>
+                            l.id === layer.id
+                              ? {
+                                  ...layer,
+                                  props: { ...layer.props, radius: Number(e.target.value) },
+                                }
+                              : l,
+                          ),
+                        )
+                      }
+                    />
+                  </label>
+                )}
+                {layer.deckType === "column" && (
+                  <label className="flex flex-col gap-1 text-sm">
+                    {t("layersPanel.elevationScaleLabel")}
+                    <input
+                      aria-label={t("layersPanel.elevationScaleLabel")}
+                      type="number"
+                      min={0}
+                      value={Number(
+                        (layer.props as { elevationScale?: number } | undefined)?.elevationScale ??
+                          1,
+                      )}
+                      onChange={(e) =>
+                        onChange(
+                          layers.map((l) =>
+                            l.id === layer.id
+                              ? {
+                                  ...layer,
+                                  props: { ...layer.props, elevationScale: Number(e.target.value) },
+                                }
+                              : l,
+                          ),
+                        )
+                      }
+                    />
+                  </label>
+                )}
+              </div>
+            )}
+            {layer.kind === "raster" && (
+              <div className="basis-full pl-2">
+                <label className="flex flex-col gap-1 text-sm">
+                  {t("layersPanel.opacityLabel", {
+                    percent: Math.round((layer.opacity ?? 1) * 100),
+                  })}
+                  <input
+                    aria-label={t("layersPanel.opacityAria")}
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={layer.opacity ?? 1}
+                    onChange={(e) =>
+                      onChange(
+                        layers.map((l) =>
+                          l.id === layer.id ? { ...l, opacity: Number(e.target.value) } : l,
+                        ),
+                      )
+                    }
+                  />
+                </label>
+              </div>
+            )}
             {(layer.kind === "vector" || layer.kind === "feature") && (
               <div className="basis-full pl-2">
                 <LayerPopupEditor
@@ -226,14 +402,22 @@ export function LayersPanel({
                     onChange(layers.map((l) => (l.id === layer.id ? next : l)))
                   }
                 />
+                <LayerPaintAdvancedEditor
+                  layer={layer}
+                  onChangeLayer={(next) =>
+                    onChange(layers.map((l) => (l.id === layer.id ? next : l)))
+                  }
+                />
               </div>
             )}
           </li>
         ))}
-        {layers.length === 0 && <li className="text-xs text-ink-3">Aucune couche.</li>}
+        {layers.length === 0 && (
+          <li className="text-xs text-ink-3">{t("layersPanel.emptyText")}</li>
+        )}
       </ul>
       <div className="border-t border-rule pt-2">
-        <p className="mb-1 text-xs font-medium text-ink-2">Ajouter une couche</p>
+        <p className="mb-1 text-xs font-medium text-ink-2">{t("layersPanel.addLayerHeading")}</p>
         <LayerPicker onAdd={(layer) => onChange([...layers, layer])} />
       </div>
     </div>

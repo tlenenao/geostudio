@@ -5,9 +5,10 @@ import re
 from collections.abc import Iterator
 from http import HTTPStatus
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app import db, observability
 from app.admin_tools import routes as admin_tools_routes
@@ -30,6 +31,7 @@ from app.auth.dependency import (
 from app.catalog import routes as catalog_routes
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
 from app.collections import routes as collections_routes
+from app.compliance import routes as compliance_routes
 from app.configs import routes as configs_routes
 from app.copilot import routes as copilot_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
@@ -50,7 +52,8 @@ from app.notifications import routes as notifications_routes
 from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
-from app.ratelimit.limiter import RateLimiter, route_group
+from app.quotas import routes as quotas_routes
+from app.ratelimit.limiter import RateLimiter, caller_key, route_group
 from app.reports import routes as reports_routes
 from app.roles import routes as roles_routes
 from app.schemas_routes import router as schemas_router
@@ -60,10 +63,12 @@ from app.sharing import routes as sharing_routes
 from app.stac import routes as stac_routes
 from app.terrain3d import routes as terrain3d_routes
 from app.tileset3d import routes as tileset3d_routes
+from app.usage import routes as usage_routes
 
-_AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
+_AGGREGATE_PATH_RE = re.compile(r"^/v1/collections/[^/]+/aggregate$")
 _EXPORT_PATH_RE = re.compile(
-    r"^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$|^/export$|^/app-exports$"
+    r"^/v1/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$"
+    r"|^/v1/export$|^/v1/app-exports$"
 )
 # CORS narrow allowlist (SP-18b) : uniquement les endpoints déjà
 # anonymes-capables (get_current_user_optional) qu'un bundle d'export
@@ -80,12 +85,12 @@ _EXPORT_PATH_RE = re.compile(
 # admin-only qui partagent le même préfixe de chemin (ex. POST /collections,
 # GET /collections/candidates, PATCH/DELETE /collections/{id}).
 _APPEXPORT_CORS_PATH_RE = re.compile(
-    r"^/collections(/[^/]+)?$"
-    r"|^/collections/[^/]+/schema$"
-    r"|^/collections/[^/]+/items(/[^/]+)?$"
-    r"|^/collections/[^/]+/aggregate$"
-    r"|^/extensions$"
-    r"|^/public/items$"
+    r"^/v1/collections(/[^/]+)?$"
+    r"|^/v1/collections/[^/]+/schema$"
+    r"|^/v1/collections/[^/]+/items(/[^/]+)?$"
+    r"|^/v1/collections/[^/]+/aggregate$"
+    r"|^/v1/extensions$"
+    r"|^/v1/public/items$"
 )
 
 # Méthode+chemin exacts pour les requêtes réelles (non-preflight) : c'est ce
@@ -97,14 +102,14 @@ _APPEXPORT_CORS_PATH_RE = re.compile(
 # app/collections/routes.py) qui partage la même forme /collections/<segment>
 # qu'un id de collection réel.
 _APPEXPORT_CORS_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"^/collections$"), "GET"),
-    (re.compile(r"^/collections/(?!candidates$)[^/]+$"), "GET"),
-    (re.compile(r"^/collections/[^/]+/schema$"), "GET"),
-    (re.compile(r"^/collections/[^/]+/items$"), "GET"),
-    (re.compile(r"^/collections/[^/]+/items/[^/]+$"), "GET"),
-    (re.compile(r"^/collections/[^/]+/aggregate$"), "POST"),
-    (re.compile(r"^/extensions$"), "GET"),
-    (re.compile(r"^/public/items$"), "GET"),
+    (re.compile(r"^/v1/collections$"), "GET"),
+    (re.compile(r"^/v1/collections/(?!candidates$)[^/]+$"), "GET"),
+    (re.compile(r"^/v1/collections/[^/]+/schema$"), "GET"),
+    (re.compile(r"^/v1/collections/[^/]+/items$"), "GET"),
+    (re.compile(r"^/v1/collections/[^/]+/items/[^/]+$"), "GET"),
+    (re.compile(r"^/v1/collections/[^/]+/aggregate$"), "POST"),
+    (re.compile(r"^/v1/extensions$"), "GET"),
+    (re.compile(r"^/v1/public/items$"), "GET"),
 )
 
 
@@ -185,7 +190,7 @@ def create_app() -> FastAPI:
             is_read_only_mode()
             and request.method in {"POST", "PUT", "PATCH", "DELETE"}
             and request.url.path != "/mcp"
-            and request.url.path != "/analytics/sql"
+            and request.url.path != "/v1/analytics/sql"
             and not _AGGREGATE_PATH_RE.match(request.url.path)
             and not _EXPORT_PATH_RE.match(request.url.path)
         ):
@@ -211,8 +216,11 @@ def create_app() -> FastAPI:
     async def rate_limit_guard(request: Request, call_next):
         group = route_group(request.url.path, request.method, _EXPORT_PATH_RE)
         if group is not None:
-            caller_key = request.headers.get("authorization", "")
-            if not rate_limiter.allow(caller_key, group):
+            caller_key_value = caller_key(
+                request.headers.get("authorization"),
+                request.client.host if request.client else None,
+            )
+            if not rate_limiter.allow(caller_key_value, group):
                 return JSONResponse(
                     status_code=429,
                     media_type="application/problem+json",
@@ -257,43 +265,54 @@ def create_app() -> FastAPI:
 
     app.dependency_overrides[db.get_session] = get_session
 
-    app.include_router(configs_routes.router)
-    app.include_router(extensions_routes.router)
-    app.include_router(secrets_routes.router)
-    app.include_router(roles_routes.router)
-    app.include_router(mapicons_routes.router)
-    app.include_router(instance_routes.router)
-    app.include_router(items_routes.router)
-    app.include_router(auth_routes.router)
-    app.include_router(sharing_routes.router)
-    app.include_router(public_routes.router)
-    app.include_router(schemas_router)
-    app.include_router(collections_routes.router)
-    app.include_router(catalog_routes.router)
-    app.include_router(features_routes.router)
-    app.include_router(tiles_routes.router)
-    app.include_router(attachments_routes.router)
-    app.include_router(ingestion_routes.router)
-    app.include_router(stac_routes.router)
-    app.include_router(dcat_routes.router)
-    app.include_router(harvest_routes.router)
-    app.include_router(alerts_routes.router)
-    app.include_router(reports_routes.router)
-    app.include_router(notifications_routes.router)
+    # SP-57b : tous les routeurs de l'API du cœur passent sous /v1 — /health
+    # (app.get direct, plus bas) et le montage MCP (app.mount("/", ...), plus
+    # bas également) restent hors versionnement, contrats externes à
+    # protocole fixe (healthcheck Docker, découverte OAuth MCP). Pas de
+    # compatibilité ascendante (spec §2.6) : migration directe, aucun double
+    # montage /items ET /v1/items.
+    v1_router = APIRouter(prefix="/v1")
+    v1_router.include_router(configs_routes.router)
+    v1_router.include_router(extensions_routes.router)
+    v1_router.include_router(secrets_routes.router)
+    v1_router.include_router(roles_routes.router)
+    v1_router.include_router(mapicons_routes.router)
+    v1_router.include_router(instance_routes.router)
+    v1_router.include_router(items_routes.router)
+    v1_router.include_router(auth_routes.router)
+    v1_router.include_router(sharing_routes.router)
+    v1_router.include_router(public_routes.router)
+    v1_router.include_router(schemas_router)
+    v1_router.include_router(collections_routes.router)
+    v1_router.include_router(catalog_routes.router)
+    v1_router.include_router(features_routes.router)
+    v1_router.include_router(tiles_routes.router)
+    v1_router.include_router(attachments_routes.router)
+    v1_router.include_router(ingestion_routes.router)
+    v1_router.include_router(stac_routes.router)
+    v1_router.include_router(dcat_routes.router)
+    v1_router.include_router(harvest_routes.router)
+    v1_router.include_router(alerts_routes.router)
+    v1_router.include_router(reports_routes.router)
+    v1_router.include_router(notifications_routes.router)
+    v1_router.include_router(usage_routes.router)
+    v1_router.include_router(quotas_routes.router)
+    v1_router.include_router(compliance_routes.router)
     if is_etl_enabled():
-        app.include_router(pipelines_routes.router)
+        v1_router.include_router(pipelines_routes.router)
     if is_export_enabled():
-        app.include_router(export_routes.router)
+        v1_router.include_router(export_routes.router)
     if is_appexport_enabled():
-        app.include_router(appexport_routes.router)
+        v1_router.include_router(appexport_routes.router)
     if is_tileset3d_enabled():
-        app.include_router(tileset3d_routes.router)
+        v1_router.include_router(tileset3d_routes.router)
     if is_terrain3d_enabled():
-        app.include_router(terrain3d_routes.router)
+        v1_router.include_router(terrain3d_routes.router)
     if is_copilot_enabled():
-        app.include_router(copilot_routes.router)
+        v1_router.include_router(copilot_routes.router)
     if is_admin_tools_enabled():
-        app.include_router(admin_tools_routes.router)
+        v1_router.include_router(admin_tools_routes.router)
+    app.include_router(v1_router)
 
     s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
     s3_access_key = os.environ.get("S3_ACCESS_KEY")
@@ -359,6 +378,16 @@ def create_app() -> FastAPI:
             access_key=s3_access_key,
             secret_key=s3_secret_key,
         )
+        # Clé d'override DISTINCTE, encore : app.quotas.routes.get_s3_client
+        # est lui aussi un stub local (SP-58 Tâche 3, même rationale que les
+        # deux ci-dessus) — usage_for_tenant() lit les 4 buckets
+        # tenant-préfixés directement depuis les variables d'environnement
+        # (pas de dépendance par bucket), un seul client générique suffit.
+        app.dependency_overrides[quotas_routes.get_s3_client] = lambda: make_s3_client(
+            endpoint_url=s3_endpoint,
+            access_key=s3_access_key,
+            secret_key=s3_secret_key,
+        )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -372,6 +401,14 @@ def create_app() -> FastAPI:
     # path as a prefix, so it must come after every app-specific route
     # above or it would shadow them (e.g. swallow "/health").
     app.mount("/", mcp_server.streamable_http_app())
+
+    # GAP-61.a : sans cette couche, request.client reflète l'IP du
+    # conteneur Traefik (seul point d'entrée réseau vers ce service — `core`
+    # n'expose aucun port hôte direct), identique pour tous les visiteurs,
+    # ce qui viderait caller_key() de son utilité pour les appelants
+    # anonymes. trusted_hosts="*" est sûr ici : gis-net est un réseau Docker
+    # interne, aucun tiers non maîtrisé ne peut y injecter X-Forwarded-For.
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
     return app
 

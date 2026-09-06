@@ -8,6 +8,7 @@ import {
 } from "../api/hooks";
 import type { ShareRole } from "../api/types";
 import { Button } from "../ui/kit/Button";
+import { t } from "../i18n";
 
 export function CollectionSharePanel({
   collectionId,
@@ -52,12 +53,12 @@ export function CollectionSharePanel({
   const ready = groupsQuery.isSuccess && sharingQuery.isSuccess;
 
   return (
-    <section aria-label="Partager la collection" className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold text-ink">Partager la collection</h2>
-      {loading && <p role="status">Chargement…</p>}
+    <section aria-label={t("collectionShare.title")} className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold text-ink">{t("collectionShare.title")}</h2>
+      {loading && <p role="status">{t("common.loading")}</p>}
       {failed && (
         <p role="alert" className="text-sm text-danger">
-          Erreur de chargement.
+          {t("sharePanel.loadError")}
         </p>
       )}
       {ready && (
@@ -65,11 +66,11 @@ export function CollectionSharePanel({
           <label className="flex items-center gap-2 text-sm text-ink">
             <input
               type="checkbox"
-              aria-label="Public"
+              aria-label={t("collectionsAdmin.columnPublic")}
               checked={isPublic}
               onChange={(e) => setIsPublic(e.target.checked)}
             />
-            Public (visible par tous)
+            {t("sharePanel.publicLabel")}
           </label>
 
           <div className="flex flex-col gap-2">
@@ -78,7 +79,7 @@ export function CollectionSharePanel({
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
-                    aria-label={`Groupe ${g.title}`}
+                    aria-label={t("sharePanel.groupAria", { group: g.title })}
                     checked={!!roles[g.id]}
                     onChange={(e) =>
                       setRoles((r) => ({
@@ -90,14 +91,14 @@ export function CollectionSharePanel({
                   {g.title}
                 </label>
                 <select
-                  aria-label={`Rôle ${g.title}`}
+                  aria-label={t("sharePanel.roleAria", { group: g.title })}
                   className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
                   disabled={!roles[g.id]}
                   value={roles[g.id] ?? "viewer"}
                   onChange={(e) => setRoles((r) => ({ ...r, [g.id]: e.target.value as ShareRole }))}
                 >
-                  <option value="viewer">Lecteur</option>
-                  <option value="editor">Éditeur</option>
+                  <option value="viewer">{t("sharePanel.roleViewer")}</option>
+                  <option value="editor">{t("sharePanel.roleEditor")}</option>
                 </select>
               </div>
             ))}
@@ -105,13 +106,13 @@ export function CollectionSharePanel({
 
           {setSharing.isError && (
             <p role="alert" className="text-sm text-danger">
-              Échec du partage.
+              {t("sharePanel.shareFailed")}
             </p>
           )}
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>
-              Annuler
+              {t("confirmDialog.cancel")}
             </Button>
             <Button
               type="button"
@@ -119,7 +120,7 @@ export function CollectionSharePanel({
               disabled={setSharing.isPending || readOnly}
               onClick={() => void submit()}
             >
-              Enregistrer
+              {t("common.save")}
             </Button>
           </div>
         </div>

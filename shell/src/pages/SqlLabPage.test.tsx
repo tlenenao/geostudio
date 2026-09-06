@@ -49,7 +49,7 @@ function Harness() {
 test("exécute une requête et affiche le tableau de résultat", async () => {
   let posted: unknown;
   server.use(
-    http.post("https://core.test/analytics/sql", async ({ request }) => {
+    http.post("https://core.test/v1/analytics/sql", async ({ request }) => {
       posted = await request.json();
       return HttpResponse.json({
         columns: ["nom", "surface"],
@@ -73,7 +73,7 @@ test("exécute une requête et affiche le tableau de résultat", async () => {
 
 test("affiche l'avis de troncature quand le résultat a été plafonné", async () => {
   server.use(
-    http.post("https://core.test/analytics/sql", () =>
+    http.post("https://core.test/v1/analytics/sql", () =>
       HttpResponse.json({ columns: ["id"], rows: [["1"]], truncated: true }),
     ),
   );
@@ -86,7 +86,7 @@ test("affiche l'avis de troncature quand le résultat a été plafonné", async 
 
 test("affiche le message d'erreur du serveur et conserve le texte SQL en cas d'échec", async () => {
   server.use(
-    http.post("https://core.test/analytics/sql", () =>
+    http.post("https://core.test/v1/analytics/sql", () =>
       HttpResponse.json(
         {
           errors: [{ field: "sql", code: "sql_error", message: "Parser Error: syntax error" }],
@@ -105,7 +105,7 @@ test("affiche le message d'erreur du serveur et conserve le texte SQL en cas d'�
 
 test("enregistre l'historique au succès et recharge une requête passée au clic", async () => {
   server.use(
-    http.post("https://core.test/analytics/sql", () =>
+    http.post("https://core.test/v1/analytics/sql", () =>
       HttpResponse.json({ columns: ["id"], rows: [["1"]], truncated: false }),
     ),
   );

@@ -26,6 +26,7 @@ import type {
 } from "../../api/types";
 import { genEdgeId, hasIncomingEdge, topologicalOrder, wouldCreateCycle } from "./graphOps";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
+import { t } from "../../i18n";
 
 // Les 6 op transform.* insérables sur une arête (cf. plan Task 6 — clic sur
 // le "+" d'une arête, pas de drag-drop précis sur le tracé SVG). SP-15c
@@ -33,17 +34,17 @@ import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 // ligne à ligne). writer.dataset n'y figure jamais (ce n'est pas une op
 // transform, jamais candidate à cette liste, cf. design §5).
 const INSERTABLE_TRANSFORMS: { op: string; label: string }[] = [
-  { op: "transform.filter", label: "Filtrer" },
-  { op: "transform.select", label: "Sélectionner" },
-  { op: "transform.derive", label: "Dériver" },
-  { op: "transform.aggregate", label: "Agréger" },
-  { op: "transform.join", label: "Joindre" },
-  { op: "transform.merge", label: "Fusionner" },
-  { op: "transform.buffer", label: "Buffer" },
-  { op: "transform.reproject", label: "Reprojeter" },
-  { op: "transform.intersection", label: "Intersection" },
-  { op: "transform.countWithin", label: "Compter dans" },
-  { op: "transform.h3Aggregate", label: "Agréger H3" },
+  { op: "transform.filter", label: t("pipelineCanvas.transformFilter") },
+  { op: "transform.select", label: t("pipelineCanvas.transformSelect") },
+  { op: "transform.derive", label: t("pipelineCanvas.transformDerive") },
+  { op: "transform.aggregate", label: t("pipelineCanvas.transformAggregate") },
+  { op: "transform.join", label: t("pipelineCanvas.transformJoin") },
+  { op: "transform.merge", label: t("pipelineCanvas.transformMerge") },
+  { op: "transform.buffer", label: t("pipelineCanvas.transformBuffer") },
+  { op: "transform.reproject", label: t("pipelineCanvas.transformReproject") },
+  { op: "transform.intersection", label: t("pipelineCanvas.transformIntersection") },
+  { op: "transform.countWithin", label: t("pipelineCanvas.transformCountWithin") },
+  { op: "transform.h3Aggregate", label: t("pipelineCanvas.transformH3Aggregate") },
 ];
 
 const KIND_COLOR: Record<PipelineNode["kind"], string> = {
@@ -91,7 +92,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
       {node.isNext && !node.nodeStat && (
         <span
           role="status"
-          aria-label="Exécution en cours"
+          aria-label={t("pipelineCanvas.runningAria")}
           className="absolute -right-2 -top-2 h-3 w-3 animate-spin rounded-full border-2 border-accent border-t-transparent"
         />
       )}
@@ -130,7 +131,7 @@ function InsertOnEdgeButton({
         >
           <button
             type="button"
-            aria-label="Insérer une étape sur cette arête"
+            aria-label={t("pipelineCanvas.insertStepAria")}
             aria-expanded={insertMenu.triggerProps["aria-expanded"]}
             aria-controls={insertMenu.triggerProps["aria-controls"]}
             className="h-5 w-5 rounded-full border border-rule bg-surface text-xs leading-none hover:bg-sunken"
@@ -147,18 +148,18 @@ function InsertOnEdgeButton({
               role="menu"
               className="absolute z-10 mt-1 rounded border border-rule bg-surface text-xs shadow"
             >
-              {INSERTABLE_TRANSFORMS.map((t) => (
-                <li key={t.op}>
+              {INSERTABLE_TRANSFORMS.map((transform) => (
+                <li key={transform.op}>
                   <button
                     type="button"
                     role="menuitem"
                     className="block w-full whitespace-nowrap px-2 py-1 text-left hover:bg-sunken"
                     onClick={() => {
-                      onInsert(id, t.op);
+                      onInsert(id, transform.op);
                       setOpen(false);
                     }}
                   >
-                    {t.label}
+                    {transform.label}
                   </button>
                 </li>
               ))}

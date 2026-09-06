@@ -3,11 +3,11 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import croniter
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, aliased
 
 from app.configs import repository as configs_repo
-from app.pipelines.models import PipelineRun
+from app.pipelines.models import PipelineRun, PipelineWebhookToken
 
 
 def _now() -> datetime:
@@ -36,7 +36,14 @@ def get_run(session: Session, *, tenant_id: str, run_id: str) -> PipelineRun | N
     ).scalar_one_or_none()
 
 
-def list_runs(session: Session, *, tenant_id: str, pipeline_item_id: str) -> list[PipelineRun]:
+def list_runs(
+    session: Session,
+    *,
+    tenant_id: str,
+    pipeline_item_id: str,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[PipelineRun]:
     rows = (
         session.execute(
             select(PipelineRun)
@@ -44,6 +51,8 @@ def list_runs(session: Session, *, tenant_id: str, pipeline_item_id: str) -> lis
                 PipelineRun.tenant_id == tenant_id, PipelineRun.pipeline_item_id == pipeline_item_id
             )
             .order_by(PipelineRun.created_at.desc())
+            .limit(limit)
+            .offset(offset)
         )
         .scalars()
         .all()
@@ -66,6 +75,29 @@ def get_latest_run(
         .scalars()
         .first()
     )
+
+
+def get_latest_runs_for_items(session: Session, *, item_ids: list[str]) -> dict[str, PipelineRun]:
+    """Batch de get_latest_run pour une liste d'item_id — remplace l'appel
+    par itération de list_due_pipelines (GAP-64, SP-49) : une seule requête
+    au lieu de N. tenant_id n'est volontairement pas un paramètre de filtre
+    ici (contrairement à get_latest_run) : les item_id proviennent déjà de
+    list_configs_by_kind (cross-tenant par nature pour ce balayage
+    système)."""
+    if not item_ids:
+        return {}
+    rn = (
+        func.row_number()
+        .over(
+            partition_by=PipelineRun.pipeline_item_id,
+            order_by=PipelineRun.created_at.desc(),
+        )
+        .label("rn")
+    )
+    subq = select(PipelineRun, rn).where(PipelineRun.pipeline_item_id.in_(item_ids)).subquery()
+    pr = aliased(PipelineRun, subq)
+    rows = session.execute(select(pr).where(subq.c.rn == 1)).scalars().all()
+    return {r.pipeline_item_id: r for r in rows}
 
 
 def mark_running(session: Session, *, run_id: str) -> None:
@@ -125,14 +157,20 @@ def list_due_pipelines(session: Session) -> list[tuple[str, str]]:
     que ce délai est présumé planté et redevient éligible."""
     now = datetime.now(UTC)
     due: list[tuple[str, str]] = []
-    for item_id, tenant_id, config in configs_repo.list_configs_by_kind(session, kind="pipeline"):
+    candidates = [
+        (item_id, tenant_id, config)
+        for item_id, tenant_id, config in configs_repo.list_configs_by_kind(
+            session, kind="pipeline"
+        )
+        if config.pipeline is not None
+        and config.pipeline.refreshPolicy is not None
+        and config.pipeline.refreshPolicy.enabled
+    ]
+    latest_by_item = get_latest_runs_for_items(session, item_ids=[c[0] for c in candidates])
+    for item_id, tenant_id, config in candidates:
         payload = config.pipeline
-        if payload is None:
-            continue
         policy = payload.refreshPolicy
-        if policy is None or not policy.enabled:
-            continue
-        latest = get_latest_run(session, tenant_id=tenant_id, pipeline_item_id=item_id)
+        latest = latest_by_item.get(item_id)
         if latest is None:
             due.append((item_id, tenant_id))
             continue
@@ -161,3 +199,69 @@ def list_due_pipelines(session: Session) -> list[tuple[str, str]]:
         if next_tick <= now:
             due.append((item_id, tenant_id))
     return due
+
+
+# --- PipelineWebhookToken (GAP-24, SP-53) ---
+
+
+def create_webhook_token(
+    session: Session, *, tenant_id: str, pipeline_item_id: str, token_hash: str, created_by: str
+) -> PipelineWebhookToken:
+    token = PipelineWebhookToken(
+        id=uuid.uuid4().hex,
+        tenant_id=tenant_id,
+        pipeline_item_id=pipeline_item_id,
+        token_hash=token_hash,
+        created_by=created_by,
+    )
+    session.add(token)
+    session.flush()
+    session.refresh(token)
+    return token
+
+
+def get_webhook_token(
+    session: Session, *, tenant_id: str, token_id: str
+) -> PipelineWebhookToken | None:
+    return session.execute(
+        select(PipelineWebhookToken).where(
+            PipelineWebhookToken.id == token_id, PipelineWebhookToken.tenant_id == tenant_id
+        )
+    ).scalar_one_or_none()
+
+
+def get_webhook_token_by_hash(session: Session, *, token_hash: str) -> PipelineWebhookToken | None:
+    # Cross-tenant par construction : au moment du déclenchement, un
+    # appelant externe ne connaît que le jeton, jamais le tenant à
+    # l'avance (index unique sur token_hash seul, migration 0035).
+    return session.execute(
+        select(PipelineWebhookToken).where(PipelineWebhookToken.token_hash == token_hash)
+    ).scalar_one_or_none()
+
+
+def delete_webhook_token(session: Session, token: PipelineWebhookToken) -> None:
+    session.delete(token)
+    session.flush()
+
+
+def touch_webhook_token(session: Session, token: PipelineWebhookToken) -> None:
+    token.last_used_at = _now()
+    session.flush()
+
+
+def list_webhook_tokens_for_pipeline(
+    session: Session, *, tenant_id: str, pipeline_item_id: str
+) -> list[PipelineWebhookToken]:
+    rows = (
+        session.execute(
+            select(PipelineWebhookToken)
+            .where(
+                PipelineWebhookToken.tenant_id == tenant_id,
+                PipelineWebhookToken.pipeline_item_id == pipeline_item_id,
+            )
+            .order_by(PipelineWebhookToken.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return list(rows)

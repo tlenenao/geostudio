@@ -4,6 +4,7 @@ import { DataSourceSelect } from "../DataSourceSelect";
 import { useSetCrossFilter } from "../AnalyticsContext";
 import { buildPivotGrid } from "./pivotTable";
 import { ExplorerMenu } from "./ExplorerMenu";
+import { t } from "../../i18n";
 
 const labelCls = "flex flex-col gap-1";
 const inputCls = "h-9 rounded-md border border-slate-300 px-2";
@@ -20,12 +21,17 @@ export function registerPivotWidget(): void {
     // name matching is substring-based by default, so "Table" would start
     // matching this button too (strict-mode violation) across the whole
     // existing suite. "Pivot" collides with no existing widget label.
-    label: "Pivot",
+    label: t("widgetPivot.paletteLabel"),
     defaultProps: { dataSourceId: "", encodings: { rows: "", columns: "" }, title: "" },
     defaultSize: { w: 6, h: 4 },
     configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "title", type: "string", label: "Titre", default: "" },
+      {
+        name: "dataSourceId",
+        type: "dataSource",
+        label: t("widgetPivot.dataSourceConfig"),
+        default: "",
+      },
+      { name: "title", type: "string", label: t("widgetPivot.titleConfig"), default: "" },
     ],
     PropsPanel: ({ props, onChange, dataSources }) => {
       const encodings = (props.encodings as PivotEncodings | undefined) ?? {};
@@ -39,27 +45,27 @@ export function registerPivotWidget(): void {
             onChange={(id) => onChange({ ...props, dataSourceId: id })}
           />
           <label className={labelCls}>
-            Champ lignes
+            {t("widgetPivot.rowsFieldConfig")}
             <input
-              aria-label="Champ lignes"
+              aria-label={t("widgetPivot.rowsFieldConfig")}
               className={inputCls}
               value={String(encodings.rows ?? "")}
               onChange={(e) => setEncodings({ rows: e.target.value })}
             />
           </label>
           <label className={labelCls}>
-            Champ colonnes
+            {t("widgetPivot.columnsFieldConfig")}
             <input
-              aria-label="Champ colonnes"
+              aria-label={t("widgetPivot.columnsFieldConfig")}
               className={inputCls}
               value={String(encodings.columns ?? "")}
               onChange={(e) => setEncodings({ columns: e.target.value })}
             />
           </label>
           <label className={labelCls}>
-            Titre
+            {t("widgetPivot.titleConfig")}
             <input
-              aria-label="Titre du tableau croisé"
+              aria-label={t("widgetPivot.titleAria")}
               className={inputCls}
               value={String(props.title ?? "")}
               onChange={(e) => onChange({ ...props, title: e.target.value })}
@@ -77,17 +83,15 @@ export function registerPivotWidget(): void {
       const dataSourceId = String(props.dataSourceId ?? "");
 
       if (!data || data.loading)
-        return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
-      if (data.error) return <p className="text-xs text-red-600">Erreur de données</p>;
+        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+      if (data.error) return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
       if (data.records.length === 0)
-        return <p className="text-xs text-[var(--gs-color-muted)]">Aucune donnée</p>;
+        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.noData")}</p>;
 
       const grid = buildPivotGrid(data.records, rowsField, colsField);
       if (!grid)
         return (
-          <p className="text-xs text-[var(--gs-color-muted)]">
-            Configurez les champs lignes et colonnes
-          </p>
+          <p className="text-xs text-[var(--gs-color-muted)]">{t("widgetPivot.chooseFields")}</p>
         );
 
       function clickRow(rowValue: string) {
@@ -120,7 +124,7 @@ export function registerPivotWidget(): void {
                   </th>
                 ))}
                 <th colSpan={grid.measures.length} className={`${thCls} font-medium`}>
-                  Total
+                  {t("widgetPivot.total")}
                 </th>
               </tr>
               {showMeasureRow && (
@@ -171,7 +175,7 @@ export function registerPivotWidget(): void {
               ))}
               <tr>
                 <th scope="row" className="p-1 text-left font-medium">
-                  Total
+                  {t("widgetPivot.total")}
                 </th>
                 {grid.colValues.flatMap((col) =>
                   grid.measures.map((m) => (

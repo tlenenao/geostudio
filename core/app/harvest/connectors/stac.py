@@ -9,7 +9,7 @@ from urllib.parse import urljoin
 
 import httpx
 
-from app.harvest.connectors.base import HarvestedRecord
+from app.harvest.connectors.base import HarvestedRecord, HarvestFetchError
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,10 @@ class StacConnector:
             response.raise_for_status()
             doc = response.json()
         except (httpx.HTTPError, ValueError) as exc:
+            if depth == 0:
+                raise HarvestFetchError(
+                    f"document racine STAC injoignable ou illisible : {url} ({exc})"
+                ) from exc
             logger.warning("stac harvest: échec de récupération de %s : %s", url, exc)
             return
 

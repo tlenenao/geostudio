@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useItemClient, useMe } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
+import { t } from "../i18n";
 
-type Phase = "form" | "uploading" | "selecting-layer" | "polling" | "error";
+type Phase = "form" | "uploading" | "selecting-layer" | "selecting-latlon" | "polling" | "error";
 type LayerInfo = { name: string; featureCount: number; geometryType: string };
 
 const LAT_NAMES = ["lat", "latitude", "y"];
@@ -22,7 +23,21 @@ function detectLatLon(headers: string[]): boolean {
 
 function isLayeredFormat(filename: string): boolean {
   const lower = filename.toLowerCase();
-  return lower.endsWith(".gpkg") || lower.endsWith(".zip");
+  return (
+    lower.endsWith(".gpkg") ||
+    lower.endsWith(".zip") ||
+    lower.endsWith(".kml") ||
+    lower.endsWith(".kmz")
+  );
+}
+
+// XLSX est un format binaire (zip) : impossible de sniffer les en-têtes
+// côté navigateur comme pour le CSV (FileReader.readAsText) — l'inspection
+// passe par POST /uploads/inspect (InspectResponse.fields), après upload,
+// comme le flux "couches" ci-dessus, mais avec une forme de réponse et une
+// suite différentes (colonnes lat/lon, pas un choix de couche).
+function needsFieldInspection(filename: string): boolean {
+  return filename.toLowerCase().endsWith(".xlsx");
 }
 
 export function ImportFileButton() {
@@ -40,6 +55,16 @@ export function ImportFileButton() {
   const [error, setError] = useState("");
   const client = useItemClient();
   const navigate = useNavigate();
+  const mountedRef = useRef(true);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
   // SP-42/F-shell-pages-01 (fusion F-shell-pages-02) : cf. commentaire
   // jumeau sur NewItemButton.tsx — même mécanisme, même TopBar. Un import
   // aboutit toujours à POST /uploads (core/app/ingestion/routes.py),
@@ -88,7 +113,9 @@ export function ImportFileButton() {
 
   async function poll(jobId: string) {
     for (;;) {
+      if (!mountedRef.current) return;
       const job = await client.getIngestionJob(jobId);
+      if (!mountedRef.current) return;
       if (job.status === "done" && job.itemId) {
         close();
         navigate(`/maps/${job.itemId}`);
@@ -96,10 +123,13 @@ export function ImportFileButton() {
       }
       if (job.status === "error") {
         setPhase("error");
-        setError(job.errorMessage ?? "Échec de l'import.");
+        setError(job.errorMessage ?? t("importFile.genericError"));
         return;
       }
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise<void>((resolve) => {
+        timerRef.current = setTimeout(resolve, 1500);
+      });
+      if (!mountedRef.current) return;
     }
   }
 
@@ -139,10 +169,22 @@ export function ImportFileButton() {
         await startJob(key, found[0]?.name);
         return;
       }
+      if (needsFieldInspection(file.name)) {
+        const { fields } = await client.inspectUpload({ key, filename: file.name });
+        if (!detectLatLon(fields ?? [])) {
+          setUploadedKey(key);
+          setCsvHeaders(fields ?? []);
+          setPhase("selecting-latlon");
+          return;
+        }
+        await startJob(key, undefined);
+        return;
+      }
       await startJob(key, undefined);
     } catch {
+      if (!mountedRef.current) return;
       setPhase("error");
-      setError("Échec de l'import.");
+      setError(t("importFile.genericError"));
     }
   }
 
@@ -154,8 +196,27 @@ export function ImportFileButton() {
     try {
       await startJob(uploadedKey, layerName);
     } catch {
+      if (!mountedRef.current) return;
       setPhase("error");
-      setError("Échec de l'import.");
+      setError(t("importFile.genericError"));
+    }
+  }
+
+  async function confirmLatLon(e: React.FormEvent) {
+    e.preventDefault();
+    if (!uploadedKey || !latField || !lonField) return;
+    setPhase("uploading");
+    setError("");
+    try {
+      // needsManualLatLon (csvHeaders !== null) est vrai ici : startJob lit
+      // latField/lonField depuis l'état, pas un paramètre dédié — même
+      // mécanique que le formulaire CSV manuel (Fichier déjà uploadé, pas
+      // de layerName pour ce format).
+      await startJob(uploadedKey, undefined);
+    } catch {
+      if (!mountedRef.current) return;
+      setPhase("error");
+      setError(t("importFile.genericError"));
     }
   }
 
@@ -169,20 +230,63 @@ export function ImportFileButton() {
         {...drawerPanel.triggerProps}
         onClick={() => setOpen(true)}
       >
-        Importer un fichier
+        {t("importFile.button")}
       </Button>
       <Drawer
         open={open}
         onOpenChange={(next) => !next && close()}
-        title="Importer un fichier"
+        title={t("importFile.button")}
         id={drawerPanel.panelId}
       >
-        {phase === "selecting-layer" ? (
+        {phase === "selecting-latlon" ? (
+          <form onSubmit={(e) => void confirmLatLon(e)} className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1 text-sm text-ink">
+              {t("importFile.latColumn")}
+              <select
+                aria-label={t("importFile.latColumn")}
+                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                value={latField}
+                onChange={(e) => setLatField(e.target.value)}
+              >
+                <option value="">—</option>
+                {csvHeaders!.map((h) => (
+                  <option key={h} value={h}>
+                    {h}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm text-ink">
+              {t("importFile.lonColumn")}
+              <select
+                aria-label={t("importFile.lonColumn")}
+                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                value={lonField}
+                onChange={(e) => setLonField(e.target.value)}
+              >
+                <option value="">—</option>
+                {csvHeaders!.map((h) => (
+                  <option key={h} value={h}>
+                    {h}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={close}>
+                {t("confirmDialog.cancel")}
+              </Button>
+              <Button type="submit" size="sm" disabled={!latField || !lonField}>
+                {t("importFile.continueButton")}
+              </Button>
+            </div>
+          </form>
+        ) : phase === "selecting-layer" ? (
           <form onSubmit={(e) => void confirmLayer(e)} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm text-ink">
-              Couche à importer
+              {t("importFile.layerColumn")}
               <select
-                aria-label="Couche à importer"
+                aria-label={t("importFile.layerColumn")}
                 className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                 value={layerName}
                 onChange={(e) => setLayerName(e.target.value)}
@@ -190,35 +294,35 @@ export function ImportFileButton() {
                 <option value="">—</option>
                 {layers.map((l) => (
                   <option key={l.name} value={l.name}>
-                    {l.name} ({l.featureCount} entités)
+                    {t("importFile.layerOptionTemplate", { name: l.name, count: l.featureCount })}
                   </option>
                 ))}
               </select>
             </label>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" size="sm" onClick={close}>
-                Annuler
+                {t("confirmDialog.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={!layerName}>
-                Continuer
+                {t("importFile.continueButton")}
               </Button>
             </div>
           </form>
         ) : (
           <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm text-ink">
-              Fichier à importer
+              {t("importFile.fileToImport")}
               <input
-                aria-label="Fichier à importer"
+                aria-label={t("importFile.fileToImport")}
                 type="file"
-                accept=".geojson,.json,.csv,.gpkg,.zip"
+                accept=".geojson,.json,.csv,.xlsx,.kml,.kmz,.gpkg,.zip,.parquet"
                 onChange={(e) => void onFileChange(e)}
               />
             </label>
             <label className="flex flex-col gap-1 text-sm text-ink">
-              Titre de la collection
+              {t("importFile.collectionTitleLabel")}
               <Input
-                aria-label="Titre de la collection"
+                aria-label={t("importFile.collectionTitleLabel")}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
@@ -226,9 +330,9 @@ export function ImportFileButton() {
             {needsManualLatLon && (
               <>
                 <label className="flex flex-col gap-1 text-sm text-ink">
-                  Colonne latitude
+                  {t("importFile.latColumn")}
                   <select
-                    aria-label="Colonne latitude"
+                    aria-label={t("importFile.latColumn")}
                     className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                     value={latField}
                     onChange={(e) => setLatField(e.target.value)}
@@ -242,9 +346,9 @@ export function ImportFileButton() {
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-ink">
-                  Colonne longitude
+                  {t("importFile.lonColumn")}
                   <select
-                    aria-label="Colonne longitude"
+                    aria-label={t("importFile.lonColumn")}
                     className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                     value={lonField}
                     onChange={(e) => setLonField(e.target.value)}
@@ -266,14 +370,14 @@ export function ImportFileButton() {
             )}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" size="sm" onClick={close}>
-                Annuler
+                {t("confirmDialog.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={busy}>
                 {phase === "uploading"
-                  ? "Envoi…"
+                  ? t("importFile.uploading")
                   : phase === "polling"
-                    ? "Import en cours…"
-                    : "Importer"}
+                    ? t("importFile.importing")
+                    : t("importFile.submit")}
               </Button>
             </div>
           </form>

@@ -12,7 +12,7 @@ import httpx
 import pyproj
 from pyproj.exceptions import ProjError
 
-from app.harvest.connectors.base import HarvestedRecord
+from app.harvest.connectors.base import HarvestedRecord, HarvestFetchError
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,10 @@ class ArcgisConnector:
 
     def _fetch(self, client, service_url: str) -> list[HarvestedRecord]:
         gets = 0
-        meta = self._get_json(client, f"{service_url}?f=json")
+        # Racine (GAP-59.2, SP-50) : ce premier appel signale plutôt que
+        # tolère (raises HarvestFetchError) — les couches individuelles,
+        # ci-dessous, restent tolérantes (root=False, comportement inchangé).
+        meta = self._get_json(client, f"{service_url}?f=json", root=True)
         gets += 1
         if not isinstance(meta, dict):
             logger.warning("arcgis harvest: réponse service non-objet ignorée à %s", service_url)
@@ -92,12 +95,16 @@ class ArcgisConnector:
         return records
 
     @staticmethod
-    def _get_json(client, url: str):
+    def _get_json(client, url: str, *, root: bool = False):
         try:
             response = client.get(url, timeout=_DEFAULT_TIMEOUT_SECONDS)
             response.raise_for_status()
             return response.json()
         except (httpx.HTTPError, ValueError) as exc:
+            if root:
+                raise HarvestFetchError(
+                    f"document racine ArcGIS injoignable ou illisible : {url} ({exc})"
+                ) from exc
             logger.warning("arcgis harvest: échec de récupération de %s : %s", url, exc)
             return None
 

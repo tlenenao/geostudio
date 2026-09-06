@@ -51,18 +51,18 @@ def _create_config(client) -> dict:
         "kind": "app",
         "layout": {"type": "grid", "items": [{"widget": "map", "x": 0, "y": 0, "w": 4, "h": 4}]},
     }
-    response = client.post("/configs", json={"title": "My App", "config": body})
+    response = client.post("/v1/configs", json={"title": "My App", "config": body})
     assert response.status_code == 201, response.text
     return response.json()
 
 
 def test_public_get_published_item_requires_no_auth(client):
     created = _create_config(client)
-    client.patch(f"/items/{created['itemId']}", json={"isPublished": True})
+    client.patch(f"/v1/items/{created['itemId']}", json={"isPublished": True})
 
     # Deliberately clear the auth override to prove no Authorization header is needed.
     del client.app.dependency_overrides[get_current_user]
-    response = client.get(f"/public/items/{created['itemId']}")
+    response = client.get(f"/v1/public/items/{created['itemId']}")
     assert response.status_code == 200
     assert response.json()["title"] == "My App"
 
@@ -70,22 +70,22 @@ def test_public_get_published_item_requires_no_auth(client):
 def test_public_get_unpublished_item_returns_404(client):
     created = _create_config(client)
     del client.app.dependency_overrides[get_current_user]
-    response = client.get(f"/public/items/{created['itemId']}")
+    response = client.get(f"/v1/public/items/{created['itemId']}")
     assert response.status_code == 404
 
 
 def test_public_get_nonexistent_item_returns_404_same_as_unpublished(client):
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/items/does-not-exist")
+    response = client.get("/v1/public/items/does-not-exist")
     assert response.status_code == 404
 
 
 def test_public_get_config_by_item_for_published_item(client):
     created = _create_config(client)
-    client.patch(f"/items/{created['itemId']}", json={"isPublished": True})
+    client.patch(f"/v1/items/{created['itemId']}", json={"isPublished": True})
     del client.app.dependency_overrides[get_current_user]
 
-    response = client.get(f"/public/configs/by-item/{created['itemId']}")
+    response = client.get(f"/v1/public/configs/by-item/{created['itemId']}")
     assert response.status_code == 200
     assert response.json()["config"]["layout"]["items"][0]["widget"] == "map"
 
@@ -93,7 +93,7 @@ def test_public_get_config_by_item_for_published_item(client):
 def test_public_get_config_by_item_for_unpublished_item_returns_404(client):
     created = _create_config(client)
     del client.app.dependency_overrides[get_current_user]
-    response = client.get(f"/public/configs/by-item/{created['itemId']}")
+    response = client.get(f"/v1/public/configs/by-item/{created['itemId']}")
     assert response.status_code == 404
 
 
@@ -130,7 +130,7 @@ def test_public_get_item_by_id_does_not_leak_across_tenants(client):
     other_item_id = _create_other_tenant_published_item(client)
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get(f"/public/items/{other_item_id}")
+    response = client.get(f"/v1/public/items/{other_item_id}")
     assert response.status_code == 404
 
 
@@ -140,5 +140,5 @@ def test_public_get_config_by_item_does_not_leak_across_tenants(client):
     other_item_id = _create_other_tenant_published_item(client)
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get(f"/public/configs/by-item/{other_item_id}")
+    response = client.get(f"/v1/public/configs/by-item/{other_item_id}")
     assert response.status_code == 404

@@ -21,6 +21,7 @@ class Privilege(StrEnum):
     ADMIN_EXTENSIONS_MANAGE = "admin.extensions.manage"
     ADMIN_SECRETS_MANAGE = "admin.secrets.manage"
     SETTINGS_INSTANCE_MANAGE = "settings.instance.manage"
+    COMPLIANCE_MANAGE = "compliance.manage"
 
 
 # (domaine shell/src/auth/capabilities.ts::DomainId, clé i18n shell/src/i18n/catalog.fr.ts)
@@ -48,6 +49,12 @@ PRIVILEGE_METADATA: dict[Privilege, tuple[str, str]] = {
     Privilege.ADMIN_EXTENSIONS_MANAGE: ("admin", "roles.privilege.adminExtensionsManage"),
     Privilege.ADMIN_SECRETS_MANAGE: ("admin", "roles.privilege.adminSecretsManage"),
     Privilege.SETTINGS_INSTANCE_MANAGE: ("settings", "roles.privilege.settingsInstanceManage"),
+    # Domaine "settings" par analogie avec SETTINGS_INSTANCE_MANAGE (même
+    # famille shell) — décision de la Tâche 8 (spec SP-58 §3.3/§6, laissée
+    # ouverte par la spec) : un domaine "compliance" dédié aurait demandé
+    # d'étendre DomainId (shell/src/auth/capabilities.ts) pour un seul
+    # privilège consommé par une unique action admin, jugé disproportionné.
+    Privilege.COMPLIANCE_MANAGE: ("settings", "roles.privilege.complianceManage"),
 }
 
 ALL_PRIVILEGE_VALUES: list[str] = [p.value for p in Privilege]
@@ -62,7 +69,12 @@ BUILT_IN_ROLE_NAMES: dict[str, str] = {
 # Reprend la matrice §6.7 de docs/superpowers/specs/2026-08-29-refonte-ui-triptyque-design.md,
 # traduite en privilèges concrets (design §3.3).
 BUILT_IN_ROLE_PRIVILEGES: dict[str, list[str]] = {
-    "admin": list(ALL_PRIVILEGE_VALUES),
+    # SP-58 Tâche 8 (spec §3.3, décision explicite) : compliance.manage est
+    # volontairement EXCLU, même de l'Administrateur — la purge de tenant
+    # est irréversible, un rôle sur mesure doit l'attribuer consciemment.
+    # Sans cette exclusion, `list(ALL_PRIVILEGE_VALUES)` l'aurait glissé
+    # silencieusement dans "admin" dès son ajout à l'enum ci-dessus.
+    "admin": [p for p in ALL_PRIVILEGE_VALUES if p != Privilege.COMPLIANCE_MANAGE.value],
     "creator": [
         Privilege.CATALOG_MANAGE.value,
         Privilege.MAPS_MANAGE.value,
@@ -70,6 +82,7 @@ BUILT_IN_ROLE_PRIVILEGES: dict[str, list[str]] = {
         Privilege.DATA_MANAGE.value,
         Privilege.APPS_MANAGE.value,
         Privilege.AUTOMATION_MANAGE.value,
+        Privilege.AUTOMATION_SECRETS_MANAGE.value,
         Privilege.ANALYTICS_VIEW.value,
         Privilege.TASKS_VIEW.value,
     ],

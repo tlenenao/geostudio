@@ -111,7 +111,7 @@ test("does not submit an empty title", async () => {
 
 test("creates a Map and navigates to the editor route", async () => {
   server.use(
-    http.post("https://core.test/configs", () =>
+    http.post("https://core.test/v1/configs", () =>
       HttpResponse.json({ id: "cfg-77", kind: "map", itemId: "77", version: 1, config: {} }),
     ),
   );
@@ -145,7 +145,9 @@ test("creates a Map and navigates to the editor route", async () => {
 });
 
 test("shows an alert and stays on the page when creation fails", async () => {
-  server.use(http.post("https://core.test/configs", () => new HttpResponse(null, { status: 500 })));
+  server.use(
+    http.post("https://core.test/v1/configs", () => new HttpResponse(null, { status: 500 })),
+  );
   render(
     <Harness>
       <NewItemButton />
@@ -176,7 +178,7 @@ test("shows a Modèle select for app/dashboard, filtered by the current type", a
 test("creating from a template posts its layout", async () => {
   let body: any = null;
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({
         id: "cfg-9",
@@ -241,7 +243,7 @@ test("disables the Créer button when the edited slug is invalid", async () => {
 test("submits a Site with its slug in the POST body", async () => {
   let body: any = null;
   server.use(
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json(
         { id: "cfg-1", kind: "site", itemId: "site-9", version: 1, config: body.config },
@@ -267,7 +269,7 @@ test("submits a Site with its slug in the POST body", async () => {
 test("creating a dataset posts collectionId and navigates to the dataset editor", async () => {
   let body: any;
   server.use(
-    http.get("https://core.test/collections", () =>
+    http.get("https://core.test/v1/collections", () =>
       HttpResponse.json({
         collections: [
           {
@@ -287,7 +289,7 @@ test("creating a dataset posts collectionId and navigates to the dataset editor"
         ],
       }),
     ),
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-ds", kind: "dataset", itemId: "ds-9" }, { status: 201 });
     }),
@@ -327,11 +329,11 @@ test("creating a dataset posts collectionId and navigates to the dataset editor"
 test("creates an arcgis-sourced dataset from a feature-layer picker", async () => {
   let body: any;
   server.use(
-    http.get("https://core.test/collections", () => HttpResponse.json({ collections: [] })),
-    http.get("https://core.test/harvest/feature-layers", () =>
+    http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
+    http.get("https://core.test/v1/harvest/feature-layers", () =>
       HttpResponse.json({ layers: [{ id: "layer-1", title: "Bâtiments" }] }),
     ),
-    http.post("https://core.test/configs", async ({ request }) => {
+    http.post("https://core.test/v1/configs", async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ id: "cfg-ds", kind: "dataset", itemId: "ds-1" }, { status: 201 });
     }),
@@ -382,7 +384,7 @@ test("the Pipeline option is absent from the Type select when etlEnabled is fals
 
 test("the Pipeline option is present when etlEnabled is true", async () => {
   server.use(
-    http.get("https://core.test/instance", () =>
+    http.get("https://core.test/v1/instance", () =>
       HttpResponse.json({ readOnly: false, etlEnabled: true }),
     ),
   );
@@ -397,13 +399,13 @@ test("the Pipeline option is present when etlEnabled is true", async () => {
 
 test("selecting Pipeline only asks for a title, and navigates to /pipelines/new with the title in route state, without calling the create API", async () => {
   server.use(
-    http.get("https://core.test/instance", () =>
+    http.get("https://core.test/v1/instance", () =>
       HttpResponse.json({ readOnly: false, etlEnabled: true }),
     ),
   );
   let configPosted = false;
   server.use(
-    http.post("https://core.test/configs", () => {
+    http.post("https://core.test/v1/configs", () => {
       configPosted = true;
       return HttpResponse.json({ id: "cfg-x", kind: "app", itemId: "x" });
     }),
@@ -438,13 +440,13 @@ test("selecting Pipeline only asks for a title, and navigates to /pipelines/new 
 
 test("selecting « Dataset par requête visuelle » only asks for a title, and navigates to /datasets/visual-query/new with the title in route state, without calling the create API", async () => {
   server.use(
-    http.get("https://core.test/instance", () =>
+    http.get("https://core.test/v1/instance", () =>
       HttpResponse.json({ readOnly: false, etlEnabled: true }),
     ),
   );
   let configPosted = false;
   server.use(
-    http.post("https://core.test/configs", () => {
+    http.post("https://core.test/v1/configs", () => {
       configPosted = true;
       return HttpResponse.json({ id: "cfg-x", kind: "app", itemId: "x" });
     }),
@@ -478,7 +480,7 @@ test("selecting « Dataset par requête visuelle » only asks for a title, and n
 
 test("the visual-query option is hidden when etlEnabled is false", async () => {
   server.use(
-    http.get("https://core.test/instance", () =>
+    http.get("https://core.test/v1/instance", () =>
       HttpResponse.json({ readOnly: false, etlEnabled: false }),
     ),
   );

@@ -71,15 +71,15 @@ export function CreateRolePanel({ onClose }: { onClose: () => void }) {
         </fieldset>
         {createRole.isError && (
           <p role="alert" className="text-sm text-danger">
-            Échec de la création.
+            {t("roles.createFailed")}
           </p>
         )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
-            Annuler
+            {t("confirmDialog.cancel")}
           </Button>
           <Button type="submit" size="sm" disabled={!name || createRole.isPending}>
-            Enregistrer
+            {t("common.save")}
           </Button>
         </div>
       </form>

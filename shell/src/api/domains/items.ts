@@ -8,6 +8,7 @@ import type {
   InstanceInfo,
   Item,
   ItemClient,
+  ItemFacets,
   ItemPage,
   ListItemsParams,
   MetadataCatalog,
@@ -22,6 +23,7 @@ import { OWNER_PERMISSIONS } from "../../auth/permissions";
 type ItemsMethods = Pick<
   ItemClient,
   | "listItems"
+  | "getItemFacets"
   | "getItem"
   | "getItemBySlug"
   | "listPublicItems"
@@ -32,8 +34,13 @@ type ItemsMethods = Pick<
   | "uploadThumbnail"
   | "deleteItem"
   | "listGroups"
+  | "createGroup"
+  | "addGroupMember"
   | "getSharing"
   | "setSharing"
+  | "createShareLink"
+  | "listShareLinks"
+  | "revokeShareLink"
   | "listConfigRevisions"
   | "rollbackConfig"
   | "createBookmarkItem"
@@ -50,7 +57,22 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
       if (params.scope) q.set("scope", params.scope);
       q.set("page", String(params.page ?? 1));
       q.set("pageSize", String(params.pageSize ?? 12));
+      if (params.sort) q.set("sort", params.sort);
+      if (params.owner) q.set("owner", params.owner);
+      for (const keyword of params.keywords ?? []) q.append("keyword", keyword);
+      if (params.bbox) q.set("bbox", params.bbox);
       return request<ItemPage>("GET", `/items?${q.toString()}`);
+    },
+
+    async getItemFacets(
+      params: Pick<ListItemsParams, "q" | "type" | "scope" | "owner"> = {},
+    ): Promise<ItemFacets> {
+      const q = new URLSearchParams();
+      if (params.q) q.set("q", params.q);
+      if (params.type) q.set("type", params.type);
+      if (params.scope) q.set("scope", params.scope);
+      if (params.owner) q.set("owner", params.owner);
+      return request<ItemFacets>("GET", `/items/facets?${q.toString()}`);
     },
 
     async getItem(pk: string): Promise<Item> {
@@ -162,12 +184,52 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
       return data.map((g) => ({ id: g.id, title: g.name }));
     },
 
+    async createGroup(name: string): Promise<Group> {
+      const data = await request<{ id: string; name: string }>("POST", `/groups`, { name });
+      return { id: data.id, title: data.name };
+    },
+
+    async addGroupMember(groupId: string, userId: string): Promise<void> {
+      try {
+        await request<void>("POST", `/groups/${groupId}/members`, { userId });
+      } catch (err) {
+        if (err instanceof Error && err.message.includes("404")) {
+          throw new Error(
+            "Ce groupe n'existe pas, ou vous n'en êtes pas le créateur — seul le créateur d'un groupe peut y ajouter un membre.",
+          );
+        }
+        throw err;
+      }
+    },
+
     async getSharing(pk: string): Promise<Sharing> {
       return request<Sharing>("GET", `/items/${pk}/sharing`);
     },
 
     async setSharing(pk: string, sharing: Sharing): Promise<void> {
       await request<void>("PUT", `/items/${pk}/sharing`, sharing);
+    },
+
+    async createShareLink(
+      itemId: string,
+      ttlDays: number,
+    ): Promise<{ url: string; expiresAt: string }> {
+      return request<{ url: string; expiresAt: string }>("POST", `/items/${itemId}/share-links`, {
+        ttlDays,
+      });
+    },
+
+    async listShareLinks(
+      itemId: string,
+    ): Promise<{ id: string; expiresAt: string; revoked: boolean }[]> {
+      return request<{ id: string; expiresAt: string; revoked: boolean }[]>(
+        "GET",
+        `/items/${itemId}/share-links`,
+      );
+    },
+
+    async revokeShareLink(itemId: string, linkId: string): Promise<void> {
+      await request<void>("DELETE", `/items/${itemId}/share-links/${linkId}`);
     },
 
     async listConfigRevisions(pk: string): Promise<ConfigRevisionInfo[]> {

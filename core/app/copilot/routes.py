@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from app.auth.dependency import get_current_user
+from app.copilot.egress import EgressBlockedError
 from app.copilot.llm_provider import LLMTurn, get_llm_provider
 from app.copilot.mcp_loopback import McpLoopbackError, McpLoopbackSession
 from app.copilot.mcp_token import McpTokenError, mcp_token_subject
@@ -128,7 +129,12 @@ async def _run_turn(
         # travail rendrait bien le 504 à l'heure mais **abandonnerait**
         # l'appel — le thread tiendrait un jeton du pool jusqu'à son propre
         # timeout, épuisable en répétant des tours lents.
-        turn: LLMTurn = await provider.chat(messages, all_tools)
+        try:
+            turn: LLMTurn = await provider.chat(messages, all_tools)
+        except EgressBlockedError as exc:
+            raise HTTPException(
+                status_code=502, detail=f"garde d'egress LLM : cible bloquée ({exc})"
+            ) from exc
         if not turn.tool_calls:
             return CopilotTurnResponse(reply=turn.text, clientOps=[])
 

@@ -256,7 +256,7 @@ def test_get_item_never_returns_a_thumbnail_url_to_an_mcp_caller(app_client):
         )
         session.commit()
 
-    rest_resp = app_client.get(f"/items/{item_id}", headers={"Authorization": "Bearer anything"})
+    rest_resp = app_client.get(f"/v1/items/{item_id}", headers={"Authorization": "Bearer anything"})
     assert rest_resp.status_code == 200
     assert rest_resp.json()["thumbnailUrl"] == f"/items/{item_id}/thumbnail"
 

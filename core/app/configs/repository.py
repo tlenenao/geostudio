@@ -7,8 +7,10 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.configs.bbox import recompute_item_bbox
 from app.configs.models import Config, ConfigRevision
 from app.configs.schemas import BuilderConfig
+from app.items.models import Item
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +67,10 @@ def create_config(
     session.add(revision)
     session.flush()
     session.refresh(record)
+    if item_id is not None:
+        item = session.get(Item, item_id)
+        if item is not None:
+            recompute_item_bbox(session, item=item, config=config, tenant_id=tenant_id)
     return _to_read(record, revision)
 
 
@@ -219,6 +225,10 @@ def update_config(
     session.add(revision)
     session.flush()
     session.refresh(record)
+    if record.item_id is not None:
+        item = session.get(Item, record.item_id)
+        if item is not None:
+            recompute_item_bbox(session, item=item, config=config, tenant_id=tenant_id)
     return _to_read(record, revision)
 
 
@@ -252,6 +262,11 @@ def rollback_config(
     session.add(revision)
     session.flush()
     session.refresh(record)
+    if record.item_id is not None:
+        item = session.get(Item, record.item_id)
+        if item is not None:
+            restored_config = BuilderConfig.model_validate(source.data)
+            recompute_item_bbox(session, item=item, config=restored_config, tenant_id=tenant_id)
     return _to_read(record, revision)
 
 

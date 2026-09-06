@@ -66,13 +66,22 @@ export type RoleSummary = {
 };
 
 export type Me = {
+  id: string;
+  tenantId: string;
+  tenantSlug: string;
   username: string;
+  email: string | null;
   firstName: string;
   lastName: string;
   role: RoleSummary;
   privileges: string[];
   version: string;
-  tenantSlug: string;
+  // GAP-65 (1/3) : GET /me sert ce profil de capacités depuis longtemps
+  // (MeResponse, core/app/auth/routes.py) — doublon délibéré de GET
+  // /instance (InstanceInfo, même forme exacte), gardé identique par un
+  // test dédié côté cœur. getInstanceInfo()/useInstanceInfo() ne sont pas
+  // retirés, cette lecture s'ajoute sans migrer leurs consommateurs.
+  capabilities: InstanceInfo;
 };
 
 export type Role = {
@@ -89,6 +98,15 @@ export type UserSummary = {
   roleSlug: string;
 };
 
+export type PurgeReceipt = {
+  id: string;
+  tenantSlug: string;
+  requestedByUserId: string;
+  requestedAt: string;
+  completedAt: string;
+  counts: Record<string, number>;
+};
+
 export type NotificationSummary = {
   id: string;
   kind: "ingestion" | "pipeline" | "export" | "appexport" | "report";
@@ -102,6 +120,31 @@ export type NotificationSummary = {
 };
 
 export type NotificationPreferenceValue = "all" | "failuresOnly" | "none";
+
+export type UsageTask = {
+  id: number;
+  actorId: string | null;
+  action: string;
+  objectType: string;
+  objectId: string;
+  createdAt: string;
+};
+
+export type UsageActorStat = {
+  actorId: string | null;
+  actorUsername: string | null;
+  count: number;
+};
+
+export type UsageResourceStat = { objectType: string; objectId: string; count: number };
+
+export type UsageSummary = {
+  byActor: UsageActorStat[];
+  byResource: UsageResourceStat[];
+  totalActions: number;
+  windowStart: string;
+  windowEnd: string;
+};
 
 export type PrivilegeCatalogEntry = {
   privilege: string;
@@ -128,6 +171,7 @@ export type InstanceInfo = {
   terrain3dEnabled: boolean;
   copilotEnabled: boolean;
   adminToolsEnabled: boolean;
+  quotasEnabled: boolean;
 };
 
 export type AdminToolName = "martin" | "titiler" | "grafana";
@@ -143,6 +187,8 @@ export type CopilotToolSchema = {
 
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
+export type ItemSort = "date_desc" | "date_asc" | "updated_desc" | "title_asc" | "title_desc";
+
 export type ListItemsParams = {
   q?: string;
   type?: ResourceType;
@@ -150,7 +196,15 @@ export type ListItemsParams = {
   pageSize?: number;
   scope?: ItemScope;
   me?: string;
+  sort?: ItemSort;
+  owner?: string;
+  keywords?: string[];
+  bbox?: string; // "minLon,minLat,maxLon,maxLat"
 };
+
+export type OwnerFacet = { username: string; count: number };
+export type KeywordFacet = { keyword: string; count: number };
+export type ItemFacets = { owners: OwnerFacet[]; keywords: KeywordFacet[] };
 
 export type UpdatePatch = {
   title?: string;
@@ -330,6 +384,9 @@ export type MapIconOut = {
 
 export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
+  getItemFacets(
+    params?: Pick<ListItemsParams, "q" | "type" | "scope" | "owner">,
+  ): Promise<ItemFacets>;
   getItem(pk: string): Promise<Item>;
   getItemBySlug(slug: string): Promise<Item>;
   listPublicItems(params?: {
@@ -350,6 +407,9 @@ export interface ItemClient {
     q?: string;
   }): Promise<{ users: UserSummary[]; total: number }>;
   updateUserRole(id: string, roleId: string): Promise<UserSummary>;
+  eraseUser(userId: string): Promise<void>;
+  requestTenantPurge(tenantId: string, confirmSlug: string): Promise<{ jobId: string }>;
+  getPurgeStatus(purgeId: string): Promise<PurgeReceipt | null>;
   listNotifications(params: {
     page: number;
     pageSize: number;
@@ -361,6 +421,16 @@ export interface ItemClient {
   updateNotificationPreference(
     value: NotificationPreferenceValue,
   ): Promise<NotificationPreferenceValue>;
+  listUsageTasks(params: {
+    page: number;
+    pageSize: number;
+    actorId?: string;
+  }): Promise<{ tasks: UsageTask[]; total: number }>;
+  getUsageSummary(params?: {
+    since?: string;
+    until?: string;
+    limit?: number;
+  }): Promise<UsageSummary>;
   getInstanceInfo(): Promise<InstanceInfo>;
   copilotTurn(
     itemId: string,
@@ -383,8 +453,21 @@ export interface ItemClient {
   uploadThumbnail(pk: string, file: File): Promise<void>;
   deleteItem(pk: string): Promise<void>;
   listGroups(): Promise<Group[]>;
+  // GAP-42/65 : POST /groups + POST /groups/{id}/members existaient et
+  // étaient testés côté cœur, mais aucune UI/MCP ne les exposait —
+  // ShareForm.tsx ne pouvait qu'afficher des groupes déjà créés hors
+  // produit. addGroupMember réserve le succès au créateur du groupe
+  // (404 côté cœur si non — comportement délibéré, message clair ici
+  // plutôt que masqué).
+  createGroup(name: string): Promise<Group>;
+  addGroupMember(groupId: string, userId: string): Promise<void>;
   getSharing(pk: string): Promise<Sharing>;
   setSharing(pk: string, sharing: Sharing): Promise<void>;
+  // GAP-12 (chantier 4.23) : lien de partage à échéance, révocable — distinct
+  // du partage groupe/rôle plat ci-dessus (présenté à un tiers externe).
+  createShareLink(itemId: string, ttlDays: number): Promise<{ url: string; expiresAt: string }>;
+  listShareLinks(itemId: string): Promise<{ id: string; expiresAt: string; revoked: boolean }[]>;
+  revokeShareLink(itemId: string, linkId: string): Promise<void>;
   listLayerSources(params?: { q?: string }): Promise<LayerSource[]>;
   sampleCollectionField(collectionId: string, field: string, limit: number): Promise<number[]>;
   // Un SEUL appel : le cœur reçoit les octets (D7). Pas de presign, donc pas
@@ -399,7 +482,7 @@ export interface ItemClient {
   listAllExtensions(): Promise<AdminExtension[]>;
   setExtensionEnabled(id: string, enabled: boolean): Promise<void>;
   getMetadataCatalog(): Promise<MetadataCatalog>;
-  listCollections(): Promise<CollectionAdmin[]>;
+  listCollections(params?: { q?: string }): Promise<CollectionAdmin[]>;
   listCandidateTables(): Promise<CandidateTable[]>;
   createCollection(input: CollectionCreateInput): Promise<CollectionAdmin>;
   createEmptyCollection(input: CreateEmptyCollectionInput): Promise<{ id: string }>;
@@ -433,6 +516,9 @@ export interface ItemClient {
   getPipelineOps(): Promise<PipelineOpsCatalog>;
   runPipeline(pk: string): Promise<{ runId: string }>;
   getPipelineRuns(pk: string): Promise<PipelineRun[]>;
+  listPipelineWebhookTokens(pk: string): Promise<PipelineWebhookToken[]>;
+  createPipelineWebhookToken(pk: string): Promise<{ id: string; token: string; createdAt: string }>;
+  revokePipelineWebhookToken(pk: string, tokenId: string): Promise<void>;
   previewPipeline(pk: string, upToNodeId: string): Promise<Record<string, unknown>[]>;
   createAlertRuleItem(input: {
     title: string;
@@ -457,7 +543,26 @@ export interface ItemClient {
   getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig>;
   getPublicAppConfig(pk: string): Promise<AppConfig>;
   saveAppConfig(pk: string, config: AppConfig): Promise<void>;
+  // GAP-38 : schéma JSON de BuilderConfig, factorisé côté cœur derrière
+  // app_config_json_schema() — même source que la ressource MCP
+  // schema://app-config (garanti identique par un test dédié côté cœur).
+  getAppConfigSchema(): Promise<Record<string, unknown>>;
   queryDataSource(source: DataSource): Promise<DataRecord[]>;
+  // Symétrique de sampleCollectionField, mais pour un hôte qui n'a qu'un
+  // DataSource (pas déjà un collectionId résolu) : la couche `feature` du
+  // widget carte de l'App Builder (Jenks, GAP-52 4/4). Résout collectionId
+  // via resolveDataset() quand `source.datasetId` est fourni, sinon utilise
+  // `source.layer` directement (même patron que queryDataSource).
+  sampleDataSourceField(
+    source: { layer: string; datasetId?: string },
+    field: string,
+    limit: number,
+  ): Promise<number[]>;
+  // GAP-65 (2/3) : datasetCache (interne à ItemClient, résolveDataset())
+  // n'expirait jamais et n'était rafraîchi que par une écriture passant
+  // par ce même ItemClient — TTL de 5 minutes + invalidation manuelle pour
+  // un appelant qui saurait qu'un dataset a changé ailleurs.
+  invalidateDatasetCache(pk?: string): void;
   featuresUrl(source: DataSource): string;
   exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }>;
   getCollectionSchema(collectionId: string): Promise<CollectionSchema>;
@@ -495,6 +600,7 @@ export interface ItemClient {
   uploadToPresignedUrl(url: string, file: File): Promise<void>;
   inspectUpload(input: { key: string; filename: string }): Promise<{
     layers: { name: string; featureCount: number; geometryType: string }[];
+    fields?: string[] | null;
   }>;
   createIngestionJob(input: {
     key: string;
@@ -555,7 +661,37 @@ export interface ItemClient {
     errorMessage: string | null;
     itemId: string | null;
   }>;
+  // Coffre de secrets connecteur (GAP-43, SP-53) : le cœur ne rend jamais un
+  // payload déchiffré — listSecrets()/createSecret() ne portent que
+  // {id,name,kind,createdAt,updatedAt}, jamais le SecretPayload lui-même.
+  listSecrets(): Promise<SecretSummary[]>;
+  createSecret(input: { name: string; payload: SecretPayload }): Promise<SecretSummary>;
+  deleteSecret(id: string): Promise<void>;
 }
+
+export type SecretSummary = {
+  id: string;
+  name: string;
+  kind: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SecretPayload =
+  | { kind: "api_key"; location: "header" | "query"; key: string; value: string }
+  | { kind: "bearer_token"; token: string }
+  | { kind: "basic_auth"; username: string; password: string }
+  | { kind: "oauth2_client_credentials"; tokenUrl: string; clientId: string; clientSecret: string }
+  | { kind: "postgres_dsn"; dsn: string }
+  | {
+      kind: "smtp";
+      host: string;
+      port: number;
+      username: string;
+      password: string;
+      useTls: boolean;
+      fromAddress: string;
+    };
 
 export type RenderMode = "edit" | "preview" | "runtime";
 
@@ -971,4 +1107,13 @@ export type PipelineRun = {
   finishedAt: string | null;
   error: string | null;
   nodeStats: Record<string, PipelineNodeStat>;
+};
+
+// Jeton de déclenchement webhook (GAP-24, SP-53) : jamais le jeton en clair
+// hors de la réponse de création (createPipelineWebhookToken) — la liste
+// (listPipelineWebhookTokens) ne porte que id/createdAt/lastUsedAt.
+export type PipelineWebhookToken = {
+  id: string;
+  createdAt: string;
+  lastUsedAt: string | null;
 };

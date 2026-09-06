@@ -6,18 +6,24 @@ propriétés) ; toute ligne/feature/entité invalide lève IngestionParseError
 immédiatement (fail-fast) — pas d'import partiel silencieux."""
 
 import csv
+import datetime
 import io
 import json
 import math
 import tempfile
+import warnings
+import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 
+import geopandas as gpd
 import numpy as np
 import pyogrio
 import pyproj
 import shapely
+from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 from pyogrio.errors import DataLayerError, DataSourceError
 from pyproj.exceptions import ProjError
 from shapely.errors import ShapelyError
@@ -34,6 +40,7 @@ _LAT_NAMES = {"lat", "latitude", "y"}
 _LON_NAMES = {"lon", "lng", "longitude", "x"}
 _WGS84 = pyproj.CRS.from_epsg(4326)
 _OGR_ERRORS = (DataSourceError, DataLayerError)
+_XLSX_ERRORS = (zipfile.BadZipFile, InvalidFileException)
 
 
 def detect_lat_lon_fields(fieldnames: list[str]) -> tuple[str, str] | None:
@@ -123,6 +130,75 @@ def parse_csv_latlon(
         yield Point(lon, lat), properties
 
 
+def _xlsx_cell_value(value):
+    if isinstance(value, (datetime.datetime, datetime.date)):
+        return value.isoformat()
+    return value
+
+
+def parse_xlsx_latlon(
+    content: bytes,
+    lat_field: str | None,
+    lon_field: str | None,
+) -> Iterator[tuple[BaseGeometry, dict]]:
+    try:
+        wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except _XLSX_ERRORS as exc:
+        raise IngestionParseError(f"fichier XLSX illisible : {exc}") from exc
+    ws = wb.active
+    rows_iter = ws.iter_rows(values_only=True)
+    try:
+        header_row = next(rows_iter)
+    except StopIteration:
+        raise IngestionParseError("classeur XLSX vide") from None
+    fieldnames = [str(name) if name is not None else "" for name in header_row]
+    if lat_field is None or lon_field is None:
+        detected = detect_lat_lon_fields(fieldnames)
+        if detected is None:
+            raise IngestionParseError(
+                "colonnes lat/lon introuvables automatiquement — précisez-les"
+            )
+        lat_field, lon_field = detected
+    if lat_field not in fieldnames or lon_field not in fieldnames:
+        raise IngestionParseError(f"colonnes '{lat_field}'/'{lon_field}' absentes du XLSX")
+    lat_idx = fieldnames.index(lat_field)
+    lon_idx = fieldnames.index(lon_field)
+    for i, row in enumerate(rows_iter, start=1):
+        raw_lat = row[lat_idx] if lat_idx < len(row) else None
+        raw_lon = row[lon_idx] if lon_idx < len(row) else None
+        try:
+            lat = float(raw_lat)
+            lon = float(raw_lon)
+        except (TypeError, ValueError):
+            raise IngestionParseError(
+                f"ligne {i} : lat/lon invalide ('{raw_lat}', '{raw_lon}')"
+            ) from None
+        properties = {
+            name: _xlsx_cell_value(row[j] if j < len(row) else None)
+            for j, name in enumerate(fieldnames)
+            if j not in (lat_idx, lon_idx)
+        }
+        yield Point(lon, lat), properties
+
+
+def read_xlsx_header_fields(content: bytes) -> list[str]:
+    """Lit uniquement la première ligne (en-têtes) d'un classeur XLSX, sans
+    charger tout le classeur — utilisé par POST /uploads/inspect pour
+    proposer la détection lat/lon côté shell avant de créer le job d'import
+    (même rôle que list_layers() pour GPKG/Shapefile/KML/KMZ, mais un XLSX
+    n'a pas de concept de couches : ce sont des noms de colonnes)."""
+    try:
+        wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except _XLSX_ERRORS as exc:
+        raise IngestionParseError(f"fichier XLSX illisible : {exc}") from exc
+    ws = wb.active
+    try:
+        header_row = next(ws.iter_rows(max_row=1, values_only=True))
+    except StopIteration:
+        raise IngestionParseError("classeur XLSX vide") from None
+    return [str(name) if name is not None else "" for name in header_row]
+
+
 @dataclass
 class LayerInfo:
     name: str
@@ -177,7 +253,20 @@ def _read_features(path: str, layer_name: str | None) -> Iterator[tuple[BaseGeom
             f"couche '{layer_name}' introuvable — couches disponibles : {', '.join(available)}"
         )
     try:
-        meta, _index, geometry, field_data = pyogrio.raw.read(path, layer=layer_name, force_2d=True)
+        # pyogrio/numpy émet un DeprecationWarning interne ("generic unit for
+        # NumPy timedelta") sur des champs datetime NaT (rencontré en
+        # pratique sur les champs begin/end du schéma KML par défaut) —
+        # vérifié par exécution réelle (SP-56), quirk de la bibliothèque
+        # tierce, sans rapport avec la validité des données lues.
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=".*generic.*unit for NumPy timedelta.*",
+                category=DeprecationWarning,
+            )
+            meta, _index, geometry, field_data = pyogrio.raw.read(
+                path, layer=layer_name, force_2d=True
+            )
     except _OGR_ERRORS as exc:
         raise IngestionParseError(f"couche '{layer_name}' illisible : {exc}") from exc
 
@@ -215,12 +304,79 @@ def parse_shapefile_zip(
         yield from _read_features(f"/vsizip/{path}", layer_name)
 
 
+# Le driver KML de GDAL impose un schéma de champs fixe sur TOUT Placemark,
+# y compris un champ nommé "id" (l'attribut XML id="..." du Placemark, vide
+# sinon) — vérifié par exécution réelle : même un KML minimal à un seul
+# Placemark sans schéma personnalisé le produit. Ce nom entre en collision
+# avec la colonne "id" (clé primaire serial) que run_import pose sur toute
+# table importée ; sans renommage, TOUT import KML échouerait à la création
+# de table ("column id specified more than once"), pas seulement un cas
+# limite de nommage utilisateur. Renommé plutôt que supprimé pour ne pas
+# perdre l'attribut id du Placemark quand il est renseigné.
+_KML_RESERVED_PROPERTY_NAMES = {"id", "tenant_id", "geom"}
+
+
+def _rename_kml_reserved_properties(props: dict) -> dict:
+    return {
+        (f"kml_{key}" if key in _KML_RESERVED_PROPERTY_NAMES else key): value
+        for key, value in props.items()
+    }
+
+
+def parse_kml(
+    content: bytes,
+    layer_name: str | None = None,
+) -> Iterator[tuple[BaseGeometry, dict]]:
+    # Un .kmz est un zip contenant un doc.kml, mais GDAL/pyogrio le détecte
+    # et le lit DIRECTEMENT sur l'extension .kmz elle-même — PAS de préfixe
+    # /vsizip/ ici, contrairement à parse_shapefile_zip (.zip) : ce préfixe
+    # casserait la lecture ("n'est pas un fichier kmz valide"), vérifié par
+    # exécution réelle avant d'écrire ce code (spec SP-56 §Contexte). Le
+    # suffixe temporaire distingue .kml/.kmz uniquement pour que GDAL
+    # sélectionne le bon driver depuis l'extension.
+    suffix = ".kmz" if _looks_like_zip(content) else ".kml"
+    with _temp_file(content, suffix) as path:
+        for geom, props in _read_features(path, layer_name):
+            yield geom, _rename_kml_reserved_properties(props)
+
+
+def _looks_like_zip(content: bytes) -> bool:
+    return content[:2] == b"PK"
+
+
+def parse_geoparquet(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
+    # PAS pyogrio : pyogrio.list_drivers()["Parquet"] vaut None dans ce build
+    # (aucun driver OGR Parquet) — vérifié par exécution réelle (spec SP-56
+    # §3). geopandas.read_parquet() lit correctement un GeoParquet 1.0,
+    # y compris celui produit par app.cdc.parquet_writer.write_geoparquet
+    # (SP-11). Un seul fichier, pas de concept de couches multiples ici :
+    # ce format ne passe jamais par list_layers()/l'étape d'inspection.
+    with _temp_file(content, ".parquet") as path:
+        gdf = gpd.read_parquet(path)
+        if gdf.crs is not None and gdf.crs.to_epsg() != 4326:
+            gdf = gdf.to_crs(epsg=4326)
+        geom_col = gdf.geometry.name
+        for i, row in gdf.iterrows():
+            geom = row[geom_col]
+            # Une géométrie manquante revient de geopandas.read_parquet en
+            # NaN (float), pas None — vérifié par exécution réelle (écart
+            # avec le pseudo-code de la spec SP-56 §3.1, corrigé ici).
+            if geom is None or (isinstance(geom, float) and math.isnan(geom)):
+                raise IngestionParseError(f"entité {i} : géométrie manquante")
+            props = {k: _native_value(v) for k, v in row.items() if k != geom_col}
+            yield geom, props
+
+
 def list_layers(content: bytes, filename: str) -> list[LayerInfo]:
     lower = filename.lower()
     if lower.endswith(".gpkg"):
         suffix, wrap = ".gpkg", (lambda p: p)
     elif lower.endswith(".zip"):
         suffix, wrap = ".zip", (lambda p: f"/vsizip/{p}")
+    elif lower.endswith((".kml", ".kmz")):
+        # Identité : PAS le wrap /vsizip/ de la branche .zip ci-dessus, cf.
+        # parse_kml — un .kmz se lit tel quel.
+        suffix, wrap = (lower[lower.rfind(".") :], lambda p: p)
     else:
         raise ValueError(f"format non concerné par l'inspection : {filename}")
     with _temp_file(content, suffix) as tmp_path:

@@ -14,7 +14,7 @@ import type { ItemClientBase } from "../base";
 
 type AppsMethods = Pick<
   ItemClient,
-  "getAppConfig" | "getPublicAppConfig" | "saveAppConfig" | "copilotTurn"
+  "getAppConfig" | "getPublicAppConfig" | "saveAppConfig" | "copilotTurn" | "getAppConfigSchema"
 >;
 
 export function createAppsMethods(base: ItemClientBase): AppsMethods {
@@ -99,6 +99,10 @@ export function createAppsMethods(base: ItemClientBase): AppsMethods {
 
     async copilotTurn(itemId, payload): Promise<CopilotTurnResult> {
       return request<CopilotTurnResult>("POST", "/copilot/turn", { itemId, ...payload });
+    },
+
+    async getAppConfigSchema(): Promise<Record<string, unknown>> {
+      return request<Record<string, unknown>>("GET", "/schemas/app-config");
     },
   };
 }

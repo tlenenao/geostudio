@@ -66,7 +66,7 @@ const TILED_MAP_CONFIG = {
         // origines complètes (protocole inclus) avant d'attacher le jeton de
         // session — même origine que VITE_CORE_URL ("https://core.test",
         // playwright.config.ts) requise pour que la tuile soit authentifiée.
-        tilesUrl: "https://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
+        tilesUrl: "https://core.test/v1/collections/communes/tiles/{z}/{x}/{y}.mvt",
         sourceLayer: "communes",
         collectionId: "communes",
         geometryKind: "polygon",
@@ -111,11 +111,28 @@ const DEFAULT_ME = {
     "data.manage",
     "apps.manage",
     "automation.manage",
+    "automation.secrets.manage",
     "analytics.view",
     "tasks.view",
   ],
   version: "0.1.0",
   tenantSlug: "demo",
+  // GAP-65 (1/3) : Me.capabilities est désormais lu par getMe() (doublon
+  // délibéré de GET /instance) — sans ce champ, cette fixture redeviendrait
+  // incomplète face au vrai MeResponse du cœur (précédent SP-43 §1.5,
+  // mockCollection). Aucune spec E2E existante ne lit me.capabilities
+  // aujourd'hui (elles passent toutes par useInstanceInfo()/GET /instance),
+  // donc ces valeurs par défaut n'affectent aucun comportement observé.
+  capabilities: {
+    readOnly: false,
+    etlEnabled: false,
+    exportEnabled: false,
+    appExportEnabled: false,
+    tileset3dEnabled: false,
+    terrain3dEnabled: false,
+    copilotEnabled: false,
+    adminToolsEnabled: false,
+  },
 };
 
 export function mockMe(page: Page, overrides: Partial<typeof DEFAULT_ME> = {}) {
@@ -135,7 +152,7 @@ export function mockMe(page: Page, overrides: Partial<typeof DEFAULT_ME> = {}) {
 const DEFAULT_ITEM_PERMISSIONS = { read: true, write: true, delete: true, share: true };
 
 export function mockItemDetail(page: Page, pk: string, overrides: Record<string, unknown> = {}) {
-  return page.route(`https://core.test/items/${pk}`, async (route) => {
+  return page.route(`https://core.test/v1/items/${pk}`, async (route) => {
     await route.fulfill({
       json: {
         pk,
@@ -232,6 +249,7 @@ export const CREATOR_ME = {
     "data.manage",
     "apps.manage",
     "automation.manage",
+    "automation.secrets.manage",
     "analytics.view",
     "tasks.view",
   ],
@@ -356,6 +374,8 @@ export async function mockCore(page: Page) {
     const url = new URL(route.request().url());
     const scope = url.searchParams.get("scope");
     const type = url.searchParams.get("type");
+    const sort = url.searchParams.get("sort");
+    const keywords = url.searchParams.getAll("keyword");
     // Honour `type` (revue finale de branche, M2). LayerPicker fires a
     // hosted-tileset3d lookup (`?type=tileset3d`) against this same generic
     // endpoint whenever it renders; answering it with every fixture item
@@ -363,7 +383,18 @@ export async function mockCore(page: Page) {
     // source's title — exactly what broke harvest-wms.spec.ts, which had to
     // patch its own local override the same way. Fixed here so the default
     // handler stops being armed for the next spec.
-    const visible = ALL.filter((r) => !deleted.has(r.pk) && (!type || r.resourceType === type));
+    let visible = ALL.filter((r) => !deleted.has(r.pk) && (!type || r.resourceType === type));
+    if (keywords.length > 0) {
+      visible = visible.filter((r) =>
+        keywords.every((k) => ((r as { keywords?: string[] }).keywords ?? []).includes(k)),
+      );
+    }
+    // Honore `sort` (SP-55, GAP-05) : preuve E2E que le tri demandé par le
+    // shell est bien reflété dans l'ordre d'affichage — les autres specs
+    // pré-existantes n'envoient jamais ce paramètre, comportement inchangé.
+    if (sort === "title_asc") visible = [...visible].sort((a, b) => a.title.localeCompare(b.title));
+    if (sort === "title_desc")
+      visible = [...visible].sort((a, b) => b.title.localeCompare(a.title));
     const items = scope === "mine" ? [] : visible;
     await route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 12 } });
   });
@@ -375,7 +406,7 @@ export async function mockCore(page: Page) {
   // Défaut readOnly: false pour que toute spec pré-existante (qui ne
   // surcharge jamais cette route) se comporte exactement comme avant.
   // La spec dédiée au mode lecture seule surcharge cette route elle-même.
-  await page.route("https://core.test/instance", async (route) => {
+  await page.route("https://core.test/v1/instance", async (route) => {
     await route.fulfill({ json: { readOnly: false } });
   });
 
@@ -390,7 +421,7 @@ export async function mockCore(page: Page) {
   // ending in "extensions*" — that would intercept the browser's document
   // navigation to that page and break rendering, same rationale as
   // "/items/1"/"/items/9" below.
-  await page.route("https://core.test/extensions*", async (route) => {
+  await page.route("https://core.test/v1/extensions*", async (route) => {
     await route.fulfill({ json: { extensions: [] } });
   });
 
@@ -409,7 +440,7 @@ export async function mockCore(page: Page) {
   // gardent leur propre réponse avec état (titre édité, etc.), ce filet ne
   // sert que les ids qu'aucune spec ne mocke explicitement (ex. "77",
   // "map-1", "pipe-1").
-  await page.route(/https:\/\/core\.test\/items\/[^/?]+(\?.*)?$/, async (route) => {
+  await page.route(/https:\/\/core\.test\/v1\/items\/[^/?]+(\?.*)?$/, async (route) => {
     const url = new URL(route.request().url());
     const pk = url.pathname.split("/").pop()!;
     await route.fulfill({
@@ -431,11 +462,21 @@ export async function mockCore(page: Page) {
     });
   });
 
+  // SP-55 (GAP-05) : CatalogPage appelle GET /items/facets sans condition
+  // (useItemFacets). Enregistré APRÈS le filet générique /items/{pk}
+  // ci-dessus — sinon celui-ci matcherait "facets" comme un id d'item
+  // littéral (même piège que côté cœur, routes.py::get_item_facets,
+  // et côté MSW, src/test/msw/handlers.ts) — "en dernier arrivé gagne"
+  // (Playwright).
+  await page.route("https://core.test/v1/items/facets*", async (route) => {
+    await route.fulfill({ json: { owners: [], keywords: [] } });
+  });
+
   // Scoped to the cœur's host (not "**/items/1"): the shell's own client-side
   // route is also "/items/1" (same path, different origin — localhost:4173
   // vs. https://core.test), so a path-only glob here would also intercept
   // the browser's document navigation to that page and break rendering.
-  await page.route("https://core.test/items/1", async (route) => {
+  await page.route("https://core.test/v1/items/1", async (route) => {
     if (route.request().method() === "PATCH") {
       const body = await route.request().postDataJSON();
       if (typeof body.title === "string") item1Title = body.title;
@@ -481,7 +522,7 @@ export async function mockCore(page: Page) {
 
   // Same host-scoping rationale as "/items/1" above — the shell also has a
   // client-side route "/items/9".
-  await page.route("https://core.test/items/9", async (route) => {
+  await page.route("https://core.test/v1/items/9", async (route) => {
     if (route.request().method() === "PATCH") {
       const body = await route.request().postDataJSON();
       if (typeof body.isPublished === "boolean") published = body.isPublished;
@@ -641,7 +682,7 @@ export async function mockCore(page: Page) {
   // through to the real network in the browser. The "*" only matches
   // non-"/" characters, so it still can't swallow the more specific
   // "**/collections/villes/items*" etc. routes below.
-  await page.route("https://core.test/collections*", async (route) => {
+  await page.route("https://core.test/v1/collections*", async (route) => {
     const url = new URL(route.request().url());
     const q = url.searchParams.get("q");
     const collections = q
@@ -653,7 +694,7 @@ export async function mockCore(page: Page) {
   // Cœur couches raster externes (SP-12e) — LayerPicker 3ᵉ source. Défaut vide :
   // toute spec pré-existante (qui ne moissonne aucune couche raster) se comporte
   // comme avant. La spec harvest-wms surcharge cette route.
-  await page.route("https://core.test/harvest/layers*", async (route) => {
+  await page.route("https://core.test/v1/harvest/layers*", async (route) => {
     const url = new URL(route.request().url());
     const q = url.searchParams.get("q");
     const all = [] as { id: string; title: string; kind: "raster"; tilesUrl: string }[];
@@ -826,7 +867,7 @@ export async function mockCore(page: Page) {
 
   // PATCH publish of the site item — host-scoped like "/items/1"/"/items/9"
   // above: the shell's own client-side route is also "/items/site-1".
-  await page.route("https://core.test/items/site-1", async (route) => {
+  await page.route("https://core.test/v1/items/site-1", async (route) => {
     if (route.request().method() === "PATCH") {
       const body = await route.request().postDataJSON();
       if (typeof body?.isPublished === "boolean") sitePublished = body.isPublished;
@@ -850,7 +891,7 @@ export async function mockCore(page: Page) {
 
   // Public consultation by slug — 200 only when published and slug matches,
   // 404 otherwise (never 403 — anonymous access is the point).
-  await page.route("https://core.test/public/sites/*", async (route) => {
+  await page.route("https://core.test/v1/public/sites/*", async (route) => {
     const wanted = decodeURIComponent(
       new URL(route.request().url()).pathname.split("/").pop() ?? "",
     );
@@ -879,7 +920,7 @@ export async function mockCore(page: Page) {
   // the generic "**/configs/by-item/**" handler above) so that content widgets
   // added via the palette in a test genuinely round-trip to the public view —
   // not a fixture disconnected from what the test actually saved.
-  await page.route("https://core.test/public/configs/by-item/site-1", async (route) => {
+  await page.route("https://core.test/v1/public/configs/by-item/site-1", async (route) => {
     await route.fulfill({
       json: {
         id: "cfg-site",
@@ -894,11 +935,11 @@ export async function mockCore(page: Page) {
   // Public items list (SP-16b) — Gallery's data source. Always returns the
   // one fixed published item; the site itself is not included (the fixture
   // only needs to prove the Gallery→vignette→PublicItemPage path).
-  await page.route("https://core.test/public/items*", async (route) => {
+  await page.route("https://core.test/v1/public/items*", async (route) => {
     await route.fulfill({ json: { items: [GALLERY_ITEM], total: 1, page: 1, pageSize: 12 } });
   });
 
-  await page.route("https://core.test/public/configs/by-item/8", async (route) => {
+  await page.route("https://core.test/v1/public/configs/by-item/8", async (route) => {
     await route.fulfill({
       json: { id: "cfg-8", itemId: "8", kind: "app", version: 1, config: GALLERY_ITEM_CONFIG },
     });

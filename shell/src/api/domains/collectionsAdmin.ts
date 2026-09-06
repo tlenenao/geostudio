@@ -25,8 +25,9 @@ type CollectionsAdminMethods = Pick<
 export function createCollectionsAdminMethods(base: ItemClientBase): CollectionsAdminMethods {
   const { request } = base;
   return {
-    async listCollections(): Promise<CollectionAdmin[]> {
-      const data = await request<{ collections: CollectionAdmin[] }>("GET", `/collections`);
+    async listCollections(params?: { q?: string }): Promise<CollectionAdmin[]> {
+      const qs = params?.q ? `?q=${encodeURIComponent(params.q)}` : "";
+      const data = await request<{ collections: CollectionAdmin[] }>("GET", `/collections${qs}`);
       return data.collections ?? [];
     },
 

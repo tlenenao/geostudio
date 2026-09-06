@@ -3,38 +3,39 @@ import { useQuery } from "@tanstack/react-query";
 import { registerWidget } from "../registry";
 import { useItemClient } from "../../api/ItemClientProvider";
 import type { ResourceType } from "../../api/types";
+import { t } from "../../i18n";
 
 const labelCls = "flex flex-col gap-1";
 const inputCls = "h-9 rounded-md border border-slate-300 px-2";
 
 const RESOURCE_TYPES: [string, string][] = [
-  ["", "Tous"],
-  ["app", "Application"],
-  ["dashboard", "Tableau de bord"],
-  ["map", "Carte"],
-  ["site", "Site"],
+  ["", t("widgetGallery.typeAll")],
+  ["app", t("widgetGallery.typeApp")],
+  ["dashboard", t("widgetGallery.typeDashboard")],
+  ["map", t("widgetGallery.typeMap")],
+  ["site", t("widgetGallery.typeSite")],
 ];
 
 export function registerGalleryWidget(): void {
   registerWidget({
     type: "gallery",
-    label: "Galerie",
+    label: t("widgetGallery.paletteLabel"),
     defaultProps: { type: "", tag: "", limit: 12, columns: 3 },
     defaultSize: { w: 12, h: 6 },
     configSchema: [
-      { name: "type", type: "string", label: "Type d'item", default: "" },
-      { name: "tag", type: "string", label: "Tag", default: "" },
-      { name: "limit", type: "number", label: "Nombre max", default: 12 },
-      { name: "columns", type: "number", label: "Colonnes", default: 3 },
+      { name: "type", type: "string", label: t("widgetGallery.typeConfig"), default: "" },
+      { name: "tag", type: "string", label: t("widgetGallery.tagConfig"), default: "" },
+      { name: "limit", type: "number", label: t("widgetGallery.limitConfig"), default: 12 },
+      { name: "columns", type: "number", label: t("widgetGallery.columnsConfig"), default: 3 },
     ],
     PropsPanel: ({ props, onChange }) => {
       const set = (patch: Record<string, unknown>) => onChange({ ...props, ...patch });
       return (
         <div className="flex flex-col gap-2 text-sm">
           <label className={labelCls}>
-            Type d'élément
+            {t("widgetGallery.typeLabel")}
             <select
-              aria-label="Type d'élément"
+              aria-label={t("widgetGallery.typeLabel")}
               className={inputCls}
               value={String(props.type ?? "")}
               onChange={(e) => set({ type: e.target.value })}
@@ -47,18 +48,18 @@ export function registerGalleryWidget(): void {
             </select>
           </label>
           <label className={labelCls}>
-            Tag
+            {t("widgetGallery.tagConfig")}
             <input
-              aria-label="Tag"
+              aria-label={t("widgetGallery.tagConfig")}
               className={inputCls}
               value={String(props.tag ?? "")}
               onChange={(e) => set({ tag: e.target.value })}
             />
           </label>
           <label className={labelCls}>
-            Limite
+            {t("widgetGallery.limitLabel")}
             <input
-              aria-label="Limite"
+              aria-label={t("widgetGallery.limitLabel")}
               type="number"
               className={inputCls}
               value={String(props.limit ?? 12)}
@@ -66,9 +67,9 @@ export function registerGalleryWidget(): void {
             />
           </label>
           <label className={labelCls}>
-            Colonnes
+            {t("widgetGallery.columnsConfig")}
             <input
-              aria-label="Colonnes"
+              aria-label={t("widgetGallery.columnsConfig")}
               type="number"
               className={inputCls}
               value={String(props.columns ?? 3)}
@@ -96,18 +97,18 @@ export function registerGalleryWidget(): void {
       });
 
       if (query.isLoading) {
-        return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
+        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
       }
       if (query.isError) {
         return (
           <p role="alert" className="text-xs text-red-600">
-            Erreur de chargement
+            {t("widgetGallery.loadError")}
           </p>
         );
       }
       const items = query.data?.items ?? [];
       if (items.length === 0) {
-        return <p className="text-sm text-[var(--gs-color-muted)]">Aucun élément publié</p>;
+        return <p className="text-sm text-[var(--gs-color-muted)]">{t("widgetGallery.empty")}</p>;
       }
       return (
         <div

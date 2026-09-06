@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 import httpx
+import pytest
 
 from app.harvest.connectors import get_connector
+from app.harvest.connectors.base import HarvestFetchError
 from app.harvest.connectors.wms import WmsConnector
 
 CAPS = "https://ows.example.com/geoserver/wms?service=WMS&request=GetCapabilities"
@@ -127,6 +129,18 @@ def test_fetch_copy_geojson_is_none():
 
 def test_malformed_capabilities_returns_empty():
     assert list(_connector(b"<broken").fetch(CAPS)) == []
+
+
+def test_raises_when_capabilities_unreachable():
+    # GAP-59.2 (SP-50) : le seul appel racine (GetCapabilities) est
+    # injoignable — doit être signalé, jamais rapporté comme un
+    # moissonnage réussi à zéro enregistrement.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    connector = WmsConnector(client=httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(HarvestFetchError):
+        list(connector.fetch(CAPS))
 
 
 def test_get_connector_returns_wms():

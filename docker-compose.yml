@@ -8,6 +8,11 @@ volumes:
   keycloak-data:
   etl-scratch:
   appexport-runtime:
+  # SP-48/GAP-72 : partagé entre `worker` (écrivain, tâche périodique
+  # refresh_csp_dynamic_conf_task) et `traefik` (lecteur, provider fichier)
+  # — le seul moyen de pousser une CSP calculée dynamiquement à Traefik
+  # sans redémarrer le conteneur à chaque changement d'allowlist.
+  csp-dynamic-conf:
 
 services:
 
@@ -145,9 +150,9 @@ services:
       - traefik.http.routers.martin.entrypoints=websecure
       - traefik.http.routers.martin.tls.certresolver=letsencrypt
       - traefik.http.routers.martin.priority=15
-      - traefik.http.routers.martin.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-martin@docker
+      - traefik.http.routers.martin.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-martin@docker,csp-dynamic@file
       - traefik.http.middlewares.strip-admin-martin.stripprefix.prefixes=/admin/martin
-      - traefik.http.middlewares.admin-auth.forwardauth.address=http://core:8200/admin-tools/verify
+      - traefik.http.middlewares.admin-auth.forwardauth.address=http://core:8200/v1/admin-tools/verify
       - traefik.http.services.martin.loadbalancer.server.port=3000
 
   titiler:
@@ -201,7 +206,7 @@ services:
       - traefik.http.routers.titiler.entrypoints=websecure
       - traefik.http.routers.titiler.tls.certresolver=letsencrypt
       - traefik.http.routers.titiler.priority=15
-      - traefik.http.routers.titiler.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-titiler@docker
+      - traefik.http.routers.titiler.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-titiler@docker,csp-dynamic@file
       - traefik.http.middlewares.strip-admin-titiler.stripprefix.prefixes=/admin/titiler
       - traefik.http.services.titiler.loadbalancer.server.port=8000
 
@@ -239,6 +244,15 @@ services:
       CORE_OIDC_JWKS_URL: ${CORE_OIDC_JWKS_URL:-http://keycloak:8080/realms/geostudio/protocol/openid-connect/certs}
       CORE_MCP_AUDIENCE: ${CORE_MCP_AUDIENCE:-geostudio-mcp}
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
+      # Domaine public du SHELL (sitemap.xml/robots.txt/aperçu social,
+      # SP-55 GAP-07) — distinct de CORE_BASE_URL (identité du cœur
+      # lui-même) et de SHELL_BASE_URL (usage interne réseau Docker réservé
+      # à export-worker qui navigue en Playwright, jamais une URL publique
+      # valide — vérifié dans ce fichier/​.env.example, ne pas réutiliser ici
+      # par erreur). Défaut de développement : port hôte réel du service
+      # shell (ligne "8300:8300" plus bas), cohérent avec `docker compose up`
+      # par défaut.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8300}
       # Cible interne du rappel /mcp du copilote — jamais l'URL publique
       # (cf. .env.example et app/copilot/mcp_loopback.loopback_base_url).
       CORE_INTERNAL_BASE_URL: ${CORE_INTERNAL_BASE_URL:-http://localhost:8200}
@@ -246,6 +260,12 @@ services:
       CORE_LLM_API_URL: ${CORE_LLM_API_URL:-}
       CORE_LLM_API_KEY: ${CORE_LLM_API_KEY:-}
       CORE_LLM_MODEL: ${CORE_LLM_MODEL:-gpt-4o-mini}
+      # Garde d'egress SSRF sur l'appel LLM sortant (GAP-02, SP-45) — même
+      # patron que CORE_PIPELINES_/HARVEST_/ALERTS_EGRESS_ALLOWLIST
+      # ci-dessous, mais propre au copilote (app/copilot/egress.py) : ce
+      # module tourne uniquement dans `core` (jamais `worker`), pas besoin
+      # de la répéter là-bas.
+      CORE_LLM_EGRESS_ALLOWLIST: ${CORE_LLM_EGRESS_ALLOWLIST:-}
       CORE_READ_ONLY_MODE: ${CORE_READ_ONLY_MODE:-false}
       CORE_ADMIN_SUBS: ${CORE_ADMIN_SUBS:-}
       # Rôle analyste (SP-11c) : sans cette ligne, `CORE_ANALYST_SUBS` dans
@@ -285,10 +305,17 @@ services:
       # `_allowlist()` de chaque module).
       CORE_PIPELINES_EGRESS_ALLOWLIST: ${CORE_PIPELINES_EGRESS_ALLOWLIST:-}
       CORE_HARVEST_EGRESS_ALLOWLIST: ${CORE_HARVEST_EGRESS_ALLOWLIST:-}
+      # Plafond de taille de réponse du moissonnage (GAP-59, SP-50) — défaut
+      # Python 10 Mio si absent/vide, cf. app/harvest/egress.py.
+      CORE_HARVEST_MAX_RESPONSE_BYTES: ${CORE_HARVEST_MAX_RESPONSE_BYTES:-}
       CORE_ALERTS_EGRESS_ALLOWLIST: ${CORE_ALERTS_EGRESS_ALLOWLIST:-}
       CORE_SECRETS_MASTER_KEY: ${CORE_SECRETS_MASTER_KEY}
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET:-}
+      # Liens de partage à échéance (GAP-12) : résolus entièrement dans ce
+      # service (GET /share-links/{token}), contrairement au jeton d'export
+      # ci-dessus — aucun worker séparé n'a besoin de cette variable.
+      CORE_SHARE_LINK_TOKEN_SECRET: ${CORE_SHARE_LINK_TOKEN_SECRET:-}
       CORE_TILESET3D_ENABLED: ${CORE_TILESET3D_ENABLED:-false}
       # Plafond de lecture du proxy tileset3d (read_tileset3d_entry,
       # app/tileset3d/routes.py) — s'exécute dans ce process (`core`), pas
@@ -301,6 +328,13 @@ services:
       # jeton de lancement (60s) et le cookie de session (30 min) qu'il
       # bootstrap. Même convention que CORE_EXPORT_TOKEN_SECRET.
       CORE_ADMIN_TOOLS_TOKEN_SECRET: ${CORE_ADMIN_TOOLS_TOKEN_SECRET:-}
+      # SP-58 : capacité instance-wide optionnelle (quotas par tenant) + 3
+      # limites, chacune vide = pas de limite configurée même capacité
+      # active (cf. app/quotas/service.py, spec §3.1).
+      CORE_QUOTAS_ENABLED: ${CORE_QUOTAS_ENABLED:-false}
+      CORE_QUOTA_MAX_ITEMS_PER_TENANT: ${CORE_QUOTA_MAX_ITEMS_PER_TENANT:-}
+      CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT: ${CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT:-}
+      CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT: ${CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT:-}
       S3_TERRAIN3D_BUCKET: geostudio-terrain3d
       # Titiler sert les tuiles terrain-RGB depuis le COG hébergé (proxy
       # read_terrain3d_tile, app/terrain3d/routes.py) — appel interne, jamais
@@ -348,7 +382,7 @@ services:
       - traefik.http.routers.core.entrypoints=websecure
       - traefik.http.routers.core.tls.certresolver=letsencrypt
       - traefik.http.routers.core.priority=10
-      - traefik.http.routers.core.middlewares=security-headers@docker,rate-limit@docker,strip-api@docker
+      - traefik.http.routers.core.middlewares=security-headers@docker,rate-limit@docker,strip-api@docker,csp-dynamic@file
       - traefik.http.services.core.loadbalancer.server.port=8200
       - traefik.http.middlewares.strip-api.stripprefix.prefixes=/api
       - traefik.http.middlewares.security-headers.headers.stsSeconds=31536000
@@ -357,6 +391,31 @@ services:
       - traefik.http.middlewares.security-headers.headers.referrerPolicy=strict-origin-when-cross-origin
       - traefik.http.middlewares.rate-limit.ratelimit.average=100
       - traefik.http.middlewares.rate-limit.ratelimit.burst=200
+      # SP-55 GAP-07 : sitemap.xml/robots.txt/aperçu social rendus par le
+      # cœur (app/public/routes.py), routés au-dessus du catch-all shell
+      # (priorité 1) mais distincts des routeurs admin (priorité 15) —
+      # syntaxe vérifiée contre la doc Traefik v3.0 réelle avant d'écrire
+      # ce fichier (piège CLAUDE.md n°3 : HeaderRegexp est une regle de
+      # routeur v3, replacepathregex un middleware v3 existant sous ce nom
+      # exact en labels). `$$1` (pas `$1`) : docker compose interprète
+      # `$1` comme sa propre substitution de variable, `$$` échappe vers
+      # un `$` littéral transmis à Traefik.
+      - traefik.http.routers.seo-static.rule=Host(`${DOMAIN}`) && (Path(`/sitemap.xml`) || Path(`/robots.txt`))
+      - traefik.http.routers.seo-static.entrypoints=websecure
+      - traefik.http.routers.seo-static.tls.certresolver=letsencrypt
+      - traefik.http.routers.seo-static.priority=20
+      - traefik.http.routers.seo-static.service=core
+      - traefik.http.routers.seo-static.middlewares=security-headers@docker,rate-limit@docker,seo-static-rewrite@docker,csp-dynamic@file
+      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.regex=^/(sitemap\.xml|robots\.txt)$$
+      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.replacement=/v1/public/$$1
+      - traefik.http.routers.seo-bots.rule=Host(`${DOMAIN}`) && PathPrefix(`/sites/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
+      - traefik.http.routers.seo-bots.entrypoints=websecure
+      - traefik.http.routers.seo-bots.tls.certresolver=letsencrypt
+      - traefik.http.routers.seo-bots.priority=25
+      - traefik.http.routers.seo-bots.service=core
+      - traefik.http.routers.seo-bots.middlewares=security-headers@docker,rate-limit@docker,seo-bots-rewrite@docker,csp-dynamic@file
+      - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.regex=^/sites/([^/]+)$$
+      - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.replacement=/v1/public/sites/$$1/social-preview
 
   # Worker d'ingestion (SP-6a) — même image que le cœur, process séparé
   # (procrastinate worker, file Postgres, pas de broker — arbitrage A5).
@@ -402,6 +461,9 @@ services:
       # d'alerte (notify.py) tournent dans ce process.
       CORE_PIPELINES_EGRESS_ALLOWLIST: ${CORE_PIPELINES_EGRESS_ALLOWLIST:-}
       CORE_HARVEST_EGRESS_ALLOWLIST: ${CORE_HARVEST_EGRESS_ALLOWLIST:-}
+      # Plafond de taille de réponse du moissonnage (GAP-59, SP-50) — défaut
+      # Python 10 Mio si absent/vide, cf. app/harvest/egress.py.
+      CORE_HARVEST_MAX_RESPONSE_BYTES: ${CORE_HARVEST_MAX_RESPONSE_BYTES:-}
       CORE_ALERTS_EGRESS_ALLOWLIST: ${CORE_ALERTS_EGRESS_ALLOWLIST:-}
       CORE_TILESET3D_MAX_ENTRY_BYTES: ${CORE_TILESET3D_MAX_ENTRY_BYTES:-2147483648}
       S3_TERRAIN3D_BUCKET: geostudio-terrain3d
@@ -426,9 +488,16 @@ services:
       # SP-21 existe pour éliminer (revue finale SP-21, item 5, dont ce
       # service était le second angle mort).
       S3_EXPORTS_BUCKET: geostudio-exports
+      # SP-48/GAP-72 : lu par refresh_csp_dynamic_conf_task (tâche
+      # périodique, ce process). "report-only" par défaut ici (fichier de
+      # base, hors overlay prod) — l'overlay prod fixe "enforce" par défaut
+      # (Task 5), cohérent avec le fait que GAP-72 et son commentaire
+      # d'origine ne visaient que docker-compose.prod.yml.
+      CORE_CSP_MODE: ${CORE_CSP_MODE:-report-only}
     volumes:
       - etl-scratch:/scratch
       - appexport-runtime:/export-runtime:ro
+      - csp-dynamic-conf:/csp-dynamic
     networks: [gis-net]
     depends_on:
       pgbouncer:
@@ -437,11 +506,19 @@ services:
         condition: service_started
     restart: unless-stopped
     # `procrastinate healthchecks` vérifie la connexion et le schéma de la
-    # file. Limite connue et assumée : un worker occupé par une tâche qui ne
-    # rend jamais la main reste « healthy » — cette sonde détecte un worker
-    # mort ou déconnecté de la base, pas un worker coincé.
+    # file — ne détecte pas un worker occupé par une tâche qui ne rend
+    # jamais la main. scripts.healthcheck_worker_stalled comble ce manque
+    # (GAP-76, SP-49) : interroge JobManager.get_stalled_jobs (job resté en
+    # 'doing' plus d'HEALTHCHECK_STALLED_SECONDS, 1h par défaut — nettement
+    # au-delà de la durée p99 connue d'un import GPKG 50k lignes ou d'un run
+    # de pipeline). Docker Compose n'autorise qu'un seul `healthcheck.test`
+    # par service : les deux commandes sont chaînées dans le même
+    # CMD-SHELL.
     healthcheck:
-      test: ["CMD", "python", "-m", "procrastinate", "--app", "app.jobs.app", "healthchecks"]
+      test: [
+          "CMD-SHELL",
+          "python -m procrastinate --app app.jobs.app healthchecks && python -m scripts.healthcheck_worker_stalled",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -481,6 +558,24 @@ services:
       - etl-scratch:/scratch
     networks: [gis-net]
     restart: unless-stopped
+    # Pas un worker procrastinate (`command` absent : l'image lance
+    # server.py, un serveur http.server minimal appelé en synchrone par
+    # pipelines/runtime.py — pas une file de jobs), donc pas de mécanisme de
+    # reclaim comparable à worker/export-worker ici (GAP-76, SP-49).
+    # server.py n'expose que `do_POST` (aucune route de vivacité HTTP,
+    # confirmé par lecture directe de deploy/qgis-worker/server.py) — ajouter
+    # une route au sidecar QGIS sort du périmètre fiabilité des jobs pour
+    # entrer dans le périmètre du composant le plus risqué du dépôt (spec
+    # SP-43 §5 Étape 9). Healthcheck de process a minima : avant ce
+    # correctif, aucune sonde du tout n'existait (confirmé, vérifié réel
+    # contre l'image construite localement — `pgrep -f server.py` matche le
+    # process CMD `python3 /app/server.py`).
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "server.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # Worker d'export Playwright (SP-17a, A25) — image dédiée (Chromium +
   # dépendances système), séparée du worker partagé pour ne pas l'alourdir
@@ -508,6 +603,12 @@ services:
       CORE_EXPORT_ENABLED: ${CORE_EXPORT_ENABLED:-false}
       CORE_EXPORT_TOKEN_SECRET: ${CORE_EXPORT_TOKEN_SECRET}
       SHELL_BASE_URL: ${SHELL_BASE_URL:-http://shell:8300}
+      # scripts.healthcheck_worker_stalled : filtre sur la seule file que ce
+      # service consomme (GAP-76, SP-49) — contrairement à `worker`, ce
+      # service n'avait AUCUNE sonde du tout avant ce correctif (pas même
+      # `procrastinate healthchecks`), un manque plus sévère que « détecte
+      # un process mort seulement ».
+      HEALTHCHECK_QUEUE: export
     networks: [gis-net]
     depends_on:
       pgbouncer:
@@ -517,6 +618,12 @@ services:
       core:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-m", "scripts.healthcheck_worker_stalled"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   # Worker CDC (SP-11a) — même image que le cœur, process séparé (arbitrage
   # A16). Connexion DIRECTE à postgis:5432, PAS à pgbouncer:6432 : PgBouncer
@@ -598,7 +705,7 @@ services:
       - traefik.http.routers.grafana.entrypoints=websecure
       - traefik.http.routers.grafana.tls.certresolver=letsencrypt
       - traefik.http.routers.grafana.priority=15
-      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker
+      - traefik.http.routers.grafana.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,csp-dynamic@file
       - traefik.http.services.grafana.loadbalancer.server.port=3000
 
   postgres-exporter:
@@ -688,7 +795,7 @@ services:
       - traefik.http.routers.shell.entrypoints=websecure
       - traefik.http.routers.shell.tls.certresolver=letsencrypt
       - traefik.http.routers.shell.priority=1
-      - traefik.http.routers.shell.middlewares=security-headers@docker,rate-limit@docker
+      - traefik.http.routers.shell.middlewares=security-headers@docker,rate-limit@docker,csp-dynamic@file
       - traefik.http.services.shell.loadbalancer.server.port=8300
 
   # ─── Ingress ───────────────────────────────────────────
@@ -698,6 +805,15 @@ services:
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
+      # SP-48/GAP-72 : provider fichier additif au provider Docker —
+      # permet à refresh_csp_dynamic_conf_task (worker) de pousser une CSP
+      # recalculée sans jamais redémarrer ce conteneur. Vérifié
+      # empiriquement contre un vrai traefik:v3.0.4 (piège CLAUDE.md n°3,
+      # cf. ledger de session) : les deux providers coexistent, le
+      # rechargement à chaud fonctionne, une middleware @file est
+      # utilisable par un routeur bout-en-bout.
+      - --providers.file.directory=/csp-dynamic
+      - --providers.file.watch=true
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
@@ -709,4 +825,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./certs:/certs
+      - csp-dynamic-conf:/csp-dynamic
     networks: [gis-net]
+    restart: unless-stopped

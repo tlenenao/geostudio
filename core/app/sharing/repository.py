@@ -1,12 +1,24 @@
 # SPDX-License-Identifier: Apache-2.0
 import uuid
 from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.sharing.models import CollectionShare, Group, GroupMember, ItemShare
+from app.sharing.models import CollectionShare, Group, GroupMember, ItemShare, ShareLink
+from app.sharing.models import _now as _sharing_now
 from app.users.models import User
+
+
+def _naive_utc_now() -> datetime:
+    # ShareLink.expires_at/revoked_at sont des colonnes DateTime "naïves"
+    # (pas timezone=True, cf. app/sharing/models.py) : SQLite ET Postgres
+    # renvoient un datetime naïf à la lecture, même quand une valeur
+    # aware (_sharing_now(), tz=UTC) a été écrite — comparer un datetime
+    # aware à cette valeur naïve lève TypeError. Un utcnow() naïf est la
+    # seule forme comparable directement à ce qui revient de la base.
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def roles_for_items(
@@ -154,3 +166,53 @@ def replace_shares(
         session.add(ItemShare(item_id=item_id, group_id=group_id, tenant_id=tenant_id, role=role))
     session.flush()
     return True
+
+
+def create_share_link(
+    session: Session, *, tenant_id: str, item_id: str, created_by: str, ttl_seconds: int
+) -> ShareLink:
+    link = ShareLink(
+        id=uuid.uuid4().hex,
+        tenant_id=tenant_id,
+        item_id=item_id,
+        created_by=created_by,
+        expires_at=_sharing_now() + timedelta(seconds=ttl_seconds),
+    )
+    session.add(link)
+    session.flush()
+    session.refresh(link)
+    return link
+
+
+def list_share_links(session: Session, *, tenant_id: str, item_id: str) -> list[ShareLink]:
+    return list(
+        session.scalars(
+            select(ShareLink)
+            .where(ShareLink.tenant_id == tenant_id, ShareLink.item_id == item_id)
+            .order_by(ShareLink.created_at)
+        ).all()
+    )
+
+
+def revoke_share_link(session: Session, *, tenant_id: str, link_id: str) -> bool:
+    link = session.get(ShareLink, link_id)
+    if link is None or link.tenant_id != tenant_id:
+        return False
+    if link.revoked_at is None:
+        link.revoked_at = _sharing_now()
+        session.flush()
+    return True
+
+
+def get_active_share_link(session: Session, *, tenant_id: str, link_id: str) -> ShareLink | None:
+    """None si absent, révoqué, ou expiré (double vérification : la ligne
+    ET le TTL du jeton, cf. spec §6.1 — la ligne prime si elle diverge du
+    TTL du jeton, ex. un jeton pas encore expiré mais révoqué)."""
+    link = session.get(ShareLink, link_id)
+    if link is None or link.tenant_id != tenant_id:
+        return None
+    if link.revoked_at is not None:
+        return None
+    if link.expires_at <= _naive_utc_now():
+        return None
+    return link

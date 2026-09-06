@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+from datetime import UTC, datetime, timedelta
+
 from app.db import init_db, make_engine, make_session_factory
 from app.ingestion import repository as repo
 from app.tenants.repository import get_or_create_default_tenant
@@ -172,3 +174,100 @@ def test_create_job_defaults_layer_name_to_none():
         )
         s.commit()
         assert job.layer_name is None
+
+
+def test_reclaim_stuck_jobs_marks_old_running_jobs_as_error():
+    # GAP-56.3 (SP-49) : même patron que
+    # test_export_repository.py::test_reclaim_stuck_jobs_marks_old_running_jobs_as_error
+    # — IngestionJob n'a pas de started_at (contrairement à
+    # ExportJob/AppExportJob) mais updated_at (onupdate=_now) est bumpé par
+    # mark_running() elle-même, servant le même rôle d'ancre de réclamation.
+    Session, tenant, user = _env()
+    with Session() as s:
+        job = repo.create_job(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k",
+            filename="f.geojson",
+            collection_title="Villes",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+        repo.mark_running(s, job_id=job.id)
+        s.commit()
+        # Simule un job démarré il y a 2h (au-delà du seuil par défaut de
+        # 60min) — écrase directement updated_at, aucun setter public ne
+        # permet d'antidater.
+        job.updated_at = datetime.now(UTC) - timedelta(hours=2)
+        s.commit()
+
+        reclaimed = repo.reclaim_stuck_jobs(s)
+        s.commit()
+
+        assert reclaimed == [job.id]
+        fetched = repo.get_job(s, tenant_id=tenant.id, job_id=job.id)
+        assert fetched.status == "error"
+        assert fetched.error_message is not None
+
+
+def test_reclaim_stuck_jobs_leaves_recent_running_jobs_alone():
+    Session, tenant, user = _env()
+    with Session() as s:
+        job = repo.create_job(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k",
+            filename="f.geojson",
+            collection_title="Villes",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+        repo.mark_running(s, job_id=job.id)  # updated_at = maintenant
+        s.commit()
+
+        reclaimed = repo.reclaim_stuck_jobs(s)
+        s.commit()
+
+        assert reclaimed == []
+        fetched = repo.get_job(s, tenant_id=tenant.id, job_id=job.id)
+        assert fetched.status == "running"
+
+
+def test_reclaim_stuck_jobs_ignores_pending_and_done_jobs():
+    Session, tenant, user = _env()
+    with Session() as s:
+        pending_job = repo.create_job(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k1",
+            filename="f1.geojson",
+            collection_title="Villes 1",
+            lat_field=None,
+            lon_field=None,
+        )
+        done_job = repo.create_job(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            source_key="k2",
+            filename="f2.geojson",
+            collection_title="Villes 2",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+        repo.mark_running(s, job_id=done_job.id)
+        repo.mark_done(s, job_id=done_job.id, collection_id="c1", item_id="i1")
+        done_job.updated_at = datetime.now(UTC) - timedelta(hours=2)
+        pending_job.updated_at = datetime.now(UTC) - timedelta(hours=2)
+        s.commit()
+
+        reclaimed = repo.reclaim_stuck_jobs(s)
+        s.commit()
+
+        assert reclaimed == []

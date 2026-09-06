@@ -118,3 +118,108 @@ def test_explain_alert_rule_404s_for_an_unreadable_rule(app_client):
             client, "explain_alert_rule", {"alertRuleId": "does-not-exist"}
         )
     assert "alert rule not found" in error_text
+
+
+def _seed_dataset(Session, *, tenant_id, owner_id):
+    with Session() as s:
+        dataset_item = items_repo.create_item(
+            s,
+            tenant_id=tenant_id,
+            owner_id=owner_id,
+            resource_type="dataset",
+            title="Dataset",
+        )
+        dataset_config = BuilderConfig.model_validate(
+            {
+                "kind": "dataset",
+                "dataset": {"source": "collection", "collectionId": "incidents", "columns": {}},
+            }
+        )
+        configs_repo.create_config(s, dataset_config, item_id=dataset_item.id, tenant_id=tenant_id)
+        s.commit()
+        return dataset_item.id
+
+
+def test_create_alert_rule_creates_a_config_kind_alert(app_client):
+    client, Session, tenant_id, user_id = app_client
+    dataset_item_id = _seed_dataset(Session, tenant_id=tenant_id, owner_id=user_id)
+
+    with client:
+        result = call_tool(
+            client,
+            "create_alert_rule",
+            {
+                "title": "R1",
+                "datasetItemId": dataset_item_id,
+                "query": {"agg": "count"},
+                "condition": {"expr": "value > 10"},
+                "refreshPolicy": {"enabled": True, "cron": "*/15 * * * *"},
+                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+                "messageTemplate": "Alert {ruleName}: value={value} ({state})",
+            },
+        )
+
+    assert result["resourceType"] == "alert"
+    with Session() as s:
+        config = configs_repo.get_config_by_item(s, result["pk"])
+        assert config is not None
+        assert config.config.kind == "alert"
+        assert config.config.alert.datasetItemId == dataset_item_id
+
+
+def test_create_alert_rule_refuses_in_read_only_mode(app_client, monkeypatch):
+    client, Session, tenant_id, user_id = app_client
+    dataset_item_id = _seed_dataset(Session, tenant_id=tenant_id, owner_id=user_id)
+    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+
+    with client:
+        error_text = call_tool_expecting_error(
+            client,
+            "create_alert_rule",
+            {
+                "title": "R1",
+                "datasetItemId": dataset_item_id,
+                "query": {"agg": "count"},
+                "condition": {"expr": "value > 10"},
+                "refreshPolicy": {"enabled": True, "cron": "*/15 * * * *"},
+                "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+            },
+        )
+    assert "lecture seule" in error_text
+
+
+def test_run_alert_rule_creates_a_pending_evaluation_and_defers(app_client, monkeypatch):
+    client, Session, tenant_id, user_id = app_client
+    alert_item_id, _dataset_item_id = _seed_alert_rule(
+        Session, tenant_id=tenant_id, owner_id=user_id
+    )
+
+    from app.alerts import jobs as alerts_jobs
+
+    deferred = []
+    monkeypatch.setattr(
+        alerts_jobs.evaluate_alert_task,
+        "defer",
+        lambda **kw: deferred.append(kw),
+    )
+
+    with client:
+        result = call_tool(client, "run_alert_rule", {"alertRuleId": alert_item_id})
+
+    assert "evaluationId" in result
+    assert deferred == [{"evaluation_id": result["evaluationId"], "tenant_id": tenant_id}]
+    with Session() as s:
+        evaluation = alerts_repo.get_evaluation(
+            s, tenant_id=tenant_id, evaluation_id=result["evaluationId"]
+        )
+        assert evaluation is not None
+        assert evaluation.state == "pending"
+
+
+def test_run_alert_rule_404s_for_an_unreadable_rule(app_client):
+    client, Session, tenant_id, user_id = app_client
+    with client:
+        error_text = call_tool_expecting_error(
+            client, "run_alert_rule", {"alertRuleId": "does-not-exist"}
+        )
+    assert "alert rule not found" in error_text

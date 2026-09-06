@@ -35,3 +35,9 @@ class User(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+    # Additive, nullable (SP-58 Tâche 6, migration 0039) : horodatage de
+    # l'anonymisation (app.compliance.service::anonymize_user, Tâche 7).
+    # None = compte jamais anonymisé. Sert à l'idempotence (un second appel
+    # sur ce user_id est un échec explicite, pas une double écriture
+    # silencieuse) et à l'affichage admin ("compte effacé le …").
+    erased_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

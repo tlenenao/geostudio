@@ -14,7 +14,7 @@ test("un admin déclare une source OGC API - Records, la moissonne, et l'item ap
   let runCount = 0;
   const harvestedById = new Map<string, Record<string, unknown>>();
 
-  await page.route("https://core.test/harvest/sources", async (route) => {
+  await page.route("https://core.test/v1/harvest/sources", async (route) => {
     if (route.request().method() === "POST") {
       created = await route.request().postDataJSON();
       await route.fulfill({
@@ -54,7 +54,7 @@ test("un admin déclare une source OGC API - Records, la moissonne, et l'item ap
     });
   });
 
-  await page.route("https://core.test/harvest/sources/src-1/run", async (route) => {
+  await page.route("https://core.test/v1/harvest/sources/src-1/run", async (route) => {
     runCount += 1;
     harvestedById.set("rec-1", {
       pk: "rec-1",
@@ -70,7 +70,7 @@ test("un admin déclare une source OGC API - Records, la moissonne, et l'item ap
     await route.fulfill({ status: 202, json: { status: "queued" } });
   });
 
-  await page.route("https://core.test/items*", async (route) => {
+  await page.route("https://core.test/v1/items*", async (route) => {
     const items = Array.from(harvestedById.values());
     await route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 12 } });
   });

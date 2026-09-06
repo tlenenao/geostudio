@@ -8,10 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user
+from app.auth.dependency import get_current_user, is_quotas_enabled
 from app.db import get_session
 from app.ingestion import repository as repo
-from app.ingestion.parsers import IngestionParseError, list_layers
+from app.ingestion.parsers import IngestionParseError, list_layers, read_xlsx_header_fields
 from app.ingestion.schemas import (
     IngestionJobCreate,
     IngestionJobCreated,
@@ -28,6 +28,7 @@ from app.ingestion.storage import (
     generate_presigned_put_url,
 )
 from app.ingestion.tasks import run_ingestion_task
+from app.quotas.service import check_storage_quota_or_raise
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
 from app.users.models import User
@@ -86,6 +87,12 @@ def inspect_upload(
         content = download_object(s3, bucket=bucket, key=body.key)
     except ClientError as exc:
         raise HTTPException(status_code=404, detail="objet introuvable") from exc
+    if body.filename.lower().endswith(".xlsx"):
+        try:
+            fields = read_xlsx_header_fields(content)
+        except IngestionParseError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return InspectResponse(layers=[], fields=fields)
     try:
         layers = list_layers(content, body.filename)
     except ValueError as exc:
@@ -108,6 +115,8 @@ def create_upload_job(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
     defer_task: Callable[[str, str], None] = Depends(get_task_deferrer),
+    s3=Depends(get_s3_client),
+    bucket: str = Depends(get_uploads_bucket),
 ) -> IngestionJobCreated:
     # SP-42, correctif 1 (F-securite-autorisation-01) : ce job exécute du DDL
     # (création de table PostGIS) au worker — réservé à data.manage, comme
@@ -127,6 +136,16 @@ def create_upload_job(
     # (confused deputy) sous son propre job/collection/tenant courant.
     if not body.key.startswith(f"{user.tenant_id}/"):
         raise HTTPException(status_code=400, detail="invalid upload key")
+    # SP-58 Tâche 5 (GAP-73/GAP-11) : cette route ne connaissait jusqu'ici
+    # pas la taille de l'objet déjà téléversé (upload direct présigné) —
+    # head_object est le seul moyen de l'apprendre, même patron que
+    # confirm_attachment/create_terrain3d_upload. Avant la création du job
+    # (fail fast, pas de ligne orpheline).
+    if is_quotas_enabled():
+        head = s3.head_object(Bucket=bucket, Key=body.key)
+        check_storage_quota_or_raise(
+            session, s3, tenant_id=user.tenant_id, additional_bytes=head["ContentLength"]
+        )
     job = repo.create_job(
         session,
         tenant_id=user.tenant_id,

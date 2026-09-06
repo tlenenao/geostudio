@@ -53,7 +53,7 @@ def env():
 
 
 def test_instance_reports_etl_disabled_by_default(env):
-    response = env.get("/instance")
+    response = env.get("/v1/instance")
     assert response.status_code == 200
     assert response.json() == {
         "readOnly": False,
@@ -64,12 +64,13 @@ def test_instance_reports_etl_disabled_by_default(env):
         "terrain3dEnabled": False,
         "copilotEnabled": False,
         "adminToolsEnabled": False,
+        "quotasEnabled": False,
     }
 
 
 def test_instance_reports_etl_enabled(env, monkeypatch):
     monkeypatch.setenv("CORE_ETL_ENABLED", "true")
-    response = env.get("/instance")
+    response = env.get("/v1/instance")
     assert response.status_code == 200
     assert response.json() == {
         "readOnly": False,
@@ -80,4 +81,5 @@ def test_instance_reports_etl_enabled(env, monkeypatch):
         "terrain3dEnabled": False,
         "copilotEnabled": False,
         "adminToolsEnabled": False,
+        "quotasEnabled": False,
     }

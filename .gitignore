@@ -5,3 +5,4 @@ certs/
 .superpowers/
 deploy/proxmox/ansible/inventory.ini
 deploy/proxmox/ansible/group_vars/vault.yml
+test-results/

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 import type { PipelineRefreshPolicy } from "../../api/types";
+import { t } from "../../i18n";
 
 export type ScheduleForm =
   | { mode: "interval"; minutes: string }
@@ -8,7 +9,17 @@ export type ScheduleForm =
   | { mode: "weekly"; day: string; time: string }
   | { mode: "advanced"; raw: string };
 
-const DAY_LABELS = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
+function dayLabels(): string[] {
+  return [
+    t("pipelineSchedule.daySunday"),
+    t("pipelineSchedule.dayMonday"),
+    t("pipelineSchedule.dayTuesday"),
+    t("pipelineSchedule.dayWednesday"),
+    t("pipelineSchedule.dayThursday"),
+    t("pipelineSchedule.dayFriday"),
+    t("pipelineSchedule.daySaturday"),
+  ];
+}
 const ADVANCED_CRON_RE = /^\S+\s+\S+\s+\S+\s+\S+\s+\S+$/;
 const INTERVAL_RE = /^\*\/(\d+) \* \* \* \*$/;
 const DAILY_RE = /^(\d{1,2}) (\d{1,2}) \* \* \*$/;
@@ -90,18 +101,18 @@ export function PipelineScheduleEditor({
       <label className="flex items-center gap-2 text-xs font-medium text-ink-2">
         <input
           type="checkbox"
-          aria-label="Planification automatique"
+          aria-label={t("pipelineSchedule.autoSchedulingAria")}
           checked={enabled}
           onChange={(e) => setEnabled(e.target.checked)}
         />
-        Planification automatique
+        {t("pipelineSchedule.autoSchedulingLabel")}
       </label>
       {enabled && (
         <div className="flex flex-col gap-2 text-xs">
           <label className="flex flex-col gap-1">
-            Mode
+            {t("pipelineSchedule.modeLabel")}
             <select
-              aria-label="Mode de planification"
+              aria-label={t("pipelineSchedule.modeAria")}
               className="h-8 rounded border border-rule bg-surface px-2 text-ink"
               value={form.mode}
               onChange={(e) => {
@@ -113,17 +124,17 @@ export function PipelineScheduleEditor({
                 else handleSetForm({ mode: "advanced", raw: cron });
               }}
             >
-              <option value="interval">Toutes les N minutes</option>
-              <option value="daily">Quotidien</option>
-              <option value="weekly">Hebdomadaire</option>
-              <option value="advanced">Cron avancé</option>
+              <option value="interval">{t("pipelineSchedule.modeInterval")}</option>
+              <option value="daily">{t("pipelineSchedule.modeDaily")}</option>
+              <option value="weekly">{t("pipelineSchedule.modeWeekly")}</option>
+              <option value="advanced">{t("pipelineSchedule.modeAdvanced")}</option>
             </select>
           </label>
           {form.mode === "interval" && (
             <label className="flex flex-col gap-1">
-              Toutes les combien de minutes
+              {t("pipelineSchedule.intervalLabel")}
               <input
-                aria-label="Intervalle en minutes"
+                aria-label={t("pipelineSchedule.intervalAria")}
                 type="number"
                 min={1}
                 className="h-8 rounded border border-rule bg-surface px-2 text-ink"
@@ -134,9 +145,9 @@ export function PipelineScheduleEditor({
           )}
           {form.mode === "daily" && (
             <label className="flex flex-col gap-1">
-              Heure d&apos;exécution
+              {t("pipelineSchedule.executionTimeLabel")}
               <input
-                aria-label="Heure d'exécution"
+                aria-label={t("pipelineSchedule.executionTimeAria")}
                 type="time"
                 className="h-8 rounded border border-rule bg-surface px-2 text-ink"
                 value={form.time}
@@ -147,16 +158,16 @@ export function PipelineScheduleEditor({
           {form.mode === "weekly" && (
             <>
               <label className="flex flex-col gap-1">
-                Jour
+                {t("pipelineSchedule.dayLabel")}
                 <select
-                  aria-label="Jour de la semaine"
+                  aria-label={t("pipelineSchedule.dayAria")}
                   className="h-8 rounded border border-rule bg-surface px-2 text-ink"
                   value={form.day}
                   onChange={(e) =>
                     handleSetForm({ mode: "weekly", day: e.target.value, time: form.time })
                   }
                 >
-                  {DAY_LABELS.map((label, i) => (
+                  {dayLabels().map((label, i) => (
                     <option key={label} value={i}>
                       {label}
                     </option>
@@ -164,9 +175,9 @@ export function PipelineScheduleEditor({
                 </select>
               </label>
               <label className="flex flex-col gap-1">
-                Heure d&apos;exécution
+                {t("pipelineSchedule.executionTimeLabel")}
                 <input
-                  aria-label="Heure d'exécution"
+                  aria-label={t("pipelineSchedule.executionTimeAria")}
                   type="time"
                   className="h-8 rounded border border-rule bg-surface px-2 text-ink"
                   value={form.time}
@@ -179,16 +190,16 @@ export function PipelineScheduleEditor({
           )}
           {form.mode === "advanced" && (
             <label className="flex flex-col gap-1">
-              Expression cron
+              {t("pipelineSchedule.cronExpressionLabel")}
               <input
-                aria-label="Expression cron"
+                aria-label={t("pipelineSchedule.cronExpressionAria")}
                 className="h-8 rounded border border-rule bg-surface px-2 font-mono text-ink"
                 value={form.raw}
                 onChange={(e) => handleSetForm({ mode: "advanced", raw: e.target.value })}
               />
               {!ADVANCED_CRON_RE.test(form.raw) && (
                 <p role="alert" className="text-danger">
-                  Format cron invalide (5 champs attendus).
+                  {t("pipelineSchedule.invalidCronFormat")}
                 </p>
               )}
             </label>
