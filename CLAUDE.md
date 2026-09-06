@@ -163,7 +163,10 @@ uv run pytest        # dernier compte mesuré après intégration complète de
                      # ALTER TABLE manuel, sinon des dizaines de tests
                      # échouent en cascade sur UndefinedColumn sans rapport
                      # avec le code sous revue. Les 5 skips = marqueur qgis
-                     # (sidecar réel requis). Piège supplémentaire vécu à la
+                     # (sidecar réel requis) — pour les exécuter vraiment :
+                     # `./scripts/run-qgis-tests.sh` (aucun sudo, ne touche
+                     # pas l'hôte) ; la CI les exécute désormais elle aussi
+                     # (job `core-qgis`). Piège supplémentaire vécu à la
                      # clôture de SP-49 : 2-3 sessions concurrentes lancées
                      # sur des worktrees différents mais un même conteneur
                      # postgis-test partagé produisent des dizaines
@@ -401,10 +404,12 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   validation de schéma). Un test de régression non marqué `qgis` (donc
   toujours actif en CI) ajouté pour chacun, falsifié avant fix. Suite
   complète (2298 tests hors `qgis`) + les 5 `qgis` rejoués verts après coup.
-  **M14 atteint.** Reste : ces 5 tests ne tournent toujours qu'en session
-  manuelle, pas encore câblés en CI (`CORE_TEST_QGIS_WORKER_URL` absent de
-  tout workflow) — non retenu dans le périmètre de SP-44, à câbler
-  séparément si voulu.
+  **M14 atteint.** Câblage CI, laissé hors périmètre par SP-44, fermé
+  depuis (2026-09-06, commit `122c6394`) : job `core-qgis` dans `ci.yml`
+  (séparé du job `core` — image de base QGIS de 11 Go),
+  `scripts/run-qgis-tests.sh` pour la même exécution en local sans sudo,
+  et `test_ci_actually_runs_the_qgis_marked_tests` qui interdit le retour
+  au skip silencieux.
 - **SP-43** (10 tâches, subagent-driven-development, 2026-09-05) — ferme les
   6 classes de duplication mécanique identifiées par sa spec : registre
   `kind_registry.py::privilege_for_kind()` unique (5 sites réels, pas 4 —
@@ -1143,8 +1148,9 @@ session :
 - Jalon **M14 atteint** (SP-44, `REV-095` clos) : les 5 tests
   `@pytest.mark.qgis` tournent contre un vrai sidecar — 2 défauts de
   production réels trouvés et corrigés au passage (`_lock_down()` bloquait
-  `transform.qgis`, `fid` GeoPackage non filtré). Reste non câblé en CI
-  (session manuelle uniquement).
+  `transform.qgis`, `fid` GeoPackage non filtré). **Câblés en CI depuis le
+  2026-09-06** (job `core-qgis`) — ils ne skippent plus par défaut ; en
+  local, `scripts/run-qgis-tests.sh` (aucun sudo, ne touche pas l'hôte).
 - `REV-073`/`REV-075`/`REV-076`/`REV-077` clos par **SP-60** (GAP-69) :
   gardes de borne basse sur les extracteurs de `test_deployability.py`,
   ancre positive sur `triptych-narrow.spec.ts`, tests « lisible

@@ -73,7 +73,7 @@ restants.
 
 | GAP | État | Fermé par / statut détaillé |
 |---|---|---|
-| GAP-01 | **Fermé** | SP-44 (5 tests qgis exécutés contre sidecar réel) |
+| GAP-01 | **Fermé** | SP-44 (5 tests qgis exécutés contre sidecar réel) + câblage CI le 2026-09-06 (job `core-qgis`, `scripts/run-qgis-tests.sh`, garde dans `test_deployability.py`) |
 | GAP-02 | **Fermé** | SP-45 (`app/copilot/egress.py`) |
 | GAP-03 | **Fermé** | SP-47 (`automation.secrets.manage`/`tasks.view_all` gardent des routes) |
 | GAP-04 | Ouvert | Aucune SP n'a traité `stac-api-validator` en CI |
