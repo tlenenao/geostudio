@@ -50,7 +50,9 @@ def test_render_dynamic_conf_produces_parseable_yaml_enforce_mode():
     # appartenance exacte d'une recherche de sous-chaîne.
     assert directives["img-src"] == ["'self'", "blob:", "data:", "https://tiles.example.com"]
     assert directives["connect-src"] == ["'self'", "https://tiles.example.com"]
-    # jamais élargi (blocage 3 non tranché) : script-src n'a que 'self'.
+    # script_hosts vide dans cette allowlist : script-src n'a que 'self'
+    # (aucune extension déclarée) — le cas non vide est couvert par
+    # test_script_src_includes_computed_extension_hosts ci-dessous.
     assert directives["script-src"] == ["'self'"]
 
 
@@ -96,19 +98,19 @@ def test_refresh_csp_dynamic_conf_task_writes_the_rendered_file(tmp_path, monkey
     assert "Content-Security-Policy" in target.read_text()
 
 
-def test_script_src_never_widened_by_computed_extension_hosts():
-    """SP-48/GAP-72 blocage 3 : le sandboxing des widgets d'extension
-    tiers est une décision produit non tranchée (spec §4, 4 options
-    évaluées, aucune retenue sans accord explicite de Tanguy). Ce test
-    échoue intentionnellement si script_hosts est un jour branché sur
-    script-src sans qu'on ait d'abord retiré ce test — c'est le signal
-    que la décision a été prise ailleurs (ledger de session, CLAUDE.md)
-    avant de le faire. Déjà vert avec le code des Tasks 1-5 (rien ne câble
-    jamais script_hosts sur script-src) : test de non-régression
-    intentionnelle, committé séparément pour apparaître comme une décision
-    explicite dans l'historique, pas comme un sous-produit accidentel de
-    Task 3."""
+def test_script_src_includes_computed_extension_hosts():
+    """SP-48/GAP-72 blocage 3 (REV-166) : Tanguy a tranché Option A —
+    script-src s'élargit à l'origine déclarée de chaque extension
+    (Extension.module_url, écriture gardée par
+    Privilege.ADMIN_EXTENSIONS_MANAGE). Remplace
+    test_script_src_never_widened_by_computed_extension_hosts, qui
+    affirmait le comportement inverse tant que la décision n'était pas
+    prise — falsifié avant ce correctif : ce test échouait bien contre le
+    code d'avant (script-src figé à 'self' seul), confirmant qu'il teste
+    réellement le branchement, pas un artefact."""
     allowlist = CspAllowlist(script_hosts={"https://cdn.example.com"})
     rendered = render_dynamic_conf(allowlist, mode="enforce")
-    assert "cdn.example.com" not in rendered
-    assert "script-src 'self'" in rendered
+    parsed = yaml.safe_load(rendered)
+    headers = parsed["http"]["middlewares"]["csp-dynamic"]["headers"]["customResponseHeaders"]
+    directives = _csp_directives(headers["Content-Security-Policy"])
+    assert directives["script-src"] == ["'self'", "https://cdn.example.com"]
