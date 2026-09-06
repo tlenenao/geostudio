@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { BASEMAPS } from "./basemaps";
+import { t } from "../i18n";
 
 export function BasemapSelect({
   value,
@@ -10,9 +11,9 @@ export function BasemapSelect({
 }) {
   return (
     <label className="flex flex-col gap-1 text-sm">
-      Fond de carte
+      {t("basemapSelect.label")}
       <select
-        aria-label="Fond de carte"
+        aria-label={t("basemapSelect.label")}
         className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
         value={value}
         onChange={(e) => onChange(e.target.value)}

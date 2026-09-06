@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/hooks";
 import type { ExportFormat, ExportJob } from "../../api/types";
+import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 import { Panel } from "../../ui/kit/Panel";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
@@ -51,7 +52,7 @@ export function ExportPanel({ itemId }: { itemId: string }) {
     setJob(latest);
     if (latest.status !== "pending" && latest.status !== "running") return;
     if (attempt + 1 >= MAX_POLL_ATTEMPTS) {
-      setError("Export toujours en cours, réessayer plus tard.");
+      setError(t("exportPanel.stillRunning"));
       return;
     }
     await new Promise<void>((resolve) => {
@@ -74,7 +75,7 @@ export function ExportPanel({ itemId }: { itemId: string }) {
       // erreur réseau/HTTP (potentiellement peu lisible) que ce soit
       // `createExport` ou une itération de `poll` qui a échoué — les deux
       // remontent ici via le même try/catch.
-      if (mountedRef.current) setError("Échec de l'export.");
+      if (mountedRef.current) setError(t("exportPanel.exportFailed"));
     } finally {
       if (mountedRef.current) setRunning(false);
     }
@@ -89,7 +90,7 @@ export function ExportPanel({ itemId }: { itemId: string }) {
         onClick={() => setPickerOpen((open) => !open)}
         disabled={running}
       >
-        Exporter
+        {t("exportPanel.exportButton")}
       </Button>
       {pickerOpen && (
         // Panneau en ligne, pas une fenêtre modale (spec §2.1, ConfirmDialog
@@ -103,7 +104,7 @@ export function ExportPanel({ itemId }: { itemId: string }) {
         // sites corrigés par la Tâche 7 pour la même raison.
         <div id={exportPanel.panelId}>
           <Panel className="flex flex-col gap-2">
-            <p className="text-sm font-medium text-ink">Choisir le format d'export</p>
+            <p className="text-sm font-medium text-ink">{t("exportPanel.chooseFormatHeading")}</p>
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
@@ -111,7 +112,7 @@ export function ExportPanel({ itemId }: { itemId: string }) {
                 size="sm"
                 onClick={() => setPickerOpen(false)}
               >
-                Annuler
+                {t("exportPanel.cancel")}
               </Button>
               <Button
                 type="button"
@@ -130,12 +131,12 @@ export function ExportPanel({ itemId }: { itemId: string }) {
       )}
       {job?.status === "done" && job.resultUrl && (
         <a href={job.resultUrl} download className="text-sm text-accent underline">
-          Télécharger l&apos;export
+          {t("exportPanel.downloadExport")}
         </a>
       )}
       {(error || job?.status === "error") && (
         <p role="alert" className="text-sm text-danger">
-          {error ?? job?.error ?? "Échec de l'export."}
+          {error ?? job?.error ?? t("exportPanel.exportFailed")}
         </p>
       )}
     </div>

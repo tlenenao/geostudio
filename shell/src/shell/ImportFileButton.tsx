@@ -6,6 +6,7 @@ import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
+import { t } from "../i18n";
 
 type Phase = "form" | "uploading" | "selecting-layer" | "selecting-latlon" | "polling" | "error";
 type LayerInfo = { name: string; featureCount: number; geometryType: string };
@@ -122,7 +123,7 @@ export function ImportFileButton() {
       }
       if (job.status === "error") {
         setPhase("error");
-        setError(job.errorMessage ?? "Échec de l'import.");
+        setError(job.errorMessage ?? t("importFile.genericError"));
         return;
       }
       await new Promise<void>((resolve) => {
@@ -183,7 +184,7 @@ export function ImportFileButton() {
     } catch {
       if (!mountedRef.current) return;
       setPhase("error");
-      setError("Échec de l'import.");
+      setError(t("importFile.genericError"));
     }
   }
 
@@ -197,7 +198,7 @@ export function ImportFileButton() {
     } catch {
       if (!mountedRef.current) return;
       setPhase("error");
-      setError("Échec de l'import.");
+      setError(t("importFile.genericError"));
     }
   }
 
@@ -215,7 +216,7 @@ export function ImportFileButton() {
     } catch {
       if (!mountedRef.current) return;
       setPhase("error");
-      setError("Échec de l'import.");
+      setError(t("importFile.genericError"));
     }
   }
 
@@ -229,20 +230,20 @@ export function ImportFileButton() {
         {...drawerPanel.triggerProps}
         onClick={() => setOpen(true)}
       >
-        Importer un fichier
+        {t("importFile.button")}
       </Button>
       <Drawer
         open={open}
         onOpenChange={(next) => !next && close()}
-        title="Importer un fichier"
+        title={t("importFile.button")}
         id={drawerPanel.panelId}
       >
         {phase === "selecting-latlon" ? (
           <form onSubmit={(e) => void confirmLatLon(e)} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm text-ink">
-              Colonne latitude
+              {t("importFile.latColumn")}
               <select
-                aria-label="Colonne latitude"
+                aria-label={t("importFile.latColumn")}
                 className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                 value={latField}
                 onChange={(e) => setLatField(e.target.value)}
@@ -256,9 +257,9 @@ export function ImportFileButton() {
               </select>
             </label>
             <label className="flex flex-col gap-1 text-sm text-ink">
-              Colonne longitude
+              {t("importFile.lonColumn")}
               <select
-                aria-label="Colonne longitude"
+                aria-label={t("importFile.lonColumn")}
                 className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                 value={lonField}
                 onChange={(e) => setLonField(e.target.value)}
@@ -273,19 +274,19 @@ export function ImportFileButton() {
             </label>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" size="sm" onClick={close}>
-                Annuler
+                {t("confirmDialog.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={!latField || !lonField}>
-                Continuer
+                {t("importFile.continueButton")}
               </Button>
             </div>
           </form>
         ) : phase === "selecting-layer" ? (
           <form onSubmit={(e) => void confirmLayer(e)} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm text-ink">
-              Couche à importer
+              {t("importFile.layerColumn")}
               <select
-                aria-label="Couche à importer"
+                aria-label={t("importFile.layerColumn")}
                 className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                 value={layerName}
                 onChange={(e) => setLayerName(e.target.value)}
@@ -293,35 +294,35 @@ export function ImportFileButton() {
                 <option value="">—</option>
                 {layers.map((l) => (
                   <option key={l.name} value={l.name}>
-                    {l.name} ({l.featureCount} entités)
+                    {t("importFile.layerOptionTemplate", { name: l.name, count: l.featureCount })}
                   </option>
                 ))}
               </select>
             </label>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" size="sm" onClick={close}>
-                Annuler
+                {t("confirmDialog.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={!layerName}>
-                Continuer
+                {t("importFile.continueButton")}
               </Button>
             </div>
           </form>
         ) : (
           <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm text-ink">
-              Fichier à importer
+              {t("importFile.fileToImport")}
               <input
-                aria-label="Fichier à importer"
+                aria-label={t("importFile.fileToImport")}
                 type="file"
                 accept=".geojson,.json,.csv,.xlsx,.kml,.kmz,.gpkg,.zip,.parquet"
                 onChange={(e) => void onFileChange(e)}
               />
             </label>
             <label className="flex flex-col gap-1 text-sm text-ink">
-              Titre de la collection
+              {t("importFile.collectionTitleLabel")}
               <Input
-                aria-label="Titre de la collection"
+                aria-label={t("importFile.collectionTitleLabel")}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
@@ -329,9 +330,9 @@ export function ImportFileButton() {
             {needsManualLatLon && (
               <>
                 <label className="flex flex-col gap-1 text-sm text-ink">
-                  Colonne latitude
+                  {t("importFile.latColumn")}
                   <select
-                    aria-label="Colonne latitude"
+                    aria-label={t("importFile.latColumn")}
                     className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                     value={latField}
                     onChange={(e) => setLatField(e.target.value)}
@@ -345,9 +346,9 @@ export function ImportFileButton() {
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-ink">
-                  Colonne longitude
+                  {t("importFile.lonColumn")}
                   <select
-                    aria-label="Colonne longitude"
+                    aria-label={t("importFile.lonColumn")}
                     className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                     value={lonField}
                     onChange={(e) => setLonField(e.target.value)}
@@ -369,14 +370,14 @@ export function ImportFileButton() {
             )}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" size="sm" onClick={close}>
-                Annuler
+                {t("confirmDialog.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={busy}>
                 {phase === "uploading"
-                  ? "Envoi…"
+                  ? t("importFile.uploading")
                   : phase === "polling"
-                    ? "Import en cours…"
-                    : "Importer"}
+                    ? t("importFile.importing")
+                    : t("importFile.submit")}
               </Button>
             </div>
           </form>

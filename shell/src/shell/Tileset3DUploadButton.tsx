@@ -4,6 +4,7 @@ import { useItemClient } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
+import { t } from "../i18n";
 
 // S3 multipart accepts a single part of any size — the same chunking code
 // path serves a tiny test fixture and a multi-GB tileset (design §4,
@@ -63,12 +64,12 @@ export function Tileset3DUploadButton({
       }
       if (job.status === "error") {
         setPhase("error");
-        setError(job.errorMessage ?? "Échec de la validation du tileset.");
+        setError(job.errorMessage ?? t("tileset3d.jobErrorFallback"));
         return;
       }
       if (Date.now() >= deadline) {
         setPhase("error");
-        setError("La validation du tileset prend trop de temps. Réessayez plus tard.");
+        setError(t("tileset3d.timeoutError"));
         return;
       }
       await new Promise<void>((resolve) => {
@@ -96,7 +97,7 @@ export function Tileset3DUploadButton({
         const chunk = file.slice(i * PART_SIZE_BYTES, (i + 1) * PART_SIZE_BYTES);
         const { uploadUrl } = await client.presignTileset3DUploadPart(jobId, partNumber);
         const res = await fetch(uploadUrl, { method: "PUT", body: chunk });
-        if (!res.ok) throw new Error(`Échec de l'envoi de la partie ${partNumber}.`);
+        if (!res.ok) throw new Error(t("tileset3d.partUploadFailedTemplate", { n: partNumber }));
         const etag = res.headers.get("ETag") ?? "";
         parts.push({ partNumber, etag });
         setProgress({ done: partNumber, total: partCount });
@@ -106,7 +107,7 @@ export function Tileset3DUploadButton({
       await poll(jobId);
     } catch (e) {
       setPhase("error");
-      setError(e instanceof Error ? e.message : "Échec de l'envoi du tileset.");
+      setError(e instanceof Error ? e.message : t("tileset3d.uploadFailedFallback"));
     }
   }
 
@@ -129,33 +130,39 @@ export function Tileset3DUploadButton({
   return (
     <>
       <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-        Nouveau tileset 3D
+        {t("tileset3d.newButton")}
       </Button>
       <Drawer
         open={open}
         onOpenChange={(next) => !next && requestClose()}
-        title="Nouveau tileset 3D"
+        title={t("tileset3d.newButton")}
       >
         <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm text-ink">
-            Archive du tileset (.zip)
+            {t("tileset3d.archiveLabel")}
             <input
-              aria-label="Archive du tileset (.zip)"
+              aria-label={t("tileset3d.archiveLabel")}
               type="file"
               accept=".zip"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm text-ink">
-            Titre
-            <Input aria-label="Titre" value={title} onChange={(e) => setTitle(e.target.value)} />
+            {t("visualQuery.titleLabel")}
+            <Input
+              aria-label={t("visualQuery.titleLabel")}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
           </label>
           {progress && (
             <p className="text-sm text-ink-2">
-              Envoi de la partie {progress.done}/{progress.total}…
+              {t("tileset3d.progressTemplate", { done: progress.done, total: progress.total })}
             </p>
           )}
-          {phase === "finalizing" && <p className="text-sm text-ink-2">Validation du tileset…</p>}
+          {phase === "finalizing" && (
+            <p className="text-sm text-ink-2">{t("tileset3d.validating")}</p>
+          )}
           {phase === "error" && (
             <p role="alert" className="text-sm text-danger">
               {error}
@@ -163,10 +170,10 @@ export function Tileset3DUploadButton({
           )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={close} disabled={busy}>
-              Annuler
+              {t("confirmDialog.cancel")}
             </Button>
             <Button type="submit" size="sm" disabled={busy || !file || !title.trim()}>
-              {busy ? "Envoi…" : "Importer"}
+              {busy ? t("tileset3d.uploading") : t("tileset3d.submit")}
             </Button>
           </div>
         </form>

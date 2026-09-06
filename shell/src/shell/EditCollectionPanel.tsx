@@ -7,6 +7,7 @@ import { Input } from "../ui/kit/Input";
 import { Select } from "../ui/kit/Select";
 import { Tabs } from "../ui/kit/Tabs";
 import { Textarea } from "../ui/kit/Textarea";
+import { t } from "../i18n";
 
 const UNSET = "unset";
 
@@ -40,11 +41,11 @@ export function EditCollectionPanel({
   const [temporalEnd, setTemporalEnd] = useState(collection.temporalEnd ?? "");
 
   const licenseOptions = [
-    { value: UNSET, label: "Aucune licence déclarée" },
+    { value: UNSET, label: t("editCollection.noLicenseOption") },
     ...(catalogQuery.data?.licenses.map((l) => ({ value: l.id, label: l.label })) ?? []),
   ];
   const frequencyOptions = [
-    { value: UNSET, label: "Non renseignée" },
+    { value: UNSET, label: t("editCollection.noFrequencyOption") },
     ...(catalogQuery.data?.frequencies.map((f) => ({ value: f.id, label: f.label })) ?? []),
   ];
   const languageOptions =
@@ -90,30 +91,35 @@ export function EditCollectionPanel({
   }
 
   return (
-    <section aria-label={`Éditer ${collection.title}`} className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold text-ink">Éditer {collection.title}</h2>
+    <section
+      aria-label={t("editCollection.heading", { title: collection.title })}
+      className="flex flex-col gap-3"
+    >
+      <h2 className="text-sm font-semibold text-ink">
+        {t("editCollection.heading", { title: collection.title })}
+      </h2>
       <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
         <Tabs
-          aria-label="Sections d'édition"
+          aria-label={t("editCollection.sectionsAria")}
           defaultValue="general"
           tabs={[
             {
               value: "general",
-              label: "Général",
+              label: t("editCollection.generalTab"),
               content: (
                 <div className="flex flex-col gap-3 pt-3">
                   <label className="flex flex-col gap-1 text-sm text-ink">
-                    Titre
+                    {t("collectionsAdmin.columnTitle")}
                     <Input
-                      aria-label="Titre"
+                      aria-label={t("collectionsAdmin.columnTitle")}
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-ink">
-                    Description
+                    {t("kitGallery.descriptionFieldLabel")}
                     <Input
-                      aria-label="Description"
+                      aria-label={t("kitGallery.descriptionFieldLabel")}
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                     />
@@ -121,33 +127,33 @@ export function EditCollectionPanel({
                   <label className="flex items-center gap-2 text-sm text-ink">
                     <input
                       type="checkbox"
-                      aria-label="Public"
+                      aria-label={t("collectionsAdmin.columnPublic")}
                       checked={isPublic}
                       onChange={(e) => setIsPublic(e.target.checked)}
                     />
-                    Public
+                    {t("collectionsAdmin.columnPublic")}
                   </label>
                   <label className="flex items-center gap-2 text-sm text-ink">
                     <input
                       type="checkbox"
-                      aria-label="Éditable"
+                      aria-label={t("collectionsAdmin.columnEditable")}
                       checked={editable}
                       onChange={(e) => setEditable(e.target.checked)}
                     />
-                    Éditable
+                    {t("collectionsAdmin.columnEditable")}
                   </label>
                 </div>
               ),
             },
             {
               value: "metadata",
-              label: "Métadonnées ouvertes",
+              label: t("editCollection.metadataTab"),
               content: (
                 <div className="flex flex-col gap-3 pt-3">
                   <label className="flex flex-col gap-1 text-sm text-ink">
-                    Licence
+                    {t("editCollection.licenseLabel")}
                     <Select
-                      aria-label="Licence"
+                      aria-label={t("editCollection.licenseLabel")}
                       value={license}
                       onValueChange={setLicense}
                       options={licenseOptions}
@@ -155,79 +161,79 @@ export function EditCollectionPanel({
                   </label>
                   {license === "other" && (
                     <label className="flex flex-col gap-1 text-sm text-ink">
-                      URI de la licence
+                      {t("editCollection.licenseUriLabel")}
                       <Input
-                        aria-label="URI de la licence"
+                        aria-label={t("editCollection.licenseUriLabel")}
                         value={licenseUri}
                         onChange={(e) => setLicenseUri(e.target.value)}
                       />
                     </label>
                   )}
                   <label className="flex flex-col gap-1 text-sm text-ink">
-                    Producteur
+                    {t("editCollection.producerLabel")}
                     <Input
-                      aria-label="Producteur"
+                      aria-label={t("editCollection.producerLabel")}
                       value={producer}
                       onChange={(e) => setProducer(e.target.value)}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-ink">
-                    Contact
+                    {t("editCollection.contactLabel")}
                     <Input
-                      aria-label="Contact"
+                      aria-label={t("editCollection.contactLabel")}
                       value={contact}
                       onChange={(e) => setContact(e.target.value)}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-ink">
-                    Fréquence de mise à jour
+                    {t("editCollection.updateFrequencyLabel")}
                     <Select
-                      aria-label="Fréquence de mise à jour"
+                      aria-label={t("editCollection.updateFrequencyLabel")}
                       value={updateFrequency}
                       onValueChange={setUpdateFrequency}
                       options={frequencyOptions}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-ink">
-                    Généalogie
+                    {t("editCollection.lineageLabel")}
                     <Textarea
-                      aria-label="Généalogie"
+                      aria-label={t("editCollection.lineageLabel")}
                       value={lineage}
                       onChange={(e) => setLineage(e.target.value)}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-ink">
-                    Langue
+                    {t("editCollection.languageLabel")}
                     <Select
-                      aria-label="Langue"
+                      aria-label={t("editCollection.languageLabel")}
                       value={language}
                       onValueChange={setLanguage}
                       options={languageOptions}
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-ink">
-                    Version
+                    {t("editCollection.versionLabel")}
                     <Input
-                      aria-label="Version"
+                      aria-label={t("editCollection.versionLabel")}
                       value={version}
                       onChange={(e) => setVersion(e.target.value)}
                     />
                   </label>
                   <div className="flex gap-2">
                     <label className="flex flex-1 flex-col gap-1 text-sm text-ink">
-                      Début
+                      {t("editCollection.temporalStartLabel")}
                       <Input
                         type="date"
-                        aria-label="Début de l'emprise temporelle"
+                        aria-label={t("editCollection.temporalStartAria")}
                         value={temporalStart}
                         onChange={(e) => setTemporalStart(e.target.value)}
                       />
                     </label>
                     <label className="flex flex-1 flex-col gap-1 text-sm text-ink">
-                      Fin
+                      {t("editCollection.temporalEndLabel")}
                       <Input
                         type="date"
-                        aria-label="Fin de l'emprise temporelle"
+                        aria-label={t("editCollection.temporalEndAria")}
                         value={temporalEnd}
                         onChange={(e) => setTemporalEnd(e.target.value)}
                       />
@@ -238,21 +244,23 @@ export function EditCollectionPanel({
             },
             {
               value: "attachments",
-              label: "Pièces jointes",
+              label: t("editCollection.attachmentsTab"),
               content: (
                 <div className="flex flex-col gap-1 pt-3">
-                  <p className="text-sm font-medium text-ink">Champs de pièces jointes</p>
+                  <p className="text-sm font-medium text-ink">
+                    {t("editCollection.attachmentFieldsTitle")}
+                  </p>
                   <ul className="flex flex-col gap-1">
                     {attachmentFields.map((f) => (
                       <li key={f.key} className="flex items-center gap-2">
                         <Input
-                          aria-label={`Clé existante : ${f.key}`}
+                          aria-label={t("editCollection.existingKeyAria", { key: f.key })}
                           value={f.key}
                           readOnly
                           className="text-xs"
                         />
                         <Input
-                          aria-label={`Libellé existant : ${f.key}`}
+                          aria-label={t("editCollection.existingLabelAria", { key: f.key })}
                           value={f.label}
                           readOnly
                           className="text-xs"
@@ -262,24 +270,24 @@ export function EditCollectionPanel({
                           className="text-danger underline text-xs"
                           onClick={() => removeAttachmentField(f.key)}
                         >
-                          Retirer
+                          {t("editCollection.removeField")}
                         </button>
                       </li>
                     ))}
                   </ul>
                   <div className="flex gap-2">
                     <Input
-                      aria-label="Clé du champ"
+                      aria-label={t("editCollection.fieldKeyAria")}
                       value={draftKey}
                       onChange={(e) => setDraftKey(e.target.value)}
                     />
                     <Input
-                      aria-label="Libellé du champ"
+                      aria-label={t("editCollection.fieldLabelAria")}
                       value={draftLabel}
                       onChange={(e) => setDraftLabel(e.target.value)}
                     />
                     <Button type="button" variant="outline" size="sm" onClick={addAttachmentField}>
-                      Ajouter un champ
+                      {t("editCollection.addFieldButton")}
                     </Button>
                   </div>
                 </div>
@@ -289,15 +297,15 @@ export function EditCollectionPanel({
         />
         {updateCollection.isError && (
           <p role="alert" className="text-sm text-danger">
-            Échec de la mise à jour.
+            {t("editCollection.updateFailed")}
           </p>
         )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
-            Annuler
+            {t("confirmDialog.cancel")}
           </Button>
           <Button type="submit" size="sm" disabled={updateCollection.isPending || readOnly}>
-            Enregistrer
+            {t("common.save")}
           </Button>
         </div>
       </form>

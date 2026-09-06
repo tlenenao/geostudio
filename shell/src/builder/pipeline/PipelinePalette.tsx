@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import { usePipelineOps } from "../../api/hooks";
 import type { PipelineNodeKind } from "../../api/types";
+import { t } from "../../i18n";
 
 export const PIPELINE_OP_DND_TYPE = "application/x-geostudio-pipeline-op";
 
 const SECTION_LABEL: Record<PipelineNodeKind, string> = {
-  reader: "Sources",
-  transform: "Transforms",
-  writer: "Écritures",
+  reader: t("pipelinePalette.sectionSources"),
+  transform: t("pipelinePalette.sectionTransforms"),
+  writer: t("pipelinePalette.sectionWriters"),
 };
 
 export function PipelinePalette() {

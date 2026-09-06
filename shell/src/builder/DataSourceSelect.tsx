@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useItems } from "../api/hooks";
 import type { DataSource } from "../api/types";
+import { t } from "../i18n";
 import { useAddDataSource } from "./DataSourcesEditContext";
 
 export function DataSourceSelect({
@@ -44,21 +45,21 @@ export function DataSourceSelect({
 
   return (
     <label className="flex flex-col gap-1 text-sm">
-      Source de données
+      {t("dataSourceSelect.label")}
       <select
-        aria-label="Source de données"
+        aria-label={t("dataSourceSelect.label")}
         className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm"
         value={value}
         onChange={(e) => handleChange(e.target.value)}
       >
-        <option value="">Aucune</option>
+        <option value="">{t("dataSourceSelect.noneOption")}</option>
         {dataSources.map((s) => (
           <option key={s.id} value={s.id}>
             {s.layer || s.id}
           </option>
         ))}
         {sharedDatasets.length > 0 && (
-          <optgroup label="Datasets partagés">
+          <optgroup label={t("dataSourceSelect.sharedGroupLabel")}>
             {sharedDatasets.map((d) => (
               <option key={d.pk} value={`dataset:${d.pk}`}>
                 {d.title}

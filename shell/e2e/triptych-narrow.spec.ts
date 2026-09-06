@@ -276,7 +276,7 @@ const SCREENS: Array<{
     // — summaryQuery reste "enabled: false", aucun mock supplémentaire
     // requis.
     before: (p) =>
-      p.route(/https:\/\/core\.test\/usage\/tasks(\?.*)?$/, async (route) => {
+      p.route(/https:\/\/core\.test\/v1\/usage\/tasks(\?.*)?$/, async (route) => {
         await route.fulfill({ json: { tasks: [], total: 0 } });
       }),
     readyAnchor: (p) => p.getByText("Aucune tâche récente.").waitFor(),

@@ -176,14 +176,14 @@ test("le formulaire n'est jamais une fenêtre modale (pas de role=dialog)", asyn
 test("does not poll again or update state after the component is unmounted mid-conversion", async () => {
   let pollCalls = 0;
   server.use(
-    http.post(`${CORE_URL}/terrain3d/uploads/presign`, () =>
+    http.post(`${CORE_URL}/v1/terrain3d/uploads/presign`, () =>
       HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" }),
     ),
     http.put(`${CORE_URL}/fake-s3-put`, () => new HttpResponse(null, { status: 200 })),
-    http.post(`${CORE_URL}/terrain3d/uploads`, () =>
+    http.post(`${CORE_URL}/v1/terrain3d/uploads`, () =>
       HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
     ),
-    http.get(`${CORE_URL}/terrain3d/uploads/job-1`, () => {
+    http.get(`${CORE_URL}/v1/terrain3d/uploads/job-1`, () => {
       pollCalls += 1;
       return HttpResponse.json({ status: "converting", errorMessage: null, itemId: null });
     }),

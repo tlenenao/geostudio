@@ -7,6 +7,7 @@ import { useItemClient } from "../api/ItemClientProvider";
 import { derivePatch } from "../lib/analyticsPatch";
 import type { DataRecord, DataSource, MapConfig } from "../api/types";
 import type { MapViewHandle } from "../map/MapView";
+import { t } from "../i18n";
 
 const MapView = lazy(() => import("../map/MapView").then((m) => ({ default: m.MapView })));
 const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
@@ -84,7 +85,7 @@ export function ExplorerDrawer() {
       ? [
           {
             id: "explorer",
-            title: "Entités",
+            title: t("explorerDrawer.layerTitle"),
             visible: true,
             kind: "feature",
             url: client.featuresUrl(merged),
@@ -102,16 +103,19 @@ export function ExplorerDrawer() {
     <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l border-[var(--gs-color-border)] bg-[var(--gs-color-background)] shadow-lg">
       <div className="flex items-center justify-between border-b border-[var(--gs-color-border)] p-2">
         <h2 className="text-sm font-medium text-[var(--gs-color-text)]">
-          Entités —{" "}
-          {dataset
-            ? dataset.source === "collection"
-              ? dataset.collectionId
-              : dataset.arcgisItemId
-            : target.datasetId}
+          {t("explorerDrawer.heading", {
+            value: String(
+              dataset
+                ? dataset.source === "collection"
+                  ? dataset.collectionId
+                  : dataset.arcgisItemId
+                : target.datasetId,
+            ),
+          })}
         </h2>
         <button
           type="button"
-          aria-label="Fermer le panneau"
+          aria-label={t("explorerDrawer.closeAria")}
           className="text-lg text-[var(--gs-color-muted)]"
           onClick={close}
         >
@@ -119,7 +123,9 @@ export function ExplorerDrawer() {
         </button>
       </div>
       <div className="h-48 shrink-0">
-        <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
+        <Suspense
+          fallback={<div className="text-xs text-ink-2">{t("widgetMap.loadingFallback")}</div>}
+        >
           <MapView
             ref={mapHandle}
             config={mapConfig}
@@ -131,22 +137,23 @@ export function ExplorerDrawer() {
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-auto p-2 text-xs">
         {(datasetQuery.isLoading || recordsQuery.isLoading) && (
-          <p className="text-[var(--gs-color-muted)]">Chargement…</p>
+          <p className="text-[var(--gs-color-muted)]">{t("common.loading")}</p>
         )}
         {!datasetQuery.isLoading &&
           !recordsQuery.isLoading &&
           (datasetQuery.isError || recordsQuery.isError) && (
-            <p className="text-red-600">Erreur de données</p>
+            <p className="text-red-600">{t("common.dataError")}</p>
           )}
         {!datasetQuery.isLoading &&
           !recordsQuery.isLoading &&
           !datasetQuery.isError &&
           !recordsQuery.isError &&
-          records.length === 0 && <p className="text-[var(--gs-color-muted)]">Aucune entité</p>}
+          records.length === 0 && (
+            <p className="text-[var(--gs-color-muted)]">{t("explorerDrawer.empty")}</p>
+          )}
         {records.length >= EXPLORER_LIMIT && (
           <p className="mb-2 text-[var(--gs-color-muted)]">
-            Affinez le contexte (période, emprise, filtre) pour voir l'ensemble des entités —{" "}
-            {EXPLORER_LIMIT} premières affichées.
+            {t("explorerDrawer.limitMessage", { limit: EXPLORER_LIMIT })}
           </p>
         )}
         {shown.length > 0 && (
@@ -167,7 +174,9 @@ export function ExplorerDrawer() {
                   className={`cursor-pointer hover:bg-[var(--gs-color-surface)] ${selectedId === r.id ? "bg-[var(--gs-color-surface)]" : ""}`}
                   role="button"
                   tabIndex={0}
-                  aria-label={`Voir ${String(r.properties[columns[0]] ?? r.id)}`}
+                  aria-label={t("explorerDrawer.viewRecordAria", {
+                    value: String(r.properties[columns[0]] ?? r.id),
+                  })}
                   onClick={() => selectRecord(r)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
@@ -190,24 +199,22 @@ export function ExplorerDrawer() {
           <div className="mt-auto flex items-center justify-between pt-2 text-[10px] text-[var(--gs-color-muted)]">
             <button
               type="button"
-              aria-label="Page précédente"
+              aria-label={t("explorerDrawer.prevPageAria")}
               className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
               disabled={current === 0}
               onClick={() => setPage(current - 1)}
             >
-              Précédent
+              {t("explorerDrawer.previous")}
             </button>
-            <span>
-              Page {current + 1} / {pageCount}
-            </span>
+            <span>{t("explorerDrawer.pageOf", { page: current + 1, totalPages: pageCount })}</span>
             <button
               type="button"
-              aria-label="Page suivante"
+              aria-label={t("explorerDrawer.nextPageAria")}
               className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"
               disabled={current >= pageCount - 1}
               onClick={() => setPage(current + 1)}
             >
-              Suivant
+              {t("explorerDrawer.next")}
             </button>
           </div>
         )}

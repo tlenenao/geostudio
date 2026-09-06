@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { Page } from "../api/types";
+import { t } from "../i18n";
 
 export function PageManager({
   pages,
@@ -47,21 +48,21 @@ export function PageManager({
         >
           <button
             type="button"
-            aria-label={`Ouvrir la page ${p.id}`}
+            aria-label={t("pageManager.openAria", { id: p.id })}
             className="flex-1 truncate text-left"
             onClick={() => onSelectPage(p.id)}
           >
             {p.name}
           </button>
           <input
-            aria-label={`Renommer la page ${p.id}`}
+            aria-label={t("pageManager.renameAria", { id: p.id })}
             className="w-16 rounded border border-slate-300 px-1"
             value={p.name}
             onChange={(e) => rename(p.id, e.target.value)}
           />
           <button
             type="button"
-            aria-label={`Monter la page ${p.id}`}
+            aria-label={t("pageManager.moveUpAria", { id: p.id })}
             disabled={i === 0}
             className="disabled:opacity-30"
             onClick={() => move(p.id, -1)}
@@ -70,7 +71,7 @@ export function PageManager({
           </button>
           <button
             type="button"
-            aria-label={`Descendre la page ${p.id}`}
+            aria-label={t("pageManager.moveDownAria", { id: p.id })}
             disabled={i === pages.length - 1}
             className="disabled:opacity-30"
             onClick={() => move(p.id, 1)}
@@ -79,7 +80,7 @@ export function PageManager({
           </button>
           <button
             type="button"
-            aria-label={`Retirer la page ${p.id}`}
+            aria-label={t("pageManager.removeAria", { id: p.id })}
             disabled={pages.length <= 1}
             className="text-red-600 disabled:opacity-30"
             onClick={() => remove(p.id)}
@@ -94,7 +95,7 @@ export function PageManager({
           className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-100"
           onClick={addPage}
         >
-          Ajouter une page
+          {t("pageManager.addButton")}
         </button>
       </li>
     </ul>

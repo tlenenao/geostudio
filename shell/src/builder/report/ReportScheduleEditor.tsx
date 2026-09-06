@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { AlertChannel, ReportSchedulePayload } from "../../api/types";
+import { t } from "../../i18n";
 import { PipelineScheduleEditor } from "../pipeline/PipelineScheduleEditor";
 
 // Composant contrôlé (reproduit la forme value/onChange de
@@ -26,11 +27,11 @@ export function ReportScheduleEditor({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-ink-2">
-        Vue ciblée : <span className="font-medium">{bookmarkLabel}</span>
+        {t("reportSchedule.targetedViewLabel")} <span className="font-medium">{bookmarkLabel}</span>
       </p>
 
       <label className="flex flex-col gap-1 text-sm">
-        Canal
+        {t("reportSchedule.channelLabel")}
         <select
           className="rounded border border-rule bg-surface px-2 py-1 text-ink"
           value={channel?.kind ?? "webhook"}
@@ -39,14 +40,14 @@ export function ReportScheduleEditor({
             else setChannel({ kind: "email", to: "", smtpSecretName: "" });
           }}
         >
-          <option value="webhook">Webhook</option>
-          <option value="email">E-mail</option>
+          <option value="webhook">{t("reportSchedule.channelWebhook")}</option>
+          <option value="email">{t("reportSchedule.channelEmail")}</option>
         </select>
       </label>
 
       {channel?.kind === "webhook" && (
         <label className="flex flex-col gap-1 text-sm">
-          URL du webhook
+          {t("reportSchedule.webhookUrlLabel")}
           <input
             className="rounded border border-rule bg-surface px-2 py-1 text-ink"
             value={channel.url}
@@ -58,7 +59,7 @@ export function ReportScheduleEditor({
       {channel?.kind === "email" && (
         <>
           <label className="flex flex-col gap-1 text-sm">
-            Destinataire
+            {t("reportSchedule.recipientLabel")}
             <input
               className="rounded border border-rule bg-surface px-2 py-1 text-ink"
               value={channel.to}
@@ -72,7 +73,7 @@ export function ReportScheduleEditor({
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
-            Secret SMTP
+            {t("reportSchedule.smtpSecretLabel")}
             <input
               className="rounded border border-rule bg-surface px-2 py-1 text-ink"
               value={channel.smtpSecretName}

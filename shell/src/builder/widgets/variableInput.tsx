@@ -2,6 +2,7 @@
 import { registerWidget } from "../registry";
 import { useVariableDefs, useVariables, useSetVariable } from "../VariablesContext";
 import type { Variable } from "../../api/types";
+import { t } from "../../i18n";
 
 type Props = { variableId: string; label: string };
 
@@ -59,26 +60,31 @@ function controlFor(
 export function registerVariableInputWidget(): void {
   registerWidget({
     type: "variableInput",
-    label: "Saisie",
+    label: t("widgetVariableInput.paletteLabel"),
     defaultProps: { variableId: "", label: "" } satisfies Props,
     defaultSize: { w: 3, h: 2 },
     configSchema: [
-      { name: "variableId", type: "string", label: "Variable", default: "" },
-      { name: "label", type: "string", label: "Libellé", default: "" },
+      {
+        name: "variableId",
+        type: "string",
+        label: t("widgetVariableInput.variableConfig"),
+        default: "",
+      },
+      { name: "label", type: "string", label: t("widgetVariableInput.labelConfig"), default: "" },
     ],
     PropsPanel: ({ props, onChange, variables = [] }) => {
       const { variableId, label } = props as Props;
       return (
         <div className="flex flex-col gap-2 text-sm">
           <label className="flex flex-col gap-1">
-            Variable
+            {t("widgetVariableInput.variableConfig")}
             <select
-              aria-label="Variable liée"
+              aria-label={t("widgetVariableInput.variableAria")}
               className="h-9 rounded-md border border-slate-300 px-2"
               value={variableId}
               onChange={(e) => onChange({ variableId: e.target.value, label })}
             >
-              <option value="">Choisir une variable…</option>
+              <option value="">{t("widgetVariableInput.chooseVariable")}</option>
               {variables
                 .filter((v) => (v.type ?? "string") !== "record" && (v.type ?? "string") !== "list")
                 .map((v) => (
@@ -89,9 +95,9 @@ export function registerVariableInputWidget(): void {
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            Libellé
+            {t("widgetVariableInput.labelConfig")}
             <input
-              aria-label="Libellé de la saisie"
+              aria-label={t("widgetVariableInput.labelAria")}
               className="h-9 rounded-md border border-slate-300 px-2"
               value={label}
               onChange={(e) => onChange({ variableId, label: e.target.value })}
@@ -107,7 +113,7 @@ export function registerVariableInputWidget(): void {
       const setVariable = useSetVariable();
       const variable = defs.find((v) => v.id === variableId);
       if (!variable) {
-        return <p className="text-xs text-slate-400">Variable introuvable.</p>;
+        return <p className="text-xs text-ink-2">{t("widgetVariableInput.notFound")}</p>;
       }
       const disabled = ctx.mode === "edit";
       return (

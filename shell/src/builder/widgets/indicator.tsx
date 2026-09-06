@@ -15,6 +15,7 @@ import {
   type ReferenceMode,
 } from "../../lib/comparisonWindow";
 import type { DataSource, DataSourceState, DatasetConfig } from "../../api/types";
+import { t } from "../../i18n";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
 
@@ -188,11 +189,12 @@ function displayValue(value: number | null | undefined): string {
 }
 
 function deltaLabel(delta: number, deltaPct: number | null, mode: ReferenceMode): string {
-  const refLabel = mode === "previous" ? "période précédente" : "même période l'an dernier";
+  const refLabel =
+    mode === "previous" ? t("widgetIndicator.refPrevious") : t("widgetIndicator.refSameLastYear");
   const sign = delta >= 0 ? "+" : "";
   const magnitude =
     deltaPct !== null ? `${sign}${Math.round(deltaPct * 100)} %` : `${sign}${delta}`;
-  return `${magnitude} vs ${refLabel}`;
+  return t("widgetIndicator.deltaLabel", { magnitude, refLabel });
 }
 
 function thresholdLevel(
@@ -228,14 +230,24 @@ function sparklineOption(points: { bucket: string; value: number }[]): EChartsOp
 export function registerIndicatorWidget(): void {
   registerWidget({
     type: "indicator",
-    label: "Indicateur",
+    label: t("widgetIndicator.paletteLabel"),
     defaultProps: { dataSourceId: "", label: "Indicateur", agg: "count", field: "" },
     defaultSize: { w: 2, h: 2 },
     configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "label", type: "string", label: "Libellé", default: "Indicateur" },
-      { name: "agg", type: "string", label: "Agrégation", default: "count" },
-      { name: "field", type: "string", label: "Champ", default: "" },
+      {
+        name: "dataSourceId",
+        type: "dataSource",
+        label: t("widgetIndicator.dataSourceConfig"),
+        default: "",
+      },
+      {
+        name: "label",
+        type: "string",
+        label: t("widgetIndicator.labelConfig"),
+        default: "Indicateur",
+      },
+      { name: "agg", type: "string", label: t("widgetIndicator.aggConfig"), default: "count" },
+      { name: "field", type: "string", label: t("widgetIndicator.fieldConfig"), default: "" },
     ],
     PropsPanel: ({ props, onChange, dataSources }) => (
       <div className="flex flex-col gap-2 text-sm">
@@ -245,70 +257,70 @@ export function registerIndicatorWidget(): void {
           onChange={(id) => onChange({ ...props, dataSourceId: id })}
         />
         <label className="flex flex-col gap-1">
-          Libellé
+          {t("widgetIndicator.labelConfig")}
           <input
-            aria-label="Libellé de l'indicateur"
+            aria-label={t("widgetIndicator.labelAria")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.label ?? "")}
             onChange={(e) => onChange({ ...props, label: e.target.value })}
           />
         </label>
         <label className="flex flex-col gap-1">
-          Agrégation
+          {t("widgetIndicator.aggConfig")}
           <select
-            aria-label="Agrégation"
+            aria-label={t("widgetIndicator.aggConfig")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.agg ?? "count")}
             onChange={(e) => onChange({ ...props, agg: e.target.value })}
           >
-            <option value="count">Nombre</option>
-            <option value="sum">Somme</option>
+            <option value="count">{t("widgetIndicator.aggCount")}</option>
+            <option value="sum">{t("widgetIndicator.aggSum")}</option>
           </select>
         </label>
         <label className="flex flex-col gap-1">
-          Champ (pour la somme)
+          {t("widgetIndicator.fieldLabel")}
           <input
-            aria-label="Champ agrégé"
+            aria-label={t("widgetIndicator.fieldAria")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.field ?? "")}
             onChange={(e) => onChange({ ...props, field: e.target.value })}
           />
         </label>
         <label className="flex flex-col gap-1">
-          Comparer à
+          {t("widgetIndicator.compareToLabel")}
           <select
-            aria-label="Comparer à"
+            aria-label={t("widgetIndicator.compareToLabel")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.referencePeriod ?? "")}
             onChange={(e) => onChange({ ...props, referencePeriod: e.target.value || undefined })}
           >
-            <option value="">Aucune</option>
-            <option value="previous">Période précédente</option>
-            <option value="sameLastYear">Même période l'an dernier</option>
+            <option value="">{t("widgetIndicator.compareNone")}</option>
+            <option value="previous">{t("widgetIndicator.periodPrevious")}</option>
+            <option value="sameLastYear">{t("widgetIndicator.periodSameLastYear")}</option>
           </select>
         </label>
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
-            aria-label="Afficher un sparkline"
+            aria-label={t("widgetIndicator.sparklineToggle")}
             checked={Boolean(props.sparkline)}
             onChange={(e) => onChange({ ...props, sparkline: e.target.checked })}
           />
-          Afficher un sparkline
+          {t("widgetIndicator.sparklineToggle")}
         </label>
         <label className="flex flex-col gap-1">
-          Seuil critique (CEL)
+          {t("widgetIndicator.criticalThreshold")}
           <input
-            aria-label="Seuil critique (CEL)"
+            aria-label={t("widgetIndicator.criticalThreshold")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.criticalWhen ?? "")}
             onChange={(e) => onChange({ ...props, criticalWhen: e.target.value })}
           />
         </label>
         <label className="flex flex-col gap-1">
-          Seuil d'alerte (CEL)
+          {t("widgetIndicator.warningThreshold")}
           <input
-            aria-label="Seuil d'alerte (CEL)"
+            aria-label={t("widgetIndicator.warningThreshold")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.warningWhen ?? "")}
             onChange={(e) => onChange({ ...props, warningWhen: e.target.value })}
@@ -335,8 +347,8 @@ export function registerIndicatorWidget(): void {
       );
 
       if (!data || data.loading || comparison.loading)
-        return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
-      if (data.error) return <p className="text-xs text-red-600">Erreur</p>;
+        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+      if (data.error) return <p className="text-xs text-red-600">{t("widgetIndicator.error")}</p>;
 
       const flatValue = resolveFlatValue(data, agg, field);
       const value =
@@ -373,7 +385,9 @@ export function registerIndicatorWidget(): void {
             {level && (
               <span
                 aria-label={
-                  level === "critical" ? "Seuil critique atteint" : "Seuil d'alerte atteint"
+                  level === "critical"
+                    ? t("widgetIndicator.criticalReached")
+                    : t("widgetIndicator.warningReached")
                 }
                 className={`h-2.5 w-2.5 rounded-full ${level === "critical" ? "bg-red-600" : "bg-orange-500"}`}
               />

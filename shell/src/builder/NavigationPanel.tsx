@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { ActionMessage, Page, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
 import { validateExpression } from "./expr";
+import { t } from "../i18n";
 
 const selectCls = "h-8 rounded border border-slate-300 bg-white text-xs";
 
@@ -74,22 +75,22 @@ export function NavigationPanel({
   return (
     <div className="flex flex-col gap-2 text-sm">
       <label className="flex flex-col gap-1 text-xs">
-        Mode de navigation
+        {t("navigationPanel.modeLabel")}
         <select
-          aria-label="Mode de navigation"
+          aria-label={t("navigationPanel.modeLabel")}
           className={selectCls}
           value={navigationMode}
           onChange={(e) => onNavigationModeChange(e.target.value as "tabs" | "story")}
         >
-          <option value="tabs">Onglets</option>
-          <option value="story">Story (chapitres)</option>
+          <option value="tabs">{t("navigationPanel.tabsOption")}</option>
+          <option value="story">{t("navigationPanel.storyOption")}</option>
         </select>
       </label>
 
       {navigationMode === "story" && (
         <>
-          <p className="text-[10px] text-slate-400">
-            Actions à l'entrée du chapitre « {page.name} ».
+          <p className="text-[10px] text-ink-2">
+            {t("navigationPanel.enterActionsHeading", { name: page.name })}
           </p>
           <ul className="flex flex-col gap-1">
             {onEnter.map((m) => {
@@ -108,7 +109,7 @@ export function NavigationPanel({
                     </span>
                     <button
                       type="button"
-                      aria-label={`Retirer l'action ${m.id}`}
+                      aria-label={t("navigationPanel.removeActionAria", { id: m.id })}
                       className="text-red-600"
                       onClick={() => remove(m.id)}
                     >
@@ -116,8 +117,8 @@ export function NavigationPanel({
                     </button>
                   </div>
                   <input
-                    aria-label={`Condition de l'action ${m.id}`}
-                    placeholder="Condition (optionnel)"
+                    aria-label={t("navigationPanel.conditionAria", { id: m.id })}
+                    placeholder={t("actionsPanel.conditionPlaceholder")}
                     className="h-7 rounded border border-slate-300 px-1 font-mono"
                     value={when}
                     onChange={(e) => updateWhen(m.id, e.target.value)}
@@ -131,12 +132,12 @@ export function NavigationPanel({
               );
             })}
             {onEnter.length === 0 && (
-              <li className="text-xs text-slate-400">Aucune action à l'entrée.</li>
+              <li className="text-xs text-ink-2">{t("navigationPanel.emptyEnterActions")}</li>
             )}
           </ul>
 
           <select
-            aria-label="Widget cible"
+            aria-label={t("actionsPanel.targetAria")}
             className={selectCls}
             value={to}
             onChange={(e) => {
@@ -144,7 +145,7 @@ export function NavigationPanel({
               setAction("");
             }}
           >
-            <option value="">Widget cible…</option>
+            <option value="">{t("actionsPanel.targetPlaceholder")}</option>
             {receivers.map((i) => (
               <option key={i.id} value={i.id}>
                 {widgetLabel(items, i.id)}
@@ -152,13 +153,13 @@ export function NavigationPanel({
             ))}
           </select>
           <select
-            aria-label="Action"
+            aria-label={t("actionsPanel.actionAria")}
             className={selectCls}
             value={action}
             disabled={!to}
             onChange={(e) => setAction(e.target.value)}
           >
-            <option value="">Action…</option>
+            <option value="">{t("actionsPanel.actionPlaceholder")}</option>
             {actionsOf(items, to).map((a) => (
               <option key={a} value={a}>
                 {a}
@@ -167,15 +168,15 @@ export function NavigationPanel({
           </select>
           <div className="flex gap-1">
             <input
-              aria-label="Longitude"
-              placeholder="Longitude"
+              aria-label={t("widgetForm.longitude")}
+              placeholder={t("widgetForm.longitude")}
               className="h-8 w-1/2 rounded border border-slate-300 px-1 text-xs"
               value={lon}
               onChange={(e) => setLon(e.target.value)}
             />
             <input
-              aria-label="Latitude"
-              placeholder="Latitude"
+              aria-label={t("widgetForm.latitude")}
+              placeholder={t("widgetForm.latitude")}
               className="h-8 w-1/2 rounded border border-slate-300 px-1 text-xs"
               value={lat}
               onChange={(e) => setLat(e.target.value)}
@@ -186,7 +187,7 @@ export function NavigationPanel({
             className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-100"
             onClick={add}
           >
-            Ajouter à ce chapitre
+            {t("navigationPanel.addToChapterButton")}
           </button>
         </>
       )}

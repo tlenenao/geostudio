@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { PrintLayoutConfig } from "../../api/types";
+import { t } from "../../i18n";
 
 const DEFAULTS: Required<Pick<PrintLayoutConfig, "pageSize" | "orientation" | "showLegend">> = {
   pageSize: "a4",
@@ -22,11 +23,11 @@ export function PrintLayoutPanel({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Mise en page d&apos;impression</p>
+      <p className="mb-1 mt-3 text-xs font-medium text-ink-2">{t("printLayout.heading")}</p>
       <label className="flex flex-col gap-1 text-sm">
-        Format
+        {t("printLayout.formatLabel")}
         <select
-          aria-label="Format"
+          aria-label={t("printLayout.formatAria")}
           value={current.pageSize}
           onChange={(e) => patch({ pageSize: e.target.value as PrintLayoutConfig["pageSize"] })}
         >
@@ -35,22 +36,22 @@ export function PrintLayoutPanel({
         </select>
       </label>
       <label className="flex flex-col gap-1 text-sm">
-        Orientation
+        {t("printLayout.orientationLabel")}
         <select
-          aria-label="Orientation"
+          aria-label={t("printLayout.orientationAria")}
           value={current.orientation}
           onChange={(e) =>
             patch({ orientation: e.target.value as PrintLayoutConfig["orientation"] })
           }
         >
-          <option value="portrait">Portrait</option>
-          <option value="landscape">Paysage</option>
+          <option value="portrait">{t("printLayout.orientationPortrait")}</option>
+          <option value="landscape">{t("printLayout.orientationLandscape")}</option>
         </select>
       </label>
       <label className="flex flex-col gap-1 text-sm">
-        Titre
+        {t("printLayout.titleLabel")}
         <input
-          aria-label="Titre"
+          aria-label={t("printLayout.titleAria")}
           type="text"
           value={current.title ?? ""}
           onChange={(e) => patch({ title: e.target.value || null })}
@@ -58,12 +59,12 @@ export function PrintLayoutPanel({
       </label>
       <label className="flex items-center gap-2 text-sm">
         <input
-          aria-label="Légende"
+          aria-label={t("printLayout.legendAria")}
           type="checkbox"
           checked={current.showLegend}
           onChange={(e) => patch({ showLegend: e.target.checked })}
         />
-        Légende
+        {t("printLayout.legendLabel")}
       </label>
       {/* showScaleBar/showNorthArrow controls removed (fix round, finding
           I4): they were authorable, validated, and round-tripped but never
@@ -73,9 +74,9 @@ export function PrintLayoutPanel({
           PrintLayoutConfig/PrintLayout (core schema) for forward
           compatibility, just not exposed here until they do something. */}
       <label className="flex flex-col gap-1 text-sm">
-        Cartouche
+        {t("printLayout.cartoucheLabel")}
         <textarea
-          aria-label="Cartouche"
+          aria-label={t("printLayout.cartoucheAria")}
           value={current.cartouche ?? ""}
           onChange={(e) => patch({ cartouche: e.target.value || null })}
         />

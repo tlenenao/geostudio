@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAllExtensions, useInstanceInfo, useMe, useSetExtensionEnabled } from "../api/hooks";
 import { Panel } from "../ui/kit/Panel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { t } from "../i18n";
 
 // SP-46 (GAP-67) : un privilège manquant MASQUE le lien plutôt que de le
 // laisser mener à un refus de RequirePrivilege sur la route cible — même
@@ -12,14 +13,22 @@ import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 const ADMIN_LINKS: { to: string; label: string; privilege: string }[] = [
   {
     to: "/admin/infrastructure",
-    label: "Outils d'infrastructure →",
+    label: t("extensions.linkInfrastructure"),
     privilege: "settings.instance.manage",
   },
-  { to: "/admin/roles", label: "Rôles et privilèges →", privilege: "admin.roles.manage" },
-  { to: "/admin/users", label: "Utilisateurs →", privilege: "admin.users.manage" },
-  { to: "/admin/collections", label: "Collections →", privilege: "admin.collections.manage" },
-  { to: "/admin/harvest", label: "Moissonnage →", privilege: "admin.harvest.manage" },
-  { to: "/admin/compliance", label: "Conformité (RGPD) →", privilege: "compliance.manage" },
+  { to: "/admin/roles", label: t("extensions.linkRoles"), privilege: "admin.roles.manage" },
+  { to: "/admin/users", label: t("extensions.linkUsers"), privilege: "admin.users.manage" },
+  {
+    to: "/admin/collections",
+    label: t("extensions.linkCollections"),
+    privilege: "admin.collections.manage",
+  },
+  { to: "/admin/harvest", label: t("extensions.linkHarvest"), privilege: "admin.harvest.manage" },
+  {
+    to: "/admin/compliance",
+    label: t("extensions.linkCompliance"),
+    privilege: "compliance.manage",
+  },
 ];
 
 export function AdminExtensionsPage() {
@@ -37,11 +46,11 @@ export function AdminExtensionsPage() {
       <TriptychLayout
         browse={{
           id: "back",
-          label: "Catalogue",
+          label: t("domain.catalog"),
           content: (
             <Panel className="m-3 flex flex-col gap-3 text-sm">
               <Link to="/" className="text-accent hover:underline">
-                ← Retour au catalogue
+                {t("extensions.backToCatalog")}
               </Link>
               {visibleLinks.map((link) => (
                 <Link key={link.to} to={link.to} className="text-accent hover:underline">
@@ -53,29 +62,29 @@ export function AdminExtensionsPage() {
         }}
         work={{
           id: "extensions",
-          label: "Extensions",
+          label: t("extensions.title"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h1 className="text-lg font-bold text-ink">Extensions</h1>
-              {extensionsQuery.isLoading && <p role="status">Chargement…</p>}
+              <h1 className="text-lg font-bold text-ink">{t("extensions.title")}</h1>
+              {extensionsQuery.isLoading && <p role="status">{t("extensions.loading")}</p>}
               {extensionsQuery.isError && (
                 <p role="alert" className="text-sm text-danger">
-                  Échec du chargement des extensions.
+                  {t("extensions.loadError")}
                 </p>
               )}
               {setEnabled.isError && (
                 <p role="alert" className="text-sm text-danger">
-                  Échec de la mise à jour de l'extension.
+                  {t("extensions.updateError")}
                 </p>
               )}
               {extensionsQuery.data && (
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-rule">
-                      <th className="py-2 text-ink">Étiquette</th>
-                      <th className="py-2 text-ink">Balise</th>
-                      <th className="py-2 text-ink">Module</th>
-                      <th className="py-2 text-ink">Actif</th>
+                      <th className="py-2 text-ink">{t("extensions.columnLabel")}</th>
+                      <th className="py-2 text-ink">{t("extensions.columnTag")}</th>
+                      <th className="py-2 text-ink">{t("extensions.columnModule")}</th>
+                      <th className="py-2 text-ink">{t("extensions.columnActive")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -87,7 +96,7 @@ export function AdminExtensionsPage() {
                         <td className="py-2">
                           <input
                             type="checkbox"
-                            aria-label={`Actif : ${ext.label}`}
+                            aria-label={t("extensions.activeAria", { label: ext.label })}
                             checked={ext.enabled}
                             disabled={setEnabled.isPending || readOnly}
                             onChange={(e) =>
@@ -103,7 +112,7 @@ export function AdminExtensionsPage() {
             </div>
           ),
         }}
-        inspect={{ id: "detail", label: "Détail", content: null }}
+        inspect={{ id: "detail", label: t("extensions.detail"), content: null }}
       />
     </div>
   );

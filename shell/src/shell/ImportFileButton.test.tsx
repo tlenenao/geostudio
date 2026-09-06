@@ -432,12 +432,12 @@ test("SP-42/F-shell-pages-01 (fusion F-shell-pages-02) : masque le bouton pour u
 test("does not poll again or update state after the drawer is unmounted mid-import", async () => {
   let pollCalls = 0;
   server.use(
-    http.post("https://core.test/uploads/presign", () =>
+    http.post("https://core.test/v1/uploads/presign", () =>
       HttpResponse.json({ uploadUrl: "https://minio.test/upload-1", key: "t/abc-villes.geojson" }),
     ),
     http.put("https://minio.test/upload-1", () => new HttpResponse(null, { status: 200 })),
-    http.post("https://core.test/uploads", () => HttpResponse.json({ jobId: "job-1" })),
-    http.get("https://core.test/uploads/job-1", () => {
+    http.post("https://core.test/v1/uploads", () => HttpResponse.json({ jobId: "job-1" })),
+    http.get("https://core.test/v1/uploads/job-1", () => {
       pollCalls += 1;
       return HttpResponse.json({
         status: "pending",

@@ -48,22 +48,22 @@ export function CollectionsAdminPage() {
       <TriptychLayout
         browse={{
           id: "back",
-          label: "Catalogue",
+          label: t("domain.catalog"),
           content: (
             <Panel className="m-3 flex flex-col gap-3 text-sm">
               <Link to="/" className="text-accent hover:underline">
-                ← Retour au catalogue
+                {t("nav.backToCatalog")}
               </Link>
             </Panel>
           ),
         }}
         work={{
           id: "collections",
-          label: "Collections",
+          label: t("collectionsAdmin.title"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
               <div className="flex items-center justify-between">
-                <h1 className="text-lg font-bold text-ink">Collections</h1>
+                <h1 className="text-lg font-bold text-ink">{t("collectionsAdmin.title")}</h1>
                 <Button
                   size="sm"
                   onClick={() => {
@@ -74,40 +74,40 @@ export function CollectionsAdminPage() {
                     setRegistering(true);
                   }}
                 >
-                  Enregistrer une table
+                  {t("collectionsAdmin.registerTable")}
                 </Button>
               </div>
               <input
                 type="search"
                 role="searchbox"
-                aria-label="Rechercher une collection…"
-                placeholder="Rechercher…"
+                aria-label={t("collectionsAdmin.searchAria")}
+                placeholder={t("collectionsAdmin.searchPlaceholder")}
                 className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
               />
-              {collectionsQuery.isLoading && <p role="status">Chargement…</p>}
+              {collectionsQuery.isLoading && <p role="status">{t("common.loading")}</p>}
               {collectionsQuery.isError && (
                 <p role="alert" className="text-sm text-danger">
-                  Échec du chargement des collections.
+                  {t("collectionsAdmin.loadError")}
                 </p>
               )}
               {deleteCollection.isError && (
                 <p role="alert" className="text-sm text-danger">
-                  Échec de la suppression.
+                  {t("collectionsAdmin.deleteError")}
                 </p>
               )}
               {collectionsQuery.data && (
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-rule">
-                      <th className="py-2 text-ink">Titre</th>
-                      <th className="py-2 text-ink">Table</th>
-                      <th className="py-2 text-ink">Public</th>
-                      <th className="py-2 text-ink">Éditable</th>
-                      <th className="py-2 text-ink">Entités</th>
-                      <th className="py-2 text-ink">Propriétaire</th>
-                      <th className="py-2 text-ink">Actions</th>
+                      <th className="py-2 text-ink">{t("collectionsAdmin.columnTitle")}</th>
+                      <th className="py-2 text-ink">{t("collectionsAdmin.columnTable")}</th>
+                      <th className="py-2 text-ink">{t("collectionsAdmin.columnPublic")}</th>
+                      <th className="py-2 text-ink">{t("collectionsAdmin.columnEditable")}</th>
+                      <th className="py-2 text-ink">{t("collectionsAdmin.columnFeatureCount")}</th>
+                      <th className="py-2 text-ink">{t("collectionsAdmin.columnOwner")}</th>
+                      <th className="py-2 text-ink">{t("collectionsAdmin.columnActions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -115,8 +115,12 @@ export function CollectionsAdminPage() {
                       <tr key={col.id} className="border-b border-rule-2">
                         <td className="py-2 text-ink">{col.title}</td>
                         <td className="py-2 text-xs text-ink-2">{col.tableName}</td>
-                        <td className="py-2 text-ink">{col.isPublic ? "Oui" : "Non"}</td>
-                        <td className="py-2 text-ink">{col.editable ? "Oui" : "Non"}</td>
+                        <td className="py-2 text-ink">
+                          {col.isPublic ? t("collectionsAdmin.yes") : t("collectionsAdmin.no")}
+                        </td>
+                        <td className="py-2 text-ink">
+                          {col.editable ? t("collectionsAdmin.yes") : t("collectionsAdmin.no")}
+                        </td>
                         <td className="py-2 text-ink">{col.featureCount ?? "—"}</td>
                         <td className="py-2 text-ink">{col.owner ?? "—"}</td>
                         <td className="py-2 flex gap-2">
@@ -133,7 +137,7 @@ export function CollectionsAdminPage() {
                             fallback={
                               <Locked reason={t("locked.needWrite")}>
                                 <Button type="button" variant="outline" size="sm">
-                                  Éditer
+                                  {t("collectionsAdmin.edit")}
                                 </Button>
                               </Locked>
                             }
@@ -150,7 +154,7 @@ export function CollectionsAdminPage() {
                                 setEditing(col);
                               }}
                             >
-                              Éditer
+                              {t("collectionsAdmin.edit")}
                             </Button>
                           </Gate>
                           <Gate
@@ -159,7 +163,7 @@ export function CollectionsAdminPage() {
                             fallback={
                               <Locked reason={t("locked.needShare")}>
                                 <Button type="button" variant="outline" size="sm">
-                                  Partager
+                                  {t("actions.share")}
                                 </Button>
                               </Locked>
                             }
@@ -176,7 +180,7 @@ export function CollectionsAdminPage() {
                                 setSharing(col);
                               }}
                             >
-                              Partager
+                              {t("actions.share")}
                             </Button>
                           </Gate>
                           <Button
@@ -185,7 +189,7 @@ export function CollectionsAdminPage() {
                             size="sm"
                             onClick={() => setDeleting(col)}
                           >
-                            Supprimer
+                            {t("actions.delete")}
                           </Button>
                         </td>
                       </tr>
@@ -198,7 +202,7 @@ export function CollectionsAdminPage() {
         }}
         inspect={{
           id: "detail",
-          label: "Détail",
+          label: t("collectionsAdmin.detail"),
           content: (
             <div className="flex flex-col gap-3 p-3">
               {registering && <RegisterCollectionPanel onClose={() => setRegistering(false)} />}
@@ -233,13 +237,9 @@ export function CollectionsAdminPage() {
       />
       <ConfirmDialog
         open={!!deleting}
-        title="Supprimer la collection"
-        message={
-          deleting
-            ? `Désenregistrer « ${deleting.title} » ? La table PostGIS ne sera pas supprimée.`
-            : ""
-        }
-        confirmLabel="Supprimer"
+        title={t("collectionsAdmin.deleteTitle")}
+        message={deleting ? t("collectionsAdmin.deleteMessage", { title: deleting.title }) : ""}
+        confirmLabel={t("actions.delete")}
         pending={deleteCollection.isPending}
         onCancel={() => setDeleting(null)}
         onConfirm={() => void confirmDelete()}

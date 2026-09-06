@@ -13,6 +13,7 @@ import { LayerPicker } from "./LayerPicker";
 import { MapSymbologyEditor } from "./MapSymbologyEditor";
 import { PopupEditor } from "./PopupEditor";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
+import { t } from "../i18n";
 
 // Une couche "feature" n'a pas de collection interrogeable : son schéma vient
 // du GeoJSON qu'elle pointe elle-même. Une seule requête partagée par les
@@ -95,7 +96,7 @@ function LayerSymbologyEditor({
   const featureGeojson = useFeatureLayerGeoJson(layer);
   const fc = featureGeojson.data;
   const notReady = async (): Promise<never> => {
-    throw new Error("La couche GeoJSON n'est pas encore chargée");
+    throw new Error(t("layersPanel.geojsonNotLoadedError"));
   };
   return (
     <MapSymbologyEditor
@@ -175,7 +176,7 @@ function LayerPaintAdvancedEditor({
       setError(null);
       onChangeLayer({ ...layer, paint: parsed });
     } catch {
-      setError("JSON invalide — la peinture n'a pas été enregistrée.");
+      setError(t("layersPanel.paintInvalidJson"));
     }
   }
   return (
@@ -186,12 +187,12 @@ function LayerPaintAdvancedEditor({
         className="text-xs underline"
         onClick={() => setOpen((o) => !o)}
       >
-        Avancé : peinture MapLibre
+        {t("layersPanel.paintAdvancedButton")}
       </button>
       {open && (
         <div id={panel.panelId}>
           <textarea
-            aria-label="Peinture MapLibre (JSON)"
+            aria-label={t("layersPanel.paintAria")}
             className="mt-1 h-24 w-full rounded-md border border-rule bg-surface p-2 font-mono text-xs"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -242,7 +243,7 @@ export function LayersPanel({
             <span className="flex-1 truncate">{layer.title}</span>
             <button
               type="button"
-              aria-label={`Monter ${layer.title}`}
+              aria-label={t("layersPanel.moveUpAria", { title: layer.title })}
               disabled={i === 0}
               className="px-1 disabled:opacity-30"
               onClick={() => move(i, -1)}
@@ -251,7 +252,7 @@ export function LayersPanel({
             </button>
             <button
               type="button"
-              aria-label={`Descendre ${layer.title}`}
+              aria-label={t("layersPanel.moveDownAria", { title: layer.title })}
               disabled={i === layers.length - 1}
               className="px-1 disabled:opacity-30"
               onClick={() => move(i, 1)}
@@ -260,7 +261,11 @@ export function LayersPanel({
             </button>
             <button
               type="button"
-              aria-label={`${layer.visible ? "Masquer" : "Afficher"} ${layer.title}`}
+              aria-label={
+                layer.visible
+                  ? t("layersPanel.hideAria", { title: layer.title })
+                  : t("layersPanel.showAria", { title: layer.title })
+              }
               className="px-1"
               onClick={() => toggle(layer.id)}
             >
@@ -268,7 +273,7 @@ export function LayersPanel({
             </button>
             <button
               type="button"
-              aria-label={`Retirer ${layer.title}`}
+              aria-label={t("layersPanel.removeAria", { title: layer.title })}
               className="px-1 text-danger"
               onClick={() => remove(layer.id)}
             >
@@ -283,9 +288,9 @@ export function LayersPanel({
                     "radius" (mètres), ColumnLayer a "elevationScale". */}
                 {layer.deckType === "heatmap" && (
                   <label className="flex flex-col gap-1 text-sm">
-                    Rayon (pixels)
+                    {t("layersPanel.radiusPixelsLabel")}
                     <input
-                      aria-label="Rayon (pixels)"
+                      aria-label={t("layersPanel.radiusPixelsLabel")}
                       type="number"
                       min={1}
                       value={Number(
@@ -308,9 +313,9 @@ export function LayersPanel({
                 )}
                 {layer.deckType === "hexbin" && (
                   <label className="flex flex-col gap-1 text-sm">
-                    Rayon (mètres)
+                    {t("layersPanel.radiusMetersLabel")}
                     <input
-                      aria-label="Rayon (mètres)"
+                      aria-label={t("layersPanel.radiusMetersLabel")}
                       type="number"
                       min={1}
                       value={Number(
@@ -333,9 +338,9 @@ export function LayersPanel({
                 )}
                 {layer.deckType === "column" && (
                   <label className="flex flex-col gap-1 text-sm">
-                    Échelle de hauteur
+                    {t("layersPanel.elevationScaleLabel")}
                     <input
-                      aria-label="Échelle de hauteur"
+                      aria-label={t("layersPanel.elevationScaleLabel")}
                       type="number"
                       min={0}
                       value={Number(
@@ -362,9 +367,11 @@ export function LayersPanel({
             {layer.kind === "raster" && (
               <div className="basis-full pl-2">
                 <label className="flex flex-col gap-1 text-sm">
-                  Opacité — {Math.round((layer.opacity ?? 1) * 100)}%
+                  {t("layersPanel.opacityLabel", {
+                    percent: Math.round((layer.opacity ?? 1) * 100),
+                  })}
                   <input
-                    aria-label="Opacité"
+                    aria-label={t("layersPanel.opacityAria")}
                     type="range"
                     min={0}
                     max={1}
@@ -405,10 +412,12 @@ export function LayersPanel({
             )}
           </li>
         ))}
-        {layers.length === 0 && <li className="text-xs text-ink-3">Aucune couche.</li>}
+        {layers.length === 0 && (
+          <li className="text-xs text-ink-3">{t("layersPanel.emptyText")}</li>
+        )}
       </ul>
       <div className="border-t border-rule pt-2">
-        <p className="mb-1 text-xs font-medium text-ink-2">Ajouter une couche</p>
+        <p className="mb-1 text-xs font-medium text-ink-2">{t("layersPanel.addLayerHeading")}</p>
         <LayerPicker onAdd={(layer) => onChange([...layers, layer])} />
       </div>
     </div>

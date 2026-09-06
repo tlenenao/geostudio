@@ -1,20 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 import { registerWidget } from "../registry";
 import { sanitizeMarkdown } from "./sanitizeMarkdown";
+import { t } from "../../i18n";
 
 export function registerRichSectionWidget(): void {
   registerWidget({
     type: "richSection",
-    label: "Section riche",
+    label: t("widgetRichSection.paletteLabel"),
     defaultProps: { markdown: "" },
     defaultSize: { w: 12, h: 4 },
-    configSchema: [{ name: "markdown", type: "string", label: "Markdown", default: "" }],
+    configSchema: [
+      {
+        name: "markdown",
+        type: "string",
+        label: t("widgetRichSection.markdownConfig"),
+        default: "",
+      },
+    ],
     PropsPanel: ({ props, onChange }) => (
       <div className="flex flex-col gap-2 text-sm">
         <label className="flex flex-col gap-1">
-          Markdown
+          {t("widgetRichSection.markdownConfig")}
           <textarea
-            aria-label="Markdown"
+            aria-label={t("widgetRichSection.markdownConfig")}
             className="rounded-md border border-slate-300 p-2 font-mono text-xs"
             rows={8}
             value={String(props.markdown ?? "")}
@@ -28,7 +36,7 @@ export function registerRichSectionWidget(): void {
       if (!markdown.trim()) {
         return ctx.mode === "edit" ? (
           <p className="text-xs text-[var(--gs-color-muted)]">
-            Section de texte vide — ajoutez du Markdown dans le panneau de propriétés.
+            {t("widgetRichSection.emptyState")}
           </p>
         ) : null;
       }

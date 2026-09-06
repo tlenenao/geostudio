@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { CollectionSchema } from "../../api/types";
 import { JoinConfig } from "./inferSchema";
+import { t } from "../../i18n";
 
 export function QueryJoinPicker({
   baseSchema,
@@ -23,14 +24,14 @@ export function QueryJoinPicker({
   return (
     <div className="flex flex-col gap-2">
       <label className="flex flex-col gap-1 text-xs">
-        Collection à joindre
+        {t("queryJoinPicker.collectionLabel")}
         <select
-          aria-label="Collection à joindre"
+          aria-label={t("queryJoinPicker.collectionAria")}
           className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
           value={value.collectionId}
           onChange={(e) => onChange({ ...value, collectionId: e.target.value, on: "" })}
         >
-          <option value="">Choisir…</option>
+          <option value="">{t("queryJoinPicker.choose")}</option>
           {collections.map((c) => (
             <option key={c.id} value={c.id}>
               {c.title}
@@ -39,20 +40,18 @@ export function QueryJoinPicker({
         </select>
       </label>
       {joinedSchema && commonColumns.length === 0 && (
-        <p className="text-xs text-danger">
-          Aucune colonne commune entre les deux collections — la jointure est impossible.
-        </p>
+        <p className="text-xs text-danger">{t("queryJoinPicker.noCommonColumn")}</p>
       )}
       {commonColumns.length > 0 && (
         <label className="flex flex-col gap-1 text-xs">
-          Colonne de jointure
+          {t("queryJoinPicker.joinColumnLabel")}
           <select
-            aria-label="Colonne de jointure"
+            aria-label={t("queryJoinPicker.joinColumnAria")}
             className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
             value={value.on}
             onChange={(e) => onChange({ ...value, on: e.target.value })}
           >
-            <option value="">Choisir…</option>
+            <option value="">{t("queryJoinPicker.choose")}</option>
             {commonColumns.map((f) => (
               <option key={f.name} value={f.name}>
                 {f.name}
@@ -62,15 +61,15 @@ export function QueryJoinPicker({
         </label>
       )}
       <label className="flex flex-col gap-1 text-xs">
-        Type de jointure
+        {t("queryJoinPicker.joinTypeLabel")}
         <select
-          aria-label="Type de jointure"
+          aria-label={t("queryJoinPicker.joinTypeAria")}
           className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
           value={value.how}
           onChange={(e) => onChange({ ...value, how: e.target.value as "inner" | "left" })}
         >
-          <option value="inner">Garder seulement les correspondances</option>
-          <option value="left">Garder toutes les lignes de base</option>
+          <option value="inner">{t("queryJoinPicker.joinInnerOption")}</option>
+          <option value="left">{t("queryJoinPicker.joinLeftOption")}</option>
         </select>
       </label>
     </div>

@@ -5,6 +5,7 @@ import { validateExpression } from "../builder/expr";
 import { closingBrace } from "./popupTemplate";
 import { Button } from "../ui/kit/Button";
 import { labelCls, inputCls } from "./formFieldStyles";
+import { t } from "../i18n";
 
 // Contrôle répété une fois par champ disponible dans une liste dense
 // (`PopupEditor` ci-dessous) : reste en h-8 par exception, même hauteur que
@@ -25,9 +26,9 @@ function templateError(template: string): string | null {
     const open = template.indexOf("${", i);
     if (open === -1) return null;
     const close = closingBrace(template, open);
-    if (close === -1) return "Expression non fermée";
+    if (close === -1) return t("popupEditor.unclosedExpressionError");
     const err = validateExpression(template.slice(open + 2, close).trim());
-    if (err) return `Expression invalide : ${err}`;
+    if (err) return t("popupEditor.invalidExpressionError", { err });
     i = close + 1;
   }
   return null;
@@ -73,23 +74,23 @@ export function PopupEditor({
       <label className="flex items-center gap-2">
         <input
           type="checkbox"
-          aria-label="Afficher les attributs au clic"
+          aria-label={t("popupEditor.showAttributesLabel")}
           checked={value !== undefined}
           onChange={(e) => onChange(e.target.checked ? {} : undefined)}
         />
-        Afficher les attributs au clic
+        {t("popupEditor.showAttributesLabel")}
       </label>
       {value !== undefined && !advanced && (
         <>
           <label className={labelCls}>
-            Champ titre
+            {t("popupEditor.titleFieldLabel")}
             {/* Une saisie avec datalist plutôt qu'un <select> : le même
                 contrôle marche quand availableFields est vide (surface du
                 widget carte, où PropsPanel n'a ni schéma ni
                 enregistrements) et quand il est renseigné (éditeur de
                 cartes, où le schéma de la collection est chargé). */}
             <input
-              aria-label="Champ titre"
+              aria-label={t("popupEditor.titleFieldLabel")}
               list={`${listId}-titre`}
               className={inputCls}
               value={value.titleField ?? ""}
@@ -101,7 +102,7 @@ export function PopupEditor({
               ))}
             </datalist>
           </label>
-          <p className="text-xs text-ink-3">Sans sélection, tous les champs sont affichés.</p>
+          <p className="text-xs text-ink-3">{t("popupEditor.noSelectionHint")}</p>
           <ul className="flex flex-col gap-1">
             {availableFields.map((f) => {
               const entry = selected?.find((s) => s.name === f);
@@ -116,7 +117,7 @@ export function PopupEditor({
                   <span className="flex-1 truncate">{f}</span>
                   {entry && (
                     <input
-                      aria-label={`Libellé de ${f}`}
+                      aria-label={t("popupEditor.fieldLabelAria", { name: f })}
                       className={`${denseInputCls} w-28`}
                       value={entry.label ?? ""}
                       onChange={(e) =>
@@ -144,7 +145,7 @@ export function PopupEditor({
                   />
                   <span className="flex-1 truncate">{f.name}</span>
                   <input
-                    aria-label={`Libellé de ${f.name}`}
+                    aria-label={t("popupEditor.fieldLabelAria", { name: f.name })}
                     className={`${denseInputCls} w-28`}
                     value={f.label ?? ""}
                     onChange={(e) =>
@@ -161,28 +162,28 @@ export function PopupEditor({
           </ul>
           <div className="flex flex-wrap items-center gap-2">
             <input
-              aria-label="Nom du champ à ajouter"
+              aria-label={t("popupEditor.addFieldAria")}
               list={`${listId}-titre`}
               className={`${inputCls} flex-1`}
               value={draftField}
               onChange={(e) => setDraftField(e.target.value)}
             />
             <Button type="button" size="sm" variant="outline" onClick={addDraftField}>
-              Ajouter le champ
+              {t("popupEditor.addFieldButton")}
             </Button>
           </div>
         </>
       )}
       {value !== undefined && attachmentFields.length > 0 && (
         <label className={labelCls}>
-          Pièces jointes
+          {t("popupEditor.attachmentsLabel")}
           <select
-            aria-label="Pièces jointes"
+            aria-label={t("popupEditor.attachmentsLabel")}
             className={inputCls}
             value={value.attachmentField ?? ""}
             onChange={(e) => onChange({ ...value, attachmentField: e.target.value || undefined })}
           >
-            <option value="">Aucune</option>
+            <option value="">{t("popupEditor.noneOption")}</option>
             {attachmentFields.map((f) => (
               <option key={f} value={f}>
                 {f}
@@ -197,22 +198,19 @@ export function PopupEditor({
           className="self-start text-xs text-accent underline"
           onClick={() => setAdvanced((a) => !a)}
         >
-          {advanced ? "Liste de champs" : "Avancé (gabarit)"}
+          {advanced ? t("popupEditor.fieldsListButton") : t("popupEditor.advancedButton")}
         </button>
       )}
       {value !== undefined && advanced && (
         <label className={labelCls}>
-          Gabarit
+          {t("popupEditor.templateLabel")}
           <textarea
-            aria-label="Gabarit"
+            aria-label={t("popupEditor.templateLabel")}
             className="min-h-24 rounded-md border border-rule p-2 font-mono text-xs"
             value={value.template ?? ""}
             onChange={(e) => onChange({ ...value, template: e.target.value })}
           />
-          <span className="text-xs text-ink-3">
-            Markdown ; chaque {"${expression}"} est évaluée sur l&apos;entité cliquée, par exemple{" "}
-            {"${record.nom}"}.
-          </span>
+          <span className="text-xs text-ink-3">{t("popupEditor.exprHint")}</span>
         </label>
       )}
       {error && (

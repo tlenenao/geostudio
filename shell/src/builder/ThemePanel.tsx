@@ -1,32 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { Theme } from "../api/types";
 import { DEFAULT_THEME_COLORS, DEFAULT_FONT, DEFAULT_RADIUS, DEFAULT_SPACE } from "./theme";
+import { t } from "../i18n";
 
 const FONTS: [string, string][] = [
-  ["system-ui, sans-serif", "Système"],
-  ["Georgia, serif", "Serif"],
-  ['"Courier New", monospace', "Monospace"],
+  [DEFAULT_FONT, t("themePanel.fontSystem")],
+  ["Georgia, serif", t("themePanel.fontSerif")],
+  ['"Courier New", monospace', t("themePanel.fontMonospace")],
 ];
 const RADII: [string, string][] = [
-  ["0px", "Carré"],
-  ["0.25rem", "Léger"],
-  ["0.375rem", "Standard"],
-  ["0.75rem", "Arrondi"],
-  ["1rem", "Très arrondi"],
+  ["0px", t("themePanel.radiusSquare")],
+  ["0.25rem", t("themePanel.radiusLight")],
+  ["0.375rem", t("themePanel.radiusStandard")],
+  ["0.75rem", t("themePanel.radiusRounded")],
+  ["1rem", t("themePanel.radiusVeryRounded")],
 ];
 const SPACES: [string, string][] = [
-  ["0.25rem", "Compact"],
-  ["0.5rem", "Standard"],
-  ["1rem", "Aéré"],
+  ["0.25rem", t("themePanel.spaceCompact")],
+  ["0.5rem", t("themePanel.spaceStandard")],
+  ["1rem", t("themePanel.spaceAiry")],
 ];
 
 const COLOR_FIELDS: [keyof NonNullable<Theme["colors"]>, string][] = [
-  ["primary", "Couleur primaire"],
-  ["background", "Couleur de fond"],
-  ["surface", "Couleur de surface"],
-  ["text", "Couleur du texte"],
-  ["muted", "Couleur atténuée"],
-  ["border", "Couleur de bordure"],
+  ["primary", t("themePanel.colorPrimary")],
+  ["background", t("themePanel.colorBackground")],
+  ["surface", t("themePanel.colorSurface")],
+  ["text", t("themePanel.colorText")],
+  ["muted", t("themePanel.colorMuted")],
+  ["border", t("themePanel.colorBorder")],
 ];
 
 export function ThemePanel({
@@ -53,9 +54,9 @@ export function ThemePanel({
         </label>
       ))}
       <label className="flex flex-col gap-1">
-        Police
+        {t("themePanel.fontLabel")}
         <select
-          aria-label="Police"
+          aria-label={t("themePanel.fontLabel")}
           className="h-9 rounded-md border border-slate-300 px-2"
           value={theme.font ?? DEFAULT_FONT}
           onChange={(e) => onChange({ ...theme, font: e.target.value })}
@@ -68,9 +69,9 @@ export function ThemePanel({
         </select>
       </label>
       <label className="flex flex-col gap-1">
-        Arrondi
+        {t("themePanel.radiusFieldLabel")}
         <select
-          aria-label="Arrondi"
+          aria-label={t("themePanel.radiusFieldLabel")}
           className="h-9 rounded-md border border-slate-300 px-2"
           value={theme.radius ?? DEFAULT_RADIUS}
           onChange={(e) => onChange({ ...theme, radius: e.target.value })}
@@ -83,9 +84,9 @@ export function ThemePanel({
         </select>
       </label>
       <label className="flex flex-col gap-1">
-        Espacement
+        {t("themePanel.spaceLabel")}
         <select
-          aria-label="Espacement"
+          aria-label={t("themePanel.spaceLabel")}
           className="h-9 rounded-md border border-slate-300 px-2"
           value={theme.space ?? DEFAULT_SPACE}
           onChange={(e) => onChange({ ...theme, space: e.target.value })}

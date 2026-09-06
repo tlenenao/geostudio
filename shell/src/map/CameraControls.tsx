@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Button } from "../ui/kit/Button";
+import { t } from "../i18n";
 
 export function CameraControls({
   pitch,
@@ -18,11 +19,11 @@ export function CameraControls({
   const displayBearing = ((bearing % 360) + 360) % 360;
   return (
     <div className="flex flex-col gap-2">
-      <p className="mb-1 mt-3 text-xs font-medium text-ink-2">Caméra</p>
+      <p className="mb-1 mt-3 text-xs font-medium text-ink-2">{t("cameraControls.heading")}</p>
       <label className="flex flex-col gap-1 text-sm">
-        Inclinaison (pitch) — {pitch}°
+        {t("cameraControls.pitchLabel", { pitch })}
         <input
-          aria-label="Inclinaison de la caméra"
+          aria-label={t("cameraControls.pitchAria")}
           type="range"
           min={0}
           max={60}
@@ -32,9 +33,9 @@ export function CameraControls({
         />
       </label>
       <label className="flex flex-col gap-1 text-sm">
-        Orientation (bearing) — {displayBearing}°
+        {t("cameraControls.bearingLabel", { bearing: displayBearing })}
         <input
-          aria-label="Orientation de la caméra"
+          aria-label={t("cameraControls.bearingAria")}
           type="range"
           min={0}
           max={360}
@@ -50,7 +51,7 @@ export function CameraControls({
         className="w-fit"
         onClick={() => onChange({ pitch: 0, bearing: 0 })}
       >
-        Réinitialiser en 2D
+        {t("cameraControls.resetButton")}
       </Button>
     </div>
   );

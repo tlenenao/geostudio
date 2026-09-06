@@ -224,10 +224,10 @@ test("blocks closing (Annuler, Escape, outside pointerdown) while an upload is i
 test("does not poll again or update state after the drawer is unmounted mid-finalize", async () => {
   let pollCalls = 0;
   server.use(
-    http.post("https://core.test/tileset3d/uploads", () =>
+    http.post("https://core.test/v1/tileset3d/uploads", () =>
       HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
     ),
-    http.post("https://core.test/tileset3d/uploads/job-1/parts/1/presign", () =>
+    http.post("https://core.test/v1/tileset3d/uploads/job-1/parts/1/presign", () =>
       HttpResponse.json({ uploadUrl: "https://minio.test/part-1" }),
     ),
     http.put(
@@ -235,10 +235,10 @@ test("does not poll again or update state after the drawer is unmounted mid-fina
       () => new HttpResponse(null, { status: 200, headers: { ETag: '"etag-1"' } }),
     ),
     http.post(
-      "https://core.test/tileset3d/uploads/job-1/complete",
+      "https://core.test/v1/tileset3d/uploads/job-1/complete",
       () => new HttpResponse(null, { status: 204 }),
     ),
-    http.get("https://core.test/tileset3d/uploads/job-1", () => {
+    http.get("https://core.test/v1/tileset3d/uploads/job-1", () => {
       pollCalls += 1;
       return HttpResponse.json({ status: "running", errorMessage: null, itemId: null });
     }),

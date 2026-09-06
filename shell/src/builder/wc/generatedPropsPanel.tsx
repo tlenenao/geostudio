@@ -2,6 +2,7 @@
 import type { DataSource } from "../../api/types";
 import { DataSourceSelect } from "../DataSourceSelect";
 import type { WcWidgetManifest } from "./manifest";
+import { t } from "../../i18n";
 
 // Filtre d'autorat, pas une frontière de sécurité : n'affecte que les sources
 // proposées dans ce panneau. Le module WC arbitraire chargé par l'extension
@@ -53,8 +54,7 @@ export function makeGeneratedPropsPanel(manifest: WcWidgetManifest) {
               />
               {boundOutsidePermissions(String(props[p.name] ?? ""), dataSources, manifest) && (
                 <p role="alert" className="text-xs text-danger">
-                  Cette source est hors de ses permissions déclarées — la sauvegarde échouera tant
-                  qu&apos;une source autorisée n&apos;est pas choisie.
+                  {t("generatedPropsPanel.outOfPermissions")}
                 </p>
               )}
             </div>

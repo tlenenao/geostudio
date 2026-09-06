@@ -7,6 +7,7 @@ import { AppLayout } from "./AppLayout";
 import { useItemClient } from "../api/ItemClientProvider";
 import { encodeAnalyticsContext } from "../lib/analyticsContextUrl";
 import type { ResourceType } from "../api/types";
+import { t } from "../i18n";
 
 // Découpage par route (Task 8, SP-60/GAP-68) : chaque page lourde part dans
 // son propre chunk, chargé seulement quand sa route est visitée — le chunk
@@ -175,7 +176,7 @@ function CatalogRoute() {
   return (
     <CatalogPage
       onOpenItem={onOpenItem}
-      openError={openError ? "Échec de l'ouverture de l'élément." : undefined}
+      openError={openError ? t("routes.openItemError") : undefined}
     />
   );
 }
@@ -186,7 +187,7 @@ function BookmarksRoute() {
     <CatalogPage
       onOpenItem={onOpenItem}
       fixedType="bookmark"
-      openError={openError ? "Échec de l'ouverture du signet." : undefined}
+      openError={openError ? t("routes.openBookmarkError") : undefined}
     />
   );
 }
@@ -267,7 +268,7 @@ function ReportsRoute() {
     <CatalogPage
       onOpenItem={onOpenItem}
       fixedType="report"
-      openError={openError ? "Échec de l'ouverture du rapport." : undefined}
+      openError={openError ? t("routes.openReportError") : undefined}
     />
   );
 }
@@ -330,7 +331,7 @@ export function AppRoutes() {
             element={
               <RequirePrivilege
                 privilege="analytics.sql_lab.access"
-                deniedMessage="Accès réservé aux analystes."
+                deniedMessage={t("routes.analystOnly")}
               >
                 <SqlLabPage />
               </RequirePrivilege>
@@ -341,7 +342,7 @@ export function AppRoutes() {
             element={
               <RequirePrivilege
                 privilege="admin.extensions.manage"
-                deniedMessage="Accès réservé aux administrateurs."
+                deniedMessage={t("routes.adminOnly")}
               >
                 <AdminExtensionsPage />
               </RequirePrivilege>
@@ -352,7 +353,7 @@ export function AppRoutes() {
             element={
               <RequirePrivilege
                 privilege="admin.collections.manage"
-                deniedMessage="Accès réservé aux administrateurs."
+                deniedMessage={t("routes.adminOnly")}
               >
                 <CollectionsAdminPage />
               </RequirePrivilege>
@@ -363,7 +364,7 @@ export function AppRoutes() {
             element={
               <RequirePrivilege
                 privilege="admin.harvest.manage"
-                deniedMessage="Accès réservé aux administrateurs."
+                deniedMessage={t("routes.adminOnly")}
               >
                 <HarvestSourcesAdminPage />
               </RequirePrivilege>
@@ -374,7 +375,7 @@ export function AppRoutes() {
             element={
               <RequirePrivilege
                 privilege="admin.roles.manage"
-                deniedMessage="Accès réservé à la gestion des rôles."
+                deniedMessage={t("routes.rolesOnly")}
               >
                 <RolesAdminPage />
               </RequirePrivilege>
@@ -385,7 +386,7 @@ export function AppRoutes() {
             element={
               <RequirePrivilege
                 privilege="admin.users.manage"
-                deniedMessage="Accès réservé à la gestion des utilisateurs."
+                deniedMessage={t("routes.usersOnly")}
               >
                 <UsersAdminPage />
               </RequirePrivilege>
@@ -396,7 +397,7 @@ export function AppRoutes() {
             element={
               <RequirePrivilege
                 privilege="compliance.manage"
-                deniedMessage="Accès réservé à la conformité (RGPD)."
+                deniedMessage={t("routes.complianceOnly")}
               >
                 <ComplianceAdminPage />
               </RequirePrivilege>
@@ -407,7 +408,7 @@ export function AppRoutes() {
             element={
               <RequirePrivilege
                 privilege="settings.instance.manage"
-                deniedMessage="Accès réservé aux administrateurs."
+                deniedMessage={t("routes.adminOnly")}
               >
                 <AdminInfrastructurePage />
               </RequirePrivilege>
@@ -417,10 +418,7 @@ export function AppRoutes() {
           <Route
             path="/tasks"
             element={
-              <RequirePrivilege
-                privilege="tasks.view"
-                deniedMessage="Accès réservé — privilège tasks.view requis."
-              >
+              <RequirePrivilege privilege="tasks.view" deniedMessage={t("routes.tasksOnly")}>
                 <UsagePage />
               </RequirePrivilege>
             }

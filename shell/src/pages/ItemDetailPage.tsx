@@ -45,11 +45,11 @@ export function ItemDetailPage({
   const thumbnail = useUploadThumbnail(pk);
   const catalogQuery = useMetadataCatalog();
 
-  if (query.isLoading) return <p role="status">Chargement…</p>;
+  if (query.isLoading) return <p role="status">{t("common.loading")}</p>;
   if (query.isError || !query.data)
     return (
       <p role="alert" className="text-sm text-danger">
-        Élément introuvable.
+        {t("itemDetail.notFound")}
       </p>
     );
 
@@ -85,16 +85,16 @@ export function ItemDetailPage({
         defaultTabId="item"
         browse={{
           id: "back",
-          label: "Catalogue",
+          label: t("domain.catalog"),
           content: (
             <Panel className="m-3 flex flex-col gap-3 text-sm">
               <Link to="/" className="text-accent hover:underline">
-                ← Retour au catalogue
+                {t("nav.backToCatalog")}
               </Link>
               <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs text-ink-2">
-                <dt>Type</dt>
+                <dt>{t("catalog.typeLabel")}</dt>
                 <dd>{RESOURCE_TYPE_LABELS[item.resourceType]}</dd>
-                <dt>Modifié</dt>
+                <dt>{t("datasetEdit.modifiedLabel")}</dt>
                 <dd>{item.updatedAt || "—"}</dd>
               </dl>
             </Panel>
@@ -102,22 +102,24 @@ export function ItemDetailPage({
         }}
         work={{
           id: "item",
-          label: "Élément",
+          label: t("itemDetail.elementLabel"),
           content: (
             <article className="flex h-full flex-col gap-3 overflow-y-auto p-6">
               <span className="w-fit rounded bg-sunken px-2 py-0.5 text-xs uppercase text-ink-2">
                 {item.resourceType}
               </span>
               <h2 className="text-xl font-semibold text-ink">{item.title}</h2>
-              <p className="text-sm text-ink-2">Propriétaire : {item.owner}</p>
+              <p className="text-sm text-ink-2">
+                {t("itemDetail.ownerLabel", { owner: item.owner })}
+              </p>
               <p className="text-sm text-ink">{item.abstract}</p>
               {["map", "app", "dashboard", "dataset", "pipeline"].includes(item.resourceType) ? (
                 <Button className="w-fit" onClick={() => onOpenEditor?.(item.resourceType)}>
-                  Ouvrir dans l'éditeur
+                  {t("itemDetail.openEditor")}
                 </Button>
               ) : (
-                <Button className="w-fit" disabled title="Éditeur indisponible pour ce type">
-                  Ouvrir dans l'éditeur
+                <Button className="w-fit" disabled title={t("itemDetail.editorUnavailableTitle")}>
+                  {t("itemDetail.openEditor")}
                 </Button>
               )}
             </article>
@@ -125,11 +127,11 @@ export function ItemDetailPage({
         }}
         inspect={{
           id: "actions",
-          label: "Actions",
+          label: t("actions.menu"),
           content: (
             <div className="flex flex-col gap-3 p-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-ink">Actions</span>
+                <span className="text-sm font-medium text-ink">{t("actions.menu")}</span>
                 <ItemActions item={item} onDeleted={onDeleted} />
               </div>
               {panel === "edit" && (

@@ -2,11 +2,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/hooks";
 import type { PipelineRun } from "../../api/types";
+import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 
 const STATUS_LABEL: Record<PipelineRun["status"], string> = {
-  queued: "En attente",
-  running: "En cours",
+  queued: t("pipelineRun.statusQueued"),
+  running: t("pipelineRun.statusRunning"),
   succeeded: "succeeded",
   failed: "failed",
 };
@@ -51,7 +52,7 @@ export function PipelineRunPanel({
       // celui corrigé dans ReportRunPanel (SP-17b) ; on réutilise runError,
       // déjà rendu dans ce composant.
       if (!mountedRef.current) return;
-      setRunError("Impossible de charger l'historique des exécutions.");
+      setRunError(t("pipelineRun.loadRunsFailed"));
     }
   }
 
@@ -87,7 +88,7 @@ export function PipelineRunPanel({
       await poll();
     } catch (e) {
       if (!mountedRef.current) return;
-      setRunError(e instanceof Error ? e.message : "Échec du lancement du pipeline.");
+      setRunError(e instanceof Error ? e.message : t("pipelineRun.runFailed"));
     } finally {
       if (mountedRef.current) setRunning(false);
     }
@@ -96,7 +97,7 @@ export function PipelineRunPanel({
   return (
     <div className="flex flex-col gap-2">
       <Button size="sm" onClick={() => void onRun()} disabled={running}>
-        {running ? "Exécution…" : "Exécuter"}
+        {running ? t("pipelineRun.running") : t("pipelineRun.runButton")}
       </Button>
       {runError && (
         <p role="alert" className="text-xs text-danger">

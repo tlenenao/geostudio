@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { usePipelinePreview } from "../../api/hooks";
+import { t } from "../../i18n";
 import { PipelinePreviewMap } from "./PipelinePreviewMap";
 
 export function PipelinePreviewPanel({
@@ -14,11 +15,11 @@ export function PipelinePreviewPanel({
   const [view, setView] = useState<"table" | "map">("table");
 
   if (nodeId === null) return null;
-  if (previewQuery.isLoading) return <p role="status">Chargement de l'aperçu…</p>;
+  if (previewQuery.isLoading) return <p role="status">{t("pipelinePreview.loading")}</p>;
   if (previewQuery.isError)
     return (
       <p role="alert" className="text-sm text-danger">
-        Aperçu indisponible.
+        {t("pipelinePreview.unavailable")}
       </p>
     );
 
@@ -35,14 +36,14 @@ export function PipelinePreviewPanel({
             onClick={() => setView("table")}
             className={`rounded px-2 py-1 ${view === "table" ? "bg-sunken" : ""}`}
           >
-            Tableau
+            {t("pipelinePreview.tableView")}
           </button>
           <button
             type="button"
             onClick={() => setView("map")}
             className={`rounded px-2 py-1 ${view === "map" ? "bg-sunken" : ""}`}
           >
-            Carte
+            {t("pipelinePreview.mapView")}
           </button>
         </div>
       )}

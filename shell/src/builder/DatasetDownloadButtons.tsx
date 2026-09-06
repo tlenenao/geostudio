@@ -2,6 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useItemClient } from "../api/ItemClientProvider";
 import { csvAvailable, csvTooLarge, downloadCsv, geojsonDownloadUrl } from "../lib/datasetDownload";
+import { t } from "../i18n";
 
 // Plain slate styling (not --gs-* theme vars): this component is reused both
 // inside a themed AppRenderer (DatasetCard widget) and outside any theme root
@@ -27,7 +28,7 @@ export function DatasetDownloadButtons({
         href={geojsonDownloadUrl(client, collectionId)}
         download={`${collectionId}.geojson`}
       >
-        Télécharger GeoJSON
+        {t("datasetDownload.geojsonButton")}
       </a>
       <button
         type="button"
@@ -38,13 +39,10 @@ export function DatasetDownloadButtons({
           void downloadCsv({ client, collectionId, schema: schemaQuery.data, featureCount });
         }}
       >
-        Télécharger CSV
+        {t("datasetDownload.csvButton")}
       </button>
       {csvTooLarge(featureCount) && (
-        <p className="w-full text-[10px] text-slate-500">
-          Jeu de données trop volumineux pour l'export CSV navigateur — export serveur à venir
-          (SP-15).
-        </p>
+        <p className="w-full text-[10px] text-slate-500">{t("datasetDownload.tooLarge")}</p>
       )}
     </div>
   );

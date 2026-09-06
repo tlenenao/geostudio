@@ -6,6 +6,7 @@ import { useBusAction } from "../ActionBusContext";
 import { LayoutEditor } from "../LayoutEditor";
 import { GridCanvas } from "../GridCanvas";
 import { WidgetHost } from "../WidgetHost";
+import { t } from "../../i18n";
 
 type DrawerProps = { title: string; items: WidgetItem[]; side: "left" | "right" };
 
@@ -14,12 +15,12 @@ const inputCls = "h-9 rounded-md border border-slate-300 px-2 text-sm";
 export function registerDrawerWidget(): void {
   registerWidget({
     type: "drawer",
-    label: "Tiroir",
+    label: t("widgetDrawer.paletteLabel"),
     defaultProps: { title: "Tiroir", items: [], side: "right" },
     defaultSize: { w: 3, h: 1 },
     configSchema: [
-      { name: "title", type: "string", label: "Titre", default: "Tiroir" },
-      { name: "side", type: "string", label: "Côté", default: "right" },
+      { name: "title", type: "string", label: t("widgetDrawer.titleConfig"), default: "Tiroir" },
+      { name: "side", type: "string", label: t("widgetDrawer.sideConfig"), default: "right" },
     ],
     actions: ["open", "close"],
     PropsPanel: ({ props, onChange, dataSources, variables }) => {
@@ -27,24 +28,24 @@ export function registerDrawerWidget(): void {
       return (
         <div className="flex flex-col gap-2 text-sm">
           <label className="flex flex-col gap-1">
-            Titre
+            {t("widgetDrawer.titleConfig")}
             <input
-              aria-label="Titre du tiroir"
+              aria-label={t("widgetDrawer.titleAria")}
               className={inputCls}
               value={title}
               onChange={(e) => onChange({ title: e.target.value, items, side })}
             />
           </label>
           <label className="flex flex-col gap-1">
-            Côté
+            {t("widgetDrawer.sideConfig")}
             <select
-              aria-label="Côté du tiroir"
+              aria-label={t("widgetDrawer.sideAria")}
               className={inputCls}
               value={side}
               onChange={(e) => onChange({ title, items, side: e.target.value as "left" | "right" })}
             >
-              <option value="right">Droite</option>
-              <option value="left">Gauche</option>
+              <option value="right">{t("widgetDrawer.right")}</option>
+              <option value="left">{t("widgetDrawer.left")}</option>
             </select>
           </label>
           <LayoutEditor
@@ -74,8 +75,8 @@ export function registerDrawerWidget(): void {
 
       if (ctx.mode === "edit") {
         return (
-          <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">
-            Tiroir : {title}
+          <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-ink-2">
+            {t("widgetDrawer.editPreview", { title })}
           </div>
         );
       }

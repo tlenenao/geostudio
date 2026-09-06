@@ -54,11 +54,11 @@ export function MapEditorPage({ pk }: { pk: string }) {
   // effect above), so keep showing the loader during that gap instead of
   // flashing the error.
   if (query.isLoading || itemQuery.isLoading || (!draft && !query.isError))
-    return <p role="status">Chargement…</p>;
+    return <p role="status">{t("common.loading")}</p>;
   if (query.isError || itemQuery.isError || !draft || !itemQuery.data)
     return (
       <p role="alert" className="text-sm text-danger">
-        Carte introuvable.
+        {t("mapEditor.notFound")}
       </p>
     );
 
@@ -137,7 +137,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
         defaultTabId="map"
         browse={{
           id: "layers",
-          label: "Couches",
+          label: t("mapEditor.layersLabel"),
           content: (
             <div className="p-3">
               <LayersPanel layers={draft.layers} onChange={setLayers} />
@@ -146,7 +146,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
         }}
         work={{
           id: "map",
-          label: "Carte",
+          label: t("mapEditor.mapLabel"),
           content: (
             <div className="relative h-full w-full">
               <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
@@ -165,7 +165,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
         }}
         inspect={{
           id: "settings",
-          label: "Inspecter",
+          label: t("mapEditor.inspectLabel"),
           content: (
             <div className="flex flex-col gap-4 p-3">
               <BasemapSelect value={draft.basemap.style} onChange={setStyle} />
@@ -188,12 +188,12 @@ export function MapEditorPage({ pk }: { pk: string }) {
                 disabled={save.isPending || readOnly}
                 onClick={() => save.mutate(draft)}
               >
-                Enregistrer
+                {t("common.save")}
               </Button>
               {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
               {save.isError && (
                 <p role="alert" className="text-sm text-danger">
-                  Échec de l'enregistrement.
+                  {t("actions.saveFailed")}
                 </p>
               )}
             </div>
