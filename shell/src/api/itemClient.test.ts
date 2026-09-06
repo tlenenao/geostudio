@@ -965,6 +965,60 @@ test("getDatasetConfig throws when the config has no dataset payload", async () 
   await expect(makeClient().getDatasetConfig("ds-3")).rejects.toThrow();
 });
 
+test("resolveDataset (via getDatasetConfig) refait un fetch après expiration du TTL", async () => {
+  vi.useFakeTimers();
+  try {
+    let calls = 0;
+    server.use(
+      http.get("https://core.test/configs/by-item/ds1", () => {
+        calls += 1;
+        return HttpResponse.json({
+          id: "cfg",
+          itemId: "ds1",
+          kind: "dataset",
+          config: {
+            kind: "dataset",
+            dataset: { source: "collection", collectionId: "communes", columns: {} },
+          },
+        });
+      }),
+    );
+    const client = makeClient();
+    await client.getDatasetConfig("ds1");
+    expect(calls).toBe(1);
+    await client.getDatasetConfig("ds1"); // encore dans le TTL
+    expect(calls).toBe(1);
+    vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+    await client.getDatasetConfig("ds1"); // TTL expiré
+    expect(calls).toBe(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("invalidateDatasetCache force un nouveau fetch avant expiration du TTL", async () => {
+  let calls = 0;
+  server.use(
+    http.get("https://core.test/configs/by-item/ds1", () => {
+      calls += 1;
+      return HttpResponse.json({
+        id: "cfg",
+        itemId: "ds1",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "collection", collectionId: "communes", columns: {} },
+        },
+      });
+    }),
+  );
+  const client = makeClient();
+  await client.getDatasetConfig("ds1");
+  client.invalidateDatasetCache("ds1");
+  await client.getDatasetConfig("ds1");
+  expect(calls).toBe(2);
+});
+
 test("createBookmarkItem posts a bookmark payload and returns a bookmark Item", async () => {
   server.use(
     http.post("https://core.test/configs", async ({ request }) => {

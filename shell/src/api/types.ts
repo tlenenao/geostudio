@@ -481,6 +481,11 @@ export interface ItemClient {
     field: string,
     limit: number,
   ): Promise<number[]>;
+  // GAP-65 (2/3) : datasetCache (interne à ItemClient, résolveDataset())
+  // n'expirait jamais et n'était rafraîchi que par une écriture passant
+  // par ce même ItemClient — TTL de 5 minutes + invalidation manuelle pour
+  // un appelant qui saurait qu'un dataset a changé ailleurs.
+  invalidateDatasetCache(pk?: string): void;
   featuresUrl(source: DataSource): string;
   exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }>;
   getCollectionSchema(collectionId: string): Promise<CollectionSchema>;

@@ -120,13 +120,22 @@ type DatasetsMethods = Pick<
   | "saveDatasetConfig"
   | "queryDataSource"
   | "sampleDataSourceField"
+  | "invalidateDatasetCache"
   | "featuresUrl"
   | "exportDataSource"
   | "getCollectionSchema"
 >;
 
 export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
-  const { request, coreUrl, getToken, resolveDataset, datasetCache, fetchGeoJsonFeatures } = base;
+  const {
+    request,
+    coreUrl,
+    getToken,
+    resolveDataset,
+    datasetCache,
+    invalidateDatasetCache,
+    fetchGeoJsonFeatures,
+  } = base;
   return {
     async createDatasetItem(input: CreateDatasetInput): Promise<Item> {
       const dataset: DatasetConfig =
@@ -254,6 +263,10 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
         return data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row }));
       }
       return fetchGeoJsonFeatures(buildFeaturesUrl(coreUrl, resolved));
+    },
+
+    invalidateDatasetCache(pk?: string): void {
+      invalidateDatasetCache(pk);
     },
 
     async sampleDataSourceField(

@@ -120,6 +120,11 @@ export type ItemClientBase = {
   request<T>(method: string, path: string, body?: unknown): Promise<T>;
   resolveDataset(pk: string): Promise<ResolvedDataset>;
   datasetCache: Map<string, ResolvedDataset>;
+  // GAP-65 (2/3) : pk === undefined vide tout le cache, sinon une seule
+  // entrée. Ajoutée au-dessus de datasetCache (pas un remplacement) —
+  // ne change pas le type public consommé directement par
+  // domains/datasets.ts (createDatasetItem/saveDatasetConfig).
+  invalidateDatasetCache(pk?: string): void;
   fetchGeoJsonFeatures(url: string): Promise<DataRecord[]>;
   fetchCoreCollections(q?: string): Promise<LayerSource[]>;
   fetchExternalRasterSources(q?: string): Promise<LayerSource[]>;
@@ -187,10 +192,30 @@ export function createBase(opts: {
   }
 
   const datasetCache = new Map<string, ResolvedDataset>();
+  // GAP-65 (2/3) : datasetCache lui-même ne change pas de forme (voir la
+  // note de conception ci-dessus) — expiryByPk est une Map interne privée
+  // à ce module, consultée uniquement par resolveDataset() pour décider si
+  // l'entrée est encore valide. Un set() externe (createDatasetItem/
+  // saveDatasetConfig dans domains/datasets.ts) ne pose jamais d'expiration
+  // : une écriture fraîche après une sauvegarde réussie n'a pas besoin
+  // d'expirer immédiatement.
+  const DATASET_CACHE_TTL_MS = 5 * 60 * 1000;
+  const expiryByPk = new Map<string, number>();
+
+  function invalidateDatasetCache(pk?: string): void {
+    if (pk === undefined) {
+      datasetCache.clear();
+      expiryByPk.clear();
+      return;
+    }
+    datasetCache.delete(pk);
+    expiryByPk.delete(pk);
+  }
 
   async function resolveDataset(pk: string): Promise<ResolvedDataset> {
     const cached = datasetCache.get(pk);
-    if (cached) return cached;
+    const expiresAt = expiryByPk.get(pk);
+    if (cached && expiresAt !== undefined && Date.now() < expiresAt) return cached;
     const data = await request<{
       config?: {
         dataset?: {
@@ -218,6 +243,7 @@ export function createBase(opts: {
       sourcePipelineId: dataset.sourcePipelineId ?? null,
     };
     datasetCache.set(pk, resolved);
+    expiryByPk.set(pk, Date.now() + DATASET_CACHE_TTL_MS);
     return resolved;
   }
 
@@ -324,6 +350,7 @@ export function createBase(opts: {
     request,
     resolveDataset,
     datasetCache,
+    invalidateDatasetCache,
     fetchGeoJsonFeatures,
     fetchCoreCollections,
     fetchExternalRasterSources,
