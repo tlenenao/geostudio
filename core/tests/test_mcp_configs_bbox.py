@@ -10,6 +10,7 @@ ce test échouerait alors que test_configs_bbox.py (qui appelle
 configs_repo.update_config directement) resterait vert."""
 
 import json
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -27,7 +28,15 @@ from app.users.repository import get_or_create_user
 
 pytestmark = pytest.mark.postgis
 
-_PG_URL = "postgresql://gis:gis@127.0.0.1:5433/gis_test"
+# Dérivé de CORE_TEST_DATABASE_URL, jamais codé en dur : c'était un littéral
+# `postgresql://gis:gis@127.0.0.1:5433/gis_test` — le port 5433 est la
+# convention d'un poste de développement, pas celle de la CI (5432). Le test
+# passait donc en local et échouait en CI sur « connection refused », alors
+# que le commentaire ci-dessous affirmait déjà pointer vers le même
+# postgis-test que `pg_engine`. `pg_engine` skippe déjà proprement quand la
+# variable est absente, donc la lire ici ne peut pas faire échouer un
+# environnement sans PostGIS.
+_PG_URL = os.environ.get("CORE_TEST_DATABASE_URL", "")
 
 
 @pytest.fixture()

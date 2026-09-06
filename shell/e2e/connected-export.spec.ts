@@ -58,7 +58,13 @@ async function startFakeCore(): Promise<{
   const server = createServer((req, res) => {
     if (req.headers.authorization) sawAuthHeader = true;
     res.setHeader("Access-Control-Allow-Origin", "*");
-    if (req.url === "/collections/col1/items") {
+    // SP-57b : le shell prefixe toutes ses routes de cœur par /v1
+    // (createBase() l'ajoute à `coreUrl`). Ce faux cœur est un serveur HTTP
+    // local, invisible des greps de routes qui ont porté cette migration —
+    // et ce test ne s'exécute QUE quand dist-export/ existe (sinon il se
+    // skippe), donc il ne tourne jamais en local : le décalage n'a été vu
+    // qu'en CI, plusieurs semaines après.
+    if (req.url === "/v1/collections/col1/items") {
       res.setHeader("Content-Type", "application/json");
       res.end(
         JSON.stringify({
