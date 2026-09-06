@@ -177,4 +177,9 @@ def test_anonymous_reads_public_only(env):
     client.patch("/collections/incidents", json={"isPublic": True})
     app.dependency_overrides.pop(get_current_user)
     app.dependency_overrides.pop(get_current_user_optional)
-    assert client.get("/collections/incidents/items").status_code == 200
+    res = client.get("/collections/incidents/items")
+    assert res.status_code == 200
+    # Renforcement REV-077 (même défaut, second site trouvé par cette
+    # spec) : sans cette ligne, une réponse à liste vide passait aussi.
+    assert res.json()["numberReturned"] == 1
+    assert res.json()["features"][0]["id"] == 1
