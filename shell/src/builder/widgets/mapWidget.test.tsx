@@ -276,6 +276,21 @@ test("Component transmet props.terrain à MapView (GAP-52/terrain)", async () =>
   expect(lastMapConfig().terrain).toEqual(terrain);
 });
 
+test("PropsPanel expose les contrôles de caméra (GAP-52/camera)", () => {
+  const onChange = vi.fn();
+  renderPropsPanel({ props: { dataSourceId: "" }, onChange });
+  const pitchSlider = screen.getByRole("slider", { name: "Inclinaison de la caméra" });
+  fireEvent.change(pitchSlider, { target: { value: "30" } });
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ cameraPitch: 30 }));
+});
+
+test("Component transmet la caméra à la vue (GAP-52/camera)", async () => {
+  renderWidget({ props: { dataSourceId: "ds1", cameraPitch: 45, cameraBearing: 90 } });
+  await screen.findByTestId("mapview");
+  expect(lastMapConfig().view.pitch).toBe(45);
+  expect(lastMapConfig().view.bearing).toBe(90);
+});
+
 test("recompute works for a plain collection-backed source (no datasetId), via dataSource.layer", async () => {
   const queryDataSource = vi.fn().mockResolvedValue([{ id: "", properties: { min: 0, max: 100 } }]);
   const onChange = vi.fn();

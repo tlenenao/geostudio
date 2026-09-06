@@ -20,6 +20,7 @@ import { PopupEditor } from "../../map/PopupEditor";
 import { MapSymbologyEditor } from "../../map/MapSymbologyEditor";
 import { BasemapSelect } from "../../map/BasemapSelect";
 import { TerrainPanel } from "../../map/TerrainPanel";
+import { CameraControls } from "../../map/CameraControls";
 
 const MapView = lazy(() => import("../../map/MapView").then((m) => ({ default: m.MapView })));
 const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
@@ -203,6 +204,13 @@ export function registerMapWidget(): void {
             value={(props.terrain as MapTerrainConfig | null) ?? null}
             onChange={(terrain) => onChange({ ...props, terrain })}
           />
+          <CameraControls
+            pitch={Number(props.cameraPitch ?? 0)}
+            bearing={Number(props.cameraBearing ?? 0)}
+            onChange={({ pitch, bearing }) =>
+              onChange({ ...props, cameraPitch: pitch, cameraBearing: bearing })
+            }
+          />
           <MapSymbologyEditor
             value={props.symbology as LayerSymbology | undefined}
             availableFields={[]} // PropsPanel has no schema (registry.ts) — same PopupEditor precedent
@@ -298,7 +306,12 @@ export function registerMapWidget(): void {
       const config: MapConfig = {
         basemap: { style: String(props.basemapStyle ?? DEFAULT_STYLE) },
         terrain: (props.terrain as MapTerrainConfig | null) ?? null,
-        view: { center: [2.4, 46.6], zoom: 5 },
+        view: {
+          center: [2.4, 46.6],
+          zoom: 5,
+          pitch: Number(props.cameraPitch ?? 0),
+          bearing: Number(props.cameraBearing ?? 0),
+        },
         layers: url
           ? [
               {
