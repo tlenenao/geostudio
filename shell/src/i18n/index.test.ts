@@ -24,9 +24,16 @@ describe("t", () => {
     expect(t("catalog.count", { n: 68 })).toBe("68 éléments");
   });
 
-  it("rejette une clé inconnue à la compilation", () => {
+  it("rejette une clé inconnue à la compilation ; à l'exécution, sans validation, t() renvoie undefined", () => {
+    // REV-083 : la version précédente de ce test (`expect(() => t(...)).
+    // toBeDefined()`) n'exerçait rien à l'exécution — une fonction fléchée
+    // est toujours définie, qu'elle soit appelée ou non. Le vrai filet
+    // contre une clé inconnue est `@ts-expect-error` ci-dessous (erreur de
+    // compilation, cf. index.ts) ; `t()` lui-même ne valide rien à
+    // l'exécution — cette assertion observe ce comportement réel (aucune
+    // exception, `undefined` renvoyé) plutôt que de ne rien exercer.
     // @ts-expect-error clé absente du catalogue
-    expect(() => t("cle.inexistante")).toBeDefined();
+    expect(t("cle.inexistante")).toBeUndefined();
   });
 });
 

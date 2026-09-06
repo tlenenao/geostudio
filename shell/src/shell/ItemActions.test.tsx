@@ -2,6 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { vi } from "vitest";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes, useSearchParams } from "react-router-dom";
@@ -10,6 +11,7 @@ import { ItemClientProvider } from "../api/ItemClientProvider";
 import type { Item, ItemClient } from "../api/types";
 import { ItemActions } from "./ItemActions";
 import { OWNER_PERMISSIONS } from "../auth/permissions";
+import { server } from "../test/msw/server";
 
 const item: Item = {
   pk: "7",
@@ -100,6 +102,18 @@ test("deletes an item after confirmation and calls onDeleted", async () => {
 });
 
 test("toggles publication from the menu", async () => {
+  // REV-082 : le test d'origine n'observait que la fermeture du menu — un
+  // composant qui enverrait la mauvaise valeur (ou aucune) au PATCH aurait
+  // fait passer ce test tel quel. Un handler MSW local capture le corps
+  // réellement envoyé et l'asserte contre {isPublished: true} (item.isPublished
+  // vaut false au départ, ci-dessus).
+  let capturedBody: unknown;
+  server.use(
+    http.patch("https://core.test/v1/items/:pk", async ({ request }) => {
+      capturedBody = await request.json();
+      return HttpResponse.json({ ...item, isPublished: true });
+    }),
+  );
   render(
     <Harness>
       <ItemActions item={item} />
@@ -111,6 +125,7 @@ test("toggles publication from the menu", async () => {
   await waitFor(() =>
     expect(screen.queryByRole("button", { name: "Publier" })).not.toBeInTheDocument(),
   );
+  expect(capturedBody).toEqual({ isPublished: true });
 });
 
 // Revue finale SP-17b (I3) : la création d'un ReportSchedule est refusée en
