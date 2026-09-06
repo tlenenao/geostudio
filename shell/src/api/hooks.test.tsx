@@ -16,6 +16,7 @@ import {
   useCreateHarvestSource,
   useCreateItem,
   useCreateMap,
+  useCreateReportSchedule,
   useDeleteItem,
   useGroups,
   useHarvestSources,
@@ -249,6 +250,41 @@ test("useCreateBookmark creates a bookmark and invalidates items", async () => {
     extent: null,
     crossFilter: {},
   });
+});
+
+// REV-055 : useCreateReportSchedule n'invalidait aucune query au succès,
+// contrairement à ses jumelles useCreate* (useCreateMap, useCreateBookmark,
+// useCreatePipeline...) qui invalident toutes ["items"]. Vérifié ici sur
+// invalidateQueries lui-même (pas seulement l'appel au client), contrairement
+// aux tests useCreateMap/useCreateBookmark ci-dessus qui ne l'affirment pas
+// malgré leur nom.
+test("useCreateReportSchedule crée un rapport planifié et invalide items", async () => {
+  const client = {
+    createReportScheduleItem: vi
+      .fn()
+      .mockResolvedValue({ pk: "report-1", resourceType: "report", title: "Rapport hebdo" }),
+  } as unknown as ItemClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+  function reportWrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <ItemClientProvider client={client}>{children}</ItemClientProvider>
+      </QueryClientProvider>
+    );
+  }
+  const { result } = renderHook(() => useCreateReportSchedule(), { wrapper: reportWrapper });
+  await result.current.mutateAsync({
+    title: "Rapport hebdo",
+    owner: "alice",
+    report: {
+      bookmarkItemId: "bm-1",
+      refreshPolicy: { enabled: true, cron: "0 8 * * 1" },
+      channels: [],
+    },
+  });
+  expect(client.createReportScheduleItem).toHaveBeenCalled();
+  expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["items"] });
 });
 
 test("useMapConfig loads a map config", async () => {

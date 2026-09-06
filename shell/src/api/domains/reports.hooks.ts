@@ -5,9 +5,13 @@ import type { ReportSchedulePayload } from "../types";
 
 export function useCreateReportSchedule() {
   const client = useItemClientInternal();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { title: string; owner: string; report: ReportSchedulePayload }) =>
       client.createReportScheduleItem(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["items"] });
+    },
   });
 }
 

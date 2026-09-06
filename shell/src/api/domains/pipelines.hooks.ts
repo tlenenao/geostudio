@@ -53,13 +53,6 @@ export function usePipelinePreview(pipelineId: string, nodeId: string | null) {
   });
 }
 
-export function useRunPipeline(pk: string) {
-  const client = useItemClientInternal();
-  return useMutation({
-    mutationFn: () => client.runPipeline(pk),
-  });
-}
-
 export function usePipelineWebhookTokens(pk: string) {
   const client = useItemClientInternal();
   return useQuery({
