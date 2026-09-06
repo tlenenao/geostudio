@@ -2551,6 +2551,28 @@ test("listCollections returns the admin collection shape including owner", async
   ]);
 });
 
+test("listCollections relaie q en paramètre de recherche", async () => {
+  server.use(
+    http.get("https://core.test/collections", ({ request }) => {
+      const url = new URL(request.url);
+      expect(url.searchParams.get("q")).toBe("commune");
+      return HttpResponse.json({ collections: [] });
+    }),
+  );
+  await makeClient().listCollections({ q: "commune" });
+});
+
+test("listCollections sans paramètre reste rétrocompatible", async () => {
+  server.use(
+    http.get("https://core.test/collections", ({ request }) => {
+      const url = new URL(request.url);
+      expect(url.searchParams.has("q")).toBe(false);
+      return HttpResponse.json({ collections: [] });
+    }),
+  );
+  await makeClient().listCollections();
+});
+
 test("listCandidateTables returns the candidates array as-is", async () => {
   server.use(
     http.get("https://core.test/collections/candidates", () =>

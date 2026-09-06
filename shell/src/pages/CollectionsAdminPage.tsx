@@ -16,7 +16,8 @@ import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 
 export function CollectionsAdminPage() {
-  const collectionsQuery = useCollectionsAdmin();
+  const [q, setQ] = useState("");
+  const collectionsQuery = useCollectionsAdmin({ q });
   const deleteCollection = useDeleteCollection();
   const [registering, setRegistering] = useState(false);
   const [editing, setEditing] = useState<CollectionAdmin | null>(null);
@@ -76,6 +77,15 @@ export function CollectionsAdminPage() {
                   Enregistrer une table
                 </Button>
               </div>
+              <input
+                type="search"
+                role="searchbox"
+                aria-label="Rechercher une collection…"
+                placeholder="Rechercher…"
+                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
               {collectionsQuery.isLoading && <p role="status">Chargement…</p>}
               {collectionsQuery.isError && (
                 <p role="alert" className="text-sm text-danger">

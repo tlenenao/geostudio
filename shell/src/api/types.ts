@@ -408,7 +408,7 @@ export interface ItemClient {
   listAllExtensions(): Promise<AdminExtension[]>;
   setExtensionEnabled(id: string, enabled: boolean): Promise<void>;
   getMetadataCatalog(): Promise<MetadataCatalog>;
-  listCollections(): Promise<CollectionAdmin[]>;
+  listCollections(params?: { q?: string }): Promise<CollectionAdmin[]>;
   listCandidateTables(): Promise<CandidateTable[]>;
   createCollection(input: CollectionCreateInput): Promise<CollectionAdmin>;
   createEmptyCollection(input: CreateEmptyCollectionInput): Promise<{ id: string }>;
