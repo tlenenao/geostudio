@@ -6,19 +6,18 @@ unique, cf. app.ingestion.importer.run_import) et par unregister_collection.
 cdc-worker ne touche jamais à cette publication — il ne fait que la
 consommer (app.cdc.consumer).
 
-Pas d'import de app.collections.ddl.quote_ident ici (le quoting est
-réimplémenté localement) : ddl.py importe ce module pour appeler
+Le quoting vient de `app.sql_ident` (GAP-15, premier volet), pas de
+`app.collections.ddl` : ddl.py importe ce module pour appeler
 add_table_to_publication depuis apply_collection_ddl, un import dans l'autre
-sens créerait un cycle."""
+sens créerait un cycle — `app.sql_ident` est indépendant des deux, la
+duplication historique n'est donc plus nécessaire."""
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.sql_ident import quote_ident as _qi
+
 PUBLICATION_NAME = "geostudio_cdc"
-
-
-def _qi(session: Session, identifier: str) -> str:
-    return session.get_bind().dialect.identifier_preparer.quote(identifier)
 
 
 def ensure_publication_exists(session: Session) -> None:
