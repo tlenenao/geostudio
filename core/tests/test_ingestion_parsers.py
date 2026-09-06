@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
+import datetime
+import io
 import warnings
 import zipfile
 
 import numpy as np
 import pytest
 import shapely
+from openpyxl import Workbook
 from pyogrio.raw import write as pyogrio_write
 from shapely.geometry import Point
 
@@ -17,6 +20,7 @@ from app.ingestion.parsers import (
     parse_geojson,
     parse_gpkg,
     parse_shapefile_zip,
+    parse_xlsx_latlon,
 )
 
 
@@ -355,3 +359,58 @@ def test_parse_shapefile_zip_auto_selects_single_layer(tmp_path):
     content = _shapefile_zip_bytes(tmp_path)
     rows = list(parse_shapefile_zip(content, layer_name=None))
     assert len(rows) == 2
+
+
+def _xlsx_bytes(rows: list[list], headers: list[str]) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_parse_xlsx_latlon_auto_detects_columns():
+    content = _xlsx_bytes([["Paris", 48.85, 2.35]], ["nom", "lat", "lon"])
+    rows = list(parse_xlsx_latlon(content, None, None))
+    assert len(rows) == 1
+    geom, props = rows[0]
+    assert (geom.x, geom.y) == (2.35, 48.85)
+    assert props == {"nom": "Paris"}
+
+
+def test_parse_xlsx_latlon_uses_explicit_field_names():
+    content = _xlsx_bytes([["Paris", 48.85, 2.35]], ["nom", "y_coord", "x_coord"])
+    rows = list(parse_xlsx_latlon(content, "y_coord", "x_coord"))
+    geom, _props = rows[0]
+    assert (geom.x, geom.y) == (2.35, 48.85)
+
+
+def test_parse_xlsx_latlon_raises_when_columns_cannot_be_detected():
+    content = _xlsx_bytes([["A", 1]], ["nom", "valeur"])
+    with pytest.raises(IngestionParseError, match="introuvables"):
+        list(parse_xlsx_latlon(content, None, None))
+
+
+def test_parse_xlsx_latlon_fails_fast_on_invalid_row():
+    content = _xlsx_bytes([["Paris", 48.85, 2.35], ["Casse", "abc", 2.35]], ["nom", "lat", "lon"])
+    with pytest.raises(IngestionParseError, match="ligne 2"):
+        list(parse_xlsx_latlon(content, None, None))
+
+
+def test_parse_xlsx_latlon_serializes_datetime_property_to_iso_string():
+    when = datetime.datetime(2026, 9, 5, 10, 30)
+    content = _xlsx_bytes([["Paris", 48.85, 2.35, when]], ["nom", "lat", "lon", "maj"])
+    rows = list(parse_xlsx_latlon(content, None, None))
+    _geom, props = rows[0]
+    assert props["maj"] == when.isoformat()
+    assert isinstance(props["maj"], str)
+
+
+def test_parse_xlsx_latlon_empty_cell_becomes_none_property():
+    content = _xlsx_bytes([["Paris", 48.85, 2.35, None]], ["nom", "lat", "lon", "notes"])
+    rows = list(parse_xlsx_latlon(content, None, None))
+    _geom, props = rows[0]
+    assert props["notes"] is None

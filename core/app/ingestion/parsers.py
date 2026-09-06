@@ -6,6 +6,7 @@ propriétés) ; toute ligne/feature/entité invalide lève IngestionParseError
 immédiatement (fail-fast) — pas d'import partiel silencieux."""
 
 import csv
+import datetime
 import io
 import json
 import math
@@ -18,6 +19,7 @@ import numpy as np
 import pyogrio
 import pyproj
 import shapely
+from openpyxl import load_workbook
 from pyogrio.errors import DataLayerError, DataSourceError
 from pyproj.exceptions import ProjError
 from shapely.errors import ShapelyError
@@ -120,6 +122,54 @@ def parse_csv_latlon(
                 f"ligne {i} : lat/lon invalide ('{row.get(lat_field)}', '{row.get(lon_field)}')"
             ) from None
         properties = {k: v for k, v in row.items() if k not in (lat_field, lon_field)}
+        yield Point(lon, lat), properties
+
+
+def _xlsx_cell_value(value):
+    if isinstance(value, (datetime.datetime, datetime.date)):
+        return value.isoformat()
+    return value
+
+
+def parse_xlsx_latlon(
+    content: bytes,
+    lat_field: str | None,
+    lon_field: str | None,
+) -> Iterator[tuple[BaseGeometry, dict]]:
+    wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    ws = wb.active
+    rows_iter = ws.iter_rows(values_only=True)
+    try:
+        header_row = next(rows_iter)
+    except StopIteration:
+        raise IngestionParseError("classeur XLSX vide") from None
+    fieldnames = [str(name) if name is not None else "" for name in header_row]
+    if lat_field is None or lon_field is None:
+        detected = detect_lat_lon_fields(fieldnames)
+        if detected is None:
+            raise IngestionParseError(
+                "colonnes lat/lon introuvables automatiquement — précisez-les"
+            )
+        lat_field, lon_field = detected
+    if lat_field not in fieldnames or lon_field not in fieldnames:
+        raise IngestionParseError(f"colonnes '{lat_field}'/'{lon_field}' absentes du XLSX")
+    lat_idx = fieldnames.index(lat_field)
+    lon_idx = fieldnames.index(lon_field)
+    for i, row in enumerate(rows_iter, start=1):
+        raw_lat = row[lat_idx] if lat_idx < len(row) else None
+        raw_lon = row[lon_idx] if lon_idx < len(row) else None
+        try:
+            lat = float(raw_lat)
+            lon = float(raw_lon)
+        except (TypeError, ValueError):
+            raise IngestionParseError(
+                f"ligne {i} : lat/lon invalide ('{raw_lat}', '{raw_lon}')"
+            ) from None
+        properties = {
+            name: _xlsx_cell_value(row[j] if j < len(row) else None)
+            for j, name in enumerate(fieldnames)
+            if j not in (lat_idx, lon_idx)
+        }
         yield Point(lon, lat), properties
 
 
