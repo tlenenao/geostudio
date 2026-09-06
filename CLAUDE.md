@@ -218,21 +218,6 @@ avant de reprendre un chantier ouvert ou de rouvrir une surface déjà livrée.
 Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
 `docs/superpowers/plans/`.
 
-### En cours
-
-- **SP-53** — Automatisation : compléter les éditeurs + déclenchement par
-  webhook (GAP-24/43/44/48/49/50). Lancé le 2026-09-06 en 5 subagents
-  parallèles dans des worktrees git dédiés (isolation garantie) : Track 1
-  webhook de déclenchement (GAP-24), Track 2 MCP alertes + `GET
-  /dcat/datasets/{id}` (GAP-48+GAP-62), Track 3 UX builder automatisation
-  (GAP-43/49/50), Track 4 dédup helper SQL `quote_ident` (GAP-15, volet 1),
-  Track 5 quick-wins shell (GAP-31/44 + pagination). **Résultats pas encore
-  fusionnés sur `dev`** au moment de cette entrée — au moins un track
-  (webhook) a été construit dans un worktree basé sur un commit antérieur à
-  SP-44 (dérive de base constatée en session, cause non élucidée), rebase
-  à faire avant fusion. Ne pas marquer ce chantier `Livré` avant revue finale
-  + fusion effective.
-
 ### Livré
 
 - **SP-0** — shell (catalogue, partage/publication, éditeur de carte, builder) +
@@ -1092,6 +1077,41 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   `staticExport/` (`REV-177`), extension de l'audit a11y au reste du
   catalogue de routes + `eslint-plugin-jsx-a11y` en complément statique
   (`REV-178`).
+- **SP-53** — Automatisation : compléter les éditeurs + déclenchement par
+  webhook (GAP-24/43/44/48/49/50), merge `06821047`. Sélecteur de secret
+  pour connecteurs pipeline (`SecretParamSelect`, GAP-43) ; `intervalMinutes`
+  exposé sur les panneaux de moissonnage (GAP-44) ; avertissement de
+  binding de widget hors permissions déclarées (GAP-49) ; canal e-mail +
+  requête configurable sur `AlertRuleEditor` (GAP-50) ; `create_alert_rule`/
+  `run_alert_rule` côté MCP (GAP-48) ; déclenchement de pipeline par webhook
+  entrant — `PipelineWebhookToken` haché, `POST /pipelines/{id}/trigger`
+  seule route du dépôt sans `Depends(get_current_user)`, réutilise
+  `run_pipeline_service` (jamais un 3e chemin d'écriture), génération/
+  révocation gardée par `Privilege.AUTOMATION_SECRETS_MANAGE` (GAP-24).
+  **Ce chantier a été mené et fusionné par une session concurrente avant
+  que ce fichier ne le documente** — trouvé après coup (2026-09-06) au
+  moment de rebaser 5 subagents lancés en parallèle sur le même périmètre,
+  sans savoir qu'il était déjà clos : 2 des 5 tracks (webhook complet, UX
+  builder complet) se sont révélés entièrement redondants une fois le
+  merge `06821047` repéré dans l'historique (piège n°12 à l'envers — cette
+  fois le code était en avance sur ce fichier, pas l'inverse — abandonnés
+  sans fusion). Leçon retenue : avant de lancer plusieurs subagents sur un
+  chantier listé « restant » dans la feuille de route révisée, vérifier
+  `git log` pour un merge déjà présent, pas seulement l'absence d'une ligne
+  `### Livré` ici.
+- **GAP-62 (reste) + GAP-15 (volet 1)** — fermés le 2026-09-06, seule partie
+  utile récupérée des 2 tracks restants du lancement ci-dessus. `GET
+  /dcat/datasets/{id}` dégrade désormais à `bbox=None` sur collection cassée
+  (même patron que `get_catalog`/`get_collection`, `_resolve_bbox_degrading`
+  partagée) — 2 tests écrits contre un worktree périmé (pré-SP-57b, sans
+  préfixe `/v1/`) corrigés en les rebasant. `core/app/sql_ident.py` factorise
+  le helper de quoting d'identifiant dupliqué sur 11 fichiers (2 fonctions
+  distinctes gardées, Postgres session-based vs DuckDB systématique — pas
+  fusionnées, comportements réellement différents) ; `core/app/pipelines/
+  {compiler,connector_runtime,runtime}.py` gardent leur propre copie locale,
+  exclusion volontaire (fragilité `runtime.py` post-SP-43, ~57 monkeypatchs
+  de test) ; `introspection_pg.py` n'avait rien à migrer (seul un appel à la
+  fonction SQL native `quote_ident()`, pas le helper Python).
 
 ### Conventions tranchées (2026-09-01)
 

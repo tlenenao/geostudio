@@ -56,12 +56,20 @@ purge (force-push) ; `git merge-base --is-ancestor` contre `origin/main`,
 `origin/dev` et le tag `v0.1.0` **d'origin** confirme la purge réellement
 effective sur le dépôt public — GAP-77 reste fermé.
 
-**5 gaps de ce document (GAP-24, GAP-31, GAP-43, GAP-44, GAP-48, GAP-49,
-GAP-50 — 7 au total) sont en cours d'exécution au moment de cette passe** :
-SP-53 (« Automatisation : compléter les éditeurs + déclenchement par
-webhook »), lancée le 2026-09-06 en 5 subagents parallèles dans des worktrees
-git dédiés, résultats pas encore fusionnés sur `dev`. Ne pas les marquer
-fermés avant fusion + revue finale.
+**Correction post-passe (2026-09-06, plus tard le même jour)** : SP-53
+(« Automatisation : compléter les éditeurs + déclenchement par webhook »,
+GAP-24/43/44/48/49/50) était en réalité **déjà fusionnée sur `dev`**
+(`06821047`) au moment où cette section a été écrite — fusionnée par une
+session concurrente avant même la rédaction de cette passe, sans qu'aucune
+ligne `### Livré` de `CLAUDE.md` ne l'indique encore. Découvert quelques
+heures plus tard en tentant de rebaser 5 subagents lancés par erreur sur ce
+même périmètre déjà clos (2 des 5 se sont révélés entièrement redondants).
+Les 6 gaps ci-dessous sont donc **fermés**, pas « en cours ». GAP-31
+(capacités `/me`) est un chantier distinct, non couvert par SP-53 — fermé
+séparément le même jour (Track 5 du lancement redondant, seul non
+redondant). GAP-62 (reste) et GAP-15 (volet 1, dédup `quote_ident`) sont
+également fermés le même jour, seule partie utile récupérée des 2 tracks
+restants.
 
 | GAP | État | Fermé par / statut détaillé |
 |---|---|---|
@@ -79,14 +87,14 @@ fermés avant fusion + revue finale.
 | GAP-12 | **Fermé** | SP-54 (liens de partage à échéance, `share_link`) |
 | GAP-13 | **Fermé** | SP-52 (widget `variableInput`) |
 | GAP-14 | **Fermé (avec dette résiduelle)** | SP-57a (i18n 7 lots, a11y échantillon 9 pages) + SP-57b (`/v1/`, `docs/adr/`, contribution). Reste : détecteur i18n limité à 4 répertoires (REV-177), échantillon a11y non exhaustif (REV-178), token `--gs-ink-3` sous seuil AA non corrigé (REV-176) |
-| GAP-15 | **Partiel** | 6.3 (`itemClient.ts` 1743→53 lignes) fermé par SP-43 ; 6.1 (dédup `quote_ident`, 17 fichiers) **en cours** (SP-53, worktree dédié, 14/17 fichiers dans cette passe — 3 fichiers `pipelines/*.py` exclus pour éviter la collision avec GAP-24) |
+| GAP-15 | **Partiel** | 6.3 (`itemClient.ts` 1743→53 lignes) fermé par SP-43 ; 6.1 (dédup `quote_ident`) **fermé** le 2026-09-06 sur 11 fichiers (`core/app/sql_ident.py`) — `pipelines/{compiler,connector_runtime,runtime}.py` exclus volontairement (fragilité `runtime.py` post-SP-43), `introspection_pg.py` sans duplication réelle à migrer |
 | GAP-16 à GAP-23 | Ouvert | Référentiel 2 (benchmark), aucune décision produit prise |
-| GAP-24 | **En cours** | SP-53 (jeton opaque + route de déclenchement webhook), worktree non fusionné |
+| GAP-24 | **Fermé** | SP-53 (`06821047`) — jeton opaque + `POST /pipelines/{id}/trigger` |
 | GAP-25 à GAP-27 | Ouvert | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-28 | **Fermé** | SP-47 (domaine `app/usage/`, `GET /usage/summary`) |
 | GAP-29 | **Partiel** | Formats fermés (GAP-09/SP-56) ; écart de largeur de couverture face au marché (450+ connecteurs FME) reste réel, question de positionnement produit non « fermable » par du code |
 | GAP-30 | **Fermé** | SP-46 (`ADMIN_LINKS`) |
-| GAP-31 | **En cours** | SP-53 (`AppLayout.tsx` vers `useMe().capabilities`), worktree non fusionné |
+| GAP-31 | **Fermé** | 2026-09-06 (hors SP-53) — `AppLayout.tsx` vers `useMe().capabilities` |
 | GAP-32 | **Fermé** | SP-46 (lien `/reports` depuis `CatalogPage`) |
 | GAP-33 | **Fermé** | SP-52 (retrait `moveItem`/`resizeItem`/`styleFor`, vérifié absent de `grid.ts`) |
 | GAP-34 | Ouvert | Décision produit non tranchée (implémenter le rendu ou retirer du schéma) |
@@ -98,14 +106,14 @@ fermés avant fusion + revue finale.
 | GAP-40 | **Fermé** | SP-54 (`listCollections(params?)`, `search_collections` MCP) |
 | GAP-41 | **Fermé** | SP-45 (`MARTIN_SECRET` retiré, vérifié absent de `docker-compose.yml`/`bootstrap-env.sh`) |
 | GAP-42 | **Fermé** | SP-54 (`createGroup`/`addGroupMember`) |
-| GAP-43 | **En cours** | SP-53 (sélecteur de secret `PipelineNodeInspector`), worktree non fusionné |
-| GAP-44 | **En cours** | SP-53 (`intervalMinutes` sur les panneaux moissonnage), worktree non fusionné |
+| GAP-43 | **Fermé** | SP-53 (`06821047`) — sélecteur de secret `PipelineNodeInspector`/`SecretParamSelect` |
+| GAP-44 | **Fermé** | SP-53 (`06821047`) — `intervalMinutes` sur les panneaux moissonnage |
 | GAP-45 | **Fermé** | SP-51 (éditeur JSON replié, mode avancé, vérifié dans `LayersPanel.tsx`) |
 | GAP-46 | **Fermé** | SP-51 (vérifié déjà résolu par la spec elle-même, aucun code touché nécessaire) |
 | GAP-47 | **Fermé** | SP-54 (`query_features` relaie `geomIntersects`) |
-| GAP-48 | **En cours** | SP-53 (`create_alert_rule`/`run_alert_rule` MCP), worktree non fusionné |
-| GAP-49 | **En cours** | SP-53 (validation proactive widgets d'extension), worktree non fusionné |
-| GAP-50 | **En cours** | SP-53 (`AlertRuleEditor` parité `ReportScheduleEditor`), worktree non fusionné |
+| GAP-48 | **Fermé** | SP-53 (`06821047`) — `create_alert_rule`/`run_alert_rule` MCP |
+| GAP-49 | **Fermé** | SP-53 (`06821047`) — avertissement de binding hors permissions déclarées |
+| GAP-50 | **Fermé** | SP-53 (`06821047`) — `AlertRuleEditor` : canal e-mail + requête configurable |
 | GAP-51 | **Fermé** | SP-52 (éditeur d'enregistrements JSON, vérifié dans `DataSourcePanel.tsx`) |
 | GAP-52 | **Fermé** | SP-51 (basemap/terrain/caméra/Jenks ; palette déjà existante) |
 | GAP-53 | **Fermé** | SP-51 (`interactiveTools` sur `MapEditorPage`) |
@@ -117,7 +125,7 @@ fermés avant fusion + revue finale.
 | GAP-59 | **Fermé** | SP-50 (plafond de taille + signalement d'échec sur les 8 connecteurs) |
 | GAP-60 | **Fermé** | SP-50 (liens STAC items) |
 | GAP-61 | **Fermé** | SP-45 (`caller_key` par IP réelle via `ProxyHeadersMiddleware`, vérifié dans `ratelimit/limiter.py`) |
-| GAP-62 | **Partiel** | Listes dégradées (SP-50) ; `GET /dcat/datasets/{id}` **en cours** (SP-53, worktree non fusionné) |
+| GAP-62 | **Fermé** | Listes dégradées (SP-50) ; `GET /dcat/datasets/{id}` fermé le 2026-09-06 (hors SP-53) |
 | GAP-63 | **Fermé** | SP-43 (comparateur modèle/Alembic, 24 `server_default`) + SP-49 (downgrade 0024 no-op documenté, index `alert_evaluations`/`pipeline_runs`) |
 | GAP-64 | **Fermé** | SP-49 (batching des 3 balayages cron + N+1 harvest) |
 | GAP-65 | **Fermé** | SP-54 (`getMe()` capabilities/id/email/tenantId, vérifié dans `auth/routes.py`) |
@@ -448,3 +456,24 @@ sérieux (dette de sécurité, de fiabilité et de découvrabilité plutôt que 
 trous fonctionnels béants — le produit couvre une surface fonctionnelle très
 large, cf. les 247 lignes `livre` de la matrice), le reste confort/dette
 technique à traiter au rythme normal du backlog.
+
+## Addendum — trouvaille postérieure au 2026-09-04
+
+### GAP-80 — `/bookmarks` inatteignable (même classe que GAP-30/32/39/67)
+
+Trouvé le 2026-09-06 (session concurrente `revue-71`, en validant un calcul
+annexe — vérifié à la main, pas déduit d'un grep de mot). La route
+`/bookmarks` (`shell/src/shell/routes.tsx:315`) n'a **aucun point d'entrée** :
+le littéral `"/bookmarks"` n'apparaît qu'à sa propre déclaration dans tout
+`shell/src/` — aucun `<Link>`, aucun `navigate()`, aucune entrée de nav.
+Pourtant `useCreateBookmark` est bien câblé (`shell/src/pages/
+AppRuntimePage.tsx:114`) : un utilisateur peut créer un signet et ne jamais
+pouvoir le retrouver. Fonctionnalité livrée par **SP-14m** (jalon M11) —
+absente des 13 lignes « inerte » recensées par SP-42 (référentiel 3
+ci-dessus), donc non comptée dans le total de 79. Même mécanisme que SP-46
+(GAP-30/32/39/67, « livré mais inatteignable ») : à traiter avec le même
+patron (lien réel depuis un écran pertinent, pas de garde de privilège
+nécessaire ici puisque `/bookmarks` n'en a aucune côté route).
+
+- **Coût estimé** : 1-2 (mécanique, même patron que SP-46).
+- **État** : ouvert.
