@@ -68,6 +68,7 @@ const KIND_LABELS: Record<SecretPayload["kind"], string> = {
   oauth2_client_credentials: t("secretParamSelect.kindOAuth2"),
   postgres_dsn: t("secretParamSelect.kindPostgresDsn"),
   smtp: t("secretParamSelect.kindSmtp"),
+  snowflake_dsn: t("secretParamSelect.kindSnowflakeDsn"),
 };
 
 const ALL_KINDS = Object.keys(KIND_LABELS) as SecretPayload["kind"][];
@@ -118,6 +119,7 @@ function SecretCreateForm({
           clientSecret: field("clientSecret"),
         };
       case "postgres_dsn":
+      case "snowflake_dsn":
         return { kind, dsn: field("dsn") };
       case "smtp":
         return {
@@ -279,7 +281,7 @@ function SecretCreateForm({
           </label>
         </>
       )}
-      {kind === "postgres_dsn" && (
+      {(kind === "postgres_dsn" || kind === "snowflake_dsn") && (
         <label className="flex flex-col gap-1 text-xs">
           {t("secretParamSelect.dsnLabel")}
           <input
