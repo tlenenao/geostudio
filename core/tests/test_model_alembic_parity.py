@@ -237,6 +237,25 @@ def _flatten_diff(diff_list: list) -> list:
 # index (jamais un remove_index générique) et laisser la matérialisation
 # complète à une tâche dédiée si voulue — cf. rapport de la Tâche 5 pour la
 # recommandation détaillée au contrôleur.
+# Spike de vérification mené (REV-175, 2026-09) sur un Postgres+pgvector
+# jetable : les deux formes `Index(...)` SQLAlchemy équivalentes (GIN sur
+# `sa.text("(title || ' ' || abstract) gin_trgm_ops")` ; ivfflat via
+# `postgresql_ops`/`postgresql_with`) émettent bien un DDL byte-pour-byte
+# identique à l'op.execute() brut ci-dessus (vérifié via
+# `pg_get_indexdef()`). Mais falsifier `compare_metadata()` lui-même (mêmes
+# paramètres que ce test) montre qu'Alembic est structurellement aveugle à
+# toute dérive réelle sur ces deux formes : un index trgm en base
+# délibérément différent du modèle déclaré (colonne simple au lieu de
+# l'expression concaténée), ou un ivfflat avec un autre opclass et un autre
+# `lists=`, ne produisent AUCUN diff — Alembic lève lui-même un
+# `UserWarning` ("Expression ... detected to include an operator clause.
+# Expression compare cannot proceed.") et renonce à comparer. Matérialiser
+# ces 4 index dans `Base.metadata` remplacerait donc un filtre honnête
+# ("on ne vérifie pas ça, et pourquoi") par une déclaration qui a l'air
+# vérifiée mais ne l'est pas — piège n°12 appliqué à un test plutôt qu'à un
+# document. Conclusion : NE PAS matérialiser tant qu'Alembic ne sait pas
+# comparer `postgresql_ops`/`postgresql_with` sur un index PostgreSQL — à
+# revérifier lors d'une montée de version majeure d'Alembic/SQLAlchemy.
 _KNOWN_FUNCTIONAL_INDEXES = {
     "ix_collections_embedding",
     "ix_collections_trgm",
