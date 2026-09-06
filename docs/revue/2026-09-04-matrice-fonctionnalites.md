@@ -1,10 +1,18 @@
 # Matrice des fonctionnalités — GeoStudio
 
+> **Document historique, gelé le 2026-09-06 (SP-61).** Cette matrice est une
+> photo du 2026-09-04, produite une fois par huit agents ; elle a servi de
+> matière première à `analyse-gaps.md` et au backlog et le reste telle quelle.
+> Le document vivant qui la remplace est **`docs/revue/bilan-fonctionnalites.html`**
+> (rendu Markdown : `bilan-fonctionnalites.md`), regénéré par
+> `uv run python scripts/feature_health_cli.py --repo .. --write` depuis
+> `docs/revue/inventaire-fonctionnalites.jsonl`. Ne plus éditer ce fichier-ci.
+
 **Date de la revue :** 2026-09-04. **Commit de base :** `87eb55ad`
 (`docs(plan): plan d'exécution de la revue globale en trois vagues (SP-42)`),
 sur la branche `dev`.
 
-**Version consultable :** <https://claude.ai/code/artifact/6010f351-a022-4074-8e20-60f1603781ac>
+**Version consultable :** [`2026-09-04-matrice-fonctionnalites.html`](2026-09-04-matrice-fonctionnalites.html)
 — même source de données que ce document pour les notes
 (`.superpowers/sdd/sp42-matrice-notee.jsonl`), plus un second onglet pour les 55
 fonctionnalités absentes (`.superpowers/sdd/sp42-fonctionnalites-absentes.jsonl`) ;
