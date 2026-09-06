@@ -14,9 +14,11 @@ from pyogrio.raw import write as pyogrio_write
 from shapely.geometry import Point
 
 from app.ingestion.parsers import (
+    GeometryMode,
     IngestionParseError,
     LayerInfo,
     detect_lat_lon_fields,
+    extract_geometry,
     list_layers,
     parse_csv_latlon,
     parse_geojson,
@@ -26,6 +28,46 @@ from app.ingestion.parsers import (
     parse_shapefile_zip,
     parse_xlsx_latlon,
 )
+
+
+def test_extract_geometry_latlon_mode():
+    geom, props = extract_geometry(
+        {"lat": "48.85", "lon": "2.35", "name": "Paris"},
+        GeometryMode(kind="latlon", lat_field="lat", lon_field="lon"),
+    )
+    assert geom.equals(Point(2.35, 48.85))
+    assert props == {"name": "Paris"}
+
+
+def test_extract_geometry_latlon_mode_invalid_value_fails_fast():
+    with pytest.raises(IngestionParseError, match="lat/lon invalide"):
+        extract_geometry(
+            {"lat": "not-a-number", "lon": "2.35"},
+            GeometryMode(kind="latlon", lat_field="lat", lon_field="lon"),
+        )
+
+
+def test_extract_geometry_wkt_mode():
+    geom, props = extract_geometry(
+        {"wkt": "POINT (2.35 48.85)", "name": "Paris"},
+        GeometryMode(kind="wkt", wkt_field="wkt"),
+    )
+    assert geom.equals(Point(2.35, 48.85))
+    assert props == {"name": "Paris"}
+
+
+def test_extract_geometry_wkt_mode_invalid_value_fails_fast():
+    with pytest.raises(IngestionParseError, match="WKT invalide"):
+        extract_geometry({"wkt": "NOT WKT"}, GeometryMode(kind="wkt", wkt_field="wkt"))
+
+
+def test_extract_geometry_none_mode_keeps_all_properties():
+    geom, props = extract_geometry(
+        {"name": "Paris", "population": 2148000},
+        GeometryMode(kind="none"),
+    )
+    assert geom is None
+    assert props == {"name": "Paris", "population": 2148000}
 
 
 def test_parse_geojson_yields_geometry_and_properties():

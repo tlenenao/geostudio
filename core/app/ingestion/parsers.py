@@ -16,6 +16,7 @@ import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import Literal
 
 import geopandas as gpd
 import numpy as np
@@ -50,6 +51,44 @@ def detect_lat_lon_fields(fieldnames: list[str]) -> tuple[str, str] | None:
     if lat is None or lon is None:
         return None
     return lat, lon
+
+
+@dataclass(frozen=True)
+class GeometryMode:
+    """Résolu une fois par import (jamais recalculé ligne à ligne) — kind
+    fixe la stratégie, les champs optionnels portent les noms de colonnes
+    déjà résolus (auto-détection ou choix explicite de l'utilisateur, faits
+    en amont par l'appelant, jamais par extract_geometry elle-même)."""
+
+    kind: Literal["latlon", "wkt", "none"]
+    lat_field: str | None = None
+    lon_field: str | None = None
+    wkt_field: str | None = None
+
+
+def extract_geometry(row: dict, mode: GeometryMode) -> tuple[BaseGeometry | None, dict]:
+    """Retourne (géométrie ou None, propriétés restantes — colonnes de
+    géométrie retirées). Lève IngestionParseError sans contexte de ligne :
+    l'appelant (qui seul connaît l'index de ligne) re-lève avec son propre
+    contexte, cf. parse_csv_latlon/parse_xlsx_sheet."""
+    if mode.kind == "none":
+        return None, dict(row)
+    if mode.kind == "latlon":
+        raw_lat, raw_lon = row.get(mode.lat_field), row.get(mode.lon_field)
+        try:
+            lat, lon = float(raw_lat), float(raw_lon)
+        except (TypeError, ValueError):
+            raise IngestionParseError(f"lat/lon invalide ('{raw_lat}', '{raw_lon}')") from None
+        rest = {k: v for k, v in row.items() if k not in (mode.lat_field, mode.lon_field)}
+        return Point(lon, lat), rest
+    # mode.kind == "wkt"
+    raw_wkt = row.get(mode.wkt_field)
+    try:
+        geom = shapely.from_wkt(raw_wkt)
+    except (ShapelyError, TypeError) as exc:
+        raise IngestionParseError(f"WKT invalide ('{raw_wkt}') : {exc}") from exc
+    rest = {k: v for k, v in row.items() if k != mode.wkt_field}
+    return geom, rest
 
 
 def parse_geojson(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
