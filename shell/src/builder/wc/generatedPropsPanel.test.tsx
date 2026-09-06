@@ -140,3 +140,21 @@ test("selecting a data source calls onChange with its id", async () => {
   await userEvent.selectOptions(screen.getByLabelText("Source de données"), "ds-a");
   expect(onChange).toHaveBeenCalledWith({ source: "ds-a" });
 });
+
+test("affiche un avertissement si le binding actuel est hors périmètre déclaré", () => {
+  const Panel = makeGeneratedPropsPanel(manifestWithDataSource);
+  render(<Panel props={{ source: "ds-b" }} dataSources={DS} onChange={() => {}} />, { wrapper });
+  expect(screen.getByRole("alert")).toHaveTextContent(/hors de ses permissions déclarées/);
+});
+
+test("n'affiche aucun avertissement si le binding actuel est permis", () => {
+  const Panel = makeGeneratedPropsPanel(manifestWithDataSource);
+  render(<Panel props={{ source: "ds-a" }} dataSources={DS} onChange={() => {}} />, { wrapper });
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+test("n'affiche aucun avertissement si aucune source n'est encore choisie", () => {
+  const Panel = makeGeneratedPropsPanel(manifestWithDataSource);
+  render(<Panel props={{ source: "" }} dataSources={DS} onChange={() => {}} />, { wrapper });
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
