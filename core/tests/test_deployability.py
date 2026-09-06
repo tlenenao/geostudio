@@ -1328,3 +1328,11 @@ def test_documented_env_vars_extractor_has_not_silently_regressed_to_empty():
         f"documented_env_vars() n'a trouvé que {len(found)} variable(s) — "
         "régression probable de la regex sur .env.example"
     )
+
+
+def test_feature_health_gate_runs_in_ci():
+    """SP-61 : un garde-fou qui n'est pas câblé dans la CI ne garde rien —
+    piège n°2 de CLAUDE.md, « livré + testé + mergé ≠ câblé »."""
+    ci = CI.read_text()
+    assert "feature_health_cli.py" in ci
+    assert "--check" in ci

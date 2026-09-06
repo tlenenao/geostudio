@@ -109,11 +109,16 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
   (pas de récit long dans ce fichier — il est chargé à chaque session).
   **Obligatoire dans le même geste, jamais différé** : mettre à jour l'état
   des `GAP-nn` concernés dans `docs/revue/2026-09-04-analyse-gaps.md` (ouvert
-  → fermé, référence à la SP) et les colonnes concernées de
-  `docs/revue/2026-09-04-matrice-fonctionnalites.md`. Raison (piège n°12,
-  vécu le 2026-09-06) : ces deux documents sont restés des mois sans être
-  retouchés pendant que 17 SP fermaient des dizaines de gaps qu'ils
-  décrivent — le récit de `### Livré` était correct, mais ces deux
+  → fermé, référence à la SP), et **régénérer le bilan de fonctionnalités** —
+  `cd core && uv run python scripts/feature_health_cli.py --repo .. --write` —
+  après avoir ajouté à `docs/revue/inventaire-fonctionnalites.jsonl` toute
+  surface nouvellement livrée (route REST, outil MCP, route shell). La CI
+  refuse une surface non inventoriée (`core/tests/test_feature_inventory.py`) :
+  ce n'est plus une discipline, c'est une porte. La matrice datée
+  `2026-09-04-matrice-fonctionnalites.md` est **gelée** et ne se met plus à jour.
+  Raison (piège n°12, vécu le 2026-09-06) : ces deux documents sont restés des
+  mois sans être retouchés pendant que 17 SP fermaient des dizaines de gaps
+  qu'ils décrivent — le récit de `### Livré` était correct, mais ces deux
   documents-là, non consultés, avaient dérivé au point de contredire le code
   réel (`backlog.md` gardait 8 entrées `ouvert` déjà fermées). Ne pas laisser
   ces documents rejouer ce piège.
@@ -199,6 +204,15 @@ cd core && PYTHONPATH=. \
   CORE_SECRETS_MASTER_KEY="AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" \
   uv run python scripts/export_openapi.py openapi.json
 cd ../shell && npm run gen:api-types     # → src/api/generated/core-schema.d.ts
+
+# régénérer le bilan de fonctionnalités (SP-61) — À FAIRE à la clôture de
+# tout SP qui livre une surface nouvelle (route REST, outil MCP, route
+# shell), après l'avoir ajoutée à docs/revue/inventaire-fonctionnalites.jsonl.
+# La commande nue échoue en ModuleNotFoundError: scripts — il faut PYTHONPATH=. :
+cd core && PYTHONPATH=. uv run python scripts/feature_health_cli.py --repo .. --write
+# --check (sans --write) est la porte CI : sort en erreur si une surface
+# n'est pas inventoriée ou si la santé médiane passe sous le plancher mesuré
+# (core/scripts/feature_health_thresholds.json).
 
 # stack
 docker compose up -d # nécessite .env (cf. .env.example) ; 11 services par

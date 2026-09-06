@@ -143,6 +143,7 @@ restants.
 | GAP-77 | **Fermé** | SP-45 — revérifié ce jour contre `origin/main`/`origin/dev`/tag `v0.1.0` d'origin (voir encadré ci-dessus, fausse alerte locale écartée) |
 | GAP-78 | **Fermé** | SP-45 (`secret_scanning`/`dependabot_security_updates` enabled) |
 | GAP-79 | **Fermé** | SP-45 (`restart:` sur `traefik`, vérifié absent d'aucune contre-mention dans `docker-compose.yml`) |
+| GAP-81 | Ouvert | `/analytics/sql` (`shell/src/pages/SqlLabPage.tsx`) inatteignable — aucun lien du shell ne pointe vers cette route (cf. addendum ci-dessous pour le détail du câblage de navigation en cause) |
 
 **Décompte au 2026-09-06** : sur 79 gaps, **~48 fermés**, **7 en cours**
 (SP-53, non fusionnés), **~6 partiels** (fermeture partielle documentée
@@ -474,6 +475,21 @@ ci-dessus), donc non comptée dans le total de 79. Même mécanisme que SP-46
 (GAP-30/32/39/67, « livré mais inatteignable ») : à traiter avec le même
 patron (lien réel depuis un écran pertinent, pas de garde de privilège
 nécessaire ici puisque `/bookmarks` n'en a aucune côté route).
+
+- **Coût estimé** : 1-2 (mécanique, même patron que SP-46).
+- **État** : ouvert.
+
+### GAP-81 — `/analytics/sql` inatteignable (même classe que GAP-30/32/39/67/80)
+
+Trouvé le 2026-09-06 (SP-61, en constituant l'inventaire de fonctionnalités).
+La route `/analytics/sql` (`shell/src/shell/routes.tsx:330`) existe et est
+gardée côté serveur (`RequirePrivilege analytics.sql_lab.access`), mais
+`shell/src/shell/chrome/domainRoutes.ts:21` route le domaine Analytique vers
+`/?type=bookmark` — **aucun lien du shell ne pointe vers `/analytics/sql`**.
+Un analyste porteur du privilège ne peut atteindre le SQL Lab qu'en tapant
+l'URL à la main. Même mécanisme que SP-46 (GAP-30/32/39/67) et GAP-80
+(« livré mais inatteignable ») : à traiter avec le même patron (lien réel
+depuis un écran pertinent du domaine Analytique).
 
 - **Coût estimé** : 1-2 (mécanique, même patron que SP-46).
 - **État** : ouvert.
