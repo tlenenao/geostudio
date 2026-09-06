@@ -12,6 +12,7 @@ import json
 from dataclasses import dataclass
 
 from app.collections.introspection import TableInfo
+from app.sql_ident import quote_ident_duckdb as _qi
 
 
 class MissingGeometryColumn(Exception):
@@ -26,10 +27,6 @@ class FeaturePage:
     features: list[dict]
     number_matched: int
     number_returned: int
-
-
-def _qi(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
 
 
 def _sql_lit(value: str) -> str:

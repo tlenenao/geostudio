@@ -19,8 +19,9 @@ from typing import Any
 
 import duckdb
 
-from app.analytics.aggregate import _dedup_cte, _has_any_file, _qi
+from app.analytics.aggregate import _dedup_cte, _has_any_file
 from app.collections.introspection import TableInfo
+from app.sql_ident import quote_ident_duckdb as _qi
 
 ROW_CAP = 10_000
 STATEMENT_TIMEOUT_S = 10.0
