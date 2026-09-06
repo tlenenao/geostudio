@@ -10,6 +10,9 @@ Ce fichier teste le **dépôt**, pas `core/app/` : même entorse assumée que
 seul répertoire du dépôt qui possède un runner Python dans la CI."""
 
 import pathlib
+import statistics
+
+import pytest
 
 from scripts.feature_health.mcp_surface import index_mcp_tools
 from scripts.feature_health.model import load_inventory
@@ -84,3 +87,36 @@ def test_every_entry_has_at_least_one_proof():
         feature.identifier for feature in load_inventory(INVENTORY) if not feature.proofs
     )
     assert empty == [], f"Entrées sans aucune preuve : {empty}"
+
+
+COVERAGE_ARTEFACTS = (
+    REPO / "core/coverage.xml",
+    REPO / "shell/coverage/coverage-summary.json",
+)
+
+
+@pytest.mark.skipif(
+    not all(path.exists() for path in COVERAGE_ARTEFACTS),
+    reason=(
+        "artefacts de couverture absents — le plancher de santé est vérifié en CI "
+        "par le job `feature-health`, qui les récupère des jobs `core` et `shell`"
+    ),
+)
+def test_health_floors_hold():
+    """Plancher §6.2. Ce test ne peut pas tourner dans le job `core` de la CI :
+    `coverage.xml` y est écrit à la fin du pytest qui l'exécuterait, et la
+    couverture shell est produite sur une autre machine. Il tourne en local
+    (où les deux artefacts existent) et dans le job dédié."""
+    from scripts.feature_health_cli import compute
+
+    rows, thresholds = compute(REPO)
+    measured = [row["sante"] for row in rows if row["sante"] is not None]
+    low = sorted(
+        (row["feature"].identifier, row["sante"])
+        for row in rows
+        if row["feature"].priority == "haute"
+        and row["sante"] is not None
+        and row["sante"] < thresholds.floor_high_priority
+    )
+    assert low == [], f"fonctionnalités de priorité haute sous le plancher : {low}"
+    assert statistics.median(measured) >= thresholds.floor_median
