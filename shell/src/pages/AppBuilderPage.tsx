@@ -300,7 +300,13 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     );
 
   const setVariables = (variables: typeof draft.variables) =>
-    setDraft((d) => (d ? { ...d, variables } : d));
+    setDraft((d) => {
+      if (!d) return d;
+      const before = new Set((d.variables ?? []).map((v) => v.id));
+      const after = new Set((variables ?? []).map((v) => v.id));
+      const removedIds = [...before].filter((id) => !after.has(id)).map((id) => `var:${id}`);
+      return { ...d, variables, messages: pruneMessagesForIds(d.messages, removedIds) };
+    });
 
   function setPrintLayout(printLayout: PrintLayoutConfig | null) {
     setDraft((d) => (d ? { ...d, printLayout } : d));
