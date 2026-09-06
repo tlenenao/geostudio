@@ -80,6 +80,22 @@ test("200: renders the published site's runtime layout via AppRenderer", async (
   expect(screen.queryByText(/introuvable/i)).not.toBeInTheDocument();
 });
 
+test("SP-55 : pose document.title/meta description/canonical une fois le site chargé", async () => {
+  renderSite({
+    getItemBySlug: vi.fn().mockResolvedValue({ ...siteItem, abstract: "Un portail de démo" }),
+    getPublicAppConfig: vi.fn().mockResolvedValue(config),
+  });
+  await screen.findByText("Bienvenue sur le portail");
+
+  expect(document.title).toBe("Mon Portail");
+  expect(document.querySelector('meta[name="description"]')?.getAttribute("content")).toBe(
+    "Un portail de démo",
+  );
+  expect(document.querySelector('link[rel="canonical"]')?.getAttribute("href")).toBe(
+    `${window.location.origin}/sites/mon-portail`,
+  );
+});
+
 test("404: shows a not-found message without leaking whether the slug exists, and never fetches the config", async () => {
   const getPublicAppConfig = vi.fn().mockResolvedValue(config);
   renderSite(
