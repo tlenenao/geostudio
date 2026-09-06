@@ -176,6 +176,8 @@ n'y a pas d'équipe ni de support commercial derrière ce dépôt aujourd'hui.
 | [`docs/vision/2026-07-04-feuille-de-route-geostudio.md`](docs/vision/2026-07-04-feuille-de-route-geostudio.md) | La feuille de route et les arbitrages produit |
 | [`docs/`](docs/) | Specs, plans et revues datés de chaque chantier |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Lancer les tests, convention de commits, process de pull request |
+| [`SECURITY.md`](SECURITY.md) | Politique et canal de signalement des vulnérabilités |
+| [`docs/adr/`](docs/adr/) | Architecture Decision Records — décisions d'architecture qui contraignent durablement le code |
 | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Code de conduite du projet |
 | [`CHANGELOG.md`](CHANGELOG.md) | Historique des versions |
 | [`CLAUDE.md`](CLAUDE.md) | Guide de travail pour les sessions de développement (Claude) |
