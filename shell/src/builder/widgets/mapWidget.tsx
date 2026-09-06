@@ -13,12 +13,13 @@ import {
   symbologyToPaintInputs,
 } from "./mapSymbology";
 import type { LayerSymbology, LegendSpec } from "./mapSymbology";
-import type { MapConfig, PopupConfig } from "../../api/types";
+import type { MapConfig, MapTerrainConfig, PopupConfig } from "../../api/types";
 import type { MapViewHandle } from "../../map/MapView";
 import { ExplorerMenu } from "./ExplorerMenu";
 import { PopupEditor } from "../../map/PopupEditor";
 import { MapSymbologyEditor } from "../../map/MapSymbologyEditor";
 import { BasemapSelect } from "../../map/BasemapSelect";
+import { TerrainPanel } from "../../map/TerrainPanel";
 
 const MapView = lazy(() => import("../../map/MapView").then((m) => ({ default: m.MapView })));
 const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
@@ -198,6 +199,10 @@ export function registerMapWidget(): void {
             value={String(props.basemapStyle ?? DEFAULT_STYLE)}
             onChange={(style) => onChange({ ...props, basemapStyle: style })}
           />
+          <TerrainPanel
+            value={(props.terrain as MapTerrainConfig | null) ?? null}
+            onChange={(terrain) => onChange({ ...props, terrain })}
+          />
           <MapSymbologyEditor
             value={props.symbology as LayerSymbology | undefined}
             availableFields={[]} // PropsPanel has no schema (registry.ts) — same PopupEditor precedent
@@ -292,6 +297,7 @@ export function registerMapWidget(): void {
 
       const config: MapConfig = {
         basemap: { style: String(props.basemapStyle ?? DEFAULT_STYLE) },
+        terrain: (props.terrain as MapTerrainConfig | null) ?? null,
         view: { center: [2.4, 46.6], zoom: 5 },
         layers: url
           ? [

@@ -263,6 +263,19 @@ test("Component utilise props.basemapStyle s'il est défini (GAP-52/basemap)", a
   expect(lastMapConfig().basemap.style).toBe("https://custom/style.json");
 });
 
+test("PropsPanel expose le panneau de terrain (GAP-52/terrain)", () => {
+  const onChange = vi.fn();
+  renderPropsPanel({ props: { dataSourceId: "" }, onChange });
+  expect(screen.getByText("Terrain 3D")).toBeInTheDocument();
+});
+
+test("Component transmet props.terrain à MapView (GAP-52/terrain)", async () => {
+  const terrain = { tilesUrl: "https://t/{z}/{x}/{y}.png", encoding: "terrarium" as const };
+  renderWidget({ props: { dataSourceId: "ds1", terrain } });
+  await screen.findByTestId("mapview");
+  expect(lastMapConfig().terrain).toEqual(terrain);
+});
+
 test("recompute works for a plain collection-backed source (no datasetId), via dataSource.layer", async () => {
   const queryDataSource = vi.fn().mockResolvedValue([{ id: "", properties: { min: 0, max: 100 } }]);
   const onChange = vi.fn();
