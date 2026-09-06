@@ -70,6 +70,7 @@ app = procrastinate.App(
         "app.reports.jobs",
         "app.tileset3d.jobs",
         "app.terrain3d.jobs",
+        "app.security.jobs",
     ],
     worker_defaults={"worker_middleware": [observability.otel_worker_middleware]},
 )
