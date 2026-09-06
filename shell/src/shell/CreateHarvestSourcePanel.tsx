@@ -14,13 +14,20 @@ export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
   const [type, setType] = useState<HarvestSourceType>("stac");
   const [url, setUrl] = useState("");
   const [mode, setMode] = useState<"reference" | "copy">("reference");
+  const [intervalMinutes, setIntervalMinutes] = useState("");
   const copyAllowed = COPY_TYPES.includes(type);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!url) return;
     try {
-      await createSource.mutateAsync({ type, url, mode, enabled: true });
+      await createSource.mutateAsync({
+        type,
+        url,
+        mode,
+        enabled: true,
+        ...(intervalMinutes ? { intervalMinutes: Number(intervalMinutes) } : {}),
+      });
       onClose();
     } catch {
       // surfaced via createSource.isError
@@ -70,6 +77,16 @@ export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
               Copie
             </option>
           </select>
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-ink">
+          Intervalle de rafraîchissement (minutes)
+          <Input
+            aria-label="Intervalle de rafraîchissement (minutes)"
+            type="number"
+            min={1}
+            value={intervalMinutes}
+            onChange={(e) => setIntervalMinutes(e.target.value)}
+          />
         </label>
         {createSource.isError && (
           <p role="alert" className="text-sm text-danger">
