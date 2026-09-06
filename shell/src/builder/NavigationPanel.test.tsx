@@ -157,6 +157,66 @@ test("rejects adding onEnter when latitude is blank", async () => {
   expect(onPageChange).not.toHaveBeenCalled();
 });
 
+function pageWithMapAndDrawer(): Page {
+  return {
+    id: "p1",
+    name: "Intro",
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [
+        { id: "m1", widget: "map", x: 0, y: 0, w: 4, h: 3, props: {} },
+        {
+          id: "d1",
+          widget: "drawer",
+          x: 0,
+          y: 3,
+          w: 4,
+          h: 1,
+          props: { title: "T", items: [], side: "right" },
+        },
+      ],
+    },
+    onEnter: [],
+  };
+}
+
+test("does not attach a map center payload to a non-map action (drawer.open)", async () => {
+  const onPageChange = vi.fn();
+  render(
+    <NavigationPanel
+      navigationMode="story"
+      onNavigationModeChange={vi.fn()}
+      page={pageWithMapAndDrawer()}
+      onPageChange={onPageChange}
+    />,
+  );
+  await userEvent.selectOptions(screen.getByLabelText("Widget cible"), "d1");
+  await userEvent.selectOptions(screen.getByLabelText("Action"), "open");
+
+  // A drawer.open action has no reason to require geographic coordinates —
+  // the lat/lon inputs only make sense for a map-centering action.
+  expect(screen.queryByLabelText("Longitude")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Latitude")).not.toBeInTheDocument();
+
+  // If the fields still exist (pre-fix), fill them in the way the current
+  // form forces the user to, so we can inspect the resulting payload.
+  const lonField = screen.queryByLabelText("Longitude");
+  const latField = screen.queryByLabelText("Latitude");
+  if (lonField && latField) {
+    await userEvent.type(lonField, "2.35");
+    await userEvent.type(latField, "48.85");
+  }
+
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter à ce chapitre" }));
+
+  expect(onPageChange).toHaveBeenCalledTimes(1);
+  const updated = onPageChange.mock.calls[0][0] as Page;
+  expect(updated.onEnter).toHaveLength(1);
+  expect(updated.onEnter![0]).toMatchObject({ to: "d1", action: "open" });
+  expect(updated.onEnter![0].payload?.center).toBeUndefined();
+});
+
 test("rejects adding onEnter when both longitude and latitude are blank", async () => {
   const onPageChange = vi.fn();
   render(
