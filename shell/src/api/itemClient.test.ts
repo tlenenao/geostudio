@@ -3634,3 +3634,38 @@ test("attachmentFileUrl construit l'URL du proxy-read", () => {
     "https://core.test/collections/col1/items/f1/attachments/att1/file",
   );
 });
+
+test("sampleDataSourceField résout collectionId via resolveDataset puis échantillonne", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds1", () =>
+      HttpResponse.json({
+        id: "cfg-ds1",
+        itemId: "ds1",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "collection", collectionId: "communes", columns: {} },
+        },
+      }),
+    ),
+    http.post("https://core.test/collections/communes/aggregate", () =>
+      HttpResponse.json({ categoryKey: "value", rows: [{ value: 1 }, { value: 2 }] }),
+    ),
+  );
+  const values = await makeClient().sampleDataSourceField(
+    { layer: "", datasetId: "ds1" },
+    "pop",
+    50,
+  );
+  expect(values).toEqual([1, 2]);
+});
+
+test("sampleDataSourceField utilise directement layer quand datasetId est absent", async () => {
+  server.use(
+    http.post("https://core.test/collections/communes/aggregate", () =>
+      HttpResponse.json({ categoryKey: "value", rows: [{ value: 3 }] }),
+    ),
+  );
+  const values = await makeClient().sampleDataSourceField({ layer: "communes" }, "pop", 50);
+  expect(values).toEqual([3]);
+});

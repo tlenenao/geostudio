@@ -234,16 +234,20 @@ export function registerMapWidget(): void {
                 query,
               })
             }
-            // Jenks a besoin d'un collectionId résolu pour échantillonner un
-            // champ ; ce host n'en a pas (portée volontairement non
-            // élargie ici, cf. brief I5) — l'option est masquée plutôt que
-            // de laisser l'auteur la choisir puis échouer au clic.
-            jenksAvailable={false}
-            sampleField={async () => {
-              throw new Error(
-                "Jenks sur le widget carte nécessite un collectionId résolu — non câblé",
-              );
-            }}
+            // GAP-52 (4/4) : Jenks fonctionne désormais sur ce host via
+            // ItemClient.sampleDataSourceField (résout collectionId depuis
+            // dataSource.layer ou datasetId, symétrique de queryStatistics
+            // ci-dessus) — `?.()` obligatoire (défaut n°5, brief Task 12) :
+            // un ItemClient de test partiel n'implémente pas forcément cette
+            // méthode.
+            jenksAvailable={true}
+            sampleField={(field, limit) =>
+              client.sampleDataSourceField?.(
+                { layer: dataSource?.layer ?? "", datasetId },
+                field,
+                limit,
+              ) ?? Promise.reject(new Error("sampleDataSourceField indisponible"))
+            }
             // `?.()` OBLIGATOIRE, pas cosmétique (défaut n° 5 de la brief
             // Task 12) : ce PropsPanel est rendu inconditionnellement, et
             // `renderPropsPanel` (mapWidget.test.tsx:126) le monte avec

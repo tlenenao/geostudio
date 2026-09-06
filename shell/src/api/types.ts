@@ -458,6 +458,16 @@ export interface ItemClient {
   getPublicAppConfig(pk: string): Promise<AppConfig>;
   saveAppConfig(pk: string, config: AppConfig): Promise<void>;
   queryDataSource(source: DataSource): Promise<DataRecord[]>;
+  // Symétrique de sampleCollectionField, mais pour un hôte qui n'a qu'un
+  // DataSource (pas déjà un collectionId résolu) : la couche `feature` du
+  // widget carte de l'App Builder (Jenks, GAP-52 4/4). Résout collectionId
+  // via resolveDataset() quand `source.datasetId` est fourni, sinon utilise
+  // `source.layer` directement (même patron que queryDataSource).
+  sampleDataSourceField(
+    source: { layer: string; datasetId?: string },
+    field: string,
+    limit: number,
+  ): Promise<number[]>;
   featuresUrl(source: DataSource): string;
   exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }>;
   getCollectionSchema(collectionId: string): Promise<CollectionSchema>;
