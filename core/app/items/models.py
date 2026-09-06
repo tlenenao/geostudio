@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -51,3 +51,12 @@ class Item(Base):
     language: Mapped[str] = mapped_column(String, default="fr", server_default="fr", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+    # Emprise spatiale (SP-55 §2, GAP-06) : NULL sur les 4 = « pas d'emprise
+    # connue » (item non géographique, ou config jamais réévaluée depuis ce
+    # SP). Recalculée par app.items.bbox::recompute_item_bbox, appelée
+    # depuis app.configs.repository (create_config/update_config/
+    # rollback_config) — jamais posée directement ici.
+    bbox_min_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bbox_min_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bbox_max_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bbox_max_y: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -1168,3 +1168,102 @@ def test_get_facets_keywords_sorted_by_count_desc(session, tenant_and_user):
     )
     assert facets.keywords[0].keyword == "frequent"
     assert facets.keywords[0].count == 3
+
+
+def _set_bbox(session, item, bbox):
+    item.bbox_min_x, item.bbox_min_y, item.bbox_max_x, item.bbox_max_y = bbox
+    session.flush()
+
+
+def test_list_items_bbox_filter_intersecting(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    inside = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="map", title="Inside"
+    )
+    _set_bbox(session, inside, (1.0, 1.0, 2.0, 2.0))
+    disjoint = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="map", title="Disjoint"
+    )
+    _set_bbox(session, disjoint, (10.0, 10.0, 11.0, 11.0))
+    partial = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="map", title="Partial"
+    )
+    _set_bbox(session, partial, (1.5, 1.5, 5.0, 5.0))
+
+    page = repo.list_items(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q=None,
+        resource_type=None,
+        scope="all",
+        page=1,
+        page_size=12,
+        bbox=(0.0, 0.0, 3.0, 3.0),
+    )
+    assert {i.title for i in page.items} == {"Inside", "Partial"}
+
+
+def test_list_items_bbox_filter_excludes_items_without_known_bbox(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="No bbox"
+    )
+
+    page = repo.list_items(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q=None,
+        resource_type=None,
+        scope="all",
+        page=1,
+        page_size=12,
+        bbox=(-180.0, -90.0, 180.0, 90.0),
+    )
+    assert page.items == []
+
+
+@pytest.mark.postgis
+def test_list_items_bbox_composes_with_hybrid_search(pg_session, pg_tenant_and_user, monkeypatch):
+    # spec §5 : le filtre bbox doit composer avec le chemin RRF (q posé),
+    # pas seulement testé isolément (piège CLAUDE.md n°4).
+    tenant, user = pg_tenant_and_user
+    matching = repo.create_item(
+        pg_session,
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        resource_type="app",
+        title="incidents voirie",
+    )
+    matching.embedding = [1.0] * 1536
+    _set_bbox(pg_session, matching, (1.0, 1.0, 2.0, 2.0))
+    outside_bbox = repo.create_item(
+        pg_session,
+        tenant_id=tenant.id,
+        owner_id=user.id,
+        resource_type="app",
+        title="incidents voirie",
+    )
+    outside_bbox.embedding = [1.0] * 1536
+    _set_bbox(pg_session, outside_bbox, (50.0, 50.0, 51.0, 51.0))
+    pg_session.flush()
+
+    from app.items import repository as items_repo_module
+
+    fake = FakeProvider(vectors={"incidents": [1.0] * 1536})
+    monkeypatch.setattr(items_repo_module, "get_embedding_provider", lambda: fake)
+
+    page = repo.list_items(
+        pg_session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q="incidents",
+        resource_type=None,
+        scope="all",
+        page=1,
+        page_size=12,
+        bbox=(0.0, 0.0, 3.0, 3.0),
+    )
+    assert len(page.items) == 1
+    assert page.items[0].pk == matching.id

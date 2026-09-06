@@ -26,6 +26,25 @@ def get_thumbnail_store() -> ThumbnailStore:
 _MAX_THUMBNAIL_BYTES = 2 * 1024 * 1024
 
 
+def _parse_bbox(raw: str | None) -> tuple[float, float, float, float] | None:
+    # Même convention textuelle que le paramètre bbox d'OGC API Features
+    # (app.features.routes::_parse_bbox) — "minX,minY,maxX,maxY" — mais pas
+    # la même fonction : celle-là lève une ValidationHTTPException RFC 7807
+    # propre à ce module, tandis que app.items.routes utilise déjà
+    # HTTPException brute partout ailleurs (voir list_items/update_item/
+    # upload_thumbnail ci-dessous) ; réutiliser sa forme de retour, pas son
+    # canal d'erreur.
+    if raw is None:
+        return None
+    parts = raw.split(",")
+    if len(parts) != 4:
+        raise HTTPException(status_code=422, detail="bbox must be minX,minY,maxX,maxY")
+    try:
+        return (float(parts[0]), float(parts[1]), float(parts[2]), float(parts[3]))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="bbox must be minX,minY,maxX,maxY") from None
+
+
 @router.get("/items", response_model=ItemPage)
 def list_items(
     q: str | None = None,
@@ -41,6 +60,7 @@ def list_items(
     sort: str | None = None,
     owner: str | None = None,
     keyword: list[str] | None = Query(default=None),
+    bbox: str | None = None,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ItemPage:
@@ -56,6 +76,7 @@ def list_items(
         sort=sort,
         owner=owner,
         keywords=keyword,
+        bbox=_parse_bbox(bbox),
     )
 
 

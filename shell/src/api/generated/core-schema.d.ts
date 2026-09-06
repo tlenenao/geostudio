@@ -2176,6 +2176,8 @@ export interface components {
         ItemRead: {
             /** Abstract */
             abstract: string;
+            /** Bbox */
+            bbox?: number[] | null;
             /** Configid */
             configId: string | null;
             /** Date */
@@ -4953,6 +4955,7 @@ export interface operations {
                 sort?: string | null;
                 owner?: string | null;
                 keyword?: string[] | null;
+                bbox?: string | null;
             };
             header?: {
                 authorization?: string;

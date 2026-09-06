@@ -195,6 +195,46 @@ def test_list_items_repeated_keyword_query_param_is_and(client):
     assert [i["title"] for i in response.json()["items"]] == ["AB"]
 
 
+def test_list_items_bbox_filter(client):
+    with client.session_factory() as session:
+        inside = items_repo.create_item(
+            session,
+            tenant_id=client.tenant.id,
+            owner_id=client.user.id,
+            resource_type="map",
+            title="Inside",
+        )
+        inside.bbox_min_x, inside.bbox_min_y, inside.bbox_max_x, inside.bbox_max_y = (
+            1.0,
+            1.0,
+            2.0,
+            2.0,
+        )
+        outside = items_repo.create_item(
+            session,
+            tenant_id=client.tenant.id,
+            owner_id=client.user.id,
+            resource_type="map",
+            title="Outside",
+        )
+        outside.bbox_min_x, outside.bbox_min_y, outside.bbox_max_x, outside.bbox_max_y = (
+            50.0,
+            50.0,
+            51.0,
+            51.0,
+        )
+        session.commit()
+
+    response = client.get("/items?bbox=0,0,3,3")
+    assert response.status_code == 200
+    assert [i["title"] for i in response.json()["items"]] == ["Inside"]
+
+
+def test_list_items_bbox_rejects_malformed_value(client):
+    response = client.get("/items?bbox=not,a,valid,bbox")
+    assert response.status_code == 422
+
+
 def test_get_item_facets_returns_owners_and_keywords(client):
     with client.session_factory() as session:
         item = items_repo.create_item(

@@ -148,6 +148,11 @@ def _to_read(
         keywords=item.keywords or [],
         license=item.license,
         language=item.language,
+        bbox=(
+            [item.bbox_min_x, item.bbox_min_y, item.bbox_max_x, item.bbox_max_y]
+            if item.bbox_min_x is not None
+            else None
+        ),
         permissions=permissions,
     )
 
@@ -332,6 +337,7 @@ def list_items(
     sort: str | None = None,
     owner: str | None = None,
     keywords: list[str] | None = None,
+    bbox: tuple[float, float, float, float] | None = None,
 ) -> ItemPage:
     query = _visible_items_base_query(
         tenant_id=tenant_id,
@@ -345,6 +351,20 @@ def list_items(
     # owner="bob" doit rester vide, pas retomber sur tous les items de bob).
     if owner:
         query = query.where(User.username == owner)
+
+    if bbox is not None:
+        # Intersection de rectangles sur les 4 colonnes persistées (spec
+        # §2.4) — pas de scan de géométrie. Un item sans bbox connue
+        # (jamais calculée, ou non géographique) n'apparaît jamais sous un
+        # filtre bbox posé : Item.bbox_min_x.isnot(None) l'exclut d'office.
+        minx, miny, maxx, maxy = bbox
+        query = query.where(
+            Item.bbox_min_x.isnot(None),
+            Item.bbox_max_x >= minx,
+            Item.bbox_min_x <= maxx,
+            Item.bbox_max_y >= miny,
+            Item.bbox_min_y <= maxy,
+        )
 
     # À ce stade, `query` ne contient que des lignes visibles par
     # current_user_id — c'est la base sur laquelle la recherche (hybride ou

@@ -251,6 +251,19 @@ ignore_imports = [
     # échouer le contrat.
     "app.analytics.aggregate -> app.collections.introspection",
     "app.analytics.sql_sandbox -> app.collections.introspection",
+    # Même classe de cycle que ci-dessus, pour `app.configs.bbox` (SP-55
+    # §2.3, GAP-06) : `app.collections.dataset_validation`/`routes`
+    # importent déjà `app.configs` (validation de payload dataset), donc
+    # `app.collections` doit rester AU-DESSUS d'`app.configs` dans ce
+    # contrat — mais le recalcul d'emprise spatiale d'un item map (posé au
+    # point d'écriture unique de `app.configs.repository`, pas dupliqué
+    # côté route/MCP) a besoin de `table_extent`/`introspect_table`
+    # (`app.collections`). Nommées au module près : tout autre import
+    # d'`app.collections` depuis `app.configs` reste interdit.
+    "app.configs.bbox -> app.collections.extent",
+    "app.configs.bbox -> app.collections.introspection",
+    "app.configs.bbox -> app.collections.introspection_pg",
+    "app.configs.bbox -> app.collections.models",
     # `app.auth` est bas dans le contrat car `app.auth.dependency` (surtout
     # `get_current_user`) est consommé par la quasi-totalité des modules —
     # il doit rester proche de la fondation. app.roles doit être AU-DESSUS

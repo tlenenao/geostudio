@@ -39,6 +39,7 @@ class ItemRead(BaseModel):
     keywords: list[str] = []
     license: str = ""
     language: str = "fr"
+    bbox: list[float] | None = None
     permissions: ItemPermissions
 
 
