@@ -8931,6 +8931,28 @@
         "summary": "Get Public Item"
       }
     },
+    "/public/robots.txt": {
+      "get": {
+        "operationId": "public_robots_public_robots_txt_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Public Robots"
+      }
+    },
+    "/public/sitemap.xml": {
+      "get": {
+        "operationId": "public_sitemap_public_sitemap_xml_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Public Sitemap"
+      }
+    },
     "/public/sites/{slug}": {
       "get": {
         "operationId": "get_public_site_public_sites__slug__get",
@@ -8968,6 +8990,38 @@
           }
         },
         "summary": "Get Public Site"
+      }
+    },
+    "/public/sites/{slug}/social-preview": {
+      "get": {
+        "operationId": "public_site_social_preview_public_sites__slug__social_preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Site Social Preview"
       }
     },
     "/reports/{item_id}/runs": {

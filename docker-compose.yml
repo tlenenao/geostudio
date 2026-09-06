@@ -239,6 +239,15 @@ services:
       CORE_OIDC_JWKS_URL: ${CORE_OIDC_JWKS_URL:-http://keycloak:8080/realms/geostudio/protocol/openid-connect/certs}
       CORE_MCP_AUDIENCE: ${CORE_MCP_AUDIENCE:-geostudio-mcp}
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
+      # Domaine public du SHELL (sitemap.xml/robots.txt/aperçu social,
+      # SP-55 GAP-07) — distinct de CORE_BASE_URL (identité du cœur
+      # lui-même) et de SHELL_BASE_URL (usage interne réseau Docker réservé
+      # à export-worker qui navigue en Playwright, jamais une URL publique
+      # valide — vérifié dans ce fichier/​.env.example, ne pas réutiliser ici
+      # par erreur). Défaut de développement : port hôte réel du service
+      # shell (ligne "8300:8300" plus bas), cohérent avec `docker compose up`
+      # par défaut.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8300}
       # Cible interne du rappel /mcp du copilote — jamais l'URL publique
       # (cf. .env.example et app/copilot/mcp_loopback.loopback_base_url).
       CORE_INTERNAL_BASE_URL: ${CORE_INTERNAL_BASE_URL:-http://localhost:8200}
