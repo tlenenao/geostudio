@@ -91,11 +91,12 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
   `YYYY-MM-DD-spX…`.
 - **TDD systématique** ; chaque feature visible a sa spec E2E Playwright. La
   suite E2E complète est le filet de la migration : elle reste globalement
-  verte (dernière mesure après intégration de SP-45/46/47/49/52/53/55/56/58/51/54,
-  2026-09-06 : **1 failed** — `e2e/pipeline-builder.spec.ts:111`, timeout sur
-  le bouton « Exécuter », confirmé préexistant à SP-43 en checkoutant le
-  commit d'avant sa Tâche 1 ; cause non encore investiguée, ne pas imputer à
-  un futur travail sans vérifier d'abord si ce test échoue déjà sur `dev`).
+  verte (dernière mesure après intégration de SP-45/46/47/49/52/53/55/56/58/
+  51/54, 2026-09-06 : 156 passed / 4 skipped / **1 failed** —
+  `e2e/pipeline-builder.spec.ts:111`, timeout sur le bouton « Exécuter »,
+  confirmé préexistant à SP-43 en checkoutant le commit d'avant sa Tâche 1 ;
+  cause non encore investiguée, ne pas imputer à un futur travail sans
+  vérifier d'abord si ce test échoue déjà sur `dev`).
 - Exécution en **subagent-driven-development** : une revue par tâche **et** une
   revue finale de branche, systématiquement — ce ne sont pas les mêmes défauts
   (cf. `## Pièges récurrents`).
@@ -111,10 +112,11 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ```bash
 # shell (d'abord, car commitlint en dépend)
 cd shell && npm ci
-npm run test         # Vitest — compte à remesurer après intégration complète
-                     # de SP-45/46/47/49/52/53/55/56/58/51/54 (2026-09-06).
-npm run e2e          # Playwright — 1 failed constant à travers les mesures
-                     # partielles (pipeline-builder.spec.ts:111), à la
+npm run test         # Vitest — dernier compte mesuré après intégration
+                     # complète de SP-45/46/47/49/52/53/55/56/58/51/54
+                     # (2026-09-06) : 235 fichiers, 2064 tests, tous passed.
+                     # Couverture 90,51 % (seuil 88).
+npm run e2e          # Playwright — 156 passed / 4 skipped / 1 failed à la
                      # même mesure (VITE_AUTH_MODE=mock) — l'échec
                      # (pipeline-builder.spec.ts:111) est préexistant à
                      # SP-43, cf. ## Comment on travaille.
@@ -134,10 +136,10 @@ pre-commit install --hook-type pre-commit --hook-type commit-msg
 
 # cœur
 cd core && uv sync
-uv run pytest        # dernier compte mesuré après intégration de
-                     # SP-45/46/47/49 sur dev (2026-09-06) :
-                     # 2390 passed / 5 skipped / 0 failed, couverture 93,90 %
-                     # (seuil 85), sur un conteneur
+uv run pytest        # dernier compte mesuré après intégration complète de
+                     # SP-45/46/47/49/52/53/55/56/58/51/54 sur dev
+                     # (2026-09-06) : 2589 passed / 5 skipped / 0 failed,
+                     # couverture 94,05 % (seuil 85), sur un conteneur
                      # postgis-test réel (CORE_TEST_DATABASE_URL positionné —
                      # sinon ~185 tests marqués postgis skippent silencieusement,
                      # piège vécu pendant la clôture de SP-43 elle-même). Piège
