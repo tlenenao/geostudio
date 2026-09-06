@@ -202,6 +202,18 @@ layers = [
     "app.mcp",
     "app.copilot",
     "app.public",
+    # app.compliance (SP-58) : anonymisation d'utilisateur + purge de tenant
+    # (RGPD, GAP-74). Placé très haut dans le contrat — purge_tenant doit
+    # pouvoir importer les modèles/repositories de presque tout le reste de
+    # l'application (items, collections, attachments, export/appexport,
+    # tileset3d/terrain3d, ingestion, notifications, secrets, harvest,
+    # mapicons, extensions, sharing, roles, users, tenants, audit) pour
+    # supprimer les lignes d'un tenant dans l'ordre FK-safe — aucune place
+    # plus basse ne permettrait ces imports sans dizaines d'exemptions.
+    # Consommé uniquement par app.main (montage du routeur) et le worker de
+    # jobs — jamais par app.mcp (décision explicite spec SP-58 §2.2 :
+    # vérifiée par grep en clôture de plan, pas par ce contrat).
+    "app.compliance",
     "app.harvest",
     "app.pipelines",
     "app.reports",
@@ -339,4 +351,5 @@ ignore_imports = [
     "app.db -> app.mapicons.models",
     "app.db -> app.roles.models",
     "app.db -> app.attachments.models",
+    "app.db -> app.compliance.models",
 ]
