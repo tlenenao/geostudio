@@ -1267,3 +1267,88 @@ def test_list_items_bbox_composes_with_hybrid_search(pg_session, pg_tenant_and_u
     )
     assert len(page.items) == 1
     assert page.items[0].pk == matching.id
+
+
+@pytest.mark.postgis
+def test_list_items_composes_q_sort_keyword_and_bbox_together(
+    pg_session, pg_tenant_and_user, monkeypatch
+):
+    # Clôture SP-55 (piège CLAUDE.md n°4) : q + sort + keyword + bbox
+    # composés simultanément, pas seulement testés un par un tâche par
+    # tâche. Trois items matchent q="incidents" et sont dans la bbox
+    # cherchée ; keyword=["voirie"] n'en retient que deux ; sort=title_asc
+    # doit ordonner ces deux-là par titre malgré l'ordre RRF.
+    tenant, user = pg_tenant_and_user
+    z_item = repo.create_item(
+        pg_session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Z incidents"
+    )
+    z_item.embedding = [1.0] * 1536
+    _set_bbox(pg_session, z_item, (1.0, 1.0, 2.0, 2.0))
+    repo.update_item(
+        pg_session,
+        tenant_id=tenant.id,
+        item_id=z_item.id,
+        title=None,
+        abstract=None,
+        keywords=["voirie"],
+        is_published=None,
+    )
+
+    a_item = repo.create_item(
+        pg_session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="A incidents"
+    )
+    a_item.embedding = [1.0] * 1536
+    _set_bbox(pg_session, a_item, (1.2, 1.2, 1.8, 1.8))
+    repo.update_item(
+        pg_session,
+        tenant_id=tenant.id,
+        item_id=a_item.id,
+        title=None,
+        abstract=None,
+        keywords=["voirie"],
+        is_published=None,
+    )
+
+    # Matche q et la bbox mais PAS le mot-clé — doit rester exclu.
+    no_keyword_item = repo.create_item(
+        pg_session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="M incidents"
+    )
+    no_keyword_item.embedding = [1.0] * 1536
+    _set_bbox(pg_session, no_keyword_item, (1.0, 1.0, 2.0, 2.0))
+
+    # Matche q et le mot-clé mais PAS la bbox — doit rester exclu.
+    outside_bbox_item = repo.create_item(
+        pg_session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="B incidents"
+    )
+    outside_bbox_item.embedding = [1.0] * 1536
+    _set_bbox(pg_session, outside_bbox_item, (50.0, 50.0, 51.0, 51.0))
+    repo.update_item(
+        pg_session,
+        tenant_id=tenant.id,
+        item_id=outside_bbox_item.id,
+        title=None,
+        abstract=None,
+        keywords=["voirie"],
+        is_published=None,
+    )
+    pg_session.flush()
+
+    from app.items import repository as items_repo_module
+
+    fake = FakeProvider(vectors={"incidents": [1.0] * 1536})
+    monkeypatch.setattr(items_repo_module, "get_embedding_provider", lambda: fake)
+
+    page = repo.list_items(
+        pg_session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q="incidents",
+        resource_type=None,
+        scope="all",
+        page=1,
+        page_size=12,
+        sort="title_asc",
+        keywords=["voirie"],
+        bbox=(0.0, 0.0, 3.0, 3.0),
+    )
+    assert [i.title for i in page.items] == ["A incidents", "Z incidents"]
