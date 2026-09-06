@@ -90,12 +90,19 @@ export function registerDataWidgets(): void {
           />
           <ul className="flex flex-col gap-0.5 text-sm">
             {data.records.map((r) => (
-              <li
-                key={String(r.id)}
-                className="cursor-pointer truncate border-b border-[var(--gs-color-border)] py-0.5 text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)]"
-                onClick={() => selectRecord(r)}
-              >
-                {String(r.properties[field] ?? r.id)}
+              <li key={String(r.id)}>
+                {/* <button> natif : action répétée par ligne dans une liste
+                    dense (convention CLAUDE.md 2026-09-01), et corrige au
+                    passage jsx-a11y/click-events-have-key-events —
+                    l'ancien <li onClick> n'exposait ce sélecteur qu'à la
+                    souris. */}
+                <button
+                  type="button"
+                  className="w-full cursor-pointer truncate border-b border-[var(--gs-color-border)] py-0.5 text-left text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)]"
+                  onClick={() => selectRecord(r)}
+                >
+                  {String(r.properties[field] ?? r.id)}
+                </button>
               </li>
             ))}
           </ul>

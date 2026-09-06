@@ -1,0 +1,52 @@
+[
+  {
+    "file": "src/builder/pipeline/SecretParamSelect.tsx",
+    "line": 42,
+    "reason": "Pré-existant : le bouton \"Créer un secret\" ouvre SecretCreateForm en ligne (creating && <SecretCreateForm/>) sans aria-expanded/aria-controls. Dette REV-088 (CLAUDE.md : jamais posé rétroactivement) — pas corrigé par ce script d'outillage."
+  },
+  {
+    "file": "src/builder/widgets/ExplorerMenu.tsx",
+    "line": 79,
+    "reason": "Pré-existant : le bouton \"⋮\" ouvre/ferme un menu déroulant en ligne (menuOpen && <div>...) via un onClick ternaire (menuOpen ? closeMenu() : setMenuOpen(true)), sans aria-expanded/aria-controls. Dette REV-088."
+  },
+  {
+    "file": "src/map/MapSymbologyEditor.tsx",
+    "line": 564,
+    "reason": "Pré-existant : le bouton \"Ajouter des icônes\" ouvre la grille de sélection d'icône en ligne ((icon || iconDraft) && <div>...) sans aria-expanded/aria-controls. Dette REV-088."
+  },
+  {
+    "file": "src/pages/AppRuntimePage.tsx",
+    "line": 170,
+    "reason": "Faux positif de l'heuristique : setSaveDialogOpen(true) ouvre <Dialog> (ui/dialog.tsx, role=\"dialog\", boîte modale) — pas un panneau en ligne, la convention CLAUDE.md ne s'applique pas à ce patron."
+  },
+  {
+    "file": "src/pages/CollectionsAdminPage.tsx",
+    "line": 73,
+    "reason": "Pré-existant : setRegistering(true) ouvre RegisterCollectionPanel en ligne (registering && <RegisterCollectionPanel/>) sans aria-expanded/aria-controls, alors que ce même fichier câble déjà usePanelTrigger() pour ses panneaux editing/sharing voisins. Dette REV-088."
+  },
+  {
+    "file": "src/pages/KitGalleryPage.tsx",
+    "line": 215,
+    "reason": "Faux positif de l'heuristique : setConfirmOpen(true) ouvre <ConfirmDialog> (boîte de dialogue modale) sur la galerie interne de démonstration du kit — pas un panneau en ligne."
+  },
+  {
+    "file": "src/pages/KitGalleryPage.tsx",
+    "line": 224,
+    "reason": "Faux positif de l'heuristique : setDrawerOpen(true) ouvre <Drawer> (ui/kit/Drawer.tsx, Radix Dialog sous-jacent, tiroir modal) sur la galerie interne de démonstration du kit — illustratif, pas un vrai écran livré."
+  },
+  {
+    "file": "src/pages/KitGalleryPage.tsx",
+    "line": 228,
+    "reason": "Faux positif de l'heuristique : setToastOpen(true) déclenche une notification transitoire (<Toast>), pas un panneau — la convention CLAUDE.md ne vise pas ce patron."
+  },
+  {
+    "file": "src/pages/RolesAdminPage.tsx",
+    "line": 55,
+    "reason": "Pré-existant : setCreating(true) ouvre CreateRolePanel en ligne (creating && <CreateRolePanel/>) sans aria-expanded/aria-controls, alors que ce même fichier câble déjà usePanelTrigger() pour son panneau editPanel voisin (par ligne de rôle). Dette REV-088."
+  },
+  {
+    "file": "src/shell/Tileset3DUploadButton.tsx",
+    "line": 132,
+    "reason": "Pré-existant : setOpen(true) ouvre <Drawer> (ui/kit/Drawer.tsx) sans aria-expanded/aria-controls ni usePanelTrigger() — contrairement à ImportFileButton.tsx/NewItemButton.tsx qui ouvrent le même composant Drawer en le câblant correctement. Dette REV-088."
+  }
+]

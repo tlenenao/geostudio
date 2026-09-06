@@ -22,6 +22,7 @@ vi.mock("../EChart", () => ({
   }) => {
     const s = option.series;
     const n = Array.isArray(s) ? s.length : s ? 1 : 0;
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- doublure de test pour EChart (vi.mock), jamais rendue à un utilisateur réel ; le composant réel gère ses propres clics via echarts.
     return <div data-testid="echart" data-series={n} onClick={() => onClick?.({ name: "Nord" })} />;
   },
 }));

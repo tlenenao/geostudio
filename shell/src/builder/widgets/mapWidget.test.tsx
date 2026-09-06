@@ -57,6 +57,7 @@ vi.mock("../../map/MapView", () => ({
       const symbology =
         layer && "symbology" in layer ? JSON.stringify((layer as any).symbology ?? null) : "null";
       return (
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- doublure de test pour MapView (vi.mock), jamais rendue à un utilisateur réel ; simule ici un changement de vue déclenché par MapLibre, pas un contrôle clavier/souris de ce composant.
         <div
           data-testid="mapview"
           onClick={() => onViewChange?.({ center: [1, 2], zoom: 9, bbox: [10, 20, 30, 40] })}
