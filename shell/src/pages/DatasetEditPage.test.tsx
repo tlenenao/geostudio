@@ -70,8 +70,11 @@ beforeEach(() => {
 // laisse le constructeur `URL` intact — un `{ ...URL }` produit un objet
 // simple, non constructible via `new`, qui restait installé pour tous les
 // tests suivants du fichier faute de nettoyage.
+// REV-093 : `vi.unstubAllGlobals()` nettoie en plus le stub `matchMedia`
+// posé par `stubMatchMedia()` ci-dessus, jamais désinstallé sinon.
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function renderPage(client: Partial<ItemClient>) {
