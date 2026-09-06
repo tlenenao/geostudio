@@ -116,6 +116,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run e2e
       - run: npm run build
+      - run: node scripts/check-bundle-size.mjs dist/.vite/manifest.json .bundle-size-threshold
 
   shell-e2e-oidc:
     runs-on: ubuntu-latest
