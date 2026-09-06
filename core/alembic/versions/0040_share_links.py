@@ -7,8 +7,8 @@ sens. revoked_at nullable — révocation par ligne de base (pas seulement par
 TTL du jeton, cf. app/sharing/share_links.py) : chaque résolution
 re-consulte cette colonne en plus de l'expiration du JWT lui-même.
 
-Revision ID: 0035
-Revises: 0034
+Revision ID: 0040
+Revises: 0039
 Create Date: 2026-09-06
 """
 
@@ -16,8 +16,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0035"
-down_revision = "0034"
+revision = "0040"
+down_revision = "0039"
 branch_labels = None
 depends_on = None
 

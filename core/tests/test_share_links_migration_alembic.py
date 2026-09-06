@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Teste réellement la migration Alembic 0035 (upgrade/downgrade/upgrade) sur
+"""Teste réellement la migration Alembic 0040 (upgrade/downgrade/upgrade) sur
 une base Postgres non vide — piège n°8 (CLAUDE.md). Patron identique à
 test_attachments_migration_alembic.py (0032) : base jetable, créée et
 détruite par ce test, jamais le schéma partagé `postgis-test`."""
@@ -63,7 +63,7 @@ def test_share_link_migration_upgrade_downgrade_upgrade_on_non_empty_db(
     previous_database_url = os.environ.get("DATABASE_URL")
     os.environ["DATABASE_URL"] = throwaway_database_url
     try:
-        # 0034 : juste avant 0035, pour insérer tenant/user/item RÉELS avant
+        # 0034 : juste avant 0040, pour insérer tenant/user/item RÉELS avant
         # que la migration testée ne s'applique — preuve que create_table
         # fonctionne sur une base déjà peuplée (pas seulement une base
         # fraîche), et que les FK vers tenants/items/users résolvent bien.
