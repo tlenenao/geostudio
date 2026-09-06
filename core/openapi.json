@@ -2227,6 +2227,30 @@
         "title": "InspectResponse",
         "type": "object"
       },
+      "ItemFacets": {
+        "properties": {
+          "keywords": {
+            "items": {
+              "$ref": "#/components/schemas/KeywordFacet"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "owners": {
+            "items": {
+              "$ref": "#/components/schemas/OwnerFacet"
+            },
+            "title": "Owners",
+            "type": "array"
+          }
+        },
+        "required": [
+          "owners",
+          "keywords"
+        ],
+        "title": "ItemFacets",
+        "type": "object"
+      },
       "ItemPage": {
         "properties": {
           "items": {
@@ -2476,6 +2500,24 @@
           }
         },
         "title": "ItemUpdatePatch",
+        "type": "object"
+      },
+      "KeywordFacet": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "keyword": {
+            "title": "Keyword",
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyword",
+          "count"
+        ],
+        "title": "KeywordFacet",
         "type": "object"
       },
       "LanguageCatalogEntry": {
@@ -3371,6 +3413,24 @@
           "clientSecret"
         ],
         "title": "OAuth2ClientCredentialsPayload",
+        "type": "object"
+      },
+      "OwnerFacet": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "count"
+        ],
+        "title": "OwnerFacet",
         "type": "object"
       },
       "Page": {
@@ -7706,6 +7766,104 @@
           }
         },
         "summary": "List Items"
+      }
+    },
+    "/items/facets": {
+      "get": {
+        "operationId": "get_item_facets_items_facets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "owner",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemFacets"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Item Facets"
       }
     },
     "/items/{item_id}": {

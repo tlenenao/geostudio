@@ -6,7 +6,7 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.db import get_session
 from app.items import repository as repo
-from app.items.schemas import ItemPage, ItemRead, ItemUpdatePatch
+from app.items.schemas import ItemFacets, ItemPage, ItemRead, ItemUpdatePatch
 from app.items.service import get_item_service, get_sharing_service, set_sharing_service
 from app.items.slug import InvalidSlugError, SlugCollisionError
 from app.items.storage import InMemoryThumbnailStore, ThumbnailStore
@@ -56,6 +56,29 @@ def list_items(
         sort=sort,
         owner=owner,
         keywords=keyword,
+    )
+
+
+@router.get("/items/facets", response_model=ItemFacets)
+def get_item_facets(
+    q: str | None = None,
+    type: str | None = None,
+    scope: str = "all",
+    owner: str | None = None,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ItemFacets:
+    # Déclaré AVANT /items/{item_id} : sinon FastAPI matcherait "facets"
+    # comme un item_id littéral (les routes sont testées dans l'ordre de
+    # déclaration).
+    return repo.get_facets(
+        session,
+        tenant_id=user.tenant_id,
+        current_user_id=user.id,
+        q=q,
+        resource_type=type,
+        scope=scope,
+        owner=owner,
     )
 
 

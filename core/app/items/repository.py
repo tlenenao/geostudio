@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import logging
 import uuid
+from collections import Counter
 from datetime import UTC, datetime
 
 import procrastinate
@@ -9,7 +10,14 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.items.models import Item
-from app.items.schemas import ItemPage, ItemPermissions, ItemRead
+from app.items.schemas import (
+    ItemFacets,
+    ItemPage,
+    ItemPermissions,
+    ItemRead,
+    KeywordFacet,
+    OwnerFacet,
+)
 from app.items.slug import InvalidSlugError, SlugCollisionError, is_valid_slug, slugify
 from app.search.providers import get_embedding_provider
 from app.search.ranking import hybrid_search_ids
@@ -266,20 +274,14 @@ def _sort_rows(rows: list[tuple[Item, str]], sort: str) -> list[tuple[Item, str]
     return sorted(rows, key=key_fn, reverse=reverse)
 
 
-def list_items(
-    session: Session,
-    *,
-    tenant_id: str,
-    current_user_id: str,
-    q: str | None,
-    resource_type: str | None,
-    scope: str,
-    page: int,
-    page_size: int,
-    sort: str | None = None,
-    owner: str | None = None,
-    keywords: list[str] | None = None,
-) -> ItemPage:
+def _visible_items_base_query(
+    *, tenant_id: str, current_user_id: str, scope: str, resource_type: str | None
+):
+    """Requête de base (Item, owner_username) filtrée tenant+type+scope/can() —
+    partagée par `list_items` et `get_facets` (spec §1.1 : mêmes filtres
+    d'entrée sauf pagination). N'inclut PAS `q`/`owner`/`keywords`/tri :
+    chaque appelant les applique ensuite selon ses propres besoins
+    (pagination SQL vs agrégation Python)."""
     query = (
         select(Item, User.username)
         .join(User, User.id == Item.owner_id)
@@ -314,6 +316,29 @@ def list_items(
                 shared_exists,
             )
         )
+    return query
+
+
+def list_items(
+    session: Session,
+    *,
+    tenant_id: str,
+    current_user_id: str,
+    q: str | None,
+    resource_type: str | None,
+    scope: str,
+    page: int,
+    page_size: int,
+    sort: str | None = None,
+    owner: str | None = None,
+    keywords: list[str] | None = None,
+) -> ItemPage:
+    query = _visible_items_base_query(
+        tenant_id=tenant_id,
+        current_user_id=current_user_id,
+        scope=scope,
+        resource_type=resource_type,
+    )
     # `owner` s'ajoute APRÈS le filtre scope/can() ci-dessus, jamais à la
     # place : un nom d'utilisateur arbitraire ne doit jamais réintroduire un
     # item invisible dans la portée déjà appliquée (ex. scope="mine" avec
@@ -403,6 +428,58 @@ def list_items(
     )
     items = [_to_read(item, owner_username, perms[item.id]) for item, owner_username in rows]
     return ItemPage(items=items, total=total, page=page, pageSize=page_size)
+
+
+_MAX_FACET_KEYWORDS = 50
+_MAX_FACET_OWNERS = 50
+
+
+def get_facets(
+    session: Session,
+    *,
+    tenant_id: str,
+    current_user_id: str,
+    q: str | None,
+    resource_type: str | None,
+    scope: str,
+    owner: str | None = None,
+) -> ItemFacets:
+    """Compteurs propriétaire/mot-clé sur l'ensemble visible filtré (mêmes
+    filtres d'entrée que list_items sauf pagination/tri, spec §1.1).
+    Agrégation en Python (même raison d'échelle que list_published_items —
+    pas de GROUP BY SQL sur Item.keywords, colonne JSON générique).
+
+    `q` est traduit en ILIKE ici (pas RRF) : les facettes ne portent que sur
+    l'appartenance à l'ensemble filtré, pas sur un ordre de pertinence — la
+    distinction RRF/ILIKE de list_items n'a pas de sens pour un comptage.
+    """
+    query = _visible_items_base_query(
+        tenant_id=tenant_id,
+        current_user_id=current_user_id,
+        scope=scope,
+        resource_type=resource_type,
+    )
+    if owner:
+        query = query.where(User.username == owner)
+    if q:
+        like = f"%{q}%"
+        query = query.where(or_(Item.title.ilike(like), Item.abstract.ilike(like)))
+
+    rows = session.execute(query).all()
+    owner_counts = Counter(owner_username for _item, owner_username in rows)
+    keyword_counts: Counter[str] = Counter()
+    for item, _owner_username in rows:
+        keyword_counts.update(item.keywords or [])
+
+    owners = [
+        OwnerFacet(username=username, count=count)
+        for username, count in owner_counts.most_common(_MAX_FACET_OWNERS)
+    ]
+    keywords = [
+        KeywordFacet(keyword=keyword, count=count)
+        for keyword, count in keyword_counts.most_common(_MAX_FACET_KEYWORDS)
+    ]
+    return ItemFacets(owners=owners, keywords=keywords)
 
 
 def list_published_items(

@@ -195,6 +195,42 @@ def test_list_items_repeated_keyword_query_param_is_and(client):
     assert [i["title"] for i in response.json()["items"]] == ["AB"]
 
 
+def test_get_item_facets_returns_owners_and_keywords(client):
+    with client.session_factory() as session:
+        item = items_repo.create_item(
+            session,
+            tenant_id=client.tenant.id,
+            owner_id=client.user.id,
+            resource_type="app",
+            title="A",
+        )
+        items_repo.update_item(
+            session,
+            tenant_id=client.tenant.id,
+            item_id=item.id,
+            title=None,
+            abstract=None,
+            keywords=["voirie"],
+            is_published=None,
+        )
+        session.commit()
+
+    response = client.get("/items/facets")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["owners"] == [{"username": "alice", "count": 1}]
+    assert body["keywords"] == [{"keyword": "voirie", "count": 1}]
+
+
+def test_items_facets_route_not_shadowed_by_item_id_path_param(client):
+    # /items/facets doit être servi par get_item_facets, pas interprété comme
+    # GET /items/{item_id} avec item_id="facets" (ce qui donnerait 404) —
+    # dépend de l'ordre de déclaration des routes dans routes.py.
+    response = client.get("/items/facets")
+    assert response.status_code == 200
+    assert "owners" in response.json()
+
+
 def test_patch_item_updates_title(client):
     item_id = _seed_item(client)
     response = client.patch(f"/items/{item_id}", json={"title": "Renamed"})

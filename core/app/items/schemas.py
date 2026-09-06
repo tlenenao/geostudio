@@ -49,6 +49,21 @@ class ItemPage(BaseModel):
     pageSize: int
 
 
+class OwnerFacet(BaseModel):
+    username: str
+    count: int
+
+
+class KeywordFacet(BaseModel):
+    keyword: str
+    count: int
+
+
+class ItemFacets(BaseModel):
+    owners: list[OwnerFacet]
+    keywords: list[KeywordFacet]
+
+
 class ItemUpdatePatch(BaseModel):
     title: str | None = None
     abstract: str | None = None

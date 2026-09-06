@@ -1008,3 +1008,163 @@ def test_list_published_items_defaults_to_default_tenant(session, tenant_and_use
 
     page = repo.list_published_items(session, page=1, page_size=12)
     assert [i.title for i in page.items] == ["Publie"]
+
+
+def test_get_facets_aggregates_owners_and_keywords(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    bob = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="sub-bob",
+        username="bob",
+        email=None,
+        first_name="",
+        last_name="",
+    )
+    a = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="A"
+    )
+    b = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=bob.id, resource_type="app", title="B"
+    )
+    repo.update_item(
+        session,
+        tenant_id=tenant.id,
+        item_id=a.id,
+        title=None,
+        abstract=None,
+        keywords=["voirie", "incidents"],
+        is_published=None,
+    )
+    repo.update_item(
+        session,
+        tenant_id=tenant.id,
+        item_id=b.id,
+        title=None,
+        abstract=None,
+        keywords=["voirie"],
+        is_published=True,  # visible par alice sous scope="all"
+    )
+
+    facets = repo.get_facets(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q=None,
+        resource_type=None,
+        scope="all",
+        owner=None,
+    )
+    owners_by_username = {o.username: o.count for o in facets.owners}
+    assert owners_by_username == {"alice": 1, "bob": 1}
+    keywords_by_kw = {k.keyword: k.count for k in facets.keywords}
+    assert keywords_by_kw == {"voirie": 2, "incidents": 1}
+
+
+def test_get_facets_excludes_invisible_items(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    bob = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="sub-bob",
+        username="bob",
+        email=None,
+        first_name="",
+        last_name="",
+    )
+    private_bob_item = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=bob.id, resource_type="app", title="Bob private"
+    )
+    repo.update_item(
+        session,
+        tenant_id=tenant.id,
+        item_id=private_bob_item.id,
+        title=None,
+        abstract=None,
+        keywords=["secret"],
+        is_published=None,
+    )
+
+    facets = repo.get_facets(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q=None,
+        resource_type=None,
+        scope="mine",
+        owner=None,
+    )
+    assert facets.owners == []
+    assert facets.keywords == []
+
+
+def test_get_facets_caps_keywords_at_50(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    for i in range(60):
+        item = repo.create_item(
+            session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title=f"Item {i}"
+        )
+        repo.update_item(
+            session,
+            tenant_id=tenant.id,
+            item_id=item.id,
+            title=None,
+            abstract=None,
+            keywords=[f"kw{i}"],
+            is_published=None,
+        )
+
+    facets = repo.get_facets(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q=None,
+        resource_type=None,
+        scope="all",
+        owner=None,
+    )
+    assert len(facets.keywords) <= 50
+
+
+def test_get_facets_keywords_sorted_by_count_desc(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    a = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="A"
+    )
+    b = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="B"
+    )
+    c = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="C"
+    )
+    for item in (a, b, c):
+        repo.update_item(
+            session,
+            tenant_id=tenant.id,
+            item_id=item.id,
+            title=None,
+            abstract=None,
+            keywords=["frequent"],
+            is_published=None,
+        )
+    repo.update_item(
+        session,
+        tenant_id=tenant.id,
+        item_id=a.id,
+        title=None,
+        abstract=None,
+        keywords=["frequent", "rare"],
+        is_published=None,
+    )
+
+    facets = repo.get_facets(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q=None,
+        resource_type=None,
+        scope="all",
+        owner=None,
+    )
+    assert facets.keywords[0].keyword == "frequent"
+    assert facets.keywords[0].count == 3

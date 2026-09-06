@@ -769,6 +769,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/items/facets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Item Facets */
+        get: operations["get_item_facets_items_facets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/items/{item_id}": {
         parameters: {
             query?: never;
@@ -2117,6 +2134,13 @@ export interface components {
             /** Layers */
             layers?: components["schemas"]["LayerInfoOut"][];
         };
+        /** ItemFacets */
+        ItemFacets: {
+            /** Keywords */
+            keywords: components["schemas"]["KeywordFacet"][];
+            /** Owners */
+            owners: components["schemas"]["OwnerFacet"][];
+        };
         /** ItemPage */
         ItemPage: {
             /** Items */
@@ -2205,6 +2229,13 @@ export interface components {
             slug?: string | null;
             /** Title */
             title?: string | null;
+        };
+        /** KeywordFacet */
+        KeywordFacet: {
+            /** Count */
+            count: number;
+            /** Keyword */
+            keyword: string;
         };
         /** LanguageCatalogEntry */
         LanguageCatalogEntry: {
@@ -2509,6 +2540,13 @@ export interface components {
             kind: "oauth2_client_credentials";
             /** Tokenurl */
             tokenUrl: string;
+        };
+        /** OwnerFacet */
+        OwnerFacet: {
+            /** Count */
+            count: number;
+            /** Username */
+            username: string;
         };
         /** Page */
         Page: {
@@ -4931,6 +4969,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ItemPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_item_facets_items_facets_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                type?: string | null;
+                scope?: string;
+                owner?: string | null;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemFacets"];
                 };
             };
             /** @description Validation Error */
