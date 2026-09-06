@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Usage */
+        get: operations["get_usage_admin_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/alerts/{item_id}/evaluations": {
         parameters: {
             query?: never;
@@ -2828,6 +2845,17 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** UsageSnapshotResponse */
+        UsageSnapshotResponse: {
+            /** Collectioncount */
+            collectionCount: number;
+            /** Itemcount */
+            itemCount: number;
+            /** Storagebytes */
+            storageBytes: number;
+            /** Usercount */
+            userCount: number;
+        };
         /** UserRolePatch */
         UserRolePatch: {
             /** Roleid */
@@ -2891,6 +2919,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_usage_admin_usage_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageSnapshotResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

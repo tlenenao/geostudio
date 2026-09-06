@@ -1,13 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 import pytest
 
+from app.appexport.models import AppExportJob
 from app.collections.models import Collection
 from app.db import init_db, make_engine, make_session_factory
+from app.export.models import ExportJob
 from app.items.models import Item
 from app.quotas.service import (
     count_collections_for_tenant,
     count_items_for_tenant,
     count_users_for_tenant,
+    job_output_storage_bytes,
+    tenant_prefixed_storage_bytes,
+    usage_for_tenant,
 )
 from app.roles.repository import ensure_built_in_roles
 from app.tenants.repository import get_or_create_default_tenant
@@ -89,22 +94,128 @@ def env():
             )
         )
         s.commit()
-        yield s, tenant_a.id, tenant_b.id
+        yield s, tenant_a.id, tenant_b.id, user_a.id, user_b.id
 
 
 def test_count_items_for_tenant_counts_only_this_tenant(env):
-    session, tenant_a, tenant_b = env
+    session, tenant_a, tenant_b, _user_a, _user_b = env
     assert count_items_for_tenant(session, tenant_a) == 2
     assert count_items_for_tenant(session, tenant_b) == 1
 
 
 def test_count_collections_for_tenant_counts_only_this_tenant(env):
-    session, tenant_a, tenant_b = env
+    session, tenant_a, tenant_b, _user_a, _user_b = env
     assert count_collections_for_tenant(session, tenant_a) == 1
     assert count_collections_for_tenant(session, tenant_b) == 0
 
 
 def test_count_users_for_tenant_counts_only_this_tenant(env):
-    session, tenant_a, tenant_b = env
+    session, tenant_a, tenant_b, _user_a, _user_b = env
     assert count_users_for_tenant(session, tenant_a) == 1
     assert count_users_for_tenant(session, tenant_b) == 1
+
+
+class _FakeS3Client:
+    """Double en mémoire de list_objects_v2, paginé (1000 clés) — la vraie
+    API S3 tronque à 1000 clés par page (IsTruncated/NextContinuationToken),
+    piège explicitement visé par test_tenant_prefixed_storage_bytes_
+    paginates_past_1000_keys ci-dessous."""
+
+    def __init__(self, objects: dict[str, int], *, bucket: str = "bucket"):
+        # objects: {key: size} — tous supposés vivre dans `bucket` (un seul
+        # bucket par instance, suffisant pour ces tests : usage_for_tenant
+        # interroge 4 buckets différents, cf. _multi_bucket_s3 ci-dessous
+        # pour le test qui doit distinguer plusieurs buckets).
+        self.objects = objects
+        self.bucket = bucket
+
+    def list_objects_v2(self, *, Bucket, Prefix="", ContinuationToken=None):  # noqa: N803
+        if Bucket != self.bucket:
+            return {"Contents": [], "IsTruncated": False, "NextContinuationToken": None}
+        keys = sorted(k for k in self.objects if k.startswith(Prefix))
+        page_size = 1000
+        start = 0
+        if ContinuationToken is not None:
+            start = int(ContinuationToken)
+        page_keys = keys[start : start + page_size]
+        truncated = start + page_size < len(keys)
+        return {
+            "Contents": [{"Key": k, "Size": self.objects[k]} for k in page_keys],
+            "IsTruncated": truncated,
+            "NextContinuationToken": str(start + page_size) if truncated else None,
+        }
+
+
+def test_tenant_prefixed_storage_bytes_sums_only_this_tenant_prefix():
+    s3 = _FakeS3Client(
+        {
+            "tenant-a/f1.gpkg": 100,
+            "tenant-a/f2.gpkg": 250,
+            "tenant-b/f3.gpkg": 999999,
+        }
+    )
+    assert tenant_prefixed_storage_bytes(s3, "bucket", "tenant-a") == 350
+    assert tenant_prefixed_storage_bytes(s3, "bucket", "tenant-b") == 999999
+    assert tenant_prefixed_storage_bytes(s3, "bucket", "tenant-c") == 0
+
+
+def test_tenant_prefixed_storage_bytes_paginates_past_1000_keys():
+    objects = {f"tenant-a/{i}.bin": 1 for i in range(1500)}
+    s3 = _FakeS3Client(objects)
+    # 1500 objets d'1 octet chacun : une implémentation qui ne suit pas
+    # IsTruncated/NextContinuationToken s'arrêterait à 1000 (piège spec
+    # §3.1.2 Tâche 3 Step 2).
+    assert tenant_prefixed_storage_bytes(s3, "bucket", "tenant-a") == 1500
+
+
+def test_job_output_storage_bytes_sums_export_and_appexport_filtered_by_tenant(env):
+    session, tenant_a, tenant_b, user_a, _user_b = env
+    session.add(
+        ExportJob(
+            id="ex-a1",
+            tenant_id=tenant_a,
+            item_id="item-a1",
+            user_id=user_a,
+            format="png",
+            status="done",
+            byte_size=1000,
+        )
+    )
+    session.add(
+        AppExportJob(
+            id="aex-a1",
+            tenant_id=tenant_a,
+            item_id="item-a1",
+            user_id=user_a,
+            mode="static",
+            status="done",
+            byte_size=250,
+        )
+    )
+    session.commit()
+    # Un job d'un autre tenant (b) ne doit pas compter dans le total de a.
+    total_a = job_output_storage_bytes(session, tenant_a)
+    total_b = job_output_storage_bytes(session, tenant_b)
+    assert total_a == 1250
+    assert total_b == 0
+
+
+def test_usage_for_tenant_aggregates_counts_and_storage(env, monkeypatch):
+    session, tenant_a, _tenant_b, _user_a, _user_b = env
+    s3 = _FakeS3Client(
+        {
+            f"{tenant_a}/f1.gpkg": 500,
+        },
+        bucket="geostudio-uploads",
+    )
+    monkeypatch.setenv("S3_UPLOADS_BUCKET", "geostudio-uploads")
+    monkeypatch.setenv("S3_ATTACHMENTS_BUCKET", "geostudio-attachments")
+    monkeypatch.setenv("S3_TILESET3D_BUCKET", "geostudio-tileset3d")
+    monkeypatch.setenv("S3_TERRAIN3D_BUCKET", "geostudio-terrain3d")
+    snapshot = usage_for_tenant(session, s3, tenant_a)
+    assert snapshot.item_count == 2
+    assert snapshot.collection_count == 1
+    assert snapshot.user_count == 1
+    # 4 buckets tenant-préfixés interrogés avec le même préfixe : seul
+    # celui qui porte réellement un objet sous ce préfixe contribue.
+    assert snapshot.storage_bytes == 500

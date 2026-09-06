@@ -50,6 +50,7 @@ from app.notifications import routes as notifications_routes
 from app.pipelines import config_validation as pipelines_config_validation  # noqa: F401
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
+from app.quotas import routes as quotas_routes
 from app.ratelimit.limiter import RateLimiter, route_group
 from app.reports import routes as reports_routes
 from app.roles import routes as roles_routes
@@ -280,6 +281,7 @@ def create_app() -> FastAPI:
     app.include_router(alerts_routes.router)
     app.include_router(reports_routes.router)
     app.include_router(notifications_routes.router)
+    app.include_router(quotas_routes.router)
     if is_etl_enabled():
         app.include_router(pipelines_routes.router)
     if is_export_enabled():
@@ -355,6 +357,16 @@ def create_app() -> FastAPI:
         # unregister_collection (purge des pièces jointes avant suppression
         # d'une collection).
         app.dependency_overrides[collections_routes.get_s3_client] = lambda: make_s3_client(
+            endpoint_url=s3_endpoint,
+            access_key=s3_access_key,
+            secret_key=s3_secret_key,
+        )
+        # Clé d'override DISTINCTE, encore : app.quotas.routes.get_s3_client
+        # est lui aussi un stub local (SP-58 Tâche 3, même rationale que les
+        # deux ci-dessus) — usage_for_tenant() lit les 4 buckets
+        # tenant-préfixés directement depuis les variables d'environnement
+        # (pas de dépendance par bucket), un seul client générique suffit.
+        app.dependency_overrides[quotas_routes.get_s3_client] = lambda: make_s3_client(
             endpoint_url=s3_endpoint,
             access_key=s3_access_key,
             secret_key=s3_secret_key,
