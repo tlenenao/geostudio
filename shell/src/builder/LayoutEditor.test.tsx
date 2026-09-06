@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { ItemClient, WidgetItem } from "../api/types";
 import type { AuthState } from "../auth/useAuth";
@@ -107,6 +107,51 @@ test("selecting an item shows its PropsPanel and edits its props", async () => {
   const items = onChange.mock.calls.at(-1)![0] as WidgetItem[];
   expect(items[0].props.text).toBe("Bonjour!");
   expect(items[0].id).toBe("a");
+});
+
+// REV-054 : PropsPanel n'avait pas de key par widget sélectionné, donc les
+// états locaux transitoires d'un PropsPanel de widget (busy/erreur/mode
+// avancé — MapSymbologyEditor/PopupEditor en particulier) fuyaient d'un
+// widget à l'autre au changement de sélection, React réutilisant la même
+// instance de composant. Reproduit ici avec un widget sonde à état local,
+// sans dépendre de la carte.
+function registerProbeWidget() {
+  registerWidget({
+    type: "probe",
+    label: "Sonde",
+    defaultProps: {},
+    defaultSize: { w: 1, h: 1 },
+    PropsPanel: () => {
+      const [advanced, setAdvanced] = useState(false);
+      return (
+        <label>
+          Mode avancé
+          <input
+            type="checkbox"
+            checked={advanced}
+            onChange={(e) => setAdvanced(e.target.checked)}
+          />
+        </label>
+      );
+    },
+    Component: () => <div />,
+  });
+}
+
+test("REV-054 : changer de widget sélectionné remonte PropsPanel (pas de fuite d'état local transitoire)", async () => {
+  registerProbeWidget();
+  const itemA: WidgetItem = { id: "a", widget: "probe", x: 0, y: 0, w: 1, h: 1, props: {} };
+  const itemB: WidgetItem = { id: "b", widget: "probe", x: 1, y: 0, w: 1, h: 1, props: {} };
+  render(
+    <LayoutEditor items={[itemA, itemB]} onChange={vi.fn()} dataSources={[]} breakpoint="lg" />,
+    { wrapper },
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-a" }));
+  await userEvent.click(screen.getByLabelText("Mode avancé"));
+  expect(screen.getByLabelText("Mode avancé")).toBeChecked();
+
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-b" }));
+  expect(screen.getByLabelText("Mode avancé")).not.toBeChecked();
 });
 
 test("moving the selected item updates its position via onChange", async () => {

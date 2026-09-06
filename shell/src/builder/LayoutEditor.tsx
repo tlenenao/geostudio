@@ -78,6 +78,7 @@ export function LayoutEditor({
         />
       </div>
       <PropsPanel
+        key={selected?.id ?? "none"}
         item={selected}
         dataSources={dataSources}
         variables={variables ?? []}

@@ -175,6 +175,14 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok && res.status !== 404) {
+        if (res.status === 409) {
+          const data = (await res.json().catch(() => null)) as { detail?: unknown } | null;
+          const message =
+            typeof data?.detail === "string"
+              ? data.detail
+              : `Request failed: ${res.status} DELETE /configs/by-item/${pk}`;
+          throw new Error(message);
+        }
         throw new Error(`Request failed: ${res.status} DELETE /configs/by-item/${pk}`);
       }
     },
