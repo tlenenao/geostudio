@@ -108,6 +108,93 @@ def test_list_items_negative_page_size_is_rejected(client):
     assert response.status_code == 422
 
 
+def test_list_items_sort_title_asc(client):
+    _seed_item(client, title="Zorro")
+    _seed_item(client, title="Alpha")
+    response = client.get("/items?sort=title_asc")
+    assert response.status_code == 200
+    titles = [i["title"] for i in response.json()["items"]]
+    assert titles == ["Alpha", "Zorro"]
+
+
+def test_list_items_owner_filter(client):
+    with client.session_factory() as session:
+        bob = get_or_create_user(
+            session,
+            tenant_id=client.tenant.id,
+            oidc_sub="sub-bob",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        item = items_repo.create_item(
+            session,
+            tenant_id=client.tenant.id,
+            owner_id=bob.id,
+            resource_type="app",
+            title="Bob item",
+        )
+        items_repo.update_item(
+            session,
+            tenant_id=client.tenant.id,
+            item_id=item.id,
+            title=None,
+            abstract=None,
+            keywords=None,
+            is_published=True,
+        )
+        session.commit()
+    _seed_item(client, title="Alice item")
+
+    response = client.get("/items?owner=bob")
+    assert response.status_code == 200
+    assert [i["title"] for i in response.json()["items"]] == ["Bob item"]
+
+
+def test_list_items_repeated_keyword_query_param_is_and(client):
+    # FastAPI/Starlette gère `list[str]` en query param répété nativement —
+    # vérifié par ce test plutôt que supposé (piège CLAUDE.md n°3).
+    with client.session_factory() as session:
+        item_ab = items_repo.create_item(
+            session,
+            tenant_id=client.tenant.id,
+            owner_id=client.user.id,
+            resource_type="app",
+            title="AB",
+        )
+        item_a = items_repo.create_item(
+            session,
+            tenant_id=client.tenant.id,
+            owner_id=client.user.id,
+            resource_type="app",
+            title="A only",
+        )
+        items_repo.update_item(
+            session,
+            tenant_id=client.tenant.id,
+            item_id=item_ab.id,
+            title=None,
+            abstract=None,
+            keywords=["a", "b"],
+            is_published=None,
+        )
+        items_repo.update_item(
+            session,
+            tenant_id=client.tenant.id,
+            item_id=item_a.id,
+            title=None,
+            abstract=None,
+            keywords=["a"],
+            is_published=None,
+        )
+        session.commit()
+
+    response = client.get("/items?keyword=a&keyword=b")
+    assert response.status_code == 200
+    assert [i["title"] for i in response.json()["items"]] == ["AB"]
+
+
 def test_patch_item_updates_title(client):
     item_id = _seed_item(client)
     response = client.patch(f"/items/{item_id}", json={"title": "Renamed"})

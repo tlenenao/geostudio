@@ -38,6 +38,9 @@ def list_items(
     # falsification citait `Query(100, ge=1)` de features/routes.py comme
     # précédent mais lui ajoutait un `le=100` que ce précédent n'a pas).
     pageSize: int = Query(12, ge=1),
+    sort: str | None = None,
+    owner: str | None = None,
+    keyword: list[str] | None = Query(default=None),
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ItemPage:
@@ -50,6 +53,9 @@ def list_items(
         scope=scope,
         page=page,
         page_size=pageSize,
+        sort=sort,
+        owner=owner,
+        keywords=keyword,
     )
 
 

@@ -4912,6 +4912,9 @@ export interface operations {
                 scope?: string;
                 page?: number;
                 pageSize?: number;
+                sort?: string | null;
+                owner?: string | null;
+                keyword?: string[] | null;
             };
             header?: {
                 authorization?: string;

@@ -319,6 +319,281 @@ def test_list_items_search_and_type_filter(session, tenant_and_user):
     assert [i.title for i in page.items] == ["Sales dashboard"]
 
 
+def test_list_items_sort_title_asc(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Zorro"
+    )
+    repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Alpha"
+    )
+
+    page = repo.list_items(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q=None,
+        resource_type=None,
+        scope="all",
+        page=1,
+        page_size=12,
+        sort="title_asc",
+    )
+    assert [i.title for i in page.items] == ["Alpha", "Zorro"]
+
+
+def test_list_items_sort_title_desc(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Alpha"
+    )
+    repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Zorro"
+    )
+
+    page = repo.list_items(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q=None,
+        resource_type=None,
+        scope="all",
+        page=1,
+        page_size=12,
+        sort="title_desc",
+    )
+    assert [i.title for i in page.items] == ["Zorro", "Alpha"]
+
+
+def test_list_items_sort_date_asc(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    first = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="First"
+    )
+    second = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Second"
+    )
+    # created_at par défaut vient de datetime.now(UTC) — pour un test
+    # déterministe (pas tributaire de l'horloge et de la résolution du
+    # dialecte), on pose explicitement des valeurs bien distinctes.
+    from datetime import UTC, datetime
+
+    first_item = session.get(type(first), first.id)
+    second_item = session.get(type(second), second.id)
+    first_item.created_at = datetime(2020, 1, 1, tzinfo=UTC)
+    second_item.created_at = datetime(2020, 1, 2, tzinfo=UTC)
+    session.flush()
+
+    page = repo.list_items(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q=None,
+        resource_type=None,
+        scope="all",
+        page=1,
+        page_size=12,
+        sort="date_asc",
+    )
+    assert [i.title for i in page.items] == ["First", "Second"]
+
+
+def test_list_items_sort_updated_desc(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    first = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="First"
+    )
+    second = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Second"
+    )
+    from datetime import UTC, datetime
+
+    first_item = session.get(type(first), first.id)
+    second_item = session.get(type(second), second.id)
+    first_item.updated_at = datetime(2020, 1, 5, tzinfo=UTC)
+    second_item.updated_at = datetime(2020, 1, 1, tzinfo=UTC)
+    session.flush()
+
+    page = repo.list_items(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q=None,
+        resource_type=None,
+        scope="all",
+        page=1,
+        page_size=12,
+        sort="updated_desc",
+    )
+    assert [i.title for i in page.items] == ["First", "Second"]
+
+
+def test_list_items_default_sort_unchanged_without_explicit_sort(session, tenant_and_user):
+    # Non-régression explicite : sans `sort`, l'ordre par défaut
+    # (created_at desc) doit rester identique au comportement actuel.
+    tenant, user = tenant_and_user
+    repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Mine"
+    )
+    repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Mine 2"
+    )
+
+    page = repo.list_items(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q=None,
+        resource_type=None,
+        scope="all",
+        page=1,
+        page_size=12,
+    )
+    assert [i.title for i in page.items] == ["Mine 2", "Mine"]
+
+
+def test_list_items_filter_by_owner(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    bob = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="sub-bob",
+        username="bob",
+        email=None,
+        first_name="",
+        last_name="",
+    )
+    repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Alice item"
+    )
+    bob_item = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=bob.id, resource_type="app", title="Bob item"
+    )
+    # Publié pour être visible par alice sous scope="all" (le test isole
+    # l'effet du filtre owner, pas la visibilité elle-même — cf. le test
+    # jumeau ci-dessous pour la composition owner+scope restrictif).
+    repo.update_item(
+        session,
+        tenant_id=tenant.id,
+        item_id=bob_item.id,
+        title=None,
+        abstract=None,
+        keywords=None,
+        is_published=True,
+    )
+
+    page = repo.list_items(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q=None,
+        resource_type=None,
+        scope="all",
+        page=1,
+        page_size=12,
+        owner="bob",
+    )
+    assert [i.title for i in page.items] == ["Bob item"]
+
+
+def test_list_items_filter_by_owner_respects_scope(session, tenant_and_user):
+    # owner ne doit jamais réintroduire un item invisible par ailleurs :
+    # scope="mine" avec owner="bob" (!= utilisateur courant) doit rester vide.
+    tenant, user = tenant_and_user
+    bob = get_or_create_user(
+        session,
+        tenant_id=tenant.id,
+        oidc_sub="sub-bob",
+        username="bob",
+        email=None,
+        first_name="",
+        last_name="",
+    )
+    repo.create_item(
+        session, tenant_id=tenant.id, owner_id=bob.id, resource_type="app", title="Bob item"
+    )
+
+    page = repo.list_items(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q=None,
+        resource_type=None,
+        scope="mine",
+        page=1,
+        page_size=12,
+        owner="bob",
+    )
+    assert page.items == []
+    assert page.total == 0
+
+
+def test_list_items_filter_by_keyword_and(session, tenant_and_user):
+    tenant, user = tenant_and_user
+    a = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="A"
+    )
+    b = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="B"
+    )
+    c = repo.create_item(
+        session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="C"
+    )
+    repo.update_item(
+        session,
+        tenant_id=tenant.id,
+        item_id=a.id,
+        title=None,
+        abstract=None,
+        keywords=["a", "b"],
+        is_published=None,
+    )
+    repo.update_item(
+        session,
+        tenant_id=tenant.id,
+        item_id=b.id,
+        title=None,
+        abstract=None,
+        keywords=["a"],
+        is_published=None,
+    )
+    repo.update_item(
+        session,
+        tenant_id=tenant.id,
+        item_id=c.id,
+        title=None,
+        abstract=None,
+        keywords=["b", "c"],
+        is_published=None,
+    )
+
+    page = repo.list_items(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q=None,
+        resource_type=None,
+        scope="all",
+        page=1,
+        page_size=12,
+        keywords=["a"],
+    )
+    assert {i.title for i in page.items} == {"A", "B"}
+
+    page = repo.list_items(
+        session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q=None,
+        resource_type=None,
+        scope="all",
+        page=1,
+        page_size=12,
+        keywords=["a", "b"],
+    )
+    assert {i.title for i in page.items} == {"A"}
+
+
 def test_update_item_patches_keywords_and_get_item_returns_them(session, tenant_and_user):
     tenant, user = tenant_and_user
     item = repo.create_item(
@@ -476,6 +751,60 @@ def test_list_items_hybrid_search_ranks_semantic_match_ahead_of_weak_text_match(
     )
     titles = [i.title for i in page.items]
     assert titles.index("Sujet totalement différent") < titles.index("incidents")
+
+
+@pytest.mark.postgis
+def test_list_items_hybrid_search_respects_explicit_sort(
+    pg_session, pg_tenant_and_user, monkeypatch
+):
+    # Un tri explicite (date/titre) posé en même temps que `q` doit écraser
+    # l'ordre RRF (pertinence) — le chemin hybride doit trier les lignes
+    # récupérées au lieu de suivre l'ordre de candidate_ids (spec §1.1).
+    tenant, user = pg_tenant_and_user
+    query_vector = [0.5] * 1536
+    z_item = repo.create_item(
+        pg_session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="Z incidents"
+    )
+    z_item.embedding = [1.0] * 1536  # meilleur match vectoriel que a_item
+    a_item = repo.create_item(
+        pg_session, tenant_id=tenant.id, owner_id=user.id, resource_type="app", title="A incidents"
+    )
+    a_item.embedding = [-1.0] * 1536
+    pg_session.flush()
+
+    from app.items import repository as items_repo_module
+
+    fake = FakeProvider(vectors={"incidents": query_vector})
+    monkeypatch.setattr(items_repo_module, "get_embedding_provider", lambda: fake)
+
+    # Sans tri explicite : l'ordre RRF place Z (meilleur vecteur) devant A.
+    page = repo.list_items(
+        pg_session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q="incidents",
+        resource_type=None,
+        scope="all",
+        page=1,
+        page_size=12,
+    )
+    assert [i.title for i in page.items].index("Z incidents") < [i.title for i in page.items].index(
+        "A incidents"
+    )
+
+    # Avec sort="title_asc" explicite : l'ordre RRF est écrasé.
+    page = repo.list_items(
+        pg_session,
+        tenant_id=tenant.id,
+        current_user_id=user.id,
+        q="incidents",
+        resource_type=None,
+        scope="all",
+        page=1,
+        page_size=12,
+        sort="title_asc",
+    )
+    assert [i.title for i in page.items] == ["A incidents", "Z incidents"]
 
 
 @pytest.mark.postgis
