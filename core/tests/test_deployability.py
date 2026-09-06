@@ -69,6 +69,7 @@ RELEASE = REPO / ".github/workflows/release.yml"
 ENV_EXAMPLE = REPO / ".env.example"
 BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
 BACKUP_SH = REPO / "deploy/backup/backup.sh"
+RESTORE_SH = REPO / "deploy/backup/restore.sh"
 CORE_APP = REPO / "core/app"
 BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
 KEYCLOAK_REALM_JSON = REPO / "deploy/keycloak/geostudio-realm.json"
@@ -590,6 +591,22 @@ def test_backup_covers_every_bucket_the_core_uses():
         f"buckets utilisés par le cœur et jamais sauvegardés : {sorted(missing)}. "
         "Les ajouter à la boucle de miroir de deploy/backup/backup.sh, ou à "
         "BACKUP_EXCLUDED_BUCKETS avec la raison écrite."
+    )
+
+
+def test_restore_recreates_every_bucket_backup_mirrors():
+    """Miroir de test_backup_covers_every_bucket_the_core_uses, dans l'autre
+    sens : un bucket sauvegardé par backup.sh et absent de restore.sh
+    produirait une restauration incomplète et silencieuse (spec SP-59
+    §1.2b — trouvé réellement dérivé au moment de l'écriture de cette
+    spec, entre backup.sh et le runbook manuel : 5 buckets recréés contre 7
+    réellement sauvegardés)."""
+    backed_up = set(re.findall(r"\$\{(S3_[A-Z0-9_]*_BUCKET)", BACKUP_SH.read_text()))
+    restored = set(re.findall(r"\$\{(S3_[A-Z0-9_]*_BUCKET)", RESTORE_SH.read_text()))
+    missing = backed_up - restored
+    assert not missing, (
+        f"buckets sauvegardés par backup.sh et jamais recréés par restore.sh : "
+        f"{sorted(missing)}."
     )
 
 
