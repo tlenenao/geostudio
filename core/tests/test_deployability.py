@@ -1332,7 +1332,20 @@ def test_documented_env_vars_extractor_has_not_silently_regressed_to_empty():
 
 def test_feature_health_gate_runs_in_ci():
     """SP-61 : un garde-fou qui n'est pas câblé dans la CI ne garde rien —
-    piège n°2 de CLAUDE.md, « livré + testé + mergé ≠ câblé »."""
+    piège n°2 de CLAUDE.md, « livré + testé + mergé ≠ câblé ».
+
+    `"feature_health_cli.py" in ci` et `"--check" in ci` séparément ne
+    prouvent rien : `--check` est un sous-texte banal qui apparaît ailleurs
+    dans ce même fichier (`uv run ruff format --check .`), sans rapport avec
+    ce job — falsifié en revue finale en changeant l'invocation réelle en
+    `--write` : le test restait vert. Il faut les deux tokens sur la **même
+    ligne**, dans l'invocation réelle du script."""
     ci = CI.read_text()
-    assert "feature_health_cli.py" in ci
-    assert "--check" in ci
+    lines_invoking_cli = [
+        line for line in ci.splitlines() if "feature_health_cli.py" in line
+    ]
+    assert lines_invoking_cli, "aucune ligne n'invoque feature_health_cli.py dans la CI"
+    assert any("--check" in line for line in lines_invoking_cli), (
+        "feature_health_cli.py est invoqué en CI mais aucune de ses invocations "
+        f"ne porte --check : {lines_invoking_cli}"
+    )

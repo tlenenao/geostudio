@@ -70,6 +70,38 @@ def test_no_inventory_entry_claims_an_unknown_surface():
     assert unknown == [], f"Surfaces déclarées mais absentes du code : {unknown}"
 
 
+def test_publiques_declaration_matches_the_ast_unguarded_set():
+    """`score_guard` (rest_surface.py) donne 100.0 à toute surface qu'une
+    entrée déclare dans `publiques`, sans jamais vérifier que cette route est
+    *réellement* dépourvue de garde et d'authentification. Rien n'empêche
+    aujourd'hui une future entrée de déclarer publique une route qui garde
+    `has_privilege`/`require_privilege`/etc — le sous-score « garde »
+    rapporterait alors une fiction, en silence.
+
+    Ce test pin l'invariant qui rend cette déclaration honnête : l'ensemble
+    des surfaces REST déclarées `publiques` (toutes entrées confondues) doit
+    être **exactement** l'ensemble des routes que l'index AST trouve
+    réellement sans aucune garde et sans authentification (`auth == "none"`,
+    `guards` vide)."""
+    features = load_inventory(INVENTORY)
+    declared_public = {surface for feature in features for surface in feature.public}
+    routes = index_rest_routes(REPO)
+    actually_unguarded = {
+        surface_id(fact) for fact in routes if not fact.guards and fact.auth == "none"
+    }
+    declared_but_guarded = sorted(declared_public - actually_unguarded)
+    unguarded_but_undeclared = sorted(actually_unguarded - declared_public)
+    assert not declared_but_guarded and not unguarded_but_undeclared, (
+        "Divergence entre `publiques` (inventaire) et l'ensemble réellement non "
+        "gardé (index AST) — le sous-score « garde » de rest_surface.py::"
+        "score_guard mentirait sur au moins une de ces routes.\n"
+        "Déclarées publiques mais en réalité gardées ou authentifiées "
+        f"(retirer de `publiques`) : {declared_but_guarded}\n"
+        "Réellement sans garde ni authentification mais non déclarées "
+        f"publiques (ajouter à `publiques`) : {unguarded_but_undeclared}"
+    )
+
+
 def test_every_proof_path_still_exists():
     """L'ancrage par chemin de fichier tient (294/304 mesuré à l'amorçage) —
     il ne tient que si on le vérifie."""
