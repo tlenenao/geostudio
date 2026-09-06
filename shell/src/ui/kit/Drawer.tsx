@@ -28,7 +28,7 @@ export function Drawer({
         <DialogPrimitive.Content
           id={id}
           className={cn(
-            "fixed top-0 z-50 h-full w-full max-w-sm border-rule bg-raised p-4 shadow-lg",
+            "fixed top-0 z-50 h-full w-full max-w-sm overflow-y-auto border-rule bg-raised p-4 shadow-lg",
             side === "right" ? "right-0 border-l" : "left-0 border-r",
           )}
         >

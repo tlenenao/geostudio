@@ -11,6 +11,7 @@ export function DataTable<T>({
   selectedIds,
   onSelectedIdsChange,
   sortKey,
+  sortDirection,
   onSortChange,
 }: {
   columns: { key: string; label: string; render: (row: T) => React.ReactNode }[];
@@ -45,7 +46,13 @@ export function DataTable<T>({
               key={col.key}
               className="cursor-pointer px-3 py-2 font-medium text-ink-2"
               onClick={() => onSortChange?.(col.key)}
-              aria-sort={sortKey === col.key ? "ascending" : "none"}
+              aria-sort={
+                sortKey === col.key
+                  ? sortDirection === "desc"
+                    ? "descending"
+                    : "ascending"
+                  : "none"
+              }
             >
               {col.label}
             </th>

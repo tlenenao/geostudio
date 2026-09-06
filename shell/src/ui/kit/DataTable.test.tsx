@@ -27,6 +27,23 @@ test("clic sur un en-tête de colonne triable notifie onSortChange", async () =>
   expectTokenizedClasses(container);
 });
 
+test("aria-sort reflète sortDirection (REV-090)", () => {
+  render(
+    <DataTable
+      columns={COLUMNS}
+      rows={ROWS}
+      getRowId={(r) => r.id}
+      sortKey="name"
+      sortDirection="desc"
+    />,
+  );
+  expect(screen.getByRole("columnheader", { name: "Nom" })).toHaveAttribute(
+    "aria-sort",
+    "descending",
+  );
+  expect(screen.getByRole("columnheader", { name: "Type" })).toHaveAttribute("aria-sort", "none");
+});
+
 test("cocher une ligne ajoute son id à selectedIds", async () => {
   const onSelectedIdsChange = vi.fn();
   render(

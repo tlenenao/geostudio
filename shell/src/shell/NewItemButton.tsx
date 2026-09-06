@@ -160,6 +160,20 @@ export function NewItemButton() {
     }
   }
 
+  const busy = create.isPending || createMap.isPending || createDataset.isPending;
+
+  // Fermer pendant une mutation en vol laisserait la chaîne async submit()
+  // tourner en arrière-plan (elle appellerait quand même close()+navigate()
+  // sur un tiroir depuis longtemps refermé, ou réutiliserait un état
+  // fraîchement réinitialisé) — même patron que
+  // Tileset3DUploadButton.requestClose() : ignore Échap et le pointerdown
+  // extérieur (les deux passent par onOpenChange de Drawer) tant que busy,
+  // en plus du disabled={busy} explicite sur Annuler.
+  function requestClose() {
+    if (busy) return;
+    close();
+  }
+
   return (
     <>
       <Button size="sm" {...drawerPanel.triggerProps} onClick={() => setOpen(true)}>
@@ -167,7 +181,7 @@ export function NewItemButton() {
       </Button>
       <Drawer
         open={open}
-        onOpenChange={(next) => !next && close()}
+        onOpenChange={(next) => !next && requestClose()}
         title={t("newItem.drawerTitle")}
         id={drawerPanel.panelId}
       >
@@ -297,16 +311,14 @@ export function NewItemButton() {
             </p>
           )}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={close}>
+            <Button type="button" variant="outline" size="sm" onClick={close} disabled={busy}>
               {t("confirmDialog.cancel")}
             </Button>
             <Button
               type="submit"
               size="sm"
               disabled={
-                create.isPending ||
-                createMap.isPending ||
-                createDataset.isPending ||
+                busy ||
                 (kind === "site" && !isValidSlug(slug)) ||
                 (kind === "dataset" && datasetSource === "collection" && !collectionId) ||
                 (kind === "dataset" && datasetSource === "arcgis" && !arcgisItemId)

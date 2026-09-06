@@ -514,6 +514,29 @@ test("SP-42/F-shell-pages-01 : masque tout le bouton pour un Lecteur (0 privilè
   );
 });
 
+test("REV-087 : Échap/Annuler n'abandonnent pas une création en vol (busy)", async () => {
+  server.use(
+    http.post(
+      "https://core.test/v1/configs",
+      () => new Promise(() => {}), // reste en vol indéfiniment (isPending)
+    ),
+  );
+  render(
+    <Harness>
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await userEvent.type(screen.getByLabelText("Titre"), "En vol");
+  await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+
+  await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled());
+  await userEvent.keyboard("{Escape}");
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+});
+
 test("SP-42/F-shell-pages-01 : un profil ne portant que maps.manage ne voit que Map dans le sélecteur Type", async () => {
   const queryClient = makeQueryClient(["maps.manage"]);
   const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });

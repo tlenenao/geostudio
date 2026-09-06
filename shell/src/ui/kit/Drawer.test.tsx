@@ -15,6 +15,15 @@ test("rend le contenu à droite par défaut", () => {
   expectTokenizedClasses(baseElement);
 });
 
+test("le conteneur de contenu défile verticalement (REV-086)", () => {
+  render(
+    <Drawer open onOpenChange={() => {}} title="Explorateur">
+      <p>Contenu</p>
+    </Drawer>,
+  );
+  expect(screen.getByRole("dialog", { name: "Explorateur" })).toHaveClass("overflow-y-auto");
+});
+
 test("side=left positionne le panneau à gauche", () => {
   render(
     <Drawer open onOpenChange={() => {}} title="Explorateur" side="left">
