@@ -282,13 +282,21 @@ Détail de l'exécution : rapport `.superpowers/sdd/task-2-report.md`.
 
 ## 7. Checklist de vérification OIDC réelle (SP-59)
 
-**Statut à la rédaction (SP-59, 2026-09-06) : checklist rédigée, pas encore
-rejouée dans cette session** — cf. la Tâche 8 du plan
-`docs/superpowers/plans/2026-09-06-sp59-exploitation-sauvegarde-oidc.md`
-pour le constat réel de l'environnement d'exécution au moment de la
-clôture de ce chantier (mis à jour ci-dessous si l'exercice a pu être
-rejoué). Ne pas présumer cette checklist exécutée par défaut : relire le
-statut ci-dessous avant de citer ce paragraphe comme une preuve.
+**Statut constaté à la clôture (Tâche 8 du plan SP-59, 2026-09-06) :
+checklist rédigée, NON rejouée dans cette session.** Constat réel de
+l'environnement d'exécution (`docker info` fonctionne, mais) : aucun realm
+Keycloak réel ni stack complète ne tournait dans ce worktree au moment de
+la clôture ; `.env` n'y a jamais été bootstrappé ; les ports 9000/9001
+(service `minio` de ce compose) étaient déjà occupés par un conteneur
+appartenant à une autre session concurrente sur la même machine ; la charge
+machine mesurée au même instant (`uptime`) affichait une charge moyenne de
+10 à 29 sur 6 à 13 processus `pytest` concurrents d'autres sessions —
+construire les images `core`/`worker` et piloter une reconnexion OIDC
+navigateur réelle dans ces conditions n'était pas une vérification fiable
+à tenter dans cette session. Même limite d'environnement déjà rencontrée et
+documentée honnêtement par SP-55 (volet SEO/Traefik) et SP-32 avant sa
+session de levée. **Ne pas présumer cette checklist exécutée par défaut** :
+relire ce paragraphe avant de citer cette section comme une preuve.
 
 Objectif : couvrir la moitié du critère §7-5 laissée ouverte par
 l'exécution SP-Deploy-b (§6 ci-dessus) — la reconnexion utilisateur via un

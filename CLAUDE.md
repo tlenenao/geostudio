@@ -790,6 +790,53 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   (`sampleDataSourceField` de SP-51 et les méthodes de SP-54 sont des
   entrées distinctes de l'interface `ItemClient`, `invalidateDatasetCache`
   est la seule méthode de SP-54 dans `base.ts`, jamais touché par SP-51).
+- **SP-59** — exploitation : rotation des secrets + restauration scriptée
+  (spec `docs/superpowers/specs/2026-09-06-sp59-exploitation-sauvegarde-
+  oidc-design.md`, plan `docs/superpowers/plans/2026-09-06-sp59-
+  exploitation-sauvegarde-oidc.md`), 8 tâches en deux volets. **Volet A
+  (GAP-75)** : `crypto.py` accepte une clé explicite (`encrypt`/`decrypt`,
+  `key: bytes | None = None`, défaut inchangé) ; `list_all_secrets` —
+  seule fonction cross-tenant d'`app/secrets/repository.py`, réservée au
+  script de rotation ; `rotate_all_secrets` — rotation atomique en deux
+  passes strictes (tout déchiffrer avec l'ancienne clé AVANT toute
+  écriture, puis rechiffrer et flush une seule fois), audit par tenant
+  (`actor_kind="system"`, premier usage réel de cette valeur dans
+  `core/app`) ; script CLI `scripts/rotate_secrets_master_key.py`
+  (`--dry-run`, patron `seed_demo.py`) + runbook dédié. Ni le script ni
+  `CORE_SECRETS_MASTER_KEY_NEW` ne sont câblés dans
+  `docker-compose.yml`/`.env.example` — script d'exploitation ponctuel,
+  pas une capacité de service. **Volet B (GAP-70)** : `deploy/backup/
+  restore.sh` scripte les étapes 3+4 du runbook de restauration
+  (Postgres + MinIO), embarqué dans l'image `backup`. **Trouvaille
+  réelle** : le runbook (et la première version de `restore.sh`) ne
+  recréait que **5** buckets MinIO alors que `backup.sh` en sauvegarde
+  **7** depuis SP-33/SP-40 (`mapicons`/`attachments` jamais reportés côté
+  restauration) — perte de données silencieuse après tout sinistre réel,
+  corrigée dans les deux fichiers, garantie par un nouveau test de parité
+  (`test_restore_recreates_every_bucket_backup_mirrors`). Contradiction
+  interne du runbook corrigée (le paragraphe « Non prouvé à ce jour »
+  contredisait la section « 6. Vérifier » plus bas dans le même fichier) ;
+  nouvelle section 7, checklist de vérification OIDC réelle. **Constat
+  Tâche 8, sans arrondir** : aucun Keycloak réel ni stack complète ne
+  tournait dans cette session (`.env` jamais bootstrappé dans ce
+  worktree, ports 9000/9001 déjà pris par un conteneur d'une autre
+  session concurrente, charge machine mesurée à 10-29 avec 6-13 process
+  `pytest` concurrents d'autres sessions au même instant) — la checklist
+  reste rédigée, **non rejouée**, `REV-164` passe d'ouvert à
+  partiellement fermé (même limite d'environnement que SP-32/SP-55,
+  précédent déjà documenté). Garde de branche vérifiée : aucune route
+  REST ni outil MCP ajouté par erreur (`grep` vide sur `rotate_all_secrets`/
+  `list_all_secrets`/`restore.sh` dans `app/mcp/`, `secrets/routes.py`
+  inchangé). Suite finale : cœur **2603 passed/5 skipped (qgis)/0
+  failed** (les 4 échecs observés sur une exécution complète sous forte
+  contention machine — `test_pipeline_runtime.py` ×6 sur table
+  dupliquée d'une session concurrente, `test_copilot_routes.py` sur une
+  assertion de non-blocage de l'event loop sous charge, piège CLAUDE.md
+  n°7 — ont été reproduits comme passants à 100 % en isolation, sur un
+  conteneur Postgres dédié à cette vérification, non liés aux fichiers
+  touchés par ce plan) ; couverture 94,15 % (seuil 85) ; ruff/mypy
+  --strict (6 modules)/lint-imports tous verts. Aucune migration (spec
+  §4, vérifié : `alembic heads` inchangé).
 
 ### Conventions tranchées (2026-09-01)
 
