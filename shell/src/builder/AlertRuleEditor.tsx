@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useAlertEvaluations, useAlertRulesForDataset, useCreateAlertRule } from "../api/hooks";
 import type { AlertChannel, AlertRuleSummary } from "../api/types";
+import { t } from "../i18n";
 import { PipelineScheduleEditor } from "./pipeline/PipelineScheduleEditor";
 import { SecretParamSelect } from "./pipeline/SecretParamSelect";
 import type { PipelineRefreshPolicy } from "../api/types";
@@ -66,16 +67,16 @@ export function AlertRuleEditor({
       setP(DEFAULT_PERCENTILE);
       setRefreshPolicy(null);
     } catch {
-      setCreateError("Échec de la création de la règle.");
+      setCreateError(t("alertRule.createError"));
     }
   }
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-xs font-medium text-ink-2">Alertes</p>
+      <p className="text-xs font-medium text-ink-2">{t("alertRule.heading")}</p>
       {rulesQuery.isError && (
         <p role="alert" className="text-sm text-danger">
-          Impossible de charger les règles d'alerte.
+          {t("alertRule.loadError")}
         </p>
       )}
       {(rulesQuery.data ?? []).map((rule) => (
@@ -83,18 +84,18 @@ export function AlertRuleEditor({
       ))}
       <div className="flex flex-col gap-2 border-t border-rule pt-2 text-xs">
         <label className="flex flex-col gap-1">
-          Nom de la règle
+          {t("alertRule.nameLabel")}
           <input
-            aria-label="Nom de la règle"
+            aria-label={t("alertRule.nameLabel")}
             className="h-8 rounded border border-rule bg-surface px-2 text-ink"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
         </label>
         <label className="flex flex-col gap-1">
-          Condition (expression)
+          {t("alertRule.conditionLabel")}
           <input
-            aria-label="Condition (expression)"
+            aria-label={t("alertRule.conditionLabel")}
             className="h-8 rounded border border-rule bg-surface px-2 font-mono text-ink"
             placeholder="value > 100"
             value={expr}
@@ -102,9 +103,9 @@ export function AlertRuleEditor({
           />
         </label>
         <label className="flex flex-col gap-1">
-          Canal
+          {t("alertRule.channelLabel")}
           <select
-            aria-label="Canal"
+            aria-label={t("alertRule.channelLabel")}
             className="h-8 rounded border border-rule bg-surface px-2 text-ink"
             value={channel.kind}
             onChange={(e) =>
@@ -115,15 +116,15 @@ export function AlertRuleEditor({
               )
             }
           >
-            <option value="webhook">Webhook</option>
-            <option value="email">E-mail</option>
+            <option value="webhook">{t("alertRule.channelWebhookOption")}</option>
+            <option value="email">{t("alertRule.channelEmailOption")}</option>
           </select>
         </label>
         {channel.kind === "webhook" && (
           <label className="flex flex-col gap-1">
-            URL du webhook
+            {t("alertRule.webhookUrlLabel")}
             <input
-              aria-label="URL du webhook"
+              aria-label={t("alertRule.webhookUrlLabel")}
               className="h-8 rounded border border-rule bg-surface px-2 text-ink"
               value={channel.url}
               onChange={(e) => setChannel({ kind: "webhook", url: e.target.value })}
@@ -133,9 +134,9 @@ export function AlertRuleEditor({
         {channel.kind === "email" && (
           <>
             <label className="flex flex-col gap-1">
-              Destinataire
+              {t("alertRule.recipientLabel")}
               <input
-                aria-label="Destinataire"
+                aria-label={t("alertRule.recipientLabel")}
                 className="h-8 rounded border border-rule bg-surface px-2 text-ink"
                 value={channel.to}
                 onChange={(e) =>
@@ -156,9 +157,9 @@ export function AlertRuleEditor({
           </>
         )}
         <label className="flex flex-col gap-1">
-          Agrégat
+          {t("alertRule.aggregateLabel")}
           <select
-            aria-label="Agrégat"
+            aria-label={t("alertRule.aggregateLabel")}
             className="h-8 rounded border border-rule bg-surface px-2 text-ink"
             value={agg}
             onChange={(e) => setAgg(e.target.value)}
@@ -172,9 +173,9 @@ export function AlertRuleEditor({
         </label>
         {agg !== "count" && (
           <label className="flex flex-col gap-1">
-            Champ
+            {t("alertRule.fieldLabel")}
             <input
-              aria-label="Champ"
+              aria-label={t("alertRule.fieldLabel")}
               className="h-8 rounded border border-rule bg-surface px-2 text-ink"
               value={field}
               onChange={(e) => setField(e.target.value)}
@@ -183,7 +184,7 @@ export function AlertRuleEditor({
         )}
         {aggregateNeedsP(agg) && (
           <PercentileInput
-            label="Centile"
+            label={t("alertRule.percentileLabel")}
             value={p}
             className="h-8 rounded border border-rule bg-surface px-2 text-xs text-ink"
             onCommit={setP}
@@ -198,7 +199,7 @@ export function AlertRuleEditor({
           onClick={() => void handleCreate()}
           disabled={createRule.isPending}
         >
-          Créer la règle
+          {t("alertRule.createButton")}
         </Button>
         {createError && (
           <p role="alert" className="text-danger">

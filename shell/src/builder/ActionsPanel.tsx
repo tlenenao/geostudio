@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import type { ActionMessage, Variable, WidgetItem } from "../api/types";
+import { t } from "../i18n";
 import { getWidget } from "./registry";
 import { validateExpression } from "./expr";
 
 function widgetLabel(items: WidgetItem[], variables: Variable[], id: string): string {
   if (id.startsWith("var:")) {
     const v = variables.find((v) => `var:${v.id}` === id);
-    return v ? `Variable : ${v.name}` : id;
+    return v ? t("actionsPanel.variableLabel", { name: v.name }) : id;
   }
   const it = items.find((i) => i.id === id);
   return (it && getWidget(it.widget)?.label) || id;
@@ -41,7 +42,7 @@ export function ActionsPanel({
   const widgetReceivers = items.filter((i) => (getWidget(i.widget)?.actions?.length ?? 0) > 0);
   const variableReceivers = variables.map((v) => ({
     id: `var:${v.id}`,
-    label: `Variable : ${v.name}`,
+    label: t("actionsPanel.variableLabel", { name: v.name }),
   }));
   const [from, setFrom] = useState("");
   const [event, setEvent] = useState("");
@@ -86,7 +87,7 @@ export function ActionsPanel({
                 </span>
                 <button
                   type="button"
-                  aria-label={`Retirer l'action ${m.id}`}
+                  aria-label={t("actionsPanel.removeAria", { id: m.id })}
                   className="text-red-600"
                   onClick={() => remove(m.id)}
                 >
@@ -94,8 +95,8 @@ export function ActionsPanel({
                 </button>
               </div>
               <input
-                aria-label={`Condition de l'action ${m.id}`}
-                placeholder="Condition (optionnel)"
+                aria-label={t("actionsPanel.conditionAria", { id: m.id })}
+                placeholder={t("actionsPanel.conditionPlaceholder")}
                 className="h-7 rounded border border-slate-300 px-1 font-mono"
                 value={when}
                 onChange={(e) => updateWhen(m.id, e.target.value)}
@@ -108,10 +109,12 @@ export function ActionsPanel({
             </li>
           );
         })}
-        {visibleMessages.length === 0 && <li className="text-xs text-slate-400">Aucune action.</li>}
+        {visibleMessages.length === 0 && (
+          <li className="text-xs text-slate-400">{t("actionsPanel.empty")}</li>
+        )}
       </ul>
       <select
-        aria-label="Widget émetteur"
+        aria-label={t("actionsPanel.emitterAria")}
         className={selectCls}
         value={from}
         onChange={(e) => {
@@ -119,7 +122,7 @@ export function ActionsPanel({
           setEvent("");
         }}
       >
-        <option value="">Widget émetteur…</option>
+        <option value="">{t("actionsPanel.emitterPlaceholder")}</option>
         {emitters.map((i) => (
           <option key={i.id} value={i.id}>
             {widgetLabel(items, variables, i.id)}
@@ -127,13 +130,13 @@ export function ActionsPanel({
         ))}
       </select>
       <select
-        aria-label="Événement"
+        aria-label={t("actionsPanel.eventAria")}
         className={selectCls}
         value={event}
         disabled={!from}
         onChange={(e) => setEvent(e.target.value)}
       >
-        <option value="">Événement…</option>
+        <option value="">{t("actionsPanel.eventPlaceholder")}</option>
         {eventsOf(items, from).map((ev) => (
           <option key={ev} value={ev}>
             {ev}
@@ -141,7 +144,7 @@ export function ActionsPanel({
         ))}
       </select>
       <select
-        aria-label="Widget cible"
+        aria-label={t("actionsPanel.targetAria")}
         className={selectCls}
         value={to}
         onChange={(e) => {
@@ -149,7 +152,7 @@ export function ActionsPanel({
           setAction("");
         }}
       >
-        <option value="">Widget cible…</option>
+        <option value="">{t("actionsPanel.targetPlaceholder")}</option>
         {widgetReceivers.map((i) => (
           <option key={i.id} value={i.id}>
             {widgetLabel(items, variables, i.id)}
@@ -162,13 +165,13 @@ export function ActionsPanel({
         ))}
       </select>
       <select
-        aria-label="Action"
+        aria-label={t("actionsPanel.actionAria")}
         className={selectCls}
         value={action}
         disabled={!to}
         onChange={(e) => setAction(e.target.value)}
       >
-        <option value="">Action…</option>
+        <option value="">{t("actionsPanel.actionPlaceholder")}</option>
         {actionsOf(items, to).map((a) => (
           <option key={a} value={a}>
             {a}
@@ -180,7 +183,7 @@ export function ActionsPanel({
         className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-100"
         onClick={add}
       >
-        Ajouter une action
+        {t("actionsPanel.addButton")}
       </button>
     </div>
   );

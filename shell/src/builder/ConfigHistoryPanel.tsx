@@ -13,6 +13,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { ConfigRevisionInfo } from "../api/types";
+import { t } from "../i18n";
 import { Button } from "../ui/kit/Button";
 
 function formatDate(iso: string): string {
@@ -62,12 +63,7 @@ export function ConfigHistoryPanel({
     // modifié : aucun des cinq éditeurs ne porte de drapeau « sale », et une
     // confirmation n'est jamais fausse devant une écriture serveur
     // (spec SP-23 §3.4).
-    if (
-      !window.confirm(
-        `Restaurer la version ${version} ? Les modifications non enregistrées seront perdues.`,
-      )
-    )
-      return;
+    if (!window.confirm(t("configHistory.confirmMessage", { version }))) return;
     setBusy(true);
     setRestoreError(false);
     try {
@@ -100,28 +96,31 @@ export function ConfigHistoryPanel({
 
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium">Historique</h3>
+      <h3 className="text-sm font-medium">{t("configHistory.heading")}</h3>
       {loadError && (
         <p role="alert" className="text-sm text-danger">
-          Impossible de charger l'historique des versions.
+          {t("configHistory.loadError")}
         </p>
       )}
       {restoreError && (
         <p role="alert" className="text-sm text-danger">
-          Impossible de restaurer cette version.
+          {t("configHistory.restoreError")}
         </p>
       )}
       {!loadError && revisions !== null && revisions.length === 0 && (
-        <p className="text-sm text-ink-2">Aucune version enregistrée.</p>
+        <p className="text-sm text-ink-2">{t("configHistory.empty")}</p>
       )}
       <ul className="flex flex-col gap-1">
         {(revisions ?? []).map((r) => (
           <li key={r.version} className="flex items-center gap-2 text-sm">
             <span>
-              Version {r.version} — {formatDate(r.createdAt)}
+              {t("configHistory.versionLabel", {
+                version: r.version,
+                date: formatDate(r.createdAt),
+              })}
             </span>
             {r.version === current ? (
-              <span className="text-xs text-ink-2">(courante)</span>
+              <span className="text-xs text-ink-2">{t("configHistory.currentLabel")}</span>
             ) : (
               <Button
                 size="sm"
@@ -129,7 +128,7 @@ export function ConfigHistoryPanel({
                 disabled={busy}
                 onClick={() => void restore(r.version)}
               >
-                Restaurer
+                {t("configHistory.restoreButton")}
               </Button>
             )}
           </li>

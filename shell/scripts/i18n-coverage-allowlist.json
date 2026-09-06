@@ -1,12 +1,4 @@
 [
-  "src/builder/ActionsPanel.tsx",
-  "src/builder/AlertRuleEditor.tsx",
-  "src/builder/AnalyticsContextIndicator.tsx",
-  "src/builder/AppRenderer.tsx",
-  "src/builder/ConfigHistoryPanel.tsx",
-  "src/builder/CrossFilterLinkEditor.tsx",
-  "src/builder/DataSourcePanel.tsx",
-  "src/builder/DataSourceSelect.tsx",
   "src/builder/DatasetDownloadButtons.tsx",
   "src/builder/ExplorerDrawer.tsx",
   "src/builder/NavigationPanel.tsx",
