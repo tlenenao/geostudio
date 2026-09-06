@@ -179,9 +179,21 @@ session sur les 27 chemins réels.
 Présence d'une garde d'autorisation sur le **chemin d'exécution réel** :
 `require_privilege` / `require_any_privilege` / `rls_scope` / garde d'egress /
 `can()`. Jamais un `grep` sur un nom de garde — une notation de la revue SP-42
-s'est déjà trompée ainsi (piège n°11). Le calcul suit les dépendances FastAPI
-déclarées sur la route, résolues depuis `openapi.json` et le module qui la
-définit.
+s'est déjà trompée ainsi (piège n°11).
+
+**Vérifié en session, et cela change la méthode :** ces gardes ne sont **pas**
+des dépendances FastAPI. Elles sont appelées dans le **corps** de la fonction de
+route (`core/app/collections/routes.py:224` :
+`require_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)`),
+et `items/routes.py` ne déclare que `Depends(get_current_user)` en s'appuyant
+sur `can()` à l'intérieur. Elles sont donc **invisibles depuis `openapi.json`**
+— une lecture de la signature de route ne les verrait jamais. Le calcul exige un
+**résolveur AST** sur le corps de chaque fonction de route.
+
+Précédent à suivre : `core/tests/test_deployability.py` a fait exactement cette
+bascule (« trouvées en passant la règle 3 d'un grep à un résolveur AST »), avec
+une docstring qui énumère honnêtement les limites du résolveur. Ce chantier
+reprend ce patron, docstring de limites comprise.
 
 Une route publique par conception (`GET /share-links/{token}`, `/sitemap.xml`,
 `/health`) est déclarée telle dans l'inventaire et n'est pas pénalisée.
@@ -285,8 +297,8 @@ Le chantier produit **deux rendus d'une même source**, plus un journal.
 |---|---|---|
 | Inventaire | `docs/revue/inventaire-fonctionnalites.jsonl` | source déclarative, une ligne par fonctionnalité, `id` stable |
 | Journal de santé | `docs/revue/historique-sante.jsonl` | append-only, un instantané par régénération (§7.2) |
-| Générateur | `scripts/feature_health.py` | calcule, réconcilie, rend les deux sorties |
-| Seuils/pondérations | `scripts/feature_health_thresholds.json` | versionné, modifiable sans toucher au code |
+| Générateur | `core/scripts/feature_health/` (package) + `core/scripts/feature_health_cli.py` | calcule, réconcilie, rend les deux sorties |
+| Seuils/pondérations | `core/scripts/feature_health_thresholds.json` | versionné, modifiable sans toucher au code |
 | Garde-fou | `core/tests/test_feature_inventory.py` | échec CI (§6.1 et §6.2) |
 | **Rendu HTML** | `docs/revue/bilan-fonctionnalites.html` | **le produit de suivi central** (§7.1) |
 | Rendu Markdown | `docs/revue/bilan-fonctionnalites.md` | forme greppable et diffable en revue de commit |
@@ -297,10 +309,15 @@ inter-dépôt : `core/tests/test_deployability.py:65` fait déjà exactement cel
 `docker-compose.yml`, `.github/workflows/release.yml`, `.env.example`).
 Précédent vérifié dans le code, pas supposé.
 
-**Emplacement du générateur.** `scripts/` à la racine, qui héberge déjà les
-scripts inter-dépôt (`add-license-headers.py`, `bootstrap-env.sh`) — il doit
-lire `core/coverage.xml`, `shell/coverage/coverage-summary.json`,
-`core/openapi.json` et `shell/src/shell/routes.tsx`.
+**Emplacement du générateur.** `core/scripts/`, et non `scripts/` à la racine :
+`core/scripts/` est un **package** (`__init__.py`) que `core/tests/` importe
+déjà — quatre précédents vérifiés (`test_rotate_secrets_master_key_script.py`,
+`test_ensure_procrastinate_schema.py`, `test_healthcheck_worker_stalled.py`,
+`test_healthcheck_cdc.py`), rendus possibles par `pythonpath = ["."]`
+(`core/pyproject.toml:107`). Un générateur posé dans `scripts/` à la racine ne
+serait ni importable par un test ni exécuté par la CI. Il remonte à la racine du
+dépôt par `parents[N]`, comme `test_deployability.py`, pour lire
+`shell/coverage/coverage-summary.json` et `shell/src/shell/routes.tsx`.
 
 **Langue.** Noms de fichiers et de fonctions en anglais (code) ; clés du JSONL
 en français, pour rester homogènes avec le fichier d'amorçage
