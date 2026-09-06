@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Bilan de santé des fonctionnalités — calcul, garde-fou et rendu (SP-61).
 
-    uv run python scripts/feature_health_cli.py --repo .. --check
-    uv run python scripts/feature_health_cli.py --repo .. --write
+    PYTHONPATH=. uv run python scripts/feature_health_cli.py --repo .. --check
+    PYTHONPATH=. uv run python scripts/feature_health_cli.py --repo .. --write
 
 `--check` n'écrit rien : il calcule et applique les deux planchers de
 `feature_health_thresholds.json`. `--write` regénère
