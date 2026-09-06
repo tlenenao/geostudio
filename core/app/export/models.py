@@ -34,7 +34,7 @@ class ExportJob(Base):
     )
     error: Mapped[str | None] = mapped_column(String, nullable=True)
     result_key: Mapped[str | None] = mapped_column(String, nullable=True)
-    # Additive, nullable (SP-58 Tâche 2, migration 0035) : les jobs terminés
+    # Additive, nullable (SP-58 Tâche 2, migration 0038) : les jobs terminés
     # avant cette migration restent NULL, traités comme 0 par la somme de
     # app.quotas.service::job_output_storage_bytes (limitation assumée,
     # documentée en tête de la migration).

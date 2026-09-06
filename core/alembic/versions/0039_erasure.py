@@ -12,8 +12,8 @@ tenant_slug/requested_by_user_id sont des chaînes libres (snapshot, même
 rationale que audit_log.actor_id, cf. app/audit/models.py), counts est un
 JSON de comptages agrégés uniquement.
 
-Revision ID: 0036
-Revises: 0035
+Revision ID: 0039
+Revises: 0038
 Create Date: 2026-09-06
 """
 
@@ -21,8 +21,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0036"
-down_revision = "0035"
+revision = "0039"
+down_revision = "0038"
 branch_labels = None
 depends_on = None
 

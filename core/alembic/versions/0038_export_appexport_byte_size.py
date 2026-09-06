@@ -10,8 +10,8 @@ traitées comme 0 par la somme de app.quotas.service::job_output_storage_bytes
 dans le quota de stockage, seuls les nouveaux jobs après déploiement de cette
 migration seront mesurés (spec §3.1).
 
-Revision ID: 0035
-Revises: 0034
+Revision ID: 0038
+Revises: 0037
 Create Date: 2026-09-06
 """
 
@@ -19,8 +19,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0035"
-down_revision = "0034"
+revision = "0038"
+down_revision = "0037"
 branch_labels = None
 depends_on = None
 

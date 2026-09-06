@@ -75,7 +75,7 @@ def job_output_storage_bytes(session: Session, tenant_id: str) -> int:
     (S3_EXPORTS_BUCKET/S3_APPEXPORTS_BUCKET, cf. spec §1.4) : leurs clés
     portent un job_id, pas un tenant_id, donc pas de préfixe S3 possible —
     on somme la colonne byte_size (Tâche 2) filtrée tenant_id à la place.
-    COALESCE(...,0) : les lignes historiques (avant migration 0035) ont
+    COALESCE(...,0) : les lignes historiques (avant migration 0038) ont
     byte_size NULL, traitées comme 0 (limitation assumée, spec §3.1)."""
     export_total = (
         session.scalar(
