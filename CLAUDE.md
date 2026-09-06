@@ -421,6 +421,35 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   à tout ce plan** (confirmé en checkoutant le commit d'avant la Tâche 1 —
   `e2e/pipeline-builder.spec.ts:111`, sans rapport, non corrigé, hors
   périmètre).
+- **SP-51** — parité carte App Builder / éditeur autonome (9 tâches, spec
+  `docs/superpowers/specs/2026-09-05-sp51-parite-carte-design.md`) : GAP-46
+  déjà résolu (vérification seule, aucun code touché) ; GAP-53 (outils de
+  mesure/croquis montés en édition, `interactiveTools` sur `MapEditorPage`) ;
+  GAP-35 (contrôle d'opacité raster) ; GAP-52 3 jumelles réelles fermées
+  (basemap/terrain/caméra sur le widget carte de l'App Builder, réutilisant
+  `BasemapSelect`/`TerrainPanel`/`CameraControls` — la 5e jumelle annoncée,
+  palette theme-primary, était déjà implémentée, retirée du périmètre par
+  la spec) ; GAP-45 (éditeur JSON replié pour `layer.paint`, mode avancé) ;
+  GAP-52 Jenks (`ItemClient.sampleDataSourceField()`, symétrique de
+  `queryDataSource`, résout un `collectionId` depuis un `DataSource`) ;
+  GAP-36 (UI d'auteur pour une couche `deck` — création dans `LayerPicker`,
+  réglages `radiusPixels`/`radius`/`elevationScale` dans `LayersPanel`).
+  **Écart corrigé par rapport au texte du plan (piège CLAUDE.md n°3)** : la
+  Tâche 9 proposait un contrôle de rayon unique partagé heatmap/hexbin —
+  faux contre les `.d.ts` deck.gl réels (`HeatmapLayer.radiusPixels` ≠
+  `HexagonLayer.radius`), corrigé en 3 contrôles distincts. `npm run build`
+  (jamais exécuté avant la revue finale du plan) a aussi trouvé 2 erreurs
+  tsc réelles introduites par la Tâche 9 (lecture non affinée de
+  `MapLayer.props`, `StaticItemClient` non mis à jour pour la nouvelle
+  méthode `ItemClient`), corrigées par un commit séparé. Suite finale :
+  shell 225 fichiers/1962 tests ; E2E 141 passed/4 skipped/1 échec
+  préexistant (`e2e/pipeline-builder.spec.ts:111`, sans rapport). Ce plan
+  ne touche pas `shell/src/api/base.ts` (chevauchement anticipé par les deux
+  specs avec SP-54, mais son seul point de contact possible — GAP-46 —
+  était déjà résolu, donc sans impact) et
+  n'ajoute qu'une méthode additive à `shell/src/api/types.ts`
+  (`sampleDataSourceField`) — vérification croisée de l'absence de
+  collision réelle avec SP-54 faite à la clôture de ce dernier.
 
 ### Conventions tranchées (2026-09-01)
 
