@@ -158,11 +158,16 @@ def get_current_user(
     authorization: str = Header(default=""),
     session: Session = Depends(get_session),
 ) -> User:
-    tenant = get_or_create_default_tenant(session)
-
+    # REV-012 : la résolution du tenant (get_or_create_default_tenant peut
+    # INSÉRER une ligne) ne doit se produire qu'après ce contrôle — sinon
+    # toute requête non authentifiée sur une route protégée déclenche un
+    # accès base avant même son 401. Les trois branches ci-dessous
+    # (mock/jeton d'export/OIDC) sont toutes en aval de ce contrôle.
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="missing bearer token")
     token = authorization.removeprefix("Bearer ")
+
+    tenant = get_or_create_default_tenant(session)
 
     if _mock_mode():
         return get_or_create_user(

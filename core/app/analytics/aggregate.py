@@ -71,11 +71,19 @@ def _split_filter_key(raw_name: str) -> tuple[str, str | None]:
     return raw_name, None
 
 
+# REV-014 : app.features.tiles::_EXCLUDED_PROPERTIES exclut déjà "tenant_id"
+# (colonne interne, jamais un champ métier) — même exclusion ici, mais
+# redéfinie localement plutôt qu'importée : `app.analytics` est au plus bas
+# du contrat de couches (pyproject.toml), `app.features` est placé au-dessus,
+# un import irait donc dans le mauvais sens.
+_EXCLUDED_PROPERTIES = frozenset({"tenant_id"})
+
+
 def _valid_column_names(table_info: TableInfo) -> set[str]:
     names = {c.name for c in table_info.columns} | {table_info.pk_column}
     if table_info.geometry_column:
         names.add(table_info.geometry_column)
-    return names
+    return names - _EXCLUDED_PROPERTIES
 
 
 def _groupby_fields(request: AggregateRequestBody) -> list[str]:

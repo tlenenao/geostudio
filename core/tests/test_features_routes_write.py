@@ -249,6 +249,59 @@ def test_writes_are_audited(env):
     assert {"feature.create", "feature.update", "feature.delete"} <= actions
 
 
+def test_feature_writes_use_the_collection_tenant_not_the_actor_tenant(env, monkeypatch):
+    # REV-016 : create_feature/put_feature/remove_feature auditent avec
+    # tenant_id=user.tenant_id là où la même fonction (export ci-dessus,
+    # aggregate/analytics.sql) et les routes voisines utilisent délibérément
+    # col.tenant_id. Fige _get_writable pour renvoyer une collection portant
+    # un AUTRE tenant_id que celui de l'acteur (même id/table_name/editable),
+    # et vérifie que c'est CE tenant-là qui atteint audit_log.
+    import uuid
+
+    from sqlalchemy import select
+
+    from app.audit.models import AuditLog
+    from app.tenants.models import Tenant
+
+    app, client, Session, admin, _r, _repo = env
+    _register(app, client, admin)
+    _as(app, admin)
+
+    with Session() as s:
+        other_tenant = Tenant(
+            id=uuid.uuid4().hex, slug=f"other-{uuid.uuid4().hex[:8]}", name="Other"
+        )
+        s.add(other_tenant)
+        s.commit()
+        other_tenant_id = other_tenant.id
+
+    original_get_writable = features_routes._get_writable
+
+    def _fake_get_writable(session, user, collection_id):
+        col = original_get_writable(session, user, collection_id)
+        return SimpleNamespace(
+            id=col.id,
+            table_name=col.table_name,
+            editable=col.editable,
+            tenant_id=other_tenant_id,
+        )
+
+    monkeypatch.setattr(features_routes, "_get_writable", _fake_get_writable)
+
+    assert client.post("/v1/collections/incidents/items", json=VALID).status_code == 201
+    assert client.put("/v1/collections/incidents/items/1", json=VALID).status_code == 204
+    assert client.delete("/v1/collections/incidents/items/1").status_code == 204
+
+    with Session() as s:
+        rows = s.scalars(
+            select(AuditLog).where(
+                AuditLog.action.in_(["feature.create", "feature.update", "feature.delete"])
+            )
+        ).all()
+    assert {r.action for r in rows} == {"feature.create", "feature.update", "feature.delete"}
+    assert all(r.tenant_id == other_tenant_id for r in rows)
+
+
 def _feature_count(Session, collection_id="incidents"):
     with Session() as s:
         return get_collection(s, tenant_id="default", collection_id=collection_id).feature_count

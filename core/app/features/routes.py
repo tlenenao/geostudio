@@ -568,9 +568,12 @@ def create_feature(
         text("UPDATE collections SET feature_count = feature_count + 1 WHERE id = :id"),
         {"id": col.id},
     )
+    # REV-016 : aligné sur col.tenant_id — même patron que les write_audit
+    # voisins de ce fichier (export.run, analytics.sql exceptés, ceux-là
+    # n'ont pas de collection résolue en amont).
     write_audit(
         session,
-        tenant_id=user.tenant_id,
+        tenant_id=col.tenant_id,
         actor_id=user.id,
         actor_kind="user",
         action="feature.create",
@@ -609,7 +612,7 @@ def put_feature(
         raise HTTPException(status_code=404, detail="feature not found")
     write_audit(
         session,
-        tenant_id=user.tenant_id,
+        tenant_id=col.tenant_id,
         actor_id=user.id,
         actor_kind="user",
         action="feature.update",
@@ -650,7 +653,7 @@ def remove_feature(
     )
     write_audit(
         session,
-        tenant_id=user.tenant_id,
+        tenant_id=col.tenant_id,
         actor_id=user.id,
         actor_kind="user",
         action="feature.delete",

@@ -22,7 +22,7 @@ from app.auth.dependency import (
 from app.db import get_session
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
-from app.roles.repository import count_users_with_privileges, get_role
+from app.roles.repository import count_users_with_privileges, get_role, roles_for_ids
 from app.tenants.models import Tenant
 from app.users.models import User
 from app.users.repository import list_users, set_user_role
@@ -124,10 +124,16 @@ def get_users(
 ) -> dict[str, Any]:
     require_privilege(session, user, Privilege.ADMIN_USERS_MANAGE.value)
     users, total = list_users(session, tenant_id=user.tenant_id, page=page, page_size=pageSize, q=q)
-    result = []
-    for u in users:
-        role = get_role(session, tenant_id=user.tenant_id, role_id=u.role_id)
-        result.append(_user_json(u, role.slug if role is not None else ""))
+    # REV-085 : une seule requête pour l'ensemble des role_id de la page,
+    # au lieu d'un get_role() par utilisateur (même patron que
+    # roles_for_items/get_access_facts_by_ids).
+    roles_by_id = roles_for_ids(
+        session, tenant_id=user.tenant_id, role_ids=[u.role_id for u in users]
+    )
+    result = [
+        _user_json(u, roles_by_id[u.role_id].slug if u.role_id in roles_by_id else "")
+        for u in users
+    ]
     return {"users": result, "total": total}
 
 

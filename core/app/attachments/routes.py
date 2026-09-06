@@ -206,10 +206,13 @@ def confirm_attachment(
     _require_declared_field(col, body.fieldKey)
     _reject_dangerous_extension(body.filename)
     _reject_invalid_content_type(body.contentType)
-    # Même garde anti-confused-deputy que POST /uploads (app/ingestion/routes.py) :
-    # la clé est censée venir du présigné ci-dessus, toujours préfixée par le
-    # tenant de l'appelant.
-    if not body.key.startswith(f"{col.tenant_id}/"):
+    # Même garde anti-confused-deputy que POST /uploads (app/ingestion/routes.py),
+    # étendue au préfixe COMPLET (REV-013) : la clé est censée venir du
+    # présigné ci-dessus (presign_attachment), qui la préfixe toujours par
+    # tenant/collection/fid — valider seulement le tenant laissait passer
+    # une clé pointant vers une AUTRE collection ou une AUTRE entité sous le
+    # même tenant (devinée ou réutilisée depuis un autre upload).
+    if not body.key.startswith(f"{col.tenant_id}/{collection_id}/{fid}/"):
         raise HTTPException(status_code=400, detail="invalid upload key")
     bucket = get_attachments_bucket()
     try:

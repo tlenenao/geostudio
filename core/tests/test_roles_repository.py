@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+from sqlalchemy import event
+
 from app.db import init_db, make_engine, make_session_factory
 from app.roles.privileges import BUILT_IN_ROLE_NAMES, BUILT_IN_ROLE_PRIVILEGES, Privilege
 from app.roles.repository import (
@@ -10,9 +12,11 @@ from app.roles.repository import (
     get_privilege_catalog,
     get_role,
     list_roles,
+    roles_for_ids,
     update_role,
     would_orphan_privilege_holders,
 )
+from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -149,3 +153,65 @@ def test_privilege_catalog_covers_every_privilege_with_domain_and_label_key():
     assert len(catalog) == len(list(Privilege))
     for entry in catalog:
         assert set(entry) == {"privilege", "domain", "labelKey"}
+
+
+def test_roles_for_ids_empty_list_returns_empty_dict():
+    Session = _session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        assert roles_for_ids(s, tenant_id=tenant.id, role_ids=[]) == {}
+
+
+def test_roles_for_ids_returns_the_matching_roles_keyed_by_id():
+    Session = _session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        got = roles_for_ids(
+            s, tenant_id=tenant.id, role_ids=[roles["admin"].id, roles["reader"].id]
+        )
+        assert set(got) == {roles["admin"].id, roles["reader"].id}
+        assert got[roles["admin"].id].slug == "admin"
+        assert got[roles["reader"].id].slug == "reader"
+        # Un role_id inconnu est absent du résultat, jamais une KeyError/None
+        # explicite — même contrat que roles_for_items.
+        assert "does-not-exist" not in roles_for_ids(
+            s, tenant_id=tenant.id, role_ids=["does-not-exist"]
+        )
+
+
+def test_roles_for_ids_filters_by_tenant():
+    Session = _session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        other = Tenant(id="other", slug="other", name="Other")
+        s.add(other)
+        s.flush()
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        other_roles = ensure_built_in_roles(s, tenant_id=other.id)
+        # Un role_id d'un AUTRE tenant, même si l'id existe bien en base,
+        # doit rester invisible quand on interroge sous tenant.id.
+        got = roles_for_ids(s, tenant_id=tenant.id, role_ids=[other_roles["admin"].id])
+        assert got == {}
+        assert roles_for_ids(s, tenant_id=tenant.id, role_ids=[roles["admin"].id])
+
+
+def test_roles_for_ids_is_a_single_query():
+    Session = _session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        role_ids = [r.id for r in roles.values()]
+
+        seen = 0
+
+        def bump(conn, cursor, statement, params, context, executemany):
+            nonlocal seen
+            seen += 1
+
+        event.listen(s.get_bind(), "before_cursor_execute", bump)
+        try:
+            roles_for_ids(s, tenant_id=tenant.id, role_ids=role_ids)
+        finally:
+            event.remove(s.get_bind(), "before_cursor_execute", bump)
+        assert seen == 1
