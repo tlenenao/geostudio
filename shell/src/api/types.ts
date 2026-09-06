@@ -555,7 +555,37 @@ export interface ItemClient {
     errorMessage: string | null;
     itemId: string | null;
   }>;
+  // Coffre de secrets connecteur (GAP-43, SP-53) : le cœur ne rend jamais un
+  // payload déchiffré — listSecrets()/createSecret() ne portent que
+  // {id,name,kind,createdAt,updatedAt}, jamais le SecretPayload lui-même.
+  listSecrets(): Promise<SecretSummary[]>;
+  createSecret(input: { name: string; payload: SecretPayload }): Promise<SecretSummary>;
+  deleteSecret(id: string): Promise<void>;
 }
+
+export type SecretSummary = {
+  id: string;
+  name: string;
+  kind: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SecretPayload =
+  | { kind: "api_key"; location: "header" | "query"; key: string; value: string }
+  | { kind: "bearer_token"; token: string }
+  | { kind: "basic_auth"; username: string; password: string }
+  | { kind: "oauth2_client_credentials"; tokenUrl: string; clientId: string; clientSecret: string }
+  | { kind: "postgres_dsn"; dsn: string }
+  | {
+      kind: "smtp";
+      host: string;
+      port: number;
+      username: string;
+      password: string;
+      useTls: boolean;
+      fromAddress: string;
+    };
 
 export type RenderMode = "edit" | "preview" | "runtime";
 

@@ -21,6 +21,7 @@ import { createLayersMethods } from "./domains/layers";
 import { createNotificationsMethods } from "./domains/notifications";
 import { createPipelinesMethods } from "./domains/pipelines";
 import { createReportsMethods } from "./domains/reports";
+import { createSecretsMethods } from "./domains/secrets";
 import { createTiles3dMethods } from "./domains/tiles3d";
 
 export { FeatureValidationError, SqlQueryError, toFrontLayer, type RawMapLayer };
@@ -47,6 +48,7 @@ export function createItemClient(opts: {
     ...createFeaturesMethods(base),
     ...createExportsIngestionMethods(base),
     ...createTiles3dMethods(base),
+    ...createSecretsMethods(base),
     getAuthToken: base.getToken,
     getCoreUrl: () => base.coreUrl,
   };

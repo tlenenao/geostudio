@@ -70,6 +70,50 @@ test("a collection-id format field renders a CollectionParamSelect", async () =>
   expect(onChange).toHaveBeenCalledWith({ collectionId: "villes" });
 });
 
+test("a secret-name format field renders a SecretParamSelect, not a plain text input", async () => {
+  const node: PipelineNode = {
+    id: "rc1",
+    kind: "reader",
+    op: "reader.connector.rest",
+    x: 0,
+    y: 0,
+    params: { baseUrl: "https://x", secretName: "" },
+  };
+  const opEntry: PipelineOpEntry = {
+    kind: "reader",
+    paramsSchema: {
+      properties: {
+        baseUrl: { type: "string" },
+        secretName: { type: "string", format: "secret-name" },
+      },
+      required: ["baseUrl"],
+    },
+  };
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client: Partial<ItemClient> = {
+    listCollections: () => Promise.resolve(COLLECTIONS),
+    listSecrets: () =>
+      Promise.resolve([
+        { id: "s1", name: "arcgis-key", kind: "api_key", createdAt: "", updatedAt: "" },
+      ]),
+  };
+  const onChange = vi.fn();
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client as ItemClient}>
+        <PipelineNodeInspector node={node} opEntry={opEntry} errors={[]} onChange={onChange} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  const control = screen.getByLabelText("secretName");
+  expect(control.tagName).toBe("SELECT");
+  await waitFor(() =>
+    expect(screen.getByRole("option", { name: "arcgis-key" })).toBeInTheDocument(),
+  );
+  await userEvent.selectOptions(control, "arcgis-key");
+  expect(onChange).toHaveBeenLastCalledWith({ baseUrl: "https://x", secretName: "arcgis-key" });
+});
+
 test("an enum field renders a plain select with its options", () => {
   const node: PipelineNode = {
     id: "j1",

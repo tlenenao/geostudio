@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import type { PipelineNode, PipelineOpEntry, PipelineOpParamProperty } from "../../api/types";
 import { CollectionParamSelect } from "./CollectionParamSelect";
+import { SecretParamSelect } from "./SecretParamSelect";
 
 // Édite un dict[str, str] (transform.aggregate.metrics) ou dict[str, str|null]
 // (transform.select.columns) sous forme de lignes clé/valeur. Convention
@@ -132,6 +133,16 @@ export function PipelineNodeInspector({
           value={String(params[name] ?? "")}
           variant={node.kind === "writer" ? "writable" : "readable"}
           onChange={(id) => setField(name, id)}
+        />
+      );
+    }
+    if (prop.format === "secret-name") {
+      return (
+        <SecretParamSelect
+          key={name}
+          ariaLabel={name}
+          value={String(params[name] ?? "")}
+          onChange={(v) => setField(name, v)}
         />
       );
     }

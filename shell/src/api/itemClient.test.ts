@@ -3634,3 +3634,58 @@ test("attachmentFileUrl construit l'URL du proxy-read", () => {
     "https://core.test/collections/col1/items/f1/attachments/att1/file",
   );
 });
+
+// Coffre de secrets connecteur (GAP-43, SP-53) — patron MSW identique aux
+// tests createAlertRuleItem/getAlertRuleConfig ci-dessus, pas de "mockFetch"
+// dans ce dépôt (piège CLAUDE.md n°3, le texte littéral de la spec suppose
+// un helper qui n'existe pas ici).
+test("listSecrets calls GET /secrets", async () => {
+  server.use(
+    http.get("https://core.test/secrets", () =>
+      HttpResponse.json([
+        { id: "s1", name: "arcgis-key", kind: "api_key", createdAt: "t", updatedAt: "t" },
+      ]),
+    ),
+  );
+  const result = await makeClient().listSecrets();
+  expect(result).toEqual([
+    { id: "s1", name: "arcgis-key", kind: "api_key", createdAt: "t", updatedAt: "t" },
+  ]);
+});
+
+test("createSecret posts the payload and returns the summary (no ciphertext echoed back)", async () => {
+  let body: any;
+  server.use(
+    http.post("https://core.test/secrets", async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json(
+        { id: "s2", name: "n", kind: "bearer_token", createdAt: "t", updatedAt: "t" },
+        { status: 201 },
+      );
+    }),
+  );
+  const result = await makeClient().createSecret({
+    name: "n",
+    payload: { kind: "bearer_token", token: "x" },
+  });
+  expect(body).toEqual({ name: "n", payload: { kind: "bearer_token", token: "x" } });
+  expect(result).toEqual({
+    id: "s2",
+    name: "n",
+    kind: "bearer_token",
+    createdAt: "t",
+    updatedAt: "t",
+  });
+});
+
+test("deleteSecret calls DELETE /secrets/{id}", async () => {
+  let method = "";
+  server.use(
+    http.delete("https://core.test/secrets/s1", ({ request }) => {
+      method = request.method;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  await makeClient().deleteSecret("s1");
+  expect(method).toBe("DELETE");
+});
