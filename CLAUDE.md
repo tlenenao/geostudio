@@ -790,6 +790,43 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   (`sampleDataSourceField` de SP-51 et les méthodes de SP-54 sont des
   entrées distinctes de l'interface `ItemClient`, `invalidateDatasetCache`
   est la seule méthode de SP-54 dans `base.ts`, jamais touché par SP-51).
+- **SP-48 — bascule de la CSP en enforcing** (7 tâches, spec
+  `docs/superpowers/specs/2026-09-06-sp48-csp-enforcing-design.md`, plan
+  `docs/superpowers/plans/2026-09-06-sp48-csp-enforcing.md`) — ferme 3 des
+  4 blocages de GAP-72 : allowlist CSP calculée depuis 3 sources déjà en
+  base (`app/security/csp_hosts.py`/`service.py` — `HarvestSource.url`
+  wms/wmts, `MapConfig.terrain`/`layers` externes, `Extension.module_url`),
+  poussée par une nouvelle tâche périodique (`refresh_csp_dynamic_conf_task`,
+  `*/5 * * * *`) à un volume nommé `csp-dynamic-conf` que Traefik lit via un
+  **provider fichier additif** au provider Docker existant (aucun des 15
+  routeurs concernés, base+prod, n'a perdu `security-headers@docker`) ;
+  `CORE_CSP_MODE` (`report-only` par défaut en base, `enforce` en prod)
+  permet un rollback opérateur sans redéployer d'image ; `shell/nginx.conf`
+  n'a plus sa propre CSP (Traefik en devient l'unique source, blocage 4
+  fermé). **Blocage 3 (script-src pour les widgets d'extension tiers) non
+  fermé, délibérément** : `script_hosts` est calculé mais jamais câblé sur
+  `script-src`, gardé par 2 tests de non-régression intentionnelle
+  falsifiés avant clôture (élargir temporairement `script-src` aux hôtes
+  d'extension fait bien échouer le test dédié) — décision produit remontée
+  à Tanguy, 4 options documentées (spec §4, Option A recommandée). **Écart
+  vs le texte du plan (piège CLAUDE.md n°3)** : `ConfigRevision.data` est
+  l'enveloppe `BuilderConfig.model_dump()` complète, pas directement le
+  corps `MapConfig` comme le plan le supposait — corrigé en lisant
+  `revision.data["map"]`. **Vérification empirique Traefik réelle**
+  (`traefik:v3.0.4`, piège CLAUDE.md n°3) : les deux providers coexistent,
+  le rechargement à chaud du provider fichier fonctionne sans redémarrer le
+  conteneur, une middleware `@file` est utilisable bout-en-bout par un
+  routeur (confirmé par une vraie requête HTTP, avec l'allowlist réellement
+  calculée par le code de ce SP). Seul point non vérifiable dans cet
+  environnement : un routeur défini par labels Docker référençant une
+  middleware `@file` — le socket Docker n'est pas joignable depuis
+  l'intérieur d'un conteneur ici (limitation déjà documentée par SP-55),
+  reste à confirmer sur un vrai déploiement avant la bascule prod
+  définitive. Suite finale : core 2413 passed/219 skipped/0 failed
+  (couverture 88,15 %, seuil 85) ; shell 235 fichiers/2064 tests
+  (couverture 90,51 %, seuil 88) ; E2E 156 passed/4 skipped/1 échec
+  préexistant (`e2e/pipeline-builder.spec.ts:111`, sans rapport avec ce
+  plan — shell/src non touché). Diff OpenAPI/types TS vide, vérifié.
 
 ### Conventions tranchées (2026-09-01)
 
@@ -842,6 +879,17 @@ immédiat d'une session :
   documenté (pas corrigé) par SP-43 (`REV-174`).
 - 4 index fonctionnels pgvector/trgm non représentés dans `Base.metadata`,
   filtrés nommément par le comparateur modèle/Alembic de SP-43 (`REV-175`).
+- **GAP-72 partiellement fermé par SP-48** : CSP en enforcing sur
+  img-src/connect-src (allowlist calculée), `shell/nginx.conf` n'a plus sa
+  propre CSP. **Blocage 3 (script-src pour les widgets d'extension
+  tiers) reste une question produit ouverte** — 4 options documentées
+  (spec SP-48 §4), aucune tranchée, gardée par 2 tests qui échouent si
+  quelqu'un câble `script_hosts` sur `script-src` sans lever cette
+  décision d'abord. À soumettre à Tanguy avant toute tâche de câblage.
+  Vérification empirique complète du câblage Traefik réel (routeur
+  `@docker` référençant une middleware `@file`) toujours à faire sur un
+  vrai déploiement — le socket Docker n'est joignable depuis aucun
+  conteneur dans les environnements de session (limitation SP-55).
 - Questions produit ouvertes (comparatif §8) : Q2 (premiers utilisateurs
   réels — la seule qui puisse réordonner le phasage), Q10 (temps réel,
   `REV-108`), Q11 (offline, `REV-120`).
