@@ -170,6 +170,15 @@ const SCREENS: Array<{
   // branche `test.skip()` qui le lit restent en place pour le prochain
   // écran qui en aurait besoin — pas du code mort à retirer.
   wideBoundaryKnownIssue?: string;
+  // Ancre positive pour la boucle 900px (Task 4, SP-60/GAP-69) : un
+  // sélecteur que seul cet écran, une fois réellement rendu (pas bloqué en
+  // Chargement…), satisfait. Sans elle, expectNoClippedContent() peut
+  // mesurer 0 offenseur sur un écran encore en train de charger et
+  // "passer" sans avoir rien exercé (REV-075) — falsifié en Task 4 en
+  // retirant temporairement le mock AUTOMATISATION_OPS_CATALOG : le test
+  // "Automatisation à 900 px" passait alors même que la page restait
+  // bloquée sur <p role="status">Chargement…</p>.
+  readyAnchor?: (page: Page) => Promise<unknown>;
 }> = [
   {
     name: "Catalogue",
@@ -177,6 +186,7 @@ const SCREENS: Array<{
     // SP-33 : les 5 offenseurs mesurés à 641px (résumés d'items à
     // clientWidth 0) relevaient uniquement de la famine de colonne
     // centrale, désormais corrigée.
+    readyAnchor: (p) => p.getByRole("heading", { name: "Alpha" }).waitFor(),
   },
   {
     name: "Cartes",
@@ -190,12 +200,33 @@ const SCREENS: Array<{
     // MapSymbologyEditor.tsx (aucune classe de largeur). Ré-mesuré
     // empiriquement après les deux correctifs : plus aucun offenseur, ni à
     // 390px ni à 900px. Le lot "Carte" est clos (CLAUDE.md).
+    // Ancre : LayersPanel.tsx:411 (« Ajouter une couche ») vit dans l'onglet
+    // "browse" (Couches), non actif par défaut en layout étroit
+    // (defaultTabId="map") — non monté tant que cet onglet n'est pas
+    // sélectionné (TriptychLayout.tsx:32-50, seul l'onglet actif est monté à
+    // 390px ; à 900px les trois colonnes sont montées simultanément, cf.
+    // ligne 22-30 du même fichier — l'ancre doit donc marcher dans les deux
+    // régimes). data-testid="map-container" de MapView.tsx vit dans l'onglet
+    // "work" (Carte), actif par défaut dans les deux régimes — mais son
+    // canevas WebGL maplibre-gl reste mesuré "hidden" (état par défaut de
+    // waitFor()) par Playwright en tête headless, sans rapport avec un vrai
+    // défaut de mise en page (expectNoClippedContent ne vérifie d'ailleurs
+    // jamais sa visibilité, seulement scrollWidth/clientWidth). Attendre sa
+    // seule présence dans le DOM (state: "attached") plutôt que sa
+    // visibilité contourne cet artefact d'environnement tout en prouvant la
+    // même chose : MapEditorPage a quitté son garde de chargement.
+    readyAnchor: (p) => p.getByTestId("map-container").waitFor({ state: "attached" }),
   },
   {
     name: "Apps & sites",
     path: "/apps/1/edit",
     // SP-33 : les 2 offenseurs mesurés à 641px relevaient uniquement de la
     // famine de colonne centrale, désormais corrigée.
+    // Ancre : le bouton de bascule de mode "Édition" n'existe que dans le
+    // rendu chargé d'AppBuilderPage.tsx (garde query.isLoading/
+    // itemQuery.isLoading ci-dessus renvoie <p role="status"> tant que ce
+    // n'est pas résolu).
+    readyAnchor: (p) => p.getByRole("button", { name: "Édition" }).waitFor(),
   },
   {
     name: "Analytique",
@@ -203,6 +234,10 @@ const SCREENS: Array<{
     before: (p) => mockMe(p, ANALYST_ME),
     // SP-33 : l'offenseur mesuré à 641px relevait uniquement de la famine
     // de colonne centrale, désormais corrigée.
+    // SqlLabPage.tsx ne fait aucun appel réseau au montage (pas de garde de
+    // chargement) : le h1 "SQL Lab" est disponible dès le premier rendu,
+    // mais posé quand même pour uniformité et comme filet si ça change.
+    readyAnchor: (p) => p.getByRole("heading", { name: "SQL Lab" }).waitFor(),
   },
   {
     name: "Automatisation",
@@ -217,13 +252,34 @@ const SCREENS: Array<{
     // sans rapport avec SP-33. SP-33 : les 2 offenseurs mesurés à 641px
     // une fois la page chargée relevaient uniquement de la famine de
     // colonne centrale, désormais corrigée.
+    // Ancre : "reader.collection" (clé de AUTOMATISATION_OPS_CATALOG) est
+    // rendu tel quel par PipelinePalette une fois opsQuery.data résolu —
+    // mais la palette vit dans l'onglet "browse" ("Étapes"), non actif par
+    // défaut en layout étroit (defaultTabId="canvas") : ancre déplacée sur
+    // le h2 du panneau canevas lui-même (PipelineBuilderPage.tsx:178,
+    // "Pipeline" — /pipelines/new n'a pas de titre initial), rendu dans
+    // l'onglet actif par défaut, étroit ou large.
+    readyAnchor: (p) => p.getByRole("heading", { name: "Pipeline" }).waitFor(),
   },
   {
     name: "Tâches",
     path: "/tasks",
-    // TasksComingSoonPage.tsx ne rend qu'un <EmptyState> — aucune grille
-    // TriptychLayout à cet écran (confirmé par lecture directe du fichier,
-    // pas supposé) : passage réel et significatif, pas vacant.
+    // Écart trouvé par rapport au texte de la spec SP-60 (piège CLAUDE.md
+    // n°3) : SP-47 a remplacé TasksComingSoonPage par UsagePage sur
+    // "/tasks" — cet écran rend bien une grille TriptychLayout aujourd'hui,
+    // contrairement à ce que §2.1 de la spec affirmait. GET /usage/tasks
+    // n'était mocké nulle part dans mocks.ts ; sans ce mock, tasksQuery
+    // n'aurait jamais résolu de façon déterministe. Réponse vide (aucune
+    // tâche) : suffisant pour quitter l'état de chargement et atteindre
+    // l'EmptyState "Aucune tâche récente." (UsagePage.tsx). L'utilisateur
+    // par défaut (DEFAULT_ME) porte "tasks.view" mais pas "tasks.view_all"
+    // — summaryQuery reste "enabled: false", aucun mock supplémentaire
+    // requis.
+    before: (p) =>
+      p.route(/https:\/\/core\.test\/usage\/tasks(\?.*)?$/, async (route) => {
+        await route.fulfill({ json: { tasks: [], total: 0 } });
+      }),
+    readyAnchor: (p) => p.getByText("Aucune tâche récente.").waitFor(),
   },
   {
     name: "Administration",
@@ -231,13 +287,21 @@ const SCREENS: Array<{
     before: (p) => mockMe(p, ADMIN_ME),
     // SP-33 : l'offenseur mesuré à 641px relevait uniquement de la famine
     // de colonne centrale, désormais corrigée.
+    // Ancre : l'en-tête de colonne "Étiquette" n'apparaît que lorsque
+    // extensionsQuery.data est résolu (même un tableau vide, cf.
+    // AdminExtensionsPage.tsx) — le h1 "Extensions" juste au-dessus, lui,
+    // est rendu inconditionnellement et ne prouverait rien.
+    readyAnchor: (p) => p.getByText("Étiquette").waitFor(),
   },
   {
     name: "Paramètres",
     path: "/settings",
     // SettingsComingSoonPage.tsx ne rend qu'un <EmptyState> — aucune grille
     // TriptychLayout à cet écran (confirmé par lecture directe du fichier,
-    // pas supposé) : passage réel et significatif, pas vacant.
+    // pas supposé) : passage réel et significatif, pas vacant. Aucun appel
+    // réseau non plus (rendu synchrone) : l'ancre est un filet de
+    // cohérence, pas une preuve de settle nécessaire ici.
+    readyAnchor: (p) => p.getByText("Les paramètres d'instance arrivent avec SP-33.").waitFor(),
   },
 ];
 
@@ -253,6 +317,7 @@ for (const screen of SCREENS) {
     await page.goto(screen.path);
 
     await expect(page.getByRole("navigation", { name: "Navigation" })).toBeVisible();
+    if (screen.readyAnchor) await screen.readyAnchor(page);
     await expectNoClippedContent(page);
 
     const tabs = page.getByRole("tab");
@@ -300,6 +365,7 @@ for (const screen of SCREENS) {
     }
     await page.goto(screen.path);
 
+    if (screen.readyAnchor) await screen.readyAnchor(page);
     await expectNoClippedContent(page);
   });
 }
