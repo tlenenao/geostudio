@@ -133,6 +133,7 @@ def register(server: FastMCP, session_factory) -> None:
         ctx: Context,
         collectionId: str,
         bbox: str | None = None,
+        geomIntersects: dict | None = None,
         filters: dict[str, str] | None = None,
         limit: int = 100,
         offset: int = 0,
@@ -140,7 +141,10 @@ def register(server: FastMCP, session_factory) -> None:
         """Read features from a collection — mirrors GET
         /collections/{id}/items (bbox, attribute filters, pagination), same
         permissions/RLS. No natural-language-to-filter translation: filters
-        are structured field=value pairs, like any OGC client (SP-7 MCP v1)."""
+        are structured field=value pairs, like any OGC client (SP-7 MCP v1).
+        geomIntersects: a GeoJSON geometry object (already parsed, unlike the
+        REST route's query-string form) — relayed to select_features exactly
+        like bbox/filters (GAP-47)."""
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, access_token)
@@ -160,6 +164,7 @@ def register(server: FastMCP, session_factory) -> None:
                         limit=min(limit, 1000),
                         offset=offset,
                         bbox=parsed_bbox,
+                        geom_intersects=geomIntersects,
                         filters=filters or None,
                     )
             except FilterError as exc:
