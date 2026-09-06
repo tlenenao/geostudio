@@ -92,6 +92,65 @@ test("filtrer sur Dataset ne ramène que les datasets", async ({ page }) => {
   await expect(page.getByText("Dataset", { exact: true }).last()).toBeVisible();
 });
 
+test("SP-55 : trie le catalogue par titre (A→Z)", async ({ page }) => {
+  await mockCore(page);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
+
+  await page.getByLabel("Trier par").selectOption("title_asc");
+  // La fixture mock renvoie les items déjà triés par titre quand ?sort=
+  // est présent (e2e/mocks.ts) — Alpha < Beta < Gamma alphabétiquement,
+  // donc trier par titre_desc doit inverser l'ordre observable.
+  await page.getByLabel("Trier par").selectOption("title_desc");
+  const headings = page.getByRole("heading");
+  await expect(headings.first()).toHaveText("Gamma");
+});
+
+test("SP-55 : filtre le catalogue par mot-clé", async ({ page }) => {
+  await mockCore(page);
+  await page.route("https://core.test/items/facets*", async (route) => {
+    await route.fulfill({
+      json: { owners: [], keywords: [{ keyword: "important", count: 1 }] },
+    });
+  });
+  await page.route("**/items*", async (route) => {
+    const url = new URL(route.request().url());
+    const keywords = url.searchParams.getAll("keyword");
+    if (keywords.includes("important")) {
+      await route.fulfill({
+        json: {
+          items: [
+            {
+              pk: "1",
+              resourceType: "app",
+              title: "Alpha",
+              abstract: "A",
+              owner: "alice",
+              thumbnailUrl: null,
+              date: "2026-01-01",
+              configId: null,
+              isPublished: false,
+              permissions: { read: true, write: true, delete: true, share: true },
+            },
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 12,
+        },
+      });
+    } else {
+      await route.fallback();
+    }
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Beta" })).toBeVisible();
+
+  await page.getByRole("button", { name: /^important/ }).click();
+  await expect(page.getByRole("heading", { name: "Beta" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
+});
+
 test("changer de filtre ne remplit pas l'historique (retour arrière direct)", async ({ page }) => {
   await mockCore(page);
   await page.goto("/");

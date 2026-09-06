@@ -143,6 +143,8 @@ export type CopilotToolSchema = {
 
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
+export type ItemSort = "date_desc" | "date_asc" | "updated_desc" | "title_asc" | "title_desc";
+
 export type ListItemsParams = {
   q?: string;
   type?: ResourceType;
@@ -150,7 +152,14 @@ export type ListItemsParams = {
   pageSize?: number;
   scope?: ItemScope;
   me?: string;
+  sort?: ItemSort;
+  owner?: string;
+  keywords?: string[];
 };
+
+export type OwnerFacet = { username: string; count: number };
+export type KeywordFacet = { keyword: string; count: number };
+export type ItemFacets = { owners: OwnerFacet[]; keywords: KeywordFacet[] };
 
 export type UpdatePatch = {
   title?: string;
@@ -330,6 +339,9 @@ export type MapIconOut = {
 
 export interface ItemClient {
   listItems(params?: ListItemsParams): Promise<ItemPage>;
+  getItemFacets(
+    params?: Pick<ListItemsParams, "q" | "type" | "scope" | "owner">,
+  ): Promise<ItemFacets>;
   getItem(pk: string): Promise<Item>;
   getItemBySlug(slug: string): Promise<Item>;
   listPublicItems(params?: {

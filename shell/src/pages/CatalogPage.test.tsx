@@ -111,6 +111,79 @@ test("filters the catalog by scope", async () => {
   await waitFor(() => expect(new URL(lastUrl).searchParams.get("scope")).toBe("mine"));
 });
 
+function mockFacets() {
+  server.use(
+    http.get("https://core.test/items/facets", () =>
+      HttpResponse.json({
+        owners: [
+          { username: "alice", count: 3 },
+          { username: "bob", count: 1 },
+        ],
+        keywords: [
+          { keyword: "voirie", count: 2 },
+          { keyword: "incidents", count: 1 },
+        ],
+      }),
+    ),
+  );
+}
+
+test("trie le catalogue (sélecteur Trier par)", async () => {
+  let lastUrl = "";
+  mockFacets();
+  server.use(
+    http.get("https://core.test/items", ({ request }) => {
+      lastUrl = request.url;
+      return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
+    }),
+  );
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
+  await userEvent.selectOptions(screen.getByLabelText("Trier par"), "title_asc");
+  await waitFor(() => expect(new URL(lastUrl).searchParams.get("sort")).toBe("title_asc"));
+});
+
+test("filtre par propriétaire (facette peuplée par useItemFacets)", async () => {
+  let lastUrl = "";
+  mockFacets();
+  server.use(
+    http.get("https://core.test/items", ({ request }) => {
+      lastUrl = request.url;
+      return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
+    }),
+  );
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
+  const select = screen.getByLabelText("Propriétaire") as HTMLSelectElement;
+  await waitFor(() =>
+    expect(Array.from(select.querySelectorAll("option")).map((o) => o.textContent)).toEqual([
+      "Tous",
+      "alice (3)",
+      "bob (1)",
+    ]),
+  );
+  await userEvent.selectOptions(select, "bob");
+  await waitFor(() => expect(new URL(lastUrl).searchParams.get("owner")).toBe("bob"));
+});
+
+test("filtre par mot-clé (chip à bascule, peuplé par useItemFacets)", async () => {
+  let lastUrl = "";
+  mockFacets();
+  server.use(
+    http.get("https://core.test/items", ({ request }) => {
+      lastUrl = request.url;
+      return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
+    }),
+  );
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
+  const chip = await screen.findByRole("button", { name: /^voirie/ });
+  expect(chip).toHaveAttribute("aria-pressed", "false");
+  await userEvent.click(chip);
+  expect(chip).toHaveAttribute("aria-pressed", "true");
+  await waitFor(() => expect(new URL(lastUrl).searchParams.getAll("keyword")).toEqual(["voirie"]));
+  await userEvent.click(chip);
+  expect(chip).toHaveAttribute("aria-pressed", "false");
+  await waitFor(() => expect(new URL(lastUrl).searchParams.getAll("keyword")).toEqual([]));
+});
+
 test("le filtre Type propose les douze types plus « Tous »", () => {
   render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
 

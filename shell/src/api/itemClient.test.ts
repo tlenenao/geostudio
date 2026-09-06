@@ -42,6 +42,47 @@ test("listItems sends the bearer token and scope", async () => {
   expect(url).toContain("type=app");
 });
 
+test("listItems serializes sort/owner/keywords (repeated keyword param)", async () => {
+  let url: string | null = null;
+  server.use(
+    http.get("https://core.test/items", ({ request }) => {
+      url = request.url;
+      return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
+    }),
+  );
+  await makeClient("abc").listItems({
+    sort: "title_asc",
+    owner: "bob",
+    keywords: ["a", "b"],
+  });
+  const params = new URL(url!).searchParams;
+  expect(params.get("sort")).toBe("title_asc");
+  expect(params.get("owner")).toBe("bob");
+  expect(params.getAll("keyword")).toEqual(["a", "b"]);
+});
+
+test("getItemFacets requests /items/facets with q/type/scope/owner", async () => {
+  let url: string | null = null;
+  server.use(
+    http.get("https://core.test/items/facets", ({ request }) => {
+      url = request.url;
+      return HttpResponse.json({ owners: [], keywords: [] });
+    }),
+  );
+  const facets = await makeClient("abc").getItemFacets({
+    q: "incidents",
+    type: "app",
+    scope: "all",
+    owner: "bob",
+  });
+  expect(facets).toEqual({ owners: [], keywords: [] });
+  const params = new URL(url!).searchParams;
+  expect(params.get("q")).toBe("incidents");
+  expect(params.get("type")).toBe("app");
+  expect(params.get("scope")).toBe("all");
+  expect(params.get("owner")).toBe("bob");
+});
+
 test("getItem returns the item as-is (core owner is already a flat string)", async () => {
   const item = await makeClient().getItem("7");
   expect(item.pk).toBe("7");

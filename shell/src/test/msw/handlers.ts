@@ -22,6 +22,13 @@ export const handlers = [
   http.get(`${CORE}/items`, () =>
     HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 }),
   ),
+  // Déclaré AVANT /items/:pk (même piège que côté cœur, routes.py::
+  // get_item_facets) : sans ce handler dédié, MSW matcherait
+  // GET /items/facets sur /items/:pk (pk="facets") et retournerait un item
+  // fictif sans owners/keywords, faisant planter tout composant qui lit
+  // useItemFacets() sans mocker explicitement cette route (CatalogPage,
+  // SP-55 Tâche 3).
+  http.get(`${CORE}/items/facets`, () => HttpResponse.json({ owners: [], keywords: [] })),
   http.get(`${CORE}/items/:pk`, ({ params }) => {
     if (params.pk === "404") return new HttpResponse(null, { status: 404 });
     return HttpResponse.json(item(String(params.pk)));
