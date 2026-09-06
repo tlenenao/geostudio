@@ -14,6 +14,7 @@ from app.auth.dependency import is_read_only_mode
 from app.db import request_scoped_session
 from app.items.service import get_sharing_service, set_sharing_service
 from app.mcp.tools.identity import http_exception_to_value_error, resolve_actor
+from app.mcp.tools.write_tools import write_tool
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
 from app.sharing import repository as sharing_repo
@@ -38,6 +39,7 @@ def register(server: FastMCP, session_factory) -> None:
             ]
 
     @server.tool()
+    @write_tool
     async def create_group(ctx: Context, name: str) -> GroupRead:
         """Create a sharing group — mirrors POST /groups."""
         if is_read_only_mode():
@@ -69,6 +71,7 @@ def register(server: FastMCP, session_factory) -> None:
             return GroupRead(id=group.id, name=group.name)
 
     @server.tool()
+    @write_tool
     async def add_group_member(ctx: Context, groupId: str, userId: str) -> None:
         """Add a member to a sharing group — mirrors POST /groups/{id}/members.
         Only the group's creator may add a member (repository-enforced) —
@@ -110,6 +113,7 @@ def register(server: FastMCP, session_factory) -> None:
                 raise http_exception_to_value_error(exc) from exc
 
     @server.tool()
+    @write_tool
     async def set_sharing(ctx: Context, itemId: str, sharing: Sharing) -> None:
         """Set an item's sharing settings — mirrors PUT /items/{id}/sharing."""
         if is_read_only_mode():

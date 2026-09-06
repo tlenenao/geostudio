@@ -31,6 +31,7 @@ from app.mcp.tools.identity import (
     resolve_actor,
     without_thumbnail_url,
 )
+from app.mcp.tools.write_tools import write_tool
 from app.pipelines.jobs import run_pipeline_task
 from app.pipelines.service import require_pipeline_access, require_pipeline_config
 from app.pipelines.service import run_pipeline_service as _run_pipeline_service
@@ -41,6 +42,7 @@ def register(server: FastMCP, session_factory) -> None:
         return
 
     @server.tool()
+    @write_tool
     async def create_pipeline(
         ctx: Context,
         title: str,
@@ -88,6 +90,7 @@ def register(server: FastMCP, session_factory) -> None:
             return without_thumbnail_url(result)
 
     @server.tool()
+    @write_tool
     async def run_pipeline(ctx: Context, pipelineId: str) -> dict:
         """Defer a run of a Pipeline — mirrors POST /pipelines/{id}/run.
         Only registered when CORE_ETL_ENABLED is on. SP-15a."""

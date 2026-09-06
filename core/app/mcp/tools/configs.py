@@ -43,6 +43,7 @@ from app.mcp.tools.identity import (
     resolve_actor,
     without_thumbnail_url,
 )
+from app.mcp.tools.write_tools import write_tool
 from app.roles.guards import require_privilege
 from app.roles.kind_registry import privilege_for_kind
 from app.users.models import User
@@ -114,6 +115,7 @@ def register(server: FastMCP, session_factory) -> None:
             return result
 
     @server.tool()
+    @write_tool
     async def save_app_config(ctx: Context, itemId: str, config: BuilderConfig) -> ConfigRead:
         """Save (and version) the app/dashboard config for an item — mirrors
         PUT /configs/by-item/{id}."""
@@ -147,6 +149,7 @@ def register(server: FastMCP, session_factory) -> None:
             return result
 
     @server.tool()
+    @write_tool
     async def create_item(
         ctx: Context,
         kind: Literal["app", "dashboard"],
@@ -195,6 +198,7 @@ def register(server: FastMCP, session_factory) -> None:
             return without_thumbnail_url(result)
 
     @server.tool()
+    @write_tool
     async def create_form_app(
         ctx: Context,
         collectionId: str,
