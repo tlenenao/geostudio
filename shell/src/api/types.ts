@@ -66,13 +66,22 @@ export type RoleSummary = {
 };
 
 export type Me = {
+  id: string;
+  tenantId: string;
+  tenantSlug: string;
   username: string;
+  email: string | null;
   firstName: string;
   lastName: string;
   role: RoleSummary;
   privileges: string[];
   version: string;
-  tenantSlug: string;
+  // GAP-65 (1/3) : GET /me sert ce profil de capacités depuis longtemps
+  // (MeResponse, core/app/auth/routes.py) — doublon délibéré de GET
+  // /instance (InstanceInfo, même forme exacte), gardé identique par un
+  // test dédié côté cœur. getInstanceInfo()/useInstanceInfo() ne sont pas
+  // retirés, cette lecture s'ajoute sans migrer leurs consommateurs.
+  capabilities: InstanceInfo;
 };
 
 export type Role = {

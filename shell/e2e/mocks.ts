@@ -116,6 +116,22 @@ const DEFAULT_ME = {
   ],
   version: "0.1.0",
   tenantSlug: "demo",
+  // GAP-65 (1/3) : Me.capabilities est désormais lu par getMe() (doublon
+  // délibéré de GET /instance) — sans ce champ, cette fixture redeviendrait
+  // incomplète face au vrai MeResponse du cœur (précédent SP-43 §1.5,
+  // mockCollection). Aucune spec E2E existante ne lit me.capabilities
+  // aujourd'hui (elles passent toutes par useInstanceInfo()/GET /instance),
+  // donc ces valeurs par défaut n'affectent aucun comportement observé.
+  capabilities: {
+    readOnly: false,
+    etlEnabled: false,
+    exportEnabled: false,
+    appExportEnabled: false,
+    tileset3dEnabled: false,
+    terrain3dEnabled: false,
+    copilotEnabled: false,
+    adminToolsEnabled: false,
+  },
 };
 
 export function mockMe(page: Page, overrides: Partial<typeof DEFAULT_ME> = {}) {

@@ -52,7 +52,7 @@ test("getItem missing returns 404 and throws", async () => {
   await expect(makeClient().getItem("404")).rejects.toThrow(/404/);
 });
 
-test("getMe maps camelCase fields, dropping id/email/tenantId", async () => {
+test("getMe maps camelCase fields", async () => {
   server.use(
     http.get("https://core.test/me", () =>
       HttpResponse.json({
@@ -66,13 +66,52 @@ test("getMe maps camelCase fields, dropping id/email/tenantId", async () => {
     ),
   );
   const me = await makeClient().getMe();
+  // GAP-65 (1/3) : id est désormais lu (n'était plus « dropped » comme
+  // l'ancien titre de ce test l'affirmait) ; les champs absents de cette
+  // réponse minimale (tenantId/email/tenantSlug/version/capabilities)
+  // restent undefined — toEqual les ignore.
   expect(me).toEqual({
+    id: "u1",
     username: "alice",
     firstName: "Alice",
     lastName: "Martin",
     role: { id: "role-1", name: "Créateur", slug: "creator" },
     privileges: ["catalog.manage", "maps.manage"],
   });
+});
+
+test("getMe lit id/email/tenantId/capabilities en plus des champs existants", async () => {
+  server.use(
+    http.get("https://core.test/me", () =>
+      HttpResponse.json({
+        id: "u1",
+        tenantId: "t1",
+        tenantSlug: "acme",
+        username: "alice",
+        email: "alice@example.com",
+        firstName: "Alice",
+        lastName: "A",
+        role: { id: "r1", name: "Créateur", slug: "creator" },
+        privileges: ["maps.manage"],
+        version: "1.2.3",
+        capabilities: {
+          readOnly: false,
+          etlEnabled: true,
+          exportEnabled: true,
+          appExportEnabled: false,
+          tileset3dEnabled: false,
+          terrain3dEnabled: false,
+          copilotEnabled: false,
+          adminToolsEnabled: false,
+        },
+      }),
+    ),
+  );
+  const me = await makeClient().getMe();
+  expect(me.id).toBe("u1");
+  expect(me.email).toBe("alice@example.com");
+  expect(me.tenantId).toBe("t1");
+  expect(me.capabilities.etlEnabled).toBe(true);
 });
 
 test("getMe surfaces the caller's privileges", async () => {
