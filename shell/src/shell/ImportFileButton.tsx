@@ -222,6 +222,16 @@ export function ImportFileButton() {
 
   const busy = phase === "uploading" || phase === "polling";
 
+  // Fermer pendant un upload/un balayage en vol laisserait la chaîne async
+  // (submit()/confirmLayer()/confirmLatLon()/poll()) tourner en arrière-plan
+  // — même patron que Tileset3DUploadButton.requestClose() : ignore Échap et
+  // le pointerdown extérieur (les deux passent par onOpenChange de Drawer)
+  // tant que busy, en plus du disabled={busy} explicite sur Annuler.
+  function requestClose() {
+    if (busy) return;
+    close();
+  }
+
   return (
     <>
       <Button
@@ -234,7 +244,7 @@ export function ImportFileButton() {
       </Button>
       <Drawer
         open={open}
-        onOpenChange={(next) => !next && close()}
+        onOpenChange={(next) => !next && requestClose()}
         title={t("importFile.button")}
         id={drawerPanel.panelId}
       >
@@ -369,7 +379,7 @@ export function ImportFileButton() {
               </p>
             )}
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={close}>
+              <Button type="button" variant="outline" size="sm" onClick={close} disabled={busy}>
                 {t("confirmDialog.cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={busy}>

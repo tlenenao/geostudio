@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useCollectionsAdmin, useDeleteCollection } from "../api/hooks";
+import { useCollectionsAdmin, useDeleteCollection, useInstanceInfo } from "../api/hooks";
 import type { CollectionAdmin } from "../api/types";
 import { Gate } from "../auth/Gate";
 import { Locked } from "../auth/Locked";
@@ -21,6 +21,14 @@ import { t } from "../i18n";
 const PAGE_SIZE = 100;
 
 export function CollectionsAdminPage() {
+  // REV-089 : doctrine tranchée (backlog, 2026-09-06) — toujours masquer les
+  // actions mutantes sous !readOnly en mode démo publique, comme
+  // HarvestSourcesAdminPage le fait déjà. S'ajoute aux gardes Gate can="write"/
+  // can="share" existantes (permission par objet), ne les remplace pas :
+  // readOnly est un interrupteur d'instance, indépendant des permissions par
+  // collection.
+  const instanceQuery = useInstanceInfo();
+  const readOnly = instanceQuery.data?.readOnly === true;
   const [q, setQ] = useState("");
   const [limit, setLimit] = useState(PAGE_SIZE);
   const collectionsQuery = useCollectionsAdmin({ q, limit });
@@ -70,18 +78,20 @@ export function CollectionsAdminPage() {
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
               <div className="flex items-center justify-between">
                 <h1 className="text-lg font-bold text-ink">{t("collectionsAdmin.title")}</h1>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    // Exclusivité mutuelle avec editing/sharing (décision 5,
-                    // plan SP-30j) : plus de barrière modale pour l'empêcher.
-                    setEditing(null);
-                    setSharing(null);
-                    setRegistering(true);
-                  }}
-                >
-                  {t("collectionsAdmin.registerTable")}
-                </Button>
+                {!readOnly && (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      // Exclusivité mutuelle avec editing/sharing (décision 5,
+                      // plan SP-30j) : plus de barrière modale pour l'empêcher.
+                      setEditing(null);
+                      setSharing(null);
+                      setRegistering(true);
+                    }}
+                  >
+                    {t("collectionsAdmin.registerTable")}
+                  </Button>
+                )}
               </div>
               <input
                 type="search"
@@ -137,73 +147,77 @@ export function CollectionsAdminPage() {
                         <td className="py-2 text-ink">{col.featureCount ?? "—"}</td>
                         <td className="py-2 text-ink">{col.owner ?? "—"}</td>
                         <td className="py-2 flex gap-2">
-                          {/* SP-42/F-securite-autorisation-06 : le cœur refuse
-                              PATCH/sharing sur can()/decide() (write/share),
-                              jamais reflété par can_manage_collections seul
-                              (qui n'ouvre que la visibilité de la liste) —
-                              proposer ces boutons sans condition produisait
-                              un 403 au clic pour un porteur non-propriétaire
-                              de admin.collections.manage. */}
-                          <Gate
-                            on={col}
-                            can="write"
-                            fallback={
-                              <Locked reason={t("locked.needWrite")}>
-                                <Button type="button" variant="outline" size="sm">
+                          {/* REV-089 : les quatre actions mutantes de la ligne
+                              masquées sous !readOnly (doctrine tranchée,
+                              alignée sur HarvestSourcesAdminPage) — s'ajoute
+                              aux gardes Gate can="write"/can="share"
+                              existantes ci-dessous (permission par objet,
+                              cf. commentaire SP-42/F-securite-autorisation-06
+                              conservé), ne les remplace pas. */}
+                          {!readOnly && (
+                            <>
+                              <Gate
+                                on={col}
+                                can="write"
+                                fallback={
+                                  <Locked reason={t("locked.needWrite")}>
+                                    <Button type="button" variant="outline" size="sm">
+                                      {t("collectionsAdmin.edit")}
+                                    </Button>
+                                  </Locked>
+                                }
+                              >
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  aria-controls={editPanel.panelId}
+                                  aria-expanded={editing?.id === col.id}
+                                  onClick={() => {
+                                    setRegistering(false);
+                                    setSharing(null);
+                                    setEditing(col);
+                                  }}
+                                >
                                   {t("collectionsAdmin.edit")}
                                 </Button>
-                              </Locked>
-                            }
-                          >
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              aria-controls={editPanel.panelId}
-                              aria-expanded={editing?.id === col.id}
-                              onClick={() => {
-                                setRegistering(false);
-                                setSharing(null);
-                                setEditing(col);
-                              }}
-                            >
-                              {t("collectionsAdmin.edit")}
-                            </Button>
-                          </Gate>
-                          <Gate
-                            on={col}
-                            can="share"
-                            fallback={
-                              <Locked reason={t("locked.needShare")}>
-                                <Button type="button" variant="outline" size="sm">
+                              </Gate>
+                              <Gate
+                                on={col}
+                                can="share"
+                                fallback={
+                                  <Locked reason={t("locked.needShare")}>
+                                    <Button type="button" variant="outline" size="sm">
+                                      {t("actions.share")}
+                                    </Button>
+                                  </Locked>
+                                }
+                              >
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  aria-controls={sharingPanel.panelId}
+                                  aria-expanded={sharing?.id === col.id}
+                                  onClick={() => {
+                                    setRegistering(false);
+                                    setEditing(null);
+                                    setSharing(col);
+                                  }}
+                                >
                                   {t("actions.share")}
                                 </Button>
-                              </Locked>
-                            }
-                          >
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              aria-controls={sharingPanel.panelId}
-                              aria-expanded={sharing?.id === col.id}
-                              onClick={() => {
-                                setRegistering(false);
-                                setEditing(null);
-                                setSharing(col);
-                              }}
-                            >
-                              {t("actions.share")}
-                            </Button>
-                          </Gate>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setDeleting(col)}
-                          >
-                            {t("actions.delete")}
-                          </Button>
+                              </Gate>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setDeleting(col)}
+                              >
+                                {t("actions.delete")}
+                              </Button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     ))}
