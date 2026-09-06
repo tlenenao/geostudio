@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import type { ReactNode } from "react";
 import { http, HttpResponse } from "msw";
+import { vi } from "vitest";
 import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
@@ -426,4 +427,43 @@ test("SP-42/F-shell-pages-01 (fusion F-shell-pages-02) : masque le bouton pour u
   await waitFor(() =>
     expect(screen.queryByRole("button", { name: "Importer un fichier" })).not.toBeInTheDocument(),
   );
+});
+
+test("does not poll again or update state after the drawer is unmounted mid-import", async () => {
+  let pollCalls = 0;
+  server.use(
+    http.post("https://core.test/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-1", key: "t/abc-villes.geojson" }),
+    ),
+    http.put("https://minio.test/upload-1", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/uploads", () => HttpResponse.json({ jobId: "job-1" })),
+    http.get("https://core.test/uploads/job-1", () => {
+      pollCalls += 1;
+      return HttpResponse.json({
+        status: "pending",
+        errorMessage: null,
+        collectionId: null,
+        itemId: null,
+      });
+    }),
+  );
+
+  const { unmount } = render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), geojsonFile());
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "Villes");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+
+  await waitFor(() => expect(pollCalls).toBeGreaterThanOrEqual(1));
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const callsAtUnmount = pollCalls;
+  unmount();
+  await new Promise((r) => setTimeout(r, 2000));
+  expect(pollCalls).toBe(callsAtUnmount);
+  expect(errorSpy).not.toHaveBeenCalled();
+  errorSpy.mockRestore();
 });

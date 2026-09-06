@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { test, expect, type Page } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCollection, mockCore } from "./mocks";
 
 // Mêmes conventions que analytics-context.spec.ts (SP-14b/14d) : construit
 // l'app via la vraie UI du builder, jamais en injectant du JSON brut.
@@ -107,20 +107,14 @@ test("exporter depuis DatasetEditPage en XLSX", async ({ page }) => {
     await route.fulfill({
       json: {
         collections: [
-          {
+          mockCollection({
             id: "villes",
             title: "Villes",
-            description: "",
             tableName: "villes",
             isPublic: true,
-            editable: true,
-            geometryType: "Point",
-            srid: 4326,
-            pkColumn: "id",
             permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 1,
-            owner: "mockuser",
-          },
+          }),
         ],
       },
     });

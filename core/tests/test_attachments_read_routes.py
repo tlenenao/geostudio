@@ -207,8 +207,16 @@ def test_list_and_file_are_readable_anonymously_on_a_public_collection(env):
 
     list_res = api.get("/collections/col1/items/f1/attachments")
     assert list_res.status_code == 200
+    # Renforcement REV-077/F-tests-05 : une liste vide passait avant ce
+    # correctif (seul le code 200 était vérifié) — même patron que
+    # test_list_visible_to_the_owner (ligne 166) et
+    # test_file_visible_to_another_reader_with_read_access (lignes 175-177).
+    assert list_res.json()["attachments"][0]["filename"] == "a.jpg"
+
     file_res = api.get(f"/collections/col1/items/f1/attachments/{attachment_id}/file")
     assert file_res.status_code == 200
+    assert file_res.content == b"jpg"
+    assert file_res.headers["content-type"].startswith("image/jpeg")
 
 
 def test_delete_removes_row_and_object_and_requires_write_access(env):

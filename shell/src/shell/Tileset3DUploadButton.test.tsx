@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
+import { vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
@@ -218,4 +219,47 @@ test("blocks closing (Annuler, Escape, outside pointerdown) while an upload is i
   await waitFor(() =>
     expect(screen.queryByText("Nouveau tileset 3D", { selector: "h2" })).not.toBeInTheDocument(),
   );
+});
+
+test("does not poll again or update state after the drawer is unmounted mid-finalize", async () => {
+  let pollCalls = 0;
+  server.use(
+    http.post("https://core.test/tileset3d/uploads", () =>
+      HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
+    ),
+    http.post("https://core.test/tileset3d/uploads/job-1/parts/1/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/part-1" }),
+    ),
+    http.put(
+      "https://minio.test/part-1",
+      () => new HttpResponse(null, { status: 200, headers: { ETag: '"etag-1"' } }),
+    ),
+    http.post(
+      "https://core.test/tileset3d/uploads/job-1/complete",
+      () => new HttpResponse(null, { status: 204 }),
+    ),
+    http.get("https://core.test/tileset3d/uploads/job-1", () => {
+      pollCalls += 1;
+      return HttpResponse.json({ status: "running", errorMessage: null, itemId: null });
+    }),
+  );
+
+  const { unmount } = render(
+    <Harness>
+      <Tileset3DUploadButton pollTimeoutMs={5 * 60 * 1000} />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByText("Nouveau tileset 3D"));
+  await userEvent.upload(screen.getByLabelText("Archive du tileset (.zip)"), zipFile());
+  await userEvent.type(screen.getByLabelText("Titre"), "Ville");
+  await userEvent.click(screen.getByText("Importer"));
+
+  await waitFor(() => expect(pollCalls).toBeGreaterThanOrEqual(1));
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const callsAtUnmount = pollCalls;
+  unmount();
+  await new Promise((r) => setTimeout(r, 2000));
+  expect(pollCalls).toBe(callsAtUnmount);
+  expect(errorSpy).not.toHaveBeenCalled();
+  errorSpy.mockRestore();
 });

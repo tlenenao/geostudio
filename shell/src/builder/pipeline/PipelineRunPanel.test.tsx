@@ -115,6 +115,45 @@ test("calls onLatestRunChange with the newest run whenever the run list is (re)l
   );
 });
 
+test("does not poll again or update state after the panel is unmounted mid-run", async () => {
+  let getPipelineRunsCalls = 0;
+  const getPipelineRuns = vi.fn().mockImplementation(() => {
+    getPipelineRunsCalls += 1;
+    return Promise.resolve([
+      {
+        id: "run-1",
+        status: "running",
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: null,
+        error: null,
+        nodeStats: {},
+      },
+    ]);
+  });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client: Partial<ItemClient> = {
+    runPipeline: vi.fn().mockResolvedValue({ runId: "run-1" }),
+    getPipelineRuns,
+  };
+  const { unmount } = render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client as ItemClient}>
+        <PipelineRunPanel pipelineId="p-1" />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
+  await waitFor(() => expect(getPipelineRunsCalls).toBeGreaterThanOrEqual(1));
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const callsAtUnmount = getPipelineRunsCalls;
+  unmount();
+  await new Promise((r) => setTimeout(r, 2000));
+  expect(getPipelineRunsCalls).toBe(callsAtUnmount);
+  expect(errorSpy).not.toHaveBeenCalled();
+  errorSpy.mockRestore();
+});
+
 test("calls onLatestRunChange with null when there is no run yet", async () => {
   const onLatestRunChange = vi.fn();
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

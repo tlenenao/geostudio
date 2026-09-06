@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/hooks";
 import type { PipelineRun } from "../../api/types";
 import { Button } from "../../ui/kit/Button";
@@ -25,10 +25,24 @@ export function PipelineRunPanel({
   const [runs, setRuns] = useState<PipelineRun[]>([]);
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Effet de nettoyage dédié (patron ExportPanel.tsx) : distinct de l'effet
+  // de chargement initial ci-dessous, pour ne pas courir le risque de
+  // ré-exécuter la garde de démontage à chaque changement de `pipelineId`.
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
 
   async function loadRuns() {
     try {
       const latest = await client.getPipelineRuns(pipelineId);
+      if (!mountedRef.current) return;
       setRuns(latest);
       onLatestRunChange?.(latest[0] ?? null);
     } catch {
@@ -36,6 +50,7 @@ export function PipelineRunPanel({
       // indiscernable d'un « aucune exécution » légitime) — même défaut que
       // celui corrigé dans ReportRunPanel (SP-17b) ; on réutilise runError,
       // déjà rendu dans ce composant.
+      if (!mountedRef.current) return;
       setRunError("Impossible de charger l'historique des exécutions.");
     }
   }
@@ -47,7 +62,9 @@ export function PipelineRunPanel({
 
   async function poll() {
     for (;;) {
+      if (!mountedRef.current) return;
       const latest = await client.getPipelineRuns(pipelineId);
+      if (!mountedRef.current) return;
       setRuns(latest);
       onLatestRunChange?.(latest[0] ?? null);
       const status = latest[0]?.status;
@@ -55,7 +72,10 @@ export function PipelineRunPanel({
         setRunning(false);
         return;
       }
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise<void>((resolve) => {
+        timerRef.current = setTimeout(resolve, 1500);
+      });
+      if (!mountedRef.current) return;
     }
   }
 
@@ -66,9 +86,10 @@ export function PipelineRunPanel({
       await client.runPipeline(pipelineId);
       await poll();
     } catch (e) {
+      if (!mountedRef.current) return;
       setRunError(e instanceof Error ? e.message : "Échec du lancement du pipeline.");
     } finally {
-      setRunning(false);
+      if (mountedRef.current) setRunning(false);
     }
   }
 

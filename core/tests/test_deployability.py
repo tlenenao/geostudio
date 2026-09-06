@@ -1051,6 +1051,44 @@ def test_keycloak_router_carries_security_and_rate_limit_middlewares():
         )
 
 
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+@pytest.mark.parametrize("router", ["core", "shell"])
+def test_public_app_router_carries_security_and_rate_limit_middlewares(compose, router):
+    """REV-073/F-tests-03 : les routeurs core et shell portent aujourd'hui
+    security-headers@docker et rate-limit@docker (vérifié par grep direct
+    sur les deux fichiers compose), mais aucun test ne le garantissait —
+    contrairement au routeur keycloak (test au-dessus) et aux 3 routeurs
+    admin. Une régression qui retirerait un de ces deux middlewares d'un
+    des deux routeurs serait aujourd'hui invisible."""
+    labels = _traefik_labels(services(compose)[router])
+    middlewares = _router_middlewares(labels, router)
+    for required in ("security-headers@docker", "rate-limit@docker"):
+        assert required in middlewares, (
+            f"le routeur {router} ({compose.name}) doit référencer {required} "
+            f"dans ses middlewares, a trouvé : {middlewares}"
+        )
+
+
+def test_security_headers_middleware_defines_the_expected_directives():
+    """Complément REV-073 : le routeur peut référencer security-headers@docker
+    sans que la définition elle-même porte les 4 directives attendues (par
+    ex. si un futur refactor renomme les clés de label sans y penser)."""
+    labels = _traefik_labels(services(PROD)["core"])
+    assert labels["traefik.http.middlewares.security-headers.headers.stsSeconds"] == "31536000"
+    assert labels["traefik.http.middlewares.security-headers.headers.contentTypeNosniff"] == "true"
+    assert labels["traefik.http.middlewares.security-headers.headers.frameDeny"] == "true"
+    assert (
+        "traefik.http.middlewares.security-headers.headers.referrerPolicy" in labels
+    )
+
+
+def test_rate_limit_middleware_defines_average_and_burst():
+    """Complément REV-073, symétrique au test ci-dessus pour rate-limit."""
+    labels = _traefik_labels(services(PROD)["core"])
+    assert labels["traefik.http.middlewares.rate-limit.ratelimit.average"] == "100"
+    assert labels["traefik.http.middlewares.rate-limit.ratelimit.burst"] == "200"
+
+
 def test_keycloak_realm_enables_brute_force_protection():
     """SP-42/F-infra-ci-02 (critical, second volet) :
     `deploy/keycloak/geostudio-realm.json` déclarait `bruteForceProtected:
@@ -1254,3 +1292,39 @@ def test_shell_nginx_conf_no_longer_hardcodes_its_own_csp():
     par lui — la seule documentée par ce dépôt."""
     content = (REPO / "shell/nginx.conf").read_text()
     assert "Content-Security-Policy" not in content
+
+
+def test_core_env_vars_extractor_has_not_silently_regressed_to_empty():
+    """REV-076/F-tests-04 : core_env_vars() est la clé de voûte de
+    test_every_core_env_var_is_wired_to_a_service — si elle régressait vers
+    l'ensemble vide, ce test resterait vert par construction
+    (unwired = vide - vide - exemptions = vide). Plancher choisi
+    confortablement sous la mesure réelle (68 au 2026-09-06), jamais un
+    nombre exact fragile."""
+    found = core_env_vars()
+    assert len(found) >= 60, (
+        f"core_env_vars() n'a trouvé que {len(found)} variable(s) — "
+        "régression probable de l'extraction AST, pas une baisse légitime "
+        "du nombre de variables lues par core/app/"
+    )
+    for sentinel in ("CORE_AUTH_MODE", "S3_ATTACHMENTS_BUCKET"):
+        assert sentinel in found, f"{sentinel} doit apparaître dans core_env_vars()"
+
+
+def test_compose_substitutions_extractor_has_not_silently_regressed_to_empty():
+    """Même garde que ci-dessus pour compose_substitutions(), clé de voûte
+    de test_every_compose_substitution_is_documented."""
+    found = compose_substitutions()
+    assert len(found) >= 55, (
+        f"compose_substitutions() n'a trouvé que {len(found)} variable(s) — "
+        "régression probable de la regex ${VAR}, pas une baisse légitime"
+    )
+
+
+def test_documented_env_vars_extractor_has_not_silently_regressed_to_empty():
+    """Même garde pour documented_env_vars(), y compris commentées."""
+    found = documented_env_vars(include_commented=True)
+    assert len(found) >= 65, (
+        f"documented_env_vars() n'a trouvé que {len(found)} variable(s) — "
+        "régression probable de la regex sur .env.example"
+    )

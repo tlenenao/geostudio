@@ -91,12 +91,12 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
   `YYYY-MM-DD-spX…`.
 - **TDD systématique** ; chaque feature visible a sa spec E2E Playwright. La
   suite E2E complète est le filet de la migration : elle reste globalement
-  verte (dernière mesure après intégration de SP-45/46/47/49/52/53/55/56/58/
-  51/54, 2026-09-06 : 156 passed / 4 skipped / **1 failed** —
-  `e2e/pipeline-builder.spec.ts:111`, timeout sur le bouton « Exécuter »,
-  confirmé préexistant à SP-43 en checkoutant le commit d'avant sa Tâche 1 ;
-  cause non encore investiguée, ne pas imputer à un futur travail sans
-  vérifier d'abord si ce test échoue déjà sur `dev`).
+  verte (dernière mesure après SP-60, 2026-09-06 : 156 passed / 4 skipped /
+  **1 failed** — `e2e/pipeline-builder.spec.ts:105` (numéro de ligne décalé
+  depuis SP-60, même test), timeout sur le bouton « Exécuter », reconfirmé
+  préexistant par SP-60 en checkoutant le commit d'avant sa Tâche 1 ; cause
+  non encore investiguée, ne pas imputer à un futur travail sans vérifier
+  d'abord si ce test échoue déjà sur `dev`).
 - Exécution en **subagent-driven-development** : une revue par tâche **et** une
   revue finale de branche, systématiquement — ce ne sont pas les mêmes défauts
   (cf. `## Pièges récurrents`).
@@ -112,16 +112,18 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ```bash
 # shell (d'abord, car commitlint en dépend)
 cd shell && npm ci
-npm run test         # Vitest — dernier compte mesuré après intégration
-                     # complète de SP-45/46/47/49/52/53/55/56/58/51/54
-                     # (2026-09-06) : 235 fichiers, 2064 tests, tous passed.
-                     # Couverture 90,51 % (seuil 88).
+npm run test         # Vitest — dernier compte mesuré après SP-60
+                     # (2026-09-06) : 235 fichiers, 2068 tests, tous passed.
+                     # Couverture 90,41 % (seuil 88).
 npm run e2e          # Playwright — 156 passed / 4 skipped / 1 failed à la
                      # même mesure (VITE_AUTH_MODE=mock) — l'échec
-                     # (pipeline-builder.spec.ts:111) est préexistant à
-                     # SP-43, cf. ## Comment on travaille.
+                     # (pipeline-builder.spec.ts:105) est préexistant,
+                     # cf. ## Comment on travaille.
                      # e2e-oidc/ : suite séparée contre un vrai Keycloak (SP-26)
-npm run build        # tsc --noEmit + vite build
+npm run build        # tsc --noEmit + vite build ; chunk d'entrée ~471 Ko
+                     # (23 chunks de route en lazy() depuis SP-60) ; filet
+                     # de taille : node scripts/check-bundle-size.mjs
+                     # dist/.vite/manifest.json .bundle-size-threshold
 
 # pre-commit (une fois par poste de travail, après npm ci)
 # Note : commitlint dépend de shell/node_modules, donc cd shell && npm ci doit être exécuté d'abord
@@ -935,6 +937,49 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   les Tâches 1+2+5 (toutes trois sur `app/stac/routes.py`) et 3+6 (toutes
   deux sur `app/dcat/routes.py`) s'enchaînaient sur les mêmes fonctions
   sans point de commit intermédiaire propre.
+- **SP-60** — performance frontend & filets de test (10 tâches, spec
+  `docs/superpowers/specs/2026-09-06-sp60-perf-frontend-design.md`, plan
+  `docs/superpowers/plans/2026-09-06-sp60-perf-frontend.md`) : ferme
+  GAP-68 (perf) et le reliquat de GAP-69 (filets de test troués sur
+  l'infra de qualité). **GAP-69** : plancher sur les 3 extracteurs de
+  `test_deployability.py` (`core_env_vars()`/`compose_substitutions()`/
+  `documented_env_vars()`, REV-076) ; garde security-headers/rate-limit
+  sur les routeurs `core`/`shell` (REV-073) ; les deux tests « lisible
+  anonymement » (attachments + features) vérifient désormais le contenu,
+  pas seulement le code 200 (REV-077) ; ancre positive `readyAnchor` par
+  écran sur la boucle 900px de `triptych-narrow.spec.ts` (REV-075) ;
+  migration de `mockCollection()` sur 8 fichiers E2E supplémentaires
+  au-delà de son unique consommateur SP-43 (le 9e fichier listé par le
+  plan, `ingestion-gpkg.spec.ts`, n'avait en réalité aucun littéral de
+  collection — écart trouvé et documenté plutôt que suivi à la lettre).
+  **GAP-68** : les 4 boucles de sondage restantes annulées au démontage
+  (`Terrain3DUploadButton`/`Tileset3DUploadButton`/`PipelineRunPanel`/
+  `ImportFileButton`, patron `mountedRef`+`timerRef` d'`ExportPanel.tsx`,
+  falsifié systématiquement) ; `MapView` en `lazy()`+`Suspense` dans
+  `MapEditorPage` (résout `INEFFECTIVE_DYNAMIC_IMPORT`) ; découpage par
+  route de `routes.tsx` (23 pages en `lazy()`, 2 `<Suspense>`) ; chunks de
+  vendeur (`manualChunks`) + filet de non-régression sur la taille du
+  bundle (`scripts/check-bundle-size.mjs` + `.bundle-size-threshold`,
+  câblé en CI après `npm run build`). **2 écarts réels trouvés par
+  falsification, absents du texte du plan (piège CLAUDE.md n°3)** :
+  (1) `/tasks` rend `UsagePage` depuis SP-47, pas `TasksComingSoonPage`
+  comme l'affirmait la spec — `GET /usage/tasks` mocké en conséquence ;
+  (2) regrouper `@deck.gl`/`@loaders.gl` (ou `@xyflow` seul) dans un
+  `manualChunks` partagé avec `maplibre-gl` fait basculer ce chunk vers
+  une charge **statique** de l'entrée (mesuré via `entry.imports` du
+  manifeste Vite) — retirés du regroupement manuel, laissés au chunking
+  automatique de Rollup (déjà dynamique, un seul consommateur réel
+  chacun aujourd'hui). Chunk d'entrée : 3 324 Ko → 471 Ko (hors vendor
+  chunks) ; charge JS/CSS initiale mesurée avec vendor chunks en place :
+  562,6 Ko (seuil committé 570). `routes.test.tsx` : 4 sites synchrones
+  convertis en `findBy` (pas 2 comme le texte du plan le prévoyait —
+  2 supplémentaires trouvés seulement sous charge système réelle, pas en
+  exécution isolée). Suite finale : core 2384 passed/219 skipped (postgis
+  hors service cette session, hors les 5 qgis habituels — aucun échec) ;
+  shell 235 fichiers/2068 tests, couverture 90,41 % (seuil 88) ; E2E 156
+  passed/4 skipped/1 échec préexistant (`pipeline-builder.spec.ts:105`,
+  confirmé par bissection sur le commit d'avant ce plan, sans rapport).
+  Diff `openapi.json` vide, attendu (aucune route/modèle du cœur touché).
 
 ### Conventions tranchées (2026-09-01)
 
@@ -967,6 +1012,13 @@ immédiat d'une session :
   production réels trouvés et corrigés au passage (`_lock_down()` bloquait
   `transform.qgis`, `fid` GeoPackage non filtré). Reste non câblé en CI
   (session manuelle uniquement).
+- `REV-073`/`REV-075`/`REV-076`/`REV-077` clos par **SP-60** (GAP-69) :
+  gardes de borne basse sur les extracteurs de `test_deployability.py`,
+  ancre positive sur `triptych-narrow.spec.ts`, tests « lisible
+  anonymement » qui vérifient le contenu. GAP-68 (perf frontend) clos par
+  la même SP : 4 boucles de sondage annulées au démontage, `MapView`
+  lazy dans `MapEditorPage`, découpage par route de `routes.tsx`, filet
+  de non-régression sur la taille du bundle (`.bundle-size-threshold`).
 - `REV-096` clos par **SP-45** : garde d'egress SSRF sur l'appel LLM
   sortant du copilote (`app/copilot/egress.py`), même patron que les 3
   autres surfaces sortantes.

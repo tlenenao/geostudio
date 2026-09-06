@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect, type Page } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCollection, mockCore } from "./mocks";
 
 async function mockVisualQueryFlow(page: Page) {
   await page.route("https://core.test/instance", async (route) => {
@@ -14,20 +14,16 @@ async function mockVisualQueryFlow(page: Page) {
     await route.fulfill({
       json: {
         collections: [
-          {
+          mockCollection({
             id: "incidents",
             title: "Incidents",
-            description: "",
             tableName: "incidents",
             isPublic: true,
-            editable: true,
             geometryType: null,
             srid: null,
-            pkColumn: "id",
             permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 3,
-            owner: "mockuser",
-          },
+          }),
         ],
       },
     });
