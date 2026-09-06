@@ -1645,4 +1645,8 @@ export const fr = {
   "popupEditor.templateLabel": "Gabarit",
   "popupEditor.exprHint":
     "Markdown ; chaque ${expression} est évaluée sur l'entité cliquée, par exemple ${record.nom}.",
+
+  // ThumbnailUpload (ui) — REV-177 : extension du détecteur i18n à src/ui/
+  "thumbnailUpload.notAnImageError": "Le fichier doit être une image.",
+  "thumbnailUpload.tooLargeError": "L'image dépasse 2 Mo.",
 } as const;

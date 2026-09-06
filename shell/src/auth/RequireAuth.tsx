@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
+import { t } from "../i18n";
 import { useAuth } from "./useAuth";
 
 export function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -36,7 +37,7 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
       <div role="alert" className="p-8 text-sm text-red-600">
         Échec de la connexion : {error}{" "}
         <button className="underline" onClick={signIn}>
-          Réessayer
+          {t("common.retry")}
         </button>
       </div>
     );

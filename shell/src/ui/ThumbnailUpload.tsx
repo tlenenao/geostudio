@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
+import { t } from "../i18n";
 
 export const MAX_THUMBNAIL_BYTES = 2 * 1024 * 1024;
 
@@ -16,11 +17,11 @@ export function ThumbnailUpload({
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      setError("Le fichier doit être une image.");
+      setError(t("thumbnailUpload.notAnImageError"));
       return;
     }
     if (file.size > MAX_THUMBNAIL_BYTES) {
-      setError("L'image dépasse 2 Mo.");
+      setError(t("thumbnailUpload.tooLargeError"));
       return;
     }
     setError(null);
