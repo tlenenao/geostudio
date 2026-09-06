@@ -14,8 +14,9 @@
     "gen:api-types": "openapi-typescript ../core/openapi.json -o src/api/generated/core-schema.d.ts",
     "gen:lucide-icons": "node scripts/gen-lucide-icons.mjs",
     "build:export-runtime": "vite build --config vite.export.config.ts",
-    "lint": "eslint . && npm run lint:i18n",
+    "lint": "eslint . && npm run lint:i18n && npm run lint:aria-panel",
     "lint:i18n": "node scripts/check-i18n-coverage.mjs src/pages src/shell src/builder src/map src/ui src/api src/auth src/staticExport",
+    "lint:aria-panel": "node scripts/check-aria-panel-coverage.mjs src/pages src/shell src/builder src/map src/ui src/api src/auth src/staticExport",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
