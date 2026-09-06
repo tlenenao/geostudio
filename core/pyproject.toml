@@ -214,6 +214,14 @@ layers = [
     # jobs — jamais par app.mcp (décision explicite spec SP-58 §2.2 :
     # vérifiée par grep en clôture de plan, pas par ce contrat).
     "app.compliance",
+    # app.security (SP-48/GAP-72) : calcule l'allowlist CSP dynamique
+    # (img-src/connect-src/script-src) depuis des données déjà écrites par
+    # trois modules distincts (HarvestSource, Config/ConfigRevision,
+    # Extension) — même raison structurelle qu'app.compliance ci-dessus,
+    # placé juste après pour la même rationale (aucune place plus basse ne
+    # permettrait ces imports sans dizaines d'exemptions). Consommé
+    # uniquement par le worker (tâche périodique) — jamais par app.mcp.
+    "app.security",
     "app.harvest",
     "app.pipelines",
     "app.reports",
