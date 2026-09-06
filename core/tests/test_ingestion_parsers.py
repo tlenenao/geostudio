@@ -457,6 +457,19 @@ def test_parse_kmz_yields_same_result_as_kml_without_vsizip():
     assert props["Name"] == "Paris"
 
 
+def test_parse_kml_renames_reserved_id_property():
+    # Le driver KML de GDAL impose un champ "id" sur tout Placemark (son
+    # attribut XML id="...", vide sinon), y compris sur un KML minimal sans
+    # schéma personnalisé — vérifié par exécution réelle. Ce nom collide
+    # avec la colonne "id" (PK serial) posée par run_import sur toute table
+    # importée : sans renommage, tout import KML échouerait à la création
+    # de table (voir aussi le test d'intégration bout en bout, Tâche 4).
+    rows = list(parse_kml(_kml_bytes()))
+    _geom, props = rows[0]
+    assert "id" not in props
+    assert "kml_id" in props
+
+
 def test_parse_kml_corrupted_file_raises_parse_error():
     with pytest.raises(IngestionParseError, match="illisible"):
         list(parse_kml(b"not a real kml"))

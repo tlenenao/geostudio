@@ -280,6 +280,25 @@ def parse_shapefile_zip(
         yield from _read_features(f"/vsizip/{path}", layer_name)
 
 
+# Le driver KML de GDAL impose un schéma de champs fixe sur TOUT Placemark,
+# y compris un champ nommé "id" (l'attribut XML id="..." du Placemark, vide
+# sinon) — vérifié par exécution réelle : même un KML minimal à un seul
+# Placemark sans schéma personnalisé le produit. Ce nom entre en collision
+# avec la colonne "id" (clé primaire serial) que run_import pose sur toute
+# table importée ; sans renommage, TOUT import KML échouerait à la création
+# de table ("column id specified more than once"), pas seulement un cas
+# limite de nommage utilisateur. Renommé plutôt que supprimé pour ne pas
+# perdre l'attribut id du Placemark quand il est renseigné.
+_KML_RESERVED_PROPERTY_NAMES = {"id", "tenant_id", "geom"}
+
+
+def _rename_kml_reserved_properties(props: dict) -> dict:
+    return {
+        (f"kml_{key}" if key in _KML_RESERVED_PROPERTY_NAMES else key): value
+        for key, value in props.items()
+    }
+
+
 def parse_kml(
     content: bytes,
     layer_name: str | None = None,
@@ -293,7 +312,8 @@ def parse_kml(
     # sélectionne le bon driver depuis l'extension.
     suffix = ".kmz" if _looks_like_zip(content) else ".kml"
     with _temp_file(content, suffix) as path:
-        yield from _read_features(path, layer_name)
+        for geom, props in _read_features(path, layer_name):
+            yield geom, _rename_kml_reserved_properties(props)
 
 
 def _looks_like_zip(content: bytes) -> bool:
