@@ -342,7 +342,7 @@ def test_dataset_detail_degrades_to_none_on_broken_collection(env, caplog):
         raise _TableNotFound("gone")
 
     app.dependency_overrides[dcat_routes.get_bbox_provider] = lambda: broken_bbox_provider
-    resp = client.get("/dcat/datasets/incidents")
+    resp = client.get("/v1/dcat/datasets/incidents")
     assert resp.status_code == 200
     body = resp.json()
     assert body["dct:identifier"] == "incidents"
@@ -360,7 +360,7 @@ def test_dataset_detail_code_bug_is_not_swallowed(env):
 
     app.dependency_overrides[dcat_routes.get_bbox_provider] = lambda: buggy_bbox_provider
     with pytest.raises(TypeError):
-        client.get("/dcat/datasets/incidents")
+        client.get("/v1/dcat/datasets/incidents")
 
 
 def test_dcat_dataset_without_declared_metadata_omits_optional_fields(env):
