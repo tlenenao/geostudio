@@ -445,6 +445,47 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   exception ; `parse_kml` renomme désormais `id`/`tenant_id`/`geom` en
   `kml_id`/`kml_tenant_id`/`kml_geom`. Les deux corrigés et vérifiés par
   falsification.
+- **SP-55** — catalogue : tri/facettes/recherche spatiale/SEO (GAP-05/06/07,
+  chantiers 4.7/4.8/4.10). **GAP-05** : `sort` (5 valeurs, écrase l'ordre
+  RRF quand `q` est posé), `owner`, `keyword` (ET, filtré en Python comme
+  `list_published_items`), `GET /items/facets` (compteurs propriétaire/
+  mot-clé, plafond 50) — sélecteurs + chips à bascule dans `CatalogPage`.
+  **GAP-06** : emprise spatiale persistée sur `Item` (4 colonnes, migration
+  0035), recalculée au point d'écriture unique
+  `app.configs.bbox::recompute_item_bbox` appelé depuis les trois fonctions
+  de bas niveau de `configs/repository.py` (create/update/rollback) —
+  jamais dupliqué côté route ni MCP, prouvé par un test qui appelle
+  `save_app_config` sans jamais toucher la route HTTP ; filtre
+  `bbox=minX,minY,maxX,maxY` composé avec le chemin RRF ; `CatalogSpatialFilter`
+  (carte MapLibre autonome, `dragPan`/`boxZoom` désactivés) dessine le
+  rectangle. **GAP-07** : `sitemap.xml`/`robots.txt`/aperçu social
+  (`og:*`, canonical, échappement HTML) rendus côté serveur
+  (`app/public/routes.py`), routés via deux routeurs Traefik
+  (`seo-static`/`seo-bots`, priorité 20/25) au-dessus du catch-all shell —
+  nouvel env `PUBLIC_BASE_URL` ; `useDocumentMeta` complète côté JS
+  (titre/description/canonical) pour Googlebot et l'onglet navigateur.
+  **Écarts réels trouvés en exécutant (pas dans le plan, piège CLAUDE.md
+  n°3)** : `app.collections` importe déjà `app.configs`
+  (`dataset_validation`/`routes`), donc `recompute_item_bbox` ne peut PAS
+  vivre dans `app.items` (sous `app.configs` dans le contrat de couches) —
+  placé dans `app.configs.bbox` avec 4 exceptions nommées dans
+  `ignore_imports` (même patron que le cycle déjà documenté pour
+  `app.analytics`) ; côté GAP-07, l'overlay prod (`labels: !override`) remplaçait
+  intégralement les labels Traefik du fichier de base — les deux nouveaux
+  routeurs auraient disparu silencieusement en production sans être
+  redéclarés dans `docker-compose.prod.yml` avec ses propres conventions.
+  **Volet SEO (Traefik) partiellement vérifié** : la syntaxe des labels
+  (`HeaderRegexp`, `replacepathregex`) a été confirmée contre la
+  documentation Traefik v3.0 réelle et contre `docker compose config`
+  (résolution par valeur) ; la vérification bout-en-bout via une requête
+  HTTP à travers Traefik n'a **pas** pu être complétée dans la session qui
+  l'a écrit — le conteneur `traefik` ne parvenait pas à joindre le socket
+  Docker (`Error response from daemon`), limitation de cet environnement
+  reproduite à l'identique sur le routeur `core` préexistant (non liée à
+  ce changement) ; les routes `app/public/routes.py` elles-mêmes ont été
+  vérifiées directement sur le port du service `core` (200, contenu
+  correct, `PUBLIC_BASE_URL` résolu). À revérifier contre une stack Docker
+  standard avant mise en production.
 
 ### Conventions tranchées (2026-09-01)
 
