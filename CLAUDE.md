@@ -790,6 +790,55 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   (`sampleDataSourceField` de SP-51 et les méthodes de SP-54 sont des
   entrées distinctes de l'interface `ItemClient`, `invalidateDatasetCache`
   est la seule méthode de SP-54 dans `base.ts`, jamais touché par SP-51).
+- **SP-57b** — ferme GAP-14 volets 5.3 (contrat d'API `/v1/`) + 5.4 (ADR) +
+  5.5 (guide de contribution), spec
+  `docs/superpowers/specs/2026-09-06-sp57b-api-v1-adr-contribution-design.md` :
+  les 33 routeurs du cœur (26 inconditionnels + 7 derrière un flag de
+  capacité) passent sous un routeur imbriqué `v1_router` — `/health`
+  (`@app.get` direct) et le montage `/mcp` restent hors versionnement,
+  contrats externes à protocole fixe. Pas de compatibilité ascendante
+  (décision assumée, aucun consommateur externe réel à ce jour) : migration
+  directe, `GET /items` répond 404. `docs/adr/` créé (11 ADR rétroactifs au
+  format MADR-lite, pointant vers l'arbitrage `Axx` ou la décision figée
+  `CLAUDE.md` d'origine) ; gabarits GitHub (`.github/ISSUE_TEMPLATE/`,
+  `PULL_REQUEST_TEMPLATE.md`) + `SECURITY.md` — `CONTRIBUTING.md`/
+  `CODE_OF_CONDUCT.md` existaient déjà depuis SP-9, GAP-14 se trompait sur
+  ce point. **Le volet 5.3 s'est révélé bien plus large que le texte de
+  GAP-14 ne le suggérait** (piège CLAUDE.md n°3), au-delà même de ce que la
+  spec avait anticipé : outre les ~10 regex hors routage FastAPI
+  (rate-limit `app/ratelimit/limiter.py`, CORS appexport et garde
+  lecture-seule `app/main.py`) et les 3 labels Traefik (`docker-compose.yml`
+  **et** son overlay `docker-compose.prod.yml`, même piège de duplication
+  que SP-55), l'audit un par un des 13 fichiers `CORE_BASE_URL`/
+  `request.base_url` a trouvé 7 sites réels à corriger — dont deux jamais
+  nommés par la spec avant l'exécution : l'URL de lancement admin-tools
+  (`window.open` côté shell) et le lien de partage renvoyé par
+  `POST /items/{id}/share-links`. Côté shell, `createBase()` ajoute `/v1` à
+  la source (`coreUrl`) — point unique couvrant sans édition individuelle
+  les 5+ fichiers de domaine qui construisent leur propre `fetch` avec
+  `base.coreUrl`. Côté tests, la bascule mécanique a débordé le périmètre
+  initialement compté par la spec (80 occurrences/28 specs E2E + 39
+  fichiers Vitest) : `shell/e2e/mocks.ts`, helper partagé par la quasi-
+  totalité des specs E2E, n'était pas dans ce compte (il ne matche pas le
+  glob `*.spec.ts`) et portait pourtant 16 routes absolues dont une en
+  regex littéral (`/https:\/\/core\.test\/items\/.../`) et une en template
+  littéral sur un alias de page (`p.route(...)`) — aucune des deux formes
+  n'était couverte par un premier passage limité à
+  `page.route("https://core.test/...")` en chaîne simple. Suite finale :
+  cœur 2381 passed/219 skipped/0 failed (couverture 88,06 %, seuil 85) ;
+  shell 235 fichiers/2065 tests (couverture 90,51 %, seuil 88) ; E2E 156
+  passed/4 skipped/1 échec préexistant (`pipeline-builder.spec.ts:111`,
+  inchangé, sans rapport). Diff OpenAPI/types TS non vide et cohérent
+  (chaque chemin de route change de préfixe, aucun schéma ne change de
+  forme). Vérification manuelle : `/health`/`/v1/items`/`/items`
+  (404)/`/v1/health` (404)/`/mcp` tous corrects en direct sur le port du
+  service `core` ; labels Traefik vérifiés par valeur (`docker compose
+  config`, avec et sans l'overlay prod) — la vérification bout-en-bout à
+  travers Traefik n'a, comme pour SP-55, pas pu être complétée dans cet
+  environnement (le conteneur `traefik` ne peut pas joindre le socket
+  Docker ici, limitation pré-existante reproduite à l'identique, non liée
+  à ce changement) : à revérifier contre une stack Docker standard avant
+  mise en production.
 
 ### Conventions tranchées (2026-09-01)
 
