@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
+// REV-080 : le suffixe de nuance (`-\d{2,3}`) est rendu optionnel — bg-white/
+// text-white/bg-black/text-black n'en portent jamais un (contrairement à
+// bg-slate-900), et sont précisément les classes qui ont cassé l'ambiance
+// sombre en SP-34 : le motif d'origine les laissait passer.
 const HARDCODED_COLOR_CLASS =
-  /\b(?:bg|text|border|ring|fill|stroke)-(?:slate|gray|zinc|neutral|stone|red|blue|green|yellow|amber|lime|emerald|indigo|violet|purple|fuchsia|pink|rose|sky|cyan|orange|teal)-\d{2,3}\b/;
+  /\b(?:bg|text|border|ring|fill|stroke)-(?:white|black|slate|gray|zinc|neutral|stone|red|blue|green|yellow|amber|lime|emerald|indigo|violet|purple|fuchsia|pink|rose|sky|cyan|orange|teal)(?:-\d{2,3})?\b/;
 
 /**
  * Toute classe Tailwind de palette codée en dur (au lieu d'un token --gs-*)

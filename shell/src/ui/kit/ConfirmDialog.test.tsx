@@ -7,7 +7,11 @@ import { expectTokenizedClasses } from "./testUtils";
 
 test("clic sur Annuler appelle onCancel", async () => {
   const onCancel = vi.fn();
-  const { container } = render(
+  // REV-081 : `ConfirmDialog` rend son contenu dans un portail Radix (hors de
+  // `container`, dans `document.body`) — `expectTokenizedClasses(container)`
+  // inspectait un nœud vide. `baseElement` (document.body par défaut, sans
+  // option `container` custom) couvre bien le contenu portalisé.
+  const { baseElement } = render(
     <ConfirmDialog
       open
       title="Supprimer"
@@ -19,7 +23,7 @@ test("clic sur Annuler appelle onCancel", async () => {
   );
   await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
   expect(onCancel).toHaveBeenCalledTimes(1);
-  expectTokenizedClasses(container);
+  expectTokenizedClasses(baseElement);
 });
 
 test("clic sur le bouton de confirmation appelle onConfirm", async () => {

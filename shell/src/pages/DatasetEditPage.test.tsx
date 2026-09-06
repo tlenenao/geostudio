@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { CollectionSchema, DatasetConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { DatasetEditPage } from "./DatasetEditPage";
@@ -64,6 +64,14 @@ function stubMatchMedia(matches: boolean) {
 
 beforeEach(() => {
   stubMatchMedia(false);
+});
+
+// REV-079 : `vi.spyOn` (au lieu de `vi.stubGlobal("URL", { ...URL, ... })`)
+// laisse le constructeur `URL` intact — un `{ ...URL }` produit un objet
+// simple, non constructible via `new`, qui restait installé pour tous les
+// tests suivants du fichier faute de nettoyage.
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 function renderPage(client: Partial<ItemClient>) {
@@ -232,8 +240,8 @@ test("removing a cross-filter link drops it from the draft before saving", async
 test("offers CSV/XLSX/GeoJSON/GPKG export when the collection has geometry, and downloads on click", async () => {
   const blob = new Blob(["a,b\n1,2\n"], { type: "text/csv" });
   const exportDataSource = vi.fn().mockResolvedValue({ blob, filename: "villes.csv" });
-  const createObjectURL = vi.fn().mockReturnValue("blob:fake");
-  vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+  const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:fake");
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
 
   renderPage({
     getItem: vi.fn().mockResolvedValue(item),

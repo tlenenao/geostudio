@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { ExplorerMenu } from "./ExplorerMenu";
 import { ExplorerProvider, useExplorerTarget } from "../ExplorerContext";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { DataSource, ItemClient } from "../../api/types";
+
+// REV-079 : `vi.spyOn` (au lieu de `vi.stubGlobal("URL", { ...URL, ... })`)
+// laisse le constructeur `URL` intact — un `{ ...URL }` produit un objet
+// simple, non constructible via `new`, qui restait installé pour tous les
+// tests suivants du fichier faute de nettoyage.
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function TargetProbe() {
   const target = useExplorerTarget();
@@ -140,9 +148,8 @@ test("clicking an export format calls exportDataSource and triggers a download",
     layer: "parcs",
     query: { groupBy: "region" },
   };
-  const createObjectURL = vi.fn().mockReturnValue("blob:fake");
-  const revokeObjectURL = vi.fn();
-  vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+  const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:fake");
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
 
   render(
     <ItemClientProvider client={client}>
