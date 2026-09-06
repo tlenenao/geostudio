@@ -389,3 +389,158 @@ def test_geojson_import_stores_feature_count(env):
             s, tenant_id=tenant.id, collection_id=result.collection_id
         )
         assert col.feature_count == 2  # GEOJSON contient 2 features (A, B)
+
+
+def test_unsupported_extension_raises_parse_error(env):
+    Session, tenant, user = env
+    with Session() as s:
+        with pytest.raises(IngestionParseError, match="non supporté"):
+            run_import(
+                s,
+                tenant_id=tenant.id,
+                created_by=user.id,
+                filename="villes.txt",
+                content=b"nom,lat,lon\n",
+                collection_title="Casse",
+                lat_field=None,
+                lon_field=None,
+            )
+        s.rollback()
+
+
+def _xlsx_bytes(rows: list[list], headers: list[str]) -> bytes:
+    import io
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_xlsx_import_creates_queryable_collection_and_map_item(env):
+    Session, tenant, user = env
+    content = _xlsx_bytes([["A", 48.85, 2.35], ["B", 45.76, 4.83]], ["nom", "lat", "lon"])
+    with Session() as s:
+        result = run_import(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="villes.xlsx",
+            content=content,
+            collection_title="Villes XLSX",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+        config = configs_repo.get_config_by_item(s, item_id=result.item_id)
+        assert config is not None
+        assert config.config.kind == "map"
+    with Session() as s:
+        rows = (
+            s.execute(text(f"SELECT nom FROM public.{result.collection_id} ORDER BY nom"))
+            .scalars()
+            .all()
+        )
+        assert rows == ["A", "B"]
+
+
+def _kml_bytes(name: str = "Paris", lon: float = 2.35, lat: float = 48.85) -> bytes:
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>'
+        f"<Placemark><name>{name}</name>"
+        f"<Point><coordinates>{lon},{lat},0</coordinates></Point>"
+        "</Placemark></Document></kml>"
+    ).encode()
+
+
+def _kmz_bytes(name: str = "Paris", lon: float = 2.35, lat: float = 48.85) -> bytes:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("doc.kml", _kml_bytes(name, lon, lat))
+    return buf.getvalue()
+
+
+def test_kml_import_creates_queryable_collection_and_map_item(env):
+    Session, tenant, user = env
+    with Session() as s:
+        result = run_import(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="paris.kml",
+            content=_kml_bytes(),
+            collection_title="Paris KML",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+        config = configs_repo.get_config_by_item(s, item_id=result.item_id)
+        assert config is not None
+        assert config.config.kind == "map"
+    with Session() as s:
+        rows = s.execute(text(f'SELECT "Name" FROM public.{result.collection_id}')).scalars().all()
+        assert rows == ["Paris"]
+
+
+def test_kmz_import_creates_queryable_collection_and_map_item(env):
+    Session, tenant, user = env
+    with Session() as s:
+        result = run_import(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="paris.kmz",
+            content=_kmz_bytes(),
+            collection_title="Paris KMZ",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+    with Session() as s:
+        rows = s.execute(text(f'SELECT "Name" FROM public.{result.collection_id}')).scalars().all()
+        assert rows == ["Paris"]
+
+
+def test_geoparquet_import_creates_queryable_collection_and_map_item(env, tmp_path):
+    import geopandas as gpd
+
+    Session, tenant, user = env
+    gdf = gpd.GeoDataFrame(
+        {"nom": ["A", "B"]},
+        geometry=[Point(1.0, 45.0), Point(2.0, 46.0)],
+        crs="EPSG:4326",
+    )
+    path = tmp_path / "villes.parquet"
+    gdf.to_parquet(path)
+    with Session() as s:
+        result = run_import(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="villes.parquet",
+            content=path.read_bytes(),
+            collection_title="Villes GeoParquet",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+        config = configs_repo.get_config_by_item(s, item_id=result.item_id)
+        assert config is not None
+        assert config.config.kind == "map"
+    with Session() as s:
+        rows = (
+            s.execute(text(f"SELECT nom FROM public.{result.collection_id} ORDER BY nom"))
+            .scalars()
+            .all()
+        )
+        assert rows == ["A", "B"]

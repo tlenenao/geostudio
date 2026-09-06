@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
+import datetime
+import io
 import warnings
 import zipfile
 
 import numpy as np
 import pytest
 import shapely
+from openpyxl import Workbook
 from pyogrio.raw import write as pyogrio_write
 from shapely.geometry import Point
 
@@ -15,8 +18,11 @@ from app.ingestion.parsers import (
     list_layers,
     parse_csv_latlon,
     parse_geojson,
+    parse_geoparquet,
     parse_gpkg,
+    parse_kml,
     parse_shapefile_zip,
+    parse_xlsx_latlon,
 )
 
 
@@ -355,3 +361,205 @@ def test_parse_shapefile_zip_auto_selects_single_layer(tmp_path):
     content = _shapefile_zip_bytes(tmp_path)
     rows = list(parse_shapefile_zip(content, layer_name=None))
     assert len(rows) == 2
+
+
+def _xlsx_bytes(rows: list[list], headers: list[str]) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_parse_xlsx_latlon_auto_detects_columns():
+    content = _xlsx_bytes([["Paris", 48.85, 2.35]], ["nom", "lat", "lon"])
+    rows = list(parse_xlsx_latlon(content, None, None))
+    assert len(rows) == 1
+    geom, props = rows[0]
+    assert (geom.x, geom.y) == (2.35, 48.85)
+    assert props == {"nom": "Paris"}
+
+
+def test_parse_xlsx_latlon_uses_explicit_field_names():
+    content = _xlsx_bytes([["Paris", 48.85, 2.35]], ["nom", "y_coord", "x_coord"])
+    rows = list(parse_xlsx_latlon(content, "y_coord", "x_coord"))
+    geom, _props = rows[0]
+    assert (geom.x, geom.y) == (2.35, 48.85)
+
+
+def test_parse_xlsx_latlon_raises_when_columns_cannot_be_detected():
+    content = _xlsx_bytes([["A", 1]], ["nom", "valeur"])
+    with pytest.raises(IngestionParseError, match="introuvables"):
+        list(parse_xlsx_latlon(content, None, None))
+
+
+def test_parse_xlsx_latlon_fails_fast_on_invalid_row():
+    content = _xlsx_bytes([["Paris", 48.85, 2.35], ["Casse", "abc", 2.35]], ["nom", "lat", "lon"])
+    with pytest.raises(IngestionParseError, match="ligne 2"):
+        list(parse_xlsx_latlon(content, None, None))
+
+
+def test_parse_xlsx_latlon_serializes_datetime_property_to_iso_string():
+    when = datetime.datetime(2026, 9, 5, 10, 30)
+    content = _xlsx_bytes([["Paris", 48.85, 2.35, when]], ["nom", "lat", "lon", "maj"])
+    rows = list(parse_xlsx_latlon(content, None, None))
+    _geom, props = rows[0]
+    assert props["maj"] == when.isoformat()
+    assert isinstance(props["maj"], str)
+
+
+def test_parse_xlsx_latlon_empty_cell_becomes_none_property():
+    content = _xlsx_bytes([["Paris", 48.85, 2.35, None]], ["nom", "lat", "lon", "notes"])
+    rows = list(parse_xlsx_latlon(content, None, None))
+    _geom, props = rows[0]
+    assert props["notes"] is None
+
+
+def test_parse_xlsx_latlon_corrupted_file_raises_parse_error():
+    with pytest.raises(IngestionParseError, match="illisible"):
+        list(parse_xlsx_latlon(b"not a real xlsx", None, None))
+
+
+def _kml_bytes(name: str = "Paris", lon: float = 2.35, lat: float = 48.85) -> bytes:
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>'
+        f"<Placemark><name>{name}</name>"
+        f"<Point><coordinates>{lon},{lat},0</coordinates></Point>"
+        "</Placemark></Document></kml>"
+    ).encode()
+
+
+def _kmz_bytes(name: str = "Paris", lon: float = 2.35, lat: float = 48.85) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("doc.kml", _kml_bytes(name, lon, lat))
+    return buf.getvalue()
+
+
+def test_parse_kml_yields_geometry_and_properties():
+    rows = list(parse_kml(_kml_bytes()))
+    assert len(rows) == 1
+    geom, props = rows[0]
+    assert geom.geom_type == "Point"
+    assert (geom.x, geom.y) == pytest.approx((2.35, 48.85))
+    assert props["Name"] == "Paris"
+
+
+def test_parse_kmz_yields_same_result_as_kml_without_vsizip():
+    # Un .kmz est un zip contenant un doc.kml, mais se lit DIRECTEMENT par
+    # pyogrio (driver LIBKML détecté sur l'extension .kmz elle-même) —
+    # contrairement à .zip (Shapefile) qui exige le préfixe /vsizip/. Si le
+    # code préfixait /vsizip/ sur ce chemin par erreur, GDAL lèverait "n'est
+    # pas un fichier kmz valide" et ce test échouerait (cf. Step 3 du plan).
+    rows = list(parse_kml(_kmz_bytes()))
+    assert len(rows) == 1
+    geom, props = rows[0]
+    assert (geom.x, geom.y) == pytest.approx((2.35, 48.85))
+    assert props["Name"] == "Paris"
+
+
+def test_parse_kml_renames_reserved_id_property():
+    # Le driver KML de GDAL impose un champ "id" sur tout Placemark (son
+    # attribut XML id="...", vide sinon), y compris sur un KML minimal sans
+    # schéma personnalisé — vérifié par exécution réelle. Ce nom collide
+    # avec la colonne "id" (PK serial) posée par run_import sur toute table
+    # importée : sans renommage, tout import KML échouerait à la création
+    # de table (voir aussi le test d'intégration bout en bout, Tâche 4).
+    rows = list(parse_kml(_kml_bytes()))
+    _geom, props = rows[0]
+    assert "id" not in props
+    assert "kml_id" in props
+
+
+def test_parse_kml_corrupted_file_raises_parse_error():
+    with pytest.raises(IngestionParseError, match="illisible"):
+        list(parse_kml(b"not a real kml"))
+
+
+def test_list_layers_kml_single_layer():
+    layers = list_layers(_kml_bytes(), "villes.kml")
+    assert len(layers) == 1
+    assert layers[0].feature_count == 1
+
+
+def test_list_layers_kmz_single_layer():
+    layers = list_layers(_kmz_bytes(), "villes.kmz")
+    assert len(layers) == 1
+    assert layers[0].feature_count == 1
+
+
+def test_parse_geoparquet_yields_geometry_and_attributes(tmp_path):
+    import geopandas as gpd
+
+    gdf = gpd.GeoDataFrame(
+        {"nom": ["Paris", "Lyon"]},
+        geometry=[Point(2.35, 48.85), Point(4.83, 45.76)],
+        crs="EPSG:4326",
+    )
+    path = tmp_path / "villes.parquet"
+    gdf.to_parquet(path)
+    rows = list(parse_geoparquet(path.read_bytes()))
+    assert len(rows) == 2
+    geom0, props0 = rows[0]
+    assert geom0.geom_type == "Point"
+    assert (geom0.x, geom0.y) == pytest.approx((2.35, 48.85))
+    assert props0 == {"nom": "Paris"}
+
+
+def test_parse_geoparquet_reprojects_non_4326_crs(tmp_path):
+    import geopandas as gpd
+    import pyproj
+
+    transformer = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2154", always_xy=True)
+    x, y = transformer.transform(2.35, 48.85)
+    gdf = gpd.GeoDataFrame({"nom": ["Paris"]}, geometry=[Point(x, y)], crs="EPSG:2154")
+    path = tmp_path / "villes.parquet"
+    gdf.to_parquet(path)
+    rows = list(parse_geoparquet(path.read_bytes()))
+    geom, _props = rows[0]
+    assert geom.x == pytest.approx(2.35, abs=1e-6)
+    assert geom.y == pytest.approx(48.85, abs=1e-6)
+
+
+def test_parse_geoparquet_rejects_null_geometry(tmp_path):
+    import geopandas as gpd
+
+    gdf = gpd.GeoDataFrame(
+        {"nom": ["Paris", "Sans géométrie"]},
+        geometry=[Point(2.35, 48.85), None],
+        crs="EPSG:4326",
+    )
+    path = tmp_path / "villes.parquet"
+    gdf.to_parquet(path)
+    with pytest.raises(IngestionParseError, match="géométrie"):
+        list(parse_geoparquet(path.read_bytes()))
+
+
+def test_parse_geoparquet_round_trips_write_geoparquet_output(tmp_path):
+    from app.cdc.parquet_writer import ChangeRow, write_geoparquet
+
+    rows = [
+        ChangeRow(
+            op="insert",
+            lsn=1,
+            ts=1721212121.0,
+            pk_column="id",
+            pk_value=1,
+            columns={"id": 1, "titre": "a"},
+            geometry_column="geom",
+            geometry_wkb_hex=shapely.to_wkb(Point(2.3, 48.8), hex=True),
+        ),
+    ]
+    path = tmp_path / "batch.parquet"
+    write_geoparquet(rows, srid=4326, path=str(path))
+    parsed = list(parse_geoparquet(path.read_bytes()))
+    assert len(parsed) == 1
+    geom, props = parsed[0]
+    assert (geom.x, geom.y) == pytest.approx((2.3, 48.8))
+    assert props["titre"] == "a"
+    assert props["_op"] == "insert"
+    assert props["id"] == 1

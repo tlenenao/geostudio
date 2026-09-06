@@ -8,6 +8,7 @@ import type {
   InstanceInfo,
   Item,
   ItemClient,
+  ItemFacets,
   ItemPage,
   ListItemsParams,
   MetadataCatalog,
@@ -22,6 +23,7 @@ import { OWNER_PERMISSIONS } from "../../auth/permissions";
 type ItemsMethods = Pick<
   ItemClient,
   | "listItems"
+  | "getItemFacets"
   | "getItem"
   | "getItemBySlug"
   | "listPublicItems"
@@ -50,7 +52,22 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
       if (params.scope) q.set("scope", params.scope);
       q.set("page", String(params.page ?? 1));
       q.set("pageSize", String(params.pageSize ?? 12));
+      if (params.sort) q.set("sort", params.sort);
+      if (params.owner) q.set("owner", params.owner);
+      for (const keyword of params.keywords ?? []) q.append("keyword", keyword);
+      if (params.bbox) q.set("bbox", params.bbox);
       return request<ItemPage>("GET", `/items?${q.toString()}`);
+    },
+
+    async getItemFacets(
+      params: Pick<ListItemsParams, "q" | "type" | "scope" | "owner"> = {},
+    ): Promise<ItemFacets> {
+      const q = new URLSearchParams();
+      if (params.q) q.set("q", params.q);
+      if (params.type) q.set("type", params.type);
+      if (params.scope) q.set("scope", params.scope);
+      if (params.owner) q.set("owner", params.owner);
+      return request<ItemFacets>("GET", `/items/facets?${q.toString()}`);
     },
 
     async getItem(pk: string): Promise<Item> {

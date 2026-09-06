@@ -239,6 +239,15 @@ services:
       CORE_OIDC_JWKS_URL: ${CORE_OIDC_JWKS_URL:-http://keycloak:8080/realms/geostudio/protocol/openid-connect/certs}
       CORE_MCP_AUDIENCE: ${CORE_MCP_AUDIENCE:-geostudio-mcp}
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
+      # Domaine public du SHELL (sitemap.xml/robots.txt/aperçu social,
+      # SP-55 GAP-07) — distinct de CORE_BASE_URL (identité du cœur
+      # lui-même) et de SHELL_BASE_URL (usage interne réseau Docker réservé
+      # à export-worker qui navigue en Playwright, jamais une URL publique
+      # valide — vérifié dans ce fichier/​.env.example, ne pas réutiliser ici
+      # par erreur). Défaut de développement : port hôte réel du service
+      # shell (ligne "8300:8300" plus bas), cohérent avec `docker compose up`
+      # par défaut.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8300}
       # Cible interne du rappel /mcp du copilote — jamais l'URL publique
       # (cf. .env.example et app/copilot/mcp_loopback.loopback_base_url).
       CORE_INTERNAL_BASE_URL: ${CORE_INTERNAL_BASE_URL:-http://localhost:8200}
@@ -363,6 +372,31 @@ services:
       - traefik.http.middlewares.security-headers.headers.referrerPolicy=strict-origin-when-cross-origin
       - traefik.http.middlewares.rate-limit.ratelimit.average=100
       - traefik.http.middlewares.rate-limit.ratelimit.burst=200
+      # SP-55 GAP-07 : sitemap.xml/robots.txt/aperçu social rendus par le
+      # cœur (app/public/routes.py), routés au-dessus du catch-all shell
+      # (priorité 1) mais distincts des routeurs admin (priorité 15) —
+      # syntaxe vérifiée contre la doc Traefik v3.0 réelle avant d'écrire
+      # ce fichier (piège CLAUDE.md n°3 : HeaderRegexp est une regle de
+      # routeur v3, replacepathregex un middleware v3 existant sous ce nom
+      # exact en labels). `$$1` (pas `$1`) : docker compose interprète
+      # `$1` comme sa propre substitution de variable, `$$` échappe vers
+      # un `$` littéral transmis à Traefik.
+      - traefik.http.routers.seo-static.rule=Host(`${DOMAIN}`) && (Path(`/sitemap.xml`) || Path(`/robots.txt`))
+      - traefik.http.routers.seo-static.entrypoints=websecure
+      - traefik.http.routers.seo-static.tls.certresolver=letsencrypt
+      - traefik.http.routers.seo-static.priority=20
+      - traefik.http.routers.seo-static.service=core
+      - traefik.http.routers.seo-static.middlewares=security-headers@docker,rate-limit@docker,seo-static-rewrite@docker
+      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.regex=^/(sitemap\.xml|robots\.txt)$$
+      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.replacement=/public/$$1
+      - traefik.http.routers.seo-bots.rule=Host(`${DOMAIN}`) && PathPrefix(`/sites/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
+      - traefik.http.routers.seo-bots.entrypoints=websecure
+      - traefik.http.routers.seo-bots.tls.certresolver=letsencrypt
+      - traefik.http.routers.seo-bots.priority=25
+      - traefik.http.routers.seo-bots.service=core
+      - traefik.http.routers.seo-bots.middlewares=security-headers@docker,rate-limit@docker,seo-bots-rewrite@docker
+      - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.regex=^/sites/([^/]+)$$
+      - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.replacement=/public/sites/$$1/social-preview
 
   # Worker d'ingestion (SP-6a) — même image que le cœur, process séparé
   # (procrastinate worker, file Postgres, pas de broker — arbitrage A5).

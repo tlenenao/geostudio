@@ -39,6 +39,7 @@ class ItemRead(BaseModel):
     keywords: list[str] = []
     license: str = ""
     language: str = "fr"
+    bbox: list[float] | None = None
     permissions: ItemPermissions
 
 
@@ -47,6 +48,21 @@ class ItemPage(BaseModel):
     total: int
     page: int
     pageSize: int
+
+
+class OwnerFacet(BaseModel):
+    username: str
+    count: int
+
+
+class KeywordFacet(BaseModel):
+    keyword: str
+    count: int
+
+
+class ItemFacets(BaseModel):
+    owners: list[OwnerFacet]
+    keywords: list[KeywordFacet]
 
 
 class ItemUpdatePatch(BaseModel):

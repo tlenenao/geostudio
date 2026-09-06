@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import logging
 import uuid
+from collections import Counter
 from datetime import UTC, datetime
 
 import procrastinate
@@ -9,7 +10,14 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.items.models import Item
-from app.items.schemas import ItemPage, ItemPermissions, ItemRead
+from app.items.schemas import (
+    ItemFacets,
+    ItemPage,
+    ItemPermissions,
+    ItemRead,
+    KeywordFacet,
+    OwnerFacet,
+)
 from app.items.slug import InvalidSlugError, SlugCollisionError, is_valid_slug, slugify
 from app.search.providers import get_embedding_provider
 from app.search.ranking import hybrid_search_ids
@@ -140,6 +148,11 @@ def _to_read(
         keywords=item.keywords or [],
         license=item.license,
         language=item.language,
+        bbox=(
+            [item.bbox_min_x, item.bbox_min_y, item.bbox_max_x, item.bbox_max_y]
+            if item.bbox_min_x is not None
+            else None
+        ),
         permissions=permissions,
     )
 
@@ -264,17 +277,42 @@ def get_access_facts_by_ids(
     }
 
 
-def list_items(
-    session: Session,
-    *,
-    tenant_id: str,
-    current_user_id: str,
-    q: str | None,
-    resource_type: str | None,
-    scope: str,
-    page: int,
-    page_size: int,
-) -> ItemPage:
+_SORT_CLAUSES = {
+    "date_desc": Item.created_at.desc(),
+    "date_asc": Item.created_at.asc(),
+    "updated_desc": Item.updated_at.desc(),
+    "title_asc": Item.title.asc(),
+    "title_desc": Item.title.desc(),
+}
+
+_SORT_KEY_FNS = {
+    "date_desc": (lambda row: row[0].created_at, True),
+    "date_asc": (lambda row: row[0].created_at, False),
+    "updated_desc": (lambda row: row[0].updated_at, True),
+    "updated_asc": (lambda row: row[0].updated_at, False),
+    "title_asc": (lambda row: row[0].title, False),
+    "title_desc": (lambda row: row[0].title, True),
+}
+
+
+def _keyword_match(item: Item, keywords: list[str]) -> bool:
+    item_keywords = item.keywords or []
+    return all(k in item_keywords for k in keywords)
+
+
+def _sort_rows(rows: list[tuple[Item, str]], sort: str) -> list[tuple[Item, str]]:
+    key_fn, reverse = _SORT_KEY_FNS.get(sort, _SORT_KEY_FNS["date_desc"])
+    return sorted(rows, key=key_fn, reverse=reverse)
+
+
+def _visible_items_base_query(
+    *, tenant_id: str, current_user_id: str, scope: str, resource_type: str | None
+):
+    """Requête de base (Item, owner_username) filtrée tenant+type+scope/can() —
+    partagée par `list_items` et `get_facets` (spec §1.1 : mêmes filtres
+    d'entrée sauf pagination). N'inclut PAS `q`/`owner`/`keywords`/tri :
+    chaque appelant les applique ensuite selon ses propres besoins
+    (pagination SQL vs agrégation Python)."""
     query = (
         select(Item, User.username)
         .join(User, User.id == Item.owner_id)
@@ -309,6 +347,51 @@ def list_items(
                 shared_exists,
             )
         )
+    return query
+
+
+def list_items(
+    session: Session,
+    *,
+    tenant_id: str,
+    current_user_id: str,
+    q: str | None,
+    resource_type: str | None,
+    scope: str,
+    page: int,
+    page_size: int,
+    sort: str | None = None,
+    owner: str | None = None,
+    keywords: list[str] | None = None,
+    bbox: tuple[float, float, float, float] | None = None,
+) -> ItemPage:
+    query = _visible_items_base_query(
+        tenant_id=tenant_id,
+        current_user_id=current_user_id,
+        scope=scope,
+        resource_type=resource_type,
+    )
+    # `owner` s'ajoute APRÈS le filtre scope/can() ci-dessus, jamais à la
+    # place : un nom d'utilisateur arbitraire ne doit jamais réintroduire un
+    # item invisible dans la portée déjà appliquée (ex. scope="mine" avec
+    # owner="bob" doit rester vide, pas retomber sur tous les items de bob).
+    if owner:
+        query = query.where(User.username == owner)
+
+    if bbox is not None:
+        # Intersection de rectangles sur les 4 colonnes persistées (spec
+        # §2.4) — pas de scan de géométrie. Un item sans bbox connue
+        # (jamais calculée, ou non géographique) n'apparaît jamais sous un
+        # filtre bbox posé : Item.bbox_min_x.isnot(None) l'exclut d'office.
+        minx, miny, maxx, maxy = bbox
+        query = query.where(
+            Item.bbox_min_x.isnot(None),
+            Item.bbox_max_x >= minx,
+            Item.bbox_min_x <= maxx,
+            Item.bbox_max_y >= miny,
+            Item.bbox_min_y <= maxy,
+        )
+
     # À ce stade, `query` ne contient que des lignes visibles par
     # current_user_id — c'est la base sur laquelle la recherche (hybride ou
     # ILIKE) s'exécute ensuite (spec §Recherche hybride + permissions : le
@@ -326,28 +409,64 @@ def list_items(
             query_vector=provider.embed(q),
             limit=_RRF_CANDIDATE_LIMIT,
         )
-        total = len(candidate_ids)
-        page_ids = candidate_ids[(page - 1) * page_size : (page - 1) * page_size + page_size]
         rows = session.execute(
             select(Item, User.username)
             .join(User, User.id == Item.owner_id)
-            .where(Item.id.in_(page_ids))
+            .where(Item.id.in_(candidate_ids))
         ).all()
         by_id = {item.id: (item, owner_username) for item, owner_username in rows}
-        page_items = [by_id[i][0] for i in page_ids if i in by_id]
+        ordered_rows = [by_id[i] for i in candidate_ids if i in by_id]
+        if keywords:
+            ordered_rows = [r for r in ordered_rows if _keyword_match(r[0], keywords)]
+        if sort:
+            # Un tri explicite (date/titre) avec q posé écrase l'ordre RRF
+            # (spec §1.1) : le chemin hybride trie les lignes récupérées au
+            # lieu de suivre l'ordre de candidate_ids (pertinence).
+            ordered_rows = _sort_rows(ordered_rows, sort)
+        total = len(ordered_rows)
+        page_rows = ordered_rows[(page - 1) * page_size : (page - 1) * page_size + page_size]
+        page_items = [item for item, _owner_username in page_rows]
         perms = _permissions_by_id(
             session, tenant_id=tenant_id, current_user_id=current_user_id, items=page_items
         )
-        items = [_to_read(*by_id[i], perms[by_id[i][0].id]) for i in page_ids if i in by_id]
+        items = [
+            _to_read(item, owner_username, perms[item.id]) for item, owner_username in page_rows
+        ]
         return ItemPage(items=items, total=total, page=page, pageSize=page_size)
 
     if q:
         like = f"%{q}%"
         query = query.where(or_(Item.title.ilike(like), Item.abstract.ilike(like)))
 
+    if keywords:
+        # Item.keywords est une colonne JSON générique (pas JSONB) : pas
+        # d'opérateur de containment SQL portable SQLite/Postgres — filtre
+        # en Python après avoir chargé toutes les lignes visibles, même
+        # patron que list_published_items (petite échelle, recompute du
+        # total après filtre acceptable — ne pas réinventer une deuxième
+        # heuristique).
+        rows = session.execute(query).all()
+        filtered_rows = [
+            (item, owner_username)
+            for item, owner_username in rows
+            if _keyword_match(item, keywords)
+        ]
+        filtered_rows = _sort_rows(filtered_rows, sort or "date_desc")
+        total = len(filtered_rows)
+        page_rows = filtered_rows[(page - 1) * page_size : (page - 1) * page_size + page_size]
+        page_items = [item for item, _owner_username in page_rows]
+        perms = _permissions_by_id(
+            session, tenant_id=tenant_id, current_user_id=current_user_id, items=page_items
+        )
+        items = [
+            _to_read(item, owner_username, perms[item.id]) for item, owner_username in page_rows
+        ]
+        return ItemPage(items=items, total=total, page=page, pageSize=page_size)
+
+    order_clause = _SORT_CLAUSES.get(sort or "date_desc", _SORT_CLAUSES["date_desc"])
     total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
     rows = session.execute(
-        query.order_by(Item.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+        query.order_by(order_clause).offset((page - 1) * page_size).limit(page_size)
     ).all()
     page_items = [item for item, _owner_username in rows]
     perms = _permissions_by_id(
@@ -355,6 +474,58 @@ def list_items(
     )
     items = [_to_read(item, owner_username, perms[item.id]) for item, owner_username in rows]
     return ItemPage(items=items, total=total, page=page, pageSize=page_size)
+
+
+_MAX_FACET_KEYWORDS = 50
+_MAX_FACET_OWNERS = 50
+
+
+def get_facets(
+    session: Session,
+    *,
+    tenant_id: str,
+    current_user_id: str,
+    q: str | None,
+    resource_type: str | None,
+    scope: str,
+    owner: str | None = None,
+) -> ItemFacets:
+    """Compteurs propriétaire/mot-clé sur l'ensemble visible filtré (mêmes
+    filtres d'entrée que list_items sauf pagination/tri, spec §1.1).
+    Agrégation en Python (même raison d'échelle que list_published_items —
+    pas de GROUP BY SQL sur Item.keywords, colonne JSON générique).
+
+    `q` est traduit en ILIKE ici (pas RRF) : les facettes ne portent que sur
+    l'appartenance à l'ensemble filtré, pas sur un ordre de pertinence — la
+    distinction RRF/ILIKE de list_items n'a pas de sens pour un comptage.
+    """
+    query = _visible_items_base_query(
+        tenant_id=tenant_id,
+        current_user_id=current_user_id,
+        scope=scope,
+        resource_type=resource_type,
+    )
+    if owner:
+        query = query.where(User.username == owner)
+    if q:
+        like = f"%{q}%"
+        query = query.where(or_(Item.title.ilike(like), Item.abstract.ilike(like)))
+
+    rows = session.execute(query).all()
+    owner_counts = Counter(owner_username for _item, owner_username in rows)
+    keyword_counts: Counter[str] = Counter()
+    for item, _owner_username in rows:
+        keyword_counts.update(item.keywords or [])
+
+    owners = [
+        OwnerFacet(username=username, count=count)
+        for username, count in owner_counts.most_common(_MAX_FACET_OWNERS)
+    ]
+    keywords = [
+        KeywordFacet(keyword=keyword, count=count)
+        for keyword, count in keyword_counts.most_common(_MAX_FACET_KEYWORDS)
+    ]
+    return ItemFacets(owners=owners, keywords=keywords)
 
 
 def list_published_items(

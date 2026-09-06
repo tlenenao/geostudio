@@ -2202,6 +2202,20 @@
       },
       "InspectResponse": {
         "properties": {
+          "fields": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fields"
+          },
           "layers": {
             "items": {
               "$ref": "#/components/schemas/LayerInfoOut"
@@ -2210,10 +2224,31 @@
             "type": "array"
           }
         },
-        "required": [
-          "layers"
-        ],
         "title": "InspectResponse",
+        "type": "object"
+      },
+      "ItemFacets": {
+        "properties": {
+          "keywords": {
+            "items": {
+              "$ref": "#/components/schemas/KeywordFacet"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "owners": {
+            "items": {
+              "$ref": "#/components/schemas/OwnerFacet"
+            },
+            "title": "Owners",
+            "type": "array"
+          }
+        },
+        "required": [
+          "owners",
+          "keywords"
+        ],
+        "title": "ItemFacets",
         "type": "object"
       },
       "ItemPage": {
@@ -2281,6 +2316,20 @@
           "abstract": {
             "title": "Abstract",
             "type": "string"
+          },
+          "bbox": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
           },
           "configId": {
             "anyOf": [
@@ -2465,6 +2514,24 @@
           }
         },
         "title": "ItemUpdatePatch",
+        "type": "object"
+      },
+      "KeywordFacet": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "keyword": {
+            "title": "Keyword",
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyword",
+          "count"
+        ],
+        "title": "KeywordFacet",
         "type": "object"
       },
       "LanguageCatalogEntry": {
@@ -3360,6 +3427,24 @@
           "clientSecret"
         ],
         "title": "OAuth2ClientCredentialsPayload",
+        "type": "object"
+      },
+      "OwnerFacet": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "count"
+        ],
+        "title": "OwnerFacet",
         "type": "object"
       },
       "Page": {
@@ -7786,6 +7871,73 @@
             }
           },
           {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "owner",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner"
+            }
+          },
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keyword"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bbox",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bbox"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -7819,6 +7971,104 @@
           }
         },
         "summary": "List Items"
+      }
+    },
+    "/items/facets": {
+      "get": {
+        "operationId": "get_item_facets_items_facets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "owner",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemFacets"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Item Facets"
       }
     },
     "/items/{item_id}": {
@@ -8856,6 +9106,28 @@
         "summary": "Get Public Item"
       }
     },
+    "/public/robots.txt": {
+      "get": {
+        "operationId": "public_robots_public_robots_txt_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Public Robots"
+      }
+    },
+    "/public/sitemap.xml": {
+      "get": {
+        "operationId": "public_sitemap_public_sitemap_xml_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Public Sitemap"
+      }
+    },
     "/public/sites/{slug}": {
       "get": {
         "operationId": "get_public_site_public_sites__slug__get",
@@ -8893,6 +9165,38 @@
           }
         },
         "summary": "Get Public Site"
+      }
+    },
+    "/public/sites/{slug}/social-preview": {
+      "get": {
+        "operationId": "public_site_social_preview_public_sites__slug__social_preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Site Social Preview"
       }
     },
     "/reports/{item_id}/runs": {

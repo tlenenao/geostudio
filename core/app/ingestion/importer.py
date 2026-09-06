@@ -24,8 +24,11 @@ from app.ingestion.parsers import (
     IngestionParseError,
     parse_csv_latlon,
     parse_geojson,
+    parse_geoparquet,
     parse_gpkg,
+    parse_kml,
     parse_shapefile_zip,
+    parse_xlsx_latlon,
 )
 from app.items import repository as items_repo
 
@@ -54,10 +57,16 @@ def _pick_format(filename: str) -> str:
         return "geojson"
     if lower.endswith(".csv"):
         return "csv"
+    if lower.endswith(".xlsx"):
+        return "xlsx"
     if lower.endswith(".gpkg"):
         return "gpkg"
     if lower.endswith(".zip"):
         return "shapefile"
+    if lower.endswith((".kml", ".kmz")):
+        return "kml"
+    if lower.endswith(".parquet"):
+        return "geoparquet"
     raise IngestionParseError(f"format non supporté : {filename}")
 
 
@@ -96,10 +105,18 @@ def run_import(
         rows = list(parse_geojson(content))
     elif fmt == "csv":
         rows = list(parse_csv_latlon(content, lat_field, lon_field))
+    elif fmt == "xlsx":
+        rows = list(parse_xlsx_latlon(content, lat_field, lon_field))
     elif fmt == "gpkg":
         rows = list(parse_gpkg(content, layer_name))
-    else:
+    elif fmt == "shapefile":
         rows = list(parse_shapefile_zip(content, layer_name))
+    elif fmt == "kml":
+        rows = list(parse_kml(content, layer_name))
+    elif fmt == "geoparquet":
+        rows = list(parse_geoparquet(content))
+    else:  # pragma: no cover — jamais atteint, _pick_format lève avant
+        raise IngestionParseError(f"format non supporté : {filename}")
     if not rows:
         raise IngestionParseError("le fichier ne contient aucune entité")
 

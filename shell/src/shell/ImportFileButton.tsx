@@ -7,7 +7,7 @@ import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 
-type Phase = "form" | "uploading" | "selecting-layer" | "polling" | "error";
+type Phase = "form" | "uploading" | "selecting-layer" | "selecting-latlon" | "polling" | "error";
 type LayerInfo = { name: string; featureCount: number; geometryType: string };
 
 const LAT_NAMES = ["lat", "latitude", "y"];
@@ -22,7 +22,21 @@ function detectLatLon(headers: string[]): boolean {
 
 function isLayeredFormat(filename: string): boolean {
   const lower = filename.toLowerCase();
-  return lower.endsWith(".gpkg") || lower.endsWith(".zip");
+  return (
+    lower.endsWith(".gpkg") ||
+    lower.endsWith(".zip") ||
+    lower.endsWith(".kml") ||
+    lower.endsWith(".kmz")
+  );
+}
+
+// XLSX est un format binaire (zip) : impossible de sniffer les en-têtes
+// côté navigateur comme pour le CSV (FileReader.readAsText) — l'inspection
+// passe par POST /uploads/inspect (InspectResponse.fields), après upload,
+// comme le flux "couches" ci-dessus, mais avec une forme de réponse et une
+// suite différentes (colonnes lat/lon, pas un choix de couche).
+function needsFieldInspection(filename: string): boolean {
+  return filename.toLowerCase().endsWith(".xlsx");
 }
 
 export function ImportFileButton() {
@@ -139,6 +153,17 @@ export function ImportFileButton() {
         await startJob(key, found[0]?.name);
         return;
       }
+      if (needsFieldInspection(file.name)) {
+        const { fields } = await client.inspectUpload({ key, filename: file.name });
+        if (!detectLatLon(fields ?? [])) {
+          setUploadedKey(key);
+          setCsvHeaders(fields ?? []);
+          setPhase("selecting-latlon");
+          return;
+        }
+        await startJob(key, undefined);
+        return;
+      }
       await startJob(key, undefined);
     } catch {
       setPhase("error");
@@ -153,6 +178,23 @@ export function ImportFileButton() {
     setError("");
     try {
       await startJob(uploadedKey, layerName);
+    } catch {
+      setPhase("error");
+      setError("Échec de l'import.");
+    }
+  }
+
+  async function confirmLatLon(e: React.FormEvent) {
+    e.preventDefault();
+    if (!uploadedKey || !latField || !lonField) return;
+    setPhase("uploading");
+    setError("");
+    try {
+      // needsManualLatLon (csvHeaders !== null) est vrai ici : startJob lit
+      // latField/lonField depuis l'état, pas un paramètre dédié — même
+      // mécanique que le formulaire CSV manuel (Fichier déjà uploadé, pas
+      // de layerName pour ce format).
+      await startJob(uploadedKey, undefined);
     } catch {
       setPhase("error");
       setError("Échec de l'import.");
@@ -177,7 +219,50 @@ export function ImportFileButton() {
         title="Importer un fichier"
         id={drawerPanel.panelId}
       >
-        {phase === "selecting-layer" ? (
+        {phase === "selecting-latlon" ? (
+          <form onSubmit={(e) => void confirmLatLon(e)} className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1 text-sm text-ink">
+              Colonne latitude
+              <select
+                aria-label="Colonne latitude"
+                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                value={latField}
+                onChange={(e) => setLatField(e.target.value)}
+              >
+                <option value="">—</option>
+                {csvHeaders!.map((h) => (
+                  <option key={h} value={h}>
+                    {h}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm text-ink">
+              Colonne longitude
+              <select
+                aria-label="Colonne longitude"
+                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                value={lonField}
+                onChange={(e) => setLonField(e.target.value)}
+              >
+                <option value="">—</option>
+                {csvHeaders!.map((h) => (
+                  <option key={h} value={h}>
+                    {h}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={close}>
+                Annuler
+              </Button>
+              <Button type="submit" size="sm" disabled={!latField || !lonField}>
+                Continuer
+              </Button>
+            </div>
+          </form>
+        ) : phase === "selecting-layer" ? (
           <form onSubmit={(e) => void confirmLayer(e)} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm text-ink">
               Couche à importer
@@ -211,7 +296,7 @@ export function ImportFileButton() {
               <input
                 aria-label="Fichier à importer"
                 type="file"
-                accept=".geojson,.json,.csv,.gpkg,.zip"
+                accept=".geojson,.json,.csv,.xlsx,.kml,.kmz,.gpkg,.zip,.parquet"
                 onChange={(e) => void onFileChange(e)}
               />
             </label>

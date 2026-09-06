@@ -108,6 +108,169 @@ def test_list_items_negative_page_size_is_rejected(client):
     assert response.status_code == 422
 
 
+def test_list_items_sort_title_asc(client):
+    _seed_item(client, title="Zorro")
+    _seed_item(client, title="Alpha")
+    response = client.get("/items?sort=title_asc")
+    assert response.status_code == 200
+    titles = [i["title"] for i in response.json()["items"]]
+    assert titles == ["Alpha", "Zorro"]
+
+
+def test_list_items_owner_filter(client):
+    with client.session_factory() as session:
+        bob = get_or_create_user(
+            session,
+            tenant_id=client.tenant.id,
+            oidc_sub="sub-bob",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        item = items_repo.create_item(
+            session,
+            tenant_id=client.tenant.id,
+            owner_id=bob.id,
+            resource_type="app",
+            title="Bob item",
+        )
+        items_repo.update_item(
+            session,
+            tenant_id=client.tenant.id,
+            item_id=item.id,
+            title=None,
+            abstract=None,
+            keywords=None,
+            is_published=True,
+        )
+        session.commit()
+    _seed_item(client, title="Alice item")
+
+    response = client.get("/items?owner=bob")
+    assert response.status_code == 200
+    assert [i["title"] for i in response.json()["items"]] == ["Bob item"]
+
+
+def test_list_items_repeated_keyword_query_param_is_and(client):
+    # FastAPI/Starlette gère `list[str]` en query param répété nativement —
+    # vérifié par ce test plutôt que supposé (piège CLAUDE.md n°3).
+    with client.session_factory() as session:
+        item_ab = items_repo.create_item(
+            session,
+            tenant_id=client.tenant.id,
+            owner_id=client.user.id,
+            resource_type="app",
+            title="AB",
+        )
+        item_a = items_repo.create_item(
+            session,
+            tenant_id=client.tenant.id,
+            owner_id=client.user.id,
+            resource_type="app",
+            title="A only",
+        )
+        items_repo.update_item(
+            session,
+            tenant_id=client.tenant.id,
+            item_id=item_ab.id,
+            title=None,
+            abstract=None,
+            keywords=["a", "b"],
+            is_published=None,
+        )
+        items_repo.update_item(
+            session,
+            tenant_id=client.tenant.id,
+            item_id=item_a.id,
+            title=None,
+            abstract=None,
+            keywords=["a"],
+            is_published=None,
+        )
+        session.commit()
+
+    response = client.get("/items?keyword=a&keyword=b")
+    assert response.status_code == 200
+    assert [i["title"] for i in response.json()["items"]] == ["AB"]
+
+
+def test_list_items_bbox_filter(client):
+    with client.session_factory() as session:
+        inside = items_repo.create_item(
+            session,
+            tenant_id=client.tenant.id,
+            owner_id=client.user.id,
+            resource_type="map",
+            title="Inside",
+        )
+        inside.bbox_min_x, inside.bbox_min_y, inside.bbox_max_x, inside.bbox_max_y = (
+            1.0,
+            1.0,
+            2.0,
+            2.0,
+        )
+        outside = items_repo.create_item(
+            session,
+            tenant_id=client.tenant.id,
+            owner_id=client.user.id,
+            resource_type="map",
+            title="Outside",
+        )
+        outside.bbox_min_x, outside.bbox_min_y, outside.bbox_max_x, outside.bbox_max_y = (
+            50.0,
+            50.0,
+            51.0,
+            51.0,
+        )
+        session.commit()
+
+    response = client.get("/items?bbox=0,0,3,3")
+    assert response.status_code == 200
+    assert [i["title"] for i in response.json()["items"]] == ["Inside"]
+
+
+def test_list_items_bbox_rejects_malformed_value(client):
+    response = client.get("/items?bbox=not,a,valid,bbox")
+    assert response.status_code == 422
+
+
+def test_get_item_facets_returns_owners_and_keywords(client):
+    with client.session_factory() as session:
+        item = items_repo.create_item(
+            session,
+            tenant_id=client.tenant.id,
+            owner_id=client.user.id,
+            resource_type="app",
+            title="A",
+        )
+        items_repo.update_item(
+            session,
+            tenant_id=client.tenant.id,
+            item_id=item.id,
+            title=None,
+            abstract=None,
+            keywords=["voirie"],
+            is_published=None,
+        )
+        session.commit()
+
+    response = client.get("/items/facets")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["owners"] == [{"username": "alice", "count": 1}]
+    assert body["keywords"] == [{"keyword": "voirie", "count": 1}]
+
+
+def test_items_facets_route_not_shadowed_by_item_id_path_param(client):
+    # /items/facets doit être servi par get_item_facets, pas interprété comme
+    # GET /items/{item_id} avec item_id="facets" (ce qui donnerait 404) —
+    # dépend de l'ordre de déclaration des routes dans routes.py.
+    response = client.get("/items/facets")
+    assert response.status_code == 200
+    assert "owners" in response.json()
+
+
 def test_patch_item_updates_title(client):
     item_id = _seed_item(client)
     response = client.patch(f"/items/{item_id}", json={"title": "Renamed"})

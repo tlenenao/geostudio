@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useItemClient } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
+import { useDocumentMeta } from "../shell/useDocumentMeta";
 
 registerBuiltinWidgets();
 
@@ -18,6 +19,21 @@ export function SitePublicPage({ slug }: { slug: string }) {
     queryFn: () => client.getPublicAppConfig(itemQuery.data!.pk),
     enabled: itemQuery.isSuccess,
     retry: false,
+  });
+
+  // Complète (ne remplace pas) le chemin robot rendu côté serveur
+  // (core/app/public/routes.py, SP-55 Tâches 7/8) — utile pour l'onglet
+  // navigateur d'un humain et pour Googlebot (exécute le JS avant
+  // indexation). Undefined tant que l'item n'est pas chargé : useDocumentMeta
+  // n'est appelé qu'une fois les deux valeurs connues (règle des Hooks —
+  // pas d'appel conditionnel), donc gardé par `itemQuery.isSuccess` via une
+  // valeur de repli plutôt qu'un retour anticipé.
+  useDocumentMeta({
+    title: itemQuery.data?.title ?? "GeoStudio",
+    description: itemQuery.data?.abstract ?? "",
+    canonicalUrl: itemQuery.isSuccess
+      ? `${window.location.origin}/sites/${slug}`
+      : window.location.href,
   });
 
   if (itemQuery.isLoading || (itemQuery.isSuccess && configQuery.isLoading)) {

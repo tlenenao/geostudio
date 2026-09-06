@@ -218,4 +218,8 @@ def test_never_exposes_a_sensitive_field(client):
         # pas des champs sensibles.
         "license",
         "language",
+        # bbox (SP-55, GAP-06) : emprise spatiale calculée côté serveur,
+        # jamais soumise par le client — même statut public que date/
+        # updatedAt, pas une donnée sensible propre à /items.
+        "bbox",
     }

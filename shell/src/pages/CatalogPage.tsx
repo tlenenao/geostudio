@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useItems, useMe } from "../api/hooks";
-import type { ItemScope, ResourceType } from "../api/types";
+import { useItemFacets, useItems, useMe } from "../api/hooks";
+import type { ItemScope, ItemSort, ResourceType } from "../api/types";
 import { RESOURCE_TYPE_LABELS, RESOURCE_TYPE_ORDER } from "../api/resourceTypes";
 import { ItemCard } from "../ui/ItemCard";
 import { ItemActions } from "../shell/ItemActions";
@@ -11,6 +11,7 @@ import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { CatalogSpatialFilter, type Bbox } from "./CatalogSpatialFilter";
 
 const PAGE_SIZE = 12;
 const SCOPE_LABELS: Record<ItemScope, string> = {
@@ -19,6 +20,14 @@ const SCOPE_LABELS: Record<ItemScope, string> = {
   shared: "Partagés avec moi",
   public: "Publics",
 };
+const SORT_LABELS: Record<ItemSort, string> = {
+  date_desc: "Date de création (récent d'abord)",
+  date_asc: "Date de création (ancien d'abord)",
+  updated_desc: "Date de modification (récent d'abord)",
+  title_asc: "Titre (A→Z)",
+  title_desc: "Titre (Z→A)",
+};
+const SORT_ORDER: ItemSort[] = ["date_desc", "date_asc", "updated_desc", "title_asc", "title_desc"];
 
 export function CatalogPage({
   onOpenItem,
@@ -52,6 +61,10 @@ export function CatalogPage({
     setSearchParams(params, { replace: true });
   };
   const [scope, setScope] = useState<ItemScope>("all");
+  const [sort, setSort] = useState<ItemSort>("date_desc");
+  const [ownerFilter, setOwnerFilter] = useState("");
+  const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
+  const [spatialBbox, setSpatialBbox] = useState<Bbox | null>(null);
   const [page, setPage] = useState(1);
   // SP-30a review finale : la page n'était pas réinitialisée en changeant de
   // domaine via DomainBar (?type= change sans démontage de CatalogPage) —
@@ -71,12 +84,27 @@ export function CatalogPage({
       page,
       pageSize: PAGE_SIZE,
       scope,
+      sort,
+      owner: ownerFilter || undefined,
+      keywords: selectedKeywords.length > 0 ? selectedKeywords : undefined,
+      bbox: spatialBbox ? spatialBbox.join(",") : undefined,
       me: requiresMe ? me.data?.username : undefined,
     },
     { enabled: !requiresMe || !!me.data },
   );
+  const facetsQuery = useItemFacets(
+    { q: q || undefined, type: type || undefined, scope },
+    { enabled: !requiresMe || !!me.data },
+  );
 
   const totalPages = query.data ? Math.max(1, Math.ceil(query.data.total / PAGE_SIZE)) : 1;
+
+  function toggleKeyword(keyword: string) {
+    setSelectedKeywords((prev) =>
+      prev.includes(keyword) ? prev.filter((k) => k !== keyword) : [...prev, keyword],
+    );
+    setPage(1);
+  }
 
   return (
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
@@ -139,6 +167,70 @@ export function CatalogPage({
                   ))}
                 </select>
               </label>
+              <label className="flex flex-col gap-1 text-sm text-ink">
+                Trier par
+                <select
+                  aria-label="Trier par"
+                  className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                  value={sort}
+                  onChange={(e) => {
+                    setSort(e.target.value as ItemSort);
+                    setPage(1);
+                  }}
+                >
+                  {SORT_ORDER.map((s) => (
+                    <option key={s} value={s}>
+                      {SORT_LABELS[s]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm text-ink">
+                Propriétaire
+                <select
+                  aria-label="Propriétaire"
+                  className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                  value={ownerFilter}
+                  onChange={(e) => {
+                    setOwnerFilter(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="">Tous</option>
+                  {(facetsQuery.data?.owners ?? []).map((o) => (
+                    <option key={o.username} value={o.username}>
+                      {o.username} ({o.count})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {(facetsQuery.data?.keywords.length ?? 0) > 0 && (
+                <div className="flex flex-col gap-1 text-sm text-ink">
+                  Mots-clés
+                  <div className="flex flex-wrap gap-2">
+                    {(facetsQuery.data?.keywords ?? []).map((k) => (
+                      <button
+                        key={k.keyword}
+                        type="button"
+                        aria-pressed={selectedKeywords.includes(k.keyword)}
+                        onClick={() => toggleKeyword(k.keyword)}
+                        className="rounded-full border border-rule bg-surface px-3 py-1 text-xs text-ink aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-surface"
+                      >
+                        {k.keyword} ({k.count})
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex flex-col gap-1 text-sm text-ink">
+                Recherche spatiale
+                <CatalogSpatialFilter
+                  onChange={(bbox) => {
+                    setSpatialBbox(bbox);
+                    setPage(1);
+                  }}
+                />
+              </div>
             </div>
           ),
         }}
@@ -215,6 +307,14 @@ export function CatalogPage({
                 <dd>{type ? RESOURCE_TYPE_LABELS[type] : "Tous"}</dd>
                 <dt>Portée</dt>
                 <dd>{SCOPE_LABELS[scope]}</dd>
+                <dt>Trier par</dt>
+                <dd>{SORT_LABELS[sort]}</dd>
+                <dt>Propriétaire</dt>
+                <dd>{ownerFilter || "Tous"}</dd>
+                <dt>Mots-clés</dt>
+                <dd>{selectedKeywords.length > 0 ? selectedKeywords.join(", ") : "—"}</dd>
+                <dt>Emprise spatiale</dt>
+                <dd>{spatialBbox ? spatialBbox.map((n) => n.toFixed(2)).join(", ") : "—"}</dd>
               </dl>
             </Panel>
           ),

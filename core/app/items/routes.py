@@ -6,7 +6,7 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.db import get_session
 from app.items import repository as repo
-from app.items.schemas import ItemPage, ItemRead, ItemUpdatePatch
+from app.items.schemas import ItemFacets, ItemPage, ItemRead, ItemUpdatePatch
 from app.items.service import get_item_service, get_sharing_service, set_sharing_service
 from app.items.slug import InvalidSlugError, SlugCollisionError
 from app.items.storage import InMemoryThumbnailStore, ThumbnailStore
@@ -26,6 +26,25 @@ def get_thumbnail_store() -> ThumbnailStore:
 _MAX_THUMBNAIL_BYTES = 2 * 1024 * 1024
 
 
+def _parse_bbox(raw: str | None) -> tuple[float, float, float, float] | None:
+    # Même convention textuelle que le paramètre bbox d'OGC API Features
+    # (app.features.routes::_parse_bbox) — "minX,minY,maxX,maxY" — mais pas
+    # la même fonction : celle-là lève une ValidationHTTPException RFC 7807
+    # propre à ce module, tandis que app.items.routes utilise déjà
+    # HTTPException brute partout ailleurs (voir list_items/update_item/
+    # upload_thumbnail ci-dessous) ; réutiliser sa forme de retour, pas son
+    # canal d'erreur.
+    if raw is None:
+        return None
+    parts = raw.split(",")
+    if len(parts) != 4:
+        raise HTTPException(status_code=422, detail="bbox must be minX,minY,maxX,maxY")
+    try:
+        return (float(parts[0]), float(parts[1]), float(parts[2]), float(parts[3]))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="bbox must be minX,minY,maxX,maxY") from None
+
+
 @router.get("/items", response_model=ItemPage)
 def list_items(
     q: str | None = None,
@@ -38,6 +57,10 @@ def list_items(
     # falsification citait `Query(100, ge=1)` de features/routes.py comme
     # précédent mais lui ajoutait un `le=100` que ce précédent n'a pas).
     pageSize: int = Query(12, ge=1),
+    sort: str | None = None,
+    owner: str | None = None,
+    keyword: list[str] | None = Query(default=None),
+    bbox: str | None = None,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> ItemPage:
@@ -50,6 +73,33 @@ def list_items(
         scope=scope,
         page=page,
         page_size=pageSize,
+        sort=sort,
+        owner=owner,
+        keywords=keyword,
+        bbox=_parse_bbox(bbox),
+    )
+
+
+@router.get("/items/facets", response_model=ItemFacets)
+def get_item_facets(
+    q: str | None = None,
+    type: str | None = None,
+    scope: str = "all",
+    owner: str | None = None,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> ItemFacets:
+    # Déclaré AVANT /items/{item_id} : sinon FastAPI matcherait "facets"
+    # comme un item_id littéral (les routes sont testées dans l'ordre de
+    # déclaration).
+    return repo.get_facets(
+        session,
+        tenant_id=user.tenant_id,
+        current_user_id=user.id,
+        q=q,
+        resource_type=type,
+        scope=scope,
+        owner=owner,
     )
 
 

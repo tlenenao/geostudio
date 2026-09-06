@@ -5,6 +5,7 @@ import type {
   CreateBookmarkInput,
   CreateKind,
   Item,
+  ItemFacets,
   ItemPage,
   ListItemsParams,
   Sharing,
@@ -16,6 +17,18 @@ export function useItems(params: ListItemsParams, opts?: { enabled?: boolean }) 
   return useQuery({
     queryKey: ["items", params],
     queryFn: () => client.listItems(params),
+    enabled: opts?.enabled ?? true,
+  });
+}
+
+export function useItemFacets(
+  params: Pick<ListItemsParams, "q" | "type" | "scope" | "owner">,
+  opts?: { enabled?: boolean },
+) {
+  const client = useItemClientInternal();
+  return useQuery<ItemFacets>({
+    queryKey: ["item-facets", params],
+    queryFn: () => client.getItemFacets(params),
     enabled: opts?.enabled ?? true,
   });
 }

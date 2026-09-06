@@ -44,4 +44,5 @@ class LayerInfoOut(BaseModel):
 
 
 class InspectResponse(BaseModel):
-    layers: list[LayerInfoOut]
+    layers: list[LayerInfoOut] = Field(default_factory=list)
+    fields: list[str] | None = None

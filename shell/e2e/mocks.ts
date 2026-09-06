@@ -358,6 +358,8 @@ export async function mockCore(page: Page) {
     const url = new URL(route.request().url());
     const scope = url.searchParams.get("scope");
     const type = url.searchParams.get("type");
+    const sort = url.searchParams.get("sort");
+    const keywords = url.searchParams.getAll("keyword");
     // Honour `type` (revue finale de branche, M2). LayerPicker fires a
     // hosted-tileset3d lookup (`?type=tileset3d`) against this same generic
     // endpoint whenever it renders; answering it with every fixture item
@@ -365,7 +367,18 @@ export async function mockCore(page: Page) {
     // source's title — exactly what broke harvest-wms.spec.ts, which had to
     // patch its own local override the same way. Fixed here so the default
     // handler stops being armed for the next spec.
-    const visible = ALL.filter((r) => !deleted.has(r.pk) && (!type || r.resourceType === type));
+    let visible = ALL.filter((r) => !deleted.has(r.pk) && (!type || r.resourceType === type));
+    if (keywords.length > 0) {
+      visible = visible.filter((r) =>
+        keywords.every((k) => ((r as { keywords?: string[] }).keywords ?? []).includes(k)),
+      );
+    }
+    // Honore `sort` (SP-55, GAP-05) : preuve E2E que le tri demandé par le
+    // shell est bien reflété dans l'ordre d'affichage — les autres specs
+    // pré-existantes n'envoient jamais ce paramètre, comportement inchangé.
+    if (sort === "title_asc") visible = [...visible].sort((a, b) => a.title.localeCompare(b.title));
+    if (sort === "title_desc")
+      visible = [...visible].sort((a, b) => b.title.localeCompare(a.title));
     const items = scope === "mine" ? [] : visible;
     await route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 12 } });
   });
@@ -431,6 +444,16 @@ export async function mockCore(page: Page) {
         language: "fr",
       },
     });
+  });
+
+  // SP-55 (GAP-05) : CatalogPage appelle GET /items/facets sans condition
+  // (useItemFacets). Enregistré APRÈS le filet générique /items/{pk}
+  // ci-dessus — sinon celui-ci matcherait "facets" comme un id d'item
+  // littéral (même piège que côté cœur, routes.py::get_item_facets,
+  // et côté MSW, src/test/msw/handlers.ts) — "en dernier arrivé gagne"
+  // (Playwright).
+  await page.route("https://core.test/items/facets*", async (route) => {
+    await route.fulfill({ json: { owners: [], keywords: [] } });
   });
 
   // Scoped to the cœur's host (not "**/items/1"): the shell's own client-side

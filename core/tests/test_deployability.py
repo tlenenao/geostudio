@@ -1069,3 +1069,39 @@ def test_traefik_has_a_restart_policy():
     laissait toute l'instance publique indisponible jusqu'à intervention
     manuelle."""
     assert services(BASE)["traefik"].get("restart") == "unless-stopped"
+
+
+SEO_ROUTERS = ("seo-static", "seo-bots")
+
+
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+@pytest.mark.parametrize("router", SEO_ROUTERS)
+def test_seo_router_priority_above_shell_catch_all_and_distinct_from_admin(compose, router):
+    """SP-55 GAP-07 (chantier 4.10) : sitemap.xml/robots.txt/aperçu social
+    doivent gagner contre le catch-all shell (priorité 1) — une régression
+    de priorité les ferait silencieusement absorber par le SPA (200 sur le
+    HTML de l'app plutôt que le XML/texte/HTML minimal attendu). Distincte
+    aussi de 15 (routeurs admin martin/titiler/grafana) : Traefik ne
+    refuserait pas de démarrer sur une collision, le comportement de
+    départage deviendrait juste non documenté."""
+    labels = _traefik_labels(services(compose)["core"])
+    priority = int(labels[f"traefik.http.routers.{router}.priority"])
+    assert priority > 1, f"{router} ({compose.name}) doit primer sur le catch-all shell (priorité 1)"
+    assert priority != 15, f"{router} ({compose.name}) ne doit pas collisionner avec les routeurs admin (15)"
+
+
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+@pytest.mark.parametrize("router", SEO_ROUTERS)
+def test_seo_router_is_not_gated_by_admin_auth(compose, router):
+    """Contrairement aux routeurs admin (martin/titiler/grafana), les
+    routes SEO sont PUBLIQUES par construction (sitemap/robots/aperçu
+    social sont faits pour être lus par des robots anonymes) — une
+    régression qui leur ajouterait admin-auth@docker les rendrait
+    inaccessibles à ces robots, silencieusement (Traefik démarre quand
+    même)."""
+    labels = _traefik_labels(services(compose)["core"])
+    middlewares = _router_middlewares(labels, router)
+    assert "admin-auth@docker" not in middlewares, (
+        f"{router} ({compose.name}) ne doit jamais référencer admin-auth@docker "
+        f"(route publique), a trouvé : {middlewares}"
+    )
