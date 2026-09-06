@@ -53,14 +53,14 @@ def env():
 
 
 def test_instance_reports_terrain3d_disabled_by_default(env):
-    response = env.get("/instance")
+    response = env.get("/v1/instance")
     assert response.status_code == 200
     assert response.json()["terrain3dEnabled"] is False
 
 
 def test_instance_reports_terrain3d_enabled(env, monkeypatch):
     monkeypatch.setenv("CORE_TERRAIN3D_ENABLED", "true")
-    response = env.get("/instance")
+    response = env.get("/v1/instance")
     assert response.status_code == 200
     assert response.json()["terrain3dEnabled"] is True
 
@@ -70,6 +70,6 @@ def test_upload_routes_absent_when_disabled(monkeypatch):
     app = create_app()
     client = TestClient(app)
     response = client.post(
-        "/terrain3d/uploads", json={"key": "x", "filename": "dem.tif", "title": "X"}
+        "/v1/terrain3d/uploads", json={"key": "x", "filename": "dem.tif", "title": "X"}
     )
     assert response.status_code == 404

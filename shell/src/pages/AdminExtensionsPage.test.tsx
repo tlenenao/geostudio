@@ -30,7 +30,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 function mockMe(privileges: string[]) {
   server.use(
-    http.get("https://core.test/me", () =>
+    http.get("https://core.test/v1/me", () =>
       HttpResponse.json({
         id: "u1",
         username: "alice",
@@ -60,7 +60,7 @@ function Harness() {
 test("lists extensions (including disabled) and toggles enabled via PATCH", async () => {
   let patchedBody: unknown;
   server.use(
-    http.get("https://core.test/extensions", ({ request }) => {
+    http.get("https://core.test/v1/extensions", ({ request }) => {
       expect(new URL(request.url).searchParams.get("all")).toBe("true");
       return HttpResponse.json({
         extensions: [
@@ -79,7 +79,7 @@ test("lists extensions (including disabled) and toggles enabled via PATCH", asyn
         ],
       });
     }),
-    http.patch("https://core.test/extensions/acme.gauge", async ({ request }) => {
+    http.patch("https://core.test/v1/extensions/acme.gauge", async ({ request }) => {
       patchedBody = await request.json();
       return HttpResponse.json({ id: "acme.gauge", enabled: true });
     }),
@@ -93,7 +93,7 @@ test("lists extensions (including disabled) and toggles enabled via PATCH", asyn
 
 test("surfaces an alert when the PATCH to toggle an extension fails", async () => {
   server.use(
-    http.get("https://core.test/extensions", () =>
+    http.get("https://core.test/v1/extensions", () =>
       HttpResponse.json({
         extensions: [
           {
@@ -111,7 +111,7 @@ test("surfaces an alert when the PATCH to toggle an extension fails", async () =
         ],
       }),
     ),
-    http.patch("https://core.test/extensions/acme.gauge", () =>
+    http.patch("https://core.test/v1/extensions/acme.gauge", () =>
       HttpResponse.json({}, { status: 500 }),
     ),
   );
@@ -125,7 +125,7 @@ test("surfaces an alert when the PATCH to toggle an extension fails", async () =
 
 test("disables the enabled toggle when the instance is in read-only demo mode", async () => {
   server.use(
-    http.get("https://core.test/extensions", () =>
+    http.get("https://core.test/v1/extensions", () =>
       HttpResponse.json({
         extensions: [
           {
@@ -143,7 +143,7 @@ test("disables the enabled toggle when the instance is in read-only demo mode", 
         ],
       }),
     ),
-    http.get("https://core.test/instance", () => HttpResponse.json({ readOnly: true })),
+    http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
   );
   render(<Harness />);
   const toggle = await screen.findByRole("checkbox", { name: "Actif : Jauge (extension)" });
@@ -152,7 +152,9 @@ test("disables the enabled toggle when the instance is in read-only demo mode", 
 
 test("le volet Catalogue propose un lien vers /admin/roles quand le privilège est détenu", async () => {
   mockMe(["admin.roles.manage"]);
-  server.use(http.get("https://core.test/extensions", () => HttpResponse.json({ extensions: [] })));
+  server.use(
+    http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
+  );
   render(<Harness />);
   await screen.findByRole("table");
   expect(screen.getByRole("link", { name: "Rôles et privilèges →" })).toHaveAttribute(
@@ -163,7 +165,9 @@ test("le volet Catalogue propose un lien vers /admin/roles quand le privilège e
 
 test("le volet Catalogue propose un lien vers /admin/users quand le privilège est détenu", async () => {
   mockMe(["admin.users.manage"]);
-  server.use(http.get("https://core.test/extensions", () => HttpResponse.json({ extensions: [] })));
+  server.use(
+    http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
+  );
   render(<Harness />);
   await screen.findByRole("table");
   expect(screen.getByRole("link", { name: "Utilisateurs →" })).toHaveAttribute(
@@ -174,7 +178,9 @@ test("le volet Catalogue propose un lien vers /admin/users quand le privilège e
 
 test("masque le lien vers /admin/infrastructure quand le privilège est absent", async () => {
   mockMe([]);
-  server.use(http.get("https://core.test/extensions", () => HttpResponse.json({ extensions: [] })));
+  server.use(
+    http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
+  );
   render(<Harness />);
   await screen.findByRole("table");
   expect(screen.queryByRole("link", { name: "Outils d'infrastructure →" })).not.toBeInTheDocument();
@@ -182,7 +188,9 @@ test("masque le lien vers /admin/infrastructure quand le privilège est absent",
 
 test("masque le lien vers /admin/roles quand le privilège est absent", async () => {
   mockMe([]);
-  server.use(http.get("https://core.test/extensions", () => HttpResponse.json({ extensions: [] })));
+  server.use(
+    http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
+  );
   render(<Harness />);
   await screen.findByRole("table");
   expect(screen.queryByRole("link", { name: "Rôles et privilèges →" })).not.toBeInTheDocument();
@@ -190,7 +198,9 @@ test("masque le lien vers /admin/roles quand le privilège est absent", async ()
 
 test("masque le lien vers /admin/users quand le privilège est absent", async () => {
   mockMe([]);
-  server.use(http.get("https://core.test/extensions", () => HttpResponse.json({ extensions: [] })));
+  server.use(
+    http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
+  );
   render(<Harness />);
   await screen.findByRole("table");
   expect(screen.queryByRole("link", { name: "Utilisateurs →" })).not.toBeInTheDocument();
@@ -204,7 +214,9 @@ test("un profil qui détient plusieurs privilèges admin voit tous les liens cor
     "admin.harvest.manage",
     "settings.instance.manage",
   ]);
-  server.use(http.get("https://core.test/extensions", () => HttpResponse.json({ extensions: [] })));
+  server.use(
+    http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
+  );
   render(<Harness />);
   await screen.findByRole("table");
   expect(screen.getByRole("link", { name: "Outils d'infrastructure →" })).toBeInTheDocument();
@@ -216,7 +228,9 @@ test("un profil qui détient plusieurs privilèges admin voit tous les liens cor
 
 test("le volet Catalogue propose un lien vers /admin/collections quand le privilège est détenu", async () => {
   mockMe(["admin.collections.manage"]);
-  server.use(http.get("https://core.test/extensions", () => HttpResponse.json({ extensions: [] })));
+  server.use(
+    http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
+  );
   render(<Harness />);
   await screen.findByRole("table");
   expect(screen.getByRole("link", { name: "Collections →" })).toHaveAttribute(
@@ -227,7 +241,9 @@ test("le volet Catalogue propose un lien vers /admin/collections quand le privil
 
 test("masque le lien vers /admin/collections quand le privilège est absent", async () => {
   mockMe([]);
-  server.use(http.get("https://core.test/extensions", () => HttpResponse.json({ extensions: [] })));
+  server.use(
+    http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
+  );
   render(<Harness />);
   await screen.findByRole("table");
   expect(screen.queryByRole("link", { name: "Collections →" })).not.toBeInTheDocument();
@@ -235,7 +251,9 @@ test("masque le lien vers /admin/collections quand le privilège est absent", as
 
 test("le volet Catalogue propose un lien vers /admin/harvest quand le privilège est détenu", async () => {
   mockMe(["admin.harvest.manage"]);
-  server.use(http.get("https://core.test/extensions", () => HttpResponse.json({ extensions: [] })));
+  server.use(
+    http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
+  );
   render(<Harness />);
   await screen.findByRole("table");
   expect(screen.getByRole("link", { name: "Moissonnage →" })).toHaveAttribute(
@@ -246,7 +264,9 @@ test("le volet Catalogue propose un lien vers /admin/harvest quand le privilège
 
 test("masque le lien vers /admin/harvest quand le privilège est absent", async () => {
   mockMe([]);
-  server.use(http.get("https://core.test/extensions", () => HttpResponse.json({ extensions: [] })));
+  server.use(
+    http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
+  );
   render(<Harness />);
   await screen.findByRole("table");
   expect(screen.queryByRole("link", { name: "Moissonnage →" })).not.toBeInTheDocument();
@@ -254,7 +274,9 @@ test("masque le lien vers /admin/harvest quand le privilège est absent", async 
 
 test("sous viewport étroit, affiche trois onglets Catalogue/Extensions/Détail avec Extensions actif par défaut", async () => {
   stubMatchMedia(true);
-  server.use(http.get("https://core.test/extensions", () => HttpResponse.json({ extensions: [] })));
+  server.use(
+    http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
+  );
   render(<Harness />);
   const tabs = await screen.findAllByRole("tab");
   expect(tabs.map((t) => t.textContent)).toEqual(["Catalogue", "Extensions", "Détail"]);

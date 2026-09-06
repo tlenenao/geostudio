@@ -2743,7 +2743,7 @@ test("a spatial cross-filter link propagates a bbox from one dataset's Table cli
     }));
     await route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 100 } });
   });
-  await page.route("https://core.test/items/dataset-*", async (route) => {
+  await page.route("https://core.test/v1/items/dataset-*", async (route) => {
     const id = route.request().url().split("/").pop()!;
     await route.fulfill({
       json: {

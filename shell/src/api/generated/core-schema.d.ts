@@ -4,788 +4,6 @@
  */
 
 export interface paths {
-    "/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Landing Page */
-        get: operations["landing_page__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/usage": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Usage */
-        get: operations["get_usage_admin_usage_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/alerts/{item_id}/evaluations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Alert Evaluations */
-        get: operations["get_alert_evaluations_alerts__item_id__evaluations_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/analytics/sql": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Analytics Sql */
-        post: operations["analytics_sql_analytics_sql_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/collections": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Collections */
-        get: operations["list_collections_collections_get"];
-        put?: never;
-        /** Register Collection */
-        post: operations["register_collection_collections_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/collections/candidates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Candidate Tables */
-        get: operations["list_candidate_tables_collections_candidates_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/collections/empty": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create Empty Collection Route */
-        post: operations["create_empty_collection_route_collections_empty_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/collections/{collection_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Collection */
-        get: operations["get_collection_collections__collection_id__get"];
-        put?: never;
-        post?: never;
-        /** Unregister Collection */
-        delete: operations["unregister_collection_collections__collection_id__delete"];
-        options?: never;
-        head?: never;
-        /** Patch Collection */
-        patch: operations["patch_collection_collections__collection_id__patch"];
-        trace?: never;
-    };
-    "/collections/{collection_id}/aggregate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Aggregate Features */
-        post: operations["aggregate_features_collections__collection_id__aggregate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/collections/{collection_id}/export": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Export Collection Aggregate */
-        post: operations["export_collection_aggregate_collections__collection_id__export_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/collections/{collection_id}/export/items": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Export Collection Items */
-        get: operations["export_collection_items_collections__collection_id__export_items_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/collections/{collection_id}/items": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Features */
-        get: operations["list_features_collections__collection_id__items_get"];
-        put?: never;
-        /** Create Feature */
-        post: operations["create_feature_collections__collection_id__items_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/collections/{collection_id}/items/{fid}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Single Feature */
-        get: operations["get_single_feature_collections__collection_id__items__fid__get"];
-        /** Put Feature */
-        put: operations["put_feature_collections__collection_id__items__fid__put"];
-        post?: never;
-        /** Remove Feature */
-        delete: operations["remove_feature_collections__collection_id__items__fid__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/collections/{collection_id}/items/{fid}/attachments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Attachments Route */
-        get: operations["list_attachments_route_collections__collection_id__items__fid__attachments_get"];
-        put?: never;
-        /** Confirm Attachment */
-        post: operations["confirm_attachment_collections__collection_id__items__fid__attachments_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/collections/{collection_id}/items/{fid}/attachments/presign": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Presign Attachment */
-        post: operations["presign_attachment_collections__collection_id__items__fid__attachments_presign_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/collections/{collection_id}/items/{fid}/attachments/{attachment_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete Attachment Route */
-        delete: operations["delete_attachment_route_collections__collection_id__items__fid__attachments__attachment_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/collections/{collection_id}/items/{fid}/attachments/{attachment_id}/file": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Read Attachment File */
-        get: operations["read_attachment_file_collections__collection_id__items__fid__attachments__attachment_id__file_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/collections/{collection_id}/schema": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Collection Schema */
-        get: operations["get_collection_schema_collections__collection_id__schema_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/collections/{collection_id}/sharing": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Sharing */
-        get: operations["get_sharing_collections__collection_id__sharing_get"];
-        /** Put Sharing */
-        put: operations["put_sharing_collections__collection_id__sharing_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Collection Tile */
-        get: operations["get_collection_tile_collections__collection_id__tiles__z___x___y__mvt_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/compliance/purges/{purge_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Purge Status */
-        get: operations["get_purge_status_compliance_purges__purge_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/compliance/tenants/{tenant_id}/purge": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Request Tenant Purge */
-        post: operations["request_tenant_purge_compliance_tenants__tenant_id__purge_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/compliance/users/{user_id}/erase": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Erase User */
-        post: operations["erase_user_compliance_users__user_id__erase_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/configs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create Config */
-        post: operations["create_config_configs_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/configs/by-item/{item_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Config By Item */
-        get: operations["get_config_by_item_configs_by_item__item_id__get"];
-        /** Update Config By Item */
-        put: operations["update_config_by_item_configs_by_item__item_id__put"];
-        post?: never;
-        /** Delete Config By Item */
-        delete: operations["delete_config_by_item_configs_by_item__item_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/configs/{config_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Config */
-        get: operations["get_config_configs__config_id__get"];
-        /** Update Config */
-        put: operations["update_config_configs__config_id__put"];
-        post?: never;
-        /** Delete Config */
-        delete: operations["delete_config_configs__config_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/configs/{config_id}/revisions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Revisions */
-        get: operations["list_revisions_configs__config_id__revisions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/configs/{config_id}/rollback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Rollback Config */
-        post: operations["rollback_config_configs__config_id__rollback_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/conformance": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Conformance */
-        get: operations["conformance_conformance_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/datasets/{item_id}/alerts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Alerts For Dataset */
-        get: operations["list_alerts_for_dataset_datasets__item_id__alerts_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/datasets/{item_id}/arcgis/aggregate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Get Dataset Arcgis Aggregate */
-        post: operations["get_dataset_arcgis_aggregate_datasets__item_id__arcgis_aggregate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/datasets/{item_id}/arcgis/export": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Export Dataset Arcgis Aggregate */
-        post: operations["export_dataset_arcgis_aggregate_datasets__item_id__arcgis_export_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/datasets/{item_id}/arcgis/export/items": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Export Dataset Arcgis Items */
-        get: operations["export_dataset_arcgis_items_datasets__item_id__arcgis_export_items_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/datasets/{item_id}/arcgis/items": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Dataset Arcgis Items */
-        get: operations["get_dataset_arcgis_items_datasets__item_id__arcgis_items_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dcat/catalog": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Catalog */
-        get: operations["get_catalog_dcat_catalog_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dcat/datasets/{collection_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Dataset */
-        get: operations["get_dataset_dcat_datasets__collection_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/extensions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Extensions */
-        get: operations["list_extensions_extensions_get"];
-        put?: never;
-        /** Register Extension */
-        post: operations["register_extension_extensions_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/extensions/{extension_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Patch Extension */
-        patch: operations["patch_extension_extensions__extension_id__patch"];
-        trace?: never;
-    };
-    "/groups": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Groups */
-        get: operations["list_groups_groups_get"];
-        put?: never;
-        /** Create Group */
-        post: operations["create_group_groups_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/groups/{group_id}/members": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Add Member */
-        post: operations["add_member_groups__group_id__members_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/harvest/feature-layers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Feature Layers */
-        get: operations["list_feature_layers_harvest_feature_layers_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/harvest/layers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Layers */
-        get: operations["list_layers_harvest_layers_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/harvest/sources": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Sources */
-        get: operations["list_sources_harvest_sources_get"];
-        put?: never;
-        /** Create Source */
-        post: operations["create_source_harvest_sources_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/harvest/sources/{source_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Source */
-        get: operations["get_source_harvest_sources__source_id__get"];
-        put?: never;
-        post?: never;
-        /** Delete Source */
-        delete: operations["delete_source_harvest_sources__source_id__delete"];
-        options?: never;
-        head?: never;
-        /** Patch Source */
-        patch: operations["patch_source_harvest_sources__source_id__patch"];
-        trace?: never;
-    };
-    "/harvest/sources/{source_id}/run": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Run Source */
-        post: operations["run_source_harvest_sources__source_id__run_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/health": {
         parameters: {
             query?: never;
@@ -803,7 +21,789 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/instance": {
+    "/v1/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Landing Page */
+        get: operations["landing_page_v1__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Usage */
+        get: operations["get_usage_v1_admin_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/alerts/{item_id}/evaluations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Alert Evaluations */
+        get: operations["get_alert_evaluations_v1_alerts__item_id__evaluations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/analytics/sql": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Analytics Sql */
+        post: operations["analytics_sql_v1_analytics_sql_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Collections */
+        get: operations["list_collections_v1_collections_get"];
+        put?: never;
+        /** Register Collection */
+        post: operations["register_collection_v1_collections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Candidate Tables */
+        get: operations["list_candidate_tables_v1_collections_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/empty": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Empty Collection Route */
+        post: operations["create_empty_collection_route_v1_collections_empty_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Collection */
+        get: operations["get_collection_v1_collections__collection_id__get"];
+        put?: never;
+        post?: never;
+        /** Unregister Collection */
+        delete: operations["unregister_collection_v1_collections__collection_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Collection */
+        patch: operations["patch_collection_v1_collections__collection_id__patch"];
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/aggregate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Aggregate Features */
+        post: operations["aggregate_features_v1_collections__collection_id__aggregate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export Collection Aggregate */
+        post: operations["export_collection_aggregate_v1_collections__collection_id__export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/export/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Collection Items */
+        get: operations["export_collection_items_v1_collections__collection_id__export_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Features */
+        get: operations["list_features_v1_collections__collection_id__items_get"];
+        put?: never;
+        /** Create Feature */
+        post: operations["create_feature_v1_collections__collection_id__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/items/{fid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Single Feature */
+        get: operations["get_single_feature_v1_collections__collection_id__items__fid__get"];
+        /** Put Feature */
+        put: operations["put_feature_v1_collections__collection_id__items__fid__put"];
+        post?: never;
+        /** Remove Feature */
+        delete: operations["remove_feature_v1_collections__collection_id__items__fid__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/items/{fid}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Attachments Route */
+        get: operations["list_attachments_route_v1_collections__collection_id__items__fid__attachments_get"];
+        put?: never;
+        /** Confirm Attachment */
+        post: operations["confirm_attachment_v1_collections__collection_id__items__fid__attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/items/{fid}/attachments/presign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Presign Attachment */
+        post: operations["presign_attachment_v1_collections__collection_id__items__fid__attachments_presign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/items/{fid}/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Attachment Route */
+        delete: operations["delete_attachment_route_v1_collections__collection_id__items__fid__attachments__attachment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/items/{fid}/attachments/{attachment_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Attachment File */
+        get: operations["read_attachment_file_v1_collections__collection_id__items__fid__attachments__attachment_id__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Collection Schema */
+        get: operations["get_collection_schema_v1_collections__collection_id__schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/sharing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Sharing */
+        get: operations["get_sharing_v1_collections__collection_id__sharing_get"];
+        /** Put Sharing */
+        put: operations["put_sharing_v1_collections__collection_id__sharing_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Collection Tile */
+        get: operations["get_collection_tile_v1_collections__collection_id__tiles__z___x___y__mvt_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/compliance/purges/{purge_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Purge Status */
+        get: operations["get_purge_status_v1_compliance_purges__purge_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/compliance/tenants/{tenant_id}/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Tenant Purge */
+        post: operations["request_tenant_purge_v1_compliance_tenants__tenant_id__purge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/compliance/users/{user_id}/erase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Erase User */
+        post: operations["erase_user_v1_compliance_users__user_id__erase_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Config */
+        post: operations["create_config_v1_configs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/configs/by-item/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Config By Item */
+        get: operations["get_config_by_item_v1_configs_by_item__item_id__get"];
+        /** Update Config By Item */
+        put: operations["update_config_by_item_v1_configs_by_item__item_id__put"];
+        post?: never;
+        /** Delete Config By Item */
+        delete: operations["delete_config_by_item_v1_configs_by_item__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/configs/{config_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Config */
+        get: operations["get_config_v1_configs__config_id__get"];
+        /** Update Config */
+        put: operations["update_config_v1_configs__config_id__put"];
+        post?: never;
+        /** Delete Config */
+        delete: operations["delete_config_v1_configs__config_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/configs/{config_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Revisions */
+        get: operations["list_revisions_v1_configs__config_id__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/configs/{config_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rollback Config */
+        post: operations["rollback_config_v1_configs__config_id__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conformance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Conformance */
+        get: operations["conformance_v1_conformance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/datasets/{item_id}/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Alerts For Dataset */
+        get: operations["list_alerts_for_dataset_v1_datasets__item_id__alerts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/datasets/{item_id}/arcgis/aggregate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Get Dataset Arcgis Aggregate */
+        post: operations["get_dataset_arcgis_aggregate_v1_datasets__item_id__arcgis_aggregate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/datasets/{item_id}/arcgis/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export Dataset Arcgis Aggregate */
+        post: operations["export_dataset_arcgis_aggregate_v1_datasets__item_id__arcgis_export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/datasets/{item_id}/arcgis/export/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Dataset Arcgis Items */
+        get: operations["export_dataset_arcgis_items_v1_datasets__item_id__arcgis_export_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/datasets/{item_id}/arcgis/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Arcgis Items */
+        get: operations["get_dataset_arcgis_items_v1_datasets__item_id__arcgis_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dcat/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Catalog */
+        get: operations["get_catalog_v1_dcat_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dcat/datasets/{collection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset */
+        get: operations["get_dataset_v1_dcat_datasets__collection_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/extensions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Extensions */
+        get: operations["list_extensions_v1_extensions_get"];
+        put?: never;
+        /** Register Extension */
+        post: operations["register_extension_v1_extensions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/extensions/{extension_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Extension */
+        patch: operations["patch_extension_v1_extensions__extension_id__patch"];
+        trace?: never;
+    };
+    "/v1/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Groups */
+        get: operations["list_groups_v1_groups_get"];
+        put?: never;
+        /** Create Group */
+        post: operations["create_group_v1_groups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/groups/{group_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Member */
+        post: operations["add_member_v1_groups__group_id__members_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/harvest/feature-layers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Feature Layers */
+        get: operations["list_feature_layers_v1_harvest_feature_layers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/harvest/layers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Layers */
+        get: operations["list_layers_v1_harvest_layers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/harvest/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sources */
+        get: operations["list_sources_v1_harvest_sources_get"];
+        put?: never;
+        /** Create Source */
+        post: operations["create_source_v1_harvest_sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/harvest/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Source */
+        get: operations["get_source_v1_harvest_sources__source_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Source */
+        delete: operations["delete_source_v1_harvest_sources__source_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Source */
+        patch: operations["patch_source_v1_harvest_sources__source_id__patch"];
+        trace?: never;
+    };
+    "/v1/harvest/sources/{source_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Source */
+        post: operations["run_source_v1_harvest_sources__source_id__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/instance": {
         parameters: {
             query?: never;
             header?: never;
@@ -811,7 +811,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Instance Info */
-        get: operations["get_instance_info_instance_get"];
+        get: operations["get_instance_info_v1_instance_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -820,7 +820,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/items": {
+    "/v1/items": {
         parameters: {
             query?: never;
             header?: never;
@@ -828,7 +828,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Items */
-        get: operations["list_items_items_get"];
+        get: operations["list_items_v1_items_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -837,7 +837,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/items/facets": {
+    "/v1/items/facets": {
         parameters: {
             query?: never;
             header?: never;
@@ -845,7 +845,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Item Facets */
-        get: operations["get_item_facets_items_facets_get"];
+        get: operations["get_item_facets_v1_items_facets_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -854,7 +854,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/items/{item_id}": {
+    "/v1/items/{item_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -862,18 +862,18 @@ export interface paths {
             cookie?: never;
         };
         /** Get Item */
-        get: operations["get_item_items__item_id__get"];
+        get: operations["get_item_v1_items__item_id__get"];
         put?: never;
         post?: never;
         /** Delete Item */
-        delete: operations["delete_item_items__item_id__delete"];
+        delete: operations["delete_item_v1_items__item_id__delete"];
         options?: never;
         head?: never;
         /** Update Item */
-        patch: operations["update_item_items__item_id__patch"];
+        patch: operations["update_item_v1_items__item_id__patch"];
         trace?: never;
     };
-    "/items/{item_id}/share-links": {
+    "/v1/items/{item_id}/share-links": {
         parameters: {
             query?: never;
             header?: never;
@@ -881,17 +881,17 @@ export interface paths {
             cookie?: never;
         };
         /** List Share Links Route */
-        get: operations["list_share_links_route_items__item_id__share_links_get"];
+        get: operations["list_share_links_route_v1_items__item_id__share_links_get"];
         put?: never;
         /** Create Share Link Route */
-        post: operations["create_share_link_route_items__item_id__share_links_post"];
+        post: operations["create_share_link_route_v1_items__item_id__share_links_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/items/{item_id}/share-links/{link_id}": {
+    "/v1/items/{item_id}/share-links/{link_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -902,13 +902,13 @@ export interface paths {
         put?: never;
         post?: never;
         /** Revoke Share Link Route */
-        delete: operations["revoke_share_link_route_items__item_id__share_links__link_id__delete"];
+        delete: operations["revoke_share_link_route_v1_items__item_id__share_links__link_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/items/{item_id}/sharing": {
+    "/v1/items/{item_id}/sharing": {
         parameters: {
             query?: never;
             header?: never;
@@ -916,9 +916,9 @@ export interface paths {
             cookie?: never;
         };
         /** Get Sharing */
-        get: operations["get_sharing_items__item_id__sharing_get"];
+        get: operations["get_sharing_v1_items__item_id__sharing_get"];
         /** Set Sharing */
-        put: operations["set_sharing_items__item_id__sharing_put"];
+        put: operations["set_sharing_v1_items__item_id__sharing_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -926,7 +926,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/items/{item_id}/thumbnail": {
+    "/v1/items/{item_id}/thumbnail": {
         parameters: {
             query?: never;
             header?: never;
@@ -934,17 +934,17 @@ export interface paths {
             cookie?: never;
         };
         /** Read Thumbnail */
-        get: operations["read_thumbnail_items__item_id__thumbnail_get"];
+        get: operations["read_thumbnail_v1_items__item_id__thumbnail_get"];
         put?: never;
         /** Upload Thumbnail */
-        post: operations["upload_thumbnail_items__item_id__thumbnail_post"];
+        post: operations["upload_thumbnail_v1_items__item_id__thumbnail_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/map-icons": {
+    "/v1/map-icons": {
         parameters: {
             query?: never;
             header?: never;
@@ -952,17 +952,17 @@ export interface paths {
             cookie?: never;
         };
         /** List Map Icons */
-        get: operations["list_map_icons_map_icons_get"];
+        get: operations["list_map_icons_v1_map_icons_get"];
         put?: never;
         /** Create Map Icon */
-        post: operations["create_map_icon_map_icons_post"];
+        post: operations["create_map_icon_v1_map_icons_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/map-icons/{icon_id}": {
+    "/v1/map-icons/{icon_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -973,13 +973,13 @@ export interface paths {
         put?: never;
         post?: never;
         /** Delete Map Icon */
-        delete: operations["delete_map_icon_map_icons__icon_id__delete"];
+        delete: operations["delete_map_icon_v1_map_icons__icon_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/map-icons/{icon_id}/file": {
+    "/v1/map-icons/{icon_id}/file": {
         parameters: {
             query?: never;
             header?: never;
@@ -987,7 +987,7 @@ export interface paths {
             cookie?: never;
         };
         /** Read Map Icon File */
-        get: operations["read_map_icon_file_map_icons__icon_id__file_get"];
+        get: operations["read_map_icon_file_v1_map_icons__icon_id__file_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -996,7 +996,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/me": {
+    "/v1/me": {
         parameters: {
             query?: never;
             header?: never;
@@ -1004,7 +1004,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Me */
-        get: operations["get_me_me_get"];
+        get: operations["get_me_v1_me_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1013,7 +1013,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/metadata-catalog": {
+    "/v1/metadata-catalog": {
         parameters: {
             query?: never;
             header?: never;
@@ -1021,7 +1021,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Metadata Catalog */
-        get: operations["get_metadata_catalog_metadata_catalog_get"];
+        get: operations["get_metadata_catalog_v1_metadata_catalog_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1030,7 +1030,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/notifications": {
+    "/v1/notifications": {
         parameters: {
             query?: never;
             header?: never;
@@ -1038,7 +1038,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Notifications */
-        get: operations["get_notifications_notifications_get"];
+        get: operations["get_notifications_v1_notifications_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1047,7 +1047,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/notifications/preference": {
+    "/v1/notifications/preference": {
         parameters: {
             query?: never;
             header?: never;
@@ -1055,17 +1055,17 @@ export interface paths {
             cookie?: never;
         };
         /** Get Preference */
-        get: operations["get_preference_notifications_preference_get"];
+        get: operations["get_preference_v1_notifications_preference_get"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
         /** Patch Preference */
-        patch: operations["patch_preference_notifications_preference_patch"];
+        patch: operations["patch_preference_v1_notifications_preference_patch"];
         trace?: never;
     };
-    "/notifications/read-all": {
+    "/v1/notifications/read-all": {
         parameters: {
             query?: never;
             header?: never;
@@ -1075,14 +1075,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Post Notifications Read All */
-        post: operations["post_notifications_read_all_notifications_read_all_post"];
+        post: operations["post_notifications_read_all_v1_notifications_read_all_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/notifications/unread-count": {
+    "/v1/notifications/unread-count": {
         parameters: {
             query?: never;
             header?: never;
@@ -1090,7 +1090,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Unread Count */
-        get: operations["get_unread_count_notifications_unread_count_get"];
+        get: operations["get_unread_count_v1_notifications_unread_count_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1099,7 +1099,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/notifications/{notification_id}/read": {
+    "/v1/notifications/{notification_id}/read": {
         parameters: {
             query?: never;
             header?: never;
@@ -1109,14 +1109,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Post Notification Read */
-        post: operations["post_notification_read_notifications__notification_id__read_post"];
+        post: operations["post_notification_read_v1_notifications__notification_id__read_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/public/configs/by-item/{item_id}": {
+    "/v1/public/configs/by-item/{item_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1124,7 +1124,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Public Config By Item */
-        get: operations["get_public_config_by_item_public_configs_by_item__item_id__get"];
+        get: operations["get_public_config_by_item_v1_public_configs_by_item__item_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1133,7 +1133,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/public/items": {
+    "/v1/public/items": {
         parameters: {
             query?: never;
             header?: never;
@@ -1141,7 +1141,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Public Items */
-        get: operations["list_public_items_public_items_get"];
+        get: operations["list_public_items_v1_public_items_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1150,7 +1150,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/public/items/{item_id}": {
+    "/v1/public/items/{item_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1158,7 +1158,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Public Item */
-        get: operations["get_public_item_public_items__item_id__get"];
+        get: operations["get_public_item_v1_public_items__item_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1167,7 +1167,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/public/robots.txt": {
+    "/v1/public/robots.txt": {
         parameters: {
             query?: never;
             header?: never;
@@ -1175,7 +1175,7 @@ export interface paths {
             cookie?: never;
         };
         /** Public Robots */
-        get: operations["public_robots_public_robots_txt_get"];
+        get: operations["public_robots_v1_public_robots_txt_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1184,7 +1184,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/public/sitemap.xml": {
+    "/v1/public/sitemap.xml": {
         parameters: {
             query?: never;
             header?: never;
@@ -1192,7 +1192,7 @@ export interface paths {
             cookie?: never;
         };
         /** Public Sitemap */
-        get: operations["public_sitemap_public_sitemap_xml_get"];
+        get: operations["public_sitemap_v1_public_sitemap_xml_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1201,7 +1201,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/public/sites/{slug}": {
+    "/v1/public/sites/{slug}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1209,7 +1209,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Public Site */
-        get: operations["get_public_site_public_sites__slug__get"];
+        get: operations["get_public_site_v1_public_sites__slug__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1218,7 +1218,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/public/sites/{slug}/social-preview": {
+    "/v1/public/sites/{slug}/social-preview": {
         parameters: {
             query?: never;
             header?: never;
@@ -1226,7 +1226,7 @@ export interface paths {
             cookie?: never;
         };
         /** Public Site Social Preview */
-        get: operations["public_site_social_preview_public_sites__slug__social_preview_get"];
+        get: operations["public_site_social_preview_v1_public_sites__slug__social_preview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1235,7 +1235,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/reports/{item_id}/runs": {
+    "/v1/reports/{item_id}/runs": {
         parameters: {
             query?: never;
             header?: never;
@@ -1243,7 +1243,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Report Runs Route */
-        get: operations["get_report_runs_route_reports__item_id__runs_get"];
+        get: operations["get_report_runs_route_v1_reports__item_id__runs_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1252,7 +1252,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/roles": {
+    "/v1/roles": {
         parameters: {
             query?: never;
             header?: never;
@@ -1260,17 +1260,17 @@ export interface paths {
             cookie?: never;
         };
         /** Get Roles */
-        get: operations["get_roles_roles_get"];
+        get: operations["get_roles_v1_roles_get"];
         put?: never;
         /** Post Role */
-        post: operations["post_role_roles_post"];
+        post: operations["post_role_v1_roles_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/roles/catalog": {
+    "/v1/roles/catalog": {
         parameters: {
             query?: never;
             header?: never;
@@ -1278,7 +1278,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Roles Catalog */
-        get: operations["get_roles_catalog_roles_catalog_get"];
+        get: operations["get_roles_catalog_v1_roles_catalog_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1287,7 +1287,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/roles/{role_id}": {
+    "/v1/roles/{role_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1298,14 +1298,14 @@ export interface paths {
         put?: never;
         post?: never;
         /** Delete Role Route */
-        delete: operations["delete_role_route_roles__role_id__delete"];
+        delete: operations["delete_role_route_v1_roles__role_id__delete"];
         options?: never;
         head?: never;
         /** Patch Role */
-        patch: operations["patch_role_roles__role_id__patch"];
+        patch: operations["patch_role_v1_roles__role_id__patch"];
         trace?: never;
     };
-    "/schemas/app-config": {
+    "/v1/schemas/app-config": {
         parameters: {
             query?: never;
             header?: never;
@@ -1313,7 +1313,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get App Config Schema */
-        get: operations["get_app_config_schema_schemas_app_config_get"];
+        get: operations["get_app_config_schema_v1_schemas_app_config_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1322,7 +1322,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/secrets": {
+    "/v1/secrets": {
         parameters: {
             query?: never;
             header?: never;
@@ -1330,17 +1330,17 @@ export interface paths {
             cookie?: never;
         };
         /** List Secrets Route */
-        get: operations["list_secrets_route_secrets_get"];
+        get: operations["list_secrets_route_v1_secrets_get"];
         put?: never;
         /** Create Secret Route */
-        post: operations["create_secret_route_secrets_post"];
+        post: operations["create_secret_route_v1_secrets_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/secrets/{secret_id}": {
+    "/v1/secrets/{secret_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1351,13 +1351,13 @@ export interface paths {
         put?: never;
         post?: never;
         /** Delete Secret Route */
-        delete: operations["delete_secret_route_secrets__secret_id__delete"];
+        delete: operations["delete_secret_route_v1_secrets__secret_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/share-links/{token}": {
+    "/v1/share-links/{token}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1372,7 +1372,7 @@ export interface paths {
          *     share_link a été révoquée entre-temps — même discipline que
          *     decode_export_token vis-à-vis d'une instance sans secret configuré.
          */
-        get: operations["resolve_share_link_route_share_links__token__get"];
+        get: operations["resolve_share_link_route_v1_share_links__token__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1381,7 +1381,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/stac": {
+    "/v1/stac": {
         parameters: {
             query?: never;
             header?: never;
@@ -1389,7 +1389,7 @@ export interface paths {
             cookie?: never;
         };
         /** Landing */
-        get: operations["landing_stac_get"];
+        get: operations["landing_v1_stac_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1398,7 +1398,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/stac/collections": {
+    "/v1/stac/collections": {
         parameters: {
             query?: never;
             header?: never;
@@ -1406,7 +1406,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Collections */
-        get: operations["list_collections_stac_collections_get"];
+        get: operations["list_collections_v1_stac_collections_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1415,7 +1415,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/stac/collections/{collection_id}": {
+    "/v1/stac/collections/{collection_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1423,7 +1423,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Collection */
-        get: operations["get_collection_stac_collections__collection_id__get"];
+        get: operations["get_collection_v1_stac_collections__collection_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1432,7 +1432,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/stac/collections/{collection_id}/items": {
+    "/v1/stac/collections/{collection_id}/items": {
         parameters: {
             query?: never;
             header?: never;
@@ -1440,7 +1440,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Items */
-        get: operations["list_items_stac_collections__collection_id__items_get"];
+        get: operations["list_items_v1_stac_collections__collection_id__items_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1449,7 +1449,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/stac/collections/{collection_id}/items/{feature_id}": {
+    "/v1/stac/collections/{collection_id}/items/{feature_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1457,7 +1457,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Item */
-        get: operations["get_item_stac_collections__collection_id__items__feature_id__get"];
+        get: operations["get_item_v1_stac_collections__collection_id__items__feature_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1466,7 +1466,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/stac/conformance": {
+    "/v1/stac/conformance": {
         parameters: {
             query?: never;
             header?: never;
@@ -1474,7 +1474,7 @@ export interface paths {
             cookie?: never;
         };
         /** Conformance */
-        get: operations["conformance_stac_conformance_get"];
+        get: operations["conformance_v1_stac_conformance_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1483,7 +1483,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/stac/search": {
+    "/v1/stac/search": {
         parameters: {
             query?: never;
             header?: never;
@@ -1491,17 +1491,17 @@ export interface paths {
             cookie?: never;
         };
         /** Search Get */
-        get: operations["search_get_stac_search_get"];
+        get: operations["search_get_v1_stac_search_get"];
         put?: never;
         /** Search Post */
-        post: operations["search_post_stac_search_post"];
+        post: operations["search_post_v1_stac_search_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/uploads": {
+    "/v1/uploads": {
         parameters: {
             query?: never;
             header?: never;
@@ -1511,14 +1511,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Create Upload Job */
-        post: operations["create_upload_job_uploads_post"];
+        post: operations["create_upload_job_v1_uploads_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/uploads/inspect": {
+    "/v1/uploads/inspect": {
         parameters: {
             query?: never;
             header?: never;
@@ -1528,14 +1528,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Inspect Upload */
-        post: operations["inspect_upload_uploads_inspect_post"];
+        post: operations["inspect_upload_v1_uploads_inspect_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/uploads/presign": {
+    "/v1/uploads/presign": {
         parameters: {
             query?: never;
             header?: never;
@@ -1545,14 +1545,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Presign Upload */
-        post: operations["presign_upload_uploads_presign_post"];
+        post: operations["presign_upload_v1_uploads_presign_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/uploads/{job_id}": {
+    "/v1/uploads/{job_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1560,7 +1560,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Upload Job */
-        get: operations["get_upload_job_uploads__job_id__get"];
+        get: operations["get_upload_job_v1_uploads__job_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1569,7 +1569,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/usage/summary": {
+    "/v1/usage/summary": {
         parameters: {
             query?: never;
             header?: never;
@@ -1577,7 +1577,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Usage Summary */
-        get: operations["get_usage_summary_usage_summary_get"];
+        get: operations["get_usage_summary_v1_usage_summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1586,7 +1586,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/usage/tasks": {
+    "/v1/usage/tasks": {
         parameters: {
             query?: never;
             header?: never;
@@ -1594,7 +1594,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Usage Tasks */
-        get: operations["list_usage_tasks_usage_tasks_get"];
+        get: operations["list_usage_tasks_v1_usage_tasks_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1603,7 +1603,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/users": {
+    "/v1/users": {
         parameters: {
             query?: never;
             header?: never;
@@ -1611,7 +1611,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Users */
-        get: operations["get_users_users_get"];
+        get: operations["get_users_v1_users_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1620,7 +1620,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/users/{user_id}": {
+    "/v1/users/{user_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1634,7 +1634,7 @@ export interface paths {
         options?: never;
         head?: never;
         /** Patch User */
-        patch: operations["patch_user_users__user_id__patch"];
+        patch: operations["patch_user_v1_users__user_id__patch"];
         trace?: never;
     };
 }
@@ -1864,8 +1864,8 @@ export interface components {
             /** Token */
             token: string;
         };
-        /** Body_create_map_icon_map_icons_post */
-        Body_create_map_icon_map_icons_post: {
+        /** Body_create_map_icon_v1_map_icons_post */
+        Body_create_map_icon_v1_map_icons_post: {
             /** Category */
             category: string;
             /** File */
@@ -1873,8 +1873,8 @@ export interface components {
             /** Title */
             title: string;
         };
-        /** Body_upload_thumbnail_items__item_id__thumbnail_post */
-        Body_upload_thumbnail_items__item_id__thumbnail_post: {
+        /** Body_upload_thumbnail_v1_items__item_id__thumbnail_post */
+        Body_upload_thumbnail_v1_items__item_id__thumbnail_post: {
             /** File */
             file: string;
         };
@@ -3258,7 +3258,29 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    landing_page__get: {
+    health_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+    };
+    landing_page_v1__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -3278,7 +3300,7 @@ export interface operations {
             };
         };
     };
-    get_usage_admin_usage_get: {
+    get_usage_v1_admin_usage_get: {
         parameters: {
             query?: never;
             header?: {
@@ -3309,7 +3331,7 @@ export interface operations {
             };
         };
     };
-    get_alert_evaluations_alerts__item_id__evaluations_get: {
+    get_alert_evaluations_v1_alerts__item_id__evaluations_get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -3345,7 +3367,7 @@ export interface operations {
             };
         };
     };
-    analytics_sql_analytics_sql_post: {
+    analytics_sql_v1_analytics_sql_post: {
         parameters: {
             query?: never;
             header?: {
@@ -3380,7 +3402,7 @@ export interface operations {
             };
         };
     };
-    list_collections_collections_get: {
+    list_collections_v1_collections_get: {
         parameters: {
             query?: {
                 q?: string | null;
@@ -3415,7 +3437,7 @@ export interface operations {
             };
         };
     };
-    register_collection_collections_post: {
+    register_collection_v1_collections_post: {
         parameters: {
             query?: never;
             header?: {
@@ -3450,7 +3472,7 @@ export interface operations {
             };
         };
     };
-    list_candidate_tables_collections_candidates_get: {
+    list_candidate_tables_v1_collections_candidates_get: {
         parameters: {
             query?: never;
             header?: {
@@ -3481,7 +3503,7 @@ export interface operations {
             };
         };
     };
-    create_empty_collection_route_collections_empty_post: {
+    create_empty_collection_route_v1_collections_empty_post: {
         parameters: {
             query?: never;
             header?: {
@@ -3516,7 +3538,7 @@ export interface operations {
             };
         };
     };
-    get_collection_collections__collection_id__get: {
+    get_collection_v1_collections__collection_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -3549,7 +3571,7 @@ export interface operations {
             };
         };
     };
-    unregister_collection_collections__collection_id__delete: {
+    unregister_collection_v1_collections__collection_id__delete: {
         parameters: {
             query?: never;
             header?: {
@@ -3580,7 +3602,7 @@ export interface operations {
             };
         };
     };
-    patch_collection_collections__collection_id__patch: {
+    patch_collection_v1_collections__collection_id__patch: {
         parameters: {
             query?: never;
             header?: {
@@ -3617,7 +3639,7 @@ export interface operations {
             };
         };
     };
-    aggregate_features_collections__collection_id__aggregate_post: {
+    aggregate_features_v1_collections__collection_id__aggregate_post: {
         parameters: {
             query?: never;
             header?: {
@@ -3654,7 +3676,7 @@ export interface operations {
             };
         };
     };
-    export_collection_aggregate_collections__collection_id__export_post: {
+    export_collection_aggregate_v1_collections__collection_id__export_post: {
         parameters: {
             query: {
                 format: string;
@@ -3693,7 +3715,7 @@ export interface operations {
             };
         };
     };
-    export_collection_items_collections__collection_id__export_items_get: {
+    export_collection_items_v1_collections__collection_id__export_items_get: {
         parameters: {
             query: {
                 format: string;
@@ -3730,7 +3752,7 @@ export interface operations {
             };
         };
     };
-    list_features_collections__collection_id__items_get: {
+    list_features_v1_collections__collection_id__items_get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -3768,7 +3790,7 @@ export interface operations {
             };
         };
     };
-    create_feature_collections__collection_id__items_post: {
+    create_feature_v1_collections__collection_id__items_post: {
         parameters: {
             query?: never;
             header?: {
@@ -3807,7 +3829,7 @@ export interface operations {
             };
         };
     };
-    get_single_feature_collections__collection_id__items__fid__get: {
+    get_single_feature_v1_collections__collection_id__items__fid__get: {
         parameters: {
             query?: never;
             header?: {
@@ -3841,7 +3863,7 @@ export interface operations {
             };
         };
     };
-    put_feature_collections__collection_id__items__fid__put: {
+    put_feature_v1_collections__collection_id__items__fid__put: {
         parameters: {
             query?: never;
             header?: {
@@ -3879,7 +3901,7 @@ export interface operations {
             };
         };
     };
-    remove_feature_collections__collection_id__items__fid__delete: {
+    remove_feature_v1_collections__collection_id__items__fid__delete: {
         parameters: {
             query?: never;
             header?: {
@@ -3911,7 +3933,7 @@ export interface operations {
             };
         };
     };
-    list_attachments_route_collections__collection_id__items__fid__attachments_get: {
+    list_attachments_route_v1_collections__collection_id__items__fid__attachments_get: {
         parameters: {
             query?: {
                 fieldKey?: string | null;
@@ -3947,7 +3969,7 @@ export interface operations {
             };
         };
     };
-    confirm_attachment_collections__collection_id__items__fid__attachments_post: {
+    confirm_attachment_v1_collections__collection_id__items__fid__attachments_post: {
         parameters: {
             query?: never;
             header?: {
@@ -3985,7 +4007,7 @@ export interface operations {
             };
         };
     };
-    presign_attachment_collections__collection_id__items__fid__attachments_presign_post: {
+    presign_attachment_v1_collections__collection_id__items__fid__attachments_presign_post: {
         parameters: {
             query?: never;
             header?: {
@@ -4023,7 +4045,7 @@ export interface operations {
             };
         };
     };
-    delete_attachment_route_collections__collection_id__items__fid__attachments__attachment_id__delete: {
+    delete_attachment_route_v1_collections__collection_id__items__fid__attachments__attachment_id__delete: {
         parameters: {
             query?: never;
             header?: {
@@ -4056,7 +4078,7 @@ export interface operations {
             };
         };
     };
-    read_attachment_file_collections__collection_id__items__fid__attachments__attachment_id__file_get: {
+    read_attachment_file_v1_collections__collection_id__items__fid__attachments__attachment_id__file_get: {
         parameters: {
             query?: never;
             header?: {
@@ -4091,7 +4113,7 @@ export interface operations {
             };
         };
     };
-    get_collection_schema_collections__collection_id__schema_get: {
+    get_collection_schema_v1_collections__collection_id__schema_get: {
         parameters: {
             query?: never;
             header?: {
@@ -4124,7 +4146,7 @@ export interface operations {
             };
         };
     };
-    get_sharing_collections__collection_id__sharing_get: {
+    get_sharing_v1_collections__collection_id__sharing_get: {
         parameters: {
             query?: never;
             header?: {
@@ -4157,7 +4179,7 @@ export interface operations {
             };
         };
     };
-    put_sharing_collections__collection_id__sharing_put: {
+    put_sharing_v1_collections__collection_id__sharing_put: {
         parameters: {
             query?: never;
             header?: {
@@ -4194,7 +4216,7 @@ export interface operations {
             };
         };
     };
-    get_collection_tile_collections__collection_id__tiles__z___x___y__mvt_get: {
+    get_collection_tile_v1_collections__collection_id__tiles__z___x___y__mvt_get: {
         parameters: {
             query?: never;
             header?: {
@@ -4230,7 +4252,7 @@ export interface operations {
             };
         };
     };
-    get_purge_status_compliance_purges__purge_id__get: {
+    get_purge_status_v1_compliance_purges__purge_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -4263,7 +4285,7 @@ export interface operations {
             };
         };
     };
-    request_tenant_purge_compliance_tenants__tenant_id__purge_post: {
+    request_tenant_purge_v1_compliance_tenants__tenant_id__purge_post: {
         parameters: {
             query?: never;
             header?: {
@@ -4300,7 +4322,7 @@ export interface operations {
             };
         };
     };
-    erase_user_compliance_users__user_id__erase_post: {
+    erase_user_v1_compliance_users__user_id__erase_post: {
         parameters: {
             query?: never;
             header?: {
@@ -4331,7 +4353,7 @@ export interface operations {
             };
         };
     };
-    create_config_configs_post: {
+    create_config_v1_configs_post: {
         parameters: {
             query?: never;
             header?: {
@@ -4366,7 +4388,7 @@ export interface operations {
             };
         };
     };
-    get_config_by_item_configs_by_item__item_id__get: {
+    get_config_by_item_v1_configs_by_item__item_id__get: {
         parameters: {
             query?: {
                 mode?: string | null;
@@ -4401,7 +4423,7 @@ export interface operations {
             };
         };
     };
-    update_config_by_item_configs_by_item__item_id__put: {
+    update_config_by_item_v1_configs_by_item__item_id__put: {
         parameters: {
             query?: never;
             header?: {
@@ -4438,7 +4460,7 @@ export interface operations {
             };
         };
     };
-    delete_config_by_item_configs_by_item__item_id__delete: {
+    delete_config_by_item_v1_configs_by_item__item_id__delete: {
         parameters: {
             query?: never;
             header?: {
@@ -4469,7 +4491,7 @@ export interface operations {
             };
         };
     };
-    get_config_configs__config_id__get: {
+    get_config_v1_configs__config_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -4502,7 +4524,7 @@ export interface operations {
             };
         };
     };
-    update_config_configs__config_id__put: {
+    update_config_v1_configs__config_id__put: {
         parameters: {
             query?: never;
             header?: {
@@ -4539,7 +4561,7 @@ export interface operations {
             };
         };
     };
-    delete_config_configs__config_id__delete: {
+    delete_config_v1_configs__config_id__delete: {
         parameters: {
             query?: never;
             header?: {
@@ -4570,7 +4592,7 @@ export interface operations {
             };
         };
     };
-    list_revisions_configs__config_id__revisions_get: {
+    list_revisions_v1_configs__config_id__revisions_get: {
         parameters: {
             query?: never;
             header?: {
@@ -4603,7 +4625,7 @@ export interface operations {
             };
         };
     };
-    rollback_config_configs__config_id__rollback_post: {
+    rollback_config_v1_configs__config_id__rollback_post: {
         parameters: {
             query?: never;
             header?: {
@@ -4640,7 +4662,7 @@ export interface operations {
             };
         };
     };
-    conformance_conformance_get: {
+    conformance_v1_conformance_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -4660,7 +4682,7 @@ export interface operations {
             };
         };
     };
-    list_alerts_for_dataset_datasets__item_id__alerts_get: {
+    list_alerts_for_dataset_v1_datasets__item_id__alerts_get: {
         parameters: {
             query?: never;
             header?: {
@@ -4693,7 +4715,7 @@ export interface operations {
             };
         };
     };
-    get_dataset_arcgis_aggregate_datasets__item_id__arcgis_aggregate_post: {
+    get_dataset_arcgis_aggregate_v1_datasets__item_id__arcgis_aggregate_post: {
         parameters: {
             query?: never;
             header?: {
@@ -4730,7 +4752,7 @@ export interface operations {
             };
         };
     };
-    export_dataset_arcgis_aggregate_datasets__item_id__arcgis_export_post: {
+    export_dataset_arcgis_aggregate_v1_datasets__item_id__arcgis_export_post: {
         parameters: {
             query: {
                 format: string;
@@ -4769,7 +4791,7 @@ export interface operations {
             };
         };
     };
-    export_dataset_arcgis_items_datasets__item_id__arcgis_export_items_get: {
+    export_dataset_arcgis_items_v1_datasets__item_id__arcgis_export_items_get: {
         parameters: {
             query: {
                 format: string;
@@ -4805,7 +4827,7 @@ export interface operations {
             };
         };
     };
-    get_dataset_arcgis_items_datasets__item_id__arcgis_items_get: {
+    get_dataset_arcgis_items_v1_datasets__item_id__arcgis_items_get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -4842,7 +4864,7 @@ export interface operations {
             };
         };
     };
-    get_catalog_dcat_catalog_get: {
+    get_catalog_v1_dcat_catalog_get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -4876,7 +4898,7 @@ export interface operations {
             };
         };
     };
-    get_dataset_dcat_datasets__collection_id__get: {
+    get_dataset_v1_dcat_datasets__collection_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -4909,7 +4931,7 @@ export interface operations {
             };
         };
     };
-    list_extensions_extensions_get: {
+    list_extensions_v1_extensions_get: {
         parameters: {
             query?: {
                 all?: boolean;
@@ -4942,7 +4964,7 @@ export interface operations {
             };
         };
     };
-    register_extension_extensions_post: {
+    register_extension_v1_extensions_post: {
         parameters: {
             query?: never;
             header?: {
@@ -4977,7 +4999,7 @@ export interface operations {
             };
         };
     };
-    patch_extension_extensions__extension_id__patch: {
+    patch_extension_v1_extensions__extension_id__patch: {
         parameters: {
             query?: never;
             header?: {
@@ -5014,7 +5036,7 @@ export interface operations {
             };
         };
     };
-    list_groups_groups_get: {
+    list_groups_v1_groups_get: {
         parameters: {
             query?: never;
             header?: {
@@ -5045,7 +5067,7 @@ export interface operations {
             };
         };
     };
-    create_group_groups_post: {
+    create_group_v1_groups_post: {
         parameters: {
             query?: never;
             header?: {
@@ -5080,7 +5102,7 @@ export interface operations {
             };
         };
     };
-    add_member_groups__group_id__members_post: {
+    add_member_v1_groups__group_id__members_post: {
         parameters: {
             query?: never;
             header?: {
@@ -5115,7 +5137,7 @@ export interface operations {
             };
         };
     };
-    list_feature_layers_harvest_feature_layers_get: {
+    list_feature_layers_v1_harvest_feature_layers_get: {
         parameters: {
             query?: {
                 q?: string | null;
@@ -5148,7 +5170,7 @@ export interface operations {
             };
         };
     };
-    list_layers_harvest_layers_get: {
+    list_layers_v1_harvest_layers_get: {
         parameters: {
             query?: {
                 q?: string | null;
@@ -5181,7 +5203,7 @@ export interface operations {
             };
         };
     };
-    list_sources_harvest_sources_get: {
+    list_sources_v1_harvest_sources_get: {
         parameters: {
             query?: never;
             header?: {
@@ -5212,7 +5234,7 @@ export interface operations {
             };
         };
     };
-    create_source_harvest_sources_post: {
+    create_source_v1_harvest_sources_post: {
         parameters: {
             query?: never;
             header?: {
@@ -5247,7 +5269,7 @@ export interface operations {
             };
         };
     };
-    get_source_harvest_sources__source_id__get: {
+    get_source_v1_harvest_sources__source_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -5280,7 +5302,7 @@ export interface operations {
             };
         };
     };
-    delete_source_harvest_sources__source_id__delete: {
+    delete_source_v1_harvest_sources__source_id__delete: {
         parameters: {
             query?: never;
             header?: {
@@ -5311,7 +5333,7 @@ export interface operations {
             };
         };
     };
-    patch_source_harvest_sources__source_id__patch: {
+    patch_source_v1_harvest_sources__source_id__patch: {
         parameters: {
             query?: never;
             header?: {
@@ -5348,7 +5370,7 @@ export interface operations {
             };
         };
     };
-    run_source_harvest_sources__source_id__run_post: {
+    run_source_v1_harvest_sources__source_id__run_post: {
         parameters: {
             query?: never;
             header?: {
@@ -5381,29 +5403,7 @@ export interface operations {
             };
         };
     };
-    health_health_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
-                };
-            };
-        };
-    };
-    get_instance_info_instance_get: {
+    get_instance_info_v1_instance_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -5425,7 +5425,7 @@ export interface operations {
             };
         };
     };
-    list_items_items_get: {
+    list_items_v1_items_get: {
         parameters: {
             query?: {
                 q?: string | null;
@@ -5466,7 +5466,7 @@ export interface operations {
             };
         };
     };
-    get_item_facets_items_facets_get: {
+    get_item_facets_v1_items_facets_get: {
         parameters: {
             query?: {
                 q?: string | null;
@@ -5502,7 +5502,7 @@ export interface operations {
             };
         };
     };
-    get_item_items__item_id__get: {
+    get_item_v1_items__item_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -5535,7 +5535,7 @@ export interface operations {
             };
         };
     };
-    delete_item_items__item_id__delete: {
+    delete_item_v1_items__item_id__delete: {
         parameters: {
             query?: never;
             header?: {
@@ -5566,7 +5566,7 @@ export interface operations {
             };
         };
     };
-    update_item_items__item_id__patch: {
+    update_item_v1_items__item_id__patch: {
         parameters: {
             query?: never;
             header?: {
@@ -5603,7 +5603,7 @@ export interface operations {
             };
         };
     };
-    list_share_links_route_items__item_id__share_links_get: {
+    list_share_links_route_v1_items__item_id__share_links_get: {
         parameters: {
             query?: never;
             header?: {
@@ -5636,7 +5636,7 @@ export interface operations {
             };
         };
     };
-    create_share_link_route_items__item_id__share_links_post: {
+    create_share_link_route_v1_items__item_id__share_links_post: {
         parameters: {
             query?: never;
             header?: {
@@ -5673,7 +5673,7 @@ export interface operations {
             };
         };
     };
-    revoke_share_link_route_items__item_id__share_links__link_id__delete: {
+    revoke_share_link_route_v1_items__item_id__share_links__link_id__delete: {
         parameters: {
             query?: never;
             header?: {
@@ -5705,7 +5705,7 @@ export interface operations {
             };
         };
     };
-    get_sharing_items__item_id__sharing_get: {
+    get_sharing_v1_items__item_id__sharing_get: {
         parameters: {
             query?: never;
             header?: {
@@ -5738,7 +5738,7 @@ export interface operations {
             };
         };
     };
-    set_sharing_items__item_id__sharing_put: {
+    set_sharing_v1_items__item_id__sharing_put: {
         parameters: {
             query?: never;
             header?: {
@@ -5773,7 +5773,7 @@ export interface operations {
             };
         };
     };
-    read_thumbnail_items__item_id__thumbnail_get: {
+    read_thumbnail_v1_items__item_id__thumbnail_get: {
         parameters: {
             query?: never;
             header?: {
@@ -5806,7 +5806,7 @@ export interface operations {
             };
         };
     };
-    upload_thumbnail_items__item_id__thumbnail_post: {
+    upload_thumbnail_v1_items__item_id__thumbnail_post: {
         parameters: {
             query?: never;
             header?: {
@@ -5819,7 +5819,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_upload_thumbnail_items__item_id__thumbnail_post"];
+                "multipart/form-data": components["schemas"]["Body_upload_thumbnail_v1_items__item_id__thumbnail_post"];
             };
         };
         responses: {
@@ -5841,7 +5841,7 @@ export interface operations {
             };
         };
     };
-    list_map_icons_map_icons_get: {
+    list_map_icons_v1_map_icons_get: {
         parameters: {
             query?: never;
             header?: {
@@ -5872,7 +5872,7 @@ export interface operations {
             };
         };
     };
-    create_map_icon_map_icons_post: {
+    create_map_icon_v1_map_icons_post: {
         parameters: {
             query?: never;
             header?: {
@@ -5883,7 +5883,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_create_map_icon_map_icons_post"];
+                "multipart/form-data": components["schemas"]["Body_create_map_icon_v1_map_icons_post"];
             };
         };
         responses: {
@@ -5907,7 +5907,7 @@ export interface operations {
             };
         };
     };
-    delete_map_icon_map_icons__icon_id__delete: {
+    delete_map_icon_v1_map_icons__icon_id__delete: {
         parameters: {
             query?: never;
             header?: {
@@ -5938,7 +5938,7 @@ export interface operations {
             };
         };
     };
-    read_map_icon_file_map_icons__icon_id__file_get: {
+    read_map_icon_file_v1_map_icons__icon_id__file_get: {
         parameters: {
             query?: never;
             header?: {
@@ -5971,7 +5971,7 @@ export interface operations {
             };
         };
     };
-    get_me_me_get: {
+    get_me_v1_me_get: {
         parameters: {
             query?: never;
             header?: {
@@ -6002,7 +6002,7 @@ export interface operations {
             };
         };
     };
-    get_metadata_catalog_metadata_catalog_get: {
+    get_metadata_catalog_v1_metadata_catalog_get: {
         parameters: {
             query?: never;
             header?: {
@@ -6033,7 +6033,7 @@ export interface operations {
             };
         };
     };
-    get_notifications_notifications_get: {
+    get_notifications_v1_notifications_get: {
         parameters: {
             query?: {
                 page?: number;
@@ -6067,7 +6067,7 @@ export interface operations {
             };
         };
     };
-    get_preference_notifications_preference_get: {
+    get_preference_v1_notifications_preference_get: {
         parameters: {
             query?: never;
             header?: {
@@ -6098,7 +6098,7 @@ export interface operations {
             };
         };
     };
-    patch_preference_notifications_preference_patch: {
+    patch_preference_v1_notifications_preference_patch: {
         parameters: {
             query?: never;
             header?: {
@@ -6133,7 +6133,7 @@ export interface operations {
             };
         };
     };
-    post_notifications_read_all_notifications_read_all_post: {
+    post_notifications_read_all_v1_notifications_read_all_post: {
         parameters: {
             query?: never;
             header?: {
@@ -6162,7 +6162,7 @@ export interface operations {
             };
         };
     };
-    get_unread_count_notifications_unread_count_get: {
+    get_unread_count_v1_notifications_unread_count_get: {
         parameters: {
             query?: never;
             header?: {
@@ -6193,7 +6193,7 @@ export interface operations {
             };
         };
     };
-    post_notification_read_notifications__notification_id__read_post: {
+    post_notification_read_v1_notifications__notification_id__read_post: {
         parameters: {
             query?: never;
             header?: {
@@ -6226,7 +6226,7 @@ export interface operations {
             };
         };
     };
-    get_public_config_by_item_public_configs_by_item__item_id__get: {
+    get_public_config_by_item_v1_public_configs_by_item__item_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -6257,7 +6257,7 @@ export interface operations {
             };
         };
     };
-    list_public_items_public_items_get: {
+    list_public_items_v1_public_items_get: {
         parameters: {
             query?: {
                 type?: string | null;
@@ -6291,7 +6291,7 @@ export interface operations {
             };
         };
     };
-    get_public_item_public_items__item_id__get: {
+    get_public_item_v1_public_items__item_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -6322,7 +6322,7 @@ export interface operations {
             };
         };
     };
-    public_robots_public_robots_txt_get: {
+    public_robots_v1_public_robots_txt_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -6340,7 +6340,7 @@ export interface operations {
             };
         };
     };
-    public_sitemap_public_sitemap_xml_get: {
+    public_sitemap_v1_public_sitemap_xml_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -6358,7 +6358,7 @@ export interface operations {
             };
         };
     };
-    get_public_site_public_sites__slug__get: {
+    get_public_site_v1_public_sites__slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -6389,7 +6389,7 @@ export interface operations {
             };
         };
     };
-    public_site_social_preview_public_sites__slug__social_preview_get: {
+    public_site_social_preview_v1_public_sites__slug__social_preview_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -6418,7 +6418,7 @@ export interface operations {
             };
         };
     };
-    get_report_runs_route_reports__item_id__runs_get: {
+    get_report_runs_route_v1_reports__item_id__runs_get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -6454,7 +6454,7 @@ export interface operations {
             };
         };
     };
-    get_roles_roles_get: {
+    get_roles_v1_roles_get: {
         parameters: {
             query?: never;
             header?: {
@@ -6485,7 +6485,7 @@ export interface operations {
             };
         };
     };
-    post_role_roles_post: {
+    post_role_v1_roles_post: {
         parameters: {
             query?: never;
             header?: {
@@ -6520,7 +6520,7 @@ export interface operations {
             };
         };
     };
-    get_roles_catalog_roles_catalog_get: {
+    get_roles_catalog_v1_roles_catalog_get: {
         parameters: {
             query?: never;
             header?: {
@@ -6551,7 +6551,7 @@ export interface operations {
             };
         };
     };
-    delete_role_route_roles__role_id__delete: {
+    delete_role_route_v1_roles__role_id__delete: {
         parameters: {
             query?: never;
             header?: {
@@ -6582,7 +6582,7 @@ export interface operations {
             };
         };
     };
-    patch_role_roles__role_id__patch: {
+    patch_role_v1_roles__role_id__patch: {
         parameters: {
             query?: never;
             header?: {
@@ -6619,7 +6619,7 @@ export interface operations {
             };
         };
     };
-    get_app_config_schema_schemas_app_config_get: {
+    get_app_config_schema_v1_schemas_app_config_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -6641,7 +6641,7 @@ export interface operations {
             };
         };
     };
-    list_secrets_route_secrets_get: {
+    list_secrets_route_v1_secrets_get: {
         parameters: {
             query?: never;
             header?: {
@@ -6672,7 +6672,7 @@ export interface operations {
             };
         };
     };
-    create_secret_route_secrets_post: {
+    create_secret_route_v1_secrets_post: {
         parameters: {
             query?: never;
             header?: {
@@ -6707,7 +6707,7 @@ export interface operations {
             };
         };
     };
-    delete_secret_route_secrets__secret_id__delete: {
+    delete_secret_route_v1_secrets__secret_id__delete: {
         parameters: {
             query?: never;
             header?: {
@@ -6738,7 +6738,7 @@ export interface operations {
             };
         };
     };
-    resolve_share_link_route_share_links__token__get: {
+    resolve_share_link_route_v1_share_links__token__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -6769,7 +6769,7 @@ export interface operations {
             };
         };
     };
-    landing_stac_get: {
+    landing_v1_stac_get: {
         parameters: {
             query?: never;
             header?: {
@@ -6800,7 +6800,7 @@ export interface operations {
             };
         };
     };
-    list_collections_stac_collections_get: {
+    list_collections_v1_stac_collections_get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -6834,7 +6834,7 @@ export interface operations {
             };
         };
     };
-    get_collection_stac_collections__collection_id__get: {
+    get_collection_v1_stac_collections__collection_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -6867,7 +6867,7 @@ export interface operations {
             };
         };
     };
-    list_items_stac_collections__collection_id__items_get: {
+    list_items_v1_stac_collections__collection_id__items_get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -6904,7 +6904,7 @@ export interface operations {
             };
         };
     };
-    get_item_stac_collections__collection_id__items__feature_id__get: {
+    get_item_v1_stac_collections__collection_id__items__feature_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -6938,7 +6938,7 @@ export interface operations {
             };
         };
     };
-    conformance_stac_conformance_get: {
+    conformance_v1_stac_conformance_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -6958,7 +6958,7 @@ export interface operations {
             };
         };
     };
-    search_get_stac_search_get: {
+    search_get_v1_stac_search_get: {
         parameters: {
             query?: {
                 bbox?: string | null;
@@ -6996,7 +6996,7 @@ export interface operations {
             };
         };
     };
-    search_post_stac_search_post: {
+    search_post_v1_stac_search_post: {
         parameters: {
             query?: never;
             header?: {
@@ -7031,7 +7031,7 @@ export interface operations {
             };
         };
     };
-    create_upload_job_uploads_post: {
+    create_upload_job_v1_uploads_post: {
         parameters: {
             query?: never;
             header?: {
@@ -7066,7 +7066,7 @@ export interface operations {
             };
         };
     };
-    inspect_upload_uploads_inspect_post: {
+    inspect_upload_v1_uploads_inspect_post: {
         parameters: {
             query?: never;
             header?: {
@@ -7101,7 +7101,7 @@ export interface operations {
             };
         };
     };
-    presign_upload_uploads_presign_post: {
+    presign_upload_v1_uploads_presign_post: {
         parameters: {
             query?: never;
             header?: {
@@ -7136,7 +7136,7 @@ export interface operations {
             };
         };
     };
-    get_upload_job_uploads__job_id__get: {
+    get_upload_job_v1_uploads__job_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -7169,7 +7169,7 @@ export interface operations {
             };
         };
     };
-    get_usage_summary_usage_summary_get: {
+    get_usage_summary_v1_usage_summary_get: {
         parameters: {
             query?: {
                 since?: string | null;
@@ -7204,7 +7204,7 @@ export interface operations {
             };
         };
     };
-    list_usage_tasks_usage_tasks_get: {
+    list_usage_tasks_v1_usage_tasks_get: {
         parameters: {
             query?: {
                 page?: number;
@@ -7239,7 +7239,7 @@ export interface operations {
             };
         };
     };
-    get_users_users_get: {
+    get_users_v1_users_get: {
         parameters: {
             query?: {
                 page?: number;
@@ -7276,7 +7276,7 @@ export interface operations {
             };
         };
     };
-    patch_user_users__user_id__patch: {
+    patch_user_v1_users__user_id__patch: {
         parameters: {
             query?: never;
             header?: {

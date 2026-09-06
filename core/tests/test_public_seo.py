@@ -66,19 +66,19 @@ _SITE_CONFIG = {
 
 def _create_site(client, title: str, slug: str, abstract: str = "") -> str:
     response = client.post(
-        "/configs",
+        "/v1/configs",
         json={"title": title, "config": _SITE_CONFIG, "slug": slug},
     )
     assert response.status_code == 201, response.text
     item_id = response.json()["itemId"]
     if abstract:
-        response = client.patch(f"/items/{item_id}", json={"abstract": abstract})
+        response = client.patch(f"/v1/items/{item_id}", json={"abstract": abstract})
         assert response.status_code == 200, response.text
     return item_id
 
 
 def _publish(client, item_id: str) -> None:
-    response = client.patch(f"/items/{item_id}", json={"isPublished": True})
+    response = client.patch(f"/v1/items/{item_id}", json={"isPublished": True})
     assert response.status_code == 200, response.text
 
 
@@ -88,7 +88,7 @@ def test_sitemap_contains_only_published_sites(client):
     _create_site(client, "Brouillon", "brouillon")  # jamais publié
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/sitemap.xml")
+    response = client.get("/v1/public/sitemap.xml")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/xml")
     body = response.text
@@ -98,7 +98,7 @@ def test_sitemap_contains_only_published_sites(client):
 
 def test_sitemap_excludes_non_site_kinds(client):
     response = client.post(
-        "/configs",
+        "/v1/configs",
         json={
             "title": "Appli",
             "config": {
@@ -114,13 +114,13 @@ def test_sitemap_excludes_non_site_kinds(client):
     _publish(client, response.json()["itemId"])
 
     del client.app.dependency_overrides[get_current_user]
-    sitemap = client.get("/public/sitemap.xml")
+    sitemap = client.get("/v1/public/sitemap.xml")
     assert "Appli" not in sitemap.text
 
 
 def test_robots_txt_references_sitemap(client):
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/robots.txt")
+    response = client.get("/v1/public/robots.txt")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/plain")
     assert f"Sitemap: {_PUBLIC_BASE_URL}/sitemap.xml" in response.text
@@ -134,7 +134,7 @@ def test_social_preview_returns_meta_tags(client):
     _publish(client, item_id)
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/sites/portail-public/social-preview")
+    response = client.get("/v1/public/sites/portail-public/social-preview")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     body = response.text
@@ -147,7 +147,7 @@ def test_social_preview_returns_meta_tags(client):
 
 def test_social_preview_404_on_unknown_slug(client):
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/sites/nexiste-pas/social-preview")
+    response = client.get("/v1/public/sites/nexiste-pas/social-preview")
     assert response.status_code == 404
 
 
@@ -155,7 +155,7 @@ def test_social_preview_404_on_unpublished_site(client):
     _create_site(client, "Brouillon", "brouillon")
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/sites/brouillon/social-preview")
+    response = client.get("/v1/public/sites/brouillon/social-preview")
     assert response.status_code == 404
 
 
@@ -166,7 +166,7 @@ def test_social_preview_escapes_html_in_title(client):
     _publish(client, item_id)
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/sites/malicieux/social-preview")
+    response = client.get("/v1/public/sites/malicieux/social-preview")
     assert response.status_code == 200
     assert "<script>alert(1)</script>" not in response.text
     assert "&lt;script&gt;" in response.text

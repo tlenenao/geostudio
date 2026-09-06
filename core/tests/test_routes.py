@@ -65,7 +65,7 @@ def _config_body(widget: str = "map") -> dict:
 
 
 def _create(client, widget: str = "map") -> dict:
-    response = client.post("/configs", json={"title": "My App", "config": _config_body(widget)})
+    response = client.post("/v1/configs", json={"title": "My App", "config": _config_body(widget)})
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -82,39 +82,39 @@ def test_create_config_creates_a_real_item_owned_by_the_authenticated_user(clien
 
 def test_get_config_returns_it(client):
     created = _create(client)
-    response = client.get(f"/configs/{created['id']}")
+    response = client.get(f"/v1/configs/{created['id']}")
     assert response.status_code == 200
     assert response.json()["config"]["layout"]["items"][0]["widget"] == "map"
 
 
 def test_get_missing_config_returns_404(client):
-    assert client.get("/configs/nope").status_code == 404
+    assert client.get("/v1/configs/nope").status_code == 404
 
 
 def test_put_updates_and_bumps_version(client):
     created = _create(client, widget="map")
-    response = client.put(f"/configs/{created['id']}", json=_config_body(widget="table"))
+    response = client.put(f"/v1/configs/{created['id']}", json=_config_body(widget="table"))
     assert response.status_code == 200
     assert response.json()["version"] == 2
     assert response.json()["config"]["layout"]["items"][0]["widget"] == "table"
 
 
 def test_put_missing_config_returns_404(client):
-    assert client.put("/configs/nope", json=_config_body()).status_code == 404
+    assert client.put("/v1/configs/nope", json=_config_body()).status_code == 404
 
 
 def test_revisions_listed(client):
     created = _create(client)
-    client.put(f"/configs/{created['id']}", json=_config_body(widget="table"))
-    response = client.get(f"/configs/{created['id']}/revisions")
+    client.put(f"/v1/configs/{created['id']}", json=_config_body(widget="table"))
+    response = client.get(f"/v1/configs/{created['id']}/revisions")
     assert response.status_code == 200
     assert [r["version"] for r in response.json()] == [1, 2]
 
 
 def test_rollback_restores_revision(client):
     created = _create(client, widget="map")
-    client.put(f"/configs/{created['id']}", json=_config_body(widget="table"))
-    response = client.post(f"/configs/{created['id']}/rollback", json={"version": 1})
+    client.put(f"/v1/configs/{created['id']}", json=_config_body(widget="table"))
+    response = client.post(f"/v1/configs/{created['id']}/rollback", json={"version": 1})
     assert response.status_code == 200
     assert response.json()["version"] == 3
     assert response.json()["config"]["layout"]["items"][0]["widget"] == "map"
@@ -123,7 +123,8 @@ def test_rollback_restores_revision(client):
 def test_rollback_missing_returns_404(client):
     created = _create(client)
     assert (
-        client.post(f"/configs/{created['id']}/rollback", json={"version": 99}).status_code == 404
+        client.post(f"/v1/configs/{created['id']}/rollback", json={"version": 99}).status_code
+        == 404
     )
 
 
@@ -132,56 +133,56 @@ def test_delete_config_removes_config_and_item(client):
     config_id = created["id"]
     item_id = created["itemId"]
 
-    response = client.delete(f"/configs/{config_id}")
+    response = client.delete(f"/v1/configs/{config_id}")
     assert response.status_code == 204
-    assert client.get(f"/configs/{config_id}").status_code == 404
+    assert client.get(f"/v1/configs/{config_id}").status_code == 404
     with client.session_factory() as session:
         assert session.get(Item, item_id) is None
 
 
 def test_delete_missing_config_returns_404(client):
-    assert client.delete("/configs/nope").status_code == 404
+    assert client.delete("/v1/configs/nope").status_code == 404
 
 
 def test_get_config_by_item(client):
     created = _create(client)
     item_id = created["itemId"]
-    response = client.get(f"/configs/by-item/{item_id}")
+    response = client.get(f"/v1/configs/by-item/{item_id}")
     assert response.status_code == 200
     assert response.json()["id"] == created["id"]
 
 
 def test_get_config_by_item_missing_returns_404(client):
-    assert client.get("/configs/by-item/nope").status_code == 404
+    assert client.get("/v1/configs/by-item/nope").status_code == 404
 
 
 def test_delete_by_item_removes_config_and_item(client):
     created = _create(client)
     item_id = created["itemId"]
 
-    response = client.delete(f"/configs/by-item/{item_id}")
+    response = client.delete(f"/v1/configs/by-item/{item_id}")
     assert response.status_code == 204
     with client.session_factory() as session:
         assert session.get(Item, item_id) is None
 
 
 def test_delete_by_item_missing_returns_404(client):
-    assert client.delete("/configs/by-item/nope").status_code == 404
+    assert client.delete("/v1/configs/by-item/nope").status_code == 404
 
 
 def test_delete_item_directly_removes_config_and_item(client):
     created = _create(client)
     config_id, item_id = created["id"], created["itemId"]
 
-    response = client.delete(f"/items/{item_id}")
+    response = client.delete(f"/v1/items/{item_id}")
     assert response.status_code == 204
-    assert client.get(f"/configs/{config_id}").status_code == 404
+    assert client.get(f"/v1/configs/{config_id}").status_code == 404
     with client.session_factory() as session:
         assert session.get(Item, item_id) is None
 
 
 def test_delete_item_missing_returns_404(client):
-    assert client.delete("/items/nope").status_code == 404
+    assert client.delete("/v1/items/nope").status_code == 404
 
 
 def _map_config() -> dict:
@@ -206,14 +207,14 @@ def _map_config() -> dict:
 
 def test_map_config_round_trips_through_create_and_get(client):
     response = client.post(
-        "/configs",
+        "/v1/configs",
         json={"title": "Ma carte", "config": _map_config()},
     )
     assert response.status_code == 201, response.text
     created = response.json()
     assert created["kind"] == "map"
 
-    fetched = client.get(f"/configs/{created['id']}")
+    fetched = client.get(f"/v1/configs/{created['id']}")
     assert fetched.status_code == 200
     body = fetched.json()
     assert body["config"]["kind"] == "map"
@@ -221,19 +222,19 @@ def test_map_config_round_trips_through_create_and_get(client):
 
     # by-item GET (used by the front's getMapConfig) also returns the map
     item_id = created["itemId"]
-    by_item = client.get(f"/configs/by-item/{item_id}")
+    by_item = client.get(f"/v1/configs/by-item/{item_id}")
     assert by_item.status_code == 200
     assert by_item.json()["config"]["map"]["view"]["zoom"] == 5
 
 
 def test_map_config_can_be_updated(client):
     created = client.post(
-        "/configs",
+        "/v1/configs",
         json={"title": "Ma carte", "config": _map_config()},
     ).json()
     updated = _map_config()
     updated["map"]["view"]["zoom"] = 9
-    response = client.put(f"/configs/{created['id']}", json=updated)
+    response = client.put(f"/v1/configs/{created['id']}", json=updated)
     assert response.status_code == 200
     assert response.json()["config"]["map"]["view"]["zoom"] == 9
 
@@ -241,7 +242,7 @@ def test_map_config_can_be_updated(client):
 def test_put_config_by_item_updates_map(client):
     # Create a map item via the normal flow.
     create = client.post(
-        "/configs",
+        "/v1/configs",
         json={
             "title": "Ma carte",
             "config": {
@@ -259,7 +260,7 @@ def test_put_config_by_item_updates_map(client):
 
     # Update it by item id.
     put = client.put(
-        f"/configs/by-item/{item_id}",
+        f"/v1/configs/by-item/{item_id}",
         json={
             "kind": "map",
             "map": {
@@ -284,13 +285,13 @@ def test_put_config_by_item_updates_map(client):
     assert len(body["config"]["map"]["layers"]) == 1
 
     # Confirm persistence via GET by-item.
-    got = client.get(f"/configs/by-item/{item_id}")
+    got = client.get(f"/v1/configs/by-item/{item_id}")
     assert got.json()["config"]["map"]["layers"][0]["id"] == "a"
 
 
 def test_put_config_by_item_404_when_missing(client):
     resp = client.put(
-        "/configs/by-item/does-not-exist",
+        "/v1/configs/by-item/does-not-exist",
         json={
             "kind": "map",
             "map": {"basemap": {"style": "s"}, "view": {"center": [0, 0], "zoom": 1}, "layers": []},
@@ -301,7 +302,7 @@ def test_put_config_by_item_404_when_missing(client):
 
 def test_map_config_round_trips_tiles3d_layer_terrain_and_camera(client):
     created = client.post(
-        "/configs",
+        "/v1/configs",
         json={
             "title": "Carte 3D",
             "config": {
@@ -330,7 +331,7 @@ def test_map_config_round_trips_tiles3d_layer_terrain_and_camera(client):
     assert created.status_code == 201, created.text
     item_id = created.json()["itemId"]
 
-    by_item = client.get(f"/configs/by-item/{item_id}")
+    by_item = client.get(f"/v1/configs/by-item/{item_id}")
     assert by_item.status_code == 200
     body = by_item.json()["config"]["map"]
     assert body["view"]["pitch"] == 45
@@ -364,7 +365,7 @@ def test_map_config_round_trips_tiles3d_layer_terrain_and_camera(client):
 
 def test_map_config_defaults_pitch_bearing_terrain_when_absent(client):
     created = client.post(
-        "/configs",
+        "/v1/configs",
         json={
             "title": "Carte plate",
             "config": {
@@ -379,7 +380,7 @@ def test_map_config_defaults_pitch_bearing_terrain_when_absent(client):
     )
     assert created.status_code == 201, created.text
     item_id = created.json()["itemId"]
-    body = client.get(f"/configs/by-item/{item_id}").json()["config"]["map"]
+    body = client.get(f"/v1/configs/by-item/{item_id}").json()["config"]["map"]
     assert body["view"]["pitch"] is None
     assert body["view"]["bearing"] is None
     assert body["terrain"] is None
@@ -397,7 +398,7 @@ def test_create_config_is_atomic_when_a_later_step_fails(client, monkeypatch):
     monkeypatch.setattr(routes.repo, "create_config", boom)
 
     with pytest.raises(RuntimeError, match="simulated failure after create_item"):
-        client.post("/configs", json={"title": "My App", "config": _config_body()})
+        client.post("/v1/configs", json={"title": "My App", "config": _config_body()})
 
     # A fresh session must see zero Item rows: create_item's write was rolled
     # back with the rest of the failed request, not left behind as an orphan.
@@ -446,7 +447,7 @@ def test_create_config_without_authorization_header_is_rejected(client_with_real
     # `authorization.startswith("Bearer ")` before even looking at mock mode,
     # so this must 401 regardless of CORE_AUTH_MODE.
     response = client_with_real_auth.post(
-        "/configs",
+        "/v1/configs",
         json={"title": "My App", "config": _config_body()},
     )
     assert response.status_code == 401
@@ -495,7 +496,7 @@ def test_get_config_invisible_to_stranger_returns_404(client):
     stranger = _same_tenant_stranger(client)
     client.app.dependency_overrides[get_current_user] = lambda: stranger
     try:
-        response = client.get(f"/configs/{created['id']}")
+        response = client.get(f"/v1/configs/{created['id']}")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
     assert response.status_code == 404
@@ -506,7 +507,7 @@ def test_put_config_by_stranger_returns_404(client):
     stranger = _same_tenant_stranger(client)
     client.app.dependency_overrides[get_current_user] = lambda: stranger
     try:
-        response = client.put(f"/configs/{created['id']}", json=_config_body())
+        response = client.put(f"/v1/configs/{created['id']}", json=_config_body())
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
     assert response.status_code == 404
@@ -517,7 +518,7 @@ def test_revisions_by_stranger_returns_404(client):
     stranger = _same_tenant_stranger(client)
     client.app.dependency_overrides[get_current_user] = lambda: stranger
     try:
-        response = client.get(f"/configs/{created['id']}/revisions")
+        response = client.get(f"/v1/configs/{created['id']}/revisions")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
     assert response.status_code == 404
@@ -528,7 +529,7 @@ def test_rollback_by_stranger_returns_404(client):
     stranger = _same_tenant_stranger(client)
     client.app.dependency_overrides[get_current_user] = lambda: stranger
     try:
-        response = client.post(f"/configs/{created['id']}/rollback", json={"version": 1})
+        response = client.post(f"/v1/configs/{created['id']}/rollback", json={"version": 1})
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
     assert response.status_code == 404
@@ -539,7 +540,7 @@ def test_delete_config_by_stranger_returns_404(client):
     stranger = _same_tenant_stranger(client)
     client.app.dependency_overrides[get_current_user] = lambda: stranger
     try:
-        response = client.delete(f"/configs/{created['id']}")
+        response = client.delete(f"/v1/configs/{created['id']}")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
     assert response.status_code == 404
@@ -552,7 +553,7 @@ def test_get_config_by_item_invisible_to_stranger_returns_404(client):
     stranger = _same_tenant_stranger(client)
     client.app.dependency_overrides[get_current_user] = lambda: stranger
     try:
-        response = client.get(f"/configs/by-item/{created['itemId']}")
+        response = client.get(f"/v1/configs/by-item/{created['itemId']}")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
     assert response.status_code == 404
@@ -590,7 +591,7 @@ def test_group_editor_can_update_config(client):
 
     client.app.dependency_overrides[get_current_user] = lambda: editor
     try:
-        response = client.put(f"/configs/{created['id']}", json=_config_body(widget="table"))
+        response = client.put(f"/v1/configs/{created['id']}", json=_config_body(widget="table"))
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
     assert response.status_code == 200
@@ -628,7 +629,7 @@ def test_group_viewer_cannot_update_config_returns_403(client):
 
     client.app.dependency_overrides[get_current_user] = lambda: viewer
     try:
-        response = client.put(f"/configs/{created['id']}", json=_config_body(widget="table"))
+        response = client.put(f"/v1/configs/{created['id']}", json=_config_body(widget="table"))
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
     assert response.status_code == 403
@@ -641,7 +642,7 @@ def test_delete_config_cross_tenant_returns_404_and_leaves_data_intact(client):
 
     client.app.dependency_overrides[get_current_user] = lambda: mallory
     try:
-        response = client.delete(f"/configs/{config_id}")
+        response = client.delete(f"/v1/configs/{config_id}")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
 
@@ -649,7 +650,7 @@ def test_delete_config_cross_tenant_returns_404_and_leaves_data_intact(client):
     with client.session_factory() as session:
         assert session.get(Item, item_id) is not None
         assert session.get(Config, config_id) is not None
-    assert client.get(f"/configs/{config_id}").status_code == 200
+    assert client.get(f"/v1/configs/{config_id}").status_code == 200
 
 
 def test_delete_config_by_item_cross_tenant_returns_404_and_leaves_data_intact(client):
@@ -659,7 +660,7 @@ def test_delete_config_by_item_cross_tenant_returns_404_and_leaves_data_intact(c
 
     client.app.dependency_overrides[get_current_user] = lambda: mallory
     try:
-        response = client.delete(f"/configs/by-item/{item_id}")
+        response = client.delete(f"/v1/configs/by-item/{item_id}")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
 
@@ -667,7 +668,7 @@ def test_delete_config_by_item_cross_tenant_returns_404_and_leaves_data_intact(c
     with client.session_factory() as session:
         assert session.get(Item, item_id) is not None
         assert session.get(Config, config_id) is not None
-    assert client.get(f"/configs/by-item/{item_id}").status_code == 200
+    assert client.get(f"/v1/configs/by-item/{item_id}").status_code == 200
 
 
 def test_delete_item_cross_tenant_returns_404_and_leaves_data_intact(client):
@@ -677,7 +678,7 @@ def test_delete_item_cross_tenant_returns_404_and_leaves_data_intact(client):
 
     client.app.dependency_overrides[get_current_user] = lambda: mallory
     try:
-        response = client.delete(f"/items/{item_id}")
+        response = client.delete(f"/v1/items/{item_id}")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
 
@@ -685,7 +686,7 @@ def test_delete_item_cross_tenant_returns_404_and_leaves_data_intact(client):
     with client.session_factory() as session:
         assert session.get(Item, item_id) is not None
         assert session.get(Config, config_id) is not None
-    assert client.get(f"/configs/{config_id}").status_code == 200
+    assert client.get(f"/v1/configs/{config_id}").status_code == 200
 
 
 def test_create_config_with_bearer_token_succeeds_in_mock_mode(client_with_real_auth):
@@ -693,7 +694,7 @@ def test_create_config_with_bearer_token_succeeds_in_mock_mode(client_with_real_
     # and prefixed with "Bearer ". This proves get_current_user really runs
     # (and succeeds) through the full HTTP stack, not just when overridden.
     response = client_with_real_auth.post(
-        "/configs",
+        "/v1/configs",
         json={"title": "My App", "config": _config_body()},
         headers={"Authorization": "Bearer anything"},
     )
@@ -706,9 +707,9 @@ def test_get_config_by_item_with_mode_runtime_increments_counter(client, monkeyp
     mock_counter = Mock()
     monkeypatch.setattr(routes, "_apps_runtime_executions_counter", mock_counter)
 
-    client.get(f"/configs/by-item/{item_id}")
+    client.get(f"/v1/configs/by-item/{item_id}")
     mock_counter.add.assert_not_called()
 
-    response = client.get(f"/configs/by-item/{item_id}", params={"mode": "runtime"})
+    response = client.get(f"/v1/configs/by-item/{item_id}", params={"mode": "runtime"})
     assert response.status_code == 200
     mock_counter.add.assert_called_once_with(1)

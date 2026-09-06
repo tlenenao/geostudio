@@ -208,7 +208,13 @@ def run_import(
     else:
         center, zoom = (2.4, 46.6), 5.0
 
-    core_base_url = os.environ.get("CORE_BASE_URL", "http://localhost:8200")
+    # /v1 explicite : cette URL est écrite telle quelle dans MapLayer.url et
+    # fetchée directement par le navigateur (shell/src/map/MapView.tsx,
+    # data: layer.url) — jamais recomposée depuis coreUrl côté shell.
+    # isHostedCoreUrl() (même fichier) compare cette URL au coreUrl versionné
+    # du shell pour décider d'attacher le jeton d'auth (piège SP-24 C1) ;
+    # sans /v1 ici, une collection non publique redeviendrait illisible.
+    core_base_url = os.environ.get("CORE_BASE_URL", "http://localhost:8200") + "/v1"
     item = items_repo.create_item(
         session,
         tenant_id=tenant_id,

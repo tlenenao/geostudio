@@ -39,7 +39,7 @@ function Harness() {
 
 function mockMe(privileges: string[]) {
   server.use(
-    http.get("https://core.test/me", () =>
+    http.get("https://core.test/v1/me", () =>
       HttpResponse.json({
         id: "u1",
         username: "me",
@@ -57,7 +57,7 @@ function mockMe(privileges: string[]) {
 test("un profil tasks.view (sans tasks.view_all) voit sa liste mais pas la section usage", async () => {
   mockMe(["tasks.view"]);
   server.use(
-    http.get("https://core.test/usage/tasks", () =>
+    http.get("https://core.test/v1/usage/tasks", () =>
       HttpResponse.json({
         tasks: [
           {
@@ -84,10 +84,10 @@ test("un profil tasks.view (sans tasks.view_all) voit sa liste mais pas la secti
 test("un profil tasks.view_all voit les deux sections", async () => {
   mockMe(["tasks.view", "tasks.view_all"]);
   server.use(
-    http.get("https://core.test/usage/tasks", () =>
+    http.get("https://core.test/v1/usage/tasks", () =>
       HttpResponse.json({ tasks: [], total: 0, page: 1, pageSize: 50 }),
     ),
-    http.get("https://core.test/usage/summary", () =>
+    http.get("https://core.test/v1/usage/summary", () =>
       HttpResponse.json({
         byActor: [{ actorId: "u1", actorUsername: "alice", count: 3 }],
         byResource: [{ objectType: "collection", objectId: "c1", count: 2 }],
@@ -106,7 +106,7 @@ test("un profil tasks.view_all voit les deux sections", async () => {
 test("état vide : aucune tâche récente affiche un message, pas une table vide", async () => {
   mockMe(["tasks.view"]);
   server.use(
-    http.get("https://core.test/usage/tasks", () =>
+    http.get("https://core.test/v1/usage/tasks", () =>
       HttpResponse.json({ tasks: [], total: 0, page: 1, pageSize: 50 }),
     ),
   );
@@ -118,7 +118,7 @@ test("état vide : aucune tâche récente affiche un message, pas une table vide
 test("le libellé français de l'action est affiché, pas la clé technique brute", async () => {
   mockMe(["tasks.view"]);
   server.use(
-    http.get("https://core.test/usage/tasks", () =>
+    http.get("https://core.test/v1/usage/tasks", () =>
       HttpResponse.json({
         tasks: [
           {

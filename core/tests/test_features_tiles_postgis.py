@@ -17,7 +17,7 @@ from app.users.repository import get_or_create_user
 
 pytestmark = pytest.mark.postgis
 
-TILE_PATH = "/collections/demo_incidents/tiles/0/0/0.mvt"
+TILE_PATH = "/v1/collections/demo_incidents/tiles/0/0/0.mvt"
 
 
 @pytest.fixture()
@@ -55,7 +55,7 @@ def pg_app(pg_engine):
     app.dependency_overrides[get_current_user] = lambda: admin
     app.dependency_overrides[get_current_user_optional] = lambda: admin
     client = TestClient(app)
-    client.post("/collections", json={"tableName": "demo_incidents"})
+    client.post("/v1/collections", json={"tableName": "demo_incidents"})
     yield client, app, Session
     with pg_engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS demo_incidents"))
@@ -66,7 +66,7 @@ def pg_app(pg_engine):
 
 def _insert(client, titre: str, lon: float = 2.35, lat: float = 48.85):
     r = client.post(
-        "/collections/demo_incidents/items",
+        "/v1/collections/demo_incidents/items",
         json={
             "type": "Feature",
             "properties": {"titre": titre},
@@ -100,7 +100,7 @@ def test_a_tile_carries_the_properties_but_never_tenant_id(pg_app):
 def test_a_public_collection_is_readable_anonymously(pg_app):
     client, app, _ = pg_app
     _insert(client, "Publique")
-    client.patch("/collections/demo_incidents", json={"isPublic": True})
+    client.patch("/v1/collections/demo_incidents", json={"isPublic": True})
     app.dependency_overrides[get_current_user_optional] = lambda: None
     r = client.get(TILE_PATH)
     assert r.status_code == 200

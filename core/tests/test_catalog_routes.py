@@ -41,7 +41,7 @@ def client():
 
 
 def test_metadata_catalog_lists_all_three_families(client):
-    res = client.get("/metadata-catalog")
+    res = client.get("/v1/metadata-catalog")
     assert res.status_code == 200
     body = res.json()
     license_ids = {e["id"] for e in body["licenses"]}
@@ -67,7 +67,7 @@ def test_metadata_catalog_lists_all_three_families(client):
 
 
 def test_metadata_catalog_license_carries_dcat_and_spdx_ids(client):
-    res = client.get("/metadata-catalog")
+    res = client.get("/v1/metadata-catalog")
     etalab = next(e for e in res.json()["licenses"] if e["id"] == "etalab-2.0")
     assert etalab["dcatUri"] == "https://spdx.org/licenses/etalab-2.0.html"
     assert etalab["spdxId"] == "etalab-2.0"
@@ -85,6 +85,6 @@ def test_metadata_catalog_requires_authentication():
 
     app.dependency_overrides[db.get_session] = override_session
     test_client = TestClient(app)
-    res = test_client.get("/metadata-catalog")
+    res = test_client.get("/v1/metadata-catalog")
     assert res.status_code == 401
     engine.dispose()

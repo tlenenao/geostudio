@@ -20,7 +20,7 @@ def test_schema_http_endpoint_returns_builder_config_json_schema(monkeypatch):
     app.dependency_overrides[db.get_session] = override_session
     client = TestClient(app)
 
-    response = client.get("/schemas/app-config")
+    response = client.get("/v1/schemas/app-config")
 
     assert response.status_code == 200
     body = response.json()

@@ -95,7 +95,7 @@ def client():
 
 def _create_dataset(client, arcgis_item_id: str) -> str:
     res = client.post(
-        "/configs",
+        "/v1/configs",
         json={
             "title": "Bâtiments (live)",
             "config": {
@@ -128,7 +128,7 @@ def test_get_items_proxies_to_arcgis_and_reshapes_response(client):
     client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(
         handler
     )
-    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/items")
+    resp = client.get(f"/v1/datasets/{dataset_item_id}/arcgis/items")
     assert resp.status_code == 200
     body = resp.json()
     assert body["type"] == "FeatureCollection"
@@ -151,7 +151,7 @@ def test_get_items_forwards_filters_and_bbox(client):
         handler
     )
     resp = client.get(
-        f"/datasets/{dataset_item_id}/arcgis/items",
+        f"/v1/datasets/{dataset_item_id}/arcgis/items",
         params={"statut": "actif", "bbox": "1,2,3,4", "limit": "5", "offset": "0"},
     )
     assert resp.status_code == 200
@@ -161,7 +161,7 @@ def test_get_items_forwards_filters_and_bbox(client):
 
 
 def test_get_items_unknown_dataset_item_404s(client):
-    resp = client.get("/datasets/no-such-item/arcgis/items")
+    resp = client.get("/v1/datasets/no-such-item/arcgis/items")
     assert resp.status_code == 404
 
 
@@ -181,7 +181,7 @@ def test_get_items_egress_blocked_returns_502(client):
         return _RaisingClient()
 
     client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = raising_client
-    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/items")
+    resp = client.get(f"/v1/datasets/{dataset_item_id}/arcgis/items")
     assert resp.status_code == 502
 
 
@@ -195,7 +195,7 @@ def test_post_aggregate_no_groupby_count(client):
     client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(
         handler
     )
-    resp = client.post(f"/datasets/{dataset_item_id}/arcgis/aggregate", json={"agg": "count"})
+    resp = client.post(f"/v1/datasets/{dataset_item_id}/arcgis/aggregate", json={"agg": "count"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["categoryKey"] == "group"
@@ -220,7 +220,7 @@ def test_post_aggregate_groupby_and_measure(client):
         handler
     )
     resp = client.post(
-        f"/datasets/{dataset_item_id}/arcgis/aggregate",
+        f"/v1/datasets/{dataset_item_id}/arcgis/aggregate",
         json={
             "groupBy": "commune",
             "agg": "count",
@@ -235,7 +235,7 @@ def test_post_aggregate_groupby_and_measure(client):
 def test_get_items_invalid_filter_field_name_rejected(client):
     dataset_item_id = _create_dataset(client, client.layer_item_id)
     resp = client.get(
-        f"/datasets/{dataset_item_id}/arcgis/items",
+        f"/v1/datasets/{dataset_item_id}/arcgis/items",
         params={"1) OR (1=1--": "x"},
     )
     assert resp.status_code == 400
@@ -244,7 +244,7 @@ def test_get_items_invalid_filter_field_name_rejected(client):
 def test_post_aggregate_invalid_filter_field_name_rejected(client):
     dataset_item_id = _create_dataset(client, client.layer_item_id)
     resp = client.post(
-        f"/datasets/{dataset_item_id}/arcgis/aggregate",
+        f"/v1/datasets/{dataset_item_id}/arcgis/aggregate",
         json={
             "agg": "count",
             "filters": {"1) OR (1=1--": "x"},
@@ -256,7 +256,7 @@ def test_post_aggregate_invalid_filter_field_name_rejected(client):
 def test_post_aggregate_invalid_groupby_field_name_rejected(client):
     dataset_item_id = _create_dataset(client, client.layer_item_id)
     resp = client.post(
-        f"/datasets/{dataset_item_id}/arcgis/aggregate",
+        f"/v1/datasets/{dataset_item_id}/arcgis/aggregate",
         json={
             "agg": "count",
             "groupBy": "1) OR (1=1--",
@@ -268,7 +268,7 @@ def test_post_aggregate_invalid_groupby_field_name_rejected(client):
 def test_post_aggregate_bucket_rejected(client):
     dataset_item_id = _create_dataset(client, client.layer_item_id)
     resp = client.post(
-        f"/datasets/{dataset_item_id}/arcgis/aggregate",
+        f"/v1/datasets/{dataset_item_id}/arcgis/aggregate",
         json={
             "groupBy": "annee",
             "bucket": "month",
@@ -280,7 +280,7 @@ def test_post_aggregate_bucket_rejected(client):
 def test_post_aggregate_split_rejected(client):
     dataset_item_id = _create_dataset(client, client.layer_item_id)
     resp = client.post(
-        f"/datasets/{dataset_item_id}/arcgis/aggregate",
+        f"/v1/datasets/{dataset_item_id}/arcgis/aggregate",
         json={
             "groupBy": "annee",
             "split": "commune",
@@ -292,7 +292,7 @@ def test_post_aggregate_split_rejected(client):
 def test_post_aggregate_bins_rejected(client):
     dataset_item_id = _create_dataset(client, client.layer_item_id)
     resp = client.post(
-        f"/datasets/{dataset_item_id}/arcgis/aggregate",
+        f"/v1/datasets/{dataset_item_id}/arcgis/aggregate",
         json={
             "field": "population",
             "bins": 10,
@@ -323,7 +323,7 @@ def test_get_items_on_collection_dataset_404s(client):
         s.commit()
 
     res = client.post(
-        "/configs",
+        "/v1/configs",
         json={
             "title": "Dataset collection",
             "config": {
@@ -335,5 +335,5 @@ def test_get_items_on_collection_dataset_404s(client):
     )
     assert res.status_code == 201, res.text
     item_id = res.json()["itemId"]
-    resp = client.get(f"/datasets/{item_id}/arcgis/items")
+    resp = client.get(f"/v1/datasets/{item_id}/arcgis/items")
     assert resp.status_code == 404

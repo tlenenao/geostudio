@@ -100,7 +100,7 @@ def _body() -> dict:
 def test_post_configs_with_kind_terrain3d_is_rejected(monkeypatch, tmp_path):
     client = _client(monkeypatch, tmp_path)
 
-    resp = client.post("/configs", json=_body())
+    resp = client.post("/v1/configs", json=_body())
 
     assert resp.status_code == 422
     assert resp.json()["detail"] == "terrain3d configs can only be created by the conversion task"

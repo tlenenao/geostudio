@@ -88,27 +88,27 @@ def _dataset_body(collection_id: str, title: str = "Parcs partagés") -> dict:
 
 
 def test_create_dataset_avec_collection_existante(client):
-    res = client.post("/configs", json=_dataset_body("parcs"))
+    res = client.post("/v1/configs", json=_dataset_body("parcs"))
     assert res.status_code == 201, res.text
     item_id = res.json()["itemId"]
-    item = client.get(f"/items/{item_id}").json()
+    item = client.get(f"/v1/items/{item_id}").json()
     assert item["resourceType"] == "dataset"
 
 
 def test_create_dataset_collection_inexistante_rejete(client):
-    res = client.post("/configs", json=_dataset_body("inexistante"))
+    res = client.post("/v1/configs", json=_dataset_body("inexistante"))
     assert res.status_code == 422
 
 
 def test_update_dataset_collection_inexistante_rejete(client):
-    created = client.post("/configs", json=_dataset_body("parcs"))
+    created = client.post("/v1/configs", json=_dataset_body("parcs"))
     item_id = created.json()["itemId"]
     bad_config = {
         "version": 1,
         "kind": "dataset",
         "dataset": {"source": "collection", "collectionId": "inexistante", "columns": {}},
     }
-    res = client.put(f"/configs/by-item/{item_id}", json=bad_config)
+    res = client.put(f"/v1/configs/by-item/{item_id}", json=bad_config)
     assert res.status_code == 422
 
 
@@ -116,6 +116,6 @@ def test_create_dataset_collection_non_lisible_rejete_avec_meme_message(client):
     # "prives" existe (owner = bob) mais alice (l'appelante) n'y a aucun accès :
     # ni owner, ni publique, ni rôle de groupe. Le message doit être identique
     # à celui de la collection inexistante, pour ne pas révéler son existence.
-    res = client.post("/configs", json=_dataset_body("prives"))
+    res = client.post("/v1/configs", json=_dataset_body("prives"))
     assert res.status_code == 422
     assert res.json()["detail"] == "collection not found"

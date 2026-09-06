@@ -58,7 +58,7 @@ const OPEN_TIMEOUT = 45000;
 test(
   "ouvre le menu et affiche le nom, le badge Lecteur, puis se déconnecte",
   async () => {
-    server.use(http.get("https://core.test/me", () => meResponse()));
+    server.use(http.get("https://core.test/v1/me", () => meResponse()));
     renderMenu();
     await userEvent.click(screen.getByRole("button", { name: "Compte" }));
     expect(await screen.findByText("alice")).toBeInTheDocument();
@@ -73,7 +73,7 @@ test(
   "affiche Créateur pour un compte avec le rôle créateur",
   async () => {
     server.use(
-      http.get("https://core.test/me", () =>
+      http.get("https://core.test/v1/me", () =>
         meResponse({ role: { id: "role-creator", name: "Créateur", slug: "creator" } }),
       ),
     );
@@ -88,7 +88,7 @@ test(
   "affiche Administrateur pour un compte avec le rôle admin",
   async () => {
     server.use(
-      http.get("https://core.test/me", () =>
+      http.get("https://core.test/v1/me", () =>
         meResponse({ role: { id: "role-admin", name: "Administrateur", slug: "admin" } }),
       ),
     );
@@ -103,7 +103,7 @@ test(
   "affiche Analyste pour un compte avec le rôle analyste",
   async () => {
     server.use(
-      http.get("https://core.test/me", () =>
+      http.get("https://core.test/v1/me", () =>
         meResponse({ role: { id: "role-analyst", name: "Analyste", slug: "analyst" } }),
       ),
     );
@@ -118,7 +118,7 @@ test(
   "affiche le nom du rôle brut pour un rôle personnalisé sans clé i18n dédiée",
   async () => {
     server.use(
-      http.get("https://core.test/me", () =>
+      http.get("https://core.test/v1/me", () =>
         meResponse({ role: { id: "role-custom", name: "Cartographe", slug: "cartographe" } }),
       ),
     );

@@ -97,13 +97,13 @@ def env():
     app.dependency_overrides[get_current_user_optional] = lambda: admin
     client = TestClient(app)
     for tn in ("roads", "rivers"):
-        client.post("/collections", json={"tableName": tn})
+        client.post("/v1/collections", json={"tableName": tn})
     return app, client
 
 
 def test_search_cross_collection(env):
     app, client = env
-    body = client.get("/stac/search?limit=100").json()
+    body = client.get("/v1/stac/search?limit=100").json()
     cols = {f["collection"] for f in body["features"]}
     assert cols == {"roads", "rivers"}
     assert len(body["features"]) == 4  # 2 + 2
@@ -111,13 +111,13 @@ def test_search_cross_collection(env):
 
 def test_search_collections_filter(env):
     app, client = env
-    body = client.get("/stac/search?collections=rivers").json()
+    body = client.get("/v1/stac/search?collections=rivers").json()
     assert {f["collection"] for f in body["features"]} == {"rivers"}
 
 
 def test_search_pagination_token(env):
     app, client = env
-    page1 = client.get("/stac/search?limit=1").json()
+    page1 = client.get("/v1/stac/search?limit=1").json()
     assert len(page1["features"]) == 1
     nxt = next(link["href"] for link in page1["links"] if link["rel"] == "next")
     page2 = client.get(nxt.replace("http://testserver", "")).json()
@@ -131,13 +131,13 @@ def test_search_pagination_token(env):
 
 def test_search_post_body(env):
     app, client = env
-    body = client.post("/stac/search", json={"collections": ["roads"], "limit": 100}).json()
+    body = client.post("/v1/stac/search", json={"collections": ["roads"], "limit": 100}).json()
     assert {f["collection"] for f in body["features"]} == {"roads"}
 
 
 def test_search_filter_preserved_across_pagination(env):
     app, client = env
-    page1 = client.get("/stac/search?collections=rivers&limit=1").json()
+    page1 = client.get("/v1/stac/search?collections=rivers&limit=1").json()
     assert len(page1["features"]) == 1
     assert page1["features"][0]["collection"] == "rivers"
     nxt = next(link["href"] for link in page1["links"] if link["rel"] == "next")
@@ -149,17 +149,17 @@ def test_search_filter_preserved_across_pagination(env):
 
 def test_search_post_rejects_zero_limit(env):
     app, client = env
-    resp = client.post("/stac/search", json={"limit": 0})
+    resp = client.post("/v1/stac/search", json={"limit": 0})
     assert resp.status_code == 422
 
 
 def test_search_post_rejects_malformed_bbox(env):
     app, client = env
-    resp = client.post("/stac/search", json={"bbox": [1, 2, 3]})
+    resp = client.post("/v1/stac/search", json={"bbox": [1, 2, 3]})
     assert resp.status_code == 400
 
 
 def test_search_post_accepts_valid_bbox(env):
     app, client = env
-    resp = client.post("/stac/search", json={"bbox": [0, 40, 2, 46], "collections": ["roads"]})
+    resp = client.post("/v1/stac/search", json={"bbox": [0, 40, 2, 46], "collections": ["roads"]})
     assert resp.status_code == 200

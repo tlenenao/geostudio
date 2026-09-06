@@ -122,7 +122,7 @@ def env(monkeypatch):
 
 def test_valid_pipeline_with_existing_collections_saves(env):
     response = env.post(
-        "/configs",
+        "/v1/configs",
         json=_pipeline_body(
             reader_collection="readable",
             writer_collection="writable",
@@ -133,7 +133,7 @@ def test_valid_pipeline_with_existing_collections_saves(env):
 
 def test_reader_collection_missing_is_rejected(env):
     response = env.post(
-        "/configs",
+        "/v1/configs",
         json=_pipeline_body(
             reader_collection="does-not-exist",
             writer_collection="writable",
@@ -145,7 +145,7 @@ def test_reader_collection_missing_is_rejected(env):
 
 def test_writer_collection_not_editable_is_rejected(env):
     response = env.post(
-        "/configs",
+        "/v1/configs",
         json=_pipeline_body(
             reader_collection="readable",
             writer_collection="locked",
@@ -157,14 +157,14 @@ def test_writer_collection_not_editable_is_rejected(env):
 def test_missing_required_param_is_rejected(env):
     body = _pipeline_body(reader_collection="readable", writer_collection="writable")
     body["config"]["pipeline"]["nodes"][0]["params"] = {}
-    response = env.post("/configs", json=body)
+    response = env.post("/v1/configs", json=body)
     assert response.status_code == 422
 
 
 def test_unknown_op_is_rejected(env):
     body = _pipeline_body(reader_collection="readable", writer_collection="writable")
     body["config"]["pipeline"]["nodes"][0]["op"] = "reader.does-not-exist"
-    response = env.post("/configs", json=body)
+    response = env.post("/v1/configs", json=body)
     assert response.status_code == 422
     assert "unknown op" in response.json()["detail"]
 
@@ -202,7 +202,7 @@ def _pipeline_body_op(op: str, params: dict) -> dict:
 
 def test_transform_intersection_with_collection_missing_is_rejected(env):
     response = env.post(
-        "/configs",
+        "/v1/configs",
         json=_pipeline_body_op(
             "transform.intersection",
             {"withCollectionId": "does-not-exist"},
@@ -214,7 +214,7 @@ def test_transform_intersection_with_collection_missing_is_rejected(env):
 
 def test_transform_count_within_with_collection_readable_saves(env):
     response = env.post(
-        "/configs",
+        "/v1/configs",
         json=_pipeline_body_op(
             "transform.countWithin",
             {"withCollectionId": "readable"},
@@ -248,7 +248,7 @@ def test_writer_dataset_collection_not_editable_is_rejected(env):
             },
         },
     }
-    response = env.post("/configs", json=body)
+    response = env.post("/v1/configs", json=body)
     assert response.status_code == 422
 
 
@@ -277,7 +277,7 @@ def test_writer_dataset_collection_writable_saves(env):
             },
         },
     }
-    response = env.post("/configs", json=body)
+    response = env.post("/v1/configs", json=body)
     assert response.status_code == 201
 
 
@@ -317,7 +317,7 @@ def _pipeline_body_binary_op(
 
 
 def test_transform_merge_with_neither_collection_id_nor_secondary_edge_is_rejected(env):
-    response = env.post("/configs", json=_pipeline_body_binary_op("transform.merge", {}))
+    response = env.post("/v1/configs", json=_pipeline_body_binary_op("transform.merge", {}))
     assert response.status_code == 422
     assert "requires either" in response.json()["detail"]
 
@@ -336,7 +336,7 @@ def test_transform_merge_with_both_collection_id_and_secondary_edge_is_rejected(
         ],
         edges_extra=[{"id": "e3", "from": "r2", "to": "t1", "role": "secondary"}],
     )
-    response = env.post("/configs", json=body)
+    response = env.post("/v1/configs", json=body)
     assert response.status_code == 422
     assert "cannot have both" in response.json()["detail"]
 
@@ -355,7 +355,7 @@ def test_transform_merge_via_secondary_edge_saves(env):
         ],
         edges_extra=[{"id": "e3", "from": "r2", "to": "t1", "role": "secondary"}],
     )
-    response = env.post("/configs", json=body)
+    response = env.post("/v1/configs", json=body)
     assert response.status_code == 201
 
 
@@ -373,7 +373,7 @@ def test_non_binary_op_with_secondary_edge_is_rejected(env):
         ],
         edges_extra=[{"id": "e3", "from": "r2", "to": "t1", "role": "secondary"}],
     )
-    response = env.post("/configs", json=body)
+    response = env.post("/v1/configs", json=body)
     assert response.status_code == 422
     assert "does not accept a secondary input edge" in response.json()["detail"]
 
@@ -392,7 +392,7 @@ def test_transform_join_with_only_secondary_edge_and_no_collection_id_saves(env)
         ],
         edges_extra=[{"id": "e3", "from": "r2", "to": "t1", "role": "secondary"}],
     )
-    response = env.post("/configs", json=body)
+    response = env.post("/v1/configs", json=body)
     assert response.status_code == 201
 
 
@@ -415,6 +415,6 @@ def test_transform_join_with_only_secondary_edge_and_no_primary_edge_is_rejected
         edges_extra=[{"id": "e3", "from": "r2", "to": "t1", "role": "secondary"}],
         include_primary_edge=False,
     )
-    response = env.post("/configs", json=body)
+    response = env.post("/v1/configs", json=body)
     assert response.status_code == 422
     assert "requires a primary input edge" in response.json()["detail"]

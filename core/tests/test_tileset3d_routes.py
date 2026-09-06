@@ -135,7 +135,7 @@ def test_create_upload_refuses_a_reader_with_no_privilege(env):
     # ici, exactement le trou fermé sur POST /configs par eafb02cc.
     client, *_ = env
     _demote_alice_to_reader(env)
-    r = client.post("/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"})
+    r = client.post("/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"})
     assert r.status_code == 403, r.text
 
 
@@ -148,11 +148,11 @@ def test_complete_upload_refuses_a_reader_with_no_privilege(env):
     # la création ci-dessus.
     client, *_ = env
     job_id = client.post(
-        "/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
+        "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
     ).json()["jobId"]
     _demote_alice_to_reader(env)
     r = client.post(
-        f"/tileset3d/uploads/{job_id}/complete",
+        f"/v1/tileset3d/uploads/{job_id}/complete",
         json={"parts": [{"partNumber": 1, "etag": '"abc"'}]},
     )
     assert r.status_code == 403, r.text
@@ -160,7 +160,7 @@ def test_complete_upload_refuses_a_reader_with_no_privilege(env):
 
 def test_create_upload_returns_job_id(env):
     client, *_ = env
-    r = client.post("/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"})
+    r = client.post("/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"})
     assert r.status_code == 201, r.text
     assert "jobId" in r.json()
 
@@ -168,55 +168,55 @@ def test_create_upload_returns_job_id(env):
 def test_presign_part_returns_upload_url(env):
     client, *_ = env
     job_id = client.post(
-        "/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
+        "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
     ).json()["jobId"]
-    r = client.post(f"/tileset3d/uploads/{job_id}/parts/1/presign")
+    r = client.post(f"/v1/tileset3d/uploads/{job_id}/parts/1/presign")
     assert r.status_code == 200, r.text
     assert "uploadUrl" in r.json()
 
 
 def test_presign_part_404_for_unknown_job(env):
     client, *_ = env
-    r = client.post("/tileset3d/uploads/does-not-exist/parts/1/presign")
+    r = client.post("/v1/tileset3d/uploads/does-not-exist/parts/1/presign")
     assert r.status_code == 404
 
 
 def test_presign_part_rejects_part_number_below_one(env):
     client, *_ = env
     job_id = client.post(
-        "/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
+        "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
     ).json()["jobId"]
-    r = client.post(f"/tileset3d/uploads/{job_id}/parts/0/presign")
+    r = client.post(f"/v1/tileset3d/uploads/{job_id}/parts/0/presign")
     assert r.status_code == 422
 
 
 def test_complete_upload_marks_finalizing_and_defers_task(env):
     client, Session, tenant, alice, deferred, _fake_s3 = env
     job_id = client.post(
-        "/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
+        "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
     ).json()["jobId"]
     r = client.post(
-        f"/tileset3d/uploads/{job_id}/complete",
+        f"/v1/tileset3d/uploads/{job_id}/complete",
         json={"parts": [{"partNumber": 1, "etag": '"abc"'}]},
     )
     assert r.status_code == 204, r.text
     assert deferred == [(job_id, tenant.id)]
-    status = client.get(f"/tileset3d/uploads/{job_id}").json()
+    status = client.get(f"/v1/tileset3d/uploads/{job_id}").json()
     assert status["status"] == "finalizing"
 
 
 def test_complete_upload_rejects_empty_parts_list(env):
     client, *_ = env
     job_id = client.post(
-        "/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
+        "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
     ).json()["jobId"]
-    r = client.post(f"/tileset3d/uploads/{job_id}/complete", json={"parts": []})
+    r = client.post(f"/v1/tileset3d/uploads/{job_id}/complete", json={"parts": []})
     assert r.status_code == 422
 
 
 def test_get_upload_job_404_for_unknown_job(env):
     client, *_ = env
-    r = client.get("/tileset3d/uploads/does-not-exist")
+    r = client.get("/v1/tileset3d/uploads/does-not-exist")
     assert r.status_code == 404
 
 
@@ -256,7 +256,7 @@ def test_read_tileset3d_entry_returns_tileset_json(env):
             s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3
         )
         s.commit()
-    r = client.get(f"/tileset3d/{item_id}/tileset.json")
+    r = client.get(f"/v1/tileset3d/{item_id}/tileset.json")
     assert r.status_code == 200, r.text
     assert r.headers["content-type"].startswith("application/json")
     assert json.loads(r.content)["asset"]["version"] == "1.0"
@@ -269,7 +269,7 @@ def test_read_tileset3d_entry_returns_tile_binary(env):
             s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3
         )
         s.commit()
-    r = client.get(f"/tileset3d/{item_id}/tiles/0.b3dm")
+    r = client.get(f"/v1/tileset3d/{item_id}/tiles/0.b3dm")
     assert r.status_code == 200
     assert r.headers["content-type"] == "application/octet-stream"
     assert r.content == b"\x00" * 16
@@ -287,7 +287,7 @@ def test_read_tileset3d_entry_sets_content_length_to_the_entry_size(env):
             s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3
         )
         s.commit()
-    r = client.get(f"/tileset3d/{item_id}/tiles/0.b3dm")
+    r = client.get(f"/v1/tileset3d/{item_id}/tiles/0.b3dm")
     assert r.status_code == 200
     assert r.headers["content-length"] == str(len(b"\x00" * 16))
     assert r.headers["content-length"] == str(len(r.content))
@@ -300,7 +300,7 @@ def test_read_tileset3d_entry_404_for_missing_entry(env):
             s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3
         )
         s.commit()
-    r = client.get(f"/tileset3d/{item_id}/does-not-exist.b3dm")
+    r = client.get(f"/v1/tileset3d/{item_id}/does-not-exist.b3dm")
     assert r.status_code == 404
     # Détecté avant que le flux ne commence : corps JSON d'erreur complet, pas
     # une réponse 200 tronquée (revue finale, C2 round 2).
@@ -309,7 +309,7 @@ def test_read_tileset3d_entry_404_for_missing_entry(env):
 
 def test_read_tileset3d_entry_404_for_unknown_item(env):
     client, *_ = env
-    r = client.get("/tileset3d/does-not-exist/tileset.json")
+    r = client.get("/v1/tileset3d/does-not-exist/tileset.json")
     assert r.status_code == 404
 
 
@@ -343,12 +343,12 @@ def test_read_tileset3d_entry_413_when_the_decompressed_entry_exceeds_the_proxy_
     assert len(zip_bytes) < 128 * 1024  # zip minuscule, entrée honnêtement déclarée
     fake_s3.objects["tenant/x/city.zip"] = zip_bytes
 
-    r = client.get(f"/tileset3d/{item_id}/tiles/big.b3dm")
+    r = client.get(f"/v1/tileset3d/{item_id}/tiles/big.b3dm")
 
     assert r.status_code == 413, r.text
     assert r.json()["detail"] == "entry too large"
     # Une entrée sous le plafond passe toujours par le même chemin.
-    assert client.get(f"/tileset3d/{item_id}/tileset.json").status_code == 200
+    assert client.get(f"/v1/tileset3d/{item_id}/tileset.json").status_code == 200
 
 
 def test_read_tileset3d_entry_413_is_independent_of_the_validation_cap(env, monkeypatch):
@@ -364,7 +364,7 @@ def test_read_tileset3d_entry_413_is_independent_of_the_validation_cap(env, monk
         s.commit()
     fake_s3.objects["tenant/x/city.zip"] = _zip_with_compressible_entry(8 * 1024 * 1024)
 
-    assert client.get(f"/tileset3d/{item_id}/tiles/big.b3dm").status_code == 413
+    assert client.get(f"/v1/tileset3d/{item_id}/tiles/big.b3dm").status_code == 413
 
 
 def test_read_tileset3d_entry_streams_a_multi_chunk_entry_byte_for_byte(env, monkeypatch):
@@ -385,7 +385,7 @@ def test_read_tileset3d_entry_streams_a_multi_chunk_entry_byte_for_byte(env, mon
         zf.writestr("tiles/multi.b3dm", body)
     fake_s3.objects["tenant/x/city.zip"] = buf.getvalue()
 
-    r = client.get(f"/tileset3d/{item_id}/tiles/multi.b3dm")
+    r = client.get(f"/v1/tileset3d/{item_id}/tiles/multi.b3dm")
 
     assert r.status_code == 200, r.text
     assert r.content == body
@@ -416,7 +416,7 @@ def test_read_tileset3d_entry_422_for_a_corrupt_entry(env):
         s.commit()
     fake_s3.objects["tenant/x/city.zip"] = _zip_with_understated_entry_size()
 
-    r = client.get(f"/tileset3d/{item_id}/tiles/big.b3dm")
+    r = client.get(f"/v1/tileset3d/{item_id}/tiles/big.b3dm")
 
     assert r.status_code == 422, r.text
     assert r.json()["detail"] == "cannot read entry"
@@ -438,5 +438,5 @@ def test_read_tileset3d_entry_404_for_a_private_item_owned_by_another_user(env):
             s, tenant_id=tenant.id, owner_id=bob.id, fake_s3=fake_s3
         )
         s.commit()
-    r = client.get(f"/tileset3d/{item_id}/tileset.json")
+    r = client.get(f"/v1/tileset3d/{item_id}/tileset.json")
     assert r.status_code == 404

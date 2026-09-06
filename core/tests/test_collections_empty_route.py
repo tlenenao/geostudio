@@ -51,7 +51,7 @@ def pg_app(pg_engine):
 
 def test_creates_a_readable_empty_collection_for_a_regular_non_admin_user(pg_app):
     resp = pg_app.post(
-        "/collections/empty",
+        "/v1/collections/empty",
         json={
             "title": "Ma requête",
             "columns": [{"name": "commune", "sqlType": "text"}],
@@ -62,7 +62,7 @@ def test_creates_a_readable_empty_collection_for_a_regular_non_admin_user(pg_app
     assert resp.status_code == 201
     body = resp.json()
     assert body["featureCount"] == 0
-    assert pg_app.get(f"/collections/{body['id']}").status_code == 200
+    assert pg_app.get(f"/v1/collections/{body['id']}").status_code == 200
 
 
 def test_rate_limited_after_budget_exhausted(pg_app):
@@ -70,12 +70,12 @@ def test_rate_limited_after_budget_exhausted(pg_app):
     # boucle serrée doit être coupée, DDL réel ou pas.
     for i in range(5):
         resp = pg_app.post(
-            "/collections/empty",
+            "/v1/collections/empty",
             json={"title": f"Requête {i}", "columns": [{"name": "x", "sqlType": "text"}]},
         )
         assert resp.status_code == 201
     resp = pg_app.post(
-        "/collections/empty",
+        "/v1/collections/empty",
         json={"title": "Requête 6", "columns": [{"name": "x", "sqlType": "text"}]},
     )
     assert resp.status_code == 429
@@ -83,7 +83,7 @@ def test_rate_limited_after_budget_exhausted(pg_app):
 
 def test_rejects_an_unknown_sql_type_with_422(pg_app):
     resp = pg_app.post(
-        "/collections/empty",
+        "/v1/collections/empty",
         json={
             "title": "Injection",
             "columns": [{"name": "x", "sqlType": "text); DROP TABLE users; --"}],
@@ -139,7 +139,7 @@ def test_reader_without_data_manage_cannot_create_an_empty_collection(pg_engine)
     client = TestClient(app)
     try:
         resp = client.post(
-            "/collections/empty",
+            "/v1/collections/empty",
             json={
                 "title": "Ma requête",
                 "columns": [{"name": "commune", "sqlType": "text"}],

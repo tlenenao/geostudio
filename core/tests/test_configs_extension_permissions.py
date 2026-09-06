@@ -126,20 +126,22 @@ def test_create_config_rejects_extension_prop_outside_scope_in_pages(client):
     # si _all_layout_items parcourt bien config.pages, pas seulement
     # config.layout.
     response = client.post(
-        "/configs", json={"title": "App", "config": _config_body_with_pages("incidents")}
+        "/v1/configs", json={"title": "App", "config": _config_body_with_pages("incidents")}
     )
     assert response.status_code == 400
     assert "acme.gauge" in response.json()["detail"]
 
 
 def test_create_config_rejects_extension_prop_outside_scope(client):
-    response = client.post("/configs", json={"title": "App", "config": _config_body("incidents")})
+    response = client.post(
+        "/v1/configs", json={"title": "App", "config": _config_body("incidents")}
+    )
     assert response.status_code == 400
     assert "acme.gauge" in response.json()["detail"]
 
 
 def test_create_config_accepts_extension_prop_inside_scope(client):
-    response = client.post("/configs", json={"title": "App", "config": _config_body("communes")})
+    response = client.post("/v1/configs", json={"title": "App", "config": _config_body("communes")})
     assert response.status_code == 201
 
 
@@ -149,21 +151,21 @@ def test_create_config_ignores_non_extension_widgets(client):
         "dataSources": [],
         "layout": {"type": "grid", "items": [{"widget": "map", "x": 0, "y": 0, "w": 2, "h": 2}]},
     }
-    response = client.post("/configs", json={"title": "App", "config": body})
+    response = client.post("/v1/configs", json={"title": "App", "config": body})
     assert response.status_code == 201
 
 
 def test_update_config_rejects_extension_prop_outside_scope(client):
     created = client.post(
-        "/configs", json={"title": "App", "config": _config_body("communes")}
+        "/v1/configs", json={"title": "App", "config": _config_body("communes")}
     ).json()
-    response = client.put(f"/configs/{created['id']}", json=_config_body("incidents"))
+    response = client.put(f"/v1/configs/{created['id']}", json=_config_body("incidents"))
     assert response.status_code == 400
 
 
 def test_rejected_create_does_not_leave_an_orphan_item(client):
-    client.post("/configs", json={"title": "App", "config": _config_body("incidents")})
-    listed = client.get("/items").json()
+    client.post("/v1/configs", json={"title": "App", "config": _config_body("incidents")})
+    listed = client.get("/v1/items").json()
     assert listed["total"] == 0
 
 
@@ -178,7 +180,7 @@ def test_rollback_is_rejected_if_it_would_now_violate_a_narrowed_scope(client):
 
     # v1 : "communes" est dans le scope déclaré de l'extension au moment de la création.
     created = client.post(
-        "/configs", json={"title": "App", "config": _config_body("communes")}
+        "/v1/configs", json={"title": "App", "config": _config_body("communes")}
     ).json()
 
     # Un admin resserre ensuite le scope de l'extension : "communes" n'est
@@ -192,11 +194,11 @@ def test_rollback_is_rejected_if_it_would_now_violate_a_narrowed_scope(client):
 
     # create_config/update_config revalident bien contre le scope courant :
     # "communes" est désormais refusée.
-    reject = client.put(f"/configs/{created['id']}", json=_config_body("communes"))
+    reject = client.put(f"/v1/configs/{created['id']}", json=_config_body("communes"))
     assert reject.status_code == 400
 
     # rollback vers v1 revalide désormais contre le scope courant, et refuse
     # pour la même raison (422, pas 400 : c'est le garde-fou de rollback qui
     # convertit l'HTTPException levée par le validateur).
-    rollback = client.post(f"/configs/{created['id']}/rollback", json={"version": 1})
+    rollback = client.post(f"/v1/configs/{created['id']}/rollback", json={"version": 1})
     assert rollback.status_code == 422

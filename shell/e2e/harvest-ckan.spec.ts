@@ -14,7 +14,7 @@ test("un admin déclare une source CKAN en référencement, la moissonne, et l'i
   let runCount = 0;
   const harvestedById = new Map<string, Record<string, unknown>>();
 
-  await page.route("https://core.test/harvest/sources", async (route) => {
+  await page.route("https://core.test/v1/harvest/sources", async (route) => {
     if (route.request().method() === "POST") {
       created = await route.request().postDataJSON();
       await route.fulfill({
@@ -54,7 +54,7 @@ test("un admin déclare une source CKAN en référencement, la moissonne, et l'i
     });
   });
 
-  await page.route("https://core.test/harvest/sources/src-1/run", async (route) => {
+  await page.route("https://core.test/v1/harvest/sources/src-1/run", async (route) => {
     runCount += 1;
     harvestedById.set("pkg-tableur", {
       pk: "ext-ckan-1",
@@ -70,7 +70,7 @@ test("un admin déclare une source CKAN en référencement, la moissonne, et l'i
     await route.fulfill({ status: 202, json: { status: "queued" } });
   });
 
-  await page.route("https://core.test/items*", async (route) => {
+  await page.route("https://core.test/v1/items*", async (route) => {
     const items = Array.from(harvestedById.values());
     await route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 12 } });
   });
@@ -120,7 +120,7 @@ test("un admin déclare une source CKAN en copie, la moissonne, et la collection
   let runCount = 0;
   const harvestedById = new Map<string, Record<string, unknown>>();
 
-  await page.route("https://core.test/harvest/sources", async (route) => {
+  await page.route("https://core.test/v1/harvest/sources", async (route) => {
     if (route.request().method() === "POST") {
       created = await route.request().postDataJSON();
       await route.fulfill({
@@ -160,7 +160,7 @@ test("un admin déclare une source CKAN en copie, la moissonne, et la collection
     });
   });
 
-  await page.route("https://core.test/harvest/sources/src-1/run", async (route) => {
+  await page.route("https://core.test/v1/harvest/sources/src-1/run", async (route) => {
     runCount += 1;
     harvestedById.set("pkg-sentiers", {
       pk: "col-item-1",
@@ -176,12 +176,12 @@ test("un admin déclare une source CKAN en copie, la moissonne, et la collection
     await route.fulfill({ status: 202, json: { status: "queued" } });
   });
 
-  await page.route("https://core.test/items*", async (route) => {
+  await page.route("https://core.test/v1/items*", async (route) => {
     const items = Array.from(harvestedById.values());
     await route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 12 } });
   });
 
-  await page.route("https://core.test/items/col-item-1", async (route) => {
+  await page.route("https://core.test/v1/items/col-item-1", async (route) => {
     await route.fulfill({
       json: {
         pk: "col-item-1",
@@ -219,7 +219,7 @@ test("un admin déclare une source CKAN en copie, la moissonne, et la collection
                 title: "Sentiers de randonnée (CKAN, copie)",
                 visible: true,
                 kind: "feature",
-                url: "https://core.test/collections/ingest_ckan/items",
+                url: "https://core.test/v1/collections/ingest_ckan/items",
               },
             ],
           },

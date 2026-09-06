@@ -105,7 +105,7 @@ def test_query_count_does_not_grow_with_page_size(small, large):
         try:
 
             def call(client=client, n=n):
-                response = client.get(f"/items?scope=all&pageSize={n}")
+                response = client.get(f"/v1/items?scope=all&pageSize={n}")
                 assert response.status_code == 200, response.text
                 assert len(response.json()["items"]) == n
 

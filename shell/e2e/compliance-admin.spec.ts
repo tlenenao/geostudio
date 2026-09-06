@@ -14,11 +14,11 @@ test("un titulaire de compliance.manage purge un tenant après confirmation par 
   });
 
   let purgeRequestBody: unknown = null;
-  await page.route("https://core.test/compliance/tenants/t-mock/purge", async (route) => {
+  await page.route("https://core.test/v1/compliance/tenants/t-mock/purge", async (route) => {
     purgeRequestBody = await route.request().postDataJSON();
     await route.fulfill({ status: 202, json: { jobId: "purge-e2e-1" } });
   });
-  await page.route("https://core.test/compliance/purges/purge-e2e-1", async (route) => {
+  await page.route("https://core.test/v1/compliance/purges/purge-e2e-1", async (route) => {
     await route.fulfill({
       status: 202,
       contentType: "application/problem+json",
@@ -51,7 +51,7 @@ test("anonymiser un compte est une action visuellement distincte de la purge", a
     ...ADMIN_ME,
     privileges: [...ADMIN_ME.privileges, "compliance.manage"],
   });
-  await page.route("https://core.test/compliance/users/u42/erase", async (route) => {
+  await page.route("https://core.test/v1/compliance/users/u42/erase", async (route) => {
     await route.fulfill({ status: 204 });
   });
 

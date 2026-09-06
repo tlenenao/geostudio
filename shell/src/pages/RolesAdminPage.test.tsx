@@ -67,8 +67,8 @@ const CATALOG = [
 test("admin crée un rôle sur mesure en cochant des privilèges", async () => {
   let created: Record<string, unknown> | null = null;
   server.use(
-    http.get("https://core.test/roles/catalog", () => HttpResponse.json(CATALOG)),
-    http.get("https://core.test/roles", () =>
+    http.get("https://core.test/v1/roles/catalog", () => HttpResponse.json(CATALOG)),
+    http.get("https://core.test/v1/roles", () =>
       HttpResponse.json(
         created
           ? [
@@ -83,7 +83,7 @@ test("admin crée un rôle sur mesure en cochant des privilèges", async () => {
           : [],
       ),
     ),
-    http.post("https://core.test/roles", async ({ request }) => {
+    http.post("https://core.test/v1/roles", async ({ request }) => {
       created = (await request.json()) as Record<string, unknown>;
       return HttpResponse.json(
         { id: "role-1", slug: "abc", isBuiltIn: false, ...created },
@@ -105,8 +105,8 @@ test("admin crée un rôle sur mesure en cochant des privilèges", async () => {
 
 test("cliquer Éditer sur un rôle sur mesure câble aria-expanded/aria-controls", async () => {
   server.use(
-    http.get("https://core.test/roles/catalog", () => HttpResponse.json(CATALOG)),
-    http.get("https://core.test/roles", () =>
+    http.get("https://core.test/v1/roles/catalog", () => HttpResponse.json(CATALOG)),
+    http.get("https://core.test/v1/roles", () =>
       HttpResponse.json([
         {
           id: "role-1",
@@ -134,8 +134,8 @@ test("aria-expanded est câblé par ligne, pas partagé entre toutes les lignes 
   // rôle — tous les boutons Éditer basculaient aria-expanded="true" en
   // même temps.
   server.use(
-    http.get("https://core.test/roles/catalog", () => HttpResponse.json(CATALOG)),
-    http.get("https://core.test/roles", () =>
+    http.get("https://core.test/v1/roles/catalog", () => HttpResponse.json(CATALOG)),
+    http.get("https://core.test/v1/roles", () =>
       HttpResponse.json([
         { id: "role-1", name: "Support", slug: "support", isBuiltIn: false, privileges: [] },
         { id: "role-2", name: "Terrain", slug: "terrain", isBuiltIn: false, privileges: [] },
@@ -157,8 +157,8 @@ test("aria-expanded est câblé par ligne, pas partagé entre toutes les lignes 
 
 test("un rôle prédéfini ne propose ni éditer ni supprimer", async () => {
   server.use(
-    http.get("https://core.test/roles/catalog", () => HttpResponse.json(CATALOG)),
-    http.get("https://core.test/roles", () =>
+    http.get("https://core.test/v1/roles/catalog", () => HttpResponse.json(CATALOG)),
+    http.get("https://core.test/v1/roles", () =>
       HttpResponse.json([
         {
           id: "role-admin",

@@ -97,19 +97,19 @@ def _as(app, user):
 def test_register_requires_admin(env):
     app, client, _, admin, regular, _ddl = env
     _as(app, regular)
-    assert client.post("/collections", json={"tableName": "incidents"}).status_code == 403
+    assert client.post("/v1/collections", json={"tableName": "incidents"}).status_code == 403
 
 
 def test_register_and_get(env):
     app, client, _, admin, _regular, ddl_calls = env
     _as(app, admin)
-    r = client.post("/collections", json={"tableName": "incidents", "title": "Incidents"})
+    r = client.post("/v1/collections", json={"tableName": "incidents", "title": "Incidents"})
     assert r.status_code == 201
     body = r.json()
     assert body["id"] == "incidents" and body["geometryType"] == "Point"
     assert body["featureCount"] is None  # hors PostgreSQL (SQLite) : pas de vrai COUNT(*)
     assert ddl_calls == ["incidents"]  # la RLS est appliquée à l'enregistrement
-    assert client.get("/collections/incidents").status_code == 200
+    assert client.get("/v1/collections/incidents").status_code == 200
 
 
 def test_list_collections_is_paginated(env):
@@ -129,26 +129,26 @@ def test_list_collections_is_paginated(env):
     app.dependency_overrides[collections_routes.get_introspector] = lambda: introspector_for_many
 
     for i in range(150):
-        resp = client.post("/collections", json={"tableName": f"t{i}"})
+        resp = client.post("/v1/collections", json={"tableName": f"t{i}"})
         assert resp.status_code == 201
 
-    body = client.get("/collections").json()
+    body = client.get("/v1/collections").json()
     assert len(body["collections"]) == 100  # DEFAULT_LIMIT, pas 150
     assert body["numberMatched"] == 150
     assert body["numberReturned"] == 100
 
-    body2 = client.get("/collections?limit=100&offset=100").json()
+    body2 = client.get("/v1/collections?limit=100&offset=100").json()
     assert len(body2["collections"]) == 50
 
 
 def test_register_unknown_table_400_and_duplicate_409(env):
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
-    r = client.post("/collections", json={"tableName": "nope"})
+    r = client.post("/v1/collections", json={"tableName": "nope"})
     assert r.status_code == 400
     assert r.json()["detail"] == "table not found in schema public"
-    client.post("/collections", json={"tableName": "incidents"})
-    assert client.post("/collections", json={"tableName": "incidents"}).status_code == 409
+    client.post("/v1/collections", json={"tableName": "incidents"})
+    assert client.post("/v1/collections", json={"tableName": "incidents"}).status_code == 409
 
 
 def test_table_name_bounded_to_50_chars(env):
@@ -158,11 +158,11 @@ def test_table_name_bounded_to_50_chars(env):
     # second CREATE INDEX IF NOT EXISTS serait silencieusement sauté).
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
-    r = client.post("/collections", json={"tableName": "t" * 51})
+    r = client.post("/v1/collections", json={"tableName": "t" * 51})
     assert r.status_code == 422  # rejeté par la validation pydantic
     # 50 caractères : passe la couche schéma — le 400 "table not found" du
     # fake introspector prouve qu'on a atteint la logique métier.
-    r = client.post("/collections", json={"tableName": "t" * 50})
+    r = client.post("/v1/collections", json={"tableName": "t" * 50})
     assert r.status_code == 400
     assert r.json()["detail"] == "table not found in schema public"
 
@@ -173,7 +173,7 @@ def test_register_core_table_refused(env):
     # Le detail exact distingue le refus denylist du fallback TableNotFound
     # ("table not found in schema public") du fake introspector.
     for table in ("items", "configs", "alembic_version"):
-        r = client.post("/collections", json={"tableName": table})
+        r = client.post("/v1/collections", json={"tableName": table})
         assert r.status_code == 400
         assert r.json()["detail"] == "core table cannot be registered"
 
@@ -192,7 +192,7 @@ def test_denylist_short_circuits_before_introspection(env):
         raise TableNotFound(table_name)
 
     app.dependency_overrides[collections_routes.get_introspector] = lambda: spying_introspector
-    r = client.post("/collections", json={"tableName": "items"})
+    r = client.post("/v1/collections", json={"tableName": "items"})
     assert r.status_code == 400
     assert r.json()["detail"] == "core table cannot be registered"
     assert calls == []  # l'introspecteur n'a jamais été appelé
@@ -205,7 +205,7 @@ def test_register_postgis_system_table_refused(env):
     # RLS, grants).
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
-    r = client.post("/collections", json={"tableName": "spatial_ref_sys"})
+    r = client.post("/v1/collections", json={"tableName": "spatial_ref_sys"})
     assert r.status_code == 400
     assert r.json()["detail"] == "core table cannot be registered"
 
@@ -221,7 +221,7 @@ def test_denylist_postgis_system_tables_short_circuits_before_introspection(env)
 
     app.dependency_overrides[collections_routes.get_introspector] = lambda: spying_introspector
     for table in ("spatial_ref_sys", "geometry_columns", "geography_columns"):
-        r = client.post("/collections", json={"tableName": table})
+        r = client.post("/v1/collections", json={"tableName": table})
         assert r.status_code == 400
         assert r.json()["detail"] == "core table cannot be registered"
     assert calls == []  # l'introspecteur n'a jamais été appelé
@@ -230,23 +230,23 @@ def test_denylist_postgis_system_tables_short_circuits_before_introspection(env)
 def test_private_collection_hidden_from_stranger_and_anonymous(env):
     app, client, _, admin, regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
     _as(app, regular)
-    assert client.get("/collections/incidents").status_code == 404
-    assert client.get("/collections").json()["collections"] == []
+    assert client.get("/v1/collections/incidents").status_code == 404
+    assert client.get("/v1/collections").json()["collections"] == []
     app.dependency_overrides.pop(get_current_user)
     app.dependency_overrides.pop(get_current_user_optional)  # anonyme
-    assert client.get("/collections").json()["collections"] == []
-    assert client.get("/collections/incidents").status_code == 404
+    assert client.get("/v1/collections").json()["collections"] == []
+    assert client.get("/v1/collections/incidents").status_code == 404
 
 
 def test_public_collection_visible_to_anonymous(env):
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents", "isPublic": True})
+    client.post("/v1/collections", json={"tableName": "incidents", "isPublic": True})
     app.dependency_overrides.pop(get_current_user)
     app.dependency_overrides.pop(get_current_user_optional)
-    body = client.get("/collections").json()
+    body = client.get("/v1/collections").json()
     assert [c["id"] for c in body["collections"]] == ["incidents"]
 
 
@@ -257,7 +257,7 @@ def test_custom_role_with_collections_manage_sees_and_can_delete_a_private_colle
 
     app, client, Session, admin, regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})  # privée, admin owner
+    client.post("/v1/collections", json={"tableName": "incidents"})  # privée, admin owner
 
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
@@ -284,14 +284,14 @@ def test_custom_role_with_collections_manage_sees_and_can_delete_a_private_colle
         assert custom_user is not None and custom_user.is_admin is False
         _as(app, custom_user)
 
-        listed = client.get("/collections").json()["collections"]
+        listed = client.get("/v1/collections").json()["collections"]
         assert [c["id"] for c in listed] == ["incidents"]
         assert listed[0]["permissions"]["delete"] is True
 
         # La route DELETE laisse effectivement passer — le verdict n'est pas
         # un mensonge d'affichage (piège n°5/n°4 : chemin de lecture ET
         # d'écriture doivent être d'accord).
-        assert client.delete("/collections/incidents").status_code == 204
+        assert client.delete("/v1/collections/incidents").status_code == 204
 
 
 def test_custom_role_with_collections_manage_reaches_schema_of_a_private_collection(env):
@@ -301,7 +301,7 @@ def test_custom_role_with_collections_manage_reaches_schema_of_a_private_collect
 
     app, client, Session, admin, regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})  # privée, admin owner
+    client.post("/v1/collections", json={"tableName": "incidents"})  # privée, admin owner
 
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
@@ -330,7 +330,7 @@ def test_custom_role_with_collections_manage_reaches_schema_of_a_private_collect
 
         # 200, pas 404 : can_manage_collections lève le voile de visibilité
         # exactement comme sur GET/PATCH/DELETE /collections/{id}.
-        resp = client.get("/collections/incidents/schema")
+        resp = client.get("/v1/collections/incidents/schema")
         assert resp.status_code == 200
         assert resp.json()["pk"] == "id"
 
@@ -346,7 +346,7 @@ def test_custom_role_with_collections_manage_gets_honest_403_not_404_on_sharing(
 
     app, client, Session, admin, regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})  # privée, admin owner
+    client.post("/v1/collections", json={"tableName": "incidents"})  # privée, admin owner
 
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
@@ -373,10 +373,10 @@ def test_custom_role_with_collections_manage_gets_honest_403_not_404_on_sharing(
         assert custom_user is not None and custom_user.is_admin is False
         _as(app, custom_user)
 
-        assert client.get("/collections/incidents/sharing").status_code == 403
+        assert client.get("/v1/collections/incidents/sharing").status_code == 403
         assert (
             client.put(
-                "/collections/incidents/sharing", json={"public": False, "groups": []}
+                "/v1/collections/incidents/sharing", json={"public": False, "groups": []}
             ).status_code
             == 403
         )
@@ -390,14 +390,14 @@ def test_private_collection_schema_and_sharing_404_without_privilege(env):
     # and_anonymous) — jamais vérifié explicitement pour /schema et /sharing.
     app, client, _, admin, regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})  # privée, admin owner
+    client.post("/v1/collections", json={"tableName": "incidents"})  # privée, admin owner
 
     _as(app, regular)
-    assert client.get("/collections/incidents/schema").status_code == 404
-    assert client.get("/collections/incidents/sharing").status_code == 404
+    assert client.get("/v1/collections/incidents/schema").status_code == 404
+    assert client.get("/v1/collections/incidents/sharing").status_code == 404
     assert (
         client.put(
-            "/collections/incidents/sharing", json={"public": False, "groups": []}
+            "/v1/collections/incidents/sharing", json={"public": False, "groups": []}
         ).status_code
         == 404
     )
@@ -406,8 +406,8 @@ def test_private_collection_schema_and_sharing_404_without_privilege(env):
 def test_schema_endpoint_uses_introspector(env):
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
-    schema = client.get("/collections/incidents/schema").json()
+    client.post("/v1/collections", json={"tableName": "incidents"})
+    schema = client.get("/v1/collections/incidents/schema").json()
     assert schema["pk"] == "id"
     assert schema["fields"] == [{"name": "titre", "type": "string", "required": True}]
 
@@ -418,13 +418,13 @@ def test_schema_endpoint_404_when_backing_table_gone(env):
     # 404, pas une exception d'introspection non mappée.
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
 
     def gone_introspector(session, table_name):
         raise TableNotFound(table_name)
 
     app.dependency_overrides[collections_routes.get_introspector] = lambda: gone_introspector
-    r = client.get("/collections/incidents/schema")
+    r = client.get("/v1/collections/incidents/schema")
     assert r.status_code == 404
     assert r.json()["detail"] == "backing table not found"
 
@@ -434,7 +434,7 @@ def test_schema_endpoint_409_when_backing_table_unsupported(env):
     # que l'introspecteur ne sait plus lire (ex. colonne géométrie retirée).
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
 
     from app.collections.introspection import UnsupportedTable
 
@@ -442,7 +442,7 @@ def test_schema_endpoint_409_when_backing_table_unsupported(env):
         raise UnsupportedTable("no geometry column")
 
     app.dependency_overrides[collections_routes.get_introspector] = lambda: unsupported_introspector
-    r = client.get("/collections/incidents/schema")
+    r = client.get("/v1/collections/incidents/schema")
     assert r.status_code == 409
     assert r.json()["detail"] == "no geometry column"
 
@@ -450,14 +450,14 @@ def test_schema_endpoint_409_when_backing_table_unsupported(env):
 def test_patch_and_delete(env):
     app, client, Session, admin, regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
-    r = client.patch("/collections/incidents", json={"title": "Renommé", "isPublic": True})
+    client.post("/v1/collections", json={"tableName": "incidents"})
+    r = client.patch("/v1/collections/incidents", json={"title": "Renommé", "isPublic": True})
     assert r.status_code == 200 and r.json()["title"] == "Renommé"
     _as(app, regular)
-    assert client.delete("/collections/incidents").status_code == 403
+    assert client.delete("/v1/collections/incidents").status_code == 403
     _as(app, admin)
-    assert client.delete("/collections/incidents").status_code == 204
-    assert client.get("/collections/incidents").status_code == 404
+    assert client.delete("/v1/collections/incidents").status_code == 204
+    assert client.get("/v1/collections/incidents").status_code == 404
 
 
 def test_delete_collection_with_existing_attachment_returns_204_and_purges_it(env):
@@ -467,7 +467,7 @@ def test_delete_collection_with_existing_attachment_returns_204_and_purges_it(en
     # indésenregistrable, et l'objet S3 n'était de toute façon jamais purgé.
     app, client, Session, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
     s3_key = f"{admin.tenant_id}/incidents/f1/a.jpg"
     with Session() as s:
         attachments_repo.create_attachment(
@@ -487,7 +487,7 @@ def test_delete_collection_with_existing_attachment_returns_204_and_purges_it(en
     s3 = _FakeS3Client()
     app.dependency_overrides[collections_routes.get_s3_client] = lambda: s3
 
-    response = client.delete("/collections/incidents")
+    response = client.delete("/v1/collections/incidents")
     assert response.status_code == 204
     assert s3.deleted == [s3_key]
 
@@ -504,7 +504,7 @@ def test_delete_collection_refuses_when_a_dataset_still_references_it(env):
     # Dataset silencieusement (204, aucun signal).
     app, client, Session, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
     with Session() as s:
         dataset_item = repo.get_collection(s, tenant_id=admin.tenant_id, collection_id="incidents")
         assert dataset_item is not None  # sanity : la collection existe bien
@@ -523,11 +523,11 @@ def test_delete_collection_refuses_when_a_dataset_still_references_it(env):
         configs_repo.create_config(s, dataset_config, item_id=item.id, tenant_id=admin.tenant_id)
         s.commit()
 
-    response = client.delete("/collections/incidents")
+    response = client.delete("/v1/collections/incidents")
     assert response.status_code == 409
     assert "dataset" in response.json()["detail"]
     # la collection n'a pas été supprimée (refus, pas suppression partielle) :
-    assert client.get("/collections/incidents").status_code == 200
+    assert client.get("/v1/collections/incidents").status_code == 200
 
 
 def test_patch_by_non_owner_without_editor_role_returns_403(env):
@@ -539,9 +539,9 @@ def test_patch_by_non_owner_without_editor_role_returns_403(env):
     # has no editor share and isn't admin must be refused the PATCH.
     app, client, _, admin, regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents", "isPublic": True})
+    client.post("/v1/collections", json={"tableName": "incidents", "isPublic": True})
     _as(app, regular)
-    r = client.patch("/collections/incidents", json={"title": "Hijacked"})
+    r = client.patch("/v1/collections/incidents", json={"title": "Hijacked"})
     assert r.status_code == 403
     assert r.json()["detail"] == "write access required"
 
@@ -549,9 +549,9 @@ def test_patch_by_non_owner_without_editor_role_returns_403(env):
 def test_mutations_are_audited(env):
     app, client, Session, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
-    client.patch("/collections/incidents", json={"title": "X"})
-    client.delete("/collections/incidents")
+    client.post("/v1/collections", json={"tableName": "incidents"})
+    client.patch("/v1/collections/incidents", json={"title": "X"})
+    client.delete("/v1/collections/incidents")
     from sqlalchemy import select
 
     from app.audit.models import AuditLog
@@ -566,18 +566,18 @@ def test_canWrite_reflects_the_requesting_users_write_access(env):
     app, client, _, admin, regular, _ddl = env
     _as(app, admin)
     client.post(
-        "/collections", json={"tableName": "incidents", "title": "Incidents", "isPublic": True}
+        "/v1/collections", json={"tableName": "incidents", "title": "Incidents", "isPublic": True}
     )
 
     # admin (propriétaire de la collection qu'il vient de créer) : write=True
-    assert client.get("/collections/incidents").json()["permissions"]["write"] is True
-    assert client.get("/collections").json()["collections"][0]["permissions"]["write"] is True
+    assert client.get("/v1/collections/incidents").json()["permissions"]["write"] is True
+    assert client.get("/v1/collections").json()["collections"][0]["permissions"]["write"] is True
 
     # regular : lisible car isPublic=True (comme un viewer), mais aucun rôle
     # editor sur le groupe de partage de la collection → write=False
     _as(app, regular)
-    assert client.get("/collections/incidents").json()["permissions"]["write"] is False
-    assert client.get("/collections").json()["collections"][0]["permissions"]["write"] is False
+    assert client.get("/v1/collections/incidents").json()["permissions"]["write"] is False
+    assert client.get("/v1/collections").json()["collections"][0]["permissions"]["write"] is False
 
 
 def test_patch_collection_enqueues_embedding_only_when_title_or_description_change(
@@ -588,7 +588,7 @@ def test_patch_collection_enqueues_embedding_only_when_title_or_description_chan
     # déclencher que si le titre ou la description ont effectivement changé.
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents", "title": "Incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents", "title": "Incidents"})
 
     deferred = []
     monkeypatch.setattr(
@@ -598,17 +598,17 @@ def test_patch_collection_enqueues_embedding_only_when_title_or_description_chan
     )
 
     # Ni titre ni description : pas d'enqueue.
-    r = client.patch("/collections/incidents", json={"isPublic": True})
+    r = client.patch("/v1/collections/incidents", json={"isPublic": True})
     assert r.status_code == 200
     assert deferred == []
 
     # Titre inchangé (même valeur) : pas d'enqueue.
-    r = client.patch("/collections/incidents", json={"title": "Incidents"})
+    r = client.patch("/v1/collections/incidents", json={"title": "Incidents"})
     assert r.status_code == 200
     assert deferred == []
 
     # Titre réellement modifié : enqueue.
-    r = client.patch("/collections/incidents", json={"title": "Incidents voirie"})
+    r = client.patch("/v1/collections/incidents", json={"title": "Incidents voirie"})
     assert r.status_code == 200
     assert deferred == [("incidents", admin.tenant_id)]
 
@@ -631,7 +631,7 @@ def test_list_collections_accepts_q_param_without_error(env):
             srid=None,
         )
         s.commit()
-    resp = client.get("/collections?q=commun")
+    resp = client.get("/v1/collections?q=commun")
     assert resp.status_code == 200
     # SQLite (route de test) : repli ILIKE, "commun" est une sous-chaîne de "Communes".
     assert [c["title"] for c in resp.json()["collections"]] == ["Communes"]
@@ -640,7 +640,7 @@ def test_list_collections_accepts_q_param_without_error(env):
     # seulement accepté puis ignoré par FastAPI comme paramètre inconnu) :
     # une requête qui ne matche ni le titre ni la description doit filtrer
     # la collection, pas la laisser passer.
-    resp = client.get("/collections?q=xyzzy-no-match")
+    resp = client.get("/v1/collections?q=xyzzy-no-match")
     assert resp.status_code == 200
     assert resp.json()["collections"] == []
 
@@ -648,13 +648,13 @@ def test_list_collections_accepts_q_param_without_error(env):
 def test_candidates_requires_admin(env):
     app, client, _, admin, regular, _ddl = env
     _as(app, regular)
-    assert client.get("/collections/candidates").status_code == 403
+    assert client.get("/v1/collections/candidates").status_code == 403
 
 
 def test_candidates_lists_registrable_and_unsupported_excludes_core_and_registered(env):
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})  # already registered
+    client.post("/v1/collections", json={"tableName": "incidents"})  # already registered
 
     def fake_lister(session):
         return ["incidents", "widgets", "items"]  # "items" is a core table
@@ -669,7 +669,7 @@ def test_candidates_lists_registrable_and_unsupported_excludes_core_and_register
     app.dependency_overrides[collections_routes.get_table_lister] = lambda: fake_lister
     app.dependency_overrides[collections_routes.get_introspector] = lambda: fake_introspector_2
 
-    r = client.get("/collections/candidates")
+    r = client.get("/v1/collections/candidates")
     assert r.status_code == 200
     assert r.json()["candidates"] == [
         {"tableName": "widgets", "registrable": False, "reason": "table has no primary key"},
@@ -679,23 +679,24 @@ def test_candidates_lists_registrable_and_unsupported_excludes_core_and_register
 def test_list_collections_includes_owner_username(env):
     app, client, _, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
-    body = client.get("/collections").json()
+    client.post("/v1/collections", json={"tableName": "incidents"})
+    body = client.get("/v1/collections").json()
     assert body["collections"][0]["owner"] == "admin"
 
 
 def test_patch_collection_declares_attachment_fields(env):
     app, client, _Session, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
 
     res = client.patch(
-        "/collections/incidents", json={"attachmentFields": [{"key": "photos", "label": "Photos"}]}
+        "/v1/collections/incidents",
+        json={"attachmentFields": [{"key": "photos", "label": "Photos"}]},
     )
     assert res.status_code == 200
     assert res.json()["attachmentFields"] == [{"key": "photos", "label": "Photos"}]
 
-    get_res = client.get("/collections/incidents")
+    get_res = client.get("/v1/collections/incidents")
     assert get_res.json()["attachmentFields"] == [{"key": "photos", "label": "Photos"}]
 
 
@@ -706,15 +707,15 @@ def test_patch_collection_rejects_attachment_field_key_colliding_with_real_colum
     # "string", un "attachment").
     app, client, _Session, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
 
     res = client.patch(
-        "/collections/incidents", json={"attachmentFields": [{"key": "titre", "label": "Photo"}]}
+        "/v1/collections/incidents", json={"attachmentFields": [{"key": "titre", "label": "Photo"}]}
     )
     assert res.status_code == 422
     assert "titre" in res.json()["detail"]
 
-    schema = client.get("/collections/incidents/schema").json()
+    schema = client.get("/v1/collections/incidents/schema").json()
     names = [f["name"] for f in schema["fields"]]
     assert names.count("titre") == 1
 
@@ -724,10 +725,10 @@ def test_patch_collection_rejects_duplicate_attachment_field_keys(env):
     # de DB, couvert par CollectionPatch._reject_duplicate_attachment_field_keys).
     app, client, _Session, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
 
     res = client.patch(
-        "/collections/incidents",
+        "/v1/collections/incidents",
         json={
             "attachmentFields": [
                 {"key": "photos", "label": "Photos"},
@@ -741,12 +742,13 @@ def test_patch_collection_rejects_duplicate_attachment_field_keys(env):
 def test_patch_collection_without_attachment_fields_leaves_them_unchanged(env):
     app, client, _Session, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
     client.patch(
-        "/collections/incidents", json={"attachmentFields": [{"key": "photos", "label": "Photos"}]}
+        "/v1/collections/incidents",
+        json={"attachmentFields": [{"key": "photos", "label": "Photos"}]},
     )
 
-    res = client.patch("/collections/incidents", json={"title": "Nouveau titre"})
+    res = client.patch("/v1/collections/incidents", json={"title": "Nouveau titre"})
     assert res.status_code == 200
     assert res.json()["attachmentFields"] == [{"key": "photos", "label": "Photos"}]
 
@@ -754,14 +756,14 @@ def test_patch_collection_without_attachment_fields_leaves_them_unchanged(env):
 def test_register_collection_defaults_attachment_fields_to_empty(env):
     app, client, _Session, admin, _regular, _ddl = env
     _as(app, admin)
-    res = client.post("/collections", json={"tableName": "incidents"})
+    res = client.post("/v1/collections", json={"tableName": "incidents"})
     assert res.json()["attachmentFields"] == []
 
 
 def test_register_collection_defaults_open_metadata_to_empty(env):
     app, client, _Session, admin, _regular, _ddl = env
     _as(app, admin)
-    res = client.post("/collections", json={"tableName": "incidents"})
+    res = client.post("/v1/collections", json={"tableName": "incidents"})
     body = res.json()
     assert body["license"] == ""
     assert body["licenseUri"] == ""
@@ -778,10 +780,10 @@ def test_register_collection_defaults_open_metadata_to_empty(env):
 def test_patch_collection_declares_open_metadata(env):
     app, client, _Session, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
 
     res = client.patch(
-        "/collections/incidents",
+        "/v1/collections/incidents",
         json={
             "license": "etalab-2.0",
             "producer": "Ma Régie",
@@ -806,17 +808,17 @@ def test_patch_collection_declares_open_metadata(env):
     assert body["temporalStart"] == "2020-01-01"
     assert body["temporalEnd"] == "2026-12-31"
 
-    get_res = client.get("/collections/incidents")
+    get_res = client.get("/v1/collections/incidents")
     assert get_res.json()["license"] == "etalab-2.0"
 
 
 def test_patch_collection_with_other_license_requires_uri(env):
     app, client, _Session, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
 
     res = client.patch(
-        "/collections/incidents",
+        "/v1/collections/incidents",
         json={"license": "other", "licenseUri": "https://example.org/my-license"},
     )
     assert res.status_code == 200
@@ -826,26 +828,26 @@ def test_patch_collection_with_other_license_requires_uri(env):
 def test_patch_collection_rejects_unknown_license(env):
     app, client, _Session, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
-    res = client.patch("/collections/incidents", json={"license": "bogus"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
+    res = client.patch("/v1/collections/incidents", json={"license": "bogus"})
     assert res.status_code == 422
 
 
 def test_patch_collection_rejects_unknown_language(env):
     app, client, _Session, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
-    res = client.patch("/collections/incidents", json={"language": "bogus"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
+    res = client.patch("/v1/collections/incidents", json={"language": "bogus"})
     assert res.status_code == 422
 
 
 def test_patch_collection_without_open_metadata_leaves_it_unchanged(env):
     app, client, _Session, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
-    client.patch("/collections/incidents", json={"license": "etalab-2.0"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
+    client.patch("/v1/collections/incidents", json={"license": "etalab-2.0"})
 
-    res = client.patch("/collections/incidents", json={"title": "Nouveau titre"})
+    res = client.patch("/v1/collections/incidents", json={"title": "Nouveau titre"})
     assert res.status_code == 200
     assert res.json()["license"] == "etalab-2.0"
 
@@ -859,22 +861,22 @@ def test_patch_collection_can_clear_a_declared_temporal_extent(env):
     # EditCollectionPanel du shell (`temporalStart: temporalStart || null`).
     app, client, _Session, admin, _regular, _ddl = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
     client.patch(
-        "/collections/incidents",
+        "/v1/collections/incidents",
         json={"temporalStart": "2020-01-01", "temporalEnd": "2026-12-31"},
     )
 
-    get_res = client.get("/collections/incidents")
+    get_res = client.get("/v1/collections/incidents")
     assert get_res.json()["temporalStart"] == "2020-01-01"
     assert get_res.json()["temporalEnd"] == "2026-12-31"
 
     clear_res = client.patch(
-        "/collections/incidents",
+        "/v1/collections/incidents",
         json={"temporalStart": None, "temporalEnd": None},
     )
     assert clear_res.status_code == 200
 
-    final_res = client.get("/collections/incidents")
+    final_res = client.get("/v1/collections/incidents")
     assert final_res.json()["temporalStart"] is None
     assert final_res.json()["temporalEnd"] is None

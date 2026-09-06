@@ -70,14 +70,20 @@ CONFORMANCE_CLASSES = [
 
 @router.get("/")
 def landing_page(request: Request):
+    # request.base_url ne porte jamais le préfixe du routeur (juste
+    # scheme://host/) — ce routeur est nesté sous /v1 (SP-57b) donc les
+    # liens vers ses propres routes (self/conformance/data) doivent l'ajouter
+    # explicitement ; /openapi.json reste hors /v1 (endpoint FastAPI natif,
+    # posé directement sur `app`, jamais sous un routeur inclus).
     base = str(request.base_url).rstrip("/")
+    v1 = f"{base}/v1"
     return {
         "title": "GeoStudio OGC API Features",
         "description": "Collections éditables du cœur GeoStudio",
         "links": [
-            {"rel": "self", "type": "application/json", "href": f"{base}/"},
-            {"rel": "conformance", "type": "application/json", "href": f"{base}/conformance"},
-            {"rel": "data", "type": "application/json", "href": f"{base}/collections"},
+            {"rel": "self", "type": "application/json", "href": f"{v1}/"},
+            {"rel": "conformance", "type": "application/json", "href": f"{v1}/conformance"},
+            {"rel": "data", "type": "application/json", "href": f"{v1}/collections"},
             {
                 "rel": "service-desc",
                 "type": "application/vnd.oai.openapi+json;version=3.0",

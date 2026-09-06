@@ -36,7 +36,7 @@ def test_get_item_tool_matches_get_item_route(app_client):  # noqa: F811
         item_id = item.id
 
     rest_result = app_client.get(
-        f"/items/{item_id}", headers={"Authorization": "Bearer anything"}
+        f"/v1/items/{item_id}", headers={"Authorization": "Bearer anything"}
     ).json()
     with app_client:
         tool_result = call_tool(app_client, "get_item", {"itemId": item_id})
@@ -68,7 +68,7 @@ def test_get_sharing_tool_matches_get_sharing_route(app_client):  # noqa: F811
         item_id = item.id
 
     rest_result = app_client.get(
-        f"/items/{item_id}/sharing", headers={"Authorization": "Bearer anything"}
+        f"/v1/items/{item_id}/sharing", headers={"Authorization": "Bearer anything"}
     ).json()
     with app_client:
         tool_result = call_tool(app_client, "get_sharing", {"itemId": item_id})
@@ -146,7 +146,7 @@ def test_run_pipeline_tool_matches_run_pipeline_route_except_actor_kind(
 
     pipeline_args = _linear_pipeline_args(source2_id, target2_id)
     rest_created = client.post(
-        "/configs",
+        "/v1/configs",
         json={
             "title": "Pipeline REST",
             "config": {
@@ -163,7 +163,7 @@ def test_run_pipeline_tool_matches_run_pipeline_route_except_actor_kind(
     assert rest_created.status_code == 201
     pipeline_item_id = rest_created.json()["itemId"]
     rest_run = client.post(
-        f"/pipelines/{pipeline_item_id}/run",
+        f"/v1/pipelines/{pipeline_item_id}/run",
         headers={"Authorization": "Bearer anything"},
     )
     assert rest_run.status_code == 202

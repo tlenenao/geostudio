@@ -45,7 +45,7 @@ function Harness({ children }: { children: ReactNode }) {
 test("saves the sharing payload for a checked group", async () => {
   let body: any = null;
   server.use(
-    http.put("https://core.test/items/:pk/sharing", async ({ request }) => {
+    http.put("https://core.test/v1/items/:pk/sharing", async ({ request }) => {
       body = await request.json();
       return new HttpResponse(null, { status: 204 });
     }),
@@ -70,7 +70,10 @@ test("saves the sharing payload for a checked group", async () => {
 
 test("shows an alert and does not call onDone when saving fails", async () => {
   server.use(
-    http.put("https://core.test/items/:pk/sharing", () => new HttpResponse(null, { status: 500 })),
+    http.put(
+      "https://core.test/v1/items/:pk/sharing",
+      () => new HttpResponse(null, { status: 500 }),
+    ),
   );
   const onDone = vi.fn();
   render(
@@ -86,7 +89,7 @@ test("shows an alert and does not call onDone when saving fails", async () => {
 test("crée un nouveau groupe depuis le formulaire de partage", async () => {
   let created = false;
   server.use(
-    http.post("https://core.test/groups", async ({ request }) => {
+    http.post("https://core.test/v1/groups", async ({ request }) => {
       const body = (await request.json()) as { name: string };
       expect(body.name).toBe("Nouveau");
       created = true;
@@ -96,7 +99,7 @@ test("crée un nouveau groupe depuis le formulaire de partage", async () => {
     // refetch déclenché par onSuccess (invalidateQueries) voie le nouveau
     // groupe — même patron que toute mutation suivie d'un refetch dans ce
     // dépôt (ex. useCreateCollection).
-    http.get("https://core.test/groups", () =>
+    http.get("https://core.test/v1/groups", () =>
       HttpResponse.json(
         created
           ? [
@@ -127,7 +130,7 @@ test("crée un nouveau groupe depuis le formulaire de partage", async () => {
 
 test("ajoute un membre à un groupe existant, affiche l'erreur si non-créateur", async () => {
   server.use(
-    http.post("https://core.test/groups/10/members", () =>
+    http.post("https://core.test/v1/groups/10/members", () =>
       HttpResponse.json({ detail: "group or user not found" }, { status: 404 }),
     ),
   );
@@ -144,8 +147,8 @@ test("ajoute un membre à un groupe existant, affiche l'erreur si non-créateur"
 
 test("crée un lien de partage à échéance", async () => {
   server.use(
-    http.get("https://core.test/items/7/share-links", () => HttpResponse.json([])),
-    http.post("https://core.test/items/7/share-links", async ({ request }) => {
+    http.get("https://core.test/v1/items/7/share-links", () => HttpResponse.json([])),
+    http.post("https://core.test/v1/items/7/share-links", async ({ request }) => {
       const body = (await request.json()) as { ttlDays: number };
       expect(body.ttlDays).toBe(14);
       return HttpResponse.json(
@@ -169,14 +172,14 @@ test("crée un lien de partage à échéance", async () => {
 test("liste les liens de partage existants et permet de les révoquer", async () => {
   let revoked = false;
   server.use(
-    http.get("https://core.test/items/7/share-links", () =>
+    http.get("https://core.test/v1/items/7/share-links", () =>
       HttpResponse.json(
         revoked
           ? [{ id: "sl1", expiresAt: "2026-10-05T00:00:00", revoked: true }]
           : [{ id: "sl1", expiresAt: "2026-10-05T00:00:00", revoked: false }],
       ),
     ),
-    http.delete("https://core.test/items/7/share-links/sl1", () => {
+    http.delete("https://core.test/v1/items/7/share-links/sl1", () => {
       revoked = true;
       return new HttpResponse(null, { status: 204 });
     }),

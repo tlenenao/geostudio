@@ -53,14 +53,14 @@ def env():
 
 
 def test_instance_reports_tileset3d_disabled_by_default(env):
-    response = env.get("/instance")
+    response = env.get("/v1/instance")
     assert response.status_code == 200
     assert response.json()["tileset3dEnabled"] is False
 
 
 def test_instance_reports_tileset3d_enabled(env, monkeypatch):
     monkeypatch.setenv("CORE_TILESET3D_ENABLED", "true")
-    response = env.get("/instance")
+    response = env.get("/v1/instance")
     assert response.status_code == 200
     assert response.json()["tileset3dEnabled"] is True
 
@@ -69,5 +69,5 @@ def test_upload_routes_absent_when_disabled(monkeypatch):
     monkeypatch.delenv("CORE_TILESET3D_ENABLED", raising=False)
     app = create_app()
     client = TestClient(app)
-    response = client.post("/tileset3d/uploads", json={"filename": "x.zip", "title": "X"})
+    response = client.post("/v1/tileset3d/uploads", json={"filename": "x.zip", "title": "X"})
     assert response.status_code == 404

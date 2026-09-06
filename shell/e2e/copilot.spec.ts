@@ -20,10 +20,10 @@ test("copilot: explain prompt makes no changes, add-widget prompt adds and is un
   page,
 }) => {
   await mockCore(page);
-  await page.route("https://core.test/instance", async (route) => {
+  await page.route("https://core.test/v1/instance", async (route) => {
     await route.fulfill({ json: { readOnly: false, copilotEnabled: true } });
   });
-  await page.route("https://core.test/copilot/turn", async (route) => {
+  await page.route("https://core.test/v1/copilot/turn", async (route) => {
     const body = route.request().postDataJSON() as { message: string };
     if (body.message.includes("indicateur")) {
       await route.fulfill({

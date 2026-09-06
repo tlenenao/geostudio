@@ -54,7 +54,7 @@ test("cliquer une entité avec un champ attachment configuré révèle sa pièce
                 title: "Communes",
                 visible: true,
                 kind: "vector",
-                tilesUrl: "https://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
+                tilesUrl: "https://core.test/v1/collections/communes/tiles/{z}/{x}/{y}.mvt",
                 sourceLayer: "communes",
                 collectionId: "communes",
                 geometryKind: "polygon",

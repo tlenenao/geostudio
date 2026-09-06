@@ -68,7 +68,7 @@ def test_read_tile_proxies_titiler_with_terrarium_algorithm_and_source_key(env):
         query_string=f"url=s3%3A%2F%2Fgeostudio-terrain3d%2F{tenant.id}%2Fx%2Fdem-cog.tif&algorithm=terrarium",
     ).respond_with_data(b"\x89PNG-fake-tile-bytes", content_type="image/png")
 
-    r = client.get(f"/terrain3d/{item_id}/tiles/5/10/12.png")
+    r = client.get(f"/v1/terrain3d/{item_id}/tiles/5/10/12.png")
 
     assert r.status_code == 200
     assert r.content == b"\x89PNG-fake-tile-bytes"
@@ -77,7 +77,7 @@ def test_read_tile_proxies_titiler_with_terrarium_algorithm_and_source_key(env):
 
 def test_read_tile_404_for_unknown_item(env):
     client, *_ = env
-    r = client.get("/terrain3d/does-not-exist/tiles/0/0/0.png")
+    r = client.get("/v1/terrain3d/does-not-exist/tiles/0/0/0.png")
     assert r.status_code == 404
 
 
@@ -92,7 +92,7 @@ def test_read_tile_passes_through_titiler_404_for_a_tile_out_of_bounds(env):
         status=404,
     )
 
-    r = client.get(f"/terrain3d/{item_id}/tiles/99/99/99.png")
+    r = client.get(f"/v1/terrain3d/{item_id}/tiles/99/99/99.png")
     assert r.status_code == 404
 
 
@@ -100,7 +100,7 @@ def test_read_tile_502_on_an_unexpected_titiler_status(env):
     client, item_id, *_ = env
     # Aucun handler enregistré pour cette route : pytest-httpserver répond
     # 500, statut qui n'a rien de nominal -> 502, pas un 500 opaque.
-    r = client.get(f"/terrain3d/{item_id}/tiles/7/7/7.png")
+    r = client.get(f"/v1/terrain3d/{item_id}/tiles/7/7/7.png")
     assert r.status_code == 502
 
 
@@ -117,5 +117,5 @@ def test_read_tile_502_when_titiler_unreachable(env, monkeypatch):
         f"http://127.0.0.1:{dead_port}"
     )
 
-    r = client.get(f"/terrain3d/{item_id}/tiles/5/10/12.png")
+    r = client.get(f"/v1/terrain3d/{item_id}/tiles/5/10/12.png")
     assert r.status_code == 502

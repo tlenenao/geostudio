@@ -93,7 +93,7 @@ def _as(app, Session, user):
 def test_tasks_view_holder_sees_only_own_actions(env):
     app, client, Session, creator, admin, reader = env
     _as(app, Session, creator)
-    resp = client.get("/usage/tasks")
+    resp = client.get("/v1/usage/tasks")
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["total"] == 1
@@ -104,14 +104,14 @@ def test_tasks_view_holder_sees_only_own_actions(env):
 def test_tasks_view_holder_gets_403_on_explicit_other_actor_id(env):
     app, client, Session, creator, admin, reader = env
     _as(app, Session, creator)
-    resp = client.get(f"/usage/tasks?actorId={admin.id}")
+    resp = client.get(f"/v1/usage/tasks?actorId={admin.id}")
     assert resp.status_code == 403
 
 
 def test_tasks_view_all_holder_sees_every_actor(env):
     app, client, Session, creator, admin, reader = env
     _as(app, Session, admin)
-    resp = client.get("/usage/tasks")
+    resp = client.get("/v1/usage/tasks")
     assert resp.status_code == 200
     assert resp.json()["total"] == 2
 
@@ -119,18 +119,18 @@ def test_tasks_view_all_holder_sees_every_actor(env):
 def test_no_tasks_privilege_is_rejected(env):
     app, client, Session, creator, admin, reader = env
     _as(app, Session, reader)
-    resp = client.get("/usage/tasks")
+    resp = client.get("/v1/usage/tasks")
     assert resp.status_code == 403
 
 
 def test_summary_requires_tasks_view_all_not_just_tasks_view(env):
     app, client, Session, creator, admin, reader = env
     _as(app, Session, creator)
-    resp = client.get("/usage/summary")
+    resp = client.get("/v1/usage/summary")
     assert resp.status_code == 403
 
     _as(app, Session, admin)
-    resp = client.get("/usage/summary")
+    resp = client.get("/v1/usage/summary")
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["totalActions"] == 2

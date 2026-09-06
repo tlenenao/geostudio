@@ -60,9 +60,9 @@ def _as(app, user):
 def test_catalog_lists_every_privilege_and_requires_admin_roles_manage(env):
     app, client, admin, regular, _roles = env
     _as(app, regular)
-    assert client.get("/roles/catalog").status_code == 403
+    assert client.get("/v1/roles/catalog").status_code == 403
     _as(app, admin)
-    body = client.get("/roles/catalog").json()
+    body = client.get("/v1/roles/catalog").json()
     assert len(body) == len(list(Privilege))
     assert {"privilege", "domain", "labelKey"} <= set(body[0])
 
@@ -70,7 +70,7 @@ def test_catalog_lists_every_privilege_and_requires_admin_roles_manage(env):
 def test_list_roles_includes_the_four_built_in(env):
     app, client, admin, _regular, _roles = env
     _as(app, admin)
-    body = client.get("/roles").json()
+    body = client.get("/v1/roles").json()
     assert {r["slug"] for r in body} == {"admin", "creator", "analyst", "reader"}
     assert all(r["isBuiltIn"] for r in body)
 
@@ -79,25 +79,25 @@ def test_create_edit_delete_a_custom_role(env):
     app, client, admin, _regular, _roles = env
     _as(app, admin)
     created = client.post(
-        "/roles", json={"name": "Support moissonnage", "privileges": ["admin.harvest.manage"]}
+        "/v1/roles", json={"name": "Support moissonnage", "privileges": ["admin.harvest.manage"]}
     ).json()
     assert created["isBuiltIn"] is False
 
     patched = client.patch(
-        f"/roles/{created['id']}",
+        f"/v1/roles/{created['id']}",
         json={"privileges": ["admin.harvest.manage", "admin.collections.manage"]},
     ).json()
     assert len(patched["privileges"]) == 2
 
-    assert client.delete(f"/roles/{created['id']}").status_code == 204
-    assert created["id"] not in {r["id"] for r in client.get("/roles").json()}
+    assert client.delete(f"/v1/roles/{created['id']}").status_code == 204
+    assert created["id"] not in {r["id"] for r in client.get("/v1/roles").json()}
 
 
 def test_a_built_in_role_cannot_be_edited_or_deleted(env):
     app, client, admin, _regular, roles = env
     _as(app, admin)
-    assert client.patch(f"/roles/{roles['reader']}", json={"name": "x"}).status_code == 400
-    assert client.delete(f"/roles/{roles['admin']}").status_code == 400
+    assert client.patch(f"/v1/roles/{roles['reader']}", json={"name": "x"}).status_code == 400
+    assert client.delete(f"/v1/roles/{roles['admin']}").status_code == 400
 
 
 def test_a_built_in_role_privileges_cannot_be_edited_either(env):
@@ -106,7 +106,7 @@ def test_a_built_in_role_privileges_cannot_be_edited_either(env):
     # jamais atteindre update_role() pour un rôle is_built_in.
     app, client, admin, _regular, roles = env
     _as(app, admin)
-    resp = client.patch(f"/roles/{roles['reader']}", json={"privileges": ["catalog.manage"]})
+    resp = client.patch(f"/v1/roles/{roles['reader']}", json={"privileges": ["catalog.manage"]})
     assert resp.status_code == 400
 
 
@@ -119,10 +119,12 @@ def test_deleting_a_role_still_in_use_is_blocked(env):
     app, client, admin, regular, _roles = env
     _as(app, admin)
     created = client.post(
-        "/roles", json={"name": "Support terrain", "privileges": ["data.view"]}
+        "/v1/roles", json={"name": "Support terrain", "privileges": ["data.view"]}
     ).json()
-    assert client.patch(f"/users/{regular.id}", json={"roleId": created["id"]}).status_code == 200
-    assert client.delete(f"/roles/{created['id']}").status_code == 409
+    assert (
+        client.patch(f"/v1/users/{regular.id}", json={"roleId": created["id"]}).status_code == 200
+    )
+    assert client.delete(f"/v1/roles/{created['id']}").status_code == 409
 
 
 def test_removing_admin_roles_manage_from_the_only_holder_is_blocked(env):
@@ -136,17 +138,17 @@ def test_removing_admin_roles_manage_from_the_only_holder_is_blocked(env):
     app, client, admin, _regular, roles = env
     _as(app, admin)
     created = client.post(
-        "/roles",
+        "/v1/roles",
         json={
             "name": "Super-admin custom",
             "privileges": ["admin.users.manage", "admin.roles.manage"],
         },
     ).json()
 
-    reassign = client.patch(f"/users/{admin.id}", json={"roleId": created["id"]})
+    reassign = client.patch(f"/v1/users/{admin.id}", json={"roleId": created["id"]})
     assert reassign.status_code == 200
 
-    resp = client.patch(f"/roles/{created['id']}", json={"privileges": ["admin.users.manage"]})
+    resp = client.patch(f"/v1/roles/{created['id']}", json={"privileges": ["admin.users.manage"]})
     assert resp.status_code == 409
 
 
@@ -173,7 +175,7 @@ def test_removing_admin_roles_manage_from_a_role_that_never_held_the_pair_is_blo
         s.commit()
 
     _as(app, admin)
-    resp = client.patch(f"/roles/{r2.id}", json={"privileges": []})
+    resp = client.patch(f"/v1/roles/{r2.id}", json={"privileges": []})
     assert resp.status_code == 409, resp.text
 
 
@@ -187,13 +189,13 @@ def test_moving_the_sole_conjoint_holder_off_a_custom_role_is_blocked(env):
     app, client, admin, _regular, roles = env
     _as(app, admin)
     created = client.post(
-        "/roles",
+        "/v1/roles",
         json={
             "name": "Super-admin custom",
             "privileges": ["admin.users.manage", "admin.roles.manage"],
         },
     ).json()
-    assert client.patch(f"/users/{admin.id}", json={"roleId": created["id"]}).status_code == 200
+    assert client.patch(f"/v1/users/{admin.id}", json={"roleId": created["id"]}).status_code == 200
 
-    resp = client.patch(f"/users/{admin.id}", json={"roleId": roles["reader"]})
+    resp = client.patch(f"/v1/users/{admin.id}", json={"roleId": roles["reader"]})
     assert resp.status_code == 409

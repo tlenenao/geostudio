@@ -77,7 +77,7 @@ test("shows an error for a missing item", async () => {
 
 test("shows 'Ouvrir dans l'éditeur' for a pipeline item and calls onOpenEditor('pipeline')", async () => {
   server.use(
-    http.get("https://core.test/items/7", () =>
+    http.get("https://core.test/v1/items/7", () =>
       HttpResponse.json({
         pk: "7",
         resourceType: "pipeline",
@@ -108,7 +108,7 @@ test("affiche le formulaire d'édition quand l'URL porte ?panel=edit", async () 
 
 test("conserve les mots-clés existants à l'ouverture du panneau Éditer", async () => {
   server.use(
-    http.get("https://core.test/items/1", () =>
+    http.get("https://core.test/v1/items/1", () =>
       HttpResponse.json({
         pk: "1",
         resourceType: "app",
@@ -169,7 +169,7 @@ test("un ?panel= inconnu n'affiche aucun panneau", async () => {
 // « verrouillé et expliqué », cf. Locked.tsx) mais son fieldset est désactivé.
 function mockReadOnlyItem() {
   server.use(
-    http.get("https://core.test/items/1", () =>
+    http.get("https://core.test/v1/items/1", () =>
       HttpResponse.json({
         pk: "1",
         resourceType: "app",

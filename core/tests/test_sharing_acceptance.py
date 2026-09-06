@@ -50,7 +50,7 @@ def test_item_shared_to_a_group_is_visible_to_members_and_invisible_to_others(cl
     """Roadmap SP-1 acceptance criterion, reproduced verbatim: an item shared
     to a group is visible to its members and invisible to everyone else."""
     created = client.post(
-        "/configs",
+        "/v1/configs",
         json={
             "title": "Confidential map",
             "config": {"kind": "app", "layout": {"type": "grid", "items": []}},
@@ -91,9 +91,9 @@ def test_item_shared_to_a_group_is_visible_to_members_and_invisible_to_others(cl
         session.refresh(outsider)
 
     client.app.dependency_overrides[get_current_user] = lambda: member
-    member_response = client.get(f"/items/{item_id}")
+    member_response = client.get(f"/v1/items/{item_id}")
     client.app.dependency_overrides[get_current_user] = lambda: outsider
-    outsider_response = client.get(f"/items/{item_id}")
+    outsider_response = client.get(f"/v1/items/{item_id}")
     client.app.dependency_overrides[get_current_user] = lambda: client.user
 
     assert member_response.status_code == 200
@@ -104,7 +104,7 @@ def test_published_item_accessible_anonymously_unpublished_is_not(client):
     """Roadmap SP-1 acceptance criterion: a published item is accessible
     anonymously at runtime; a non-published one returns 404."""
     created = client.post(
-        "/configs",
+        "/v1/configs",
         json={
             "title": "Runtime app",
             "config": {"kind": "app", "layout": {"type": "grid", "items": []}},
@@ -113,10 +113,10 @@ def test_published_item_accessible_anonymously_unpublished_is_not(client):
     item_id = created["itemId"]
 
     del client.app.dependency_overrides[get_current_user]
-    assert client.get(f"/public/items/{item_id}").status_code == 404
+    assert client.get(f"/v1/public/items/{item_id}").status_code == 404
 
     client.app.dependency_overrides[get_current_user] = lambda: client.user
-    client.patch(f"/items/{item_id}", json={"isPublished": True})
+    client.patch(f"/v1/items/{item_id}", json={"isPublished": True})
     del client.app.dependency_overrides[get_current_user]
 
-    assert client.get(f"/public/items/{item_id}").status_code == 200
+    assert client.get(f"/v1/public/items/{item_id}").status_code == 200

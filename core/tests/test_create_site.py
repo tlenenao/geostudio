@@ -64,15 +64,15 @@ def _site_body(title: str, slug: str | None = None) -> dict:
 
 
 def test_create_site_genere_slug(client):
-    res = client.post("/configs", json=_site_body("Mon Portail"))
+    res = client.post("/v1/configs", json=_site_body("Mon Portail"))
     assert res.status_code == 201, res.text
     item_id = res.json()["itemId"]
-    item = client.get(f"/items/{item_id}").json()
+    item = client.get(f"/v1/items/{item_id}").json()
     assert item["resourceType"] == "site"
     assert item["slug"] == "mon-portail"
 
 
 def test_create_site_slug_explicite_collision_409(client):
-    assert client.post("/configs", json=_site_body("A", slug="pris")).status_code == 201
-    res = client.post("/configs", json=_site_body("B", slug="pris"))
+    assert client.post("/v1/configs", json=_site_body("A", slug="pris")).status_code == 201
+    res = client.post("/v1/configs", json=_site_body("B", slug="pris"))
     assert res.status_code == 409

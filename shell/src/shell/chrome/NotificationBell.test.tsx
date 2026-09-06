@@ -28,7 +28,7 @@ function PipelineProbe() {
 // (piège n°3/n°10 : un test qui "passe toujours" isolément ne prouve rien).
 beforeEach(() => {
   server.use(
-    http.get("https://core.test/notifications/preference", () =>
+    http.get("https://core.test/v1/notifications/preference", () =>
       HttpResponse.json({ value: "all" }),
     ),
   );
@@ -62,7 +62,9 @@ function Harness() {
 
 test("masque le badge quand le compte non-lu est à zéro", async () => {
   server.use(
-    http.get("https://core.test/notifications/unread-count", () => HttpResponse.json({ count: 0 })),
+    http.get("https://core.test/v1/notifications/unread-count", () =>
+      HttpResponse.json({ count: 0 }),
+    ),
   );
   render(<Harness />);
   await screen.findByRole("button", { name: "Notifications" });
@@ -71,7 +73,9 @@ test("masque le badge quand le compte non-lu est à zéro", async () => {
 
 test("affiche le badge avec le compte non-lu", async () => {
   server.use(
-    http.get("https://core.test/notifications/unread-count", () => HttpResponse.json({ count: 3 })),
+    http.get("https://core.test/v1/notifications/unread-count", () =>
+      HttpResponse.json({ count: 3 }),
+    ),
   );
   render(<Harness />);
   expect(await screen.findByText("3")).toBeInTheDocument();
@@ -81,10 +85,10 @@ test(
   "ouvre le panneau et affiche les notifications",
   async () => {
     server.use(
-      http.get("https://core.test/notifications/unread-count", () =>
+      http.get("https://core.test/v1/notifications/unread-count", () =>
         HttpResponse.json({ count: 1 }),
       ),
-      http.get("https://core.test/notifications", () =>
+      http.get("https://core.test/v1/notifications", () =>
         HttpResponse.json({
           notifications: [
             {
@@ -116,10 +120,10 @@ test(
   async () => {
     let markReadCalledWith: string | null = null;
     server.use(
-      http.get("https://core.test/notifications/unread-count", () =>
+      http.get("https://core.test/v1/notifications/unread-count", () =>
         HttpResponse.json({ count: 2 }),
       ),
-      http.get("https://core.test/notifications", () =>
+      http.get("https://core.test/v1/notifications", () =>
         HttpResponse.json({
           notifications: [
             {
@@ -148,7 +152,7 @@ test(
           total: 2,
         }),
       ),
-      http.post("https://core.test/notifications/:id/read", ({ params }) => {
+      http.post("https://core.test/v1/notifications/:id/read", ({ params }) => {
         markReadCalledWith = params.id as string;
         return HttpResponse.json({
           id: params.id,
@@ -188,13 +192,13 @@ test(
   async () => {
     let patchedValue: string | null = null;
     server.use(
-      http.get("https://core.test/notifications/unread-count", () =>
+      http.get("https://core.test/v1/notifications/unread-count", () =>
         HttpResponse.json({ count: 0 }),
       ),
-      http.get("https://core.test/notifications", () =>
+      http.get("https://core.test/v1/notifications", () =>
         HttpResponse.json({ notifications: [], total: 0 }),
       ),
-      http.patch("https://core.test/notifications/preference", async ({ request }) => {
+      http.patch("https://core.test/v1/notifications/preference", async ({ request }) => {
         const body = (await request.json()) as { value: string };
         patchedValue = body.value;
         return HttpResponse.json({ value: body.value });
@@ -213,10 +217,10 @@ test(
   "affiche un état d'erreur visible quand le chargement des notifications échoue (pas 'Aucune notification.')",
   async () => {
     server.use(
-      http.get("https://core.test/notifications/unread-count", () =>
+      http.get("https://core.test/v1/notifications/unread-count", () =>
         HttpResponse.json({ count: 0 }),
       ),
-      http.get("https://core.test/notifications", () => new HttpResponse(null, { status: 500 })),
+      http.get("https://core.test/v1/notifications", () => new HttpResponse(null, { status: 500 })),
     );
     render(<Harness />);
     await userEvent.click(await screen.findByRole("button", { name: "Notifications" }));
@@ -230,14 +234,14 @@ test(
   "un échec de « Tout marquer comme lu » reste visible, pas silencieux",
   async () => {
     server.use(
-      http.get("https://core.test/notifications/unread-count", () =>
+      http.get("https://core.test/v1/notifications/unread-count", () =>
         HttpResponse.json({ count: 1 }),
       ),
-      http.get("https://core.test/notifications", () =>
+      http.get("https://core.test/v1/notifications", () =>
         HttpResponse.json({ notifications: [], total: 0 }),
       ),
       http.post(
-        "https://core.test/notifications/read-all",
+        "https://core.test/v1/notifications/read-all",
         () => new HttpResponse(null, { status: 500 }),
       ),
     );
@@ -254,13 +258,13 @@ test(
   async () => {
     let called = false;
     server.use(
-      http.get("https://core.test/notifications/unread-count", () =>
+      http.get("https://core.test/v1/notifications/unread-count", () =>
         HttpResponse.json({ count: 1 }),
       ),
-      http.get("https://core.test/notifications", () =>
+      http.get("https://core.test/v1/notifications", () =>
         HttpResponse.json({ notifications: [], total: 0 }),
       ),
-      http.post("https://core.test/notifications/read-all", () => {
+      http.post("https://core.test/v1/notifications/read-all", () => {
         called = true;
         return new HttpResponse(null, { status: 204 });
       }),

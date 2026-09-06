@@ -12,7 +12,7 @@ test("un admin voit les extensions (actives et désactivées) et peut les active
   // intercept the browser's document navigation and break rendering (same
   // rationale as "/items/1"/"/items/9" in mockCore, mocks.ts). "**" (not "*")
   // so it also matches the nested PATCH path "/extensions/{id}".
-  await page.route("https://core.test/extensions**", async (route) => {
+  await page.route("https://core.test/v1/extensions**", async (route) => {
     if (route.request().method() === "PATCH") {
       patchedBody = await route.request().postDataJSON();
       await route.fulfill({ json: { id: "acme.gauge", enabled: false } });
@@ -56,7 +56,7 @@ test("un utilisateur non-admin voit un message d'accès refusé et n'appelle jam
   await mockCore(page);
   let extensionsCalled = false;
   // Host-scoped — see rationale in the test above.
-  await page.route("https://core.test/extensions**", async (route) => {
+  await page.route("https://core.test/v1/extensions**", async (route) => {
     extensionsCalled = true;
     await route.fulfill({ json: { extensions: [] } });
   });

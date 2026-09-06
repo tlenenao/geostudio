@@ -48,7 +48,12 @@ def launch_admin_tool(
     require_privilege(session, user, Privilege.SETTINGS_INSTANCE_MANAGE.value)
     base = os.environ.get("CORE_BASE_URL", "http://localhost:8200")
     token = mint_launch_token(sub=user.id, tool=tool)
-    return LaunchAdminToolResponse(url=f"{base}/admin-tools/session/{tool}?_at={token}")
+    # /admin-tools/session/{tool} (juste en dessous) est un GET normal du
+    # même routeur — nesté sous /v1 comme tout le reste (SP-57b) — jamais
+    # rechargé via createBase()/coreUrl (le navigateur l'ouvre directement
+    # via window.open, cf. AdminInfrastructurePage.tsx), donc le préfixe
+    # doit être posé ici explicitement.
+    return LaunchAdminToolResponse(url=f"{base}/v1/admin-tools/session/{tool}?_at={token}")
 
 
 @router.get("/admin-tools/session/{tool}")

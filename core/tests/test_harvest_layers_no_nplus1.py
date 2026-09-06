@@ -135,7 +135,7 @@ def test_layers_query_count_does_not_grow_with_layer_count(small, large):
         try:
 
             def call(client=client, n=n):
-                response = client.get("/harvest/layers")
+                response = client.get("/v1/harvest/layers")
                 assert response.status_code == 200, response.text
                 assert len(response.json()["layers"]) == n
 
@@ -156,7 +156,7 @@ def test_feature_layers_query_count_does_not_grow_with_layer_count(small, large)
         try:
 
             def call(client=client, n=n):
-                response = client.get("/harvest/feature-layers")
+                response = client.get("/v1/harvest/feature-layers")
                 assert response.status_code == 200, response.text
                 assert len(response.json()["layers"]) == n
 

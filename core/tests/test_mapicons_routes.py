@@ -142,7 +142,7 @@ def _upload(
 ):
     """Un seul POST multipart : le cœur reçoit les octets (D7)."""
     return client.post(
-        "/map-icons",
+        "/v1/map-icons",
         files={"file": (filename, payload, content_type)},
         data={"title": title, "category": category},
     )
@@ -155,7 +155,7 @@ def test_upload_then_list_then_delete(env):
     assert created.status_code == 201
     icon_id = created.json()["id"]
 
-    listed = client.get("/map-icons")
+    listed = client.get("/v1/map-icons")
     assert [i["id"] for i in listed.json()] == [icon_id]
 
     # La clé S3 est CHOISIE PAR LE CŒUR et préfixée du tenant : le client n'en
@@ -165,9 +165,9 @@ def test_upload_then_list_then_delete(env):
     assert key.startswith(f"{tenant.id}/")
     assert key.endswith("logo.png")
 
-    deleted = client.delete(f"/map-icons/{icon_id}")
+    deleted = client.delete(f"/v1/map-icons/{icon_id}")
     assert deleted.status_code == 204
-    assert client.get("/map-icons").json() == []
+    assert client.get("/v1/map-icons").json() == []
     assert fake_s3.deleted == [key]
 
 
@@ -192,7 +192,7 @@ def test_upload_refuses_an_oversized_file_without_reading_it_whole(env):
     response = _upload(client, b"\x89PNG\r\n\x1a\n" + b"0" * 300_000, filename="big.png")
     assert response.status_code == 413
     assert fake_s3.objects == {}
-    assert client.get("/map-icons").json() == []
+    assert client.get("/v1/map-icons").json() == []
 
 
 def test_upload_refuses_bytes_that_contradict_the_declared_type(env):
@@ -228,7 +228,7 @@ def test_an_svg_is_sanitized_before_being_stored_and_served(env):
     assert b"onload" not in stored
     assert b'd="M4 4"' in stored
 
-    served = client.get(f"/map-icons/{created.json()['id']}/file")
+    served = client.get(f"/v1/map-icons/{created.json()['id']}/file")
     assert served.status_code == 200
     assert served.content == stored
     assert served.headers["content-type"].startswith("image/svg+xml")
@@ -250,7 +250,7 @@ def test_an_svg_emptied_by_sanitization_is_refused_and_nothing_is_stored(env):
     assert response.json()["errors"][0]["code"] == "svg_no_graphics"
     # Contrat explicite de D4+D7 : rien en base, et RIEN dans S3 — l'écriture
     # n'a lieu qu'après un assainissement réussi.
-    assert client.get("/map-icons").json() == []
+    assert client.get("/v1/map-icons").json() == []
     assert fake_s3.objects == {}
 
 
@@ -311,9 +311,9 @@ def test_list_and_read_are_tenant_scoped(env):
 
     other = _second_tenant_user(Session)
     _as(app, other)
-    assert client.get("/map-icons").json() == []
-    assert client.get(f"/map-icons/{icon_id}/file").status_code == 404
-    assert client.delete(f"/map-icons/{icon_id}").status_code == 404
+    assert client.get("/v1/map-icons").json() == []
+    assert client.get(f"/v1/map-icons/{icon_id}/file").status_code == 404
+    assert client.delete(f"/v1/map-icons/{icon_id}").status_code == 404
 
 
 def test_read_file_serves_the_bytes_with_hardened_headers(env):
@@ -321,7 +321,7 @@ def test_read_file_serves_the_bytes_with_hardened_headers(env):
     _as(app, alice)
     icon_id = _upload(client, PNG_BYTES, filename="servi.png", title="Servi").json()["id"]
 
-    response = client.get(f"/map-icons/{icon_id}/file")
+    response = client.get(f"/v1/map-icons/{icon_id}/file")
     assert response.status_code == 200
     assert response.content == PNG_BYTES
     assert response.headers["content-type"].startswith("image/png")
@@ -339,14 +339,14 @@ def test_read_file_is_404_when_the_s3_object_vanished(env):
     _as(app, alice)
     icon_id = _upload(client).json()["id"]
     fake_s3.objects.clear()
-    assert client.get(f"/map-icons/{icon_id}/file").status_code == 404
+    assert client.get(f"/v1/map-icons/{icon_id}/file").status_code == 404
 
 
 def test_create_and_delete_write_audit_entries(env):
     app, client, Session, _tenant, alice, _s3 = env
     _as(app, alice)
     icon_id = _upload(client, title="Audit").json()["id"]
-    client.delete(f"/map-icons/{icon_id}")
+    client.delete(f"/v1/map-icons/{icon_id}")
 
     with Session() as s:
         actions = sorted(
@@ -358,7 +358,7 @@ def test_create_and_delete_write_audit_entries(env):
 def test_delete_of_a_missing_icon_is_404(env):
     app, client, _Session, _tenant, alice, _s3 = env
     _as(app, alice)
-    assert client.delete("/map-icons/does-not-exist").status_code == 404
+    assert client.delete("/v1/map-icons/does-not-exist").status_code == 404
 
 
 def test_a_failing_s3_delete_does_not_lose_the_database_delete(env):
@@ -370,8 +370,8 @@ def test_a_failing_s3_delete_does_not_lose_the_database_delete(env):
         raise ClientError({"Error": {"Code": "500", "Message": "nope"}}, "DeleteObject")
 
     fake_s3.delete_object = boom
-    assert client.delete(f"/map-icons/{icon_id}").status_code == 204
-    assert client.get("/map-icons").json() == []
+    assert client.delete(f"/v1/map-icons/{icon_id}").status_code == 204
+    assert client.get("/v1/map-icons").json() == []
 
 
 def test_a_non_owner_in_the_same_tenant_cannot_delete_someone_elses_icon(env):
@@ -397,11 +397,11 @@ def test_a_non_owner_in_the_same_tenant_cannot_delete_someone_elses_icon(env):
         s.commit()
 
     _as(app, bob)
-    response = client.delete(f"/map-icons/{icon_id}")
+    response = client.delete(f"/v1/map-icons/{icon_id}")
     assert response.status_code == 403, response.text
     # L'icône d'Alice doit toujours exister.
     _as(app, alice)
-    assert [i["id"] for i in client.get("/map-icons").json()] == [icon_id]
+    assert [i["id"] for i in client.get("/v1/map-icons").json()] == [icon_id]
 
 
 def test_map_icons_cannot_be_registered_as_a_business_collection(env):

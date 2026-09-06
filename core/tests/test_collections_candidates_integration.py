@@ -84,17 +84,17 @@ def _as(app, user):
 def test_candidates_real_introspection_and_tenant_isolation(pg_app):
     client, app, admin_a, admin_b = pg_app
     _as(app, admin_a)
-    body = client.get("/collections/candidates").json()["candidates"]
+    body = client.get("/v1/collections/candidates").json()["candidates"]
     by_name = {c["tableName"]: c for c in body}
     assert by_name["cand_points"]["registrable"] is True
     assert by_name["cand_points"]["geometryType"] == "Point"
     assert by_name["cand_no_pk"]["registrable"] is False
     assert by_name["cand_no_pk"]["reason"] == "table has no primary key"
 
-    assert client.post("/collections", json={"tableName": "cand_points"}).status_code == 201
-    body_a = client.get("/collections/candidates").json()["candidates"]
+    assert client.post("/v1/collections", json={"tableName": "cand_points"}).status_code == 201
+    body_a = client.get("/v1/collections/candidates").json()["candidates"]
     assert "cand_points" not in {c["tableName"] for c in body_a}
 
     _as(app, admin_b)
-    body_b = client.get("/collections/candidates").json()["candidates"]
+    body_b = client.get("/v1/collections/candidates").json()["candidates"]
     assert "cand_points" in {c["tableName"] for c in body_b}

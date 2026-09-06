@@ -53,14 +53,14 @@ test("le bouton de purge s'active une fois le slug exact tapé, et déclenche PO
   let postedBody: unknown = null;
   server.use(
     http.post(
-      "https://core.test/compliance/tenants/:tenantId/purge",
+      "https://core.test/v1/compliance/tenants/:tenantId/purge",
       async ({ params, request }) => {
         postedTenantId = String(params.tenantId);
         postedBody = await request.json();
         return HttpResponse.json({ jobId: "purge-123" }, { status: 202 });
       },
     ),
-    http.get("https://core.test/compliance/purges/purge-123", () =>
+    http.get("https://core.test/v1/compliance/purges/purge-123", () =>
       HttpResponse.json({ status: 202, detail: "in progress" }, { status: 202 }),
     ),
   );
@@ -81,7 +81,7 @@ test("le bouton de purge s'active une fois le slug exact tapé, et déclenche PO
 test("anonymiser un compte appelle POST /compliance/users/{id}/erase et affiche une confirmation", async () => {
   let erasedUserId: string | null = null;
   server.use(
-    http.post("https://core.test/compliance/users/:userId/erase", ({ params }) => {
+    http.post("https://core.test/v1/compliance/users/:userId/erase", ({ params }) => {
       erasedUserId = String(params.userId);
       return new HttpResponse(null, { status: 204 });
     }),

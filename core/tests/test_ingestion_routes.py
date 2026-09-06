@@ -77,7 +77,7 @@ def env():
 def test_presign_returns_upload_url_and_key(env):
     client, *_ = env
     r = client.post(
-        "/uploads/presign",
+        "/v1/uploads/presign",
         json={"filename": "villes.geojson", "contentType": "application/geo+json"},
     )
     assert r.status_code == 200
@@ -89,7 +89,7 @@ def test_presign_returns_upload_url_and_key(env):
 def test_create_upload_job_defers_task_and_returns_job_id(env):
     client, Session, tenant, alice, deferred, _fake_s3 = env
     r = client.post(
-        "/uploads",
+        "/v1/uploads",
         json={
             "key": "default/abc-villes.geojson",
             "filename": "villes.geojson",
@@ -100,7 +100,7 @@ def test_create_upload_job_defers_task_and_returns_job_id(env):
     job_id = r.json()["jobId"]
     assert deferred == [(job_id, tenant.id)]
 
-    r2 = client.get(f"/uploads/{job_id}")
+    r2 = client.get(f"/v1/uploads/{job_id}")
     assert r2.status_code == 200
     assert r2.json() == {
         "status": "pending",
@@ -113,7 +113,7 @@ def test_create_upload_job_defers_task_and_returns_job_id(env):
 def test_create_upload_job_rejects_key_with_foreign_tenant_prefix(env):
     client, *_ = env
     r = client.post(
-        "/uploads",
+        "/v1/uploads",
         json={
             "key": "other-tenant/abc-villes.geojson",
             "filename": "villes.geojson",
@@ -125,7 +125,7 @@ def test_create_upload_job_rejects_key_with_foreign_tenant_prefix(env):
 
 def test_get_upload_job_404_for_unknown_job(env):
     client, *_ = env
-    assert client.get("/uploads/does-not-exist").status_code == 404
+    assert client.get("/v1/uploads/does-not-exist").status_code == 404
 
 
 def test_create_upload_job_rejects_a_reader_without_data_manage(env):
@@ -155,7 +155,7 @@ def test_create_upload_job_rejects_a_reader_without_data_manage(env):
     alice.is_admin = False
 
     r = client.post(
-        "/uploads",
+        "/v1/uploads",
         json={
             "key": "default/abc-villes.geojson",
             "filename": "villes.geojson",
@@ -198,7 +198,7 @@ def test_create_upload_job_rejects_data_manage_alone_without_maps_manage(env):
     alice.is_admin = False
 
     r = client.post(
-        "/uploads",
+        "/v1/uploads",
         json={
             "key": "default/abc-villes.geojson",
             "filename": "villes.geojson",
@@ -220,7 +220,7 @@ def test_get_upload_job_cross_tenant_returns_404(env):
 
     client, Session, tenant, alice, deferred, _fake_s3 = env
     job_id = client.post(
-        "/uploads",
+        "/v1/uploads",
         json={
             "key": f"{tenant.id}/abc-villes.geojson",
             "filename": "villes.geojson",
@@ -248,7 +248,7 @@ def test_get_upload_job_cross_tenant_returns_404(env):
 
     client.app.dependency_overrides[get_current_user] = lambda: outsider
     try:
-        response = client.get(f"/uploads/{job_id}")
+        response = client.get(f"/v1/uploads/{job_id}")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: alice
     assert response.status_code == 404
@@ -257,7 +257,7 @@ def test_get_upload_job_cross_tenant_returns_404(env):
 def test_create_upload_job_is_audited(env):
     client, Session, tenant, alice, _deferred, _fake_s3 = env
     client.post(
-        "/uploads",
+        "/v1/uploads",
         json={
             "key": "default/abc.csv",
             "filename": "villes.csv",
@@ -299,7 +299,7 @@ def test_inspect_upload_returns_layers(env, tmp_path):
     client, Session, tenant, alice, _deferred, fake_s3 = env
     fake_s3.objects[f"{tenant.id}/k.gpkg"] = _tiny_gpkg_bytes(tmp_path)
     r = client.post(
-        "/uploads/inspect", json={"key": f"{tenant.id}/k.gpkg", "filename": "villes.gpkg"}
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.gpkg", "filename": "villes.gpkg"}
     )
     assert r.status_code == 200
     # SP-56 : InspectResponse gagne un champ "fields" optionnel (peuplé pour
@@ -313,7 +313,7 @@ def test_inspect_upload_returns_layers(env, tmp_path):
 def test_inspect_upload_rejects_foreign_tenant_key(env):
     client, *_ = env
     r = client.post(
-        "/uploads/inspect", json={"key": "other-tenant/k.gpkg", "filename": "villes.gpkg"}
+        "/v1/uploads/inspect", json={"key": "other-tenant/k.gpkg", "filename": "villes.gpkg"}
     )
     assert r.status_code == 400
 
@@ -322,7 +322,7 @@ def test_inspect_upload_rejects_unsupported_format(env):
     client, Session, tenant, alice, _deferred, fake_s3 = env
     fake_s3.objects[f"{tenant.id}/k.csv"] = b"nom,lat,lon\n"
     r = client.post(
-        "/uploads/inspect", json={"key": f"{tenant.id}/k.csv", "filename": "villes.csv"}
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.csv", "filename": "villes.csv"}
     )
     assert r.status_code == 400
 
@@ -330,7 +330,7 @@ def test_inspect_upload_rejects_unsupported_format(env):
 def test_inspect_upload_404_when_object_missing(env):
     client, Session, tenant, *_ = env
     r = client.post(
-        "/uploads/inspect", json={"key": f"{tenant.id}/absent.gpkg", "filename": "villes.gpkg"}
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/absent.gpkg", "filename": "villes.gpkg"}
     )
     assert r.status_code == 404
 
@@ -339,7 +339,7 @@ def test_inspect_upload_422_on_corrupt_file(env):
     client, Session, tenant, alice, _deferred, fake_s3 = env
     fake_s3.objects[f"{tenant.id}/k.gpkg"] = b"not a real gpkg"
     r = client.post(
-        "/uploads/inspect", json={"key": f"{tenant.id}/k.gpkg", "filename": "villes.gpkg"}
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.gpkg", "filename": "villes.gpkg"}
     )
     assert r.status_code == 422
 
@@ -362,7 +362,7 @@ def test_inspect_upload_xlsx_returns_fields(env):
     client, Session, tenant, alice, _deferred, fake_s3 = env
     fake_s3.objects[f"{tenant.id}/k.xlsx"] = _xlsx_bytes(["nom", "lat", "lon"])
     r = client.post(
-        "/uploads/inspect", json={"key": f"{tenant.id}/k.xlsx", "filename": "villes.xlsx"}
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.xlsx", "filename": "villes.xlsx"}
     )
     assert r.status_code == 200
     body = r.json()
@@ -386,7 +386,7 @@ def test_inspect_upload_kml_returns_layers(env):
     client, Session, tenant, alice, _deferred, fake_s3 = env
     fake_s3.objects[f"{tenant.id}/k.kml"] = _kml_multi_layer_bytes()
     r = client.post(
-        "/uploads/inspect", json={"key": f"{tenant.id}/k.kml", "filename": "villes.kml"}
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.kml", "filename": "villes.kml"}
     )
     assert r.status_code == 200
     body = r.json()
@@ -404,7 +404,7 @@ def test_inspect_upload_parquet_returns_400_not_concerned(env, tmp_path):
     gdf.to_parquet(path)
     fake_s3.objects[f"{tenant.id}/k.parquet"] = path.read_bytes()
     r = client.post(
-        "/uploads/inspect", json={"key": f"{tenant.id}/k.parquet", "filename": "villes.parquet"}
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.parquet", "filename": "villes.parquet"}
     )
     assert r.status_code == 400
 
@@ -412,7 +412,7 @@ def test_inspect_upload_parquet_returns_400_not_concerned(env, tmp_path):
 def test_create_upload_job_accepts_layer_name(env):
     client, Session, tenant, *_ = env
     r = client.post(
-        "/uploads",
+        "/v1/uploads",
         json={
             "key": f"{tenant.id}/abc-villes.gpkg",
             "filename": "villes.gpkg",

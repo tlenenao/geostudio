@@ -94,7 +94,7 @@ def client():
 def test_presign_returns_an_upload_url_and_tenant_prefixed_key(client):
     api, _Session, tenant, _user, s3 = client
     res = api.post(
-        "/collections/col1/items/f1/attachments/presign",
+        "/v1/collections/col1/items/f1/attachments/presign",
         json={"fieldKey": "photos", "filename": "a.jpg", "contentType": "image/jpeg"},
     )
     assert res.status_code == 200
@@ -107,7 +107,7 @@ def test_presign_returns_an_upload_url_and_tenant_prefixed_key(client):
 def test_presign_rejects_undeclared_field_key(client):
     api, *_ = client
     res = api.post(
-        "/collections/col1/items/f1/attachments/presign",
+        "/v1/collections/col1/items/f1/attachments/presign",
         json={"fieldKey": "not-declared", "filename": "a.jpg", "contentType": "image/jpeg"},
     )
     assert res.status_code == 400
@@ -133,7 +133,7 @@ def test_presign_requires_write_access(client):
     api.app.dependency_overrides[get_current_user] = lambda: stranger
 
     res = api.post(
-        "/collections/col1/items/f1/attachments/presign",
+        "/v1/collections/col1/items/f1/attachments/presign",
         json={"fieldKey": "photos", "filename": "a.jpg", "contentType": "image/jpeg"},
     )
     assert res.status_code == 403
@@ -145,7 +145,7 @@ def test_confirm_persists_the_row_after_a_successful_upload(client):
     s3.heads[key] = {"ContentLength": 512}
 
     res = api.post(
-        "/collections/col1/items/f1/attachments",
+        "/v1/collections/col1/items/f1/attachments",
         json={"key": key, "fieldKey": "photos", "filename": "a.jpg", "contentType": "image/jpeg"},
     )
     assert res.status_code == 201
@@ -158,7 +158,7 @@ def test_confirm_persists_the_row_after_a_successful_upload(client):
 def test_confirm_rejects_a_key_outside_the_caller_s_tenant_prefix(client):
     api, *_ = client
     res = api.post(
-        "/collections/col1/items/f1/attachments",
+        "/v1/collections/col1/items/f1/attachments",
         json={
             "key": "other-tenant/col1/f1/abc-a.jpg",
             "fieldKey": "photos",
@@ -175,7 +175,7 @@ def test_confirm_rejects_and_deletes_an_oversized_object(client):
     s3.heads[key] = {"ContentLength": attachments_routes.MAX_ATTACHMENT_BYTES + 1}
 
     res = api.post(
-        "/collections/col1/items/f1/attachments",
+        "/v1/collections/col1/items/f1/attachments",
         json={
             "key": key,
             "fieldKey": "photos",
@@ -191,7 +191,7 @@ def test_confirm_returns_404_when_the_object_was_never_uploaded(client):
     api, _Session, tenant, _user, _s3 = client
     key = f"{tenant.id}/col1/f1/never-uploaded.jpg"
     res = api.post(
-        "/collections/col1/items/f1/attachments",
+        "/v1/collections/col1/items/f1/attachments",
         json={"key": key, "fieldKey": "photos", "filename": "a.jpg", "contentType": "image/jpeg"},
     )
     assert res.status_code == 404
@@ -200,7 +200,7 @@ def test_confirm_returns_404_when_the_object_was_never_uploaded(client):
 def test_presign_rejects_a_dangerous_extension(client):
     api, *_ = client
     res = api.post(
-        "/collections/col1/items/f1/attachments/presign",
+        "/v1/collections/col1/items/f1/attachments/presign",
         json={
             "fieldKey": "photos",
             "filename": "malware.exe",
@@ -214,7 +214,7 @@ def test_confirm_rejects_a_dangerous_extension(client):
     api, _Session, tenant, _user, _s3 = client
     key = f"{tenant.id}/col1/f1/abc-malware.exe"
     res = api.post(
-        "/collections/col1/items/f1/attachments",
+        "/v1/collections/col1/items/f1/attachments",
         json={
             "key": key,
             "fieldKey": "photos",
@@ -236,7 +236,7 @@ def test_confirm_preserves_a_non_ascii_filename_unmutilated(client):
     key = f"{tenant.id}/col1/f1/abc-photo.jpg"
     s3.heads[key] = {"ContentLength": 10}
     res = api.post(
-        "/collections/col1/items/f1/attachments",
+        "/v1/collections/col1/items/f1/attachments",
         json={"key": key, "fieldKey": "photos", "filename": "文件.png", "contentType": "image/png"},
     )
     assert res.status_code == 201
@@ -246,7 +246,7 @@ def test_confirm_preserves_a_non_ascii_filename_unmutilated(client):
 def test_presign_rejects_an_invalid_content_type(client):
     api, *_ = client
     res = api.post(
-        "/collections/col1/items/f1/attachments/presign",
+        "/v1/collections/col1/items/f1/attachments/presign",
         json={"fieldKey": "photos", "filename": "a.png", "contentType": "image/文件"},
     )
     assert res.status_code == 400
@@ -256,7 +256,7 @@ def test_confirm_rejects_an_invalid_content_type(client):
     api, _Session, tenant, _user, _s3 = client
     key = f"{tenant.id}/col1/f1/abc-a.png"
     res = api.post(
-        "/collections/col1/items/f1/attachments",
+        "/v1/collections/col1/items/f1/attachments",
         json={
             "key": key,
             "fieldKey": "photos",
@@ -276,7 +276,7 @@ def test_presign_rejects_a_content_type_with_a_trailing_newline(client):
     forme d'entrée différente. Fermé en passant à `.fullmatch()`."""
     api, *_ = client
     res = api.post(
-        "/collections/col1/items/f1/attachments/presign",
+        "/v1/collections/col1/items/f1/attachments/presign",
         json={"fieldKey": "photos", "filename": "a.png", "contentType": "image/png\n"},
     )
     assert res.status_code == 400
@@ -289,7 +289,7 @@ def test_presign_rejects_a_dangerous_extension_with_a_trailing_dot(client):
     redonnant "malware.exe" sur le poste de la victime."""
     api, *_ = client
     res = api.post(
-        "/collections/col1/items/f1/attachments/presign",
+        "/v1/collections/col1/items/f1/attachments/presign",
         json={
             "fieldKey": "photos",
             "filename": "malware.exe.",
@@ -305,7 +305,7 @@ def test_presign_sanitizes_the_s3_key_for_a_non_ascii_filename(client):
     problème différent (une clé S3 sûre), pas régressé par ce correctif."""
     api, *_ = client
     res = api.post(
-        "/collections/col1/items/f1/attachments/presign",
+        "/v1/collections/col1/items/f1/attachments/presign",
         json={"fieldKey": "photos", "filename": "文件.png", "contentType": "image/png"},
     )
     assert res.status_code == 200

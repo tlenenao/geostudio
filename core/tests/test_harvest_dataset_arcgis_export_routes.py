@@ -94,7 +94,7 @@ def client():
 
 def _create_dataset(client, arcgis_item_id: str) -> str:
     res = client.post(
-        "/configs",
+        "/v1/configs",
         json={
             "title": "Bâtiments (live)",
             "config": {
@@ -123,7 +123,7 @@ def test_export_aggregate_csv_from_arcgis_dataset(client):
         handler
     )
     resp = client.post(
-        f"/datasets/{dataset_item_id}/arcgis/export?format=csv",
+        f"/v1/datasets/{dataset_item_id}/arcgis/export?format=csv",
         json={"groupBy": "region", "agg": "count"},
     )
     assert resp.status_code == 200
@@ -134,7 +134,7 @@ def test_export_aggregate_csv_from_arcgis_dataset(client):
 def test_export_aggregate_rejects_unknown_format(client):
     dataset_item_id = _create_dataset(client, client.layer_item_id)
     resp = client.post(
-        f"/datasets/{dataset_item_id}/arcgis/export?format=pdf", json={"groupBy": "region"}
+        f"/v1/datasets/{dataset_item_id}/arcgis/export?format=pdf", json={"groupBy": "region"}
     )
     assert resp.status_code == 400
 
@@ -149,7 +149,7 @@ def test_export_aggregate_writes_an_audit_log_row(client):
         handler
     )
     client.post(
-        f"/datasets/{dataset_item_id}/arcgis/export?format=csv",
+        f"/v1/datasets/{dataset_item_id}/arcgis/export?format=csv",
         json={"groupBy": "region", "agg": "count"},
     )
     with client.session_factory() as s:
@@ -173,7 +173,7 @@ def test_export_items_geojson_from_arcgis_dataset(client):
     client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(
         handler
     )
-    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
+    resp = client.get(f"/v1/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
     assert resp.status_code == 200
     body = resp.json()
     assert body["features"][0]["properties"]["nom"] == "X"
@@ -200,7 +200,7 @@ def test_export_items_gpkg_from_arcgis_dataset(client):
     client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(
         handler
     )
-    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=gpkg")
+    resp = client.get(f"/v1/datasets/{dataset_item_id}/arcgis/export/items?format=gpkg")
     assert resp.status_code == 200
     assert resp.content[:16] == b"SQLite format 3\x00"
 
@@ -222,7 +222,7 @@ def test_export_items_stops_paginating_on_a_short_page(client):
     client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(
         handler
     )
-    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
+    resp = client.get(f"/v1/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
     assert resp.status_code == 200
     assert len(calls) == 1  # one page returned fewer rows than the page size — loop stops
 
@@ -246,7 +246,7 @@ def test_export_items_continues_past_a_full_page(client):
     client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(
         handler
     )
-    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
+    resp = client.get(f"/v1/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
     assert resp.status_code == 200
     assert len(calls) == 2  # a full first page forces a second real HTTP call
     assert "resultOffset=0" in calls[0]
@@ -287,7 +287,7 @@ def test_export_items_continues_past_a_clamped_short_page_when_exceeded_transfer
     client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(
         handler
     )
-    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
+    resp = client.get(f"/v1/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
     assert resp.status_code == 200
     assert len(calls) == 2  # a short-but-clamped first page still forces a second HTTP call
     assert "resultOffset=0" in calls[0]
@@ -318,5 +318,5 @@ def test_export_items_caps_at_10000_entities(client, monkeypatch):
     client.app.dependency_overrides[harvest_routes.get_arcgis_http_client] = lambda: _mock_client(
         handler
     )
-    resp = client.get(f"/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
+    resp = client.get(f"/v1/datasets/{dataset_item_id}/arcgis/export/items?format=geojson")
     assert resp.status_code == 413

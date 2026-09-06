@@ -147,7 +147,7 @@ def seed(env):
 
 
 def test_feature_layers_returns_only_feature_records_of_visible_items(seed):
-    resp = seed.client.get("/harvest/feature-layers")
+    resp = seed.client.get("/v1/harvest/feature-layers")
     assert resp.status_code == 200
     layers = resp.json()["layers"]
     ids = {layer["id"] for layer in layers}
@@ -160,6 +160,6 @@ def test_feature_layers_returns_only_feature_records_of_visible_items(seed):
 
 
 def test_feature_layers_filters_by_q(seed):
-    resp = seed.client.get("/harvest/feature-layers", params={"q": "zzz-nomatch"})
+    resp = seed.client.get("/v1/harvest/feature-layers", params={"q": "zzz-nomatch"})
     assert resp.status_code == 200
     assert resp.json()["layers"] == []

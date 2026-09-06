@@ -42,12 +42,12 @@ function geojsonFile() {
 
 test("uploads a file and navigates to the created map once the job is done", async () => {
   server.use(
-    http.post("https://core.test/uploads/presign", () =>
+    http.post("https://core.test/v1/uploads/presign", () =>
       HttpResponse.json({ uploadUrl: "https://minio.test/upload-1", key: "t/abc-villes.geojson" }),
     ),
     http.put("https://minio.test/upload-1", () => new HttpResponse(null, { status: 200 })),
-    http.post("https://core.test/uploads", () => HttpResponse.json({ jobId: "job-1" })),
-    http.get("https://core.test/uploads/job-1", () =>
+    http.post("https://core.test/v1/uploads", () => HttpResponse.json({ jobId: "job-1" })),
+    http.get("https://core.test/v1/uploads/job-1", () =>
       HttpResponse.json({
         status: "done",
         errorMessage: null,
@@ -79,12 +79,12 @@ test("uploads a file and navigates to the created map once the job is done", asy
 
 test("shows the job's error message and lets the user retry", async () => {
   server.use(
-    http.post("https://core.test/uploads/presign", () =>
+    http.post("https://core.test/v1/uploads/presign", () =>
       HttpResponse.json({ uploadUrl: "https://minio.test/upload-2", key: "t/def-broken.geojson" }),
     ),
     http.put("https://minio.test/upload-2", () => new HttpResponse(null, { status: 200 })),
-    http.post("https://core.test/uploads", () => HttpResponse.json({ jobId: "job-2" })),
-    http.get("https://core.test/uploads/job-2", () =>
+    http.post("https://core.test/v1/uploads", () => HttpResponse.json({ jobId: "job-2" })),
+    http.get("https://core.test/v1/uploads/job-2", () =>
       HttpResponse.json({
         status: "error",
         errorMessage: "JSON invalide",
@@ -142,19 +142,19 @@ function gpkgFile(name = "villes.gpkg") {
 
 test("auto-selects the only layer of a GeoPackage without showing a picker", async () => {
   server.use(
-    http.post("https://core.test/uploads/presign", () =>
+    http.post("https://core.test/v1/uploads/presign", () =>
       HttpResponse.json({ uploadUrl: "https://minio.test/upload-3", key: "t/ghi-villes.gpkg" }),
     ),
     http.put("https://minio.test/upload-3", () => new HttpResponse(null, { status: 200 })),
-    http.post("https://core.test/uploads/inspect", () =>
+    http.post("https://core.test/v1/uploads/inspect", () =>
       HttpResponse.json({ layers: [{ name: "villes", featureCount: 2, geometryType: "Point" }] }),
     ),
-    http.post("https://core.test/uploads", async ({ request }) => {
+    http.post("https://core.test/v1/uploads", async ({ request }) => {
       const body = (await request.json()) as { layerName?: string };
       expect(body.layerName).toBe("villes");
       return HttpResponse.json({ jobId: "job-3" });
     }),
-    http.get("https://core.test/uploads/job-3", () =>
+    http.get("https://core.test/v1/uploads/job-3", () =>
       HttpResponse.json({
         status: "done",
         errorMessage: null,
@@ -179,11 +179,11 @@ test("auto-selects the only layer of a GeoPackage without showing a picker", asy
 
 test("shows a layer picker for a multi-layer GeoPackage and imports the chosen layer", async () => {
   server.use(
-    http.post("https://core.test/uploads/presign", () =>
+    http.post("https://core.test/v1/uploads/presign", () =>
       HttpResponse.json({ uploadUrl: "https://minio.test/upload-4", key: "t/jkl-multi.gpkg" }),
     ),
     http.put("https://minio.test/upload-4", () => new HttpResponse(null, { status: 200 })),
-    http.post("https://core.test/uploads/inspect", () =>
+    http.post("https://core.test/v1/uploads/inspect", () =>
       HttpResponse.json({
         layers: [
           { name: "villes", featureCount: 2, geometryType: "Point" },
@@ -191,12 +191,12 @@ test("shows a layer picker for a multi-layer GeoPackage and imports the chosen l
         ],
       }),
     ),
-    http.post("https://core.test/uploads", async ({ request }) => {
+    http.post("https://core.test/v1/uploads", async ({ request }) => {
       const body = (await request.json()) as { layerName?: string };
       expect(body.layerName).toBe("routes");
       return HttpResponse.json({ jobId: "job-4" });
     }),
-    http.get("https://core.test/uploads/job-4", () =>
+    http.get("https://core.test/v1/uploads/job-4", () =>
       HttpResponse.json({
         status: "done",
         errorMessage: null,
@@ -231,19 +231,19 @@ function xlsxFile(name = "villes.xlsx") {
 
 test("SP-56 : XLSX avec colonnes lat/lon détectées saute la sélection manuelle", async () => {
   server.use(
-    http.post("https://core.test/uploads/presign", () =>
+    http.post("https://core.test/v1/uploads/presign", () =>
       HttpResponse.json({ uploadUrl: "https://minio.test/upload-5", key: "t/mno-villes.xlsx" }),
     ),
     http.put("https://minio.test/upload-5", () => new HttpResponse(null, { status: 200 })),
-    http.post("https://core.test/uploads/inspect", () =>
+    http.post("https://core.test/v1/uploads/inspect", () =>
       HttpResponse.json({ layers: [], fields: ["nom", "lat", "lon"] }),
     ),
-    http.post("https://core.test/uploads", async ({ request }) => {
+    http.post("https://core.test/v1/uploads", async ({ request }) => {
       const body = (await request.json()) as { latField?: string };
       expect(body.latField).toBeUndefined();
       return HttpResponse.json({ jobId: "job-5" });
     }),
-    http.get("https://core.test/uploads/job-5", () =>
+    http.get("https://core.test/v1/uploads/job-5", () =>
       HttpResponse.json({
         status: "done",
         errorMessage: null,
@@ -268,20 +268,20 @@ test("SP-56 : XLSX avec colonnes lat/lon détectées saute la sélection manuell
 
 test("SP-56 : XLSX sans colonnes lat/lon détectables affiche le formulaire manuel", async () => {
   server.use(
-    http.post("https://core.test/uploads/presign", () =>
+    http.post("https://core.test/v1/uploads/presign", () =>
       HttpResponse.json({ uploadUrl: "https://minio.test/upload-6", key: "t/pqr-villes.xlsx" }),
     ),
     http.put("https://minio.test/upload-6", () => new HttpResponse(null, { status: 200 })),
-    http.post("https://core.test/uploads/inspect", () =>
+    http.post("https://core.test/v1/uploads/inspect", () =>
       HttpResponse.json({ layers: [], fields: ["nom", "y_coord", "x_coord"] }),
     ),
-    http.post("https://core.test/uploads", async ({ request }) => {
+    http.post("https://core.test/v1/uploads", async ({ request }) => {
       const body = (await request.json()) as { latField?: string; lonField?: string };
       expect(body.latField).toBe("y_coord");
       expect(body.lonField).toBe("x_coord");
       return HttpResponse.json({ jobId: "job-6" });
     }),
-    http.get("https://core.test/uploads/job-6", () =>
+    http.get("https://core.test/v1/uploads/job-6", () =>
       HttpResponse.json({
         status: "done",
         errorMessage: null,
@@ -315,11 +315,11 @@ function kmlFile(name = "paris.kml") {
 
 test("SP-56 : KML multi-couches passe par la sélection de couche (même flux que GPKG)", async () => {
   server.use(
-    http.post("https://core.test/uploads/presign", () =>
+    http.post("https://core.test/v1/uploads/presign", () =>
       HttpResponse.json({ uploadUrl: "https://minio.test/upload-7", key: "t/stu-villes.kml" }),
     ),
     http.put("https://minio.test/upload-7", () => new HttpResponse(null, { status: 200 })),
-    http.post("https://core.test/uploads/inspect", () =>
+    http.post("https://core.test/v1/uploads/inspect", () =>
       HttpResponse.json({
         layers: [
           { name: "a", featureCount: 1, geometryType: "Point" },
@@ -327,12 +327,12 @@ test("SP-56 : KML multi-couches passe par la sélection de couche (même flux qu
         ],
       }),
     ),
-    http.post("https://core.test/uploads", async ({ request }) => {
+    http.post("https://core.test/v1/uploads", async ({ request }) => {
       const body = (await request.json()) as { layerName?: string };
       expect(body.layerName).toBe("b");
       return HttpResponse.json({ jobId: "job-7" });
     }),
-    http.get("https://core.test/uploads/job-7", () =>
+    http.get("https://core.test/v1/uploads/job-7", () =>
       HttpResponse.json({
         status: "done",
         errorMessage: null,
@@ -366,16 +366,16 @@ function parquetFile(name = "villes.parquet") {
 test("SP-56 : GeoParquet ne passe par aucune étape d'inspection, job créé directement", async () => {
   let inspectCalled = false;
   server.use(
-    http.post("https://core.test/uploads/presign", () =>
+    http.post("https://core.test/v1/uploads/presign", () =>
       HttpResponse.json({ uploadUrl: "https://minio.test/upload-8", key: "t/vwx-villes.parquet" }),
     ),
     http.put("https://minio.test/upload-8", () => new HttpResponse(null, { status: 200 })),
-    http.post("https://core.test/uploads/inspect", () => {
+    http.post("https://core.test/v1/uploads/inspect", () => {
       inspectCalled = true;
       return HttpResponse.json({ layers: [] });
     }),
-    http.post("https://core.test/uploads", () => HttpResponse.json({ jobId: "job-8" })),
-    http.get("https://core.test/uploads/job-8", () =>
+    http.post("https://core.test/v1/uploads", () => HttpResponse.json({ jobId: "job-8" })),
+    http.get("https://core.test/v1/uploads/job-8", () =>
       HttpResponse.json({
         status: "done",
         errorMessage: null,

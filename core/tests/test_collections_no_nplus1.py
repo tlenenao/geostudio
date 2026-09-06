@@ -108,7 +108,7 @@ def test_query_count_does_not_grow_with_collection_count(small, large):
         try:
 
             def call(client=client, n=n):
-                response = client.get("/collections")
+                response = client.get("/v1/collections")
                 assert response.status_code == 200, response.text
                 assert len(response.json()["collections"]) == n
 

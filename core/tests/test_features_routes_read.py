@@ -106,13 +106,13 @@ def _as(app, user):
 
 def _register(app, client, admin, public=False):
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents", "isPublic": public})
+    client.post("/v1/collections", json={"tableName": "incidents", "isPublic": public})
 
 
 def test_items_returns_feature_collection_with_links(env):
     app, client, admin, _r, repo = env
     _register(app, client, admin)
-    r = client.get("/collections/incidents/items?limit=1&offset=1")
+    r = client.get("/v1/collections/incidents/items?limit=1&offset=1")
     assert r.status_code == 200
     body = r.json()
     assert body["type"] == "FeatureCollection"
@@ -125,16 +125,16 @@ def test_items_returns_feature_collection_with_links(env):
 def test_limit_is_capped_not_rejected(env):
     app, client, admin, _r, repo = env
     _register(app, client, admin)
-    assert client.get("/collections/incidents/items?limit=99999").status_code == 200
+    assert client.get("/v1/collections/incidents/items?limit=99999").status_code == 200
     assert repo.calls["limit"] == 1000
 
 
 def test_filters_forwarded_and_unknown_is_400(env):
     app, client, admin, _r, repo = env
     _register(app, client, admin)
-    client.get("/collections/incidents/items?titre=a&f=json")
+    client.get("/v1/collections/incidents/items?titre=a&f=json")
     assert repo.calls["filters"] == {"titre": "a"}  # f/limit/offset/bbox réservés, exclus
-    r = client.get("/collections/incidents/items?inconnu=x")
+    r = client.get("/v1/collections/incidents/items?inconnu=x")
     assert r.status_code == 400
     assert r.json()["errors"][0]["code"] == "unknown_filter"
 
@@ -142,19 +142,19 @@ def test_filters_forwarded_and_unknown_is_400(env):
 def test_bbox_parsing(env):
     app, client, admin, _r, repo = env
     _register(app, client, admin)
-    client.get("/collections/incidents/items?bbox=0.5,44.5,1.5,45.5")
+    client.get("/v1/collections/incidents/items?bbox=0.5,44.5,1.5,45.5")
     assert repo.calls["bbox"] == (0.5, 44.5, 1.5, 45.5)
-    assert client.get("/collections/incidents/items?bbox=zzz").status_code == 400
+    assert client.get("/v1/collections/incidents/items?bbox=zzz").status_code == 400
 
 
 def test_geom_intersects_parsing(env):
     app, client, admin, _r, repo = env
     _register(app, client, admin)
     geom = {"type": "Point", "coordinates": [1.0, 2.0]}
-    r = client.get("/collections/incidents/items", params={"geom_intersects": json.dumps(geom)})
+    r = client.get("/v1/collections/incidents/items", params={"geom_intersects": json.dumps(geom)})
     assert r.status_code == 200
     assert repo.calls["geom_intersects"] == geom
-    r2 = client.get("/collections/incidents/items", params={"geom_intersects": "not-json"})
+    r2 = client.get("/v1/collections/incidents/items", params={"geom_intersects": "not-json"})
     assert r2.status_code == 400
     assert r2.json()["errors"][0]["code"] == "invalid_geom_intersects"
 
@@ -162,8 +162,8 @@ def test_geom_intersects_parsing(env):
 def test_single_feature_and_404(env):
     app, client, admin, _r, _repo = env
     _register(app, client, admin)
-    assert client.get("/collections/incidents/items/1").json()["id"] == 1
-    assert client.get("/collections/incidents/items/999").status_code == 404
+    assert client.get("/v1/collections/incidents/items/1").json()["id"] == 1
+    assert client.get("/v1/collections/incidents/items/999").status_code == 404
 
 
 def test_anonymous_reads_public_only(env):
@@ -171,13 +171,13 @@ def test_anonymous_reads_public_only(env):
     _register(app, client, admin, public=False)
     app.dependency_overrides.pop(get_current_user)
     app.dependency_overrides.pop(get_current_user_optional)
-    assert client.get("/collections/incidents/items").status_code == 404
+    assert client.get("/v1/collections/incidents/items").status_code == 404
     _register(app, client, admin, public=True)  # re-register échoue (409) mais PATCH ok :
     _as(app, admin)
-    client.patch("/collections/incidents", json={"isPublic": True})
+    client.patch("/v1/collections/incidents", json={"isPublic": True})
     app.dependency_overrides.pop(get_current_user)
     app.dependency_overrides.pop(get_current_user_optional)
-    res = client.get("/collections/incidents/items")
+    res = client.get("/v1/collections/incidents/items")
     assert res.status_code == 200
     # Renforcement REV-077 (même défaut, second site trouvé par cette
     # spec) : sans cette ligne, une réponse à liste vide passait aussi.

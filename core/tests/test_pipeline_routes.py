@@ -50,18 +50,18 @@ def _make_app(monkeypatch, *, etl_enabled: bool):
 
 def test_pipelines_routes_absent_when_disabled(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=False)
-    assert client.get("/pipelines/ops").status_code == 404
-    assert client.post("/pipelines/does-not-exist/run").status_code == 404
+    assert client.get("/v1/pipelines/ops").status_code == 404
+    assert client.post("/v1/pipelines/does-not-exist/run").status_code == 404
     # GAP-24, SP-53 : le routeur entier (y compris /trigger, sans
     # Depends(get_current_user)) reste derrière la même garde
     # is_etl_enabled() posée au niveau du montage du routeur (app.main).
-    assert client.post("/pipelines/does-not-exist/trigger").status_code == 404
-    assert client.get("/pipelines/does-not-exist/webhook-tokens").status_code == 404
+    assert client.post("/v1/pipelines/does-not-exist/trigger").status_code == 404
+    assert client.get("/v1/pipelines/does-not-exist/webhook-tokens").status_code == 404
 
 
 def test_get_pipelines_ops_returns_all_eighteen(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
-    response = client.get("/pipelines/ops")
+    response = client.get("/v1/pipelines/ops")
     assert response.status_code == 200
     body = response.json()
     # Phase 1 (8) + spatial (5) + writer.dataset (1) + qgis (1) + connectors (2)
@@ -202,7 +202,7 @@ def test_run_route_refuses_a_writer_dataset_pipeline_without_data_manage(monkeyp
         )
     )
 
-    response = client.post(f"/pipelines/{item_id}/run")
+    response = client.post(f"/v1/pipelines/{item_id}/run")
     assert response.status_code == 403, response.text
 
 
@@ -219,7 +219,7 @@ def test_run_route_defers_job_and_returns_run_id(monkeypatch):
     client.app.dependency_overrides[pipelines_routes.get_task_deferrer] = lambda: fake_deferrer
 
     create_response = client.post(
-        "/configs",
+        "/v1/configs",
         json={
             "title": "P",
             "config": {
@@ -253,13 +253,13 @@ def test_run_route_defers_job_and_returns_run_id(monkeypatch):
     # real collection, which belongs in a postgis-backed test).
     assert create_response.status_code == 422
 
-    response = client.post("/pipelines/does-not-exist/run")
+    response = client.post("/v1/pipelines/does-not-exist/run")
     assert response.status_code == 404
 
 
 def test_preview_route_rejects_unknown_pipeline(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
-    response = client.post("/pipelines/does-not-exist/preview?upTo=r1")
+    response = client.post("/v1/pipelines/does-not-exist/preview?upTo=r1")
     assert response.status_code == 404
 
 
@@ -368,7 +368,7 @@ def test_post_webhook_tokens_requires_automation_secrets_manage_privilege(monkey
     client = _make_app(monkeypatch, etl_enabled=True)
     item_id = _seed_webhook_pipeline(client)
     _demote_owner_to_reader(client)
-    response = client.post(f"/pipelines/{item_id}/webhook-tokens")
+    response = client.post(f"/v1/pipelines/{item_id}/webhook-tokens")
     assert response.status_code == 403
 
 
@@ -377,7 +377,7 @@ def test_post_webhook_tokens_returns_cleartext_token_once(monkeypatch):
     item_id = _seed_webhook_pipeline(client)
     _promote_owner_to_admin(client)
 
-    response = client.post(f"/pipelines/{item_id}/webhook-tokens")
+    response = client.post(f"/v1/pipelines/{item_id}/webhook-tokens")
     assert response.status_code == 201, response.text
     body = response.json()
     assert "token" in body and body["token"]
@@ -388,9 +388,9 @@ def test_get_webhook_tokens_never_returns_token_or_hash(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     item_id = _seed_webhook_pipeline(client)
     _promote_owner_to_admin(client)
-    client.post(f"/pipelines/{item_id}/webhook-tokens")
+    client.post(f"/v1/pipelines/{item_id}/webhook-tokens")
 
-    response = client.get(f"/pipelines/{item_id}/webhook-tokens")
+    response = client.get(f"/v1/pipelines/{item_id}/webhook-tokens")
     assert response.status_code == 200
     rows = response.json()
     assert len(rows) == 1
@@ -404,12 +404,12 @@ def test_delete_webhook_token_route_revokes_it(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     item_id = _seed_webhook_pipeline(client)
     _promote_owner_to_admin(client)
-    created = client.post(f"/pipelines/{item_id}/webhook-tokens").json()
+    created = client.post(f"/v1/pipelines/{item_id}/webhook-tokens").json()
 
-    delete_response = client.delete(f"/pipelines/{item_id}/webhook-tokens/{created['id']}")
+    delete_response = client.delete(f"/v1/pipelines/{item_id}/webhook-tokens/{created['id']}")
     assert delete_response.status_code == 204
 
-    list_response = client.get(f"/pipelines/{item_id}/webhook-tokens")
+    list_response = client.get(f"/v1/pipelines/{item_id}/webhook-tokens")
     assert list_response.json() == []
 
 
@@ -418,7 +418,7 @@ def test_trigger_route_has_no_get_current_user_dependency(monkeypatch):
     # (cette route est la seule du dépôt sans Depends(get_current_user)).
     client = _make_app(monkeypatch, etl_enabled=True)
     item_id = _seed_webhook_pipeline(client)
-    response = client.post(f"/pipelines/{item_id}/trigger")
+    response = client.post(f"/v1/pipelines/{item_id}/trigger")
     assert response.status_code == 401
 
 
@@ -426,7 +426,7 @@ def test_trigger_route_runs_the_pipeline_with_a_valid_token(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     item_id = _seed_webhook_pipeline(client)
     _promote_owner_to_admin(client)
-    raw_token = client.post(f"/pipelines/{item_id}/webhook-tokens").json()["token"]
+    raw_token = client.post(f"/v1/pipelines/{item_id}/webhook-tokens").json()["token"]
 
     deferred = {}
 
@@ -439,7 +439,7 @@ def test_trigger_route_runs_the_pipeline_with_a_valid_token(monkeypatch):
     client.app.dependency_overrides[pipelines_routes.get_task_deferrer] = lambda: fake_deferrer
 
     response = client.post(
-        f"/pipelines/{item_id}/trigger", headers={"Authorization": f"Bearer {raw_token}"}
+        f"/v1/pipelines/{item_id}/trigger", headers={"Authorization": f"Bearer {raw_token}"}
     )
     assert response.status_code == 202, response.text
     assert "runId" in response.json()
@@ -450,11 +450,11 @@ def test_trigger_route_rejects_a_revoked_token(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     item_id = _seed_webhook_pipeline(client)
     _promote_owner_to_admin(client)
-    created = client.post(f"/pipelines/{item_id}/webhook-tokens").json()
-    client.delete(f"/pipelines/{item_id}/webhook-tokens/{created['id']}")
+    created = client.post(f"/v1/pipelines/{item_id}/webhook-tokens").json()
+    client.delete(f"/v1/pipelines/{item_id}/webhook-tokens/{created['id']}")
 
     response = client.post(
-        f"/pipelines/{item_id}/trigger", headers={"Authorization": f"Bearer {created['token']}"}
+        f"/v1/pipelines/{item_id}/trigger", headers={"Authorization": f"Bearer {created['token']}"}
     )
     assert response.status_code == 404
 
@@ -464,17 +464,17 @@ def test_trigger_route_rejects_a_token_scoped_to_a_different_pipeline(monkeypatc
     item_id = _seed_webhook_pipeline(client)
     other_item_id = _seed_webhook_pipeline(client)
     _promote_owner_to_admin(client)
-    raw_token = client.post(f"/pipelines/{item_id}/webhook-tokens").json()["token"]
+    raw_token = client.post(f"/v1/pipelines/{item_id}/webhook-tokens").json()["token"]
 
     response = client.post(
-        f"/pipelines/{other_item_id}/trigger", headers={"Authorization": f"Bearer {raw_token}"}
+        f"/v1/pipelines/{other_item_id}/trigger", headers={"Authorization": f"Bearer {raw_token}"}
     )
     assert response.status_code == 404
 
 
 def test_list_runs_route_rejects_unknown_pipeline(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
-    response = client.get("/pipelines/does-not-exist/runs")
+    response = client.get("/v1/pipelines/does-not-exist/runs")
     assert response.status_code == 404
 
 
@@ -490,17 +490,17 @@ def test_list_pipeline_runs_accepts_limit_and_offset(monkeypatch):
             pipelines_repo.create_run(s, tenant_id=tenant.id, pipeline_item_id=item_id)
         s.commit()
 
-    resp = client.get(f"/pipelines/{item_id}/runs?limit=2&offset=0")
+    resp = client.get(f"/v1/pipelines/{item_id}/runs?limit=2&offset=0")
     assert resp.status_code == 200
     assert len(resp.json()) == 2
 
-    resp2 = client.get(f"/pipelines/{item_id}/runs?limit=2&offset=4")
+    resp2 = client.get(f"/v1/pipelines/{item_id}/runs?limit=2&offset=4")
     assert len(resp2.json()) == 1
 
 
 def test_get_qgis_algorithms_returns_full_allowlist(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
-    response = client.get("/pipelines/ops/qgis-algorithms")
+    response = client.get("/v1/pipelines/ops/qgis-algorithms")
     assert response.status_code == 200
     body = response.json()
     assert len(body) == 50
@@ -510,4 +510,4 @@ def test_get_qgis_algorithms_returns_full_allowlist(monkeypatch):
 
 def test_get_qgis_algorithms_absent_when_etl_disabled(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=False)
-    assert client.get("/pipelines/ops/qgis-algorithms").status_code == 404
+    assert client.get("/v1/pipelines/ops/qgis-algorithms").status_code == 404

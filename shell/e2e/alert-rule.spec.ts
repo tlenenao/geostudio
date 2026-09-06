@@ -45,7 +45,7 @@ test("créer une règle d'alerte et voir son état firing sur DatasetEditPage", 
       },
     });
   });
-  await page.route("https://core.test/items/dataset-1", async (route) => {
+  await page.route("https://core.test/v1/items/dataset-1", async (route) => {
     await route.fulfill({
       json: {
         pk: "dataset-1",

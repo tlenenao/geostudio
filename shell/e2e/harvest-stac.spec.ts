@@ -17,7 +17,7 @@ test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne d
   // n'est faite ici, contrairement à une ancienne version de ce mock).
   const harvestedById = new Map<string, Record<string, unknown>>();
 
-  await page.route("https://core.test/harvest/sources", async (route) => {
+  await page.route("https://core.test/v1/harvest/sources", async (route) => {
     if (route.request().method() === "POST") {
       created = await route.request().postDataJSON();
       await route.fulfill({
@@ -57,7 +57,7 @@ test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne d
     });
   });
 
-  await page.route("https://core.test/harvest/sources/src-1/run", async (route) => {
+  await page.route("https://core.test/v1/harvest/sources/src-1/run", async (route) => {
     runCount += 1;
     harvestedById.set("ext-1", {
       pk: "ext-1",
@@ -76,7 +76,7 @@ test("un admin déclare une source STAC, la moissonne, et un re-moissonnage ne d
   // Host-scoped: le shell a lui-même une route client "/items" (catalogue) —
   // un glob non scopé casserait la navigation (même rationale que
   // "/items/1"/"/items/9" ailleurs dans cette suite).
-  await page.route("https://core.test/items*", async (route) => {
+  await page.route("https://core.test/v1/items*", async (route) => {
     const items = Array.from(harvestedById.values());
     await route.fulfill({ json: { items, total: items.length, page: 1, pageSize: 12 } });
   });

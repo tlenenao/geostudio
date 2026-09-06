@@ -128,7 +128,7 @@ def test_confirm_attachment_rejects_when_it_would_exceed_storage_quota(monkeypat
     s3.heads[key] = {"ContentLength": 1001}
 
     res = api.post(
-        "/collections/col1/items/f1/attachments",
+        "/v1/collections/col1/items/f1/attachments",
         json={
             "key": key,
             "fieldKey": "photos",
@@ -150,7 +150,7 @@ def test_confirm_attachment_allows_when_under_storage_quota(monkeypatch):
     s3.heads[key] = {"ContentLength": 500}
 
     res = api.post(
-        "/collections/col1/items/f1/attachments",
+        "/v1/collections/col1/items/f1/attachments",
         json={
             "key": key,
             "fieldKey": "photos",
@@ -170,7 +170,7 @@ def test_confirm_attachment_quota_guard_disappears_when_capacity_disabled(monkey
     s3.heads[key] = {"ContentLength": 1001}
 
     res = api.post(
-        "/collections/col1/items/f1/attachments",
+        "/v1/collections/col1/items/f1/attachments",
         json={
             "key": key,
             "fieldKey": "photos",
@@ -228,7 +228,7 @@ def _create_tileset3d_job_and_set_head_size(api, Session, tenant, s3, *, content
     from app.tileset3d import repository as tileset3d_repo
 
     created = api.post(
-        "/tileset3d/uploads", json={"filename": "t.zip", "title": "Mon tileset"}
+        "/v1/tileset3d/uploads", json={"filename": "t.zip", "title": "Mon tileset"}
     ).json()
     job_id = created["jobId"]
     with Session() as s:
@@ -246,7 +246,7 @@ def test_complete_tileset3d_upload_rejects_when_it_would_exceed_storage_quota(mo
     job_id = _create_tileset3d_job_and_set_head_size(api, Session, tenant, s3, content_length=1001)
 
     resp = api.post(
-        f"/tileset3d/uploads/{job_id}/complete",
+        f"/v1/tileset3d/uploads/{job_id}/complete",
         json={"parts": [{"partNumber": 1, "etag": "e1"}]},
     )
     assert resp.status_code == 409, resp.text
@@ -260,7 +260,7 @@ def test_complete_tileset3d_upload_allows_when_under_storage_quota(monkeypatch):
     job_id = _create_tileset3d_job_and_set_head_size(api, Session, tenant, s3, content_length=500)
 
     resp = api.post(
-        f"/tileset3d/uploads/{job_id}/complete",
+        f"/v1/tileset3d/uploads/{job_id}/complete",
         json={"parts": [{"partNumber": 1, "etag": "e1"}]},
     )
     assert resp.status_code == 204, resp.text
@@ -274,7 +274,7 @@ def test_complete_tileset3d_upload_quota_guard_disappears_when_capacity_disabled
     job_id = _create_tileset3d_job_and_set_head_size(api, Session, tenant, s3, content_length=1001)
 
     resp = api.post(
-        f"/tileset3d/uploads/{job_id}/complete",
+        f"/v1/tileset3d/uploads/{job_id}/complete",
         json={"parts": [{"partNumber": 1, "etag": "e1"}]},
     )
     assert resp.status_code == 204, resp.text
@@ -326,7 +326,7 @@ def test_create_terrain3d_upload_rejects_when_it_would_exceed_storage_quota(monk
     s3.heads[key] = {"ContentLength": 1001}
 
     resp = api.post(
-        "/terrain3d/uploads",
+        "/v1/terrain3d/uploads",
         json={"key": key, "filename": "dem.tif", "title": "Mon terrain"},
     )
     assert resp.status_code == 409, resp.text
@@ -341,7 +341,7 @@ def test_create_terrain3d_upload_allows_when_under_storage_quota(monkeypatch):
     s3.heads[key] = {"ContentLength": 500}
 
     resp = api.post(
-        "/terrain3d/uploads",
+        "/v1/terrain3d/uploads",
         json={"key": key, "filename": "dem.tif", "title": "Mon terrain"},
     )
     assert resp.status_code == 201, resp.text
@@ -356,7 +356,7 @@ def test_create_terrain3d_upload_quota_guard_disappears_when_capacity_disabled(m
     s3.heads[key] = {"ContentLength": 1001}
 
     resp = api.post(
-        "/terrain3d/uploads",
+        "/v1/terrain3d/uploads",
         json={"key": key, "filename": "dem.tif", "title": "Mon terrain"},
     )
     assert resp.status_code == 201, resp.text
@@ -407,7 +407,7 @@ def test_create_upload_job_rejects_when_it_would_exceed_storage_quota(monkeypatc
     s3.heads[key] = {"ContentLength": 1001}
 
     resp = api.post(
-        "/uploads",
+        "/v1/uploads",
         json={"key": key, "filename": "data.geojson", "collectionTitle": "Ma collection"},
     )
     assert resp.status_code == 409, resp.text
@@ -422,7 +422,7 @@ def test_create_upload_job_allows_when_under_storage_quota(monkeypatch):
     s3.heads[key] = {"ContentLength": 500}
 
     resp = api.post(
-        "/uploads",
+        "/v1/uploads",
         json={"key": key, "filename": "small.geojson", "collectionTitle": "Ma collection"},
     )
     assert resp.status_code == 201, resp.text
@@ -437,7 +437,7 @@ def test_create_upload_job_quota_guard_disappears_when_capacity_disabled(monkeyp
     s3.heads[key] = {"ContentLength": 1001}
 
     resp = api.post(
-        "/uploads",
+        "/v1/uploads",
         json={"key": key, "filename": "data.geojson", "collectionTitle": "Ma collection"},
     )
     assert resp.status_code == 201, resp.text

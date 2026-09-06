@@ -7,7 +7,7 @@ test("mode démo lecture seule : bannière visible, Formulaire masqué, écritur
   await mockCore(page);
   // Surcharge posée APRÈS mockCore : Playwright privilégie la route la plus
   // récemment enregistrée qui matche (même patron que incident-form.spec.ts).
-  await page.route("https://core.test/instance", async (route) => {
+  await page.route("https://core.test/v1/instance", async (route) => {
     await route.fulfill({ json: { readOnly: true } });
   });
   await page.route("**/collections/incidents/items*", async (route) => {
@@ -44,7 +44,7 @@ test("mode démo lecture seule : bannière visible, Formulaire masqué, écritur
 
   // Écriture forcée (contournement de l'UI, ex. devtools) : le serveur refuse.
   const status = await page.evaluate(async () => {
-    const res = await fetch("https://core.test/collections/incidents/items", {
+    const res = await fetch("https://core.test/v1/collections/incidents/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

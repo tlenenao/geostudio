@@ -27,7 +27,7 @@ async function mockIngestionFlow(page: Page) {
       });
     }
   });
-  await page.route("https://core.test/items/78", async (route) => {
+  await page.route("https://core.test/v1/items/78", async (route) => {
     await route.fulfill({
       json: {
         pk: "78",
@@ -64,7 +64,7 @@ async function mockIngestionFlow(page: Page) {
                 title: "Villes importées",
                 visible: true,
                 kind: "feature",
-                url: "https://core.test/collections/ingest_abc/items",
+                url: "https://core.test/v1/collections/ingest_abc/items",
               },
             ],
           },

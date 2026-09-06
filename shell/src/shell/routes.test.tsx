@@ -90,7 +90,7 @@ function wrap(children: ReactNode, initial = "/") {
 
 test("navigates from catalog to app builder on open (app item)", async () => {
   server.use(
-    http.get("https://core.test/items", () =>
+    http.get("https://core.test/v1/items", () =>
       HttpResponse.json({
         items: [
           {
@@ -143,7 +143,7 @@ test("renders the admin extensions route at /admin/extensions", async () => {
   // handler MSW par défaut de /me ne porte pas admin.extensions.manage, il
   // faut le surcharger et attendre la résolution avant d'affirmer sur le contenu.
   server.use(
-    http.get("https://core.test/me", () =>
+    http.get("https://core.test/v1/me", () =>
       HttpResponse.json({
         id: "u1",
         username: "alice",
@@ -173,7 +173,7 @@ test("protected routes still require authentication", () => {
 test("renders the bookmarks catalog at /bookmarks, filtered to type=bookmark", async () => {
   let lastUrl = "";
   server.use(
-    http.get("https://core.test/items", ({ request }) => {
+    http.get("https://core.test/v1/items", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({
         items: [
@@ -202,7 +202,7 @@ test("renders the bookmarks catalog at /bookmarks, filtered to type=bookmark", a
 
 test("opening a bookmark navigates to its app+page+ctx URL, not an editor", async () => {
   server.use(
-    http.get("https://core.test/items", () =>
+    http.get("https://core.test/v1/items", () =>
       HttpResponse.json({
         items: [
           {
@@ -222,7 +222,7 @@ test("opening a bookmark navigates to its app+page+ctx URL, not an editor", asyn
         pageSize: 12,
       }),
     ),
-    http.get("https://core.test/configs/by-item/bm-1", () =>
+    http.get("https://core.test/v1/configs/by-item/bm-1", () =>
       HttpResponse.json({
         id: "cfg-bm-1",
         itemId: "bm-1",
@@ -274,7 +274,7 @@ test("without exportRender, the same map route still renders AppLayout's header/
 
 test("opening an alert navigates to its dataset's edit page, not a generic app editor", async () => {
   server.use(
-    http.get("https://core.test/items", () =>
+    http.get("https://core.test/v1/items", () =>
       HttpResponse.json({
         items: [
           {
@@ -294,7 +294,7 @@ test("opening an alert navigates to its dataset's edit page, not a generic app e
         pageSize: 12,
       }),
     ),
-    http.get("https://core.test/configs/by-item/al-1", () =>
+    http.get("https://core.test/v1/configs/by-item/al-1", () =>
       HttpResponse.json({
         id: "cfg-al-1",
         itemId: "al-1",
@@ -321,7 +321,7 @@ test("opening an alert navigates to its dataset's edit page, not a generic app e
 
 test("opening an external item navigates to its item detail page", async () => {
   server.use(
-    http.get("https://core.test/items", () =>
+    http.get("https://core.test/v1/items", () =>
       HttpResponse.json({
         items: [
           {
@@ -349,7 +349,7 @@ test("opening an external item navigates to its item detail page", async () => {
 
 test("a failed alert config fetch surfaces an error instead of silently doing nothing", async () => {
   server.use(
-    http.get("https://core.test/items", () =>
+    http.get("https://core.test/v1/items", () =>
       HttpResponse.json({
         items: [
           {
@@ -370,7 +370,7 @@ test("a failed alert config fetch surfaces an error instead of silently doing no
       }),
     ),
     http.get(
-      "https://core.test/configs/by-item/al-1",
+      "https://core.test/v1/configs/by-item/al-1",
       () => new HttpResponse(null, { status: 500 }),
     ),
   );
@@ -384,7 +384,7 @@ test("a failed alert config fetch surfaces an error instead of silently doing no
 
 test("a failed bookmark config fetch surfaces an error instead of silently doing nothing", async () => {
   server.use(
-    http.get("https://core.test/items", () =>
+    http.get("https://core.test/v1/items", () =>
       HttpResponse.json({
         items: [
           {
@@ -405,7 +405,7 @@ test("a failed bookmark config fetch surfaces an error instead of silently doing
       }),
     ),
     http.get(
-      "https://core.test/configs/by-item/bm-1",
+      "https://core.test/v1/configs/by-item/bm-1",
       () => new HttpResponse(null, { status: 500 }),
     ),
   );

@@ -64,10 +64,10 @@ def test_create_config_refuses_past_item_quota(env, monkeypatch):
     monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
     monkeypatch.setenv("CORE_QUOTA_MAX_ITEMS_PER_TENANT", "1")
 
-    resp1 = client.post("/configs", json=_map_body("premier"))
+    resp1 = client.post("/v1/configs", json=_map_body("premier"))
     assert resp1.status_code == 201, resp1.text
 
-    resp2 = client.post("/configs", json=_map_body("second"))
+    resp2 = client.post("/v1/configs", json=_map_body("second"))
     assert resp2.status_code == 409, resp2.text
 
 
@@ -76,11 +76,11 @@ def test_create_config_quota_guard_disappears_when_capacity_disabled(env, monkey
     monkeypatch.setenv("CORE_QUOTAS_ENABLED", "false")
     monkeypatch.setenv("CORE_QUOTA_MAX_ITEMS_PER_TENANT", "1")
 
-    resp1 = client.post("/configs", json=_map_body("premier"))
+    resp1 = client.post("/v1/configs", json=_map_body("premier"))
     assert resp1.status_code == 201, resp1.text
     # La capacité est éteinte : la limite (pourtant configurée) ne s'applique
     # pas, comportement par défaut inchangé.
-    resp2 = client.post("/configs", json=_map_body("second"))
+    resp2 = client.post("/v1/configs", json=_map_body("second"))
     assert resp2.status_code == 201, resp2.text
 
 
@@ -89,9 +89,9 @@ def test_create_config_quota_guard_noop_when_no_limit_configured(env, monkeypatc
     monkeypatch.setenv("CORE_QUOTAS_ENABLED", "true")
     monkeypatch.delenv("CORE_QUOTA_MAX_ITEMS_PER_TENANT", raising=False)
 
-    resp1 = client.post("/configs", json=_map_body("premier"))
+    resp1 = client.post("/v1/configs", json=_map_body("premier"))
     assert resp1.status_code == 201, resp1.text
-    resp2 = client.post("/configs", json=_map_body("second"))
+    resp2 = client.post("/v1/configs", json=_map_body("second"))
     assert resp2.status_code == 201, resp2.text
 
 
@@ -142,11 +142,11 @@ def test_create_empty_collection_refuses_past_collection_quota(pg_app, monkeypat
         "geometryType": None,
         "srid": None,
     }
-    resp1 = pg_app.post("/collections/empty", json=body)
+    resp1 = pg_app.post("/v1/collections/empty", json=body)
     assert resp1.status_code == 201, resp1.text
 
     body2 = {**body, "title": "collection 2"}
-    resp2 = pg_app.post("/collections/empty", json=body2)
+    resp2 = pg_app.post("/v1/collections/empty", json=body2)
     assert resp2.status_code == 409, resp2.text
 
 
@@ -161,8 +161,8 @@ def test_create_empty_collection_quota_guard_disappears_when_capacity_disabled(p
         "geometryType": None,
         "srid": None,
     }
-    resp1 = pg_app.post("/collections/empty", json=body)
+    resp1 = pg_app.post("/v1/collections/empty", json=body)
     assert resp1.status_code == 201, resp1.text
     body2 = {**body, "title": "collection 2"}
-    resp2 = pg_app.post("/collections/empty", json=body2)
+    resp2 = pg_app.post("/v1/collections/empty", json=body2)
     assert resp2.status_code == 201, resp2.text

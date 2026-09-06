@@ -49,8 +49,8 @@ const USERS = [
 
 test("affiche la liste des utilisateurs avec le rôle courant sélectionné", async () => {
   server.use(
-    http.get("https://core.test/roles", () => HttpResponse.json(ROLES)),
-    http.get("https://core.test/users", () => HttpResponse.json({ users: USERS, total: 2 })),
+    http.get("https://core.test/v1/roles", () => HttpResponse.json(ROLES)),
+    http.get("https://core.test/v1/users", () => HttpResponse.json({ users: USERS, total: 2 })),
   );
   render(<Harness />);
   await screen.findByText("alice");
@@ -61,9 +61,9 @@ test("affiche la liste des utilisateurs avec le rôle courant sélectionné", as
 test("changer le rôle d'un utilisateur appelle PATCH /users/{id} avec le roleId choisi", async () => {
   let patchedBody: unknown = null;
   server.use(
-    http.get("https://core.test/roles", () => HttpResponse.json(ROLES)),
-    http.get("https://core.test/users", () => HttpResponse.json({ users: USERS, total: 2 })),
-    http.patch("https://core.test/users/u2", async ({ request }) => {
+    http.get("https://core.test/v1/roles", () => HttpResponse.json(ROLES)),
+    http.get("https://core.test/v1/users", () => HttpResponse.json({ users: USERS, total: 2 })),
+    http.patch("https://core.test/v1/users/u2", async ({ request }) => {
       patchedBody = await request.json();
       return HttpResponse.json({ id: "u2", username: "bob", roleSlug: "admin" });
     }),
@@ -76,9 +76,9 @@ test("changer le rôle d'un utilisateur appelle PATCH /users/{id} avec le roleId
 
 test("un changement de rôle refusé affiche une erreur sur la bonne ligne, sans affecter les autres", async () => {
   server.use(
-    http.get("https://core.test/roles", () => HttpResponse.json(ROLES)),
-    http.get("https://core.test/users", () => HttpResponse.json({ users: USERS, total: 2 })),
-    http.patch("https://core.test/users/u1", () => new HttpResponse(null, { status: 409 })),
+    http.get("https://core.test/v1/roles", () => HttpResponse.json(ROLES)),
+    http.get("https://core.test/v1/users", () => HttpResponse.json({ users: USERS, total: 2 })),
+    http.patch("https://core.test/v1/users/u1", () => new HttpResponse(null, { status: 409 })),
   );
   render(<Harness />);
   await screen.findByText("alice");
@@ -97,8 +97,8 @@ test("un changement de rôle refusé affiche une erreur sur la bonne ligne, sans
 test("la recherche interroge /users avec q et remet la page à 1", async () => {
   let lastUrl = "";
   server.use(
-    http.get("https://core.test/roles", () => HttpResponse.json(ROLES)),
-    http.get("https://core.test/users", ({ request }) => {
+    http.get("https://core.test/v1/roles", () => HttpResponse.json(ROLES)),
+    http.get("https://core.test/v1/users", ({ request }) => {
       lastUrl = request.url;
       return HttpResponse.json({ users: USERS, total: 2 });
     }),
@@ -112,8 +112,8 @@ test("la recherche interroge /users avec q et remet la page à 1", async () => {
 
 test("pagination : Précédent désactivé en page 1, Suivant désactivé quand tout est chargé", async () => {
   server.use(
-    http.get("https://core.test/roles", () => HttpResponse.json(ROLES)),
-    http.get("https://core.test/users", () => HttpResponse.json({ users: USERS, total: 2 })),
+    http.get("https://core.test/v1/roles", () => HttpResponse.json(ROLES)),
+    http.get("https://core.test/v1/users", () => HttpResponse.json({ users: USERS, total: 2 })),
   );
   render(<Harness />);
   await screen.findByText("alice");
@@ -124,8 +124,8 @@ test("pagination : Précédent désactivé en page 1, Suivant désactivé quand 
 test("pagination : un clic sur Suivant redemande la page 2", async () => {
   let lastPage = "";
   server.use(
-    http.get("https://core.test/roles", () => HttpResponse.json(ROLES)),
-    http.get("https://core.test/users", ({ request }) => {
+    http.get("https://core.test/v1/roles", () => HttpResponse.json(ROLES)),
+    http.get("https://core.test/v1/users", ({ request }) => {
       lastPage = new URL(request.url).searchParams.get("page") ?? "";
       return HttpResponse.json({ users: USERS, total: 120 });
     }),
@@ -139,8 +139,8 @@ test("pagination : un clic sur Suivant redemande la page 2", async () => {
 
 test("un échec de /users affiche une alerte de chargement", async () => {
   server.use(
-    http.get("https://core.test/roles", () => HttpResponse.json(ROLES)),
-    http.get("https://core.test/users", () => new HttpResponse(null, { status: 500 })),
+    http.get("https://core.test/v1/roles", () => HttpResponse.json(ROLES)),
+    http.get("https://core.test/v1/users", () => new HttpResponse(null, { status: 500 })),
   );
   render(<Harness />);
   expect(await screen.findByText("Échec du chargement des utilisateurs.")).toBeInTheDocument();
@@ -148,8 +148,8 @@ test("un échec de /users affiche une alerte de chargement", async () => {
 
 test("un échec de /roles (403) affiche une alerte expliquant le privilège manquant, sans planter la table", async () => {
   server.use(
-    http.get("https://core.test/roles", () => new HttpResponse(null, { status: 403 })),
-    http.get("https://core.test/users", () => HttpResponse.json({ users: USERS, total: 2 })),
+    http.get("https://core.test/v1/roles", () => new HttpResponse(null, { status: 403 })),
+    http.get("https://core.test/v1/users", () => HttpResponse.json({ users: USERS, total: 2 })),
   );
   render(<Harness />);
   expect(
@@ -161,8 +161,8 @@ test("un échec de /roles (403) affiche une alerte expliquant le privilège manq
 
 test("le volet Détail explique l'invariant anti-lockout", async () => {
   server.use(
-    http.get("https://core.test/roles", () => HttpResponse.json(ROLES)),
-    http.get("https://core.test/users", () => HttpResponse.json({ users: USERS, total: 2 })),
+    http.get("https://core.test/v1/roles", () => HttpResponse.json(ROLES)),
+    http.get("https://core.test/v1/users", () => HttpResponse.json({ users: USERS, total: 2 })),
   );
   render(<Harness />);
   await screen.findByText("alice");
