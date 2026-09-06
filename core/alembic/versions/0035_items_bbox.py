@@ -3,7 +3,7 @@
 nullables sur items — bbox_min_x/min_y/max_x/max_y. NULL sur les 4 =
 « pas d'emprise connue » (item non géographique, ou config jamais
 réévaluée depuis ce SP). Recalculées par
-app.items.bbox::recompute_item_bbox, jamais posées directement ailleurs.
+app.configs.bbox::recompute_item_bbox, jamais posées directement ailleurs.
 
 Revision ID: 0035
 Revises: 0034

@@ -53,7 +53,7 @@ class Item(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
     # Emprise spatiale (SP-55 §2, GAP-06) : NULL sur les 4 = « pas d'emprise
     # connue » (item non géographique, ou config jamais réévaluée depuis ce
-    # SP). Recalculée par app.items.bbox::recompute_item_bbox, appelée
+    # SP). Recalculée par app.configs.bbox::recompute_item_bbox, appelée
     # depuis app.configs.repository (create_config/update_config/
     # rollback_config) — jamais posée directement ici.
     bbox_min_x: Mapped[float | None] = mapped_column(Float, nullable=True)
