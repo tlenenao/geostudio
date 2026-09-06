@@ -4,19 +4,30 @@ import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { useItemClient } from "../../api/ItemClientProvider";
 import { useAnalyticsContext, useClearCrossFilter, useSetCrossFilter } from "../AnalyticsContext";
+import { t } from "../../i18n";
 
 type SelectOption = { value: string; count: number };
 
 export function registerSelectFilterWidget(): void {
   registerWidget({
     type: "selectFilter",
-    label: "Sélecteur",
+    label: t("widgetSelectFilter.paletteLabel"),
     defaultProps: { dataSourceId: "", field: "", label: "Filtrer" },
     defaultSize: { w: 3, h: 3 },
     configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "field", type: "string", label: "Champ", default: "" },
-      { name: "label", type: "string", label: "Libellé", default: "Filtrer" },
+      {
+        name: "dataSourceId",
+        type: "dataSource",
+        label: t("widgetSelectFilter.dataSourceConfig"),
+        default: "",
+      },
+      { name: "field", type: "string", label: t("widgetSelectFilter.fieldConfig"), default: "" },
+      {
+        name: "label",
+        type: "string",
+        label: t("widgetSelectFilter.labelConfig"),
+        default: "Filtrer",
+      },
     ],
     PropsPanel: ({ props, onChange, dataSources }) => (
       <div className="flex flex-col gap-2 text-sm">
@@ -26,18 +37,18 @@ export function registerSelectFilterWidget(): void {
           onChange={(id) => onChange({ ...props, dataSourceId: id })}
         />
         <label className="flex flex-col gap-1">
-          Champ
+          {t("widgetSelectFilter.fieldConfig")}
           <input
-            aria-label="Champ du sélecteur"
+            aria-label={t("widgetSelectFilter.fieldAria")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.field ?? "")}
             onChange={(e) => onChange({ ...props, field: e.target.value })}
           />
         </label>
         <label className="flex flex-col gap-1">
-          Libellé
+          {t("widgetSelectFilter.labelConfig")}
           <input
-            aria-label="Libellé du sélecteur"
+            aria-label={t("widgetSelectFilter.labelAria")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.label ?? "")}
             onChange={(e) => onChange({ ...props, label: e.target.value })}
@@ -75,17 +86,15 @@ export function registerSelectFilterWidget(): void {
 
       if (!datasetId || !field) {
         return (
-          <p className="text-xs text-[var(--gs-color-muted)]">
-            Liez ce filtre à une source dataset et un champ
-          </p>
+          <p className="text-xs text-[var(--gs-color-muted)]">{t("widgetSelectFilter.unbound")}</p>
         );
       }
       if (query.isLoading)
-        return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
+        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
       if (query.isError || !query.data) {
         return (
           <p role="alert" className="text-xs text-[var(--gs-color-muted)]">
-            Impossible de charger les valeurs
+            {t("widgetSelectFilter.loadOptionsError")}
           </p>
         );
       }

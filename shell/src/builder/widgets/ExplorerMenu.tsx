@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useExplorerEnabled, useOpenExplorer } from "../ExplorerContext";
 import { useOptionalItemClient } from "../../api/ItemClientProvider";
 import type { DataSource } from "../../api/types";
+import { t } from "../../i18n";
 
 const AGGREGATE_FORMATS = ["csv", "xlsx"];
 const ITEMS_FORMATS_WITH_GEOMETRY = ["csv", "xlsx", "geojson", "gpkg"];
@@ -20,9 +21,9 @@ function exportErrorMessage(err: unknown): string {
   const message = err instanceof Error ? err.message : "";
   const match = /^Request failed: (\d{3})\b/.exec(message);
   const status = match ? Number(match[1]) : null;
-  if (status === 413) return "Trop d'entités : affinez vos filtres.";
-  if (status === 403) return "Accès refusé.";
-  return "Échec de l'export.";
+  if (status === 413) return t("explorerMenu.tooManyEntities");
+  if (status === 403) return t("explorerMenu.accessDenied");
+  return t("explorerMenu.exportFailed");
 }
 
 export function ExplorerMenu({
@@ -77,7 +78,7 @@ export function ExplorerMenu({
     <div className="absolute right-1 top-1 z-10">
       <button
         type="button"
-        aria-label="Explorer"
+        aria-label={t("explorerMenu.trigger")}
         className="rounded px-1 text-xs text-[var(--gs-color-muted)] hover:bg-[var(--gs-color-surface)]"
         onClick={() => (menuOpen ? closeMenu() : setMenuOpen(true))}
       >
@@ -87,24 +88,24 @@ export function ExplorerMenu({
         <div className="absolute right-0 top-full mt-1 whitespace-nowrap rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] shadow-sm">
           <button
             type="button"
-            aria-label="Voir les entités"
+            aria-label={t("explorerMenu.viewRecords")}
             className="block w-full px-2 py-1 text-left text-xs text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)]"
             onClick={() => {
               closeMenu();
               open({ datasetId, dataSourceId });
             }}
           >
-            Voir les entités
+            {t("explorerMenu.viewRecords")}
           </button>
           {formats.map((format) => (
             <button
               key={format}
               type="button"
-              aria-label={`Exporter en ${format.toUpperCase()}`}
+              aria-label={t("explorerMenu.exportFormat", { format: format.toUpperCase() })}
               className="block w-full px-2 py-1 text-left text-xs text-[var(--gs-color-text)] hover:bg-[var(--gs-color-surface)]"
               onClick={() => void handleExport(format)}
             >
-              Exporter en {format.toUpperCase()}
+              {t("explorerMenu.exportFormat", { format: format.toUpperCase() })}
             </button>
           ))}
         </div>

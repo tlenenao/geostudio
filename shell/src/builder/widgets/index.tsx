@@ -21,6 +21,7 @@ import { registerTabsWidget } from "./tabs";
 import { registerModalWidget } from "./modal";
 import { registerDrawerWidget } from "./drawer";
 import { registerVariableInputWidget } from "./variableInput";
+import { t } from "../../i18n";
 
 // Replaces {{var:nom}} tokens from ctx.variables (always, regardless of any
 // bound source), then {{champ}} tokens from the record's properties (only
@@ -52,19 +53,29 @@ export function registerBuiltinWidgets(): void {
   if (getWidget("text")) return;
   registerWidget({
     type: "text",
-    label: "Texte",
-    defaultProps: { text: "Nouveau texte", dataSourceId: "" },
+    label: t("widgetIndex.textPaletteLabel"),
+    defaultProps: { text: t("widgetIndex.newTextDefault"), dataSourceId: "" },
     defaultSize: { w: 4, h: 2 },
     configSchema: [
-      { name: "text", type: "string", label: "Texte", default: "Nouveau texte" },
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
+      {
+        name: "text",
+        type: "string",
+        label: t("widgetIndex.textConfig"),
+        default: t("widgetIndex.newTextDefault"),
+      },
+      {
+        name: "dataSourceId",
+        type: "dataSource",
+        label: t("widgetIndex.dataSourceConfig"),
+        default: "",
+      },
     ],
     PropsPanel: ({ props, onChange, dataSources }) => (
       <div className="flex flex-col gap-2 text-sm">
         <label className="flex flex-col gap-1">
-          Texte
+          {t("widgetIndex.textConfig")}
           <textarea
-            aria-label="Texte du widget"
+            aria-label={t("widgetIndex.textAria")}
             className="rounded-md border border-slate-300 p-2 text-sm"
             value={String(props.text ?? "")}
             onChange={(e) => onChange({ ...props, text: e.target.value })}
@@ -75,10 +86,7 @@ export function registerBuiltinWidgets(): void {
           dataSources={dataSources}
           onChange={(id) => onChange({ ...props, dataSourceId: id })}
         />
-        <p className="text-[10px] text-slate-400">
-          Utilisez {"{{champ}}"} pour insérer une valeur de la source liée, ou {"{{var:nom}}"} pour
-          une variable.
-        </p>
+        <p className="text-[10px] text-slate-400">{t("widgetIndex.interpolationHelp")}</p>
       </div>
     ),
     Component: ({ props, ctx }) => {
@@ -90,28 +98,28 @@ export function registerBuiltinWidgets(): void {
 
   registerWidget({
     type: "image",
-    label: "Image",
+    label: t("widgetIndex.imagePaletteLabel"),
     defaultProps: { src: "", alt: "" },
     defaultSize: { w: 4, h: 4 },
     configSchema: [
-      { name: "src", type: "string", label: "URL", default: "" },
-      { name: "alt", type: "string", label: "Texte alternatif", default: "" },
+      { name: "src", type: "string", label: t("widgetIndex.urlConfig"), default: "" },
+      { name: "alt", type: "string", label: t("widgetIndex.altConfig"), default: "" },
     ],
     PropsPanel: ({ props, onChange }) => (
       <div className="flex flex-col gap-2 text-sm">
         <label className="flex flex-col gap-1">
-          URL
+          {t("widgetIndex.urlConfig")}
           <input
-            aria-label="URL de l'image"
+            aria-label={t("widgetIndex.urlAria")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.src ?? "")}
             onChange={(e) => onChange({ ...props, src: e.target.value })}
           />
         </label>
         <label className="flex flex-col gap-1">
-          Texte alternatif
+          {t("widgetIndex.altConfig")}
           <input
-            aria-label="Texte alternatif"
+            aria-label={t("widgetIndex.altConfig")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.alt ?? "")}
             onChange={(e) => onChange({ ...props, alt: e.target.value })}
@@ -128,36 +136,36 @@ export function registerBuiltinWidgets(): void {
         />
       ) : (
         <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">
-          Image
+          {t("widgetIndex.imagePaletteLabel")}
         </div>
       ),
   });
 
   registerWidget({
     type: "button",
-    label: "Bouton",
+    label: t("widgetIndex.buttonPaletteLabel"),
     defaultProps: { label: "Bouton", href: "" },
     defaultSize: { w: 2, h: 1 },
     configSchema: [
-      { name: "label", type: "string", label: "Libellé", default: "Bouton" },
-      { name: "href", type: "string", label: "Lien", default: "" },
+      { name: "label", type: "string", label: t("widgetIndex.labelConfig"), default: "Bouton" },
+      { name: "href", type: "string", label: t("widgetIndex.hrefConfig"), default: "" },
     ],
     events: ["clicked"],
     PropsPanel: ({ props, onChange }) => (
       <div className="flex flex-col gap-2 text-sm">
         <label className="flex flex-col gap-1">
-          Libellé
+          {t("widgetIndex.labelConfig")}
           <input
-            aria-label="Libellé du bouton"
+            aria-label={t("widgetIndex.labelAria")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.label ?? "")}
             onChange={(e) => onChange({ ...props, label: e.target.value })}
           />
         </label>
         <label className="flex flex-col gap-1">
-          Lien
+          {t("widgetIndex.hrefConfig")}
           <input
-            aria-label="Lien du bouton"
+            aria-label={t("widgetIndex.hrefAria")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.href ?? "")}
             onChange={(e) => onChange({ ...props, href: e.target.value })}

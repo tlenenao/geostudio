@@ -1,32 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 import { registerWidget } from "../registry";
+import { t } from "../../i18n";
 
 export function registerFilterWidget(): void {
   registerWidget({
     type: "filter",
-    label: "Filtre",
+    label: t("widgetFilter.paletteLabel"),
     defaultProps: { field: "", label: "Filtrer" },
     defaultSize: { w: 3, h: 1 },
     configSchema: [
-      { name: "field", type: "string", label: "Champ à filtrer", default: "" },
-      { name: "label", type: "string", label: "Libellé", default: "Filtrer" },
+      { name: "field", type: "string", label: t("widgetFilter.fieldConfig"), default: "" },
+      { name: "label", type: "string", label: t("widgetFilter.labelConfig"), default: "Filtrer" },
     ],
     events: ["changed"],
     PropsPanel: ({ props, onChange }) => (
       <div className="flex flex-col gap-2 text-sm">
         <label className="flex flex-col gap-1">
-          Champ à filtrer
+          {t("widgetFilter.fieldConfig")}
           <input
-            aria-label="Champ à filtrer"
+            aria-label={t("widgetFilter.fieldConfig")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.field ?? "")}
             onChange={(e) => onChange({ ...props, field: e.target.value })}
           />
         </label>
         <label className="flex flex-col gap-1">
-          Libellé
+          {t("widgetFilter.labelConfig")}
           <input
-            aria-label="Libellé du filtre"
+            aria-label={t("widgetFilter.labelAria")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.label ?? "")}
             onChange={(e) => onChange({ ...props, label: e.target.value })}
@@ -40,7 +41,7 @@ export function registerFilterWidget(): void {
         <label className="flex flex-col gap-1 text-sm text-[var(--gs-color-text)]">
           {String(props.label ?? "Filtrer")}
           <input
-            aria-label="Valeur du filtre"
+            aria-label={t("widgetFilter.valueAria")}
             className="h-9 rounded-md border border-[var(--gs-color-border)] px-2"
             onChange={(e) => {
               const value = e.target.value;

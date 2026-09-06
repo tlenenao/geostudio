@@ -21,6 +21,7 @@ import { MapSymbologyEditor } from "../../map/MapSymbologyEditor";
 import { BasemapSelect } from "../../map/BasemapSelect";
 import { TerrainPanel } from "../../map/TerrainPanel";
 import { CameraControls } from "../../map/CameraControls";
+import { t } from "../../i18n";
 
 const MapView = lazy(() => import("../../map/MapView").then((m) => ({ default: m.MapView })));
 const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
@@ -97,7 +98,7 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
         </div>
       )}
       {legend.stroke?.kind === "categorical" && (
-        <ul aria-label="Contour">
+        <ul aria-label={t("widgetMap.strokeLegendAria")}>
           {legend.stroke.entries.map((e) => (
             <li key={e.value} className="flex items-center gap-1">
               <span
@@ -116,7 +117,7 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
           savait décrire que le cas catégoriel — miroir exact des blocs
           legend.color juste au-dessus. */}
       {legend.stroke?.kind === "classed" && (
-        <ul aria-label="Contour">
+        <ul aria-label={t("widgetMap.strokeLegendAria")}>
           {legend.stroke.classes.map((c, i) => (
             <li key={i} className="flex items-center gap-1">
               <span
@@ -129,7 +130,7 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
         </ul>
       )}
       {legend.stroke?.kind === "numeric" && (
-        <div aria-label="Contour">
+        <div aria-label={t("widgetMap.strokeLegendAria")}>
           <div
             className="h-2 w-24 rounded border-2"
             style={{
@@ -142,7 +143,7 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
         </div>
       )}
       {legend.icon && (
-        <ul aria-label="Icônes">
+        <ul aria-label={t("widgetMap.iconLegendAria")}>
           {legend.icon.entries.map((e) => (
             <li key={e.value} className="flex items-center gap-1">
               <span aria-hidden="true" className="text-base">
@@ -160,11 +161,16 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
 export function registerMapWidget(): void {
   registerWidget({
     type: "map",
-    label: "Carte",
+    label: t("widgetMap.paletteLabel"),
     defaultProps: { dataSourceId: "" },
     defaultSize: { w: 6, h: 6 },
     configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
+      {
+        name: "dataSourceId",
+        type: "dataSource",
+        label: t("widgetMap.dataSourceConfig"),
+        default: "",
+      },
     ],
     events: ["extentChanged", "itemSelected"],
     actions: ["flyTo", "highlight"],
@@ -246,7 +252,7 @@ export function registerMapWidget(): void {
                 { layer: dataSource?.layer ?? "", datasetId },
                 field,
                 limit,
-              ) ?? Promise.reject(new Error("sampleDataSourceField indisponible"))
+              ) ?? Promise.reject(new Error(t("widgetMap.sampleFieldUnavailable")))
             }
             // `?.()` OBLIGATOIRE, pas cosmétique (défaut n° 5 de la brief
             // Task 12) : ce PropsPanel est rendu inconditionnellement, et
@@ -287,7 +293,7 @@ export function registerMapWidget(): void {
         handle.current?.highlight(geometryFromPayload(payload));
       });
 
-      if (ctx.data?.error) return <p className="text-xs text-red-600">Erreur de données</p>;
+      if (ctx.data?.error) return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
       const url = ctx.data?.url;
 
       const symbology = props.symbology as LayerSymbology | undefined;
@@ -320,7 +326,7 @@ export function registerMapWidget(): void {
           ? [
               {
                 id: `ds-${String(props.dataSourceId)}`,
-                title: "Données",
+                title: t("widgetMap.layerTitle"),
                 visible: true,
                 kind: "feature",
                 url,
@@ -341,7 +347,11 @@ export function registerMapWidget(): void {
             resolvedSource={ctx.data?.resolvedSource}
             hasGeometry={ctx.data?.hasGeometry}
           />
-          <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
+          <Suspense
+            fallback={
+              <div className="text-xs text-slate-400">{t("widgetMap.loadingFallback")}</div>
+            }
+          >
             <MapView
               ref={handle}
               config={config}

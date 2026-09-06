@@ -5,6 +5,7 @@ import type { WidgetItem } from "../../api/types";
 import { LayoutEditor } from "../LayoutEditor";
 import { GridCanvas } from "../GridCanvas";
 import { WidgetHost } from "../WidgetHost";
+import { t } from "../../i18n";
 
 type Tab = { id: string; label: string; items: WidgetItem[] };
 type TabsProps = { tabs: Tab[] };
@@ -14,7 +15,7 @@ const inputCls = "h-9 rounded-md border border-slate-300 px-2 text-sm";
 export function registerTabsWidget(): void {
   registerWidget({
     type: "tabs",
-    label: "Onglets",
+    label: t("widgetTabs.paletteLabel"),
     defaultProps: { tabs: [{ id: "tab-1", label: "Onglet 1", items: [] }] },
     defaultSize: { w: 6, h: 6 },
     // Son seul champ, `tabs`, est array-shaped — hors de portée pour
@@ -56,56 +57,56 @@ export function registerTabsWidget(): void {
       return (
         <div className="flex flex-col gap-2 text-sm">
           <div className="flex flex-col gap-1">
-            {tabs.map((t, i) => (
-              <div key={t.id} className="flex items-center gap-1">
+            {tabs.map((tab, i) => (
+              <div key={tab.id} className="flex items-center gap-1">
                 <button
                   type="button"
-                  aria-label={`Sélectionner l'onglet ${t.label}`}
-                  className={t.id === activeId ? "font-semibold underline" : ""}
-                  onClick={() => setActiveId(t.id)}
+                  aria-label={t("widgetTabs.selectTabAria", { label: tab.label })}
+                  className={tab.id === activeId ? "font-semibold underline" : ""}
+                  onClick={() => setActiveId(tab.id)}
                 >
-                  {t.label}
+                  {tab.label}
                 </button>
                 <input
-                  aria-label={`Nom de l'onglet ${t.label}`}
+                  aria-label={t("widgetTabs.tabNameAria", { label: tab.label })}
                   className={inputCls}
-                  value={t.label}
-                  onChange={(e) => renameTab(t.id, e.target.value)}
+                  value={tab.label}
+                  onChange={(e) => renameTab(tab.id, e.target.value)}
                 />
                 <button
                   type="button"
-                  aria-label={`Monter l'onglet ${t.label}`}
+                  aria-label={t("widgetTabs.moveUpAria", { label: tab.label })}
                   disabled={i === 0}
-                  onClick={() => moveTab(t.id, -1)}
+                  onClick={() => moveTab(tab.id, -1)}
                 >
                   ↑
                 </button>
                 <button
                   type="button"
-                  aria-label={`Descendre l'onglet ${t.label}`}
+                  aria-label={t("widgetTabs.moveDownAria", { label: tab.label })}
                   disabled={i === tabs.length - 1}
-                  onClick={() => moveTab(t.id, 1)}
+                  onClick={() => moveTab(tab.id, 1)}
                 >
                   ↓
                 </button>
                 <button
                   type="button"
-                  aria-label={`Supprimer l'onglet ${t.label}`}
+                  aria-label={t("widgetTabs.removeTabAria", { label: tab.label })}
                   disabled={tabs.length <= 1}
                   className="text-xs text-red-600 disabled:opacity-30"
-                  onClick={() => removeTab(t.id)}
+                  onClick={() => removeTab(tab.id)}
                 >
-                  Supprimer
+                  {t("widgetTabs.removeTab")}
                 </button>
               </div>
             ))}
             <button
               type="button"
-              aria-label="Ajouter un onglet"
+              aria-label={t("widgetTabs.addTabAria")}
               className={inputCls}
               onClick={addTab}
             >
-              Ajouter un onglet
+              {t("widgetTabs.addTab")}
             </button>
           </div>
           <LayoutEditor
@@ -126,7 +127,7 @@ export function registerTabsWidget(): void {
       if (!active) {
         return (
           <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">
-            Aucun onglet
+            {t("widgetTabs.noTab")}
           </div>
         );
       }

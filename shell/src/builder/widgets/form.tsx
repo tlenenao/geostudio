@@ -9,6 +9,7 @@ import { useBusAction } from "../ActionBusContext";
 import { FeatureValidationError } from "../../api/itemClient";
 import type { CollectionSchema, DataRecord, DataSource } from "../../api/types";
 import type { WidgetContext } from "../registry";
+import { t } from "../../i18n";
 
 export type FormField = {
   name: string;
@@ -85,7 +86,7 @@ function FieldOverrides({
               ⠿
             </span>
             <input
-              aria-label={`Label du champ ${f.name}`}
+              aria-label={t("widgetForm.fieldLabelAria", { name: f.name })}
               className={overrideInputCls}
               value={f.label}
               onChange={(e) => patch(f.name, { label: e.target.value })}
@@ -93,30 +94,30 @@ function FieldOverrides({
             <label className="flex items-center gap-1 whitespace-nowrap text-[10px]">
               <input
                 type="checkbox"
-                aria-label={`Masquer ${f.name}`}
+                aria-label={t("widgetForm.hideFieldAria", { name: f.name })}
                 checked={f.hidden}
                 onChange={(e) => patch(f.name, { hidden: e.target.checked })}
               />
-              Masqué
+              {t("widgetForm.hiddenToggle")}
             </label>
             {f.type !== "unsupported" && f.type !== "attachment" && (
               <label className="flex items-center gap-1 whitespace-nowrap text-[10px]">
                 <input
                   type="checkbox"
-                  aria-label={`Requis ${f.name}`}
+                  aria-label={t("widgetForm.requireFieldAria", { name: f.name })}
                   checked={f.required}
                   onChange={(e) => patch(f.name, { required: e.target.checked })}
                 />
-                Requis
+                {t("widgetForm.requiredToggle")}
               </label>
             )}
           </div>
           {(f.type === "integer" || f.type === "number") && (
             <div className="flex gap-1">
               <input
-                aria-label={`Min ${f.name}`}
+                aria-label={t("widgetForm.minFieldAria", { name: f.name })}
                 type="number"
-                placeholder="min"
+                placeholder={t("widgetForm.minPlaceholder")}
                 className={overrideInputCls}
                 value={f.min ?? ""}
                 onChange={(e) =>
@@ -124,9 +125,9 @@ function FieldOverrides({
                 }
               />
               <input
-                aria-label={`Max ${f.name}`}
+                aria-label={t("widgetForm.maxFieldAria", { name: f.name })}
                 type="number"
-                placeholder="max"
+                placeholder={t("widgetForm.maxPlaceholder")}
                 className={overrideInputCls}
                 value={f.max ?? ""}
                 onChange={(e) =>
@@ -137,8 +138,8 @@ function FieldOverrides({
           )}
           {f.type === "string" && (
             <input
-              aria-label={`Motif ${f.name}`}
-              placeholder="motif (regex, optionnel)"
+              aria-label={t("widgetForm.patternFieldAria", { name: f.name })}
+              placeholder={t("widgetForm.patternPlaceholder")}
               className={overrideInputCls}
               value={f.pattern ?? ""}
               onChange={(e) => patch(f.name, { pattern: e.target.value || undefined })}
@@ -178,11 +179,11 @@ function FormPropsPanel({
         onChange={(id) => onChange({ ...props, dataSourceId: id, fields: [], geometryType: null })}
       />
       {collectionId !== "" && schemaQuery.isLoading && (
-        <p className="text-xs text-[var(--gs-color-muted)]">Chargement du schéma…</p>
+        <p className="text-xs text-[var(--gs-color-muted)]">{t("widgetForm.loadingSchema")}</p>
       )}
       {collectionId !== "" && schemaQuery.isError && (
         <p role="alert" className="text-xs text-red-600">
-          Schéma introuvable pour « {collectionId} ».
+          {t("widgetForm.schemaNotFound", { collectionId })}
         </p>
       )}
       {collectionId !== "" && schemaQuery.data && fields.length === 0 && (
@@ -197,7 +198,7 @@ function FormPropsPanel({
             })
           }
         >
-          Charger les champs du schéma
+          {t("widgetForm.loadSchemaButton")}
         </button>
       )}
       {fields.length > 0 && (
@@ -215,22 +216,25 @@ function validateField(field: FormField, value: unknown): string | null {
   // une config déjà enregistrée avant que l'éditeur n'exclue ce type de la
   // case « Requis » (revue finale de branche, I4). Le bloquer rendrait le
   // formulaire définitivement non soumettable.
-  if (field.required && empty && field.type !== "attachment") return "Champ requis";
+  if (field.required && empty && field.type !== "attachment") return t("widgetForm.requiredError");
   if (empty) return null;
   if (field.type === "integer" || field.type === "number") {
     const n = Number(value);
-    if (Number.isNaN(n)) return "Nombre invalide";
-    if (field.min !== undefined && n < field.min) return `Doit être ≥ ${field.min}`;
-    if (field.max !== undefined && n > field.max) return `Doit être ≤ ${field.max}`;
+    if (Number.isNaN(n)) return t("widgetForm.invalidNumber");
+    if (field.min !== undefined && n < field.min)
+      return t("widgetForm.minError", { min: field.min });
+    if (field.max !== undefined && n > field.max)
+      return t("widgetForm.maxError", { max: field.max });
   }
   if (field.type === "string") {
     if (field.maxLength !== undefined && String(value).length > field.maxLength) {
-      return `${field.maxLength} caractères maximum`;
+      return t("widgetForm.maxLengthError", { maxLength: field.maxLength });
     }
-    if (field.pattern && !new RegExp(field.pattern).test(String(value))) return "Format invalide";
+    if (field.pattern && !new RegExp(field.pattern).test(String(value)))
+      return t("widgetForm.invalidFormat");
   }
   if (field.type === "enum" && field.values && !field.values.includes(String(value)))
-    return "Valeur invalide";
+    return t("widgetForm.invalidValue");
   return null;
 }
 
@@ -303,11 +307,7 @@ function AttachmentFieldInput({
   }
 
   if (fid === null) {
-    return (
-      <p className="text-xs text-ink-3">
-        Enregistrer l&apos;entité avant d&apos;ajouter des pièces jointes.
-      </p>
-    );
+    return <p className="text-xs text-ink-3">{t("widgetForm.attachmentsSaveFirst")}</p>;
   }
 
   return (
@@ -325,11 +325,11 @@ function AttachmentFieldInput({
             </button>
             <button
               type="button"
-              aria-label={`Supprimer ${a.filename}`}
+              aria-label={t("widgetForm.deleteAttachmentAria", { filename: a.filename })}
               className="text-danger underline"
               onClick={() => void handleDelete(a.id)}
             >
-              Supprimer
+              {t("widgetForm.delete")}
             </button>
           </li>
         ))}
@@ -337,7 +337,7 @@ function AttachmentFieldInput({
       <input
         type="file"
         multiple
-        aria-label="Ajouter des fichiers"
+        aria-label={t("widgetForm.addFilesAria")}
         disabled={uploading}
         onChange={(e) => void handleFiles(e.target.files)}
       />
@@ -509,7 +509,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
 
   async function handleDelete() {
     if (editingId === null) return;
-    if (!window.confirm("Supprimer cet enregistrement ?")) return;
+    if (!window.confirm(t("widgetForm.confirmDelete"))) return;
     try {
       await remove.mutateAsync();
       void queryClient.invalidateQueries({ queryKey: ["datasource"] });
@@ -636,22 +636,22 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       {geometryType === "Point" && (
         <div className="flex gap-2">
           <label className="flex flex-1 flex-col gap-1">
-            Longitude
+            {t("widgetForm.longitude")}
             <input
               type="number"
               step="any"
-              aria-label="Longitude"
+              aria-label={t("widgetForm.longitude")}
               className={fieldInputCls}
               value={lon}
               onChange={(e) => setLon(e.target.value)}
             />
           </label>
           <label className="flex flex-1 flex-col gap-1">
-            Latitude
+            {t("widgetForm.latitude")}
             <input
               type="number"
               step="any"
-              aria-label="Latitude"
+              aria-label={t("widgetForm.latitude")}
               className={fieldInputCls}
               value={lat}
               onChange={(e) => setLat(e.target.value)}
@@ -661,9 +661,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       )}
       {editingId !== null && (
         <p className="text-xs text-[var(--gs-color-muted)]">
-          Modification de l'enregistrement #{String(editingId)}
+          {t("widgetForm.editingRecord", { id: String(editingId) })}
           <button type="button" className="ml-2 text-xs underline" onClick={resetTo}>
-            Annuler
+            {t("widgetForm.cancel")}
           </button>
           {canWrite && (
             <button
@@ -672,7 +672,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
               disabled={remove.isPending}
               onClick={() => void handleDelete()}
             >
-              Supprimer
+              {t("widgetForm.delete")}
             </button>
           )}
         </p>
@@ -684,7 +684,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             disabled={write.isPending}
             className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white disabled:opacity-50"
           >
-            {String(props.submitLabel ?? "Enregistrer")}
+            {String(props.submitLabel ?? t("widgetForm.submitDefault"))}
           </button>
         )}
         <button
@@ -692,12 +692,12 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           className="rounded border border-slate-300 px-3 py-1.5 text-sm"
           onClick={resetTo}
         >
-          Réinitialiser
+          {t("widgetForm.reset")}
         </button>
       </div>
       {genericError && (
         <p role="alert" className="text-xs text-red-600">
-          Échec de l'enregistrement.
+          {t("widgetForm.saveFailed")}
         </p>
       )}
     </form>
@@ -707,15 +707,30 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
 export function registerFormWidget(): void {
   registerWidget({
     type: "form",
-    label: "Formulaire",
-    defaultProps: { dataSourceId: "", fields: [], submitLabel: "Enregistrer", geometryType: null },
+    label: t("widgetForm.paletteLabel"),
+    defaultProps: {
+      dataSourceId: "",
+      fields: [],
+      submitLabel: t("widgetForm.submitDefault"),
+      geometryType: null,
+    },
     defaultSize: { w: 4, h: 6 },
     // `fields` est array-shaped (hors de portée) ; `geometryType` est un
     // enum nullable qui ne rentre pas dans les 4 types de
     // WidgetPropDescriptor — laissé de côté plutôt que forcé.
     configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "submitLabel", type: "string", label: "Libellé du bouton", default: "Enregistrer" },
+      {
+        name: "dataSourceId",
+        type: "dataSource",
+        label: t("widgetForm.dataSourceConfig"),
+        default: "",
+      },
+      {
+        name: "submitLabel",
+        type: "string",
+        label: t("widgetForm.submitLabelConfig"),
+        default: t("widgetForm.submitDefault"),
+      },
     ],
     events: ["submitted", "failed"],
     actions: ["reset", "loadRecord"],

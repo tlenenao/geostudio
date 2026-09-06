@@ -4,17 +4,28 @@ import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { DatasetDownloadButtons } from "../DatasetDownloadButtons";
 import { useItemClient } from "../../api/ItemClientProvider";
+import { t } from "../../i18n";
 
 export function registerDatasetCardWidget(): void {
   registerWidget({
     type: "datasetCard",
-    label: "Fiche jeu de données",
+    label: t("widgetDatasetCard.paletteLabel"),
     defaultProps: { dataSourceId: "", showDownload: true, title: "" },
     defaultSize: { w: 4, h: 4 },
     configSchema: [
-      { name: "dataSourceId", type: "dataSource", label: "Source de données", default: "" },
-      { name: "showDownload", type: "boolean", label: "Afficher le téléchargement", default: true },
-      { name: "title", type: "string", label: "Titre", default: "" },
+      {
+        name: "dataSourceId",
+        type: "dataSource",
+        label: t("widgetDatasetCard.dataSource"),
+        default: "",
+      },
+      {
+        name: "showDownload",
+        type: "boolean",
+        label: t("widgetDatasetCard.showDownload"),
+        default: true,
+      },
+      { name: "title", type: "string", label: t("widgetDatasetCard.titleConfig"), default: "" },
     ],
     PropsPanel: ({ props, onChange, dataSources }) => (
       <div className="flex flex-col gap-2 text-sm">
@@ -24,9 +35,9 @@ export function registerDatasetCardWidget(): void {
           onChange={(id) => onChange({ ...props, dataSourceId: id })}
         />
         <label className="flex flex-col gap-1">
-          Titre (optionnel)
+          {t("widgetDatasetCard.titleOptional")}
           <input
-            aria-label="Titre (optionnel)"
+            aria-label={t("widgetDatasetCard.titleOptional")}
             className="h-9 rounded-md border border-slate-300 px-2"
             value={String(props.title ?? "")}
             onChange={(e) => onChange({ ...props, title: e.target.value })}
@@ -35,11 +46,11 @@ export function registerDatasetCardWidget(): void {
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
-            aria-label="Afficher le téléchargement"
+            aria-label={t("widgetDatasetCard.showDownload")}
             checked={props.showDownload !== false}
             onChange={(e) => onChange({ ...props, showDownload: e.target.checked })}
           />
-          Afficher le téléchargement
+          {t("widgetDatasetCard.showDownload")}
         </label>
       </div>
     ),
@@ -54,18 +65,16 @@ export function registerDatasetCardWidget(): void {
 
       if (!collectionId) {
         return (
-          <p className="text-xs text-[var(--gs-color-muted)]">
-            Aucune source de données sélectionnée
-          </p>
+          <p className="text-xs text-[var(--gs-color-muted)]">{t("widgetDatasetCard.noSource")}</p>
         );
       }
       if (query.isLoading) {
-        return <p className="text-xs text-[var(--gs-color-muted)]">Chargement…</p>;
+        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
       }
       if (query.isError || !query.data) {
         return (
           <p role="alert" className="text-xs text-[var(--gs-color-muted)]">
-            Jeu de données introuvable
+            {t("widgetDatasetCard.notFound")}
           </p>
         );
       }
@@ -77,12 +86,14 @@ export function registerDatasetCardWidget(): void {
             {String(props.title || col.title)}
           </h3>
           <p className="text-xs text-[var(--gs-color-muted)]">{col.description}</p>
-          <p className="text-xs text-[var(--gs-color-muted)]">{col.featureCount ?? 0} entités</p>
+          <p className="text-xs text-[var(--gs-color-muted)]">
+            {t("widgetDatasetCard.featureCount", { n: col.featureCount ?? 0 })}
+          </p>
           <a
             className="text-sm font-medium text-[var(--gs-color-primary)] underline"
             href={`/public/datasets/${collectionId}`}
           >
-            Voir le jeu de données
+            {t("widgetDatasetCard.viewLink")}
           </a>
           {showDownload && (
             <DatasetDownloadButtons collectionId={collectionId} featureCount={col.featureCount} />
