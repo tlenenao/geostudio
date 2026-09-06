@@ -790,6 +790,67 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   (`sampleDataSourceField` de SP-51 et les méthodes de SP-54 sont des
   entrées distinctes de l'interface `ItemClient`, `invalidateDatasetCache`
   est la seule méthode de SP-54 dans `base.ts`, jamais touché par SP-51).
+- **SP-50** — robustesse des surfaces publiques de fédération (spec
+  `docs/superpowers/specs/2026-09-06-sp50-robustesse-federation-design.md`,
+  plan `docs/superpowers/plans/2026-09-06-sp50-robustesse-federation.md`),
+  9 tâches, ferme GAP-57/59/60/62 (revue SP-42) : GAP-60 (`GET
+  /stac/collections/{id}/items` et `.../items/{feature_id}` passent
+  désormais `can_manage_collections` à `get_readable_collection`, comme
+  `get_collection` le fait déjà — un rôle `admin.collections.manage` ne
+  perd plus l'accès aux items après avoir lu la collection) ; GAP-62 (une
+  collection cassée — `TableNotFound`/`UnsupportedTable`/`DBAPIError` à
+  l'introspection ou au calcul d'emprise — dégrade à `bbox=None` au lieu de
+  faire échouer tout `GET /stac/collections`/`GET /dcat/catalog` en 500 ;
+  tuple d'exceptions vérifié identique aux trois sites,
+  `app/collections/routes.py::get_collection` inclus ; `GET
+  /dcat/datasets/{id}` volontairement laissé sans dégradation, hors
+  périmètre GAP-62 par décision de scope) ; GAP-57 (`limit`/`offset` sur
+  `GET /collections` — découpage Python après la liste déjà matérialisée,
+  `numberMatched`/`numberReturned` — et sur `GET /stac/collections`/`GET
+  /dcat/catalog` — mêmes bornes, lien `next` conditionnel — puis
+  `LIMIT`/`OFFSET` poussés en SQL sur les 3 historiques `GET
+  /pipelines/{id}/runs`/`GET /reports/{id}/runs`/`GET
+  /alerts/{id}/evaluations`, défaut 100 lignes les plus récentes) ; GAP-59
+  (plafond de taille de réponse sur l'egress de moissonnage — chokepoint
+  unique `_GuardedTransport.handle_request`, `CORE_HARVEST_MAX_RESPONSE_BYTES`
+  défaut 10 Mio, API `response.stream` vérifiée contre httpx 0.28.1
+  verrouillé avant de coder — puis `HarvestFetchError` sur le document
+  racine illisible des **8** connecteurs, vérifié individuellement par
+  connecteur (le point de bascule racine/enfant diffère réellement : appel
+  unique pour stac/wfs/wms/wmts, double tentative ISO-puis-DC pour csw,
+  paramètre `root=` sur `_get_json` partagé pour arcgis/ckan/ogc_records
+  — jamais par analogie). **Écart trouvé en exécutant, absent du texte du
+  plan (piège CLAUDE.md n°3)** :
+  `test_fetch_returns_empty_on_null_top_level_json` (stac) envoyait en
+  réalité un corps **vide** via `httpx.Response(json=None)` — indiscernable
+  du défaut non fourni, pas le littéral JSON `"null"` — corrigé pour tester
+  réellement ce qu'il prétendait tester. Risques assumés et documentés,
+  non corrigés (hors périmètre shell explicite) : troncature silencieuse
+  de l'admin des collections au-delà de 100 (`collectionsAdmin.ts`
+  n'envoie aucun `limit`) et des 3 historiques pipelines/rapports/alertes
+  aux 100 lignes les plus récentes (aucun des 3 fichiers shell
+  correspondants n'envoie `limit`/`offset` — vérifié, pas supposé).
+  **Piège d'environnement trouvé et contourné en session** : le
+  conteneur `postgis-test` partagé porte des centaines de tables
+  résiduelles (`ingest_*`/`query_*`) et une collision de nom fixe
+  (`villes_out`) accumulées par des sessions antérieures, provoquant des
+  échecs `DuplicateTable`/`IntegrityError` sans rapport avec ce plan —
+  contourné en démarrant un conteneur Postgres jetable dédié à cette
+  session (`geostudio-postgis-ci:latest`, image déjà construite,
+  port 5434), jamais d'opération destructive sur le conteneur partagé.
+  Suite finale (conteneur jetable) : 2611 passed/5 skipped (qgis)/1 failed
+  — `test_mcp_configs_bbox.py::
+  test_save_app_config_via_mcp_recomputes_item_bbox_without_http_route`,
+  confirmé préexistant et sans rapport (même échec reproduit après
+  `git stash` complet des changements de cette branche, contre l'état nu
+  d'`origin/dev`). `ruff`/`ruff format`/`lint-imports`/`mypy --strict` (4
+  modules) verts ; diff `openapi.json`/`core-schema.d.ts` non vide et
+  cohérent (Tâches 4-7 uniquement) ; `npm run build` (shell) propre.
+  **Écart de méthode assumé** : les 9 tâches du plan ont été committées en
+  4 commits groupés par fichier/module plutôt qu'une par tâche stricte —
+  les Tâches 1+2+5 (toutes trois sur `app/stac/routes.py`) et 3+6 (toutes
+  deux sur `app/dcat/routes.py`) s'enchaînaient sur les mêmes fonctions
+  sans point de commit intermédiaire propre.
 
 ### Conventions tranchées (2026-09-01)
 
@@ -842,6 +903,15 @@ immédiat d'une session :
   documenté (pas corrigé) par SP-43 (`REV-174`).
 - 4 index fonctionnels pgvector/trgm non représentés dans `Base.metadata`,
   filtrés nommément par le comparateur modèle/Alembic de SP-43 (`REV-175`).
+- GAP-57/59/60/62 clos par **SP-50** : liens STAC items cassés pour
+  `admin.collections.manage` (GAP-60), collection cassée faisait échouer
+  tout `/stac/collections`/`/dcat/catalog` (GAP-62), pagination
+  `/collections`/`/stac/collections`/`/dcat/catalog`/3 historiques
+  (GAP-57), plafond de taille + signalement d'échec racine sur les 8
+  connecteurs de moissonnage (GAP-59). Reste hors périmètre, assumé :
+  pagination shell (les 4 consommateurs concernés n'envoient toujours pas
+  `limit`/`offset`), `GET /dcat/datasets/{id}` non aligné sur la
+  dégradation GAP-62.
 - Questions produit ouvertes (comparatif §8) : Q2 (premiers utilisateurs
   réels — la seule qui puisse réordonner le phasage), Q10 (temps réel,
   `REV-108`), Q11 (offline, `REV-120`).
