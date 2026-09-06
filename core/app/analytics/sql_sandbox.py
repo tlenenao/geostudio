@@ -116,21 +116,12 @@ def _coerce(value: object) -> object:
     return value
 
 
-def _execute_bounded(
+def _execute(
     conn: duckdb.DuckDBPyConnection, sql: str
 ) -> tuple[list[str], list[list[object]], bool]:
-    timer = threading.Timer(STATEMENT_TIMEOUT_S, conn.interrupt)
-    timer.start()
-    try:
-        cur = conn.execute(sql)
-        fetched = cur.fetchmany(ROW_CAP + 1)
-        columns = [d[0] for d in cur.description]
-    except duckdb.InterruptException as exc:
-        raise SqlSandboxError("query exceeded the time limit") from exc
-    except duckdb.Error as exc:
-        raise SqlSandboxError(str(exc)) from exc
-    finally:
-        timer.cancel()
+    cur = conn.execute(sql)
+    fetched = cur.fetchmany(ROW_CAP + 1)
+    columns = [d[0] for d in cur.description]
     truncated = len(fetched) > ROW_CAP
     rows = [[_coerce(v) for v in row] for row in fetched[:ROW_CAP]]
     return columns, rows, truncated
@@ -147,14 +138,29 @@ def run_analyst_sql(
     """Exécute le SQL de l'analyste confiné aux vues autorisées. `allowed` :
     {collection_id: TableInfo}. Retourne (columns, rows, truncated). L'ordre est
     critique : matérialiser (accès externe encore ouvert) PUIS verrouiller PUIS
-    exécuter — jamais l'inverse."""
+    exécuter — jamais l'inverse.
+
+    Le budget de temps (STATEMENT_TIMEOUT_S) démarre AVANT la boucle de
+    matérialisation et couvre tout le corps de la fonction (REV-028) : une
+    collection lente/volumineuse à matérialiser (dedup CTE coûteuse) pouvait
+    auparavant épuiser un worker sans jamais être interrompue, le timer ne
+    couvrant que la requête finale — contournable pour épuiser un worker."""
     ast = parse_ast(conn, sql)
     validate_select_only(ast)
     refs = collect_table_refs(ast)
     _apply_limits(conn)
-    for name in sorted(refs & set(allowed)):
-        _materialize(
-            conn, name=name, table_info=allowed[name], base_uri=base_uri, tenant_id=tenant_id
-        )
-    _lock_down(conn)
-    return _execute_bounded(conn, sql)
+    timer = threading.Timer(STATEMENT_TIMEOUT_S, conn.interrupt)
+    timer.start()
+    try:
+        for name in sorted(refs & set(allowed)):
+            _materialize(
+                conn, name=name, table_info=allowed[name], base_uri=base_uri, tenant_id=tenant_id
+            )
+        _lock_down(conn)
+        return _execute(conn, sql)
+    except duckdb.InterruptException as exc:
+        raise SqlSandboxError("query exceeded the time limit") from exc
+    except duckdb.Error as exc:
+        raise SqlSandboxError(str(exc)) from exc
+    finally:
+        timer.cancel()

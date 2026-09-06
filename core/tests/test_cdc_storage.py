@@ -112,6 +112,35 @@ def test_delete_objects_removes_all_given_keys():
     assert client.deleted == ["cdc/a.parquet"]
 
 
+def test_delete_objects_chunks_into_batches_of_at_most_1000_keys():
+    """L'API S3 DeleteObjects rejette tout appel de plus de 1000 clés — une
+    seule partition très fragmentée doit être découpée en plusieurs appels
+    (REV-025), jamais un seul appel avec la totalité des clés."""
+
+    class _LimitedDeleteClient(_FakeS3Client):
+        def __init__(self):
+            super().__init__()
+            self.call_sizes: list[int] = []
+
+        def delete_objects(self, Bucket, Delete):  # noqa: N803
+            keys = Delete["Objects"]
+            assert len(keys) <= 1000, "un appel DeleteObjects réel rejetterait ce lot"
+            self.call_sizes.append(len(keys))
+            for o in keys:
+                self.objects.pop(o["Key"], None)
+                self.deleted.append(o["Key"])
+
+    client = _LimitedDeleteClient()
+    keys = [f"cdc/{i}.parquet" for i in range(2500)]
+    client.objects = {k: b"x" for k in keys}
+
+    delete_objects(client, bucket="b", keys=keys)
+
+    assert client.call_sizes == [1000, 1000, 500]
+    assert client.objects == {}
+    assert len(client.deleted) == 2500
+
+
 def test_upload_bytes_writes_via_put_object():
     client = _FakeS3Client()
     upload_bytes(client, bucket="b", key="cdc/merged.parquet", data=b"payload")

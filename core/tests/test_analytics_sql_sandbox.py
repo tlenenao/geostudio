@@ -226,6 +226,53 @@ def test_row_cap_truncates(tmp_path):
     assert len(rows) == 5
 
 
+def test_materialization_is_bounded_by_the_statement_timeout(tmp_path, monkeypatch):
+    """REV-028 : le budget de temps (STATEMENT_TIMEOUT_S) doit couvrir la
+    phase de matérialisation, pas seulement la requête finale — sans quoi
+    une collection lente/volumineuse à matérialiser (dedup CTE coûteuse)
+    peut épuiser un worker indéfiniment sans jamais être interrompue.
+    `_materialize` est remplacé par un calcul authentiquement compute-bound
+    et non borné (même patron que
+    test_evaluate_condition_bounds_a_compute_bound_table_function côté
+    app.configs.alert_condition) — DuckDB doit être interrompu bien avant
+    de le terminer, pas seulement une fois la requête finale atteinte."""
+    _write(
+        tmp_path,
+        [
+            {
+                "id": 1,
+                "region": "Nord",
+                "pop": 10,
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 1.0,
+                "geometry": Point(0, 0),
+            }
+        ],
+    )
+    conn = _spatial_conn()
+    monkeypatch.setattr("app.analytics.sql_sandbox.STATEMENT_TIMEOUT_S", 0.2)
+
+    def _slow_materialize(conn, *, name, table_info, base_uri, tenant_id):
+        conn.execute("SELECT count(*) FROM range(100000000000) t1, range(100000) t2")
+
+    import app.analytics.sql_sandbox as sandbox
+
+    monkeypatch.setattr(sandbox, "_materialize", _slow_materialize)
+
+    try:
+        with pytest.raises(SqlSandboxError):
+            run_analyst_sql(
+                conn,
+                sql="SELECT * FROM villes",
+                allowed={"villes": INFO},
+                base_uri=str(tmp_path),
+                tenant_id="default",
+            )
+    finally:
+        conn.close()
+
+
 def test_geometry_cell_is_json_safe(tmp_path):
     _write(
         tmp_path,
