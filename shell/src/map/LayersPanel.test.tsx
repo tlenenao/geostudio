@@ -221,6 +221,52 @@ test("un JSON invalide affiche une erreur sans appeler onChange (GAP-45)", async
   expect(screen.getByRole("alert")).toBeInTheDocument();
 });
 
+test("une couche deck de type heatmap expose un contrôle de rayon en pixels (GAP-36)", () => {
+  const deckLayers: MapLayer[] = [
+    {
+      id: "d1",
+      title: "D",
+      visible: true,
+      kind: "deck",
+      deckType: "heatmap",
+      dataUrl: "https://d",
+    },
+  ];
+  const onChange = vi.fn();
+  renderPanel(deckLayers, onChange);
+  fireEvent.change(screen.getByLabelText("Rayon (pixels)"), { target: { value: "40" } });
+  expect(onChange).toHaveBeenCalledWith([
+    expect.objectContaining({ id: "d1", props: expect.objectContaining({ radiusPixels: 40 }) }),
+  ]);
+});
+
+test("une couche deck de type hexbin expose un contrôle de rayon en mètres (GAP-36)", () => {
+  const deckLayers: MapLayer[] = [
+    { id: "d1", title: "D", visible: true, kind: "deck", deckType: "hexbin", dataUrl: "https://d" },
+  ];
+  const onChange = vi.fn();
+  renderPanel(deckLayers, onChange);
+  fireEvent.change(screen.getByLabelText("Rayon (mètres)"), { target: { value: "500" } });
+  expect(onChange).toHaveBeenCalledWith([
+    expect.objectContaining({ id: "d1", props: expect.objectContaining({ radius: 500 }) }),
+  ]);
+});
+
+test("une couche deck de type column expose un contrôle d'échelle de hauteur (GAP-36)", () => {
+  const deckLayers: MapLayer[] = [
+    { id: "d1", title: "D", visible: true, kind: "deck", deckType: "column", dataUrl: "https://d" },
+  ];
+  const onChange = vi.fn();
+  renderPanel(deckLayers, onChange);
+  fireEvent.change(screen.getByLabelText("Échelle de hauteur"), { target: { value: "3" } });
+  expect(onChange).toHaveBeenCalledWith([
+    expect.objectContaining({
+      id: "d1",
+      props: expect.objectContaining({ elevationScale: 3 }),
+    }),
+  ]);
+});
+
 test("a feature layer without a collection lists fields from its fetched GeoJSON in the popup editor", async () => {
   const onChange = vi.fn();
   const fc = {

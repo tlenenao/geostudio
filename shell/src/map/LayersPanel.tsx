@@ -274,6 +274,88 @@ export function LayersPanel({
             >
               ✕
             </button>
+            {layer.kind === "deck" && (
+              <div className="basis-full pl-2">
+                {/* Clés de props alignées sur l'API réelle des layers deck.gl
+                    sous-jacents (buildDeckLayer, MapView.tsx) — vérifiées
+                    contre les .d.ts installés, pas devinées : HeatmapLayer
+                    n'a pas de prop "radius" (radiusPixels), HexagonLayer a
+                    "radius" (mètres), ColumnLayer a "elevationScale". */}
+                {layer.deckType === "heatmap" && (
+                  <label className="flex flex-col gap-1 text-sm">
+                    Rayon (pixels)
+                    <input
+                      aria-label="Rayon (pixels)"
+                      type="number"
+                      min={1}
+                      value={Number(
+                        (layer.props as { radiusPixels?: number } | undefined)?.radiusPixels ?? 30,
+                      )}
+                      onChange={(e) =>
+                        onChange(
+                          layers.map((l) =>
+                            l.id === layer.id
+                              ? {
+                                  ...l,
+                                  props: { ...l.props, radiusPixels: Number(e.target.value) },
+                                }
+                              : l,
+                          ),
+                        )
+                      }
+                    />
+                  </label>
+                )}
+                {layer.deckType === "hexbin" && (
+                  <label className="flex flex-col gap-1 text-sm">
+                    Rayon (mètres)
+                    <input
+                      aria-label="Rayon (mètres)"
+                      type="number"
+                      min={1}
+                      value={Number(
+                        (layer.props as { radius?: number } | undefined)?.radius ?? 1000,
+                      )}
+                      onChange={(e) =>
+                        onChange(
+                          layers.map((l) =>
+                            l.id === layer.id
+                              ? { ...l, props: { ...l.props, radius: Number(e.target.value) } }
+                              : l,
+                          ),
+                        )
+                      }
+                    />
+                  </label>
+                )}
+                {layer.deckType === "column" && (
+                  <label className="flex flex-col gap-1 text-sm">
+                    Échelle de hauteur
+                    <input
+                      aria-label="Échelle de hauteur"
+                      type="number"
+                      min={0}
+                      value={Number(
+                        (layer.props as { elevationScale?: number } | undefined)?.elevationScale ??
+                          1,
+                      )}
+                      onChange={(e) =>
+                        onChange(
+                          layers.map((l) =>
+                            l.id === layer.id
+                              ? {
+                                  ...l,
+                                  props: { ...l.props, elevationScale: Number(e.target.value) },
+                                }
+                              : l,
+                          ),
+                        )
+                      }
+                    />
+                  </label>
+                )}
+              </div>
+            )}
             {layer.kind === "raster" && (
               <div className="basis-full pl-2">
                 <label className="flex flex-col gap-1 text-sm">
