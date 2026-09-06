@@ -39,7 +39,7 @@ def _box_4326(session: Session, inner_sql: str, params: dict) -> list[float] | N
     return [row[0], row[1], row[2], row[3]] if row else None
 
 
-def estimated_bbox_4326(session: Session, info: TableInfo) -> list[float] | None:
+def rls_scoped_bbox_4326(session: Session, info: TableInfo) -> list[float] | None:
     if info.geometry_column is None:
         return None
     srid = info.srid or 4326

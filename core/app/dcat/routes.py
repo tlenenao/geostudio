@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Routeur DCAT-AP (lecture seule) monté sous /dcat. Réutilise les portes de
 permission existantes (list_visible_collections, get_readable_collection,
-404 non-fuyant) et l'emprise STAC (app.stac.extent.estimated_bbox_4326) —
+404 non-fuyant) et l'emprise STAC (app.stac.extent.rls_scoped_bbox_4326) —
 aucun nouveau calcul d'emprise, aucune écriture, aucune surface shell/MCP."""
 
 import logging
@@ -21,7 +21,7 @@ from app.dcat import serializers
 from app.features.routes import get_rls_scope
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
-from app.stac.extent import estimated_bbox_4326
+from app.stac.extent import rls_scoped_bbox_4326
 from app.tenants.models import Tenant
 
 router = APIRouter(prefix="/dcat", tags=["dcat"])
@@ -35,7 +35,7 @@ DEFAULT_LIMIT = 100
 
 
 def get_bbox_provider():  # overridé en test SQLite (ST_EstimatedExtent absent)
-    return estimated_bbox_4326
+    return rls_scoped_bbox_4326
 
 
 def _base(request: Request) -> str:

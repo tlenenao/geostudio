@@ -164,6 +164,45 @@ def test_list_attachments_filters_by_field_key(app_client):
     assert result == []
 
 
+def test_list_attachments_resolves_tenant_from_the_collection_not_the_actor(
+    app_client, monkeypatch
+):
+    # REV-015 : list_attachments (MCP) résolvait le tenant depuis
+    # user.tenant_id là où sa jumelle REST (list_attachments_route) utilise
+    # délibérément col.tenant_id — la collection déjà renvoyée par
+    # require_collection_read était jetée. Fige require_collection_read pour
+    # renvoyer une collection factice sous un AUTRE tenant que celui de
+    # l'acteur, et vérifie que c'est bien CE tenant-là qui atteint le repo.
+    from app.mcp.tools import attachments as attachments_tool
+
+    captured: dict[str, str] = {}
+    original_list = attachments_tool.attachments_repo.list_attachments
+
+    def _spy(session, *, tenant_id, collection_id, fid, field_key=None):
+        captured["tenant_id"] = tenant_id
+        return original_list(
+            session, tenant_id=tenant_id, collection_id=collection_id, fid=fid, field_key=field_key
+        )
+
+    monkeypatch.setattr(attachments_tool.attachments_repo, "list_attachments", _spy)
+
+    class _FakeCollection:
+        tenant_id = "other-tenant-id"
+
+    def _fake_require_collection_read(session, *, user, collection_id):
+        return _FakeCollection()
+
+    monkeypatch.setattr(attachments_tool, "require_collection_read", _fake_require_collection_read)
+
+    with app_client:
+        result = call_tool(app_client, "list_attachments", {"collectionId": "col1", "fid": "f1"})
+
+    assert captured["tenant_id"] == "other-tenant-id"
+    # Le seul enregistrement de la fixture vit sous le VRAI tenant : une
+    # requête envoyée avec "other-tenant-id" ne peut donc rien trouver.
+    assert result == []
+
+
 def test_list_attachments_errors_on_an_invisible_collection(app_client):
     with app_client.session_factory() as session:
         get_or_create_default_tenant(session)  # même tenant par défaut dans ce dépôt

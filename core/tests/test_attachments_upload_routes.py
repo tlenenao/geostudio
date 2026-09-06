@@ -169,6 +169,23 @@ def test_confirm_rejects_a_key_outside_the_caller_s_tenant_prefix(client):
     assert res.status_code == 400
 
 
+def test_confirm_rejects_a_key_with_the_right_tenant_but_wrong_collection_or_fid(client):
+    # REV-013 : confirm_attachment ne validait que le préfixe TENANT de la
+    # clé S3, pas le préfixe collection/fid qu'elle vient elle-même de
+    # générer (presign_attachment) — une clé sous le bon tenant mais pointant
+    # vers une AUTRE collection/entité (devinée ou réutilisée depuis un
+    # autre upload) était acceptée telle quelle.
+    api, _Session, tenant, _user, s3 = client
+    key = f"{tenant.id}/other-collection/other-fid/abc-a.jpg"
+    s3.heads[key] = {"ContentLength": 512}
+
+    res = api.post(
+        "/v1/collections/col1/items/f1/attachments",
+        json={"key": key, "fieldKey": "photos", "filename": "a.jpg", "contentType": "image/jpeg"},
+    )
+    assert res.status_code == 400
+
+
 def test_confirm_rejects_and_deletes_an_oversized_object(client):
     api, _Session, tenant, _user, s3 = client
     key = f"{tenant.id}/col1/f1/abc-big.bin"

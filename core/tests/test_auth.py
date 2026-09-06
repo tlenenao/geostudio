@@ -45,6 +45,29 @@ class _FakeJWKSClient:
         return _FakeSigningKey(self._public_key)
 
 
+def test_missing_bearer_prefix_never_resolves_tenant(monkeypatch, session):
+    # REV-012 : get_current_user résolvait (et créait au besoin) le tenant
+    # par défaut AVANT de vérifier l'en-tête Authorization — toute requête
+    # non authentifiée sur une route protégée faisait donc un accès base
+    # avant son 401. Un tenant qui explose à la résolution ne doit jamais
+    # être atteint quand le header est absent/mal formé.
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    from fastapi import HTTPException
+
+    def _boom(_session):
+        raise AssertionError("tenant resolution must not run before the Bearer check")
+
+    monkeypatch.setattr(dependency, "get_or_create_default_tenant", _boom)
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency.get_current_user(authorization="not-a-bearer-token", session=session)
+    assert exc_info.value.status_code == 401
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependency.get_current_user(authorization="", session=session)
+    assert exc_info.value.status_code == 401
+
+
 def test_oidc_mode_validates_and_provisions_user(monkeypatch, session):
     monkeypatch.setenv("CORE_AUTH_MODE", "oidc")
     monkeypatch.setenv("CORE_OIDC_ISSUER", "https://keycloak.example/realms/geostudio")
