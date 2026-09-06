@@ -26,6 +26,7 @@ import { PipelinePalette, PIPELINE_OP_DND_TYPE } from "../builder/pipeline/Pipel
 import { PipelinePreviewPanel } from "../builder/pipeline/PipelinePreviewPanel";
 import { PipelineRunPanel } from "../builder/pipeline/PipelineRunPanel";
 import { PipelineScheduleEditor } from "../builder/pipeline/PipelineScheduleEditor";
+import { PipelineWebhookTrigger } from "../builder/pipeline/PipelineWebhookTrigger";
 import { genNodeId, insertNodeOnEdge } from "../builder/pipeline/graphOps";
 import { isPipelineValid, validatePipelineGraphLocally } from "../builder/pipeline/validation";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
@@ -224,6 +225,7 @@ export function PipelineBuilderPage({
                     value={draft.refreshPolicy ?? null}
                     onChange={setRefreshPolicy}
                   />
+                  <PipelineWebhookTrigger pipelineId={pk} />
                 </>
               )}
               {pk !== null && (

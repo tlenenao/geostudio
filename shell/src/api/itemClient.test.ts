@@ -2930,6 +2930,40 @@ test("previewPipeline posts upTo as a query param and returns the row list", asy
   expect(rows).toEqual([{ id: 1, pop: 1200 }]);
 });
 
+test("listPipelineWebhookTokens calls GET /pipelines/{id}/webhook-tokens", async () => {
+  const tokens = [{ id: "t1", createdAt: "2026-09-05T00:00:00Z", lastUsedAt: null }];
+  server.use(
+    http.get("https://core.test/pipelines/p-8/webhook-tokens", () => HttpResponse.json(tokens)),
+  );
+  const result = await makeClient().listPipelineWebhookTokens("p-8");
+  expect(result).toEqual(tokens);
+});
+
+test("createPipelineWebhookToken POST retourne le jeton en clair", async () => {
+  server.use(
+    http.post("https://core.test/pipelines/p-9/webhook-tokens", () =>
+      HttpResponse.json(
+        { id: "t2", token: "clear-value", createdAt: "2026-09-05T00:00:00Z" },
+        { status: 201 },
+      ),
+    ),
+  );
+  const result = await makeClient().createPipelineWebhookToken("p-9");
+  expect(result).toEqual({ id: "t2", token: "clear-value", createdAt: "2026-09-05T00:00:00Z" });
+});
+
+test("revokePipelineWebhookToken calls DELETE /pipelines/{id}/webhook-tokens/{tokenId}", async () => {
+  let method = "";
+  server.use(
+    http.delete("https://core.test/pipelines/p-10/webhook-tokens/t3", ({ request }) => {
+      method = request.method;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  await makeClient().revokePipelineWebhookToken("p-10", "t3");
+  expect(method).toBe("DELETE");
+});
+
 test("createAlertRuleItem posts a kind=alert config and returns the item", async () => {
   let body: any;
   server.use(

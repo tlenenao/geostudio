@@ -433,6 +433,9 @@ export interface ItemClient {
   getPipelineOps(): Promise<PipelineOpsCatalog>;
   runPipeline(pk: string): Promise<{ runId: string }>;
   getPipelineRuns(pk: string): Promise<PipelineRun[]>;
+  listPipelineWebhookTokens(pk: string): Promise<PipelineWebhookToken[]>;
+  createPipelineWebhookToken(pk: string): Promise<{ id: string; token: string; createdAt: string }>;
+  revokePipelineWebhookToken(pk: string, tokenId: string): Promise<void>;
   previewPipeline(pk: string, upToNodeId: string): Promise<Record<string, unknown>[]>;
   createAlertRuleItem(input: {
     title: string;
@@ -1001,4 +1004,13 @@ export type PipelineRun = {
   finishedAt: string | null;
   error: string | null;
   nodeStats: Record<string, PipelineNodeStat>;
+};
+
+// Jeton de déclenchement webhook (GAP-24, SP-53) : jamais le jeton en clair
+// hors de la réponse de création (createPipelineWebhookToken) — la liste
+// (listPipelineWebhookTokens) ne porte que id/createdAt/lastUsedAt.
+export type PipelineWebhookToken = {
+  id: string;
+  createdAt: string;
+  lastUsedAt: string | null;
 };

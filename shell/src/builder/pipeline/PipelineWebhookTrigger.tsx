@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: Apache-2.0
+import { useState } from "react";
+import {
+  useCreatePipelineWebhookToken,
+  usePipelineWebhookTokens,
+  useRevokePipelineWebhookToken,
+} from "../../api/domains/pipelines.hooks";
+import { Button } from "../../ui/kit/Button";
+
+// GAP-24, SP-53 : génération/liste/révocation des jetons de déclenchement.
+// Le jeton en clair n'existe qu'une fois, dans la réponse de création — ni
+// GET /pipelines/{id}/webhook-tokens (liste) ni le cœur en général ne le
+// rendent plus jamais ensuite (même discipline que le coffre de secrets).
+export function PipelineWebhookTrigger({ pipelineId }: { pipelineId: string }) {
+  const tokensQuery = usePipelineWebhookTokens(pipelineId);
+  const createToken = useCreatePipelineWebhookToken(pipelineId);
+  const revokeToken = useRevokePipelineWebhookToken(pipelineId);
+  const [justCreated, setJustCreated] = useState<{ id: string; token: string } | null>(null);
+
+  async function generateToken() {
+    const result = await createToken.mutateAsync();
+    setJustCreated(result);
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-rule pt-2 text-xs">
+      <p className="font-medium text-ink-2">Déclenchement par webhook</p>
+      {(tokensQuery.data ?? []).map((t) => (
+        <div key={t.id} className="flex items-center justify-between">
+          <span>
+            {t.id.slice(0, 8)}… — créé le {t.createdAt}
+          </span>
+          <button
+            type="button"
+            className="text-ink-2 hover:underline"
+            aria-label={`Révoquer ${t.id.slice(0, 8)}`}
+            onClick={() => void revokeToken.mutateAsync(t.id)}
+          >
+            Révoquer
+          </button>
+        </div>
+      ))}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="w-fit"
+        onClick={() => void generateToken()}
+      >
+        Générer un jeton
+      </Button>
+      {justCreated && (
+        <div
+          role="status"
+          className="flex flex-col gap-1 rounded border border-rule bg-surface p-2"
+        >
+          <p className="font-mono">{justCreated.token}</p>
+          <p className="text-danger">
+            Ce jeton ne sera plus jamais affiché — copiez-le maintenant.
+          </p>
+          <p className="font-mono text-ink-2">
+            POST {"{coreBaseUrl}"}/pipelines/{pipelineId}/trigger — en-tête Authorization: Bearer{" "}
+            {justCreated.token}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}

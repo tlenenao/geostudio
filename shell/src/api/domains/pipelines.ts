@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { Item, ItemClient, PipelineOpsCatalog, PipelinePayload, PipelineRun } from "../types";
+import type {
+  Item,
+  ItemClient,
+  PipelineOpsCatalog,
+  PipelinePayload,
+  PipelineRun,
+  PipelineWebhookToken,
+} from "../types";
 import type { ItemClientBase } from "../base";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
 
@@ -12,6 +19,9 @@ type PipelinesMethods = Pick<
   | "runPipeline"
   | "getPipelineRuns"
   | "previewPipeline"
+  | "listPipelineWebhookTokens"
+  | "createPipelineWebhookToken"
+  | "revokePipelineWebhookToken"
 >;
 
 export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
@@ -81,6 +91,23 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
         "POST",
         `/pipelines/${pk}/preview?upTo=${encodeURIComponent(upToNodeId)}`,
       );
+    },
+
+    async listPipelineWebhookTokens(pk: string): Promise<PipelineWebhookToken[]> {
+      return request<PipelineWebhookToken[]>("GET", `/pipelines/${pk}/webhook-tokens`);
+    },
+
+    async createPipelineWebhookToken(
+      pk: string,
+    ): Promise<{ id: string; token: string; createdAt: string }> {
+      return request<{ id: string; token: string; createdAt: string }>(
+        "POST",
+        `/pipelines/${pk}/webhook-tokens`,
+      );
+    },
+
+    async revokePipelineWebhookToken(pk: string, tokenId: string): Promise<void> {
+      await request<void>("DELETE", `/pipelines/${pk}/webhook-tokens/${tokenId}`);
     },
   };
 }

@@ -59,3 +59,33 @@ export function useRunPipeline(pk: string) {
     mutationFn: () => client.runPipeline(pk),
   });
 }
+
+export function usePipelineWebhookTokens(pk: string) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["pipeline-webhook-tokens", pk],
+    queryFn: () => client.listPipelineWebhookTokens(pk),
+  });
+}
+
+export function useCreatePipelineWebhookToken(pk: string) {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => client.createPipelineWebhookToken(pk),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["pipeline-webhook-tokens", pk] });
+    },
+  });
+}
+
+export function useRevokePipelineWebhookToken(pk: string) {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (tokenId: string) => client.revokePipelineWebhookToken(pk, tokenId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["pipeline-webhook-tokens", pk] });
+    },
+  });
+}
