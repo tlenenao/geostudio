@@ -91,7 +91,7 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
   `YYYY-MM-DD-spX…`.
 - **TDD systématique** ; chaque feature visible a sa spec E2E Playwright. La
   suite E2E complète est le filet de la migration : elle reste globalement
-  verte (dernière mesure, clôture SP-43 2026-09-05 : 141 passed / 4 skipped /
+  verte (dernière mesure, clôture SP-52 2026-09-06 : 146 passed / 4 skipped /
   **1 failed** — `e2e/pipeline-builder.spec.ts:111`, timeout sur le bouton
   « Exécuter », confirmé préexistant à SP-43 en checkoutant le commit
   d'avant sa Tâche 1 ; cause non encore investiguée, ne pas imputer à un
@@ -111,9 +111,9 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ```bash
 # shell (d'abord, car commitlint en dépend)
 cd shell && npm ci
-npm run test         # Vitest — dernier compte mesuré à la clôture SP-43
-                     # (2026-09-05) : 225 fichiers, 1944 tests, tous passed.
-npm run e2e          # Playwright — 141 passed / 4 skipped / 1 failed à la
+npm run test         # Vitest — dernier compte mesuré à la clôture SP-52
+                     # (2026-09-06) : 227 fichiers, 1964 tests, tous passed.
+npm run e2e          # Playwright — 146 passed / 4 skipped / 1 failed à la
                      # même mesure (VITE_AUTH_MODE=mock) — l'échec
                      # (pipeline-builder.spec.ts:111) est préexistant à
                      # SP-43, cf. ## Comment on travaille.
@@ -421,6 +421,45 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   à tout ce plan** (confirmé en checkoutant le commit d'avant la Tâche 1 —
   `e2e/pipeline-builder.spec.ts:111`, sans rapport, non corrigé, hors
   périmètre).
+- **SP-52** (8 tâches, subagent-driven-development, 2026-09-06) — ferme 5
+  manques d'UX du builder d'App identifiés par SP-42 : retrait du code mort
+  `moveItem`/`resizeItem`/`styleFor` (GAP-33) ; suppression d'un widget
+  depuis le canevas (bouton + `Delete`/`Backspace`, `GridCanvas.onRemoveItem`
+  désormais obligatoire, GAP-66a) ; suppression d'une variable (GAP-66c) —
+  toutes deux purgent désormais `config.messages` de tout câblage
+  `ActionsPanel` orphelin via une fonction pure partagée
+  (`actionMessages.ts::pruneMessagesForIds`, posée en tâche dédiée avant ses
+  deux consommateurs pour ne pas écrire la même règle deux fois) ; `setFilter`
+  du copilote fusionne désormais la requête au lieu de la remplacer (GAP-66b,
+  symétrique de `DataSourcePanel::patchQuery`) ; le widget Onglets affiche le
+  contenu réel de l'onglet actif sur le canevas principal en édition, pas
+  seulement un bandeau vide (GAP-54) ; éditeur d'enregistrements JSON pour
+  les sources de données Statique (GAP-51) ; nouveau widget builtin
+  `variableInput`/« Saisie » lisant et écrivant directement une variable
+  typée par son `id` stable (jamais son `name` renommable), nouveau hook
+  `useVariableDefs()` sur `VariablesContext.tsx` + prop optionnel
+  `variables?: Variable[]` threadé sur `PropsPanel`/`LayoutEditor` et les 3
+  widgets conteneurs (GAP-13, chantier 4.24). **Limitation connue laissée
+  telle quelle** (spec §3.1) : le canevas principal du widget Onglets en
+  édition prévisualise toujours le premier onglet (`activeId` interne au
+  `Component`, bandeau non cliquable) — indépendant de l'onglet sélectionné
+  dans le panneau Propriétés ; l'édition du contenu reste au panneau
+  Propriétés, cette tâche n'ajoutait qu'un aperçu. Falsification exécutée
+  systématiquement sur les filets ajoutés : un premier test E2E GAP-54 s'est
+  révélé vacuo (le texte du panneau Propriétés faisait déjà matcher
+  l'assertion) et a dû être re-scopé sur `<main>` ; de même le test de purge
+  de câblage à la suppression de widget (visuel seul) ne détectait pas
+  l'absence réelle de purge — corrigé en asserttant sur l'objet
+  `saveAppConfig` plutôt que sur l'affichage (`ActionsPanel.
+  resolvesOnThisPage` masque déjà visuellement un message orphelin, purgé ou
+  non). Effet de bord cross-tâche trouvé par la suite complète (pas par
+  tâche) : le nouveau widget porte le catalogue à 23 types, `addWidget`'s
+  enum copilote (`clientTools.test.ts`) avait un compte figé à 22, corrigé.
+  Suite finale : shell 227 fichiers/1964 tests, tous passés ; E2E 146
+  passed/4 skipped/1 échec **préexistant, sans rapport**
+  (`e2e/pipeline-builder.spec.ts:111`, cf. entrée SP-43) ; diff OpenAPI/types
+  TS vide (plan shell-only, vérifié plutôt que supposé). Aucun fichier
+  `core/` touché.
 
 ### Conventions tranchées (2026-09-01)
 
