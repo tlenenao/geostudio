@@ -222,6 +222,182 @@ test("shows a layer picker for a multi-layer GeoPackage and imports the chosen l
   await waitFor(() => expect(screen.getByText("map-100")).toBeInTheDocument());
 });
 
+function xlsxFile(name = "villes.xlsx") {
+  return new File(["fake-xlsx-bytes"], name, {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+}
+
+test("SP-56 : XLSX avec colonnes lat/lon détectées saute la sélection manuelle", async () => {
+  server.use(
+    http.post("https://core.test/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-5", key: "t/mno-villes.xlsx" }),
+    ),
+    http.put("https://minio.test/upload-5", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/uploads/inspect", () =>
+      HttpResponse.json({ layers: [], fields: ["nom", "lat", "lon"] }),
+    ),
+    http.post("https://core.test/uploads", async ({ request }) => {
+      const body = (await request.json()) as { latField?: string };
+      expect(body.latField).toBeUndefined();
+      return HttpResponse.json({ jobId: "job-5" });
+    }),
+    http.get("https://core.test/uploads/job-5", () =>
+      HttpResponse.json({
+        status: "done",
+        errorMessage: null,
+        collectionId: "ingest_z",
+        itemId: "101",
+      }),
+    ),
+  );
+
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), xlsxFile());
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "Villes XLSX");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+
+  await waitFor(() => expect(screen.getByText("map-101")).toBeInTheDocument());
+});
+
+test("SP-56 : XLSX sans colonnes lat/lon détectables affiche le formulaire manuel", async () => {
+  server.use(
+    http.post("https://core.test/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-6", key: "t/pqr-villes.xlsx" }),
+    ),
+    http.put("https://minio.test/upload-6", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/uploads/inspect", () =>
+      HttpResponse.json({ layers: [], fields: ["nom", "y_coord", "x_coord"] }),
+    ),
+    http.post("https://core.test/uploads", async ({ request }) => {
+      const body = (await request.json()) as { latField?: string; lonField?: string };
+      expect(body.latField).toBe("y_coord");
+      expect(body.lonField).toBe("x_coord");
+      return HttpResponse.json({ jobId: "job-6" });
+    }),
+    http.get("https://core.test/uploads/job-6", () =>
+      HttpResponse.json({
+        status: "done",
+        errorMessage: null,
+        collectionId: "ingest_w",
+        itemId: "102",
+      }),
+    ),
+  );
+
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), xlsxFile());
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "Villes XLSX 2");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+
+  await waitFor(() => expect(screen.getByLabelText("Colonne latitude")).toBeInTheDocument());
+  await userEvent.selectOptions(screen.getByLabelText("Colonne latitude"), "y_coord");
+  await userEvent.selectOptions(screen.getByLabelText("Colonne longitude"), "x_coord");
+  await userEvent.click(screen.getByRole("button", { name: "Continuer" }));
+
+  await waitFor(() => expect(screen.getByText("map-102")).toBeInTheDocument());
+});
+
+function kmlFile(name = "paris.kml") {
+  return new File(["<kml/>"], name, { type: "application/vnd.google-earth.kml+xml" });
+}
+
+test("SP-56 : KML multi-couches passe par la sélection de couche (même flux que GPKG)", async () => {
+  server.use(
+    http.post("https://core.test/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-7", key: "t/stu-villes.kml" }),
+    ),
+    http.put("https://minio.test/upload-7", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/uploads/inspect", () =>
+      HttpResponse.json({
+        layers: [
+          { name: "a", featureCount: 1, geometryType: "Point" },
+          { name: "b", featureCount: 1, geometryType: "Point" },
+        ],
+      }),
+    ),
+    http.post("https://core.test/uploads", async ({ request }) => {
+      const body = (await request.json()) as { layerName?: string };
+      expect(body.layerName).toBe("b");
+      return HttpResponse.json({ jobId: "job-7" });
+    }),
+    http.get("https://core.test/uploads/job-7", () =>
+      HttpResponse.json({
+        status: "done",
+        errorMessage: null,
+        collectionId: "ingest_kml",
+        itemId: "103",
+      }),
+    ),
+  );
+
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), kmlFile());
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "Villes KML");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+
+  await waitFor(() => expect(screen.getByLabelText("Couche à importer")).toBeInTheDocument());
+  await userEvent.selectOptions(screen.getByLabelText("Couche à importer"), "b");
+  await userEvent.click(screen.getByRole("button", { name: "Continuer" }));
+
+  await waitFor(() => expect(screen.getByText("map-103")).toBeInTheDocument());
+});
+
+function parquetFile(name = "villes.parquet") {
+  return new File(["fake-parquet-bytes"], name, { type: "application/octet-stream" });
+}
+
+test("SP-56 : GeoParquet ne passe par aucune étape d'inspection, job créé directement", async () => {
+  let inspectCalled = false;
+  server.use(
+    http.post("https://core.test/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-8", key: "t/vwx-villes.parquet" }),
+    ),
+    http.put("https://minio.test/upload-8", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/uploads/inspect", () => {
+      inspectCalled = true;
+      return HttpResponse.json({ layers: [] });
+    }),
+    http.post("https://core.test/uploads", () => HttpResponse.json({ jobId: "job-8" })),
+    http.get("https://core.test/uploads/job-8", () =>
+      HttpResponse.json({
+        status: "done",
+        errorMessage: null,
+        collectionId: "ingest_parquet",
+        itemId: "104",
+      }),
+    ),
+  );
+
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), parquetFile());
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "Villes Parquet");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+
+  await waitFor(() => expect(screen.getByText("map-104")).toBeInTheDocument());
+  expect(inspectCalled).toBe(false);
+});
+
 test("SP-42/F-shell-pages-01 (fusion F-shell-pages-02) : masque le bouton pour un profil sans data.manage", async () => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   queryClient.setQueryDefaults(["me"], { staleTime: Infinity });
