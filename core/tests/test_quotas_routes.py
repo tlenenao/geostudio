@@ -64,14 +64,14 @@ def _as(app, user):
 def test_get_usage_requires_settings_instance_manage_privilege(env):
     app, client, admin, regular = env
     _as(app, regular)
-    resp = client.get("/admin/usage")
+    resp = client.get("/v1/admin/usage")
     assert resp.status_code == 403
 
 
 def test_get_usage_returns_snapshot_shape_for_privileged_admin(env):
     app, client, admin, _regular = env
     _as(app, admin)
-    resp = client.get("/admin/usage")
+    resp = client.get("/v1/admin/usage")
     assert resp.status_code == 200
     body = resp.json()
     assert set(body) == {"itemCount", "collectionCount", "userCount", "storageBytes"}

@@ -111,12 +111,12 @@ def _as(app, user):
 
 def _register(app, client, admin, public=False):
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents", "isPublic": public})
+    client.post("/v1/collections", json={"tableName": "incidents", "isPublic": public})
 
 
 def test_landing_page_wins_over_mcp_mount(env):
     _app, client, *_ = env
-    r = client.get("/")
+    r = client.get("/v1/")
     assert r.status_code == 200
     rels = {link["rel"] for link in r.json()["links"]}
     assert {"self", "conformance", "data", "service-desc"} <= rels
@@ -125,13 +125,13 @@ def test_landing_page_wins_over_mcp_mount(env):
 
 def test_conformance(env):
     _app, client, *_ = env
-    assert client.get("/conformance").json()["conformsTo"] == CONFORMANCE_CLASSES
+    assert client.get("/v1/conformance").json()["conformsTo"] == CONFORMANCE_CLASSES
 
 
 def test_collection_description_is_ogc(env):
     app, client, admin, _r, _repo = env
     _register(app, client, admin, public=True)
-    body = client.get("/collections/incidents").json()
+    body = client.get("/v1/collections/incidents").json()
     assert body["itemType"] == "feature"
     assert body["extent"] == {"spatial": {"bbox": [[1.0, 45.0, 2.0, 46.0]]}}
     rels = {link["rel"]: link["href"] for link in body["links"]}
@@ -146,7 +146,7 @@ def test_extent_failure_degrades_to_none(env, caplog):
         raise TableNotFound("gone")
 
     app.dependency_overrides[collections_routes.get_extent_provider] = lambda: broken_provider
-    body = client.get("/collections/incidents").json()
+    body = client.get("/v1/collections/incidents").json()
     assert body["extent"] is None
     assert "extent lookup failed" in caplog.text
 
@@ -162,4 +162,4 @@ def test_extent_code_bug_is_not_swallowed(env):
     # TestClient propage les exceptions non-HTTP (raise_server_exceptions=True
     # par défaut) : un bug de code doit remonter, pas être avalé en extent=None.
     with pytest.raises(TypeError):
-        client.get("/collections/incidents")
+        client.get("/v1/collections/incidents")

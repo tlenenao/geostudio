@@ -60,32 +60,32 @@ def _create_site(client, title, slug=None):
     }
     if slug:
         body["slug"] = slug
-    res = client.post("/configs", json=body)
+    res = client.post("/v1/configs", json=body)
     assert res.status_code == 201, res.text
     return res.json()["itemId"]
 
 
 def test_patch_slug_valide(client):
     item_id = _create_site(client, "Portail")
-    res = client.patch(f"/items/{item_id}", json={"slug": "nouveau-slug"})
+    res = client.patch(f"/v1/items/{item_id}", json={"slug": "nouveau-slug"})
     assert res.status_code == 200, res.text
     assert res.json()["slug"] == "nouveau-slug"
 
 
 def test_patch_slug_invalide_422(client):
     item_id = _create_site(client, "Portail")
-    res = client.patch(f"/items/{item_id}", json={"slug": "Pas Valide"})
+    res = client.patch(f"/v1/items/{item_id}", json={"slug": "Pas Valide"})
     assert res.status_code == 422
 
 
 def test_patch_slug_collision_409(client):
     _create_site(client, "A", slug="pris")
     item_id = _create_site(client, "B")
-    res = client.patch(f"/items/{item_id}", json={"slug": "pris"})
+    res = client.patch(f"/v1/items/{item_id}", json={"slug": "pris"})
     assert res.status_code == 409
 
 
 def test_patch_meme_slug_sur_soi_ok(client):
     item_id = _create_site(client, "A", slug="stable")
-    res = client.patch(f"/items/{item_id}", json={"slug": "stable"})
+    res = client.patch(f"/v1/items/{item_id}", json={"slug": "stable"})
     assert res.status_code == 200, res.text

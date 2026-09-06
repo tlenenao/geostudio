@@ -26,7 +26,7 @@ def test_a_fresh_tenant_gets_its_four_built_in_roles_on_first_authenticated_call
         tenant = get_or_create_default_tenant(s)
         assert list_roles(s, tenant_id=tenant.id) == []
 
-    assert client.get("/me", headers={"Authorization": "Bearer test-token"}).status_code == 200
+    assert client.get("/v1/me", headers={"Authorization": "Bearer test-token"}).status_code == 200
 
     with Session() as s:
         slugs = {r.slug for r in list_roles(s, tenant_id=tenant.id)}

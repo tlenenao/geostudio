@@ -213,7 +213,7 @@ def test_create_report_is_rejected_when_export_capability_is_disabled(monkeypatc
     monkeypatch.setenv("CORE_EXPORT_ENABLED", "false")
     client, bookmark_id = _client_and_tenant(monkeypatch, tmp_path)
 
-    resp = client.post("/configs", json=_report_body(bookmark_id))
+    resp = client.post("/v1/configs", json=_report_body(bookmark_id))
 
     assert resp.status_code == 403
     assert resp.json()["detail"] == "Export capability disabled on this instance"
@@ -223,7 +223,7 @@ def test_create_report_is_accepted_when_export_capability_is_enabled(monkeypatch
     monkeypatch.setenv("CORE_EXPORT_ENABLED", "true")
     client, bookmark_id = _client_and_tenant(monkeypatch, tmp_path)
 
-    resp = client.post("/configs", json=_report_body(bookmark_id))
+    resp = client.post("/v1/configs", json=_report_body(bookmark_id))
 
     assert resp.status_code == 201
 
@@ -231,12 +231,12 @@ def test_create_report_is_accepted_when_export_capability_is_enabled(monkeypatch
 def test_update_report_is_rejected_when_export_capability_is_disabled(monkeypatch, tmp_path):
     monkeypatch.setenv("CORE_EXPORT_ENABLED", "true")
     client, bookmark_id = _client_and_tenant(monkeypatch, tmp_path)
-    created = client.post("/configs", json=_report_body(bookmark_id))
+    created = client.post("/v1/configs", json=_report_body(bookmark_id))
     assert created.status_code == 201
     config_id = created.json()["id"]
 
     monkeypatch.setenv("CORE_EXPORT_ENABLED", "false")
-    resp = client.put(f"/configs/{config_id}", json=_report_body(bookmark_id)["config"])
+    resp = client.put(f"/v1/configs/{config_id}", json=_report_body(bookmark_id)["config"])
 
     assert resp.status_code == 403
     assert resp.json()["detail"] == "Export capability disabled on this instance"

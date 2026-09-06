@@ -111,7 +111,7 @@ def _as_user_id(app, Session, user_id: str) -> None:
 def test_purge_route_requires_compliance_manage_privilege(env):
     _as_user_id(env["app"], env["Session"], env["regular_id"])
     resp = env["client"].post(
-        f"/compliance/tenants/{env['tenant_id']}/purge",
+        f"/v1/compliance/tenants/{env['tenant_id']}/purge",
         json={"confirmSlug": env["tenant_slug"]},
     )
     assert resp.status_code == 403
@@ -120,7 +120,7 @@ def test_purge_route_requires_compliance_manage_privilege(env):
 def test_purge_route_rejects_wrong_slug_for_privileged_admin(env):
     _as_user_id(env["app"], env["Session"], env["admin_id"])
     resp = env["client"].post(
-        f"/compliance/tenants/{env['tenant_id']}/purge",
+        f"/v1/compliance/tenants/{env['tenant_id']}/purge",
         json={"confirmSlug": "mauvais-slug"},
     )
     assert resp.status_code == 400
@@ -130,7 +130,7 @@ def test_purge_route_rejects_wrong_slug_for_privileged_admin(env):
 def test_purge_route_accepts_correct_slug_and_defers_job(env):
     _as_user_id(env["app"], env["Session"], env["admin_id"])
     resp = env["client"].post(
-        f"/compliance/tenants/{env['tenant_id']}/purge",
+        f"/v1/compliance/tenants/{env['tenant_id']}/purge",
         json={"confirmSlug": env["tenant_slug"]},
     )
     assert resp.status_code == 202, resp.text
@@ -144,7 +144,7 @@ def test_purge_route_accepts_correct_slug_and_defers_job(env):
 def test_purge_route_rejects_cross_tenant_purge(env):
     _as_user_id(env["app"], env["Session"], env["admin_id"])
     resp = env["client"].post(
-        "/compliance/tenants/tenant-b/purge", json={"confirmSlug": "tenant-b"}
+        "/v1/compliance/tenants/tenant-b/purge", json={"confirmSlug": "tenant-b"}
     )
     assert resp.status_code == 403
     assert env["deferred"] == []
@@ -155,14 +155,14 @@ def test_get_purge_status_returns_202_while_pending_and_200_once_receipt_exists(
     created = (
         env["client"]
         .post(
-            f"/compliance/tenants/{env['tenant_id']}/purge",
+            f"/v1/compliance/tenants/{env['tenant_id']}/purge",
             json={"confirmSlug": env["tenant_slug"]},
         )
         .json()
     )
     purge_id = created["jobId"]
 
-    pending = env["client"].get(f"/compliance/purges/{purge_id}")
+    pending = env["client"].get(f"/v1/compliance/purges/{purge_id}")
     assert pending.status_code == 202
 
     # Simule la fin du job (écrite normalement par purge_tenant_task — le
@@ -180,7 +180,7 @@ def test_get_purge_status_returns_202_while_pending_and_200_once_receipt_exists(
         )
         s.commit()
 
-    done = env["client"].get(f"/compliance/purges/{purge_id}")
+    done = env["client"].get(f"/v1/compliance/purges/{purge_id}")
     assert done.status_code == 200
     assert done.json()["tenantSlug"] == env["tenant_slug"]
 
@@ -192,5 +192,5 @@ def test_get_purge_status_returns_202_for_an_unknown_purge_id(env):
     # — décision de portée assumée pour cette tâche (documentée dans le
     # commit), même comportement que pour un id réel encore en cours.
     _as_user_id(env["app"], env["Session"], env["admin_id"])
-    resp = env["client"].get("/compliance/purges/does-not-exist")
+    resp = env["client"].get("/v1/compliance/purges/does-not-exist")
     assert resp.status_code == 202

@@ -95,7 +95,7 @@ def test_post_app_export_requires_flag_enabled(env, monkeypatch):
     make_client, _owner, _stranger, item_id, _Session = env
     monkeypatch.setenv("CORE_APPEXPORT_ENABLED", "false")
     client, _calls = make_client()
-    response = client.post("/app-exports", json={"itemId": item_id, "mode": "static"})
+    response = client.post("/v1/app-exports", json={"itemId": item_id, "mode": "static"})
     assert response.status_code == 404
 
 
@@ -104,7 +104,7 @@ def test_post_app_export_creates_job_and_returns_202(env):
     client, calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
-    response = client.post("/app-exports", json={"itemId": item_id, "mode": "static"})
+    response = client.post("/v1/app-exports", json={"itemId": item_id, "mode": "static"})
     assert response.status_code == 202
     assert "jobId" in response.json()
     assert len(calls) == 1
@@ -115,7 +115,7 @@ def test_post_app_export_denies_user_without_read_access(env):
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: stranger
     client.app.dependency_overrides[get_current_user_optional] = lambda: stranger
-    response = client.post("/app-exports", json={"itemId": item_id, "mode": "static"})
+    response = client.post("/v1/app-exports", json={"itemId": item_id, "mode": "static"})
     assert response.status_code == 404
 
 
@@ -124,7 +124,7 @@ def test_post_app_export_rejects_invalid_mode(env):
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
-    response = client.post("/app-exports", json={"itemId": item_id, "mode": "bogus"})
+    response = client.post("/v1/app-exports", json={"itemId": item_id, "mode": "bogus"})
     assert response.status_code == 422
 
 
@@ -133,8 +133,8 @@ def test_get_app_export_job_reports_status(env):
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
-    created = client.post("/app-exports", json={"itemId": item_id, "mode": "static"}).json()
-    response = client.get(f"/app-exports/jobs/{created['jobId']}")
+    created = client.post("/v1/app-exports", json={"itemId": item_id, "mode": "static"}).json()
+    response = client.get(f"/v1/app-exports/jobs/{created['jobId']}")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "pending"
@@ -153,7 +153,7 @@ def test_post_app_export_allowed_in_read_only_demo_mode(env, monkeypatch):
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
-    response = client.post("/app-exports", json={"itemId": item_id, "mode": "static"})
+    response = client.post("/v1/app-exports", json={"itemId": item_id, "mode": "static"})
     assert response.status_code == 202
 
 
@@ -162,13 +162,13 @@ def test_get_app_export_job_done_status_includes_result_url(env):
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
-    created = client.post("/app-exports", json={"itemId": item_id, "mode": "static"}).json()
+    created = client.post("/v1/app-exports", json={"itemId": item_id, "mode": "static"}).json()
     job_id = created["jobId"]
     with Session() as s:
         appexport_repo.mark_running(s, job_id=job_id)
         appexport_repo.mark_done(s, job_id=job_id, result_key=f"appexports/{job_id}.zip")
         s.commit()
-    response = client.get(f"/app-exports/jobs/{job_id}")
+    response = client.get(f"/v1/app-exports/jobs/{job_id}")
     body = response.json()
     assert body["status"] == "done"
     assert body["resultUrl"] == f"https://minio.test/geostudio-appexports/appexports/{job_id}.zip"
@@ -179,7 +179,7 @@ def test_post_app_export_accepts_connected_mode(env):
     client, calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
-    response = client.post("/app-exports", json={"itemId": item_id, "mode": "connected"})
+    response = client.post("/v1/app-exports", json={"itemId": item_id, "mode": "connected"})
     assert response.status_code == 202
     assert len(calls) == 1
 
@@ -189,6 +189,6 @@ def test_post_app_export_accepts_standalone_mode(env):
     client, calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
-    response = client.post("/app-exports", json={"itemId": item_id, "mode": "standalone"})
+    response = client.post("/v1/app-exports", json={"itemId": item_id, "mode": "standalone"})
     assert response.status_code == 202
     assert len(calls) == 1

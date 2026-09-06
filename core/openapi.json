@@ -579,7 +579,7 @@
         "title": "BearerTokenPayload",
         "type": "object"
       },
-      "Body_create_map_icon_map_icons_post": {
+      "Body_create_map_icon_v1_map_icons_post": {
         "properties": {
           "category": {
             "title": "Category",
@@ -600,10 +600,10 @@
           "title",
           "category"
         ],
-        "title": "Body_create_map_icon_map_icons_post",
+        "title": "Body_create_map_icon_v1_map_icons_post",
         "type": "object"
       },
-      "Body_upload_thumbnail_items__item_id__thumbnail_post": {
+      "Body_upload_thumbnail_v1_items__item_id__thumbnail_post": {
         "properties": {
           "file": {
             "contentMediaType": "application/octet-stream",
@@ -614,7 +614,7 @@
         "required": [
           "file"
         ],
-        "title": "Body_upload_thumbnail_items__item_id__thumbnail_post",
+        "title": "Body_upload_thumbnail_v1_items__item_id__thumbnail_post",
         "type": "object"
       },
       "BookmarkCrossFilterEntry": {
@@ -4814,9 +4814,31 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/": {
+    "/health": {
       "get": {
-        "operationId": "landing_page__get",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/v1/": {
+      "get": {
+        "operationId": "landing_page_v1__get",
         "responses": {
           "200": {
             "content": {
@@ -4830,9 +4852,9 @@
         "summary": "Landing Page"
       }
     },
-    "/admin/usage": {
+    "/v1/admin/usage": {
       "get": {
-        "operationId": "get_usage_admin_usage_get",
+        "operationId": "get_usage_v1_admin_usage_get",
         "parameters": [
           {
             "in": "header",
@@ -4870,9 +4892,9 @@
         "summary": "Get Usage"
       }
     },
-    "/alerts/{item_id}/evaluations": {
+    "/v1/alerts/{item_id}/evaluations": {
       "get": {
-        "operationId": "get_alert_evaluations_alerts__item_id__evaluations_get",
+        "operationId": "get_alert_evaluations_v1_alerts__item_id__evaluations_get",
         "parameters": [
           {
             "in": "path",
@@ -4902,7 +4924,7 @@
                   "items": {
                     "$ref": "#/components/schemas/EvaluationStatus"
                   },
-                  "title": "Response Get Alert Evaluations Alerts  Item Id  Evaluations Get",
+                  "title": "Response Get Alert Evaluations V1 Alerts  Item Id  Evaluations Get",
                   "type": "array"
                 }
               }
@@ -4923,9 +4945,9 @@
         "summary": "Get Alert Evaluations"
       }
     },
-    "/analytics/sql": {
+    "/v1/analytics/sql": {
       "post": {
-        "operationId": "analytics_sql_analytics_sql_post",
+        "operationId": "analytics_sql_v1_analytics_sql_post",
         "parameters": [
           {
             "in": "header",
@@ -4971,9 +4993,9 @@
         "summary": "Analytics Sql"
       }
     },
-    "/collections": {
+    "/v1/collections": {
       "get": {
-        "operationId": "list_collections_collections_get",
+        "operationId": "list_collections_v1_collections_get",
         "parameters": [
           {
             "in": "query",
@@ -5025,7 +5047,7 @@
         "summary": "List Collections"
       },
       "post": {
-        "operationId": "register_collection_collections_post",
+        "operationId": "register_collection_v1_collections_post",
         "parameters": [
           {
             "in": "header",
@@ -5071,9 +5093,9 @@
         "summary": "Register Collection"
       }
     },
-    "/collections/candidates": {
+    "/v1/collections/candidates": {
       "get": {
-        "operationId": "list_candidate_tables_collections_candidates_get",
+        "operationId": "list_candidate_tables_v1_collections_candidates_get",
         "parameters": [
           {
             "in": "header",
@@ -5109,9 +5131,9 @@
         "summary": "List Candidate Tables"
       }
     },
-    "/collections/empty": {
+    "/v1/collections/empty": {
       "post": {
-        "operationId": "create_empty_collection_route_collections_empty_post",
+        "operationId": "create_empty_collection_route_v1_collections_empty_post",
         "parameters": [
           {
             "in": "header",
@@ -5157,9 +5179,9 @@
         "summary": "Create Empty Collection Route"
       }
     },
-    "/collections/{collection_id}": {
+    "/v1/collections/{collection_id}": {
       "delete": {
-        "operationId": "unregister_collection_collections__collection_id__delete",
+        "operationId": "unregister_collection_v1_collections__collection_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -5199,7 +5221,7 @@
         "summary": "Unregister Collection"
       },
       "get": {
-        "operationId": "get_collection_collections__collection_id__get",
+        "operationId": "get_collection_v1_collections__collection_id__get",
         "parameters": [
           {
             "in": "path",
@@ -5244,7 +5266,7 @@
         "summary": "Get Collection"
       },
       "patch": {
-        "operationId": "patch_collection_collections__collection_id__patch",
+        "operationId": "patch_collection_v1_collections__collection_id__patch",
         "parameters": [
           {
             "in": "path",
@@ -5299,9 +5321,9 @@
         "summary": "Patch Collection"
       }
     },
-    "/collections/{collection_id}/aggregate": {
+    "/v1/collections/{collection_id}/aggregate": {
       "post": {
-        "operationId": "aggregate_features_collections__collection_id__aggregate_post",
+        "operationId": "aggregate_features_v1_collections__collection_id__aggregate_post",
         "parameters": [
           {
             "in": "path",
@@ -5356,9 +5378,9 @@
         "summary": "Aggregate Features"
       }
     },
-    "/collections/{collection_id}/export": {
+    "/v1/collections/{collection_id}/export": {
       "post": {
-        "operationId": "export_collection_aggregate_collections__collection_id__export_post",
+        "operationId": "export_collection_aggregate_v1_collections__collection_id__export_post",
         "parameters": [
           {
             "in": "path",
@@ -5422,9 +5444,9 @@
         "summary": "Export Collection Aggregate"
       }
     },
-    "/collections/{collection_id}/export/items": {
+    "/v1/collections/{collection_id}/export/items": {
       "get": {
-        "operationId": "export_collection_items_collections__collection_id__export_items_get",
+        "operationId": "export_collection_items_v1_collections__collection_id__export_items_get",
         "parameters": [
           {
             "in": "path",
@@ -5510,9 +5532,9 @@
         "summary": "Export Collection Items"
       }
     },
-    "/collections/{collection_id}/items": {
+    "/v1/collections/{collection_id}/items": {
       "get": {
-        "operationId": "list_features_collections__collection_id__items_get",
+        "operationId": "list_features_v1_collections__collection_id__items_get",
         "parameters": [
           {
             "in": "path",
@@ -5611,7 +5633,7 @@
         "summary": "List Features"
       },
       "post": {
-        "operationId": "create_feature_collections__collection_id__items_post",
+        "operationId": "create_feature_v1_collections__collection_id__items_post",
         "parameters": [
           {
             "in": "path",
@@ -5668,9 +5690,9 @@
         "summary": "Create Feature"
       }
     },
-    "/collections/{collection_id}/items/{fid}": {
+    "/v1/collections/{collection_id}/items/{fid}": {
       "delete": {
-        "operationId": "remove_feature_collections__collection_id__items__fid__delete",
+        "operationId": "remove_feature_v1_collections__collection_id__items__fid__delete",
         "parameters": [
           {
             "in": "path",
@@ -5719,7 +5741,7 @@
         "summary": "Remove Feature"
       },
       "get": {
-        "operationId": "get_single_feature_collections__collection_id__items__fid__get",
+        "operationId": "get_single_feature_v1_collections__collection_id__items__fid__get",
         "parameters": [
           {
             "in": "path",
@@ -5773,7 +5795,7 @@
         "summary": "Get Single Feature"
       },
       "put": {
-        "operationId": "put_feature_collections__collection_id__items__fid__put",
+        "operationId": "put_feature_v1_collections__collection_id__items__fid__put",
         "parameters": [
           {
             "in": "path",
@@ -5834,9 +5856,9 @@
         "summary": "Put Feature"
       }
     },
-    "/collections/{collection_id}/items/{fid}/attachments": {
+    "/v1/collections/{collection_id}/items/{fid}/attachments": {
       "get": {
-        "operationId": "list_attachments_route_collections__collection_id__items__fid__attachments_get",
+        "operationId": "list_attachments_route_v1_collections__collection_id__items__fid__attachments_get",
         "parameters": [
           {
             "in": "path",
@@ -5908,7 +5930,7 @@
         "summary": "List Attachments Route"
       },
       "post": {
-        "operationId": "confirm_attachment_collections__collection_id__items__fid__attachments_post",
+        "operationId": "confirm_attachment_v1_collections__collection_id__items__fid__attachments_post",
         "parameters": [
           {
             "in": "path",
@@ -5974,9 +5996,9 @@
         "summary": "Confirm Attachment"
       }
     },
-    "/collections/{collection_id}/items/{fid}/attachments/presign": {
+    "/v1/collections/{collection_id}/items/{fid}/attachments/presign": {
       "post": {
-        "operationId": "presign_attachment_collections__collection_id__items__fid__attachments_presign_post",
+        "operationId": "presign_attachment_v1_collections__collection_id__items__fid__attachments_presign_post",
         "parameters": [
           {
             "in": "path",
@@ -6042,9 +6064,9 @@
         "summary": "Presign Attachment"
       }
     },
-    "/collections/{collection_id}/items/{fid}/attachments/{attachment_id}": {
+    "/v1/collections/{collection_id}/items/{fid}/attachments/{attachment_id}": {
       "delete": {
-        "operationId": "delete_attachment_route_collections__collection_id__items__fid__attachments__attachment_id__delete",
+        "operationId": "delete_attachment_route_v1_collections__collection_id__items__fid__attachments__attachment_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -6102,9 +6124,9 @@
         "summary": "Delete Attachment Route"
       }
     },
-    "/collections/{collection_id}/items/{fid}/attachments/{attachment_id}/file": {
+    "/v1/collections/{collection_id}/items/{fid}/attachments/{attachment_id}/file": {
       "get": {
-        "operationId": "read_attachment_file_collections__collection_id__items__fid__attachments__attachment_id__file_get",
+        "operationId": "read_attachment_file_v1_collections__collection_id__items__fid__attachments__attachment_id__file_get",
         "parameters": [
           {
             "in": "path",
@@ -6167,9 +6189,9 @@
         "summary": "Read Attachment File"
       }
     },
-    "/collections/{collection_id}/schema": {
+    "/v1/collections/{collection_id}/schema": {
       "get": {
-        "operationId": "get_collection_schema_collections__collection_id__schema_get",
+        "operationId": "get_collection_schema_v1_collections__collection_id__schema_get",
         "parameters": [
           {
             "in": "path",
@@ -6214,9 +6236,9 @@
         "summary": "Get Collection Schema"
       }
     },
-    "/collections/{collection_id}/sharing": {
+    "/v1/collections/{collection_id}/sharing": {
       "get": {
-        "operationId": "get_sharing_collections__collection_id__sharing_get",
+        "operationId": "get_sharing_v1_collections__collection_id__sharing_get",
         "parameters": [
           {
             "in": "path",
@@ -6263,7 +6285,7 @@
         "summary": "Get Sharing"
       },
       "put": {
-        "operationId": "put_sharing_collections__collection_id__sharing_put",
+        "operationId": "put_sharing_v1_collections__collection_id__sharing_put",
         "parameters": [
           {
             "in": "path",
@@ -6320,9 +6342,9 @@
         "summary": "Put Sharing"
       }
     },
-    "/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt": {
+    "/v1/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt": {
       "get": {
-        "operationId": "get_collection_tile_collections__collection_id__tiles__z___x___y__mvt_get",
+        "operationId": "get_collection_tile_v1_collections__collection_id__tiles__z___x___y__mvt_get",
         "parameters": [
           {
             "in": "path",
@@ -6394,9 +6416,9 @@
         "summary": "Get Collection Tile"
       }
     },
-    "/compliance/purges/{purge_id}": {
+    "/v1/compliance/purges/{purge_id}": {
       "get": {
-        "operationId": "get_purge_status_compliance_purges__purge_id__get",
+        "operationId": "get_purge_status_v1_compliance_purges__purge_id__get",
         "parameters": [
           {
             "in": "path",
@@ -6443,9 +6465,9 @@
         "summary": "Get Purge Status"
       }
     },
-    "/compliance/tenants/{tenant_id}/purge": {
+    "/v1/compliance/tenants/{tenant_id}/purge": {
       "post": {
-        "operationId": "request_tenant_purge_compliance_tenants__tenant_id__purge_post",
+        "operationId": "request_tenant_purge_v1_compliance_tenants__tenant_id__purge_post",
         "parameters": [
           {
             "in": "path",
@@ -6502,9 +6524,9 @@
         "summary": "Request Tenant Purge"
       }
     },
-    "/compliance/users/{user_id}/erase": {
+    "/v1/compliance/users/{user_id}/erase": {
       "post": {
-        "operationId": "erase_user_compliance_users__user_id__erase_post",
+        "operationId": "erase_user_v1_compliance_users__user_id__erase_post",
         "parameters": [
           {
             "in": "path",
@@ -6544,9 +6566,9 @@
         "summary": "Erase User"
       }
     },
-    "/configs": {
+    "/v1/configs": {
       "post": {
-        "operationId": "create_config_configs_post",
+        "operationId": "create_config_v1_configs_post",
         "parameters": [
           {
             "in": "header",
@@ -6594,9 +6616,9 @@
         "summary": "Create Config"
       }
     },
-    "/configs/by-item/{item_id}": {
+    "/v1/configs/by-item/{item_id}": {
       "delete": {
-        "operationId": "delete_config_by_item_configs_by_item__item_id__delete",
+        "operationId": "delete_config_by_item_v1_configs_by_item__item_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -6636,7 +6658,7 @@
         "summary": "Delete Config By Item"
       },
       "get": {
-        "operationId": "get_config_by_item_configs_by_item__item_id__get",
+        "operationId": "get_config_by_item_v1_configs_by_item__item_id__get",
         "parameters": [
           {
             "in": "path",
@@ -6699,7 +6721,7 @@
         "summary": "Get Config By Item"
       },
       "put": {
-        "operationId": "update_config_by_item_configs_by_item__item_id__put",
+        "operationId": "update_config_by_item_v1_configs_by_item__item_id__put",
         "parameters": [
           {
             "in": "path",
@@ -6756,9 +6778,9 @@
         "summary": "Update Config By Item"
       }
     },
-    "/configs/{config_id}": {
+    "/v1/configs/{config_id}": {
       "delete": {
-        "operationId": "delete_config_configs__config_id__delete",
+        "operationId": "delete_config_v1_configs__config_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -6798,7 +6820,7 @@
         "summary": "Delete Config"
       },
       "get": {
-        "operationId": "get_config_configs__config_id__get",
+        "operationId": "get_config_v1_configs__config_id__get",
         "parameters": [
           {
             "in": "path",
@@ -6845,7 +6867,7 @@
         "summary": "Get Config"
       },
       "put": {
-        "operationId": "update_config_configs__config_id__put",
+        "operationId": "update_config_v1_configs__config_id__put",
         "parameters": [
           {
             "in": "path",
@@ -6902,9 +6924,9 @@
         "summary": "Update Config"
       }
     },
-    "/configs/{config_id}/revisions": {
+    "/v1/configs/{config_id}/revisions": {
       "get": {
-        "operationId": "list_revisions_configs__config_id__revisions_get",
+        "operationId": "list_revisions_v1_configs__config_id__revisions_get",
         "parameters": [
           {
             "in": "path",
@@ -6934,7 +6956,7 @@
                   "items": {
                     "$ref": "#/components/schemas/RevisionInfo"
                   },
-                  "title": "Response List Revisions Configs  Config Id  Revisions Get",
+                  "title": "Response List Revisions V1 Configs  Config Id  Revisions Get",
                   "type": "array"
                 }
               }
@@ -6955,9 +6977,9 @@
         "summary": "List Revisions"
       }
     },
-    "/configs/{config_id}/rollback": {
+    "/v1/configs/{config_id}/rollback": {
       "post": {
-        "operationId": "rollback_config_configs__config_id__rollback_post",
+        "operationId": "rollback_config_v1_configs__config_id__rollback_post",
         "parameters": [
           {
             "in": "path",
@@ -7014,9 +7036,9 @@
         "summary": "Rollback Config"
       }
     },
-    "/conformance": {
+    "/v1/conformance": {
       "get": {
-        "operationId": "conformance_conformance_get",
+        "operationId": "conformance_v1_conformance_get",
         "responses": {
           "200": {
             "content": {
@@ -7030,9 +7052,9 @@
         "summary": "Conformance"
       }
     },
-    "/datasets/{item_id}/alerts": {
+    "/v1/datasets/{item_id}/alerts": {
       "get": {
-        "operationId": "list_alerts_for_dataset_datasets__item_id__alerts_get",
+        "operationId": "list_alerts_for_dataset_v1_datasets__item_id__alerts_get",
         "parameters": [
           {
             "in": "path",
@@ -7062,7 +7084,7 @@
                   "items": {
                     "$ref": "#/components/schemas/AlertRuleSummary"
                   },
-                  "title": "Response List Alerts For Dataset Datasets  Item Id  Alerts Get",
+                  "title": "Response List Alerts For Dataset V1 Datasets  Item Id  Alerts Get",
                   "type": "array"
                 }
               }
@@ -7083,9 +7105,9 @@
         "summary": "List Alerts For Dataset"
       }
     },
-    "/datasets/{item_id}/arcgis/aggregate": {
+    "/v1/datasets/{item_id}/arcgis/aggregate": {
       "post": {
-        "operationId": "get_dataset_arcgis_aggregate_datasets__item_id__arcgis_aggregate_post",
+        "operationId": "get_dataset_arcgis_aggregate_v1_datasets__item_id__arcgis_aggregate_post",
         "parameters": [
           {
             "in": "path",
@@ -7140,9 +7162,9 @@
         "summary": "Get Dataset Arcgis Aggregate"
       }
     },
-    "/datasets/{item_id}/arcgis/export": {
+    "/v1/datasets/{item_id}/arcgis/export": {
       "post": {
-        "operationId": "export_dataset_arcgis_aggregate_datasets__item_id__arcgis_export_post",
+        "operationId": "export_dataset_arcgis_aggregate_v1_datasets__item_id__arcgis_export_post",
         "parameters": [
           {
             "in": "path",
@@ -7206,9 +7228,9 @@
         "summary": "Export Dataset Arcgis Aggregate"
       }
     },
-    "/datasets/{item_id}/arcgis/export/items": {
+    "/v1/datasets/{item_id}/arcgis/export/items": {
       "get": {
-        "operationId": "export_dataset_arcgis_items_datasets__item_id__arcgis_export_items_get",
+        "operationId": "export_dataset_arcgis_items_v1_datasets__item_id__arcgis_export_items_get",
         "parameters": [
           {
             "in": "path",
@@ -7278,9 +7300,9 @@
         "summary": "Export Dataset Arcgis Items"
       }
     },
-    "/datasets/{item_id}/arcgis/items": {
+    "/v1/datasets/{item_id}/arcgis/items": {
       "get": {
-        "operationId": "get_dataset_arcgis_items_datasets__item_id__arcgis_items_get",
+        "operationId": "get_dataset_arcgis_items_v1_datasets__item_id__arcgis_items_get",
         "parameters": [
           {
             "in": "path",
@@ -7363,9 +7385,9 @@
         "summary": "Get Dataset Arcgis Items"
       }
     },
-    "/dcat/catalog": {
+    "/v1/dcat/catalog": {
       "get": {
-        "operationId": "get_catalog_dcat_catalog_get",
+        "operationId": "get_catalog_v1_dcat_catalog_get",
         "parameters": [
           {
             "in": "header",
@@ -7404,9 +7426,9 @@
         ]
       }
     },
-    "/dcat/datasets/{collection_id}": {
+    "/v1/dcat/datasets/{collection_id}": {
       "get": {
-        "operationId": "get_dataset_dcat_datasets__collection_id__get",
+        "operationId": "get_dataset_v1_dcat_datasets__collection_id__get",
         "parameters": [
           {
             "in": "path",
@@ -7454,9 +7476,9 @@
         ]
       }
     },
-    "/extensions": {
+    "/v1/extensions": {
       "get": {
-        "operationId": "list_extensions_extensions_get",
+        "operationId": "list_extensions_v1_extensions_get",
         "parameters": [
           {
             "in": "query",
@@ -7502,7 +7524,7 @@
         "summary": "List Extensions"
       },
       "post": {
-        "operationId": "register_extension_extensions_post",
+        "operationId": "register_extension_v1_extensions_post",
         "parameters": [
           {
             "in": "header",
@@ -7548,9 +7570,9 @@
         "summary": "Register Extension"
       }
     },
-    "/extensions/{extension_id}": {
+    "/v1/extensions/{extension_id}": {
       "patch": {
-        "operationId": "patch_extension_extensions__extension_id__patch",
+        "operationId": "patch_extension_v1_extensions__extension_id__patch",
         "parameters": [
           {
             "in": "path",
@@ -7605,9 +7627,9 @@
         "summary": "Patch Extension"
       }
     },
-    "/groups": {
+    "/v1/groups": {
       "get": {
-        "operationId": "list_groups_groups_get",
+        "operationId": "list_groups_v1_groups_get",
         "parameters": [
           {
             "in": "header",
@@ -7628,7 +7650,7 @@
                   "items": {
                     "$ref": "#/components/schemas/GroupRead"
                   },
-                  "title": "Response List Groups Groups Get",
+                  "title": "Response List Groups V1 Groups Get",
                   "type": "array"
                 }
               }
@@ -7649,7 +7671,7 @@
         "summary": "List Groups"
       },
       "post": {
-        "operationId": "create_group_groups_post",
+        "operationId": "create_group_v1_groups_post",
         "parameters": [
           {
             "in": "header",
@@ -7697,9 +7719,9 @@
         "summary": "Create Group"
       }
     },
-    "/groups/{group_id}/members": {
+    "/v1/groups/{group_id}/members": {
       "post": {
-        "operationId": "add_member_groups__group_id__members_post",
+        "operationId": "add_member_v1_groups__group_id__members_post",
         "parameters": [
           {
             "in": "path",
@@ -7749,9 +7771,9 @@
         "summary": "Add Member"
       }
     },
-    "/harvest/feature-layers": {
+    "/v1/harvest/feature-layers": {
       "get": {
-        "operationId": "list_feature_layers_harvest_feature_layers_get",
+        "operationId": "list_feature_layers_v1_harvest_feature_layers_get",
         "parameters": [
           {
             "in": "query",
@@ -7803,9 +7825,9 @@
         "summary": "List Feature Layers"
       }
     },
-    "/harvest/layers": {
+    "/v1/harvest/layers": {
       "get": {
-        "operationId": "list_layers_harvest_layers_get",
+        "operationId": "list_layers_v1_harvest_layers_get",
         "parameters": [
           {
             "in": "query",
@@ -7857,9 +7879,9 @@
         "summary": "List Layers"
       }
     },
-    "/harvest/sources": {
+    "/v1/harvest/sources": {
       "get": {
-        "operationId": "list_sources_harvest_sources_get",
+        "operationId": "list_sources_v1_harvest_sources_get",
         "parameters": [
           {
             "in": "header",
@@ -7895,7 +7917,7 @@
         "summary": "List Sources"
       },
       "post": {
-        "operationId": "create_source_harvest_sources_post",
+        "operationId": "create_source_v1_harvest_sources_post",
         "parameters": [
           {
             "in": "header",
@@ -7941,9 +7963,9 @@
         "summary": "Create Source"
       }
     },
-    "/harvest/sources/{source_id}": {
+    "/v1/harvest/sources/{source_id}": {
       "delete": {
-        "operationId": "delete_source_harvest_sources__source_id__delete",
+        "operationId": "delete_source_v1_harvest_sources__source_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -7983,7 +8005,7 @@
         "summary": "Delete Source"
       },
       "get": {
-        "operationId": "get_source_harvest_sources__source_id__get",
+        "operationId": "get_source_v1_harvest_sources__source_id__get",
         "parameters": [
           {
             "in": "path",
@@ -8028,7 +8050,7 @@
         "summary": "Get Source"
       },
       "patch": {
-        "operationId": "patch_source_harvest_sources__source_id__patch",
+        "operationId": "patch_source_v1_harvest_sources__source_id__patch",
         "parameters": [
           {
             "in": "path",
@@ -8083,9 +8105,9 @@
         "summary": "Patch Source"
       }
     },
-    "/harvest/sources/{source_id}/run": {
+    "/v1/harvest/sources/{source_id}/run": {
       "post": {
-        "operationId": "run_source_harvest_sources__source_id__run_post",
+        "operationId": "run_source_v1_harvest_sources__source_id__run_post",
         "parameters": [
           {
             "in": "path",
@@ -8130,38 +8152,16 @@
         "summary": "Run Source"
       }
     },
-    "/health": {
+    "/v1/instance": {
       "get": {
-        "operationId": "health_health_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Health Health Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Health"
-      }
-    },
-    "/instance": {
-      "get": {
-        "operationId": "get_instance_info_instance_get",
+        "operationId": "get_instance_info_v1_instance_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Get Instance Info Instance Get",
+                  "title": "Response Get Instance Info V1 Instance Get",
                   "type": "object"
                 }
               }
@@ -8172,9 +8172,9 @@
         "summary": "Get Instance Info"
       }
     },
-    "/items": {
+    "/v1/items": {
       "get": {
-        "operationId": "list_items_items_get",
+        "operationId": "list_items_v1_items_get",
         "parameters": [
           {
             "in": "query",
@@ -8343,9 +8343,9 @@
         "summary": "List Items"
       }
     },
-    "/items/facets": {
+    "/v1/items/facets": {
       "get": {
-        "operationId": "get_item_facets_items_facets_get",
+        "operationId": "get_item_facets_v1_items_facets_get",
         "parameters": [
           {
             "in": "query",
@@ -8441,9 +8441,9 @@
         "summary": "Get Item Facets"
       }
     },
-    "/items/{item_id}": {
+    "/v1/items/{item_id}": {
       "delete": {
-        "operationId": "delete_item_items__item_id__delete",
+        "operationId": "delete_item_v1_items__item_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -8483,7 +8483,7 @@
         "summary": "Delete Item"
       },
       "get": {
-        "operationId": "get_item_items__item_id__get",
+        "operationId": "get_item_v1_items__item_id__get",
         "parameters": [
           {
             "in": "path",
@@ -8530,7 +8530,7 @@
         "summary": "Get Item"
       },
       "patch": {
-        "operationId": "update_item_items__item_id__patch",
+        "operationId": "update_item_v1_items__item_id__patch",
         "parameters": [
           {
             "in": "path",
@@ -8587,9 +8587,9 @@
         "summary": "Update Item"
       }
     },
-    "/items/{item_id}/share-links": {
+    "/v1/items/{item_id}/share-links": {
       "get": {
-        "operationId": "list_share_links_route_items__item_id__share_links_get",
+        "operationId": "list_share_links_route_v1_items__item_id__share_links_get",
         "parameters": [
           {
             "in": "path",
@@ -8619,7 +8619,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ShareLinkListItem"
                   },
-                  "title": "Response List Share Links Route Items  Item Id  Share Links Get",
+                  "title": "Response List Share Links Route V1 Items  Item Id  Share Links Get",
                   "type": "array"
                 }
               }
@@ -8640,7 +8640,7 @@
         "summary": "List Share Links Route"
       },
       "post": {
-        "operationId": "create_share_link_route_items__item_id__share_links_post",
+        "operationId": "create_share_link_route_v1_items__item_id__share_links_post",
         "parameters": [
           {
             "in": "path",
@@ -8697,9 +8697,9 @@
         "summary": "Create Share Link Route"
       }
     },
-    "/items/{item_id}/share-links/{link_id}": {
+    "/v1/items/{item_id}/share-links/{link_id}": {
       "delete": {
-        "operationId": "revoke_share_link_route_items__item_id__share_links__link_id__delete",
+        "operationId": "revoke_share_link_route_v1_items__item_id__share_links__link_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -8748,9 +8748,9 @@
         "summary": "Revoke Share Link Route"
       }
     },
-    "/items/{item_id}/sharing": {
+    "/v1/items/{item_id}/sharing": {
       "get": {
-        "operationId": "get_sharing_items__item_id__sharing_get",
+        "operationId": "get_sharing_v1_items__item_id__sharing_get",
         "parameters": [
           {
             "in": "path",
@@ -8797,7 +8797,7 @@
         "summary": "Get Sharing"
       },
       "put": {
-        "operationId": "set_sharing_items__item_id__sharing_put",
+        "operationId": "set_sharing_v1_items__item_id__sharing_put",
         "parameters": [
           {
             "in": "path",
@@ -8847,9 +8847,9 @@
         "summary": "Set Sharing"
       }
     },
-    "/items/{item_id}/thumbnail": {
+    "/v1/items/{item_id}/thumbnail": {
       "get": {
-        "operationId": "read_thumbnail_items__item_id__thumbnail_get",
+        "operationId": "read_thumbnail_v1_items__item_id__thumbnail_get",
         "parameters": [
           {
             "in": "path",
@@ -8894,7 +8894,7 @@
         "summary": "Read Thumbnail"
       },
       "post": {
-        "operationId": "upload_thumbnail_items__item_id__thumbnail_post",
+        "operationId": "upload_thumbnail_v1_items__item_id__thumbnail_post",
         "parameters": [
           {
             "in": "path",
@@ -8920,7 +8920,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_upload_thumbnail_items__item_id__thumbnail_post"
+                "$ref": "#/components/schemas/Body_upload_thumbnail_v1_items__item_id__thumbnail_post"
               }
             }
           },
@@ -8944,9 +8944,9 @@
         "summary": "Upload Thumbnail"
       }
     },
-    "/map-icons": {
+    "/v1/map-icons": {
       "get": {
-        "operationId": "list_map_icons_map_icons_get",
+        "operationId": "list_map_icons_v1_map_icons_get",
         "parameters": [
           {
             "in": "header",
@@ -8967,7 +8967,7 @@
                   "items": {
                     "$ref": "#/components/schemas/MapIconOut"
                   },
-                  "title": "Response List Map Icons Map Icons Get",
+                  "title": "Response List Map Icons V1 Map Icons Get",
                   "type": "array"
                 }
               }
@@ -8988,7 +8988,7 @@
         "summary": "List Map Icons"
       },
       "post": {
-        "operationId": "create_map_icon_map_icons_post",
+        "operationId": "create_map_icon_v1_map_icons_post",
         "parameters": [
           {
             "in": "header",
@@ -9005,7 +9005,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_create_map_icon_map_icons_post"
+                "$ref": "#/components/schemas/Body_create_map_icon_v1_map_icons_post"
               }
             }
           },
@@ -9036,9 +9036,9 @@
         "summary": "Create Map Icon"
       }
     },
-    "/map-icons/{icon_id}": {
+    "/v1/map-icons/{icon_id}": {
       "delete": {
-        "operationId": "delete_map_icon_map_icons__icon_id__delete",
+        "operationId": "delete_map_icon_v1_map_icons__icon_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -9078,9 +9078,9 @@
         "summary": "Delete Map Icon"
       }
     },
-    "/map-icons/{icon_id}/file": {
+    "/v1/map-icons/{icon_id}/file": {
       "get": {
-        "operationId": "read_map_icon_file_map_icons__icon_id__file_get",
+        "operationId": "read_map_icon_file_v1_map_icons__icon_id__file_get",
         "parameters": [
           {
             "in": "path",
@@ -9125,9 +9125,9 @@
         "summary": "Read Map Icon File"
       }
     },
-    "/me": {
+    "/v1/me": {
       "get": {
-        "operationId": "get_me_me_get",
+        "operationId": "get_me_v1_me_get",
         "parameters": [
           {
             "in": "header",
@@ -9165,9 +9165,9 @@
         "summary": "Get Me"
       }
     },
-    "/metadata-catalog": {
+    "/v1/metadata-catalog": {
       "get": {
-        "operationId": "get_metadata_catalog_metadata_catalog_get",
+        "operationId": "get_metadata_catalog_v1_metadata_catalog_get",
         "parameters": [
           {
             "in": "header",
@@ -9205,9 +9205,9 @@
         "summary": "Get Metadata Catalog"
       }
     },
-    "/notifications": {
+    "/v1/notifications": {
       "get": {
-        "operationId": "get_notifications_notifications_get",
+        "operationId": "get_notifications_v1_notifications_get",
         "parameters": [
           {
             "in": "query",
@@ -9265,9 +9265,9 @@
         "summary": "Get Notifications"
       }
     },
-    "/notifications/preference": {
+    "/v1/notifications/preference": {
       "get": {
-        "operationId": "get_preference_notifications_preference_get",
+        "operationId": "get_preference_v1_notifications_preference_get",
         "parameters": [
           {
             "in": "header",
@@ -9305,7 +9305,7 @@
         "summary": "Get Preference"
       },
       "patch": {
-        "operationId": "patch_preference_notifications_preference_patch",
+        "operationId": "patch_preference_v1_notifications_preference_patch",
         "parameters": [
           {
             "in": "header",
@@ -9353,9 +9353,9 @@
         "summary": "Patch Preference"
       }
     },
-    "/notifications/read-all": {
+    "/v1/notifications/read-all": {
       "post": {
-        "operationId": "post_notifications_read_all_notifications_read_all_post",
+        "operationId": "post_notifications_read_all_v1_notifications_read_all_post",
         "parameters": [
           {
             "in": "header",
@@ -9386,9 +9386,9 @@
         "summary": "Post Notifications Read All"
       }
     },
-    "/notifications/unread-count": {
+    "/v1/notifications/unread-count": {
       "get": {
-        "operationId": "get_unread_count_notifications_unread_count_get",
+        "operationId": "get_unread_count_v1_notifications_unread_count_get",
         "parameters": [
           {
             "in": "header",
@@ -9426,9 +9426,9 @@
         "summary": "Get Unread Count"
       }
     },
-    "/notifications/{notification_id}/read": {
+    "/v1/notifications/{notification_id}/read": {
       "post": {
-        "operationId": "post_notification_read_notifications__notification_id__read_post",
+        "operationId": "post_notification_read_v1_notifications__notification_id__read_post",
         "parameters": [
           {
             "in": "path",
@@ -9475,9 +9475,9 @@
         "summary": "Post Notification Read"
       }
     },
-    "/public/configs/by-item/{item_id}": {
+    "/v1/public/configs/by-item/{item_id}": {
       "get": {
-        "operationId": "get_public_config_by_item_public_configs_by_item__item_id__get",
+        "operationId": "get_public_config_by_item_v1_public_configs_by_item__item_id__get",
         "parameters": [
           {
             "in": "path",
@@ -9514,9 +9514,9 @@
         "summary": "Get Public Config By Item"
       }
     },
-    "/public/items": {
+    "/v1/public/items": {
       "get": {
-        "operationId": "list_public_items_public_items_get",
+        "operationId": "list_public_items_v1_public_items_get",
         "parameters": [
           {
             "in": "query",
@@ -9598,9 +9598,9 @@
         "summary": "List Public Items"
       }
     },
-    "/public/items/{item_id}": {
+    "/v1/public/items/{item_id}": {
       "get": {
-        "operationId": "get_public_item_public_items__item_id__get",
+        "operationId": "get_public_item_v1_public_items__item_id__get",
         "parameters": [
           {
             "in": "path",
@@ -9637,9 +9637,9 @@
         "summary": "Get Public Item"
       }
     },
-    "/public/robots.txt": {
+    "/v1/public/robots.txt": {
       "get": {
-        "operationId": "public_robots_public_robots_txt_get",
+        "operationId": "public_robots_v1_public_robots_txt_get",
         "responses": {
           "200": {
             "description": "Successful Response"
@@ -9648,9 +9648,9 @@
         "summary": "Public Robots"
       }
     },
-    "/public/sitemap.xml": {
+    "/v1/public/sitemap.xml": {
       "get": {
-        "operationId": "public_sitemap_public_sitemap_xml_get",
+        "operationId": "public_sitemap_v1_public_sitemap_xml_get",
         "responses": {
           "200": {
             "description": "Successful Response"
@@ -9659,9 +9659,9 @@
         "summary": "Public Sitemap"
       }
     },
-    "/public/sites/{slug}": {
+    "/v1/public/sites/{slug}": {
       "get": {
-        "operationId": "get_public_site_public_sites__slug__get",
+        "operationId": "get_public_site_v1_public_sites__slug__get",
         "parameters": [
           {
             "in": "path",
@@ -9698,9 +9698,9 @@
         "summary": "Get Public Site"
       }
     },
-    "/public/sites/{slug}/social-preview": {
+    "/v1/public/sites/{slug}/social-preview": {
       "get": {
-        "operationId": "public_site_social_preview_public_sites__slug__social_preview_get",
+        "operationId": "public_site_social_preview_v1_public_sites__slug__social_preview_get",
         "parameters": [
           {
             "in": "path",
@@ -9730,9 +9730,9 @@
         "summary": "Public Site Social Preview"
       }
     },
-    "/reports/{item_id}/runs": {
+    "/v1/reports/{item_id}/runs": {
       "get": {
-        "operationId": "get_report_runs_route_reports__item_id__runs_get",
+        "operationId": "get_report_runs_route_v1_reports__item_id__runs_get",
         "parameters": [
           {
             "in": "path",
@@ -9762,7 +9762,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ReportRunStatus"
                   },
-                  "title": "Response Get Report Runs Route Reports  Item Id  Runs Get",
+                  "title": "Response Get Report Runs Route V1 Reports  Item Id  Runs Get",
                   "type": "array"
                 }
               }
@@ -9783,9 +9783,9 @@
         "summary": "Get Report Runs Route"
       }
     },
-    "/roles": {
+    "/v1/roles": {
       "get": {
-        "operationId": "get_roles_roles_get",
+        "operationId": "get_roles_v1_roles_get",
         "parameters": [
           {
             "in": "header",
@@ -9806,7 +9806,7 @@
                   "items": {
                     "$ref": "#/components/schemas/RoleRead"
                   },
-                  "title": "Response Get Roles Roles Get",
+                  "title": "Response Get Roles V1 Roles Get",
                   "type": "array"
                 }
               }
@@ -9827,7 +9827,7 @@
         "summary": "Get Roles"
       },
       "post": {
-        "operationId": "post_role_roles_post",
+        "operationId": "post_role_v1_roles_post",
         "parameters": [
           {
             "in": "header",
@@ -9875,9 +9875,9 @@
         "summary": "Post Role"
       }
     },
-    "/roles/catalog": {
+    "/v1/roles/catalog": {
       "get": {
-        "operationId": "get_roles_catalog_roles_catalog_get",
+        "operationId": "get_roles_catalog_v1_roles_catalog_get",
         "parameters": [
           {
             "in": "header",
@@ -9898,7 +9898,7 @@
                   "items": {
                     "$ref": "#/components/schemas/PrivilegeCatalogEntry"
                   },
-                  "title": "Response Get Roles Catalog Roles Catalog Get",
+                  "title": "Response Get Roles Catalog V1 Roles Catalog Get",
                   "type": "array"
                 }
               }
@@ -9919,9 +9919,9 @@
         "summary": "Get Roles Catalog"
       }
     },
-    "/roles/{role_id}": {
+    "/v1/roles/{role_id}": {
       "delete": {
-        "operationId": "delete_role_route_roles__role_id__delete",
+        "operationId": "delete_role_route_v1_roles__role_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -9961,7 +9961,7 @@
         "summary": "Delete Role Route"
       },
       "patch": {
-        "operationId": "patch_role_roles__role_id__patch",
+        "operationId": "patch_role_v1_roles__role_id__patch",
         "parameters": [
           {
             "in": "path",
@@ -10018,16 +10018,16 @@
         "summary": "Patch Role"
       }
     },
-    "/schemas/app-config": {
+    "/v1/schemas/app-config": {
       "get": {
-        "operationId": "get_app_config_schema_schemas_app_config_get",
+        "operationId": "get_app_config_schema_v1_schemas_app_config_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Get App Config Schema Schemas App Config Get",
+                  "title": "Response Get App Config Schema V1 Schemas App Config Get",
                   "type": "object"
                 }
               }
@@ -10038,9 +10038,9 @@
         "summary": "Get App Config Schema"
       }
     },
-    "/secrets": {
+    "/v1/secrets": {
       "get": {
-        "operationId": "list_secrets_route_secrets_get",
+        "operationId": "list_secrets_route_v1_secrets_get",
         "parameters": [
           {
             "in": "header",
@@ -10061,7 +10061,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ConnectorSecretOut"
                   },
-                  "title": "Response List Secrets Route Secrets Get",
+                  "title": "Response List Secrets Route V1 Secrets Get",
                   "type": "array"
                 }
               }
@@ -10082,7 +10082,7 @@
         "summary": "List Secrets Route"
       },
       "post": {
-        "operationId": "create_secret_route_secrets_post",
+        "operationId": "create_secret_route_v1_secrets_post",
         "parameters": [
           {
             "in": "header",
@@ -10130,9 +10130,9 @@
         "summary": "Create Secret Route"
       }
     },
-    "/secrets/{secret_id}": {
+    "/v1/secrets/{secret_id}": {
       "delete": {
-        "operationId": "delete_secret_route_secrets__secret_id__delete",
+        "operationId": "delete_secret_route_v1_secrets__secret_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -10172,10 +10172,10 @@
         "summary": "Delete Secret Route"
       }
     },
-    "/share-links/{token}": {
+    "/v1/share-links/{token}": {
       "get": {
         "description": "R\u00e9solution PUBLIQUE (aucune d\u00e9pendance get_current_user) : le jeton\nporte \u00e0 lui seul le droit d'acc\u00e8s \u00e0 cet item pr\u00e9cis, en lecture seule.\n401 (jamais 500) sur un jeton invalide, expir\u00e9, ou dont la ligne\nshare_link a \u00e9t\u00e9 r\u00e9voqu\u00e9e entre-temps \u2014 m\u00eame discipline que\ndecode_export_token vis-\u00e0-vis d'une instance sans secret configur\u00e9.",
-        "operationId": "resolve_share_link_route_share_links__token__get",
+        "operationId": "resolve_share_link_route_v1_share_links__token__get",
         "parameters": [
           {
             "in": "path",
@@ -10212,9 +10212,9 @@
         "summary": "Resolve Share Link Route"
       }
     },
-    "/stac": {
+    "/v1/stac": {
       "get": {
-        "operationId": "landing_stac_get",
+        "operationId": "landing_v1_stac_get",
         "parameters": [
           {
             "in": "header",
@@ -10253,9 +10253,9 @@
         ]
       }
     },
-    "/stac/collections": {
+    "/v1/stac/collections": {
       "get": {
-        "operationId": "list_collections_stac_collections_get",
+        "operationId": "list_collections_v1_stac_collections_get",
         "parameters": [
           {
             "in": "header",
@@ -10294,9 +10294,9 @@
         ]
       }
     },
-    "/stac/collections/{collection_id}": {
+    "/v1/stac/collections/{collection_id}": {
       "get": {
-        "operationId": "get_collection_stac_collections__collection_id__get",
+        "operationId": "get_collection_v1_stac_collections__collection_id__get",
         "parameters": [
           {
             "in": "path",
@@ -10344,9 +10344,9 @@
         ]
       }
     },
-    "/stac/collections/{collection_id}/items": {
+    "/v1/stac/collections/{collection_id}/items": {
       "get": {
-        "operationId": "list_items_stac_collections__collection_id__items_get",
+        "operationId": "list_items_v1_stac_collections__collection_id__items_get",
         "parameters": [
           {
             "in": "path",
@@ -10432,9 +10432,9 @@
         ]
       }
     },
-    "/stac/collections/{collection_id}/items/{feature_id}": {
+    "/v1/stac/collections/{collection_id}/items/{feature_id}": {
       "get": {
-        "operationId": "get_item_stac_collections__collection_id__items__feature_id__get",
+        "operationId": "get_item_v1_stac_collections__collection_id__items__feature_id__get",
         "parameters": [
           {
             "in": "path",
@@ -10491,9 +10491,9 @@
         ]
       }
     },
-    "/stac/conformance": {
+    "/v1/stac/conformance": {
       "get": {
-        "operationId": "conformance_stac_conformance_get",
+        "operationId": "conformance_v1_stac_conformance_get",
         "responses": {
           "200": {
             "content": {
@@ -10510,9 +10510,9 @@
         ]
       }
     },
-    "/stac/search": {
+    "/v1/stac/search": {
       "get": {
-        "operationId": "search_get_stac_search_get",
+        "operationId": "search_get_v1_stac_search_get",
         "parameters": [
           {
             "in": "query",
@@ -10642,7 +10642,7 @@
         ]
       },
       "post": {
-        "operationId": "search_post_stac_search_post",
+        "operationId": "search_post_v1_stac_search_post",
         "parameters": [
           {
             "in": "header",
@@ -10691,9 +10691,9 @@
         ]
       }
     },
-    "/uploads": {
+    "/v1/uploads": {
       "post": {
-        "operationId": "create_upload_job_uploads_post",
+        "operationId": "create_upload_job_v1_uploads_post",
         "parameters": [
           {
             "in": "header",
@@ -10741,9 +10741,9 @@
         "summary": "Create Upload Job"
       }
     },
-    "/uploads/inspect": {
+    "/v1/uploads/inspect": {
       "post": {
-        "operationId": "inspect_upload_uploads_inspect_post",
+        "operationId": "inspect_upload_v1_uploads_inspect_post",
         "parameters": [
           {
             "in": "header",
@@ -10791,9 +10791,9 @@
         "summary": "Inspect Upload"
       }
     },
-    "/uploads/presign": {
+    "/v1/uploads/presign": {
       "post": {
-        "operationId": "presign_upload_uploads_presign_post",
+        "operationId": "presign_upload_v1_uploads_presign_post",
         "parameters": [
           {
             "in": "header",
@@ -10841,9 +10841,9 @@
         "summary": "Presign Upload"
       }
     },
-    "/uploads/{job_id}": {
+    "/v1/uploads/{job_id}": {
       "get": {
-        "operationId": "get_upload_job_uploads__job_id__get",
+        "operationId": "get_upload_job_v1_uploads__job_id__get",
         "parameters": [
           {
             "in": "path",
@@ -10890,9 +10890,9 @@
         "summary": "Get Upload Job"
       }
     },
-    "/usage/summary": {
+    "/v1/usage/summary": {
       "get": {
-        "operationId": "get_usage_summary_usage_summary_get",
+        "operationId": "get_usage_summary_v1_usage_summary_get",
         "parameters": [
           {
             "in": "query",
@@ -10972,9 +10972,9 @@
         "summary": "Get Usage Summary"
       }
     },
-    "/usage/tasks": {
+    "/v1/usage/tasks": {
       "get": {
-        "operationId": "list_usage_tasks_usage_tasks_get",
+        "operationId": "list_usage_tasks_v1_usage_tasks_get",
         "parameters": [
           {
             "in": "query",
@@ -11048,9 +11048,9 @@
         "summary": "List Usage Tasks"
       }
     },
-    "/users": {
+    "/v1/users": {
       "get": {
-        "operationId": "get_users_users_get",
+        "operationId": "get_users_v1_users_get",
         "parameters": [
           {
             "in": "query",
@@ -11105,7 +11105,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Get Users Users Get",
+                  "title": "Response Get Users V1 Users Get",
                   "type": "object"
                 }
               }
@@ -11126,9 +11126,9 @@
         "summary": "Get Users"
       }
     },
-    "/users/{user_id}": {
+    "/v1/users/{user_id}": {
       "patch": {
-        "operationId": "patch_user_users__user_id__patch",
+        "operationId": "patch_user_v1_users__user_id__patch",
         "parameters": [
           {
             "in": "path",
@@ -11166,7 +11166,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Patch User Users  User Id  Patch",
+                  "title": "Response Patch User V1 Users  User Id  Patch",
                   "type": "object"
                 }
               }

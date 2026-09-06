@@ -7,7 +7,7 @@ from app.main import create_app
 def test_cors_header_present_on_matched_path_when_enabled(monkeypatch):
     monkeypatch.setenv("CORE_APPEXPORT_ENABLED", "true")
     client = TestClient(create_app())
-    response = client.get("/collections")
+    response = client.get("/v1/collections")
     assert response.status_code == 200
     assert response.headers.get("access-control-allow-origin") == "*"
 
@@ -15,7 +15,7 @@ def test_cors_header_present_on_matched_path_when_enabled(monkeypatch):
 def test_cors_header_absent_when_disabled(monkeypatch):
     monkeypatch.setenv("CORE_APPEXPORT_ENABLED", "false")
     client = TestClient(create_app())
-    response = client.get("/collections")
+    response = client.get("/v1/collections")
     assert response.status_code == 200
     assert "access-control-allow-origin" not in response.headers
 
@@ -23,7 +23,7 @@ def test_cors_header_absent_when_disabled(monkeypatch):
 def test_cors_preflight_responds_on_matched_path_when_enabled(monkeypatch):
     monkeypatch.setenv("CORE_APPEXPORT_ENABLED", "true")
     client = TestClient(create_app())
-    response = client.options("/collections/col1/aggregate")
+    response = client.options("/v1/collections/col1/aggregate")
     assert response.status_code == 204
     assert response.headers.get("access-control-allow-origin") == "*"
     assert "content-type" in response.headers.get("access-control-allow-headers", "").lower()
@@ -44,7 +44,7 @@ def test_cors_header_absent_on_post_collections_when_enabled(monkeypatch):
     # allowlist and requires real auth.
     monkeypatch.setenv("CORE_APPEXPORT_ENABLED", "true")
     client = TestClient(create_app())
-    response = client.post("/collections", json={})
+    response = client.post("/v1/collections", json={})
     assert "access-control-allow-origin" not in response.headers
 
 
@@ -54,7 +54,7 @@ def test_cors_header_absent_on_collections_candidates_when_enabled(monkeypatch):
     # "candidates" as if it were a collection id.
     monkeypatch.setenv("CORE_APPEXPORT_ENABLED", "true")
     client = TestClient(create_app())
-    response = client.get("/collections/candidates")
+    response = client.get("/v1/collections/candidates")
     assert "access-control-allow-origin" not in response.headers
 
 
@@ -65,17 +65,21 @@ def test_cors_header_absent_on_collection_write_endpoints_when_enabled(monkeypat
     # allowlisted.
     monkeypatch.setenv("CORE_APPEXPORT_ENABLED", "true")
     client = TestClient(create_app())
-    assert "access-control-allow-origin" not in client.patch("/collections/col1", json={}).headers
-    assert "access-control-allow-origin" not in client.delete("/collections/col1").headers
     assert (
-        "access-control-allow-origin" not in client.post("/collections/col1/items", json={}).headers
+        "access-control-allow-origin" not in client.patch("/v1/collections/col1", json={}).headers
+    )
+    assert "access-control-allow-origin" not in client.delete("/v1/collections/col1").headers
+    assert (
+        "access-control-allow-origin"
+        not in client.post("/v1/collections/col1/items", json={}).headers
     )
     assert (
         "access-control-allow-origin"
-        not in client.put("/collections/col1/items/fid1", json={}).headers
+        not in client.put("/v1/collections/col1/items/fid1", json={}).headers
     )
     assert (
-        "access-control-allow-origin" not in client.delete("/collections/col1/items/fid1").headers
+        "access-control-allow-origin"
+        not in client.delete("/v1/collections/col1/items/fid1").headers
     )
 
 
@@ -86,7 +90,7 @@ def test_cors_preflight_still_204_on_write_paths_when_enabled(monkeypatch):
     # it's the real request (tested above) that must be blocked.
     monkeypatch.setenv("CORE_APPEXPORT_ENABLED", "true")
     client = TestClient(create_app())
-    response = client.options("/collections/col1/items")
+    response = client.options("/v1/collections/col1/items")
     assert response.status_code == 204
     assert response.headers.get("access-control-allow-origin") == "*"
 
@@ -99,7 +103,7 @@ def test_cors_header_present_on_public_items_when_enabled(monkeypatch):
     # containing a Gallery widget got CORS-blocked and rendered empty.
     monkeypatch.setenv("CORE_APPEXPORT_ENABLED", "true")
     client = TestClient(create_app())
-    response = client.get("/public/items")
+    response = client.get("/v1/public/items")
     assert response.status_code == 200
     assert response.headers.get("access-control-allow-origin") == "*"
 
@@ -107,6 +111,6 @@ def test_cors_header_present_on_public_items_when_enabled(monkeypatch):
 def test_cors_preflight_responds_on_public_items_when_enabled(monkeypatch):
     monkeypatch.setenv("CORE_APPEXPORT_ENABLED", "true")
     client = TestClient(create_app())
-    response = client.options("/public/items")
+    response = client.options("/v1/public/items")
     assert response.status_code == 204
     assert response.headers.get("access-control-allow-origin") == "*"

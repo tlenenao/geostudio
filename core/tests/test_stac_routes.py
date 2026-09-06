@@ -85,26 +85,26 @@ def _as(app, user):
 
 def _register(app, client, admin, public=False):
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents", "isPublic": public})
+    client.post("/v1/collections", json={"tableName": "incidents", "isPublic": public})
 
 
 def test_landing_advertises_conformance(env):
     app, client, _admin, _regular, _Session = env
-    body = client.get("/stac").json()
+    body = client.get("/v1/stac").json()
     assert body["type"] == "Catalog"
     assert "https://api.stacspec.org/v1.0.0/item-search" in body["conformsTo"]
 
 
 def test_conformance_endpoint(env):
     app, client, _admin, _regular, _Session = env
-    body = client.get("/stac/conformance").json()
+    body = client.get("/v1/stac/conformance").json()
     assert "https://api.stacspec.org/v1.0.0/core" in body["conformsTo"]
 
 
 def test_collections_list_shows_registered(env):
     app, client, admin, _regular, _Session = env
     _register(app, client, admin)
-    body = client.get("/stac/collections").json()
+    body = client.get("/v1/stac/collections").json()
     ids = [c["id"] for c in body["collections"]]
     assert "incidents" in ids
     assert body["collections"][0]["license"] == "other"
@@ -114,12 +114,12 @@ def test_collection_detail_and_leakproof_404(env):
     app, client, admin, _regular, _Session = env
     _register(app, client, admin, public=False)
     _as(app, admin)
-    assert client.get("/stac/collections/incidents").json()["id"] == "incidents"
-    assert client.get("/stac/collections/nope").status_code == 404
+    assert client.get("/v1/stac/collections/incidents").json()["id"] == "incidents"
+    assert client.get("/v1/stac/collections/nope").status_code == 404
     # Anonyme sur collection non publique → 404 non-fuyant.
     app.dependency_overrides.pop(get_current_user)
     app.dependency_overrides.pop(get_current_user_optional)
-    assert client.get("/stac/collections/incidents").status_code == 404
+    assert client.get("/v1/stac/collections/incidents").status_code == 404
 
 
 def test_anonymous_lists_public_only(env):
@@ -127,7 +127,7 @@ def test_anonymous_lists_public_only(env):
     _register(app, client, admin, public=False)
     app.dependency_overrides.pop(get_current_user, None)
     app.dependency_overrides.pop(get_current_user_optional, None)
-    assert client.get("/stac/collections").json()["collections"] == []
+    assert client.get("/v1/stac/collections").json()["collections"] == []
 
 
 def test_custom_role_with_collections_manage_sees_a_private_collection(env):
@@ -163,7 +163,7 @@ def test_custom_role_with_collections_manage_sees_a_private_collection(env):
         assert custom_user is not None and custom_user.is_admin is False
         _as(app, custom_user)
 
-        body = client.get("/stac/collections").json()
+        body = client.get("/v1/stac/collections").json()
         assert [c["id"] for c in body["collections"]] == ["incidents"]
 
 
@@ -204,7 +204,7 @@ def test_custom_role_with_collections_manage_reaches_collection_detail(env):
         assert custom_user is not None and custom_user.is_admin is False
         _as(app, custom_user)
 
-        resp = client.get("/stac/collections/incidents")
+        resp = client.get("/v1/stac/collections/incidents")
         assert resp.status_code == 200
         assert resp.json()["id"] == "incidents"
 
@@ -241,7 +241,7 @@ def env_repo(env):
 def test_items_returns_stac_item_collection_with_next(env_repo):
     app, client, admin, repo = env_repo
     _register(app, client, admin)
-    body = client.get("/stac/collections/incidents/items?limit=1&offset=0").json()
+    body = client.get("/v1/stac/collections/incidents/items?limit=1&offset=0").json()
     assert body["type"] == "FeatureCollection"
     it = body["features"][0]
     assert it["stac_version"] == "1.0.0" and it["collection"] == "incidents"
@@ -254,35 +254,35 @@ def test_items_returns_stac_item_collection_with_next(env_repo):
 def test_items_bbox_forwarded(env_repo):
     app, client, admin, repo = env_repo
     _register(app, client, admin)
-    client.get("/stac/collections/incidents/items?bbox=0,40,2,46")
+    client.get("/v1/stac/collections/incidents/items?bbox=0,40,2,46")
     assert repo.calls["bbox"] == (0.0, 40.0, 2.0, 46.0)
 
 
 def test_single_item_and_404(env_repo):
     app, client, admin, repo = env_repo
     _register(app, client, admin)
-    assert client.get("/stac/collections/incidents/items/1").json()["id"] == "1"
-    assert client.get("/stac/collections/incidents/items/999").status_code == 404
+    assert client.get("/v1/stac/collections/incidents/items/1").json()["id"] == "1"
+    assert client.get("/v1/stac/collections/incidents/items/999").status_code == 404
 
 
 def test_stac_collection_reflects_declared_license(env):
     app, client, admin, _regular, Session = env
     _register(app, client, admin)
     _as(app, admin)
-    client.patch("/collections/incidents", json={"license": "cc-by-4.0"})
-    res = client.get("/stac/collections/incidents")
+    client.patch("/v1/collections/incidents", json={"license": "cc-by-4.0"})
+    res = client.get("/v1/stac/collections/incidents")
     assert res.json()["license"] == "CC-BY-4.0"
 
 
 def test_stac_collection_providers_only_when_producer_declared(env):
     app, client, admin, _regular, Session = env
     _register(app, client, admin)
-    res_without = client.get("/stac/collections/incidents")
+    res_without = client.get("/v1/stac/collections/incidents")
     assert "providers" not in res_without.json()
 
     _as(app, admin)
-    client.patch("/collections/incidents", json={"producer": "Ma Régie"})
-    res_with = client.get("/stac/collections/incidents")
+    client.patch("/v1/collections/incidents", json={"producer": "Ma Régie"})
+    res_with = client.get("/v1/stac/collections/incidents")
     assert res_with.json()["providers"] == [{"name": "Ma Régie", "roles": ["producer"]}]
 
 
@@ -293,8 +293,8 @@ def test_stac_collection_temporal_start_falls_back_when_only_end_declared(env):
     app, client, admin, _regular, Session = env
     _register(app, client, admin)
     _as(app, admin)
-    client.patch("/collections/incidents", json={"temporalEnd": "2026-12-31"})
-    res = client.get("/stac/collections/incidents").json()
+    client.patch("/v1/collections/incidents", json={"temporalEnd": "2026-12-31"})
+    res = client.get("/v1/stac/collections/incidents").json()
     interval = res["extent"]["temporal"]["interval"][0]
     assert interval[0] is not None  # repli sur created_at, pas perdu
     assert interval[1] == "2026-12-31T23:59:59Z"

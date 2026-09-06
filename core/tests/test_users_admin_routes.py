@@ -62,9 +62,9 @@ def _as(app, user):
 def test_list_users_requires_admin_users_manage(env):
     app, client, _, admin, regular, _roles = env
     _as(app, regular)
-    assert client.get("/users").status_code == 403
+    assert client.get("/v1/users").status_code == 403
     _as(app, admin)
-    body = client.get("/users").json()
+    body = client.get("/v1/users").json()
     assert body["total"] == 2
     assert {u["username"] for u in body["users"]} == {"admin", "regular"}
 
@@ -72,16 +72,18 @@ def test_list_users_requires_admin_users_manage(env):
 def test_promote_then_demote_via_role_id(env):
     app, client, _, admin, regular, roles = env
     _as(app, admin)
-    r = client.patch(f"/users/{regular.id}", json={"roleId": roles["admin"]})
+    r = client.patch(f"/v1/users/{regular.id}", json={"roleId": roles["admin"]})
     assert r.status_code == 200 and r.json()["roleSlug"] == "admin"
-    r = client.patch(f"/users/{regular.id}", json={"roleId": roles["reader"]})
+    r = client.patch(f"/v1/users/{regular.id}", json={"roleId": roles["reader"]})
     assert r.status_code == 200 and r.json()["roleSlug"] == "reader"
 
 
 def test_last_admin_cannot_be_demoted(env):
     app, client, _, admin, _regular, roles = env
     _as(app, admin)
-    assert client.patch(f"/users/{admin.id}", json={"roleId": roles["reader"]}).status_code == 409
+    assert (
+        client.patch(f"/v1/users/{admin.id}", json={"roleId": roles["reader"]}).status_code == 409
+    )
 
 
 def test_anti_lockout_blocks_the_last_holder_of_a_privilege_split_across_two_custom_roles(env):
@@ -116,16 +118,18 @@ def test_anti_lockout_blocks_the_last_holder_of_a_privilege_split_across_two_cus
     # précondition en conjonction ne portait jamais puisque R1 seul ne
     # contient pas admin.roles.manage, laissant passer un 200.
     _as(app, admin)
-    resp = client.patch(f"/users/{admin.id}", json={"roleId": roles["reader"]})
+    resp = client.patch(f"/v1/users/{admin.id}", json={"roleId": roles["reader"]})
     assert resp.status_code == 409, resp.text
 
 
 def test_patch_unknown_user_404_and_non_admin_403(env):
     app, client, _, admin, regular, roles = env
     _as(app, admin)
-    assert client.patch("/users/nope", json={"roleId": roles["admin"]}).status_code == 404
+    assert client.patch("/v1/users/nope", json={"roleId": roles["admin"]}).status_code == 404
     _as(app, regular)
-    assert client.patch(f"/users/{admin.id}", json={"roleId": roles["reader"]}).status_code == 403
+    assert (
+        client.patch(f"/v1/users/{admin.id}", json={"roleId": roles["reader"]}).status_code == 403
+    )
 
 
 def test_patch_user_cross_tenant_returns_404(env):
@@ -149,7 +153,9 @@ def test_patch_user_cross_tenant_returns_404(env):
         s.refresh(outsider)
 
     _as(app, admin)
-    assert client.patch(f"/users/{outsider.id}", json={"roleId": roles["admin"]}).status_code == 404
+    assert (
+        client.patch(f"/v1/users/{outsider.id}", json={"roleId": roles["admin"]}).status_code == 404
+    )
     with Session() as s:
         refetched = s.get(User, outsider.id)
         assert refetched is not None
@@ -160,7 +166,7 @@ def test_patch_user_cross_tenant_returns_404(env):
 def test_role_change_is_audited(env):
     app, client, Session, admin, regular, roles = env
     _as(app, admin)
-    client.patch(f"/users/{regular.id}", json={"roleId": roles["admin"]})
+    client.patch(f"/v1/users/{regular.id}", json={"roleId": roles["admin"]})
     from sqlalchemy import select
 
     from app.audit.models import AuditLog
@@ -173,7 +179,7 @@ def test_role_change_is_audited(env):
 def test_patch_user_rejects_an_unknown_role_id(env):
     app, client, _, admin, regular, _roles = env
     _as(app, admin)
-    assert client.patch(f"/users/{regular.id}", json={"roleId": "nope"}).status_code == 400
+    assert client.patch(f"/v1/users/{regular.id}", json={"roleId": "nope"}).status_code == 400
 
 
 def test_list_users_filters_by_username(env):
@@ -191,12 +197,12 @@ def test_list_users_filters_by_username(env):
         s.commit()
 
     _as(app, admin)
-    body = client.get("/users?q=reg").json()
+    body = client.get("/v1/users?q=reg").json()
     assert body["total"] == 1
     assert {u["username"] for u in body["users"]} == {"regular"}
 
-    body_ci = client.get("/users?q=REG").json()
+    body_ci = client.get("/v1/users?q=REG").json()
     assert body_ci["total"] == 1
 
-    body_all = client.get("/users").json()
+    body_all = client.get("/v1/users").json()
     assert body_all["total"] == 3

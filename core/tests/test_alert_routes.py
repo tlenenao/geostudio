@@ -80,7 +80,7 @@ def _setup(monkeypatch, tmp_path):
 
 def test_list_alerts_for_dataset_returns_the_rule(monkeypatch, tmp_path):
     client, dataset_item_id, rule_item_id = _setup(monkeypatch, tmp_path)
-    resp = client.get(f"/datasets/{dataset_item_id}/alerts")
+    resp = client.get(f"/v1/datasets/{dataset_item_id}/alerts")
     assert resp.status_code == 200
     body = resp.json()
     assert len(body) == 1
@@ -90,14 +90,14 @@ def test_list_alerts_for_dataset_returns_the_rule(monkeypatch, tmp_path):
 
 def test_list_alerts_for_dataset_is_empty_for_an_unrelated_dataset(monkeypatch, tmp_path):
     client, _dataset_item_id, _rule_item_id = _setup(monkeypatch, tmp_path)
-    resp = client.get("/datasets/unrelated-id/alerts")
+    resp = client.get("/v1/datasets/unrelated-id/alerts")
     assert resp.status_code == 200
     assert resp.json() == []
 
 
 def test_get_alert_evaluations_returns_history_most_recent_first(monkeypatch, tmp_path):
     client, _dataset_item_id, rule_item_id = _setup(monkeypatch, tmp_path)
-    resp = client.get(f"/alerts/{rule_item_id}/evaluations")
+    resp = client.get(f"/v1/alerts/{rule_item_id}/evaluations")
     assert resp.status_code == 200
     body = resp.json()
     assert len(body) == 1
@@ -107,5 +107,5 @@ def test_get_alert_evaluations_returns_history_most_recent_first(monkeypatch, tm
 
 def test_get_alert_evaluations_404s_for_an_unknown_rule(monkeypatch, tmp_path):
     client, *_ = _setup(monkeypatch, tmp_path)
-    resp = client.get("/alerts/does-not-exist/evaluations")
+    resp = client.get("/v1/alerts/does-not-exist/evaluations")
     assert resp.status_code == 404

@@ -93,7 +93,7 @@ def test_create_upload_refuses_a_reader_with_no_privilege(env):
     alice.role_id = reader_role_id
 
     r = client.post(
-        "/terrain3d/uploads",
+        "/v1/terrain3d/uploads",
         json={"key": f"{tenant.id}/abc/dem.tif", "filename": "dem.tif", "title": "DEM"},
     )
     assert r.status_code == 403, r.text
@@ -101,7 +101,7 @@ def test_create_upload_refuses_a_reader_with_no_privilege(env):
 
 def test_presign_returns_upload_url_and_tenant_scoped_key(env):
     client, _, tenant, *_ = env
-    r = client.post("/terrain3d/uploads/presign", json={"filename": "dem.tif"})
+    r = client.post("/v1/terrain3d/uploads/presign", json={"filename": "dem.tif"})
     assert r.status_code == 200, r.text
     body = r.json()
     assert "uploadUrl" in body
@@ -116,7 +116,7 @@ def test_presign_signs_the_terrain3d_bucket_and_the_caller_content_type(env, mon
     # (S3_TERRAIN3D_BUCKET), pas celui de l'ingestion générique.
     client, _, _tenant, _alice, _deferred, fake_s3 = env
     r = client.post(
-        "/terrain3d/uploads/presign",
+        "/v1/terrain3d/uploads/presign",
         json={"filename": "dem.tif", "contentType": "image/tiff"},
     )
     assert r.status_code == 200, r.text
@@ -127,29 +127,29 @@ def test_presign_signs_the_terrain3d_bucket_and_the_caller_content_type(env, mon
 
 def test_presign_falls_back_to_octet_stream_when_no_content_type_is_given(env):
     client, _, _tenant, _alice, _deferred, fake_s3 = env
-    r = client.post("/terrain3d/uploads/presign", json={"filename": "dem.tif"})
+    r = client.post("/v1/terrain3d/uploads/presign", json={"filename": "dem.tif"})
     assert r.status_code == 200, r.text
     assert fake_s3.presign_params[-1]["ContentType"] == "application/octet-stream"
 
 
 def test_create_upload_job_defers_conversion_task(env):
     client, _, tenant, _, deferred, _fake_s3 = env
-    presigned = client.post("/terrain3d/uploads/presign", json={"filename": "dem.tif"}).json()
+    presigned = client.post("/v1/terrain3d/uploads/presign", json={"filename": "dem.tif"}).json()
     r = client.post(
-        "/terrain3d/uploads",
+        "/v1/terrain3d/uploads",
         json={"key": presigned["key"], "filename": "dem.tif", "title": "Relief du massif"},
     )
     assert r.status_code == 201, r.text
     job_id = r.json()["jobId"]
     assert deferred == [(job_id, tenant.id)]
-    status = client.get(f"/terrain3d/uploads/{job_id}").json()
+    status = client.get(f"/v1/terrain3d/uploads/{job_id}").json()
     assert status["status"] == "uploaded"
 
 
 def test_create_upload_job_rejects_key_outside_caller_tenant(env):
     client, *_ = env
     r = client.post(
-        "/terrain3d/uploads",
+        "/v1/terrain3d/uploads",
         json={"key": "some-other-tenant/x/dem.tif", "filename": "dem.tif", "title": "T"},
     )
     assert r.status_code == 400
@@ -157,5 +157,5 @@ def test_create_upload_job_rejects_key_outside_caller_tenant(env):
 
 def test_get_upload_job_404_for_unknown_job(env):
     client, *_ = env
-    r = client.get("/terrain3d/uploads/does-not-exist")
+    r = client.get("/v1/terrain3d/uploads/does-not-exist")
     assert r.status_code == 404

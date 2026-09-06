@@ -84,7 +84,7 @@ def analyst_client():
 
 
 def test_get_me_returns_the_resolved_user(client):
-    response = client.get("/me")
+    response = client.get("/v1/me")
     assert response.status_code == 200
     body = response.json()
     assert body["username"] == "alice"
@@ -94,11 +94,11 @@ def test_get_me_returns_the_resolved_user(client):
 
 
 def test_get_me_reflects_admin_flag(admin_client):
-    response = admin_client.get("/me")
+    response = admin_client.get("/v1/me")
     assert response.json()["role"]["slug"] == "admin"
 
 
 def test_me_exposes_the_analyst_role(analyst_client):
-    response = analyst_client.get("/me")
+    response = analyst_client.get("/v1/me")
     assert response.status_code == 200
     assert response.json()["role"]["slug"] == "analyst"

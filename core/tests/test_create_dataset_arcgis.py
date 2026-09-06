@@ -114,14 +114,14 @@ def _dataset_body(arcgis_item_id: str, title: str = "Bâtiments (live)") -> dict
 
 
 def test_create_dataset_arcgis_avec_couche_moissonnee_visible(client):
-    res = client.post("/configs", json=_dataset_body(client.visible_item_id))
+    res = client.post("/v1/configs", json=_dataset_body(client.visible_item_id))
     assert res.status_code == 201, res.text
-    item = client.get(f"/items/{res.json()['itemId']}").json()
+    item = client.get(f"/v1/items/{res.json()['itemId']}").json()
     assert item["resourceType"] == "dataset"
 
 
 def test_create_dataset_arcgis_item_inexistant_rejete(client):
-    res = client.post("/configs", json=_dataset_body("no-such-item"))
+    res = client.post("/v1/configs", json=_dataset_body("no-such-item"))
     assert res.status_code == 422
     assert res.json()["detail"] == "arcgis layer not found"
 
@@ -130,6 +130,6 @@ def test_create_dataset_arcgis_couche_non_lisible_rejete_avec_meme_message(clien
     # visible_item appartient à alice, hidden_item à bob (non public, non
     # partagé) : alice ne doit pas pouvoir distinguer "inexistant" de "pas à
     # elle" dans le message d'erreur.
-    res = client.post("/configs", json=_dataset_body(client.hidden_item_id))
+    res = client.post("/v1/configs", json=_dataset_body(client.hidden_item_id))
     assert res.status_code == 422
     assert res.json()["detail"] == "arcgis layer not found"

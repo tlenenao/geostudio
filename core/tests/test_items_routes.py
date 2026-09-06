@@ -71,7 +71,7 @@ def _seed_item(client, title="My App") -> str:
 
 def test_get_item_returns_it(client):
     item_id = _seed_item(client)
-    response = client.get(f"/items/{item_id}")
+    response = client.get(f"/v1/items/{item_id}")
     assert response.status_code == 200
     body = response.json()
     assert body["title"] == "My App"
@@ -79,13 +79,13 @@ def test_get_item_returns_it(client):
 
 
 def test_get_item_missing_returns_404(client):
-    assert client.get("/items/nope").status_code == 404
+    assert client.get("/v1/items/nope").status_code == 404
 
 
 def test_list_items_default_scope_all(client):
     _seed_item(client, title="One")
     _seed_item(client, title="Two")
-    response = client.get("/items")
+    response = client.get("/v1/items")
     assert response.status_code == 200
     body = response.json()
     assert body["total"] == 2
@@ -98,20 +98,20 @@ def test_list_items_page_zero_is_rejected(client):
     # bound — page=0 computes a negative OFFSET, which Postgres rejects with
     # a 500 (InvalidRowCountInResultOffsetClause) instead of a clean 422.
     _seed_item(client, title="One")
-    response = client.get("/items?page=0")
+    response = client.get("/v1/items?page=0")
     assert response.status_code == 422
 
 
 def test_list_items_negative_page_size_is_rejected(client):
     _seed_item(client, title="One")
-    response = client.get("/items?pageSize=-1")
+    response = client.get("/v1/items?pageSize=-1")
     assert response.status_code == 422
 
 
 def test_list_items_sort_title_asc(client):
     _seed_item(client, title="Zorro")
     _seed_item(client, title="Alpha")
-    response = client.get("/items?sort=title_asc")
+    response = client.get("/v1/items?sort=title_asc")
     assert response.status_code == 200
     titles = [i["title"] for i in response.json()["items"]]
     assert titles == ["Alpha", "Zorro"]
@@ -147,7 +147,7 @@ def test_list_items_owner_filter(client):
         session.commit()
     _seed_item(client, title="Alice item")
 
-    response = client.get("/items?owner=bob")
+    response = client.get("/v1/items?owner=bob")
     assert response.status_code == 200
     assert [i["title"] for i in response.json()["items"]] == ["Bob item"]
 
@@ -190,7 +190,7 @@ def test_list_items_repeated_keyword_query_param_is_and(client):
         )
         session.commit()
 
-    response = client.get("/items?keyword=a&keyword=b")
+    response = client.get("/v1/items?keyword=a&keyword=b")
     assert response.status_code == 200
     assert [i["title"] for i in response.json()["items"]] == ["AB"]
 
@@ -225,13 +225,13 @@ def test_list_items_bbox_filter(client):
         )
         session.commit()
 
-    response = client.get("/items?bbox=0,0,3,3")
+    response = client.get("/v1/items?bbox=0,0,3,3")
     assert response.status_code == 200
     assert [i["title"] for i in response.json()["items"]] == ["Inside"]
 
 
 def test_list_items_bbox_rejects_malformed_value(client):
-    response = client.get("/items?bbox=not,a,valid,bbox")
+    response = client.get("/v1/items?bbox=not,a,valid,bbox")
     assert response.status_code == 422
 
 
@@ -255,7 +255,7 @@ def test_get_item_facets_returns_owners_and_keywords(client):
         )
         session.commit()
 
-    response = client.get("/items/facets")
+    response = client.get("/v1/items/facets")
     assert response.status_code == 200
     body = response.json()
     assert body["owners"] == [{"username": "alice", "count": 1}]
@@ -266,20 +266,20 @@ def test_items_facets_route_not_shadowed_by_item_id_path_param(client):
     # /items/facets doit être servi par get_item_facets, pas interprété comme
     # GET /items/{item_id} avec item_id="facets" (ce qui donnerait 404) —
     # dépend de l'ordre de déclaration des routes dans routes.py.
-    response = client.get("/items/facets")
+    response = client.get("/v1/items/facets")
     assert response.status_code == 200
     assert "owners" in response.json()
 
 
 def test_patch_item_updates_title(client):
     item_id = _seed_item(client)
-    response = client.patch(f"/items/{item_id}", json={"title": "Renamed"})
+    response = client.patch(f"/v1/items/{item_id}", json={"title": "Renamed"})
     assert response.status_code == 200
     assert response.json()["title"] == "Renamed"
 
 
 def test_patch_item_missing_returns_404(client):
-    assert client.patch("/items/nope", json={"title": "x"}).status_code == 404
+    assert client.patch("/v1/items/nope", json={"title": "x"}).status_code == 404
 
 
 def test_updated_at_changes_after_edit_but_date_stays_the_creation_date(client):
@@ -289,46 +289,46 @@ def test_updated_at_changes_after_edit_but_date_stays_the_creation_date(client):
     import time
 
     item_id = _seed_item(client)
-    before = client.get(f"/items/{item_id}").json()
+    before = client.get(f"/v1/items/{item_id}").json()
 
     time.sleep(1.1)  # au-delà de la granularité seconde du type colonne
-    patched = client.patch(f"/items/{item_id}", json={"title": "Renamed"})
+    patched = client.patch(f"/v1/items/{item_id}", json={"title": "Renamed"})
     assert patched.status_code == 200
 
-    after = client.get(f"/items/{item_id}").json()
+    after = client.get(f"/v1/items/{item_id}").json()
     assert after["date"] == before["date"]
     assert after["updatedAt"] != before["updatedAt"]
 
 
 def test_get_item_defaults_license_and_language(client):
     item_id = _seed_item(client)
-    body = client.get(f"/items/{item_id}").json()
+    body = client.get(f"/v1/items/{item_id}").json()
     assert body["license"] == ""
     assert body["language"] == "fr"
 
 
 def test_patch_item_updates_license_and_language(client):
     item_id = _seed_item(client)
-    response = client.patch(f"/items/{item_id}", json={"license": "cc-by-4.0", "language": "en"})
+    response = client.patch(f"/v1/items/{item_id}", json={"license": "cc-by-4.0", "language": "en"})
     assert response.status_code == 200
     body = response.json()
     assert body["license"] == "cc-by-4.0"
     assert body["language"] == "en"
 
-    get_body = client.get(f"/items/{item_id}").json()
+    get_body = client.get(f"/v1/items/{item_id}").json()
     assert get_body["license"] == "cc-by-4.0"
     assert get_body["language"] == "en"
 
 
 def test_patch_item_rejects_unknown_license(client):
     item_id = _seed_item(client)
-    response = client.patch(f"/items/{item_id}", json={"license": "bogus"})
+    response = client.patch(f"/v1/items/{item_id}", json={"license": "bogus"})
     assert response.status_code == 422
 
 
 def test_patch_item_rejects_unknown_language(client):
     item_id = _seed_item(client)
-    response = client.patch(f"/items/{item_id}", json={"language": "bogus"})
+    response = client.patch(f"/v1/items/{item_id}", json={"language": "bogus"})
     assert response.status_code == 422
 
 
@@ -338,12 +338,12 @@ def test_upload_and_read_thumbnail(client):
     client.app.dependency_overrides[items_routes.get_thumbnail_store] = lambda: store
 
     upload = client.post(
-        f"/items/{item_id}/thumbnail",
+        f"/v1/items/{item_id}/thumbnail",
         files={"file": ("thumb.png", io.BytesIO(b"fake-png-bytes"), "image/png")},
     )
     assert upload.status_code == 204
 
-    read = client.get(f"/items/{item_id}/thumbnail")
+    read = client.get(f"/v1/items/{item_id}/thumbnail")
     assert read.status_code == 200
     assert read.content == b"fake-png-bytes"
     assert read.headers["content-type"] == "image/png"
@@ -355,7 +355,7 @@ def test_upload_thumbnail_rejects_non_image(client):
     client.app.dependency_overrides[items_routes.get_thumbnail_store] = lambda: store
 
     response = client.post(
-        f"/items/{item_id}/thumbnail",
+        f"/v1/items/{item_id}/thumbnail",
         files={"file": ("doc.pdf", io.BytesIO(b"not-an-image"), "application/pdf")},
     )
     assert response.status_code == 400
@@ -363,7 +363,7 @@ def test_upload_thumbnail_rejects_non_image(client):
 
 def test_read_thumbnail_missing_returns_404(client):
     item_id = _seed_item(client)
-    response = client.get(f"/items/{item_id}/thumbnail")
+    response = client.get(f"/v1/items/{item_id}/thumbnail")
     assert response.status_code == 404
 
 
@@ -389,7 +389,7 @@ def test_get_item_invisible_to_non_owner_returns_404(client):
     mallory = _other_user(client)
     client.app.dependency_overrides[get_current_user] = lambda: mallory
     try:
-        response = client.get(f"/items/{item_id}")
+        response = client.get(f"/v1/items/{item_id}")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
     assert response.status_code == 404
@@ -400,7 +400,7 @@ def test_patch_item_by_non_owner_returns_404(client):
     mallory = _other_user(client)
     client.app.dependency_overrides[get_current_user] = lambda: mallory
     try:
-        response = client.patch(f"/items/{item_id}", json={"title": "hijacked"})
+        response = client.patch(f"/v1/items/{item_id}", json={"title": "hijacked"})
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
     assert response.status_code == 404
@@ -425,8 +425,8 @@ def test_patch_item_by_group_viewer_returns_403(client):
 
     client.app.dependency_overrides[get_current_user] = lambda: bob
     try:
-        get_response = client.get(f"/items/{item_id}")
-        patch_response = client.patch(f"/items/{item_id}", json={"title": "hijacked"})
+        get_response = client.get(f"/v1/items/{item_id}")
+        patch_response = client.patch(f"/v1/items/{item_id}", json={"title": "hijacked"})
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
     assert get_response.status_code == 200
@@ -441,7 +441,7 @@ def test_upload_thumbnail_by_non_owner_returns_404(client):
     client.app.dependency_overrides[get_current_user] = lambda: mallory
     try:
         response = client.post(
-            f"/items/{item_id}/thumbnail",
+            f"/v1/items/{item_id}/thumbnail",
             files={"file": ("thumb.png", io.BytesIO(b"x"), "image/png")},
         )
     finally:
@@ -451,7 +451,7 @@ def test_upload_thumbnail_by_non_owner_returns_404(client):
 
 def test_get_sharing_defaults_to_private(client):
     item_id = _seed_item(client)
-    response = client.get(f"/items/{item_id}/sharing")
+    response = client.get(f"/v1/items/{item_id}/sharing")
     assert response.status_code == 200
     assert response.json() == {"public": False, "groups": []}
 
@@ -467,12 +467,12 @@ def test_put_then_get_sharing_round_trips(client):
         session.commit()
 
     put_response = client.put(
-        f"/items/{item_id}/sharing",
+        f"/v1/items/{item_id}/sharing",
         json={"public": True, "groups": [{"groupId": "g1", "role": "viewer"}]},
     )
     assert put_response.status_code == 204
 
-    get_response = client.get(f"/items/{item_id}/sharing")
+    get_response = client.get(f"/v1/items/{item_id}/sharing")
     assert get_response.status_code == 200
     assert get_response.json() == {
         "public": True,
@@ -483,7 +483,7 @@ def test_put_then_get_sharing_round_trips(client):
 def test_put_sharing_with_unknown_group_returns_404(client):
     item_id = _seed_item(client)
     response = client.put(
-        f"/items/{item_id}/sharing",
+        f"/v1/items/{item_id}/sharing",
         json={"public": False, "groups": [{"groupId": "nope", "role": "viewer"}]},
     )
     assert response.status_code == 404
@@ -501,13 +501,13 @@ def test_put_sharing_with_unknown_group_leaves_state_unchanged(client):
 
     # Establish a known-good baseline sharing state first.
     client.put(
-        f"/items/{item_id}/sharing",
+        f"/v1/items/{item_id}/sharing",
         json={"public": True, "groups": [{"groupId": "g-real", "role": "viewer"}]},
     )
 
     # Attempt a rejected update mixing one real group with one unknown group.
     rejected = client.put(
-        f"/items/{item_id}/sharing",
+        f"/v1/items/{item_id}/sharing",
         json={
             "public": False,
             "groups": [
@@ -519,7 +519,7 @@ def test_put_sharing_with_unknown_group_leaves_state_unchanged(client):
     assert rejected.status_code == 404
 
     # The baseline state must be untouched.
-    unchanged = client.get(f"/items/{item_id}/sharing")
+    unchanged = client.get(f"/v1/items/{item_id}/sharing")
     assert unchanged.json() == {"public": True, "groups": [{"groupId": "g-real", "role": "viewer"}]}
 
 
@@ -529,7 +529,7 @@ def test_put_sharing_writes_audit_log(client):
     from app.audit.models import AuditLog
 
     item_id = _seed_item(client)
-    client.put(f"/items/{item_id}/sharing", json={"public": True, "groups": []})
+    client.put(f"/v1/items/{item_id}/sharing", json={"public": True, "groups": []})
     with client.session_factory() as session:
         actions = {r.action for r in session.scalars(select(AuditLog)).all()}
         assert "item.share" in actions
@@ -540,7 +540,7 @@ def test_get_sharing_invisible_to_non_owner_returns_404(client):
     mallory = _other_user(client)
     client.app.dependency_overrides[get_current_user] = lambda: mallory
     try:
-        response = client.get(f"/items/{item_id}/sharing")
+        response = client.get(f"/v1/items/{item_id}/sharing")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
     assert response.status_code == 404
@@ -565,7 +565,7 @@ def test_put_sharing_by_group_viewer_returns_403(client):
 
     client.app.dependency_overrides[get_current_user] = lambda: bob
     try:
-        response = client.put(f"/items/{item_id}/sharing", json={"public": True, "groups": []})
+        response = client.put(f"/v1/items/{item_id}/sharing", json={"public": True, "groups": []})
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
     assert response.status_code == 403

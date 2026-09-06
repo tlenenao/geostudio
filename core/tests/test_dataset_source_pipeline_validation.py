@@ -70,7 +70,7 @@ def _dataset_body(collection_id: str, source_pipeline_id: str | None) -> dict:
 def test_create_dataset_rejects_a_nonexistent_source_pipeline(monkeypatch, tmp_path):
     client, tenant, user, Session = _client_and_user(monkeypatch, tmp_path)
     collection_id = _seed_collection(Session, tenant, user)
-    resp = client.post("/configs", json=_dataset_body(collection_id, "does-not-exist"))
+    resp = client.post("/v1/configs", json=_dataset_body(collection_id, "does-not-exist"))
     assert resp.status_code == 422
     assert resp.json()["detail"] == "pipeline not found"
 
@@ -88,7 +88,7 @@ def test_create_dataset_rejects_a_non_pipeline_source_pipeline_id(monkeypatch, t
         )
         s.commit()
         other_item_id = other_item.id
-    resp = client.post("/configs", json=_dataset_body(collection_id, other_item_id))
+    resp = client.post("/v1/configs", json=_dataset_body(collection_id, other_item_id))
     assert resp.status_code == 422
     assert resp.json()["detail"] == "pipeline not found"
 
@@ -106,7 +106,7 @@ def test_create_dataset_succeeds_with_a_readable_source_pipeline(monkeypatch, tm
         )
         s.commit()
         pipeline_item_id = pipeline_item.id
-    resp = client.post("/configs", json=_dataset_body(collection_id, pipeline_item_id))
+    resp = client.post("/v1/configs", json=_dataset_body(collection_id, pipeline_item_id))
     assert resp.status_code == 201
     assert resp.json()["kind"] == "dataset"
 
@@ -114,5 +114,5 @@ def test_create_dataset_succeeds_with_a_readable_source_pipeline(monkeypatch, tm
 def test_create_dataset_without_source_pipeline_id_still_works(monkeypatch, tmp_path):
     client, tenant, user, Session = _client_and_user(monkeypatch, tmp_path)
     collection_id = _seed_collection(Session, tenant, user)
-    resp = client.post("/configs", json=_dataset_body(collection_id, None))
+    resp = client.post("/v1/configs", json=_dataset_body(collection_id, None))
     assert resp.status_code == 201

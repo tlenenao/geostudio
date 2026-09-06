@@ -160,7 +160,7 @@ def _as(app, user):
 
 def _register(app, client, admin, public=False):
     _as(app, admin)
-    return client.post("/collections", json={"tableName": "villes", "isPublic": public}).json()
+    return client.post("/v1/collections", json={"tableName": "villes", "isPublic": public}).json()
 
 
 def _seed(tmp_path, tenant_id, collection_id):
@@ -196,7 +196,7 @@ def test_export_aggregate_csv_returns_a_csv_attachment(env):
     col = _register(app, client, admin, public=True)
     _seed(tmp_path, tenant_id, col["id"])
     resp = client.post(
-        f"/collections/{col['id']}/export?format=csv", json={"groupBy": "region", "agg": "count"}
+        f"/v1/collections/{col['id']}/export?format=csv", json={"groupBy": "region", "agg": "count"}
     )
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "text/csv; charset=utf-8"
@@ -209,7 +209,8 @@ def test_export_aggregate_xlsx_returns_an_xlsx_attachment(env):
     col = _register(app, client, admin, public=True)
     _seed(tmp_path, tenant_id, col["id"])
     resp = client.post(
-        f"/collections/{col['id']}/export?format=xlsx", json={"groupBy": "region", "agg": "count"}
+        f"/v1/collections/{col['id']}/export?format=xlsx",
+        json={"groupBy": "region", "agg": "count"},
     )
     assert resp.status_code == 200
     assert (
@@ -221,7 +222,7 @@ def test_export_aggregate_xlsx_returns_an_xlsx_attachment(env):
 def test_export_aggregate_rejects_unknown_format(env):
     app, client, admin, _r, tmp_path, tenant_id, _Session = env
     col = _register(app, client, admin, public=True)
-    resp = client.post(f"/collections/{col['id']}/export?format=pdf", json={"groupBy": "region"})
+    resp = client.post(f"/v1/collections/{col['id']}/export?format=pdf", json={"groupBy": "region"})
     assert resp.status_code == 400
 
 
@@ -229,7 +230,7 @@ def test_export_aggregate_requires_authentication(env):
     app, client, admin, _r, tmp_path, tenant_id, _Session = env
     col = _register(app, client, admin, public=True)
     app.dependency_overrides.pop(get_current_user, None)
-    resp = client.post(f"/collections/{col['id']}/export?format=csv", json={"groupBy": "region"})
+    resp = client.post(f"/v1/collections/{col['id']}/export?format=csv", json={"groupBy": "region"})
     assert resp.status_code == 401
 
 
@@ -243,7 +244,7 @@ def test_export_aggregate_denies_a_user_without_read_access(env):
     app, client, admin, regular, tmp_path, tenant_id, _Session = env
     col = _register(app, client, admin, public=False)
     _as(app, regular)
-    resp = client.post(f"/collections/{col['id']}/export?format=csv", json={"groupBy": "region"})
+    resp = client.post(f"/v1/collections/{col['id']}/export?format=csv", json={"groupBy": "region"})
     assert resp.status_code == 404
 
 
@@ -251,7 +252,7 @@ def test_export_aggregate_writes_an_audit_log_row(env):
     app, client, admin, _r, tmp_path, tenant_id, Session = env
     col = _register(app, client, admin, public=True)
     _seed(tmp_path, tenant_id, col["id"])
-    client.post(f"/collections/{col['id']}/export?format=csv", json={"groupBy": "region"})
+    client.post(f"/v1/collections/{col['id']}/export?format=csv", json={"groupBy": "region"})
     with Session() as s:
         from app.audit.models import AuditLog
 
@@ -273,14 +274,14 @@ def test_export_items_geojson_returns_a_feature_collection(env):
     # route first.
     _as(app, admin)
     client.post(
-        f"/collections/{col['id']}/items",
+        f"/v1/collections/{col['id']}/items",
         json={
             "type": "Feature",
             "properties": {"region": "Nord", "pop": 10},
             "geometry": {"type": "Point", "coordinates": [0, 0]},
         },
     )
-    resp = client.get(f"/collections/{col['id']}/export/items?format=geojson")
+    resp = client.get(f"/v1/collections/{col['id']}/export/items?format=geojson")
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "application/geo+json"
     body = resp.json()
@@ -294,14 +295,14 @@ def test_export_items_csv_flattens_properties(env):
     col = _register(app, client, admin, public=True)
     _as(app, admin)
     client.post(
-        f"/collections/{col['id']}/items",
+        f"/v1/collections/{col['id']}/items",
         json={
             "type": "Feature",
             "properties": {"region": "Nord", "pop": 10},
             "geometry": {"type": "Point", "coordinates": [0, 0]},
         },
     )
-    resp = client.get(f"/collections/{col['id']}/export/items?format=csv")
+    resp = client.get(f"/v1/collections/{col['id']}/export/items?format=csv")
     assert resp.status_code == 200
     assert "Nord" in resp.text
     assert "geometry" not in resp.text.splitlines()[0]
@@ -312,14 +313,14 @@ def test_export_items_gpkg_returns_a_sqlite_container(env):
     col = _register(app, client, admin, public=True)
     _as(app, admin)
     client.post(
-        f"/collections/{col['id']}/items",
+        f"/v1/collections/{col['id']}/items",
         json={
             "type": "Feature",
             "properties": {"region": "Nord", "pop": 10},
             "geometry": {"type": "Point", "coordinates": [0, 0]},
         },
     )
-    resp = client.get(f"/collections/{col['id']}/export/items?format=gpkg")
+    resp = client.get(f"/v1/collections/{col['id']}/export/items?format=gpkg")
     assert resp.status_code == 200
     assert resp.content[:16] == b"SQLite format 3\x00"
 
@@ -327,7 +328,7 @@ def test_export_items_gpkg_returns_a_sqlite_container(env):
 def test_export_items_rejects_unknown_format(env):
     app, client, admin, _r, tmp_path, tenant_id, _Session = env
     col = _register(app, client, admin, public=True)
-    resp = client.get(f"/collections/{col['id']}/export/items?format=pdf")
+    resp = client.get(f"/v1/collections/{col['id']}/export/items?format=pdf")
     assert resp.status_code == 400
 
 
@@ -339,7 +340,7 @@ def test_export_items_caps_at_10000_entities(env, monkeypatch):
     col = _register(app, client, admin, public=True)
     _as(app, admin)
     client.post(
-        f"/collections/{col['id']}/items",
+        f"/v1/collections/{col['id']}/items",
         json={
             "type": "Feature",
             "properties": {"region": "Nord", "pop": 1},
@@ -347,12 +348,12 @@ def test_export_items_caps_at_10000_entities(env, monkeypatch):
         },
     )
     client.post(
-        f"/collections/{col['id']}/items",
+        f"/v1/collections/{col['id']}/items",
         json={
             "type": "Feature",
             "properties": {"region": "Sud", "pop": 2},
             "geometry": {"type": "Point", "coordinates": [1, 1]},
         },
     )
-    resp = client.get(f"/collections/{col['id']}/export/items?format=csv")
+    resp = client.get(f"/v1/collections/{col['id']}/export/items?format=csv")
     assert resp.status_code == 413

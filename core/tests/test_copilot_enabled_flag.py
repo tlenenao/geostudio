@@ -54,14 +54,14 @@ def env():
 
 def test_instance_reports_copilot_disabled_by_default(env, monkeypatch):
     monkeypatch.delenv("CORE_LLM_PROVIDER", raising=False)
-    response = env.get("/instance")
+    response = env.get("/v1/instance")
     assert response.status_code == 200
     assert response.json()["copilotEnabled"] is False
 
 
 def test_instance_reports_copilot_enabled(env, monkeypatch):
     monkeypatch.setenv("CORE_LLM_PROVIDER", "openai")
-    response = env.get("/instance")
+    response = env.get("/v1/instance")
     assert response.status_code == 200
     assert response.json()["copilotEnabled"] is True
 
@@ -78,6 +78,6 @@ def test_is_copilot_disabled_in_read_only_mode(monkeypatch):
 def test_instance_reports_copilot_disabled_in_read_only_mode(env, monkeypatch):
     monkeypatch.setenv("CORE_LLM_PROVIDER", "openai")
     monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
-    response = env.get("/instance")
+    response = env.get("/v1/instance")
     assert response.status_code == 200
     assert response.json()["copilotEnabled"] is False

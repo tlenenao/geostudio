@@ -31,7 +31,11 @@ def get_bbox_provider():  # overridé en test SQLite (ST_EstimatedExtent absent)
 
 
 def _base(request: Request) -> str:
-    return str(request.base_url).rstrip("/")
+    # request.base_url ne porte jamais /v1 (juste scheme://host/) — ce
+    # routeur (comme /collections, /stac) est nesté sous /v1 (SP-57b), et
+    # tous les hrefs construits à partir de cette base (serializers.py)
+    # référencent des routes désormais sous /v1.
+    return str(request.base_url).rstrip("/") + "/v1"
 
 
 def _rfc3339(dt) -> str:

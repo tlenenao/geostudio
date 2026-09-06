@@ -151,7 +151,7 @@ def _as(app, user):
 
 def _register(app, client, admin, public=False):
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents", "isPublic": public})
+    client.post("/v1/collections", json={"tableName": "incidents", "isPublic": public})
 
 
 def test_anonymous_write_is_401(env):
@@ -159,7 +159,7 @@ def test_anonymous_write_is_401(env):
     _register(app, client, admin, public=True)
     app.dependency_overrides.pop(get_current_user)
     app.dependency_overrides.pop(get_current_user_optional)
-    assert client.post("/collections/incidents/items", json=VALID).status_code == 401
+    assert client.post("/v1/collections/incidents/items", json=VALID).status_code == 401
 
 
 def test_viewer_write_is_403_editor_ok(env):
@@ -168,9 +168,9 @@ def test_viewer_write_is_403_editor_ok(env):
     app, client, Session, admin, regular, _repo = env
     _register(app, client, admin, public=True)
     _as(app, regular)
-    assert client.post("/collections/incidents/items", json=VALID).status_code == 403
+    assert client.post("/v1/collections/incidents/items", json=VALID).status_code == 403
     _as(app, admin)
-    r = client.post("/collections/incidents/items", json=VALID)
+    r = client.post("/v1/collections/incidents/items", json=VALID)
     assert r.status_code == 201
     assert r.headers["Location"].endswith("/collections/incidents/items/2")
 
@@ -185,17 +185,17 @@ def test_non_owner_write_on_private_collection_is_404_not_403(env):
     app, client, Session, admin, regular, _repo = env
     _register(app, client, admin, public=False)
     _as(app, regular)
-    assert client.post("/collections/incidents/items", json=VALID).status_code == 404
-    assert client.put("/collections/incidents/items/1", json=VALID).status_code == 404
-    assert client.delete("/collections/incidents/items/1").status_code == 404
+    assert client.post("/v1/collections/incidents/items", json=VALID).status_code == 404
+    assert client.put("/v1/collections/incidents/items/1", json=VALID).status_code == 404
+    assert client.delete("/v1/collections/incidents/items/1").status_code == 404
 
 
 def test_not_editable_collection_is_403(env):
     app, client, Session, admin, _r, _repo = env
     _register(app, client, admin)
     _as(app, admin)
-    client.patch("/collections/incidents", json={"editable": False})
-    r = client.post("/collections/incidents/items", json=VALID)
+    client.patch("/v1/collections/incidents", json={"editable": False})
+    r = client.post("/v1/collections/incidents/items", json=VALID)
     assert r.status_code == 403 and r.json()["detail"] == "collection is not editable"
 
 
@@ -204,7 +204,7 @@ def test_validation_errors_are_structured_400(env):
     _register(app, client, admin)
     _as(app, admin)
     r = client.post(
-        "/collections/incidents/items", json={"type": "Feature", "properties": {"inconnu": 1}}
+        "/v1/collections/incidents/items", json={"type": "Feature", "properties": {"inconnu": 1}}
     )
     assert r.status_code == 400
     codes = {(e["field"], e["code"]) for e in r.json()["errors"]}
@@ -216,7 +216,8 @@ def test_pk_conflict_is_409(env):
     _register(app, client, admin)
     _as(app, admin)
     r = client.post(
-        "/collections/incidents/items", json={"type": "Feature", "properties": {"titre": "conflit"}}
+        "/v1/collections/incidents/items",
+        json={"type": "Feature", "properties": {"titre": "conflit"}},
     )
     assert r.status_code == 409
 
@@ -225,10 +226,10 @@ def test_put_and_delete(env):
     app, client, Session, admin, _r, _repo = env
     _register(app, client, admin)
     _as(app, admin)
-    assert client.put("/collections/incidents/items/1", json=VALID).status_code == 204
-    assert client.put("/collections/incidents/items/999", json=VALID).status_code == 404
-    assert client.delete("/collections/incidents/items/1").status_code == 204
-    assert client.delete("/collections/incidents/items/999").status_code == 404
+    assert client.put("/v1/collections/incidents/items/1", json=VALID).status_code == 204
+    assert client.put("/v1/collections/incidents/items/999", json=VALID).status_code == 404
+    assert client.delete("/v1/collections/incidents/items/1").status_code == 204
+    assert client.delete("/v1/collections/incidents/items/999").status_code == 404
 
 
 def test_writes_are_audited(env):
@@ -236,9 +237,9 @@ def test_writes_are_audited(env):
     app, client, Session, admin, _r, _repo = env
     _register(app, client, admin)
     _as(app, admin)
-    client.post("/collections/incidents/items", json=VALID)
-    client.put("/collections/incidents/items/1", json=VALID)
-    client.delete("/collections/incidents/items/1")
+    client.post("/v1/collections/incidents/items", json=VALID)
+    client.put("/v1/collections/incidents/items/1", json=VALID)
+    client.delete("/v1/collections/incidents/items/1")
     from sqlalchemy import select
 
     from app.audit.models import AuditLog
@@ -258,9 +259,9 @@ def test_create_and_delete_maintain_feature_count(env):
     _register(app, client, admin)
     _as(app, admin)
     assert _feature_count(Session) == 0
-    client.post("/collections/incidents/items", json=VALID)
+    client.post("/v1/collections/incidents/items", json=VALID)
     assert _feature_count(Session) == 1
-    client.delete("/collections/incidents/items/1")
+    client.delete("/v1/collections/incidents/items/1")
     assert _feature_count(Session) == 0
 
 
@@ -268,7 +269,7 @@ def test_put_does_not_change_feature_count(env):
     app, client, Session, admin, _r, _repo = env
     _register(app, client, admin)
     _as(app, admin)
-    client.put("/collections/incidents/items/1", json=VALID)
+    client.put("/v1/collections/incidents/items/1", json=VALID)
     assert _feature_count(Session) == 0  # remplacement, pas de création
 
 
@@ -297,7 +298,7 @@ def test_delete_feature_cascades_to_its_attachments(env):
         )
         session.commit()
 
-    res = client.delete("/collections/incidents/items/1")
+    res = client.delete("/v1/collections/incidents/items/1")
     assert res.status_code == 204
 
     with Session() as session:

@@ -116,7 +116,7 @@ def env():
 
 
 def _perms(client, item_id: str) -> dict:
-    response = client.get(f"/items/{item_id}")
+    response = client.get(f"/v1/items/{item_id}")
     assert response.status_code == 200, response.text
     return response.json()["permissions"]
 
@@ -150,7 +150,7 @@ def test_listing_carries_the_same_permissions_as_the_detail(env):
     """Le catalogue et la fiche doivent s'accorder : c'est la colonne
     « Votre accès » de la maquette qui en dépend."""
     client = env["as_user"](env["viewer"])
-    listing = client.get("/items?scope=all&pageSize=50")
+    listing = client.get("/v1/items?scope=all&pageSize=50")
     assert listing.status_code == 200, listing.text
     by_pk = {item["pk"]: item for item in listing.json()["items"]}
     assert by_pk["shared"]["permissions"] == _perms(client, "shared")
@@ -162,7 +162,7 @@ def test_patch_response_reflects_the_write_that_just_succeeded(env):
     repli conservateur : la requête qui vient de réussir prouve déjà
     `write: true` (Finding I1, Problème A)."""
     client = env["as_user"](env["owner"])
-    response = client.patch("/items/shared", json={"title": "Réseau d'eau potable (v2)"})
+    response = client.patch("/v1/items/shared", json={"title": "Réseau d'eau potable (v2)"})
     assert response.status_code == 200, response.text
     assert response.json()["permissions"] == {
         "read": True,
@@ -177,7 +177,7 @@ def test_public_route_serves_the_conservative_default(env):
     et le champ doit quand même être présent — le shell le lit sans savoir
     par quelle route l'item est arrivé."""
     client = env["as_user"](env["stranger"])
-    response = client.get("/public/items")
+    response = client.get("/v1/public/items")
     assert response.status_code == 200, response.text
     items = response.json()["items"]
     assert items, "au moins l'item publié doit ressortir"

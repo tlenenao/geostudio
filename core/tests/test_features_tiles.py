@@ -108,7 +108,7 @@ def test_the_tile_route_is_mounted_unconditionally():
     # publique de vérifier qu'un chemin est monté, indépendamment de la
     # représentation interne du routage.
     paths = set(create_app().openapi()["paths"])
-    assert "/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt" in paths
+    assert "/v1/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt" in paths
 
 
 def _client(monkeypatch, info: TableInfo | None = None, collection=None):
@@ -139,25 +139,25 @@ def _client(monkeypatch, info: TableInfo | None = None, collection=None):
 
 
 def test_zoom_out_of_range_is_a_400(monkeypatch):
-    r = _client(monkeypatch, _info()).get("/collections/demo_incidents/tiles/99/0/0.mvt")
+    r = _client(monkeypatch, _info()).get("/v1/collections/demo_incidents/tiles/99/0/0.mvt")
     assert r.status_code == 400
     assert "z must be within" in r.json()["detail"]
 
 
 def test_x_out_of_range_for_the_zoom_is_a_400(monkeypatch):
-    r = _client(monkeypatch, _info()).get("/collections/demo_incidents/tiles/1/9/0.mvt")
+    r = _client(monkeypatch, _info()).get("/v1/collections/demo_incidents/tiles/1/9/0.mvt")
     assert r.status_code == 400
 
 
 def test_collection_without_geometry_is_a_400(monkeypatch):
     info = _info(geometry_column=None, geometry_type=None, srid=None)
-    r = _client(monkeypatch, info).get("/collections/demo_incidents/tiles/0/0/0.mvt")
+    r = _client(monkeypatch, info).get("/v1/collections/demo_incidents/tiles/0/0/0.mvt")
     assert r.status_code == 400
     assert "geometry" in r.json()["detail"]
 
 
 def test_unknown_table_is_a_404(monkeypatch):
-    r = _client(monkeypatch, None).get("/collections/demo_incidents/tiles/0/0/0.mvt")
+    r = _client(monkeypatch, None).get("/v1/collections/demo_incidents/tiles/0/0/0.mvt")
     assert r.status_code == 404
 
 
@@ -209,7 +209,7 @@ def _recording_client(monkeypatch):
 
 def test_the_tile_query_runs_under_a_statement_timeout(monkeypatch):
     client, session = _recording_client(monkeypatch)
-    assert client.get("/collections/demo_incidents/tiles/0/0/0.mvt").status_code == 200
+    assert client.get("/v1/collections/demo_incidents/tiles/0/0/0.mvt").status_code == 200
     timeout_sql, timeout_params = session.calls[0]
     # Posé AVANT la requête de tuile, et transaction-local (set_config(...,
     # true)) : rien ne fuit sur la connexion suivante à travers PgBouncer.
@@ -220,7 +220,7 @@ def test_the_tile_query_runs_under_a_statement_timeout(monkeypatch):
 
 def test_the_tile_query_binds_the_feature_cap(monkeypatch):
     client, session = _recording_client(monkeypatch)
-    assert client.get("/collections/demo_incidents/tiles/0/0/0.mvt").status_code == 200
+    assert client.get("/v1/collections/demo_incidents/tiles/0/0/0.mvt").status_code == 200
     tile_sql, tile_params = session.calls[1]
     assert "LIMIT :max_features" in tile_sql
     assert tile_params["max_features"] == MAX_TILE_FEATURES

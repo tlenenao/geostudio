@@ -12,8 +12,8 @@ import re
 import time
 from collections import defaultdict, deque
 
-_SQL_RE = re.compile(r"^/analytics/sql$")
-_LLM_RE = re.compile(r"^/mcp$|^/copilot/turn$")
+_SQL_RE = re.compile(r"^/v1/analytics/sql$")
+_LLM_RE = re.compile(r"^/mcp$|^/v1/copilot/turn$")
 # Ne couvre QUE les routes /harvest/* à coût réel (écriture, ou déclenchement
 # d'un job de moissonnage externe) — trouvé en revue finale SP-26 (I1) :
 # couvrir tout /harvest/* incluait GET /harvest/layers et
@@ -26,25 +26,25 @@ _LLM_RE = re.compile(r"^/mcp$|^/copilot/turn$")
 # list_feature_layers, get_source) sont toutes des GET ; les 4 routes à coût
 # réel (create/patch/delete/run) sont toutes des POST/PATCH/DELETE — la
 # distinction se fait donc par méthode, pas seulement par chemin.
-_HARVEST_RE = re.compile(r"^/harvest/")
+_HARVEST_RE = re.compile(r"^/v1/harvest/")
 # GAP-58 (SP-45) : POST /collections/empty exécute un vrai CREATE TABLE
 # PostGIS (DDL), accessible à tout utilisateur muni du privilège
 # data.manage (pas seulement Administrateur) — aucun groupe existant ne le
 # couvrait avant ce correctif.
-_COLLECTIONS_EMPTY_RE = re.compile(r"^/collections/empty$")
+_COLLECTIONS_EMPTY_RE = re.compile(r"^/v1/collections/empty$")
 # GAP-61.b (SP-45) : les 2 routes de lecture ArcGIS live-query, seules
 # authentiquement échappées au rate limiter (analyse-gaps.md affirmait 4,
 # corrigé — 2 des 4 étaient déjà couvertes par _EXPORT_PATH_RE/"jobs").
 # Peu importe la méthode HTTP (contrairement à _HARVEST_RE) : les deux
 # déclenchent un appel sortant vers un service ArcGIS tiers, y compris la
 # lecture GET .../items.
-_ARCGIS_LIVE_QUERY_RE = re.compile(r"^/datasets/[^/]+/arcgis/(items|aggregate)$")
+_ARCGIS_LIVE_QUERY_RE = re.compile(r"^/v1/datasets/[^/]+/arcgis/(items|aggregate)$")
 # GAP-24, SP-53 : la seule route sans Depends(get_current_user) de tout le
 # dépôt — un secret bearer par pipeline la protège à la place, mais elle
 # doit aussi être son propre groupe de rate limiting (un appelant externe,
 # CI ou capteur, peut avoir un profil d'appel différent des groupes
 # existants).
-_WEBHOOK_TRIGGER_RE = re.compile(r"^/pipelines/[^/]+/trigger$")
+_WEBHOOK_TRIGGER_RE = re.compile(r"^/v1/pipelines/[^/]+/trigger$")
 
 # Budgets par groupe de coût réel (requêtes / 60s). Réutilise _EXPORT_PATH_RE
 # de app.main pour le groupe "jobs" plutôt que de le redéfinir ici.

@@ -5,7 +5,7 @@ import re
 from collections.abc import Iterator
 from http import HTTPStatus
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -65,9 +65,10 @@ from app.terrain3d import routes as terrain3d_routes
 from app.tileset3d import routes as tileset3d_routes
 from app.usage import routes as usage_routes
 
-_AGGREGATE_PATH_RE = re.compile(r"^/collections/[^/]+/aggregate$")
+_AGGREGATE_PATH_RE = re.compile(r"^/v1/collections/[^/]+/aggregate$")
 _EXPORT_PATH_RE = re.compile(
-    r"^/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$|^/export$|^/app-exports$"
+    r"^/v1/(collections/[^/]+|datasets/[^/]+/arcgis)/export(/items)?$"
+    r"|^/v1/export$|^/v1/app-exports$"
 )
 # CORS narrow allowlist (SP-18b) : uniquement les endpoints déjà
 # anonymes-capables (get_current_user_optional) qu'un bundle d'export
@@ -84,12 +85,12 @@ _EXPORT_PATH_RE = re.compile(
 # admin-only qui partagent le même préfixe de chemin (ex. POST /collections,
 # GET /collections/candidates, PATCH/DELETE /collections/{id}).
 _APPEXPORT_CORS_PATH_RE = re.compile(
-    r"^/collections(/[^/]+)?$"
-    r"|^/collections/[^/]+/schema$"
-    r"|^/collections/[^/]+/items(/[^/]+)?$"
-    r"|^/collections/[^/]+/aggregate$"
-    r"|^/extensions$"
-    r"|^/public/items$"
+    r"^/v1/collections(/[^/]+)?$"
+    r"|^/v1/collections/[^/]+/schema$"
+    r"|^/v1/collections/[^/]+/items(/[^/]+)?$"
+    r"|^/v1/collections/[^/]+/aggregate$"
+    r"|^/v1/extensions$"
+    r"|^/v1/public/items$"
 )
 
 # Méthode+chemin exacts pour les requêtes réelles (non-preflight) : c'est ce
@@ -101,14 +102,14 @@ _APPEXPORT_CORS_PATH_RE = re.compile(
 # app/collections/routes.py) qui partage la même forme /collections/<segment>
 # qu'un id de collection réel.
 _APPEXPORT_CORS_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"^/collections$"), "GET"),
-    (re.compile(r"^/collections/(?!candidates$)[^/]+$"), "GET"),
-    (re.compile(r"^/collections/[^/]+/schema$"), "GET"),
-    (re.compile(r"^/collections/[^/]+/items$"), "GET"),
-    (re.compile(r"^/collections/[^/]+/items/[^/]+$"), "GET"),
-    (re.compile(r"^/collections/[^/]+/aggregate$"), "POST"),
-    (re.compile(r"^/extensions$"), "GET"),
-    (re.compile(r"^/public/items$"), "GET"),
+    (re.compile(r"^/v1/collections$"), "GET"),
+    (re.compile(r"^/v1/collections/(?!candidates$)[^/]+$"), "GET"),
+    (re.compile(r"^/v1/collections/[^/]+/schema$"), "GET"),
+    (re.compile(r"^/v1/collections/[^/]+/items$"), "GET"),
+    (re.compile(r"^/v1/collections/[^/]+/items/[^/]+$"), "GET"),
+    (re.compile(r"^/v1/collections/[^/]+/aggregate$"), "POST"),
+    (re.compile(r"^/v1/extensions$"), "GET"),
+    (re.compile(r"^/v1/public/items$"), "GET"),
 )
 
 
@@ -189,7 +190,7 @@ def create_app() -> FastAPI:
             is_read_only_mode()
             and request.method in {"POST", "PUT", "PATCH", "DELETE"}
             and request.url.path != "/mcp"
-            and request.url.path != "/analytics/sql"
+            and request.url.path != "/v1/analytics/sql"
             and not _AGGREGATE_PATH_RE.match(request.url.path)
             and not _EXPORT_PATH_RE.match(request.url.path)
         ):
@@ -264,46 +265,54 @@ def create_app() -> FastAPI:
 
     app.dependency_overrides[db.get_session] = get_session
 
-    app.include_router(configs_routes.router)
-    app.include_router(extensions_routes.router)
-    app.include_router(secrets_routes.router)
-    app.include_router(roles_routes.router)
-    app.include_router(mapicons_routes.router)
-    app.include_router(instance_routes.router)
-    app.include_router(items_routes.router)
-    app.include_router(auth_routes.router)
-    app.include_router(sharing_routes.router)
-    app.include_router(public_routes.router)
-    app.include_router(schemas_router)
-    app.include_router(collections_routes.router)
-    app.include_router(catalog_routes.router)
-    app.include_router(features_routes.router)
-    app.include_router(tiles_routes.router)
-    app.include_router(attachments_routes.router)
-    app.include_router(ingestion_routes.router)
-    app.include_router(stac_routes.router)
-    app.include_router(dcat_routes.router)
-    app.include_router(harvest_routes.router)
-    app.include_router(alerts_routes.router)
-    app.include_router(reports_routes.router)
-    app.include_router(notifications_routes.router)
-    app.include_router(usage_routes.router)
-    app.include_router(quotas_routes.router)
-    app.include_router(compliance_routes.router)
+    # SP-57b : tous les routeurs de l'API du cœur passent sous /v1 — /health
+    # (app.get direct, plus bas) et le montage MCP (app.mount("/", ...), plus
+    # bas également) restent hors versionnement, contrats externes à
+    # protocole fixe (healthcheck Docker, découverte OAuth MCP). Pas de
+    # compatibilité ascendante (spec §2.6) : migration directe, aucun double
+    # montage /items ET /v1/items.
+    v1_router = APIRouter(prefix="/v1")
+    v1_router.include_router(configs_routes.router)
+    v1_router.include_router(extensions_routes.router)
+    v1_router.include_router(secrets_routes.router)
+    v1_router.include_router(roles_routes.router)
+    v1_router.include_router(mapicons_routes.router)
+    v1_router.include_router(instance_routes.router)
+    v1_router.include_router(items_routes.router)
+    v1_router.include_router(auth_routes.router)
+    v1_router.include_router(sharing_routes.router)
+    v1_router.include_router(public_routes.router)
+    v1_router.include_router(schemas_router)
+    v1_router.include_router(collections_routes.router)
+    v1_router.include_router(catalog_routes.router)
+    v1_router.include_router(features_routes.router)
+    v1_router.include_router(tiles_routes.router)
+    v1_router.include_router(attachments_routes.router)
+    v1_router.include_router(ingestion_routes.router)
+    v1_router.include_router(stac_routes.router)
+    v1_router.include_router(dcat_routes.router)
+    v1_router.include_router(harvest_routes.router)
+    v1_router.include_router(alerts_routes.router)
+    v1_router.include_router(reports_routes.router)
+    v1_router.include_router(notifications_routes.router)
+    v1_router.include_router(usage_routes.router)
+    v1_router.include_router(quotas_routes.router)
+    v1_router.include_router(compliance_routes.router)
     if is_etl_enabled():
-        app.include_router(pipelines_routes.router)
+        v1_router.include_router(pipelines_routes.router)
     if is_export_enabled():
-        app.include_router(export_routes.router)
+        v1_router.include_router(export_routes.router)
     if is_appexport_enabled():
-        app.include_router(appexport_routes.router)
+        v1_router.include_router(appexport_routes.router)
     if is_tileset3d_enabled():
-        app.include_router(tileset3d_routes.router)
+        v1_router.include_router(tileset3d_routes.router)
     if is_terrain3d_enabled():
-        app.include_router(terrain3d_routes.router)
+        v1_router.include_router(terrain3d_routes.router)
     if is_copilot_enabled():
-        app.include_router(copilot_routes.router)
+        v1_router.include_router(copilot_routes.router)
     if is_admin_tools_enabled():
-        app.include_router(admin_tools_routes.router)
+        v1_router.include_router(admin_tools_routes.router)
+    app.include_router(v1_router)
 
     s3_endpoint = os.environ.get("S3_ENDPOINT_URL")
     s3_access_key = os.environ.get("S3_ACCESS_KEY")

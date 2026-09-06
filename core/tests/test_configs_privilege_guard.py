@@ -217,7 +217,7 @@ def test_reader_without_any_privilege_is_denied_on_create(env, kind, monkeypatch
     monkeypatch.setenv("CORE_ETL_ENABLED", "true")
     monkeypatch.setenv("CORE_EXPORT_ENABLED", "true")
     _as(app, reader)
-    resp = client.post("/configs", json={"title": "x", "config": _body(kind)})
+    resp = client.post("/v1/configs", json={"title": "x", "config": _body(kind)})
     assert resp.status_code == 403, resp.text
 
 
@@ -225,7 +225,7 @@ def test_creator_can_still_create_an_app_map_and_dataset_config(env, monkeypatch
     app, client, creator, _reader = env
     _as(app, creator)
     for kind in ("app", "map", "dataset"):
-        resp = client.post("/configs", json={"title": f"x-{kind}", "config": _body(kind)})
+        resp = client.post("/v1/configs", json={"title": f"x-{kind}", "config": _body(kind)})
         assert resp.status_code == 201, resp.text
 
     # pipeline reste gardé par la capacité instance CORE_ETL_ENABLED en plus
@@ -233,14 +233,14 @@ def test_creator_can_still_create_an_app_map_and_dataset_config(env, monkeypatch
     # (qui porte déjà automation.manage) n'est pas bloqué par la nouvelle
     # garde de privilège une fois la capacité ouverte.
     monkeypatch.setenv("CORE_ETL_ENABLED", "true")
-    resp = client.post("/configs", json={"title": "x-pipeline", "config": _body("pipeline")})
+    resp = client.post("/v1/configs", json={"title": "x-pipeline", "config": _body("pipeline")})
     assert resp.status_code == 201, resp.text
 
 
 def test_demoted_owner_can_no_longer_update_their_own_app_config(env):
     app, client, creator, reader = env
     _as(app, creator)
-    created = client.post("/configs", json={"title": "x", "config": _body("app")}).json()
+    created = client.post("/v1/configs", json={"title": "x", "config": _body("app")}).json()
     config_id = created["id"]
     item_id = created["itemId"]
 
@@ -260,10 +260,10 @@ def test_demoted_owner_can_no_longer_update_their_own_app_config(env):
         s.commit()
 
     _as(app, creator)
-    resp = client.put(f"/configs/{config_id}", json=_body("app"))
+    resp = client.put(f"/v1/configs/{config_id}", json=_body("app"))
     assert resp.status_code == 403, resp.text
 
-    resp_by_item = client.put(f"/configs/by-item/{item_id}", json=_body("app"))
+    resp_by_item = client.put(f"/v1/configs/by-item/{item_id}", json=_body("app"))
     assert resp_by_item.status_code == 403, resp_by_item.text
 
 
@@ -317,11 +317,11 @@ def test_analyst_can_create_and_reader_still_cannot_create_a_bookmark(env):
     with Session() as s:
         analyst = s.scalar(select(User).where(User.username == "analyst"))
     _as(app, analyst)
-    resp = client.post("/configs", json={"title": "vue analyste", "config": bookmark_body})
+    resp = client.post("/v1/configs", json={"title": "vue analyste", "config": bookmark_body})
     assert resp.status_code == 201, resp.text
 
     _as(app, reader)
-    resp = client.post("/configs", json={"title": "vue reader", "config": bookmark_body})
+    resp = client.post("/v1/configs", json={"title": "vue reader", "config": bookmark_body})
     assert resp.status_code == 403, resp.text
 
 
@@ -335,7 +335,7 @@ def test_demoted_owner_can_no_longer_rollback_their_own_app_config(env):
     # ci-dessus, sur /rollback plutôt que PUT.
     app, client, creator, reader = env
     _as(app, creator)
-    created = client.post("/configs", json={"title": "x", "config": _body("app")}).json()
+    created = client.post("/v1/configs", json={"title": "x", "config": _body("app")}).json()
     config_id = created["id"]
 
     Session = client.session_factory  # type: ignore[attr-defined]
@@ -350,7 +350,7 @@ def test_demoted_owner_can_no_longer_rollback_their_own_app_config(env):
         s.commit()
 
     _as(app, creator)
-    resp = client.post(f"/configs/{config_id}/rollback", json={"version": 1})
+    resp = client.post(f"/v1/configs/{config_id}/rollback", json={"version": 1})
     assert resp.status_code == 403, resp.text
 
 
@@ -433,10 +433,10 @@ def test_analyst_cannot_escalate_privilege_by_submitting_a_different_kind_on_put
         "kind": "bookmark",
         "bookmark": {"appId": bookmark_target_id, "pageId": "p1"},
     }
-    resp = client.put(f"/configs/{config_id}", json=bookmark_body)
+    resp = client.put(f"/v1/configs/{config_id}", json=bookmark_body)
     assert resp.status_code == 400, resp.text
 
-    resp_by_item = client.put(f"/configs/by-item/{item_id}", json=bookmark_body)
+    resp_by_item = client.put(f"/v1/configs/by-item/{item_id}", json=bookmark_body)
     assert resp_by_item.status_code == 400, resp_by_item.text
 
     # Non-régression : la config de la map n'a pas bougé — toujours "map",
@@ -456,7 +456,7 @@ def test_rollback_refuses_a_stored_revision_whose_kind_diverges_from_the_item(en
     # /rollback ne doit pas la restaurer.
     app, client, creator, _reader = env
     _as(app, creator)
-    created = client.post("/configs", json={"title": "x", "config": _body("map")}).json()
+    created = client.post("/v1/configs", json={"title": "x", "config": _body("map")}).json()
     config_id = created["id"]
 
     Session = client.session_factory  # type: ignore[attr-defined]
@@ -470,7 +470,7 @@ def test_rollback_refuses_a_stored_revision_whose_kind_diverges_from_the_item(en
         s.commit()
 
     _as(app, creator)
-    resp = client.post(f"/configs/{config_id}/rollback", json={"version": 2})
+    resp = client.post(f"/v1/configs/{config_id}/rollback", json={"version": 2})
     assert resp.status_code == 400, resp.text
 
 
@@ -486,7 +486,7 @@ def test_editor_share_without_domain_privilege_cannot_delete_a_map(env):
 
     app, client, creator, reader = env
     _as(app, creator)
-    created = client.post("/configs", json={"title": "x", "config": _body("map")}).json()
+    created = client.post("/v1/configs", json={"title": "x", "config": _body("map")}).json()
     config_id = created["id"]
     item_id = created["itemId"]
 
@@ -504,14 +504,14 @@ def test_editor_share_without_domain_privilege_cannot_delete_a_map(env):
         s.commit()
 
     _as(app, reader)
-    resp = client.delete(f"/configs/{config_id}")
+    resp = client.delete(f"/v1/configs/{config_id}")
     assert resp.status_code == 403, resp.text
-    resp_by_item = client.delete(f"/configs/by-item/{item_id}")
+    resp_by_item = client.delete(f"/v1/configs/by-item/{item_id}")
     assert resp_by_item.status_code == 403, resp_by_item.text
-    resp_item = client.delete(f"/items/{item_id}")
+    resp_item = client.delete(f"/v1/items/{item_id}")
     assert resp_item.status_code == 403, resp_item.text
 
     # Le créateur (maps.manage) peut toujours supprimer — non régressé.
     _as(app, creator)
-    resp_owner = client.delete(f"/items/{item_id}")
+    resp_owner = client.delete(f"/v1/items/{item_id}")
     assert resp_owner.status_code == 204, resp_owner.text

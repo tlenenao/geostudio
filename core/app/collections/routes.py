@@ -416,7 +416,9 @@ def get_collection(
     )[col.id]
     body = _collection_json(col, permissions)
     body["itemType"] = "feature"
-    base = str(request.base_url).rstrip("/")
+    # request.base_url ne porte jamais /v1 (juste scheme://host/) — ce
+    # routeur est nesté sous /v1 (SP-57b), l'ajouter explicitement ici.
+    base = str(request.base_url).rstrip("/") + "/v1"
     body["links"] = [
         {"rel": "self", "type": "application/json", "href": f"{base}/collections/{col.id}"},
         {

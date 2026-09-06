@@ -72,7 +72,7 @@ _APP_CONFIG = {
 
 def _create_site(client, title: str, slug: str) -> str:
     response = client.post(
-        "/configs",
+        "/v1/configs",
         json={"title": title, "config": _SITE_CONFIG, "slug": slug},
     )
     assert response.status_code == 201, response.text
@@ -80,13 +80,13 @@ def _create_site(client, title: str, slug: str) -> str:
 
 
 def _create_app(client, title: str) -> str:
-    response = client.post("/configs", json={"title": title, "config": _APP_CONFIG})
+    response = client.post("/v1/configs", json={"title": title, "config": _APP_CONFIG})
     assert response.status_code == 201, response.text
     return response.json()["itemId"]
 
 
 def _publish(client, item_id: str) -> None:
-    response = client.patch(f"/items/{item_id}", json={"isPublished": True})
+    response = client.patch(f"/v1/items/{item_id}", json={"isPublished": True})
     assert response.status_code == 200, response.text
 
 
@@ -95,7 +95,7 @@ def test_site_publie_200(client):
     _publish(client, item_id)
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/sites/mon-portail")
+    response = client.get("/v1/public/sites/mon-portail")
     assert response.status_code == 200
     assert response.json()["pk"] == item_id
     assert response.json()["slug"] == "mon-portail"
@@ -105,13 +105,13 @@ def test_site_non_publie_404_jamais_403(client):
     _create_site(client, "Brouillon", "brouillon")
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/sites/brouillon")
+    response = client.get("/v1/public/sites/brouillon")
     assert response.status_code == 404
 
 
 def test_slug_inexistant_404(client):
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/sites/nexiste-pas")
+    response = client.get("/v1/public/sites/nexiste-pas")
     assert response.status_code == 404
 
 
@@ -120,7 +120,7 @@ def test_non_site_meme_publie_404(client):
     _publish(client, item_id)
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/sites/appli")
+    response = client.get("/v1/public/sites/appli")
     assert response.status_code == 404
 
 
@@ -155,5 +155,5 @@ def test_isolation_tenant_meme_slug(client):
         session.commit()
 
     del client.app.dependency_overrides[get_current_user]
-    response = client.get("/public/sites/shared")
+    response = client.get("/v1/public/sites/shared")
     assert response.status_code == 404

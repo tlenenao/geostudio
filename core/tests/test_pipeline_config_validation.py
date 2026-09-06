@@ -99,20 +99,20 @@ def env(monkeypatch):
 
 
 def test_valid_linear_pipeline_saves(env):
-    response = env.post("/configs", json=_linear_pipeline())
+    response = env.post("/v1/configs", json=_linear_pipeline())
     assert response.status_code == 201
 
 
 def test_disabled_capability_refuses_pipeline_creation(monkeypatch, env):
     monkeypatch.setenv("CORE_ETL_ENABLED", "false")
-    response = env.post("/configs", json=_linear_pipeline())
+    response = env.post("/v1/configs", json=_linear_pipeline())
     assert response.status_code == 403
 
 
 def test_disabled_capability_does_not_affect_other_kinds(monkeypatch, env):
     monkeypatch.setenv("CORE_ETL_ENABLED", "false")
     response = env.post(
-        "/configs",
+        "/v1/configs",
         json={
             "title": "App",
             "config": {"kind": "app", "layout": {"type": "grid", "items": []}},
@@ -131,7 +131,7 @@ def test_cyclic_graph_rejected(env):
         {"id": "e2", "from": "t1", "to": "w1"},
         {"id": "e3", "from": "w1", "to": "t1"},
     ]
-    response = env.post("/configs", json=body)
+    response = env.post("/v1/configs", json=body)
     assert response.status_code == 422
     assert "acyclic" in response.json()["detail"]
 
@@ -147,7 +147,7 @@ def test_node_with_two_incoming_edges_rejected(env):
         }
     )
     body["config"]["pipeline"]["edges"].append({"id": "e2", "from": "r2", "to": "w1"})
-    response = env.post("/configs", json=body)
+    response = env.post("/v1/configs", json=body)
     assert response.status_code == 422
     assert "one incoming edge" in response.json()["detail"]
 
@@ -172,7 +172,7 @@ def test_node_with_two_secondary_incoming_edges_rejected(env):
         {"id": "e2", "from": "r2", "to": "w1", "role": "secondary"},
         {"id": "e3", "from": "r3", "to": "w1", "role": "secondary"},
     ]
-    response = env.post("/configs", json=body)
+    response = env.post("/v1/configs", json=body)
     assert response.status_code == 422
     assert "one secondary incoming edge" in response.json()["detail"]
 
@@ -194,7 +194,7 @@ def test_node_with_one_primary_and_one_secondary_incoming_edge_is_not_a_topology
     body["config"]["pipeline"]["edges"].append(
         {"id": "e2", "from": "r2", "to": "w1", "role": "secondary"}
     )
-    response = env.post("/configs", json=body)
+    response = env.post("/v1/configs", json=body)
     # w1 est writer.collection (pas un op binaire) : Task 7 le rejette, mais
     # PAS avec le message de _check_topology — on vérifie juste l'absence de
     # "one secondary incoming edge" / "one incoming edge" ici, la garde de
@@ -217,5 +217,5 @@ def test_reader_connector_node_saves_without_secret_or_query_check(env):
             "params": {"secretName": "does-not-exist", "query": "not even sql"},
         }
     )
-    response = env.post("/configs", json=body)
+    response = env.post("/v1/configs", json=body)
     assert response.status_code == 201

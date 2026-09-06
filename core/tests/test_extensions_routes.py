@@ -71,43 +71,43 @@ def _as(app, user):
 def test_register_requires_admin(env):
     app, client, _, _admin, regular = env
     _as(app, regular)
-    assert client.post("/extensions", json=GAUGE_BODY).status_code == 403
+    assert client.post("/v1/extensions", json=GAUGE_BODY).status_code == 403
 
 
 def test_register_and_list(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
-    r = client.post("/extensions", json=GAUGE_BODY)
+    r = client.post("/v1/extensions", json=GAUGE_BODY)
     assert r.status_code == 201
     assert r.json()["id"] == "acme.gauge"
-    listed = client.get("/extensions").json()["extensions"]
+    listed = client.get("/v1/extensions").json()["extensions"]
     assert [e["id"] for e in listed] == ["acme.gauge"]
 
 
 def test_register_duplicate_same_tenant_is_409(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
-    client.post("/extensions", json=GAUGE_BODY)
-    assert client.post("/extensions", json=GAUGE_BODY).status_code == 409
+    client.post("/v1/extensions", json=GAUGE_BODY)
+    assert client.post("/v1/extensions", json=GAUGE_BODY).status_code == 409
 
 
 def test_patch_requires_admin_and_toggles_enabled(env):
     app, client, _, admin, regular = env
     _as(app, admin)
-    client.post("/extensions", json=GAUGE_BODY)
+    client.post("/v1/extensions", json=GAUGE_BODY)
     _as(app, regular)
-    assert client.patch("/extensions/acme.gauge", json={"enabled": False}).status_code == 403
+    assert client.patch("/v1/extensions/acme.gauge", json={"enabled": False}).status_code == 403
     _as(app, admin)
-    assert client.patch("/extensions/acme.gauge", json={"enabled": False}).status_code == 200
-    assert client.get("/extensions").json()["extensions"] == []
+    assert client.patch("/v1/extensions/acme.gauge", json={"enabled": False}).status_code == 200
+    assert client.get("/v1/extensions").json()["extensions"] == []
 
 
 def test_get_extensions_is_anonymous_and_scoped_to_default_tenant(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
-    client.post("/extensions", json=GAUGE_BODY)
+    client.post("/v1/extensions", json=GAUGE_BODY)
     del app.dependency_overrides[get_current_user_optional]
-    listed = client.get("/extensions").json()["extensions"]
+    listed = client.get("/v1/extensions").json()["extensions"]
     assert [e["id"] for e in listed] == ["acme.gauge"]
 
 
@@ -129,9 +129,9 @@ def test_get_extensions_never_leaks_across_tenants(env):
         )
         s.commit()
     _as(app, admin)
-    client.post("/extensions", json=GAUGE_BODY)
+    client.post("/v1/extensions", json=GAUGE_BODY)
     _as(app, other_admin)
-    assert client.get("/extensions").json()["extensions"] == []
+    assert client.get("/v1/extensions").json()["extensions"] == []
 
 
 def test_patch_extension_cross_tenant_returns_404(env):
@@ -143,7 +143,7 @@ def test_patch_extension_cross_tenant_returns_404(env):
     # cross-tenant coverage, SP-8c).
     app, client, Session, admin, _regular = env
     _as(app, admin)
-    client.post("/extensions", json=GAUGE_BODY)
+    client.post("/v1/extensions", json=GAUGE_BODY)
 
     with Session() as s:
         other_tenant = Tenant(id=uuid.uuid4().hex, slug="other-patch", name="Other")
@@ -162,17 +162,17 @@ def test_patch_extension_cross_tenant_returns_404(env):
         s.commit()
 
     _as(app, other_admin)
-    assert client.patch("/extensions/acme.gauge", json={"enabled": False}).status_code == 404
+    assert client.patch("/v1/extensions/acme.gauge", json={"enabled": False}).status_code == 404
 
     _as(app, admin)
-    assert client.get("/extensions").json()["extensions"][0]["enabled"] is True
+    assert client.get("/v1/extensions").json()["extensions"][0]["enabled"] is True
 
 
 def test_mutations_are_audited(env):
     app, client, Session, admin, _regular = env
     _as(app, admin)
-    client.post("/extensions", json=GAUGE_BODY)
-    client.patch("/extensions/acme.gauge", json={"enabled": False})
+    client.post("/v1/extensions", json=GAUGE_BODY)
+    client.patch("/v1/extensions/acme.gauge", json={"enabled": False})
     from sqlalchemy import select
 
     from app.audit.models import AuditLog
@@ -186,31 +186,31 @@ def test_mutations_are_audited(env):
 def test_get_extensions_all_true_shows_disabled_to_admin(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
-    client.post("/extensions", json=GAUGE_BODY)
-    client.patch("/extensions/acme.gauge", json={"enabled": False})
-    default_listed = client.get("/extensions").json()["extensions"]
+    client.post("/v1/extensions", json=GAUGE_BODY)
+    client.patch("/v1/extensions/acme.gauge", json={"enabled": False})
+    default_listed = client.get("/v1/extensions").json()["extensions"]
     assert default_listed == []
-    all_listed = client.get("/extensions?all=true").json()["extensions"]
+    all_listed = client.get("/v1/extensions?all=true").json()["extensions"]
     assert [e["id"] for e in all_listed] == ["acme.gauge"]
 
 
 def test_get_extensions_all_true_ignored_for_non_admin(env):
     app, client, _, admin, regular = env
     _as(app, admin)
-    client.post("/extensions", json=GAUGE_BODY)
-    client.patch("/extensions/acme.gauge", json={"enabled": False})
+    client.post("/v1/extensions", json=GAUGE_BODY)
+    client.patch("/v1/extensions/acme.gauge", json={"enabled": False})
     _as(app, regular)
-    listed = client.get("/extensions?all=true").json()["extensions"]
+    listed = client.get("/v1/extensions?all=true").json()["extensions"]
     assert listed == []
 
 
 def test_get_extensions_all_true_ignored_for_anonymous(env):
     app, client, _, admin, _regular = env
     _as(app, admin)
-    client.post("/extensions", json=GAUGE_BODY)
-    client.patch("/extensions/acme.gauge", json={"enabled": False})
+    client.post("/v1/extensions", json=GAUGE_BODY)
+    client.patch("/v1/extensions/acme.gauge", json={"enabled": False})
     del app.dependency_overrides[get_current_user_optional]
-    listed = client.get("/extensions?all=true").json()["extensions"]
+    listed = client.get("/v1/extensions?all=true").json()["extensions"]
     assert listed == []
 
 
@@ -221,8 +221,8 @@ def test_get_extensions_all_true_shown_to_custom_role_with_extensions_manage(env
 
     app, client, Session, admin, regular = env
     _as(app, admin)
-    client.post("/extensions", json=GAUGE_BODY)
-    client.patch("/extensions/acme.gauge", json={"enabled": False})
+    client.post("/v1/extensions", json=GAUGE_BODY)
+    client.patch("/v1/extensions/acme.gauge", json={"enabled": False})
 
     with Session() as s:
         tenant = get_or_create_default_tenant(s)
@@ -248,5 +248,5 @@ def test_get_extensions_all_true_shown_to_custom_role_with_extensions_manage(env
         custom_user = s.get(User, regular_id)
         assert custom_user is not None and custom_user.is_admin is False
         _as(app, custom_user)
-        all_listed = client.get("/extensions?all=true").json()["extensions"]
+        all_listed = client.get("/v1/extensions?all=true").json()["extensions"]
         assert [e["id"] for e in all_listed] == ["acme.gauge"]

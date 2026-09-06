@@ -92,43 +92,43 @@ def _as_user_id(app, Session, user_id: str):
 def test_regular_user_can_erase_their_own_account(env):
     app, client, _admin_id, regular_id, _outsider_id = env
     _as_user_id(app, client.session_factory, regular_id)
-    resp = client.post(f"/compliance/users/{regular_id}/erase")
+    resp = client.post(f"/v1/compliance/users/{regular_id}/erase")
     assert resp.status_code == 204, resp.text
 
 
 def test_regular_user_cannot_erase_another_user_without_privilege(env):
     app, client, admin_id, regular_id, _outsider_id = env
     _as_user_id(app, client.session_factory, regular_id)
-    resp = client.post(f"/compliance/users/{admin_id}/erase")
+    resp = client.post(f"/v1/compliance/users/{admin_id}/erase")
     assert resp.status_code == 403, resp.text
 
 
 def test_admin_can_erase_another_user_with_privilege(env):
     app, client, admin_id, regular_id, _outsider_id = env
     _as_user_id(app, client.session_factory, admin_id)
-    resp = client.post(f"/compliance/users/{regular_id}/erase")
+    resp = client.post(f"/v1/compliance/users/{regular_id}/erase")
     assert resp.status_code == 204, resp.text
 
 
 def test_cross_tenant_erasure_is_rejected_even_with_privilege(env):
     app, client, admin_id, _regular_id, outsider_id = env
     _as_user_id(app, client.session_factory, admin_id)
-    resp = client.post(f"/compliance/users/{outsider_id}/erase")
+    resp = client.post(f"/v1/compliance/users/{outsider_id}/erase")
     assert resp.status_code == 404, resp.text
 
 
 def test_erase_me_literal_targets_the_caller(env):
     app, client, _admin_id, regular_id, _outsider_id = env
     _as_user_id(app, client.session_factory, regular_id)
-    resp = client.post("/compliance/users/me/erase")
+    resp = client.post("/v1/compliance/users/me/erase")
     assert resp.status_code == 204, resp.text
 
 
 def test_erase_already_erased_user_returns_409(env):
     app, client, _admin_id, regular_id, _outsider_id = env
     _as_user_id(app, client.session_factory, regular_id)
-    first = client.post(f"/compliance/users/{regular_id}/erase")
+    first = client.post(f"/v1/compliance/users/{regular_id}/erase")
     assert first.status_code == 204
     _as_user_id(app, client.session_factory, regular_id)
-    second = client.post(f"/compliance/users/{regular_id}/erase")
+    second = client.post(f"/v1/compliance/users/{regular_id}/erase")
     assert second.status_code == 409, second.text

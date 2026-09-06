@@ -115,7 +115,7 @@ def test_post_export_requires_flag_enabled(env, monkeypatch):
     client, _calls = (
         make_client()
     )  # le flag est lu à la construction (patron pipelines) : re-créer l'app
-    response = client.post("/export", json={"itemId": item_id, "format": "png"})
+    response = client.post("/v1/export", json={"itemId": item_id, "format": "png"})
     assert response.status_code == 404  # routeur jamais monté quand le flag est off
 
 
@@ -124,7 +124,7 @@ def test_post_export_creates_job_and_returns_202(env):
     client, calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
-    response = client.post("/export", json={"itemId": item_id, "format": "png"})
+    response = client.post("/v1/export", json={"itemId": item_id, "format": "png"})
     assert response.status_code == 202
     assert "jobId" in response.json()
     assert len(calls) == 1
@@ -135,7 +135,7 @@ def test_post_export_denies_user_without_read_access(env):
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: stranger
     client.app.dependency_overrides[get_current_user_optional] = lambda: stranger
-    response = client.post("/export", json={"itemId": item_id, "format": "png"})
+    response = client.post("/v1/export", json={"itemId": item_id, "format": "png"})
     assert response.status_code == 404
 
 
@@ -144,8 +144,8 @@ def test_get_export_job_reports_status(env):
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
-    created = client.post("/export", json={"itemId": item_id, "format": "png"}).json()
-    response = client.get(f"/export/jobs/{created['jobId']}")
+    created = client.post("/v1/export", json={"itemId": item_id, "format": "png"}).json()
+    response = client.get(f"/v1/export/jobs/{created['jobId']}")
     assert response.status_code == 200
     body = response.json()
     assert body["id"] == created["jobId"]
@@ -159,7 +159,7 @@ def test_get_export_job_unknown_id_is_404(env):
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
-    response = client.get("/export/jobs/does-not-exist")
+    response = client.get("/v1/export/jobs/does-not-exist")
     assert response.status_code == 404
 
 
@@ -173,7 +173,7 @@ def test_post_export_allowed_in_read_only_demo_mode(env, monkeypatch):
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
-    response = client.post("/export", json={"itemId": item_id, "format": "png"})
+    response = client.post("/v1/export", json={"itemId": item_id, "format": "png"})
     assert response.status_code == 202
 
 
@@ -182,7 +182,7 @@ def test_post_export_rejects_invalid_format(env):
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
-    response = client.post("/export", json={"itemId": item_id, "format": "svg"})
+    response = client.post("/v1/export", json={"itemId": item_id, "format": "svg"})
     assert response.status_code == 422
 
 
@@ -200,7 +200,7 @@ def test_get_export_job_done_status_includes_result_url(env):
     client, _calls = make_client()
     client.app.dependency_overrides[get_current_user] = lambda: owner
     client.app.dependency_overrides[get_current_user_optional] = lambda: owner
-    created = client.post("/export", json={"itemId": item_id, "format": "png"}).json()
+    created = client.post("/v1/export", json={"itemId": item_id, "format": "png"}).json()
     job_id = created["jobId"]
 
     with Session() as s:
@@ -208,7 +208,7 @@ def test_get_export_job_done_status_includes_result_url(env):
         export_repo.mark_done(s, job_id=job_id, result_key=f"renders/{job_id}.png")
         s.commit()
 
-    response = client.get(f"/export/jobs/{job_id}")
+    response = client.get(f"/v1/export/jobs/{job_id}")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "done"

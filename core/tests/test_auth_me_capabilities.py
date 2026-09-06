@@ -61,7 +61,7 @@ def client():
 
 
 def test_me_exposes_every_capability(client):
-    response = client.get("/me")
+    response = client.get("/v1/me")
     assert response.status_code == 200, response.text
     body = response.json()
     assert set(body["capabilities"]) == CAPABILITY_KEYS
@@ -73,13 +73,13 @@ def test_me_capabilities_match_the_instance_route(client):
     """Les deux routes doivent dire la même chose : `GET /instance` reste servi
     avant authentification (page de connexion, mode démo) et ne disparaît pas.
     Si elles divergent, un écran affichera une capacité que l'autre refuse."""
-    me = client.get("/me").json()["capabilities"]
-    instance = client.get("/instance").json()
+    me = client.get("/v1/me").json()["capabilities"]
+    instance = client.get("/v1/instance").json()
     assert me == instance
 
 
 def test_me_keeps_its_existing_fields(client):
-    body = client.get("/me").json()
+    body = client.get("/v1/me").json()
     for key in (
         "id",
         "tenantId",
@@ -97,11 +97,11 @@ def test_me_keeps_its_existing_fields(client):
 @pytest.mark.parametrize("env_value,expected", [("true", True), ("false", False)])
 def test_capability_reflects_the_environment(client, monkeypatch, env_value, expected):
     monkeypatch.setenv("CORE_ETL_ENABLED", env_value)
-    assert client.get("/me").json()["capabilities"]["etlEnabled"] is expected
+    assert client.get("/v1/me").json()["capabilities"]["etlEnabled"] is expected
 
 
 def test_me_exposes_tenant_slug_and_version(client):
-    body = client.get("/me").json()
+    body = client.get("/v1/me").json()
     assert isinstance(body["tenantSlug"], str) and body["tenantSlug"] != ""
     assert isinstance(body["version"], str) and body["version"] != ""
 
@@ -143,14 +143,14 @@ def test_me_and_instance_move_together_for_every_capability(
     client, monkeypatch, env_var, field, true_value, false_value
 ):
     monkeypatch.setenv(env_var, true_value)
-    me = client.get("/me").json()["capabilities"][field]
-    instance = client.get("/instance").json()[field]
+    me = client.get("/v1/me").json()["capabilities"][field]
+    instance = client.get("/v1/instance").json()[field]
     assert me is True, f"{field} devrait être vrai avec {env_var}={true_value!r} (/me)"
     assert instance is True, f"{field} devrait être vrai avec {env_var}={true_value!r} (/instance)"
 
     monkeypatch.setenv(env_var, false_value)
-    me = client.get("/me").json()["capabilities"][field]
-    instance = client.get("/instance").json()[field]
+    me = client.get("/v1/me").json()["capabilities"][field]
+    instance = client.get("/v1/instance").json()[field]
     assert me is False, f"{field} devrait être faux avec {env_var}={false_value!r} (/me)"
     assert instance is False, (
         f"{field} devrait être faux avec {env_var}={false_value!r} (/instance)"

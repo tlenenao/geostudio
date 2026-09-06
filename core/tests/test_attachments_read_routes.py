@@ -161,7 +161,7 @@ def _authenticate_as(api: TestClient, user) -> None:
 def test_list_visible_to_the_owner(env):
     api, _Session, _tenant, owner, _reader, _attachment_id, _s3 = env
     _authenticate_as(api, owner)
-    res = api.get("/collections/col1/items/f1/attachments")
+    res = api.get("/v1/collections/col1/items/f1/attachments")
     assert res.status_code == 200
     assert res.json()["attachments"][0]["filename"] == "a.jpg"
 
@@ -170,7 +170,7 @@ def test_file_visible_to_another_reader_with_read_access(env):
     """Preuve de sortie littérale du chantier 4.12."""
     api, _Session, _tenant, _owner, reader, attachment_id, _s3 = env
     _authenticate_as(api, reader)
-    res = api.get(f"/collections/col1/items/f1/attachments/{attachment_id}/file")
+    res = api.get(f"/v1/collections/col1/items/f1/attachments/{attachment_id}/file")
     assert res.status_code == 200
     assert res.content == b"jpg"
     assert res.headers["content-type"].startswith("image/jpeg")
@@ -192,7 +192,7 @@ def test_file_invisible_to_a_stranger_from_another_tenant(env):
         )
         session.commit()
     _authenticate_as(api, stranger)
-    res = api.get(f"/collections/col1/items/f1/attachments/{attachment_id}/file")
+    res = api.get(f"/v1/collections/col1/items/f1/attachments/{attachment_id}/file")
     assert res.status_code == 404
 
 
@@ -205,24 +205,24 @@ def test_list_and_file_are_readable_anonymously_on_a_public_collection(env):
     api.app.dependency_overrides.pop(get_current_user, None)
     api.app.dependency_overrides.pop(get_current_user_optional, None)
 
-    list_res = api.get("/collections/col1/items/f1/attachments")
+    list_res = api.get("/v1/collections/col1/items/f1/attachments")
     assert list_res.status_code == 200
-    file_res = api.get(f"/collections/col1/items/f1/attachments/{attachment_id}/file")
+    file_res = api.get(f"/v1/collections/col1/items/f1/attachments/{attachment_id}/file")
     assert file_res.status_code == 200
 
 
 def test_delete_removes_row_and_object_and_requires_write_access(env):
     api, _Session, _tenant, owner, reader, attachment_id, s3 = env
     _authenticate_as(api, reader)
-    forbidden = api.delete(f"/collections/col1/items/f1/attachments/{attachment_id}")
+    forbidden = api.delete(f"/v1/collections/col1/items/f1/attachments/{attachment_id}")
     assert forbidden.status_code == 403
 
     _authenticate_as(api, owner)
-    ok = api.delete(f"/collections/col1/items/f1/attachments/{attachment_id}")
+    ok = api.delete(f"/v1/collections/col1/items/f1/attachments/{attachment_id}")
     assert ok.status_code == 204
     assert len(s3.deleted) == 1
 
-    missing = api.get("/collections/col1/items/f1/attachments")
+    missing = api.get("/v1/collections/col1/items/f1/attachments")
     assert missing.json()["attachments"] == []
 
 
@@ -248,7 +248,7 @@ def test_file_download_does_not_crash_on_a_non_ascii_filename_already_in_db(env)
         attachment_id = a.id
     s3.objects[f"{tenant.id}/col1/f1/other-非ascii.png"] = b"png"
     _authenticate_as(api, owner)
-    res = api.get(f"/collections/col1/items/f1/attachments/{attachment_id}/file")
+    res = api.get(f"/v1/collections/col1/items/f1/attachments/{attachment_id}/file")
     assert res.status_code == 200
 
 
@@ -270,7 +270,7 @@ def test_accented_french_filename_survives_upload_to_download_intact(env):
     s3.objects[key] = b"%PDF"
     _authenticate_as(api, owner)
     confirm_res = api.post(
-        "/collections/col1/items/f1/attachments",
+        "/v1/collections/col1/items/f1/attachments",
         json={
             "key": key,
             "fieldKey": "photos",
@@ -283,7 +283,7 @@ def test_accented_french_filename_survives_upload_to_download_intact(env):
     assert confirm_res.json()["filename"] == filename
     attachment_id = confirm_res.json()["id"]
 
-    file_res = api.get(f"/collections/col1/items/f1/attachments/{attachment_id}/file")
+    file_res = api.get(f"/v1/collections/col1/items/f1/attachments/{attachment_id}/file")
     assert file_res.status_code == 200
     disposition = file_res.headers["content-disposition"]
     # Repli ASCII non vide (compris par un client qui ignore filename*) —

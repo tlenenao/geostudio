@@ -74,10 +74,10 @@ def pg_app(pg_engine):
 
 def test_full_crud_roundtrip(pg_app):
     client = pg_app
-    assert client.post("/collections", json={"tableName": "demo_incidents"}).status_code == 201
-    assert client.get("/collections/demo_incidents").json()["featureCount"] == 0
+    assert client.post("/v1/collections", json={"tableName": "demo_incidents"}).status_code == 201
+    assert client.get("/v1/collections/demo_incidents").json()["featureCount"] == 0
     r = client.post(
-        "/collections/demo_incidents/items",
+        "/v1/collections/demo_incidents/items",
         json={
             "type": "Feature",
             "properties": {"titre": "Nid de poule"},
@@ -86,15 +86,15 @@ def test_full_crud_roundtrip(pg_app):
     )
     assert r.status_code == 201
     fid = r.json()["id"]
-    assert client.get("/collections/demo_incidents").json()["featureCount"] == 1
-    desc = client.get("/collections/demo_incidents").json()
+    assert client.get("/v1/collections/demo_incidents").json()["featureCount"] == 1
+    desc = client.get("/v1/collections/demo_incidents").json()
     assert desc["extent"]["spatial"]["bbox"] == [[1.85, 45.27, 1.85, 45.27]]
-    body = client.get("/collections/demo_incidents/items").json()
+    body = client.get("/v1/collections/demo_incidents/items").json()
     assert body["numberMatched"] == 1
     assert body["features"][0]["properties"]["titre"] == "Nid de poule"
     assert (
         client.put(
-            f"/collections/demo_incidents/items/{fid}",
+            f"/v1/collections/demo_incidents/items/{fid}",
             json={
                 "type": "Feature",
                 "properties": {"titre": "Réparé"},
@@ -104,10 +104,10 @@ def test_full_crud_roundtrip(pg_app):
         == 204
     )
     assert (
-        client.get(f"/collections/demo_incidents/items/{fid}").json()["properties"]["titre"]
+        client.get(f"/v1/collections/demo_incidents/items/{fid}").json()["properties"]["titre"]
         == "Réparé"
     )
-    assert client.get("/collections/demo_incidents").json()["featureCount"] == 1  # PUT inchangé
-    assert client.delete(f"/collections/demo_incidents/items/{fid}").status_code == 204
-    assert client.get("/collections/demo_incidents/items").json()["numberMatched"] == 0
-    assert client.get("/collections/demo_incidents").json()["featureCount"] == 0
+    assert client.get("/v1/collections/demo_incidents").json()["featureCount"] == 1  # PUT inchangé
+    assert client.delete(f"/v1/collections/demo_incidents/items/{fid}").status_code == 204
+    assert client.get("/v1/collections/demo_incidents/items").json()["numberMatched"] == 0
+    assert client.get("/v1/collections/demo_incidents").json()["featureCount"] == 0

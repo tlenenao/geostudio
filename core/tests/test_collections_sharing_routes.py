@@ -89,39 +89,39 @@ def _as(app, user):
 def test_share_grants_read_to_group_member(env):
     app, client, Session, admin, regular, group_id = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
     _as(app, regular)
-    assert client.get("/collections/incidents").status_code == 404
+    assert client.get("/v1/collections/incidents").status_code == 404
     _as(app, admin)
     r = client.put(
-        "/collections/incidents/sharing",
+        "/v1/collections/incidents/sharing",
         json={"public": False, "groups": [{"groupId": group_id, "role": "viewer"}]},
     )
     assert r.status_code == 200
     _as(app, regular)
-    assert client.get("/collections/incidents").status_code == 200
-    assert [c["id"] for c in client.get("/collections").json()["collections"]] == ["incidents"]
+    assert client.get("/v1/collections/incidents").status_code == 200
+    assert [c["id"] for c in client.get("/v1/collections").json()["collections"]] == ["incidents"]
 
 
 def test_put_sharing_replaces_all(env):
     app, client, _, admin, _regular, group_id = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
     client.put(
-        "/collections/incidents/sharing",
+        "/v1/collections/incidents/sharing",
         json={"public": False, "groups": [{"groupId": group_id, "role": "viewer"}]},
     )
-    client.put("/collections/incidents/sharing", json={"public": True, "groups": []})
-    body = client.get("/collections/incidents/sharing").json()
+    client.put("/v1/collections/incidents/sharing", json={"public": True, "groups": []})
+    body = client.get("/v1/collections/incidents/sharing").json()
     assert body == {"public": True, "groups": []}
 
 
 def test_sharing_requires_owner_or_admin(env):
     app, client, _, admin, regular, group_id = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents", "isPublic": True})
+    client.post("/v1/collections", json={"tableName": "incidents", "isPublic": True})
     _as(app, regular)  # lisible (publique) mais pas partageable
-    r = client.put("/collections/incidents/sharing", json={"public": True, "groups": []})
+    r = client.put("/v1/collections/incidents/sharing", json={"public": True, "groups": []})
     assert r.status_code == 403
 
 
@@ -131,17 +131,17 @@ def test_get_sharing_requires_owner_or_admin(env):
     # a PUT) — the 403 branch on the read side was never exercised.
     app, client, _, admin, regular, _group_id = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents", "isPublic": True})
+    client.post("/v1/collections", json={"tableName": "incidents", "isPublic": True})
     _as(app, regular)  # lisible (publique) mais pas partageable
-    r = client.get("/collections/incidents/sharing")
+    r = client.get("/v1/collections/incidents/sharing")
     assert r.status_code == 403
 
 
 def test_share_is_audited(env):
     app, client, Session, admin, _regular, group_id = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
-    client.put("/collections/incidents/sharing", json={"public": True, "groups": []})
+    client.post("/v1/collections", json={"tableName": "incidents"})
+    client.put("/v1/collections/incidents/sharing", json={"public": True, "groups": []})
     from sqlalchemy import select
 
     from app.audit.models import AuditLog
@@ -153,18 +153,18 @@ def test_share_is_audited(env):
 def test_put_sharing_unknown_group_is_404_and_keeps_existing(env):
     app, client, _, admin, _regular, group_id = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
     client.put(
-        "/collections/incidents/sharing",
+        "/v1/collections/incidents/sharing",
         json={"public": False, "groups": [{"groupId": group_id, "role": "viewer"}]},
     )
     r = client.put(
-        "/collections/incidents/sharing",
+        "/v1/collections/incidents/sharing",
         json={"public": True, "groups": [{"groupId": "nope", "role": "viewer"}]},
     )
     assert r.status_code == 404
     # Rien n'a été modifié : le partage existant survit, public reste False.
-    body = client.get("/collections/incidents/sharing").json()
+    body = client.get("/v1/collections/incidents/sharing").json()
     assert body == {"public": False, "groups": [{"groupId": group_id, "role": "viewer"}]}
 
 
@@ -192,9 +192,9 @@ def test_put_sharing_cross_tenant_group_is_404(env):
         foreign_group_id = foreign_group.id
         s.commit()
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
     r = client.put(
-        "/collections/incidents/sharing",
+        "/v1/collections/incidents/sharing",
         json={"public": False, "groups": [{"groupId": foreign_group_id, "role": "viewer"}]},
     )
     assert r.status_code == 404
@@ -203,9 +203,9 @@ def test_put_sharing_cross_tenant_group_is_404(env):
 def test_put_sharing_rejects_invalid_role(env):
     app, client, _, admin, _regular, group_id = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
     r = client.put(
-        "/collections/incidents/sharing",
+        "/v1/collections/incidents/sharing",
         json={"public": False, "groups": [{"groupId": group_id, "role": "owner"}]},
     )
     assert r.status_code == 422
@@ -214,9 +214,9 @@ def test_put_sharing_rejects_invalid_role(env):
 def test_put_sharing_duplicate_group_is_422(env):
     app, client, _, admin, _regular, group_id = env
     _as(app, admin)
-    client.post("/collections", json={"tableName": "incidents"})
+    client.post("/v1/collections", json={"tableName": "incidents"})
     r = client.put(
-        "/collections/incidents/sharing",
+        "/v1/collections/incidents/sharing",
         json={
             "public": False,
             "groups": [
