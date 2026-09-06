@@ -103,6 +103,86 @@ def test_catalog_content_type_and_shape(env):
     assert len(ds["dcat:distribution"]) == 2
 
 
+def test_dcat_catalog_is_paginated(env):
+    app, client, admin, _regular, _Session = env
+
+    def introspector_for_many(session, table_name):
+        return TableInfo(
+            table_name=table_name,
+            pk_column="id",
+            geometry_column="geom",
+            geometry_type="Point",
+            srid=4326,
+            columns=[],
+        )
+
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: introspector_for_many
+    _as(app, admin)
+    for i in range(3):
+        resp = client.post("/collections", json={"tableName": f"t{i}", "isPublic": True})
+        assert resp.status_code == 201
+
+    body = client.get("/dcat/catalog?limit=2&offset=0").json()
+    assert len(body["dcat:dataset"]) == 2
+    rels = {link["rel"]: link["href"] for link in body.get("links", [])}
+    assert "offset=2" in rels["next"]
+
+    body2 = client.get("/dcat/catalog?limit=2&offset=2").json()
+    assert len(body2["dcat:dataset"]) == 1
+    assert "next" not in {link["rel"] for link in body2.get("links", [])}
+
+
+def test_broken_collection_degrades_instead_of_failing_whole_catalog(env, caplog):
+    app, client, admin, _regular, _Session = env
+    _register(app, client, admin, public=True)
+
+    info2 = TableInfo(
+        table_name="incidents2",
+        pk_column="id",
+        geometry_column="geom",
+        geometry_type="Point",
+        srid=4326,
+        columns=[],
+    )
+
+    def introspector_with_incidents2(session, table_name):
+        if table_name == "incidents2":
+            return info2
+        return fake_introspector(session, table_name)
+
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: (
+        introspector_with_incidents2
+    )
+    _as(app, admin)
+    resp = client.post("/collections", json={"tableName": "incidents2", "isPublic": True})
+    assert resp.status_code == 201
+
+    def flaky_bbox_provider(session, info):
+        if info.table_name == "incidents2":
+            raise TableNotFound("gone")
+        return [1.0, 44.0, 2.0, 45.0]
+
+    app.dependency_overrides[dcat_routes.get_bbox_provider] = lambda: flaky_bbox_provider
+    with caplog.at_level("WARNING"):
+        catalog_resp = client.get("/dcat/catalog")
+    assert catalog_resp.status_code == 200
+    ids = [d["dct:identifier"] for d in catalog_resp.json()["dcat:dataset"]]
+    assert set(ids) == {"incidents", "incidents2"}
+    assert "extent lookup failed" in caplog.text
+
+
+def test_broken_collection_code_bug_is_not_swallowed(env):
+    app, client, admin, _regular, _Session = env
+    _register(app, client, admin, public=True)
+
+    def buggy_provider(session, info):
+        raise TypeError("bug")
+
+    app.dependency_overrides[dcat_routes.get_bbox_provider] = lambda: buggy_provider
+    with pytest.raises(TypeError):
+        client.get("/dcat/catalog")
+
+
 def test_catalog_reflects_restricted_access_rights(env):
     app, client, admin, _regular, _Session = env
     _register(app, client, admin, public=False)
