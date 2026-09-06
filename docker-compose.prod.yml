@@ -59,7 +59,7 @@ services:
       - traefik.http.routers.martin.priority=15
       - traefik.http.routers.martin.middlewares=admin-auth@docker,security-headers@docker,rate-limit@docker,strip-admin-martin@docker
       - traefik.http.middlewares.strip-admin-martin.stripprefix.prefixes=/admin/martin
-      - traefik.http.middlewares.admin-auth.forwardauth.address=http://core:8200/admin-tools/verify
+      - traefik.http.middlewares.admin-auth.forwardauth.address=http://core:8200/v1/admin-tools/verify
       - traefik.http.services.martin.loadbalancer.server.port=3000
 
   titiler:
@@ -203,14 +203,14 @@ services:
       - traefik.http.routers.seo-static.service=core
       - traefik.http.routers.seo-static.middlewares=security-headers@docker,rate-limit@docker,compress@docker,seo-static-rewrite@docker
       - traefik.http.middlewares.seo-static-rewrite.replacepathregex.regex=^/(sitemap\.xml|robots\.txt)$$
-      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.replacement=/public/$$1
+      - traefik.http.middlewares.seo-static-rewrite.replacepathregex.replacement=/v1/public/$$1
       - traefik.http.routers.seo-bots.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/sites/`) && HeaderRegexp(`User-Agent`, `(?i)(facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Googlebot|bingbot)`)
       - traefik.http.routers.seo-bots.entrypoints=web
       - traefik.http.routers.seo-bots.priority=25
       - traefik.http.routers.seo-bots.service=core
       - traefik.http.routers.seo-bots.middlewares=security-headers@docker,rate-limit@docker,compress@docker,seo-bots-rewrite@docker
       - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.regex=^/sites/([^/]+)$$
-      - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.replacement=/public/sites/$$1/social-preview
+      - traefik.http.middlewares.seo-bots-rewrite.replacepathregex.replacement=/v1/public/sites/$$1/social-preview
 
   # worker/cdc-worker sont la MÊME image que core (docker-compose.yml:
   # `build: ./core` pour les trois, processus séparés par `command:`) —
