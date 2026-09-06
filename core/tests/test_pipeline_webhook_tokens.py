@@ -122,6 +122,10 @@ def test_create_webhook_token_returns_cleartext_once_and_persists_only_hash(db):
 
 
 def test_create_webhook_token_requires_automation_secrets_manage_privilege(db):
+    # SP-47 (déjà fusionné sur dev) a donné automation.secrets.manage au rôle
+    # Creator — reader (zéro privilège) est désormais le témoin correct pour
+    # « ne porte pas ce privilège », même patron que test_roles_guards.py et
+    # test_secrets_routes.py après ce même correctif SP-47.
     tenant_id, owner_id, item_id = _seed(db)
     with db() as s:
         roles = ensure_built_in_roles(s, tenant_id=tenant_id)
@@ -129,8 +133,8 @@ def test_create_webhook_token_requires_automation_secrets_manage_privilege(db):
             s,
             tenant_id=tenant_id,
             user_id=owner_id,
-            role_id=roles["creator"].id,
-            role_slug="creator",
+            role_id=roles["reader"].id,
+            role_slug="reader",
         )
         s.commit()
 
@@ -303,7 +307,7 @@ def test_token_hash_is_unique_across_pipelines(db, monkeypatch):
             create_webhook_token_service(s, user=owner, item_id=item_id)
 
 
-# --- Migration 0035 sur base Postgres réelle, non vide (piège CLAUDE.md n°8) ---
+# --- Migration 0036 sur base Postgres réelle, non vide (piège CLAUDE.md n°8) ---
 # Patron identique à test_attachments_migration_alembic.py : base jetable
 # créée/détruite par CE test, jamais le schéma partagé postgis-test (un
 # downgrade y serait destructif pour les autres tests postgis concurrents).
@@ -346,7 +350,7 @@ def throwaway_database_url():
 
 
 @pytest.mark.postgis
-def test_migration_0035_upgrades_and_downgrades_on_a_real_non_empty_base(
+def test_migration_0036_upgrades_and_downgrades_on_a_real_non_empty_base(
     throwaway_database_url,
 ):
     alembic_cfg = Config()
@@ -354,7 +358,7 @@ def test_migration_0035_upgrades_and_downgrades_on_a_real_non_empty_base(
     previous_database_url = os.environ.get("DATABASE_URL")
     os.environ["DATABASE_URL"] = throwaway_database_url
     try:
-        # 0034 : juste avant 0035, pour seeder tenant/role/user/item RÉELS
+        # 0034 : juste avant 0036, pour seeder tenant/role/user/item RÉELS
         # avant que la migration testée ne s'applique — preuve qu'elle
         # s'applique correctement sur une base déjà peuplée, pas seulement
         # une base fraîche.
@@ -431,8 +435,8 @@ def test_migration_0035_upgrades_and_downgrades_on_a_real_non_empty_base(
                 )
             }
             assert "pipeline_webhook_tokens" not in tables
-            # La ligne `items` insérée avant 0035 survit au downgrade (seule
-            # la table ajoutée par 0035 est retirée).
+            # La ligne `items` insérée avant 0036 survit au downgrade (seule
+            # la table ajoutée par 0036 est retirée).
             still_there = conn.execute(sa.text("SELECT 1 FROM items WHERE id = 'p1'")).scalar()
             assert still_there == 1
         engine.dispose()
