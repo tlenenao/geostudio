@@ -292,8 +292,6 @@ export type PrintLayoutConfig = {
   orientation?: "portrait" | "landscape";
   title?: string | null;
   showLegend?: boolean;
-  showScaleBar?: boolean;
-  showNorthArrow?: boolean;
   cartouche?: string | null;
 };
 
