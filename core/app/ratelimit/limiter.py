@@ -27,6 +27,12 @@ _LLM_RE = re.compile(r"^/mcp$|^/copilot/turn$")
 # réel (create/patch/delete/run) sont toutes des POST/PATCH/DELETE — la
 # distinction se fait donc par méthode, pas seulement par chemin.
 _HARVEST_RE = re.compile(r"^/harvest/")
+# GAP-24, SP-53 : la seule route sans Depends(get_current_user) de tout le
+# dépôt — un secret bearer par pipeline la protège à la place, mais elle
+# doit aussi être son propre groupe de rate limiting (un appelant externe,
+# CI ou capteur, peut avoir un profil d'appel différent des groupes
+# existants).
+_WEBHOOK_TRIGGER_RE = re.compile(r"^/pipelines/[^/]+/trigger$")
 
 # Budgets par groupe de coût réel (requêtes / 60s). Réutilise _EXPORT_PATH_RE
 # de app.main pour le groupe "jobs" plutôt que de le redéfinir ici.
@@ -35,6 +41,7 @@ _BUDGETS = {
     "llm": 20,
     "jobs": 15,
     "harvest": 10,
+    "webhook-trigger": 30,
 }
 _WINDOW_SECONDS = 60.0
 
@@ -48,6 +55,8 @@ def route_group(path: str, method: str, export_path_re: re.Pattern[str]) -> str 
         return "jobs"
     if _HARVEST_RE.match(path) and method != "GET":
         return "harvest"
+    if _WEBHOOK_TRIGGER_RE.match(path) and method == "POST":
+        return "webhook-trigger"
     return None
 
 

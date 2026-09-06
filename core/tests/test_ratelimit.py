@@ -115,6 +115,16 @@ def test_route_group_covers_harvest_writes():
     assert route_group("/harvest/sources/abc/run", "POST", _EXPORT_PATH_RE) == "harvest"
 
 
+def test_route_group_covers_pipeline_webhook_trigger():
+    # GAP-24, SP-53 : seule route sans Depends(get_current_user) — son
+    # propre groupe de budget, distinct de "jobs"/"harvest".
+    assert route_group("/pipelines/abc/trigger", "POST", _EXPORT_PATH_RE) == "webhook-trigger"
+
+
+def test_route_group_ignores_get_on_pipeline_webhook_trigger():
+    assert route_group("/pipelines/abc/trigger", "GET", _EXPORT_PATH_RE) is None
+
+
 # Revue finale SP-26 (I4) : `_hits` grossissait sans borne sous une vraie
 # rotation de jeton OIDC (nouvelle clé d'appelant à chaque refresh, jamais
 # réclamée). Ce test prouve qu'une entrée dont la fenêtre expire
