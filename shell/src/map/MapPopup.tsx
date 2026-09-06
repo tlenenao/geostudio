@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { AttachmentSummary } from "../api/types";
 import type { PopupContent } from "./popupContent";
+import { t } from "../i18n";
 
 // Composant purement présentationnel : il ne connaît ni MapLibre ni la
 // configuration, seulement un contenu déjà résolu et une position déjà
@@ -39,13 +40,13 @@ export function MapPopup({
   return (
     <div
       role="dialog"
-      aria-label="Attributs de l'entité"
+      aria-label={t("mapPopup.attributesAria")}
       className="absolute z-20 max-h-64 max-w-xs -translate-x-1/2 -translate-y-full overflow-auto rounded-md bg-surface p-2 text-xs text-ink shadow-lg"
       style={{ left: `${x}px`, top: `${y}px` }}
     >
       <button
         type="button"
-        aria-label="Fermer"
+        aria-label={t("mapPopup.closeAria")}
         className="absolute right-1 top-1 px-1 text-ink-3"
         onClick={onClose}
       >
@@ -64,10 +65,10 @@ export function MapPopup({
           ))}
         </dl>
       )}
-      {empty && <p className="text-ink-3">Aucun attribut</p>}
+      {empty && <p className="text-ink-3">{t("mapPopup.emptyText")}</p>}
       {attachments && attachments.length > 0 && onDownloadAttachment && (
         <div className="mt-1 border-t border-rule pt-1">
-          <p className="mb-1 text-ink-3">Pièces jointes</p>
+          <p className="mb-1 text-ink-3">{t("mapPopup.attachmentsLabel")}</p>
           <ul className="flex flex-col gap-0.5">
             {attachments.map((a) => (
               <li key={a.id}>

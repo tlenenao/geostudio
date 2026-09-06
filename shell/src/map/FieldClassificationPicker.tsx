@@ -21,12 +21,13 @@ import type { PaletteId } from "../builder/widgets/palette";
 import type { ThemeColors } from "../api/types";
 import { labelCls, inputCls } from "./formFieldStyles";
 import { Button } from "../ui/kit/Button";
+import { t } from "../i18n";
 
 const PALETTE_OPTIONS: { id: Exclude<PaletteId, "theme-primary">; label: string }[] = [
-  { id: "categorical-a", label: "Catégorielle A" },
-  { id: "categorical-b", label: "Catégorielle B" },
-  { id: "sequential-blue", label: "Séquentielle bleue" },
-  { id: "sequential-warm", label: "Séquentielle chaude" },
+  { id: "categorical-a", label: t("fieldClassification.categoricalAOption") },
+  { id: "categorical-b", label: t("fieldClassification.categoricalBOption") },
+  { id: "sequential-blue", label: t("fieldClassification.sequentialBlueOption") },
+  { id: "sequential-warm", label: t("fieldClassification.sequentialWarmOption") },
 ];
 
 export function formatDomain(domain: ColorDomain): string {
@@ -108,7 +109,9 @@ export function FieldClassificationPicker({
               {p.label}
             </option>
           ))}
-          {themeColors?.primary && <option value="theme-primary">Thème du site</option>}
+          {themeColors?.primary && (
+            <option value="theme-primary">{t("fieldClassification.themePrimaryOption")}</option>
+          )}
         </select>
       </label>
       {value?.field && (
@@ -140,8 +143,8 @@ export function FieldClassificationPicker({
                 })
               }
             >
-              <option value="categorical">Catégoriel</option>
-              <option value="numeric">Numérique</option>
+              <option value="categorical">{t("fieldClassification.categoricalModeOption")}</option>
+              <option value="numeric">{t("fieldClassification.numericModeOption")}</option>
             </select>
           </label>
           {value.mode === "numeric" && (
@@ -165,10 +168,14 @@ export function FieldClassificationPicker({
                     });
                   }}
                 >
-                  <option value="continuous">Continu (dégradé)</option>
-                  <option value="quantile">Quantiles</option>
-                  <option value="equalInterval">Intervalles égaux</option>
-                  {jenksAvailable && <option value="jenks">Seuils naturels (Jenks)</option>}
+                  <option value="continuous">{t("fieldClassification.continuousOption")}</option>
+                  <option value="quantile">{t("fieldClassification.quantileOption")}</option>
+                  <option value="equalInterval">
+                    {t("fieldClassification.equalIntervalOption")}
+                  </option>
+                  {jenksAvailable && (
+                    <option value="jenks">{t("fieldClassification.jenksOption")}</option>
+                  )}
                 </select>
               </label>
               {value.classification && (
@@ -202,7 +209,7 @@ export function FieldClassificationPicker({
             disabled={busy}
             onClick={onRecompute}
           >
-            {busy ? "Calcul…" : labels.recompute}
+            {busy ? t("fieldClassification.computingButton") : labels.recompute}
           </Button>
           {error && (
             <p role="alert" className="text-xs text-danger">
@@ -215,13 +222,15 @@ export function FieldClassificationPicker({
               l'extraction. */}
           {!value.computedAt && (
             <p className="text-xs text-warn">
-              Classes non calculées — cliquez sur « {labels.recompute} ».
+              {t("fieldClassification.notComputedText", { recompute: labels.recompute })}
             </p>
           )}
           {value.computedAt && (
             <p className="text-xs text-ink-3">
-              Classes calculées le {new Date(value.computedAt).toLocaleString()} :{" "}
-              {formatDomain(value.domain)}
+              {t("fieldClassification.computedAtText", {
+                date: new Date(value.computedAt).toLocaleString(),
+                domain: formatDomain(value.domain),
+              })}
             </p>
           )}
         </>

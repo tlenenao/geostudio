@@ -1,14 +1,1 @@
-[
-  "src/map/BasemapSelect.tsx",
-  "src/map/CameraControls.tsx",
-  "src/map/FieldClassificationPicker.tsx",
-  "src/map/LayerPicker.tsx",
-  "src/map/LayersPanel.tsx",
-  "src/map/MapMeasureSketchToolbar.tsx",
-  "src/map/MapPopup.tsx",
-  "src/map/MapSymbologyEditor.tsx",
-  "src/map/MapView.tsx",
-  "src/map/PopupEditor.tsx",
-  "src/map/Terrain3DUploadButton.tsx",
-  "src/map/TerrainPanel.tsx"
-]
+[]

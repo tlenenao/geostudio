@@ -6,6 +6,7 @@ import type { LayerSource, MapLayer } from "../api/types";
 import { detectGeometryKind, renderAsFor } from "../builder/widgets/mapSymbology";
 import { fetchFeatureCollection } from "./geojsonIntrospect";
 import { Button } from "../ui/kit/Button";
+import { t } from "../i18n";
 
 function toMapLayer(source: LayerSource): MapLayer {
   const id = crypto.randomUUID();
@@ -71,9 +72,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
       // (CORS, en-têtes différents...), échouera de la même façon pour
       // MapLibre au rendu — ce n'est pas une régression, juste un défaut
       // qu'on ne peut pas prédire sans que MapView tente lui-même le rendu.
-      setFeatureError(
-        "Couche ajoutée, mais son contenu n'a pas pu être vérifié (l'URL sera quand même utilisée pour l'affichage).",
-      );
+      setFeatureError(t("layerPicker.contentVerifyError"));
     }
     onAdd({
       id: crypto.randomUUID(),
@@ -120,23 +119,23 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
       <input
         type="search"
         role="searchbox"
-        aria-label="Rechercher une source de couche"
-        placeholder="Rechercher…"
+        aria-label={t("layerPicker.searchAria")}
+        placeholder={t("layerPicker.searchPlaceholder")}
         className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
-      {isLoading && <p className="text-sm text-ink-2">Chargement des sources…</p>}
+      {isLoading && <p className="text-sm text-ink-2">{t("layerPicker.loadingSources")}</p>}
       {isError && (
         <div className="text-sm text-danger">
-          <p role="alert">Impossible de charger les sources de couches.</p>
+          <p role="alert">{t("layerPicker.loadError")}</p>
           <button type="button" className="underline" onClick={() => void refetch()}>
-            Réessayer
+            {t("common.retry")}
           </button>
         </div>
       )}
       {!isLoading && !isError && (!data || data.length === 0) && (
-        <p className="text-sm text-ink-2">Aucune source disponible.</p>
+        <p className="text-sm text-ink-2">{t("layerPicker.emptyText")}</p>
       )}
       {!isLoading && !isError && data && data.length > 0 && (
         <ul className="flex flex-col gap-1">
@@ -150,7 +149,9 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
                 {source.title}
                 <span className="ml-2 text-xs text-ink-3">{source.kind}</span>
                 {typeof source.featureCount === "number" && (
-                  <span className="ml-2 text-xs text-ink-3">{source.featureCount} entités</span>
+                  <span className="ml-2 text-xs text-ink-3">
+                    {t("layerPicker.featureCountTemplate", { n: source.featureCount })}
+                  </span>
                 )}
               </button>
             </li>
@@ -158,20 +159,22 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
         </ul>
       )}
       <div className="border-t border-rule pt-2">
-        <p className="mb-1 text-xs font-medium text-ink-2">Ajouter un tileset 3D par URL</p>
+        <p className="mb-1 text-xs font-medium text-ink-2">
+          {t("layerPicker.addTileset3dHeading")}
+        </p>
         <div className="flex flex-col gap-1">
           <input
-            aria-label="Titre du tileset 3D"
+            aria-label={t("layerPicker.tileset3dTitleAria")}
             type="text"
-            placeholder="Titre"
+            placeholder={t("layerPicker.titlePlaceholder")}
             className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
             value={tiles3dTitle}
             onChange={(e) => setTiles3dTitle(e.target.value)}
           />
           <input
-            aria-label="URL du tileset.json"
+            aria-label={t("layerPicker.tileset3dUrlAria")}
             type="text"
-            placeholder="https://…/tileset.json"
+            placeholder={t("layerPicker.tileset3dUrlPlaceholder")}
             className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
             value={tiles3dUrl}
             onChange={(e) => setTiles3dUrl(e.target.value)}
@@ -183,37 +186,35 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             disabled={!tiles3dTitle.trim() || !tiles3dUrl.trim()}
             onClick={addTiles3D}
           >
-            Ajouter le tileset 3D
+            {t("layerPicker.addTileset3dButton")}
           </Button>
         </div>
       </div>
       <div className="border-t border-rule pt-2">
-        <p className="mb-1 text-xs font-medium text-ink-2">
-          Ajouter une visualisation agrégée (deck.gl)
-        </p>
+        <p className="mb-1 text-xs font-medium text-ink-2">{t("layerPicker.addDeckHeading")}</p>
         <div className="flex flex-col gap-1">
           <input
-            aria-label="Titre de la visualisation"
+            aria-label={t("layerPicker.deckTitleAria")}
             type="text"
-            placeholder="Titre"
+            placeholder={t("layerPicker.titlePlaceholder")}
             className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
             value={deckTitle}
             onChange={(e) => setDeckTitle(e.target.value)}
           />
           <select
-            aria-label="Type de visualisation"
+            aria-label={t("layerPicker.deckTypeAria")}
             className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
             value={deckType}
             onChange={(e) => setDeckType(e.target.value as "heatmap" | "hexbin" | "column")}
           >
-            <option value="heatmap">Carte de chaleur (heatmap)</option>
-            <option value="hexbin">Hexagones (hexbin)</option>
-            <option value="column">Colonnes 3D</option>
+            <option value="heatmap">{t("layerPicker.deckHeatmapOption")}</option>
+            <option value="hexbin">{t("layerPicker.deckHexbinOption")}</option>
+            <option value="column">{t("layerPicker.deckColumnOption")}</option>
           </select>
           <input
-            aria-label="URL des données (GeoJSON)"
+            aria-label={t("layerPicker.deckUrlAria")}
             type="text"
-            placeholder="https://…/donnees.geojson"
+            placeholder={t("layerPicker.geojsonUrlPlaceholder")}
             className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
             value={deckUrl}
             onChange={(e) => setDeckUrl(e.target.value)}
@@ -225,25 +226,25 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             disabled={!deckTitle.trim() || !deckUrl.trim()}
             onClick={addDeckLayer}
           >
-            Ajouter la visualisation
+            {t("layerPicker.addDeckButton")}
           </Button>
         </div>
       </div>
       <div className="border-t border-rule pt-2">
-        <p className="mb-1 text-xs font-medium text-ink-2">Ajouter une couche par URL GeoJSON</p>
+        <p className="mb-1 text-xs font-medium text-ink-2">{t("layerPicker.addFeatureHeading")}</p>
         <div className="flex flex-col gap-1">
           <input
-            aria-label="Titre de la couche GeoJSON"
+            aria-label={t("layerPicker.featureTitleAria")}
             type="text"
-            placeholder="Titre"
+            placeholder={t("layerPicker.titlePlaceholder")}
             className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
             value={featureTitle}
             onChange={(e) => setFeatureTitle(e.target.value)}
           />
           <input
-            aria-label="URL du GeoJSON"
+            aria-label={t("layerPicker.featureUrlAria")}
             type="text"
-            placeholder="https://…/donnees.geojson"
+            placeholder={t("layerPicker.geojsonUrlPlaceholder")}
             className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
             value={featureUrl}
             onChange={(e) => setFeatureUrl(e.target.value)}
@@ -260,7 +261,7 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             disabled={!featureTitle.trim() || !featureUrl.trim() || featureBusy}
             onClick={() => void addFeatureLayer()}
           >
-            Ajouter la couche
+            {t("layerPicker.addFeatureButton")}
           </Button>
         </div>
       </div>

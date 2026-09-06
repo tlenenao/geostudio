@@ -30,6 +30,7 @@ import {
 } from "../builder/widgets/mapSymbology";
 import { decodeIconImage, rasterizeLucideIcon } from "../builder/widgets/iconLibrary";
 import { buildLabelFeatureCollection } from "./labelSource";
+import { t } from "../i18n";
 
 const HIGHLIGHT_ID = "__highlight__";
 const TERRAIN_SOURCE_ID = "__terrain__";
@@ -320,15 +321,11 @@ function addLabelLayer(
   // style n'est simplement pas encore chargé. Deux messages distincts.
   const style = map.getStyle() as { glyphs?: string } | undefined;
   if (style === undefined) {
-    console.warn(
-      `MapView: étiquettes ignorées pour ${spec.parentId} — le style du fond de carte n'est pas encore chargé.`,
-    );
+    console.warn(t("mapView.labelsSkippedNoStyleWarning", { parentId: spec.parentId }));
     return false;
   }
   if (!style.glyphs) {
-    console.warn(
-      `MapView: étiquettes ignorées pour ${spec.parentId} — le style du fond de carte ne déclare pas de "glyphs" (text-field l'exige).`,
-    );
+    console.warn(t("mapView.labelsSkippedNoGlyphsWarning", { parentId: spec.parentId }));
     return false;
   }
   // Coût assumé (seconde moitié du constat N10) : serialize() sérialise TOUT
@@ -702,7 +699,7 @@ async function loadIconImages(
         // HTMLImageElement est accepté par addImage (signature vérifiée).
         if (!map.hasImage(id)) map.addImage(id, image);
       } catch (err) {
-        console.warn(`MapView: icône ${id} non chargée`, err);
+        console.warn(t("mapView.iconNotLoadedWarning", { id }), err);
       }
     }),
   );
@@ -1205,7 +1202,7 @@ export const MapView = forwardRef<
         (e as { error?: { message?: unknown } } | undefined)?.error?.message ?? "",
       );
       if (!/^(layers|sources)[.[]/.test(message)) return;
-      console.error("MapView: MapLibre a signalé une erreur", e);
+      console.error(t("mapView.styleErrorLog"), e);
     });
     return () => {
       clearTimeout(labelDebounce);
