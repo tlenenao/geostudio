@@ -30,6 +30,7 @@ from app.auth.dependency import (
 from app.catalog import routes as catalog_routes
 from app.collections import dataset_validation as collections_dataset_validation  # noqa: F401
 from app.collections import routes as collections_routes
+from app.compliance import routes as compliance_routes
 from app.configs import routes as configs_routes
 from app.copilot import routes as copilot_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
@@ -282,6 +283,7 @@ def create_app() -> FastAPI:
     app.include_router(reports_routes.router)
     app.include_router(notifications_routes.router)
     app.include_router(quotas_routes.router)
+    app.include_router(compliance_routes.router)
     if is_etl_enabled():
         app.include_router(pipelines_routes.router)
     if is_export_enabled():
