@@ -179,7 +179,7 @@ services:
       # Blocage 3 (script-src pour les widgets d'extension tiers) reste
       # ouvert — décision produit non tranchée, spec SP-48 §4 : script-src
       # reste 'self' quel que soit CORE_CSP_MODE.
-      - traefik.http.middlewares.security-headers.headers.customResponseHeaders.Permissions-Policy=camera=(), microphone=(), payment=(), usb=()
+      - traefik.http.middlewares.security-headers.headers.customResponseHeaders.Permissions-Policy=camera=(), microphone=(), payment=(), usb=(), geolocation=()
       - traefik.http.middlewares.rate-limit.ratelimit.average=100
       - traefik.http.middlewares.rate-limit.ratelimit.burst=200
       - traefik.http.middlewares.compress.compress=true
