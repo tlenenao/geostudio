@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { forwardRef, useImperativeHandle } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
@@ -184,8 +184,17 @@ test("PropsPanel mounts MapSymbologyEditor with theme from props", () => {
   expect(Array.from(select.options).some((o) => o.value === "theme-primary")).toBe(true);
 });
 
-test("choosing Jenks from the widget's PropsPanel surfaces an error instead of hanging", async () => {
+// GAP-52 (4/4) : Jenks fonctionne désormais sur ce host via
+// ItemClient.sampleDataSourceField (résolution asynchrone du collectionId,
+// symétrique de queryDataSource) — remplace l'ancien test qui affirmait que
+// sampleField levait systématiquement une erreur explicite "non câblé"
+// (comportement révolu, cf. GAP-52/jenks). Une vraie panne du client
+// (réseau, champ inconnu) continue de surfacer un message plutôt que de
+// faire pendre le bouton indéfiniment — même garde que
+// recomputeColor/recomputeSize dans MapSymbologyEditor.
+test("choosing Jenks from the widget's PropsPanel surfaces a real client error instead of hanging", async () => {
   const onChange = vi.fn();
+  const sampleDataSourceField = vi.fn().mockRejectedValue(new Error("boom"));
   renderPropsPanel({
     props: {
       dataSourceId: "ds1",
@@ -201,21 +210,16 @@ test("choosing Jenks from the widget's PropsPanel surfaces an error instead of h
       },
     },
     onChange,
+    clientOverrides: { sampleDataSourceField },
   });
   await userEvent.click(screen.getByRole("button", { name: "Recalculer les classes" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Jenks sur le widget carte nécessite un collectionId résolu — non câblé",
-  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("boom");
   // The button re-enables afterwards (busy reset in MapSymbologyEditor's
   // `finally`) instead of hanging forever on "Calcul…".
   expect(screen.getByRole("button", { name: "Recalculer les classes" })).not.toBeDisabled();
 });
 
-// I5 de la revue finale SP-25 : Jenks ne peut jamais fonctionner sur cet
-// hôte (sampleField y lève systématiquement, cf. le test ci-dessus) —
-// l'option ne doit donc pas être offerte du tout dans le select, même
-// précédent que "theme-primary" (conditionnel sur themeColors).
-test("Jenks option is absent from the widget's PropsPanel classification select", () => {
+test("Jenks est proposé dans le sélecteur de classification du widget carte (GAP-52/jenks)", () => {
   renderPropsPanel({
     props: {
       dataSourceId: "ds1",
@@ -232,7 +236,47 @@ test("Jenks option is absent from the widget's PropsPanel classification select"
     onChange: vi.fn(),
   });
   const select = screen.getByLabelText("Méthode de classification") as HTMLSelectElement;
-  expect(Array.from(select.options).some((o) => o.value === "jenks")).toBe(false);
+  expect(Array.from(select.options).some((o) => o.value === "jenks")).toBe(true);
+});
+
+test("Jenks fonctionne via sampleDataSourceField, résolu depuis dataSource.layer (GAP-52/jenks)", async () => {
+  const onChange = vi.fn();
+  const sampleDataSourceField = vi.fn().mockResolvedValue([1, 2, 3, 4, 5]);
+  renderPropsPanel({
+    props: {
+      dataSourceId: "src1",
+      symbology: {
+        color: {
+          field: "pop",
+          mode: "numeric",
+          classification: { method: "jenks", classes: 5 },
+          palette: "sequential-blue",
+          domain: { kind: "numeric", min: 0, max: 0 },
+          computedAt: "",
+        },
+      },
+    },
+    dataSources: [{ id: "src1", type: "features", service: "core", layer: "communes", query: {} }],
+    onChange,
+    clientOverrides: { sampleDataSourceField },
+  });
+  await userEvent.click(screen.getByRole("button", { name: "Recalculer les classes" }));
+  await waitFor(() =>
+    expect(sampleDataSourceField).toHaveBeenCalledWith(
+      { layer: "communes", datasetId: undefined },
+      "pop",
+      expect.any(Number),
+    ),
+  );
+  expect(onChange).toHaveBeenCalledWith(
+    expect.objectContaining({
+      symbology: expect.objectContaining({
+        color: expect.objectContaining({
+          domain: expect.objectContaining({ kind: "numeric-classed" }),
+        }),
+      }),
+    }),
+  );
 });
 
 // I5 de la revue finale SP-25 : `runStatistics` hardcodait `layer: ""` et ne
@@ -241,6 +285,56 @@ test("Jenks option is absent from the widget's PropsPanel classification select"
 // sélectionnable, cf. DataSourceSelect qui filtre sur `type === "features"`)
 // postait alors vers `/collections//aggregate`. Le repli doit utiliser
 // `dataSource.layer`, qui porte l'id de collection dans ce cas.
+test("PropsPanel expose un sélecteur de fond de carte (GAP-52/basemap)", () => {
+  const onChange = vi.fn();
+  renderPropsPanel({ props: { dataSourceId: "" }, onChange });
+  const select = screen.getByRole("combobox", { name: "Fond de carte" });
+  fireEvent.change(select, {
+    target: { value: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json" },
+  });
+  expect(onChange).toHaveBeenCalledWith(
+    expect.objectContaining({
+      basemapStyle: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+    }),
+  );
+});
+
+test("Component utilise props.basemapStyle s'il est défini (GAP-52/basemap)", async () => {
+  renderWidget({
+    props: { dataSourceId: "ds1", basemapStyle: "https://custom/style.json" },
+  });
+  await screen.findByTestId("mapview");
+  expect(lastMapConfig().basemap.style).toBe("https://custom/style.json");
+});
+
+test("PropsPanel expose le panneau de terrain (GAP-52/terrain)", () => {
+  const onChange = vi.fn();
+  renderPropsPanel({ props: { dataSourceId: "" }, onChange });
+  expect(screen.getByText("Terrain 3D")).toBeInTheDocument();
+});
+
+test("Component transmet props.terrain à MapView (GAP-52/terrain)", async () => {
+  const terrain = { tilesUrl: "https://t/{z}/{x}/{y}.png", encoding: "terrarium" as const };
+  renderWidget({ props: { dataSourceId: "ds1", terrain } });
+  await screen.findByTestId("mapview");
+  expect(lastMapConfig().terrain).toEqual(terrain);
+});
+
+test("PropsPanel expose les contrôles de caméra (GAP-52/camera)", () => {
+  const onChange = vi.fn();
+  renderPropsPanel({ props: { dataSourceId: "" }, onChange });
+  const pitchSlider = screen.getByRole("slider", { name: "Inclinaison de la caméra" });
+  fireEvent.change(pitchSlider, { target: { value: "30" } });
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ cameraPitch: 30 }));
+});
+
+test("Component transmet la caméra à la vue (GAP-52/camera)", async () => {
+  renderWidget({ props: { dataSourceId: "ds1", cameraPitch: 45, cameraBearing: 90 } });
+  await screen.findByTestId("mapview");
+  expect(lastMapConfig().view.pitch).toBe(45);
+  expect(lastMapConfig().view.bearing).toBe(90);
+});
+
 test("recompute works for a plain collection-backed source (no datasetId), via dataSource.layer", async () => {
   const queryDataSource = vi.fn().mockResolvedValue([{ id: "", properties: { min: 0, max: 100 } }]);
   const onChange = vi.fn();

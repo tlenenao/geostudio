@@ -205,6 +205,40 @@ test("adds a tiles3d layer from the manual URL form", async () => {
   expect(layer.id.length).toBeGreaterThan(0);
 });
 
+test("ajoute une couche deck.gl (heatmap) par URL (GAP-36)", async () => {
+  const onAdd = vi.fn();
+  renderPicker(onAdd);
+  await userEvent.type(screen.getByLabelText("Titre de la visualisation"), "Densité");
+  await userEvent.selectOptions(screen.getByLabelText("Type de visualisation"), "heatmap");
+  await userEvent.type(
+    screen.getByLabelText("URL des données (GeoJSON)"),
+    "https://d/points.geojson",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter la visualisation" }));
+  expect(onAdd).toHaveBeenCalledWith(
+    expect.objectContaining({
+      kind: "deck",
+      deckType: "heatmap",
+      dataUrl: "https://d/points.geojson",
+      title: "Densité",
+    }),
+  );
+});
+
+test("disables the deck.gl add button until title and URL are filled", async () => {
+  const onAdd = vi.fn();
+  renderPicker(onAdd);
+  const button = screen.getByRole("button", { name: "Ajouter la visualisation" });
+  expect(button).toBeDisabled();
+  await userEvent.type(screen.getByLabelText("Titre de la visualisation"), "Densité");
+  expect(button).toBeDisabled();
+  await userEvent.type(
+    screen.getByLabelText("URL des données (GeoJSON)"),
+    "https://d/points.geojson",
+  );
+  expect(button).toBeEnabled();
+});
+
 test("disables the tiles3d add button until both title and URL are filled", async () => {
   const onAdd = vi.fn();
   renderPicker(onAdd);

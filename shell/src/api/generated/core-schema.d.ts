@@ -873,6 +873,41 @@ export interface paths {
         patch: operations["update_item_items__item_id__patch"];
         trace?: never;
     };
+    "/items/{item_id}/share-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Share Links Route */
+        get: operations["list_share_links_route_items__item_id__share_links_get"];
+        put?: never;
+        /** Create Share Link Route */
+        post: operations["create_share_link_route_items__item_id__share_links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/items/{item_id}/share-links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Share Link Route */
+        delete: operations["revoke_share_link_route_items__item_id__share_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/items/{item_id}/sharing": {
         parameters: {
             query?: never;
@@ -1317,6 +1352,30 @@ export interface paths {
         post?: never;
         /** Delete Secret Route */
         delete: operations["delete_secret_route_secrets__secret_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/share-links/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve Share Link Route
+         * @description Résolution PUBLIQUE (aucune dépendance get_current_user) : le jeton
+         *     porte à lui seul le droit d'accès à cet item précis, en lecture seule.
+         *     401 (jamais 500) sur un jeton invalide, expiré, ou dont la ligne
+         *     share_link a été révoquée entre-temps — même discipline que
+         *     decode_export_token vis-à-vis d'une instance sans secret configuré.
+         */
+        get: operations["resolve_share_link_route_share_links__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1986,6 +2045,11 @@ export interface components {
         CreateGroupRequest: {
             /** Name */
             name: string;
+        };
+        /** CreateShareLinkRequest */
+        CreateShareLinkRequest: {
+            /** Ttldays */
+            ttlDays: number;
         };
         /** DataSource */
         DataSource: {
@@ -2911,6 +2975,17 @@ export interface components {
             channels?: (components["schemas"]["AlertChannelWebhook"] | components["schemas"]["AlertChannelEmail"])[];
             refreshPolicy: components["schemas"]["PipelineRefreshPolicy"];
         };
+        /** ResolvedShareLink */
+        ResolvedShareLink: {
+            /** Expiresat */
+            expiresAt: string;
+            /** Itemid */
+            itemId: string;
+            /** Resourcetype */
+            resourceType: string;
+            /** Title */
+            title: string;
+        };
         /** RevisionInfo */
         RevisionInfo: {
             /**
@@ -2986,6 +3061,22 @@ export interface components {
             name: string;
             /** Payload */
             payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"];
+        };
+        /** ShareLinkCreated */
+        ShareLinkCreated: {
+            /** Expiresat */
+            expiresAt: string;
+            /** Url */
+            url: string;
+        };
+        /** ShareLinkListItem */
+        ShareLinkListItem: {
+            /** Expiresat */
+            expiresAt: string;
+            /** Id */
+            id: string;
+            /** Revoked */
+            revoked: boolean;
         };
         /** Sharing */
         Sharing: {
@@ -5504,6 +5595,108 @@ export interface operations {
             };
         };
     };
+    list_share_links_route_items__item_id__share_links_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareLinkListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_share_link_route_items__item_id__share_links_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateShareLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareLinkCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_share_link_route_items__item_id__share_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                item_id: string;
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_sharing_items__item_id__sharing_get: {
         parameters: {
             query?: never;
@@ -6522,6 +6715,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_share_link_route_share_links__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolvedShareLink"];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -66,14 +66,22 @@ export type RoleSummary = {
 };
 
 export type Me = {
+  id: string;
+  tenantId: string;
+  tenantSlug: string;
   username: string;
+  email: string | null;
   firstName: string;
   lastName: string;
   role: RoleSummary;
   privileges: string[];
   version: string;
-  tenantId: string;
-  tenantSlug: string;
+  // GAP-65 (1/3) : GET /me sert ce profil de capacités depuis longtemps
+  // (MeResponse, core/app/auth/routes.py) — doublon délibéré de GET
+  // /instance (InstanceInfo, même forme exacte), gardé identique par un
+  // test dédié côté cœur. getInstanceInfo()/useInstanceInfo() ne sont pas
+  // retirés, cette lecture s'ajoute sans migrer leurs consommateurs.
+  capabilities: InstanceInfo;
 };
 
 export type Role = {
@@ -445,8 +453,21 @@ export interface ItemClient {
   uploadThumbnail(pk: string, file: File): Promise<void>;
   deleteItem(pk: string): Promise<void>;
   listGroups(): Promise<Group[]>;
+  // GAP-42/65 : POST /groups + POST /groups/{id}/members existaient et
+  // étaient testés côté cœur, mais aucune UI/MCP ne les exposait —
+  // ShareForm.tsx ne pouvait qu'afficher des groupes déjà créés hors
+  // produit. addGroupMember réserve le succès au créateur du groupe
+  // (404 côté cœur si non — comportement délibéré, message clair ici
+  // plutôt que masqué).
+  createGroup(name: string): Promise<Group>;
+  addGroupMember(groupId: string, userId: string): Promise<void>;
   getSharing(pk: string): Promise<Sharing>;
   setSharing(pk: string, sharing: Sharing): Promise<void>;
+  // GAP-12 (chantier 4.23) : lien de partage à échéance, révocable — distinct
+  // du partage groupe/rôle plat ci-dessus (présenté à un tiers externe).
+  createShareLink(itemId: string, ttlDays: number): Promise<{ url: string; expiresAt: string }>;
+  listShareLinks(itemId: string): Promise<{ id: string; expiresAt: string; revoked: boolean }[]>;
+  revokeShareLink(itemId: string, linkId: string): Promise<void>;
   listLayerSources(params?: { q?: string }): Promise<LayerSource[]>;
   sampleCollectionField(collectionId: string, field: string, limit: number): Promise<number[]>;
   // Un SEUL appel : le cœur reçoit les octets (D7). Pas de presign, donc pas
@@ -461,7 +482,7 @@ export interface ItemClient {
   listAllExtensions(): Promise<AdminExtension[]>;
   setExtensionEnabled(id: string, enabled: boolean): Promise<void>;
   getMetadataCatalog(): Promise<MetadataCatalog>;
-  listCollections(): Promise<CollectionAdmin[]>;
+  listCollections(params?: { q?: string }): Promise<CollectionAdmin[]>;
   listCandidateTables(): Promise<CandidateTable[]>;
   createCollection(input: CollectionCreateInput): Promise<CollectionAdmin>;
   createEmptyCollection(input: CreateEmptyCollectionInput): Promise<{ id: string }>;
@@ -522,7 +543,26 @@ export interface ItemClient {
   getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig>;
   getPublicAppConfig(pk: string): Promise<AppConfig>;
   saveAppConfig(pk: string, config: AppConfig): Promise<void>;
+  // GAP-38 : schéma JSON de BuilderConfig, factorisé côté cœur derrière
+  // app_config_json_schema() — même source que la ressource MCP
+  // schema://app-config (garanti identique par un test dédié côté cœur).
+  getAppConfigSchema(): Promise<Record<string, unknown>>;
   queryDataSource(source: DataSource): Promise<DataRecord[]>;
+  // Symétrique de sampleCollectionField, mais pour un hôte qui n'a qu'un
+  // DataSource (pas déjà un collectionId résolu) : la couche `feature` du
+  // widget carte de l'App Builder (Jenks, GAP-52 4/4). Résout collectionId
+  // via resolveDataset() quand `source.datasetId` est fourni, sinon utilise
+  // `source.layer` directement (même patron que queryDataSource).
+  sampleDataSourceField(
+    source: { layer: string; datasetId?: string },
+    field: string,
+    limit: number,
+  ): Promise<number[]>;
+  // GAP-65 (2/3) : datasetCache (interne à ItemClient, résolveDataset())
+  // n'expirait jamais et n'était rafraîchi que par une écriture passant
+  // par ce même ItemClient — TTL de 5 minutes + invalidation manuelle pour
+  // un appelant qui saurait qu'un dataset a changé ailleurs.
+  invalidateDatasetCache(pk?: string): void;
   featuresUrl(source: DataSource): string;
   exportDataSource(source: DataSource, format: string): Promise<{ blob: Blob; filename: string }>;
   getCollectionSchema(collectionId: string): Promise<CollectionSchema>;

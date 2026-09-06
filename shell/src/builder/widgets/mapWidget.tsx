@@ -13,11 +13,14 @@ import {
   symbologyToPaintInputs,
 } from "./mapSymbology";
 import type { LayerSymbology, LegendSpec } from "./mapSymbology";
-import type { MapConfig, PopupConfig } from "../../api/types";
+import type { MapConfig, MapTerrainConfig, PopupConfig } from "../../api/types";
 import type { MapViewHandle } from "../../map/MapView";
 import { ExplorerMenu } from "./ExplorerMenu";
 import { PopupEditor } from "../../map/PopupEditor";
 import { MapSymbologyEditor } from "../../map/MapSymbologyEditor";
+import { BasemapSelect } from "../../map/BasemapSelect";
+import { TerrainPanel } from "../../map/TerrainPanel";
+import { CameraControls } from "../../map/CameraControls";
 
 const MapView = lazy(() => import("../../map/MapView").then((m) => ({ default: m.MapView })));
 const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
@@ -193,6 +196,21 @@ export function registerMapWidget(): void {
             dataSources={dataSources.filter((s) => s.type === "features")}
             onChange={(id) => onChange({ ...props, dataSourceId: id })}
           />
+          <BasemapSelect
+            value={String(props.basemapStyle ?? DEFAULT_STYLE)}
+            onChange={(style) => onChange({ ...props, basemapStyle: style })}
+          />
+          <TerrainPanel
+            value={(props.terrain as MapTerrainConfig | null) ?? null}
+            onChange={(terrain) => onChange({ ...props, terrain })}
+          />
+          <CameraControls
+            pitch={Number(props.cameraPitch ?? 0)}
+            bearing={Number(props.cameraBearing ?? 0)}
+            onChange={({ pitch, bearing }) =>
+              onChange({ ...props, cameraPitch: pitch, cameraBearing: bearing })
+            }
+          />
           <MapSymbologyEditor
             value={props.symbology as LayerSymbology | undefined}
             availableFields={[]} // PropsPanel has no schema (registry.ts) — same PopupEditor precedent
@@ -216,16 +234,20 @@ export function registerMapWidget(): void {
                 query,
               })
             }
-            // Jenks a besoin d'un collectionId résolu pour échantillonner un
-            // champ ; ce host n'en a pas (portée volontairement non
-            // élargie ici, cf. brief I5) — l'option est masquée plutôt que
-            // de laisser l'auteur la choisir puis échouer au clic.
-            jenksAvailable={false}
-            sampleField={async () => {
-              throw new Error(
-                "Jenks sur le widget carte nécessite un collectionId résolu — non câblé",
-              );
-            }}
+            // GAP-52 (4/4) : Jenks fonctionne désormais sur ce host via
+            // ItemClient.sampleDataSourceField (résout collectionId depuis
+            // dataSource.layer ou datasetId, symétrique de queryStatistics
+            // ci-dessus) — `?.()` obligatoire (défaut n°5, brief Task 12) :
+            // un ItemClient de test partiel n'implémente pas forcément cette
+            // méthode.
+            jenksAvailable={true}
+            sampleField={(field, limit) =>
+              client.sampleDataSourceField?.(
+                { layer: dataSource?.layer ?? "", datasetId },
+                field,
+                limit,
+              ) ?? Promise.reject(new Error("sampleDataSourceField indisponible"))
+            }
             // `?.()` OBLIGATOIRE, pas cosmétique (défaut n° 5 de la brief
             // Task 12) : ce PropsPanel est rendu inconditionnellement, et
             // `renderPropsPanel` (mapWidget.test.tsx:126) le monte avec
@@ -286,8 +308,14 @@ export function registerMapWidget(): void {
       });
 
       const config: MapConfig = {
-        basemap: { style: DEFAULT_STYLE },
-        view: { center: [2.4, 46.6], zoom: 5 },
+        basemap: { style: String(props.basemapStyle ?? DEFAULT_STYLE) },
+        terrain: (props.terrain as MapTerrainConfig | null) ?? null,
+        view: {
+          center: [2.4, 46.6],
+          zoom: 5,
+          pitch: Number(props.cameraPitch ?? 0),
+          bearing: Number(props.cameraBearing ?? 0),
+        },
         layers: url
           ? [
               {

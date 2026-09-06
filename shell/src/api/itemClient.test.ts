@@ -93,7 +93,7 @@ test("getItem missing returns 404 and throws", async () => {
   await expect(makeClient().getItem("404")).rejects.toThrow(/404/);
 });
 
-test("getMe maps camelCase fields, dropping id/email/tenantId", async () => {
+test("getMe maps camelCase fields", async () => {
   server.use(
     http.get("https://core.test/me", () =>
       HttpResponse.json({
@@ -107,13 +107,52 @@ test("getMe maps camelCase fields, dropping id/email/tenantId", async () => {
     ),
   );
   const me = await makeClient().getMe();
+  // GAP-65 (1/3) : id est désormais lu (n'était plus « dropped » comme
+  // l'ancien titre de ce test l'affirmait) ; les champs absents de cette
+  // réponse minimale (tenantId/email/tenantSlug/version/capabilities)
+  // restent undefined — toEqual les ignore.
   expect(me).toEqual({
+    id: "u1",
     username: "alice",
     firstName: "Alice",
     lastName: "Martin",
     role: { id: "role-1", name: "Créateur", slug: "creator" },
     privileges: ["catalog.manage", "maps.manage"],
   });
+});
+
+test("getMe lit id/email/tenantId/capabilities en plus des champs existants", async () => {
+  server.use(
+    http.get("https://core.test/me", () =>
+      HttpResponse.json({
+        id: "u1",
+        tenantId: "t1",
+        tenantSlug: "acme",
+        username: "alice",
+        email: "alice@example.com",
+        firstName: "Alice",
+        lastName: "A",
+        role: { id: "r1", name: "Créateur", slug: "creator" },
+        privileges: ["maps.manage"],
+        version: "1.2.3",
+        capabilities: {
+          readOnly: false,
+          etlEnabled: true,
+          exportEnabled: true,
+          appExportEnabled: false,
+          tileset3dEnabled: false,
+          terrain3dEnabled: false,
+          copilotEnabled: false,
+          adminToolsEnabled: false,
+        },
+      }),
+    ),
+  );
+  const me = await makeClient().getMe();
+  expect(me.id).toBe("u1");
+  expect(me.email).toBe("alice@example.com");
+  expect(me.tenantId).toBe("t1");
+  expect(me.capabilities.etlEnabled).toBe(true);
 });
 
 test("getMe surfaces the caller's privileges", async () => {
@@ -220,6 +259,36 @@ test("listGroups maps name to title", async () => {
   ]);
 });
 
+test("createGroup crée un groupe (POST /groups)", async () => {
+  server.use(
+    http.post("https://core.test/groups", async ({ request }) => {
+      const body = (await request.json()) as { name: string };
+      expect(body.name).toBe("Équipe SIG");
+      return HttpResponse.json({ id: "g1", name: "Équipe SIG" }, { status: 201 });
+    }),
+  );
+  const group = await makeClient().createGroup("Équipe SIG");
+  expect(group).toEqual({ id: "g1", title: "Équipe SIG" });
+});
+
+test("addGroupMember pose un message clair sur un 404", async () => {
+  server.use(
+    http.post("https://core.test/groups/g1/members", () =>
+      HttpResponse.json({ detail: "group or user not found" }, { status: 404 }),
+    ),
+  );
+  await expect(makeClient().addGroupMember("g1", "u2")).rejects.toThrow(
+    /groupe.*n'existe pas.*créateur/i,
+  );
+});
+
+test("addGroupMember réussit (204) sans lever", async () => {
+  server.use(
+    http.post("https://core.test/groups/g1/members", () => new HttpResponse(null, { status: 204 })),
+  );
+  await expect(makeClient().addGroupMember("g1", "u2")).resolves.toBeUndefined();
+});
+
 test("getSharing passes through the core's Sharing shape directly", async () => {
   const sharing = await makeClient().getSharing("7");
   expect(sharing).toEqual({ public: true, groups: [{ groupId: "10", role: "editor" }] });
@@ -238,6 +307,50 @@ test("setSharing PUTs the sharing object as-is", async () => {
     groups: [{ groupId: "10", role: "viewer" }],
   });
   expect(body).toEqual({ public: false, groups: [{ groupId: "10", role: "viewer" }] });
+});
+
+test("createShareLink crée un lien avec une échéance", async () => {
+  server.use(
+    http.post("https://core.test/items/it1/share-links", async ({ request }) => {
+      const body = (await request.json()) as { ttlDays: number };
+      expect(body.ttlDays).toBe(30);
+      return HttpResponse.json(
+        { url: "https://core.test/share-links/eyJ...", expiresAt: "2026-10-05T00:00:00" },
+        { status: 201 },
+      );
+    }),
+  );
+  const link = await makeClient().createShareLink("it1", 30);
+  expect(link.url).toContain("/share-links/");
+  expect(link.expiresAt).toBe("2026-10-05T00:00:00");
+});
+
+test("listShareLinks retourne la liste avec son statut", async () => {
+  server.use(
+    http.get("https://core.test/items/it1/share-links", () =>
+      HttpResponse.json([
+        { id: "sl1", expiresAt: "2026-10-05T00:00:00", revoked: false },
+        { id: "sl2", expiresAt: "2026-09-10T00:00:00", revoked: true },
+      ]),
+    ),
+  );
+  const links = await makeClient().listShareLinks("it1");
+  expect(links).toEqual([
+    { id: "sl1", expiresAt: "2026-10-05T00:00:00", revoked: false },
+    { id: "sl2", expiresAt: "2026-09-10T00:00:00", revoked: true },
+  ]);
+});
+
+test("revokeShareLink DELETE le lien indiqué", async () => {
+  let deletedPath = "";
+  server.use(
+    http.delete("https://core.test/items/it1/share-links/:linkId", ({ params }) => {
+      deletedPath = String(params.linkId);
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  await makeClient().revokeShareLink("it1", "sl1");
+  expect(deletedPath).toBe("sl1");
 });
 
 test("listLayerSources returns one tiled entry per core collection, and no Martin source", async () => {
@@ -967,6 +1080,60 @@ test("getDatasetConfig throws when the config has no dataset payload", async () 
   await expect(makeClient().getDatasetConfig("ds-3")).rejects.toThrow();
 });
 
+test("resolveDataset (via getDatasetConfig) refait un fetch après expiration du TTL", async () => {
+  vi.useFakeTimers();
+  try {
+    let calls = 0;
+    server.use(
+      http.get("https://core.test/configs/by-item/ds1", () => {
+        calls += 1;
+        return HttpResponse.json({
+          id: "cfg",
+          itemId: "ds1",
+          kind: "dataset",
+          config: {
+            kind: "dataset",
+            dataset: { source: "collection", collectionId: "communes", columns: {} },
+          },
+        });
+      }),
+    );
+    const client = makeClient();
+    await client.getDatasetConfig("ds1");
+    expect(calls).toBe(1);
+    await client.getDatasetConfig("ds1"); // encore dans le TTL
+    expect(calls).toBe(1);
+    vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+    await client.getDatasetConfig("ds1"); // TTL expiré
+    expect(calls).toBe(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("invalidateDatasetCache force un nouveau fetch avant expiration du TTL", async () => {
+  let calls = 0;
+  server.use(
+    http.get("https://core.test/configs/by-item/ds1", () => {
+      calls += 1;
+      return HttpResponse.json({
+        id: "cfg",
+        itemId: "ds1",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "collection", collectionId: "communes", columns: {} },
+        },
+      });
+    }),
+  );
+  const client = makeClient();
+  await client.getDatasetConfig("ds1");
+  client.invalidateDatasetCache("ds1");
+  await client.getDatasetConfig("ds1");
+  expect(calls).toBe(2);
+});
+
 test("createBookmarkItem posts a bookmark payload and returns a bookmark Item", async () => {
   server.use(
     http.post("https://core.test/configs", async ({ request }) => {
@@ -1475,6 +1642,17 @@ test("getAppConfig appends ?mode=runtime when a mode is passed", async () => {
   );
   await makeClient().getAppConfig("5", "runtime");
   expect(requestedUrl).toContain("mode=runtime");
+});
+
+test("getAppConfigSchema récupère le schéma JSON depuis le cœur", async () => {
+  server.use(
+    http.get("https://core.test/schemas/app-config", () =>
+      HttpResponse.json({ title: "BuilderConfig", type: "object", properties: {} }),
+    ),
+  );
+  const schema = await makeClient().getAppConfigSchema();
+  expect(schema.type).toBe("object");
+  expect(schema.properties).toBeDefined();
 });
 
 test("saveAppConfig PUTs the app config by item", async () => {
@@ -2486,6 +2664,28 @@ test("listCollections returns the admin collection shape including owner", async
       owner: "admin",
     },
   ]);
+});
+
+test("listCollections relaie q en paramètre de recherche", async () => {
+  server.use(
+    http.get("https://core.test/collections", ({ request }) => {
+      const url = new URL(request.url);
+      expect(url.searchParams.get("q")).toBe("commune");
+      return HttpResponse.json({ collections: [] });
+    }),
+  );
+  await makeClient().listCollections({ q: "commune" });
+});
+
+test("listCollections sans paramètre reste rétrocompatible", async () => {
+  server.use(
+    http.get("https://core.test/collections", ({ request }) => {
+      const url = new URL(request.url);
+      expect(url.searchParams.has("q")).toBe(false);
+      return HttpResponse.json({ collections: [] });
+    }),
+  );
+  await makeClient().listCollections();
 });
 
 test("listCandidateTables returns the candidates array as-is", async () => {
@@ -3853,4 +4053,39 @@ test("deleteSecret calls DELETE /secrets/{id}", async () => {
   );
   await makeClient().deleteSecret("s1");
   expect(method).toBe("DELETE");
+});
+
+test("sampleDataSourceField résout collectionId via resolveDataset puis échantillonne", async () => {
+  server.use(
+    http.get("https://core.test/configs/by-item/ds1", () =>
+      HttpResponse.json({
+        id: "cfg-ds1",
+        itemId: "ds1",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: { source: "collection", collectionId: "communes", columns: {} },
+        },
+      }),
+    ),
+    http.post("https://core.test/collections/communes/aggregate", () =>
+      HttpResponse.json({ categoryKey: "value", rows: [{ value: 1 }, { value: 2 }] }),
+    ),
+  );
+  const values = await makeClient().sampleDataSourceField(
+    { layer: "", datasetId: "ds1" },
+    "pop",
+    50,
+  );
+  expect(values).toEqual([1, 2]);
+});
+
+test("sampleDataSourceField utilise directement layer quand datasetId est absent", async () => {
+  server.use(
+    http.post("https://core.test/collections/communes/aggregate", () =>
+      HttpResponse.json({ categoryKey: "value", rows: [{ value: 3 }] }),
+    ),
+  );
+  const values = await makeClient().sampleDataSourceField({ layer: "communes" }, "pop", 50);
+  expect(values).toEqual([3]);
 });

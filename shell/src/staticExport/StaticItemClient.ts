@@ -33,9 +33,18 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async getPublicAppConfig() {
       return config;
     },
+    async getAppConfigSchema(..._args: unknown[]) {
+      return unsupported();
+    },
     async queryDataSource(source: DataSource): Promise<DataRecord[]> {
       return (source.query.records as DataRecord[] | undefined) ?? [];
     },
+    // Pas de cache dataset en export statique (queryDataSource lit
+    // directement source.query.records, jamais resolveDataset()) —
+    // no-op plutôt qu'un rejet : signature synchrone (void, pas Promise),
+    // même prudence que featuresUrl() ci-dessous vis-à-vis d'un appel
+    // synchrone pendant un rendu.
+    invalidateDatasetCache(): void {},
     // Must NOT throw: unlike every other method here, this one has a
     // non-Promise signature and can be called synchronously during render
     // (e.g. ExplorerDrawer.tsx builds a MapConfig on every render whenever
@@ -99,16 +108,34 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async listGroups(..._args: unknown[]) {
       return unsupported();
     },
+    async createGroup(..._args: unknown[]) {
+      return unsupported();
+    },
+    async addGroupMember(..._args: unknown[]) {
+      return unsupported();
+    },
     async getSharing(..._args: unknown[]) {
       return unsupported();
     },
     async setSharing(..._args: unknown[]) {
       return unsupported();
     },
+    async createShareLink(..._args: unknown[]) {
+      return unsupported();
+    },
+    async listShareLinks(..._args: unknown[]) {
+      return unsupported();
+    },
+    async revokeShareLink(..._args: unknown[]) {
+      return unsupported();
+    },
     async listLayerSources(..._args: unknown[]) {
       return unsupported();
     },
     async sampleCollectionField(..._args: unknown[]) {
+      return unsupported();
+    },
+    async sampleDataSourceField(..._args: unknown[]) {
       return unsupported();
     },
     async uploadMapIcon(..._args: unknown[]) {

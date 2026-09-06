@@ -146,6 +146,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
                 ref={mapViewRef}
                 config={draft}
                 onViewChange={setView}
+                interactiveTools
                 getAuthToken={client.getAuthToken}
                 getCoreUrl={client.getCoreUrl}
                 loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}

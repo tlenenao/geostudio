@@ -269,6 +269,102 @@ def test_set_sharing_with_unknown_group_errors(app_client):
     assert "group" in error_text.lower()
 
 
+def test_create_group_then_add_member_via_mcp(app_client):
+    with app_client.session_factory() as session:
+        bob = get_or_create_user(
+            session,
+            tenant_id=app_client.tenant.id,
+            oidc_sub="sub-bob",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        session.commit()
+        bob_id = bob.id
+
+    with app_client:
+        created = call_tool(app_client, "create_group", {"name": "Équipe SIG"})
+        assert created["name"] == "Équipe SIG"
+        # list_groups (comme search_collections, Tâche 4) retourne une liste
+        # nue — structuredContent["result"] est la forme fiable, pas
+        # json.loads(content[0].text) (qui unwrap l'unique élément au lieu
+        # d'un tableau JSON à un élément, vérifié empiriquement).
+        raw_groups = call_tool_raw(app_client, "list_groups", {})
+        groups = raw_groups["structuredContent"]["result"]
+        assert any(g["id"] == created["id"] for g in groups)
+        call_tool(app_client, "add_group_member", {"groupId": created["id"], "userId": bob_id})
+
+    with app_client.session_factory() as session:
+        from sqlalchemy import select
+
+        member = session.scalar(
+            select(GroupMember).where(
+                GroupMember.group_id == created["id"], GroupMember.user_id == bob_id
+            )
+        )
+        assert member is not None
+
+
+def test_add_group_member_by_non_creator_raises(app_client):
+    with app_client.session_factory() as session:
+        other_owner = get_or_create_user(
+            session,
+            tenant_id=app_client.tenant.id,
+            oidc_sub="sub-owner2",
+            username="owner2",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        foreign_group = Group(
+            id="foreign-g1",
+            tenant_id=app_client.tenant.id,
+            name="Foreign",
+            created_by=other_owner.id,
+        )
+        session.add(foreign_group)
+        session.commit()
+        foreign_group_id = foreign_group.id
+
+    with app_client:
+        error_text = call_tool_expecting_error(
+            app_client,
+            "add_group_member",
+            {"groupId": foreign_group_id, "userId": app_client.mock_user.id},
+        )
+
+    assert "creator" in error_text.lower() or "not found" in error_text.lower()
+
+
+def test_create_group_refuses_in_read_only_mode(app_client, monkeypatch):
+    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+    with app_client:
+        error_text = call_tool_expecting_error(app_client, "create_group", {"name": "X"})
+    assert "Mode démo : lecture seule, écritures désactivées." in error_text
+
+
+def test_add_group_member_refuses_in_read_only_mode(app_client, monkeypatch):
+    with app_client.session_factory() as session:
+        group = Group(
+            id="g-ro",
+            tenant_id=app_client.tenant.id,
+            name="G",
+            created_by=app_client.mock_user.id,
+        )
+        session.add(group)
+        session.commit()
+
+    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+    with app_client:
+        error_text = call_tool_expecting_error(
+            app_client,
+            "add_group_member",
+            {"groupId": "g-ro", "userId": app_client.mock_user.id},
+        )
+    assert "Mode démo : lecture seule, écritures désactivées." in error_text
+
+
 def test_set_sharing_writes_audit_log_with_agent_actor(app_client):
     item_id = _seed_item(app_client, owner_id=app_client.mock_user.id)
 

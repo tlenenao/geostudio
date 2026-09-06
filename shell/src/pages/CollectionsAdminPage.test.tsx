@@ -486,3 +486,20 @@ test("SP-42/F-securite-autorisation-06 : verrouille Éditer/Partager quand permi
   // la suppression sur write/share) : reste actionnable.
   expect(screen.getByRole("button", { name: "Supprimer" })).not.toBeDisabled();
 });
+
+test("GAP-40 : un champ de recherche relaie q à listCollections", async () => {
+  let lastUrl = "";
+  server.use(
+    http.get("https://core.test/collections", ({ request }) => {
+      lastUrl = request.url;
+      return HttpResponse.json({ collections: [INCIDENTS] });
+    }),
+  );
+  render(<Harness />);
+  await screen.findByText("Incidents");
+  await userEvent.type(
+    screen.getByRole("searchbox", { name: /rechercher une collection/i }),
+    "inci",
+  );
+  await waitFor(() => expect(new URL(lastUrl).searchParams.get("q")).toBe("inci"));
+});

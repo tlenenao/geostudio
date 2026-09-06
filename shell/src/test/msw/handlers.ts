@@ -100,4 +100,5 @@ export const handlers = [
     HttpResponse.json({ public: true, groups: [{ groupId: "10", role: "editor" }] }),
   ),
   http.put(`${CORE}/items/:pk/sharing`, () => new HttpResponse(null, { status: 204 })),
+  http.get(`${CORE}/items/:pk/share-links`, () => HttpResponse.json([])),
 ];

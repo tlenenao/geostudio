@@ -1257,6 +1257,19 @@
         "title": "CreateGroupRequest",
         "type": "object"
       },
+      "CreateShareLinkRequest": {
+        "properties": {
+          "ttlDays": {
+            "title": "Ttldays",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ttlDays"
+        ],
+        "title": "CreateShareLinkRequest",
+        "type": "object"
+      },
       "DataSource": {
         "properties": {
           "id": {
@@ -4004,6 +4017,34 @@
         "title": "ReportSchedulePayload",
         "type": "object"
       },
+      "ResolvedShareLink": {
+        "properties": {
+          "expiresAt": {
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "itemId": {
+            "title": "Itemid",
+            "type": "string"
+          },
+          "resourceType": {
+            "title": "Resourcetype",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "itemId",
+          "title",
+          "resourceType",
+          "expiresAt"
+        ],
+        "title": "ResolvedShareLink",
+        "type": "object"
+      },
       "RevisionInfo": {
         "properties": {
           "created_at": {
@@ -4271,6 +4312,47 @@
           "payload"
         ],
         "title": "SecretCreate",
+        "type": "object"
+      },
+      "ShareLinkCreated": {
+        "properties": {
+          "expiresAt": {
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expiresAt"
+        ],
+        "title": "ShareLinkCreated",
+        "type": "object"
+      },
+      "ShareLinkListItem": {
+        "properties": {
+          "expiresAt": {
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "revoked": {
+            "title": "Revoked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "expiresAt",
+          "revoked"
+        ],
+        "title": "ShareLinkListItem",
         "type": "object"
       },
       "Sharing": {
@@ -8505,6 +8587,167 @@
         "summary": "Update Item"
       }
     },
+    "/items/{item_id}/share-links": {
+      "get": {
+        "operationId": "list_share_links_route_items__item_id__share_links_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ShareLinkListItem"
+                  },
+                  "title": "Response List Share Links Route Items  Item Id  Share Links Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Share Links Route"
+      },
+      "post": {
+        "operationId": "create_share_link_route_items__item_id__share_links_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShareLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareLinkCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Share Link Route"
+      }
+    },
+    "/items/{item_id}/share-links/{link_id}": {
+      "delete": {
+        "operationId": "revoke_share_link_route_items__item_id__share_links__link_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "title": "Link Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Share Link Route"
+      }
+    },
     "/items/{item_id}/sharing": {
       "get": {
         "operationId": "get_sharing_items__item_id__sharing_get",
@@ -9927,6 +10170,46 @@
           }
         },
         "summary": "Delete Secret Route"
+      }
+    },
+    "/share-links/{token}": {
+      "get": {
+        "description": "R\u00e9solution PUBLIQUE (aucune d\u00e9pendance get_current_user) : le jeton\nporte \u00e0 lui seul le droit d'acc\u00e8s \u00e0 cet item pr\u00e9cis, en lecture seule.\n401 (jamais 500) sur un jeton invalide, expir\u00e9, ou dont la ligne\nshare_link a \u00e9t\u00e9 r\u00e9voqu\u00e9e entre-temps \u2014 m\u00eame discipline que\ndecode_export_token vis-\u00e0-vis d'une instance sans secret configur\u00e9.",
+        "operationId": "resolve_share_link_route_share_links__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedShareLink"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Share Link Route"
       }
     },
     "/stac": {

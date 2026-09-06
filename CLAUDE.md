@@ -704,6 +704,90 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   par la feuille de route révisée comme pertinent seulement dès qu'un
   tenant externe réel est onboardé (question produit Q2, toujours
   ouverte) — livrer ce plan ne tranche pas cette question.
+- **SP-51** — parité carte App Builder / éditeur autonome (9 tâches, spec
+  `docs/superpowers/specs/2026-09-05-sp51-parite-carte-design.md`) : GAP-46
+  déjà résolu (vérification seule, aucun code touché) ; GAP-53 (outils de
+  mesure/croquis montés en édition, `interactiveTools` sur `MapEditorPage`) ;
+  GAP-35 (contrôle d'opacité raster) ; GAP-52 3 jumelles réelles fermées
+  (basemap/terrain/caméra sur le widget carte de l'App Builder, réutilisant
+  `BasemapSelect`/`TerrainPanel`/`CameraControls` — la 5e jumelle annoncée,
+  palette theme-primary, était déjà implémentée, retirée du périmètre par
+  la spec) ; GAP-45 (éditeur JSON replié pour `layer.paint`, mode avancé) ;
+  GAP-52 Jenks (`ItemClient.sampleDataSourceField()`, symétrique de
+  `queryDataSource`, résout un `collectionId` depuis un `DataSource`) ;
+  GAP-36 (UI d'auteur pour une couche `deck` — création dans `LayerPicker`,
+  réglages `radiusPixels`/`radius`/`elevationScale` dans `LayersPanel`).
+  **Écart corrigé par rapport au texte du plan (piège CLAUDE.md n°3)** : la
+  Tâche 9 proposait un contrôle de rayon unique partagé heatmap/hexbin —
+  faux contre les `.d.ts` deck.gl réels (`HeatmapLayer.radiusPixels` ≠
+  `HexagonLayer.radius`), corrigé en 3 contrôles distincts. `npm run build`
+  (jamais exécuté avant la revue finale du plan) a aussi trouvé 2 erreurs
+  tsc réelles introduites par la Tâche 9 (lecture non affinée de
+  `MapLayer.props`, `StaticItemClient` non mis à jour pour la nouvelle
+  méthode `ItemClient`), corrigées par un commit séparé. Suite finale :
+  shell 225 fichiers/1962 tests ; E2E 141 passed/4 skipped/1 échec
+  préexistant (`e2e/pipeline-builder.spec.ts:111`, sans rapport). Ce plan
+  ne touche pas `shell/src/api/base.ts` (chevauchement anticipé par les deux
+  specs avec SP-54, mais son seul point de contact possible — GAP-46 —
+  était déjà résolu, donc sans impact) et
+  n'ajoute qu'une méthode additive à `shell/src/api/types.ts`
+  (`sampleDataSourceField`) — vérification croisée de l'absence de
+  collision réelle avec SP-54 faite à la clôture de ce dernier.
+- **SP-54** — surfaces API shell (ItemClient) + partage avancé (7 tâches,
+  spec `docs/superpowers/specs/2026-09-05-sp54-itemclient-api-design.md`),
+  exécuté après SP-51 (même recommandation de séquencement que les deux
+  specs documentaient) : GAP-38 (schéma JSON `AppConfig` factorisé dans
+  `app_config_json_schema()`, source unique pour la route REST et la
+  ressource MCP, garantie identique par un test dédié ;
+  `ItemClient.getAppConfigSchema()` lui donne un premier consommateur
+  shell réel) ; GAP-65 1/3 (`getMe()` lit `id`/`email`/`tenantId`/
+  `capabilities`, `capabilities` réutilise le type `InstanceInfo` déjà
+  exporté plutôt qu'un doublon de type) ; GAP-65 2/3 (TTL de 5 min +
+  `ItemClient.invalidateDatasetCache(pk?)` sur `datasetCache`, sans
+  changer son type public ni les deux call sites existants) ; GAP-40/47
+  volet collections (`listCollections(params?)` relaie `q`, champ de
+  recherche sur `CollectionsAdminPage`, outil MCP `search_collections`) ;
+  GAP-47 reste (`query_features` MCP relaie désormais `geomIntersects`,
+  falsifié par une paire de tests point-qui-intersecte/point-qui-
+  n'intersecte-pas) ; GAP-42/65 groupes (`createGroup`/`addGroupMember`
+  côté `ItemClient`, `create_group`/`add_group_member`/`list_groups` côté
+  MCP, section dédiée dans `ShareForm.tsx`, `READ_ONLY_TOOLS` mis à jour
+  dans le même commit que le garde `is_read_only_mode()` des deux
+  nouveaux tools) ; GAP-12 (liens de partage à échéance — nouvelle table
+  `share_link`, migration 0035 testée upgrade/downgrade/upgrade sur base
+  non vide, jeton HMAC `share_links.py` calqué sur `export_tokens.py`
+  avec le premier mécanisme de révocation-avant-expiration de ce dépôt,
+  4 routes REST dont la résolution publique `GET /share-links/{token}`
+  sans dépendance `get_current_user`, section « Liens à échéance » dans
+  `ShareForm.tsx`).
+  **Écarts trouvés par rapport au texte du plan (piège CLAUDE.md n°3)** :
+  (1) `search_collections` et `list_groups` (MCP) sont les deux premiers
+  tools de ce dépôt à retourner une liste nue — vérifié empiriquement que
+  FastMCP sérialise `content[0].text` comme l'élément unique (pas un
+  tableau JSON) quand un seul résultat matche ; les tests concernés lisent
+  `structuredContent["result"]`, forme fiable quel que soit le nombre
+  d'éléments. (2) Le plan ne listait que 3 routes pour GAP-12
+  (create/revoke/resolve) mais le besoin shell (`listShareLinks`) impose
+  une 4e route GET liste, ajoutée avec le même garde d'autorisation.
+  (3) `ShareLink.expires_at` (colonne `DateTime` naïve, cohérente avec le
+  reste d'`app/sharing/models.py`) renvoie un datetime naïf à la lecture
+  même après y avoir écrit une valeur aware — comparer directement à
+  `datetime.now(UTC)` lève `TypeError`, corrigé par un helper de
+  comparaison locale au repository. Consommation anonyme complète d'un
+  lien de partage (rendu de l'app/carte pour un visiteur sans compte)
+  restée hors périmètre explicite, comme documenté par la spec.
+  Suite finale : core 2357 passed/5 skipped (qgis)/0 failed ; shell 225
+  fichiers/1979 tests ; E2E 141 passed/4 skipped/1 échec préexistant
+  (`e2e/pipeline-builder.spec.ts:111`, sans rapport, même échec que celui
+  déjà mesuré à la clôture de SP-51). Diff `openapi.json`/
+  `core-schema.d.ts` non vide et cohérent avec les 4 nouvelles routes de
+  liens de partage (Tâches 1 et 4 : diff vide, attendu, aucune route
+  REST créée par ces deux tâches). Aucune collision réelle avec SP-51 sur
+  `shell/src/api/base.ts`/`types.ts` : vérifié après coup, les deux jeux
+  d'ajouts additifs coexistent dans les mêmes fichiers sans conflit
+  (`sampleDataSourceField` de SP-51 et les méthodes de SP-54 sont des
+  entrées distinctes de l'interface `ItemClient`, `invalidateDatasetCache`
+  est la seule méthode de SP-54 dans `base.ts`, jamais touché par SP-51).
 
 ### Conventions tranchées (2026-09-01)
 

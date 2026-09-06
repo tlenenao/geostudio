@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type {
+  InstanceInfo,
   ItemClient,
   Me,
   PrivilegeCatalogEntry,
@@ -32,24 +33,30 @@ export function createIdentityMethods(base: ItemClientBase): IdentityMethods {
   return {
     async getMe(): Promise<Me> {
       const data = await request<{
+        id: string;
+        tenantId: string;
+        tenantSlug: string;
         username: string;
+        email: string | null;
         firstName: string;
         lastName: string;
         role: RoleSummary;
         privileges: string[];
         version: string;
-        tenantId: string;
-        tenantSlug: string;
+        capabilities: InstanceInfo;
       }>("GET", `/me`);
       return {
+        id: data.id,
+        tenantId: data.tenantId,
+        tenantSlug: data.tenantSlug,
         username: data.username,
+        email: data.email,
         firstName: data.firstName,
         lastName: data.lastName,
         role: data.role,
         privileges: data.privileges,
         version: data.version,
-        tenantId: data.tenantId,
-        tenantSlug: data.tenantSlug,
+        capabilities: data.capabilities,
       };
     },
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ItemClient, MapLayer } from "../api/types";
@@ -165,6 +165,106 @@ test("a raster layer has no popup editor", () => {
   expect(
     screen.queryByRole("checkbox", { name: "Afficher les attributs au clic" }),
   ).not.toBeInTheDocument();
+});
+
+test("une couche raster expose un contrôle d'opacité (GAP-35)", () => {
+  const rasterLayers: MapLayer[] = [
+    { id: "r1", title: "Ortho", visible: true, kind: "raster", tilesUrl: "https://t", opacity: 1 },
+  ];
+  const onChange = vi.fn();
+  renderPanel(rasterLayers, onChange);
+  const slider = screen.getByRole("slider", { name: /opacité/i });
+  fireEvent.change(slider, { target: { value: "0.4" } });
+  expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ id: "r1", opacity: 0.4 })]);
+});
+
+test("un éditeur JSON avancé permet d'écrire layer.paint (GAP-45)", async () => {
+  const vectorLayers: MapLayer[] = [
+    {
+      id: "v1",
+      title: "V",
+      visible: true,
+      kind: "vector",
+      tilesUrl: "https://t",
+      sourceLayer: "s",
+    },
+  ];
+  const onChange = vi.fn();
+  renderPanel(vectorLayers, onChange);
+  await userEvent.click(screen.getByRole("button", { name: /avancé/i, expanded: false }));
+  const textarea = screen.getByRole("textbox", { name: /peinture maplibre/i });
+  fireEvent.change(textarea, { target: { value: '{"fill-color":"#f00"}' } });
+  fireEvent.blur(textarea);
+  expect(onChange).toHaveBeenCalledWith([
+    expect.objectContaining({ id: "v1", paint: { "fill-color": "#f00" } }),
+  ]);
+});
+
+test("un JSON invalide affiche une erreur sans appeler onChange (GAP-45)", async () => {
+  const vectorLayers: MapLayer[] = [
+    {
+      id: "v1",
+      title: "V",
+      visible: true,
+      kind: "vector",
+      tilesUrl: "https://t",
+      sourceLayer: "s",
+    },
+  ];
+  const onChange = vi.fn();
+  renderPanel(vectorLayers, onChange);
+  await userEvent.click(screen.getByRole("button", { name: /avancé/i, expanded: false }));
+  const textarea = screen.getByRole("textbox", { name: /peinture maplibre/i });
+  fireEvent.change(textarea, { target: { value: "{not json" } });
+  fireEvent.blur(textarea);
+  expect(onChange).not.toHaveBeenCalled();
+  expect(screen.getByRole("alert")).toBeInTheDocument();
+});
+
+test("une couche deck de type heatmap expose un contrôle de rayon en pixels (GAP-36)", () => {
+  const deckLayers: MapLayer[] = [
+    {
+      id: "d1",
+      title: "D",
+      visible: true,
+      kind: "deck",
+      deckType: "heatmap",
+      dataUrl: "https://d",
+    },
+  ];
+  const onChange = vi.fn();
+  renderPanel(deckLayers, onChange);
+  fireEvent.change(screen.getByLabelText("Rayon (pixels)"), { target: { value: "40" } });
+  expect(onChange).toHaveBeenCalledWith([
+    expect.objectContaining({ id: "d1", props: expect.objectContaining({ radiusPixels: 40 }) }),
+  ]);
+});
+
+test("une couche deck de type hexbin expose un contrôle de rayon en mètres (GAP-36)", () => {
+  const deckLayers: MapLayer[] = [
+    { id: "d1", title: "D", visible: true, kind: "deck", deckType: "hexbin", dataUrl: "https://d" },
+  ];
+  const onChange = vi.fn();
+  renderPanel(deckLayers, onChange);
+  fireEvent.change(screen.getByLabelText("Rayon (mètres)"), { target: { value: "500" } });
+  expect(onChange).toHaveBeenCalledWith([
+    expect.objectContaining({ id: "d1", props: expect.objectContaining({ radius: 500 }) }),
+  ]);
+});
+
+test("une couche deck de type column expose un contrôle d'échelle de hauteur (GAP-36)", () => {
+  const deckLayers: MapLayer[] = [
+    { id: "d1", title: "D", visible: true, kind: "deck", deckType: "column", dataUrl: "https://d" },
+  ];
+  const onChange = vi.fn();
+  renderPanel(deckLayers, onChange);
+  fireEvent.change(screen.getByLabelText("Échelle de hauteur"), { target: { value: "3" } });
+  expect(onChange).toHaveBeenCalledWith([
+    expect.objectContaining({
+      id: "d1",
+      props: expect.objectContaining({ elevationScale: 3 }),
+    }),
+  ]);
 });
 
 test("a feature layer without a collection lists fields from its fetched GeoJSON in the popup editor", async () => {

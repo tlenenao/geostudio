@@ -243,6 +243,15 @@ test("exportRender=1 hides the builder chrome (no save button/layer removal cont
   expect(document.body.getAttribute("data-export-ready")).toBe("true");
 });
 
+test("les outils de mesure/croquis sont montés en édition (GAP-53)", async () => {
+  renderEditor({
+    getMapConfig: vi.fn().mockResolvedValue(config),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findAllByText("Couche A");
+  expect(await screen.findByRole("button", { name: "Mesurer" })).toBeInTheDocument();
+});
+
 test("affiche le panneau d'historique", async () => {
   renderEditor({
     getMapConfig: vi.fn().mockResolvedValue(config),

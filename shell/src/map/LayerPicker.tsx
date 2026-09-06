@@ -46,6 +46,9 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
   const [featureUrl, setFeatureUrl] = useState("");
   const [featureError, setFeatureError] = useState<string | null>(null);
   const [featureBusy, setFeatureBusy] = useState(false);
+  const [deckTitle, setDeckTitle] = useState("");
+  const [deckType, setDeckType] = useState<"heatmap" | "hexbin" | "column">("heatmap");
+  const [deckUrl, setDeckUrl] = useState("");
   const queryClient = useQueryClient();
   const { data, isLoading, isError, refetch } = useLayerSources({ q: q || undefined });
 
@@ -83,6 +86,20 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
     setFeatureTitle("");
     setFeatureUrl("");
     setFeatureBusy(false);
+  }
+
+  function addDeckLayer() {
+    if (!deckTitle.trim() || !deckUrl.trim()) return;
+    onAdd({
+      id: crypto.randomUUID(),
+      title: deckTitle,
+      visible: true,
+      kind: "deck",
+      deckType,
+      dataUrl: deckUrl,
+    });
+    setDeckTitle("");
+    setDeckUrl("");
   }
 
   function addTiles3D() {
@@ -167,6 +184,48 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             onClick={addTiles3D}
           >
             Ajouter le tileset 3D
+          </Button>
+        </div>
+      </div>
+      <div className="border-t border-rule pt-2">
+        <p className="mb-1 text-xs font-medium text-ink-2">
+          Ajouter une visualisation agrégée (deck.gl)
+        </p>
+        <div className="flex flex-col gap-1">
+          <input
+            aria-label="Titre de la visualisation"
+            type="text"
+            placeholder="Titre"
+            className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+            value={deckTitle}
+            onChange={(e) => setDeckTitle(e.target.value)}
+          />
+          <select
+            aria-label="Type de visualisation"
+            className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+            value={deckType}
+            onChange={(e) => setDeckType(e.target.value as "heatmap" | "hexbin" | "column")}
+          >
+            <option value="heatmap">Carte de chaleur (heatmap)</option>
+            <option value="hexbin">Hexagones (hexbin)</option>
+            <option value="column">Colonnes 3D</option>
+          </select>
+          <input
+            aria-label="URL des données (GeoJSON)"
+            type="text"
+            placeholder="https://…/donnees.geojson"
+            className="h-8 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
+            value={deckUrl}
+            onChange={(e) => setDeckUrl(e.target.value)}
+          />
+          <Button
+            type="button"
+            size="sm"
+            className="w-fit"
+            disabled={!deckTitle.trim() || !deckUrl.trim()}
+            onClick={addDeckLayer}
+          >
+            Ajouter la visualisation
           </Button>
         </div>
       </div>
