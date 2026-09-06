@@ -68,3 +68,21 @@ def test_refresh_csp_dynamic_conf_task_writes_the_rendered_file(tmp_path, monkey
     assert target.exists()
     assert "csp-dynamic" in target.read_text()
     assert "Content-Security-Policy" in target.read_text()
+
+
+def test_script_src_never_widened_by_computed_extension_hosts():
+    """SP-48/GAP-72 blocage 3 : le sandboxing des widgets d'extension
+    tiers est une décision produit non tranchée (spec §4, 4 options
+    évaluées, aucune retenue sans accord explicite de Tanguy). Ce test
+    échoue intentionnellement si script_hosts est un jour branché sur
+    script-src sans qu'on ait d'abord retiré ce test — c'est le signal
+    que la décision a été prise ailleurs (ledger de session, CLAUDE.md)
+    avant de le faire. Déjà vert avec le code des Tasks 1-5 (rien ne câble
+    jamais script_hosts sur script-src) : test de non-régression
+    intentionnelle, committé séparément pour apparaître comme une décision
+    explicite dans l'historique, pas comme un sous-produit accidentel de
+    Task 3."""
+    allowlist = CspAllowlist(script_hosts={"https://cdn.example.com"})
+    rendered = render_dynamic_conf(allowlist, mode="enforce")
+    assert "cdn.example.com" not in rendered
+    assert "script-src 'self'" in rendered

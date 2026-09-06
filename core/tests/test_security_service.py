@@ -100,3 +100,45 @@ def test_compute_csp_allowlist_empty_instance_returns_empty_sets():
     with Session() as s:
         allowlist = compute_csp_allowlist(s)
     assert allowlist == CspAllowlist()
+
+
+def test_compute_csp_allowlist_still_separates_script_hosts_from_tile_hosts():
+    """Même intention que test_script_src_never_widened_by_computed_extension_hosts
+    (tests/test_security_jobs.py), à un niveau plus bas : si
+    compute_csp_allowlist fusionnait un jour script_hosts dans
+    img_hosts/connect_hosts (ou l'inverse), ce test le détecterait même si
+    render_dynamic_conf n'était pas encore touché. Committé avec le même
+    esprit de garde intentionnelle (SP-48/GAP-72 blocage 3, spec §4)."""
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        s.add(
+            Extension(
+                id="acme.only-script",
+                tenant_id=tenant.id,
+                owner_id=user.id,
+                tag="x",
+                label="X",
+                module_url="https://script-only.example.com/w.js",
+                props=[],
+                events=None,
+                actions=None,
+                default_size={"w": 1, "h": 1},
+                permissions={},
+            )
+        )
+        s.commit()
+        allowlist = compute_csp_allowlist(s)
+
+    assert allowlist.script_hosts == {"https://script-only.example.com"}
+    assert allowlist.img_hosts == set()
+    assert allowlist.connect_hosts == set()
