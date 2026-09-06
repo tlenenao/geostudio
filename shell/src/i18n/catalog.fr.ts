@@ -48,7 +48,7 @@ export const fr = {
   "domainBar.label": "Domaines",
   "bottomNav.label": "Navigation",
   "bottomNav.more": "Plus",
-  "comingSoon.settings": "Les paramètres d'instance arrivent avec SP-33.",
+  "comingSoon.settings": "Les paramètres d'instance arrivent prochainement.",
 
   // UsagePage (/tasks) — journal d'activité (audit_log en lecture), pas un
   // tableau de bord de supervision temps réel des jobs (SP-47 §7)
@@ -196,6 +196,10 @@ export const fr = {
   "roles.privilege.adminSecretsManage": "Voir les noms de secrets (administration)",
   "roles.privilege.settingsInstanceManage": "Gérer les paramètres d'instance et de tenant",
   "roles.privilege.complianceManage": "Purger toutes les données d'un tenant (RGPD, irréversible)",
+  // Repli défensif quand /roles/catalog renvoie une labelKey absente de ce
+  // catalogue (dérive cœur/shell) — jamais une case à cocher sans libellé
+  // ni aria-label (REV-064).
+  "roles.privilege.unknown": "Privilège inconnu",
   "roles.loadError": "Échec du chargement des rôles.",
   "roles.deleteError": "Échec de la suppression.",
   "roles.columnName": "Nom",

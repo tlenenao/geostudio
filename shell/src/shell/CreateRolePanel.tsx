@@ -4,7 +4,7 @@ import { useCreateRole, useRolesCatalog } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Checkbox } from "../ui/kit/Checkbox";
-import { t } from "../i18n";
+import { resolveMessageKey, t } from "../i18n";
 import type { MessageKey } from "../i18n";
 
 export function CreateRolePanel({ onClose }: { onClose: () => void }) {
@@ -36,7 +36,10 @@ export function CreateRolePanel({ onClose }: { onClose: () => void }) {
   const byDomain = new Map<string, { privilege: string; labelKey: MessageKey }[]>();
   for (const entry of catalogQuery.data ?? []) {
     const list = byDomain.get(entry.domain) ?? [];
-    list.push({ privilege: entry.privilege, labelKey: entry.labelKey as MessageKey });
+    list.push({
+      privilege: entry.privilege,
+      labelKey: resolveMessageKey(entry.labelKey, "roles.privilege.unknown"),
+    });
     byDomain.set(entry.domain, list);
   }
 
