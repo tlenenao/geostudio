@@ -279,13 +279,17 @@ lâche, pas avant.
 
 ## 7. Artefacts et emplacements
 
+Le chantier produit **deux rendus d'une même source**, plus un journal.
+
 | Artefact | Chemin | Rôle |
 |---|---|---|
 | Inventaire | `docs/revue/inventaire-fonctionnalites.jsonl` | source déclarative, une ligne par fonctionnalité, `id` stable |
-| Générateur | `scripts/feature_health.py` | calcule les 4 sous-scores, réconcilie, rend le `.md` |
+| Journal de santé | `docs/revue/historique-sante.jsonl` | append-only, un instantané par régénération (§7.2) |
+| Générateur | `scripts/feature_health.py` | calcule, réconcilie, rend les deux sorties |
 | Seuils/pondérations | `scripts/feature_health_thresholds.json` | versionné, modifiable sans toucher au code |
 | Garde-fou | `core/tests/test_feature_inventory.py` | échec CI (§6.1 et §6.2) |
-| Rendu | `docs/revue/2026-09-04-matrice-fonctionnalites.md` | regénéré, plus jamais écrit à la main |
+| **Rendu HTML** | `docs/revue/bilan-fonctionnalites.html` | **le produit de suivi central** (§7.1) |
+| Rendu Markdown | `docs/revue/bilan-fonctionnalites.md` | forme greppable et diffable en revue de commit |
 
 **Emplacement du garde-fou.** `core/tests/` est le bon endroit malgré la portée
 inter-dépôt : `core/tests/test_deployability.py:65` fait déjà exactement cela
@@ -303,6 +307,109 @@ en français, pour rester homogènes avec le fichier d'amorçage
 (`.superpowers/sdd/sp42-matrice-notee.jsonl` : `domaine`, `fonctionnalite`,
 `etat`, `preuve`) et éviter une traduction mécanique de 304 lignes sans
 bénéfice. Sortie rendue en français, conformément à `CLAUDE.md`.
+
+### 7.0 Le couple daté / vivant
+
+`docs/revue/2026-09-04-matrice-fonctionnalites.md` porte une date dans son nom,
+une section « Méthode » décrivant huit cartographes, et une section « Limite de
+l'exercice » qui l'assume comme une photo. C'est un **document historique** : il
+a servi de matière première à `analyse-gaps.md` et au backlog, et il doit le
+rester tel quel. Un document vivant regénéré à chaque SP ne peut pas porter la
+date de sa première rédaction.
+
+Décision : le couple daté est **gelé**, le produit vivant prend des noms sans
+date.
+
+- `docs/revue/2026-09-04-matrice-fonctionnalites.md` — gelé, plus jamais édité.
+- `docs/revue/2026-09-04-matrice-fonctionnalites.html` — **rapatrié dans le
+  dépôt** (550 Ko, données des 304 + 55 lignes embarquées, vérifiées lisibles).
+  Il n'existait jusqu'ici que comme artefact hébergé sur `claude.ai`, cité par
+  un document commité : une dépendance externe pour un livrable du dépôt, et un
+  lien qui survit mal à l'archivage. C'est aussi la **référence de design** du
+  rendu vivant (§7.1).
+- `docs/revue/bilan-fonctionnalites.{html,md}` — regénérés, jamais écrits à la
+  main.
+
+**Conséquence à traiter dans le plan :** `CLAUDE.md` nomme aujourd'hui
+`docs/revue/2026-09-04-matrice-fonctionnalites.md` comme le document à mettre à
+jour à la clôture de chaque SP. Ce pointeur doit basculer vers le rendu vivant,
+et l'obligation « mettre à jour à la main » devient « régénérer ». C'est une
+tâche du plan, pas un effet de bord.
+
+### 7.1 Le bilan HTML — produit de suivi central
+
+Le HTML n'est pas un rendu secondaire du Markdown : c'est **le produit de suivi
+central**, celui qu'on ouvre pour décider quoi faire ensuite. Le Markdown reste
+utile pour ce que le HTML fait mal — être lu dans un diff de commit et être
+grepé.
+
+**Il est regénéré par le même script, depuis la même source, dans le même
+passage.** C'est la propriété que l'artefact SP-42 revendiquait déjà en pied de
+page (« aucune divergence possible avec les rendus Markdown ») et qu'il faut
+préserver : les deux sorties ne peuvent pas se contredire, parce qu'aucune n'est
+écrite à la main.
+
+**Contraintes de forme, héritées de l'artefact rapatrié :**
+
+- **Un seul fichier, sans build.** Données embarquées en
+  `<script type="application/json">`, CSS et JS inline. Il s'ouvre en
+  `file://`, se copie, s'envoie en pièce jointe. Aucune étape de compilation,
+  aucun `node_modules`.
+- **Aucune dépendance externe bloquante.** L'artefact n'en a qu'une — Google
+  Fonts — et chaque famille a une pile de repli réelle (`'Fraunces', Georgia,
+  serif`). Hors ligne, il reste lisible. Cette propriété est à conserver, pas à
+  étendre : pas de CDN de librairie, pas de graphique tiers.
+- **Thème clair/sombre**, déjà traité par l'artefact via `prefers-color-scheme`
+  plus un `[data-theme]` explicite.
+- **Le design existant est repris, pas réinventé.** L'artefact rapatrié est la
+  référence : palette de tokens, badges d'état, tuiles de synthèse, vue par
+  famille, contrôles collants, lignes dépliables, tableau à colonnes triables.
+  Ce travail est fait et il est bon ; le refaire coûterait cher pour un résultat
+  moins abouti.
+
+**Ce qui change par rapport à l'artefact,** en conséquence directe du modèle
+(§3-§5) :
+
+- la colonne « Note » (moyenne de six critères) devient **deux colonnes
+  distinctes** : *santé* calculée et *priorité* déclarée, jamais moyennées ;
+- le détail dépliable montre les **quatre sous-scores** et, pour chacun, **la
+  donnée qui l'a produit** — le pourcentage de couverture réel, le lien entrant
+  trouvé ou son absence, la garde détectée, la liste des `GAP`/`REV` ouverts.
+  Un score dont on ne peut pas voir la source est un score qu'on ne croit pas ;
+- un bloc **qualité reprise** (§5) : typage strict oui/non, exemptions de
+  couches, `eslint-disable`, `@ts-expect-error` — des faits, sans note ;
+- un **tri de priorisation** `priorité × (100 − santé)`, qui est la vue par
+  défaut du besoin n°1 ;
+- une **vue d'évolution** (§7.2).
+
+### 7.2 Le suivi des améliorations
+
+Sans mémoire, le bilan répond à « où en est-on ? » mais pas à « est-ce que ça
+s'améliore ? ». Le journal `docs/revue/historique-sante.jsonl` est **append-only** :
+à chaque exécution du générateur, une ligne par fonctionnalité, portant la date,
+le commit `HEAD`, la santé et les quatre sous-scores.
+
+Format append-only et non « fichier réécrit » pour trois raisons : le diff git
+d'une régénération ne montre que les lignes ajoutées ; deux sessions
+concurrentes ne s'écrasent pas ; et l'historique ne peut pas être perdu par un
+bug du générateur.
+
+Ce que le HTML en tire :
+
+- **Delta par fonctionnalité** depuis l'instantané précédent (`↑ +12`, `=`,
+  `↓ −7`), affiché à côté de la santé ;
+- **Ce qui s'est amélioré / dégradé** depuis un instantané choisi — la vue qui
+  répond littéralement à « suivi des améliorations », et le moyen de vérifier
+  après coup ce qu'un SP a réellement changé, plutôt que de croire son récit de
+  clôture (piège n°12 de `CLAUDE.md`) ;
+- **Tendance globale** : santé médiane et répartition par état, un point par
+  instantané.
+
+**Le journal n'est jamais rétro-calculé.** Il commence au premier passage du
+générateur. Les six notes d'agents de SP-42 ne sont pas converties en santé
+rétroactive : ce sont des jugements, pas des mesures, et les mélanger à une
+série de mesures produirait une courbe fausse à son origine. Le premier point de
+la série est le premier point réel.
 
 ## 8. Amorçage
 
@@ -336,12 +443,19 @@ premier passage. C'est précisément ce que le chantier apporte.
   statiquement énumérable est un chantier distinct, non justifié par ce besoin.
 - **Régénération de la note qualitative en prose** de chaque ligne (le champ
   `note` du JSONL SP-42) : conservée telle quelle, datée, jamais recalculée.
+- **Refonte visuelle du bilan HTML** : le design de l'artefact rapatrié est
+  repris tel quel (§7.1). Ce chantier lui ajoute des colonnes et une vue
+  d'évolution, il ne redessine rien.
+- **Rétro-calcul du journal de santé** sur l'historique git (§7.2).
 
 ## 10. Quand
 
-**Après la fusion de SP-53**, qui a cinq worktrees non fusionnés au 2026-09-06 :
-amorcer l'inventaire sur un dépôt dont cinq tracks sont en vol garantirait une
-trentaine de lignes fausses dès le premier jour.
+**Après la fusion de SP-53.** Au moment d'écrire cette spec, cette fusion est
+en cours sur `dev` par une session concurrente — vérifié dans le code, pas
+supposé : `core/app/sql_ident.py` existe et les commits `55f0cdcf`/`708ebd8f`/
+`9835d0c6`/`5b24e8fb` (GAP-15) viennent de se poser. Amorcer l'inventaire sur un
+dépôt dont des tracks sont encore en vol garantirait une trentaine de lignes
+fausses dès le premier jour.
 
 **Mais sans attendre davantage.** Le garde-fou §6.1 est ce qui arrête la
 dérive ; chaque SP livré avant lui est un SP dont les fonctionnalités devront
@@ -353,3 +467,35 @@ les quatre calculs de sous-score avec leur falsification (l'atteignabilité en
 premier : c'est elle qui a déjà prouvé sa valeur en trouvant `/bookmarks`),
 puis la réconciliation et le garde-fou, puis le rendu — le rendu en dernier,
 parce que c'est la partie qui n'apprend rien.
+
+## 11. Contrainte d'exécution — worktree dédié
+
+**Ce chantier s'exécute dans un worktree git dédié, jamais dans le checkout
+principal.** Ce n'est pas une préférence de confort : au moment d'écrire cette
+spec, une session concurrente committe sur `dev` dans
+`/home/lenen/projets/geostudio` (intégration des tracks SP-53, commits `55f0cdcf`
+à `5b24e8fb` posés pendant la rédaction). Deux sessions qui écrivent dans le même
+arbre de travail se marchent dessus sans le voir.
+
+Trois raisons propres à ce chantier, au-delà de la concurrence :
+
+1. **Le générateur lit des artefacts de build** — `core/coverage.xml`,
+   `shell/coverage/coverage-summary.json`, `core/openapi.json`. Ces fichiers sont
+   réécrits par toute exécution de suite de tests. Développer le générateur dans
+   un arbre où quelqu'un d'autre lance `pytest` ou `npm run test`, c'est le
+   développer contre des entrées qui changent sous lui.
+2. **Le garde-fou §6.1 échoue par conception** pendant tout le développement,
+   tant que l'inventaire est incomplet. Un `core/tests/` rouge dans l'arbre
+   partagé bloquerait le travail de l'autre session.
+3. **Le journal de santé est append-only** (§7.2) : deux sessions qui le
+   génèrent en parallèle dans le même arbre produisent des instantanés
+   entrelacés, datés du même commit, indiscernables après coup.
+
+Précédent du dépôt : SP-53 a été exécuté « en 5 subagents parallèles dans des
+worktrees git dédiés (isolation garantie) ». Une note de session plus ancienne
+(SP-10b, 2026-07-17) affirmait au contraire « PAS de worktree sur ce dépôt » —
+cette note est périmée, SP-53 l'a démentie en pratique.
+
+**Retour vers `dev`** : par fusion explicite en fin de chantier, après la revue
+finale de branche, jamais par des commits posés au fil de l'eau dans l'arbre
+partagé.
