@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect, type Page } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCollection, mockCore } from "./mocks";
 
 const OPS_CATALOG = {
   "reader.collection": {
@@ -45,34 +45,28 @@ async function mockPipelineFlow(page: Page) {
     await route.fulfill({
       json: {
         collections: [
-          {
+          mockCollection({
             id: "villes",
             title: "Villes",
-            description: "",
             tableName: "villes",
             isPublic: true,
-            editable: true,
             geometryType: null,
             srid: null,
-            pkColumn: "id",
             permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 10,
             owner: "alice",
-          },
-          {
+          }),
+          mockCollection({
             id: "villes_propres",
             title: "Villes propres",
-            description: "",
             tableName: "villes_propres",
             isPublic: true,
-            editable: true,
             geometryType: null,
             srid: null,
-            pkColumn: "id",
             permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 0,
             owner: "alice",
-          },
+          }),
         ],
       },
     });

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect } from "@playwright/test";
-import { mockCore, mockItemDetail } from "./mocks";
+import { mockCollection, mockCore, mockItemDetail } from "./mocks";
 
 test("create a dataset, edit a column label, then promote an app's inline source", async ({
   page,
@@ -16,20 +16,15 @@ test("create a dataset, edit a column label, then promote an app's inline source
     await route.fulfill({
       json: {
         collections: [
-          {
+          mockCollection({
             id: "parcs",
             title: "Parcs",
-            description: "",
             tableName: "parcs",
             isPublic: true,
-            editable: true,
-            geometryType: "Point",
-            srid: 4326,
-            pkColumn: "id",
             permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 3,
             owner: "alice",
-          },
+          }),
         ],
       },
     });

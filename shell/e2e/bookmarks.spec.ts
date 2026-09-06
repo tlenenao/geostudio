@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCollection, mockCore } from "./mocks";
 
 // SP-14m — enregistrer le contexte analytique courant comme une vue nommée,
 // la retrouver dans "Mes vues", la rouvrir restaure exactement le même
@@ -18,20 +18,16 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
     await route.fulfill({
       json: {
         collections: [
-          {
+          mockCollection({
             id: "events",
             title: "Événements",
-            description: "",
             tableName: "events",
             isPublic: true,
-            editable: true,
             geometryType: null,
             srid: null,
-            pkColumn: "id",
             permissions: { read: true, write: true, delete: false, share: false },
             featureCount: 2,
-            owner: "mockuser",
-          },
+          }),
         ],
       },
     });
