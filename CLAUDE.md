@@ -105,7 +105,20 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
   (cf. `## Pièges récurrents`).
 - Commits **conventional** (`feat(shell): …`, `fix(core): …`), petits, un sujet.
 - Docs et messages utilisateur en **français** ; code/identifiants en anglais.
-- Branche de travail : `dev` ; `main` reçoit les états stables (merge).
+- Branche de travail : **`dev` uniquement, en local** (décision 2026-09-06,
+  après la découverte qu'un `main` local resté figé depuis avant la
+  réécriture d'historique de SP-45 divergeait de `origin/main` sur ~2000
+  commits — un artefact sans valeur, jamais un état à préserver). Ne pas
+  créer ni conserver de branche `main` locale. Promotion vers `main` = **PR
+  GitHub `origin/dev` → `origin/main`** (`git push origin dev` puis
+  `gh pr create --base main --head dev`), jamais un merge local suivi d'un
+  push direct sur `main`. Les worktrees/branches de travail éphémères
+  (`.claude/worktrees/agent-*`, branches de reprise) sont supprimés dès leur
+  fusion dans `dev` — ne pas laisser le dépôt accumuler des dizaines de
+  worktrees/branches orphelins (piège vécu le 2026-09-06 : 29 worktrees et
+  autant de branches locales périmées retrouvés en une seule session,
+  certains avec des fichiers root-owned laissés par des conteneurs Docker,
+  supprimables seulement avec confirmation explicite).
 - **À la clôture d'un SP** : une ligne dans `### Livré` ci-dessous, et l'entrée
   détaillée dans `docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md`
   (pas de récit long dans ce fichier — il est chargé à chaque session).
