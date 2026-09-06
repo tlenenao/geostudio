@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useItemClient, useMe } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
@@ -54,6 +54,16 @@ export function ImportFileButton() {
   const [error, setError] = useState("");
   const client = useItemClient();
   const navigate = useNavigate();
+  const mountedRef = useRef(true);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
   // SP-42/F-shell-pages-01 (fusion F-shell-pages-02) : cf. commentaire
   // jumeau sur NewItemButton.tsx — même mécanisme, même TopBar. Un import
   // aboutit toujours à POST /uploads (core/app/ingestion/routes.py),
@@ -102,7 +112,9 @@ export function ImportFileButton() {
 
   async function poll(jobId: string) {
     for (;;) {
+      if (!mountedRef.current) return;
       const job = await client.getIngestionJob(jobId);
+      if (!mountedRef.current) return;
       if (job.status === "done" && job.itemId) {
         close();
         navigate(`/maps/${job.itemId}`);
@@ -113,7 +125,10 @@ export function ImportFileButton() {
         setError(job.errorMessage ?? "Échec de l'import.");
         return;
       }
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise<void>((resolve) => {
+        timerRef.current = setTimeout(resolve, 1500);
+      });
+      if (!mountedRef.current) return;
     }
   }
 
@@ -166,6 +181,7 @@ export function ImportFileButton() {
       }
       await startJob(key, undefined);
     } catch {
+      if (!mountedRef.current) return;
       setPhase("error");
       setError("Échec de l'import.");
     }
@@ -179,6 +195,7 @@ export function ImportFileButton() {
     try {
       await startJob(uploadedKey, layerName);
     } catch {
+      if (!mountedRef.current) return;
       setPhase("error");
       setError("Échec de l'import.");
     }
@@ -196,6 +213,7 @@ export function ImportFileButton() {
       // de layerName pour ce format).
       await startJob(uploadedKey, undefined);
     } catch {
+      if (!mountedRef.current) return;
       setPhase("error");
       setError("Échec de l'import.");
     }

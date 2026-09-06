@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
@@ -29,6 +29,16 @@ export function Terrain3DUploadButton({
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState("");
   const client = useItemClient();
+  const mountedRef = useRef(true);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
 
   function close() {
     setOpen(false);
@@ -41,7 +51,9 @@ export function Terrain3DUploadButton({
   async function poll(jobId: string) {
     const deadline = Date.now() + POLL_TIMEOUT_MS;
     for (;;) {
+      if (!mountedRef.current) return;
       const job = await client.getTerrain3DUploadJob(jobId);
+      if (!mountedRef.current) return;
       if (job.status === "done" && job.itemId) {
         onUploaded(job.itemId);
         close();
@@ -57,7 +69,10 @@ export function Terrain3DUploadButton({
         setError("La conversion du DEM prend trop de temps. Réessayez plus tard.");
         return;
       }
-      await new Promise((r) => setTimeout(r, pollIntervalMs));
+      await new Promise<void>((resolve) => {
+        timerRef.current = setTimeout(resolve, pollIntervalMs);
+      });
+      if (!mountedRef.current) return;
     }
   }
 

@@ -172,3 +172,42 @@ test("le formulaire n'est jamais une fenêtre modale (pas de role=dialog)", asyn
   expect(await screen.findByLabelText(/fichier dem/i)).toBeInTheDocument();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
+
+test("does not poll again or update state after the component is unmounted mid-conversion", async () => {
+  let pollCalls = 0;
+  server.use(
+    http.post(`${CORE_URL}/terrain3d/uploads/presign`, () =>
+      HttpResponse.json({ uploadUrl: `${CORE_URL}/fake-s3-put`, key: "tenant/x/dem.tif" }),
+    ),
+    http.put(`${CORE_URL}/fake-s3-put`, () => new HttpResponse(null, { status: 200 })),
+    http.post(`${CORE_URL}/terrain3d/uploads`, () =>
+      HttpResponse.json({ jobId: "job-1" }, { status: 201 }),
+    ),
+    http.get(`${CORE_URL}/terrain3d/uploads/job-1`, () => {
+      pollCalls += 1;
+      return HttpResponse.json({ status: "converting", errorMessage: null, itemId: null });
+    }),
+  );
+  const onUploaded = vi.fn();
+  const { unmount } = render(
+    <Harness>
+      <Terrain3DUploadButton onUploaded={onUploaded} pollIntervalMs={0} />
+    </Harness>,
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: /nouveau dem/i }));
+  const file = new File([new Uint8Array(16)], "dem.tif", { type: "application/octet-stream" });
+  await userEvent.upload(screen.getByLabelText(/fichier dem/i), file);
+  await userEvent.type(screen.getByLabelText(/titre/i), "Relief");
+  await userEvent.click(screen.getByRole("button", { name: /importer/i }));
+
+  await waitFor(() => expect(pollCalls).toBeGreaterThanOrEqual(1));
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const callsAtUnmount = pollCalls;
+  unmount();
+  await new Promise((r) => setTimeout(r, 500));
+  expect(pollCalls).toBe(callsAtUnmount);
+  expect(onUploaded).not.toHaveBeenCalled();
+  expect(errorSpy).not.toHaveBeenCalled();
+  errorSpy.mockRestore();
+});

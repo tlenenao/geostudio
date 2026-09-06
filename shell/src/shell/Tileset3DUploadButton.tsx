@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
@@ -31,6 +31,16 @@ export function Tileset3DUploadButton({
   const [error, setError] = useState("");
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const client = useItemClient();
+  const mountedRef = useRef(true);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
 
   function close() {
     setOpen(false);
@@ -44,7 +54,9 @@ export function Tileset3DUploadButton({
   async function poll(jobId: string) {
     const deadline = Date.now() + pollTimeoutMs;
     for (;;) {
+      if (!mountedRef.current) return;
       const job = await client.getTileset3DUploadJob(jobId);
+      if (!mountedRef.current) return;
       if (job.status === "done") {
         close();
         return;
@@ -59,7 +71,10 @@ export function Tileset3DUploadButton({
         setError("La validation du tileset prend trop de temps. Réessayez plus tard.");
         return;
       }
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise<void>((resolve) => {
+        timerRef.current = setTimeout(resolve, 1500);
+      });
+      if (!mountedRef.current) return;
     }
   }
 
