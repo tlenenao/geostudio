@@ -61,6 +61,22 @@ def test_extract_geometry_wkt_mode_invalid_value_fails_fast():
         extract_geometry({"wkt": "NOT WKT"}, GeometryMode(kind="wkt", wkt_field="wkt"))
 
 
+def test_extract_geometry_wkt_mode_none_value_fails_fast():
+    with pytest.raises(IngestionParseError, match="WKT invalide"):
+        extract_geometry(
+            {"wkt": None, "name": "Paris"},
+            GeometryMode(kind="wkt", wkt_field="wkt"),
+        )
+
+
+def test_extract_geometry_wkt_mode_missing_column_fails_fast():
+    with pytest.raises(IngestionParseError, match="WKT invalide"):
+        extract_geometry(
+            {"name": "Paris"},
+            GeometryMode(kind="wkt", wkt_field="wkt"),
+        )
+
+
 def test_extract_geometry_none_mode_keeps_all_properties():
     geom, props = extract_geometry(
         {"name": "Paris", "population": 2148000},

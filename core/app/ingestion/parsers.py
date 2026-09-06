@@ -83,6 +83,8 @@ def extract_geometry(row: dict, mode: GeometryMode) -> tuple[BaseGeometry | None
         return Point(lon, lat), rest
     # mode.kind == "wkt"
     raw_wkt = row.get(mode.wkt_field)
+    if raw_wkt is None or (isinstance(raw_wkt, str) and raw_wkt.strip() == ""):
+        raise IngestionParseError(f"WKT invalide ('{raw_wkt}') : valeur manquante")
     try:
         geom = shapely.from_wkt(raw_wkt)
     except (ShapelyError, TypeError) as exc:
