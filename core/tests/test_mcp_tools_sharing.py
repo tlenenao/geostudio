@@ -383,3 +383,28 @@ def test_set_sharing_writes_audit_log_with_agent_actor(app_client):
         rows = session.scalars(select(AuditLog).where(AuditLog.action == "item.share")).all()
         assert len(rows) == 1
         assert rows[0].actor_kind == "agent"
+
+
+def test_create_group_via_mcp_refuses_a_reader_with_no_privilege(app_client):
+    # REV-009 : jumelle MCP de POST /groups. La garde catalog.manage posée
+    # sur la route REST doit exister aussi ici, sinon create_group (MCP)
+    # rouvre exactement le trou fermé côté REST (piège CLAUDE.md n°4).
+    from app.roles.repository import ensure_built_in_roles
+    from app.users.repository import set_user_role
+
+    with app_client.session_factory() as session:
+        roles = ensure_built_in_roles(session, tenant_id=app_client.tenant.id)
+        assert roles["reader"].privileges == []
+        set_user_role(
+            session,
+            tenant_id=app_client.tenant.id,
+            user_id=app_client.mock_user.id,
+            role_id=roles["reader"].id,
+            role_slug="reader",
+        )
+        session.commit()
+
+    with app_client:
+        error_text = call_tool_expecting_error(app_client, "create_group", {"name": "Interdit"})
+
+    assert "catalog.manage" in error_text

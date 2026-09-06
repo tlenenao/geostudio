@@ -108,6 +108,32 @@ def test_presign_returns_upload_url_and_tenant_scoped_key(env):
     assert body["key"].startswith(f"{tenant.id}/")
 
 
+def test_presign_refuses_a_reader_with_no_privilege(env):
+    # REV-002 : cette route ne consultait jusqu'ici que get_current_user —
+    # aucun privilège — alors que create_terrain3d_upload (juste après dans
+    # ce même flux) exige déjà terrain3d/catalog.manage. Un Lecteur pouvait
+    # donc obtenir une URL S3 présignée réelle (PUT direct sur le bucket
+    # terrain3d) sans jamais aller au bout, consommant du stockage sans
+    # aucun privilège.
+    client, Session, tenant, alice, _deferred, _fake_s3 = env
+    with Session() as s:
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        assert roles["reader"].privileges == []
+        reader_role_id = roles["reader"].id
+        set_user_role(
+            s,
+            tenant_id=tenant.id,
+            user_id=alice.id,
+            role_id=reader_role_id,
+            role_slug="reader",
+        )
+        s.commit()
+    alice.role_id = reader_role_id
+
+    r = client.post("/v1/terrain3d/uploads/presign", json={"filename": "dem.tif"})
+    assert r.status_code == 403, r.text
+
+
 def test_presign_signs_the_terrain3d_bucket_and_the_caller_content_type(env, monkeypatch):
     # Le type est signé dans l'URL (X-Amz-SignedHeaders) : si on signait
     # "application/octet-stream" en dur alors que le navigateur envoie

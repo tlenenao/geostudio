@@ -175,6 +175,46 @@ def test_presign_part_returns_upload_url(env):
     assert "uploadUrl" in r.json()
 
 
+def test_presign_part_refuses_a_reader_with_no_privilege(env):
+    # REV-002 : cette route ne consultait jusqu'ici que get_current_user —
+    # aucun privilège — alors que create_tileset3d_upload/
+    # complete_tileset3d_upload exigent déjà tous deux ce même privilège. Un
+    # Lecteur pouvait donc pousser des octets réels dans un job existant
+    # (upload_part) sans jamais pouvoir compléter l'upload.
+    client, *_ = env
+    job_id = client.post(
+        "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
+    ).json()["jobId"]
+    _demote_alice_to_reader(env)
+    r = client.post(f"/v1/tileset3d/uploads/{job_id}/parts/1/presign")
+    assert r.status_code == 403, r.text
+
+
+def test_presign_part_404_for_a_job_owned_by_another_user(env):
+    # REV-002 : aucune vérification que l'appelant est le créateur du job —
+    # un utilisateur du même tenant pouvait obtenir une URL presignée pour
+    # pousser des octets dans le job multipart d'un autre utilisateur.
+    client, Session, tenant, _alice, *_ = env
+    with Session() as s:
+        bob = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="b",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        s.commit()
+    job_id = client.post(
+        "/v1/tileset3d/uploads", json={"filename": "city.zip", "title": "Ville"}
+    ).json()["jobId"]
+    app = client.app
+    app.dependency_overrides[get_current_user] = lambda: bob
+    r = client.post(f"/v1/tileset3d/uploads/{job_id}/parts/1/presign")
+    assert r.status_code == 404, r.text
+
+
 def test_presign_part_404_for_unknown_job(env):
     client, *_ = env
     r = client.post("/v1/tileset3d/uploads/does-not-exist/parts/1/presign")

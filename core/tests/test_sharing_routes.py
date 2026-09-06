@@ -56,6 +56,32 @@ def test_create_and_list_groups(client):
     assert [g["name"] for g in listed.json()] == ["Reviewers"]
 
 
+def test_create_group_refuses_a_reader_with_no_privilege(client):
+    # REV-009 : POST /groups n'était gardée par aucun privilège — tout
+    # authentifié, Lecteur compris, pouvait créer des groupes dans le
+    # tenant. Rattaché à catalog.manage (même privilège que la gestion du
+    # catalogue partagée, cohérent avec le fait que les groupes servent à
+    # partager des items/collections).
+    from app.roles.repository import ensure_built_in_roles
+    from app.users.repository import set_user_role
+
+    with client.session_factory() as session:
+        roles = ensure_built_in_roles(session, tenant_id=client.tenant.id)
+        assert roles["reader"].privileges == []
+        set_user_role(
+            session,
+            tenant_id=client.tenant.id,
+            user_id=client.user.id,
+            role_id=roles["reader"].id,
+            role_slug="reader",
+        )
+        session.commit()
+    client.user.role_id = roles["reader"].id
+
+    response = client.post("/v1/groups", json={"name": "Reviewers"})
+    assert response.status_code == 403, response.text
+
+
 def test_add_member(client):
     group_id = client.post("/v1/groups", json={"name": "Reviewers"}).json()["id"]
     with client.session_factory() as session:

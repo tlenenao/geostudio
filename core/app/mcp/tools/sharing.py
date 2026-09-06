@@ -14,6 +14,8 @@ from app.auth.dependency import is_read_only_mode
 from app.db import request_scoped_session
 from app.items.service import get_sharing_service, set_sharing_service
 from app.mcp.tools.identity import http_exception_to_value_error, resolve_actor
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.sharing import repository as sharing_repo
 from app.sharing.schemas import Sharing
 
@@ -43,6 +45,14 @@ def register(server: FastMCP, session_factory) -> None:
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, access_token)
+            # REV-009 : jumelle MCP de POST /groups (app/sharing/routes.py) —
+            # la garde catalog.manage doit exister des deux côtés, sinon le
+            # tool MCP rouvre exactement le trou que la route vient de
+            # fermer (piège CLAUDE.md n°4).
+            try:
+                require_privilege(session, user, Privilege.CATALOG_MANAGE.value)
+            except HTTPException as exc:
+                raise http_exception_to_value_error(exc) from exc
             group = sharing_repo.create_group(
                 session, tenant_id=user.tenant_id, name=name, created_by=user.id
             )
