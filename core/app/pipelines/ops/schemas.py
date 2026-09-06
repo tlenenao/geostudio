@@ -178,7 +178,34 @@ class ReaderConnectorPostgresParams(BaseModel):
     SP-15f §2). `secretName` référence toujours un secret postgres_dsn
     (SP-15e) — pas de notion de DSN non authentifié, contrairement à REST.
     `query` n'est validée SELECT-only qu'à l'exécution (app.pipelines.connector_runtime),
-    jamais ici (forme seulement) ni à la sauvegarde (design §6)."""
+    jamais ici (forme seulement) ni à la sauvegarde (design §6).
+
+    Fonctionne également contre un cluster Amazon Redshift, sans aucun
+    changement de code (GAP-16, design 2026-09-06 §5.4) : Redshift expose le
+    protocole de câblage PostgreSQL (AWS, « Amazon Redshift is based on
+    PostgreSQL ») — pointez le DSN d'un secret postgres_dsn vers l'endpoint
+    du cluster (port 5439 par défaut) plutôt que vers un Postgres ordinaire.
+    Limite connue : le SQL Redshift diverge du SQL PostgreSQL sur plusieurs
+    points (types/fonctions non supportés) — une requête acceptée par la
+    validation SELECT-only heuristique ci-dessus (dialecte DuckDB) peut
+    malgré tout échouer côté Redshift avec une erreur explicite."""
+
+    secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
+    query: str
+
+
+class ReaderConnectorSnowflakeParams(BaseModel):
+    """Lecture d'une requête SQL libre sur un entrepôt Snowflake distant
+    (GAP-16, pendant de ReaderConnectorPostgresParams). `secretName`
+    référence toujours un secret snowflake_dsn — pas de notion de DSN non
+    authentifié, même contrat que reader.connector.postgres. `query` n'est
+    validée SELECT-only qu'à l'exécution (app.pipelines.connector_runtime),
+    jamais ici (forme seulement) ni à la sauvegarde (design §6) — même
+    heuristique que pour Postgres, avec la même limite documentée en §5.3
+    (le texte est parsé avec le dialecte SQL DuckDB, pas le dialecte
+    SnowSQL réel : QUALIFY/accesseur semi-structuré `:`/LATERAL FLATTEN/
+    ILIKE/UNION passent, mais SAMPLE (n)/TOP n/MINUS sont rejetés — à
+    reformuler en LIMIT/EXCEPT le cas échéant)."""
 
     secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
     query: str
@@ -202,6 +229,7 @@ OP_KINDS: dict[str, str] = {
     "writer.dataset": "writer",
     "reader.connector.rest": "reader",
     "reader.connector.postgres": "reader",
+    "reader.connector.snowflake": "reader",
 }
 OP_KINDS["transform.merge"] = "transform"
 
@@ -223,6 +251,7 @@ OP_PARAMS: dict[str, type[BaseModel]] = {
     "writer.dataset": WriterDatasetParams,
     "reader.connector.rest": ReaderConnectorRestParams,
     "reader.connector.postgres": ReaderConnectorPostgresParams,
+    "reader.connector.snowflake": ReaderConnectorSnowflakeParams,
 }
 OP_PARAMS["transform.merge"] = TransformMergeParams
 

@@ -103,7 +103,7 @@ def test_non_collection_fields_carry_no_format_hint():
     assert "format" not in catalog["transform.join"]["paramsSchema"]["properties"]["on"]
 
 
-def test_all_eighteen_ops_are_registered():
+def test_all_nineteen_ops_are_registered():
     assert set(OP_PARAMS) == {
         "reader.collection",
         "transform.filter",
@@ -123,6 +123,7 @@ def test_all_eighteen_ops_are_registered():
         "reader.connector.rest",
         "reader.connector.postgres",
         "transform.merge",
+        "reader.connector.snowflake",
     }
     assert set(OP_KINDS) == set(OP_PARAMS)
 
@@ -516,3 +517,38 @@ def test_reader_connector_rest_secret_name_has_secret_name_format():
 def test_reader_connector_postgres_secret_name_has_secret_name_format():
     schema = ops_catalog()["reader.connector.postgres"]["paramsSchema"]
     assert schema["properties"]["secretName"]["format"] == "secret-name"
+
+
+def test_reader_connector_snowflake_is_kind_reader():
+    assert OP_KINDS["reader.connector.snowflake"] == "reader"
+
+
+def test_reader_connector_snowflake_requires_secret_name_and_query():
+    params = parse_op_params(
+        "reader.connector.snowflake",
+        {"secretName": "warehouse-sf", "query": "SELECT * FROM towns"},
+    )
+    assert params.secretName == "warehouse-sf"
+    assert params.query == "SELECT * FROM towns"
+    with pytest.raises(ValidationError):
+        parse_op_params("reader.connector.snowflake", {"query": "SELECT 1"})
+    with pytest.raises(ValidationError):
+        parse_op_params("reader.connector.snowflake", {"secretName": "x"})
+
+
+def test_reader_connector_snowflake_appears_in_catalog_with_secret_name_format_hint():
+    catalog = ops_catalog()
+    assert catalog["reader.connector.snowflake"]["kind"] == "reader"
+    props = catalog["reader.connector.snowflake"]["paramsSchema"]["properties"]
+    assert "query" in props
+    assert props["secretName"]["format"] == "secret-name"
+
+
+def test_reader_connector_postgres_description_documents_redshift_compatibility():
+    # GAP-16 §9 : le docstring de classe devient déjà le paramsSchema.description
+    # exposé par GET /pipelines/ops — ce test falsifie qu'ajouter la phrase
+    # Redshift au docstring la propage réellement jusqu'au catalogue, pas
+    # seulement jusqu'à un commentaire de code invisible à l'auteur du pipeline.
+    catalog = ops_catalog()
+    description = catalog["reader.connector.postgres"]["paramsSchema"]["description"]
+    assert "Redshift" in description
