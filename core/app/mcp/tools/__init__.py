@@ -8,7 +8,7 @@ package au lieu de module, même point d'entrée."""
 
 from mcp.server.fastmcp import FastMCP
 
-from app.configs.schemas import BuilderConfig
+from app.configs.schemas import app_config_json_schema
 from app.mcp.tools import (
     alerts,
     analytics,
@@ -55,4 +55,4 @@ def register_tools(server: FastMCP, session_factory) -> None:
     def app_config_schema() -> dict:
         """JSON Schema for AppConfig/DashboardConfig — validate before
         calling create_item or save_app_config."""
-        return BuilderConfig.model_json_schema()
+        return app_config_json_schema()

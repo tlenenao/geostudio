@@ -27,3 +27,13 @@ def test_schema_http_endpoint_returns_builder_config_json_schema(monkeypatch):
     assert body["title"] == "BuilderConfig"
     assert "properties" in body
     engine.dispose()
+
+
+def test_rest_and_mcp_schema_never_diverge():
+    from app.configs.schemas import app_config_json_schema
+    from app.schemas_routes import get_app_config_schema
+
+    # La ressource MCP (app/mcp/tools/__init__.py::app_config_schema) et la
+    # route REST doivent appeler la même fonction — ce test compare leurs
+    # sorties directement, sans dépendre du protocole MCP.
+    assert get_app_config_schema() == app_config_json_schema()

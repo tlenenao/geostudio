@@ -1436,6 +1436,17 @@ test("getAppConfig appends ?mode=runtime when a mode is passed", async () => {
   expect(requestedUrl).toContain("mode=runtime");
 });
 
+test("getAppConfigSchema récupère le schéma JSON depuis le cœur", async () => {
+  server.use(
+    http.get("https://core.test/schemas/app-config", () =>
+      HttpResponse.json({ title: "BuilderConfig", type: "object", properties: {} }),
+    ),
+  );
+  const schema = await makeClient().getAppConfigSchema();
+  expect(schema.type).toBe("object");
+  expect(schema.properties).toBeDefined();
+});
+
 test("saveAppConfig PUTs the app config by item", async () => {
   let body: any;
   server.use(

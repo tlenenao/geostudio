@@ -457,6 +457,10 @@ export interface ItemClient {
   getAppConfig(pk: string, mode?: "runtime"): Promise<AppConfig>;
   getPublicAppConfig(pk: string): Promise<AppConfig>;
   saveAppConfig(pk: string, config: AppConfig): Promise<void>;
+  // GAP-38 : schéma JSON de BuilderConfig, factorisé côté cœur derrière
+  // app_config_json_schema() — même source que la ressource MCP
+  // schema://app-config (garanti identique par un test dédié côté cœur).
+  getAppConfigSchema(): Promise<Record<string, unknown>>;
   queryDataSource(source: DataSource): Promise<DataRecord[]>;
   // Symétrique de sampleCollectionField, mais pour un hôte qui n'a qu'un
   // DataSource (pas déjà un collectionId résolu) : la couche `feature` du

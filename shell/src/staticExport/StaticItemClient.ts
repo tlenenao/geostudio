@@ -33,6 +33,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async getPublicAppConfig() {
       return config;
     },
+    async getAppConfigSchema(..._args: unknown[]) {
+      return unsupported();
+    },
     async queryDataSource(source: DataSource): Promise<DataRecord[]> {
       return (source.query.records as DataRecord[] | undefined) ?? [];
     },
