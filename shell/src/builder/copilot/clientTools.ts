@@ -84,7 +84,8 @@ export function buildClientToolSchemas(): ClientToolSchema[] {
     },
     {
       name: "setFilter",
-      description: "Modifie la requête (filtre) d'une source de données existante.",
+      description:
+        "Fusionne des clés dans la requête (filtre) d'une source de données existante — les clés déjà présentes et non citées ici restent inchangées.",
       inputSchema: {
         type: "object",
         properties: {
