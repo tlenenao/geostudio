@@ -128,6 +128,57 @@ test("l'agrégat count n'envoie ni field ni p", async () => {
   expect(call.alert.query).toEqual({ agg: "count" });
 });
 
+test("affiche un bouton Charger plus quand la page d'évaluations est pleine, et récupère une page plus grande au clic", async () => {
+  const listAlertRulesForDataset = vi
+    .fn()
+    .mockResolvedValue([
+      { itemId: "rule-1", title: "Historique complet" },
+    ] satisfies AlertRuleSummary[]);
+  const fullPage: AlertEvaluation[] = Array.from({ length: 100 }, (_, i) => ({
+    id: `e${i}`,
+    value: i,
+    state: "ok",
+    transitioned: false,
+    error: null,
+    createdAt: "2026-08-07T00:00:00Z",
+  }));
+  const getAlertEvaluations = vi.fn().mockResolvedValue(fullPage);
+  renderWithClient({ listAlertRulesForDataset, getAlertEvaluations });
+
+  expect(await screen.findByText("Historique complet")).toBeInTheDocument();
+  const loadMoreButton = await screen.findByRole("button", { name: "Charger plus" });
+
+  await userEvent.click(loadMoreButton);
+
+  await waitFor(() => expect(getAlertEvaluations).toHaveBeenCalledTimes(2));
+  expect(getAlertEvaluations).toHaveBeenLastCalledWith("rule-1", {
+    limit: 200,
+    offset: undefined,
+  });
+});
+
+test("n'affiche pas de bouton Charger plus quand la page d'évaluations n'est pas pleine", async () => {
+  const listAlertRulesForDataset = vi
+    .fn()
+    .mockResolvedValue([
+      { itemId: "rule-1", title: "Peu d'historique" },
+    ] satisfies AlertRuleSummary[]);
+  const getAlertEvaluations = vi.fn().mockResolvedValue([
+    {
+      id: "e1",
+      value: 1,
+      state: "ok",
+      transitioned: false,
+      error: null,
+      createdAt: "2026-08-07T00:00:00Z",
+    },
+  ] satisfies AlertEvaluation[]);
+  renderWithClient({ listAlertRulesForDataset, getAlertEvaluations });
+
+  expect(await screen.findByText("Peu d'historique")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Charger plus" })).not.toBeInTheDocument();
+});
+
 test("shows a save error inline instead of failing silently", async () => {
   const listAlertRulesForDataset = vi.fn().mockResolvedValue([]);
   const createAlertRuleItem = vi.fn().mockRejectedValue(new Error("Request failed: 422"));
