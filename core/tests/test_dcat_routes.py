@@ -329,6 +329,40 @@ def test_dcat_dataset_publisher_uses_producer_when_declared(env):
     assert res.json()["dct:publisher"]["@id"] == "http://testserver/v1/dcat/publisher/incidents"
 
 
+def test_dataset_detail_degrades_to_none_on_broken_collection(env, caplog):
+    # GAP-62 (reste) : une collection présente mais dont la table est cassée
+    # (introspection/emprise en échec) ne doit pas faire échouer le détail
+    # DCAT en 500 — même dégradation que get_catalog/get_collection.
+    from app.collections.introspection import TableNotFound as _TableNotFound
+
+    app, client, admin, _regular, _Session = env
+    _register(app, client, admin, public=True)
+
+    def broken_bbox_provider(session, info):
+        raise _TableNotFound("gone")
+
+    app.dependency_overrides[dcat_routes.get_bbox_provider] = lambda: broken_bbox_provider
+    resp = client.get("/dcat/datasets/incidents")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["dct:identifier"] == "incidents"
+    assert "extent lookup failed" in caplog.text
+
+
+def test_dataset_detail_code_bug_is_not_swallowed(env):
+    # Le tuple d'exceptions capturé doit rester étroit : un bug de code
+    # (TypeError) ne doit jamais être avalé en bbox=None (piège CLAUDE.md n°10).
+    app, client, admin, _regular, _Session = env
+    _register(app, client, admin, public=True)
+
+    def buggy_bbox_provider(session, info):
+        raise TypeError("bug")
+
+    app.dependency_overrides[dcat_routes.get_bbox_provider] = lambda: buggy_bbox_provider
+    with pytest.raises(TypeError):
+        client.get("/dcat/datasets/incidents")
+
+
 def test_dcat_dataset_without_declared_metadata_omits_optional_fields(env):
     app, client, admin, _regular, Session = env
     _register(app, client, admin)
