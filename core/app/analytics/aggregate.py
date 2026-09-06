@@ -20,6 +20,7 @@ import duckdb
 from pydantic import BaseModel
 
 from app.collections.introspection import TableInfo
+from app.sql_ident import quote_ident_duckdb as _qi
 
 
 class AggregateMeasure(BaseModel):
@@ -52,10 +53,6 @@ class UnknownAggregateField(Exception):
         self.field = field
         self.message = message
         super().__init__(message)
-
-
-def _qi(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
 
 
 def _sql_lit(value: str) -> str:

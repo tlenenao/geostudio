@@ -17,11 +17,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.auth.dependency import get_current_user_optional
-from app.collections.ddl import quote_ident
 from app.collections.introspection import TableInfo, TableNotFound
 from app.collections.routes import get_introspector, get_readable_collection
 from app.db import get_session
 from app.features.routes import get_rls_scope
+from app.sql_ident import quote_ident
 
 MVT_EXTENT = 4096
 MVT_BUFFER = 64

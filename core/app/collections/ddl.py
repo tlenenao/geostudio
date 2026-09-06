@@ -2,13 +2,25 @@
 """DDL par collection (spec SP-3 §2/§5, arbitrage A3) : tenant_id + RLS +
 GRANTs au rôle non-propriétaire gis_rls. Idempotent — ré-enregistrer une table
 ou rejouer un seed ne casse rien. Les identifiants sont quotés via le preparer
-SQLAlchemy (le nom vient du registre, mais la défense vaut pour tout appelant)."""
+SQLAlchemy (le nom vient du registre, mais la défense vaut pour tout appelant).
+
+`quote_ident` vit désormais dans `app.sql_ident` (GAP-15, premier volet) —
+réexporté ici pour compatibilité avec les appelants existants
+(`from app.collections.ddl import quote_ident`)."""
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.collections.publication import add_table_to_publication
+from app.sql_ident import quote_ident
 from app.tenants.repository import DEFAULT_TENANT_SLUG
+
+__all__ = [
+    "TenantColumnMismatch",
+    "quote_ident",
+    "spatial_index_name",
+    "apply_collection_ddl",
+]
 
 
 class TenantColumnMismatch(Exception):
@@ -17,10 +29,6 @@ class TenantColumnMismatch(Exception):
     dans ce cas rendrait ces lignes invisibles sous RLS (ou visibles à un
     tenant qui n'est pas le leur) alors qu'un COUNT(*) hors RLS les compterait
     quand même — cf. SP-42/F-securite-tenant-rls-01."""
-
-
-def quote_ident(session: Session, identifier: str) -> str:
-    return session.get_bind().dialect.identifier_preparer.quote(identifier)
 
 
 def _quote_literal(value: str) -> str:

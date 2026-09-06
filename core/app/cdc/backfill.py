@@ -57,7 +57,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.cdc.parquet_writer import ChangeRow
-from app.collections.ddl import quote_ident
+from app.sql_ident import quote_ident
 
 
 def _pg_timestamp_str(dt: datetime) -> str:

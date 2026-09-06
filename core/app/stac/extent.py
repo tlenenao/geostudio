@@ -23,8 +23,8 @@ ignore RLS par construction (pg_statistic n'est pas soumis aux policies)."""
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.collections.ddl import quote_ident
 from app.collections.introspection import TableInfo
+from app.sql_ident import quote_ident
 
 
 def _box_4326(session: Session, inner_sql: str, params: dict) -> list[float] | None:
