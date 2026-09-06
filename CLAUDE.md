@@ -91,14 +91,13 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
   `YYYY-MM-DD-spX…`.
 - **TDD systématique** ; chaque feature visible a sa spec E2E Playwright. La
   suite E2E complète est le filet de la migration : elle reste globalement
-  verte (compte à remesurer après intégration complète de SP-48/50/57a/
-  57b/59/60, 2026-09-06 — **1 failed** constant à travers toutes les
-  mesures partielles : `e2e/pipeline-builder.spec.ts` (numéro de ligne
-  flottant selon les fichiers fusionnés autour, même test), timeout sur le
-  bouton « Exécuter », confirmé préexistant à SP-43 en checkoutant le
-  commit d'avant sa Tâche 1 ; cause non encore investiguée, ne pas imputer
-  à un futur travail sans vérifier d'abord si ce test échoue déjà sur
-  `dev`).
+  verte (dernière mesure après intégration complète de SP-48/50/57a/57b/
+  59/60, 2026-09-06 : 165 passed / 4 skipped / **1 failed** —
+  `e2e/pipeline-builder.spec.ts:105` (numéro de ligne flottant selon les
+  fichiers fusionnés autour, même test), timeout sur le bouton
+  « Exécuter », confirmé préexistant à SP-43 en checkoutant le commit
+  d'avant sa Tâche 1 ; cause non encore investiguée, ne pas imputer à un
+  futur travail sans vérifier d'abord si ce test échoue déjà sur `dev`).
 - Exécution en **subagent-driven-development** : une revue par tâche **et** une
   revue finale de branche, systématiquement — ce ne sont pas les mêmes défauts
   (cf. `## Pièges récurrents`).
@@ -114,17 +113,19 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ```bash
 # shell (d'abord, car commitlint en dépend)
 cd shell && npm ci
-npm run test         # Vitest — compte à remesurer après intégration
-                     # complète de SP-48/50/57a/57b/59/60 (2026-09-06).
-npm run e2e          # Playwright — 1 failed constant à travers les
-                     # mesures partielles, à la
+npm run test         # Vitest — dernier compte mesuré après intégration
+                     # complète de SP-48/50/57a/57b/59/60 (2026-09-06) :
+                     # 236 fichiers, 2074 tests, tous passed. Couverture
+                     # 89,94 % (seuil 88).
+npm run e2e          # Playwright — 165 passed / 4 skipped / 1 failed à la
                      # même mesure (VITE_AUTH_MODE=mock) — l'échec
                      # (pipeline-builder.spec.ts:105) est préexistant,
                      # cf. ## Comment on travaille.
                      # e2e-oidc/ : suite séparée contre un vrai Keycloak (SP-26)
-npm run build        # tsc --noEmit + vite build ; chunk d'entrée ~471 Ko
-                     # (23 chunks de route en lazy() depuis SP-60) ; filet
-                     # de taille : node scripts/check-bundle-size.mjs
+npm run build        # tsc --noEmit + vite build ; chunk d'entrée 624 Ko
+                     # (seuil 630, relevé depuis 570 par le catalogue i18n
+                     # SP-57a — 23 chunks de route en lazy() depuis SP-60) ;
+                     # filet de taille : node scripts/check-bundle-size.mjs
                      # dist/.vite/manifest.json .bundle-size-threshold
 
 # pre-commit (une fois par poste de travail, après npm ci)
