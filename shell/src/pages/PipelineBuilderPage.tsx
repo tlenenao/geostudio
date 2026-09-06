@@ -133,6 +133,14 @@ export function PipelineBuilderPage({
       { id: genNodeId(), kind, op, x: position.x, y: position.y, params: {}, title: op },
     ]);
   }
+  // REV-060 : repli clic sur PipelinePalette — mêmes coordonnées relatives
+  // au canevas (pas de mesure de sa position réelle ici, comme le drop
+  // existant qui utilise directement clientX/clientY), en décalant chaque
+  // ajout successif pour ne pas empiler les nœuds exactement l'un sur
+  // l'autre.
+  function onAddViaPalette(op: string) {
+    onDropOnCanvas(op, { x: 40, y: 40 + draft.nodes.length * 90 });
+  }
 
   async function onSave() {
     setSaveError(null);
@@ -167,7 +175,7 @@ export function PipelineBuilderPage({
         browse={{
           id: "steps",
           label: t("pipelineBuilder.stepsLabel"),
-          content: <PipelinePalette />,
+          content: <PipelinePalette onAdd={onAddViaPalette} />,
         }}
         work={{
           id: "canvas",

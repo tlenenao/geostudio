@@ -762,6 +762,48 @@ test("shows a categorical symbology legend from frozen props.symbology", async (
   expect(screen.getByText("Sud")).toBeInTheDocument();
 });
 
+// REV-061 (backlog 2026-09-04) : la légende de symbologie du widget Carte
+// peignait `bg-white/90` — jumelle non tokenisée de MapLegend.tsx (tokens
+// SP-34) — texte noir illisible sur fond quasi noir en ambiance sombre.
+// Les deux formes ne sont pas interchangeables (celle-ci décrit des
+// swatches de symbologie, MapLegend.tsx liste des titres de couche) :
+// correctif minimal côté token, pas de fusion des deux composants.
+test("the symbology legend container uses the surface/ink tokens, not a raw white background", async () => {
+  const ctx = {
+    mode: "runtime",
+    data: state({
+      url: "https://fs/communes/items.json",
+      records: [{ id: 1, properties: {}, geometry: { type: "Polygon", coordinates: [] } }],
+    }),
+  } as WidgetContext;
+  const Map = getWidget("map")!.Component;
+  render(
+    withClient(
+      <Map
+        props={{
+          dataSourceId: "d",
+          symbology: {
+            color: {
+              field: "region",
+              mode: "categorical",
+              palette: "categorical-a",
+              domain: { kind: "categorical", values: ["Nord", "Sud"] },
+              computedAt: "2026-08-23T10:00:00Z",
+            },
+          },
+        }}
+        ctx={ctx}
+      />,
+    ),
+  );
+  const entry = await screen.findByText("Nord");
+  const legend = entry.closest("div.absolute.bottom-2.right-2") as HTMLElement;
+  expect(legend).not.toBeNull();
+  expect(legend.className).not.toContain("bg-white/90");
+  expect(legend.className).toContain("bg-surface/90");
+  expect(legend.className).toContain("text-ink");
+});
+
 test("the props panel exposes the shared popup editor", async () => {
   const onChange = vi.fn();
   renderPropsPanel({ props: { dataSourceId: "ds1" }, onChange });

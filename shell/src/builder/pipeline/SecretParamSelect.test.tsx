@@ -38,6 +38,20 @@ test("liste les secrets existants filtrés par kind", async () => {
   expect(screen.queryByRole("option", { name: "arcgis" })).not.toBeInTheDocument();
 });
 
+// REV-062 (backlog 2026-09-04) : le formulaire de création peint
+// `bg-sunken` sans jamais poser `text-ink` — texte des libellés noir sur
+// fond quasi noir en ambiance sombre, faute d'un token de couleur de texte
+// hérité d'un ancêtre.
+test("the create-secret form carries the text-ink token alongside bg-sunken", async () => {
+  renderSelect();
+  await waitFor(() => expect(screen.getByRole("option", { name: "arcgis" })).toBeInTheDocument());
+  await userEvent.click(screen.getByText("Créer un secret"));
+  const form = (await screen.findByLabelText("Nom")).closest("form") as HTMLElement;
+  expect(form).not.toBeNull();
+  expect(form.className).toContain("bg-sunken");
+  expect(form.className).toContain("text-ink");
+});
+
 test("sans kindFilter, tous les secrets sont proposés", async () => {
   renderSelect();
   await waitFor(() => expect(screen.getByRole("option", { name: "arcgis" })).toBeInTheDocument());
