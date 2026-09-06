@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 
+from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -154,3 +155,56 @@ def max_collections_per_tenant() -> int | None:
 def max_storage_bytes_per_tenant() -> int | None:
     raw = os.environ.get("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "")
     return int(raw) if raw else None
+
+
+def check_quota_or_raise(session: Session, *, tenant_id: str, kind: str) -> None:
+    """Lève HTTPException(409) si la limite instance-wide de comptage
+    `kind` ("items" ou "collections") serait atteinte/dépassée par une
+    création supplémentaire. L'appelant doit vérifier is_quotas_enabled()
+    avant d'invoquer cette fonction (app.auth.dependency) — ce module ne
+    connaît pas la capacité, seulement les limites, pour ne pas dépendre
+    d'app.auth (cf. docstring de tête du module)."""
+    if kind == "items":
+        limit = max_items_per_tenant()
+        if limit is None:
+            return
+        current = count_items_for_tenant(session, tenant_id)
+        if current >= limit:
+            raise HTTPException(
+                status_code=409,
+                detail=f"quota d'items du tenant dépassé : {current}/{limit}",
+            )
+    elif kind == "collections":
+        limit = max_collections_per_tenant()
+        if limit is None:
+            return
+        current = count_collections_for_tenant(session, tenant_id)
+        if current >= limit:
+            raise HTTPException(
+                status_code=409,
+                detail=f"quota de collections du tenant dépassé : {current}/{limit}",
+            )
+    else:
+        raise ValueError(f"unknown quota kind: {kind}")
+
+
+def check_storage_quota_or_raise(
+    session: Session, s3, *, tenant_id: str, additional_bytes: int
+) -> None:
+    """Point d'entrée des 4 sites de confirmation d'upload (Tâche 5) :
+    recalcule l'usage de stockage complet (spec §3.1.1 option a — un seul
+    calcul par upload réel, pas par requête de lecture) puis vérifie
+    qu'ajouter `additional_bytes` ne dépasserait pas la limite. L'appelant
+    doit vérifier is_quotas_enabled() avant d'invoquer cette fonction, même
+    convention que check_quota_or_raise ci-dessus."""
+    limit = max_storage_bytes_per_tenant()
+    if limit is None:
+        return
+    current = usage_for_tenant(session, s3, tenant_id).storage_bytes
+    if current + additional_bytes > limit:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"quota de stockage du tenant dépassé : {current + additional_bytes}/{limit} octets"
+            ),
+        )

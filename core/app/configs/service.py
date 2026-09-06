@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth.dependency import is_etl_enabled, is_export_enabled
+from app.auth.dependency import is_etl_enabled, is_export_enabled, is_quotas_enabled
 from app.configs import repository as repo
 from app.configs.alert_validation import validate_alert_payload
 from app.configs.bookmark_validation import validate_bookmark_payload
@@ -46,6 +46,7 @@ from app.configs.tileset3d_validation import validate_tileset3d_payload
 from app.items import repository as items_repo
 from app.items.models import Item
 from app.items.slug import InvalidSlugError, SlugCollisionError
+from app.quotas.service import check_quota_or_raise
 from app.roles.guards import require_privilege
 from app.roles.kind_registry import privilege_for_kind
 from app.users.models import User
@@ -101,6 +102,12 @@ def create_config_service(
     docstring du module) : le retour porte l'item et la config créés, à
     l'appelant d'écrire ses propres lignes d'audit."""
     require_privilege(session, user, privilege_for_kind(config.kind))
+    # SP-58 Tâche 5 (GAP-73/GAP-11) : la capacité CORE_QUOTAS_ENABLED garde
+    # elle-même le comptage — désactivée (défaut), aucune limite ne
+    # s'applique, comportement inchangé. Point unique (REST + tout tool MCP
+    # créateur, cf. docstring de tête du module).
+    if is_quotas_enabled():
+        check_quota_or_raise(session, tenant_id=user.tenant_id, kind="items")
     _require_etl_enabled_for_pipeline(config)
     _require_export_enabled_for_report(config)
     _validate_extension_scope(session, config, tenant_id=user.tenant_id)

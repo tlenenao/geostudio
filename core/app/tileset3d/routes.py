@@ -10,17 +10,19 @@ import uuid
 import zipfile
 from collections.abc import Callable
 
+from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user
+from app.auth.dependency import get_current_user, is_quotas_enabled
 from app.configs import repository as configs_repo
 from app.db import get_session
 from app.ingestion.routes import get_s3_client
 from app.ingestion.storage import ensure_uploads_bucket
 from app.items import repository as items_repo
+from app.quotas.service import check_storage_quota_or_raise
 from app.roles.guards import require_privilege
 from app.roles.kind_registry import privilege_for_kind
 from app.sharing.authorization import can
@@ -191,6 +193,26 @@ def complete_tileset3d_upload(
             "Parts": [{"PartNumber": p.partNumber, "ETag": p.etag} for p in body.parts]
         },
     )
+    # SP-58 Tâche 5 (GAP-73/GAP-11) : la taille finale n'est connue qu'après
+    # complete_multipart_upload (l'objet n'existe pas avant) — head_object
+    # est le seul moyen de l'apprendre, même patron que confirm_attachment
+    # (app/attachments/routes.py). Nettoyage best-effort si le quota est
+    # dépassé : un tileset qui n'ira jamais plus loin (le job reste
+    # "pending", jamais "finalizing") ne doit pas laisser d'objet orphelin.
+    if is_quotas_enabled():
+        head = s3.head_object(Bucket=bucket, Key=job.source_key)
+        try:
+            check_storage_quota_or_raise(
+                session, s3, tenant_id=user.tenant_id, additional_bytes=head["ContentLength"]
+            )
+        except HTTPException:
+            try:
+                s3.delete_object(Bucket=bucket, Key=job.source_key)
+            except ClientError:
+                logger.warning(
+                    "tileset3d over quota %s: objet non supprimé", job.source_key, exc_info=True
+                )
+            raise
     repo.mark_finalizing(session, job_id=job.id)
     write_audit(
         session,
