@@ -71,20 +71,45 @@ async function mockPipelineFlow(page: Page) {
       },
     });
   });
+  // Config du pipeline créé par POST /configs, mémorisée puis resservie par
+  // GET /configs/by-item/pipe-1 ci-dessous. Sans ce relais, la requête tombe
+  // sur le handler générique `**/configs/by-item/**` de mocks.ts, qui répond
+  // une config `kind: "app"` : getPipelineConfig lève alors
+  // « config has no pipeline payload », React Query réessaie, et la page
+  // d'édition reste indéfiniment sur « Chargement… » — jamais de bouton
+  // « Exécuter ». C'était la cause du seul échec E2E réputé « préexistant,
+  // cause non investiguée » de ce dépôt.
+  let createdPipelineConfig: Record<string, unknown> | null = null;
   await page.route("https://core.test/v1/configs", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
     const body = await route.request().postDataJSON();
     if (body?.config?.kind !== "pipeline") return route.fallback();
+    createdPipelineConfig = body.config;
     await route.fulfill({
       status: 201,
       json: { id: "cfg-pipe1", kind: "pipeline", itemId: "pipe-1" },
+    });
+  });
+  // Enregistrée AVANT le handler dédié du 3e test, qui la remplace pour
+  // lui seul : Playwright résout les routes de la dernière enregistrée à la
+  // première.
+  await page.route("https://core.test/v1/configs/by-item/pipe-1", async (route) => {
+    if (route.request().method() !== "GET" || createdPipelineConfig === null)
+      return route.fallback();
+    await route.fulfill({
+      json: {
+        id: "cfg-pipe1",
+        itemId: "pipe-1",
+        kind: "pipeline",
+        config: createdPipelineConfig,
+      },
     });
   });
   let runPolls = 0;
   await page.route("https://core.test/v1/pipelines/pipe-1/run", async (route) => {
     await route.fulfill({ status: 202, json: { runId: "run-1" } });
   });
-  await page.route("https://core.test/v1/pipelines/pipe-1/runs", async (route) => {
+  await page.route("https://core.test/v1/pipelines/pipe-1/runs*", async (route) => {
     runPolls += 1;
     const status = runPolls < 2 ? "running" : "succeeded";
     await route.fulfill({

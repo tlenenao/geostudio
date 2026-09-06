@@ -186,7 +186,7 @@ test.describe("audit d'accessibilité (axe-core)", () => {
     await page.route("https://core.test/v1/collections/candidates", async (route) => {
       await route.fulfill({ json: { candidates: [] } });
     });
-    await page.route("https://core.test/v1/collections", async (route) => {
+    await page.route("https://core.test/v1/collections*", async (route) => {
       await route.fulfill({ json: { collections: [mockCollection()] } });
     });
     await page.goto("/admin/collections");

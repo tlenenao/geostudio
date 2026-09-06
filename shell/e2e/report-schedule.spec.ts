@@ -73,7 +73,7 @@ test("programmer un rapport sur un signet, voir son historique d'exécutions", a
       },
     });
   });
-  await page.route("**/reports/report-1/runs", async (route) => {
+  await page.route("**/reports/report-1/runs*", async (route) => {
     await route.fulfill({
       json: [
         {

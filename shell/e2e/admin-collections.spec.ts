@@ -32,7 +32,7 @@ test("un admin gère le cycle de vie complet d'une collection depuis le shell", 
     });
   });
 
-  await page.route("https://core.test/v1/collections", async (route) => {
+  await page.route("https://core.test/v1/collections*", async (route) => {
     if (route.request().method() === "POST") {
       registered = await route.request().postDataJSON();
       await route.fulfill({ status: 201, json: mockCollection() });
@@ -145,7 +145,7 @@ test("un utilisateur non-admin ne voit pas le lien Collections et une navigation
 }) => {
   await mockCore(page);
   let collectionsAdminCalled = false;
-  await page.route("https://core.test/v1/collections", async (route) => {
+  await page.route("https://core.test/v1/collections*", async (route) => {
     collectionsAdminCalled = true;
     await route.fulfill({ json: { collections: [] } });
   });

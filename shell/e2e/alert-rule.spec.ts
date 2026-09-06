@@ -65,7 +65,7 @@ test("créer une règle d'alerte et voir son état firing sur DatasetEditPage", 
     if (route.request().method() !== "GET") return route.fallback();
     await route.fulfill({ json: [{ itemId: "alert-1", title: "Trop d'incidents" }] });
   });
-  await page.route("**/alerts/alert-1/evaluations", async (route) => {
+  await page.route("**/alerts/alert-1/evaluations*", async (route) => {
     await route.fulfill({
       json: [
         {
