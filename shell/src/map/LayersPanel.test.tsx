@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ItemClient, MapLayer } from "../api/types";
@@ -165,6 +165,17 @@ test("a raster layer has no popup editor", () => {
   expect(
     screen.queryByRole("checkbox", { name: "Afficher les attributs au clic" }),
   ).not.toBeInTheDocument();
+});
+
+test("une couche raster expose un contrôle d'opacité (GAP-35)", () => {
+  const rasterLayers: MapLayer[] = [
+    { id: "r1", title: "Ortho", visible: true, kind: "raster", tilesUrl: "https://t", opacity: 1 },
+  ];
+  const onChange = vi.fn();
+  renderPanel(rasterLayers, onChange);
+  const slider = screen.getByRole("slider", { name: /opacité/i });
+  fireEvent.change(slider, { target: { value: "0.4" } });
+  expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ id: "r1", opacity: 0.4 })]);
 });
 
 test("a feature layer without a collection lists fields from its fetched GeoJSON in the popup editor", async () => {

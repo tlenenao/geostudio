@@ -212,6 +212,28 @@ export function LayersPanel({
             >
               ✕
             </button>
+            {layer.kind === "raster" && (
+              <div className="basis-full pl-2">
+                <label className="flex flex-col gap-1 text-sm">
+                  Opacité — {Math.round((layer.opacity ?? 1) * 100)}%
+                  <input
+                    aria-label="Opacité"
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={layer.opacity ?? 1}
+                    onChange={(e) =>
+                      onChange(
+                        layers.map((l) =>
+                          l.id === layer.id ? { ...l, opacity: Number(e.target.value) } : l,
+                        ),
+                      )
+                    }
+                  />
+                </label>
+              </div>
+            )}
             {(layer.kind === "vector" || layer.kind === "feature") && (
               <div className="basis-full pl-2">
                 <LayerPopupEditor
