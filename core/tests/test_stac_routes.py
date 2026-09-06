@@ -387,6 +387,30 @@ def test_single_item_and_404(env_repo):
     assert client.get("/v1/stac/collections/incidents/items/999").status_code == 404
 
 
+def test_geojson_endpoints_use_geojson_content_type(env_repo):
+    # stac-api-validator (REV-098/GAP-04) : les réponses FeatureCollection/
+    # Feature doivent porter application/geo+json, pas application/json (le
+    # défaut FastAPI pour un dict), sur les 4 endpoints qui en renvoient.
+    app, client, admin, repo = env_repo
+    _register(app, client, admin)
+    assert (
+        client.get("/v1/stac/collections/incidents/items").headers["content-type"]
+        == "application/geo+json"
+    )
+    assert (
+        client.get("/v1/stac/collections/incidents/items/1").headers["content-type"]
+        == "application/geo+json"
+    )
+    assert (
+        client.get("/v1/stac/search?collections=incidents").headers["content-type"]
+        == "application/geo+json"
+    )
+    assert (
+        client.post("/v1/stac/search", json={"collections": ["incidents"]}).headers["content-type"]
+        == "application/geo+json"
+    )
+
+
 def test_stac_collection_reflects_declared_license(env):
     app, client, admin, _regular, Session = env
     _register(app, client, admin)
