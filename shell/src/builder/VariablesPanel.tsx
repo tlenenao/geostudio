@@ -118,7 +118,7 @@ export function VariablesPanel({
               />
             )}
             {(type === "record" || type === "list") && (
-              <span className="text-slate-400">{t("variablesPanel.definedByWiring")}</span>
+              <span className="text-ink-2">{t("variablesPanel.definedByWiring")}</span>
             )}
             <button
               type="button"

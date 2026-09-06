@@ -444,7 +444,7 @@ export function registerChartWidget(): void {
             />
             <Suspense
               fallback={
-                <div className="text-xs text-slate-400">{t("widgetChart.loadingFallback")}</div>
+                <div className="text-xs text-ink-2">{t("widgetChart.loadingFallback")}</div>
               }
             >
               <EChart option={option} />
@@ -475,9 +475,7 @@ export function registerChartWidget(): void {
             hasGeometry={data.hasGeometry}
           />
           <Suspense
-            fallback={
-              <div className="text-xs text-slate-400">{t("widgetChart.loadingFallback")}</div>
-            }
+            fallback={<div className="text-xs text-ink-2">{t("widgetChart.loadingFallback")}</div>}
           >
             <EChart option={option} onClick={handleClick} />
           </Suspense>

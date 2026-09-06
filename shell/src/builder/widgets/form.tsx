@@ -82,7 +82,7 @@ function FieldOverrides({
           className="flex cursor-move flex-col gap-1 rounded border border-slate-200 p-1.5"
         >
           <div className="flex flex-wrap items-center gap-1">
-            <span className="text-[10px] text-slate-400" aria-hidden="true">
+            <span className="text-[10px] text-ink-2" aria-hidden="true">
               ⠿
             </span>
             <input

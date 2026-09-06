@@ -30,14 +30,14 @@ export function registerNavigationWidget(): void {
             <option value="vertical">{t("widgetNavigation.vertical")}</option>
           </select>
         </label>
-        <p className="text-[10px] text-slate-400">{t("widgetNavigation.autoPagesHelp")}</p>
+        <p className="text-[10px] text-ink-2">{t("widgetNavigation.autoPagesHelp")}</p>
       </div>
     ),
     Component: ({ props, ctx }) => {
       const pages = ctx.pages ?? [];
       const vertical = props.direction === "vertical";
       if (pages.length === 0)
-        return <p className="text-xs text-slate-400">{t("widgetNavigation.noPages")}</p>;
+        return <p className="text-xs text-ink-2">{t("widgetNavigation.noPages")}</p>;
       return (
         <nav className={`flex gap-1 ${vertical ? "flex-col" : "flex-row flex-wrap"}`}>
           {pages.map((p) => (

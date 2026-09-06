@@ -110,7 +110,7 @@ export function ActionsPanel({
           );
         })}
         {visibleMessages.length === 0 && (
-          <li className="text-xs text-slate-400">{t("actionsPanel.empty")}</li>
+          <li className="text-xs text-ink-2">{t("actionsPanel.empty")}</li>
         )}
       </ul>
       <select

@@ -348,9 +348,7 @@ export function registerMapWidget(): void {
             hasGeometry={ctx.data?.hasGeometry}
           />
           <Suspense
-            fallback={
-              <div className="text-xs text-slate-400">{t("widgetMap.loadingFallback")}</div>
-            }
+            fallback={<div className="text-xs text-ink-2">{t("widgetMap.loadingFallback")}</div>}
           >
             <MapView
               ref={handle}

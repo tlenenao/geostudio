@@ -20,14 +20,12 @@ export function PropsPanel({
   onVisibleWhenChange: (expr: string) => void;
 }) {
   if (!item) {
-    return <p className="text-xs text-slate-400">{t("propsPanel.noWidgetSelected")}</p>;
+    return <p className="text-xs text-ink-2">{t("propsPanel.noWidgetSelected")}</p>;
   }
   const def = getWidget(item.widget);
   if (!def) {
     return (
-      <p className="text-xs text-slate-400">
-        {t("propsPanel.unknownWidget", { widget: item.widget })}
-      </p>
+      <p className="text-xs text-ink-2">{t("propsPanel.unknownWidget", { widget: item.widget })}</p>
     );
   }
   const Panel = def.PropsPanel;

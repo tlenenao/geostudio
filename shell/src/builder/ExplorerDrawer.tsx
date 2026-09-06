@@ -124,7 +124,7 @@ export function ExplorerDrawer() {
       </div>
       <div className="h-48 shrink-0">
         <Suspense
-          fallback={<div className="text-xs text-slate-400">{t("widgetMap.loadingFallback")}</div>}
+          fallback={<div className="text-xs text-ink-2">{t("widgetMap.loadingFallback")}</div>}
         >
           <MapView
             ref={mapHandle}

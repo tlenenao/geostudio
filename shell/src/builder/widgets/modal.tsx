@@ -63,7 +63,7 @@ export function registerModalWidget(): void {
 
       if (ctx.mode === "edit") {
         return (
-          <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">
+          <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-ink-2">
             {t("widgetModal.editPreview", { title })}
           </div>
         );

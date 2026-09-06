@@ -113,7 +113,7 @@ export function registerVariableInputWidget(): void {
       const setVariable = useSetVariable();
       const variable = defs.find((v) => v.id === variableId);
       if (!variable) {
-        return <p className="text-xs text-slate-400">{t("widgetVariableInput.notFound")}</p>;
+        return <p className="text-xs text-ink-2">{t("widgetVariableInput.notFound")}</p>;
       }
       const disabled = ctx.mode === "edit";
       return (

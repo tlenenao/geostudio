@@ -403,7 +403,7 @@ export function DataSourcePanel({
           </li>
         ))}
         {sources.length === 0 && (
-          <li className="text-xs text-slate-400">{t("dataSourcePanel.emptySources")}</li>
+          <li className="text-xs text-ink-2">{t("dataSourcePanel.emptySources")}</li>
         )}
       </ul>
       <button

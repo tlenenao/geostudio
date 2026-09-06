@@ -58,7 +58,7 @@ export function WidgetHost({
   const def = getWidget(item.widget);
   if (!def) {
     return (
-      <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">
+      <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-ink-2">
         {t("widgetHost.unknownWidget", { widget: item.widget })}
       </div>
     );

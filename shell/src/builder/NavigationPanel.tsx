@@ -89,7 +89,7 @@ export function NavigationPanel({
 
       {navigationMode === "story" && (
         <>
-          <p className="text-[10px] text-slate-400">
+          <p className="text-[10px] text-ink-2">
             {t("navigationPanel.enterActionsHeading", { name: page.name })}
           </p>
           <ul className="flex flex-col gap-1">
@@ -132,7 +132,7 @@ export function NavigationPanel({
               );
             })}
             {onEnter.length === 0 && (
-              <li className="text-xs text-slate-400">{t("navigationPanel.emptyEnterActions")}</li>
+              <li className="text-xs text-ink-2">{t("navigationPanel.emptyEnterActions")}</li>
             )}
           </ul>
 

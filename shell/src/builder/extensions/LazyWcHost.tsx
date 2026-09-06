@@ -11,7 +11,7 @@ function Placeholder({ text, tone }: { text: string; tone: "loading" | "error" }
       className={
         tone === "error"
           ? "flex h-full items-center justify-center bg-slate-100 text-xs text-red-600"
-          : "flex h-full items-center justify-center bg-slate-50 text-xs text-slate-400"
+          : "flex h-full items-center justify-center bg-slate-50 text-xs text-ink-2"
       }
     >
       {text}

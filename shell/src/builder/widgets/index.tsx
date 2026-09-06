@@ -86,7 +86,7 @@ export function registerBuiltinWidgets(): void {
           dataSources={dataSources}
           onChange={(id) => onChange({ ...props, dataSourceId: id })}
         />
-        <p className="text-[10px] text-slate-400">{t("widgetIndex.interpolationHelp")}</p>
+        <p className="text-[10px] text-ink-2">{t("widgetIndex.interpolationHelp")}</p>
       </div>
     ),
     Component: ({ props, ctx }) => {
@@ -135,7 +135,7 @@ export function registerBuiltinWidgets(): void {
           alt={String(props.alt ?? "")}
         />
       ) : (
-        <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">
+        <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-ink-2">
           {t("widgetIndex.imagePaletteLabel")}
         </div>
       ),

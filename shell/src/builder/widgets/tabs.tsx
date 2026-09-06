@@ -126,7 +126,7 @@ export function registerTabsWidget(): void {
 
       if (!active) {
         return (
-          <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-slate-400">
+          <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-ink-2">
             {t("widgetTabs.noTab")}
           </div>
         );
