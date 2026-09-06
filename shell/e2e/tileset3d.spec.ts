@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test, expect, type Page } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCore, mockMe } from "./mocks";
 
 async function mockTileset3DUploadFlow(page: Page) {
   let jobPolls = 0;
   await page.route("https://core.test/v1/instance", async (route) => {
     await route.fulfill({ json: { readOnly: false, tileset3dEnabled: true } });
   });
+  // GAP-31 : le bouton "Nouveau tileset 3D" du TopBar est gardé par
+  // AppLayout, qui lit désormais Me.capabilities.tileset3dEnabled (GET
+  // /me) au lieu de GET /instance — sans cette surcharge le bouton ne
+  // serait jamais rendu et ce test échouerait dès la ligne 79-ish.
+  await mockMe(page, { capabilities: { tileset3dEnabled: true } });
   await page.route("**/tileset3d/uploads/job-1/parts/1/presign", async (route) => {
     await route.fulfill({ json: { uploadUrl: "https://minio.test/tileset3d-part-1" } });
   });

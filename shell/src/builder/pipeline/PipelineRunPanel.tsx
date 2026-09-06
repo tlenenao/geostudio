@@ -12,6 +12,11 @@ const STATUS_LABEL: Record<PipelineRun["status"], string> = {
   failed: "failed",
 };
 
+// GET /pipelines/{id}/runs pagine déjà côté cœur (limit/offset, SP-50) mais ce
+// panneau tronquait silencieusement l'historique à la limite par défaut du
+// cœur (100) sans jamais l'envoyer ni exposer de contrôle.
+const RUNS_PAGE_SIZE = 100;
+
 // Patron de poll identique à shell/src/shell/ImportFileButton.tsx (SP-6a) —
 // boucle récursive manuelle via le client, pas un refetchInterval react-query
 // (cf. plan Global Constraints).
@@ -26,8 +31,14 @@ export function PipelineRunPanel({
   const [runs, setRuns] = useState<PipelineRun[]>([]);
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
+  const [limit, setLimit] = useState(RUNS_PAGE_SIZE);
   const mountedRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Lu par poll() (lancé une seule fois par exécution) pour refléter la
+  // limite la plus récente sans reconstruire toute la boucle de sondage à
+  // chaque clic sur "Charger plus".
+  const limitRef = useRef(limit);
+  limitRef.current = limit;
 
   // Effet de nettoyage dédié (patron ExportPanel.tsx) : distinct de l'effet
   // de chargement initial ci-dessous, pour ne pas courir le risque de
@@ -42,7 +53,7 @@ export function PipelineRunPanel({
 
   async function loadRuns() {
     try {
-      const latest = await client.getPipelineRuns(pipelineId);
+      const latest = await client.getPipelineRuns(pipelineId, { limit });
       if (!mountedRef.current) return;
       setRuns(latest);
       onLatestRunChange?.(latest[0] ?? null);
@@ -59,12 +70,12 @@ export function PipelineRunPanel({
   useEffect(() => {
     void loadRuns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipelineId]);
+  }, [pipelineId, limit]);
 
   async function poll() {
     for (;;) {
       if (!mountedRef.current) return;
-      const latest = await client.getPipelineRuns(pipelineId);
+      const latest = await client.getPipelineRuns(pipelineId, { limit: limitRef.current });
       if (!mountedRef.current) return;
       setRuns(latest);
       onLatestRunChange?.(latest[0] ?? null);
@@ -117,6 +128,17 @@ export function PipelineRunPanel({
           </li>
         ))}
       </ul>
+      {runs.length >= limit && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={() => setLimit((l) => l + RUNS_PAGE_SIZE)}
+        >
+          {t("pipelineRun.loadMore")}
+        </Button>
+      )}
     </div>
   );
 }

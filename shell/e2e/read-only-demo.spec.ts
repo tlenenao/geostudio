@@ -1,12 +1,17 @@
 import { test, expect } from "@playwright/test";
-import { mockCore } from "./mocks";
+import { mockCore, mockMe } from "./mocks";
 
 test("mode démo lecture seule : bannière visible, Formulaire masqué, écriture forcée refusée (403)", async ({
   page,
 }) => {
   await mockCore(page);
-  // Surcharge posée APRÈS mockCore : Playwright privilégie la route la plus
-  // récemment enregistrée qui matche (même patron que incident-form.spec.ts).
+  // Surcharges posées APRÈS mockCore : Playwright privilégie la route la
+  // plus récemment enregistrée qui matche (même patron que
+  // incident-form.spec.ts). Les deux endpoints sont surchargés
+  // délibérément (GAP-65 (1/3)/GAP-31) : la bannière lue par AppLayout vient
+  // désormais de GET /me (capabilities.readOnly), tandis que le Formulaire
+  // (form.tsx) lit encore GET /instance directement.
+  await mockMe(page, { capabilities: { readOnly: true } });
   await page.route("https://core.test/v1/instance", async (route) => {
     await route.fulfill({ json: { readOnly: true } });
   });

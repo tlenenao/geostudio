@@ -75,8 +75,36 @@ test("assemble TopBar, DomainBar et StatusBar autour du contenu", async () => {
 });
 
 test("shows the read-only demo banner when the instance is in read-only mode", async () => {
+  // GAP-31 : AppLayout lit désormais Me.capabilities (GET /me) au lieu de
+  // GET /instance — surcharger /me, pas /instance, pour piloter la
+  // bannière (sinon ce test resterait vert par accident, sans plus jamais
+  // exercer le vrai chemin de lecture).
   server.use(
-    http.get("https://core.test/v1/instance", () => HttpResponse.json({ readOnly: true })),
+    http.get("https://core.test/v1/me", () =>
+      HttpResponse.json({
+        id: "u1",
+        username: "alice",
+        firstName: "Alice",
+        lastName: "Martin",
+        email: "alice@example.com",
+        tenantId: "t1",
+        role: { id: "role-creator", name: "Créateur", slug: "creator" },
+        privileges: ["catalog.manage", "maps.manage", "data.view", "data.manage"],
+        version: "0.1.0",
+        tenantSlug: "demo",
+        capabilities: {
+          readOnly: true,
+          etlEnabled: false,
+          exportEnabled: false,
+          appExportEnabled: false,
+          tileset3dEnabled: false,
+          terrain3dEnabled: false,
+          copilotEnabled: false,
+          adminToolsEnabled: false,
+          quotasEnabled: false,
+        },
+      }),
+    ),
   );
   renderLayout();
   expect(

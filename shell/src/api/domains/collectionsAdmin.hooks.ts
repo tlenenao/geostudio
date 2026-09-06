@@ -3,11 +3,25 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "../ItemClientProvider";
 import type { CollectionCreateInput, CollectionPatchInput, Sharing } from "../types";
 
-export function useCollectionsAdmin(options?: { q?: string; enabled?: boolean }) {
+export function useCollectionsAdmin(options?: {
+  q?: string;
+  limit?: number;
+  offset?: number;
+  enabled?: boolean;
+}) {
   const client = useItemClientInternal();
   return useQuery({
-    queryKey: ["collections", "admin", options?.q ?? ""],
-    queryFn: () => client.listCollections(options?.q ? { q: options.q } : undefined),
+    // SP-50 documentait ce manque côté shell (jamais corrigé) : GET
+    // /collections pagine déjà côté cœur (limit/offset) — limit/offset
+    // entrent dans la clé pour que "Charger plus" (CollectionsAdminPage)
+    // déclenche bien un nouveau fetch plutôt que de resservir le cache.
+    queryKey: ["collections", "admin", options?.q ?? "", options?.limit, options?.offset],
+    queryFn: () =>
+      client.listCollections({
+        q: options?.q,
+        limit: options?.limit,
+        offset: options?.offset,
+      }),
     enabled: options?.enabled ?? true,
   });
 }

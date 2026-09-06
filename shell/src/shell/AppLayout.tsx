@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useMe, useInstanceInfo } from "../api/hooks";
+import { useMe } from "../api/hooks";
 import { TopBar } from "./chrome/TopBar";
 import { DomainBar } from "./chrome/DomainBar";
 import { BottomNav } from "./chrome/BottomNav";
@@ -11,9 +11,15 @@ import type { Profile } from "../auth/capabilities";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const meQuery = useMe();
-  const instanceQuery = useInstanceInfo();
-  const readOnly = instanceQuery.data?.readOnly === true;
-  const tileset3dEnabled = instanceQuery.data?.tileset3dEnabled === true;
+  // GAP-31 : GET /me sert déjà `capabilities` sous la même forme exacte que
+  // GET /instance (garanti par un test dédié côté cœur, cf. commentaire de
+  // Me.capabilities dans api/types.ts) — un second appel réseau ici était
+  // redondant. useInstanceInfo() reste utilisé ailleurs (TerrainPanel,
+  // form.tsx, pages d'admin, NewItemButton, ItemActions, MapEditorPage...),
+  // ce correctif ne touche que ce composant.
+  const capabilities = meQuery.data?.capabilities;
+  const readOnly = capabilities?.readOnly === true;
+  const tileset3dEnabled = capabilities?.tileset3dEnabled === true;
   const isExportRender = useIsExportRender();
   const narrow = useNarrowViewport();
 
@@ -29,13 +35,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     privileges: new Set(meQuery.data?.privileges ?? []),
     capabilities: {
       readOnly,
-      etlEnabled: instanceQuery.data?.etlEnabled === true,
-      exportEnabled: instanceQuery.data?.exportEnabled === true,
-      appExportEnabled: instanceQuery.data?.appExportEnabled === true,
+      etlEnabled: capabilities?.etlEnabled === true,
+      exportEnabled: capabilities?.exportEnabled === true,
+      appExportEnabled: capabilities?.appExportEnabled === true,
       tileset3dEnabled,
-      terrain3dEnabled: instanceQuery.data?.terrain3dEnabled === true,
-      copilotEnabled: instanceQuery.data?.copilotEnabled === true,
-      quotasEnabled: instanceQuery.data?.quotasEnabled === true,
+      terrain3dEnabled: capabilities?.terrain3dEnabled === true,
+      copilotEnabled: capabilities?.copilotEnabled === true,
+      quotasEnabled: capabilities?.quotasEnabled === true,
     },
   };
 

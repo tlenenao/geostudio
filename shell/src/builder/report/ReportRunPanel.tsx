@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/ItemClientProvider";
 import type { ReportRunStatus } from "../../api/types";
 import { t } from "../../i18n";
+import { Button } from "../../ui/kit/Button";
 
 const STATUS_LABEL: Record<ReportRunStatus["status"], string> = {
   pending: t("reportRun.statusPending"),
@@ -22,6 +23,11 @@ const STATUS_LABEL: Record<ReportRunStatus["status"], string> = {
 const ACTIVE_POLL_MS = 1500;
 const IDLE_POLL_MS = 30000;
 
+// GET /reports/{id}/runs pagine déjà côté cœur (limit/offset, SP-50) mais ce
+// panneau tronquait silencieusement l'historique à la limite par défaut du
+// cœur (100) sans jamais l'envoyer ni exposer de contrôle.
+const RUNS_PAGE_SIZE = 100;
+
 function isRendering(runs: ReportRunStatus[]): boolean {
   const latest = runs[0]?.status;
   return latest === "pending" || latest === "running";
@@ -36,6 +42,7 @@ export function ReportRunPanel({ reportId }: { reportId: string }) {
   const client = useItemClient();
   const [runs, setRuns] = useState<ReportRunStatus[]>([]);
   const [hasError, setHasError] = useState(false);
+  const [limit, setLimit] = useState(RUNS_PAGE_SIZE);
   const stopped = useRef(false);
 
   useEffect(() => {
@@ -44,7 +51,7 @@ export function ReportRunPanel({ reportId }: { reportId: string }) {
       if (stopped.current) return;
       let delay = IDLE_POLL_MS;
       try {
-        const next = await client.getReportRuns(reportId);
+        const next = await client.getReportRuns(reportId, { limit });
         if (stopped.current) return;
         setRuns(next);
         setHasError(false);
@@ -63,7 +70,7 @@ export function ReportRunPanel({ reportId }: { reportId: string }) {
     return () => {
       stopped.current = true;
     };
-  }, [client, reportId]);
+  }, [client, reportId, limit]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -95,6 +102,17 @@ export function ReportRunPanel({ reportId }: { reportId: string }) {
           </li>
         ))}
       </ul>
+      {runs.length >= limit && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={() => setLimit((l) => l + RUNS_PAGE_SIZE)}
+        >
+          {t("reportRun.loadMore")}
+        </Button>
+      )}
     </div>
   );
 }
