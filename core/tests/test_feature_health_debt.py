@@ -48,6 +48,17 @@ def test_open_gaps_expands_a_range_row():
     assert {"GAP-16", "GAP-20", "GAP-23"} <= identifiers
 
 
+def test_open_gaps_ignores_prose_mentions_outside_the_status_table():
+    """Les tableaux de détail plus loin dans le document contiennent de la
+    prose libre qui mentionne "ouvert"/"fermé" sans être une ligne de statut
+    (ex. "l'ouverture de SP-42", "8 ont été refermés", "non couvert par aucun
+    test", "déjà couvert GAP-40") — GAP-03/39/46/47/67 sont réellement
+    **Fermé** dans le tableau d'état et ne doivent pas ressortir comme
+    ouverts."""
+    identifiers = {item.identifier for item in open_gaps(REPO)}
+    assert identifiers.isdisjoint({"GAP-03", "GAP-39", "GAP-46", "GAP-47", "GAP-67"})
+
+
 def test_open_revs_reads_the_etat_line():
     items = {item.identifier: item for item in open_revs(REPO)}
     assert "REV-001" in items
@@ -64,6 +75,15 @@ def test_open_revs_reads_the_etat_line():
 def test_open_revs_carries_the_proof_paths():
     items = {item.identifier: item for item in open_revs(REPO)}
     assert "core/app/pipelines/jobs.py" in items["REV-001"].paths
+
+
+def test_open_revs_includes_rev_164_despite_alternate_etat_bold_wrapping():
+    """`- **État : partiellement fermé par SP-59** (2026-09-06) — …` referme
+    le `**` en fin d'état, pas juste après les deux-points comme la forme
+    habituelle `- **État :** …` — REV-164 doit rester comptée comme ouverte
+    (son propre corps dit « Reste ouvert » sur le volet OIDC)."""
+    identifiers = {item.identifier for item in open_revs(REPO)}
+    assert "REV-164" in identifiers
 
 
 def test_score_is_hundred_without_any_open_item():
