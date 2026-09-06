@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { CollectionSchema, DatasetConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { DatasetEditPage } from "./DatasetEditPage";
@@ -64,6 +64,10 @@ function stubMatchMedia(matches: boolean) {
 
 beforeEach(() => {
   stubMatchMedia(false);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 function renderPage(client: Partial<ItemClient>) {

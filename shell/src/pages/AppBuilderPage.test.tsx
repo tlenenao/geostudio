@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { AppConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
@@ -52,6 +52,10 @@ function stubMatchMedia(matches: boolean) {
 
 beforeEach(() => {
   stubMatchMedia(false);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 // Item par défaut de l'app "5" (seul pk utilisé par ce fichier) :
