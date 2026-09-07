@@ -2465,6 +2465,57 @@ def test_preview_reader_connector_missing_secret_raises_pipeline_runtime_error(t
             )
 
 
+def test_preview_reader_connector_snowflake_missing_secret_raises_pipeline_runtime_error(
+    tmp_path,
+):
+    # w1 satisfies PipelinePayload's "at least one writer node" structural
+    # validator; never reached — preview_pipeline(up_to="r1") stops the
+    # chain at r1, and _prepare() raises on the missing secret while
+    # materializing readers, before any writer is touched. Proves the
+    # registries.py wiring end-to-end, not just materialize_snowflake_connector
+    # in isolation (already covered by Task 3).
+    payload_nodes = [
+        {
+            "id": "r1",
+            "kind": "reader",
+            "op": "reader.connector.snowflake",
+            "params": {"secretName": "does-not-exist", "query": "SELECT 1"},
+        },
+        {
+            "id": "w1",
+            "kind": "writer",
+            "op": "writer.export",
+            "params": {"format": "csv", "key": "out.csv"},
+        },
+    ]
+    edges = [{"id": "e1", "from": "r1", "to": "w1"}]
+    from app.configs.schemas import PipelinePayload
+
+    payload = PipelinePayload.model_validate({"nodes": payload_nodes, "edges": edges})
+
+    from app.db import init_db, make_session_factory
+    from app.tenants.repository import get_or_create_default_tenant
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as session:
+        tenant = get_or_create_default_tenant(session)
+        with pytest.raises(runtime.PipelineRuntimeError, match="not found"):
+            runtime.preview_pipeline(
+                session=session,
+                payload=payload,
+                tenant_id=tenant.id,
+                user=None,
+                up_to="r1",
+                endpoint_url="http://localhost:9000",
+                access_key="x",
+                secret_key="y",
+                base_uri=str(tmp_path),
+                limit=50,
+            )
+
+
 def test_run_pipeline_reader_connector_rest_never_leaks_secret_value(
     tmp_path, monkeypatch, httpserver
 ):

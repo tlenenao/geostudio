@@ -67,13 +67,25 @@ class SmtpCredentialsPayload(BaseModel):
     fromAddress: str
 
 
+class SnowflakeDsnPayload(BaseModel):
+    """DSN SQLAlchemy complet vers un entrepôt Snowflake (GAP-16), forme
+    `snowflake://user:password@account/database/schema?warehouse=...&role=...`
+    (vérifiée contre le README du dépôt snowflake-sqlalchemy, design §2.2).
+    Comme postgres_dsn : le cœur ne parse ni ne valide ce DSN, il le passe
+    tel quel à sa.create_engine()."""
+
+    kind: Literal["snowflake_dsn"] = "snowflake_dsn"
+    dsn: str
+
+
 SecretPayload = Annotated[
     ApiKeyPayload
     | BearerTokenPayload
     | BasicAuthPayload
     | OAuth2ClientCredentialsPayload
     | PostgresDsnPayload
-    | SmtpCredentialsPayload,
+    | SmtpCredentialsPayload
+    | SnowflakeDsnPayload,
     Field(discriminator="kind"),
 ]
 
@@ -84,6 +96,7 @@ SECRET_PAYLOAD_ADAPTER: TypeAdapter[
     | OAuth2ClientCredentialsPayload
     | PostgresDsnPayload
     | SmtpCredentialsPayload
+    | SnowflakeDsnPayload
 ] = TypeAdapter(SecretPayload)
 
 

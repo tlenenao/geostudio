@@ -56,11 +56,11 @@ voie la réserve sans devoir remonter au texte.
 
 | Image | Base(s) | Ajouts notables du Dockerfile | Licence(s) établie(s) | Statut |
 |---|---|---|---|---|
-| `geostudio-core` | `python:3.12-slim` (CPython, `PSF-2.0` [^python]) | 35 dépendances Python directes de `core/pyproject.toml` (`fastapi`, `sqlalchemy`, `pydantic`, `httpx`, `requests`, `dlt`, `psycopg`, `psycopg2-binary`, `alembic`, `pyjwt`, `cryptography`, `croniter`, `boto3`, `mcp`, `shapely`, `procrastinate`, `pyogrio`, `pyproj`, `rasterio`, `geopandas`, `pyarrow`, `pgvector`, `duckdb`, `openpyxl`, `playwright`, `opentelemetry-*`, etc. — liste complète et licence de chacune : cf. section dédiée) + extensions DuckDB `httpfs`/`spatial` (MIT [^duckdb-ext]), `h3` community (Apache-2.0 [^h3-duckdb]) + code GeoStudio (Apache-2.0) | Permissif pour l'immense majorité, **sauf `psycopg` (`LGPL-3.0-only`) et `psycopg2-binary` (`LGPL-3.0-or-later`)** — copyleft faible, cf. section dédiée | **OK, avec réserve** (pip non exhaustif au-delà des dépendances directes ; + LGPL psycopg/psycopg2, voir note) |
+| `geostudio-core` | `python:3.12-slim` (CPython, `PSF-2.0` [^python]) | 36 dépendances Python directes de `core/pyproject.toml` (`fastapi`, `sqlalchemy`, `pydantic`, `httpx`, `requests`, `dlt`, `snowflake-sqlalchemy`, `psycopg`, `psycopg2-binary`, `alembic`, `pyjwt`, `cryptography`, `croniter`, `boto3`, `mcp`, `shapely`, `procrastinate`, `pyogrio`, `pyproj`, `rasterio`, `geopandas`, `pyarrow`, `pgvector`, `duckdb`, `openpyxl`, `playwright`, `opentelemetry-*`, etc. — liste complète et licence de chacune : cf. section dédiée) + extensions DuckDB `httpfs`/`spatial` (MIT [^duckdb-ext]), `h3` community (Apache-2.0 [^h3-duckdb]) + code GeoStudio (Apache-2.0) | Permissif pour l'immense majorité, **sauf `psycopg` (`LGPL-3.0-only`) et `psycopg2-binary` (`LGPL-3.0-or-later`)** — copyleft faible, cf. section dédiée | **OK, avec réserve** (pip non exhaustif au-delà des dépendances directes ; + LGPL psycopg/psycopg2, voir note) |
 | `geostudio-shell` | `node:20-slim` (étage de build, jeté) + `nginx:1.27-alpine` (`BSD-2-Clause` [^nginx]) | code GeoStudio (Apache-2.0) ; dépendances npm non auditées une à une (étage `node` jeté avant l'image finale — seul le bundle JS compilé est copié) | Permissif à ce niveau (npm non exhaustif) | OK, avec réserve |
 | `geostudio-postgis` | `postgis/postgis:16-3.4` | `postgresql-16-pgvector`, `postgresql-16-wal2json` (APT PGDG) | **GPL-2.0-or-later** (PostGIS) + permissif (PostgreSQL, pgvector, wal2json) | **Copyleft — section dédiée** |
 | `geostudio-appexport-standalone` | `node:20-slim` (build shell, jeté) + `python:3.12-slim` | code GeoStudio (Apache-2.0) ; `pip install fastapi 'uvicorn[standard]' pydantic duckdb sqlalchemy` (tous les cinq explicitement listés dans le `Dockerfile`, pas seulement `sqlalchemy` comme l'affirmait une version précédente de ce tableau) — `fastapi`/`pydantic`/`sqlalchemy`/`duckdb` MIT [^fastapi] [^pydantic] [^sqlalchemy] [^duckdb-py], `uvicorn` BSD-3-Clause [^uvicorn] ; dépendances npm de l'étage de build non auditées (jeté avant l'image finale, comme `geostudio-shell`) | Permissif à ce niveau | OK, avec réserve (pip+npm non exhaustifs au-delà des dépendances directes listées) |
-| `geostudio-export-worker` | `python:3.12-slim` | **Même liste complète que `geostudio-core`** (`uv pip install --system --no-cache -r pyproject.toml` — littéralement le même fichier, donc les mêmes 35 dépendances directes, y compris `psycopg`/`psycopg2-binary`) + binaires Chromium/FFmpeg téléchargés par `playwright install --with-deps chromium` | Playwright lui-même permissif (Apache-2.0 [^playwright]) ; **licence du binaire Chromium/FFmpeg embarqué non établie avec confiance** — Chromium agrège des centaines de composants tiers sous licences hétérogènes et aucun `THIRD_PARTY_NOTICES` consolidé n'a été trouvé en un temps raisonnable ; **+ LGPL `psycopg`/`psycopg2-binary` héritées de `core/pyproject.toml`**, même réserve que `geostudio-core` | **Non tranché** (Chromium/FFmpeg, cf. note ci-dessous) **+ réserve LGPL** (voir section dédiée) |
+| `geostudio-export-worker` | `python:3.12-slim` | **Même liste complète que `geostudio-core`** (`uv pip install --system --no-cache -r pyproject.toml` — littéralement le même fichier, donc les mêmes 36 dépendances directes, y compris `psycopg`/`psycopg2-binary`) + binaires Chromium/FFmpeg téléchargés par `playwright install --with-deps chromium` | Playwright lui-même permissif (Apache-2.0 [^playwright]) ; **licence du binaire Chromium/FFmpeg embarqué non établie avec confiance** — Chromium agrège des centaines de composants tiers sous licences hétérogènes et aucun `THIRD_PARTY_NOTICES` consolidé n'a été trouvé en un temps raisonnable ; **+ LGPL `psycopg`/`psycopg2-binary` héritées de `core/pyproject.toml`**, même réserve que `geostudio-core` | **Non tranché** (Chromium/FFmpeg, cf. note ci-dessous) **+ réserve LGPL** (voir section dédiée) |
 | `geostudio-qgis-worker` | `qgis/qgis:release-3_34` | GRASS (`grassprovider` activé) | **GPL-2.0-or-later** (QGIS + GRASS) | **Copyleft — section dédiée existante** |
 | `geostudio-appexport-runtime-builder` | `node:20-slim` (image finale, pas un étage jeté — c'est un conteneur one-shot dont la sortie est un volume, pas un runtime servi) | code GeoStudio (Apache-2.0) ; dépendances npm non auditées une à une | Permissif à ce niveau (npm non exhaustif) | OK, avec réserve |
 | `geostudio-backup` | `alpine:3.20` | `postgresql16-client`, `age`, `curl`, `jq`, `bash`, `tzdata`, `python3` (apk) + binaire `mc` (MinIO Client) téléchargé depuis `dl.min.io` — détail complet par composant : `/LICENSE-BACKUP.md`, embarquée dans l'image | **AGPL-3.0-or-later** (`mc`) + permissif pour le reste | **Copyleft — section dédiée, notice embarquée** |
@@ -119,8 +119,8 @@ profil compose `etl`).
 
 Ces deux images installent, via `uv pip install --system --no-cache -r
 pyproject.toml`, **le même fichier `core/pyproject.toml`** — donc les mêmes
-35 dépendances Python directes. `geostudio-export-worker` ajoute par-dessus
-Playwright + Chromium/FFmpeg (cf. note dédiée ci-dessus) ; les 35
+36 dépendances Python directes. `geostudio-export-worker` ajoute par-dessus
+Playwright + Chromium/FFmpeg (cf. note dédiée ci-dessus) ; les 36
 dépendances directes sont identiques dans les deux images.
 
 Licence de chacune, vérifiée le 2026-08-21 en interrogeant les métadonnées
@@ -132,11 +132,20 @@ tierce) :
 |---|---|---|
 | `MIT` | `fastapi`, `sqlalchemy`, `pydantic`, `alembic`, `pyjwt`, `croniter`, `mcp`, `procrastinate`, `pyogrio`, `pyproj`, `pgvector`, `duckdb`, `openpyxl` | permissif |
 | `BSD-3-Clause` | `uvicorn`, `httpx`, `shapely`, `rasterio`, `geopandas`, `rio-cogeo` | permissif |
-| `Apache-2.0` | `requests`, `dlt`, `boto3`, `python-multipart`, `pyarrow`, `playwright`, `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-http`, `opentelemetry-instrumentation-{fastapi,sqlalchemy,httpx,botocore}` | permissif |
+| `Apache-2.0` | `requests`, `dlt`, `boto3`, `python-multipart`, `pyarrow`, `playwright`, `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-http`, `opentelemetry-instrumentation-{fastapi,sqlalchemy,httpx,botocore}`, `snowflake-sqlalchemy`, `snowflake-connector-python` (dépendance transitive de `snowflake-sqlalchemy`) | permissif |
 | `Apache-2.0 OR BSD-3-Clause` (dual, au choix du redistributeur) | `cryptography` | permissif |
 | `PSF-2.0` | `defusedxml` | permissif |
 | **`LGPL-3.0-only`** | `psycopg` | **copyleft faible** |
 | **`LGPL-3.0-or-later`** (+ exception de liaison OpenSSL propre au projet, sans identifiant d'exception SPDX catalogué — cf. `LICENSE` amont) | `psycopg2-binary` | **copyleft faible** |
+
+`snowflake-sqlalchemy` (ajouté par GAP-16, connecteur entrepôt cloud
+analytique) et sa dépendance transitive `snowflake-connector-python`
+vérifiées le 2026-09-07 par la même méthode (`importlib.metadata` dans
+l'environnement `core`) : `snowflake-sqlalchemy` porte
+`License-Expression: Apache-2.0` ; `snowflake-connector-python` porte
+`License: Apache-2.0` (pas de champ `License-Expression`, mais classifieur
+`License :: OSI Approved :: Apache Software License` concordant) — aucune
+des deux n'introduit de copyleft.
 
 Sources vérifiées pour les deux composants copyleft : `psycopg` —
 <https://github.com/psycopg/psycopg/blob/master/LICENSE.txt> (confirmé par

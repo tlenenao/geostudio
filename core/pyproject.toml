@@ -16,6 +16,17 @@ dependencies = [
     "dlt>=1.6",  # SP-15f : reader.connector.rest/postgres — extraction,
                 # normalisation, inférence de schéma (design §3.1) ; destination
                 # duckdb, aucun extra requis (core/déjà présent).
+    "snowflake-sqlalchemy>=1.11,<2",  # GAP-16 : reader.connector.snowflake —
+                       # dialecte SQLAlchemy pour un entrepôt Snowflake
+                       # distant, résolu automatiquement par
+                       # sa.create_engine("snowflake://...") via les entry
+                       # points du paquet (aucun import explicite requis
+                       # dans ce dépôt). Borne haute délibérée : 2.0.0a2 est
+                       # une pré-version alpha au moment de cet ajout —
+                       # jamais installée silencieusement par une
+                       # résolution de dépendances. Apache-2.0, comme sa
+                       # dépendance transitive snowflake-connector-python
+                       # (vérifiées toutes deux sur PyPI).
     "psycopg[binary]>=3.1",
     "psycopg2-binary>=2.9",  # SP-11a : seul driver Python avec support du protocole
                              # de réplication logique (psycopg v3 ne l'expose pas) ;
@@ -115,6 +126,7 @@ filterwarnings = [
 markers = [
     "postgis: nécessite un PostGIS réel (CORE_TEST_DATABASE_URL) ; skippé sinon",
     "qgis: nécessite un sidecar qgis-worker réel (CORE_TEST_QGIS_WORKER_URL) ; skippé sinon",
+    "snowflake: nécessite un compte Snowflake réel (CORE_TEST_SNOWFLAKE_DSN) ; skippé sinon — JAMAIS câblé en CI (service cloud propriétaire, pas de sidecar auto-hébergeable équivalent au qgis-worker) ; manuel uniquement",
     "playwright: nécessite le binaire Chromium (playwright install --with-deps chromium) ; skippé sinon",
     "docker: nécessite un démon Docker réel (build local de l'image, jamais un pull) ; skippé sinon",
 ]

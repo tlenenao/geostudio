@@ -103,7 +103,7 @@ def test_non_collection_fields_carry_no_format_hint():
     assert "format" not in catalog["transform.join"]["paramsSchema"]["properties"]["on"]
 
 
-def test_all_eighteen_ops_are_registered():
+def test_all_nineteen_ops_are_registered():
     assert set(OP_PARAMS) == {
         "reader.collection",
         "transform.filter",
@@ -123,6 +123,7 @@ def test_all_eighteen_ops_are_registered():
         "reader.connector.rest",
         "reader.connector.postgres",
         "transform.merge",
+        "reader.connector.snowflake",
     }
     assert set(OP_KINDS) == set(OP_PARAMS)
 
@@ -516,3 +517,78 @@ def test_reader_connector_rest_secret_name_has_secret_name_format():
 def test_reader_connector_postgres_secret_name_has_secret_name_format():
     schema = ops_catalog()["reader.connector.postgres"]["paramsSchema"]
     assert schema["properties"]["secretName"]["format"] == "secret-name"
+
+
+def test_reader_connector_snowflake_is_kind_reader():
+    assert OP_KINDS["reader.connector.snowflake"] == "reader"
+
+
+def test_reader_connector_snowflake_requires_secret_name_and_query():
+    params = parse_op_params(
+        "reader.connector.snowflake",
+        {"secretName": "warehouse-sf", "query": "SELECT * FROM towns"},
+    )
+    assert params.secretName == "warehouse-sf"
+    assert params.query == "SELECT * FROM towns"
+    with pytest.raises(ValidationError):
+        parse_op_params("reader.connector.snowflake", {"query": "SELECT 1"})
+    with pytest.raises(ValidationError):
+        parse_op_params("reader.connector.snowflake", {"secretName": "x"})
+
+
+def test_reader_connector_snowflake_appears_in_catalog_with_secret_name_format_hint():
+    catalog = ops_catalog()
+    assert catalog["reader.connector.snowflake"]["kind"] == "reader"
+    props = catalog["reader.connector.snowflake"]["paramsSchema"]["properties"]
+    assert "query" in props
+    assert props["secretName"]["format"] == "secret-name"
+
+
+def test_reader_connector_postgres_description_documents_redshift_compatibility():
+    # GAP-16 §9 : seul le PREMIER PARAGRAPHE du docstring de classe devient le
+    # paramsSchema.description exposé par GET /pipelines/ops (revue finale I2,
+    # cf. test_op_tooltip_descriptions_hide_developer_jargon ci-dessous) — ce
+    # test falsifie que la phrase Redshift, gardée dans ce premier paragraphe,
+    # propage réellement jusqu'au catalogue, pas seulement jusqu'à un
+    # commentaire de code invisible à l'auteur du pipeline.
+    catalog = ops_catalog()
+    description = catalog["reader.connector.postgres"]["paramsSchema"]["description"]
+    assert "Redshift" in description
+
+
+# Revue finale de branche GAP-16, Important I2 : le docstring Python complet
+# de 5 ops (noms de classes, chemins de module, renvois "design §n"/"SPnn")
+# atteignait tel quel le tooltip de palette (paramsSchema.description, lu par
+# shell/src/builder/pipeline/PipelinePalette.tsx) — jargon développeur exposé
+# tel quel à l'auteur de pipeline. Seul le premier paragraphe du docstring de
+# classe doit atteindre le catalogue ; le reste continue de documenter les
+# développeurs (implémentation, limites, renvois de design) sans être exposé.
+_DEV_JARGON_MARKERS = ("app.pipelines", "design", "SP-1", "GAP-16", "§")
+
+
+@pytest.mark.parametrize(
+    "op",
+    [
+        "reader.connector.snowflake",
+        "reader.connector.postgres",
+        "reader.connector.rest",
+        "transform.qgis",
+        "transform.merge",
+    ],
+)
+def test_op_tooltip_descriptions_hide_developer_jargon(op):
+    catalog = ops_catalog()
+    description = catalog[op]["paramsSchema"]["description"]
+    assert description, f"{op} should still expose a user-facing description"
+    for marker in _DEV_JARGON_MARKERS:
+        assert marker not in description, (
+            f"{op}: developer jargon marker {marker!r} leaked into the "
+            f"user-facing tooltip description: {description!r}"
+        )
+    # Le docstring Python complet (non tronqué), lui, garde le détail
+    # développeur — la classe reste une documentation développeur complète.
+    model = OP_PARAMS[op]
+    assert model.__doc__ is not None
+    assert any(marker in model.__doc__ for marker in _DEV_JARGON_MARKERS), (
+        f"{op}: expected the full class docstring to retain developer detail"
+    )

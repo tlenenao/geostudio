@@ -96,3 +96,30 @@ test("un nouveau secret créé est immédiatement sélectionné", async () => {
     },
   });
 });
+
+test("un secret snowflake_dsn créé est immédiatement sélectionné", async () => {
+  const createSecret = vi.fn().mockResolvedValue({
+    id: "s9",
+    name: "warehouse-sf",
+    kind: "snowflake_dsn",
+    createdAt: "",
+    updatedAt: "",
+  });
+  const { onChange } = renderSelect({ kindFilter: "snowflake_dsn" }, { createSecret });
+  await userEvent.click(screen.getByText("Créer un secret"));
+  await userEvent.type(screen.getByLabelText("Nom"), "warehouse-sf");
+  await userEvent.type(
+    screen.getByLabelText("DSN"),
+    "snowflake://u:p@myaccount/mydb/myschema?warehouse=wh1",
+  );
+  await userEvent.click(screen.getByText("Créer"));
+
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith("warehouse-sf"));
+  expect(createSecret).toHaveBeenCalledWith({
+    name: "warehouse-sf",
+    payload: {
+      kind: "snowflake_dsn",
+      dsn: "snowflake://u:p@myaccount/mydb/myschema?warehouse=wh1",
+    },
+  });
+});

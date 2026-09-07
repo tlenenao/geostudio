@@ -100,6 +100,19 @@ def test_secret_payload_adapter_decodes_decrypted_dict():
     assert payload.token == "tok"
 
 
+def test_snowflake_dsn_round_trips():
+    body = SecretCreate.model_validate(
+        {
+            "name": "warehouse-sf",
+            "payload": {
+                "kind": "snowflake_dsn",
+                "dsn": "snowflake://u:p@myaccount/mydb/myschema?warehouse=wh1&role=role1",
+            },
+        }
+    )
+    assert body.payload.dsn == "snowflake://u:p@myaccount/mydb/myschema?warehouse=wh1&role=role1"
+
+
 def test_smtp_credentials_payload_round_trips():
     from app.secrets.schemas import SECRET_PAYLOAD_ADAPTER, SmtpCredentialsPayload
 
