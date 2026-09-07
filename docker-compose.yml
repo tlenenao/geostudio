@@ -294,6 +294,10 @@ services:
       CORE_EMBEDDING_API_URL: ${CORE_EMBEDDING_API_URL:-}
       CORE_EMBEDDING_API_KEY: ${CORE_EMBEDDING_API_KEY:-}
       CORE_EMBEDDING_MODEL: ${CORE_EMBEDDING_MODEL:-text-embedding-3-small}
+      # Garde d'egress SSRF sur le provider d'embedding OpenAI-compatible
+      # (REV-042) — même patron que CORE_LLM_EGRESS_ALLOWLIST ci-dessus,
+      # module dédié (app/search/egress.py) propre à ce provider.
+      CORE_EMBEDDING_EGRESS_ALLOWLIST: ${CORE_EMBEDDING_EGRESS_ALLOWLIST:-}
       # Allowlists des trois gardes d'egress SSRF (pipelines/harvest/alerts,
       # chacune dupliquée délibérément — cf. leurs docstrings respectives).
       # Trouvées non câblées à AUCUN service par l'élargissement de la règle
@@ -456,6 +460,10 @@ services:
       CORE_EMBEDDING_API_URL: ${CORE_EMBEDDING_API_URL:-}
       CORE_EMBEDDING_API_KEY: ${CORE_EMBEDDING_API_KEY:-}
       CORE_EMBEDDING_MODEL: ${CORE_EMBEDDING_MODEL:-text-embedding-3-small}
+      # Garde d'egress SSRF sur le provider d'embedding OpenAI-compatible
+      # (REV-042) — même patron que CORE_LLM_EGRESS_ALLOWLIST ci-dessus,
+      # module dédié (app/search/egress.py) propre à ce provider.
+      CORE_EMBEDDING_EGRESS_ALLOWLIST: ${CORE_EMBEDDING_EGRESS_ALLOWLIST:-}
       # Miroir des lignes du service `core` ci-dessus (mêmes commentaires) :
       # les runs de pipeline (connector_runtime.py) et les notifications
       # d'alerte (notify.py) tournent dans ce process.
