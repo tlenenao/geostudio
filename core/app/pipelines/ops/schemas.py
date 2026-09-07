@@ -86,11 +86,16 @@ class TransformCountWithinParams(BaseModel):
 
 
 class TransformMergeParams(BaseModel):
-    """Empile deux flux ligne à ligne (UNION ALL BY NAME, design SP-15g §3.2).
-    Comme les 3 op binaires ci-dessus, sa seconde entrée vient soit de
-    `withCollectionId` (collection brute), soit d'une arête `role="secondary"`
-    (sortie déjà calculée d'une autre branche du pipeline) — jamais les deux à
-    la fois, jamais ni l'un ni l'autre (app.pipelines.config_validation)."""
+    """Empile deux flux ligne à ligne (UNION ALL BY NAME) : les colonnes
+    communes fusionnent par nom, celles propres à un seul flux sont
+    complétées à vide pour l'autre. La seconde entrée vient soit de
+    `withCollectionId`, soit d'une connexion secondaire sur le canevas —
+    jamais les deux à la fois, jamais ni l'une ni l'autre.
+
+    Design SP-15g §3.2. Comme les 3 op binaires ci-dessus, cette contrainte
+    sur la seconde entrée (soit `withCollectionId`, une collection brute,
+    soit une arête `role="secondary"`, sortie déjà calculée d'une autre
+    branche du pipeline) est vérifiée par app.pipelines.config_validation."""
 
     withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
 
@@ -121,17 +126,19 @@ class WriterDatasetParams(BaseModel):
 
 
 class TransformQgisParams(BaseModel):
-    """Op générique pour tout algorithme QGIS Processing de l'allowlist
-    gelée (app.pipelines.ops.qgis_algorithms.QGIS_ALGORITHMS, design SP-15d
-    §5/§10). `params` ne doit JAMAIS contenir INPUT/OUTPUT — le runtime les
-    injecte (chemins scratch, design §6). `outputSrid` doit être renseigné
-    explicitement quand l'algorithme change le CRS (ex. gdal:warpreproject
-    via son propre param TARGET_CRS) ; laissé à None, le SRID de sortie est
-    supposé identique à l'entrée — vrai pour la quasi-totalité des 50 op de
-    l'allowlist, faux pour un algorithme de reprojection. Aucune conversion
-    automatique d'unité : un DISTANCE/TOLERANCE d'un algorithme QGIS est
-    dans les unités du CRS natif de la couche d'entrée, jamais auto-converti
-    en mètres (vérifié empiriquement en design, §2)."""
+    """Exécute un algorithme QGIS Processing de la liste autorisée. Renseignez
+    `outputSrid` explicitement si l'algorithme change le système de
+    coordonnées (ex. une reprojection) ; laissé vide, la sortie garde le
+    système de coordonnées de l'entrée. Attention : les distances/tolérances
+    d'un algorithme QGIS sont dans les unités du système de coordonnées de
+    la couche d'entrée, jamais converties automatiquement en mètres.
+
+    Allowlist gelée : app.pipelines.ops.qgis_algorithms.QGIS_ALGORITHMS
+    (design SP-15d §5/§10). `params` ne doit JAMAIS contenir INPUT/OUTPUT —
+    le runtime les injecte (chemins scratch, design §6). La règle
+    « pas de conversion d'unité automatique » est vraie pour la quasi-totalité
+    des 50 op de l'allowlist, fausse pour un algorithme de reprojection
+    (vérifié empiriquement en design, §2)."""
 
     algorithmId: str
     params: dict[str, Any] = Field(default_factory=dict)
@@ -155,12 +162,15 @@ class TransformQgisParams(BaseModel):
 
 
 class ReaderConnectorRestParams(BaseModel):
-    """Lecture d'une ressource REST paginée (design SP-15f §2). `secretName`
-    référence un secret api_key/bearer_token/basic_auth/
-    oauth2_client_credentials (SP-15e) ; None = endpoint public non
-    authentifié. `recordsPath` est un chemin pointé vers le tableau
-    d'enregistrements dans le corps de réponse (ex. "data.items") ; None =
-    le corps de réponse EST le tableau."""
+    """Lecture d'une ressource REST paginée, avec authentification optionnelle
+    (clé API, jeton, identifiants, ou OAuth2 client_credentials) et
+    pagination configurable. `recordsPath` pointe vers le tableau
+    d'enregistrements dans le corps de réponse (ex. "data.items") ; laissé
+    vide, le corps de réponse EST directement le tableau.
+
+    Design SP-15f §2. `secretName` référence un secret api_key/bearer_token/
+    basic_auth/oauth2_client_credentials (SP-15e) ; None = endpoint public
+    non authentifié."""
 
     baseUrl: str = Field(..., pattern=r"^https?://")
     path: str = ""
@@ -174,38 +184,45 @@ class ReaderConnectorRestParams(BaseModel):
 
 
 class ReaderConnectorPostgresParams(BaseModel):
-    """Lecture d'une requête SQL libre sur un Postgres distant (design
-    SP-15f §2). `secretName` référence toujours un secret postgres_dsn
-    (SP-15e) — pas de notion de DSN non authentifié, contrairement à REST.
-    `query` n'est validée SELECT-only qu'à l'exécution (app.pipelines.connector_runtime),
-    jamais ici (forme seulement) ni à la sauvegarde (design §6).
+    """Lecture d'une requête SQL libre (SELECT uniquement) sur un Postgres
+    distant, via un secret de connexion dédié. Fonctionne aussi contre un
+    cluster Amazon Redshift, mêmes identifiants — attention : le SQL
+    Redshift diverge du SQL PostgreSQL sur plusieurs points (types/fonctions
+    non supportés), une requête acceptée ici peut malgré tout échouer côté
+    Redshift avec une erreur explicite.
 
-    Fonctionne également contre un cluster Amazon Redshift, sans aucun
-    changement de code (GAP-16, design 2026-09-06 §5.4) : Redshift expose le
-    protocole de câblage PostgreSQL (AWS, « Amazon Redshift is based on
-    PostgreSQL ») — pointez le DSN d'un secret postgres_dsn vers l'endpoint
-    du cluster (port 5439 par défaut) plutôt que vers un Postgres ordinaire.
-    Limite connue : le SQL Redshift diverge du SQL PostgreSQL sur plusieurs
-    points (types/fonctions non supportés) — une requête acceptée par la
-    validation SELECT-only heuristique ci-dessus (dialecte DuckDB) peut
-    malgré tout échouer côté Redshift avec une erreur explicite."""
+    Design SP-15f §2. `secretName` référence toujours un secret postgres_dsn
+    (SP-15e) — pas de notion de DSN non authentifié, contrairement à REST.
+    `query` n'est validée SELECT-only qu'à l'exécution
+    (app.pipelines.connector_runtime), jamais ici (forme seulement) ni à la
+    sauvegarde (design §6) — heuristique dialecte DuckDB, cf. limite
+    Redshift ci-dessus.
+
+    Compatibilité Redshift (GAP-16, design 2026-09-06 §5.4) : Redshift
+    expose le protocole de câblage PostgreSQL (AWS, « Amazon Redshift is
+    based on PostgreSQL ») — pointez le DSN d'un secret postgres_dsn vers
+    l'endpoint du cluster (port 5439 par défaut) plutôt que vers un Postgres
+    ordinaire."""
 
     secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
     query: str
 
 
 class ReaderConnectorSnowflakeParams(BaseModel):
-    """Lecture d'une requête SQL libre sur un entrepôt Snowflake distant
-    (GAP-16, pendant de ReaderConnectorPostgresParams). `secretName`
-    référence toujours un secret snowflake_dsn — pas de notion de DSN non
-    authentifié, même contrat que reader.connector.postgres. `query` n'est
-    validée SELECT-only qu'à l'exécution (app.pipelines.connector_runtime),
-    jamais ici (forme seulement) ni à la sauvegarde (design §6) — même
-    heuristique que pour Postgres, avec la même limite documentée en §5.3
-    (le texte est parsé avec le dialecte SQL DuckDB, pas le dialecte
-    SnowSQL réel : QUALIFY/accesseur semi-structuré `:`/LATERAL FLATTEN/
-    ILIKE/UNION passent, mais SAMPLE (n)/TOP n/MINUS sont rejetés — à
-    reformuler en LIMIT/EXCEPT le cas échéant)."""
+    """Lecture d'une requête SQL libre (SELECT uniquement) sur un entrepôt
+    Snowflake distant, via un secret de connexion dédié. Attention : la
+    plupart des requêtes SnowSQL courantes passent (QUALIFY, accesseur
+    semi-structuré `:`, LATERAL FLATTEN, ILIKE, UNION), mais SAMPLE (n)/
+    TOP n/MINUS sont rejetées — à reformuler en LIMIT/EXCEPT.
+
+    GAP-16, pendant de ReaderConnectorPostgresParams. `secretName` référence
+    toujours un secret snowflake_dsn — pas de notion de DSN non authentifié,
+    même contrat que reader.connector.postgres. `query` n'est validée
+    SELECT-only qu'à l'exécution (app.pipelines.connector_runtime), jamais
+    ici (forme seulement) ni à la sauvegarde (design §6) — même heuristique
+    que pour Postgres, avec la même limite documentée en §5.3 (le texte est
+    parsé avec le dialecte SQL DuckDB, pas le dialecte SnowSQL réel, d'où la
+    liste de constructions rejetées ci-dessus)."""
 
     secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
     query: str
@@ -274,12 +291,32 @@ def parse_op_params(op: str, params: dict) -> BaseModel:
     return model.model_validate(params)
 
 
+def _user_facing_description(description: str) -> str:
+    """N'expose que le premier paragraphe d'un docstring de classe (avant le
+    premier saut de ligne vide) comme description utilisateur du catalogue.
+
+    Correctif revue finale GAP-16 (Important I2) : `model_json_schema()`
+    reprend tel quel le docstring Python complet d'une classe de params dans
+    sa clé `description` — pour 5 op (les connecteurs + transform.qgis/
+    transform.merge), ce docstring contient du jargon développeur (noms de
+    classes, chemins de module, renvois "design §n"/"SPnn") qui n'a rien à
+    faire dans le tooltip de palette lu par
+    shell/src/builder/pipeline/PipelinePalette.tsx. Le docstring de classe
+    reste une documentation développeur complète (paragraphes suivants) ;
+    seul le premier paragraphe — rédigé pour être compris par l'auteur d'un
+    pipeline — atteint le catalogue exposé par GET /pipelines/ops."""
+    return description.split("\n\n", 1)[0].strip()
+
+
 def ops_catalog() -> dict[str, dict]:
-    return {
-        op: {
+    catalog: dict[str, dict] = {}
+    for op, model in OP_PARAMS.items():
+        schema = model.model_json_schema()
+        if schema.get("description"):
+            schema["description"] = _user_facing_description(schema["description"])
+        catalog[op] = {
             "kind": OP_KINDS[op],
-            "paramsSchema": model.model_json_schema(),
+            "paramsSchema": schema,
             "acceptsSecondaryInput": op in BINARY_OPS,
         }
-        for op, model in OP_PARAMS.items()
-    }
+    return catalog
