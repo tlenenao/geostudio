@@ -92,7 +92,7 @@ def test_quality_facts_read_the_real_repository():
     assert "app/auth" in facts.mypy_strict_modules
     assert len(facts.mypy_strict_modules) == 6
     assert any("->" in exemption for exemption in facts.layer_exemptions)
-    assert len(facts.eslint_disabled) == 10
+    assert len(facts.eslint_disabled) == 12
     assert len(facts.typing_escapes) == 7
 
 
