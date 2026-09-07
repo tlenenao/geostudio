@@ -1230,6 +1230,60 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   plutôt que supposé). Reste hors périmètre, assumé : le blocage 3 de
   GAP-72 (CSP `script-src` pour les widgets d'extension tiers, question
   produit ouverte depuis SP-48) n'est pas concerné par ce SP.
+- **GAP-16** — connecteur entrepôt cloud analytique : nouvelle op
+  `reader.connector.snowflake` (pendant exact de `reader.connector.postgres`,
+  dialecte `snowflake-sqlalchemy` résolu par entry point, aucun nouvel
+  import), nouveau kind de secret `snowflake_dsn` ; `reader.connector.postgres`
+  documenté et confirmé (littérature AWS, pas un cluster réel disponible en
+  session) compatible avec un cluster Amazon Redshift sans aucun nouveau
+  code. Databricks/BigQuery restent hors périmètre. Round-trip Snowflake
+  réel : `@pytest.mark.snowflake`, jamais câblé en CI (pas d'émulateur
+  auto-hébergeable), manuel uniquement. **Pas de nouvelle entrée
+  d'inventaire** (SP-61) : `reader.connector.snowflake` n'est atteignable que
+  via `GET /pipelines/ops`, déjà inventorié — `feature_health_cli.py
+  --check` passe sans modification, vérifié plutôt que supposé (correction
+  du brief de Tâche 7, qui visait à tort la matrice gelée
+  `2026-09-04-matrice-fonctionnalites.md`). **1 vrai défaut de croisement
+  trouvé et corrigé en Tâche 7** (piège n°4) : `test_pipeline_routes.py::
+  test_get_pipelines_ops_returns_all_eighteen` — écrit par une tâche
+  antérieure de ce même plan (catalogue à 18 ops), jamais mis à jour par la
+  Tâche 1 qui a porté le catalogue à 19 — renommé
+  `..._all_nineteen` et étendu à `reader.connector.snowflake`. Suite finale :
+  cœur 2830 passed/6 skipped (5 qgis + 1 snowflake, message de skip
+  vérifié verbatim)/0 failed — 8 échecs observés sur une première passe
+  tous confirmés préexistants et sans rapport avec ce plan (`git diff
+  origin/dev...HEAD` vide sur chaque fichier concerné, rejoués en isolation
+  quand pertinent) : flake d'environnement (répertoire `/tmp/pytest-of-lenen`
+  root-owned par un conteneur d'une session antérieure, contourné par
+  `--basetemp` dédié, pas de sudo disponible) ; `test_deployability.py::
+  test_every_core_env_var_is_wired_to_a_service` (`CORE_EMBEDDING_EGRESS_ALLOWLIST`
+  non câblé, domaine `app/search/egress.py`/SP-7, sans rapport) ;
+  `test_feature_health_debt.py` (4 tests) et
+  `test_feature_health_scoring.py::test_quality_facts_read_the_real_repository`
+  — bug réel mais préexistant du parseur `open_gaps()` (`debt.py`) : la
+  section « 🔴 Ouvert » d'`analyse-gaps.md` n'a qu'une colonne « Manque »,
+  sans le mot « ouvert » lui-même, donc `_is_open_gap_status()` ne détecte
+  aucune des lignes de cette section (seul GAP-57 y est détecté, par
+  accident, via le mot « ouvert » présent dans sa prose) — non corrigé,
+  hors périmètre de ce plan, à traiter par une future tâche sur
+  `feature_health` ; `test_alert_jobs.py::
+  test_evaluate_alert_task_does_not_renotify_while_state_is_stable`
+  intermittent sous charge, revert au vert en isolation. Shell : 240
+  fichiers/2133 tests, tous passés (1 flake `window.matchMedia`
+  order-dépendant sur `AppBuilderPage.test.tsx`, confirmé passant en
+  isolation, sans rapport — même classe que le piège n°10) ; `npm run
+  build` propre, bundle 625,5 Ko (seuil 630). **Concern documenté, non
+  corrigé** : couverture shell mesurée 89,50 % lignes / 87,44 %
+  statements — sous le seuil committé `.coverage-threshold` (89,8/87,7),
+  chute par rapport aux ~90 % mesurés par SP-57a/SP-60 ; `git diff
+  origin/dev...HEAD -- shell/` ne touche que `SecretParamSelect.tsx`
+  (+5/-2) et `PipelinePalette.tsx` (+1, déjà testé à 100 %) — l'analyse
+  ligne par ligne de la couverture v8 montre que les lignes non couvertes
+  de `SecretParamSelect.tsx` (69 % de couverture fichier) sont toutes
+  préexistantes (le composant dropdown principal, jamais testé, pas la
+  branche `snowflake_dsn` ajoutée par ce plan, qui est couverte) — dérive
+  antérieure à ce plan, non expliquée plus avant, à investiguer séparément
+  avant la prochaine clôture de SP touchant le shell.
 
 ### Conventions tranchées (2026-09-01)
 
