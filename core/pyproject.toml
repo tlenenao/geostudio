@@ -122,6 +122,12 @@ filterwarnings = [
     "ignore::starlette.exceptions.StarletteDeprecationWarning",
     "ignore::pytest.PytestUnraisableExceptionWarning",
     "ignore::DeprecationWarning:rdflib.plugins.parsers.jsonld",
+    # snowflake-connector-python (GAP-16) avertit sur la version de pyarrow
+    # installée (25.0.0) au regard de sa contrainte pour l'extra "pandas" —
+    # jamais utilisé ici (aucun DataFrame Snowflake, seulement du SQL brut
+    # via reader.connector.snowflake) : avertissement réel mais sans
+    # conséquence pour ce dépôt.
+    "ignore::UserWarning:snowflake.connector.options",
 ]
 markers = [
     "postgis: nécessite un PostGIS réel (CORE_TEST_DATABASE_URL) ; skippé sinon",
