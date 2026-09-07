@@ -2,10 +2,12 @@
 """Sous-score « dette ouverte » (SP-61, spec §3.4)."""
 
 import pathlib
+import tempfile
 
 import pytest
 
 from scripts.feature_health.debt import (
+    GAPS_DOC,
     DebtItem,
     collect_debt_facts,
     open_gaps,
@@ -43,9 +45,33 @@ def test_open_gaps_excludes_closed_ones():
 
 
 def test_open_gaps_expands_a_range_row():
-    """`| GAP-16 à GAP-23 | Ouvert | … |` compte pour huit entrées."""
-    identifiers = {item.identifier for item in open_gaps(REPO)}
+    """`| GAP-16 à GAP-23 | … |` sous une section ouverte/partielle compte pour
+    huit entrées.
+
+    Le document réel ne contient plus aujourd'hui de ligne de plage dans ses
+    tableaux (vérifié : aucune ligne `| GAP-nn à GAP-mm |` sous
+    `### 🟡 Partiel`/`### 🔴 Ouvert` de `docs/revue/2026-09-04-analyse-gaps.md`,
+    seulement de la prose hors tableau qui les mentionne) — ce test isole donc
+    le mécanisme de dépliage sur un document minimal plutôt que de dépendre
+    d'un exemple réel qui n'existe plus, pour ne pas se re-casser au prochain
+    remaniement du document. `tmp_path` (pytest) n'est pas utilisable dans cet
+    environnement (`/tmp/pytest-of-*` appartient à un autre utilisateur) —
+    répertoire temporaire construit directement via `tempfile`."""
+    with tempfile.TemporaryDirectory() as raw_repo:
+        repo = pathlib.Path(raw_repo)
+        doc = repo / GAPS_DOC
+        doc.parent.mkdir(parents=True, exist_ok=True)
+        doc.write_text(
+            "### 🔴 Ouvert / non implémenté (1)\n\n"
+            "| GAP | Manque |\n"
+            "|---|---|\n"
+            "| GAP-16 à GAP-23 | Plage synthétique de test |\n\n"
+            "## Référentiel suivant\n",
+            encoding="utf-8",
+        )
+        identifiers = {item.identifier for item in open_gaps(repo)}
     assert {"GAP-16", "GAP-20", "GAP-23"} <= identifiers
+    assert len(identifiers) == 8  # GAP-16..GAP-23 inclus
 
 
 def test_open_gaps_ignores_prose_mentions_outside_the_status_table():
@@ -60,9 +86,17 @@ def test_open_gaps_ignores_prose_mentions_outside_the_status_table():
 
 
 def test_open_revs_reads_the_etat_line():
+    """REV-001 (jadis l'exemple ouvert de ce test) est **fermé par SP-43**
+    depuis (`- **État :** **fermé par SP-43** — …`) — vérifié dans
+    `docs/revue/2026-09-04-backlog.md`, confirmé aussi par le sommaire
+    `### 🔴 Ouvert (28)` du même document, qui ne le liste plus. REV-003
+    (iframe Keycloak `forceIframeAuth`, jamais tranché par Tanguy) reste
+    réellement `- **État :** ouvert` à ce jour — pris comme témoin à sa
+    place."""
     items = {item.identifier: item for item in open_revs(REPO)}
-    assert "REV-001" in items
-    assert items["REV-001"].severity == "critical"
+    assert "REV-001" not in items
+    assert "REV-003" in items
+    assert items["REV-003"].severity == "important"
     assert "REV-165" not in items or items["REV-165"].severity in {
         "critical",
         "important",
@@ -74,7 +108,7 @@ def test_open_revs_reads_the_etat_line():
 
 def test_open_revs_carries_the_proof_paths():
     items = {item.identifier: item for item in open_revs(REPO)}
-    assert "core/app/pipelines/jobs.py" in items["REV-001"].paths
+    assert "shell/src/copilot/useMcpToken.ts" in items["REV-003"].paths
 
 
 def test_open_revs_includes_rev_164_despite_alternate_etat_bold_wrapping():
