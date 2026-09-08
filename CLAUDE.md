@@ -1514,3 +1514,11 @@ session, sur la stack et l'environnement de dev :
     dépôt démenti par une lecture directe du fichier. `CLAUDE.md`, les specs
     et les plans sont des récits d'intention, jamais une source de vérité :
     revérifier dans le code avant d'écrire qu'un point est réglé ou ouvert.
+13. **Découper `shell/` en packages npm workspace fait fuir des bugs dans des
+    endroits sans rapport apparent** (scan de sources Tailwind, contexte de
+    build Docker, lockfile, seuils de couverture, conception de ports
+    d'interface non vérifiée contre les signatures réelles) — chantier tenté
+    (Tasks 1-5) puis abandonné le 2026-09-08 faute de besoin de réutilisation
+    externe concret, intégralement annulé sur `dev`. Détail des 7 classes de
+    défauts rencontrées avant de retenter :
+    [`docs/superpowers/specs/2026-09-08-app-builder-package-extraction-postmortem.md`](docs/superpowers/specs/2026-09-08-app-builder-package-extraction-postmortem.md).
