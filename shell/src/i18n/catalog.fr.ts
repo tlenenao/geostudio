@@ -1020,6 +1020,7 @@ export const fr = {
   "copilot.opDataSourceAdded": "Source de données ajoutée",
   "copilot.opFilterUpdated": "Filtre modifié",
   "copilot.opUnknownIgnored": "Action inconnue ignorée : {op}",
+  "copilot.opDropped": "Proposition ignorée (invalide) : {op}",
   "copilot.opSqlDraftApplied": "Brouillon SQL inséré.",
   "copilot.opVisualQueryDraftApplied": "Requête visuelle mise à jour.",
   "copilot.requestFailed": "Échec de la requête au copilote.",

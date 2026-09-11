@@ -14,7 +14,7 @@ import httpx
 from fastapi import HTTPException
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, model_validator
 
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
@@ -70,6 +70,31 @@ class GeneratedMetric(BaseModel):
     ]
     sourceColumn: str | None = None
     p: float | None = None
+
+    @model_validator(mode="after")
+    def _check_function_arity(self) -> "GeneratedMetric":
+        # M2 (revue finale de branche GAP-17) : mêmes règles que le
+        # validateur client `isValidGeneratedMetric`
+        # (shell/src/builder/copilot/applyVisualQueryClientOp.ts), qui les
+        # tient lui-même de `metricExpr`/`decompileMetrics`
+        # (compilePipeline.ts) — `count` compile en count(*) et n'a jamais de
+        # colonne source, toute autre fonction en exige une (quoteIdent la
+        # cite dans le SQL émis), et `p` n'a de sens que pour `percentile`,
+        # sur l'intervalle OUVERT (0, 100). Sans ce contrôle ici, une
+        # métrique mal formée traversait le cœur sans erreur et n'était
+        # abandonnée qu'en silence côté shell — le modèle n'en savait rien et
+        # ne pouvait pas retenter.
+        if self.function == "count":
+            if self.sourceColumn is not None:
+                raise ValueError("la métrique 'count' ne prend pas de sourceColumn")
+        elif self.sourceColumn is None:
+            raise ValueError(f"la métrique '{self.function}' exige un sourceColumn")
+        if self.function == "percentile":
+            if self.p is None or not (0 < self.p < 100):
+                raise ValueError("la métrique 'percentile' exige un p tel que 0 < p < 100")
+        elif self.p is not None:
+            raise ValueError(f"la métrique '{self.function}' ne prend pas de p")
+        return self
 
 
 class GeneratedSummary(BaseModel):

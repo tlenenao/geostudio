@@ -28,7 +28,12 @@ export function CopilotChat({
   contextPayload: Record<string, unknown>;
   clientTools: CopilotToolSchema[];
   opLabels: Record<string, string>;
-  onClientOps: (ops: CopilotClientOp[]) => void;
+  // Retour optionnel (M1, revue finale de branche GAP-17) : un tableau
+  // aligné sur `ops`, `true` quand l'op a réellement été appliquée. Un
+  // appelant qui ne renvoie rien (CopilotPanel, qui édite via setDraft et
+  // n'a rien à abandonner) garde le comportement historique — tout est
+  // annoncé comme appliqué.
+  onClientOps: (ops: CopilotClientOp[]) => boolean[] | void;
 }) {
   const client = useItemClient();
   const getMcpToken = useMcpToken();
@@ -63,12 +68,18 @@ export function CopilotChat({
       });
       setHistory([...nextHistory, { role: "assistant", content: result.reply }]);
       if (result.clientOps.length > 0) {
+        // Appliquer D'ABORD, étiqueter ENSUITE (M1) : l'ordre inverse
+        // annonçait « Brouillon SQL inséré. » pour une op que l'applier
+        // venait d'abandonner silencieusement (SQL vide, filtres tous
+        // invalides, métrique non conforme au schéma).
+        const applied = onClientOps(result.clientOps);
         setLastOpsSummary(
-          result.clientOps.map(
-            (o) => opLabels[o.op] ?? t("copilot.opUnknownIgnored", { op: o.op }),
-          ),
+          result.clientOps.map((o, i) => {
+            if (Array.isArray(applied) && applied[i] !== true)
+              return t("copilot.opDropped", { op: o.op });
+            return opLabels[o.op] ?? t("copilot.opUnknownIgnored", { op: o.op });
+          }),
         );
-        onClientOps(result.clientOps);
       } else {
         setLastOpsSummary([]);
       }

@@ -187,3 +187,81 @@ def test_never_creates_a_pipeline_or_collection(app_client, monkeypatch):  # noq
             "generate_visual_query",
             {"baseCollectionId": collection_id, "question": "x"},
         )
+
+
+# M2 (revue finale de branche GAP-17) : `GeneratedMetric` acceptait
+# `sourceColumn`/`p` à None pour n'importe quelle fonction, alors que le
+# validateur client (isValidGeneratedMetric) applique des règles strictes —
+# une métrique mal formée traversait donc le cœur sans erreur et n'était
+# abandonnée qu'en silence côté shell, sans que le LLM puisse corriger le
+# tir. Le refus doit se produire ici, où il devient un message d'erreur
+# d'outil que le modèle voit et peut retenter.
+@pytest.mark.parametrize(
+    ("metric", "reason"),
+    [
+        ({"alias": "n", "function": "count", "sourceColumn": "titre", "p": None}, "count"),
+        ({"alias": "s", "function": "sum", "sourceColumn": None, "p": None}, "sum sans colonne"),
+        ({"alias": "s", "function": "sum", "p": None}, "sum sans le champ du tout"),
+        (
+            {"alias": "p90", "function": "percentile", "sourceColumn": "titre", "p": None},
+            "percentile sans p",
+        ),
+        (
+            {"alias": "p90", "function": "percentile", "sourceColumn": "titre", "p": 0},
+            "percentile p=0 (intervalle ouvert)",
+        ),
+        (
+            {"alias": "p90", "function": "percentile", "sourceColumn": "titre", "p": 100},
+            "percentile p=100 (intervalle ouvert)",
+        ),
+        ({"alias": "s", "function": "sum", "sourceColumn": "titre", "p": 50}, "p hors percentile"),
+    ],
+)
+def test_rejects_a_malformed_metric(app_client, monkeypatch, metric, reason):  # noqa: F811
+    collection_id = _register_incidents_collection(app_client)
+    payload = json.dumps(
+        {
+            "filters": [],
+            "join": None,
+            "summary": {"groupBy": ["titre"], "metrics": [metric]},
+        }
+    )
+    monkeypatch.setattr(
+        "app.mcp.tools.query_generation.get_llm_provider", lambda: _StubLLMProvider(payload)
+    )
+    with app_client:
+        error_text = call_tool_expecting_error(
+            app_client,
+            "generate_visual_query",
+            {"baseCollectionId": collection_id, "question": "x"},
+        )
+    assert error_text, reason
+
+
+@pytest.mark.parametrize(
+    "metric",
+    [
+        {"alias": "n", "function": "count", "sourceColumn": None, "p": None},
+        {"alias": "s", "function": "sum", "sourceColumn": "titre", "p": None},
+        {"alias": "p90", "function": "percentile", "sourceColumn": "titre", "p": 90},
+    ],
+)
+def test_accepts_a_well_formed_metric(app_client, monkeypatch, metric):  # noqa: F811
+    collection_id = _register_incidents_collection(app_client)
+    payload = json.dumps(
+        {
+            "filters": [],
+            "join": None,
+            "summary": {"groupBy": ["titre"], "metrics": [metric]},
+        }
+    )
+    monkeypatch.setattr(
+        "app.mcp.tools.query_generation.get_llm_provider", lambda: _StubLLMProvider(payload)
+    )
+    with app_client:
+        result = call_tool(
+            app_client,
+            "generate_visual_query",
+            {"baseCollectionId": collection_id, "question": "x"},
+        )
+    assert result["summary"]["metrics"] == [metric]

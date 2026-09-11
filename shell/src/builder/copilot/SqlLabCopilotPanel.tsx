@@ -24,8 +24,8 @@ export function SqlLabCopilotPanel({
   // `baseCollectionId` déjà transmis par VisualQueryCopilotPanel.
   collections: { id: string; title: string }[];
 }) {
-  function handleClientOps(ops: CopilotClientOp[]) {
-    (ops as RawClientOp[]).forEach((op) => applySqlLabClientOp(op, setSql));
+  function handleClientOps(ops: CopilotClientOp[]): boolean[] {
+    return (ops as RawClientOp[]).map((op) => applySqlLabClientOp(op, setSql));
   }
 
   return (
