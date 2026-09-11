@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { useInstanceInfo } from "../api/hooks";
+import { useCollectionsAdmin, useInstanceInfo } from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
 import { appendSqlHistory, readSqlHistory, type SqlHistoryEntry } from "../lib/sqlLabHistory";
 import { SqlLabCopilotPanel } from "../builder/copilot/SqlLabCopilotPanel";
@@ -21,6 +21,12 @@ export function SqlLabPage() {
   const [history, setHistory] = useState<SqlHistoryEntry[]>(() => readSqlHistory());
   const instanceQuery = useInstanceInfo();
   const copilotEnabled = instanceQuery.data?.copilotEnabled === true;
+  // Seule consommatrice : le panneau copilote (I1, revue finale de branche
+  // GAP-17) — d'où le `enabled` aligné sur `copilotEnabled`, pour ne pas
+  // ajouter un aller-retour réseau à une page qui n'en avait aucun quand le
+  // copilote est éteint. `GET /collections` est déjà la source de la liste
+  // pour VisualQueryWizardPage (même hook), aucun nouveau chemin d'accès.
+  const collectionsQuery = useCollectionsAdmin({ enabled: copilotEnabled });
 
   const run = useMutation({
     mutationFn: (query: string) => client.runAnalyticsSql(query),
@@ -149,7 +155,14 @@ export function SqlLabPage() {
                   <p className="mb-1 text-xs font-medium text-ink-2">
                     {t("appBuilder.copilotLabel")}
                   </p>
-                  <SqlLabCopilotPanel sql={sql} setSql={setSql} />
+                  <SqlLabCopilotPanel
+                    sql={sql}
+                    setSql={setSql}
+                    collections={(collectionsQuery.data ?? []).map((c) => ({
+                      id: c.id,
+                      title: c.title,
+                    }))}
+                  />
                 </div>
               )}
             </div>

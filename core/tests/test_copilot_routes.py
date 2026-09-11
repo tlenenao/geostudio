@@ -830,6 +830,44 @@ def test_surface_sql_lab_uses_a_distinct_system_message_without_item_line(client
     assert "Item en cours d'édition" not in captured["system"]
 
 
+def test_surface_sql_lab_points_the_model_at_the_context_collection_list(client, monkeypatch):
+    """I1 (revue finale de branche GAP-17) : le shell transmet désormais la
+    liste des collections visibles dans `currentConfig`, faute de quoi aucun
+    outil MCP de l'allowlist du copilote ne permet d'en découvrir une —
+    encore faut-il que la consigne système le dise au modèle, sinon il ne
+    sait pas d'où tirer le `collectionId` que generate_sql_query exige."""
+    captured = {}
+
+    class _CapturingProvider:
+        async def chat(self, messages, tools):
+            captured["system"] = messages[0]["content"]
+            return LLMTurn(text="ok")
+
+    monkeypatch.setattr("app.copilot.routes.get_llm_provider", lambda: _CapturingProvider())
+    response = client.post(
+        "/v1/copilot/turn",
+        json={
+            "message": "écris une requête",
+            "history": [],
+            "mcpToken": "anything",
+            "currentConfig": {
+                "sql": "",
+                "collections": [{"id": "parcs", "title": "Parcs urbains"}],
+            },
+            "clientTools": [],
+            "surface": "sql_lab",
+        },
+    )
+    assert response.status_code == 200
+    # Le payload lui-même est ré-encodé dans ce même message système (bloc
+    # à nonce) : chercher "collections" dans le message entier serait
+    # vacuo. Seule la partie AVANT le bloc de données est la consigne.
+    intro = captured["system"].split("<<<CONFIG-")[0]
+    assert '"collections"' in intro
+    assert "collectionId" in intro
+    assert "generate_sql_query" in intro
+
+
 def test_surface_visual_query_uses_a_distinct_system_message(client, monkeypatch):
     captured = {}
 

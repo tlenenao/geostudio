@@ -9,6 +9,8 @@ import { SqlLabCopilotPanel } from "./SqlLabCopilotPanel";
 
 enableMockAuth();
 
+const COLLECTIONS = [{ id: "incidents", title: "Incidents voirie" }];
+
 describe("SqlLabCopilotPanel", () => {
   it("inserts a generated SQL draft into the editor without executing it", async () => {
     const copilotTurn = vi.fn().mockResolvedValue({
@@ -18,7 +20,7 @@ describe("SqlLabCopilotPanel", () => {
     const setSql = vi.fn();
     render(
       <ItemClientProvider client={{ copilotTurn } as unknown as ItemClient}>
-        <SqlLabCopilotPanel sql="" setSql={setSql} />
+        <SqlLabCopilotPanel sql="" setSql={setSql} collections={COLLECTIONS} />
       </ItemClientProvider>,
     );
 
@@ -29,5 +31,8 @@ describe("SqlLabCopilotPanel", () => {
     const [itemId, payload] = copilotTurn.mock.calls[0];
     expect(itemId).toBeUndefined();
     expect(payload.surface).toBe("sql_lab");
+    // I1 : la liste des collections visibles accompagne le SQL en cours —
+    // c'est le seul moyen pour le modèle de nommer un `collectionId` réel.
+    expect(payload.currentConfig).toEqual({ sql: "", collections: COLLECTIONS });
   });
 });
