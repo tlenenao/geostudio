@@ -5,12 +5,11 @@
 côté client (clientOps, jamais écrites en base pendant la conversation) ;
 il peut CRÉER un nouvel item (create_item/create_form_app) via les mêmes
 outils qu'un agent MCP externe, jamais muter un item existant directement.
-
-Cette allowlist est désormais partagée entre les trois surfaces du
-copilote (`CopilotTurnRequest.surface`, GAP-17 Tâche 1) : builder d'app,
-SQL Lab et requête visuelle. Les outils de génération dédiés à ces deux
-dernières surfaces (generate_sql_query/generate_visual_query) sont ajoutés
-à cet ensemble par la Tâche 2 — ce fichier n'en gagne pas les noms ici."""
+generate_sql_query/generate_visual_query (GAP-17) sont des outils de
+GÉNÉRATION : ils lisent un schéma de collection et appellent le LLM, ne
+créent et n'écrivent jamais rien — un brouillon qu'ils produisent n'est
+appliqué que via un outil CLIENT (applySqlDraft/applyVisualQueryDraft),
+jamais exécuté côté serveur."""
 
 ALLOWED_MCP_TOOL_NAMES = frozenset(
     {
@@ -20,5 +19,7 @@ ALLOWED_MCP_TOOL_NAMES = frozenset(
         "run_analytics_query",
         "create_item",
         "create_form_app",
+        "generate_sql_query",
+        "generate_visual_query",
     }
 )
