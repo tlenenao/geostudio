@@ -65,6 +65,76 @@ describe("applyVisualQueryClientOp", () => {
     expect(s.setSummary).toHaveBeenCalledWith(summary);
   });
 
+  it("ignores a summary whose metric requires sourceColumn but omits it", () => {
+    const s = setters();
+    const summary = {
+      groupBy: ["titre"],
+      // "sum" requires a non-null sourceColumn (metricExpr quoteIdent's it) —
+      // this metric is schema-conformant (alias/function both valid) but
+      // omits the field entirely.
+      metrics: [{ alias: "total_pop", function: "sum" as const }],
+    };
+    applyVisualQueryClientOp({ op: "applyVisualQueryDraft", args: { summary } }, s);
+    expect(s.setSummary).not.toHaveBeenCalled();
+  });
+
+  it("ignores a summary whose metric has sourceColumn: null for a function that needs one", () => {
+    const s = setters();
+    const summary = {
+      groupBy: [],
+      metrics: [{ alias: "avg_pop", function: "avg" as const, sourceColumn: null, p: null }],
+    };
+    applyVisualQueryClientOp({ op: "applyVisualQueryDraft", args: { summary } }, s);
+    expect(s.setSummary).not.toHaveBeenCalled();
+  });
+
+  it("ignores a summary whose percentile metric is missing p", () => {
+    const s = setters();
+    const summary = {
+      groupBy: [],
+      metrics: [{ alias: "p90", function: "percentile" as const, sourceColumn: "population" }],
+    };
+    applyVisualQueryClientOp({ op: "applyVisualQueryDraft", args: { summary } }, s);
+    expect(s.setSummary).not.toHaveBeenCalled();
+  });
+
+  it("ignores a summary whose percentile metric has a non-numeric p", () => {
+    const s = setters();
+    const summary = {
+      groupBy: [],
+      metrics: [
+        { alias: "p90", function: "percentile" as const, sourceColumn: "population", p: "90" },
+      ],
+    };
+    applyVisualQueryClientOp({ op: "applyVisualQueryDraft", args: { summary } }, s);
+    expect(s.setSummary).not.toHaveBeenCalled();
+  });
+
+  it("ignores a summary whose percentile metric has p out of the (0, 100) range", () => {
+    const s = setters();
+    const summary = {
+      groupBy: [],
+      metrics: [
+        { alias: "p90", function: "percentile" as const, sourceColumn: "population", p: 150 },
+      ],
+    };
+    applyVisualQueryClientOp({ op: "applyVisualQueryDraft", args: { summary } }, s);
+    expect(s.setSummary).not.toHaveBeenCalled();
+  });
+
+  it("applies a valid summary with a count metric and sourceColumn: null", () => {
+    // "count" compiles to count(*) (compilePipeline.ts::metricExpr) and never
+    // reads sourceColumn — the round-trip contract with decompileMetrics is
+    // that count's sourceColumn is always exactly null.
+    const s = setters();
+    const summary = {
+      groupBy: ["titre"],
+      metrics: [{ alias: "n", function: "count" as const, sourceColumn: null, p: null }],
+    };
+    applyVisualQueryClientOp({ op: "applyVisualQueryDraft", args: { summary } }, s);
+    expect(s.setSummary).toHaveBeenCalledWith(summary);
+  });
+
   it("ignores an unknown op", () => {
     const s = setters();
     applyVisualQueryClientOp({ op: "somethingElse", args: {} }, s);
