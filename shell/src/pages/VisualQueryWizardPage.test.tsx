@@ -12,6 +12,12 @@ import {
   VisualQueryState,
 } from "../builder/visualQuery/compilePipeline";
 
+// Mock complet (pas un `importOriginal` partiel) : `isMockMode` doit donc
+// être fourni explicitement ici, sinon `useMcpToken` (consommé par
+// VisualQueryCopilotPanel via CopilotChat, cette tâche) lève "no isMockMode
+// export is defined" — ce fichier n'appelait jamais enableMockAuth()/le
+// vrai module avant ce plan (contrairement à SqlLabPage.test.tsx),
+// découvert par falsification en écrivant les deux tests copilote ci-dessous.
 vi.mock("../auth/useAuth", () => ({
   useAuth: () => ({
     isLoading: false,
@@ -22,6 +28,7 @@ vi.mock("../auth/useAuth", () => ({
     signOut: vi.fn(),
     error: null,
   }),
+  isMockMode: () => true,
 }));
 
 // jsdom n'implémente pas window.matchMedia (piège n°10) ; TriptychLayout
@@ -90,6 +97,18 @@ function renderWizard(overrides: Partial<ItemClient> = {}) {
   const client: Partial<ItemClient> = {
     listCollections: () => Promise.resolve(COLLECTIONS),
     getCollectionSchema: () => Promise.resolve(BASE_SCHEMA),
+    getInstanceInfo: () =>
+      Promise.resolve({
+        readOnly: false,
+        etlEnabled: false,
+        exportEnabled: false,
+        appExportEnabled: false,
+        tileset3dEnabled: false,
+        terrain3dEnabled: false,
+        copilotEnabled: false,
+        adminToolsEnabled: false,
+        quotasEnabled: false,
+      }),
     createEmptyCollection: vi.fn().mockResolvedValue({ id: "query_out" }),
     createDatasetItem: vi.fn().mockResolvedValue({
       pk: "dataset-1",
@@ -171,6 +190,18 @@ function renderWizardEdit(overrides: Partial<ItemClient> = {}) {
   const client: Partial<ItemClient> = {
     listCollections: () => Promise.resolve(COLLECTIONS),
     getCollectionSchema: () => Promise.resolve(BASE_SCHEMA),
+    getInstanceInfo: () =>
+      Promise.resolve({
+        readOnly: false,
+        etlEnabled: false,
+        exportEnabled: false,
+        appExportEnabled: false,
+        tileset3dEnabled: false,
+        terrain3dEnabled: false,
+        copilotEnabled: false,
+        adminToolsEnabled: false,
+        quotasEnabled: false,
+      }),
     getPipelineConfig: vi.fn().mockResolvedValue(EXISTING_PIPELINE),
     getItem: vi.fn().mockResolvedValue({
       pk: "dataset-1",
@@ -605,6 +636,48 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     );
     expect(await screen.findByText("Dataset")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "← Retour au catalogue" })).toBeInTheDocument();
+  });
+
+  test("n'affiche pas le panneau copilote quand copilotEnabled est faux", async () => {
+    renderWizardEdit();
+    await screen.findByText("Filtrer");
+    expect(screen.queryByLabelText("Message au copilote")).not.toBeInTheDocument();
+  });
+
+  test("affiche le panneau copilote et applique les filtres générés sans rien créer", async () => {
+    const copilotTurn = vi.fn().mockResolvedValue({
+      reply: "Voici un filtre.",
+      clientOps: [
+        {
+          op: "applyVisualQueryDraft",
+          args: { filters: [{ column: "commune", operator: "eq", value: "Tulle" }] },
+        },
+      ],
+    });
+    const createEmptyCollection = vi.fn();
+    renderWizardEdit({
+      getInstanceInfo: () =>
+        Promise.resolve({
+          readOnly: false,
+          etlEnabled: false,
+          exportEnabled: false,
+          appExportEnabled: false,
+          tileset3dEnabled: false,
+          terrain3dEnabled: false,
+          copilotEnabled: true,
+          adminToolsEnabled: false,
+          quotasEnabled: false,
+        }),
+      copilotTurn,
+      createEmptyCollection,
+    });
+    await userEvent.type(
+      await screen.findByLabelText("Message au copilote"),
+      "les incidents de Tulle",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+    await waitFor(() => expect(copilotTurn).toHaveBeenCalled());
+    expect(createEmptyCollection).not.toHaveBeenCalled();
   });
 });
 

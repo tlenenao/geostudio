@@ -4,12 +4,13 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../auth/useAuth";
 import { useItemClient } from "../api/ItemClientProvider";
-import { useCollectionsAdmin, usePipelineConfig } from "../api/hooks";
+import { useCollectionsAdmin, usePipelineConfig, useInstanceInfo } from "../api/hooks";
 import type { CollectionSchema, PipelineRefreshPolicy } from "../api/types";
 import { RESOURCE_TYPE_LABELS } from "../api/resourceTypes";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Panel } from "../ui/kit/Panel";
+import { VisualQueryCopilotPanel } from "../builder/copilot/VisualQueryCopilotPanel";
 import { QueryFilterBuilder } from "../builder/visualQuery/QueryFilterBuilder";
 import { QueryJoinPicker } from "../builder/visualQuery/QueryJoinPicker";
 import { QuerySummaryBuilder } from "../builder/visualQuery/QuerySummaryBuilder";
@@ -52,6 +53,8 @@ export function VisualQueryWizardPage({
   const existingPipelineQuery = usePipelineConfig(pipelinePk ?? "", {
     enabled: pipelinePk !== null,
   });
+  const instanceQuery = useInstanceInfo();
+  const copilotEnabled = instanceQuery.data?.copilotEnabled === true;
 
   const [title, setTitle] = useState(initialTitle ?? "");
   const [baseCollectionId, setBaseCollectionId] = useState("");
@@ -478,6 +481,22 @@ export function VisualQueryWizardPage({
                     {t("visualQuery.scheduleLabel")}
                   </p>
                   <PipelineScheduleEditor value={refreshPolicy} onChange={setRefreshPolicy} />
+                </div>
+              )}
+              {baseSchema && copilotEnabled && (
+                <div className="border-t border-rule pt-3">
+                  <p className="mb-1 text-xs font-medium text-ink-2">
+                    {t("appBuilder.copilotLabel")}
+                  </p>
+                  <VisualQueryCopilotPanel
+                    baseCollectionId={baseCollectionId}
+                    filters={filters}
+                    join={join}
+                    summary={summary}
+                    setFilters={setFilters}
+                    setJoin={setJoin}
+                    setSummary={setSummary}
+                  />
                 </div>
               )}
               <div className="flex flex-col gap-2 border-t border-rule pt-3">
