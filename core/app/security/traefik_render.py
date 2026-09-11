@@ -21,12 +21,27 @@ _HEADER_NAMES = {
 def _build_csp_value(allowlist: CspAllowlist) -> str:
     img = " ".join(sorted({"'self'", "data:", "blob:", *allowlist.img_hosts}))
     connect = " ".join(sorted({"'self'", *allowlist.connect_hosts}))
-    # script-src reste 'self', jamais élargi à allowlist.script_hosts tant
-    # que le blocage 3 (spec §4) n'est pas tranché par Tanguy — cf. Task 6
-    # (test de garde dédié, tests/test_security_jobs.py).
+    # Blocage 3 (spec SP-48 §4) tranché par Tanguy : Option A retenue —
+    # script-src s'élargit à l'origine déclarée de chaque extension
+    # (Extension.module_url, écriture gardée par
+    # Privilege.ADMIN_EXTENSIONS_MANAGE), même patron que connect-src/img-src
+    # ci-dessus. Coût marginal quasi nul : extract_extension_hosts() était
+    # déjà calculé (§2.2), seul le branchement sur cette directive manquait.
+    # Limite de sécurité assumée (spec §4, Option A) : ceci protège contre
+    # un hôte non déclaré (une extension compromise servie depuis une autre
+    # origine que celle enregistrée), mais NE protège PAS contre un fichier
+    # malveillant substitué sur l'origine déclarée elle-même après coup —
+    # confiance à la granularité de l'hôte, pas du contenu. Cohérent avec le
+    # niveau de confiance déjà accordé à Extension.module_url aujourd'hui
+    # (n'importe quel ADMIN_EXTENSIONS_MANAGE peut déjà y pointer vers
+    # n'importe quel JS exécuté avec les mêmes droits DOM que le shell) :
+    # cette option ne réduit aucune confiance existante, elle empêche
+    # seulement qu'un attaquant hors du cercle des administrateurs de
+    # l'instance ajoute une origine non voulue par une autre voie.
+    script = " ".join(sorted({"'self'", *allowlist.script_hosts}))
     return (
         "default-src 'self'; "
-        "script-src 'self'; "
+        f"script-src {script}; "
         "style-src 'self' 'unsafe-inline'; "
         f"connect-src {connect}; "
         f"img-src {img}; "

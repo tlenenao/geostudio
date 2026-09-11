@@ -90,11 +90,11 @@ export function MapEditorPage({ pk }: { pk: string }) {
   // navigates here with ?exportRender=1 to capture a clean shot of the map
   // plus the PrintLayoutConfig overlays — no builder aside, no editor UI, no
   // triptyque chrome. Ready signal = MapLibre "idle" (map.once), relayed via
-  // MapView's onReady. showScaleBar/showNorthArrow are intentionally not
-  // rendered yet (known limitation, tracked in the Task 10 report — not a
-  // silent no-op). bg-white/90 stays hardcoded here on purpose (a print
-  // artifact meant to look like paper, not UI chrome — spec §2.2, the map
-  // itself also always stays light regardless of ambiance).
+  // MapView's onReady. showScaleBar/showNorthArrow were removed entirely
+  // from the schema (REV-128) — never rendered, authorable-but-inert.
+  // bg-white/90 stays hardcoded here on purpose (a print artifact meant to
+  // look like paper, not UI chrome — spec §2.2, the map itself also always
+  // stays light regardless of ambiance).
   if (isExportRender) {
     return (
       <div className="relative h-full w-full">

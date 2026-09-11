@@ -54,6 +54,7 @@ from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
     ReaderConnectorPostgresParams,
     ReaderConnectorRestParams,
+    ReaderConnectorSnowflakeParams,
     TransformAggregateParams,
     TransformCountWithinParams,
     TransformDeriveParams,
@@ -286,6 +287,34 @@ def _read_connector_postgres(
     p = ReaderConnectorPostgresParams.model_validate(params)
     try:
         connector_runtime.materialize_postgres_connector(
+            conn,
+            session=session,
+            tenant_id=tenant_id,
+            node_id=node_id,
+            params=p,
+            view_name=view_name,
+        )
+    except connector_runtime.ConnectorRuntimeError as exc:
+        raise PipelineRuntimeError(str(exc)) from exc
+    return 4326
+
+
+def _read_connector_snowflake(
+    conn,
+    *,
+    session: Session,
+    tenant_id: str,
+    node_id: str,
+    params: dict,
+    view_name: str,
+    user: User,
+    base_uri: str,
+) -> int:
+    """reader.connector.snowflake (registre READERS) — pendant de
+    _read_connector_postgres, même rationale (GAP-16)."""
+    p = ReaderConnectorSnowflakeParams.model_validate(params)
+    try:
+        connector_runtime.materialize_snowflake_connector(
             conn,
             session=session,
             tenant_id=tenant_id,

@@ -29,6 +29,23 @@ def _cell(value: float | None) -> str:
     return "—" if value is None else f"{value:.1f}"
 
 
+# REV-180 : la (grande) majorité des priorités de l'inventaire vient de
+# l'amorçage automatique SP-42, jamais revue manuellement — rien ne le
+# signalait dans le bilan rendu. "declaree" est déjà la valeur par défaut du
+# modèle (model.py::load_inventory, priorité posée à la main dès la création
+# d'une entrée) ; "manuel-sp61" désigne les 3 entrées effectivement revues
+# pendant la clôture de SP-61. Seul le reste (essentiellement
+# "amorcage-sp42") est encore amorcé — pas de JS possible en Markdown, un
+# simple indicateur textuel suffit.
+_REVIEWED_PRIORITY_SOURCES = ("declaree", "manuel-sp61")
+
+
+def _priority_cell(feature) -> str:
+    if feature.priority_source in _REVIEWED_PRIORITY_SOURCES:
+        return feature.priority
+    return f"{feature.priority} (amorcée)"
+
+
 def _delta(identifier: str, health: float | None, previous: dict[str, float]) -> str:
     if health is None or identifier not in previous:
         return "—"
@@ -90,7 +107,7 @@ def render(rows: Iterable[dict], *, previous: dict[str, float], date: str) -> st
                 identifier=feature.identifier,
                 health=_cell(row["sante"]),
                 delta=_delta(feature.identifier, row["sante"], previous),
-                priority=feature.priority,
+                priority=_priority_cell(feature),
                 tests=_cell(subscores["tests"].value),
                 reach=_cell(subscores["atteignabilite"].value),
                 guard=_cell(subscores["garde"].value),

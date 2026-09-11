@@ -15,7 +15,7 @@ from scripts.feature_health.model import Feature, SubScore
 REPO = pathlib.Path(__file__).resolve().parents[2]
 
 
-def _row(identifier="f1", health=60.0, priority="haute"):
+def _row(identifier="f1", health=60.0, priority="haute", priority_source="amorcage-sp42"):
     feature = Feature(
         identifier=identifier,
         domain="Catalogue",
@@ -26,7 +26,7 @@ def _row(identifier="f1", health=60.0, priority="haute"):
         shell=(),
         public=(),
         priority=priority,
-        priority_source="amorcage-sp42",
+        priority_source=priority_source,
         raw={},
     )
     return {
@@ -107,6 +107,38 @@ def test_html_and_markdown_never_diverge():
         for match in re.finditer(r"\| `([a-z0-9-]+)` \| ([0-9.]+) \|", markdown)
     }
     assert from_html == from_md
+
+
+def test_markdown_flags_a_priority_never_manually_reviewed():
+    # REV-180 : la (grande) majorité des priorités vient de l'amorçage SP-42,
+    # jamais revue manuellement — rien ne le signalait avant ce correctif.
+    output = render_md.render(
+        [_row(priority_source="amorcage-sp42")], previous={}, date="2026-09-07"
+    )
+    row_line = next(line for line in output.splitlines() if line.startswith("| Catalogue |"))
+    assert "(amorcée)" in row_line
+
+
+def test_markdown_does_not_flag_a_manually_reviewed_priority():
+    output_declaree = render_md.render(
+        [_row(priority_source="declaree")], previous={}, date="2026-09-07"
+    )
+    output_sp61 = render_md.render(
+        [_row(priority_source="manuel-sp61")], previous={}, date="2026-09-07"
+    )
+    for output in (output_declaree, output_sp61):
+        row_line = next(line for line in output.splitlines() if line.startswith("| Catalogue |"))
+        assert "(amorcée)" not in row_line
+
+
+def test_html_javascript_distinguishes_reviewed_priority_sources():
+    # bilan.js (REV-180) : seules les priorités jamais revues manuellement
+    # ("amorcage-sp42" et tout futur amorçage automatique — tout ce qui
+    # n'est ni "declaree" ni "manuel-sp61") sont nuancées visuellement.
+    output = render_html.render([_row()], previous={}, date="2026-09-07", commit="abc")
+    assert '"declaree"' in output
+    assert '"manuel-sp61"' in output
+    assert "encore amorc" in output.lower()
 
 
 def test_the_committed_html_is_a_single_self_contained_file():

@@ -156,6 +156,7 @@ h1.title{ font-size:clamp(32px, 4.6vw, 50px); font-weight:700; letter-spacing:-0
 .tile.pri-hi{ border-top-color:var(--pri-hi); }
 .tile.pri-mid{ border-top-color:var(--pri-mid); }
 .tile.pri-lo{ border-top-color:var(--pri-lo); }
+.tile.unreviewed{ border-top-color:var(--ink-3); border-top-style:dashed; }
 
 .callout{
   margin-top:16px; display:flex; gap:14px; padding:16px 18px; border-radius:10px;
@@ -330,6 +331,10 @@ table.matrix thead th .arrow{ font-size:10px; opacity:.6; }
 .pri-badge.pri-hi{ background:var(--pri-hi-bg); color:var(--pri-hi); border-color:var(--pri-hi-bd); }
 .pri-badge.pri-mid{ background:var(--pri-mid-bg); color:var(--pri-mid); border-color:var(--pri-mid-bd); }
 .pri-badge.pri-lo{ background:var(--pri-lo-bg); color:var(--pri-lo); border-color:var(--pri-lo-bd); }
+/* REV-180 : priorité encore amorcée (jamais revue manuellement) — même
+   couleur de priorité, nuancée (opacité + bordure tiretée) pour ne pas
+   introduire une 4e famille de couleur. */
+.pri-badge.unreviewed{ opacity:.7; border-style:dashed; cursor:help; }
 
 .eff-badge{
   font-family:var(--font-mono); font-size:11.5px; padding:2px 8px; border-radius:4px;

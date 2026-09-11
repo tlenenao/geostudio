@@ -292,8 +292,6 @@ export type PrintLayoutConfig = {
   orientation?: "portrait" | "landscape";
   title?: string | null;
   showLegend?: boolean;
-  showScaleBar?: boolean;
-  showNorthArrow?: boolean;
   cartouche?: string | null;
 };
 
@@ -697,7 +695,8 @@ export type SecretPayload =
       password: string;
       useTls: boolean;
       fromAddress: string;
-    };
+    }
+  | { kind: "snowflake_dsn"; dsn: string };
 
 export type RenderMode = "edit" | "preview" | "runtime";
 
@@ -1079,6 +1078,7 @@ export type PipelineOpEntry = {
   paramsSchema: {
     properties: Record<string, PipelineOpParamProperty>;
     required?: string[];
+    description?: string;
   };
   acceptsSecondaryInput?: boolean;
 };

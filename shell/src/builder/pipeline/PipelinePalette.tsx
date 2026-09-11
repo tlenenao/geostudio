@@ -40,6 +40,7 @@ export function PipelinePalette({ onAdd }: { onAdd?: (op: string) => void }) {
                     e.dataTransfer.effectAllowed = "move";
                   }}
                   onClick={() => onAdd?.(op)}
+                  title={catalog[op]?.paramsSchema.description}
                   className="w-full cursor-grab rounded border border-rule bg-surface px-2 py-1 text-left text-ink hover:bg-sunken"
                 >
                   {op}

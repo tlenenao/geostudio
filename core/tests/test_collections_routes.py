@@ -12,6 +12,7 @@ from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
+from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -94,6 +95,29 @@ def _as(app, user):
     app.dependency_overrides[get_current_user_optional] = lambda: user
 
 
+def _second_tenant_admin(Session, *, tenant_id="tenant-b-011"):
+    # REV-011 : Collection.id est une PK globale (id == table_name), distincte
+    # de la contrainte unique (tenant_id, table_name) — un second tenant est
+    # nécessaire pour observer un conflit d'id qu'une vérification tenant-
+    # scopée seule ne peut pas voir.
+    with Session() as s:
+        tenant_b = Tenant(id=tenant_id, slug=tenant_id, name="Tenant B")
+        s.add(tenant_b)
+        s.flush()
+        admin_b = get_or_create_user(
+            s,
+            tenant_id=tenant_b.id,
+            oidc_sub="b",
+            username="admin-b",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        s.commit()
+    return admin_b
+
+
 def test_register_requires_admin(env):
     app, client, _, admin, regular, _ddl = env
     _as(app, regular)
@@ -149,6 +173,29 @@ def test_register_unknown_table_400_and_duplicate_409(env):
     assert r.json()["detail"] == "table not found in schema public"
     client.post("/v1/collections", json={"tableName": "incidents"})
     assert client.post("/v1/collections", json={"tableName": "incidents"}).status_code == 409
+
+
+def test_register_cross_tenant_id_conflict_returns_409_not_500(env):
+    # REV-011 : Collection.id est une PK globale (id == table_name), distincte
+    # de la contrainte unique (tenant_id, table_name). register_collection ne
+    # vérifiait le conflit d'id QUE filtré par tenant (repo.get_collection) :
+    # le tenant A enregistre "incidents" (id="incidents") ; le tenant B, qui a
+    # sa PROPRE table nommée aussi "incidents", ne voit rien via cette
+    # vérification tenant-scopée (aucune collection "incidents" pour LUI) et
+    # atteint l'INSERT, qui percute la PK globale déjà prise par le tenant A —
+    # IntegrityError non rattrapée, 500 au lieu d'un 409 explicite.
+    app, client, Session, admin, _regular, _ddl = env
+    admin_b = _second_tenant_admin(Session)
+
+    _as(app, admin)
+    assert client.post("/v1/collections", json={"tableName": "incidents"}).status_code == 201
+
+    _as(app, admin_b)
+    r = client.post("/v1/collections", json={"tableName": "incidents"})
+    assert r.status_code == 409
+    # Message distinct du 409 tenant-scopé ("table already registered") : ce
+    # conflit-ci est cross-tenant, jamais vu par get_collection(tenant_id=...).
+    assert r.json()["detail"] != "table already registered"
 
 
 def test_table_name_bounded_to_50_chars(env):
@@ -674,6 +721,29 @@ def test_candidates_lists_registrable_and_unsupported_excludes_core_and_register
     assert r.json()["candidates"] == [
         {"tableName": "widgets", "registrable": False, "reason": "table has no primary key"},
     ]
+
+
+def test_candidates_excludes_table_registered_by_another_tenant(env):
+    # REV-011, second symptôme : list_candidate_tables excluait seulement les
+    # tables déjà enregistrées PAR LE MÊME TENANT (repo.get_collection
+    # tenant-scopé) — une table déjà enregistrée par un AUTRE tenant restait
+    # "candidate" alors que tenter de l'enregistrer percuterait la même PK
+    # globale (cf. test_register_cross_tenant_id_conflict_returns_409_not_500).
+    app, client, Session, admin, _regular, _ddl = env
+    admin_b = _second_tenant_admin(Session)
+
+    _as(app, admin)
+    assert client.post("/v1/collections", json={"tableName": "incidents"}).status_code == 201
+
+    _as(app, admin_b)
+
+    def fake_lister(session):
+        return ["incidents"]
+
+    app.dependency_overrides[collections_routes.get_table_lister] = lambda: fake_lister
+    r = client.get("/v1/collections/candidates")
+    assert r.status_code == 200
+    assert "incidents" not in {c["tableName"] for c in r.json()["candidates"]}
 
 
 def test_list_collections_includes_owner_username(env):

@@ -409,8 +409,6 @@ class PrintLayout(BaseModel):
     orientation: Literal["portrait", "landscape"] = "portrait"
     title: str | None = None
     showLegend: bool = True
-    showScaleBar: bool = True
-    showNorthArrow: bool = False
     cartouche: str | None = None
 
 

@@ -826,10 +826,10 @@ test("« Ajouter des icônes » ouvre le bloc, qui est fermé par défaut", asyn
 test("la grille d'icônes n'apparaît que pour la valeur en cours d'édition", async () => {
   render(<MapSymbologyEditor {...baseProps} value={iconValue} onChange={vi.fn()} />);
   // Aucune grille au départ : seulement un bouton par valeur du domaine.
-  expect(screen.queryByRole("img", { name: "school" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "school" })).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Choisir l'icône de ecole" }));
   // Une seule grille, donc un seul bouton nommé "school".
-  expect(screen.getByRole("img", { name: "school" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "school" })).toBeInTheDocument();
 });
 
 // Fix I4 de la revue finale SP-27 : `iconField` ne se resynchronisait qu'au
@@ -852,7 +852,7 @@ test("choisir une icône Lucide écrit icon.mapping pour cette valeur", async ()
   const onChange = vi.fn();
   render(<MapSymbologyEditor {...baseProps} value={iconValue} onChange={onChange} />);
   await userEvent.click(screen.getByRole("button", { name: "Choisir l'icône de commerce" }));
-  await userEvent.click(screen.getByRole("img", { name: "shopping-cart" }));
+  await userEvent.click(screen.getByRole("button", { name: "shopping-cart" }));
   expect(onChange).toHaveBeenLastCalledWith(
     expect.objectContaining({
       icon: expect.objectContaining({
@@ -963,7 +963,7 @@ async function openCustomIconDeleteButton(props: {
     />,
   );
   await userEvent.click(screen.getByRole("button", { name: "Choisir l'icône de ecole" }));
-  await screen.findByRole("img", { name: "Logo" });
+  await screen.findByRole("button", { name: "Logo" });
   return screen.getByRole("button", { name: "Supprimer l'icône Logo" });
 }
 
@@ -1003,7 +1003,7 @@ test("un échec de suppression d'icône personnalisée affiche une erreur", asyn
   await screen.findByText("Icône introuvable (404)");
   // L'icône reste listée : la suppression a échoué, l'état ne doit pas
   // prétendre le contraire.
-  expect(screen.getByRole("img", { name: "Logo" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Logo" })).toBeInTheDocument();
   confirmSpy.mockRestore();
 });
 

@@ -15,6 +15,18 @@
 
   var PRIORITY_ORDER = ["haute", "moyenne", "basse"];
   var PRIORITY_CLASS = { haute: "pri-hi", moyenne: "pri-mid", basse: "pri-lo" };
+
+  /* REV-180 : la (grande) majorité des priorités de l'inventaire vient de
+     l'amorçage automatique SP-42, jamais revue manuellement — rien ne le
+     signalait ici avant ce correctif. "declaree" est déjà la valeur par
+     défaut du modèle Python (priorité posée à la main dès la création d'une
+     entrée, cf. feature_health/model.py) ; "manuel-sp61" désigne les 3
+     entrées effectivement revues pendant la clôture de SP-61. Seul le reste
+     (essentiellement "amorcage-sp42") est encore amorcé. */
+  var REVIEWED_PRIORITY_SOURCES = { declaree: true, "manuel-sp61": true };
+  function isReviewedPrioritySource(source){
+    return !!REVIEWED_PRIORITY_SOURCES[source];
+  }
   var SUBSCORE_KEYS = ["tests", "atteignabilite", "garde", "dette"];
   var SUBSCORE_LABEL = {
     tests: "Tests", atteignabilite: "Atteignabilité", garde: "Garde", dette: "Dette"
@@ -44,9 +56,14 @@
     var lvl = healthLevel(v);
     return '<span class="note-badge lvl-' + lvl + ' tabular">' + v.toFixed(1) + '</span>';
   }
-  function priorityBadge(p){
+  function priorityBadge(p, source){
     var cls = PRIORITY_CLASS[p] || "pri-lo";
-    return '<span class="pri-badge ' + cls + ' tabular">' + esc(p) + '</span>';
+    if (isReviewedPrioritySource(source)) {
+      return '<span class="pri-badge ' + cls + ' tabular">' + esc(p) + '</span>';
+    }
+    return '<span class="pri-badge ' + cls + ' unreviewed tabular" ' +
+      'title="Priorité encore amorcée (' + esc(source) + '), jamais revue manuellement">' +
+      esc(p) + ' <span aria-hidden="true">&middot;</span></span>';
   }
   function deltaCell(delta){
     if (delta === null || delta === undefined) return '<span style="color:var(--ink-3)">—</span>';
@@ -94,6 +111,13 @@
     }).length;
     html += '<div class="tile pri-hi"><div class="n tabular">' + priHauteSousPlancher +
       '</div><div class="l">Priorité haute sous le plancher (' + CI_FLOOR_HAUTE + ')</div></div>';
+    // REV-180 : combien de priorités affichées n'ont jamais été revues
+    // manuellement (amorçage automatique, cf. isReviewedPrioritySource).
+    var priorEncoreAmorcees = FEATURES.filter(function(r){
+      return !isReviewedPrioritySource(r.priorite_source);
+    }).length;
+    html += '<div class="tile unreviewed"><div class="n tabular">' + priorEncoreAmorcees +
+      '</div><div class="l">Priorités encore amorcées (jamais revues manuellement)</div></div>';
     document.getElementById("tiles").innerHTML = html;
   }
 
@@ -261,7 +285,7 @@
       '</td>' +
       '<td>' + healthBadge(r.sante) + '</td>' +
       '<td>' + deltaCell(r.delta) + '</td>' +
-      '<td>' + priorityBadge(r.priorite) + '</td>' +
+      '<td>' + priorityBadge(r.priorite, r.priorite_source) + '</td>' +
       '<td>' + subCell(r.sous_scores.tests) + '</td>' +
       '<td>' + subCell(r.sous_scores.atteignabilite) + '</td>' +
       '<td>' + subCell(r.sous_scores.garde) + '</td>' +

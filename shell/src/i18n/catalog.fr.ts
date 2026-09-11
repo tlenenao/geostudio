@@ -1107,6 +1107,7 @@ export const fr = {
   "secretParamSelect.kindOAuth2": "OAuth2 client credentials",
   "secretParamSelect.kindPostgresDsn": "DSN Postgres",
   "secretParamSelect.kindSmtp": "SMTP",
+  "secretParamSelect.kindSnowflakeDsn": "DSN Snowflake",
   "secretParamSelect.createFailed": "Échec de la création du secret.",
   "secretParamSelect.nameLabel": "Nom",
   "secretParamSelect.nameAria": "Nom",
@@ -1271,6 +1272,7 @@ export const fr = {
   "alertRule.percentileLabel": "Centile",
   "alertRule.createButton": "Créer la règle",
   "alertRule.createError": "Échec de la création de la règle.",
+  "alertRule.loadMore": "Charger plus",
 
   // AnalyticsContextIndicator (builder)
   "analyticsContext.periodLabel": "Période : {from} → {to}",

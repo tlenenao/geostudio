@@ -68,12 +68,14 @@ const KIND_LABELS: Record<SecretPayload["kind"], string> = {
   oauth2_client_credentials: t("secretParamSelect.kindOAuth2"),
   postgres_dsn: t("secretParamSelect.kindPostgresDsn"),
   smtp: t("secretParamSelect.kindSmtp"),
+  snowflake_dsn: t("secretParamSelect.kindSnowflakeDsn"),
 };
 
 const ALL_KINDS = Object.keys(KIND_LABELS) as SecretPayload["kind"][];
 
 // Un formulaire minimal par variante, pas un générateur JSON Schema complet —
-// les 6 variantes de SecretPayload sont fixes et connues (design SP-53 §1).
+// les variantes de SecretPayload sont fixes et connues (design SP-53 §1 ;
+// 7 depuis GAP-16, snowflake_dsn).
 function SecretCreateForm({
   kindFilter,
   onCreated,
@@ -118,6 +120,7 @@ function SecretCreateForm({
           clientSecret: field("clientSecret"),
         };
       case "postgres_dsn":
+      case "snowflake_dsn":
         return { kind, dsn: field("dsn") };
       case "smtp":
         return {
@@ -279,7 +282,7 @@ function SecretCreateForm({
           </label>
         </>
       )}
-      {kind === "postgres_dsn" && (
+      {(kind === "postgres_dsn" || kind === "snowflake_dsn") && (
         <label className="flex flex-col gap-1 text-xs">
           {t("secretParamSelect.dsnLabel")}
           <input

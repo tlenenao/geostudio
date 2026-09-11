@@ -63,6 +63,22 @@ def get_collection(session: Session, *, tenant_id: str, collection_id: str) -> C
     )
 
 
+def get_collection_by_id_any_tenant(session: Session, *, collection_id: str) -> Collection | None:
+    """Lookup par PK seule (`Collection.id`), sans filtre tenant.
+
+    REV-011 : `Collection.id` est une clé primaire GLOBALE (défaut = `table_name`
+    à la création, cf. `create_collection`), distincte de la contrainte unique
+    `(tenant_id, table_name)`. Une vérification de conflit tenant-scopée seule
+    (`get_collection`) ne voit jamais un id déjà pris par un AUTRE tenant — le
+    conflit n'est découvert qu'à l'INSERT, en `IntegrityError` non rattrapée
+    (500). Réservée aux points d'écriture/liste qui doivent refuser ce
+    conflit AVANT toute tentative d'écriture (`register_collection`,
+    `list_candidate_tables`) — jamais un filtre de visibilité (qui reste
+    strictement tenant-scopé, cf. `list_visible_collections`).
+    """
+    return session.get(Collection, collection_id)
+
+
 def create_collection(
     session: Session,
     *,

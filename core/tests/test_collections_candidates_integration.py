@@ -81,7 +81,7 @@ def _as(app, user):
     app.dependency_overrides[get_current_user_optional] = lambda: user
 
 
-def test_candidates_real_introspection_and_tenant_isolation(pg_app):
+def test_candidates_real_introspection_and_cross_tenant_exclusion(pg_app):
     client, app, admin_a, admin_b = pg_app
     _as(app, admin_a)
     body = client.get("/v1/collections/candidates").json()["candidates"]
@@ -95,6 +95,13 @@ def test_candidates_real_introspection_and_tenant_isolation(pg_app):
     body_a = client.get("/v1/collections/candidates").json()["candidates"]
     assert "cand_points" not in {c["tableName"] for c in body_a}
 
+    # REV-011 : `Collection.id` est une PK globale (id == table_name) — une
+    # fois "cand_points" enregistrée par le tenant A, elle n'est plus
+    # candidate pour AUCUN tenant (l'enregistrer percuterait la même PK),
+    # pas seulement pour le tenant qui l'a enregistrée. Avant le correctif,
+    # cette assertion était l'inverse (`in`) : le tenant B voyait encore
+    # "cand_points" comme candidate alors que tenter de l'enregistrer aurait
+    # levé une IntegrityError non rattrapée (500).
     _as(app, admin_b)
     body_b = client.get("/v1/collections/candidates").json()["candidates"]
-    assert "cand_points" in {c["tableName"] for c in body_b}
+    assert "cand_points" not in {c["tableName"] for c in body_b}

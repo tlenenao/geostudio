@@ -64,3 +64,44 @@ test("entries render as native buttons (focusable, no onAdd required)", async ()
   const button = screen.getByRole("button", { name: "reader.collection" });
   expect(() => fireEvent.click(button)).not.toThrow();
 });
+
+test("op entries with a paramsSchema.description get it as a hover title", async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const catalogWithDescription: PipelineOpsCatalog = {
+    ...CATALOG,
+    "reader.connector.postgres": {
+      kind: "reader",
+      paramsSchema: {
+        properties: {},
+        required: [],
+        description: "Fonctionne également contre un cluster Amazon Redshift.",
+      },
+    },
+  };
+  const client: Partial<ItemClient> = {
+    getPipelineOps: () => Promise.resolve(catalogWithDescription),
+  };
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client as ItemClient}>
+        <PipelinePalette />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByText("reader.connector.postgres")).toBeInTheDocument());
+  const entryWithDescription = screen
+    .getByText("reader.connector.postgres")
+    .closest("[draggable]") as HTMLElement;
+  expect(entryWithDescription).toHaveAttribute(
+    "title",
+    "Fonctionne également contre un cluster Amazon Redshift.",
+  );
+
+  // Entry with no description (e.g. "reader.collection" from CATALOG) gets
+  // no title attribute at all — never an empty string, which some screen
+  // readers/tools would still surface as an (empty) tooltip.
+  const entryWithoutDescription = screen
+    .getByText("reader.collection")
+    .closest("[draggable]") as HTMLElement;
+  expect(entryWithoutDescription).not.toHaveAttribute("title");
+});

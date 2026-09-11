@@ -48,6 +48,16 @@ export function Combobox({
     setOpen(false);
   };
 
+  // Id stable par option (préfixé par le même `listboxId` unique par
+  // instance, cf. commentaire ci-dessus) — référencé par
+  // `aria-activedescendant` sur l'input ci-dessous : le focus DOM réel reste
+  // sur l'input (roving focus virtuel), les options ne rejoignent jamais
+  // l'ordre de tabulation (`tabIndex={-1}` plus bas), mais un lecteur
+  // d'écran doit pouvoir annoncer laquelle est actuellement surlignée par
+  // les flèches — jusqu'ici seul `aria-selected`/le surlignage visuel le
+  // portait, invisible en dehors d'un rendu visuel.
+  const optionId = (index: number) => `${listboxId}-option-${index}`;
+
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
       <PopoverPrimitive.Anchor asChild>
@@ -57,6 +67,9 @@ export function Combobox({
           aria-expanded={open}
           aria-controls={listboxId}
           aria-autocomplete="list"
+          aria-activedescendant={
+            open && activeIndex >= 0 && filtered[activeIndex] ? optionId(activeIndex) : undefined
+          }
           autoComplete="off"
           value={query}
           onChange={(e) => {
@@ -104,8 +117,15 @@ export function Combobox({
             filtered.map((option, index) => (
               <div
                 key={option.value}
+                id={optionId(index)}
                 role="option"
                 aria-selected={index === activeIndex}
+                // Hors de l'ordre de tabulation (roving focus virtuel porté
+                // par l'input via aria-activedescendant ci-dessus) mais
+                // explicitement focusable par programme — c'est ce que
+                // jsx-a11y/interactive-supports-focus attend d'un rôle
+                // "option" qui ne reçoit jamais le focus DOM réel.
+                tabIndex={-1}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   commit(option);

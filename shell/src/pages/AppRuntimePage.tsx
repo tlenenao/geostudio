@@ -188,8 +188,8 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
       {/* Export/print chrome (fix round, finding I4): mirrors MapEditorPage's
           title/cartouche overlay markup so PrintLayout authoring isn't
           silently dropped for app/dashboard exports. showScaleBar/
-          showNorthArrow remain out of scope (no map surface here to anchor
-          them to; also inert for maps — see PrintLayoutPanel). */}
+          showNorthArrow were removed entirely from the schema (REV-128) —
+          never rendered, authorable-but-inert either way. */}
       {isExportRender && query.data.printLayout?.title && (
         <div className="absolute left-2 top-2 rounded bg-white/90 px-2 py-1 text-sm font-medium">
           {query.data.printLayout.title}

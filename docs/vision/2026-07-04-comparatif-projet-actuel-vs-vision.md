@@ -579,6 +579,16 @@ réels, Q10 — temps réel, Q11 — offline restent ouvertes) :
 5. **SDK : le registre React reste interne.** Aucune ouverture publique du SDK avant
    la migration du contrat de widget vers Web Components — ce chantier se planifie
    *avant* la marketplace, pas après.
+   **Amendement 2026-09-07** (SP-8a/b/c livrés, jalon M5 fermé) : la précondition
+   est remplie, mais « le registre reste interne » est amendé pour distinguer deux
+   choses — rester **fermé au public/tiers non affiliés** (toujours vrai, la
+   marketplace n'est pas ouverte) vs. rester **cantonné au dépôt `shell/`** (levé).
+   `shell/src/builder` (+ `ui/kit`) est extrait en `packages/app-builder` et
+   `packages/ui-kit` dans un workspace npm du même dépôt, avec un port de données
+   injecté (`BuilderDataClient`) à la place d'un appel direct à `ItemClient`, pour
+   être consommé par un second projet du même auteur (`finance`, dépôt tiers, via
+   dépendance `file:`). Voir
+   `docs/superpowers/specs/2026-09-07-app-builder-package-extraction-design.md`.
 6. **Nom : GeoStudio** — consolidation documentaire à faire (README réécrit autour du
    produit, couches 1–2 archivées, OGE/GeoCore retirés ou renommés).
 

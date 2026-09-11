@@ -73,9 +73,9 @@ restants.
 
 ## État des 81 gaps — trois parties distinctes (mise à jour 2026-09-06)
 
-**57 fermés, 5 partiels, 19 ouverts** (total 81 — 79 gaps de la revue initiale + GAP-80/81 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
+**58 fermés, 5 partiels, 18 ouverts** (total 81 — 79 gaps de la revue initiale + GAP-80/81 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
 
-### ✅ Fermé (57)
+### ✅ Fermé (58)
 
 | GAP | Fermé par / statut détaillé |
 |---|---|
@@ -90,6 +90,7 @@ restants.
 | GAP-12 | SP-54 (liens de partage à échéance, `share_link`) |
 | GAP-13 | SP-52 (widget `variableInput`) |
 | GAP-14 | SP-57a (i18n 7 lots, a11y échantillon 9 pages) + SP-57b (`/v1/`, `docs/adr/`, contribution). Reste : détecteur i18n limité à 4 répertoires (REV-177), échantillon a11y non exhaustif (REV-178), token `--gs-ink-3` sous seuil AA non corrigé (REV-176) *(avec dette résiduelle)* |
+| GAP-16 | 2026-09-06 (spec/plan GAP-16) — `reader.connector.snowflake` (pendant exact de `reader.connector.postgres`, dialecte `snowflake-sqlalchemy` résolu par entry point, aucun nouvel import), nouveau kind de secret `snowflake_dsn` ; `reader.connector.postgres` confirmé compatible Amazon Redshift sans nouveau code (littérature AWS, pas de cluster réel disponible en session). Databricks/BigQuery restent hors périmètre. Round-trip Snowflake réel : `@pytest.mark.snowflake`, jamais câblé en CI, manuel uniquement |
 | GAP-24 | SP-53 (`06821047`) — jeton opaque + `POST /pipelines/{id}/trigger` |
 | GAP-28 | SP-47 (domaine `app/usage/`, `GET /usage/summary`) |
 | GAP-30 | SP-46 (`ADMIN_LINKS`) |
@@ -147,14 +148,13 @@ restants.
 | GAP-70 | SP-59 ferme le script de restauration (`deploy/backup/restore.sh`, vérifié présent) et la parité des 7 buckets ; la vérification OIDC réelle reste non rejouée (REV-164, limite d'environnement) |
 | GAP-72 | SP-48 ferme `img-src`/`connect-src` en enforcing (`CORE_CSP_MODE`, vérifié dans `docker-compose.yml`/`security/jobs.py`) ; `script-src` widgets d'extension tiers reste une décision produit ouverte (`traefik_render.py:29`, toujours `'self'` en dur, gardé par 2 tests intentionnels) |
 
-### 🔴 Ouvert / non implémenté (19)
+### 🔴 Ouvert / non implémenté (18)
 
 | GAP | Manque |
 |---|---|
 | GAP-04 | Aucune SP n'a traité `stac-api-validator` en CI |
 | GAP-08 | Géocodage BAN non traité |
 | GAP-10 | Animation temporelle non traitée |
-| GAP-16 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-17 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-18 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-19 | Référentiel 2 (benchmark), aucune décision produit prise |
@@ -171,9 +171,9 @@ restants.
 | GAP-80 | `/bookmarks` (`shell/src/shell/routes.tsx:315`) inatteignable — aucun lien ne pointe vers cette route, `useCreateBookmark` livré par SP-14m sans jamais pouvoir relire le signet créé (cf. addendum ci-dessous) |
 | GAP-81 | `/analytics/sql` (`shell/src/pages/SqlLabPage.tsx`) inatteignable — aucun lien du shell ne pointe vers cette route (cf. addendum ci-dessous pour le détail du câblage de navigation en cause) |
 
-Répartition par référentiel des 19 ouverts : 6 items isolés du référentiel 1
+Répartition par référentiel des 18 ouverts : 6 items isolés du référentiel 1
 (GAP-04/08/10/34/37/55 — chantiers non lancés ou décisions produit non
-tranchées), 11 du référentiel 2 (GAP-16 à GAP-23 + GAP-25 à GAP-27, benchmark
+tranchées), 10 du référentiel 2 (GAP-17 à GAP-23 + GAP-25 à GAP-27, benchmark
 concurrentiel — aucune décision produit prise, non vérifiables dans le code
 de GeoStudio), et GAP-80/81 (navigation manquante, mécaniques, coût 1-2 j-h
 chacun).

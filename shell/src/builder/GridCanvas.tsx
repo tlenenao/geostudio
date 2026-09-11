@@ -27,6 +27,18 @@ export function GridCanvas({
       className="grid h-full w-full gap-1 bg-[var(--gs-color-surface)]"
       data-breakpoint={breakpoint}
       style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`, gridAutoRows: "40px" }}
+      // role="presentation" : ce conteneur de mise en page ne porte aucune
+      // sémantique propre — les vraies commandes (sélectionner/déplacer/
+      // supprimer un widget) sont les <button> réels rendus ci-dessous,
+      // déjà accessibles au clavier. Le clic sur la zone vide ne fait que
+      // désélectionner, une commodité qui n'a aujourd'hui aucun équivalent
+      // clavier dédié (limitation connue, pas corrigée ici — aucune action
+      // n'est pour autant rendue inatteignable : sélectionner un autre
+      // widget, ou le supprimer via Suppr/Retour arrière déjà câblé au
+      // niveau de la page, restent possibles sans jamais utiliser cette
+      // zone). Annoter le rôle plutôt que masquer la règle
+      // jsx-a11y/no-static-element-interactions.
+      role="presentation"
       onClick={() => editable && onSelect(null)}
     >
       {items.map((item) => {

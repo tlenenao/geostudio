@@ -3,11 +3,12 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
+from mcp.server.fastmcp import FastMCP
 
 from app import db
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
-from app.mcp.tools import READ_ONLY_TOOLS
+from app.mcp.tools import READ_ONLY_TOOLS, register_tools
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
@@ -117,7 +118,7 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
     return payload["result"]
 
 
-def test_read_only_tools_constant_matches_the_ten_write_tools():
+def test_read_only_tools_constant_matches_the_ten_write_tools(monkeypatch):
     # SP-42, revue des lots de correctifs 2/3bis (point 5, Minor causé par
     # nos propres correctifs) : cette constante (et cette assertion)
     # figeaient "six write tools" alors que create_pipeline et run_pipeline
@@ -127,6 +128,24 @@ def test_read_only_tools_constant_matches_the_ten_write_tools():
     # add_group_member rejoignent la liste — même piège explicitement évité
     # cette fois (create_group/add_group_member ajoutés ici en même temps
     # que leur garde is_read_only_mode(), pas après coup).
+    #
+    # REV-008 : READ_ONLY_TOOLS n'est plus un ensemble littéral — c'est
+    # WRITE_TOOL_NAMES (app/mcp/tools/write_tools.py), peuplé par le
+    # décorateur @write_tool posé sur chaque tool d'écriture à son point de
+    # définition. Ce registre est module-global et additif (jamais
+    # réinitialisé) : pour que cette assertion soit déterministe quel que
+    # soit l'ordre d'exécution des autres tests de la session (certains
+    # tools d'écriture, ceux de pipelines.py, ne sont définis — donc
+    # décorés — que si CORE_ETL_ENABLED est actif au moment de
+    # register()), ce test construit lui-même un serveur FastMCP jetable
+    # avec la capacité activée et appelle register_tools() dessus avant
+    # d'asserter — il ne dépend d'aucune fixture ni d'aucun autre test
+    # ayant déjà tourné. session_factory=None est sûr ici : register()
+    # ne fait que *définir* des closures fermant sur session_factory,
+    # jamais l'utiliser avant qu'un tool soit réellement appelé (vérifié en
+    # lisant chaque register() concerné avant d'écrire ce test).
+    monkeypatch.setenv("CORE_ETL_ENABLED", "true")
+    register_tools(FastMCP("test-read-only-tools-inventory"), session_factory=None)
     assert READ_ONLY_TOOLS == {
         "save_app_config",
         "create_item",

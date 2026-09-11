@@ -16,7 +16,11 @@ spec source en inventait les noms) ; un seul TestClient FastAPI sait déjà
 parler les deux protocoles (REST directement, MCP via le handshake
 JSON-RPC encapsulé par `call_tool`)."""
 
-from tests.test_mcp_tools_create import app_client, call_tool  # noqa: F401,F811
+from tests.test_mcp_tools_create import (  # noqa: F401,F811
+    app_client,
+    call_tool,
+    call_tool_expecting_error,
+)
 from tests.test_mcp_tools_pipeline import _linear_pipeline_args, _register_collections
 from tests.test_mcp_tools_pipeline import app_client as pipeline_app_client  # noqa: F401,F811
 
@@ -272,3 +276,88 @@ def test_run_alert_rule_tool_matches_sweep_alert_rules_task_effect_for_one_rule(
     # Une ligne pending par déclenchement (tool + balayage) : le même effet
     # observable des deux côtés, aucun raccourci parallèle.
     assert len(pending) == 2
+
+
+def test_save_app_config_tool_rejects_pipeline_update_when_etl_disabled_like_rest(
+    app_client,  # noqa: F811
+):
+    """REV-174 : save_app_config (MCP) sautait les 7 validateurs par kind et
+    les 2 gardes de capacité (ETL/export) qu'exécute PUT /configs/by-item/{id}
+    (app.configs.routes::update_config_by_item) avant d'écrire — un agent MCP
+    pouvait donc écraser la config d'un pipeline existant sur une instance où
+    CORE_ETL_ENABLED est faux, chemin que la route REST refuse déjà en 403.
+    CORE_ETL_ENABLED est absent de l'environnement de app_client (fixture de
+    tests/test_mcp_tools_create.py) — is_etl_enabled() (app.auth.dependency)
+    lit l'environnement à chaque appel, sans cache, donc son défaut "false"
+    suffit ici sans la fixture-fabrique dédiée de test_mcp_tools_pipeline.py
+    (celle-ci ne sert qu'à faire varier la LISTE de tools exposée à la
+    construction de l'app — create_pipeline/run_pipeline/explain_pipeline —
+    jamais utilisée par ce test : save_app_config est un tool générique,
+    toujours enregistré, quel que soit CORE_ETL_ENABLED).
+
+    Le pipeline est seedé directement via configs_repo.create_config (pas via
+    create_pipeline, absent de la liste de tools tant que CORE_ETL_ENABLED
+    est faux) : sa config n'a donc jamais traversé aucun validateur de
+    payload, et référence des collections qui n'existent pas — sans
+    conséquence ici, puisque la garde ETL doit couper court avant même
+    d'atteindre validate_pipeline_payload (même ordre que
+    update_config_by_item : _require_etl_enabled_for_pipeline précède les 7
+    validateurs par kind)."""
+    from app.configs import repository as configs_repo
+    from app.configs.schemas import BuilderConfig
+    from app.items import repository as items_repo
+
+    pipeline_body = {
+        "kind": "pipeline",
+        "pipeline": {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "does-not-exist"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.collection",
+                    "params": {"collectionId": "does-not-exist-either"},
+                },
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        },
+    }
+
+    with app_client.session_factory() as session:
+        item = items_repo.create_item(
+            session,
+            tenant_id=app_client.tenant.id,
+            owner_id=app_client.mock_user.id,
+            resource_type="pipeline",
+            title="Pipeline sans ETL",
+        )
+        session.flush()
+        configs_repo.create_config(
+            session,
+            BuilderConfig.model_validate(pipeline_body),
+            item_id=item.id,
+            tenant_id=app_client.tenant.id,
+        )
+        session.commit()
+        item_id = item.id
+
+    # Oracle direct : PUT /configs/by-item/{id} (REST) refuse déjà cette même
+    # mise à jour, pas une supposition sur son comportement.
+    rest_response = app_client.put(
+        f"/v1/configs/by-item/{item_id}",
+        json=pipeline_body,
+        headers={"Authorization": "Bearer anything"},
+    )
+    assert rest_response.status_code == 403, rest_response.text
+    assert "ETL capability disabled" in rest_response.json()["detail"]
+
+    with app_client:
+        error_text = call_tool_expecting_error(
+            app_client, "save_app_config", {"itemId": item_id, "config": pipeline_body}
+        )
+    assert "ETL capability disabled" in error_text

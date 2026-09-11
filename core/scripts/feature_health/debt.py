@@ -3,17 +3,23 @@
 
 Consomme les deux documents que `CLAUDE.md` oblige à mettre à jour à chaque
 clôture de SP, sans les dupliquer :
-- `docs/revue/2026-09-04-analyse-gaps.md` — le tableau d'état, dont chaque
-  ligne est `| GAP-nn | Ouvert \\| **Fermé** \\| **Partiel** | commentaire |`.
-  Une ligne peut couvrir une plage (`| GAP-16 à GAP-23 | Ouvert | … |`), qui est
-  dépliée. `**Partiel**` compte comme ouvert.
+- `docs/revue/2026-09-04-analyse-gaps.md` — depuis la mise à jour du
+  2026-09-06, l'état des GAP vit dans **trois tableaux distincts sous des
+  sous-titres H3 propres** : `### ✅ Fermé (nn)`, `### 🟡 Partiel (n)`,
+  `### 🔴 Ouvert / non implémenté (n)`. Dans ces tableaux, la colonne 2 est
+  une **prose de description** (« Manque », « Ce qui est fait/reste »),
+  jamais un mot de statut : c'est la **section** qui fait foi, pas le
+  contenu de la cellule. Une ligne peut couvrir une plage
+  (`| GAP-16 à GAP-23 | … |`), qui est dépliée. Les lignes des sections
+  Partiel et Ouvert comptent toutes comme ouvertes, par construction ; la
+  section Fermé n'est jamais scannée.
 - `docs/revue/2026-09-04-backlog.md` — une section `### REV-nnn — <sévérité> — …`
   par entrée, avec une ligne `- **État :** ouvert…` et une ligne
   `- **Preuve :** `chemin:lignes ; chemin:lignes``.
 
 Pondération volontairement grossière (spec §6.2, « grossier, robuste ») :
 critical −40, important −20, minor/observation −10, inconnu −20, plancher 0.
-Les `GAP` n'exposent pas leur impact dans le tableau d'état (il vit dans les
+Les `GAP` n'exposent pas leur impact dans les tableaux d'état (il vit dans les
 tableaux de détail, à un autre format par référentiel) : ils comptent tous
 pour −20. Simplification assumée plutôt qu'un parseur fragile de trois
 tableaux différents.
@@ -21,15 +27,15 @@ tableaux différents.
 Limites assumées : le rattachement se fait par **chemin de fichier cité dans
 la preuve** ; une entrée dont la preuve ne nomme aucun fichier ne pénalise
 aucune fonctionnalité, et une entrée qui cite un fichier partagé pénalise
-toutes les fonctionnalités qui le citent. `open_gaps` ne scanne que le
-tableau d'état sous le titre « ## Mise à jour de clôture… », borné par le
-premier titre `## Référentiel` qui suit — les tableaux de détail plus loin
-dans le document (référentiels, classement final) contiennent de la prose
-libre qui peut mentionner les mots « ouvert »/« fermé » sans être une ligne
-de statut ; les exclure de la fenêtre de lecture est plus robuste qu'un
-filtrage lexical. Si ce titre ou cette borne disparaissent du document, le
-scan retombe sur le document entier (silencieusement plus large, pas plus
-étroit) plutôt que d'échouer."""
+toutes les fonctionnalités qui le citent. `open_gaps` ne scanne que les
+deux sections `### 🟡 Partiel` et `### 🔴 Ouvert / non implémenté`, chacune
+bornée par le prochain titre `#`/`##`/`###` qui la suit — la section
+`### ✅ Fermé` (et les tableaux de détail plus loin dans le document, qui
+contiennent de la prose libre pouvant mentionner les mots « ouvert »/
+« fermé » sans être une ligne de statut) sont ainsi exclus mécaniquement.
+Si l'un des deux titres de section disparaît du document, la fonction ne
+compte simplement aucune entrée pour cette section (silencieusement plus
+étroit, pas une erreur) plutôt que d'échouer."""
 
 from __future__ import annotations
 
@@ -43,8 +49,9 @@ GAPS_DOC = "docs/revue/2026-09-04-analyse-gaps.md"
 BACKLOG_DOC = "docs/revue/2026-09-04-backlog.md"
 
 _GAP_ROW_RE = re.compile(r"^\|\s*GAP-(\d+)(?:\s*à\s*GAP-(\d+))?\s*\|\s*([^|]+?)\s*\|", re.MULTILINE)
-_GAP_STATUS_SECTION_START_RE = re.compile(r"^## Mise à jour de clôture.*$", re.MULTILINE)
-_GAP_STATUS_SECTION_END_RE = re.compile(r"^## Référentiel", re.MULTILINE)
+_HEADING_RE = re.compile(r"^#{1,6} .*$", re.MULTILINE)
+_GAP_PARTIEL_SECTION_START_RE = re.compile(r"^### 🟡 Partiel\b.*$", re.MULTILINE)
+_GAP_OUVERT_SECTION_START_RE = re.compile(r"^### 🔴 Ouvert\b.*$", re.MULTILINE)
 _REV_HEADING_RE = re.compile(r"^### (REV-\d+)\s*—\s*([^—\n]*)", re.MULTILINE)
 # Ligne « - **État :** … » (fermant `**` juste après les deux-points) OU
 # « - **État : … **» (fermant `**` en fin d'état, avant une éventuelle
@@ -60,26 +67,18 @@ _PENALTY = {"critical": 40.0, "important": 20.0, "minor": 10.0, "observation": 1
 _DEFAULT_PENALTY = 20.0
 
 
-def _gap_status_table_text(text: str) -> str:
-    """Borne le texte au seul tableau d'état des GAP (cf. docstring du module)."""
-    start_match = _GAP_STATUS_SECTION_START_RE.search(text)
-    start = start_match.end() if start_match else 0
-    end_match = _GAP_STATUS_SECTION_END_RE.search(text, start)
+def _section_text(text: str, start_pattern: re.Pattern[str]) -> str:
+    """Texte d'une section H3, bornée par le prochain titre `#`/`##`/`###`.
+
+    Renvoie une chaîne vide si le titre de section n'est pas trouvé — plus
+    étroit silencieusement plutôt qu'une erreur (cf. docstring du module)."""
+    start_match = start_pattern.search(text)
+    if start_match is None:
+        return ""
+    start = start_match.end()
+    end_match = _HEADING_RE.search(text, start)
     end = end_match.start() if end_match else len(text)
     return text[start:end]
-
-
-def _is_open_gap_status(status: str) -> bool:
-    """Statut réellement ouvert/partiel — pas une simple sous-chaîne.
-
-    Insensible à l'emballage `**gras**` ; les mots « ouvert »/« partiel »/
-    « en cours » sont recherchés en tant que mots entiers (pas comme
-    sous-chaîne de « ouverture », « couvert », « refermé »…)."""
-    text = status.strip()
-    if text.startswith("**") and text.endswith("**"):
-        text = text[2:-2].strip()
-    lowered = text.lower()
-    return bool(re.search(r"\bouvert\b|\bpartiel\b|\ben cours\b", lowered))
 
 
 @dataclasses.dataclass(frozen=True)
@@ -89,21 +88,24 @@ class DebtItem:
     paths: tuple[str, ...]
 
 
-def open_gaps(repo: pathlib.Path) -> tuple[DebtItem, ...]:
-    text = (repo / GAPS_DOC).read_text(encoding="utf-8")
-    table_text = _gap_status_table_text(text)
-    items: dict[str, DebtItem] = {}
-    for match in _GAP_ROW_RE.finditer(table_text):
-        status = match.group(3)
-        if not _is_open_gap_status(status):
-            continue
+def _gap_rows_from_section(section_text: str, items: dict[str, DebtItem]) -> None:
+    """Chaque ligne `| GAP-nn |` d'une section Partiel/Ouvert est ouverte par
+    construction — la section fait foi, pas le contenu de la colonne 2."""
+    for match in _GAP_ROW_RE.finditer(section_text):
         first, last = int(match.group(1)), int(match.group(2) or match.group(1))
-        line_end = table_text.find("\n", match.end())
-        row = table_text[match.end() : line_end if line_end != -1 else None]
+        line_end = section_text.find("\n", match.end())
+        row = section_text[match.end() : line_end if line_end != -1 else None]
         paths = tuple(dict.fromkeys(_PATH_RE.findall(row)))
         for number in range(first, last + 1):
             identifier = f"GAP-{number:02d}"
             items.setdefault(identifier, DebtItem(identifier, "gap", paths))
+
+
+def open_gaps(repo: pathlib.Path) -> tuple[DebtItem, ...]:
+    text = (repo / GAPS_DOC).read_text(encoding="utf-8")
+    items: dict[str, DebtItem] = {}
+    _gap_rows_from_section(_section_text(text, _GAP_PARTIEL_SECTION_START_RE), items)
+    _gap_rows_from_section(_section_text(text, _GAP_OUVERT_SECTION_START_RE), items)
     return tuple(items.values())
 
 

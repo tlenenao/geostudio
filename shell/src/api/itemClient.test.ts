@@ -3546,8 +3546,6 @@ test("getMapConfig reads printLayout from the top level of the config, not neste
             pageSize: "a3",
             orientation: "landscape",
             showLegend: true,
-            showScaleBar: true,
-            showNorthArrow: false,
           },
         },
       }),
@@ -3558,8 +3556,6 @@ test("getMapConfig reads printLayout from the top level of the config, not neste
     pageSize: "a3",
     orientation: "landscape",
     showLegend: true,
-    showScaleBar: true,
-    showNorthArrow: false,
   });
 });
 
@@ -3579,16 +3575,12 @@ test("saveMapConfig sends printLayout back at the top level, sibling of map", as
       pageSize: "a4",
       orientation: "portrait",
       showLegend: false,
-      showScaleBar: false,
-      showNorthArrow: false,
     },
   });
   expect(body.printLayout).toEqual({
     pageSize: "a4",
     orientation: "portrait",
     showLegend: false,
-    showScaleBar: false,
-    showNorthArrow: false,
   });
   expect(body.map).toBeDefined();
   expect(body.map.printLayout).toBeUndefined();

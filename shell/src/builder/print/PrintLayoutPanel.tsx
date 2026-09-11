@@ -66,13 +66,13 @@ export function PrintLayoutPanel({
         />
         {t("printLayout.legendLabel")}
       </label>
-      {/* showScaleBar/showNorthArrow controls removed (fix round, finding
-          I4): they were authorable, validated, and round-tripped but never
+      {/* showScaleBar/showNorthArrow (fix round, finding I4) were removed
+          entirely from PrintLayoutConfig/PrintLayout (core schema, REV-128):
+          they were authorable, validated, and round-tripped but never
           actually rendered anywhere in map or app export views — inert
-          controls that silently did nothing. Real scale-bar/north-arrow
-          rendering is out of scope for this fix round; the fields remain on
-          PrintLayoutConfig/PrintLayout (core schema) for forward
-          compatibility, just not exposed here until they do something. */}
+          fields that silently did nothing. Real scale-bar/north-arrow
+          rendering remains out of scope; if it's ever built, it should add
+          new fields rather than resurrect these. */}
       <label className="flex flex-col gap-1 text-sm">
         {t("printLayout.cartoucheLabel")}
         <textarea

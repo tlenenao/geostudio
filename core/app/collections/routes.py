@@ -226,6 +226,14 @@ def register_collection(
         raise HTTPException(status_code=400, detail="core table cannot be registered")
     if repo.get_collection(session, tenant_id=user.tenant_id, collection_id=body.tableName):
         raise HTTPException(status_code=409, detail="table already registered")
+    # REV-011 : la vérification ci-dessus est tenant-scopée, donc aveugle à un
+    # id (== nom de table) déjà pris par un AUTRE tenant — `Collection.id` est
+    # une PK globale, distincte de la contrainte unique (tenant_id,
+    # table_name). Sans cette seconde garde, l'INSERT plus bas percuterait
+    # cette PK et lèverait une IntegrityError non rattrapée (500) au lieu d'un
+    # 409 explicite.
+    if repo.get_collection_by_id_any_tenant(session, collection_id=body.tableName) is not None:
+        raise HTTPException(status_code=409, detail="table id already registered by another tenant")
     try:
         info = introspect(session, body.tableName)
     except TableNotFound as exc:
@@ -378,10 +386,12 @@ def list_candidate_tables(
     for table_name in list_tables(session):
         if table_name in core:
             continue
-        if (
-            repo.get_collection(session, tenant_id=user.tenant_id, collection_id=table_name)
-            is not None
-        ):
+        # REV-011 : exclusion cross-tenant (pas seulement tenant-scopée) —
+        # une table déjà enregistrée par N'IMPORTE QUEL tenant percuterait la
+        # même PK globale (`Collection.id`) qu'une table déjà enregistrée par
+        # ce tenant-ci ; l'ancienne vérification tenant-scopée la laissait
+        # apparaître comme "candidate" alors que l'enregistrer échouerait.
+        if repo.get_collection_by_id_any_tenant(session, collection_id=table_name) is not None:
             continue
         try:
             info = introspect(session, table_name)

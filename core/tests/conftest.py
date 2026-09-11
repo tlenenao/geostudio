@@ -66,6 +66,22 @@ def qgis_scratch_dir():
 
 
 @pytest.fixture(scope="session")
+def snowflake_test_dsn():
+    # GAP-16 : contrairement à pg_engine (un conteneur postgis-test réel est
+    # toujours disponible dans cet environnement) ou qgis_worker_url (un
+    # sidecar Docker OSS auto-hébergeable), il n'existe pas d'émulateur
+    # Snowflake officiel — ce fixture ne skippe donc JAMAIS pour une raison
+    # temporaire : il documente une limite permanente (design §12).
+    dsn = os.environ.get("CORE_TEST_SNOWFLAKE_DSN")
+    if not dsn:
+        pytest.skip(
+            "CORE_TEST_SNOWFLAKE_DSN non défini — test snowflake skippé "
+            "(manuel uniquement, jamais câblé en CI, GAP-16)"
+        )
+    return dsn
+
+
+@pytest.fixture(scope="session")
 def chromium_available():
     """Sonde le binaire Chromium de Playwright sans jamais ouvrir de page ;
     skip proprement (miroir du patron pg_engine/qgis_worker_url ci-dessus)

@@ -71,7 +71,14 @@ export function AdminInfrastructurePage() {
                   href={minioUrl()}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-accent hover:underline"
+                  // Lien intégré dans une phrase (`link-in-text-block`,
+                  // trouvé par l'échantillon a11y élargi REV-178) :
+                  // `hover:underline` seul ne distingue le lien du texte
+                  // environnant qu'au survol, et le contraste de
+                  // `text-accent` sur ce fond est insuffisant (1.49:1) pour
+                  // s'en remettre à la seule couleur. Soulignement
+                  // permanent, même patron que ReportRunPanel.tsx.
+                  className="text-accent underline"
                 >
                   {t("infrastructure.minioConsole")}
                 </a>{" "}

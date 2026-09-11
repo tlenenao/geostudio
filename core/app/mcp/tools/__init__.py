@@ -22,19 +22,13 @@ from app.mcp.tools import (
     reports,
     sharing,
 )
+from app.mcp.tools.write_tools import WRITE_TOOL_NAMES
 
-READ_ONLY_TOOLS = {
-    "save_app_config",
-    "create_item",
-    "create_form_app",
-    "set_sharing",
-    "create_dataset",
-    "create_bookmark",
-    "create_pipeline",
-    "run_pipeline",
-    "create_group",
-    "add_group_member",
-}
+# REV-008 : READ_ONLY_TOOLS n'est plus un ensemble littéral écrit à la main
+# (qui pouvait dériver du code réel, cf. app/mcp/tools/write_tools.py) — même
+# objet mutable que WRITE_TOOL_NAMES, peuplé par le décorateur `@write_tool`
+# posé sur chaque tool d'écriture, à son point de définition.
+READ_ONLY_TOOLS = WRITE_TOOL_NAMES
 
 
 def register_tools(server: FastMCP, session_factory) -> None:

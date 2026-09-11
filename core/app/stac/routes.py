@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
@@ -29,6 +30,16 @@ from app.stac.extent import rls_scoped_bbox_4326
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/stac", tags=["stac"])
+
+
+class GeoJSONResponse(JSONResponse):
+    """stac-api-validator (REV-098/GAP-04) exige application/geo+json — pas le
+    application/json que FastAPI applique par défaut à un dict — sur toute
+    réponse FeatureCollection/Feature (Features + Item Search conformance
+    classes)."""
+
+    media_type = "application/geo+json"
+
 
 MAX_LIMIT = 1000
 DEFAULT_LIMIT = 100
@@ -75,7 +86,8 @@ def landing(
     session: Session = Depends(get_session),
 ):
     cols = _visible_collections(session, user)
-    return serializers.catalog(base=_base(request), collection_ids=[c.id for c in cols])
+    root = str(request.base_url).rstrip("/")
+    return serializers.catalog(base=_base(request), root=root, collection_ids=[c.id for c in cols])
 
 
 @router.get("/conformance")
@@ -200,7 +212,7 @@ def _parse_bbox(raw: str | None):
         raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy") from None
 
 
-@router.get("/collections/{collection_id}/items")
+@router.get("/collections/{collection_id}/items", response_class=GeoJSONResponse)
 def list_items(
     collection_id: str,
     request: Request,
@@ -249,7 +261,7 @@ def list_items(
     return serializers.item_collection(items=items, links=links)
 
 
-@router.get("/collections/{collection_id}/items/{feature_id}")
+@router.get("/collections/{collection_id}/items/{feature_id}", response_class=GeoJSONResponse)
 def get_item(
     collection_id: str,
     feature_id: str,
@@ -396,7 +408,7 @@ def _run_search(
     return serializers.item_collection(items=results, links=links)
 
 
-@router.get("/search")
+@router.get("/search", response_class=GeoJSONResponse)
 def search_get(
     request: Request,
     bbox: str | None = None,
@@ -427,7 +439,7 @@ def search_get(
     )
 
 
-@router.post("/search")
+@router.post("/search", response_class=GeoJSONResponse)
 def search_post(
     request: Request,
     body: SearchBody,

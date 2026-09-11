@@ -33,28 +33,30 @@ export function NavigationPanel({
   const [action, setAction] = useState("");
   const [lon, setLon] = useState("");
   const [lat, setLat] = useState("");
+  // Seule "flyTo" (map.flyTo, cf. ActionMessage.payload dans api/types.ts)
+  // attend un payload de centrage {center: [lon, lat]} — les autres actions
+  // (drawer.open, form.reset, data.setFilter...) n'ont rien à voir avec la
+  // géographie et ne doivent recevoir aucun payload construit ici.
+  const needsCenter = action === "flyTo";
 
   function add() {
-    const lonTrimmed = lon.trim();
-    const latTrimmed = lat.trim();
-    const lonNum = Number(lonTrimmed);
-    const latNum = Number(latTrimmed);
-    if (
-      !to ||
-      !action ||
-      !lonTrimmed ||
-      !latTrimmed ||
-      Number.isNaN(lonNum) ||
-      Number.isNaN(latNum)
-    )
-      return;
+    if (!to || !action) return;
+    let payload: Record<string, unknown> | undefined;
+    if (needsCenter) {
+      const lonTrimmed = lon.trim();
+      const latTrimmed = lat.trim();
+      const lonNum = Number(lonTrimmed);
+      const latNum = Number(latTrimmed);
+      if (!lonTrimmed || !latTrimmed || Number.isNaN(lonNum) || Number.isNaN(latNum)) return;
+      payload = { center: [lonNum, latNum] };
+    }
     const message: ActionMessage = {
       id: crypto.randomUUID(),
       from: page.id,
       event: "enter",
       to,
       action,
-      payload: { center: [lonNum, latNum] },
+      ...(payload ? { payload } : {}),
     };
     onPageChange({ ...page, onEnter: [...onEnter, message] });
     setTo("");
@@ -166,22 +168,24 @@ export function NavigationPanel({
               </option>
             ))}
           </select>
-          <div className="flex gap-1">
-            <input
-              aria-label={t("widgetForm.longitude")}
-              placeholder={t("widgetForm.longitude")}
-              className="h-8 w-1/2 rounded border border-slate-300 px-1 text-xs"
-              value={lon}
-              onChange={(e) => setLon(e.target.value)}
-            />
-            <input
-              aria-label={t("widgetForm.latitude")}
-              placeholder={t("widgetForm.latitude")}
-              className="h-8 w-1/2 rounded border border-slate-300 px-1 text-xs"
-              value={lat}
-              onChange={(e) => setLat(e.target.value)}
-            />
-          </div>
+          {needsCenter && (
+            <div className="flex gap-1">
+              <input
+                aria-label={t("widgetForm.longitude")}
+                placeholder={t("widgetForm.longitude")}
+                className="h-8 w-1/2 rounded border border-slate-300 px-1 text-xs"
+                value={lon}
+                onChange={(e) => setLon(e.target.value)}
+              />
+              <input
+                aria-label={t("widgetForm.latitude")}
+                placeholder={t("widgetForm.latitude")}
+                className="h-8 w-1/2 rounded border border-slate-300 px-1 text-xs"
+                value={lat}
+                onChange={(e) => setLat(e.target.value)}
+              />
+            </div>
+          )}
           <button
             type="button"
             className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-100"
