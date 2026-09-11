@@ -7,7 +7,9 @@ emprunte le même chemin d'exécution que le SQL manuel
 UNE FOIS validé par l'utilisateur — jamais depuis ce module."""
 
 import json
+import re
 
+import httpx
 from fastapi import HTTPException
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
@@ -15,6 +17,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
 from app.collections.schema_json import table_info_to_schema
+from app.copilot.egress import EgressBlockedError
 from app.copilot.llm_provider import get_llm_provider
 from app.db import request_scoped_session
 from app.mcp.tools.identity import (
@@ -25,16 +28,24 @@ from app.mcp.tools.identity import (
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
 
+# Bloc de code Markdown "propre" : ``` (+ langage optionnel) puis un saut de
+# ligne, contenu (potentiellement multi-ligne), saut de ligne, ```. Chercher
+# TOUTES les occurrences (re.DOTALL) et garder la dernière ignore toute prose
+# avant/après le bloc.
+_FENCE_RE = re.compile(r"```[a-zA-Z0-9_+-]*\n(.*?)\n```", re.DOTALL)
+# Repli pour une réponse tenant sur une seule ligne (pas de saut de ligne du
+# tout autour du fence) : ```SELECT 1```.
+_SINGLE_LINE_FENCE_RE = re.compile(r"```([^\n`]*)```")
+
 
 def _strip_code_fence(text: str) -> str:
     stripped = text.strip()
-    if stripped.startswith("```"):
-        lines = stripped.splitlines()
-        if lines and lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        stripped = "\n".join(lines).strip()
+    fence_matches = list(_FENCE_RE.finditer(stripped))
+    if fence_matches:
+        return fence_matches[-1].group(1).strip()
+    single_line_matches = list(_SINGLE_LINE_FENCE_RE.finditer(stripped))
+    if single_line_matches:
+        return single_line_matches[-1].group(1).strip()
     return stripped
 
 
@@ -71,7 +82,12 @@ def register(server: FastMCP, session_factory) -> None:
             f"est toléré mais pas requis). Question : {question}"
         )
         provider = get_llm_provider()
-        turn = await provider.chat(messages=[{"role": "user", "content": prompt}], tools=[])
+        try:
+            turn = await provider.chat(messages=[{"role": "user", "content": prompt}], tools=[])
+        except EgressBlockedError as exc:
+            raise ValueError("le fournisseur LLM est indisponible") from exc
+        except httpx.HTTPError as exc:
+            raise ValueError("le fournisseur LLM est indisponible") from exc
         sql = _strip_code_fence(turn.text)
         if not sql:
             raise ValueError("le fournisseur LLM n'a renvoyé aucun SQL")
