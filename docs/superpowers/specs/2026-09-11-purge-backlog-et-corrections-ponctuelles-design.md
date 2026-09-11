@@ -1,4 +1,4 @@
-# Purge du backlog (27 entrées « ouvertes ») + 3 corrections réelles restantes (design)
+# Purge du backlog (27 entrées « ouvertes ») + 2 corrections réelles restantes (design)
 
 **Date :** 2026-09-11. Origine : demande directe de Tanguy (« corrige tous les points REV-003,
 005, 011, 042, 094, 098, 102, 104, 110, 111, 112, 113, 114, 115, 116, 117, 119, 120, 121, 128,
@@ -7,23 +7,27 @@ de la section « 🔴 Ouvert » de `docs/revue/2026-09-04-backlog.md`.
 
 ## 1. Objectif & non-buts
 
-**Constat de départ (vérifié dans le code, pas supposé)** : sur les 27 entrées demandées, **19
+**Constat de départ (vérifié dans le code, pas supposé)** : sur les 27 entrées demandées, **20
 sont déjà résolues** par des commits du 2026-09-06/07 qui citent nommément le REV concerné, sans
 que le champ `État :` de `backlog.md` n'ait jamais été mis à jour — la classe de dérive documentée
 par CLAUDE.md piège n°12, appliquée cette fois au backlog plutôt qu'à la matrice de
 fonctionnalités (et par le fait que REV-181, censé endiguer *exactement* ce piège, ne couvre que
-le bilan de fonctionnalités, pas ce document-ci). 2 entrées supplémentaires (REV-102, REV-111) ont
+le bilan de fonctionnalités, pas ce document-ci). Cela inclut REV-175 : le spike qu'il réclamait a
+été mené et documenté (`core/tests/test_model_alembic_parity.py`, commit `a1579cd3`), conclusion
+**négative et actée** (ne pas matérialiser les 4 index en `Base.metadata` — Alembic est
+structurellement aveugle à toute dérive sur `postgresql_ops`/`postgresql_with`, matérialiser
+donnerait une fausse impression de vérification). 2 entrées supplémentaires (REV-102, REV-111) ont
 déjà leur propre spec + plan validés par ailleurs, non exécutés ou partiellement exécutés. Il ne
-reste que **3 corrections de code réelles** à faire (REV-094, REV-175, REV-176), plus les 12
-« gaps non retenus » du référentiel benchmark (REV-104, 112–117, 119–121) qui sont des décisions
-produit délibérément non planifiées, pas des défauts — ce plan ne les touche pas.
+reste que **2 corrections de code réelles** à faire (REV-094, REV-176), plus les 12 « gaps non
+retenus » du référentiel benchmark (REV-104, 112–117, 119–121) qui sont des décisions produit
+délibérément non planifiées, pas des défauts — ce plan ne les touche pas.
 
 **Objectif de ce plan :**
 
-1. Remettre `backlog.md` en cohérence avec l'état réel du code pour les 12 entrées déjà fermées ou
+1. Remettre `backlog.md` en cohérence avec l'état réel du code pour les 13 entrées déjà fermées ou
    partiellement fermées (bookkeeping seul, aucun changement de comportement).
-2. Corriger réellement les 3 entrées encore ouvertes de bonne foi : REV-094 (migration UI),
-   REV-175 (spike + matérialisation d'index), REV-176 (contraste d'un token de design).
+2. Corriger réellement les 2 entrées encore ouvertes de bonne foi : REV-094 (migration UI),
+   REV-176 (contraste d'un token de design).
 
 **Non-buts (explicites) :**
 
@@ -40,13 +44,14 @@ produit délibérément non planifiées, pas des défauts — ce plan ne les tou
   est nécessaire pour écrire une ligne de fermeture honnête — le travail de fond a déjà été fait et
   revu par les sessions qui ont produit les commits cités en §2.
 
-## 2. Tâche 1 — Bookkeeping `backlog.md` (12 entrées, aucun code touché)
+## 2. Tâche 1 — Bookkeeping `backlog.md` (13 entrées, aucun code touché)
 
-Pour chaque entrée listée ci-dessous : remplacer la ligne `- **État :** ouvert...` par une ligne
-`fermé` ou `partiellement fermé`, au même gabarit que les fermetures déjà rédigées ailleurs dans le
-document (cf. REV-177 : `**État :** fermé — commit `<sha>` (date) : <résumé factuel, pas une
-paraphrase du titre>`). Ne pas toucher au corps de l'entrée (preuve/correctif minimal d'origine)
-au-delà de l'ajout, en fin d'entrée, d'une ligne `**Renvoi :**` si absente, pointant vers le commit.
+Pour chaque entrée listée ci-dessous : remplacer la ligne `- **État :** ouvert...` par une seule
+ligne `- **État :** fermé — commit \`<sha>\` : <résumé>` ou `- **État :** partiellement fermé —
+commit(s) \`<sha>\` : <résumé>` (résumé factuel, pas une paraphrase du titre), au même gabarit que
+les fermetures déjà rédigées ailleurs dans le document (cf. REV-177). Ne toucher à rien d'autre
+dans le corps de l'entrée (preuve/correctif minimal d'origine, et toute ligne `**Renvoi :**`
+préexistante pointant vers `analyse-gaps.md` reste telle quelle).
 
 | REV | Nouvel état | Commit(s) | Résumé à écrire |
 |---|---|---|---|
@@ -59,6 +64,7 @@ au-delà de l'ajout, en fin d'entrée, d'une ligne `**Renvoi :**` si absente, po
 | REV-128 | fermé | `ff018dc3` | Option retenue : retrait de `showScaleBar`/`showNorthArrow` du schéma `PrintLayout` (`core/app/configs/schemas.py`) plutôt que l'implémentation du rendu — ces champs étaient authorables/validés/round-trippés mais jamais rendus nulle part. |
 | REV-149 | fermé | `edff7592` | `shell/src/builder/NavigationPanel.tsx` (pas un fichier « chapitre » dédié) ne construit un payload `{center:[lon,lat]}` que pour l'action `flyTo` ; les autres actions ne reçoivent plus ce payload sans rapport. |
 | REV-174 | fermé | `346e9bb9` | `save_app_config` (MCP) exécute désormais la même séquence de gardes de capacité + validateurs par kind que `PUT /configs/by-item/{id}` (regroupée via `app.configs.service`), plus d'écart outil↔route. |
+| REV-175 | fermé | `a1579cd3` | Spike mené sur Postgres+pgvector jetable : les 2 formes `Index()` SQLAlchemy équivalentes émettent un DDL byte-pour-byte identique au DDL brut existant, **mais** Alembic (`compare_metadata()`) est structurellement aveugle à toute dérive réelle sur `postgresql_ops`/`postgresql_with` (lève un `UserWarning` et renonce). Décision actée : ne pas matérialiser en `Base.metadata` — le filtre nommé `_KNOWN_FUNCTIONAL_INDEXES` reste en l'état, documenté comme délibéré (pas un oubli), à revérifier lors d'une montée de version majeure d'Alembic/SQLAlchemy. |
 | REV-178 | **partiellement fermé** | `802d4daa` | Échantillon d'audit a11y élargi de 9 à 17 pages, `eslint-plugin-jsx-a11y` ajouté en complément statique — les deux suivis explicitement proposés par l'entrée d'origine sont faits. Reste hors périmètre, assumé : exhaustivité du catalogue de routes (centaine de pages), navigation clavier exhaustive, contraste en mode sombre (le shell n'a qu'une ambiance aujourd'hui). |
 | REV-180 | fermé | `e11fda2b` | `bilan.js` lit désormais `priorite_source` (`isReviewedPrioritySource`, `priorityBadge`) et affiche une tuile de synthèse « priorités encore amorcées ». Seul `render_md.py` reste sans colonne dédiée — jugé non bloquant (le rendu HTML est la vue de référence). |
 | REV-181 | fermé | `e11fda2b` | `feature_health_cli.py` gagne un mode `--check-fresh` (recalcule en mémoire, diffe contre les fichiers committés), câblé dans le job CI dédié. |
@@ -71,26 +77,25 @@ son exécution est possible.
 
 ### 2.1 Recalcul de la section « Répartition par statut »
 
-Après application du tableau ci-dessus **et** des Tâches 2 à 4 (§3-5, en supposant qu'elles
-aboutissent toutes les trois à une fermeture réelle) :
+Après application du tableau ci-dessus **et** des Tâches 2-3 (§3-4, en supposant qu'elles
+aboutissent toutes les deux à une fermeture réelle) :
 
 - **Fermé** : 144 (compte actuel, vérifié par comptage direct de la liste — l'en-tête `✅ Fermé
   (143)` est lui-même déjà décalé d'une unité par rapport à la liste et à la phrase de synthèse,
-  corriger les deux au passage) + 10 (REV-003/005/011/042/098/128/149/174/180/181) + 3
-  (REV-094/175/176, si les trois aboutissent) = **157**.
+  corriger les deux au passage) + 11 (REV-003/005/011/042/098/128/149/174/175/180/181) + 2
+  (REV-094/176, si les deux aboutissent) = **157**.
 - **Partiellement fermé** : 11 + 2 (REV-110, REV-178) = **13**.
-- **Ouvert** : 27 − 10 − 3 − 2 = **12** (REV-102, 104, 111, 112, 113, 114, 115, 116, 117, 119, 120,
+- **Ouvert** : 27 − 11 − 2 − 2 = **12** (REV-102, 104, 111, 112, 113, 114, 115, 116, 117, 119, 120,
   121 — inchangé, correct).
 
-Si le spike de la Tâche 3 (REV-175) n'aboutit pas (cf. §4, condition d'arrêt), ou si un axe
-d'accessibilité de la Tâche 4 révèle un obstacle imprévu, recalculer ces trois nombres en
-conséquence plutôt que de forcer les totaux ci-dessus — ils sont un résultat attendu, pas une
-contrainte à satisfaire coûte que coûte. Régénérer les trois listes à virgules (déplacer chaque
-REV de sa liste d'origine vers sa nouvelle liste) et corriger la phrase de synthèse en tête de
-section (qui doit rester la source de vérité, cf. sa propre consigne : « recompter mécaniquement,
-ne pas rééditer à la main entrée par entrée » — ici la mise à jour du champ `État` de chaque entrée
-correspond bien à « l'entrée concernée », la régénération des listes reste néanmoins manuelle faute
-de script de recoupement dans le dépôt).
+Si un axe d'accessibilité de la Tâche 3 (REV-176) révèle un obstacle imprévu, recalculer ces trois
+nombres en conséquence plutôt que de forcer les totaux ci-dessus — ils sont un résultat attendu,
+pas une contrainte à satisfaire coûte que coûte. Régénérer les trois listes à virgules (déplacer
+chaque REV de sa liste d'origine vers sa nouvelle liste) et corriger la phrase de synthèse en tête
+de section (qui doit rester la source de vérité, cf. sa propre consigne : « recompter
+mécaniquement, ne pas rééditer à la main entrée par entrée » — ici la mise à jour du champ `État`
+de chaque entrée correspond bien à « l'entrée concernée », la régénération des listes reste
+néanmoins manuelle faute de script de recoupement dans le dépôt).
 
 ## 3. Tâche 2 — REV-094 : migrer les 2 derniers consommateurs de `ui/dialog.tsx`
 
@@ -120,38 +125,7 @@ fichier lui-même, s'il est conservé pour une raison imprévue — auquel cas l
 « Modale » en mode large visuel inchangé (vérifié à l'œil dans le builder, pas seulement par les
 tests).
 
-## 4. Tâche 3 — REV-175 : spike puis matérialisation des 4 index fonctionnels
-
-**Contexte vérifié** : `core/tests/test_model_alembic_parity.py::_KNOWN_FUNCTIONAL_INDEXES` filtre
-nommément 4 index créés par `op.execute()` brut dans
-`core/alembic/versions/0012_pgvector_embeddings.py` (`ix_collections_embedding`,
-`ix_collections_trgm`, `ix_items_embedding`, `ix_items_trgm` — GIN trigram sur expression,
-`ivfflat`/`vector_cosine_ops` pour pgvector), absents de `Base.metadata`.
-
-**Spike (à faire en premier, avant tout code définitif) :**
-
-1. Déclarer les 4 index dans les modèles SQLAlchemy concernés (`Collection`, `Item`) via
-   `Index(text(...), postgresql_using=..., postgresql_ops={...}, postgresql_with={...})`,
-   reproduisant au plus près le DDL déjà déployé.
-2. Contre le conteneur `postgis-test` réel (pas une base vide de test unitaire) : comparer le DDL
-   qu'émettrait un `create_all()` à froid avec le DDL déjà en place (`\d+` / `pg_indexes`), et
-   exécuter une requête réelle de recherche sémantique et une de recherche trigram pour confirmer
-   qu'elles utilisent toujours ces index (`EXPLAIN` doit montrer un `Index Scan`, pas un `Seq
-   Scan`).
-
-**Décision conditionnelle :**
-
-- **Si le spike est concluant** (DDL sémantiquement identique, index toujours utilisés) : retirer
-  les 4 noms de `_KNOWN_FUNCTIONAL_INDEXES`, vérifier que `test_model_alembic_parity.py` reste vert
-  sans l'échappatoire, et que `test_filter_real_diff_absorbs_the_four_known_functional_indexes` est
-  soit supprimé soit adapté (il n'a plus de raison d'être si le filtre nommé disparaît).
-- **Si le spike échoue** (divergence de DDL irréductible, ou risque identifié de recréation
-  d'index en production lors d'un futur `create_all` incontrôlé) : ne rien changer au code, et
-  remplacer le texte de l'entrée REV-175 par une conclusion explicite (« vérifié en session le
-  2026-09-XX : non praticable sans réécrire la migration 0012, raison : <...> ») plutôt que de la
-  laisser indéfiniment « à spiker ».
-
-## 5. Tâche 4 — REV-176 : contraste du token `--gs-ink-3`
+## 4. Tâche 3 — REV-176 : contraste du token `--gs-ink-3`
 
 **Contexte vérifié** : `--gs-ink-3` vaut `#6e8087` (clair, sur fond `--gs-background: #eff2f1`,
 contraste mesuré 3.65:1) et `#7c8f94` (sombre) dans `shell/src/styles/tokens.css` (lignes 40, 91,
@@ -178,21 +152,19 @@ La hiérarchie de texte du design system a 3 niveaux : `--gs-ink` (`#0e1a20`, le
 à `--gs-ink-3` (si une autre violation `color-contrast` sans rapport existe déjà ailleurs, ne pas
 la corriger dans cette tâche — hors périmètre).
 
-## 6. Tests / validation d'ensemble
+## 5. Tests / validation d'ensemble
 
 - Tâche 1 (bookkeeping) : aucun test de code — relecture croisée du tableau §2 contre les commits
   réels avant de committer les changements de `backlog.md`.
-- Tâches 2-4 : TDD standard du dépôt (test falsifié avant correctif). Suite complète shell
-  (`npm run test`, `npm run build`, `npm run e2e` ciblé sur `a11y-audit.spec.ts` et les tests du
-  widget Modale/`AppRuntimePage`) et, pour la Tâche 3, suite core ciblée
-  (`test_model_alembic_parity.py`, tests de recherche sémantique/trigram) contre `postgis-test`
-  réel.
+- Tâches 2-3 (REV-094, REV-176) : TDD standard du dépôt (test falsifié avant correctif). Suite
+  complète shell (`npm run test`, `npm run build`) et E2E ciblée
+  (`shell/e2e/a11y-audit.spec.ts` pour la Tâche 3).
 - Revue finale de branche (CLAUDE.md piège n°4) : vérifier en particulier que la Tâche 1 ne
-  contredit pas les Tâches 2-4 (une entrée passée « fermé » dans `backlog.md` avant que son
-  correctif ne soit réellement mergé serait pire que l'état actuel — committer la Tâche 1 par sous-
-  groupe, dans le même commit ou juste après le correctif réel qu'elle documente, jamais avant).
+  contredit pas les Tâches 2-3 (une entrée passée « fermé » dans `backlog.md` avant que son
+  correctif ne soit réellement mergé serait pire que l'état actuel — committer la ligne
+  bookkeeping de REV-094/REV-176 dans le même commit que leur correctif réel, jamais avant).
 
-## 7. Hors périmètre (explicite)
+## 6. Hors périmètre (explicite)
 
 - REV-102, REV-111 : specs + plans propres, à exécuter séparément (cf. §1).
 - REV-104, 112, 113, 114, 115, 116, 117, 119, 120, 121 : gaps benchmark non retenus par la feuille
