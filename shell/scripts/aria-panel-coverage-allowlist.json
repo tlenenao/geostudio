@@ -17,7 +17,7 @@
   {
     "file": "src/pages/AppRuntimePage.tsx",
     "line": 170,
-    "reason": "Faux positif de l'heuristique : setSaveDialogOpen(true) ouvre <Dialog> (ui/dialog.tsx, role=\"dialog\", boîte modale) — pas un panneau en ligne, la convention CLAUDE.md ne s'applique pas à ce patron."
+    "reason": "Faux positif de l'heuristique : setSaveDialogOpen(true) ouvre <Dialog> (ui/kit/Dialog, role=\"dialog\", boîte modale) — pas un panneau en ligne, la convention CLAUDE.md ne s'applique pas à ce patron."
   },
   {
     "file": "src/pages/CollectionsAdminPage.tsx",
