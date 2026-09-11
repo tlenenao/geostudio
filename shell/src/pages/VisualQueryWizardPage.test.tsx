@@ -644,7 +644,19 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     expect(screen.queryByLabelText("Message au copilote")).not.toBeInTheDocument();
   });
 
-  test("affiche le panneau copilote et applique les filtres générés sans rien créer", async () => {
+  test("affiche le panneau copilote et applique les filtres générés sans rien créer ni modifier", async () => {
+    // Revue de tâche (Important) : ce test rendait en mode édition
+    // (renderWizardEdit) mais espionnait createEmptyCollection — fonction
+    // uniquement appelée dans la branche CREATE de handleCreate (jamais
+    // atteignable ici, cf. pipelinePk !== null). Le test passait donc
+    // inconditionnellement, sans jamais vérifier que l'intégration copilote
+    // ne déclenche pas la véritable primitive d'écriture atteignable en mode
+    // édition : savePipelineConfig/updateItem. Corrigé en espionnant ces deux
+    // fonctions à la place — le test "« Mettre à jour » réutilise..."
+    // ci-dessus prouve déjà, par un clic manuel réel, qu'elles sont bien
+    // appelées dans ce même mode de rendu : la cible de l'espion est donc
+    // authentiquement atteignable et serait appelée par la régression visée
+    // (copilote qui déclencherait la soumission).
     const copilotTurn = vi.fn().mockResolvedValue({
       reply: "Voici un filtre.",
       clientOps: [
@@ -654,7 +666,18 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
         },
       ],
     });
-    const createEmptyCollection = vi.fn();
+    const savePipelineConfig = vi.fn().mockResolvedValue(undefined);
+    const updateItem = vi.fn().mockResolvedValue({
+      pk: "dataset-1",
+      resourceType: "dataset",
+      title: "x",
+      abstract: "",
+      owner: "alice",
+      thumbnailUrl: null,
+      date: "",
+      configId: "cfg-1",
+      isPublished: false,
+    });
     renderWizardEdit({
       getInstanceInfo: () =>
         Promise.resolve({
@@ -669,7 +692,8 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
           quotasEnabled: false,
         }),
       copilotTurn,
-      createEmptyCollection,
+      savePipelineConfig,
+      updateItem,
     });
     await userEvent.type(
       await screen.findByLabelText("Message au copilote"),
@@ -677,7 +701,11 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     );
     await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
     await waitFor(() => expect(copilotTurn).toHaveBeenCalled());
-    expect(createEmptyCollection).not.toHaveBeenCalled();
+    // Preuve directe : l'application du filtre généré par le copilote ne
+    // déclenche jamais le chemin d'écriture réel de ce mode (mode édition ->
+    // savePipelineConfig/updateItem, cf. handleCreate).
+    expect(savePipelineConfig).not.toHaveBeenCalled();
+    expect(updateItem).not.toHaveBeenCalled();
   });
 });
 
