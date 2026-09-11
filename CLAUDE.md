@@ -1230,6 +1230,135 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   plutôt que supposé). Reste hors périmètre, assumé : le blocage 3 de
   GAP-72 (CSP `script-src` pour les widgets d'extension tiers, question
   produit ouverte depuis SP-48) n'est pas concerné par ce SP.
+- **SP-62** — ferme **GAP-17** (génération de requête en langage naturel
+  avec revue humaine avant exécution, référentiel 2 « acquis du marché » —
+  Felt AI SQL / Metabase Metabot / FME AI Assist, patron « montre la
+  requête générée, l'utilisateur valide ») : 2 outils MCP,
+  `generate_sql_query` (`core/app/mcp/tools/query_generation.py`, gardé
+  par `analytics.sql_lab.access`) et `generate_visual_query` (même
+  fichier, gardé seulement par `require_collection_read` — aucun
+  privilège analytics dédié à la requête visuelle n'existe au catalogue
+  actuel, vérifié dans le code plutôt que supposé) ; le copilote existant
+  (jusqu'ici propre à l'App Builder) est monté sur `SqlLabPage` et
+  `VisualQueryWizardPage` via une base commune extraite
+  (`CopilotChat.tsx`) et deux client tools dédiés
+  (`applySqlDraft`/`applyVisualQueryDraft`). Invariant central, prouvé à
+  trois niveaux (unitaire, intégration cœur, E2E) : le brouillon généré
+  n'est **jamais** exécuté ni écrit depuis l'outil MCP — seulement inséré
+  dans l'éditeur/le formulaire par le client tool, l'exécution SQL passe
+  par le même `POST /v1/analytics/sql` que le SQL tapé à la main
+  (`run_analyst_sql`), et la création de pipeline/dataset/collection
+  depuis la requête visuelle reste au clic humain sur Créer/Mettre à
+  jour. 11 tâches, exécution TDD stricte avec revue par tâche —
+  plusieurs défauts réels trouvés et corrigés, pas seulement des écarts
+  de texte de plan (piège CLAUDE.md n°3) : (1) Tâche 2 (implémentée par
+  un modèle bon marché) livrait un premier jet fragile — 4 Important
+  trouvés en une seule revue : test de comptage d'outils MCP cassé
+  immédiatement (pas seulement plus tard), aucune gestion d'erreur sur
+  l'appel LLM sortant (`EgressBlockedError`/`httpx.HTTPError` auraient pu
+  fuiter le réseau interne), `_strip_code_fence` ne gérait pas une
+  réponse préfixée de prose ni un fence sur une seule ligne, et le test
+  unitaire direct de `_strip_code_fence` exigé par le brief lui-même
+  n'avait jamais été écrit — les 4 corrigés et revérifiés ; (2) Tâche 3 —
+  le test du brief patchait une fonction inexistante
+  (`app.pipelines.service.create_pipeline_item`), repointé sur le vrai
+  point de passage `app.configs.service.create_config_service`, confirmé
+  par un reviewer indépendant comme l'unique chemin de création réel des
+  pipelines ; (3) Tâche 4 — 2 bugs trouvés par falsification dans la
+  fixture de test du brief lui-même (`create_collection()` appelée sans
+  `geometry_type`/`srid`, absence de teardown risquant de contaminer
+  `pg_engine` entre sessions de test partagées) ; (4) Tâche 6 — le texte
+  littéral du brief aurait fermé `handleClientOps` directement sur
+  `activePageId` au lieu d'un `activePageIdRef` : falsifié (confirmé que
+  cette version casse le test caractéristique existant « applique les
+  clientOps sur la page active à l'arrivée de la réponse, pas celle
+  active à l'envoi »), corrigé en restaurant le patron par ref ; (5)
+  Tâche 8 — `isValidGeneratedSummary` (hérité tel quel du brief) ne
+  validait jamais `sourceColumn`/`p` d'une métrique générée, ce qui
+  aurait laissé passer une métrique conforme au schéma mais sémantiquement
+  invalide jusqu'à un `metricExpr()` non-null assertion dans
+  `compilePipeline.ts` — potentiellement **après** création réelle
+  d'objets cœur pendant le flux de création de l'assistant ; corrigé par
+  un `isValidGeneratedMetric` dédié (intervalle ouvert `0 < p < 100`,
+  `sourceColumn` obligatoire sauf pour `count`), falsifié par TDD ; (6)
+  Tâche 9 — `enableMockAuth()` manquait au harnais de test
+  (`useMcpToken` appelle `react-oidc-context` réel hors mode mock) ; (7)
+  Tâche 10 — le test « ne crée jamais » du brief était quasi vide : il
+  tournait en mode édition et espionnait `createEmptyCollection`
+  (atteignable seulement en mode création, jamais cliqué), corrigé en
+  espionnant le vrai chemin d'écriture du mode édition
+  (`savePipelineConfig`/`updateItem`), confirmé comme le primitif réel et
+  atteignable par un test voisin préexistant ; (8) Tâche 11 — la route
+  `/analytics/sql` est gardée par `RequirePrivilege
+  privilege="analytics.sql_lab.access"`, absent de l'utilisateur mock par
+  défaut : corrigé en mockant `ANALYST_ME`, patron du spec E2E
+  `sql-lab.spec.ts` voisin. Écart pré-existant trouvé et **documenté sans
+  être corrigé**, dans le même esprit que `REV-174` (`save_app_config`
+  MCP saute des validateurs REST) : `_strip_code_fence` mishandle encore
+  une forme de fence multi-ligne sans saut de ligne de fermeture (faible
+  probabilité vu le prompt serré de l'outil) ; `_known_field_names`
+  (`generate_visual_query`) a un bug d'aliasing latent
+  (`base_names = names` lie le même objet `set` au lieu de le copier) sur
+  une collision de nom de champ joint, jamais exercé par aucun test (aucun
+  test ne passe `joinCollectionId`) ; le champ `join` de
+  `generate_visual_query` n'est jamais validé contre le schéma
+  (`join.on`/`join.collectionId`) ; quelques bornes non testées
+  explicitement (`p=0`/`p=100`, `count`+`sourceColumn` non-null, un test
+  d'intégration filtres+jointure+résumé conjoint jamais ajouté, seulement
+  au niveau unitaire) — risque faible, non corrigé. Suite finale (Tâche
+  12, conteneur PostGIS jetable `gap17-postgis`) : cœur **2846
+  passed/5 skipped (qgis)/8 failed** — les 8 échecs confirmés un par un
+  comme sans rapport avec ce plan, aucun fichier qu'ils touchent n'étant
+  dans le diff de la branche (`git diff e0ad92e7..39af29f2`) : 2
+  `test_cdc_consumer_postgis.py` (le conteneur jetable de cette session
+  manque `wal_level=logical`, limite d'infrastructure de session, pas du
+  dépôt) ; `test_deployability.py::
+  test_every_core_env_var_is_wired_to_a_service` (`CORE_EMBEDDING_EGRESS_ALLOWLIST`
+  non câblé, domaine `app/search/egress.py`/SP-7, déjà présent au commit
+  de base de la branche) ; 4 `test_feature_health_debt.py` +
+  `test_feature_health_scoring.py::test_quality_facts_read_the_real_repository`
+  (bug réel mais préexistant du parseur `open_gaps()`/`open_revs()` de
+  `debt.py` — la restructuration de `analyse-gaps.md`/`backlog.md` en
+  sections `✅ Fermé`/`🟡 Partiel`/`🔴 Ouvert` sans mot de statut répété
+  par ligne, déjà en place au commit de base de la branche, casse la
+  détection par regex ; `eslint_disabled` mesuré à 12 fichiers réels
+  contre 10 attendus en dur dans le test, les 12 mêmes fichiers déjà
+  présents au commit de base — les deux dérives confirmées identiques
+  avant toute tâche de ce plan, non corrigées, hors périmètre d'un plan
+  de closure documentaire). **Gotcha de session trouvé en exécutant** :
+  le format de `CORE_TEST_DATABASE_URL` compte — `postgresql+psycopg2://`
+  (utilisable par SQLAlchemy) fait échouer 3 fixtures qui ne détendent
+  que le préfixe `postgresql+psycopg://` avant de le passer tel quel à
+  `psycopg2.connect()`/au connecteur `procrastinate` (gotcha déjà
+  rencontré à la clôture de SP-39) — `postgresql+psycopg://` est la forme
+  canonique de ce dépôt, employée pour toute exécution ultérieure. Shell
+  247 fichiers/2158 tests, tous passés ; couverture mesurée 89,55 %
+  lignes / 87,41 % statements, **sous les seuils committés** (89,80/87,70)
+  — dérive confirmée pré-existante et sans rapport avec ce plan :
+  `SecretParamSelect.tsx` (composant dropdown principal, jamais testé
+  depuis sa création SP-53) est à 65,45 % de couverture lignes, fichier
+  jamais touché par aucun des 11 commits de ce plan (`git diff
+  e0ad92e7..39af29f2` vide sur ce fichier), et les 7 fichiers ajoutés par
+  ce plan sont tous couverts à 100 % (`SqlLabCopilotPanel.tsx`,
+  `VisualQueryCopilotPanel.tsx`, `sqlLabClientTools.ts`, etc.) — dérive
+  non corrigée, hors périmètre, à investiguer avant la prochaine clôture
+  de SP touchant le shell. `npm run build` propre (bundle 625,6 Ko, seuil
+  630). E2E **179 tests au total** (pas les 166 documentés par
+  `## Commandes`, resté périmé depuis plusieurs SP sans que ce chantier
+  ne le corrige — nettoyage séparé, plus large, hors périmètre) : 173
+  passed/2 failed/4 skipped. Les 2 échecs confirmés préexistants et sans
+  rapport : `e2e/triptych-narrow.spec.ts:309`/`:357` (« Paramètres »)
+  ancrent sur le texte `SettingsComingSoonPage` d'avant SP-33, jamais mis
+  à jour vers la clé i18n réelle `t("comingSoon.settings")` — même classe
+  que le `readyAnchor` de `/tasks` déjà corrigé par SP-60, mais sur
+  `/settings`, non traité par SP-60. `e2e/pipeline-builder.spec.ts`
+  — l'échec longtemps documenté par ce fichier comme « connu » — est
+  passé proprement dans cette exécution, sans investigation plus poussée
+  (hors périmètre). Diff `openapi.json`/`core-schema.d.ts` non vide et
+  cohérent (2 nouvelles routes MCP, aucun schéma REST changé). Ce SP ne
+  touche que de la documentation de clôture (inventaire, bilan,
+  `analyse-gaps.md`, ce fichier) — le code des 11 tâches précédentes
+  était déjà mergé sur cette branche avant que ce SP ne s'exécute.
 
 ### Conventions tranchées (2026-09-01)
 
