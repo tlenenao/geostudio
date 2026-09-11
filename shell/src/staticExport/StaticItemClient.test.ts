@@ -80,4 +80,43 @@ describe("StaticItemClient", () => {
     await expect(client.deleteMapIcon("i1")).rejects.toThrow(/statique/i);
     await expect(client.fetchMapIconBlob("i1")).rejects.toThrow(/statique/i);
   });
+
+  // Le reste de l'interface (SP-43 : "chaque méthode rejette explicitement
+  // plutôt que d'être omise, afin que TypeScript prouve qu'aucune n'a été
+  // oubliée") n'a, par construction, qu'un seul corps possible : `return
+  // unsupported();`. Plutôt que dupliquer un test par méthode, on parcourt
+  // toutes les clés de l'objet retourné et on vérifie génériquement que
+  // chacune — hors les méthodes à comportement réel couvertes ci-dessus —
+  // rejette avec le même message explicite. Un test générique unique évite
+  // à la fois la duplication et le risque qu'une future méthode ajoutée à
+  // ItemClient reste, elle, non couverte.
+  const REAL_BEHAVIOR_METHODS = new Set([
+    "getAppConfig",
+    "getPublicAppConfig",
+    "queryDataSource",
+    "invalidateDatasetCache",
+    "featuresUrl",
+    "createFeature",
+    "attachmentFileUrl",
+    "listMapIcons",
+    "deleteMapIcon",
+    "fetchMapIconBlob",
+    "uploadMapIcon",
+    "listConfigRevisions",
+    "rollbackConfig",
+    "sampleCollectionField",
+  ]);
+
+  it("every other ItemClient method rejects with the same explicit unsupported error", async () => {
+    const client = createStaticItemClient(config());
+    const remaining = Object.entries(client).filter(([name]) => !REAL_BEHAVIOR_METHODS.has(name));
+    expect(remaining.length).toBeGreaterThan(50);
+    for (const [name, method] of remaining) {
+      expect(typeof method, `${name} should be a function`).toBe("function");
+      await expect(
+        (method as (...args: unknown[]) => Promise<unknown>)(),
+        `${name} should reject as unsupported`,
+      ).rejects.toThrow(/statique/i);
+    }
+  });
 });
