@@ -1354,11 +1354,21 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   `/settings`, non traité par SP-60. `e2e/pipeline-builder.spec.ts`
   — l'échec longtemps documenté par ce fichier comme « connu » — est
   passé proprement dans cette exécution, sans investigation plus poussée
-  (hors périmètre). Diff `openapi.json`/`core-schema.d.ts` non vide et
-  cohérent (2 nouvelles routes MCP, aucun schéma REST changé). Ce SP ne
-  touche que de la documentation de clôture (inventaire, bilan,
-  `analyse-gaps.md`, ce fichier) — le code des 11 tâches précédentes
-  était déjà mergé sur cette branche avant que ce SP ne s'exécute.
+  (hors périmètre). **Correction d'une affirmation fausse trouvée en
+  vérifiant plutôt qu'en supposant (piège CLAUDE.md n°12)** : cette entrée
+  affirmait initialement un diff `openapi.json`/`core-schema.d.ts` « non
+  vide et cohérent (2 nouvelles routes MCP) » — faux : les outils MCP
+  n'apparaissent jamais dans `openapi.json` (protocole séparé de la
+  spec REST) et `/copilot/turn` lui-même en est absent tant que
+  `CORE_LLM_PROVIDER` n'est pas positionné à l'export (cf. piège n°1) —
+  déjà vérifié à la clôture de la Tâche 1 de ce plan. `git diff
+  e0ad92e7..HEAD -- core/openapi.json shell/src/api/generated/core-schema.d.ts`
+  ne montre que les 8 lignes de flottement `geo+json`/`json` déjà
+  documentées comme préexistantes et sans rapport (routes features, non
+  liées à ce plan). Ce SP ne touche que de la documentation de clôture
+  (inventaire, bilan, `analyse-gaps.md`, ce fichier) — le code des 11
+  tâches précédentes était déjà mergé sur cette branche avant que ce SP
+  ne s'exécute.
 
 ### Conventions tranchées (2026-09-01)
 
