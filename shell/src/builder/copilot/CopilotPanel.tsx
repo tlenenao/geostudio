@@ -1,18 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
-// Panneau copilote du builder (SP-20) — propose des micro-actions
-// (ajouter/modifier/retirer un widget, source de données, filtre) sur la
-// config en cours d'édition. Chaque action passée par clientOps traverse
-// setDraft (SP-19 undo) en un seul appel par tour : annulable via le
-// bouton "Annuler" existant de la barre d'outils (AppBuilderPage.tsx),
-// pas de bouton Annuler dédié ici — un seul et même undo stack.
-import { useEffect, useRef, useState } from "react";
-import { useItemClient } from "../../api/ItemClientProvider";
-import type { AppConfig, CopilotMessage } from "../../api/types";
-import { t } from "../../i18n";
-import { Button } from "../../ui/kit/Button";
+// Panneau copilote du builder d'App (SP-20) — enveloppe fine de
+// CopilotChat (GAP-17), spécialisée pour un AppConfig unique patché via
+// applyClientOp/setDraft (undo SP-19 : un seul appel par tour).
+//
+// Écart au texte du brief Task 6 (GAP-17) : `activePageId` est lu via un
+// ref, pas directement dans la fermeture de `handleClientOps`. Raison —
+// un tour peut durer plusieurs secondes ; si l'utilisateur change de page
+// pendant ce temps, `CopilotChat.send()` (déjà en vol) a capturé la
+// fermeture `onClientOps` de CE rendu-là et ne verra jamais une nouvelle
+// fermeture recréée par un rendu ultérieur de CopilotPanel — exactement
+// le même problème que celui qui avait motivé `activePageIdRef` dans
+// l'ancien CopilotPanel.tsx monolithique. Vérifié par le test de
+// caractérisation existant ("applies clientOps against the page active
+// when the reply lands, not the one active at send time") : la version
+// littérale du brief (fermeture directe sur `activePageId`) le fait
+// échouer.
+import { useEffect, useRef } from "react";
+import type { AppConfig, CopilotClientOp } from "../../api/types";
 import { applyClientOp, type RawClientOp } from "./applyClientOp";
 import { buildClientToolSchemas } from "./clientTools";
-import { useMcpToken } from "./useMcpToken";
+import { CopilotChat } from "./CopilotChat";
+import { t } from "../../i18n";
 
 const OP_LABELS: Record<string, string> = {
   addWidget: t("copilot.opWidgetAdded"),
@@ -33,97 +41,29 @@ export function CopilotPanel({
   activePageId: string;
   setDraft: (update: (prev: AppConfig | null) => AppConfig | null) => void;
 }) {
-  const client = useItemClient();
-  const getMcpToken = useMcpToken();
-  // Un tour peut durer plusieurs secondes : si l'utilisateur change de page
-  // pendant ce temps, les clientOps doivent viser la page réellement active
-  // à l'arrivée de la réponse, pas celle capturée à l'envoi (la config,
-  // elle, est déjà lue au plus tard via le paramètre `d` de setDraft).
   const activePageIdRef = useRef(activePageId);
   useEffect(() => {
     activePageIdRef.current = activePageId;
   }, [activePageId]);
-  const [history, setHistory] = useState<CopilotMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastOpsSummary, setLastOpsSummary] = useState<string[]>([]);
 
-  async function send() {
-    const message = input.trim();
-    if (!message || sending) return;
-    setInput("");
-    setSending(true);
-    setError(null);
-    const priorHistory = history;
-    const nextHistory: CopilotMessage[] = [...priorHistory, { role: "user", content: message }];
-    setHistory(nextHistory);
-    try {
-      const mcpToken = await getMcpToken();
-      const result = await client.copilotTurn(itemId, {
-        message,
-        history: priorHistory,
-        mcpToken,
-        currentConfig: config,
-        clientTools: buildClientToolSchemas(),
-        surface: "app_builder",
-      });
-      setHistory([...nextHistory, { role: "assistant", content: result.reply }]);
-      if (result.clientOps.length > 0) {
-        setLastOpsSummary(
-          result.clientOps.map(
-            (o) => OP_LABELS[o.op] ?? t("copilot.opUnknownIgnored", { op: o.op }),
-          ),
-        );
-        setDraft((d) => {
-          if (!d) return d;
-          return (result.clientOps as RawClientOp[]).reduce(
-            (acc, op) => applyClientOp(op, acc, activePageIdRef.current),
-            d,
-          );
-        });
-      } else {
-        setLastOpsSummary([]);
-      }
-    } catch {
-      setError(t("copilot.requestFailed"));
-    } finally {
-      setSending(false);
-    }
+  function handleClientOps(ops: CopilotClientOp[]) {
+    setDraft((d) => {
+      if (!d) return d;
+      return (ops as RawClientOp[]).reduce(
+        (acc, op) => applyClientOp(op, acc, activePageIdRef.current),
+        d,
+      );
+    });
   }
 
   return (
-    <div className="flex flex-col gap-2 text-sm">
-      <div className="flex max-h-64 flex-col gap-2 overflow-auto">
-        {history.map((m, i) => (
-          <p key={i} className={m.role === "user" ? "font-medium" : "text-ink-2"}>
-            {m.content}
-          </p>
-        ))}
-      </div>
-      <label className="flex flex-col gap-1">
-        <textarea
-          aria-label={t("copilot.messageAria")}
-          className="min-h-16 rounded-md border border-rule bg-surface p-2 text-sm text-ink"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-        />
-      </label>
-      <Button size="sm" disabled={sending || !input.trim()} onClick={() => void send()}>
-        {t("copilot.send")}
-      </Button>
-      {lastOpsSummary.length > 0 && (
-        <ul className="text-xs text-ink-2">
-          {lastOpsSummary.map((s, i) => (
-            <li key={i}>{s}</li>
-          ))}
-        </ul>
-      )}
-      {error && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
-    </div>
+    <CopilotChat
+      itemId={itemId}
+      surface="app_builder"
+      contextPayload={config}
+      clientTools={buildClientToolSchemas()}
+      opLabels={OP_LABELS}
+      onClientOps={handleClientOps}
+    />
   );
 }
