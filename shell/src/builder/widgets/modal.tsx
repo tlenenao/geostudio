@@ -6,7 +6,7 @@ import { useBusAction } from "../ActionBusContext";
 import { LayoutEditor } from "../LayoutEditor";
 import { GridCanvas } from "../GridCanvas";
 import { WidgetHost } from "../WidgetHost";
-import { Dialog } from "../../ui/dialog";
+import { Dialog } from "../../ui/kit/Dialog";
 import { t } from "../../i18n";
 
 type ModalProps = { title: string; items: WidgetItem[]; wide?: boolean };
@@ -70,7 +70,7 @@ export function registerModalWidget(): void {
       }
 
       return (
-        <Dialog open={open} onClose={() => setOpen(false)} title={title} wide={wide}>
+        <Dialog open={open} onOpenChange={setOpen} title={title} size={wide ? "lg" : "md"}>
           <div className="h-64">
             <GridCanvas
               items={items}

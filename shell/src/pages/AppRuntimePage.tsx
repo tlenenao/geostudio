@@ -12,7 +12,7 @@ import { useActiveExtensions, useCreateBookmark } from "../api/hooks";
 import { registerExtensionWidget } from "../builder/extensions/registerExtensionWidget";
 import { useAuth } from "../auth/useAuth";
 import { Button } from "../ui/button";
-import { Dialog } from "../ui/dialog";
+import { Dialog } from "../ui/kit/Dialog";
 import { Input } from "../ui/input";
 import { useIsExportRender } from "../shell/useIsExportRender";
 import { markExportReady } from "../shell/exportReady";
@@ -202,7 +202,7 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
       )}
       <Dialog
         open={saveDialogOpen}
-        onClose={() => setSaveDialogOpen(false)}
+        onOpenChange={setSaveDialogOpen}
         title={t("appRuntime.saveView")}
       >
         <div className="flex flex-col gap-3">

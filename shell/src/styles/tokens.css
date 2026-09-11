@@ -27,7 +27,7 @@
   --gs-background: #eff2f1;
   --gs-surface: #fbfcfb;
   --gs-text: #0e1a20;
-  --gs-muted: #6e8087;
+  --gs-muted: #5f6f75;
   --gs-border: #cfd8d6;
 
   /* Surfaces propres au studio */
@@ -37,7 +37,7 @@
   /* Encre à trois niveaux */
   --gs-ink: #0e1a20;
   --gs-ink-2: #3b4c54;
-  --gs-ink-3: #6e8087;
+  --gs-ink-3: #5f6f75;
 
   /* Filets */
   --gs-rule: #cfd8d6;
