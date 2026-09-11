@@ -36,21 +36,7 @@ interface Exclusion {
   reason: string;
 }
 
-const EXCLUSIONS: Exclusion[] = [
-  {
-    rule: "color-contrast",
-    nodeIncludes: "foreground color: #6e8087",
-    reason:
-      "Token --gs-ink-3 (le plus atténué de l'ambiance) : 3.65:1 sur fond " +
-      "--gs-background, sous le seuil AA de 4.5:1 pour du texte normal. " +
-      'Ressort sur plusieurs pages (StatusBar "v0.1.0 · demo", compteur ' +
-      '"N entités" de LayersPanel, …) car c\'est le même token de couleur, ' +
-      "réutilisé par ~20 fichiers (Combobox, Chip, Toast, Breadcrumb, …). " +
-      "Retoucher sa valeur corrigerait ces occurrences mais changerait " +
-      "l'ambiance visuelle de tout le shell, hors budget de ce SP (spec " +
-      "SP-57a §3.3). Suivi : REV-176 (docs/revue/2026-09-04-backlog.md).",
-  },
-];
+const EXCLUSIONS: Exclusion[] = [];
 
 async function runAxeAudit(page: Page, pageName: string) {
   const results = await new AxeBuilder({ page }).analyze();
