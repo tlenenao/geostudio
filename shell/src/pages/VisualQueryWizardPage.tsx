@@ -490,6 +490,9 @@ export function VisualQueryWizardPage({
                   </p>
                   <VisualQueryCopilotPanel
                     baseCollectionId={baseCollectionId}
+                    baseSchema={baseSchema}
+                    joinedSchema={joinedSchema}
+                    collectionIds={(collectionsQuery.data ?? []).map((c) => c.id)}
                     filters={filters}
                     join={join}
                     summary={summary}

@@ -20,4 +20,14 @@ describe("applySqlLabClientOp", () => {
     applySqlLabClientOp({ op: "applySqlDraft", args: { sql: "   " } }, setSql);
     expect(setSql).not.toHaveBeenCalled();
   });
+
+  // M1 (revue finale de branche GAP-17) : CopilotChat annonçait « Brouillon
+  // SQL inséré. » même sur un op silencieusement abandonné.
+  it("reports whether anything was actually applied", () => {
+    expect(applySqlLabClientOp({ op: "applySqlDraft", args: { sql: "SELECT 1" } }, vi.fn())).toBe(
+      true,
+    );
+    expect(applySqlLabClientOp({ op: "applySqlDraft", args: { sql: "  " } }, vi.fn())).toBe(false);
+    expect(applySqlLabClientOp({ op: "somethingElse", args: {} }, vi.fn())).toBe(false);
+  });
 });

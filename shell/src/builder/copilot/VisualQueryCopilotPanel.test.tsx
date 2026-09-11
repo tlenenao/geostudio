@@ -4,10 +4,17 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { enableMockAuth } from "../../auth/useAuth";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
-import type { ItemClient } from "../../api/types";
+import type { CollectionSchema, ItemClient } from "../../api/types";
 import { VisualQueryCopilotPanel } from "./VisualQueryCopilotPanel";
 
 enableMockAuth();
+
+const BASE_SCHEMA: CollectionSchema = {
+  collection: "incidents",
+  pk: "id",
+  geometry: null,
+  fields: [{ name: "titre", type: "string", required: false }],
+};
 
 describe("VisualQueryCopilotPanel", () => {
   it("applies generated filters without creating or running anything", async () => {
@@ -27,6 +34,9 @@ describe("VisualQueryCopilotPanel", () => {
       <ItemClientProvider client={{ copilotTurn } as unknown as ItemClient}>
         <VisualQueryCopilotPanel
           baseCollectionId="incidents"
+          baseSchema={BASE_SCHEMA}
+          joinedSchema={null}
+          collectionIds={["incidents"]}
           filters={[]}
           join={null}
           summary={null}
