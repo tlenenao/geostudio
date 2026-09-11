@@ -10509,7 +10509,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/geo+json": {
                 "schema": {}
               }
             },
@@ -10568,7 +10568,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/geo+json": {
                 "schema": {}
               }
             },
@@ -10719,7 +10719,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/geo+json": {
                 "schema": {}
               }
             },
@@ -10768,7 +10768,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/geo+json": {
                 "schema": {}
               }
             },

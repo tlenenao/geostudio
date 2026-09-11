@@ -6880,7 +6880,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/geo+json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -6914,7 +6914,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/geo+json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -6972,7 +6972,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/geo+json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -7007,7 +7007,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/geo+json": unknown;
                 };
             };
             /** @description Validation Error */
