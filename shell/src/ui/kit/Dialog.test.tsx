@@ -37,3 +37,19 @@ test("le focus est piégé dans la boîte de dialogue à l'ouverture", async () 
   );
   expect(await screen.findByRole("button", { name: "Premier" })).toHaveFocus();
 });
+
+test("size='lg' rend une largeur plus grande que le défaut 'md'", () => {
+  const { rerender } = render(
+    <Dialog open onOpenChange={() => {}} title="T" size="lg">
+      <p>corps</p>
+    </Dialog>,
+  );
+  expect(screen.getByRole("dialog")).toHaveClass("max-w-2xl");
+
+  rerender(
+    <Dialog open onOpenChange={() => {}} title="T">
+      <p>corps</p>
+    </Dialog>,
+  );
+  expect(screen.getByRole("dialog")).toHaveClass("max-w-md");
+});

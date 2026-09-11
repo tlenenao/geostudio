@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { t } from "../i18n";
 import { Button } from "./button";
-import { Dialog } from "./dialog";
+import { Dialog } from "./kit/Dialog";
 
 export function ConfirmDialog({
   open,
@@ -21,7 +21,7 @@ export function ConfirmDialog({
   pending?: boolean;
 }) {
   return (
-    <Dialog open={open} onClose={onCancel} title={title}>
+    <Dialog open={open} onOpenChange={() => onCancel()} title={title}>
       <p className="mb-4 text-sm text-slate-600">{message}</p>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>

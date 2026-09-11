@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Barrel du kit de primitives SP-29b. Chaque tâche du plan
 // 2026-08-30-sp29b-kit-primitives.md ajoute sa ligne d'export ici.
-// Ne pas réexporter shell/src/ui/{button,card,input,dialog,ConfirmDialog}.tsx
-// (existants, intouchés) : ce sont deux systèmes distincts tant que SP-30
-// n'a pas basculé les points d'appel.
+// Ne pas réexporter shell/src/ui/{button,card,input}.tsx (existants,
+// intouchés) : ce sont deux systèmes distincts tant que SP-30 n'a pas
+// basculé les points d'appel. shell/src/ui/dialog.tsx a été retiré
+// (REV-094, orphelin) ; shell/src/ui/ConfirmDialog.tsx reste hors du kit
+// mais consomme désormais ./Dialog (kit), faute d'avoir jamais eu de
+// consommateur réel de sa propre implémentation historique.
 
 export { Button, type ButtonProps } from "./Button";
 export { IconButton, type IconButtonProps } from "./IconButton";
