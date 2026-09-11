@@ -66,6 +66,7 @@ export function CopilotPanel({
         mcpToken,
         currentConfig: config,
         clientTools: buildClientToolSchemas(),
+        surface: "app_builder",
       });
       setHistory([...nextHistory, { role: "assistant", content: result.reply }]);
       if (result.clientOps.length > 0) {

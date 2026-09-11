@@ -184,6 +184,7 @@ export type CopilotToolSchema = {
   description: string;
   inputSchema: Record<string, unknown>;
 };
+export type CopilotSurface = "app_builder" | "sql_lab" | "visual_query";
 
 export type ItemScope = "all" | "mine" | "shared" | "public";
 
@@ -437,13 +438,14 @@ export interface ItemClient {
   }): Promise<UsageSummary>;
   getInstanceInfo(): Promise<InstanceInfo>;
   copilotTurn(
-    itemId: string,
+    itemId: string | undefined,
     payload: {
       message: string;
       history: CopilotMessage[];
       mcpToken: string;
-      currentConfig: AppConfig;
+      currentConfig: Record<string, unknown>;
       clientTools: CopilotToolSchema[];
+      surface?: CopilotSurface;
     },
   ): Promise<CopilotTurnResult>;
   createConfigItem(input: {

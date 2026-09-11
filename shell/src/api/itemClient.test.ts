@@ -4177,3 +4177,29 @@ test("sampleDataSourceField utilise directement layer quand datasetId est absent
   const values = await makeClient().sampleDataSourceField({ layer: "communes" }, "pop", 50);
   expect(values).toEqual([3]);
 });
+
+test("copilotTurn accepts an undefined itemId and a non-AppConfig currentConfig", async () => {
+  const client = makeClient("abc");
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue(
+      new Response(JSON.stringify({ reply: "ok", clientOps: [] }), { status: 200 }),
+    );
+  vi.stubGlobal("fetch", fetchMock);
+
+  const result = await client.copilotTurn(undefined, {
+    message: "bonjour",
+    history: [],
+    mcpToken: "token",
+    currentConfig: { sql: "SELECT 1" },
+    clientTools: [],
+    surface: "sql_lab",
+  });
+
+  expect(result).toEqual({ reply: "ok", clientOps: [] });
+  const [, init] = fetchMock.mock.calls[0];
+  const body = JSON.parse(init.body as string);
+  expect(body.itemId).toBeUndefined();
+  expect(body.surface).toBe("sql_lab");
+  expect(body.currentConfig).toEqual({ sql: "SELECT 1" });
+});
