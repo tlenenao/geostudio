@@ -12,6 +12,12 @@ import {
   VisualQueryState,
 } from "../builder/visualQuery/compilePipeline";
 
+// Mock complet (pas un `importOriginal` partiel) : `isMockMode` doit donc
+// être fourni explicitement ici, sinon `useMcpToken` (consommé par
+// VisualQueryCopilotPanel via CopilotChat, cette tâche) lève "no isMockMode
+// export is defined" — ce fichier n'appelait jamais enableMockAuth()/le
+// vrai module avant ce plan (contrairement à SqlLabPage.test.tsx),
+// découvert par falsification en écrivant les deux tests copilote ci-dessous.
 vi.mock("../auth/useAuth", () => ({
   useAuth: () => ({
     isLoading: false,
@@ -22,6 +28,7 @@ vi.mock("../auth/useAuth", () => ({
     signOut: vi.fn(),
     error: null,
   }),
+  isMockMode: () => true,
 }));
 
 // jsdom n'implémente pas window.matchMedia (piège n°10) ; TriptychLayout
@@ -90,6 +97,18 @@ function renderWizard(overrides: Partial<ItemClient> = {}) {
   const client: Partial<ItemClient> = {
     listCollections: () => Promise.resolve(COLLECTIONS),
     getCollectionSchema: () => Promise.resolve(BASE_SCHEMA),
+    getInstanceInfo: () =>
+      Promise.resolve({
+        readOnly: false,
+        etlEnabled: false,
+        exportEnabled: false,
+        appExportEnabled: false,
+        tileset3dEnabled: false,
+        terrain3dEnabled: false,
+        copilotEnabled: false,
+        adminToolsEnabled: false,
+        quotasEnabled: false,
+      }),
     createEmptyCollection: vi.fn().mockResolvedValue({ id: "query_out" }),
     createDatasetItem: vi.fn().mockResolvedValue({
       pk: "dataset-1",
@@ -171,6 +190,18 @@ function renderWizardEdit(overrides: Partial<ItemClient> = {}) {
   const client: Partial<ItemClient> = {
     listCollections: () => Promise.resolve(COLLECTIONS),
     getCollectionSchema: () => Promise.resolve(BASE_SCHEMA),
+    getInstanceInfo: () =>
+      Promise.resolve({
+        readOnly: false,
+        etlEnabled: false,
+        exportEnabled: false,
+        appExportEnabled: false,
+        tileset3dEnabled: false,
+        terrain3dEnabled: false,
+        copilotEnabled: false,
+        adminToolsEnabled: false,
+        quotasEnabled: false,
+      }),
     getPipelineConfig: vi.fn().mockResolvedValue(EXISTING_PIPELINE),
     getItem: vi.fn().mockResolvedValue({
       pk: "dataset-1",
@@ -605,6 +636,76 @@ describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)
     );
     expect(await screen.findByText("Dataset")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "← Retour au catalogue" })).toBeInTheDocument();
+  });
+
+  test("n'affiche pas le panneau copilote quand copilotEnabled est faux", async () => {
+    renderWizardEdit();
+    await screen.findByText("Filtrer");
+    expect(screen.queryByLabelText("Message au copilote")).not.toBeInTheDocument();
+  });
+
+  test("affiche le panneau copilote et applique les filtres générés sans rien créer ni modifier", async () => {
+    // Revue de tâche (Important) : ce test rendait en mode édition
+    // (renderWizardEdit) mais espionnait createEmptyCollection — fonction
+    // uniquement appelée dans la branche CREATE de handleCreate (jamais
+    // atteignable ici, cf. pipelinePk !== null). Le test passait donc
+    // inconditionnellement, sans jamais vérifier que l'intégration copilote
+    // ne déclenche pas la véritable primitive d'écriture atteignable en mode
+    // édition : savePipelineConfig/updateItem. Corrigé en espionnant ces deux
+    // fonctions à la place — le test "« Mettre à jour » réutilise..."
+    // ci-dessus prouve déjà, par un clic manuel réel, qu'elles sont bien
+    // appelées dans ce même mode de rendu : la cible de l'espion est donc
+    // authentiquement atteignable et serait appelée par la régression visée
+    // (copilote qui déclencherait la soumission).
+    const copilotTurn = vi.fn().mockResolvedValue({
+      reply: "Voici un filtre.",
+      clientOps: [
+        {
+          op: "applyVisualQueryDraft",
+          args: { filters: [{ column: "commune", operator: "eq", value: "Tulle" }] },
+        },
+      ],
+    });
+    const savePipelineConfig = vi.fn().mockResolvedValue(undefined);
+    const updateItem = vi.fn().mockResolvedValue({
+      pk: "dataset-1",
+      resourceType: "dataset",
+      title: "x",
+      abstract: "",
+      owner: "alice",
+      thumbnailUrl: null,
+      date: "",
+      configId: "cfg-1",
+      isPublished: false,
+    });
+    renderWizardEdit({
+      getInstanceInfo: () =>
+        Promise.resolve({
+          readOnly: false,
+          etlEnabled: false,
+          exportEnabled: false,
+          appExportEnabled: false,
+          tileset3dEnabled: false,
+          terrain3dEnabled: false,
+          copilotEnabled: true,
+          adminToolsEnabled: false,
+          quotasEnabled: false,
+        }),
+      copilotTurn,
+      savePipelineConfig,
+      updateItem,
+    });
+    await userEvent.type(
+      await screen.findByLabelText("Message au copilote"),
+      "les incidents de Tulle",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+    await waitFor(() => expect(copilotTurn).toHaveBeenCalled());
+    // Preuve directe : l'application du filtre généré par le copilote ne
+    // déclenche jamais le chemin d'écriture réel de ce mode (mode édition ->
+    // savePipelineConfig/updateItem, cf. handleCreate).
+    expect(savePipelineConfig).not.toHaveBeenCalled();
+    expect(updateItem).not.toHaveBeenCalled();
   });
 });
 

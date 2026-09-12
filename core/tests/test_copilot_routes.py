@@ -752,3 +752,142 @@ async def test_llm_call_is_really_cancelled_when_the_budget_expires(monkeypatch)
     assert provider.completed == 0, (
         "l'appel LLM a abouti après l'expiration du budget : il a été abandonné, pas annulé"
     )
+
+
+# GAP-17 (Tâche 1) : `CopilotTurnRequest` généralisée — `itemId` devient
+# optionnel et un champ `surface` sélectionne le message système, pour que
+# les tâches suivantes portent le copilote sur SQL Lab et la requête
+# visuelle sans dupliquer `_run_turn`.
+
+
+def test_itemid_is_optional(client, monkeypatch):
+    monkeypatch.setattr(
+        "app.copilot.routes.get_llm_provider",
+        lambda: FakeLLMProvider(responses=[LLMTurn(text="ok")]),
+    )
+    response = client.post(
+        "/v1/copilot/turn",
+        json={
+            "message": "bonjour",
+            "history": [],
+            "mcpToken": "anything",
+            "currentConfig": {"sql": ""},
+            "clientTools": [],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {"reply": "ok", "clientOps": []}
+
+
+def test_surface_defaults_to_app_builder_and_leaves_system_message_unchanged(client, monkeypatch):
+    captured = {}
+
+    class _CapturingProvider:
+        async def chat(self, messages, tools):
+            captured["system"] = messages[0]["content"]
+            return LLMTurn(text="ok")
+
+    monkeypatch.setattr("app.copilot.routes.get_llm_provider", lambda: _CapturingProvider())
+    response = client.post(
+        "/v1/copilot/turn",
+        json={
+            "itemId": "1",
+            "message": "bonjour",
+            "history": [],
+            "mcpToken": "anything",
+            "currentConfig": {},
+            "clientTools": [],
+        },
+    )
+    assert response.status_code == 200
+    assert "Tu es le copilote intégré au builder GeoStudio" in captured["system"]
+    assert "Item en cours d'édition : 1" in captured["system"]
+
+
+def test_surface_sql_lab_uses_a_distinct_system_message_without_item_line(client, monkeypatch):
+    captured = {}
+
+    class _CapturingProvider:
+        async def chat(self, messages, tools):
+            captured["system"] = messages[0]["content"]
+            return LLMTurn(text="ok")
+
+    monkeypatch.setattr("app.copilot.routes.get_llm_provider", lambda: _CapturingProvider())
+    response = client.post(
+        "/v1/copilot/turn",
+        json={
+            "message": "écris une requête",
+            "history": [],
+            "mcpToken": "anything",
+            "currentConfig": {"sql": ""},
+            "clientTools": [],
+            "surface": "sql_lab",
+        },
+    )
+    assert response.status_code == 200
+    assert "generate_sql_query" in captured["system"]
+    assert "applySqlDraft" in captured["system"]
+    assert "Item en cours d'édition" not in captured["system"]
+
+
+def test_surface_sql_lab_points_the_model_at_the_context_collection_list(client, monkeypatch):
+    """I1 (revue finale de branche GAP-17) : le shell transmet désormais la
+    liste des collections visibles dans `currentConfig`, faute de quoi aucun
+    outil MCP de l'allowlist du copilote ne permet d'en découvrir une —
+    encore faut-il que la consigne système le dise au modèle, sinon il ne
+    sait pas d'où tirer le `collectionId` que generate_sql_query exige."""
+    captured = {}
+
+    class _CapturingProvider:
+        async def chat(self, messages, tools):
+            captured["system"] = messages[0]["content"]
+            return LLMTurn(text="ok")
+
+    monkeypatch.setattr("app.copilot.routes.get_llm_provider", lambda: _CapturingProvider())
+    response = client.post(
+        "/v1/copilot/turn",
+        json={
+            "message": "écris une requête",
+            "history": [],
+            "mcpToken": "anything",
+            "currentConfig": {
+                "sql": "",
+                "collections": [{"id": "parcs", "title": "Parcs urbains"}],
+            },
+            "clientTools": [],
+            "surface": "sql_lab",
+        },
+    )
+    assert response.status_code == 200
+    # Le payload lui-même est ré-encodé dans ce même message système (bloc
+    # à nonce) : chercher "collections" dans le message entier serait
+    # vacuo. Seule la partie AVANT le bloc de données est la consigne.
+    intro = captured["system"].split("<<<CONFIG-")[0]
+    assert '"collections"' in intro
+    assert "collectionId" in intro
+    assert "generate_sql_query" in intro
+
+
+def test_surface_visual_query_uses_a_distinct_system_message(client, monkeypatch):
+    captured = {}
+
+    class _CapturingProvider:
+        async def chat(self, messages, tools):
+            captured["system"] = messages[0]["content"]
+            return LLMTurn(text="ok")
+
+    monkeypatch.setattr("app.copilot.routes.get_llm_provider", lambda: _CapturingProvider())
+    response = client.post(
+        "/v1/copilot/turn",
+        json={
+            "message": "ajoute un filtre",
+            "history": [],
+            "mcpToken": "anything",
+            "currentConfig": {"baseCollectionId": "incidents"},
+            "clientTools": [],
+            "surface": "visual_query",
+        },
+    )
+    assert response.status_code == 200
+    assert "generate_visual_query" in captured["system"]
+    assert "applyVisualQueryDraft" in captured["system"]

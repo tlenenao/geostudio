@@ -73,9 +73,9 @@ restants.
 
 ## État des 81 gaps — trois parties distinctes (mise à jour 2026-09-06)
 
-**58 fermés, 5 partiels, 18 ouverts** (total 81 — 79 gaps de la revue initiale + GAP-80/81 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
+**59 fermés, 5 partiels, 17 ouverts** (total 81 — 79 gaps de la revue initiale + GAP-80/81 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
 
-### ✅ Fermé (58)
+### ✅ Fermé (59)
 
 | GAP | Fermé par / statut détaillé |
 |---|---|
@@ -91,6 +91,7 @@ restants.
 | GAP-13 | SP-52 (widget `variableInput`) |
 | GAP-14 | SP-57a (i18n 7 lots, a11y échantillon 9 pages) + SP-57b (`/v1/`, `docs/adr/`, contribution). Reste : détecteur i18n limité à 4 répertoires (REV-177), échantillon a11y non exhaustif (REV-178), token `--gs-ink-3` sous seuil AA non corrigé (REV-176) *(avec dette résiduelle)* |
 | GAP-16 | 2026-09-06 (spec/plan GAP-16) — `reader.connector.snowflake` (pendant exact de `reader.connector.postgres`, dialecte `snowflake-sqlalchemy` résolu par entry point, aucun nouvel import), nouveau kind de secret `snowflake_dsn` ; `reader.connector.postgres` confirmé compatible Amazon Redshift sans nouveau code (littérature AWS, pas de cluster réel disponible en session). Databricks/BigQuery restent hors périmètre. Round-trip Snowflake réel : `@pytest.mark.snowflake`, jamais câblé en CI, manuel uniquement |
+| GAP-17 | SP-62 (plan `docs/superpowers/plans/2026-09-06-gap17-nl-sql-copilote.md`) — outils MCP `generate_sql_query`/`generate_visual_query` (`core/app/mcp/tools/query_generation.py`), copilote monté sur `SqlLabPage`/`VisualQueryWizardPage` ; le brouillon généré n'est jamais exécuté ni écrit depuis l'outil, seulement inséré par un client tool (`applySqlDraft`/`applyVisualQueryDraft`) — la revue humaine (bouton Exécuter / validation du formulaire) reste le seul chemin d'exécution/écriture, prouvé par un test d'intégration cœur et une spec E2E dédiés |
 | GAP-24 | SP-53 (`06821047`) — jeton opaque + `POST /pipelines/{id}/trigger` |
 | GAP-28 | SP-47 (domaine `app/usage/`, `GET /usage/summary`) |
 | GAP-30 | SP-46 (`ADMIN_LINKS`) |
@@ -148,14 +149,13 @@ restants.
 | GAP-70 | SP-59 ferme le script de restauration (`deploy/backup/restore.sh`, vérifié présent) et la parité des 7 buckets ; la vérification OIDC réelle reste non rejouée (REV-164, limite d'environnement) |
 | GAP-72 | SP-48 ferme `img-src`/`connect-src` en enforcing (`CORE_CSP_MODE`, vérifié dans `docker-compose.yml`/`security/jobs.py`) ; `script-src` widgets d'extension tiers reste une décision produit ouverte (`traefik_render.py:29`, toujours `'self'` en dur, gardé par 2 tests intentionnels) |
 
-### 🔴 Ouvert / non implémenté (18)
+### 🔴 Ouvert / non implémenté (17)
 
 | GAP | Manque |
 |---|---|
 | GAP-04 | Aucune SP n'a traité `stac-api-validator` en CI |
 | GAP-08 | Géocodage BAN non traité |
 | GAP-10 | Animation temporelle non traitée |
-| GAP-17 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-18 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-19 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-20 | Référentiel 2 (benchmark), aucune décision produit prise |

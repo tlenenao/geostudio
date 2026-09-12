@@ -19,6 +19,7 @@ from app.mcp.tools import (
     dataset,
     identity,
     pipelines,
+    query_generation,
     reports,
     sharing,
 )
@@ -39,6 +40,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
         dataset,
         bookmark,
         analytics,
+        query_generation,
         pipelines,
         alerts,
         reports,

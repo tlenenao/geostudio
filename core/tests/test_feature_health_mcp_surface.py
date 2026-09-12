@@ -10,7 +10,7 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 
 def test_index_finds_every_declared_tool():
     tools = index_mcp_tools(REPO)
-    assert len(tools) == 27
+    assert len(tools) == 29
     assert "query_features" in tools
     assert "search_collections" in tools  # SP-54
 

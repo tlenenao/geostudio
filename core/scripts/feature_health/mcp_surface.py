@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """Index AST des outils MCP (SP-61, spec §3.2).
 
-Les 27 outils sont déclarés par `@server.tool()` sur une fonction imbriquée
+Les outils (29 au 2026-09-12 — voir tests/test_feature_health_mcp_surface.py
+pour le compte exact et à jour) sont déclarés par `@server.tool()` sur une
+fonction imbriquée
 dans la fonction d'enregistrement de chaque module de `core/app/mcp/tools/`.
 `@server.resource(...)` (1 occurrence) n'est pas un outil et n'est pas indexé.
 
