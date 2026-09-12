@@ -585,6 +585,24 @@ def test_read_xlsx_header_fields_rejects_unknown_sheet_name():
         read_xlsx_header_fields(content, sheet_name="NoSuchSheet")
 
 
+def test_parse_xlsx_sheet_rejects_unknown_sheet_name():
+    """Revue finale GAP-29, I3 : Task 5 avait corrigé read_xlsx_header_fields
+    (ci-dessus) mais pas parse_xlsx_sheet — la fonction qui lit réellement
+    les DONNÉES, pas seulement les en-têtes. Task 11 câble désormais
+    layer_name jusqu'à parse_xlsx_sheet dans le vrai chemin d'import
+    (run_import), rendant ce KeyError bare atteignable pour de vrai via un
+    job d'import async avec un layerName périmé/erroné."""
+    content = (_FIXTURES / "TwoSheetsNoneHidden.xlsx").read_bytes()
+    with pytest.raises(IngestionParseError, match="introuvable"):
+        list(
+            parse_xlsx_sheet(
+                content,
+                "NoSuchSheet",
+                GeometryMode(kind="none"),
+            )
+        )
+
+
 def _kml_bytes(name: str = "Paris", lon: float = 2.35, lat: float = 48.85) -> bytes:
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
