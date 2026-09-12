@@ -28,6 +28,7 @@ function Harness({ children }: { children: ReactNode }) {
           <Routes>
             <Route path="/maps/:pk" element={<MapProbe />} />
             <Route path="/admin/collections" element={<div>collections-probe</div>} />
+            <Route path="/" element={<div>catalog-probe</div>} />
           </Routes>
         </MemoryRouter>
       </ItemClientProvider>
@@ -464,8 +465,12 @@ test("GAP-29 : selecting-geometry propose lat/lon, WKT et aucune géométrie ; m
   await userEvent.click(screen.getByRole("button", { name: "Continuer" }));
 
   // GAP-29 : job "done" avec itemId=null (collection sans géométrie, pas de
-  // Map associée) — poll() navigue vers /admin/collections, pas /maps/{id}.
-  await waitFor(() => expect(screen.getByText("collections-probe")).toBeInTheDocument());
+  // Map associée) — poll() navigue vers /admin/collections seulement si
+  // l'utilisateur porte admin.collections.manage. Le profil par défaut de
+  // ce Harness (rôle Créateur, cf. handlers.ts) ne le porte pas — revue
+  // finale (I2) : retombe sur le catalogue ("/"), pas un écran de refus.
+  await waitFor(() => expect(screen.getByText("catalog-probe")).toBeInTheDocument());
+  expect(screen.queryByText("collections-probe")).not.toBeInTheDocument();
 });
 
 test("GAP-29 : selecting-geometry en mode WKT envoie geometryMode=wkt et wktField", async () => {
@@ -663,6 +668,109 @@ test("SP-42/F-shell-pages-01 (fusion F-shell-pages-02) : masque le bouton pour u
   await waitFor(() =>
     expect(screen.queryByRole("button", { name: "Importer un fichier" })).not.toBeInTheDocument(),
   );
+});
+
+test("GAP-29 revue finale (I2) : sans admin.collections.manage, un import sans géométrie navigue vers le catalogue", async () => {
+  server.use(
+    http.get("https://core.test/v1/me", () =>
+      HttpResponse.json({
+        id: "u1",
+        username: "alice",
+        firstName: "Alice",
+        lastName: "Martin",
+        email: "alice@example.com",
+        tenantId: "t1",
+        role: { id: "role-creator", name: "Créateur", slug: "creator" },
+        privileges: ["catalog.manage", "maps.manage", "data.view", "data.manage"],
+        version: "0.1.0",
+        tenantSlug: "demo",
+      }),
+    ),
+    http.post("https://core.test/v1/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-i2a", key: "t/i2a.jsonl" }),
+    ),
+    http.put("https://minio.test/upload-i2a", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/v1/uploads/inspect", () =>
+      HttpResponse.json({ layers: [], fields: ["nom", "wkt_col"] }),
+    ),
+    http.post("https://core.test/v1/uploads", () => HttpResponse.json({ jobId: "job-i2a" })),
+    http.get("https://core.test/v1/uploads/job-i2a", () =>
+      HttpResponse.json({
+        status: "done",
+        errorMessage: null,
+        collectionId: "ingest_i2a",
+        itemId: null,
+      }),
+    ),
+  );
+
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), jsonlFile("i2a.jsonl"));
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "I2 sans privilège");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+
+  await waitFor(() => expect(screen.getByLabelText("Aucune géométrie")).toBeInTheDocument());
+  await userEvent.click(screen.getByLabelText("Aucune géométrie"));
+  await userEvent.click(screen.getByRole("button", { name: "Continuer" }));
+
+  await waitFor(() => expect(screen.getByText("catalog-probe")).toBeInTheDocument());
+  expect(screen.queryByText("collections-probe")).not.toBeInTheDocument();
+});
+
+test("GAP-29 revue finale (I2) : avec admin.collections.manage, un import sans géométrie navigue toujours vers /admin/collections", async () => {
+  server.use(
+    http.get("https://core.test/v1/me", () =>
+      HttpResponse.json({
+        id: "u2",
+        username: "admin",
+        firstName: "Admin",
+        lastName: "Istrateur",
+        email: "admin@example.com",
+        tenantId: "t1",
+        role: { id: "role-admin", name: "Administrateur", slug: "admin" },
+        privileges: ["data.manage", "admin.collections.manage"],
+        version: "0.1.0",
+        tenantSlug: "demo",
+      }),
+    ),
+    http.post("https://core.test/v1/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-i2b", key: "t/i2b.jsonl" }),
+    ),
+    http.put("https://minio.test/upload-i2b", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/v1/uploads/inspect", () =>
+      HttpResponse.json({ layers: [], fields: ["nom", "wkt_col"] }),
+    ),
+    http.post("https://core.test/v1/uploads", () => HttpResponse.json({ jobId: "job-i2b" })),
+    http.get("https://core.test/v1/uploads/job-i2b", () =>
+      HttpResponse.json({
+        status: "done",
+        errorMessage: null,
+        collectionId: "ingest_i2b",
+        itemId: null,
+      }),
+    ),
+  );
+
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), jsonlFile("i2b.jsonl"));
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "I2 avec privilège");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+
+  await waitFor(() => expect(screen.getByLabelText("Aucune géométrie")).toBeInTheDocument());
+  await userEvent.click(screen.getByLabelText("Aucune géométrie"));
+  await userEvent.click(screen.getByRole("button", { name: "Continuer" }));
+
+  await waitFor(() => expect(screen.getByText("collections-probe")).toBeInTheDocument());
 });
 
 test("REV-087 : Échap/Annuler n'abandonnent pas un import en vol (busy)", async () => {

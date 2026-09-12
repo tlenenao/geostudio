@@ -104,6 +104,14 @@ export function ImportFileButton() {
   const meQuery = useMe();
   const privileges = meQuery.data?.privileges;
   const canImport = privileges === undefined || privileges.includes("data.manage");
+  // GAP-29 revue finale (I2) : /admin/collections est gardée par
+  // RequirePrivilege privilege="admin.collections.manage" (routes.tsx) —
+  // le rôle Créateur (data.manage + maps.manage, celui qui exécute
+  // réellement des imports) ne porte PAS ce privilège. Naviguer là
+  // inconditionnellement après un import réussi sans géométrie envoyait
+  // l'utilisateur le plus courant sur un écran de refus d'accès juste
+  // après un succès.
+  const canManageCollections = privileges?.includes("admin.collections.manage") ?? false;
 
   if (!canImport) return null;
 
@@ -154,7 +162,13 @@ export function ImportFileButton() {
         // GAP-29 : une collection sans géométrie (geometryMode="none") n'a
         // pas de Map associée (core/app/ingestion/importer.py) — itemId
         // est alors null, il n'y a rien à ouvrir sous /maps/{itemId}.
-        navigate(job.itemId ? `/maps/${job.itemId}` : "/admin/collections");
+        // Revue finale (I2) : /admin/collections n'est atteignable que par
+        // les utilisateurs avec admin.collections.manage — les autres
+        // (dont le rôle Créateur, celui qui importe le plus) retombent sur
+        // le catalogue racine ("/"), seule route toujours accessible.
+        navigate(
+          job.itemId ? `/maps/${job.itemId}` : canManageCollections ? "/admin/collections" : "/",
+        );
         return;
       }
       if (job.status === "error") {
