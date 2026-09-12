@@ -127,9 +127,8 @@ def parse_geojson(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
 
 def parse_csv_latlon(
     content: bytes,
-    lat_field: str | None,
-    lon_field: str | None,
-) -> Iterator[tuple[BaseGeometry, dict]]:
+    mode: GeometryMode,
+) -> Iterator[tuple[BaseGeometry | None, dict]]:
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
@@ -139,15 +138,21 @@ def parse_csv_latlon(
         fieldnames = reader.fieldnames or []
     except csv.Error as exc:
         raise IngestionParseError("en-tête CSV invalide ou mal formé") from exc
-    if lat_field is None or lon_field is None:
+    effective_mode = mode
+    if mode.kind == "latlon" and (mode.lat_field is None or mode.lon_field is None):
         detected = detect_lat_lon_fields(fieldnames)
         if detected is None:
             raise IngestionParseError(
                 "colonnes lat/lon introuvables automatiquement — précisez-les"
             )
         lat_field, lon_field = detected
-    if lat_field not in fieldnames or lon_field not in fieldnames:
-        raise IngestionParseError(f"colonnes '{lat_field}'/'{lon_field}' absentes du CSV")
+        effective_mode = GeometryMode(kind="latlon", lat_field=lat_field, lon_field=lon_field)
+    if effective_mode.kind == "latlon" and (
+        effective_mode.lat_field not in fieldnames or effective_mode.lon_field not in fieldnames
+    ):
+        raise IngestionParseError(
+            f"colonnes '{effective_mode.lat_field}'/'{effective_mode.lon_field}' absentes du CSV"
+        )
     i = 0
     row_iter = iter(reader)
     while True:
@@ -161,14 +166,9 @@ def parse_csv_latlon(
             ) from exc
         i += 1
         try:
-            lat = float(row[lat_field])
-            lon = float(row[lon_field])
-        except (TypeError, ValueError):
-            raise IngestionParseError(
-                f"ligne {i} : lat/lon invalide ('{row.get(lat_field)}', '{row.get(lon_field)}')"
-            ) from None
-        properties = {k: v for k, v in row.items() if k not in (lat_field, lon_field)}
-        yield Point(lon, lat), properties
+            yield extract_geometry(row, effective_mode)
+        except IngestionParseError as exc:
+            raise IngestionParseError(f"ligne {i} : {exc}") from exc
 
 
 def _xlsx_cell_value(value):

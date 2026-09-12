@@ -132,7 +132,9 @@ def test_detect_lat_lon_fields_case_insensitive():
 
 def test_parse_csv_latlon_auto_detects_columns():
     content = b"nom,lat,lon\nParis,48.85,2.35\n"
-    rows = list(parse_csv_latlon(content, None, None))
+    rows = list(
+        parse_csv_latlon(content, GeometryMode(kind="latlon", lat_field=None, lon_field=None))
+    )
     assert len(rows) == 1
     geom, props = rows[0]
     assert (geom.x, geom.y) == (2.35, 48.85)
@@ -141,7 +143,11 @@ def test_parse_csv_latlon_auto_detects_columns():
 
 def test_parse_csv_latlon_uses_explicit_field_names():
     content = b"nom,y_coord,x_coord\nParis,48.85,2.35\n"
-    rows = list(parse_csv_latlon(content, "y_coord", "x_coord"))
+    rows = list(
+        parse_csv_latlon(
+            content, GeometryMode(kind="latlon", lat_field="y_coord", lon_field="x_coord")
+        )
+    )
     geom, props = rows[0]
     assert (geom.x, geom.y) == (2.35, 48.85)
 
@@ -149,13 +155,35 @@ def test_parse_csv_latlon_uses_explicit_field_names():
 def test_parse_csv_latlon_fails_fast_on_invalid_row():
     content = b"nom,lat,lon\nParis,48.85,2.35\nCasse,abc,2.35\n"
     with pytest.raises(IngestionParseError, match="ligne 2"):
-        list(parse_csv_latlon(content, None, None))
+        list(parse_csv_latlon(content, GeometryMode(kind="latlon", lat_field=None, lon_field=None)))
 
 
 def test_parse_csv_latlon_raises_when_columns_cannot_be_detected():
     content = b"nom,valeur\nA,1\n"
     with pytest.raises(IngestionParseError, match="introuvables"):
-        list(parse_csv_latlon(content, None, None))
+        list(parse_csv_latlon(content, GeometryMode(kind="latlon", lat_field=None, lon_field=None)))
+
+
+def test_parse_csv_latlon_wkt_mode_yields_geometry():
+    content = b"name,wkt\nA,POINT (1 2)\nB,POINT (3 4)\n"
+    rows = list(parse_csv_latlon(content, GeometryMode(kind="wkt", wkt_field="wkt")))
+    assert len(rows) == 2
+    assert rows[0][0].equals(Point(1, 2))
+    assert rows[0][1] == {"name": "A"}
+
+
+def test_parse_csv_latlon_wkt_mode_invalid_wkt_fails_fast():
+    content = b"name,wkt\nA,NOT WKT\n"
+    with pytest.raises(IngestionParseError, match="ligne 1"):
+        list(parse_csv_latlon(content, GeometryMode(kind="wkt", wkt_field="wkt")))
+
+
+def test_parse_csv_latlon_none_mode_yields_no_geometry():
+    content = b"name,value\nA,1\nB,2\n"
+    rows = list(parse_csv_latlon(content, GeometryMode(kind="none")))
+    assert len(rows) == 2
+    assert rows[0][0] is None
+    assert rows[0][1] == {"name": "A", "value": "1"}
 
 
 def test_parse_geojson_rejects_unrecognized_geometry_type():
@@ -182,7 +210,7 @@ def test_parse_geojson_rejects_invalid_utf8_content():
 def test_parse_csv_latlon_rejects_non_utf8_content():
     content = "nom,lat,lon\nCassé,48.85,2.35\n".encode("latin-1")
     with pytest.raises(IngestionParseError, match="encodage invalide"):
-        list(parse_csv_latlon(content, None, None))
+        list(parse_csv_latlon(content, GeometryMode(kind="latlon", lat_field=None, lon_field=None)))
 
 
 def test_parse_geojson_rejects_non_iterable_features():
@@ -194,7 +222,7 @@ def test_parse_geojson_rejects_non_iterable_features():
 def test_parse_csv_latlon_wraps_oversized_field_error():
     content = ('nom,lat,lon\n"' + "x" * 200000 + "\n1,2\n").encode("utf-8")
     with pytest.raises(IngestionParseError, match="champ CSV trop volumineux ou mal formé"):
-        list(parse_csv_latlon(content, None, None))
+        list(parse_csv_latlon(content, GeometryMode(kind="latlon", lat_field=None, lon_field=None)))
 
 
 def test_parse_geojson_rejects_invalid_properties():

@@ -21,6 +21,7 @@ from app.collections.introspection_pg import introspect_table
 from app.configs import repository as configs_repo
 from app.configs.schemas import BaseMap, BuilderConfig, MapConfig, MapLayer, MapView
 from app.ingestion.parsers import (
+    GeometryMode,
     IngestionParseError,
     parse_csv_latlon,
     parse_geojson,
@@ -105,7 +106,11 @@ def run_import(
     if fmt == "geojson":
         rows = list(parse_geojson(content))
     elif fmt == "csv":
-        rows = list(parse_csv_latlon(content, lat_field, lon_field))
+        rows = list(
+            parse_csv_latlon(
+                content, GeometryMode(kind="latlon", lat_field=lat_field, lon_field=lon_field)
+            )
+        )
     elif fmt == "xlsx":
         rows = list(parse_xlsx_latlon(content, lat_field, lon_field))
     elif fmt == "gpkg":
