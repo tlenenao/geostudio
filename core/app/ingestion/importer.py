@@ -29,7 +29,7 @@ from app.ingestion.parsers import (
     parse_gpkg,
     parse_kml,
     parse_shapefile_zip,
-    parse_xlsx_latlon,
+    parse_xlsx_sheet,
 )
 from app.items import repository as items_repo
 from app.sql_ident import quote_ident
@@ -112,7 +112,11 @@ def run_import(
             )
         )
     elif fmt == "xlsx":
-        rows = list(parse_xlsx_latlon(content, lat_field, lon_field))
+        rows = list(
+            parse_xlsx_sheet(
+                content, None, GeometryMode(kind="latlon", lat_field=lat_field, lon_field=lon_field)
+            )
+        )
     elif fmt == "gpkg":
         rows = list(parse_gpkg(content, layer_name))
     elif fmt == "shapefile":
