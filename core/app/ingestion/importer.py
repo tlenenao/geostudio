@@ -23,8 +23,7 @@ from app.configs.schemas import BaseMap, BuilderConfig, MapConfig, MapLayer, Map
 from app.ingestion.parsers import (
     GeometryMode,
     IngestionParseError,
-    _is_geoparquet,
-    _temp_file,
+    _is_geoparquet_from_bytes,
     parse_csv_latlon,
     parse_geojson,
     parse_geoparquet,
@@ -153,8 +152,7 @@ def run_import(
     elif fmt == "xml_generic":
         rows = list(parse_xml_generic(content, mode))
     elif fmt == "parquet":
-        with _temp_file(content, ".parquet") as tmp_path:
-            is_geo = _is_geoparquet(tmp_path)
+        is_geo = _is_geoparquet_from_bytes(content)
         rows = (
             list(parse_geoparquet(content))
             if is_geo

@@ -600,10 +600,16 @@ def _is_geoparquet(path: str) -> bool:
 
 
 def _is_geoparquet_from_bytes(content: bytes) -> bool:
-    """Variante bytes de _is_geoparquet, pour les appelants (routes.py) qui
-    n'ont pas déjà de fichier temporaire ouvert — run_import (Task 11), qui
-    lui en ouvre un pour lire les données ensuite, appelle _is_geoparquet(path)
-    directement plutôt que de rouvrir un second fichier temporaire."""
+    """Variante bytes de _is_geoparquet, pour tout appelant qui n'a pas déjà
+    de fichier temporaire ouvert sur ce contenu — routes.py (POST
+    /uploads/inspect) et, depuis la revue finale GAP-29 (M5), run_import
+    lui-même : ce dernier ouvrait auparavant son propre fichier temporaire
+    rien que pour le sniff puis appelait _is_geoparquet(path), alors que le
+    parseur choisi ensuite (parse_geoparquet/parse_parquet_tabular) en
+    rouvre de toute façon un second sur le même `content` — appeler
+    directement cette fonction est identique en coût et plus simple (évite
+    d'importer _is_geoparquet/_temp_file, privés à ce module, dans
+    importer.py)."""
     with _temp_file(content, ".parquet") as path:
         return _is_geoparquet(path)
 
