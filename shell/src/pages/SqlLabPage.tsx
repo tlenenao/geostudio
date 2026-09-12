@@ -2,8 +2,10 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { useCollectionsAdmin, useInstanceInfo } from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
 import { appendSqlHistory, readSqlHistory, type SqlHistoryEntry } from "../lib/sqlLabHistory";
+import { SqlLabCopilotPanel } from "../builder/copilot/SqlLabCopilotPanel";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
 import { EmptyState } from "../ui/kit/EmptyState";
@@ -17,6 +19,14 @@ export function SqlLabPage() {
   const [sql, setSql] = useState("");
   const [result, setResult] = useState<SqlResult | null>(null);
   const [history, setHistory] = useState<SqlHistoryEntry[]>(() => readSqlHistory());
+  const instanceQuery = useInstanceInfo();
+  const copilotEnabled = instanceQuery.data?.copilotEnabled === true;
+  // Seule consommatrice : le panneau copilote (I1, revue finale de branche
+  // GAP-17) — d'où le `enabled` aligné sur `copilotEnabled`, pour ne pas
+  // ajouter un aller-retour réseau à une page qui n'en avait aucun quand le
+  // copilote est éteint. `GET /collections` est déjà la source de la liste
+  // pour VisualQueryWizardPage (même hook), aucun nouveau chemin d'accès.
+  const collectionsQuery = useCollectionsAdmin({ enabled: copilotEnabled });
 
   const run = useMutation({
     mutationFn: (query: string) => client.runAnalyticsSql(query),
@@ -139,6 +149,21 @@ export function SqlLabPage() {
                     </li>
                   ))}
                 </ul>
+              )}
+              {copilotEnabled && (
+                <div className="border-t border-rule pt-3">
+                  <p className="mb-1 text-xs font-medium text-ink-2">
+                    {t("appBuilder.copilotLabel")}
+                  </p>
+                  <SqlLabCopilotPanel
+                    sql={sql}
+                    setSql={setSql}
+                    collections={(collectionsQuery.data ?? []).map((c) => ({
+                      id: c.id,
+                      title: c.title,
+                    }))}
+                  />
+                </div>
               )}
             </div>
           ),

@@ -8,7 +8,16 @@ import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
+import { enableMockAuth } from "../auth/useAuth";
 import { SqlLabPage } from "./SqlLabPage";
+
+// Le panneau copilote (SqlLabCopilotPanel → CopilotChat → useMcpToken)
+// bascule sur un jeton MCP factice en mode mock plutôt que d'exiger un
+// vrai <AuthProvider> react-oidc-context autour de ce Harness — même
+// patron que CopilotChat.test.tsx. Sans effet sur les tests existants de
+// ce fichier (SqlLabPage n'appelle useAuth()/useMcpToken() nulle part
+// ailleurs).
+enableMockAuth();
 
 // jsdom n'implémente pas window.matchMedia (piège n°10) ; TriptychLayout
 // l'appelle via useNarrowViewport. Stub local, avec vi.unstubAllGlobals()
@@ -135,4 +144,92 @@ test("sous viewport étroit, affiche trois onglets Catalogue/Requête/Historique
   expect(tabs.map((t) => t.textContent)).toEqual(["Catalogue", "Requête", "Historique"]);
   const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
   expect(activeTab).toHaveTextContent("Requête");
+});
+
+test("n'affiche pas le panneau copilote quand copilotEnabled est faux (défaut du handler /instance)", async () => {
+  render(<Harness />);
+  await screen.findByLabelText("Requête SQL");
+  expect(screen.queryByLabelText("Message au copilote")).not.toBeInTheDocument();
+});
+
+function mockCollectionsList() {
+  return http.get("https://core.test/v1/collections", () =>
+    HttpResponse.json({
+      collections: [
+        {
+          id: "parcs",
+          title: "Parcs urbains",
+          description: "",
+          tableName: "parcs",
+          isPublic: false,
+          editable: true,
+          geometryType: "Point",
+          srid: 4326,
+          pkColumn: "id",
+          permissions: { read: true, write: true, delete: true, share: true },
+          featureCount: 3,
+          owner: "alice",
+          attachmentFields: [],
+        },
+      ],
+      numberMatched: 1,
+      numberReturned: 1,
+    }),
+  );
+}
+
+test("affiche le panneau copilote et insère le brouillon SQL généré sans l'exécuter", async () => {
+  let executed = false;
+  server.use(
+    mockCollectionsList(),
+    http.get("https://core.test/v1/instance", () =>
+      HttpResponse.json({ readOnly: false, copilotEnabled: true }),
+    ),
+    http.post("https://core.test/v1/copilot/turn", () =>
+      HttpResponse.json({
+        reply: "Voici un brouillon.",
+        clientOps: [{ op: "applySqlDraft", args: { sql: "select 1" } }],
+      }),
+    ),
+    http.post("https://core.test/v1/analytics/sql", async ({ request }) => {
+      executed = true;
+      return HttpResponse.json(await request.json());
+    }),
+  );
+  render(<Harness />);
+  await userEvent.type(await screen.findByLabelText("Message au copilote"), "une requête simple");
+  await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+  expect(await screen.findByLabelText("Requête SQL")).toHaveValue("select 1");
+  expect(executed).toBe(false);
+});
+
+// I1 (revue finale de branche GAP-17) : sans la liste des collections dans
+// le contexte, `generate_sql_query` — qui EXIGE un `collectionId` — est
+// inutilisable sur SQL Lab avec un vrai fournisseur LLM : aucun des 8 outils
+// MCP de l'allowlist du copilote n'énumère les collections (explain_dataset
+// omet délibérément `collectionId`, search_collections/list_collections ne
+// sont pas allowlistés) et le volet Catalogue de cette page n'est qu'un lien
+// de retour. Même mécanisme que `baseCollectionId` déjà passé par
+// VisualQueryCopilotPanel.
+test("transmet au copilote la liste des collections visibles dans le contexte", async () => {
+  let payload: { currentConfig?: { sql?: string; collections?: unknown } } | null = null;
+  server.use(
+    mockCollectionsList(),
+    http.get("https://core.test/v1/instance", () =>
+      HttpResponse.json({ readOnly: false, copilotEnabled: true }),
+    ),
+    http.post("https://core.test/v1/copilot/turn", async ({ request }) => {
+      payload = (await request.json()) as typeof payload;
+      return HttpResponse.json({ reply: "ok", clientOps: [] });
+    }),
+  );
+  render(<Harness />);
+  await userEvent.type(await screen.findByLabelText("Message au copilote"), "les parcs");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Envoyer" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+  await waitFor(() => expect(payload).not.toBeNull());
+  expect(payload!.currentConfig).toEqual({
+    sql: "",
+    collections: [{ id: "parcs", title: "Parcs urbains" }],
+  });
 });
