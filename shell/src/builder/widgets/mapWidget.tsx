@@ -357,6 +357,7 @@ export function registerMapWidget(): void {
               interactiveTools={ctx.mode !== "edit"}
               getAuthToken={client.getAuthToken}
               getCoreUrl={client.getCoreUrl}
+              getShareLinkToken={client.getShareLinkToken}
               loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
               onViewChange={(v) => {
                 ctx.bus?.emit(ctx.widgetId ?? "", "extentChanged", v);
