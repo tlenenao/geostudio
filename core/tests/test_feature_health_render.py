@@ -77,6 +77,29 @@ def test_html_embeds_its_data_as_json():
     assert data["commit"] == "abc123"
 
 
+def test_html_delta_never_serializes_as_negative_zero():
+    """--check-fresh (feature_health_cli.py) reconstruit `previous` en
+    inversant `sante - delta` (déjà arrondis) du HTML committé, puis
+    recalcule `delta = round(sante - previous, 1)` avec le `sante` pleine
+    précision courant — pour une fonctionnalité dont la santé n'a
+    quasiment pas bougé, cet aller-retour peut faire basculer un delta
+    quasi nul entre +0.0 et -0.0 (signe de zéro flottant IEEE-754, sans
+    signification : les deux veulent dire "aucun changement notable",
+    render_md.py les masque déjà tous deux en "="). Un delta embarqué
+    `-0.0` diffère textuellement de `0.0` dans le JSON, ce qui fait
+    échouer --check-fresh sans qu'aucun changement réel n'ait eu lieu."""
+    output = render_html.render(
+        [_row(health=91.85)], previous={"f1": 91.850000000001}, date="2026-09-07", commit="abc"
+    )
+    payload = re.search(
+        r'<script type="application/json" id="bilan-data">(.*?)</script>', output, re.S
+    )
+    assert payload is not None
+    assert '"delta": -0.0' not in payload.group(1)
+    data = json.loads(payload.group(1))
+    assert data["fonctionnalites"][0]["delta"] == 0.0
+
+
 def test_html_has_no_external_dependency_but_the_font_stylesheet():
     """Contrainte de forme héritée de l'artefact : un seul fichier, aucune
     étape de compilation, aucun CDN de librairie (spec §7.1)."""

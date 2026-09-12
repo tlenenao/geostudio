@@ -37,7 +37,13 @@ def _payload(rows, previous, date, commit) -> dict:
                 "delta": (
                     None
                     if health is None or feature.identifier not in previous
-                    else round(health - previous[feature.identifier], 1)
+                    else round(health - previous[feature.identifier], 1) + 0.0
+                    # Le "+ 0.0" normalise -0.0 en 0.0 (IEEE-754 : -0.0 + 0.0
+                    # == 0.0) — round() sur un écart quasi nul mais négatif
+                    # renvoie -0.0, qui se sérialise différemment de 0.0 en
+                    # JSON alors que les deux signifient "aucun changement
+                    # notable" (cf. render_md._delta(), qui masque déjà ce
+                    # cas en "=" sous le même seuil).
                 ),
                 "priorite": feature.priority,
                 "priorite_source": feature.priority_source,

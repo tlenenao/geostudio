@@ -8,8 +8,15 @@ import { Drawer } from "../ui/kit/Drawer";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { t } from "../i18n";
 
-type Phase = "form" | "uploading" | "selecting-layer" | "selecting-latlon" | "polling" | "error";
+type Phase = "form" | "uploading" | "selecting-layer" | "selecting-geometry" | "polling" | "error";
 type LayerInfo = { name: string; featureCount: number; geometryType: string };
+type GeometryChoice = "latlon" | "wkt" | "none";
+type GeometryOverride = {
+  latField?: string;
+  lonField?: string;
+  wktField?: string;
+  geometryMode?: GeometryChoice;
+};
 
 const LAT_NAMES = ["lat", "latitude", "y"];
 const LON_NAMES = ["lon", "lng", "longitude", "x"];
@@ -21,23 +28,39 @@ function detectLatLon(headers: string[]): boolean {
   return hasLat && hasLon;
 }
 
+// Formats "couches natives" : la géométrie est déjà portée par le format
+// lui-même (GDAL/pyogrio) — un choix de couche (s'il y en a plusieurs)
+// suffit, jamais de second appel d'inspection après ce choix.
 function isLayeredFormat(filename: string): boolean {
   const lower = filename.toLowerCase();
   return (
     lower.endsWith(".gpkg") ||
     lower.endsWith(".zip") ||
     lower.endsWith(".kml") ||
-    lower.endsWith(".kmz")
+    lower.endsWith(".kmz") ||
+    lower.endsWith(".gml")
   );
 }
 
-// XLSX est un format binaire (zip) : impossible de sniffer les en-têtes
-// côté navigateur comme pour le CSV (FileReader.readAsText) — l'inspection
-// passe par POST /uploads/inspect (InspectResponse.fields), après upload,
-// comme le flux "couches" ci-dessus, mais avec une forme de réponse et une
-// suite différentes (colonnes lat/lon, pas un choix de couche).
-function needsFieldInspection(filename: string): boolean {
+// XLSX est le seul format "à feuilles" qui n'est PAS géométrie-natif : une
+// feuille est une table quelconque, pas une couche GDAL. Un classeur
+// mono-feuille renvoie déjà layers=[]/fields=[...] en un seul appel
+// (core/app/ingestion/routes.py::inspect_upload) ; un classeur
+// multi-feuilles renvoie d'abord layers=[...]/fields=null (choix de
+// feuille), PUIS exige un second appel POST /uploads/inspect avec
+// layerName pour obtenir les champs de la feuille choisie.
+function isTabularSheetFormat(filename: string): boolean {
   return filename.toLowerCase().endsWith(".xlsx");
+}
+
+// Ces formats sont binaires (parquet) ou n'ont pas d'en-tête sniffable côté
+// navigateur comme le CSV (FileReader.readAsText) — l'inspection passe par
+// POST /uploads/inspect (InspectResponse.fields), après upload. GeoParquet
+// déjà géo-référencé renvoie fields=null (sentinelle) : voir
+// inspectFieldsThenProceed().
+function needsFieldInspection(filename: string): boolean {
+  const lower = filename.toLowerCase();
+  return lower.endsWith(".jsonl") || lower.endsWith(".xml") || lower.endsWith(".parquet");
 }
 
 export function ImportFileButton() {
@@ -48,9 +71,16 @@ export function ImportFileButton() {
   const [csvHeaders, setCsvHeaders] = useState<string[] | null>(null);
   const [latField, setLatField] = useState("");
   const [lonField, setLonField] = useState("");
+  const [geometryChoice, setGeometryChoice] = useState<GeometryChoice>("latlon");
+  const [wktField, setWktField] = useState("");
   const [uploadedKey, setUploadedKey] = useState<string | null>(null);
   const [layers, setLayers] = useState<LayerInfo[]>([]);
   const [layerName, setLayerName] = useState("");
+  // La feuille XLSX choisie en selecting-layer doit survivre jusqu'au job
+  // final si la feuille exige elle-même un choix de géométrie (selecting-
+  // geometry) — startJob()/confirmGeometry() en ont besoin, pas seulement
+  // confirmLayer().
+  const [pendingLayerName, setPendingLayerName] = useState<string | undefined>(undefined);
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState("");
   const client = useItemClient();
@@ -74,6 +104,14 @@ export function ImportFileButton() {
   const meQuery = useMe();
   const privileges = meQuery.data?.privileges;
   const canImport = privileges === undefined || privileges.includes("data.manage");
+  // GAP-29 revue finale (I2) : /admin/collections est gardée par
+  // RequirePrivilege privilege="admin.collections.manage" (routes.tsx) —
+  // le rôle Créateur (data.manage + maps.manage, celui qui exécute
+  // réellement des imports) ne porte PAS ce privilège. Naviguer là
+  // inconditionnellement après un import réussi sans géométrie envoyait
+  // l'utilisateur le plus courant sur un écran de refus d'accès juste
+  // après un succès.
+  const canManageCollections = privileges?.includes("admin.collections.manage") ?? false;
 
   if (!canImport) return null;
 
@@ -84,9 +122,12 @@ export function ImportFileButton() {
     setCsvHeaders(null);
     setLatField("");
     setLonField("");
+    setGeometryChoice("latlon");
+    setWktField("");
     setUploadedKey(null);
     setLayers([]);
     setLayerName("");
+    setPendingLayerName(undefined);
     setPhase("form");
     setError("");
   }
@@ -116,9 +157,18 @@ export function ImportFileButton() {
       if (!mountedRef.current) return;
       const job = await client.getIngestionJob(jobId);
       if (!mountedRef.current) return;
-      if (job.status === "done" && job.itemId) {
+      if (job.status === "done") {
         close();
-        navigate(`/maps/${job.itemId}`);
+        // GAP-29 : une collection sans géométrie (geometryMode="none") n'a
+        // pas de Map associée (core/app/ingestion/importer.py) — itemId
+        // est alors null, il n'y a rien à ouvrir sous /maps/{itemId}.
+        // Revue finale (I2) : /admin/collections n'est atteignable que par
+        // les utilisateurs avec admin.collections.manage — les autres
+        // (dont le rôle Créateur, celui qui importe le plus) retombent sur
+        // le catalogue racine ("/"), seule route toujours accessible.
+        navigate(
+          job.itemId ? `/maps/${job.itemId}` : canManageCollections ? "/admin/collections" : "/",
+        );
         return;
       }
       if (job.status === "error") {
@@ -133,17 +183,51 @@ export function ImportFileButton() {
     }
   }
 
-  async function startJob(key: string, chosenLayerName: string | undefined) {
+  async function startJob(
+    key: string,
+    chosenLayerName: string | undefined,
+    geometryOverride?: GeometryOverride,
+  ) {
+    const geometryPayload: GeometryOverride =
+      geometryOverride ?? (needsManualLatLon ? { latField, lonField } : {});
     const { jobId } = await client.createIngestionJob({
       key,
       filename: file!.name,
       collectionTitle: title.trim(),
-      latField: needsManualLatLon ? latField : undefined,
-      lonField: needsManualLatLon ? lonField : undefined,
       layerName: chosenLayerName,
+      ...geometryPayload,
     });
     setPhase("polling");
     await poll(jobId);
+  }
+
+  // GAP-29 : point de passage commun entre le flux mono-appel (JSON
+  // Lines/XML/GeoParquet/XLSX mono-feuille) et le second appel du flux
+  // XLSX multi-feuilles (confirmLayer) — décide, à partir des champs
+  // inspectés, s'il faut ouvrir le sélecteur de géométrie à 3 options ou
+  // démarrer le job directement.
+  async function inspectFieldsThenProceed(
+    key: string,
+    chosenLayerName: string | undefined,
+    fields: string[] | null,
+  ) {
+    // GeoParquet déjà géo-référencé : fields=null est une sentinelle
+    // distincte de "en-têtes vides", posée par le cœur
+    // (_is_geoparquet_from_bytes) — jamais d'étape de géométrie dans ce cas.
+    if (fields === null) {
+      await startJob(key, chosenLayerName);
+      return;
+    }
+    if (!detectLatLon(fields)) {
+      setUploadedKey(key);
+      setCsvHeaders(fields);
+      setGeometryChoice("latlon");
+      setWktField("");
+      setPendingLayerName(chosenLayerName);
+      setPhase("selecting-geometry");
+      return;
+    }
+    await startJob(key, chosenLayerName);
   }
 
   async function submit(e: React.FormEvent) {
@@ -169,15 +253,20 @@ export function ImportFileButton() {
         await startJob(key, found[0]?.name);
         return;
       }
-      if (needsFieldInspection(file.name)) {
-        const { fields } = await client.inspectUpload({ key, filename: file.name });
-        if (!detectLatLon(fields ?? [])) {
+      if (isTabularSheetFormat(file.name)) {
+        const { layers: found, fields } = await client.inspectUpload({ key, filename: file.name });
+        if (found.length > 1) {
           setUploadedKey(key);
-          setCsvHeaders(fields ?? []);
-          setPhase("selecting-latlon");
+          setLayers(found);
+          setPhase("selecting-layer");
           return;
         }
-        await startJob(key, undefined);
+        await inspectFieldsThenProceed(key, undefined, fields ?? null);
+        return;
+      }
+      if (needsFieldInspection(file.name)) {
+        const { fields } = await client.inspectUpload({ key, filename: file.name });
+        await inspectFieldsThenProceed(key, undefined, fields ?? null);
         return;
       }
       await startJob(key, undefined);
@@ -194,6 +283,19 @@ export function ImportFileButton() {
     setPhase("uploading");
     setError("");
     try {
+      // XLSX : la géométrie n'est jamais native à la feuille — un second
+      // appel d'inspection, scopé à la feuille choisie, est nécessaire pour
+      // savoir si ses colonnes portent une géométrie exploitable. Les
+      // formats "couches natives" (gpkg/kml/kmz/gml) n'en ont jamais besoin.
+      if (isTabularSheetFormat(file!.name)) {
+        const { fields } = await client.inspectUpload({
+          key: uploadedKey,
+          filename: file!.name,
+          layerName,
+        });
+        await inspectFieldsThenProceed(uploadedKey, layerName, fields ?? null);
+        return;
+      }
       await startJob(uploadedKey, layerName);
     } catch {
       if (!mountedRef.current) return;
@@ -202,17 +304,21 @@ export function ImportFileButton() {
     }
   }
 
-  async function confirmLatLon(e: React.FormEvent) {
+  async function confirmGeometry(e: React.FormEvent) {
     e.preventDefault();
-    if (!uploadedKey || !latField || !lonField) return;
+    if (!uploadedKey) return;
+    if (geometryChoice === "latlon" && (!latField || !lonField)) return;
+    if (geometryChoice === "wkt" && !wktField) return;
     setPhase("uploading");
     setError("");
     try {
-      // needsManualLatLon (csvHeaders !== null) est vrai ici : startJob lit
-      // latField/lonField depuis l'état, pas un paramètre dédié — même
-      // mécanique que le formulaire CSV manuel (Fichier déjà uploadé, pas
-      // de layerName pour ce format).
-      await startJob(uploadedKey, undefined);
+      const geometryOverride: GeometryOverride =
+        geometryChoice === "wkt"
+          ? { wktField, geometryMode: "wkt" }
+          : geometryChoice === "none"
+            ? { geometryMode: "none" }
+            : { latField, lonField };
+      await startJob(uploadedKey, pendingLayerName, geometryOverride);
     } catch {
       if (!mountedRef.current) return;
       setPhase("error");
@@ -223,14 +329,22 @@ export function ImportFileButton() {
   const busy = phase === "uploading" || phase === "polling";
 
   // Fermer pendant un upload/un balayage en vol laisserait la chaîne async
-  // (submit()/confirmLayer()/confirmLatLon()/poll()) tourner en arrière-plan
-  // — même patron que Tileset3DUploadButton.requestClose() : ignore Échap et
-  // le pointerdown extérieur (les deux passent par onOpenChange de Drawer)
-  // tant que busy, en plus du disabled={busy} explicite sur Annuler.
+  // (submit()/confirmLayer()/confirmGeometry()/poll()) tourner en
+  // arrière-plan — même patron que Tileset3DUploadButton.requestClose() :
+  // ignore Échap et le pointerdown extérieur (les deux passent par
+  // onOpenChange de Drawer) tant que busy, en plus du disabled={busy}
+  // explicite sur Annuler.
   function requestClose() {
     if (busy) return;
     close();
   }
+
+  const continueDisabledForGeometry =
+    geometryChoice === "latlon"
+      ? !latField || !lonField
+      : geometryChoice === "wkt"
+        ? !wktField
+        : false;
 
   return (
     <>
@@ -248,45 +362,97 @@ export function ImportFileButton() {
         title={t("importFile.button")}
         id={drawerPanel.panelId}
       >
-        {phase === "selecting-latlon" ? (
-          <form onSubmit={(e) => void confirmLatLon(e)} className="flex flex-col gap-3">
-            <label className="flex flex-col gap-1 text-sm text-ink">
-              {t("importFile.latColumn")}
-              <select
-                aria-label={t("importFile.latColumn")}
-                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
-                value={latField}
-                onChange={(e) => setLatField(e.target.value)}
-              >
-                <option value="">—</option>
-                {csvHeaders!.map((h) => (
-                  <option key={h} value={h}>
-                    {h}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm text-ink">
-              {t("importFile.lonColumn")}
-              <select
-                aria-label={t("importFile.lonColumn")}
-                className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
-                value={lonField}
-                onChange={(e) => setLonField(e.target.value)}
-              >
-                <option value="">—</option>
-                {csvHeaders!.map((h) => (
-                  <option key={h} value={h}>
-                    {h}
-                  </option>
-                ))}
-              </select>
-            </label>
+        {phase === "selecting-geometry" ? (
+          <form onSubmit={(e) => void confirmGeometry(e)} className="flex flex-col gap-3">
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-sm text-ink">{t("importFile.geometryModeLegend")}</legend>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  type="radio"
+                  name="geometryChoice"
+                  checked={geometryChoice === "latlon"}
+                  onChange={() => setGeometryChoice("latlon")}
+                />
+                {t("importFile.geometryModeLatLon")}
+              </label>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  type="radio"
+                  name="geometryChoice"
+                  checked={geometryChoice === "wkt"}
+                  onChange={() => setGeometryChoice("wkt")}
+                />
+                {t("importFile.geometryModeWkt")}
+              </label>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  type="radio"
+                  name="geometryChoice"
+                  checked={geometryChoice === "none"}
+                  onChange={() => setGeometryChoice("none")}
+                />
+                {t("importFile.geometryModeNone")}
+              </label>
+            </fieldset>
+            {geometryChoice === "latlon" && (
+              <>
+                <label className="flex flex-col gap-1 text-sm text-ink">
+                  {t("importFile.latColumn")}
+                  <select
+                    aria-label={t("importFile.latColumn")}
+                    className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                    value={latField}
+                    onChange={(e) => setLatField(e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {csvHeaders!.map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-ink">
+                  {t("importFile.lonColumn")}
+                  <select
+                    aria-label={t("importFile.lonColumn")}
+                    className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                    value={lonField}
+                    onChange={(e) => setLonField(e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {csvHeaders!.map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
+            {geometryChoice === "wkt" && (
+              <label className="flex flex-col gap-1 text-sm text-ink">
+                {t("importFile.wktColumn")}
+                <select
+                  aria-label={t("importFile.wktColumn")}
+                  className="h-9 rounded-md border border-rule bg-surface px-3 text-sm text-ink"
+                  value={wktField}
+                  onChange={(e) => setWktField(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {csvHeaders!.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" size="sm" onClick={close}>
                 {t("confirmDialog.cancel")}
               </Button>
-              <Button type="submit" size="sm" disabled={!latField || !lonField}>
+              <Button type="submit" size="sm" disabled={continueDisabledForGeometry}>
                 {t("importFile.continueButton")}
               </Button>
             </div>
@@ -325,7 +491,7 @@ export function ImportFileButton() {
               <input
                 aria-label={t("importFile.fileToImport")}
                 type="file"
-                accept=".geojson,.json,.csv,.xlsx,.kml,.kmz,.gpkg,.zip,.parquet"
+                accept=".geojson,.json,.csv,.xlsx,.kml,.kmz,.gpkg,.zip,.parquet,.jsonl,.gml,.xml"
                 onChange={(e) => void onFileChange(e)}
               />
             </label>

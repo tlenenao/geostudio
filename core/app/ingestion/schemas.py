@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -19,6 +21,8 @@ class IngestionJobCreate(BaseModel):
     latField: str | None = None
     lonField: str | None = None
     layerName: str | None = None
+    wktField: str | None = None
+    geometryMode: Literal["latlon", "wkt", "none"] | None = None
 
 
 class IngestionJobCreated(BaseModel):
@@ -35,6 +39,7 @@ class IngestionJobStatus(BaseModel):
 class InspectRequest(BaseModel):
     key: str = Field(min_length=1)
     filename: str = Field(min_length=1, max_length=255)
+    layerName: str | None = None
 
 
 class LayerInfoOut(BaseModel):

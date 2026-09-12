@@ -11,7 +11,16 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, is_quotas_enabled
 from app.db import get_session
 from app.ingestion import repository as repo
-from app.ingestion.parsers import IngestionParseError, list_layers, read_xlsx_header_fields
+from app.ingestion.parsers import (
+    IngestionParseError,
+    _is_geoparquet_from_bytes,
+    list_layers,
+    list_xlsx_sheets,
+    read_jsonlines_header_fields,
+    read_parquet_header_fields,
+    read_xlsx_header_fields,
+    read_xml_header_fields,
+)
 from app.ingestion.schemas import (
     IngestionJobCreate,
     IngestionJobCreated,
@@ -89,7 +98,40 @@ def inspect_upload(
         raise HTTPException(status_code=404, detail="objet introuvable") from exc
     if body.filename.lower().endswith(".xlsx"):
         try:
+            if body.layerName is not None:
+                fields = read_xlsx_header_fields(content, sheet_name=body.layerName)
+                return InspectResponse(layers=[], fields=fields)
+            sheets = list_xlsx_sheets(content)
+            if len(sheets) > 1:
+                return InspectResponse(
+                    layers=[
+                        LayerInfoOut(
+                            name=s.name, featureCount=s.feature_count, geometryType=s.geometry_type
+                        )
+                        for s in sheets
+                    ]
+                )
             fields = read_xlsx_header_fields(content)
+        except IngestionParseError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return InspectResponse(layers=[], fields=fields)
+    if body.filename.lower().endswith(".jsonl"):
+        try:
+            fields = read_jsonlines_header_fields(content)
+        except IngestionParseError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return InspectResponse(layers=[], fields=fields)
+    if body.filename.lower().endswith(".parquet"):
+        try:
+            if _is_geoparquet_from_bytes(content):
+                return InspectResponse(layers=[], fields=None)
+            fields = read_parquet_header_fields(content)
+        except IngestionParseError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return InspectResponse(layers=[], fields=fields)
+    if body.filename.lower().endswith(".xml"):
+        try:
+            fields = read_xml_header_fields(content)
         except IngestionParseError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return InspectResponse(layers=[], fields=fields)
@@ -156,6 +198,8 @@ def create_upload_job(
         lat_field=body.latField,
         lon_field=body.lonField,
         layer_name=body.layerName,
+        wkt_field=body.wktField,
+        geometry_mode=body.geometryMode,
     )
     write_audit(
         session,

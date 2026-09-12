@@ -27,6 +27,8 @@ class IngestionJob(Base):
     lat_field: Mapped[str | None] = mapped_column(String, nullable=True)
     lon_field: Mapped[str | None] = mapped_column(String, nullable=True)
     layer_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    wkt_field: Mapped[str | None] = mapped_column(String, nullable=True)
+    geometry_mode: Mapped[str | None] = mapped_column(String, nullable=True)
     error_message: Mapped[str | None] = mapped_column(String, nullable=True)
     collection_id: Mapped[str | None] = mapped_column(String, nullable=True)
     item_id: Mapped[str | None] = mapped_column(String, nullable=True)

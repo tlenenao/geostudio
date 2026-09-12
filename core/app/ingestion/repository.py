@@ -25,6 +25,8 @@ def create_job(
     lat_field: str | None,
     lon_field: str | None,
     layer_name: str | None = None,
+    wkt_field: str | None = None,
+    geometry_mode: str | None = None,
 ) -> IngestionJob:
     job = IngestionJob(
         id=uuid.uuid4().hex,
@@ -37,6 +39,8 @@ def create_job(
         lat_field=lat_field,
         lon_field=lon_field,
         layer_name=layer_name,
+        wkt_field=wkt_field,
+        geometry_mode=geometry_mode,
     )
     session.add(job)
     session.flush()
@@ -63,7 +67,7 @@ def mark_running(session: Session, *, job_id: str) -> None:
     session.flush()
 
 
-def mark_done(session: Session, *, job_id: str, collection_id: str, item_id: str) -> None:
+def mark_done(session: Session, *, job_id: str, collection_id: str, item_id: str | None) -> None:
     job = session.get(IngestionJob, job_id)
     if job is None:
         return
