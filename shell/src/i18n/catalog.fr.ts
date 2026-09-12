@@ -553,6 +553,8 @@ export const fr = {
   "shareForm.createLinkButton": "Créer un lien",
   "shareForm.createLinkFailed": "Échec de la création du lien.",
   "shareForm.linkCreatedPrefix": "Lien créé : ",
+  "shareForm.embedTitle": "Intégrer",
+  "shareForm.embedSnippetAria": "Extrait de code à intégrer (iframe)",
 
   // CreateHarvestSourcePanel / EditHarvestSourcePanel (domaine harvest.*
   // déjà posé par HarvestSourcesAdminPage)
