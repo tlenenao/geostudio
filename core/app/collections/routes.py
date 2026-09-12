@@ -28,6 +28,7 @@ from app.collections.schemas import (
     EmptyCollectionCreate,
 )
 from app.configs import repository as configs_repo
+from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import core_table_names, get_session
 from app.quotas.service import check_quota_or_raise
 from app.roles.guards import has_privilege, privilege_required_error, require_privilege
@@ -442,6 +443,7 @@ def get_collection(
     collection_id: str,
     request: Request,
     user=Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session),
     introspect: Introspector = Depends(get_introspector),
     extent_provider=Depends(get_extent_provider),
@@ -450,7 +452,7 @@ def get_collection(
         user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     )
     col = get_readable_collection(
-        session, user, collection_id, can_manage_collections=can_manage_collections
+        session, user, collection_id, can_manage_collections=can_manage_collections, guest=guest
     )
     permissions = repo.collection_permissions_by_id(
         session,
@@ -489,6 +491,7 @@ def get_collection(
 def get_collection_schema(
     collection_id: str,
     user=Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session),
     introspect: Introspector = Depends(get_introspector),
 ):
@@ -496,7 +499,7 @@ def get_collection_schema(
         user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     )
     col = get_readable_collection(
-        session, user, collection_id, can_manage_collections=can_manage_collections
+        session, user, collection_id, can_manage_collections=can_manage_collections, guest=guest
     )
     try:
         info = introspect(session, col.table_name)
