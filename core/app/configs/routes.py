@@ -5,11 +5,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.dependency import get_current_user
+from app.auth.dependency import get_current_user, get_current_user_optional
 from app.configs import repository as repo
 from app.configs.alert_validation import validate_alert_payload as _validate_alert_payload
 from app.configs.bookmark_validation import validate_bookmark_payload as _validate_bookmark_payload
 from app.configs.dataset_validation import validate_dataset_payload as _validate_dataset_payload
+from app.configs.guest_access import GuestActor, authorize_guest_item_read, get_share_link_actor
 from app.configs.pipeline_validation import validate_pipeline_payload as _validate_pipeline_payload
 from app.configs.report_validation import validate_report_payload as _validate_report_payload
 from app.configs.repository import ConfigRead, RevisionInfo
@@ -354,9 +355,21 @@ def get_config_by_item(
     item_id: str,
     mode: str | None = None,
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user),
+    user: User | None = Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
 ) -> ConfigRead:
-    _require_access(session, user=user, item_id=item_id, action="read")
+    # GAP-19 (SDK d'embedding, Tâche 3) : premier chemin HTTP à accepter un
+    # jeton invité (X-Share-Link-Token, app.configs.guest_access) en plus
+    # d'un utilisateur authentifié — jamais les deux à la fois, jamais une
+    # modification de can()/decide()/get_current_user. Un utilisateur
+    # authentifié garde exactement le comportement d'avant ce chantier ;
+    # sans utilisateur, seul un jeton invité valide pour CET item évite le
+    # 404 (absence de jeton, jeton révoqué/expiré, ou item hors périmètre du
+    # jeton se comportent tous de façon identique).
+    if user is not None:
+        _require_access(session, user=user, item_id=item_id, action="read")
+    elif not authorize_guest_item_read(guest, item_id):
+        raise HTTPException(status_code=404, detail="config not found")
     result = repo.get_config_by_item(session, item_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")
