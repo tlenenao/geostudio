@@ -1230,6 +1230,112 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   plutôt que supposé). Reste hors périmètre, assumé : le blocage 3 de
   GAP-72 (CSP `script-src` pour les widgets d'extension tiers, question
   produit ouverte depuis SP-48) n'est pas concerné par ce SP.
+- **GAP-29 (reste)** — 6 formats d'import supplémentaires (13 tâches, spec
+  `docs/superpowers/specs/2026-09-06-gap29-formats-import-design.md`, plan
+  `docs/superpowers/plans/2026-09-06-gap29-formats-import.md`) : Excel
+  multi-feuilles (`list_xlsx_sheets`, réutilise `selecting-layer`), Parquet
+  non-géo (`_is_geoparquet`/`parse_parquet_tabular`, sniff de la clé `"geo"`
+  du footer plutôt qu'une inspection de schéma complète), JSON Lines
+  (`parse_jsonlines`), CSV/WKT (mode `wkt` de `parse_csv_latlon`),
+  GML/INSPIRE (`parse_gml`, traité comme KML — driver GDAL, réutilise
+  `_read_features`), XML générique (`parse_xml_generic`, heuristique
+  d'élément le plus répété via BFS, `defusedxml.ElementTree` uniquement —
+  jamais `xml.etree` nu, XXE). Fonction pivot partagée `GeometryMode`
+  (dataclass `kind: "latlon"|"wkt"|"none"`)/`extract_geometry` posée en
+  Tâche 2, réutilisée sans divergence par CSV/XLSX/GML/JSON
+  Lines/Parquet/XML (10 branches de dispatch au total dans
+  `run_import` : geojson/json, csv, xlsx, gpkg, zip, kml/kmz, gml, jsonl,
+  xml, parquet). Une collection sans géométrie ne crée plus de
+  Map/Item/Config (`ImportResult.item_id: str | None`, précédent :
+  `register_collection`, le flux admin, ne le faisait déjà pas) ;
+  `ImportFileButton` (nouvelle phase `selecting-geometry`, sélecteur
+  latlon/wkt/none) navigue vers `/admin/collections` dans ce cas au lieu de
+  rester en sondage infini. Migration 0041 (`ingestion_jobs.wkt_field`/
+  `geometry_mode`) écrite à la main — **trouvaille Tâche 11, hors
+  périmètre de cette tâche, signalée sans être réparée** : `alembic
+  revision` est cassé sur tout le dépôt (`script.py.mako` jamais commité).
+  Fixtures de test réelles téléchargées (OSGeo/gdal `archsites.gml` MIT,
+  apache/poi `TwoSheetsNoneHidden.xlsx` Apache-2.0, openai/openai-cookbook
+  `scifact_claims_sample.jsonl` MIT tronqué, microsoft/aspire `books.xml`
+  MIT — licences vérifiées) plutôt que synthétiques, sous
+  `core/tests/fixtures/ingestion/`. **Défauts réels trouvés et corrigés en
+  cours de plan, pas de simples écarts de texte (piège CLAUDE.md n°3)** :
+  KeyError→422 propre sur un `layerName` XLSX inconnu (Task 5) ;
+  `_PARQUET_ERRORS` — `pyarrow.ArrowIOError` n'hérite PAS d'`ArrowException`
+  contrairement à l'hypothèse initiale, les deux branches du tuple
+  d'exceptions sont réellement nécessaires (Task 9) ; un payload XXE lève
+  `defusedxml.common.EntitiesForbidden`, PAS une sous-classe de
+  `ParseError` (MRO vérifié : `EntitiesForbidden`→`DefusedXmlException`→
+  `ValueError`) — le `except ParseError` seul l'aurait laissé fuiter en 500
+  non catché (Task 10) ; `mark_done(item_id: str)` élargi en `str | None`
+  et `geom_types` filtré (`if geom is not None`) pour le chemin sans
+  géométrie, sans quoi `AttributeError` (Task 11). **Clôture (Task 13,
+  2026-09-12)** : diff `openapi.json`/`core-schema.d.ts` **vide** — déjà
+  régénéré par la Task 11 (`InspectRequest.layerName`,
+  `IngestionJobCreate.wktField`/`geometryMode`), rien n'a dérivé depuis.
+  Suite finale cœur (conteneur PostGIS jetable dédié `gap29-task13-postgis`,
+  `--cov=app --cov-report=xml`) : **2873 passed/10 failed/6 skipped**
+  (5 qgis + 1 snowflake, sidecar/émulateur absents de cet environnement,
+  attendu) en 14 min 47 — **les 10 échecs tous confirmés préexistants et
+  sans rapport** (`git diff origin/dev...HEAD --stat -- core/` ne touche
+  que `app/ingestion/*`/la migration/les fixtures/tests d'ingestion,
+  aucun des fichiers en échec) : 2×`test_cdc_consumer_postgis.py`
+  (conteneur jetable sans `wal_level=logical`, même limite que SP-62) ;
+  `test_deployability.py::test_every_core_env_var_is_wired_to_a_service`
+  (`CORE_EMBEDDING_EGRESS_ALLOWLIST`, domaine SP-7, documenté depuis
+  SP-59/SP-62) ; `test_feature_health_coverage.py::
+  test_core_rates_are_keyed_on_repo_relative_paths` — artefact d'ordonnancement
+  de CETTE exécution (le test lit `core/coverage.xml`, écrit seulement à la
+  sortie du process par `--cov-report=xml` : rejoué seul une fois le
+  fichier présent, passe) ; 4×`test_feature_health_debt.py` +
+  `test_feature_health_scoring.py::test_quality_facts_read_the_real_repository`
+  (bug préexistant du parseur `open_gaps()`/`open_revs()` documenté par
+  SP-62/GAP-16, non corrigé, hors périmètre d'un plan de clôture
+  documentaire) ; `test_features_rls.py::test_scope_releases_role_on_exception`
+  — **nouvelle trouvaille d'environnement** : ce test attend
+  `current_user == "gis"` après `RESET ROLE`, hypothèse valide seulement si
+  la connexion de test se logue sous l'utilisateur `gis` (convention du
+  conteneur `postgis-test` partagé/CI) ; le conteneur jetable dédié à cette
+  tâche a été démarré avec des identifiants `postgres:postgres` — `RESET
+  ROLE` revient donc légitimement à `postgres`, pas `gis` ; reproduit en
+  isolation sur ce même conteneur (donc pas une contention de session
+  concurrente), non lié au code de ce plan (`app/features/rls.py` hors
+  diff), à rapprocher de la classe déjà documentée « conteneur jetable ≠
+  convention `postgis-test` » (`wal_level`, colonnes SP-41/42 manquantes).
+  Couverture cœur 94,28 % (seuil 85, en hausse vs 94,15 % SP-59) ;
+  ruff/ruff format/mypy --strict (6 modules)/lint-imports tous verts.
+  Shell : 240 fichiers/2135 tests, tous passés ; lint/format verts (1
+  warning React-hooks préexistant, sans rapport) ; couverture 89,52 %
+  lignes/87,44 % statements — **sous les seuils committés** (89,80/87,70),
+  confirmé préexistant et sans rapport (`SecretParamSelect.tsx`, jamais
+  touché par ce plan, même dérive documentée par le GAP-16 précédent,
+  déjà sous seuil avant ce plan) ; `npm run build` propre, bundle
+  627,8 Ko (seuil 630). E2E ingestion ciblée (`ingestion.spec.ts`,
+  `ingestion-gpkg.spec.ts`, `ingestion-xlsx.spec.ts`) 4/4 ; E2E complète
+  171 passed/3 failed/4 skipped — les 3 confirmés sans rapport : 2×
+  `triptych-narrow.spec.ts` (« Paramètres ») ancrent sur le texte
+  pré-i18n `SettingsComingSoonPage`, déjà corrigé sur `origin/dev`
+  (commit `92c48f54`, postérieur au point de fork `e2c0a219` de ce
+  worktree — non rebasé, hors périmètre d'un plan de clôture documentaire) ;
+  1×`external-widget.spec.ts` (assertion de couleur calculée), rejoué seul
+  et vert — flake sous charge parallèle, classe déjà documentée. Pas de
+  nouvelle E2E ajoutée pour les 6 formats (décision assumée : couverture
+  unitaire déjà large côté `test_ingestion_parsers.py`/
+  `test_ingestion_importer.py`/`test_ingestion_routes.py` côté cœur et
+  `ImportFileButton.test.tsx` côté shell — budget E2E de ce plan non
+  extensible à ce stade). `feature_health_cli.py --check` vert, aucune
+  surface non inventoriée (aucune route REST/outil MCP/route shell
+  nouvelle — seulement des branches de format sur `POST /uploads`/
+  `POST /uploads/inspect`, déjà inventoriées), santé médiane 97,2
+  (plancher 96,0). **GAP-29 reste Partiel, jamais Fermé** :
+  `docs/revue/2026-09-04-analyse-gaps.md` distinguait déjà deux volets
+  sous ce même identifiant — le volet « formats manquants » (ce plan +
+  GAP-09/SP-56) est désormais couvert en détail, mais la ligne du tableau
+  d'état elle-même le formule depuis l'origine comme un écart de
+  *positionnement produit* face au marché (450+ connecteurs FME) « non
+  fermable par du code » — ce second volet n'a reçu aucune décision
+  produit nouvelle et reste ouvert tel quel ; la ligne `REV-123` du
+  backlog (miroir exact) mise à jour dans le même commit.
 
 ### Conventions tranchées (2026-09-01)
 
