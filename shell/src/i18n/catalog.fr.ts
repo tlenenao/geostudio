@@ -284,6 +284,10 @@ export const fr = {
   "appRuntime.saveView": "Enregistrer la vue",
   "appRuntime.viewNameLabel": "Nom de la vue",
 
+  // EmbedPage (GAP-19)
+  "embed.linkExpiredOrRevoked": "Ce lien de partage est expiré ou révoqué.",
+  "embed.notEmbeddable": "Cette ressource ne peut pas être intégrée.",
+
   // CollectionsAdminPage
   "collectionsAdmin.title": "Collections",
   "collectionsAdmin.registerTable": "Enregistrer une table",
