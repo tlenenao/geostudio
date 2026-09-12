@@ -956,9 +956,26 @@ def test_parse_jsonlines_latlon_mode():
 
 
 def test_read_jsonlines_header_fields_samples_first_lines():
+    # "id" est renommé "jsonl_id" (revue finale GAP-29, I1) : ce fixture
+    # porte une clé "id" réservée, exactement comme parse_jsonlines le
+    # verrait au moment réel de l'import.
     content = (_FIXTURES / "scifact_claims_sample.jsonl").read_bytes()
     fields = read_jsonlines_header_fields(content, sample_lines=3)
-    assert "id" in fields and "claim" in fields
+    assert "jsonl_id" in fields and "claim" in fields
+    assert "id" not in fields
+
+
+def test_read_jsonlines_header_fields_renames_reserved_keys():
+    """Revue finale GAP-29, I1 : read_jsonlines_header_fields (utilisée par
+    POST /uploads/inspect pour peupler le sélecteur de champ de l'UI)
+    n'appliquait pas _rename_reserved_property_keys, contrairement à
+    parse_jsonlines (le parseur réel) — un choix de la clé brute "id" dans
+    le sélecteur échouait ensuite avec "valeur manquante" puisque le vrai
+    import ne voit jamais que "jsonl_id"."""
+    content = b'{"id": "abc", "name": "Paris"}\n'
+    fields = read_jsonlines_header_fields(content)
+    assert "jsonl_id" in fields
+    assert "id" not in fields
 
 
 def test_parse_jsonlines_latlon_auto_detected_from_field_names():

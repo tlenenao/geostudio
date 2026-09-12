@@ -526,7 +526,17 @@ def parse_jsonlines(
 def read_jsonlines_header_fields(content: bytes, sample_lines: int = 20) -> list[str]:
     """Union des clés des N premières lignes non vides — jamais tout le
     fichier (utilisé par POST /uploads/inspect uniquement ; le job d'import
-    réel, parse_jsonlines, traite lui la totalité des lignes)."""
+    réel, parse_jsonlines, traite lui la totalité des lignes).
+
+    Applique `_rename_reserved_property_keys` à chaque ligne échantillonnée,
+    comme parse_jsonlines le fait déjà — sans quoi le sélecteur de champ de
+    l'UI pouvait proposer une clé brute (« geom », « id »…) que le parseur
+    réel a déjà renommée en jsonl_geom/jsonl_id au moment où
+    extract_geometry s'exécute, faisant échouer le choix de l'utilisateur
+    avec un « valeur manquante » incompréhensible (revue finale GAP-29,
+    I1). Ne délègue PAS à parse_jsonlines (qui traite tout le fichier) :
+    l'échantillonnage à `sample_lines` reste un choix de perf documenté et
+    distinct, propre à cette fonction d'inspection."""
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
@@ -541,6 +551,7 @@ def read_jsonlines_header_fields(content: bytes, sample_lines: int = 20) -> list
         except json.JSONDecodeError as exc:
             raise IngestionParseError(f"JSON invalide dans l'échantillon : {exc}") from exc
         if isinstance(row, dict):
+            row = _rename_reserved_property_keys(row, "jsonl")
             for key in row:
                 fields.setdefault(key, None)
         seen += 1
