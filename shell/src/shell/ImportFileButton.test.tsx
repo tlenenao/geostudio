@@ -27,6 +27,7 @@ function Harness({ children }: { children: ReactNode }) {
           {children}
           <Routes>
             <Route path="/maps/:pk" element={<MapProbe />} />
+            <Route path="/admin/collections" element={<div>collections-probe</div>} />
           </Routes>
         </MemoryRouter>
       </ItemClientProvider>
@@ -363,7 +364,15 @@ function parquetFile(name = "villes.parquet") {
   return new File(["fake-parquet-bytes"], name, { type: "application/octet-stream" });
 }
 
-test("SP-56 : GeoParquet ne passe par aucune étape d'inspection, job créé directement", async () => {
+test("GAP-29 : GeoParquet géo-référencé (fields=null) démarre le job sans étape de géométrie", async () => {
+  // Correctif d'un test SP-56 dont la prémisse ("aucune inspection") est
+  // invalidée par ce même chantier (GAP-29/Task 11-12) : le cœur inspecte
+  // désormais TOUJOURS un .parquet (POST /uploads/inspect) pour distinguer,
+  // via une sentinelle fields=null, un GeoParquet déjà géo-référencé (sniff
+  // GDAL, aucune étape de géométrie à montrer) d'un Parquet tabulaire ordi-
+  // naire (fields=[...], passe par le sélecteur de géométrie comme les
+  // autres formats tabulaires). "Aucun appel d'inspection" n'a jamais été
+  // la garantie voulue ; "aucune étape de géométrie affichée" l'est.
   let inspectCalled = false;
   server.use(
     http.post("https://core.test/v1/uploads/presign", () =>
@@ -372,7 +381,7 @@ test("SP-56 : GeoParquet ne passe par aucune étape d'inspection, job créé dir
     http.put("https://minio.test/upload-8", () => new HttpResponse(null, { status: 200 })),
     http.post("https://core.test/v1/uploads/inspect", () => {
       inspectCalled = true;
-      return HttpResponse.json({ layers: [] });
+      return HttpResponse.json({ layers: [], fields: null });
     }),
     http.post("https://core.test/v1/uploads", () => HttpResponse.json({ jobId: "job-8" })),
     http.get("https://core.test/v1/uploads/job-8", () =>
@@ -396,7 +405,234 @@ test("SP-56 : GeoParquet ne passe par aucune étape d'inspection, job créé dir
   await userEvent.click(screen.getByRole("button", { name: "Importer" }));
 
   await waitFor(() => expect(screen.getByText("map-104")).toBeInTheDocument());
-  expect(inspectCalled).toBe(false);
+  expect(inspectCalled).toBe(true);
+  expect(screen.queryByLabelText("Aucune géométrie")).not.toBeInTheDocument();
+});
+
+function jsonlFile(name = "villes.jsonl") {
+  return new File(['{"nom":"a","wkt_col":"POINT(1 2)"}\n'], name, {
+    type: "application/jsonl",
+  });
+}
+
+test("GAP-29 : selecting-geometry propose lat/lon, WKT et aucune géométrie ; mode « aucune » envoie geometryMode=none", async () => {
+  server.use(
+    http.post("https://core.test/v1/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-10", key: "t/gap29-villes.jsonl" }),
+    ),
+    http.put("https://minio.test/upload-10", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/v1/uploads/inspect", () =>
+      HttpResponse.json({ layers: [], fields: ["nom", "wkt_col"] }),
+    ),
+    http.post("https://core.test/v1/uploads", async ({ request }) => {
+      const body = (await request.json()) as {
+        geometryMode?: string;
+        latField?: string;
+        lonField?: string;
+        wktField?: string;
+      };
+      expect(body.geometryMode).toBe("none");
+      expect(body.latField).toBeUndefined();
+      expect(body.lonField).toBeUndefined();
+      expect(body.wktField).toBeUndefined();
+      return HttpResponse.json({ jobId: "job-10" });
+    }),
+    http.get("https://core.test/v1/uploads/job-10", () =>
+      HttpResponse.json({
+        status: "done",
+        errorMessage: null,
+        collectionId: "ingest_none",
+        itemId: null,
+      }),
+    ),
+  );
+
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), jsonlFile());
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "Villes JSONL");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+
+  await waitFor(() => expect(screen.getByLabelText("Aucune géométrie")).toBeInTheDocument());
+  expect(screen.getByLabelText("Colonnes latitude/longitude")).toBeInTheDocument();
+  expect(screen.getByLabelText("Colonne WKT unique")).toBeInTheDocument();
+  await userEvent.click(screen.getByLabelText("Aucune géométrie"));
+  await userEvent.click(screen.getByRole("button", { name: "Continuer" }));
+
+  // GAP-29 : job "done" avec itemId=null (collection sans géométrie, pas de
+  // Map associée) — poll() navigue vers /admin/collections, pas /maps/{id}.
+  await waitFor(() => expect(screen.getByText("collections-probe")).toBeInTheDocument());
+});
+
+test("GAP-29 : selecting-geometry en mode WKT envoie geometryMode=wkt et wktField", async () => {
+  server.use(
+    http.post("https://core.test/v1/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-14", key: "t/gap29-wkt.jsonl" }),
+    ),
+    http.put("https://minio.test/upload-14", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/v1/uploads/inspect", () =>
+      HttpResponse.json({ layers: [], fields: ["nom", "wkt_col"] }),
+    ),
+    http.post("https://core.test/v1/uploads", async ({ request }) => {
+      const body = (await request.json()) as {
+        geometryMode?: string;
+        wktField?: string;
+        latField?: string;
+      };
+      expect(body.geometryMode).toBe("wkt");
+      expect(body.wktField).toBe("wkt_col");
+      expect(body.latField).toBeUndefined();
+      return HttpResponse.json({ jobId: "job-14" });
+    }),
+    http.get("https://core.test/v1/uploads/job-14", () =>
+      HttpResponse.json({
+        status: "done",
+        errorMessage: null,
+        collectionId: "ingest_wkt",
+        itemId: "107",
+      }),
+    ),
+  );
+
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), jsonlFile("wkt.jsonl"));
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "Villes WKT");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+
+  await waitFor(() => expect(screen.getByLabelText("Colonne WKT unique")).toBeInTheDocument());
+  await userEvent.click(screen.getByLabelText("Colonne WKT unique"));
+  await userEvent.selectOptions(screen.getByLabelText("Colonne WKT"), "wkt_col");
+  await userEvent.click(screen.getByRole("button", { name: "Continuer" }));
+
+  await waitFor(() => expect(screen.getByText("map-107")).toBeInTheDocument());
+});
+
+test("GAP-29 : XLSX multi-feuilles inspecte spécifiquement la feuille choisie (2 appels distincts)", async () => {
+  const inspectCalls: Array<{ layerName?: string }> = [];
+  server.use(
+    http.post("https://core.test/v1/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-12", key: "t/gap29-multi.xlsx" }),
+    ),
+    http.put("https://minio.test/upload-12", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/v1/uploads/inspect", async ({ request }) => {
+      const body = (await request.json()) as { layerName?: string };
+      inspectCalls.push(body);
+      if (body.layerName) {
+        return HttpResponse.json({ layers: [], fields: ["lat", "lon"] });
+      }
+      return HttpResponse.json({
+        layers: [
+          { name: "Feuil1", featureCount: 3, geometryType: "Tabular" },
+          { name: "Feuil2", featureCount: 5, geometryType: "Tabular" },
+        ],
+        fields: null,
+      });
+    }),
+    http.post("https://core.test/v1/uploads", async ({ request }) => {
+      const body = (await request.json()) as { layerName?: string; latField?: string };
+      expect(body.layerName).toBe("Feuil1");
+      expect(body.latField).toBeUndefined();
+      return HttpResponse.json({ jobId: "job-12" });
+    }),
+    http.get("https://core.test/v1/uploads/job-12", () =>
+      HttpResponse.json({
+        status: "done",
+        errorMessage: null,
+        collectionId: "ingest_multi_xlsx",
+        itemId: "105",
+      }),
+    ),
+  );
+
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), xlsxFile("multi.xlsx"));
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "Multi XLSX");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+
+  await waitFor(() => expect(screen.getByLabelText("Couche à importer")).toBeInTheDocument());
+  await userEvent.selectOptions(screen.getByLabelText("Couche à importer"), "Feuil1");
+  await userEvent.click(screen.getByRole("button", { name: "Continuer" }));
+
+  await waitFor(() => expect(screen.getByText("map-105")).toBeInTheDocument());
+  expect(inspectCalls).toHaveLength(2);
+  expect(inspectCalls[0]?.layerName).toBeUndefined();
+  expect(inspectCalls[1]?.layerName).toBe("Feuil1");
+});
+
+test("GAP-29 : XLSX multi-feuilles sans lat/lon détectables sur la feuille choisie ouvre selecting-geometry", async () => {
+  server.use(
+    http.post("https://core.test/v1/uploads/presign", () =>
+      HttpResponse.json({ uploadUrl: "https://minio.test/upload-13", key: "t/gap29-multi2.xlsx" }),
+    ),
+    http.put("https://minio.test/upload-13", () => new HttpResponse(null, { status: 200 })),
+    http.post("https://core.test/v1/uploads/inspect", async ({ request }) => {
+      const body = (await request.json()) as { layerName?: string };
+      if (body.layerName === "Feuil2") {
+        return HttpResponse.json({ layers: [], fields: ["nom", "wkt_col"] });
+      }
+      return HttpResponse.json({
+        layers: [
+          { name: "Feuil1", featureCount: 3, geometryType: "Tabular" },
+          { name: "Feuil2", featureCount: 5, geometryType: "Tabular" },
+        ],
+        fields: null,
+      });
+    }),
+    http.post("https://core.test/v1/uploads", async ({ request }) => {
+      const body = (await request.json()) as {
+        layerName?: string;
+        wktField?: string;
+        geometryMode?: string;
+      };
+      expect(body.layerName).toBe("Feuil2");
+      expect(body.wktField).toBe("wkt_col");
+      expect(body.geometryMode).toBe("wkt");
+      return HttpResponse.json({ jobId: "job-13" });
+    }),
+    http.get("https://core.test/v1/uploads/job-13", () =>
+      HttpResponse.json({
+        status: "done",
+        errorMessage: null,
+        collectionId: "ingest_multi_xlsx2",
+        itemId: "106",
+      }),
+    ),
+  );
+
+  render(
+    <Harness>
+      <ImportFileButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Importer un fichier" }));
+  await userEvent.upload(screen.getByLabelText("Fichier à importer"), xlsxFile("multi2.xlsx"));
+  await userEvent.type(screen.getByLabelText("Titre de la collection"), "Multi XLSX 2");
+  await userEvent.click(screen.getByRole("button", { name: "Importer" }));
+
+  await waitFor(() => expect(screen.getByLabelText("Couche à importer")).toBeInTheDocument());
+  await userEvent.selectOptions(screen.getByLabelText("Couche à importer"), "Feuil2");
+  await userEvent.click(screen.getByRole("button", { name: "Continuer" }));
+
+  await waitFor(() => expect(screen.getByLabelText("Colonne WKT unique")).toBeInTheDocument());
+  await userEvent.click(screen.getByLabelText("Colonne WKT unique"));
+  await userEvent.selectOptions(screen.getByLabelText("Colonne WKT"), "wkt_col");
+  await userEvent.click(screen.getByRole("button", { name: "Continuer" }));
+
+  await waitFor(() => expect(screen.getByText("map-106")).toBeInTheDocument());
 });
 
 test("SP-42/F-shell-pages-01 (fusion F-shell-pages-02) : masque le bouton pour un profil sans data.manage", async () => {

@@ -602,7 +602,7 @@ export interface ItemClient {
   deleteFeature(collectionId: string, fid: string): Promise<void>;
   presignUpload(filename: string, contentType: string): Promise<{ uploadUrl: string; key: string }>;
   uploadToPresignedUrl(url: string, file: File): Promise<void>;
-  inspectUpload(input: { key: string; filename: string }): Promise<{
+  inspectUpload(input: { key: string; filename: string; layerName?: string }): Promise<{
     layers: { name: string; featureCount: number; geometryType: string }[];
     fields?: string[] | null;
   }>;
@@ -613,6 +613,8 @@ export interface ItemClient {
     latField?: string;
     lonField?: string;
     layerName?: string;
+    wktField?: string;
+    geometryMode?: "latlon" | "wkt" | "none";
   }): Promise<{ jobId: string }>;
   getIngestionJob(jobId: string): Promise<{
     status: "pending" | "running" | "done" | "error";
