@@ -13,9 +13,11 @@ from app.db import get_session
 from app.ingestion import repository as repo
 from app.ingestion.parsers import (
     IngestionParseError,
+    _is_geoparquet_from_bytes,
     list_layers,
     list_xlsx_sheets,
     read_jsonlines_header_fields,
+    read_parquet_header_fields,
     read_xlsx_header_fields,
 )
 from app.ingestion.schemas import (
@@ -115,6 +117,14 @@ def inspect_upload(
     if body.filename.lower().endswith(".jsonl"):
         try:
             fields = read_jsonlines_header_fields(content)
+        except IngestionParseError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return InspectResponse(layers=[], fields=fields)
+    if body.filename.lower().endswith(".parquet"):
+        try:
+            if _is_geoparquet_from_bytes(content):
+                return InspectResponse(layers=[], fields=None)
+            fields = read_parquet_header_fields(content)
         except IngestionParseError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return InspectResponse(layers=[], fields=fields)

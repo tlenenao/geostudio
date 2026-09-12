@@ -19,6 +19,8 @@ from app.ingestion.parsers import (
     GeometryMode,
     IngestionParseError,
     LayerInfo,
+    _is_geoparquet,
+    _is_geoparquet_from_bytes,
     detect_lat_lon_fields,
     extract_geometry,
     list_layers,
@@ -30,9 +32,11 @@ from app.ingestion.parsers import (
     parse_gpkg,
     parse_jsonlines,
     parse_kml,
+    parse_parquet_tabular,
     parse_shapefile_zip,
     parse_xlsx_sheet,
     read_jsonlines_header_fields,
+    read_parquet_header_fields,
     read_xlsx_header_fields,
 )
 
@@ -763,6 +767,68 @@ def test_parse_geoparquet_round_trips_write_geoparquet_output(tmp_path):
     assert props["titre"] == "a"
     assert props["_op"] == "insert"
     assert props["id"] == 1
+
+
+def _write_tabular_parquet(path, rows: list[dict]):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    table = pa.Table.from_pylist(rows)
+    pq.write_table(table, path)  # aucune métadonnée "geo" — non-géo par construction
+
+
+def test_is_geoparquet_false_for_plain_parquet(tmp_path):
+    path = tmp_path / "plain.parquet"
+    _write_tabular_parquet(path, [{"name": "A", "value": 1}])
+    assert _is_geoparquet(str(path)) is False
+
+
+def test_is_geoparquet_true_for_existing_geoparquet_fixture(tmp_path):
+    import geopandas as gpd
+
+    gdf = gpd.GeoDataFrame({"name": ["A"]}, geometry=[Point(1, 2)], crs="EPSG:4326")
+    path = tmp_path / "geo.parquet"
+    gdf.to_parquet(path)
+    assert _is_geoparquet(str(path)) is True
+
+
+def test_is_geoparquet_from_bytes_true_for_existing_geoparquet_fixture(tmp_path):
+    import geopandas as gpd
+
+    gdf = gpd.GeoDataFrame({"name": ["A"]}, geometry=[Point(1, 2)], crs="EPSG:4326")
+    path = tmp_path / "geo.parquet"
+    gdf.to_parquet(path)
+    assert _is_geoparquet_from_bytes(path.read_bytes()) is True
+
+
+def test_is_geoparquet_from_bytes_false_for_plain_parquet(tmp_path):
+    path = tmp_path / "plain.parquet"
+    _write_tabular_parquet(path, [{"name": "A", "value": 1}])
+    assert _is_geoparquet_from_bytes(path.read_bytes()) is False
+
+
+def test_parse_parquet_tabular_none_mode(tmp_path):
+    path = tmp_path / "plain.parquet"
+    _write_tabular_parquet(path, [{"name": "A", "value": 1}, {"name": "B", "value": 2}])
+    rows = list(parse_parquet_tabular(path.read_bytes(), GeometryMode(kind="none")))
+    assert len(rows) == 2
+    assert rows[0][0] is None
+    assert rows[0][1] == {"name": "A", "value": 1}
+
+
+def test_parse_parquet_tabular_serializes_nested_struct(tmp_path):
+    path = tmp_path / "nested.parquet"
+    _write_tabular_parquet(path, [{"name": "A", "tags": ["x", "y"]}])
+    rows = list(parse_parquet_tabular(path.read_bytes(), GeometryMode(kind="none")))
+    assert isinstance(rows[0][1]["tags"], str)
+    assert json.loads(rows[0][1]["tags"]) == ["x", "y"]
+
+
+def test_read_parquet_header_fields(tmp_path):
+    path = tmp_path / "plain.parquet"
+    _write_tabular_parquet(path, [{"name": "A", "value": 1}])
+    fields = read_parquet_header_fields(path.read_bytes())
+    assert set(fields) == {"name", "value"}
 
 
 # --- Suffixe de fichier temporaire : aucune donnée utilisateur ne doit

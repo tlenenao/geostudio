@@ -577,7 +577,11 @@ def test_inspect_upload_jsonlines_422_on_malformed_line(env):
     assert r.status_code == 422
 
 
-def test_inspect_upload_parquet_returns_400_not_concerned(env, tmp_path):
+def test_inspect_upload_geoparquet_returns_null_fields_sentinel(env, tmp_path):
+    # GAP-29 (Task 9) : un GeoParquet réel (clé "geo" des métadonnées Parquet)
+    # renvoie le même sentinel fields=None que list_layers pour les formats
+    # multi-couches — la géométrie/les couches sont déjà connues, pas de
+    # liste de champs plate à choisir avant l'import.
     import geopandas as gpd
     from shapely.geometry import Point
 
@@ -589,7 +593,38 @@ def test_inspect_upload_parquet_returns_400_not_concerned(env, tmp_path):
     r = client.post(
         "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.parquet", "filename": "villes.parquet"}
     )
-    assert r.status_code == 400
+    assert r.status_code == 200
+    body = r.json()
+    assert body["layers"] == []
+    assert body["fields"] is None
+
+
+def test_inspect_upload_tabular_parquet_returns_field_list(env, tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    table = pa.Table.from_pylist([{"nom": "Paris", "population": 2000000}])
+    path = tmp_path / "villes.parquet"
+    pq.write_table(table, path)
+    fake_s3.objects[f"{tenant.id}/k.parquet"] = path.read_bytes()
+    r = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.parquet", "filename": "villes.parquet"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["layers"] == []
+    assert isinstance(body["fields"], list)
+    assert set(body["fields"]) == {"nom", "population"}
+
+
+def test_inspect_upload_parquet_422_on_corrupt_file(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    fake_s3.objects[f"{tenant.id}/k.parquet"] = b"not a real parquet file"
+    r = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.parquet", "filename": "villes.parquet"}
+    )
+    assert r.status_code == 422
 
 
 def test_create_upload_job_accepts_layer_name(env):

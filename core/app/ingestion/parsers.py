@@ -20,6 +20,7 @@ from typing import Literal
 
 import geopandas as gpd
 import numpy as np
+import pyarrow.parquet
 import pyogrio
 import pyproj
 import shapely
@@ -42,6 +43,11 @@ _LON_NAMES = {"lon", "lng", "longitude", "x"}
 _WGS84 = pyproj.CRS.from_epsg(4326)
 _OGR_ERRORS = (DataSourceError, DataLayerError)
 _XLSX_ERRORS = (zipfile.BadZipFile, InvalidFileException)
+# pyarrow.lib.ArrowIOError hérite d'OSError, pas d'ArrowException (vérifié par
+# exécution réelle — les deux hiérarchies divergent) : les deux sont
+# nécessaires pour couvrir aussi bien un fichier tronqué/illisible qu'un
+# fichier qui n'est structurellement pas un Parquet.
+_PARQUET_ERRORS = (pyarrow.lib.ArrowException, OSError)
 
 
 def detect_lat_lon_fields(fieldnames: list[str]) -> tuple[str, str] | None:
@@ -544,6 +550,51 @@ def parse_geoparquet(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
                 raise IngestionParseError(f"entité {i} : géométrie manquante")
             props = {k: _native_value(v) for k, v in row.items() if k != geom_col}
             yield geom, props
+
+
+def _is_geoparquet(path: str) -> bool:
+    """Sniffe la clé "geo" des métadonnées Parquet (spec GeoParquet 1.0) —
+    lit le footer via read_schema, jamais les données."""
+    try:
+        schema = pyarrow.parquet.read_schema(path)
+    except _PARQUET_ERRORS as exc:
+        raise IngestionParseError(f"fichier Parquet illisible : {exc}") from exc
+    return b"geo" in (schema.metadata or {})
+
+
+def _is_geoparquet_from_bytes(content: bytes) -> bool:
+    """Variante bytes de _is_geoparquet, pour les appelants (routes.py) qui
+    n'ont pas déjà de fichier temporaire ouvert — run_import (Task 11), qui
+    lui en ouvre un pour lire les données ensuite, appelle _is_geoparquet(path)
+    directement plutôt que de rouvrir un second fichier temporaire."""
+    with _temp_file(content, ".parquet") as path:
+        return _is_geoparquet(path)
+
+
+def parse_parquet_tabular(
+    content: bytes,
+    mode: GeometryMode,
+) -> Iterator[tuple[BaseGeometry | None, dict]]:
+    with _temp_file(content, ".parquet") as path:
+        try:
+            table = pyarrow.parquet.read_table(path)
+        except _PARQUET_ERRORS as exc:
+            raise IngestionParseError(f"fichier Parquet illisible : {exc}") from exc
+        for row in table.to_pylist():
+            row = {
+                k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v)
+                for k, v in row.items()
+            }
+            yield extract_geometry(row, mode)
+
+
+def read_parquet_header_fields(content: bytes) -> list[str]:
+    with _temp_file(content, ".parquet") as path:
+        try:
+            schema = pyarrow.parquet.read_schema(path)
+        except _PARQUET_ERRORS as exc:
+            raise IngestionParseError(f"fichier Parquet illisible : {exc}") from exc
+        return list(schema.names)
 
 
 def list_layers(content: bytes, filename: str) -> list[LayerInfo]:
