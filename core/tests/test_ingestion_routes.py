@@ -554,6 +554,29 @@ def test_inspect_upload_kml_returns_layers(env):
     assert body["fields"] is None
 
 
+def test_inspect_upload_jsonlines_returns_fields(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    content = (_FIXTURES / "scifact_claims_sample.jsonl").read_bytes()
+    fake_s3.objects[f"{tenant.id}/k.jsonl"] = content
+    r = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.jsonl", "filename": "data.jsonl"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["layers"] == []
+    assert "id" in body["fields"] or "jsonl_id" in body["fields"]
+    assert "claim" in body["fields"]
+
+
+def test_inspect_upload_jsonlines_422_on_malformed_line(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    fake_s3.objects[f"{tenant.id}/k.jsonl"] = b'{"a": 1}\nnot json\n'
+    r = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.jsonl", "filename": "data.jsonl"}
+    )
+    assert r.status_code == 422
+
+
 def test_inspect_upload_parquet_returns_400_not_concerned(env, tmp_path):
     import geopandas as gpd
     from shapely.geometry import Point

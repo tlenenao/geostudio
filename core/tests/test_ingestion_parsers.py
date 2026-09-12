@@ -2,6 +2,7 @@
 import contextlib
 import datetime
 import io
+import json
 import warnings
 import zipfile
 from contextlib import contextmanager
@@ -27,9 +28,11 @@ from app.ingestion.parsers import (
     parse_geoparquet,
     parse_gml,
     parse_gpkg,
+    parse_jsonlines,
     parse_kml,
     parse_shapefile_zip,
     parse_xlsx_sheet,
+    read_jsonlines_header_fields,
     read_xlsx_header_fields,
 )
 
@@ -827,3 +830,47 @@ def test_temp_file_refuses_a_suffix_that_is_not_a_bare_extension(suffix):
     with pytest.raises(ValueError, match="suffixe"):
         with _temp_file(b"x", suffix):
             pass
+
+
+# --- JSON Lines (Task 8) --------------------------------------------------
+
+
+def test_parse_jsonlines_scalar_and_nested_values():
+    content = (_FIXTURES / "scifact_claims_sample.jsonl").read_bytes()
+    rows = list(parse_jsonlines(content, GeometryMode(kind="none")))
+    assert len(rows) == 10
+    geom, props = rows[0]
+    assert geom is None
+    # collision réservée : la clé "id" du fixture doit être renommée
+    assert "id" not in props
+    assert "jsonl_id" in props
+    # valeur imbriquée (dict/list) sérialisée en JSON compact, pas un objet
+    # Python
+    assert isinstance(props["evidence"], str)
+    json.loads(props["evidence"])  # doit rester du JSON valide
+
+
+def test_parse_jsonlines_rejects_malformed_line():
+    content = b'{"a": 1}\nnot json\n'
+    with pytest.raises(IngestionParseError, match="ligne 2"):
+        list(parse_jsonlines(content, GeometryMode(kind="none")))
+
+
+def test_parse_jsonlines_rejects_non_object_line():
+    content = b'{"a": 1}\n[1, 2, 3]\n'
+    with pytest.raises(IngestionParseError, match="objet JSON"):
+        list(parse_jsonlines(content, GeometryMode(kind="none")))
+
+
+def test_parse_jsonlines_latlon_mode():
+    content = b'{"lat": 48.85, "lon": 2.35, "name": "Paris"}\n'
+    rows = list(
+        parse_jsonlines(content, GeometryMode(kind="latlon", lat_field="lat", lon_field="lon"))
+    )
+    assert rows[0][0].equals(Point(2.35, 48.85))
+
+
+def test_read_jsonlines_header_fields_samples_first_lines():
+    content = (_FIXTURES / "scifact_claims_sample.jsonl").read_bytes()
+    fields = read_jsonlines_header_fields(content, sample_lines=3)
+    assert "id" in fields and "claim" in fields

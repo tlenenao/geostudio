@@ -464,6 +464,65 @@ def parse_gml(
             yield geom, _rename_reserved_property_keys(props, "gml")
 
 
+def parse_jsonlines(
+    content: bytes,
+    mode: GeometryMode,
+) -> Iterator[tuple[BaseGeometry | None, dict]]:
+    """Une ligne = un objet JSON. Valeurs imbriquées (dict/list) sérialisées
+    en JSON compact plutôt que déposées telles quelles (sinon un repr()
+    Python implicite via str() en aval, pas du JSON valide) ; collision
+    réservée (id/tenant_id/geom) renommée avec le préfixe "jsonl", même
+    patron que parse_kml/parse_gml (GAP-29)."""
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise IngestionParseError("encodage invalide, attendu UTF-8") from exc
+    for i, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise IngestionParseError(f"ligne {i} : JSON invalide ({exc})") from exc
+        if not isinstance(row, dict):
+            raise IngestionParseError(f"ligne {i} : chaque ligne doit être un objet JSON")
+        row = {
+            k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v)
+            for k, v in row.items()
+        }
+        row = _rename_reserved_property_keys(row, "jsonl")
+        try:
+            yield extract_geometry(row, mode)
+        except IngestionParseError as exc:
+            raise IngestionParseError(f"ligne {i} : {exc}") from exc
+
+
+def read_jsonlines_header_fields(content: bytes, sample_lines: int = 20) -> list[str]:
+    """Union des clés des N premières lignes non vides — jamais tout le
+    fichier (utilisé par POST /uploads/inspect uniquement ; le job d'import
+    réel, parse_jsonlines, traite lui la totalité des lignes)."""
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise IngestionParseError("encodage invalide, attendu UTF-8") from exc
+    fields: dict[str, None] = {}
+    seen = 0
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise IngestionParseError(f"JSON invalide dans l'échantillon : {exc}") from exc
+        if isinstance(row, dict):
+            for key in row:
+                fields.setdefault(key, None)
+        seen += 1
+        if seen >= sample_lines:
+            break
+    return list(fields.keys())
+
+
 def parse_geoparquet(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
     # PAS pyogrio : pyogrio.list_drivers()["Parquet"] vaut None dans ce build
     # (aucun driver OGR Parquet) — vérifié par exécution réelle (spec SP-56

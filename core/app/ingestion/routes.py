@@ -15,6 +15,7 @@ from app.ingestion.parsers import (
     IngestionParseError,
     list_layers,
     list_xlsx_sheets,
+    read_jsonlines_header_fields,
     read_xlsx_header_fields,
 )
 from app.ingestion.schemas import (
@@ -108,6 +109,12 @@ def inspect_upload(
                     ]
                 )
             fields = read_xlsx_header_fields(content)
+        except IngestionParseError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return InspectResponse(layers=[], fields=fields)
+    if body.filename.lower().endswith(".jsonl"):
+        try:
+            fields = read_jsonlines_header_fields(content)
         except IngestionParseError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return InspectResponse(layers=[], fields=fields)
