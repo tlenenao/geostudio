@@ -18,12 +18,14 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Literal
 
+import defusedxml.ElementTree
 import geopandas as gpd
 import numpy as np
 import pyarrow.parquet
 import pyogrio
 import pyproj
 import shapely
+from defusedxml.common import DefusedXmlException
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 from pyogrio.errors import DataLayerError, DataSourceError
@@ -595,6 +597,77 @@ def read_parquet_header_fields(content: bytes) -> list[str]:
         except _PARQUET_ERRORS as exc:
             raise IngestionParseError(f"fichier Parquet illisible : {exc}") from exc
         return list(schema.names)
+
+
+def _local_name(tag: str) -> str:
+    """Retire un préfixe d'espace de noms ('{uri}local' -> 'local') —
+    ElementTree qualifie les tags par l'URI complète dès qu'un xmlns est
+    déclaré."""
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+def _find_repeated_element(root):
+    """BFS (ordre du document) — le premier parent dont un même nom
+    d'enfant apparaît >= 2 fois gagne. Retourne (parent, tag_repete) ou
+    (None, None) si aucun ne qualifie."""
+    from collections import Counter, deque
+
+    queue = deque([root])
+    while queue:
+        parent = queue.popleft()
+        counts = Counter(_local_name(child.tag) for child in parent)
+        repeated = next((tag for tag, n in counts.items() if n >= 2), None)
+        if repeated is not None:
+            return parent, repeated
+        queue.extend(parent)
+    return None, None
+
+
+def parse_xml_generic(
+    content: bytes,
+    mode: GeometryMode,
+) -> Iterator[tuple[BaseGeometry | None, dict]]:
+    """Aucun schéma n'est supposé : le premier élément dont un même nom
+    d'enfant se répète (>= 2 fois) est considéré comme « un enregistrement »
+    (_find_repeated_element, BFS). Seuls les enfants feuilles (sans propre
+    enfant) deviennent des propriétés scalaires — un enfant structuré
+    (imbriqué) est ignoré, pas aplati. `defusedxml.ElementTree` est
+    obligatoire ici (jamais `xml.etree.ElementTree` bare) : c'est le seul
+    parseur de ce module qui lit du XML non fiable sans GDAL en dessous,
+    risque XXE réel sur un contenu uploadé par un utilisateur.
+
+    `defusedxml.ElementTree.ParseError` est en réalité le même objet que
+    `xml.etree.ElementTree.ParseError` (ré-exporté tel quel, vérifié par
+    exécution réelle) — mais une entité externe (XXE) ou un DOCTYPE interdit
+    lève `defusedxml.common.DefusedXmlException` (hérite de `ValueError`,
+    PAS de `ParseError`), sans quoi une charge XXE traverserait cette
+    fonction sans jamais devenir un IngestionParseError propre."""
+    try:
+        root = defusedxml.ElementTree.fromstring(content)
+    except (defusedxml.ElementTree.ParseError, DefusedXmlException) as exc:
+        raise IngestionParseError(f"XML invalide : {exc}") from exc
+    parent, tag = _find_repeated_element(root)
+    if parent is None:
+        raise IngestionParseError("aucun élément répété détecté — format non reconnu")
+    matching = [e for e in parent if _local_name(e.tag) == tag]
+    for i, elem in enumerate(matching, start=1):
+        row: dict = dict(elem.attrib)
+        for child in elem:
+            if len(child) == 0:  # feuille texte, pas un sous-élément structuré
+                row[_local_name(child.tag)] = (child.text or "").strip()
+        row = _rename_reserved_property_keys(row, "xml")
+        try:
+            yield extract_geometry(row, mode)
+        except IngestionParseError as exc:
+            raise IngestionParseError(f"ligne {i} : {exc}") from exc
+
+
+def read_xml_header_fields(content: bytes) -> list[str]:
+    fields: dict[str, None] = {}
+    for _geom, props in parse_xml_generic(content, GeometryMode(kind="none")):
+        for key in props:
+            fields.setdefault(key, None)
+    return list(fields.keys())
 
 
 def list_layers(content: bytes, filename: str) -> list[LayerInfo]:

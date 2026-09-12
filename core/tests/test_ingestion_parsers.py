@@ -35,9 +35,11 @@ from app.ingestion.parsers import (
     parse_parquet_tabular,
     parse_shapefile_zip,
     parse_xlsx_sheet,
+    parse_xml_generic,
     read_jsonlines_header_fields,
     read_parquet_header_fields,
     read_xlsx_header_fields,
+    read_xml_header_fields,
 )
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "ingestion"
@@ -940,3 +942,88 @@ def test_read_jsonlines_header_fields_samples_first_lines():
     content = (_FIXTURES / "scifact_claims_sample.jsonl").read_bytes()
     fields = read_jsonlines_header_fields(content, sample_lines=3)
     assert "id" in fields and "claim" in fields
+
+
+# --- XML générique (Task 10) -----------------------------------------------
+
+
+def test_parse_xml_generic_detects_repeated_book_element():
+    content = (_FIXTURES / "books.xml").read_bytes()
+    rows = list(parse_xml_generic(content, GeometryMode(kind="none")))
+    assert len(rows) > 1
+    geom, props = rows[0]
+    assert geom is None
+    assert props["author"] == "Gambardella, Matthew"
+    assert props["title"] == "XML Developer's Guide"
+    # collision réservée : l'attribut id="bk101" doit être renommé xml_id
+    assert "id" not in props
+    assert props["xml_id"] == "bk101"
+    # enfant texte multi-lignes : doit être strippé, pas laissé avec
+    # l'indentation XML brute
+    assert not props["description"].startswith("\n")
+
+
+def test_parse_xml_generic_no_repeated_element_fails_fast():
+    content = b"<root><a>1</a><b>2</b></root>"
+    with pytest.raises(IngestionParseError, match="aucun élément répété"):
+        list(parse_xml_generic(content, GeometryMode(kind="none")))
+
+
+def test_parse_xml_generic_ignores_structured_children():
+    content = b"""<catalog>
+      <item><name>A</name><nested><x>1</x></nested></item>
+      <item><name>B</name><nested><x>2</x></nested></item>
+    </catalog>"""
+    rows = list(parse_xml_generic(content, GeometryMode(kind="none")))
+    assert len(rows) == 2
+    assert "nested" not in rows[0][1]
+    assert rows[0][1]["name"] == "A"
+
+
+def test_local_name_strips_namespace_uri():
+    content = b"""<ns:catalog xmlns:ns="http://example.org">
+      <ns:item><ns:name>A</ns:name></ns:item>
+      <ns:item><ns:name>B</ns:name></ns:item>
+    </ns:catalog>"""
+    rows = list(parse_xml_generic(content, GeometryMode(kind="none")))
+    assert rows[0][1] == {"name": "A"}
+
+
+def test_parse_xml_generic_latlon_mode():
+    content = b"""<rows>
+      <row><lat>48.85</lat><lon>2.35</lon></row>
+      <row><lat>45.75</lat><lon>4.85</lon></row>
+    </rows>"""
+    rows = list(
+        parse_xml_generic(content, GeometryMode(kind="latlon", lat_field="lat", lon_field="lon"))
+    )
+    assert rows[0][0].equals(Point(2.35, 48.85))
+
+
+def test_parse_xml_generic_rejects_malformed_xml():
+    content = b"<not valid xml"
+    with pytest.raises(IngestionParseError, match="XML invalide"):
+        list(parse_xml_generic(content, GeometryMode(kind="none")))
+
+
+def test_parse_xml_generic_rejects_xxe_payload_without_crashing():
+    """defusedxml lève defusedxml.common.EntitiesForbidden pour une entité
+    externe (XXE) — PAS defusedxml.ElementTree.ParseError (vérifié par
+    exécution réelle : EntitiesForbidden hérite de ValueError, pas de
+    ParseError). Sans un except dédié, cette exception traverserait
+    parse_xml_generic sans jamais devenir un IngestionParseError propre —
+    piège CLAUDE.md n°3, à ne pas supposer sur la seule foi du nom de
+    l'exception attendue par les tests de malformation."""
+    content = (
+        b'<?xml version="1.0"?>'
+        b'<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>'
+        b"<foo>&xxe;</foo>"
+    )
+    with pytest.raises(IngestionParseError, match="XML invalide"):
+        list(parse_xml_generic(content, GeometryMode(kind="none")))
+
+
+def test_read_xml_header_fields():
+    content = (_FIXTURES / "books.xml").read_bytes()
+    fields = read_xml_header_fields(content)
+    assert "author" in fields and "title" in fields and "xml_id" in fields

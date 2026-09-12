@@ -627,6 +627,29 @@ def test_inspect_upload_parquet_422_on_corrupt_file(env):
     assert r.status_code == 422
 
 
+def test_inspect_upload_xml_generic_returns_fields(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    content = (_FIXTURES / "books.xml").read_bytes()
+    fake_s3.objects[f"{tenant.id}/k.xml"] = content
+    r = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.xml", "filename": "catalog.xml"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["layers"] == []
+    assert "author" in body["fields"]
+    assert "xml_id" in body["fields"]
+
+
+def test_inspect_upload_xml_generic_422_on_no_repeated_element(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    fake_s3.objects[f"{tenant.id}/k.xml"] = b"<root><a>1</a><b>2</b></root>"
+    r = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.xml", "filename": "flat.xml"}
+    )
+    assert r.status_code == 422
+
+
 def test_create_upload_job_accepts_layer_name(env):
     client, Session, tenant, *_ = env
     r = client.post(
