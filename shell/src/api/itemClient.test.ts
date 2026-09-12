@@ -26,6 +26,68 @@ function makeClient(token: string | undefined = "test-token") {
   });
 }
 
+function makeClientWithShareToken(shareToken: string | undefined) {
+  return createItemClient({
+    coreUrl: "https://core.test",
+    getToken: () => undefined,
+    getShareLinkToken: () => shareToken,
+  });
+}
+
+test("request() attaches X-Share-Link-Token but no Authorization when only a share token is set", async () => {
+  let auth: string | null = null;
+  let shareHeader: string | null = null;
+  server.use(
+    http.get("https://core.test/v1/items/it1", ({ request }) => {
+      auth = request.headers.get("authorization");
+      shareHeader = request.headers.get("x-share-link-token");
+      return HttpResponse.json({
+        pk: "it1",
+        resourceType: "app",
+        title: "T",
+        abstract: "",
+        owner: "o",
+        thumbnailUrl: null,
+        date: "",
+        configId: "c1",
+        isPublished: false,
+        license: "",
+        language: "fr",
+        permissions: {},
+      });
+    }),
+  );
+  await makeClientWithShareToken("share-tok-1").getItem("it1");
+  expect(auth).toBeNull();
+  expect(shareHeader).toBe("share-tok-1");
+});
+
+test("request() attaches no X-Share-Link-Token when getShareLinkToken is absent", async () => {
+  let shareHeader: string | null = "not-checked";
+  server.use(
+    http.get("https://core.test/v1/items", ({ request }) => {
+      shareHeader = request.headers.get("x-share-link-token");
+      return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
+    }),
+  );
+  await makeClient("abc").listItems({});
+  expect(shareHeader).toBeNull();
+});
+
+test("createShareLink returns the raw token alongside url/expiresAt", async () => {
+  server.use(
+    http.post("https://core.test/v1/items/it1/share-links", () =>
+      HttpResponse.json({
+        url: "https://core.test/v1/share-links/tok-123",
+        expiresAt: "2026-10-01",
+        token: "tok-123",
+      }),
+    ),
+  );
+  const link = await makeClient("abc").createShareLink("it1", 7);
+  expect(link.token).toBe("tok-123");
+});
+
 test("listItems sends the bearer token and scope", async () => {
   let auth: string | null = null;
   let url: string | null = null;

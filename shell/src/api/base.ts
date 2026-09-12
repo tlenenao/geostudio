@@ -117,6 +117,7 @@ export type ResolvedDataset = {
 export type ItemClientBase = {
   coreUrl: string;
   getToken: () => string | undefined;
+  getShareLinkToken?: () => string | undefined;
   request<T>(method: string, path: string, body?: unknown): Promise<T>;
   resolveDataset(pk: string): Promise<ResolvedDataset>;
   datasetCache: Map<string, ResolvedDataset>;
@@ -171,6 +172,7 @@ export async function requestBlob(
 export function createBase(opts: {
   coreUrl: string;
   getToken: () => string | undefined;
+  getShareLinkToken?: () => string | undefined;
 }): ItemClientBase {
   // SP-57b : point unique de redéfinition — l'API du cœur est versionnée
   // sous /v1 (health/mcp exceptés, jamais atteints par ce client). Tous les
@@ -180,12 +182,14 @@ export function createBase(opts: {
   // features.ts) lisent ce champ déjà versionné — aucun besoin d'éditer ces
   // fichiers individuellement (cf. spec SP-57b §1.3/§2.4).
   const coreUrl = `${opts.coreUrl}/v1`;
-  const { getToken } = opts;
+  const { getToken, getShareLinkToken } = opts;
 
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const token = getToken();
+    const shareToken = getShareLinkToken?.();
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
+    if (shareToken) headers["X-Share-Link-Token"] = shareToken;
     if (body !== undefined) headers["Content-Type"] = "application/json";
     const res = await fetch(`${coreUrl}${path}`, {
       method,
@@ -257,7 +261,11 @@ export function createBase(opts: {
 
   async function fetchGeoJsonFeatures(url: string): Promise<DataRecord[]> {
     const token = getToken();
-    const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    const shareToken = getShareLinkToken?.();
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    if (shareToken) headers["X-Share-Link-Token"] = shareToken;
+    const res = await fetch(url, { headers });
     if (!res.ok) throw new Error(`Request failed: ${res.status} features`);
     const data = (await res.json()) as {
       features?: {
@@ -355,6 +363,7 @@ export function createBase(opts: {
   return {
     coreUrl,
     getToken,
+    getShareLinkToken,
     request,
     resolveDataset,
     datasetCache,

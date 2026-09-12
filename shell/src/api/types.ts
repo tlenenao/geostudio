@@ -469,7 +469,10 @@ export interface ItemClient {
   setSharing(pk: string, sharing: Sharing): Promise<void>;
   // GAP-12 (chantier 4.23) : lien de partage à échéance, révocable — distinct
   // du partage groupe/rôle plat ci-dessus (présenté à un tiers externe).
-  createShareLink(itemId: string, ttlDays: number): Promise<{ url: string; expiresAt: string }>;
+  createShareLink(
+    itemId: string,
+    ttlDays: number,
+  ): Promise<{ url: string; expiresAt: string; token: string }>;
   listShareLinks(itemId: string): Promise<{ id: string; expiresAt: string; revoked: boolean }[]>;
   revokeShareLink(itemId: string, linkId: string): Promise<void>;
   listLayerSources(params?: { q?: string }): Promise<LayerSource[]>;
@@ -647,6 +650,11 @@ export interface ItemClient {
   // bearer token — never trust a bare "/tileset3d/" substring match, since
   // layer URLs are freeform (an author can type any external URL).
   getCoreUrl?(): string;
+  // Optionnel : présent uniquement sur l'ItemClient construit par la page
+  // d'embed (/embed/:token, GAP-19) — le jeton de lien de partage voyage sur
+  // un en-tête dédié, jamais sur Authorization (cf. getAuthToken ci-dessus,
+  // qui reste undefined dans ce cas). Absent sur tout ItemClient normal.
+  getShareLinkToken?(): string | undefined;
   listHostedTerrain3DSources(q?: string): Promise<{ id: string; title: string }[]>;
   // Dédiée, jamais presignUpload() : la générique signe dans
   // S3_UPLOADS_BUCKET alors que le worker de conversion lit le DEM brut dans
