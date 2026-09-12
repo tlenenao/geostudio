@@ -70,3 +70,14 @@ regexes = [
   '''^attachment\.s3_key$''',
   '''^S3_ATTACHMENTS_BUCKET$''',
 ]
+
+[[allowlists]]
+description = "Faux positif `curl-auth-header` sur le jeton de test en dur `ci-stac-validator` (job `stac-conformance` de .github/workflows/ci.yml, introduit par e050d33f/SP-61 — vérifie la conformité STAC en CI) : ce n'est pas un identifiant réel mais une valeur bidon acceptée uniquement en `CORE_AUTH_MODE=mock`, jamais utilisable contre une instance réelle. Bloc séparé et `condition = \"AND\"` (même patron que les blocs ci-dessus) : sans eux, un `paths` ou une regex seuls exempteraient curl-auth-header sur tout le dépôt, ou toute règle sur ce seul fichier."
+targetRules = ["curl-auth-header"]
+condition = "AND"
+paths = [
+  '''^\.github/workflows/ci\.yml$''',
+]
+regexes = [
+  '''^ci-stac-validator$''',
+]
