@@ -26,7 +26,7 @@ from app.ingestion.parsers import (
     parse_gpkg,
     parse_kml,
     parse_shapefile_zip,
-    parse_xlsx_latlon,
+    parse_xlsx_sheet,
 )
 
 
@@ -462,53 +462,77 @@ def _xlsx_bytes(rows: list[list], headers: list[str]) -> bytes:
     return buf.getvalue()
 
 
-def test_parse_xlsx_latlon_auto_detects_columns():
+def test_parse_xlsx_sheet_auto_detects_columns():
     content = _xlsx_bytes([["Paris", 48.85, 2.35]], ["nom", "lat", "lon"])
-    rows = list(parse_xlsx_latlon(content, None, None))
+    rows = list(
+        parse_xlsx_sheet(content, None, GeometryMode(kind="latlon", lat_field=None, lon_field=None))
+    )
     assert len(rows) == 1
     geom, props = rows[0]
     assert (geom.x, geom.y) == (2.35, 48.85)
     assert props == {"nom": "Paris"}
 
 
-def test_parse_xlsx_latlon_uses_explicit_field_names():
+def test_parse_xlsx_sheet_uses_explicit_field_names():
     content = _xlsx_bytes([["Paris", 48.85, 2.35]], ["nom", "y_coord", "x_coord"])
-    rows = list(parse_xlsx_latlon(content, "y_coord", "x_coord"))
+    rows = list(
+        parse_xlsx_sheet(
+            content, None, GeometryMode(kind="latlon", lat_field="y_coord", lon_field="x_coord")
+        )
+    )
     geom, _props = rows[0]
     assert (geom.x, geom.y) == (2.35, 48.85)
 
 
-def test_parse_xlsx_latlon_raises_when_columns_cannot_be_detected():
+def test_parse_xlsx_sheet_raises_when_columns_cannot_be_detected():
     content = _xlsx_bytes([["A", 1]], ["nom", "valeur"])
     with pytest.raises(IngestionParseError, match="introuvables"):
-        list(parse_xlsx_latlon(content, None, None))
+        list(
+            parse_xlsx_sheet(
+                content, None, GeometryMode(kind="latlon", lat_field=None, lon_field=None)
+            )
+        )
 
 
-def test_parse_xlsx_latlon_fails_fast_on_invalid_row():
+def test_parse_xlsx_sheet_fails_fast_on_invalid_row():
     content = _xlsx_bytes([["Paris", 48.85, 2.35], ["Casse", "abc", 2.35]], ["nom", "lat", "lon"])
     with pytest.raises(IngestionParseError, match="ligne 2"):
-        list(parse_xlsx_latlon(content, None, None))
+        list(
+            parse_xlsx_sheet(
+                content, None, GeometryMode(kind="latlon", lat_field=None, lon_field=None)
+            )
+        )
 
 
-def test_parse_xlsx_latlon_serializes_datetime_property_to_iso_string():
+def test_parse_xlsx_sheet_serializes_datetime_property_to_iso_string():
     when = datetime.datetime(2026, 9, 5, 10, 30)
     content = _xlsx_bytes([["Paris", 48.85, 2.35, when]], ["nom", "lat", "lon", "maj"])
-    rows = list(parse_xlsx_latlon(content, None, None))
+    rows = list(
+        parse_xlsx_sheet(content, None, GeometryMode(kind="latlon", lat_field=None, lon_field=None))
+    )
     _geom, props = rows[0]
     assert props["maj"] == when.isoformat()
     assert isinstance(props["maj"], str)
 
 
-def test_parse_xlsx_latlon_empty_cell_becomes_none_property():
+def test_parse_xlsx_sheet_empty_cell_becomes_none_property():
     content = _xlsx_bytes([["Paris", 48.85, 2.35, None]], ["nom", "lat", "lon", "notes"])
-    rows = list(parse_xlsx_latlon(content, None, None))
+    rows = list(
+        parse_xlsx_sheet(content, None, GeometryMode(kind="latlon", lat_field=None, lon_field=None))
+    )
     _geom, props = rows[0]
     assert props["notes"] is None
 
 
-def test_parse_xlsx_latlon_corrupted_file_raises_parse_error():
+def test_parse_xlsx_sheet_corrupted_file_raises_parse_error():
     with pytest.raises(IngestionParseError, match="illisible"):
-        list(parse_xlsx_latlon(b"not a real xlsx", None, None))
+        list(
+            parse_xlsx_sheet(
+                b"not a real xlsx",
+                None,
+                GeometryMode(kind="latlon", lat_field=None, lon_field=None),
+            )
+        )
 
 
 def _kml_bytes(name: str = "Paris", lon: float = 2.35, lat: float = 48.85) -> bytes:

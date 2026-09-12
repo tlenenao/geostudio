@@ -177,62 +177,59 @@ def _xlsx_cell_value(value):
     return value
 
 
-def parse_xlsx_latlon(
+def parse_xlsx_sheet(
     content: bytes,
-    lat_field: str | None,
-    lon_field: str | None,
-) -> Iterator[tuple[BaseGeometry, dict]]:
+    sheet_name: str | None,
+    mode: GeometryMode,
+) -> Iterator[tuple[BaseGeometry | None, dict]]:
     try:
         wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     except _XLSX_ERRORS as exc:
         raise IngestionParseError(f"fichier XLSX illisible : {exc}") from exc
-    ws = wb.active
+    ws = wb[sheet_name] if sheet_name is not None else wb.active
     rows_iter = ws.iter_rows(values_only=True)
     try:
         header_row = next(rows_iter)
     except StopIteration:
         raise IngestionParseError("classeur XLSX vide") from None
     fieldnames = [str(name) if name is not None else "" for name in header_row]
-    if lat_field is None or lon_field is None:
+    effective_mode = mode
+    if mode.kind == "latlon" and (mode.lat_field is None or mode.lon_field is None):
         detected = detect_lat_lon_fields(fieldnames)
         if detected is None:
             raise IngestionParseError(
                 "colonnes lat/lon introuvables automatiquement — précisez-les"
             )
         lat_field, lon_field = detected
-    if lat_field not in fieldnames or lon_field not in fieldnames:
-        raise IngestionParseError(f"colonnes '{lat_field}'/'{lon_field}' absentes du XLSX")
-    lat_idx = fieldnames.index(lat_field)
-    lon_idx = fieldnames.index(lon_field)
+        effective_mode = GeometryMode(kind="latlon", lat_field=lat_field, lon_field=lon_field)
+    if effective_mode.kind == "latlon" and (
+        effective_mode.lat_field not in fieldnames or effective_mode.lon_field not in fieldnames
+    ):
+        raise IngestionParseError(
+            f"colonnes '{effective_mode.lat_field}'/'{effective_mode.lon_field}' absentes du XLSX"
+        )
     for i, row in enumerate(rows_iter, start=1):
-        raw_lat = row[lat_idx] if lat_idx < len(row) else None
-        raw_lon = row[lon_idx] if lon_idx < len(row) else None
-        try:
-            lat = float(raw_lat)
-            lon = float(raw_lon)
-        except (TypeError, ValueError):
-            raise IngestionParseError(
-                f"ligne {i} : lat/lon invalide ('{raw_lat}', '{raw_lon}')"
-            ) from None
-        properties = {
+        row_dict = {
             name: _xlsx_cell_value(row[j] if j < len(row) else None)
             for j, name in enumerate(fieldnames)
-            if j not in (lat_idx, lon_idx)
         }
-        yield Point(lon, lat), properties
+        try:
+            yield extract_geometry(row_dict, effective_mode)
+        except IngestionParseError as exc:
+            raise IngestionParseError(f"ligne {i} : {exc}") from exc
 
 
-def read_xlsx_header_fields(content: bytes) -> list[str]:
-    """Lit uniquement la première ligne (en-têtes) d'un classeur XLSX, sans
-    charger tout le classeur — utilisé par POST /uploads/inspect pour
-    proposer la détection lat/lon côté shell avant de créer le job d'import
-    (même rôle que list_layers() pour GPKG/Shapefile/KML/KMZ, mais un XLSX
-    n'a pas de concept de couches : ce sont des noms de colonnes)."""
+def read_xlsx_header_fields(content: bytes, sheet_name: str | None = None) -> list[str]:
+    """Lit uniquement la première ligne (en-têtes) d'une feuille XLSX, sans
+    charger tout le classeur — utilisé par POST /uploads/inspect. `sheet_name`
+    précise la feuille (2e appel d'inspection après choix en selecting-layer,
+    cf. Task 5) ; None lit la feuille active (comportement mono-feuille
+    inchangé)."""
     try:
         wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     except _XLSX_ERRORS as exc:
         raise IngestionParseError(f"fichier XLSX illisible : {exc}") from exc
-    ws = wb.active
+    ws = wb[sheet_name] if sheet_name is not None else wb.active
     try:
         header_row = next(ws.iter_rows(max_row=1, values_only=True))
     except StopIteration:
