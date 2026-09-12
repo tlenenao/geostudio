@@ -74,6 +74,31 @@ class GeometryMode:
     wkt_field: str | None = None
 
 
+def _resolve_latlon_mode_from_fields(mode: GeometryMode, fieldnames: list[str]) -> GeometryMode:
+    """Résout l'auto-détection lat/lon demandée par l'appelant (mode.kind ==
+    "latlon" avec lat_field/lon_field absents, cas envoyé par le shell dès
+    qu'il détecte lui-même des colonnes lat/lon-like et saute l'étape
+    manuelle selecting-geometry) en un GeometryMode concret, via
+    detect_lat_lon_fields sur `fieldnames`. Ne modifie rien pour un mode
+    déjà résolu (lat_field/lon_field fournis) ni pour wkt/none — c'est le
+    seul point de résolution, jamais fait par extract_geometry elle-même
+    (cf. sa docstring). Partagé par parse_csv_latlon/parse_xlsx_sheet
+    (revue finale GAP-29, C1) et par parse_jsonlines/parse_xml_generic/
+    parse_parquet_tabular, qui n'avaient auparavant aucune étape de
+    résolution — passaient le mode brut (lat_field=None) directement à
+    extract_geometry, qui échouait alors sur toute ligne avec
+    `IngestionParseError("lat/lon invalide ('None', 'None')")`."""
+    if mode.kind == "latlon" and (mode.lat_field is None or mode.lon_field is None):
+        detected = detect_lat_lon_fields(fieldnames)
+        if detected is None:
+            raise IngestionParseError(
+                "colonnes lat/lon introuvables automatiquement — précisez-les"
+            )
+        lat_field, lon_field = detected
+        return GeometryMode(kind="latlon", lat_field=lat_field, lon_field=lon_field)
+    return mode
+
+
 def extract_geometry(row: dict, mode: GeometryMode) -> tuple[BaseGeometry | None, dict]:
     """Retourne (géométrie ou None, propriétés restantes — colonnes de
     géométrie retirées). Lève IngestionParseError sans contexte de ligne :
@@ -146,15 +171,7 @@ def parse_csv_latlon(
         fieldnames = reader.fieldnames or []
     except csv.Error as exc:
         raise IngestionParseError("en-tête CSV invalide ou mal formé") from exc
-    effective_mode = mode
-    if mode.kind == "latlon" and (mode.lat_field is None or mode.lon_field is None):
-        detected = detect_lat_lon_fields(fieldnames)
-        if detected is None:
-            raise IngestionParseError(
-                "colonnes lat/lon introuvables automatiquement — précisez-les"
-            )
-        lat_field, lon_field = detected
-        effective_mode = GeometryMode(kind="latlon", lat_field=lat_field, lon_field=lon_field)
+    effective_mode = _resolve_latlon_mode_from_fields(mode, fieldnames)
     if effective_mode.kind == "latlon" and (
         effective_mode.lat_field not in fieldnames or effective_mode.lon_field not in fieldnames
     ):
@@ -201,15 +218,7 @@ def parse_xlsx_sheet(
     except StopIteration:
         raise IngestionParseError("classeur XLSX vide") from None
     fieldnames = [str(name) if name is not None else "" for name in header_row]
-    effective_mode = mode
-    if mode.kind == "latlon" and (mode.lat_field is None or mode.lon_field is None):
-        detected = detect_lat_lon_fields(fieldnames)
-        if detected is None:
-            raise IngestionParseError(
-                "colonnes lat/lon introuvables automatiquement — précisez-les"
-            )
-        lat_field, lon_field = detected
-        effective_mode = GeometryMode(kind="latlon", lat_field=lat_field, lon_field=lon_field)
+    effective_mode = _resolve_latlon_mode_from_fields(mode, fieldnames)
     if effective_mode.kind == "latlon" and (
         effective_mode.lat_field not in fieldnames or effective_mode.lon_field not in fieldnames
     ):
@@ -480,11 +489,18 @@ def parse_jsonlines(
     en JSON compact plutôt que déposées telles quelles (sinon un repr()
     Python implicite via str() en aval, pas du JSON valide) ; collision
     réservée (id/tenant_id/geom) renommée avec le préfixe "jsonl", même
-    patron que parse_kml/parse_gml (GAP-29)."""
+    patron que parse_kml/parse_gml (GAP-29). Auto-détection lat/lon (mode
+    "latlon" sans lat_field/lon_field, cas envoyé par le shell) résolue
+    contre les clés (déjà renommées) du premier objet JSON valide rencontré
+    — revue finale GAP-29, C1 : avant ce correctif, le mode brut était passé
+    tel quel à extract_geometry, qui échouait systématiquement
+    ("lat/lon invalide ('None', 'None')") sur ce chemin, le plus courant en
+    pratique."""
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise IngestionParseError("encodage invalide, attendu UTF-8") from exc
+    effective_mode: GeometryMode | None = None
     for i, line in enumerate(text.splitlines(), start=1):
         if not line.strip():
             continue
@@ -499,8 +515,10 @@ def parse_jsonlines(
             for k, v in row.items()
         }
         row = _rename_reserved_property_keys(row, "jsonl")
+        if effective_mode is None:
+            effective_mode = _resolve_latlon_mode_from_fields(mode, list(row.keys()))
         try:
-            yield extract_geometry(row, mode)
+            yield extract_geometry(row, effective_mode)
         except IngestionParseError as exc:
             raise IngestionParseError(f"ligne {i} : {exc}") from exc
 
@@ -582,12 +600,18 @@ def parse_parquet_tabular(
             table = pyarrow.parquet.read_table(path)
         except _PARQUET_ERRORS as exc:
             raise IngestionParseError(f"fichier Parquet illisible : {exc}") from exc
+        # Auto-détection lat/lon résolue une fois, contre le schéma de la
+        # table (mêmes noms que read_parquet_header_fields), AVANT la boucle
+        # par ligne — même correctif que parse_jsonlines/parse_xml_generic
+        # (revue finale GAP-29, C1) : mode.kind="latlon" sans lat_field/
+        # lon_field échouait sur toute ligne avant cette résolution.
+        effective_mode = _resolve_latlon_mode_from_fields(mode, list(table.schema.names))
         for row in table.to_pylist():
             row = {
                 k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v)
                 for k, v in row.items()
             }
-            yield extract_geometry(row, mode)
+            yield extract_geometry(row, effective_mode)
 
 
 def read_parquet_header_fields(content: bytes) -> list[str]:
@@ -650,14 +674,21 @@ def parse_xml_generic(
     if parent is None:
         raise IngestionParseError("aucun élément répété détecté — format non reconnu")
     matching = [e for e in parent if _local_name(e.tag) == tag]
+    effective_mode: GeometryMode | None = None
     for i, elem in enumerate(matching, start=1):
         row: dict = dict(elem.attrib)
         for child in elem:
             if len(child) == 0:  # feuille texte, pas un sous-élément structuré
                 row[_local_name(child.tag)] = (child.text or "").strip()
         row = _rename_reserved_property_keys(row, "xml")
+        # Auto-détection lat/lon résolue contre les clés (déjà renommées) du
+        # premier élément répété — même correctif que parse_jsonlines
+        # (revue finale GAP-29, C1) : mode.kind="latlon" sans lat_field/
+        # lon_field échouait sur toute ligne avant cette résolution.
+        if effective_mode is None:
+            effective_mode = _resolve_latlon_mode_from_fields(mode, list(row.keys()))
         try:
-            yield extract_geometry(row, mode)
+            yield extract_geometry(row, effective_mode)
         except IngestionParseError as exc:
             raise IngestionParseError(f"ligne {i} : {exc}") from exc
 

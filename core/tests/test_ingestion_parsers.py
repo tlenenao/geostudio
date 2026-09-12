@@ -826,6 +826,23 @@ def test_parse_parquet_tabular_serializes_nested_struct(tmp_path):
     assert json.loads(rows[0][1]["tags"]) == ["x", "y"]
 
 
+def test_parse_parquet_tabular_latlon_auto_detected_from_field_names(tmp_path):
+    """Revue finale GAP-29, C1 : même correctif que parse_jsonlines/
+    parse_xml_generic — parse_parquet_tabular n'avait aucune étape de
+    résolution de l'auto-détection lat/lon avant ce correctif."""
+    path = tmp_path / "latlon.parquet"
+    _write_tabular_parquet(path, [{"lat": 48.85, "lon": 2.35, "name": "Paris"}])
+    rows = list(
+        parse_parquet_tabular(
+            path.read_bytes(), GeometryMode(kind="latlon", lat_field=None, lon_field=None)
+        )
+    )
+    assert len(rows) == 1
+    geom, props = rows[0]
+    assert geom.equals(Point(2.35, 48.85))
+    assert props["name"] == "Paris"
+
+
 def test_read_parquet_header_fields(tmp_path):
     path = tmp_path / "plain.parquet"
     _write_tabular_parquet(path, [{"name": "A", "value": 1}])
@@ -944,6 +961,24 @@ def test_read_jsonlines_header_fields_samples_first_lines():
     assert "id" in fields and "claim" in fields
 
 
+def test_parse_jsonlines_latlon_auto_detected_from_field_names():
+    """Revue finale GAP-29, C1 : le shell envoie lat_field=None/lon_field=None
+    dès qu'il détecte lui-même des colonnes lat/lon-like et saute l'étape
+    manuelle selecting-geometry (ImportFileButton.tsx::detectLatLon) —
+    exactement le cas le plus courant en pratique. Avant le correctif,
+    parse_jsonlines passait ce mode brut tel quel à extract_geometry, qui
+    levait IngestionParseError("lat/lon invalide ('None', 'None')") sur
+    toute ligne."""
+    content = b'{"lat": 48.85, "lon": 2.35, "name": "Paris"}\n'
+    rows = list(
+        parse_jsonlines(content, GeometryMode(kind="latlon", lat_field=None, lon_field=None))
+    )
+    assert len(rows) == 1
+    geom, props = rows[0]
+    assert geom.equals(Point(2.35, 48.85))
+    assert props["name"] == "Paris"
+
+
 # --- XML générique (Task 10) -----------------------------------------------
 
 
@@ -997,6 +1032,22 @@ def test_parse_xml_generic_latlon_mode():
     rows = list(
         parse_xml_generic(content, GeometryMode(kind="latlon", lat_field="lat", lon_field="lon"))
     )
+    assert rows[0][0].equals(Point(2.35, 48.85))
+
+
+def test_parse_xml_generic_latlon_auto_detected_from_field_names():
+    """Revue finale GAP-29, C1 : même correctif que parse_jsonlines — le
+    shell envoie lat_field=None/lon_field=None dès qu'il auto-détecte des
+    colonnes lat/lon-like, et parse_xml_generic n'avait aucune étape de
+    résolution avant ce correctif."""
+    content = b"""<rows>
+      <row><lat>48.85</lat><lon>2.35</lon></row>
+      <row><lat>45.75</lat><lon>4.85</lon></row>
+    </rows>"""
+    rows = list(
+        parse_xml_generic(content, GeometryMode(kind="latlon", lat_field=None, lon_field=None))
+    )
+    assert len(rows) == 2
     assert rows[0][0].equals(Point(2.35, 48.85))
 
 
