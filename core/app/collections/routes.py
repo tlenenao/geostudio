@@ -178,7 +178,19 @@ def _collection_json(col, permissions, owner: str | None = None) -> dict:
     }
 
 
-def get_readable_collection(session, user, collection_id, *, can_manage_collections: bool = False):
+def get_readable_collection(
+    session,
+    user,
+    collection_id,
+    *,
+    can_manage_collections: bool = False,
+    guest=None,  # GuestActor | None (app.configs.guest_access) — import
+    # local dans la fonction pour ne pas créer d'import de niveau module
+    # (app.collections est déjà AU-DESSUS d'app.configs dans le contrat de
+    # couches, donc l'import direct serait légal, mais rester cohérent avec
+    # le style déjà utilisé plus haut dans cette même fonction pour
+    # get_or_create_default_tenant, importé localement lui aussi).
+):
     """404 avant 403 : une collection illisible est indistinguable d'une absente.
 
     `can_manage_collections` (privilège `admin.collections.manage`, SP-35) élargit
@@ -188,10 +200,19 @@ def get_readable_collection(session, user, collection_id, *, can_manage_collecti
     liste, pas seulement les siennes/partagées/publiques — sinon un même
     utilisateur verrait une collection dans `GET /collections` puis un 404 en
     cliquant dessus ou en la supprimant (piège n°5, chemin de lecture oublié,
-    appliqué ici à la visibilité individuelle plutôt qu'au verdict `delete`)."""
+    appliqué ici à la visibilité individuelle plutôt qu'au verdict `delete`).
+
+    `guest` (GAP-19) : un GuestActor dont `allowed_collection_ids` contient
+    `collection_id` contourne can() — c'est le but (portée invité explicite,
+    même sur une collection privée). Résolu avec `guest.tenant_id`, jamais
+    le tenant par défaut du chemin anonyme ci-dessous."""
+    from app.configs.guest_access import authorize_guest_collection_read
+
     col = None
     if user is not None:
         col = repo.get_collection(session, tenant_id=user.tenant_id, collection_id=collection_id)
+    elif guest is not None:
+        col = repo.get_collection(session, tenant_id=guest.tenant_id, collection_id=collection_id)
     else:
         from app.tenants.repository import get_or_create_default_tenant
 
@@ -199,6 +220,10 @@ def get_readable_collection(session, user, collection_id, *, can_manage_collecti
         col = repo.get_collection(session, tenant_id=tenant.id, collection_id=collection_id)
     if col is None:
         raise HTTPException(status_code=404, detail="collection not found")
+
+    if guest is not None and authorize_guest_collection_read(guest, collection_id):
+        return col
+
     readable = can_manage_collections or can(
         session,
         user_id=user.id if user else "",
