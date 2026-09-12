@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+from pathlib import Path
+
 import pytest
 from botocore.exceptions import ClientError
 from fastapi.testclient import TestClient
@@ -7,9 +9,12 @@ from app import db
 from app.auth.dependency import get_current_user
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.ingestion import routes as ingestion_routes
+from app.ingestion.parsers import list_xlsx_sheets
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
+
+_FIXTURES = Path(__file__).parent / "fixtures" / "ingestion"
 
 
 class _FakeS3Client:
@@ -470,6 +475,61 @@ def test_inspect_upload_xlsx_returns_fields(env):
     assert body["layers"] == []
 
 
+def test_inspect_upload_xlsx_multi_sheet_returns_layers(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    content = (_FIXTURES / "TwoSheetsNoneHidden.xlsx").read_bytes()
+    fake_s3.objects[f"{tenant.id}/book.xlsx"] = content
+    r = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/book.xlsx", "filename": "book.xlsx"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["layers"]) >= 2
+    # Cohérent avec le patron GPKG/KML multi-couches déjà en place
+    # (test_inspect_upload_kml_returns_layers ci-dessus) : "fields" reste
+    # None (pas []) tant qu'aucune feuille n'a été choisie — écart corrigé
+    # par rapport au texte du brief, qui affirmait à tort `== []`.
+    assert body["fields"] is None
+
+
+def test_inspect_upload_xlsx_with_layer_name_returns_sheet_fields(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    content = (_FIXTURES / "TwoSheetsNoneHidden.xlsx").read_bytes()
+    first_sheet_name = list_xlsx_sheets(content)[0].name
+    fake_s3.objects[f"{tenant.id}/book.xlsx"] = content
+    r = client.post(
+        "/v1/uploads/inspect",
+        json={
+            "key": f"{tenant.id}/book.xlsx",
+            "filename": "book.xlsx",
+            "layerName": first_sheet_name,
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["layers"] == []
+    assert isinstance(body["fields"], list) and len(body["fields"]) > 0
+
+
+def test_inspect_upload_xlsx_unknown_layer_name_returns_422(env):
+    # Défaut réel trouvé en revue (pas dans le brief) : InspectRequest.layerName
+    # est le premier champ HTTP-atteignable qui indexe wb[sheet_name] avec une
+    # valeur fournie par le client — un nom inconnu levait un KeyError
+    # d'openpyxl non catché (500), corrigé dans read_xlsx_header_fields.
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    content = (_FIXTURES / "TwoSheetsNoneHidden.xlsx").read_bytes()
+    fake_s3.objects[f"{tenant.id}/book.xlsx"] = content
+    r = client.post(
+        "/v1/uploads/inspect",
+        json={
+            "key": f"{tenant.id}/book.xlsx",
+            "filename": "book.xlsx",
+            "layerName": "NoSuchSheet",
+        },
+    )
+    assert r.status_code == 422
+
+
 def _kml_multi_layer_bytes() -> bytes:
     return (
         b'<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -494,7 +554,34 @@ def test_inspect_upload_kml_returns_layers(env):
     assert body["fields"] is None
 
 
-def test_inspect_upload_parquet_returns_400_not_concerned(env, tmp_path):
+def test_inspect_upload_jsonlines_returns_fields(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    content = (_FIXTURES / "scifact_claims_sample.jsonl").read_bytes()
+    fake_s3.objects[f"{tenant.id}/k.jsonl"] = content
+    r = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.jsonl", "filename": "data.jsonl"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["layers"] == []
+    assert "id" in body["fields"] or "jsonl_id" in body["fields"]
+    assert "claim" in body["fields"]
+
+
+def test_inspect_upload_jsonlines_422_on_malformed_line(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    fake_s3.objects[f"{tenant.id}/k.jsonl"] = b'{"a": 1}\nnot json\n'
+    r = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.jsonl", "filename": "data.jsonl"}
+    )
+    assert r.status_code == 422
+
+
+def test_inspect_upload_geoparquet_returns_null_fields_sentinel(env, tmp_path):
+    # GAP-29 (Task 9) : un GeoParquet réel (clé "geo" des métadonnées Parquet)
+    # renvoie le même sentinel fields=None que list_layers pour les formats
+    # multi-couches — la géométrie/les couches sont déjà connues, pas de
+    # liste de champs plate à choisir avant l'import.
     import geopandas as gpd
     from shapely.geometry import Point
 
@@ -506,7 +593,61 @@ def test_inspect_upload_parquet_returns_400_not_concerned(env, tmp_path):
     r = client.post(
         "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.parquet", "filename": "villes.parquet"}
     )
-    assert r.status_code == 400
+    assert r.status_code == 200
+    body = r.json()
+    assert body["layers"] == []
+    assert body["fields"] is None
+
+
+def test_inspect_upload_tabular_parquet_returns_field_list(env, tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    table = pa.Table.from_pylist([{"nom": "Paris", "population": 2000000}])
+    path = tmp_path / "villes.parquet"
+    pq.write_table(table, path)
+    fake_s3.objects[f"{tenant.id}/k.parquet"] = path.read_bytes()
+    r = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.parquet", "filename": "villes.parquet"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["layers"] == []
+    assert isinstance(body["fields"], list)
+    assert set(body["fields"]) == {"nom", "population"}
+
+
+def test_inspect_upload_parquet_422_on_corrupt_file(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    fake_s3.objects[f"{tenant.id}/k.parquet"] = b"not a real parquet file"
+    r = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.parquet", "filename": "villes.parquet"}
+    )
+    assert r.status_code == 422
+
+
+def test_inspect_upload_xml_generic_returns_fields(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    content = (_FIXTURES / "books.xml").read_bytes()
+    fake_s3.objects[f"{tenant.id}/k.xml"] = content
+    r = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.xml", "filename": "catalog.xml"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["layers"] == []
+    assert "author" in body["fields"]
+    assert "xml_id" in body["fields"]
+
+
+def test_inspect_upload_xml_generic_422_on_no_repeated_element(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    fake_s3.objects[f"{tenant.id}/k.xml"] = b"<root><a>1</a><b>2</b></root>"
+    r = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/k.xml", "filename": "flat.xml"}
+    )
+    assert r.status_code == 422
 
 
 def test_create_upload_job_accepts_layer_name(env):

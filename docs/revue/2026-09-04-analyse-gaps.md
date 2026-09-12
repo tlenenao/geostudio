@@ -71,6 +71,17 @@ redondant). GAP-62 (reste) et GAP-15 (volet 1, dédup `quote_ident`) sont
 également fermés le même jour, seule partie utile récupérée des 2 tracks
 restants.
 
+**Mise à jour du 2026-09-12** : plan « GAP-29 — formats d'import
+supplémentaires » (13 tâches, `docs/superpowers/plans/2026-09-06-gap29-
+formats-import.md`) clos — Excel multi-feuilles, Parquet non-géo, JSON
+Lines, CSV/WKT, GML/INSPIRE, XML générique ajoutés au pipeline d'ingestion,
+via `GeometryMode`/`extract_geometry` (fonction pivot). GAP-29 **reste
+Partiel** (ligne mise à jour ci-dessous) : le volet « formats manquants »
+est désormais couvert dans le détail (9 formats d'origine + 6 nouveaux),
+mais la ligne du tableau elle-même l'a toujours formulé comme un écart de
+*positionnement produit* face au marché (450+ connecteurs FME) — ce
+second volet n'est pas fermable par du code et reste ouvert tel quel.
+
 ## État des 81 gaps — trois parties distinctes (mise à jour 2026-09-06)
 
 **59 fermés, 5 partiels, 17 ouverts** (total 81 — 79 gaps de la revue initiale + GAP-80/81 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
@@ -144,7 +155,7 @@ restants.
 | GAP | Ce qui est fait / ce qui reste |
 |---|---|
 | GAP-15 | 6.3 (`itemClient.ts` 1743→53 lignes) fermé par SP-43 ; 6.1 (dédup `quote_ident`) **fermé** le 2026-09-06 sur 11 fichiers (`core/app/sql_ident.py`) — `pipelines/{compiler,connector_runtime,runtime}.py` exclus volontairement (fragilité `runtime.py` post-SP-43), `introspection_pg.py` sans duplication réelle à migrer |
-| GAP-29 | Formats fermés (GAP-09/SP-56) ; écart de largeur de couverture face au marché (450+ connecteurs FME) reste réel, question de positionnement produit non « fermable » par du code |
+| GAP-29 | Formats fermés (GAP-09/SP-56 : XLSX/KML-KMZ/GeoParquet ; plan « GAP-29 — formats d'import supplémentaires », 2026-09-06/12, 13 tâches : Excel multi-feuilles, Parquet non-géo, JSON Lines, CSV/WKT, GML/INSPIRE, XML générique, via une fonction pivot partagée `GeometryMode`/`extract_geometry`) ; écart de largeur de couverture face au marché (450+ connecteurs FME) reste réel, question de positionnement produit non « fermable » par du code — **reste Partiel**, jamais Fermé, sur ce seul motif |
 | GAP-57 | SP-50 ferme la pagination serveur (`/collections`, `/stac/collections`, `/dcat/catalog`, 3 historiques) ; côté shell, aucun des 4 consommateurs concernés n'envoie `limit`/`offset` — les 2 tracks parallèles qui promettaient ce volet (lancement redondant du 2026-09-06) se sont révélées abandonnées sans fusion, reste réellement ouvert (documenté sans être corrigé par SP-50) |
 | GAP-70 | SP-59 ferme le script de restauration (`deploy/backup/restore.sh`, vérifié présent) et la parité des 7 buckets ; la vérification OIDC réelle reste non rejouée (REV-164, limite d'environnement) |
 | GAP-72 | SP-48 ferme `img-src`/`connect-src` en enforcing (`CORE_CSP_MODE`, vérifié dans `docker-compose.yml`/`security/jobs.py`) ; `script-src` widgets d'extension tiers reste une décision produit ouverte (`traefik_render.py:29`, toujours `'self'` en dur, gardé par 2 tests intentionnels) |
