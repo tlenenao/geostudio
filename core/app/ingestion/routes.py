@@ -198,6 +198,8 @@ def create_upload_job(
         lat_field=body.latField,
         lon_field=body.lonField,
         layer_name=body.layerName,
+        wkt_field=body.wktField,
+        geometry_mode=body.geometryMode,
     )
     write_audit(
         session,

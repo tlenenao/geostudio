@@ -81,13 +81,25 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
                 logger.error("ingestion job %s introuvable (tenant %s)", job_id, tenant_id)
                 return
             ingestion_repo.mark_running(session, job_id=job_id)
-            filename, source_key, collection_title, lat_field, lon_field, layer_name, created_by = (
+            (
+                filename,
+                source_key,
+                collection_title,
+                lat_field,
+                lon_field,
+                layer_name,
+                wkt_field,
+                geometry_mode,
+                created_by,
+            ) = (
                 job.filename,
                 job.source_key,
                 job.collection_title,
                 job.lat_field,
                 job.lon_field,
                 job.layer_name,
+                job.wkt_field,
+                job.geometry_mode,
                 job.created_by,
             )
 
@@ -104,6 +116,8 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
                 lat_field=lat_field,
                 lon_field=lon_field,
                 layer_name=layer_name,
+                wkt_field=wkt_field,
+                geometry_mode=geometry_mode,
             )
         with request_scoped_session(factory) as session:
             ingestion_repo.mark_done(

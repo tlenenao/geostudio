@@ -23,13 +23,19 @@ from app.configs.schemas import BaseMap, BuilderConfig, MapConfig, MapLayer, Map
 from app.ingestion.parsers import (
     GeometryMode,
     IngestionParseError,
+    _is_geoparquet,
+    _temp_file,
     parse_csv_latlon,
     parse_geojson,
     parse_geoparquet,
+    parse_gml,
     parse_gpkg,
+    parse_jsonlines,
     parse_kml,
+    parse_parquet_tabular,
     parse_shapefile_zip,
     parse_xlsx_sheet,
+    parse_xml_generic,
 )
 from app.items import repository as items_repo
 from app.sql_ident import quote_ident
@@ -50,7 +56,21 @@ _GEOM_TYPE_MAP = {
 @dataclass
 class ImportResult:
     collection_id: str
-    item_id: str
+    item_id: str | None
+
+
+def _resolve_geometry_mode(
+    *,
+    lat_field: str | None,
+    lon_field: str | None,
+    wkt_field: str | None,
+    geometry_mode: str | None,
+) -> GeometryMode:
+    if geometry_mode == "wkt":
+        return GeometryMode(kind="wkt", wkt_field=wkt_field)
+    if geometry_mode == "none":
+        return GeometryMode(kind="none")
+    return GeometryMode(kind="latlon", lat_field=lat_field, lon_field=lon_field)
 
 
 def _pick_format(filename: str) -> str:
@@ -67,8 +87,14 @@ def _pick_format(filename: str) -> str:
         return "shapefile"
     if lower.endswith((".kml", ".kmz")):
         return "kml"
+    if lower.endswith(".gml"):
+        return "gml"
+    if lower.endswith(".jsonl"):
+        return "jsonlines"
+    if lower.endswith(".xml"):
+        return "xml_generic"
     if lower.endswith(".parquet"):
-        return "geoparquet"
+        return "parquet"  # désambiguïsé par contenu, cf. run_import
     raise IngestionParseError(f"format non supporté : {filename}")
 
 
@@ -101,30 +127,39 @@ def run_import(
     lat_field: str | None,
     lon_field: str | None,
     layer_name: str | None = None,
+    wkt_field: str | None = None,
+    geometry_mode: str | None = None,
 ) -> ImportResult:
+    mode = _resolve_geometry_mode(
+        lat_field=lat_field, lon_field=lon_field, wkt_field=wkt_field, geometry_mode=geometry_mode
+    )
     fmt = _pick_format(filename)
     if fmt == "geojson":
         rows = list(parse_geojson(content))
     elif fmt == "csv":
-        rows = list(
-            parse_csv_latlon(
-                content, GeometryMode(kind="latlon", lat_field=lat_field, lon_field=lon_field)
-            )
-        )
+        rows = list(parse_csv_latlon(content, mode))
     elif fmt == "xlsx":
-        rows = list(
-            parse_xlsx_sheet(
-                content, None, GeometryMode(kind="latlon", lat_field=lat_field, lon_field=lon_field)
-            )
-        )
+        rows = list(parse_xlsx_sheet(content, layer_name, mode))
     elif fmt == "gpkg":
         rows = list(parse_gpkg(content, layer_name))
     elif fmt == "shapefile":
         rows = list(parse_shapefile_zip(content, layer_name))
     elif fmt == "kml":
         rows = list(parse_kml(content, layer_name))
-    elif fmt == "geoparquet":
-        rows = list(parse_geoparquet(content))
+    elif fmt == "gml":
+        rows = list(parse_gml(content, layer_name))
+    elif fmt == "jsonlines":
+        rows = list(parse_jsonlines(content, mode))
+    elif fmt == "xml_generic":
+        rows = list(parse_xml_generic(content, mode))
+    elif fmt == "parquet":
+        with _temp_file(content, ".parquet") as tmp_path:
+            is_geo = _is_geoparquet(tmp_path)
+        rows = (
+            list(parse_geoparquet(content))
+            if is_geo
+            else list(parse_parquet_tabular(content, mode))
+        )
     else:  # pragma: no cover — jamais atteint, _pick_format lève avant
         raise IngestionParseError(f"format non supporté : {filename}")
     if not rows:
@@ -144,7 +179,12 @@ def run_import(
         for key in props:
             columns.setdefault(key, "text")
 
-    geom_types = {geom.geom_type for geom, _props in rows}
+    # has_geometry : un seul mode de géométrie par import (jamais mixte, cf.
+    # _resolve_geometry_mode/extract_geometry) — soit toutes les lignes
+    # portent une géométrie, soit aucune (geometry_mode="none").
+    has_geometry = any(geom is not None for geom, _props in rows)
+
+    geom_types = {geom.geom_type for geom, _props in rows if geom is not None}
     single_type = next(iter(geom_types)) if len(geom_types) == 1 else None
     pg_geom_type = _GEOM_TYPE_MAP.get(single_type, "Geometry") if single_type else "Geometry"
 
@@ -163,24 +203,37 @@ def run_import(
     create_sql = f"CREATE TABLE public.{t} (id serial PRIMARY KEY, tenant_id text NOT NULL"
     if col_defs:
         create_sql += f", {col_defs}"
-    create_sql += f", geom geometry({pg_geom_type}, 4326))"
+    if has_geometry:
+        create_sql += f", geom geometry({pg_geom_type}, 4326))"
+    else:
+        create_sql += ")"
     session.execute(text(create_sql))
 
     col_names = list(columns.keys())
     insert_cols = ", ".join(quote_ident(session, name) for name in col_names)
-    insert_cols_full = "tenant_id, " + (insert_cols + ", " if insert_cols else "") + "geom"
+    if has_geometry:
+        insert_cols_full = "tenant_id, " + (insert_cols + ", " if insert_cols else "") + "geom"
+    else:
+        insert_cols_full = "tenant_id" + (", " + insert_cols if insert_cols else "")
     placeholders = ", ".join(f":{name}" for name in col_names)
-    values_clause = (
-        ":tenant_id, "
-        + (placeholders + ", " if placeholders else "")
-        + "ST_GeomFromText(:geom_wkt, 4326)"
-    )
+    if has_geometry:
+        values_clause = (
+            ":tenant_id, "
+            + (placeholders + ", " if placeholders else "")
+            + "ST_GeomFromText(:geom_wkt, 4326)"
+        )
+    else:
+        values_clause = ":tenant_id" + (", " + placeholders if placeholders else "")
     insert_sql = f"INSERT INTO public.{t} ({insert_cols_full}) VALUES ({values_clause})"
     params = []
     for geom, props in rows:
         row_params = {name: props.get(name) for name in col_names}
         row_params["tenant_id"] = tenant_id
-        row_params["geom_wkt"] = geom.wkt
+        if has_geometry:
+            # has_geometry vrai => geom non-None sur toute ligne (mode
+            # unique par import, cf. commentaire ci-dessus) : geom.wkt ne
+            # lève jamais AttributeError sur None dans cette branche.
+            row_params["geom_wkt"] = geom.wkt if geom is not None else None
         params.append(row_params)
     session.execute(text(insert_sql), params)
 
@@ -210,6 +263,12 @@ def run_import(
         object_id=col.id,
         payload={"tableName": col.table_name},
     )
+
+    if not has_geometry:
+        # Pas de géométrie => pas de carte à afficher : aucun Item/Config
+        # créé (JSON Lines/Parquet/XML génériques en geometry_mode="none",
+        # GAP-29 Task 11) — seule la collection tabulaire existe.
+        return ImportResult(collection_id=col.id, item_id=None)
 
     bbox = table_extent(session, info)
     if bbox:

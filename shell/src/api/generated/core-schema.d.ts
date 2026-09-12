@@ -2312,6 +2312,8 @@ export interface components {
             collectionTitle: string;
             /** Filename */
             filename: string;
+            /** Geometrymode */
+            geometryMode?: ("latlon" | "wkt" | "none") | null;
             /** Key */
             key: string;
             /** Latfield */
@@ -2320,6 +2322,8 @@ export interface components {
             layerName?: string | null;
             /** Lonfield */
             lonField?: string | null;
+            /** Wktfield */
+            wktField?: string | null;
         };
         /** IngestionJobCreated */
         IngestionJobCreated: {

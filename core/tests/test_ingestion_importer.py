@@ -2,6 +2,8 @@
 """Bout en bout sur PostGIS réel : run_import seul (table + collection + item
 carte), sans procrastinate ni S3 — même infra que test_features_integration.py."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 import shapely
@@ -11,15 +13,18 @@ from sqlalchemy import select, text
 
 from app.audit.models import AuditLog
 from app.collections import repository as collections_repo
+from app.collections.introspection_pg import introspect_table
 from app.configs import repository as configs_repo
 from app.db import Base, make_session_factory
-from app.ingestion.importer import run_import
-from app.ingestion.parsers import IngestionParseError
+from app.ingestion.importer import _resolve_geometry_mode, run_import
+from app.ingestion.parsers import GeometryMode, IngestionParseError
 from app.tenants.models import Tenant
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
 pytestmark = pytest.mark.postgis
+
+_FIXTURES = Path(__file__).parent / "fixtures" / "ingestion"
 
 GEOJSON = (
     b'{"type":"FeatureCollection","features":['
@@ -28,6 +33,27 @@ GEOJSON = (
     b'{"type":"Feature","properties":{"nom":"B","population":200},'
     b'"geometry":{"type":"Point","coordinates":[2.0,46.0]}}]}'
 )
+
+
+def test_resolve_geometry_mode_defaults_to_latlon_autodetect():
+    mode = _resolve_geometry_mode(
+        lat_field=None, lon_field=None, wkt_field=None, geometry_mode=None
+    )
+    assert mode == GeometryMode(kind="latlon", lat_field=None, lon_field=None)
+
+
+def test_resolve_geometry_mode_wkt():
+    mode = _resolve_geometry_mode(
+        lat_field=None, lon_field=None, wkt_field="geom_wkt", geometry_mode="wkt"
+    )
+    assert mode == GeometryMode(kind="wkt", wkt_field="geom_wkt")
+
+
+def test_resolve_geometry_mode_none():
+    mode = _resolve_geometry_mode(
+        lat_field=None, lon_field=None, wkt_field=None, geometry_mode="none"
+    )
+    assert mode == GeometryMode(kind="none")
 
 
 @pytest.fixture()
@@ -508,6 +534,135 @@ def test_kmz_import_creates_queryable_collection_and_map_item(env):
         s.commit()
     with Session() as s:
         rows = s.execute(text(f'SELECT "Name" FROM public.{result.collection_id}')).scalars().all()
+        assert rows == ["Paris"]
+
+
+def test_run_import_gml_creates_collection_with_reprojected_geometry(env):
+    Session, tenant, user = env
+    content = (_FIXTURES / "archsites.gml").read_bytes()
+    with Session() as s:
+        result = run_import(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="archsites.gml",
+            content=content,
+            collection_title="Sites",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+        assert result.item_id is not None  # géométrie présente -> Map créée
+        config = configs_repo.get_config_by_item(s, item_id=result.item_id)
+        assert config is not None
+        assert config.config.kind == "map"
+
+
+def test_run_import_jsonlines_no_geometry_creates_tabular_collection_without_map(env):
+    Session, tenant, user = env
+    content = (_FIXTURES / "scifact_claims_sample.jsonl").read_bytes()
+    with Session() as s:
+        result = run_import(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="claims.jsonl",
+            content=content,
+            collection_title="Claims",
+            lat_field=None,
+            lon_field=None,
+            geometry_mode="none",
+        )
+        s.commit()
+        assert result.item_id is None
+        assert result.collection_id is not None
+        info = introspect_table(s, result.collection_id)
+        assert info.geometry_column is None
+        # Pas de Map/Config créée quand il n'y a pas de géométrie.
+        col = collections_repo.get_collection(
+            s, tenant_id=tenant.id, collection_id=result.collection_id
+        )
+        assert col is not None
+        assert col.geometry_column is None
+
+
+def test_run_import_csv_wkt_mode_creates_geometry_collection(env):
+    Session, tenant, user = env
+    content = b"name,wkt\nA,POINT (1 2)\n"
+    with Session() as s:
+        result = run_import(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="points.csv",
+            content=content,
+            collection_title="Points",
+            lat_field=None,
+            lon_field=None,
+            geometry_mode="wkt",
+            wkt_field="wkt",
+        )
+        s.commit()
+        assert result.item_id is not None
+    with Session() as s:
+        rows = (
+            s.execute(text(f"SELECT ST_AsText(geom) FROM public.{result.collection_id}"))
+            .scalars()
+            .all()
+        )
+        assert rows == ["POINT(1 2)"]
+
+
+def test_run_import_xml_generic_no_geometry_creates_tabular_collection(env):
+    Session, tenant, user = env
+    content = (_FIXTURES / "books.xml").read_bytes()
+    with Session() as s:
+        result = run_import(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="catalog.xml",
+            content=content,
+            collection_title="Catalog",
+            lat_field=None,
+            lon_field=None,
+            geometry_mode="none",
+        )
+        s.commit()
+        assert result.item_id is None
+    with Session() as s:
+        rows = (
+            s.execute(text(f"SELECT author FROM public.{result.collection_id} ORDER BY author"))
+            .scalars()
+            .all()
+        )
+        assert "Gambardella, Matthew" in rows
+
+
+def test_run_import_parquet_tabular_no_geometry_creates_collection(env, tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    Session, tenant, user = env
+    table = pa.Table.from_pylist([{"nom": "Paris", "population": 2000000}])
+    path = tmp_path / "villes.parquet"
+    pq.write_table(table, path)
+    with Session() as s:
+        result = run_import(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="villes.parquet",
+            content=path.read_bytes(),
+            collection_title="Villes tabulaires",
+            lat_field=None,
+            lon_field=None,
+            geometry_mode="none",
+        )
+        s.commit()
+        assert result.item_id is None
+    with Session() as s:
+        rows = s.execute(text(f"SELECT nom FROM public.{result.collection_id}")).scalars().all()
         assert rows == ["Paris"]
 
 

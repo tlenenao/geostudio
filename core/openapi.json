@@ -2083,6 +2083,22 @@
             "title": "Filename",
             "type": "string"
           },
+          "geometryMode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "latlon",
+                  "wkt",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geometrymode"
+          },
           "key": {
             "minLength": 1,
             "title": "Key",
@@ -2120,6 +2136,17 @@
               }
             ],
             "title": "Lonfield"
+          },
+          "wktField": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wktfield"
           }
         },
         "required": [
