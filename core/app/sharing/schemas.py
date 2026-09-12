@@ -22,6 +22,7 @@ class CreateShareLinkRequest(BaseModel):
 class ShareLinkCreated(BaseModel):
     url: str
     expiresAt: str
+    token: str
 
 
 class ShareLinkListItem(BaseModel):
