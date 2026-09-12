@@ -244,6 +244,33 @@ class LayerInfo:
     geometry_type: str
 
 
+def list_xlsx_sheets(content: bytes) -> list[LayerInfo]:
+    """Une entrée par feuille du classeur — même dataclass LayerInfo que
+    GPKG/KML, pour réutiliser telle quelle la phase selecting-layer côté
+    shell (GAP-29). geometry_type="Tabular" : une feuille Excel n'a pas de
+    type de géométrie OGC, cette valeur n'est jamais interprétée ailleurs
+    que par le libellé de l'option dans le sélecteur (qui n'affiche pas
+    geometryType)."""
+    try:
+        wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except _XLSX_ERRORS as exc:
+        raise IngestionParseError(f"fichier XLSX illisible : {exc}") from exc
+    sheets = []
+    for name in wb.sheetnames:
+        ws = wb[name]
+        # ws.max_row peut être imprécis en mode read_only avant itération
+        # complète (comportement documenté d'openpyxl) — compter par
+        # itération plutôt que faire confiance à max_row, aucun volume
+        # important n'est visé par ce chantier (GAP-29, anticipation
+        # générique).
+        row_count = sum(1 for _ in ws.iter_rows(values_only=True))
+        feature_count = max(row_count - 1, 0)  # moins la ligne d'en-tête
+        sheets.append(
+            LayerInfo(name=str(name), feature_count=feature_count, geometry_type="Tabular")
+        )
+    return sheets
+
+
 # Extensions autorisées comme suffixe de fichier temporaire. Liste fermée
 # plutôt qu'une validation par motif : les cinq formats qui ont besoin d'un
 # fichier sur disque (GDAL/pyogrio ne lisent pas depuis la mémoire) sont

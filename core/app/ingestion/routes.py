@@ -11,7 +11,12 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, is_quotas_enabled
 from app.db import get_session
 from app.ingestion import repository as repo
-from app.ingestion.parsers import IngestionParseError, list_layers, read_xlsx_header_fields
+from app.ingestion.parsers import (
+    IngestionParseError,
+    list_layers,
+    list_xlsx_sheets,
+    read_xlsx_header_fields,
+)
 from app.ingestion.schemas import (
     IngestionJobCreate,
     IngestionJobCreated,
@@ -89,6 +94,19 @@ def inspect_upload(
         raise HTTPException(status_code=404, detail="objet introuvable") from exc
     if body.filename.lower().endswith(".xlsx"):
         try:
+            if body.layerName is not None:
+                fields = read_xlsx_header_fields(content, sheet_name=body.layerName)
+                return InspectResponse(layers=[], fields=fields)
+            sheets = list_xlsx_sheets(content)
+            if len(sheets) > 1:
+                return InspectResponse(
+                    layers=[
+                        LayerInfoOut(
+                            name=s.name, featureCount=s.feature_count, geometryType=s.geometry_type
+                        )
+                        for s in sheets
+                    ]
+                )
             fields = read_xlsx_header_fields(content)
         except IngestionParseError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc

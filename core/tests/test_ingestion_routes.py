@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+from pathlib import Path
+
 import pytest
 from botocore.exceptions import ClientError
 from fastapi.testclient import TestClient
@@ -7,9 +9,12 @@ from app import db
 from app.auth.dependency import get_current_user
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.ingestion import routes as ingestion_routes
+from app.ingestion.parsers import list_xlsx_sheets
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
+
+_FIXTURES = Path(__file__).parent / "fixtures" / "ingestion"
 
 
 class _FakeS3Client:
@@ -468,6 +473,42 @@ def test_inspect_upload_xlsx_returns_fields(env):
     body = r.json()
     assert body["fields"] == ["nom", "lat", "lon"]
     assert body["layers"] == []
+
+
+def test_inspect_upload_xlsx_multi_sheet_returns_layers(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    content = (_FIXTURES / "TwoSheetsNoneHidden.xlsx").read_bytes()
+    fake_s3.objects[f"{tenant.id}/book.xlsx"] = content
+    r = client.post(
+        "/v1/uploads/inspect", json={"key": f"{tenant.id}/book.xlsx", "filename": "book.xlsx"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["layers"]) >= 2
+    # Cohérent avec le patron GPKG/KML multi-couches déjà en place
+    # (test_inspect_upload_kml_returns_layers ci-dessus) : "fields" reste
+    # None (pas []) tant qu'aucune feuille n'a été choisie — écart corrigé
+    # par rapport au texte du brief, qui affirmait à tort `== []`.
+    assert body["fields"] is None
+
+
+def test_inspect_upload_xlsx_with_layer_name_returns_sheet_fields(env):
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    content = (_FIXTURES / "TwoSheetsNoneHidden.xlsx").read_bytes()
+    first_sheet_name = list_xlsx_sheets(content)[0].name
+    fake_s3.objects[f"{tenant.id}/book.xlsx"] = content
+    r = client.post(
+        "/v1/uploads/inspect",
+        json={
+            "key": f"{tenant.id}/book.xlsx",
+            "filename": "book.xlsx",
+            "layerName": first_sheet_name,
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["layers"] == []
+    assert isinstance(body["fields"], list) and len(body["fields"]) > 0
 
 
 def _kml_multi_layer_bytes() -> bytes:

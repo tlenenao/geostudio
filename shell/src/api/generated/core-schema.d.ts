@@ -2343,6 +2343,8 @@ export interface components {
             filename: string;
             /** Key */
             key: string;
+            /** Layername */
+            layerName?: string | null;
         };
         /** InspectResponse */
         InspectResponse: {
@@ -6880,7 +6882,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/geo+json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -6914,7 +6916,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/geo+json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -6972,7 +6974,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/geo+json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -7007,7 +7009,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/geo+json": unknown;
                 };
             };
             /** @description Validation Error */

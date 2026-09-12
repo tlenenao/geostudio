@@ -5,6 +5,7 @@ import io
 import warnings
 import zipfile
 from contextlib import contextmanager
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -20,6 +21,7 @@ from app.ingestion.parsers import (
     detect_lat_lon_fields,
     extract_geometry,
     list_layers,
+    list_xlsx_sheets,
     parse_csv_latlon,
     parse_geojson,
     parse_geoparquet,
@@ -28,6 +30,8 @@ from app.ingestion.parsers import (
     parse_shapefile_zip,
     parse_xlsx_sheet,
 )
+
+_FIXTURES = Path(__file__).parent / "fixtures" / "ingestion"
 
 
 def test_extract_geometry_latlon_mode():
@@ -533,6 +537,29 @@ def test_parse_xlsx_sheet_corrupted_file_raises_parse_error():
                 GeometryMode(kind="latlon", lat_field=None, lon_field=None),
             )
         )
+
+
+def test_list_xlsx_sheets_multi_sheet_workbook():
+    content = (_FIXTURES / "TwoSheetsNoneHidden.xlsx").read_bytes()
+    sheets = list_xlsx_sheets(content)
+    assert len(sheets) >= 2
+    assert all(s.geometry_type == "Tabular" for s in sheets)
+    assert all(s.feature_count >= 0 for s in sheets)
+
+
+def test_list_xlsx_sheets_single_sheet_workbook_returns_one_entry(tmp_path):
+    wb = Workbook()
+    wb.active.append(["name", "value"])
+    wb.active.append(["A", 1])
+    path = tmp_path / "single.xlsx"
+    wb.save(path)
+    sheets = list_xlsx_sheets(path.read_bytes())
+    assert len(sheets) == 1
+
+
+def test_list_xlsx_sheets_corrupted_file_raises_parse_error():
+    with pytest.raises(IngestionParseError, match="illisible"):
+        list_xlsx_sheets(b"not a real xlsx")
 
 
 def _kml_bytes(name: str = "Paris", lon: float = 2.35, lat: float = 48.85) -> bytes:

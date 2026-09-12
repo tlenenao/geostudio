@@ -35,6 +35,7 @@ class IngestionJobStatus(BaseModel):
 class InspectRequest(BaseModel):
     key: str = Field(min_length=1)
     filename: str = Field(min_length=1, max_length=255)
+    layerName: str | None = None
 
 
 class LayerInfoOut(BaseModel):

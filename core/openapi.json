@@ -2204,6 +2204,17 @@
             "minLength": 1,
             "title": "Key",
             "type": "string"
+          },
+          "layerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Layername"
           }
         },
         "required": [
@@ -10509,7 +10520,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/geo+json": {
                 "schema": {}
               }
             },
@@ -10568,7 +10579,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/geo+json": {
                 "schema": {}
               }
             },
@@ -10719,7 +10730,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/geo+json": {
                 "schema": {}
               }
             },
@@ -10768,7 +10779,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/geo+json": {
                 "schema": {}
               }
             },
