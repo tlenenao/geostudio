@@ -90,13 +90,18 @@ def test_open_revs_reads_the_etat_line():
     depuis (`- **État :** **fermé par SP-43** — …`) — vérifié dans
     `docs/revue/2026-09-04-backlog.md`, confirmé aussi par le sommaire
     `### 🔴 Ouvert (28)` du même document, qui ne le liste plus. REV-003
-    (iframe Keycloak `forceIframeAuth`, jamais tranché par Tanguy) reste
-    réellement `- **État :** ouvert` à ce jour — pris comme témoin à sa
-    place."""
+    (jadis le témoin « important » de ce test — iframe Keycloak
+    `forceIframeAuth`) est à son tour **fermé** depuis le 2026-09-06
+    (commit `6101e9eb`, vérification bout-en-bout réelle) : plus aucune
+    entrée `important` ne reste ouverte dans ce document au 2026-09-12
+    (revérifié champ État par champ, pas par confiance dans le sommaire).
+    REV-008 (`READ_ONLY_TOOLS` sans test runtime pour `create_pipeline`)
+    reste réellement `- **État :** partiellement fermé` — pris comme
+    témoin à sa place."""
     items = {item.identifier: item for item in open_revs(REPO)}
     assert "REV-001" not in items
-    assert "REV-003" in items
-    assert items["REV-003"].severity == "important"
+    assert "REV-008" in items
+    assert items["REV-008"].severity == "minor"
     assert "REV-165" not in items or items["REV-165"].severity in {
         "critical",
         "important",
@@ -108,7 +113,7 @@ def test_open_revs_reads_the_etat_line():
 
 def test_open_revs_carries_the_proof_paths():
     items = {item.identifier: item for item in open_revs(REPO)}
-    assert "shell/src/copilot/useMcpToken.ts" in items["REV-003"].paths
+    assert "core/app/mcp/tools.py" in items["REV-008"].paths
 
 
 def test_open_revs_includes_rev_164_despite_alternate_etat_bold_wrapping():
