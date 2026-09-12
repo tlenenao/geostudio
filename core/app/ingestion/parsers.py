@@ -229,7 +229,13 @@ def read_xlsx_header_fields(content: bytes, sheet_name: str | None = None) -> li
         wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     except _XLSX_ERRORS as exc:
         raise IngestionParseError(f"fichier XLSX illisible : {exc}") from exc
-    ws = wb[sheet_name] if sheet_name is not None else wb.active
+    if sheet_name is not None:
+        try:
+            ws = wb[sheet_name]
+        except KeyError:
+            raise IngestionParseError(f"feuille '{sheet_name}' introuvable") from None
+    else:
+        ws = wb.active
     try:
         header_row = next(ws.iter_rows(max_row=1, values_only=True))
     except StopIteration:

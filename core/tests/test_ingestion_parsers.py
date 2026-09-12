@@ -29,6 +29,7 @@ from app.ingestion.parsers import (
     parse_kml,
     parse_shapefile_zip,
     parse_xlsx_sheet,
+    read_xlsx_header_fields,
 )
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "ingestion"
@@ -560,6 +561,18 @@ def test_list_xlsx_sheets_single_sheet_workbook_returns_one_entry(tmp_path):
 def test_list_xlsx_sheets_corrupted_file_raises_parse_error():
     with pytest.raises(IngestionParseError, match="illisible"):
         list_xlsx_sheets(b"not a real xlsx")
+
+
+def test_read_xlsx_header_fields_rejects_unknown_sheet_name():
+    # Trouvaille de la revue finale de Task 5 (GAP-29) : depuis que
+    # POST /uploads/inspect relaie InspectRequest.layerName tel quel à
+    # read_xlsx_header_fields (routes.py), un sheet_name inconnu levait un
+    # KeyError d'openpyxl non catché — 500 côté HTTP au lieu d'un 422
+    # propre, seule fonction xlsx du module à ne pas déjà convertir ses
+    # erreurs GDAL/openpyxl en IngestionParseError.
+    content = (_FIXTURES / "TwoSheetsNoneHidden.xlsx").read_bytes()
+    with pytest.raises(IngestionParseError, match="introuvable"):
+        read_xlsx_header_fields(content, sheet_name="NoSuchSheet")
 
 
 def _kml_bytes(name: str = "Paris", lon: float = 2.35, lat: float = 48.85) -> bytes:

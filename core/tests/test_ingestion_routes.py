@@ -511,6 +511,25 @@ def test_inspect_upload_xlsx_with_layer_name_returns_sheet_fields(env):
     assert isinstance(body["fields"], list) and len(body["fields"]) > 0
 
 
+def test_inspect_upload_xlsx_unknown_layer_name_returns_422(env):
+    # Défaut réel trouvé en revue (pas dans le brief) : InspectRequest.layerName
+    # est le premier champ HTTP-atteignable qui indexe wb[sheet_name] avec une
+    # valeur fournie par le client — un nom inconnu levait un KeyError
+    # d'openpyxl non catché (500), corrigé dans read_xlsx_header_fields.
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    content = (_FIXTURES / "TwoSheetsNoneHidden.xlsx").read_bytes()
+    fake_s3.objects[f"{tenant.id}/book.xlsx"] = content
+    r = client.post(
+        "/v1/uploads/inspect",
+        json={
+            "key": f"{tenant.id}/book.xlsx",
+            "filename": "book.xlsx",
+            "layerName": "NoSuchSheet",
+        },
+    )
+    assert r.status_code == 422
+
+
 def _kml_multi_layer_bytes() -> bytes:
     return (
         b'<?xml version="1.0" encoding="UTF-8"?>\n'
