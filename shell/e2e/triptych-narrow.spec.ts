@@ -301,7 +301,9 @@ const SCREENS: Array<{
     // pas supposé) : passage réel et significatif, pas vacant. Aucun appel
     // réseau non plus (rendu synchrone) : l'ancre est un filet de
     // cohérence, pas une preuve de settle nécessaire ici.
-    readyAnchor: (p) => p.getByText("Les paramètres d'instance arrivent avec SP-33.").waitFor(),
+    // Texte migré vers la clé i18n `comingSoon.settings` par SP-57a — le
+    // littéral d'origine ("... arrivent avec SP-33.") n'existe plus.
+    readyAnchor: (p) => p.getByText("Les paramètres d'instance arrivent prochainement.").waitFor(),
   },
 ];
 
