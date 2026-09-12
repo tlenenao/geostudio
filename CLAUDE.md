@@ -1379,7 +1379,63 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   liées à ce plan). Ce SP ne touche que de la documentation de clôture
   (inventaire, bilan, `analyse-gaps.md`, ce fichier) — le code des 11
   tâches précédentes était déjà mergé sur cette branche avant que ce SP
-  ne s'exécute.
+  ne s'exécute. **Revue finale de branche (piège CLAUDE.md n°4, après la
+  clôture ci-dessus) : 4 Important trouvés, tous des croisements
+  invisibles à la revue par tâche, tous corrigés** (commits
+  `50a044d2`/`6f83a0ff`/`e9429e6d`/`d03c9dab`) : (1) **bloquant** —
+  `SqlLabCopilotPanel` n'envoyait que `{sql}` en contexte, alors que
+  `generate_sql_query` exige un `collectionId` qu'aucun outil allowlisté
+  ne permettait au LLM de découvrir sur cette surface (`explain_dataset`
+  omet exprès `collectionId`, `search_collections`/`list_collections` ne
+  sont pas allowlistés) — avec un vrai fournisseur, la fonctionnalité
+  phare de SQL Lab était probablement inutilisable au premier usage réel,
+  aucun test ne pouvait le détecter (tous fournissaient l'id
+  directement) ; corrigé en donnant à `SqlLabPage` le même
+  `useCollectionsAdmin()` que `VisualQueryWizardPage`, transmis en
+  contexte ; (2) la validation serveur des colonnes de
+  `generate_visual_query` n'atteignait jamais le formulaire (c'est le LLM,
+  pas le JSON validé, qui recompose `applyVisualQueryDraft`) — corrigé en
+  threadant `baseSchema`/`joinedSchema`/`collectionIds` (déjà chargés par
+  le wizard) dans `applyVisualQueryClientOp`, miroir de
+  `_known_field_names` côté serveur mais avec une copie de `Set` correcte
+  (`new Set(names)`, pas l'aliasing du serveur, cf. `REV-184` point 4) ;
+  (3) un `join.collectionId` halluciné était accepté sans vérification —
+  le panneau affichait une jointure « posée » mais `compilePipeline.ts`
+  omettait silencieusement le SQL de jointure ; corrigé en n'acceptant
+  qu'un `collectionId` réellement visible ; (4)
+  `applyVisualQueryClientOp` effaçait les filtres construits à la main
+  dès que **toutes** les lignes générées étaient invalides
+  (`setFilters([])`) — corrigé en un no-op pour ce cas précis (un tableau
+  vide **explicite** reste un effacement légitime), changement
+  intentionnel et documenté d'un test vert. Périmètre explicitement
+  refusé pour ce dernier point : aucune parité avec la pile d'annulation
+  SP-19 du builder d'App (SQL Lab/requête visuelle tiennent leur état en
+  `useState` nu, sans commande Annuler — refonte hors périmètre d'une
+  revue). 5 Minor également fermés dans le même lot (succès UI affiché
+  même quand une op est abandonnée silencieusement ; règles de validation
+  d'une métrique dupliquées sans garantie entre le modèle Pydantic serveur
+  et le validateur client — un `model_validator` les aligne désormais ;
+  un commentaire trompeur ; un docstring manquant sur la désynchronisation
+  schéma d'introspection PostGIS vs sandbox lakehouse ; deux lacunes de
+  doc sur l'allowlist MCP globale — pas par surface — et le caractère
+  purement indicatif de `CopilotTurnRequest.surface`, ajoutées ci-dessus).
+  Une **2e passe de revue finale**, dédiée à vérifier ce correctif lui-même
+  (surtout l'élargissement d'interface `CopilotChat.onClientOps` en
+  `boolean[] | void`, additif et vérifié sans impact sur `CopilotPanel.tsx`
+  ni sa caractérisation), a conclu « Ready to finish this branch: Yes » et
+  trouvé 5 Minor résiduels supplémentaires, non bloquants (aucune perte de
+  donnée ni écriture backend incorrecte), consignés sans être corrigés en
+  `REV-184` (succès rapporté par jambe plutôt que par brouillon entier ;
+  asymétrie serveur/client `sourceColumn`/`p` absent vs `null` explicite ;
+  `isValidGeneratedJoin` ne valide jamais `join.on` ; commentaire imprécis
+  sur `knownColumnNames` ; troncature à 100 collections + course de
+  chargement sur `SqlLabPage`, résiduel déjà connu de SP-50). Suite finale
+  après ce dernier lot : shell 247 fichiers/2170 tests (+12), 0 échec ;
+  cœur suite ciblée (copilot + génération + inventaire) 67 passed ;
+  diff `openapi.json`/`core-schema.d.ts` vide (régénéré, aucune route/
+  modèle REST touché par ce lot) ; E2E ciblée 7/7, E2E complète rejouée
+  deux fois sans nouvelle régression imputable (flakes de parallélisme
+  changeant de spec d'une exécution à l'autre, confirmés en isolation).
 
 ### Conventions tranchées (2026-09-01)
 
