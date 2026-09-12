@@ -25,6 +25,7 @@ from app.ingestion.parsers import (
     parse_csv_latlon,
     parse_geojson,
     parse_geoparquet,
+    parse_gml,
     parse_gpkg,
     parse_kml,
     parse_shapefile_zip,
@@ -651,6 +652,41 @@ def test_list_layers_kmz_single_layer():
     layers = list_layers(_kmz_bytes(), "villes.kmz")
     assert len(layers) == 1
     assert layers[0].feature_count == 1
+
+
+def test_parse_gml_yields_geometry_and_properties_reprojected():
+    content = (_FIXTURES / "archsites.gml").read_bytes()
+    rows = list(parse_gml(content))
+    assert len(rows) > 0
+    geom, props = rows[0]
+    # archsites.gml est en EPSG:26713 (non-WGS84) — vérifier que la
+    # reprojection de _read_features s'est bien appliquée : les
+    # coordonnées ne doivent plus être de l'ordre de 10^5-10^6 (UTM-like)
+    # mais de l'ordre de longitudes/latitudes WGS84 plausibles pour
+    # l'Ouest américain (le jeu de données archsites est du Colorado).
+    assert -110 < geom.x < -100
+    assert 35 < geom.y < 45
+    # Les propriétés du fixture réel (§5 de la spec) : à vérifier au nom
+    # local exact renvoyé par pyogrio (peut être "cat"/"str1" sans le
+    # préfixe de namespace "og:" — à confirmer empiriquement ici).
+    assert "cat" in props or "og:cat" in props
+
+
+def test_list_layers_gml_single_layer():
+    content = (_FIXTURES / "archsites.gml").read_bytes()
+    layers = list_layers(content, "archsites.gml")
+    assert len(layers) == 1
+    assert layers[0].geometry_type == "Point"
+
+
+def test_parse_gml_reserved_property_collision_check():
+    """Vérifie empiriquement (piège CLAUDE.md n°3) si le driver GML de GDAL
+    impose, comme KML, un champ 'id' — si oui, il doit être renommé
+    'gml_id' (comme kml_id pour KML) plutôt que provoquer une collision
+    SQL en aval (run_import, Task 11)."""
+    content = (_FIXTURES / "archsites.gml").read_bytes()
+    _geom, props = next(iter(parse_gml(content)))
+    assert "id" not in props  # soit jamais présent, soit déjà renommé gml_id
 
 
 def test_parse_geoparquet_yields_geometry_and_attributes(tmp_path):

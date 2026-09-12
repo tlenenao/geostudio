@@ -281,7 +281,7 @@ def list_xlsx_sheets(content: bytes) -> list[LayerInfo]:
 # plutôt qu'une validation par motif : les cinq formats qui ont besoin d'un
 # fichier sur disque (GDAL/pyogrio ne lisent pas depuis la mémoire) sont
 # connus, et une liste se relit sans avoir à raisonner sur une regex.
-_ALLOWED_TEMP_SUFFIXES = frozenset({".gpkg", ".zip", ".kml", ".kmz", ".parquet"})
+_ALLOWED_TEMP_SUFFIXES = frozenset({".gpkg", ".zip", ".kml", ".kmz", ".parquet", ".gml"})
 
 
 @contextmanager
@@ -442,6 +442,28 @@ def _looks_like_zip(content: bytes) -> bool:
     return content[:2] == b"PK"
 
 
+# Vérifié empiriquement sur archsites.gml (EPSG:26713, driver GML de GDAL) :
+# contrairement à KML, ce driver n'expose PAS de champ "id" — l'attribut
+# gml:id du Placemark est déjà nommé "gml_id" en sortie de
+# pyogrio.raw.read()/read_info() (champs observés : gml_id, lowerCorner,
+# upperCorner, cat, str1 — pas de préfixe de namespace "og:"). Aucune
+# collision avec la colonne "id" (PK serial) de run_import : le renommage
+# _rename_reserved_property_keys ci-dessous est appliqué par défense en
+# profondeur (une autre source GML pourrait légitimement porter un champ
+# "id"), sans effet réel sur ce fixture.
+def parse_gml(
+    content: bytes,
+    layer_name: str | None = None,
+) -> Iterator[tuple[BaseGeometry, dict]]:
+    """GML/INSPIRE traité exactement comme KML (GAP-29, §2.6 de la spec) :
+    réutilisation brute de _read_features, aucune logique spécifique au
+    schéma INSPIRE. Pas de variante zip (contrairement à KML/KMZ) — un seul
+    suffixe possible."""
+    with _temp_file(content, ".gml") as path:
+        for geom, props in _read_features(path, layer_name):
+            yield geom, _rename_reserved_property_keys(props, "gml")
+
+
 def parse_geoparquet(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
     # PAS pyogrio : pyogrio.list_drivers()["Parquet"] vaut None dans ce build
     # (aucun driver OGR Parquet) — vérifié par exécution réelle (spec SP-56
@@ -471,19 +493,25 @@ def list_layers(content: bytes, filename: str) -> list[LayerInfo]:
         suffix, wrap = ".gpkg", (lambda p: p)
     elif lower.endswith(".zip"):
         suffix, wrap = ".zip", (lambda p: f"/vsizip/{p}")
-    elif lower.endswith((".kml", ".kmz")):
+    elif lower.endswith((".kml", ".kmz", ".gml")):
         # Identité : PAS le wrap /vsizip/ de la branche .zip ci-dessus, cf.
-        # parse_kml — un .kmz se lit tel quel.
+        # parse_kml/parse_gml — un .kmz ou un .gml se lit tel quel.
         #
-        # Deux littéraux explicites, et non `lower[lower.rfind("."):]` comme
-        # auparavant : le résultat était en pratique toujours ".kml" ou
-        # ".kmz" (le dernier point est forcément celui de l'extension,
+        # Trois littéraux explicites, et non `lower[lower.rfind("."):]` comme
+        # auparavant : le résultat était en pratique toujours ".kml", ".kmz"
+        # ou ".gml" (le dernier point est forcément celui de l'extension,
         # puisque cette branche est gardée par endswith), donc non
         # exploitable — mais c'était un flux « nom de fichier fourni par
         # l'appelant → chemin du système de fichiers » que rien dans le code
         # ne bornait, et que CodeQL signalait à juste titre comme
-        # py/path-injection. Même forme que parse_kml ci-dessus.
-        suffix, wrap = (".kmz" if lower.endswith(".kmz") else ".kml", lambda p: p)
+        # py/path-injection. Même forme que parse_kml/parse_gml ci-dessus.
+        if lower.endswith(".kmz"):
+            suffix = ".kmz"
+        elif lower.endswith(".gml"):
+            suffix = ".gml"
+        else:
+            suffix = ".kml"
+        wrap = lambda p: p  # noqa: E731 — cohérent avec la forme déjà en vigueur ici
     else:
         raise ValueError(f"format non concerné par l'inspection : {filename}")
     with _temp_file(content, suffix) as tmp_path:
