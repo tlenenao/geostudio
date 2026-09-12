@@ -1242,10 +1242,12 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   d'élément le plus répété via BFS, `defusedxml.ElementTree` uniquement —
   jamais `xml.etree` nu, XXE). Fonction pivot partagée `GeometryMode`
   (dataclass `kind: "latlon"|"wkt"|"none"`)/`extract_geometry` posée en
-  Tâche 2, réutilisée sans divergence par CSV/XLSX/GML/JSON
-  Lines/Parquet/XML (10 branches de dispatch au total dans
-  `run_import` : geojson/json, csv, xlsx, gpkg, zip, kml/kmz, gml, jsonl,
-  xml, parquet). Une collection sans géométrie ne crée plus de
+  Tâche 2, réutilisée par CSV/XLSX/JSON Lines/Parquet/XML (GML en est
+  exclu — `parse_gml` est GDAL-natif comme KML, toujours une géométrie
+  réelle, jamais de mode `latlon`/`wkt`/`none` à résoudre) — 10 branches
+  de dispatch au total dans `run_import` : geojson/json, csv, xlsx,
+  gpkg, zip, kml/kmz, gml, jsonl, xml, parquet. Une collection sans
+  géométrie ne crée plus de
   Map/Item/Config (`ImportResult.item_id: str | None`, précédent :
   `register_collection`, le flux admin, ne le faisait déjà pas) ;
   `ImportFileButton` (nouvelle phase `selecting-geometry`, sélecteur
