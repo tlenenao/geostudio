@@ -627,6 +627,15 @@ def test_parse_kml_renames_reserved_id_property():
     assert "kml_id" in props
 
 
+def test_rename_reserved_property_keys_applies_given_prefix():
+    from app.ingestion.parsers import _rename_reserved_property_keys
+
+    result = _rename_reserved_property_keys(
+        {"id": "1", "tenant_id": "x", "geom": "y", "name": "ok"}, "jsonl"
+    )
+    assert result == {"jsonl_id": "1", "jsonl_tenant_id": "x", "jsonl_geom": "y", "name": "ok"}
+
+
 def test_parse_kml_corrupted_file_raises_parse_error():
     with pytest.raises(IngestionParseError, match="illisible"):
         list(parse_kml(b"not a real kml"))

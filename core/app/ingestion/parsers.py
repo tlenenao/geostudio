@@ -404,12 +404,19 @@ def parse_shapefile_zip(
 # de table ("column id specified more than once"), pas seulement un cas
 # limite de nommage utilisateur. Renommé plutôt que supprimé pour ne pas
 # perdre l'attribut id du Placemark quand il est renseigné.
-_KML_RESERVED_PROPERTY_NAMES = {"id", "tenant_id", "geom"}
+_RESERVED_PROPERTY_NAMES = {"id", "tenant_id", "geom"}
 
 
-def _rename_kml_reserved_properties(props: dict) -> dict:
+def _rename_reserved_property_keys(props: dict, prefix: str) -> dict:
+    """Toute source de données peut légitimement porter une colonne nommée
+    id/tenant_id/geom, en collision avec les colonnes fixes que run_import
+    pose sur chaque table (id serial PRIMARY KEY, tenant_id, geom) — pour
+    KML, cette collision est garantie à 100% (le driver GDAL impose un
+    champ id sur tout Placemark, SP-56). Fonction générique, préfixe fourni
+    par l'appelant : parse_kml (préfixe "kml", inchangé), parse_gml
+    ("gml"), parse_jsonlines ("jsonl"), parse_xml_generic ("xml")."""
     return {
-        (f"kml_{key}" if key in _KML_RESERVED_PROPERTY_NAMES else key): value
+        (f"{prefix}_{key}" if key in _RESERVED_PROPERTY_NAMES else key): value
         for key, value in props.items()
     }
 
@@ -428,7 +435,7 @@ def parse_kml(
     suffix = ".kmz" if _looks_like_zip(content) else ".kml"
     with _temp_file(content, suffix) as path:
         for geom, props in _read_features(path, layer_name):
-            yield geom, _rename_kml_reserved_properties(props)
+            yield geom, _rename_reserved_property_keys(props, "kml")
 
 
 def _looks_like_zip(content: bytes) -> bool:
