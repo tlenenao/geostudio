@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-// Outil CLIENT du copilote sur la requête visuelle (GAP-17) — fusionne
-// filtres/jointure/résumé générés dans le formulaire, jamais de création
-// ni d'exécution. Un seul outil pour les trois volets (patron déjà en
-// vigueur pour setFilter, qui fusionne plutôt que remplace).
+// Outil CLIENT du copilote sur la requête visuelle (GAP-17) — applique
+// filtres/jointure/résumé générés au formulaire, jamais de création ni
+// d'exécution. Un seul outil pour les trois volets.
+//
+// M3 (revue finale de branche GAP-17) : ce commentaire affirmait une
+// « fusion » sur le patron de `setFilter` — c'est faux et ça l'a toujours
+// été. Chacun des trois volets est REMPLACÉ, pas fusionné : `filters` écrase
+// le tableau entier (aucune fusion ligne à ligne), `join`/`summary`
+// remplacent la valeur courante. Seule exception, posée par I4 : un tableau
+// `filters` dont AUCUNE ligne ne survit à la validation est un no-op, pour
+// ne pas effacer silencieusement des filtres saisis à la main
+// (applyVisualQueryClientOp.ts).
 type ClientToolSchema = { name: string; description: string; inputSchema: Record<string, unknown> };
 
 const FILTER_ROW_JSON_SCHEMA = {

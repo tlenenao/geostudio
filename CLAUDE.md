@@ -1249,7 +1249,18 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   par le même `POST /v1/analytics/sql` que le SQL tapé à la main
   (`run_analyst_sql`), et la création de pipeline/dataset/collection
   depuis la requête visuelle reste au clic humain sur Créer/Mettre à
-  jour. 11 tâches, exécution TDD stricte avec revue par tâche —
+  jour. **Deux points d'architecture non évidents, à connaître avant de
+  toucher à cette surface (M5, revue finale de branche)** :
+  `ALLOWED_MCP_TOOL_NAMES` (`core/app/copilot/tools_allowlist.py`) est
+  **globale, pas par surface** — `generate_sql_query`/
+  `generate_visual_query` sont donc techniquement appelables depuis le
+  copilote du builder d'App aussi ; inoffensif (chaque outil refait ses
+  propres contrôles de privilège/lecture de collection, et les deux ne
+  produisent qu'un brouillon), mais aucune garde ne le limite. Et
+  `CopilotTurnRequest.surface` est **purement indicatif** : il ne
+  sélectionne qu'un message système (`_SURFACE_INTROS`), rien côté serveur
+  ne restreint les outils autorisés en fonction de sa valeur. 11 tâches,
+  exécution TDD stricte avec revue par tâche —
   plusieurs défauts réels trouvés et corrigés, pas seulement des écarts
   de texte de plan (piège CLAUDE.md n°3) : (1) Tâche 2 (implémentée par
   un modèle bon marché) livrait un premier jet fragile — 4 Important

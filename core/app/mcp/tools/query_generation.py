@@ -124,7 +124,15 @@ def register(server: FastMCP, session_factory) -> None:
         natural-language question, scoped to one collection. Never executes
         the query — the caller must insert it as a draft (client tool
         applySqlDraft) and the human must validate it (SQL Lab's Exécuter
-        button) before it runs through POST /v1/analytics/sql. GAP-17."""
+        button) before it runs through POST /v1/analytics/sql. GAP-17.
+
+        Schema source ≠ execution source (M4, revue finale de branche
+        GAP-17) : the column list comes from a live PostGIS introspection of
+        the collection's table, while the drafted SQL later executes against
+        the GeoParquet lakehouse (run_analyst_sql materialises CDC-replicated
+        files). For a collection CDC has not replicated yet, this tool will
+        confidently draft valid-looking SQL that fails at execution time with
+        "collection '<id>' has no data yet"."""
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, access_token)
