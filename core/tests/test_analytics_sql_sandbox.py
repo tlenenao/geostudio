@@ -253,7 +253,9 @@ def test_materialization_is_bounded_by_the_statement_timeout(tmp_path, monkeypat
     conn = _spatial_conn()
     monkeypatch.setattr("app.analytics.sql_sandbox.STATEMENT_TIMEOUT_S", 0.2)
 
-    def _slow_materialize(conn, *, name, table_info, base_uri, tenant_id):
+    def _slow_materialize(
+        conn, *, name, table_info, base_uri, tenant_id, masked_fields=frozenset()
+    ):
         conn.execute("SELECT count(*) FROM range(100000000000) t1, range(100000) t2")
 
     import app.analytics.sql_sandbox as sandbox
@@ -268,6 +270,111 @@ def test_materialization_is_bounded_by_the_statement_timeout(tmp_path, monkeypat
                 allowed={"villes": INFO},
                 base_uri=str(tmp_path),
                 tenant_id="default",
+            )
+    finally:
+        conn.close()
+
+
+INFO_WITH_SALARY = TableInfo(
+    table_name="villes",
+    pk_column="id",
+    geometry_column="geometry",
+    geometry_type="Point",
+    srid=4326,
+    columns=[
+        ColumnInfo(name="region", type="string", required=True),
+        ColumnInfo(name="pop", type="integer", required=True),
+        ColumnInfo(name="salary", type="integer", required=False),
+    ],
+)
+
+
+def _write_with_salary(base_dir, *, tenant_id="default", collection_id="villes"):
+    part = base_dir / f"tenant_id={tenant_id}" / f"collection_id={collection_id}" / "dt=2026-09-06"
+    part.mkdir(parents=True, exist_ok=True)
+    gpd.GeoDataFrame(
+        [
+            {
+                "id": 1,
+                "region": "Nord",
+                "pop": 10,
+                "salary": 45000,
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 1.0,
+                "geometry": Point(0, 0),
+            }
+        ],
+        geometry="geometry",
+        crs="EPSG:4326",
+    ).to_parquet(part / "part-1.parquet")
+
+
+def test_sql_lab_select_star_omits_sensitive_column(tmp_path):
+    _write_with_salary(tmp_path)
+    conn = _spatial_conn()
+    try:
+        columns, rows, _truncated = run_analyst_sql(
+            conn,
+            sql="SELECT * FROM villes",
+            allowed={"villes": INFO_WITH_SALARY},
+            base_uri=str(tmp_path),
+            tenant_id="default",
+            masked_fields_by_collection={"villes": frozenset({"salary"})},
+        )
+        assert "salary" not in columns
+        assert "region" in columns
+    finally:
+        conn.close()
+
+
+def test_sql_lab_explicit_select_of_masked_column_fails(tmp_path):
+    _write_with_salary(tmp_path)
+    conn = _spatial_conn()
+    try:
+        with pytest.raises(SqlSandboxError):
+            run_analyst_sql(
+                conn,
+                sql="SELECT salary FROM villes",
+                allowed={"villes": INFO_WITH_SALARY},
+                base_uri=str(tmp_path),
+                tenant_id="default",
+                masked_fields_by_collection={"villes": frozenset({"salary"})},
+            )
+    finally:
+        conn.close()
+
+
+def test_sql_lab_returns_sensitive_column_when_not_masked(tmp_path):
+    _write_with_salary(tmp_path)
+    conn = _spatial_conn()
+    try:
+        columns, rows, _truncated = run_analyst_sql(
+            conn,
+            sql="SELECT salary FROM villes",
+            allowed={"villes": INFO_WITH_SALARY},
+            base_uri=str(tmp_path),
+            tenant_id="default",
+            masked_fields_by_collection={},
+        )
+        assert columns == ["salary"]
+        assert rows == [[45000]]
+    finally:
+        conn.close()
+
+
+def test_sql_lab_never_exposes_cdc_plumbing_columns(tmp_path):
+    _write_with_salary(tmp_path)
+    conn = _spatial_conn()
+    try:
+        with pytest.raises(SqlSandboxError):
+            run_analyst_sql(
+                conn,
+                sql="SELECT _lsn FROM villes",
+                allowed={"villes": INFO_WITH_SALARY},
+                base_uri=str(tmp_path),
+                tenant_id="default",
+                masked_fields_by_collection={},
             )
     finally:
         conn.close()
