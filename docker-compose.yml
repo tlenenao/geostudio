@@ -797,6 +797,27 @@ services:
       - traefik.http.routers.shell.priority=1
       - traefik.http.routers.shell.middlewares=security-headers@docker,rate-limit@docker,csp-dynamic@file
       - traefik.http.services.shell.loadbalancer.server.port=8300
+      # GAP-19 : /embed/:token doit pouvoir être chargé dans l'<iframe> d'un
+      # site tiers — security-headers (frameDeny=true, ci-dessus) l'en
+      # empêcherait sinon (X-Frame-Options: DENY s'applique à TOUTE réponse
+      # du routeur shell, sans distinction de chemin). Routeur dédié, même
+      # service, priorité au-dessus du catch-all shell (1) mais sous les
+      # routeurs SEO (20/25) et l'API (10) — aucun chevauchement de chemin
+      # réel avec eux, priorité posée pour rester explicite plutôt que de
+      # dépendre de l'ordre implicite (longueur de règle) de Traefik.
+      # security-headers-embed reprend HSTS/nosniff/referrer-policy à
+      # l'identique de security-headers, seul frameDeny est omis (Traefik
+      # ne pose X-Frame-Options que si frameDeny=true : l'omettre suffit,
+      # pas la peine de le mettre à false).
+      - traefik.http.routers.shell-embed.rule=Host(`${DOMAIN}`) && PathPrefix(`/embed/`)
+      - traefik.http.routers.shell-embed.entrypoints=websecure
+      - traefik.http.routers.shell-embed.tls.certresolver=letsencrypt
+      - traefik.http.routers.shell-embed.priority=5
+      - traefik.http.routers.shell-embed.service=shell
+      - traefik.http.routers.shell-embed.middlewares=security-headers-embed@docker,rate-limit@docker,csp-dynamic@file
+      - traefik.http.middlewares.security-headers-embed.headers.stsSeconds=31536000
+      - traefik.http.middlewares.security-headers-embed.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.security-headers-embed.headers.referrerPolicy=strict-origin-when-cross-origin
 
   # ─── Ingress ───────────────────────────────────────────
 
