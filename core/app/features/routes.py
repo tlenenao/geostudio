@@ -32,7 +32,7 @@ from app.attachments import repository as attachments_repo
 from app.attachments.routes import get_attachments_bucket, get_s3_client
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
-from app.collections.introspection import TableNotFound
+from app.collections.introspection import TableNotFound, hide_sensitive_columns
 from app.collections.repository import get_access_facts, list_visible_collections
 from app.collections.routes import get_introspector, get_readable_collection
 from app.configs.guest_access import GuestActor, get_share_link_actor
@@ -215,6 +215,8 @@ def list_features(
 ):
     col = get_readable_collection(session, user, collection_id, guest=guest)
     info = introspect(session, col.table_name)
+    if masked:
+        info = hide_sensitive_columns(info, col.sensitive_fields)
     limit = min(limit, MAX_LIMIT)
     parsed_bbox = _parse_bbox(bbox)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
@@ -387,6 +389,8 @@ def export_collection_items(
         )
     col = get_readable_collection(session, user, collection_id)
     info = introspect(session, col.table_name)
+    if masked:
+        info = hide_sensitive_columns(info, col.sensitive_fields)
     parsed_bbox = _parse_bbox(bbox)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
@@ -525,6 +529,8 @@ def get_single_feature(
 ):
     col = get_readable_collection(session, user, collection_id, guest=guest)
     info = introspect(session, col.table_name)
+    if masked:
+        info = hide_sensitive_columns(info, col.sensitive_fields)
     with rls(session, col.tenant_id, masked=masked):
         feature = repo.get_feature(session, info, fid=fid)
     if feature is None:

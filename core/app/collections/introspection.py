@@ -3,6 +3,7 @@
 (pg_catalog) arrive dans introspection_pg (task 7) ; les routes reçoivent
 l'introspecteur par dépendance injectable."""
 
+import dataclasses
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal
@@ -47,3 +48,15 @@ class TableInfo:
 
 
 Introspector = Callable[[Session, str], TableInfo]
+
+
+def hide_sensitive_columns(info: TableInfo, sensitive_fields: list[str]) -> TableInfo:
+    """Retire du TableInfo introspecté les colonnes marquées sensibles
+    (GAP-22) — appelé côté masqué, AVANT toute construction de requête
+    SQL nommant ces colonnes : sous gis_rls_masked, nommer une colonne
+    jamais grantée fait échouer toute l'instruction (permission denied),
+    elle n'est jamais silencieusement omise par Postgres."""
+    if not sensitive_fields:
+        return info
+    hidden = set(sensitive_fields)
+    return dataclasses.replace(info, columns=[c for c in info.columns if c.name not in hidden])

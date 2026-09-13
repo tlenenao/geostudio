@@ -6,15 +6,17 @@ GET /items/{id} (première couche de service partagée entre route REST et
 tool MCP de ce dépôt, avec app.items.service.get_sharing_service/
 set_sharing_service et app.configs.service.create_config_service)."""
 
-import dataclasses
-
 from fastapi import HTTPException
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
 from pydantic import BaseModel
 
 from app.collections import repository as collections_repo
-from app.collections.introspection import TableNotFound, UnsupportedTable
+from app.collections.introspection import (
+    TableNotFound,
+    UnsupportedTable,
+    hide_sensitive_columns,
+)
 from app.collections.introspection_pg import introspect_table
 from app.db import request_scoped_session
 from app.features.repository import FilterError, select_features
@@ -173,11 +175,8 @@ def register(server: FastMCP, session_factory) -> None:
             # masked scope, so it always includes sensitive columns) — the
             # sensitive columns must be stripped from `info` itself before the
             # masked query runs, not just relied on the GRANT/REVOKE alone.
-            if masked and col.sensitive_fields:
-                hidden = set(col.sensitive_fields)
-                info = dataclasses.replace(
-                    info, columns=[c for c in info.columns if c.name not in hidden]
-                )
+            if masked:
+                info = hide_sensitive_columns(info, col.sensitive_fields)
             try:
                 with rls_scope(session, col.tenant_id, masked=masked):
                     page = select_features(
