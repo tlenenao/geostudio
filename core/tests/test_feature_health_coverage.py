@@ -17,6 +17,19 @@ from scripts.feature_health.model import Feature
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 
+# `core/coverage.xml` n'existe qu'à la sortie du process qui le produit
+# (`--cov-report=xml`, hook `pytest_sessionfinish`) : dans le job CI `core`
+# lui-même, qui invoque ces tests DANS ce même process, le fichier n'existe
+# jamais encore — ce n'est pas un flake, c'est structurel (poule et œuf).
+# `shell/coverage/coverage-summary.json` n'existe carrément jamais dans ce
+# job (produit par le job `shell`, un runner distinct). Les deux assertions
+# réelles sont exercées par le job CI `feature-health`, qui télécharge les
+# deux artefacts après coup et rejoue explicitement ce fichier (cf.
+# `.github/workflows/ci.yml`) — jamais absorbées silencieusement, juste
+# déplacées là où les deux fichiers coexistent réellement.
+_CORE_COVERAGE_MISSING = not (REPO / "core/coverage.xml").exists()
+_SHELL_COVERAGE_MISSING = not (REPO / "shell/coverage/coverage-summary.json").exists()
+
 
 def _feature(**overrides) -> Feature:
     base = dict(
@@ -36,6 +49,12 @@ def _feature(**overrides) -> Feature:
     return Feature(**base)
 
 
+@pytest.mark.skipif(
+    _CORE_COVERAGE_MISSING,
+    reason="core/coverage.xml pas encore écrit dans ce process — lancer "
+    "`uv run pytest --cov=app --cov-report=xml` puis rejouer ce test seul, "
+    "ou voir le job CI `feature-health` qui l'exerce pour de vrai",
+)
 def test_core_rates_are_keyed_on_repo_relative_paths():
     """Piège de la spec §3.1 : `filename` est relatif à `core/app/`. Avec le
     mauvais préfixe, le rattachement tombe à 165/304 au lieu de 256/304."""
@@ -44,6 +63,12 @@ def test_core_rates_are_keyed_on_repo_relative_paths():
     assert 0.0 <= rates["core/app/collections/routes.py"] <= 100.0
 
 
+@pytest.mark.skipif(
+    _SHELL_COVERAGE_MISSING,
+    reason="shell/coverage/coverage-summary.json produit par un job CI "
+    "distinct (`shell`), jamais présent dans le job `core` — voir le job "
+    "CI `feature-health` qui l'exerce pour de vrai",
+)
 def test_shell_rates_are_relativised_on_the_shell_segment():
     """Les clés du JSON sont des chemins absolus produits par une autre
     machine (ou un autre worktree) : on relativise sur le segment `shell/`,

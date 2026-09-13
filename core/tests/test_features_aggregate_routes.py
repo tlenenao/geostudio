@@ -189,6 +189,32 @@ def test_aggregate_unknown_group_by_field_returns_400(env):
     assert response.status_code == 400
 
 
+def test_aggregate_rejects_sensitive_field_for_user_without_privilege(env):
+    """GAP-22 Task 12 : `pop` marqué sensible sur la collection — `regular`
+    (rôle Créateur par défaut, sans data.view_sensitive) ne peut pas
+    l'utiliser comme groupBy, même si la validation Python (Task 11) est
+    indistinguable d'un champ réellement inexistant."""
+    app, client, admin, regular, _tmp_path, _tenant_id = env
+    col = _register(app, client, admin, public=True)
+    assert (
+        client.patch(f"/v1/collections/{col['id']}", json={"sensitiveFields": ["pop"]}).status_code
+        == 200
+    )
+
+    _as(app, regular)
+    response = client.post(f"/v1/collections/{col['id']}/aggregate", json={"groupBy": "pop"})
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["errors"][0]["code"] == "unknown_field"
+    assert body["errors"][0]["field"] == "groupBy"
+
+    # l'admin (data.view_sensitive) n'est pas masqué
+    _as(app, admin)
+    response = client.post(f"/v1/collections/{col['id']}/aggregate", json={"groupBy": "pop"})
+    assert response.status_code == 200
+
+
 def test_aggregate_sample_returns_bare_values(env):
     app, client, admin, _r, tmp_path, tenant_id = env
     col = _register(app, client, admin, public=True)

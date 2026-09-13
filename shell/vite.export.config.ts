@@ -8,6 +8,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath, URL } from "node:url";
 import { resolve } from "node:path";
+import { copyMaplibreWorkerPlugin } from "./vite.copyMaplibreWorker.ts";
 
 export default defineConfig({
   // Relative base: the bundle is unzipped under an arbitrary sub-path
@@ -15,7 +16,7 @@ export default defineConfig({
   // served from the domain root — "/" would make every asset URL absolute
   // from the host root and 404 anywhere else (SP-18a review, C1).
   base: "./",
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), copyMaplibreWorkerPlugin()],
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },

@@ -22,6 +22,7 @@ const COLLECTIONS: CollectionAdmin[] = [
     featureCount: 10,
     owner: "alice",
     attachmentFields: [],
+    sensitiveFields: [],
     license: "",
     licenseUri: "",
     producer: "",

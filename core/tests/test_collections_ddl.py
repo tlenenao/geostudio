@@ -2,7 +2,7 @@
 import pytest
 from sqlalchemy import text
 
-from app.collections.ddl import TenantColumnMismatch, apply_collection_ddl
+from app.collections.ddl import TenantColumnMismatch, apply_collection_ddl, sync_masked_role_grants
 
 pytestmark = pytest.mark.postgis
 
@@ -179,3 +179,42 @@ def test_ddl_backfills_a_new_tenant_id_column_with_the_callers_tenant(pg_table, 
         session.execute(text("SET LOCAL ROLE gis_rls"))
         session.execute(text("SET LOCAL app.tenant_id = 'acme'"))
         assert session.execute(text("SELECT count(*) FROM t_rls")).scalar() == 1
+
+
+def test_apply_collection_ddl_grants_all_columns_to_masked_role_by_default(
+    pg_table, pg_session_factory
+):
+    with pg_session_factory() as session:
+        apply_collection_ddl(session, pg_table)
+        session.execute(text("ALTER TABLE t_rls ADD COLUMN salary integer"))
+        sync_masked_role_grants(session, pg_table, [])  # re-sync après ALTER manuel du test
+        session.execute(
+            text("INSERT INTO t_rls (titre, tenant_id, salary) VALUES ('a', 'default', 100)")
+        )
+        session.commit()
+    with pg_session_factory() as session:
+        session.execute(text("SELECT set_config('app.tenant_id', 'default', true)"))
+        session.execute(text("SET LOCAL ROLE gis_rls_masked"))
+        row = session.execute(text("SELECT titre, salary FROM t_rls")).first()
+        assert row == ("a", 100)
+
+
+def test_sync_masked_role_grants_revokes_sensitive_column(pg_table, pg_session_factory):
+    with pg_session_factory() as session:
+        apply_collection_ddl(session, pg_table)
+        session.execute(text("ALTER TABLE t_rls ADD COLUMN salary integer"))
+        sync_masked_role_grants(session, pg_table, ["salary"])
+        session.execute(
+            text("INSERT INTO t_rls (titre, tenant_id, salary) VALUES ('a', 'default', 100)")
+        )
+        session.commit()
+    with pg_session_factory() as session:
+        session.execute(text("SELECT set_config('app.tenant_id', 'default', true)"))
+        session.execute(text("SET LOCAL ROLE gis_rls_masked"))
+        # titre reste lisible
+        assert session.execute(text("SELECT titre FROM t_rls")).scalar() == "a"
+        # salary ne l'est plus
+        import sqlalchemy.exc
+
+        with pytest.raises(sqlalchemy.exc.DBAPIError):
+            session.execute(text("SELECT salary FROM t_rls")).first()

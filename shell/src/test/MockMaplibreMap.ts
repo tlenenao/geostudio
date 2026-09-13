@@ -114,6 +114,15 @@ export class MockMap {
   flyTo(opts: unknown) {
     this.flyToArgs.push(opts);
   }
+  // MapView.tsx's flyTo handle falls back to jumpTo when terrain is set
+  // (maplibre-gl v6 regression: an animated pitch transition with terrain
+  // active lands far from the target — see MapView.tsx's flyTo handle
+  // comment). Recorded into the same `flyToArgs` tests already assert
+  // against: what matters to those tests is "the camera was moved to these
+  // opts", not which underlying API achieved it.
+  jumpTo(opts: unknown) {
+    this.flyToArgs.push(opts);
+  }
   fitBounds(bounds: unknown, opts?: unknown) {
     this.fitBoundsArgs.push({ bounds, opts });
   }
@@ -150,6 +159,9 @@ export class MockMap {
   }
   setTerrain(spec: unknown) {
     this.terrain = spec;
+  }
+  getTerrain() {
+    return this.terrain;
   }
   loaded() {
     return true;

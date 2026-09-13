@@ -13,7 +13,12 @@ import os
 
 from app.alerts import repository as alerts_repo
 from app.alerts.notify import NotifyError, send_email, send_webhook
-from app.analytics.aggregate import _measure_label, _measures_for, run_collection_aggregate
+from app.analytics.aggregate import (
+    UnknownAggregateField,
+    _measure_label,
+    _measures_for,
+    run_collection_aggregate,
+)
 from app.analytics.duckdb_conn import open_connection
 from app.audit.writer import write_audit
 from app.auth.dependency import is_read_only_mode
@@ -27,6 +32,8 @@ from app.items import repository as items_repo
 from app.jobs import app
 from app.jobs.common import resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
+from app.roles.guards import has_privilege
+from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -134,20 +141,47 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
         raise AlertEvaluationError(f"collection '{collection_id}' not found")
     table_info = introspect_table(session, col.table_name)
 
+    # GAP-22 (Finding I1, revue finale de branche) : ce 4e site réel
+    # d'appel à run_collection_aggregate avait été manqué par l'inventaire
+    # du plan d'origine (seules les 2 routes REST + 1 outil MCP avaient été
+    # câblés). Sans ce masquage, un utilisateur qui peut créer une règle
+    # d'alerte sur un dataset adossé à une collection — mais qui n'a pas
+    # data.view_sensitive — pouvait lire la valeur réelle d'un agrégat sur
+    # une colonne sensible via le résultat évalué de l'alerte (envoyé à un
+    # webhook/e-mail). Même idiome que features/routes.py::aggregate_features.
+    masked_fields = (
+        frozenset()
+        if has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+        else frozenset(col.sensitive_fields)
+    )
+
     conn = open_connection(
         endpoint_url=os.environ["S3_ENDPOINT_URL"],
         access_key=os.environ["S3_ACCESS_KEY"],
         secret_key=os.environ["S3_SECRET_KEY"],
     )
     try:
-        category_key, rows = run_collection_aggregate(
-            conn,
-            base_uri=_analytics_base_uri(),
-            tenant_id=col.tenant_id,
-            collection_id=col.id,
-            table_info=table_info,
-            request=payload.query,
-        )
+        try:
+            category_key, rows = run_collection_aggregate(
+                conn,
+                base_uri=_analytics_base_uri(),
+                tenant_id=col.tenant_id,
+                collection_id=col.id,
+                table_info=table_info,
+                request=payload.query,
+                masked_fields=masked_fields,
+            )
+        except UnknownAggregateField as exc:
+            # Un champ masqué (GAP-22) est rejeté comme "inconnu" par
+            # _validate_fields — c'est le résultat attendu d'un défaut de
+            # privilège, pas une "erreur inattendue" : sans cette conversion,
+            # le filet générique de evaluate_alert_task le journalise en
+            # ERROR avec une trace complète et affiche "erreur interne" à
+            # l'auteur de la règle pour un cas parfaitement déterministe (même
+            # esprit que aggregate_features, qui renvoie un 400 propre).
+            raise AlertEvaluationError(
+                f"l'agrégat référence un champ masqué ou inconnu : {exc.message}"
+            ) from exc
     finally:
         conn.close()
 

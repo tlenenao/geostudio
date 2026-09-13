@@ -355,6 +355,13 @@ jobs:
         with: {name: shell-coverage, path: shell/coverage}
       - run: uv sync
         working-directory: core
+      # Les deux seuls tests de test_feature_health_coverage.py qui ont
+      # besoin d'artefacts réels (core/coverage.xml + shell coverage-summary)
+      # skippent dans le job `core` lui-même (l'un des deux fichiers n'y
+      # existe jamais — poule/œuf ou job distinct) ; ici les deux coexistent
+      # après téléchargement, donc ils s'exécutent pour de vrai.
+      - run: uv run pytest tests/test_feature_health_coverage.py -q
+        working-directory: core
       - run: uv run python scripts/feature_health_cli.py --repo .. --check
         working-directory: core
         env:

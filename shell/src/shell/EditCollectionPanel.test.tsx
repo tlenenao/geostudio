@@ -23,16 +23,23 @@ if (!Element.prototype.scrollIntoView) {
 // avec vi.hoisted), ce qui évite d'avoir besoin de QueryClientProvider/
 // ItemClientProvider/MSW — le composant ne consomme que useUpdateCollection,
 // useInstanceInfo et (depuis SP-41) useMetadataCatalog.
-const { mockUseUpdateCollection, mockUseInstanceInfo, mockUseMetadataCatalog } = vi.hoisted(() => ({
+const {
+  mockUseUpdateCollection,
+  mockUseInstanceInfo,
+  mockUseMetadataCatalog,
+  mockUseCollectionSchema,
+} = vi.hoisted(() => ({
   mockUseUpdateCollection: vi.fn(),
   mockUseInstanceInfo: vi.fn(),
   mockUseMetadataCatalog: vi.fn(),
+  mockUseCollectionSchema: vi.fn(),
 }));
 
 vi.mock("../api/hooks", () => ({
   useUpdateCollection: mockUseUpdateCollection,
   useInstanceInfo: mockUseInstanceInfo,
   useMetadataCatalog: mockUseMetadataCatalog,
+  useCollectionSchema: mockUseCollectionSchema,
 }));
 
 const baseCollection: CollectionAdmin = {
@@ -49,6 +56,7 @@ const baseCollection: CollectionAdmin = {
   featureCount: 3,
   owner: "admin",
   attachmentFields: [],
+  sensitiveFields: [],
   license: "",
   licenseUri: "",
   producer: "",
@@ -85,6 +93,18 @@ beforeEach(() => {
         { id: "en", label: "Anglais" },
       ],
     },
+  });
+  mockUseCollectionSchema.mockReturnValue({
+    data: {
+      collection: "incidents",
+      pk: "id",
+      geometry: { column: "geom", type: "Point", srid: 4326 },
+      fields: [
+        { name: "titre", type: "string", required: false },
+        { name: "gravite", type: "integer", required: false },
+      ],
+    },
+    isLoading: false,
   });
 });
 
@@ -125,6 +145,45 @@ describe("EditCollectionPanel — champs attachment (SP-40)", () => {
 
     expect(mutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({ attachmentFields: [{ key: "documents", label: "Documents" }] }),
+    );
+  });
+});
+
+describe("EditCollectionPanel — champs sensibles (GAP-22)", () => {
+  it("affiche les champs réels de la collection à cocher", async () => {
+    render(<EditCollectionPanel collection={baseCollection} onClose={vi.fn()} />);
+    await userEvent.click(screen.getByRole("tab", { name: "Champs sensibles" }));
+    expect(screen.getByLabelText("titre")).toBeInTheDocument();
+    expect(screen.getByLabelText("gravite")).toBeInTheDocument();
+  });
+
+  it("précoche les champs déjà déclarés sensibles", async () => {
+    render(
+      <EditCollectionPanel
+        collection={{ ...baseCollection, sensitiveFields: ["titre"] }}
+        onClose={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "Champs sensibles" }));
+    expect(screen.getByLabelText("titre")).toBeChecked();
+    expect(screen.getByLabelText("gravite")).not.toBeChecked();
+  });
+
+  it("coche un champ puis soumet sensitiveFields", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue(undefined);
+    mockUseUpdateCollection.mockReturnValue({ mutateAsync, isPending: false, isError: false });
+    render(
+      <EditCollectionPanel
+        collection={{ ...baseCollection, sensitiveFields: [] }}
+        onClose={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "Champs sensibles" }));
+    await userEvent.click(screen.getByLabelText("titre"));
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ sensitiveFields: ["titre"] }),
     );
   });
 });

@@ -9,7 +9,17 @@ grantées à gis_rls, et la suite de la requête (write_audit) s'exécute dans
 la même transaction. Seul l'échec du RESET ROLE sur transaction déjà avortée
 (SQLSTATE 25P02) est avalé, pour laisser remonter l'erreur SQL d'origine.
 Validé à travers PgBouncer pool=transaction par
-scripts/spike_pgbouncer_rls.py."""
+scripts/spike_pgbouncer_rls.py.
+
+GAP-22 (masquage colonne) ajoute un second rôle, gis_rls_masked : mêmes
+politiques RLS (donc même isolation tenant) que gis_rls, mais sans les
+GRANT par colonne sur les champs sensibles d'une collection
+(app.collections.ddl::sync_masked_role_grants). `rls_scope(masked=True)`
+bascule sur ce rôle pour tout appelant sans le privilège
+data.view_sensitive — le choix du rôle (`role`) ne vient jamais d'une
+entrée utilisateur, seulement de cette constante Python, donc son
+interpolation directe dans SET LOCAL ROLE (qui n'accepte pas de paramètre
+lié) ne présente aucun risque d'injection."""
 
 from contextlib import contextmanager
 
@@ -19,9 +29,10 @@ from sqlalchemy.orm import Session
 
 
 @contextmanager
-def rls_scope(session: Session, tenant_id: str):
+def rls_scope(session: Session, tenant_id: str, *, masked: bool = False):
+    role = "gis_rls_masked" if masked else "gis_rls"
     session.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": tenant_id})
-    session.execute(text("SET LOCAL ROLE gis_rls"))
+    session.execute(text(f"SET LOCAL ROLE {role}"))
     try:
         yield
     finally:

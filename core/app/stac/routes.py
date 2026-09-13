@@ -17,11 +17,11 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.auth.dependency import get_current_user_optional
-from app.collections.introspection import TableNotFound, UnsupportedTable
+from app.collections.introspection import TableNotFound, UnsupportedTable, hide_sensitive_columns
 from app.collections.repository import list_visible_collections
 from app.collections.routes import get_introspector, get_readable_collection
 from app.db import get_session
-from app.features.routes import get_features_repo, get_rls_scope
+from app.features.routes import get_features_repo, get_masked_for_user, get_rls_scope
 from app.roles.guards import has_privilege
 from app.roles.privileges import Privilege
 from app.stac import serializers
@@ -224,6 +224,7 @@ def list_items(
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    masked=Depends(get_masked_for_user),
 ):
     col = get_readable_collection(
         session,
@@ -234,9 +235,11 @@ def list_items(
         ),
     )
     info = introspect(session, col.table_name)
+    if masked:
+        info = hide_sensitive_columns(info, col.sensitive_fields)
     limit = min(limit, MAX_LIMIT)
     parsed_bbox = _parse_bbox(bbox)
-    with rls(session, col.tenant_id):
+    with rls(session, col.tenant_id, masked=masked):
         page = repo.select_features(
             session, info, limit=limit, offset=offset, bbox=parsed_bbox, filters=None
         )
@@ -271,6 +274,7 @@ def get_item(
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    masked=Depends(get_masked_for_user),
 ):
     col = get_readable_collection(
         session,
@@ -281,7 +285,9 @@ def get_item(
         ),
     )
     info = introspect(session, col.table_name)
-    with rls(session, col.tenant_id):
+    if masked:
+        info = hide_sensitive_columns(info, col.sensitive_fields)
+    with rls(session, col.tenant_id, masked=masked):
         feature = repo.get_feature(session, info, fid=feature_id)
     if feature is None:
         raise HTTPException(status_code=404, detail="item not found")
@@ -349,6 +355,7 @@ def _run_search(
     introspect,
     repo,
     rls,
+    masked,
 ):
     limit = min(limit, MAX_LIMIT)
     cols = _visible_collections(session, user)
@@ -372,8 +379,10 @@ def _run_search(
         else:
             offset = 0
         info = introspect(session, col.table_name)
+        if masked:
+            info = hide_sensitive_columns(info, col.sensitive_fields)
         remaining = limit - len(results)
-        with rls(session, col.tenant_id):
+        with rls(session, col.tenant_id, masked=masked):
             page = repo.select_features(
                 session, info, limit=remaining, offset=offset, bbox=bbox, filters=None
             )
@@ -422,6 +431,7 @@ def search_get(
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    masked=Depends(get_masked_for_user),
 ):
     return _run_search(
         request,
@@ -436,6 +446,7 @@ def search_get(
         introspect=introspect,
         repo=repo,
         rls=rls,
+        masked=masked,
     )
 
 
@@ -448,6 +459,7 @@ def search_post(
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    masked=Depends(get_masked_for_user),
 ):
     if body.bbox is not None and len(body.bbox) != 4:
         raise HTTPException(status_code=400, detail="bbox must be minx,miny,maxx,maxy")
@@ -464,4 +476,5 @@ def search_post(
         introspect=introspect,
         repo=repo,
         rls=rls,
+        masked=masked,
     )

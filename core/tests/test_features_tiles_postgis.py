@@ -200,6 +200,123 @@ def test_a_tile_request_sets_a_transaction_local_statement_timeout(pg_app):
         assert s.execute(sa_text("SHOW statement_timeout")).scalar() != "10s"
 
 
+def test_tile_omits_sensitive_property_without_privilege(pg_engine):
+    """GAP-22 Task 7 : la propriété marquée sensible ne doit jamais fuiter
+    dans le contenu MVT décodé (ici : jamais apparaître comme clé de
+    propriété dans le protobuf brut, même patron que
+    `test_a_tile_carries_the_properties_but_never_tenant_id` ci-dessus) pour
+    un utilisateur sans `data.view_sensitive`, et rester visible pour un
+    utilisateur qui le porte.
+
+    Passe par le vrai chemin utilisateur `PATCH /collections/{id}
+    {"sensitiveFields": [...]}` (Task 9), pas une écriture directe du
+    modèle — miroir de
+    `test_features_integration.py::
+    test_list_features_masks_sensitive_column_under_real_grant_revoke`
+    (Task 6/8), adapté à la route de tuiles MVT."""
+    from app.collections import repository as collections_repo
+    from app.collections.ddl import apply_collection_ddl
+
+    Base.metadata.create_all(pg_engine)
+    # Nom de table sans "salary" comme sous-chaîne : le nom de la couche MVT
+    # (issu du nom de table) apparaît lui aussi en clair dans le protobuf, une
+    # collision aurait rendu `b"salary" not in content` vraie pour la mauvaise
+    # raison (trouvé en exécutant : le premier nom de table choisi,
+    # "demo_incidents_salary_tile", faisait échouer l'assertion positive
+    # elle-même, indépendamment du masquage).
+    table = "demo_incidents_sensitive_tile"
+    with pg_engine.begin() as conn:
+        conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
+        conn.execute(
+            text(
+                f"CREATE TABLE {table} (id serial PRIMARY KEY, "
+                "titre text NOT NULL, salary integer, geom geometry(Point, 4326))"
+            )
+        )
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        admin = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="admin-salary-tile-gap22",
+            username="admin-salary-tile-gap22",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        # Rôle par défaut "creator" : ne porte pas data.view_sensitive
+        # (BUILT_IN_ROLE_PRIVILEGES, app/roles/privileges.py) -> masked=True
+        # pour cet utilisateur via get_masked_for_user.
+        regular = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="regular-salary-tile-gap22",
+            username="regular-salary-tile-gap22",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        s.commit()
+        apply_collection_ddl(s, table)
+        collections_repo.create_collection(
+            s,
+            tenant_id=tenant.id,
+            owner_id=admin.id,
+            table_name=table,
+            title="Incidents salaire (tuile)",
+            description="",
+            is_public=True,
+            pk_column="id",
+            geometry_column="geom",
+            geometry_type="Point",
+            srid=4326,
+        )
+        s.execute(
+            text(
+                f"INSERT INTO {table} (tenant_id, titre, salary, geom) VALUES "
+                "(:tid, 'Nid de poule', 5000, ST_SetSRID(ST_MakePoint(2.35, 48.85), 4326))"
+            ),
+            {"tid": tenant.id},
+        )
+        s.commit()
+
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    client = TestClient(app)
+    tile_path = f"/v1/collections/{table}/tiles/0/0/0.mvt"
+    try:
+        app.dependency_overrides[get_current_user] = lambda: admin
+        app.dependency_overrides[get_current_user_optional] = lambda: admin
+        patch_r = client.patch(f"/v1/collections/{table}", json={"sensitiveFields": ["salary"]})
+        assert patch_r.status_code == 200, patch_r.text
+
+        app.dependency_overrides[get_current_user] = lambda: regular
+        app.dependency_overrides[get_current_user_optional] = lambda: regular
+        r_regular = client.get(tile_path)
+        assert r_regular.status_code == 200, r_regular.text
+        assert b"titre" in r_regular.content
+        assert b"salary" not in r_regular.content
+
+        app.dependency_overrides[get_current_user] = lambda: admin
+        app.dependency_overrides[get_current_user_optional] = lambda: admin
+        r_admin = client.get(tile_path)
+        assert r_admin.status_code == 200, r_admin.text
+        assert b"salary" in r_admin.content
+    finally:
+        with pg_engine.begin() as conn:
+            conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
+            conn.execute(
+                text("TRUNCATE collection_shares, collections, audit_log, users, tenants CASCADE")
+            )
+
+
 def test_serving_a_tile_writes_no_audit_row(pg_app):
     """Décision de spec §3.1 : une vue de carte produit des centaines de
     tuiles, les auditer noierait la table."""

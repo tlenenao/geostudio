@@ -20,6 +20,7 @@ __all__ = [
     "quote_ident",
     "spatial_index_name",
     "apply_collection_ddl",
+    "sync_masked_role_grants",
 ]
 
 
@@ -51,6 +52,40 @@ def spatial_index_name(table_name: str) -> str:
     """Nom de l'index GiST d'une collection. Partagé avec la migration 0028 —
     une seule définition, jamais deux conventions de nommage."""
     return f"ix_{table_name}_geom_gist"
+
+
+def _all_real_columns(session: Session, table_name: str) -> list[str]:
+    return list(
+        session.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = :t"
+            ),
+            {"t": table_name},
+        ).scalars()
+    )
+
+
+def sync_masked_role_grants(session: Session, table_name: str, sensitive_fields: list[str]) -> None:
+    """(Re)calcule en entier les GRANT/REVOKE SELECT par colonne pour
+    gis_rls_masked (GAP-22) — jamais un GRANT SELECT au niveau table (un
+    REVOKE(colonne) ultérieur serait alors sans effet, cf. spec §1.2).
+    Idempotent : recalcule l'état complet à partir de `sensitive_fields`, ne
+    diffuse pas un delta contre un état précédent inconnu de l'appelant.
+    No-op hors Postgres (appelée depuis patch_collection, qui n'a pas
+    l'override de test que register_collection a via get_ddl_applier)."""
+    if session.get_bind().dialect.name != "postgresql":
+        return
+    t = _qi(session, table_name)
+    all_cols = _all_real_columns(session, table_name)
+    sensitive = set(sensitive_fields) & set(all_cols)
+    visible = [c for c in all_cols if c not in sensitive]
+    if visible:
+        cols_sql = ", ".join(_qi(session, c) for c in visible)
+        session.execute(text(f"GRANT SELECT ({cols_sql}) ON public.{t} TO gis_rls_masked"))
+    if sensitive:
+        cols_sql = ", ".join(_qi(session, c) for c in sorted(sensitive))
+        session.execute(text(f"REVOKE SELECT ({cols_sql}) ON public.{t} FROM gis_rls_masked"))
 
 
 def _reject_preexisting_mismatched_tenant_column(
@@ -109,6 +144,7 @@ def apply_collection_ddl(
     ]
     for stmt in stmts:
         session.execute(text(stmt))
+    sync_masked_role_grants(session, table_name, [])
     # Index spatial : sans lui, tout filtre bbox (OGC Features, geom_intersects
     # du cross-filter SP-14n, tuiles MVT SP-24) est un scan complet de table.
     # Le nom de la colonne de géométrie vient de geometry_columns, jamais de

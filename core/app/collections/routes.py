@@ -12,7 +12,7 @@ from app.attachments import repository as attachments_repo
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional, is_quotas_enabled
 from app.collections import repository as repo
-from app.collections.ddl import TenantColumnMismatch
+from app.collections.ddl import TenantColumnMismatch, sync_masked_role_grants
 from app.collections.introspection import (
     Introspector,
     TableNotFound,
@@ -166,6 +166,7 @@ def _collection_json(col, permissions, owner: str | None = None) -> dict:
         "featureCount": col.feature_count,
         "owner": owner,
         "attachmentFields": col.attachment_fields,
+        "sensitiveFields": col.sensitive_fields,
         "license": col.license,
         "licenseUri": col.license_uri,
         "producer": col.producer,
@@ -574,6 +575,27 @@ def _reject_attachment_field_collisions(
         )
 
 
+def _reject_invalid_sensitive_fields(
+    session: Session,
+    col,
+    sensitive_fields: list[str],
+    introspect: Introspector,
+) -> None:
+    if not sensitive_fields:
+        return
+    try:
+        info = introspect(session, col.table_name)
+    except (TableNotFound, UnsupportedTable):
+        return
+    valid = {c.name for c in info.columns} - {info.pk_column, "tenant_id", info.geometry_column}
+    unknown = sorted(set(sensitive_fields) - valid)
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"sensitiveFields must be real, non-reserved column(s): {', '.join(unknown)}",
+        )
+
+
 @router.patch("/collections/{collection_id}")
 def patch_collection(
     collection_id: str,
@@ -601,6 +623,8 @@ def patch_collection(
         raise HTTPException(status_code=403, detail="write access required")
     if body.attachmentFields is not None:
         _reject_attachment_field_collisions(session, col, body.attachmentFields, introspect)
+    if body.sensitiveFields is not None:
+        _reject_invalid_sensitive_fields(session, col, body.sensitiveFields, introspect)
     text_changed = (body.title is not None and body.title != col.title) or (
         body.description is not None and body.description != col.description
     )
@@ -633,6 +657,9 @@ def patch_collection(
         col.temporal_end = body.temporalEnd
     if body.attachmentFields is not None:
         col.attachment_fields = [f.model_dump() for f in body.attachmentFields]
+    if body.sensitiveFields is not None:
+        sync_masked_role_grants(session, col.table_name, body.sensitiveFields)
+        col.sensitive_fields = body.sensitiveFields
     session.flush()
     if text_changed:
         repo.enqueue_embedding(col.id, user.tenant_id)

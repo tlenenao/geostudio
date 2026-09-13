@@ -8,8 +8,10 @@ import {
   useRef,
   useState,
 } from "react";
-import maplibregl, { type FilterSpecification } from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
+import { type FilterSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import "./maplibreWorkerSetup";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { HeatmapLayer, HexagonLayer } from "@deck.gl/aggregation-layers";
 import { ColumnLayer } from "@deck.gl/layers";
@@ -1332,7 +1334,22 @@ export const MapView = forwardRef<
     ref,
     () => ({
       flyTo: (opts) => {
-        mapRef.current?.flyTo(opts);
+        // maplibre-gl v6 regression, confirmed by e2e (with vs. without
+        // terrain, with `flyTo` vs. `easeTo` vs. `jumpTo` — only the
+        // animated forms fail, only when a terrain is currently set): an
+        // animated pitch transition (`flyTo`/`easeTo`) while `map.getTerrain()`
+        // is non-null lands the camera near pitch≈0 instead of the
+        // requested value, regardless of target — repeatable, not a race.
+        // `jumpTo` (no animation, no curve/elevation sampling) is
+        // unaffected, so it's the fallback exactly when terrain is active;
+        // `flyTo`'s scenic arc stays the default the rest of the time
+        // (searched-location and explorer navigation, the other two
+        // MapViewHandle.flyTo call sites, never touch terrain state).
+        if (mapRef.current?.getTerrain()) {
+          mapRef.current.jumpTo(opts);
+        } else {
+          mapRef.current?.flyTo(opts);
+        }
       },
       highlight: (geometry) => {
         const src = mapRef.current?.getSource(HIGHLIGHT_ID) as

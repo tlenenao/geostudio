@@ -32,7 +32,7 @@ from app.attachments import repository as attachments_repo
 from app.attachments.routes import get_attachments_bucket, get_s3_client
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
-from app.collections.introspection import TableNotFound
+from app.collections.introspection import TableNotFound, hide_sensitive_columns
 from app.collections.repository import get_access_facts, list_visible_collections
 from app.collections.routes import get_introspector, get_readable_collection
 from app.configs.guest_access import GuestActor, get_share_link_actor
@@ -106,7 +106,7 @@ def get_features_repo():  # overridé en test SQLite
 
 
 @contextmanager
-def null_rls_scope(session, tenant_id):  # pour SQLite (pas de rôles/GUC)
+def null_rls_scope(session, tenant_id, *, masked: bool = False):  # pour SQLite (pas de rôles/GUC)
     yield
 
 
@@ -114,6 +114,17 @@ def get_rls_scope():  # overridé en test SQLite
     from app.features.rls import rls_scope
 
     return rls_scope
+
+
+def get_masked_for_user(
+    user=Depends(get_current_user_optional),
+    session: Session = Depends(get_session),
+) -> bool:
+    """Verdict de masquage colonne (GAP-22) pour la requête courante — jamais
+    faire confiance à un lecteur anonyme pour du sensible."""
+    if user is None:
+        return True
+    return not has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
 
 
 def _validation_error(errors: list[dict], status: int = 400):
@@ -200,15 +211,18 @@ def list_features(
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    masked=Depends(get_masked_for_user),
 ):
     col = get_readable_collection(session, user, collection_id, guest=guest)
     info = introspect(session, col.table_name)
+    if masked:
+        info = hide_sensitive_columns(info, col.sensitive_fields)
     limit = min(limit, MAX_LIMIT)
     parsed_bbox = _parse_bbox(bbox)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
     try:
-        with rls(session, col.tenant_id):
+        with rls(session, col.tenant_id, masked=masked):
             page = repo.select_features(
                 session,
                 info,
@@ -263,6 +277,11 @@ def aggregate_features(
 ):
     col = get_readable_collection(session, user, collection_id, guest=guest)
     info = introspect(session, col.table_name)
+    masked_fields = (
+        frozenset()
+        if user is not None and has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+        else frozenset(col.sensitive_fields)
+    )
     conn = conn_factory()
     try:
         try:
@@ -273,6 +292,7 @@ def aggregate_features(
                 collection_id=col.id,
                 table_info=info,
                 request=body,
+                masked_fields=masked_fields,
             )
         except UnknownAggregateField as exc:
             raise _validation_error(
@@ -309,6 +329,11 @@ def export_collection_aggregate(
         )
     col = get_readable_collection(session, user, collection_id)
     info = introspect(session, col.table_name)
+    masked_fields = (
+        frozenset()
+        if user is not None and has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+        else frozenset(col.sensitive_fields)
+    )
     conn = conn_factory()
     try:
         try:
@@ -319,6 +344,7 @@ def export_collection_aggregate(
                 collection_id=col.id,
                 table_info=info,
                 request=body,
+                masked_fields=masked_fields,
             )
         except UnknownAggregateField as exc:
             raise _validation_error(
@@ -361,6 +387,7 @@ def export_collection_items(
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    masked=Depends(get_masked_for_user),
 ):
     if format not in EXPORT_FORMATS_ITEMS:
         raise _validation_error(
@@ -374,6 +401,8 @@ def export_collection_items(
         )
     col = get_readable_collection(session, user, collection_id)
     info = introspect(session, col.table_name)
+    if masked:
+        info = hide_sensitive_columns(info, col.sensitive_fields)
     parsed_bbox = _parse_bbox(bbox)
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
@@ -382,7 +411,7 @@ def export_collection_items(
     offset = 0
     while True:
         try:
-            with rls(session, col.tenant_id):
+            with rls(session, col.tenant_id, masked=masked):
                 page = repo.select_features(
                     session,
                     info,
@@ -441,6 +470,7 @@ def analytics_sql(
     base_uri: str = Depends(get_analytics_base_uri),
 ):
     require_privilege(session, user, Privilege.ANALYTICS_SQL_LAB_ACCESS.value)
+    sensitive_ok = has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
     cols = list_visible_collections(
         session,
         tenant_id=user.tenant_id,
@@ -448,11 +478,15 @@ def analytics_sql(
         can_see_all=has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value),
     )
     allowed: dict = {}
+    masked_fields_by_collection: dict[str, frozenset[str]] = {}
     for col in cols:
         try:
             allowed[col.id] = introspect(session, col.table_name)
         except TableNotFound:
             continue
+        masked_fields_by_collection[col.id] = (
+            frozenset() if sensitive_ok else frozenset(col.sensitive_fields)
+        )
     conn = conn_factory()
     try:
         columns, rows, truncated = run_analyst_sql(
@@ -461,6 +495,7 @@ def analytics_sql(
             allowed=allowed,
             base_uri=base_uri,
             tenant_id=user.tenant_id,
+            masked_fields_by_collection=masked_fields_by_collection,
         )
     except SqlSandboxError as exc:
         _sql_queries_counter.add(1, {"outcome": "error"})
@@ -508,10 +543,13 @@ def get_single_feature(
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    masked=Depends(get_masked_for_user),
 ):
     col = get_readable_collection(session, user, collection_id, guest=guest)
     info = introspect(session, col.table_name)
-    with rls(session, col.tenant_id):
+    if masked:
+        info = hide_sensitive_columns(info, col.sensitive_fields)
+    with rls(session, col.tenant_id, masked=masked):
         feature = repo.get_feature(session, info, fid=fid)
     if feature is None:
         raise HTTPException(status_code=404, detail="feature not found")

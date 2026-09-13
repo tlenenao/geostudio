@@ -19,7 +19,7 @@ from typing import Any
 
 import duckdb
 
-from app.analytics.aggregate import _dedup_cte, _has_any_file
+from app.analytics.aggregate import _EXCLUDED_PROPERTIES, _dedup_cte, _has_any_file
 from app.collections.introspection import TableInfo
 from app.sql_ident import quote_ident_duckdb as _qi
 
@@ -94,11 +94,17 @@ def _materialize(
     table_info: TableInfo,
     base_uri: str,
     tenant_id: str,
+    masked_fields: frozenset[str] = frozenset(),
 ) -> None:
     if not _has_any_file(conn, base_uri, tenant_id, name):
         raise SqlSandboxError(f"collection '{name}' has no data yet")
     cte = _dedup_cte(conn, table_info, base_uri, tenant_id, name)
-    conn.execute(f"CREATE TEMP TABLE {_qi(name)} AS {cte} SELECT * FROM live")
+    reserved = {table_info.pk_column} | _EXCLUDED_PROPERTIES | masked_fields
+    cols = [table_info.pk_column] + [c.name for c in table_info.columns if c.name not in reserved]
+    if table_info.geometry_column and table_info.geometry_column not in reserved:
+        cols.append(table_info.geometry_column)
+    select_list = ", ".join(_qi(c) for c in cols)
+    conn.execute(f"CREATE TEMP TABLE {_qi(name)} AS {cte} SELECT {select_list} FROM live")
 
 
 def _lock_down(conn: duckdb.DuckDBPyConnection) -> None:
@@ -134,6 +140,7 @@ def run_analyst_sql(
     allowed: dict[str, TableInfo],
     base_uri: str,
     tenant_id: str,
+    masked_fields_by_collection: dict[str, frozenset[str]] | None = None,
 ) -> tuple[list[str], list[list[object]], bool]:
     """Exécute le SQL de l'analyste confiné aux vues autorisées. `allowed` :
     {collection_id: TableInfo}. Retourne (columns, rows, truncated). L'ordre est
@@ -151,10 +158,16 @@ def run_analyst_sql(
     _apply_limits(conn)
     timer = threading.Timer(STATEMENT_TIMEOUT_S, conn.interrupt)
     timer.start()
+    masked_by_collection = masked_fields_by_collection or {}
     try:
         for name in sorted(refs & set(allowed)):
             _materialize(
-                conn, name=name, table_info=allowed[name], base_uri=base_uri, tenant_id=tenant_id
+                conn,
+                name=name,
+                table_info=allowed[name],
+                base_uri=base_uri,
+                tenant_id=tenant_id,
+                masked_fields=masked_by_collection.get(name, frozenset()),
             )
         _lock_down(conn)
         return _execute(conn, sql)
