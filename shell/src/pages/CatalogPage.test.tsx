@@ -18,7 +18,7 @@ vi.mock("../shell/ItemActions", () => ({ ItemActions: () => <span>actions</span>
 // MapView.test.tsx.
 vi.mock("maplibre-gl", async () => {
   const { MockMap } = await import("../test/MockMaplibreMap");
-  return { default: { Map: MockMap } };
+  return { Map: MockMap, setWorkerUrl: () => {} };
 });
 
 import { http, HttpResponse } from "msw";

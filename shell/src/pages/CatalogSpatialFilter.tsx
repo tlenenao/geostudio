@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef, useState } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
+import "../map/maplibreWorkerSetup";
 import { DEFAULT_BASEMAP } from "../map/basemaps";
 import { Button } from "../ui/kit/Button";
 import { t } from "../i18n";

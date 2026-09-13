@@ -6,7 +6,7 @@ import { mapInstances } from "../test/MockMaplibreMap";
 
 vi.mock("maplibre-gl", async () => {
   const { MockMap } = await import("../test/MockMaplibreMap");
-  return { default: { Map: MockMap } };
+  return { Map: MockMap, setWorkerUrl: () => {} };
 });
 
 const { CatalogSpatialFilter } = await import("./CatalogSpatialFilter");

@@ -8,7 +8,7 @@ import { PipelinePreviewPanel } from "./PipelinePreviewPanel";
 
 vi.mock("maplibre-gl", async () => {
   const { MockMap } = await import("../../test/MockMaplibreMap");
-  return { default: { Map: MockMap } };
+  return { Map: MockMap, setWorkerUrl: () => {} };
 });
 
 function renderPanel(previewPipeline = vi.fn().mockResolvedValue([{ id: 1, pop: 1200 }])) {

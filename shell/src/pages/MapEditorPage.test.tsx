@@ -12,7 +12,7 @@ import { overlayInstances } from "../test/MockDeckgl";
 
 vi.mock("maplibre-gl", async () => {
   const { MockMap } = await import("../test/MockMaplibreMap");
-  return { default: { Map: MockMap } };
+  return { Map: MockMap, setWorkerUrl: () => {} };
 });
 vi.mock("@deck.gl/mapbox", async () => {
   const { MockMapboxOverlay } = await import("../test/MockDeckgl");

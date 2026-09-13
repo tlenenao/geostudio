@@ -576,7 +576,7 @@ test("buildMapPaint never emits a MapLibre-invalid step for tied-data breaks tha
   // .result === "error"`, message "Expected at least 4 arguments, but
   // found only 2.").
   const preFixShape = ["step", ["get", "pop"], "#2563eb"];
-  const validated = createExpression(preFixShape);
+  const validated = createExpression(preFixShape, "paint.fill-color");
   expect(validated.result).toBe("error");
 });
 
@@ -598,7 +598,7 @@ test("buildMapPaint's step expression for a usable (>= 2 classes) domain validat
     null,
     "polygon",
   );
-  const validated = createExpression(paint["fill-color"]);
+  const validated = createExpression(paint["fill-color"], "paint.fill-color");
   expect(validated.result).toBe("success");
 });
 
