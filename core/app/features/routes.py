@@ -470,6 +470,7 @@ def analytics_sql(
     base_uri: str = Depends(get_analytics_base_uri),
 ):
     require_privilege(session, user, Privilege.ANALYTICS_SQL_LAB_ACCESS.value)
+    sensitive_ok = has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
     cols = list_visible_collections(
         session,
         tenant_id=user.tenant_id,
@@ -477,11 +478,15 @@ def analytics_sql(
         can_see_all=has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value),
     )
     allowed: dict = {}
+    masked_fields_by_collection: dict[str, frozenset[str]] = {}
     for col in cols:
         try:
             allowed[col.id] = introspect(session, col.table_name)
         except TableNotFound:
             continue
+        masked_fields_by_collection[col.id] = (
+            frozenset() if sensitive_ok else frozenset(col.sensitive_fields)
+        )
     conn = conn_factory()
     try:
         columns, rows, truncated = run_analyst_sql(
@@ -490,6 +495,7 @@ def analytics_sql(
             allowed=allowed,
             base_uri=base_uri,
             tenant_id=user.tenant_id,
+            masked_fields_by_collection=masked_fields_by_collection,
         )
     except SqlSandboxError as exc:
         _sql_queries_counter.add(1, {"outcome": "error"})
