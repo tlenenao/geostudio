@@ -1793,6 +1793,55 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   ajout (aucune route REST/outil MCP/route shell nouvelle, seulement des
   champs sur des surfaces existantes). `feature_health_cli.py --check` non
   rejoué dans cette clôture (aucune nouvelle surface à inventorier).
+  **Revue finale de branche (opus, sur `dev`, après ce qui précède) : 1
+  Critical + 2 Important trouvés, corrigés, falsifiés à deux reprises
+  indépendantes (implémenteur puis reviewer), commit `73843bbd`** — même
+  cause que le défaut de croisement de la Task 8 : l'inventaire du plan
+  cherchait un nom littéral (`rls_scope`/`gis_rls`) plutôt qu'un chemin
+  d'exécution, piège n°11. **C1 (Critical, PoC réel)** : les 3 routes
+  STAC (`app/stac/routes.py::list_items/get_item/search`) lisaient les
+  mêmes tables via `select_features`/`get_feature` que les routes OGC
+  masquées, mais sans jamais appeler `hide_sensitive_columns` ni passer
+  `masked=` — `salary: 45000` renvoyé en clair, y compris à un appelant
+  anonyme sur une collection publique. `app/dcat/routes.py` vérifié
+  indemne (ne lit jamais de ligne de feature, seulement une emprise
+  géométrique). **I1 (Important)** : `app/alerts/jobs.py::_measure_value`
+  — 4e site réel de `run_collection_aggregate`, raté par l'inventaire
+  d'origine (seuls 2 routes REST + 1 outil MCP avaient été câblés) —
+  tournait sans `masked_fields=` ; un porteur du droit de créer une règle
+  d'alerte pouvait lire l'agrégat d'une colonne sensible via l'état
+  évalué/le webhook. Balayage indépendant de tout `run_collection_
+  aggregate`/`run_analyst_sql`/`select_features`/`get_feature` du dépôt
+  confirmé exhaustif par le reviewer : aucun 5e/6e site oublié (le seul
+  autre site, `appexport/miniserver/main.py`, est en aval du bypass
+  appexport déjà documenté ci-dessus, pas un site neuf). **I2
+  (Important)** : le correctif Task 16 de la migration 0042 n'était
+  protégé qu'à moitié — `DROP OWNED BY gis_rls_masked` non gardé,
+  juste avant le SAVEPOINT sur `DROP ROLE` — corrigé par deux SAVEPOINT
+  indépendants plutôt qu'un seul partagé (pour ne jamais confondre
+  « rôle déjà absent » avec « rôle a des dépendants ailleurs dans le
+  cluster », deux tolérances légitimes mais distinctes), reproduit de
+  bout en bout via une vraie migration Alembic + suppression concurrente
+  simulée du rôle sur le cluster partagé. **1 défaut résiduel corrigé
+  dans la foulée (N1, commit `ccaece44`)** : `UnknownAggregateField`
+  n'était pas converti en erreur propre côté alertes — un champ masqué
+  rejeté (résultat attendu, pas un bug) tombait dans le filet générique
+  d'`evaluate_alert_task` (« erreur interne », trace complète journalisée
+  en ERROR), corrigé par la même conversion `AlertEvaluationError` que
+  le reste de la fonction. **3 trouvailles informationnelles consignées
+  sans correctif (REV-186/187/188)** : re-GRANT latent si
+  `apply_collection_ddl` était un jour réappliqué sur une collection déjà
+  `sensitive_fields`-marquée (inatteignable aujourd'hui, aucun chemin
+  réel) ; `app/cdc/backfill.py` réplique les valeurs sensibles en clair
+  vers GeoParquet (masquage à la requête, pas au stockage — choix de
+  conception assumé de la spec §2.3, pas une régression) ;
+  `generate_sql_query`/`generate_visual_query`/`explain_dataset` (SP-62,
+  postérieurs à cette spec) exposent les **noms** de champs sensibles au
+  LLM, jamais les valeurs — confirme le périmètre déjà exclu §4
+  (« masquage de la découverte de schéma »). Suite du lot de correctifs :
+  89 passed sur les fichiers touchés (STAC/alertes/migration/features/
+  MCP) + re-vérification indépendante du reviewer (292 passed/0 failed
+  sur un périmètre élargi) ; `ruff`/`lint-imports` verts.
 
 ### Conventions tranchées (2026-09-01)
 
