@@ -67,6 +67,22 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     if op.get_bind().dialect.name == "postgresql":
-        op.execute("DROP OWNED BY gis_rls_masked")
-        op.execute("DROP ROLE IF EXISTS gis_rls_masked")
+        conn = op.get_bind()
+        conn.execute(sa.text("DROP OWNED BY gis_rls_masked"))
+        # Un rôle est un objet global au cluster Postgres, pas à cette seule
+        # base : si une AUTRE base du même cluster (ex. la base de test
+        # partagée, dans une suite complète où de nombreuses collections
+        # ont réellement grante ce rôle) lui a encore accordé des
+        # privilèges, DROP ROLE échoue en DependentObjectsStillExist bien
+        # que `DROP OWNED BY` ci-dessus ait déjà nettoyé la base courante
+        # (portée documentée de `DROP OWNED BY` : la base courante
+        # uniquement). SAVEPOINT pour ne pas empoisonner la transaction de
+        # migration si cette tentative échoue — seule la colonne compte
+        # pour la validité du downgrade, la suppression du rôle est un
+        # nettoyage best-effort.
+        try:
+            with conn.begin_nested():
+                conn.execute(sa.text("DROP ROLE IF EXISTS gis_rls_masked"))
+        except sa.exc.DBAPIError:
+            pass
     op.drop_column("collections", "sensitive_fields")

@@ -127,7 +127,11 @@ def _client(monkeypatch, info: TableInfo | None = None, collection=None):
 
     app = create_app()
     col = collection or SimpleNamespace(
-        id="demo_incidents", table_name="demo_incidents", tenant_id="default", is_public=True
+        id="demo_incidents",
+        table_name="demo_incidents",
+        tenant_id="default",
+        is_public=True,
+        sensitive_fields=[],
     )
     monkeypatch.setattr(tiles_module, "get_readable_collection", lambda s, u, c, *, guest=None: col)
     app.dependency_overrides[db.get_session] = lambda: None
@@ -190,13 +194,17 @@ def _recording_client(monkeypatch):
     from app.main import create_app
 
     @contextmanager
-    def null_scope(session, tenant_id):
+    def null_scope(session, tenant_id, *, masked=False):
         yield
 
     app = create_app()
     session = _RecordingSession()
     col = SimpleNamespace(
-        id="demo_incidents", table_name="demo_incidents", tenant_id="default", is_public=True
+        id="demo_incidents",
+        table_name="demo_incidents",
+        tenant_id="default",
+        is_public=True,
+        sensitive_fields=[],
     )
     monkeypatch.setattr(tiles_module, "get_readable_collection", lambda s, u, c, *, guest=None: col)
     monkeypatch.setattr(tiles_module, "quote_ident", lambda s, name: f'"{name}"')

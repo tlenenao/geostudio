@@ -214,10 +214,27 @@ def test_0042_upgrade_downgrade_upgrade_on_non_empty_db_column_level_only(
                 .all()
             )
             assert "sensitive_fields" not in columns
-            role_exists = conn.execute(
-                sa.text("SELECT 1 FROM pg_roles WHERE rolname = 'gis_rls_masked'")
-            ).scalar()
-            assert role_exists is None
+            # `gis_rls_masked` est un rôle global au cluster Postgres, pas à
+            # cette seule base jetable : sous une suite complète (des
+            # dizaines de tests réels grantent ce rôle sur la base de test
+            # partagée d'un autre pg_engine du même cluster), `DROP ROLE`
+            # échoue en DependentObjectsStillExist bien que cette base-ci
+            # soit propre — la migration le tolère désormais (voir le
+            # downgrade() : SAVEPOINT autour de `DROP ROLE`). Le rôle peut
+            # donc encore exister globalement ; ce qui est garanti par
+            # `DROP OWNED BY` (portée : la base courante uniquement) est
+            # qu'il n'y a plus aucun privilège accordé à ce rôle SUR CETTE
+            # base — vérifié ci-dessous, invariant réellement local et
+            # déterministe, contrairement à l'existence globale du rôle.
+            grants_here = conn.execute(
+                sa.text(
+                    "SELECT 1 FROM information_schema.role_table_grants "
+                    "WHERE grantee = 'gis_rls_masked' "
+                    "UNION SELECT 1 FROM information_schema.column_privileges "
+                    "WHERE grantee = 'gis_rls_masked'"
+                )
+            ).first()
+            assert grants_here is None
             # La ligne `collections`/la table physique insérées avant 0042
             # survivent au downgrade (seuls la colonne et le rôle ajoutés
             # par 0042 sont retirés).
