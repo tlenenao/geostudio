@@ -773,6 +773,13 @@ def test_evaluate_alert_task_masks_sensitive_column_for_owner_without_privilege(
             assert latest.state == "error"
             assert latest.value is None
             assert "salary" in latest.error
+            # Revue finale de branche (finding N1) : ce résultat est un
+            # défaut de privilège déterministe, pas un bug — UnknownAggregateField
+            # doit être converti en AlertEvaluationError par _measure_value
+            # (message clair), jamais retomber sur le filet générique
+            # `except Exception` d'evaluate_alert_task ("erreur interne", avec
+            # trace complète journalisée en ERROR pour un cas normal).
+            assert "erreur interne" not in latest.error
     finally:
         _teardown_sensitive_alert(pg_engine)
 

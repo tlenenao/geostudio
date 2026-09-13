@@ -13,7 +13,12 @@ import os
 
 from app.alerts import repository as alerts_repo
 from app.alerts.notify import NotifyError, send_email, send_webhook
-from app.analytics.aggregate import _measure_label, _measures_for, run_collection_aggregate
+from app.analytics.aggregate import (
+    UnknownAggregateField,
+    _measure_label,
+    _measures_for,
+    run_collection_aggregate,
+)
 from app.analytics.duckdb_conn import open_connection
 from app.audit.writer import write_audit
 from app.auth.dependency import is_read_only_mode
@@ -156,15 +161,27 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
         secret_key=os.environ["S3_SECRET_KEY"],
     )
     try:
-        category_key, rows = run_collection_aggregate(
-            conn,
-            base_uri=_analytics_base_uri(),
-            tenant_id=col.tenant_id,
-            collection_id=col.id,
-            table_info=table_info,
-            request=payload.query,
-            masked_fields=masked_fields,
-        )
+        try:
+            category_key, rows = run_collection_aggregate(
+                conn,
+                base_uri=_analytics_base_uri(),
+                tenant_id=col.tenant_id,
+                collection_id=col.id,
+                table_info=table_info,
+                request=payload.query,
+                masked_fields=masked_fields,
+            )
+        except UnknownAggregateField as exc:
+            # Un champ masqué (GAP-22) est rejeté comme "inconnu" par
+            # _validate_fields — c'est le résultat attendu d'un défaut de
+            # privilège, pas une "erreur inattendue" : sans cette conversion,
+            # le filet générique de evaluate_alert_task le journalise en
+            # ERROR avec une trace complète et affiche "erreur interne" à
+            # l'auteur de la règle pour un cas parfaitement déterministe (même
+            # esprit que aggregate_features, qui renvoie un 400 propre).
+            raise AlertEvaluationError(
+                f"l'agrégat référence un champ masqué ou inconnu : {exc.message}"
+            ) from exc
     finally:
         conn.close()
 
