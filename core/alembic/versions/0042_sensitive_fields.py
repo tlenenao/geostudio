@@ -68,7 +68,37 @@ def upgrade() -> None:
 def downgrade() -> None:
     if op.get_bind().dialect.name == "postgresql":
         conn = op.get_bind()
-        conn.execute(sa.text("DROP OWNED BY gis_rls_masked"))
+        # Revue finale de branche (Finding I2) : `DROP OWNED BY` tournait
+        # SANS garde, immédiatement avant le SAVEPOINT qui protège `DROP
+        # ROLE` — alors que `DROP OWNED BY <role>` lève lui aussi une
+        # erreur bien réelle ("role ... does not exist") si le rôle a déjà
+        # été supprimé ailleurs dans le cluster entre deux exécutions de
+        # test partageant la même instance Postgres (le scénario exact que
+        # ce test jetable déclenche : sa propre base n'a jamais grante ce
+        # rôle, donc `DROP OWNED BY` n'a rigoureusement rien à faire, mais
+        # échoue quand même si le rôle cluster-global est absent). Cette
+        # erreur n'était protégée par AUCUN savepoint et pouvait empoisonner
+        # toute la transaction de migration.
+        #
+        # Chaque instruction reçoit son PROPRE savepoint plutôt qu'un bloc
+        # unique enveloppant les deux : si `DROP OWNED BY` réussit mais que
+        # `DROP ROLE` échoue ensuite pour une raison réelle (des privilèges
+        # accordés depuis une AUTRE base du cluster — le cas déjà documenté
+        # ci-dessous), un bloc unique aurait avalé cette seconde erreur dans
+        # le même `except`, alors qu'elle mérite d'être tolérée pour une
+        # raison différente et documentée séparément. Deux savepoints
+        # distincts gardent chaque tolérance justifiée indépendamment et
+        # évitent qu'un état partiel (OWNED BY nettoyé, ROLE non supprimé,
+        # ou l'inverse si l'ordre était inversé) ne soit jamais ambigu :
+        # dans les deux cas, la seule garantie requise par ce downgrade est
+        # que CETTE base ne porte plus aucun privilège pour ce rôle (vérifié
+        # par test_migration_0042_sensitive_fields.py), jamais l'absence
+        # globale du rôle dans le cluster.
+        try:
+            with conn.begin_nested():
+                conn.execute(sa.text("DROP OWNED BY gis_rls_masked"))
+        except sa.exc.DBAPIError:
+            pass
         # Un rôle est un objet global au cluster Postgres, pas à cette seule
         # base : si une AUTRE base du même cluster (ex. la base de test
         # partagée, dans une suite complète où de nombreuses collections

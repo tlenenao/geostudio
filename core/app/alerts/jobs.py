@@ -27,6 +27,8 @@ from app.items import repository as items_repo
 from app.jobs import app
 from app.jobs.common import resolve_owner_user
 from app.jobs.common import session_factory as _session_factory
+from app.roles.guards import has_privilege
+from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -134,6 +136,20 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
         raise AlertEvaluationError(f"collection '{collection_id}' not found")
     table_info = introspect_table(session, col.table_name)
 
+    # GAP-22 (Finding I1, revue finale de branche) : ce 4e site réel
+    # d'appel à run_collection_aggregate avait été manqué par l'inventaire
+    # du plan d'origine (seules les 2 routes REST + 1 outil MCP avaient été
+    # câblés). Sans ce masquage, un utilisateur qui peut créer une règle
+    # d'alerte sur un dataset adossé à une collection — mais qui n'a pas
+    # data.view_sensitive — pouvait lire la valeur réelle d'un agrégat sur
+    # une colonne sensible via le résultat évalué de l'alerte (envoyé à un
+    # webhook/e-mail). Même idiome que features/routes.py::aggregate_features.
+    masked_fields = (
+        frozenset()
+        if has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+        else frozenset(col.sensitive_fields)
+    )
+
     conn = open_connection(
         endpoint_url=os.environ["S3_ENDPOINT_URL"],
         access_key=os.environ["S3_ACCESS_KEY"],
@@ -147,6 +163,7 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
             collection_id=col.id,
             table_info=table_info,
             request=payload.query,
+            masked_fields=masked_fields,
         )
     finally:
         conn.close()

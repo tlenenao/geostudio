@@ -633,3 +633,188 @@ def test_evaluate_alert_task_recovers_from_a_poisoned_session_on_success_path(en
     with Session() as s:
         latest = alerts_repo.get_evaluation(s, tenant_id=tenant.id, evaluation_id=evaluation_id)
         assert latest.state == "error"
+
+
+def _setup_sensitive_alert(
+    pg_engine, *, owner_bootstrap_admin: bool
+) -> tuple[object, object, str, str]:
+    """Collection avec une colonne `salary` marquée sensible
+    (`sensitive_fields`), une règle d'alerte qui somme cette colonne, et un
+    propriétaire soit admin (porte data.view_sensitive par défaut), soit un
+    utilisateur `creator` ordinaire (ne le porte pas, BUILT_IN_ROLE_PRIVILEGES)
+    — GAP-22, Finding I1 (revue finale de branche) : `_measure_value`
+    n'appelait `run_collection_aggregate` sans jamais passer `masked_fields`,
+    4e site réel manqué par l'inventaire du plan d'origine."""
+    Base.metadata.create_all(pg_engine)
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="owner",
+            username="owner",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=owner_bootstrap_admin,
+        )
+        s.execute(
+            text(
+                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
+                "description, pk_column, geometry_column, is_public, editable, "
+                "sensitive_fields, created_at, updated_at) "
+                "VALUES ('salaries', :t, :o, 'salaries', 'Salaries', '', 'id', "
+                "'geometry', false, true, '[\"salary\"]', now(), now())"
+            ),
+            {"t": tenant.id, "o": owner.id},
+        )
+        s.execute(
+            text(
+                "CREATE TABLE salaries (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
+                "salary INTEGER, geometry geometry(Point, 4326))"
+            )
+        )
+        apply_collection_ddl(s, "salaries")
+
+        dataset_item = items_repo.create_item(
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="dataset",
+            title="Salaries dataset",
+        )
+        dataset_config = BuilderConfig.model_validate(
+            {
+                "kind": "dataset",
+                "dataset": {"source": "collection", "collectionId": "salaries", "columns": {}},
+            }
+        )
+        configs_repo.create_config(s, dataset_config, item_id=dataset_item.id, tenant_id=tenant.id)
+
+        alert_item = items_repo.create_item(
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="alert",
+            title="Salary sum",
+        )
+        alert_config = BuilderConfig.model_validate(
+            _alert_body(
+                dataset_item.id,
+                expr="value > 0",
+                query={"agg": "sum", "field": "salary"},
+            )
+        )
+        configs_repo.create_config(s, alert_config, item_id=alert_item.id, tenant_id=tenant.id)
+        evaluation = alerts_repo.create_evaluation(
+            s, tenant_id=tenant.id, alert_rule_item_id=alert_item.id
+        )
+        s.commit()
+        alert_item_id, evaluation_id = alert_item.id, evaluation.id
+
+    return Session, tenant, alert_item_id, evaluation_id
+
+
+def _teardown_sensitive_alert(pg_engine):
+    with pg_engine.begin() as conn:
+        conn.execute(
+            text(
+                "DROP TABLE IF EXISTS salaries; "
+                "TRUNCATE alert_evaluations, items, configs, config_revisions, collections, "
+                "audit_log, users, tenants CASCADE"
+            )
+        )
+
+
+def test_evaluate_alert_task_masks_sensitive_column_for_owner_without_privilege(
+    pg_engine, monkeypatch, tmp_path
+):
+    Session, tenant, alert_item_id, evaluation_id = _setup_sensitive_alert(
+        pg_engine, owner_bootstrap_admin=False
+    )
+    try:
+        # 45000€ réel — s'il fuit, l'évaluation réussirait avec value=45000.0
+        # au lieu d'échouer proprement en "error" (champ masqué => inconnu
+        # pour run_collection_aggregate).
+        _write_partition(
+            tmp_path,
+            tenant_id=tenant.id,
+            collection_id="salaries",
+            rows=[
+                {
+                    "id": 1,
+                    "salary": 45000,
+                    "_op": "insert",
+                    "_lsn": 1,
+                    "_ts": 1.0,
+                    "geometry": Point(1.0, 45.0),
+                }
+            ],
+        )
+        monkeypatch.setenv("DATABASE_URL", pg_engine.url.render_as_string(hide_password=False))
+        monkeypatch.setenv("S3_ENDPOINT_URL", "http://localhost:9000")
+        monkeypatch.setenv("S3_ACCESS_KEY", "x")
+        monkeypatch.setenv("S3_SECRET_KEY", "y")
+        monkeypatch.setenv("S3_CDC_BUCKET_BASE_URI", str(tmp_path))
+
+        in_memory = testing.InMemoryConnector()
+        with alert_jobs.app.replace_connector(in_memory) as app:
+            alert_jobs.evaluate_alert_task.defer(evaluation_id=evaluation_id, tenant_id=tenant.id)
+            app.run_worker(wait=False, queues=["etl"])
+
+        with Session() as s:
+            latest = alerts_repo.get_latest_evaluation(
+                s, tenant_id=tenant.id, alert_rule_item_id=alert_item_id
+            )
+            # Le champ masqué n'existe plus pour run_collection_aggregate :
+            # l'évaluation échoue proprement, la valeur réelle (45000) ne
+            # transite JAMAIS par `value` ni par une notification.
+            assert latest.state == "error"
+            assert latest.value is None
+            assert "salary" in latest.error
+    finally:
+        _teardown_sensitive_alert(pg_engine)
+
+
+def test_evaluate_alert_task_reads_sensitive_column_for_owner_with_privilege(
+    pg_engine, monkeypatch, tmp_path
+):
+    Session, tenant, alert_item_id, evaluation_id = _setup_sensitive_alert(
+        pg_engine, owner_bootstrap_admin=True
+    )
+    try:
+        _write_partition(
+            tmp_path,
+            tenant_id=tenant.id,
+            collection_id="salaries",
+            rows=[
+                {
+                    "id": 1,
+                    "salary": 45000,
+                    "_op": "insert",
+                    "_lsn": 1,
+                    "_ts": 1.0,
+                    "geometry": Point(1.0, 45.0),
+                }
+            ],
+        )
+        monkeypatch.setenv("DATABASE_URL", pg_engine.url.render_as_string(hide_password=False))
+        monkeypatch.setenv("S3_ENDPOINT_URL", "http://localhost:9000")
+        monkeypatch.setenv("S3_ACCESS_KEY", "x")
+        monkeypatch.setenv("S3_SECRET_KEY", "y")
+        monkeypatch.setenv("S3_CDC_BUCKET_BASE_URI", str(tmp_path))
+
+        in_memory = testing.InMemoryConnector()
+        with alert_jobs.app.replace_connector(in_memory) as app:
+            alert_jobs.evaluate_alert_task.defer(evaluation_id=evaluation_id, tenant_id=tenant.id)
+            app.run_worker(wait=False, queues=["etl"])
+
+        with Session() as s:
+            latest = alerts_repo.get_latest_evaluation(
+                s, tenant_id=tenant.id, alert_rule_item_id=alert_item_id
+            )
+            assert latest.state == "firing"
+            assert latest.value == 45000.0
+    finally:
+        _teardown_sensitive_alert(pg_engine)
