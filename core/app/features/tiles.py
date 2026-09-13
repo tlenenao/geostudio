@@ -17,11 +17,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.auth.dependency import get_current_user_optional
-from app.collections.introspection import TableInfo, TableNotFound
+from app.collections.introspection import TableInfo, TableNotFound, hide_sensitive_columns
 from app.collections.routes import get_introspector, get_readable_collection
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
-from app.features.routes import get_rls_scope
+from app.features.routes import get_masked_for_user, get_rls_scope
 from app.sql_ident import quote_ident
 
 MVT_EXTENT = 4096
@@ -122,6 +122,7 @@ def get_collection_tile(
     session: Session = Depends(get_session),
     introspect=Depends(get_introspector),
     rls=Depends(get_rls_scope),
+    masked=Depends(get_masked_for_user),
 ) -> Response:
     # Même porte que GET /items : 404 avant 403, anonyme accepté sur une
     # collection publique — plus désormais un jeton invité scopé (GAP-19).
@@ -136,12 +137,14 @@ def get_collection_tile(
         raise HTTPException(status_code=404, detail="collection not found") from exc
     if info.geometry_column is None:
         raise HTTPException(status_code=400, detail="collection has no geometry column")
+    if masked:
+        info = hide_sensitive_columns(info, col.sensitive_fields)
 
     quote = functools.partial(quote_ident, session)
     sql = build_mvt_sql(quote, info)
     # L'isolation tenant vient de la RLS (rôle gis_rls + GUC app.tenant_id),
     # jamais d'un WHERE applicatif.
-    with rls(session, col.tenant_id):
+    with rls(session, col.tenant_id, masked=masked):
         apply_tile_statement_timeout(session)
         tile = session.execute(
             text(sql),
