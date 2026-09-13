@@ -211,6 +211,7 @@ def list_features(
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    masked=Depends(get_masked_for_user),
 ):
     col = get_readable_collection(session, user, collection_id, guest=guest)
     info = introspect(session, col.table_name)
@@ -219,7 +220,7 @@ def list_features(
     parsed_geom_intersects = _parse_geom_intersects(geom_intersects)
     filters = _collect_filters(request)
     try:
-        with rls(session, col.tenant_id):
+        with rls(session, col.tenant_id, masked=masked):
             page = repo.select_features(
                 session,
                 info,
@@ -372,6 +373,7 @@ def export_collection_items(
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    masked=Depends(get_masked_for_user),
 ):
     if format not in EXPORT_FORMATS_ITEMS:
         raise _validation_error(
@@ -393,7 +395,7 @@ def export_collection_items(
     offset = 0
     while True:
         try:
-            with rls(session, col.tenant_id):
+            with rls(session, col.tenant_id, masked=masked):
                 page = repo.select_features(
                     session,
                     info,
@@ -519,10 +521,11 @@ def get_single_feature(
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
+    masked=Depends(get_masked_for_user),
 ):
     col = get_readable_collection(session, user, collection_id, guest=guest)
     info = introspect(session, col.table_name)
-    with rls(session, col.tenant_id):
+    with rls(session, col.tenant_id, masked=masked):
         feature = repo.get_feature(session, info, fid=fid)
     if feature is None:
         raise HTTPException(status_code=404, detail="feature not found")

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -164,6 +165,36 @@ def test_single_feature_and_404(env):
     _register(app, client, admin)
     assert client.get("/v1/collections/incidents/items/1").json()["id"] == 1
     assert client.get("/v1/collections/incidents/items/999").status_code == 404
+
+
+def _make_recording_rls_scope():
+    calls = []
+
+    @contextmanager
+    def recording_rls_scope(session, tenant_id, *, masked=False):
+        calls.append(masked)
+        yield
+
+    return recording_rls_scope, calls
+
+
+def test_list_features_masks_when_privilege_absent(env):
+    app, client, admin, regular, _fake_repo = env
+    recording, calls = _make_recording_rls_scope()
+    app.dependency_overrides[features_routes.get_rls_scope] = lambda: recording
+    # public=True : sinon `regular` (aucun rôle sur mesure, ni owner ni admin)
+    # se voit opposer un 404 par get_readable_collection avant même d'atteindre
+    # `with rls(...)` — la spy resterait vide indépendamment du câblage sous
+    # test, faussant la preuve.
+    _register(app, client, admin, public=True)
+    _as(app, regular)  # aucun rôle sur mesure -> pas de data.view_sensitive
+    client.get("/v1/collections/incidents/items")
+    assert calls == [True]
+
+    calls.clear()
+    _as(app, admin)  # bootstrap_admin -> rôle "admin" -> porte data.view_sensitive
+    client.get("/v1/collections/incidents/items")
+    assert calls == [False]
 
 
 def test_anonymous_reads_public_only(env):
