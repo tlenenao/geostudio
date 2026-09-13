@@ -106,7 +106,7 @@ def get_features_repo():  # overridé en test SQLite
 
 
 @contextmanager
-def null_rls_scope(session, tenant_id):  # pour SQLite (pas de rôles/GUC)
+def null_rls_scope(session, tenant_id, *, masked: bool = False):  # pour SQLite (pas de rôles/GUC)
     yield
 
 
@@ -114,6 +114,17 @@ def get_rls_scope():  # overridé en test SQLite
     from app.features.rls import rls_scope
 
     return rls_scope
+
+
+def get_masked_for_user(
+    user=Depends(get_current_user_optional),
+    session: Session = Depends(get_session),
+) -> bool:
+    """Verdict de masquage colonne (GAP-22) pour la requête courante — jamais
+    faire confiance à un lecteur anonyme pour du sensible."""
+    if user is None:
+        return True
+    return not has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
 
 
 def _validation_error(errors: list[dict], status: int = 400):

@@ -118,7 +118,6 @@ def pg_rls_table_with_sensitive_column(pg_engine, pg_session_factory):
         conn.execute(text("DROP TABLE IF EXISTS t_scope_masked"))
 
 
-@pytest.mark.xfail(reason="rls_scope(masked=) livré par la Tâche 5", strict=True)
 def test_masked_role_filters_column_and_still_respects_tenant_isolation(
     pg_rls_table_with_sensitive_column, pg_session_factory
 ):
