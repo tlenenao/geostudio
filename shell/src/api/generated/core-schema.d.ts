@@ -1997,6 +1997,8 @@ export interface components {
             lineage?: string | null;
             /** Producer */
             producer?: string | null;
+            /** Sensitivefields */
+            sensitiveFields?: string[] | null;
             /** Temporalend */
             temporalEnd?: string | null;
             /** Temporalstart */

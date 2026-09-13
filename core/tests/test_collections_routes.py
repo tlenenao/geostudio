@@ -823,6 +823,39 @@ def test_patch_collection_without_attachment_fields_leaves_them_unchanged(env):
     assert res.json()["attachmentFields"] == [{"key": "photos", "label": "Photos"}]
 
 
+def test_patch_sets_sensitive_fields(env):
+    app, client, Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/v1/collections", json={"tableName": "incidents"})
+    r = client.patch("/v1/collections/incidents", json={"sensitiveFields": ["titre"]})
+    assert r.status_code == 200
+    assert r.json()["sensitiveFields"] == ["titre"]
+    assert client.get("/v1/collections/incidents").json()["sensitiveFields"] == ["titre"]
+
+
+def test_patch_rejects_unknown_sensitive_field(env):
+    app, client, Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/v1/collections", json={"tableName": "incidents"})
+    r = client.patch("/v1/collections/incidents", json={"sensitiveFields": ["nope"]})
+    assert r.status_code == 422
+
+
+def test_patch_rejects_reserved_column_as_sensitive_field(env):
+    app, client, Session, admin, _regular, _ddl = env
+    _as(app, admin)
+    client.post("/v1/collections", json={"tableName": "incidents"})
+    r = client.patch("/v1/collections/incidents", json={"sensitiveFields": ["geom"]})
+    assert r.status_code == 422
+
+
+def test_patch_rejects_duplicate_sensitive_field_names():
+    from app.collections.schemas import CollectionPatch
+
+    with pytest.raises(ValueError, match="duplicate"):
+        CollectionPatch(sensitiveFields=["titre", "titre"])
+
+
 def test_register_collection_defaults_attachment_fields_to_empty(env):
     app, client, _Session, admin, _regular, _ddl = env
     _as(app, admin)

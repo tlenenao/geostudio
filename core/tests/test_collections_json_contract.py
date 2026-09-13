@@ -22,6 +22,7 @@ EXPECTED_KEYS = {
     "featureCount",
     "owner",
     "attachmentFields",
+    "sensitiveFields",
     "license",
     "licenseUri",
     "producer",
@@ -35,7 +36,7 @@ EXPECTED_KEYS = {
 }
 
 
-def test_collection_json_serializes_exactly_the_documented_23_keys() -> None:
+def test_collection_json_serializes_exactly_the_documented_24_keys() -> None:
     col = Collection(
         id="c1",
         title="T",
@@ -48,6 +49,7 @@ def test_collection_json_serializes_exactly_the_documented_23_keys() -> None:
         pk_column="id",
         feature_count=0,
         attachment_fields=[],
+        sensitive_fields=[],
         license="",
         license_uri="",
         producer="",
@@ -64,4 +66,4 @@ def test_collection_json_serializes_exactly_the_documented_23_keys() -> None:
     result = _collection_json(col, permissions, owner="mockuser")
 
     assert set(result.keys()) == EXPECTED_KEYS
-    assert len(EXPECTED_KEYS) == 23
+    assert len(EXPECTED_KEYS) == 24

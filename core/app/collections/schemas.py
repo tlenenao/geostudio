@@ -69,6 +69,7 @@ class CollectionPatch(BaseModel):
     isPublic: bool | None = None
     editable: bool | None = None
     attachmentFields: list[AttachmentFieldSpec] | None = None
+    sensitiveFields: list[str] | None = None
     license: str | None = None
     licenseUri: str | None = None
     producer: str | None = None
@@ -111,6 +112,20 @@ class CollectionPatch(BaseModel):
         if len(keys) != len(set(keys)):
             duplicates = sorted({k for k in keys if keys.count(k) > 1})
             raise ValueError(f"duplicate attachmentFields key(s): {', '.join(duplicates)}")
+        return self
+
+    @model_validator(mode="after")
+    def _reject_duplicate_sensitive_field_names(self) -> "CollectionPatch":
+        # GAP-22 : la collision avec une colonne réservée (pk/tenant_id/geometry)
+        # ou inexistante nécessite l'introspecteur — vérifiée dans
+        # patch_collection (app/collections/routes.py), pas ici.
+        if self.sensitiveFields is None:
+            return self
+        if len(self.sensitiveFields) != len(set(self.sensitiveFields)):
+            duplicates = sorted(
+                {f for f in self.sensitiveFields if self.sensitiveFields.count(f) > 1}
+            )
+            raise ValueError(f"duplicate sensitiveFields name(s): {', '.join(duplicates)}")
         return self
 
 
