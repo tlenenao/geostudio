@@ -1686,6 +1686,113 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   fichiers réellement touchés par ce chantier sont tous individuellement
   couverts à 95-100 %). `feature_health_cli.py --check` : santé médiane
   97,2 (plancher 96,0), vert.
+- **GAP-22** — sécurité au niveau colonne : masquage de champ sensible par
+  collection (16 tâches, spec `docs/superpowers/specs/2026-09-06-gap22-
+  securite-colonne-design.md`, plan `docs/superpowers/plans/2026-09-06-
+  gap22-securite-colonne.md`, subagent-driven-development), sur les
+  **trois** mécanismes de lecture réels du dépôt identifiés en amont
+  (spec §1.1) : nouveau privilège global `Privilege.DATA_VIEW_SENSITIVE`
+  (20e, rejoint `admin` par défaut, absent des 3 autres rôles prédéfinis) ;
+  marquage par `Collection.sensitive_fields` (JSON, migration 0042 —
+  renumérotée depuis 0041 lors du rebasage sur `dev`, collision avec
+  0041_ingestion_jobs_wkt_geometry_mode.py/GAP-29 mergé entre-temps,
+  CLAUDE.md piège n°9), éditable via `PATCH /collections/{id}` (422 sur un
+  nom de colonne réservé/pk/tenant_id/geometry ou inexistant) et dans
+  `EditCollectionPanel.tsx` (nouvel onglet « Champs sensibles »).
+  **Chemin (A), Postgres/RLS** : nouveau rôle non-propriétaire
+  `gis_rls_masked` (`sync_masked_role_grants`, `app/collections/ddl.py`) —
+  GRANT/REVOKE SELECT **par colonne uniquement, jamais au niveau table** —
+  sélectionné par `rls_scope(masked=)`/`get_masked_for_user()` sur les 3
+  routes REST de lecture de `features/routes.py`, les tuiles vectorielles
+  MVT et l'outil MCP `query_features`. **Chemins (B)/(C), DuckDB** :
+  agrégats structurés (`POST /collections/{id}/aggregate`, `run_analytics_
+  query` MCP) et **SQL Lab** (`POST /analytics/sql`) — la colonne sensible
+  est **exclue de la matérialisation DuckDB elle-même**, jamais filtrée
+  après coup : vérifié en rejouant `SELECT salary FROM villes` hors pytest
+  contre une collection masquée et en obtenant l'erreur native DuckDB
+  `Binder Error: Referenced column "salary" not found in FROM clause!` —
+  aucune requête SQL Lab, aussi habile soit-elle, ne peut lire une colonne
+  jamais matérialisée. **Défaut réel de croisement trouvé et corrigé
+  PENDANT le plan, pas laissé à une revue finale (Task 8, CLAUDE.md piège
+  n°4)** : `sync_masked_role_grants` ne fait jamais de GRANT table-level
+  par construction — sous Postgres, toute requête qui **nomme**
+  explicitement une colonne révoquée échoue en bloc
+  (`InsufficientPrivilege: permission denied for table`) au lieu de
+  l'omettre silencieusement, contredisant le critère d'acceptation §5.3
+  (colonne absente, jamais une erreur) ; `introspect()` était appelé AVANT
+  `rls_scope(masked=...)` sans jamais filtrer `info.columns` aux 4 sites
+  déjà câblés (catalog.py + les 3 routes REST), donc la requête SQL
+  générée nommait toujours la colonne sensible. Corrigé par un helper
+  partagé `hide_sensitive_columns()` (`app/collections/introspection.py`),
+  câblé rétroactivement sur les 3 routes REST (déjà mergées), les tuiles
+  MVT (câblées dans la foulée) et `query_features` — commit `9c425707`,
+  falsifié deux fois indépendamment (implémenteur et reviewer). **2 bypass
+  hors périmètre, explicites dès la spec (§1.5/§4), jamais absorbés
+  silencieusement** : (1) `app/pipelines/runtime.py::_read_collection`/
+  `_materialize_reader` (`reader.collection`) — un pipeline no-code peut
+  lire une colonne sensible d'une collection source et la ré-exporter
+  telle quelle vers une collection/un export cible, sans aucune
+  vérification de `sensitive_fields` ; (2) `app/appexport/freeze.py::
+  freeze_config`/`app/appexport/snapshot.py::write_snapshot` (exports
+  Statique/Autoporté) appellent `rls_scope(session, tenant_id)` **sans
+  utilisateur du tout** à threader — un export embarque toutes les
+  colonnes, sensibles ou non, indépendamment du privilège du déclencheur.
+  Les deux nécessiteraient un chantier distinct (toucher
+  `app/pipelines/registries.py` + les jobs `appexport`) ; un futur
+  GAP/REV devra les couvrir. **Limitation connue, assumée (spec §4)** :
+  **pas de masquage en écriture** — un utilisateur avec `data.manage` mais
+  sans `data.view_sensitive` peut toujours écrire une valeur dans un champ
+  sensible qu'il ne peut ensuite jamais relire (cohérent avec le périmètre
+  « masquage de champ » du brief, au sens lecture/consultation, comparaison
+  à Metabase/Superset — pas un oubli). **Défaut réel, sans rapport avec le
+  masquage, trouvé par la Task 10 (test bout-en-bout §5.3)** :
+  `app/features/routes.py` appelle `get_readable_collection()` à **6**
+  sites (`list_features`, `aggregate_features`, `export_collection_
+  aggregate`, `export_collection_items`, `get_single_feature`,
+  `_get_writable`) sans jamais passer `can_manage_collections=
+  has_privilege(...)`, contrairement à `collections/routes.py`/
+  `stac/routes.py`/`dcat/routes.py` (étendus par SP-35/GAP-60) — un
+  porteur du seul `admin.collections.manage` reçoit un 404 en lisant des
+  features via l'API OGC sur une collection qu'il peut pourtant
+  administrer ailleurs ; contourné côté fixture de test uniquement
+  (`isPublic: true`), **aucun code de production touché**, décision de
+  scope délibérée — ouvert séparément comme **GAP-82**/**REV-185** plutôt
+  que silencieusement absorbé ou perdu (piège n°12). **2 défauts
+  d'environnement/robustesse trouvés et corrigés lors de la vérification
+  finale (Task 16), tous deux distincts du masquage lui-même** : (1) la
+  migration 0042 tentait un `DROP ROLE gis_rls_masked` sans garde — un
+  rôle Postgres est global au cluster, pas à une seule base ; sous une
+  suite complète où des dizaines de tests grantent réellement ce rôle sur
+  la base de test partagée, `DROP ROLE` échoue en
+  `DependentObjectsStillExist`, faisant échouer en cascade **6** tests de
+  migration sans rapport (`test_metadata_migration_alembic.py`,
+  `test_migration_0024_downgrade.py`, `test_migration_0035_indexes.py`,
+  `test_migration_0042_sensitive_fields.py`, `test_pipeline_webhook_
+  tokens.py`, `test_share_links_migration_alembic.py`) dès qu'une suite
+  complète (locale ou CI) traverse la frontière 0042 — corrigé par un
+  SAVEPOINT tolérant l'échec de `DROP ROLE` (seul le nettoyage best-effort
+  du rôle est sacrifié, jamais la validité du downgrade — `DROP OWNED BY`,
+  scopé à la base courante, reste la garantie réelle et déterministe) ;
+  l'assertion de test correspondante, elle-même incompatible avec un run
+  partagé, remplacée par une vérification locale (absence de grant sur
+  cette base, pas existence globale du rôle) — falsifié par contamination
+  réelle du cluster (139 objets dépendants mesurés), pas simulée ; (2)
+  `test_features_tiles.py` (fichier unitaire pré-existant, distinct du
+  `test_features_tiles_postgis.py` déjà mis à jour par la Task 7) avait
+  deux fixtures `SimpleNamespace` jamais mises à jour avec
+  `sensitive_fields=[]`, faisant échouer 2 tests en `AttributeError` dès
+  que le chemin masqué de `get_collection_tile` y touchait — trouvaille
+  qui n'existe QUE parce que la suite complète a été rejouée avant de
+  clore le plan (piège n°6). Suite finale (conteneur `postgis-test`
+  partagé réel) : cœur **3004 passed/6 skipped (5 qgis + 1 snowflake)/0
+  failed** (couverture 94,32 %, seuil 85) ; shell 247 fichiers/2193 tests,
+  0 échec (couverture lignes 91,12 %/seuil 89,80, statements 88,78 %/seuil
+  87,70) ; `npm run build` propre, bundle 629,6 Ko (seuil 630, marge
+  faible signalée sans être un blocage) ; pre-commit 5/5 ; E2E **178
+  passed/4 skipped/0 failed** ; `test_feature_inventory.py` vert sans
+  ajout (aucune route REST/outil MCP/route shell nouvelle, seulement des
+  champs sur des surfaces existantes). `feature_health_cli.py --check` non
+  rejoué dans cette clôture (aucune nouvelle surface à inventorier).
 
 ### Conventions tranchées (2026-09-01)
 

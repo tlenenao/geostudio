@@ -82,11 +82,17 @@ mais la ligne du tableau elle-même l'a toujours formulé comme un écart de
 *positionnement produit* face au marché (450+ connecteurs FME) — ce
 second volet n'est pas fermable par du code et reste ouvert tel quel.
 
-## État des 81 gaps — trois parties distinctes (mise à jour 2026-09-06)
+## État des 82 gaps — trois parties distinctes (mise à jour 2026-09-13)
 
-**60 fermés, 5 partiels, 16 ouverts** (total 81 — 79 gaps de la revue initiale + GAP-80/81 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
+**61 fermés, 5 partiels, 16 ouverts** (total 82 — 79 gaps de la revue initiale + GAP-80/81/82 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
 
-### ✅ Fermé (60)
+**Mise à jour du 2026-09-13** : GAP-22 (référentiel 2 — sécurité au niveau
+colonne) fermé par le plan `docs/superpowers/plans/2026-09-06-gap22-
+securite-colonne.md` (16 tâches, spec `docs/superpowers/specs/2026-09-06-
+gap22-securite-colonne-design.md`) — voir l'entrée `GAP-22` de la table
+« ✅ Fermé » ci-dessous pour le détail.
+
+### ✅ Fermé (61)
 
 | GAP | Fermé par / statut détaillé |
 |---|---|
@@ -104,6 +110,7 @@ second volet n'est pas fermable par du code et reste ouvert tel quel.
 | GAP-16 | 2026-09-06 (spec/plan GAP-16) — `reader.connector.snowflake` (pendant exact de `reader.connector.postgres`, dialecte `snowflake-sqlalchemy` résolu par entry point, aucun nouvel import), nouveau kind de secret `snowflake_dsn` ; `reader.connector.postgres` confirmé compatible Amazon Redshift sans nouveau code (littérature AWS, pas de cluster réel disponible en session). Databricks/BigQuery restent hors périmètre. Round-trip Snowflake réel : `@pytest.mark.snowflake`, jamais câblé en CI, manuel uniquement |
 | GAP-17 | SP-62 (plan `docs/superpowers/plans/2026-09-06-gap17-nl-sql-copilote.md`) — outils MCP `generate_sql_query`/`generate_visual_query` (`core/app/mcp/tools/query_generation.py`), copilote monté sur `SqlLabPage`/`VisualQueryWizardPage` ; le brouillon généré n'est jamais exécuté ni écrit depuis l'outil, seulement inséré par un client tool (`applySqlDraft`/`applyVisualQueryDraft`) — la revue humaine (bouton Exécuter / validation du formulaire) reste le seul chemin d'exécution/écriture, prouvé par un test d'intégration cœur et une spec E2E dédiés |
 | GAP-19 | GAP-19 (2026-09-13, 14 tâches + 2 correctifs de revue finale) — route publique `/embed/:token` (`EmbedPage.tsx`), `ItemClient` invité dédié transportant `X-Share-Link-Token` (jamais `Authorization`), section « Intégrer » dans `ShareForm.tsx`. **Critique trouvé et corrigé en revue finale de branche, démontré par PoC** : la portée invité (dataSources d'une config) n'était recoupée avec aucune autorisation réelle — tout auteur d'App pouvait référencer une collection/dataset privé d'un tiers jamais partagé avec lui et le lire via un lien de partage de sa propre App ; corrigé en recoupant la portée avec `can(user_id=guest.created_by, ...)` aux deux chokepoints réels (`get_readable_collection`, `get_config_by_item`). Blocage `X-Frame-Options: DENY` sur le routeur Traefik `shell` (préexistant à la branche, jamais lié à GAP-19) aussi trouvé et corrigé en revue finale (routeur `shell-embed` dédié). Reste ouvert, disclosed : icônes de carte personnalisées non câblées pour un visiteur invité (`/map-icons/{id}/file` exige toujours un utilisateur réel) ; CSP `frame-ancestors` non affirmé absent par un test (seul `X-Frame-Options` l'est) ; couches 3D hébergées (`Tile3DLayer`) non câblées côté `MapView` pour le jeton invité. |
+| GAP-22 | GAP-22 (2026-09-13, 16 tâches, spec `docs/superpowers/specs/2026-09-06-gap22-securite-colonne-design.md`, plan `docs/superpowers/plans/2026-09-06-gap22-securite-colonne.md`) — masquage de champ sensible par colonne, sur les trois mécanismes de lecture réels du dépôt : (A) Postgres — nouveau rôle `gis_rls_masked` (`sync_masked_role_grants`, REVOKE par colonne, jamais de GRANT table-level) sélectionné par `rls_scope(masked=get_masked_for_user(user))` sur les 3 routes REST features + les tuiles MVT + `query_features` MCP ; (B/C) DuckDB (agrégats structurés `POST /collections/{id}/aggregate` + `run_analytics_query` MCP, et SQL Lab `POST /analytics/sql`) — la colonne sensible est **exclue de la matérialisation** (jamais filtrée après coup), confirmé en rejouant `SELECT salary FROM villes` hors pytest et en obtenant l'erreur native DuckDB `Binder Error: Referenced column "salary" not found`. Nouveau privilège `data.view_sensitive` (20e, rejoint `admin` par défaut, absent des 3 autres rôles prédéfinis) ; marquage par `Collection.sensitive_fields` (`PATCH /collections/{id}`, 422 sur un nom de colonne réservé/inexistant) ; édition dans `EditCollectionPanel.tsx`. **Défaut réel de croisement trouvé et corrigé PENDANT le plan (Task 8, piège CLAUDE.md n°4)** : `sync_masked_role_grants` ne fait jamais de GRANT table-level (par construction) — sous Postgres, toute requête SQL qui **nomme** une colonne révoquée échoue en entier (`InsufficientPrivilege: permission denied for table`) au lieu de l'omettre silencieusement (contredisait le critère d'acceptation §5.3 : colonne absente, jamais une erreur) ; `introspect()` était appelé avant `rls_scope(masked=...)` sans jamais filtrer `info.columns`, donc `select_features` nommait toujours la colonne sensible dans son SELECT. Corrigé par un helper partagé `hide_sensitive_columns` (`app/collections/introspection.py`), câblé rétroactivement sur les 3 routes REST de la Task 6 (déjà mergées), les tuiles MVT (Task 7) et l'outil MCP `query_features` (Task 8) — commit `9c425707`. **2 bypass hors périmètre, explicites (spec §1.5/§4), jamais absorbés silencieusement** : (1) `app/pipelines/runtime.py::_read_collection`/`_materialize_reader` (`reader.collection`) — un pipeline no-code peut lire une colonne sensible d'une collection source et la ré-exporter telle quelle vers une collection/un export cible, sans aucune vérification de `sensitive_fields` ; (2) `app/appexport/freeze.py::freeze_config`/`app/appexport/snapshot.py::write_snapshot` (exports Statique/Autoporté) appellent `rls_scope(session, tenant_id)` **sans utilisateur du tout** — un export embarque toutes les colonnes, sensibles ou non, indépendamment du privilège du déclencheur. Les deux nécessiteraient un chantier distinct (toucher `app/pipelines/registries.py` + les jobs `appexport`) et sont documentés pour un futur GAP/REV. **Limitation connue, assumée (spec §4)** : **pas de masquage en écriture** — un utilisateur avec `data.manage` mais sans `data.view_sensitive` peut toujours écrire une valeur dans un champ sensible qu'il ne peut jamais relire ensuite (cohérent avec le périmètre « masquage de champ » du brief, au sens lecture/consultation, comparaison à Metabase/Superset). **Défaut réel, sans rapport avec le masquage, trouvé par la Task 10 (test bout-en-bout §5.3)** : `app/features/routes.py` appelle `get_readable_collection()` à **6** sites (`list_features`, `aggregate_features`, `export_collection_aggregate`, `export_collection_items`, `get_single_feature`, `_get_writable`) sans jamais passer `can_manage_collections=has_privilege(...)`, contrairement à `collections/routes.py`/`stac/routes.py`/`dcat/routes.py` (étendus par SP-35/GAP-60) — un porteur du seul `admin.collections.manage` reçoit un 404 en lisant des features via l'API OGC alors qu'il peut administrer la même collection ailleurs ; contourné côté fixture de test uniquement (`isPublic: true`), **aucun code de production touché**, décision de scope délibérée — ouvert séparément comme **GAP-82**/**REV-185** (voir plus bas) plutôt que silencieusement absorbé ou perdu (piège n°12). **2 défauts d'environnement/robustesse trouvés et corrigés à la clôture (Task 16), sans rapport avec le masquage** : migration 0042's `DROP ROLE gis_rls_masked` sans garde (rôle global au cluster, échoue en `DependentObjectsStillExist` sous une suite complète — 6 tests de migration affectés en cascade, corrigé par SAVEPOINT tolérant) ; `test_features_tiles.py` (fichier unitaire distinct de `test_features_tiles_postgis.py`) avait 2 fixtures jamais mises à jour avec `sensitive_fields=[]`. Voir `### Livré` de CLAUDE.md (entrée GAP-22) pour le détail complet. Suite finale : cœur 3004 passed/6 skipped (5 qgis + 1 snowflake)/0 failed ; shell 2193/2193, 0 échec. |
 | GAP-24 | SP-53 (`06821047`) — jeton opaque + `POST /pipelines/{id}/trigger` |
 | GAP-28 | SP-47 (domaine `app/usage/`, `GET /usage/summary`) |
 | GAP-30 | SP-46 (`ADMIN_LINKS`) |
@@ -162,8 +169,6 @@ second volet n'est pas fermable par du code et reste ouvert tel quel.
 | GAP-72 | SP-48 ferme `img-src`/`connect-src` en enforcing (`CORE_CSP_MODE`, vérifié dans `docker-compose.yml`/`security/jobs.py`) ; `script-src` widgets d'extension tiers reste une décision produit ouverte (`traefik_render.py:29`, toujours `'self'` en dur, gardé par 2 tests intentionnels) |
 
 ### 🔴 Ouvert / non implémenté (16)
-### 🔴 Ouvert / non implémenté (17)
-### 🔴 Ouvert / non implémenté (18)
 
 | GAP | Manque |
 |---|---|
@@ -173,7 +178,6 @@ second volet n'est pas fermable par du code et reste ouvert tel quel.
 | GAP-18 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-20 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-21 | Référentiel 2 (benchmark), aucune décision produit prise |
-| GAP-22 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-23 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-25 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-26 | Référentiel 2 (benchmark), aucune décision produit prise |
@@ -183,14 +187,16 @@ second volet n'est pas fermable par du code et reste ouvert tel quel.
 | GAP-55 | Éditeur d'actions narratif toujours limité à un payload de centrage carte |
 | GAP-80 | `/bookmarks` (`shell/src/shell/routes.tsx:315`) inatteignable — aucun lien ne pointe vers cette route, `useCreateBookmark` livré par SP-14m sans jamais pouvoir relire le signet créé (cf. addendum ci-dessous) |
 | GAP-81 | `/analytics/sql` (`shell/src/pages/SqlLabPage.tsx`) inatteignable — aucun lien du shell ne pointe vers cette route (cf. addendum ci-dessous pour le détail du câblage de navigation en cause) |
+| GAP-82 | `app/features/routes.py` appelle `get_readable_collection()` à 6 sites (`list_features`, `aggregate_features`, `export_collection_aggregate`, `export_collection_items`, `get_single_feature`, `_get_writable`) sans jamais passer `can_manage_collections=has_privilege(...)`, contrairement à `collections/routes.py`/`stac/routes.py`/`dcat/routes.py` — un porteur du seul `admin.collections.manage` reçoit un 404 en lisant des features via l'API OGC sur une collection qu'il peut pourtant administrer ailleurs. Trouvé par la Task 10 du plan GAP-22 (2026-09-13, test bout-en-bout §5.3), sans rapport avec le masquage de colonne lui-même — contourné côté fixture de test uniquement (`isPublic: true`), aucun code de production touché, hors périmètre délibéré de ce plan. Voir `REV-185`. |
 
-Répartition par référentiel des 16 ouverts (GAP-17/19 fermés depuis, retirés
-du décompte de référentiel 2) : 6 items isolés du référentiel 1
+Répartition par référentiel des 16 ouverts (GAP-17/19/22 fermés depuis,
+retirés du décompte de référentiel 2 ; GAP-82 ajouté le 2026-09-13, trouvé
+par la Task 10 du plan GAP-22) : 6 items isolés du référentiel 1
 (GAP-04/08/10/34/37/55 — chantiers non lancés ou décisions produit non
-tranchées), 8 du référentiel 2 (GAP-18/20/21/22/23/25/26/27, benchmark
+tranchées), 7 du référentiel 2 (GAP-18/20/21/23/25/26/27, benchmark
 concurrentiel — aucune décision produit prise, non vérifiables dans le code
-de GeoStudio), et GAP-80/81 (navigation manquante, mécaniques, coût 1-2 j-h
-chacun).
+de GeoStudio), et GAP-80/81/82 (navigation manquante + propagation de
+privilège manquante, mécaniques, coût 1-2 j-h chacun).
 
 ---
 
