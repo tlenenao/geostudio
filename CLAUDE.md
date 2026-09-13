@@ -1598,6 +1598,94 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   fermable par du code » — ce second volet n'a reçu aucune décision
   produit nouvelle et reste ouvert tel quel ; la ligne `REV-123` du
   backlog (miroir exact) mise à jour dans le même commit.
+- **GAP-19** — SDK d'embedding App/Dashboard (14 tâches, spec
+  `docs/superpowers/specs/2026-09-06-gap19-embed-sdk-design.md`, plan
+  `docs/superpowers/plans/2026-09-06-gap19-embed-sdk.md`,
+  subagent-driven-development) : route publique `/embed/:token`
+  (`shell/src/pages/EmbedPage.tsx`) résout un lien de partage (`GET
+  /share-links/{token}`, SP-54, inchangé), refuse tout `resourceType` hors
+  `app`/`dashboard`, construit un `ItemClient` dédié (jamais celui de
+  l'onglet hôte) transportant le jeton exclusivement via
+  `X-Share-Link-Token` (jamais `Authorization`) et rend l'App via le MÊME
+  `AppRenderer(mode="runtime")` que partout ailleurs (règle d'architecture
+  n°3, jamais un second runtime). Côté cœur : `app/configs/guest_access.py`
+  (`GuestActor`, `resolve_guest_scope`, dépendance FastAPI
+  `get_share_link_actor`) résout la portée d'un lien — l'item racine plus
+  les collections/datasets que sa config référence, y compris via un
+  nouveau champ additif `DataSource.datasetId` — câblée sur 8 routes de
+  lecture (`configs/by-item`, `collections/{id}`+`/schema`, `features`
+  list/get/aggregate, tuiles MVT, attachments list+download) via le
+  chokepoint unique `get_readable_collection` déjà existant. Côté shell :
+  `ItemClient.getShareLinkToken?`/`MapView`/`mapWidget` relaient le jeton
+  jusqu'aux tuiles et pièces jointes (`Authorization` sinon
+  `X-Share-Link-Token`, jamais les deux) ; section « Intégrer » dans
+  `ShareForm.tsx` (extrait `<iframe>`). **2 défauts critiques trouvés et
+  corrigés en revue finale de branche, aucun des deux détecté par les 14
+  tâches elles-mêmes** (piège n°4, croisements invisibles à la revue par
+  tâche) : (1) **contournement réel de `can()`, démontré par PoC en
+  session** — `resolve_guest_scope()` faisait confiance verbatim aux
+  `dataSources` d'une config : tout utilisateur pouvant créer une App
+  pouvait y référencer une collection ou un dataset privé d'un tiers
+  jamais partagé avec lui, créer un lien de partage pour SA PROPRE App
+  (droits réels, sur son propre item), et lire ainsi en clair la
+  collection/le dataset du tiers via le jeton invité résultant — métadonnées,
+  schéma, chaque feature, tuiles vectorielles, octets de pièce jointe,
+  ou pour un dataset son payload complet (requêtes SQL/pipeline incluses).
+  Corrigé en ajoutant `created_by` (le créateur du `ShareLink`, résolu
+  depuis la ligne DB à chaque requête, jamais depuis le JWT) à
+  `GuestActor`, recoupé avec `can(user_id=guest.created_by, ...)` aux deux
+  chokepoints réels (`get_readable_collection`, `get_config_by_item`) — la
+  délégation n'excède jamais ce que son délégant peut lui-même lire (sauf
+  pour un porteur d'`admin.collections.manage`, où `actor_is_admin=False`
+  est posé en dur : la délégation y est alors strictement plus étroite,
+  échec fermé documenté dans le docstring plutôt que testé, suivi REV à
+  ouvrir). Bonus trouvé par le même contournement : le contournement
+  tournait même en présence d'un utilisateur authentifié réel portant en
+  même temps un jeton invité sans rapport (additif, pas exclusif) —
+  restreint à `user is None`. (2) **`X-Frame-Options: DENY` sur le
+  routeur Traefik `shell`** (middleware `security-headers`, `frameDeny=
+  true`, préexistant à cette branche — commit `07429b54`/`20266779`, la
+  prémisse §2.6 de la spec « absent aujourd'hui » était factuellement
+  fausse au moment où elle a été écrite) : sans exemption, aucun
+  navigateur réel n'aurait jamais rendu `/embed/:token` dans l'`<iframe>`
+  d'un tiers — la fonctionnalité entière aurait été inerte en production
+  malgré 14 tâches toutes vertes (aucune ne traverse un vrai Traefik).
+  Corrigé par un routeur dédié `shell-embed` (même service, priorité 5,
+  `PathPrefix /embed/`) référençant `security-headers-embed` (identique à
+  `security-headers` sauf `frameDeny` omis), redéclaré à l'identique dans
+  `docker-compose.prod.yml` (`labels: !override`, piège n°2). Chaque
+  régression falsifiée avant clôture (retrait temporaire du correctif,
+  confirmation de l'échec pour la bonne raison, restauration, retour au
+  vert) — jamais supposée corrigée sur la seule foi de l'implémentation.
+  Turbulence d'infrastructure traversée en session, sans rapport avec le
+  code : un sous-agent implémenteur interrompu en cours de tâche par une
+  limite de session (repris directement par le contrôleur) ; le démon
+  Docker de la session a planté pendant un rejeu complet (`Bus error` sur
+  toute commande `docker`, cause host-level), redémarré côté utilisateur
+  puis conteneur PostGIS dédié recréé avant de confirmer un état propre.
+  3 gaps résiduels disclosed, non corrigés (hors périmètre du plan
+  d'origine, trouvés par la revue finale de branche elle-même en traçant
+  les 12 critères d'acceptation de la spec un par un) : icônes de carte
+  personnalisées non câblées pour un visiteur invité (`GET
+  /map-icons/{id}/file` exige toujours `get_current_user`, jamais
+  optionnel) ; le critère d'acceptation « CSP `frame-ancestors` absente »
+  n'est pas testé (seul `X-Frame-Options` l'est — la CSP dynamique
+  n'émet aujourd'hui aucune directive `frame-ancestors`, vérifié, mais
+  rien ne le garantirait si quelqu'un en ajoutait une) ; couches 3D
+  hébergées (`Tile3DLayer`/`applyDeckLayers`) non câblées côté `MapView`
+  pour le jeton invité. Suite finale : cœur 2857 passed/6 skipped
+  (qgis)/9 failed (tous confirmés préexistants et sans rapport — 8
+  feature_health/deployability déjà documentés, 1
+  `CORE_EMBEDDING_EGRESS_ALLOWLIST` non câblé/SP-7 — sur conteneur
+  PostGIS dédié réel, couverture 94,31 %) ; suite guest_access/share_link
+  ciblée 59/59 (0 skip, conteneur réel) ; shell 242 fichiers/2143 tests,
+  `tsc --noEmit`/`ruff`/`lint-imports` verts. Couverture shell mesurée
+  sous les seuils committés (89,50 % lignes vs 89,80, 87,42 %
+  statements vs 87,70) — dérive antérieure à cette branche et sans
+  rapport (même précédent déjà documenté par GAP-16/GAP-29 : les
+  fichiers réellement touchés par ce chantier sont tous individuellement
+  couverts à 95-100 %). `feature_health_cli.py --check` : santé médiane
+  97,2 (plancher 96,0), vert.
 
 ### Conventions tranchées (2026-09-01)
 

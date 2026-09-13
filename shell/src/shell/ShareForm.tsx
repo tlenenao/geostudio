@@ -27,13 +27,16 @@ function ShareLinksPanel({ itemId }: { itemId: string }) {
   const revokeLink = useRevokeShareLink(itemId);
   const [ttlDays, setTtlDays] = useState(7);
   const [lastCreatedUrl, setLastCreatedUrl] = useState<string | null>(null);
+  const [lastCreatedToken, setLastCreatedToken] = useState<string | null>(null);
 
   async function handleCreate() {
     createLink.reset();
     setLastCreatedUrl(null);
+    setLastCreatedToken(null);
     try {
       const link = await createLink.mutateAsync(ttlDays);
       setLastCreatedUrl(link.url);
+      setLastCreatedToken(link.token);
     } catch {
       /* surfaced via createLink.isError */
     }
@@ -115,6 +118,17 @@ function ShareLinksPanel({ itemId }: { itemId: string }) {
           {t("shareForm.linkCreatedPrefix")}
           <span className="break-all">{lastCreatedUrl}</span>
         </p>
+      )}
+      {lastCreatedToken && (
+        <div className="flex flex-col gap-1 border-t border-rule pt-2">
+          <p className="text-xs font-medium text-ink-2">{t("shareForm.embedTitle")}</p>
+          <textarea
+            readOnly
+            aria-label={t("shareForm.embedSnippetAria")}
+            className="h-20 w-full rounded-md border border-rule bg-surface p-2 font-mono text-xs text-ink"
+            value={`<iframe src="${window.location.origin}/embed/${lastCreatedToken}" width="100%" height="600" style="border:0" loading="lazy"></iframe>`}
+          />
+        </div>
       )}
     </div>
   );

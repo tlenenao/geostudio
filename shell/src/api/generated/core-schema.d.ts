@@ -2053,6 +2053,8 @@ export interface components {
         };
         /** DataSource */
         DataSource: {
+            /** Datasetid */
+            datasetId?: string | null;
             /** Id */
             id: string;
             /** Layer */
@@ -3062,6 +3064,8 @@ export interface components {
         ShareLinkCreated: {
             /** Expiresat */
             expiresAt: string;
+            /** Token */
+            token: string;
             /** Url */
             url: string;
         };
@@ -3556,6 +3560,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -3657,6 +3662,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -3775,6 +3781,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -3847,6 +3854,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -3953,6 +3961,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4096,6 +4105,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4131,6 +4141,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4234,6 +4245,7 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4408,6 +4420,7 @@ export interface operations {
             };
             header?: {
                 authorization?: string;
+                "X-Share-Link-Token"?: string | null;
             };
             path: {
                 item_id: string;

@@ -33,6 +33,7 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional, is_quotas_enabled
 from app.collections.repository import get_access_facts
 from app.collections.routes import get_readable_collection
+from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_put_url
 from app.quotas.service import check_storage_quota_or_raise
@@ -288,9 +289,10 @@ def list_attachments_route(
     fid: str,
     fieldKey: str | None = None,
     user: User | None = Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    col = get_readable_collection(session, user, collection_id, guest=guest)
     rows = attachments_repo.list_attachments(
         session, tenant_id=col.tenant_id, collection_id=collection_id, fid=fid, field_key=fieldKey
     )
@@ -303,10 +305,11 @@ def read_attachment_file(
     fid: str,
     attachment_id: str,
     user: User | None = Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session),
     s3=Depends(get_s3_client),
 ) -> Response:
-    col = get_readable_collection(session, user, collection_id)
+    col = get_readable_collection(session, user, collection_id, guest=guest)
     attachment = attachments_repo.get_attachment(
         session,
         tenant_id=col.tenant_id,

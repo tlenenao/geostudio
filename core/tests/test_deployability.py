@@ -1193,6 +1193,40 @@ def test_seo_router_is_not_gated_by_admin_auth(compose, router):
     )
 
 
+@pytest.mark.parametrize("compose", [BASE, PROD], ids=["base", "prod"])
+def test_embed_router_is_exempted_from_frame_deny(compose):
+    """GAP-19 : /embed/:token doit rester chargeable dans l'<iframe> d'un
+    site tiers. security-headers (frameDeny=true, sur le routeur shell
+    catch-all) s'applique à TOUTE réponse du shell, sans distinction de
+    chemin — sans un routeur dédié qui l'exempte, X-Frame-Options: DENY
+    bloquerait la fonctionnalité entière dans n'importe quel navigateur
+    réel, alors que tous les tests unitaires/E2E de ce chantier passent
+    (aucun ne traverse Traefik). Vérifié une fois découvert que ce n'était
+    pas câblé, avant toute clôture de branche (piège CLAUDE.md n°2)."""
+    labels = _traefik_labels(services(compose)["shell"])
+    embed_middlewares = _router_middlewares(labels, "shell-embed")
+    assert embed_middlewares, f"shell-embed ({compose.name}) introuvable ou sans middlewares"
+    assert "security-headers-embed@docker" in embed_middlewares, (
+        f"shell-embed ({compose.name}) doit référencer security-headers-embed@docker, "
+        f"a trouvé : {embed_middlewares}"
+    )
+    assert "security-headers@docker" not in embed_middlewares, (
+        f"shell-embed ({compose.name}) ne doit jamais référencer security-headers@docker "
+        "(frameDeny=true) — ce serait exactement le bug que ce routeur existe pour corriger"
+    )
+    assert (
+        labels.get("traefik.http.middlewares.security-headers-embed.headers.frameDeny") != "true"
+    ), f"security-headers-embed ({compose.name}) ne doit jamais poser frameDeny=true"
+    shell_priority = int(labels["traefik.http.routers.shell.priority"])
+    embed_priority = int(labels["traefik.http.routers.shell-embed.priority"])
+    assert embed_priority > shell_priority, (
+        f"shell-embed ({compose.name}) doit primer sur le catch-all shell "
+        f"(priorité {shell_priority}), a trouvé {embed_priority}"
+    )
+    rule = labels["traefik.http.routers.shell-embed.rule"]
+    assert "/embed/" in rule, f"shell-embed ({compose.name}) doit border /embed/, a trouvé : {rule}"
+
+
 # ─── SP-48/GAP-72 : CSP calculée dynamiquement, poussée par Traefik via un
 # provider fichier additif au provider Docker existant ───────────────────
 

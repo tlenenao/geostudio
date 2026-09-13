@@ -28,6 +28,7 @@ from app.collections.schemas import (
     EmptyCollectionCreate,
 )
 from app.configs import repository as configs_repo
+from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import core_table_names, get_session
 from app.quotas.service import check_quota_or_raise
 from app.roles.guards import has_privilege, privilege_required_error, require_privilege
@@ -178,7 +179,19 @@ def _collection_json(col, permissions, owner: str | None = None) -> dict:
     }
 
 
-def get_readable_collection(session, user, collection_id, *, can_manage_collections: bool = False):
+def get_readable_collection(
+    session,
+    user,
+    collection_id,
+    *,
+    can_manage_collections: bool = False,
+    guest=None,  # GuestActor | None (app.configs.guest_access) — import
+    # local dans la fonction pour ne pas créer d'import de niveau module
+    # (app.collections est déjà AU-DESSUS d'app.configs dans le contrat de
+    # couches, donc l'import direct serait légal, mais rester cohérent avec
+    # le style déjà utilisé plus haut dans cette même fonction pour
+    # get_or_create_default_tenant, importé localement lui aussi).
+):
     """404 avant 403 : une collection illisible est indistinguable d'une absente.
 
     `can_manage_collections` (privilège `admin.collections.manage`, SP-35) élargit
@@ -188,10 +201,36 @@ def get_readable_collection(session, user, collection_id, *, can_manage_collecti
     liste, pas seulement les siennes/partagées/publiques — sinon un même
     utilisateur verrait une collection dans `GET /collections` puis un 404 en
     cliquant dessus ou en la supprimant (piège n°5, chemin de lecture oublié,
-    appliqué ici à la visibilité individuelle plutôt qu'au verdict `delete`)."""
+    appliqué ici à la visibilité individuelle plutôt qu'au verdict `delete`).
+
+    `guest` (GAP-19) : un GuestActor dont `allowed_collection_ids` contient
+    `collection_id` (portée déclarée par la config de l'App partagée) NE
+    contourne PAS can() à lui seul — trouvaille de la revue finale de
+    branche GAP-19, démontrée par PoC : l'auteur d'une config choisit
+    librement ses `dataSources`, rien ne garantissait jusqu'ici que
+    `guest.created_by` (le créateur du lien de partage) ait lui-même le
+    droit de lire la collection référencée. La portée invité est donc
+    recoupée avec can(..., user_id=guest.created_by, ..., actor_is_admin=
+    False) — délibérément `False` en dur, jamais le privilège réel du
+    créateur : la délégation est donc STRICTEMENT PLUS ÉTROITE que « ce que
+    son délégant peut lui-même lire » pour un administrateur/porteur
+    d'`admin.collections.manage`, pas équivalente à ce privilège. Un tel
+    utilisateur qui partage une App construite sur une collection qu'il ne
+    voit que via ce privilège produira un lien invité qui 404 sur cette
+    collection (échec fermé, jamais une fuite — comportement voulu : le
+    superpouvoir d'un admin ne se délègue jamais à un visiteur anonyme,
+    revue finale de branche, non testé explicitement, suivi REV à ouvrir).
+    S'applique UNIQUEMENT quand `user is None` (jamais en plus d'un
+    utilisateur authentifié réel, dont la résolution de tenant/droits
+    ci-dessus n'a rien à voir avec un jeton invité éventuellement présent en
+    même temps)."""
+    from app.configs.guest_access import authorize_guest_collection_read
+
     col = None
     if user is not None:
         col = repo.get_collection(session, tenant_id=user.tenant_id, collection_id=collection_id)
+    elif guest is not None:
+        col = repo.get_collection(session, tenant_id=guest.tenant_id, collection_id=collection_id)
     else:
         from app.tenants.repository import get_or_create_default_tenant
 
@@ -199,6 +238,20 @@ def get_readable_collection(session, user, collection_id, *, can_manage_collecti
         col = repo.get_collection(session, tenant_id=tenant.id, collection_id=collection_id)
     if col is None:
         raise HTTPException(status_code=404, detail="collection not found")
+
+    if user is None and guest is not None and authorize_guest_collection_read(guest, collection_id):
+        delegated = can(
+            session,
+            user_id=guest.created_by,
+            action="read",
+            item=repo.get_access_facts(col),
+            kind="collection",
+            actor_is_admin=False,
+        )
+        if not delegated:
+            raise HTTPException(status_code=404, detail="collection not found")
+        return col
+
     readable = can_manage_collections or can(
         session,
         user_id=user.id if user else "",
@@ -417,6 +470,7 @@ def get_collection(
     collection_id: str,
     request: Request,
     user=Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session),
     introspect: Introspector = Depends(get_introspector),
     extent_provider=Depends(get_extent_provider),
@@ -425,7 +479,7 @@ def get_collection(
         user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     )
     col = get_readable_collection(
-        session, user, collection_id, can_manage_collections=can_manage_collections
+        session, user, collection_id, can_manage_collections=can_manage_collections, guest=guest
     )
     permissions = repo.collection_permissions_by_id(
         session,
@@ -464,6 +518,7 @@ def get_collection(
 def get_collection_schema(
     collection_id: str,
     user=Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session),
     introspect: Introspector = Depends(get_introspector),
 ):
@@ -471,7 +526,7 @@ def get_collection_schema(
         user and has_privilege(session, user, Privilege.ADMIN_COLLECTIONS_MANAGE.value)
     )
     col = get_readable_collection(
-        session, user, collection_id, can_manage_collections=can_manage_collections
+        session, user, collection_id, can_manage_collections=can_manage_collections, guest=guest
     )
     try:
         info = introspect(session, col.table_name)

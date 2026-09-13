@@ -30,6 +30,7 @@ export { FeatureValidationError, SqlQueryError, toFrontLayer, type RawMapLayer }
 export function createItemClient(opts: {
   coreUrl: string;
   getToken: () => string | undefined;
+  getShareLinkToken?: () => string | undefined;
 }): ItemClient {
   const base = createBase(opts);
 
@@ -53,5 +54,6 @@ export function createItemClient(opts: {
     ...createSecretsMethods(base),
     getAuthToken: base.getToken,
     getCoreUrl: () => base.coreUrl,
+    getShareLinkToken: base.getShareLinkToken,
   };
 }

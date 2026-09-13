@@ -255,6 +255,19 @@ services:
       - traefik.http.routers.shell.priority=1
       - traefik.http.routers.shell.middlewares=security-headers@docker,rate-limit@docker,compress@docker,csp-dynamic@file
       - traefik.http.services.shell.loadbalancer.server.port=8300
+      # GAP-19 : même exemption que le fichier de base (labels: !override
+      # remplace intégralement la liste ici, donc ce routeur doit être
+      # redéclaré — piège CLAUDE.md n°2, déjà vécu pour seo-static/seo-bots
+      # ci-dessus) — /embed/:token doit rester chargeable dans l'<iframe>
+      # d'un site tiers, ce que frameDeny=true (security-headers) empêche.
+      - traefik.http.routers.shell-embed.rule=Host(`${GEOSTUDIO_PUBLIC_HOST}`) && PathPrefix(`/embed/`)
+      - traefik.http.routers.shell-embed.entrypoints=web
+      - traefik.http.routers.shell-embed.priority=5
+      - traefik.http.routers.shell-embed.service=shell
+      - traefik.http.routers.shell-embed.middlewares=security-headers-embed@docker,rate-limit@docker,compress@docker,csp-dynamic@file
+      - traefik.http.middlewares.security-headers-embed.headers.stsSeconds=31536000
+      - traefik.http.middlewares.security-headers-embed.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.security-headers-embed.headers.referrerPolicy=strict-origin-when-cross-origin
 
   traefik:
     # command: est intégralement remplacé par la fusion Compose (jamais

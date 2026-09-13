@@ -1166,6 +1166,38 @@ test("core collection tile requests carry the session bearer token", () => {
   });
 });
 
+test("core collection tile requests carry the share-link header when no auth token is set", () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon" })}
+      getAuthToken={() => undefined}
+      getShareLinkToken={() => "share-tok"}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  const t = mapInstances[0].opts.transformRequest!;
+  expect(t("http://core.test/collections/communes/tiles/1/2/3.mvt")).toEqual({
+    url: "http://core.test/collections/communes/tiles/1/2/3.mvt",
+    headers: { "X-Share-Link-Token": "share-tok" },
+  });
+});
+
+test("core collection tile requests never carry both Authorization and X-Share-Link-Token from a normal authenticated client", () => {
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon" })}
+      getAuthToken={() => "tok"}
+      getCoreUrl={() => "http://core.test"}
+      // getShareLinkToken absent — client normal
+    />,
+  );
+  const t = mapInstances[0].opts.transformRequest!;
+  expect(t("http://core.test/collections/communes/tiles/1/2/3.mvt")).toEqual({
+    url: "http://core.test/collections/communes/tiles/1/2/3.mvt",
+    headers: { Authorization: "Bearer tok" },
+  });
+});
+
 test("an external url that merely looks like ours gets no token", () => {
   render(
     <MapView

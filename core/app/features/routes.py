@@ -35,6 +35,7 @@ from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections.introspection import TableNotFound
 from app.collections.repository import get_access_facts, list_visible_collections
 from app.collections.routes import get_introspector, get_readable_collection
+from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.errors import ValidationHTTPException
 from app.features.repository import FilterError
@@ -194,12 +195,13 @@ def list_features(
     bbox: str | None = None,
     geom_intersects: str | None = None,
     user=Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session),
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    col = get_readable_collection(session, user, collection_id, guest=guest)
     info = introspect(session, col.table_name)
     limit = min(limit, MAX_LIMIT)
     parsed_bbox = _parse_bbox(bbox)
@@ -253,12 +255,13 @@ def aggregate_features(
     collection_id: str,
     body: AggregateRequestBody,
     user=Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session),
     introspect=Depends(get_introspector),
     conn_factory=Depends(get_duckdb_connection_factory),
     base_uri: str = Depends(get_analytics_base_uri),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    col = get_readable_collection(session, user, collection_id, guest=guest)
     info = introspect(session, col.table_name)
     conn = conn_factory()
     try:
@@ -500,12 +503,13 @@ def get_single_feature(
     collection_id: str,
     fid: str,
     user=Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session),
     introspect=Depends(get_introspector),
     repo=Depends(get_features_repo),
     rls=Depends(get_rls_scope),
 ):
-    col = get_readable_collection(session, user, collection_id)
+    col = get_readable_collection(session, user, collection_id, guest=guest)
     info = introspect(session, col.table_name)
     with rls(session, col.tenant_id):
         feature = repo.get_feature(session, info, fid=fid)

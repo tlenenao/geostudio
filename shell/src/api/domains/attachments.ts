@@ -14,7 +14,7 @@ type AttachmentsMethods = Pick<
 >;
 
 export function createAttachmentsMethods(base: ItemClientBase): AttachmentsMethods {
-  const { request, coreUrl, getToken } = base;
+  const { request, coreUrl, getToken, getShareLinkToken } = base;
   return {
     async presignAttachmentUpload(
       collectionId: string,
@@ -74,6 +74,8 @@ export function createAttachmentsMethods(base: ItemClientBase): AttachmentsMetho
         getToken,
         "GET",
         `/collections/${collectionId}/items/${fid}/attachments/${attachmentId}/file`,
+        undefined,
+        getShareLinkToken,
       );
     },
   };

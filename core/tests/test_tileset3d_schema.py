@@ -3,7 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db
-from app.auth.dependency import get_current_user
+from app.auth.dependency import get_current_user, get_current_user_optional
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
@@ -36,6 +36,7 @@ def _make_client(*, username: str, oidc_sub: str, bootstrap_admin: bool = False)
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_current_user_optional] = lambda: user
     return TestClient(app), Session, tenant, user
 
 

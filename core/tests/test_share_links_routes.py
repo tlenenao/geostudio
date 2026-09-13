@@ -159,3 +159,10 @@ def test_resolve_revoked_link_returns_401_even_before_expiry(client):
 
     response = client.get(f"/v1/share-links/{token}")
     assert response.status_code == 401
+
+
+def test_create_share_link_response_includes_the_raw_token(client):
+    response = client.post(f"/v1/items/{client.item_id}/share-links", json={"ttlDays": 7})
+    body = response.json()
+    assert body["token"]
+    assert body["url"].endswith(f"/share-links/{body['token']}")

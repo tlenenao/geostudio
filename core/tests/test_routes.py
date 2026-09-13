@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app import db
 from app.audit.models import AuditLog
-from app.auth.dependency import get_current_user
+from app.auth.dependency import get_current_user, get_current_user_optional
 from app.configs import routes
 from app.configs.models import Config
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
@@ -48,6 +48,7 @@ def client():
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_current_user_optional] = lambda: user
 
     test_client = TestClient(app)
     test_client.session_factory = Session  # type: ignore[attr-defined]
@@ -495,10 +496,12 @@ def test_get_config_invisible_to_stranger_returns_404(client):
     created = _create(client)
     stranger = _same_tenant_stranger(client)
     client.app.dependency_overrides[get_current_user] = lambda: stranger
+    client.app.dependency_overrides[get_current_user_optional] = lambda: stranger
     try:
         response = client.get(f"/v1/configs/{created['id']}")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
+        client.app.dependency_overrides[get_current_user_optional] = lambda: client.user
     assert response.status_code == 404
 
 
@@ -506,10 +509,12 @@ def test_put_config_by_stranger_returns_404(client):
     created = _create(client)
     stranger = _same_tenant_stranger(client)
     client.app.dependency_overrides[get_current_user] = lambda: stranger
+    client.app.dependency_overrides[get_current_user_optional] = lambda: stranger
     try:
         response = client.put(f"/v1/configs/{created['id']}", json=_config_body())
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
+        client.app.dependency_overrides[get_current_user_optional] = lambda: client.user
     assert response.status_code == 404
 
 
@@ -517,10 +522,12 @@ def test_revisions_by_stranger_returns_404(client):
     created = _create(client)
     stranger = _same_tenant_stranger(client)
     client.app.dependency_overrides[get_current_user] = lambda: stranger
+    client.app.dependency_overrides[get_current_user_optional] = lambda: stranger
     try:
         response = client.get(f"/v1/configs/{created['id']}/revisions")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
+        client.app.dependency_overrides[get_current_user_optional] = lambda: client.user
     assert response.status_code == 404
 
 
@@ -528,10 +535,12 @@ def test_rollback_by_stranger_returns_404(client):
     created = _create(client)
     stranger = _same_tenant_stranger(client)
     client.app.dependency_overrides[get_current_user] = lambda: stranger
+    client.app.dependency_overrides[get_current_user_optional] = lambda: stranger
     try:
         response = client.post(f"/v1/configs/{created['id']}/rollback", json={"version": 1})
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
+        client.app.dependency_overrides[get_current_user_optional] = lambda: client.user
     assert response.status_code == 404
 
 
@@ -539,10 +548,12 @@ def test_delete_config_by_stranger_returns_404(client):
     created = _create(client)
     stranger = _same_tenant_stranger(client)
     client.app.dependency_overrides[get_current_user] = lambda: stranger
+    client.app.dependency_overrides[get_current_user_optional] = lambda: stranger
     try:
         response = client.delete(f"/v1/configs/{created['id']}")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
+        client.app.dependency_overrides[get_current_user_optional] = lambda: client.user
     assert response.status_code == 404
     with client.session_factory() as session:
         assert session.get(Item, created["itemId"]) is not None
@@ -552,10 +563,12 @@ def test_get_config_by_item_invisible_to_stranger_returns_404(client):
     created = _create(client)
     stranger = _same_tenant_stranger(client)
     client.app.dependency_overrides[get_current_user] = lambda: stranger
+    client.app.dependency_overrides[get_current_user_optional] = lambda: stranger
     try:
         response = client.get(f"/v1/configs/by-item/{created['itemId']}")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
+        client.app.dependency_overrides[get_current_user_optional] = lambda: client.user
     assert response.status_code == 404
 
 
@@ -590,10 +603,12 @@ def test_group_editor_can_update_config(client):
         session.commit()
 
     client.app.dependency_overrides[get_current_user] = lambda: editor
+    client.app.dependency_overrides[get_current_user_optional] = lambda: editor
     try:
         response = client.put(f"/v1/configs/{created['id']}", json=_config_body(widget="table"))
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
+        client.app.dependency_overrides[get_current_user_optional] = lambda: client.user
     assert response.status_code == 200
 
 
@@ -628,10 +643,12 @@ def test_group_viewer_cannot_update_config_returns_403(client):
         session.commit()
 
     client.app.dependency_overrides[get_current_user] = lambda: viewer
+    client.app.dependency_overrides[get_current_user_optional] = lambda: viewer
     try:
         response = client.put(f"/v1/configs/{created['id']}", json=_config_body(widget="table"))
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
+        client.app.dependency_overrides[get_current_user_optional] = lambda: client.user
     assert response.status_code == 403
 
 
@@ -641,10 +658,12 @@ def test_delete_config_cross_tenant_returns_404_and_leaves_data_intact(client):
     mallory = _other_tenant_user(client)
 
     client.app.dependency_overrides[get_current_user] = lambda: mallory
+    client.app.dependency_overrides[get_current_user_optional] = lambda: mallory
     try:
         response = client.delete(f"/v1/configs/{config_id}")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
+        client.app.dependency_overrides[get_current_user_optional] = lambda: client.user
 
     assert response.status_code == 404
     with client.session_factory() as session:
@@ -659,10 +678,12 @@ def test_delete_config_by_item_cross_tenant_returns_404_and_leaves_data_intact(c
     mallory = _other_tenant_user(client)
 
     client.app.dependency_overrides[get_current_user] = lambda: mallory
+    client.app.dependency_overrides[get_current_user_optional] = lambda: mallory
     try:
         response = client.delete(f"/v1/configs/by-item/{item_id}")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
+        client.app.dependency_overrides[get_current_user_optional] = lambda: client.user
 
     assert response.status_code == 404
     with client.session_factory() as session:
@@ -677,10 +698,12 @@ def test_delete_item_cross_tenant_returns_404_and_leaves_data_intact(client):
     mallory = _other_tenant_user(client)
 
     client.app.dependency_overrides[get_current_user] = lambda: mallory
+    client.app.dependency_overrides[get_current_user_optional] = lambda: mallory
     try:
         response = client.delete(f"/v1/items/{item_id}")
     finally:
         client.app.dependency_overrides[get_current_user] = lambda: client.user
+        client.app.dependency_overrides[get_current_user_optional] = lambda: client.user
 
     assert response.status_code == 404
     with client.session_factory() as session:

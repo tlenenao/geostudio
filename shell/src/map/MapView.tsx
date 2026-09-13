@@ -895,6 +895,14 @@ export const MapView = forwardRef<
     // (origin+path check) before attaching a bearer token — see
     // isHostedTilesetUrl. Absent by default, same as getAuthToken.
     getCoreUrl?: () => string;
+    // Jeton invité d'un lien de partage à échéance (GAP-19, Task 10) —
+    // n'est jamais fourni en même temps qu'un token d'auth réel qui
+    // "marche" : quand getAuthToken en renvoie un, il prime toujours et
+    // getShareLinkToken n'est même pas appelé. Sert le même rôle que
+    // getAuthToken sur les mêmes URLs hébergées (tuiles + pièces
+    // jointes), mais avec l'en-tête `X-Share-Link-Token` au lieu
+    // d'`Authorization` — jamais les deux à la fois sur une même requête.
+    getShareLinkToken?: () => string | undefined;
     // Récupère un blob d'icône personnalisée (fetch authentifié via
     // ItemClient), passé à `decodeIconImage` par `loadIconImages`. Absent par
     // défaut : un MapView sans icône personnalisée n'a besoin d'aucun
@@ -919,6 +927,7 @@ export const MapView = forwardRef<
     interactiveTools,
     getAuthToken,
     getCoreUrl,
+    getShareLinkToken,
     loadCustomIcon,
   },
   ref,
@@ -1002,6 +1011,7 @@ export const MapView = forwardRef<
   const onReadyRef = useRef(onReady);
   const getAuthTokenRef = useRef(getAuthToken);
   const getCoreUrlRef = useRef(getCoreUrl);
+  const getShareLinkTokenRef = useRef(getShareLinkToken);
   const loadCustomIconRef = useRef(loadCustomIcon);
   const themeColorsRef = useRef(themeColors);
   const layersRef = useRef(config.layers);
@@ -1021,6 +1031,9 @@ export const MapView = forwardRef<
   useEffect(() => {
     getCoreUrlRef.current = getCoreUrl;
   }, [getCoreUrl]);
+  useEffect(() => {
+    getShareLinkTokenRef.current = getShareLinkToken;
+  }, [getShareLinkToken]);
   useEffect(() => {
     loadCustomIconRef.current = loadCustomIcon;
   }, [loadCustomIcon]);
@@ -1101,6 +1114,8 @@ export const MapView = forwardRef<
         if (isHostedTerrainUrl(url, coreUrl) || isHostedCollectionUrl(url, coreUrl)) {
           const token = getAuthTokenRef.current?.();
           if (token) return { url, headers: { Authorization: `Bearer ${token}` } };
+          const shareToken = getShareLinkTokenRef.current?.();
+          if (shareToken) return { url, headers: { "X-Share-Link-Token": shareToken } };
         }
         return { url };
       },
@@ -1356,9 +1371,13 @@ export const MapView = forwardRef<
     const coreUrl = getCoreUrlRef.current?.();
     if (!coreUrl) return;
     const token = getAuthTokenRef.current?.();
+    const shareToken = getShareLinkTokenRef.current?.();
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
     const url = `${coreUrl}/collections/${popupLayer.collectionId}/items/${popup.fid}/attachments?fieldKey=${encodeURIComponent(popupConfig.attachmentField)}`;
     let cancelled = false;
-    fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    fetch(url, { headers })
       .then((res) => (res.ok ? res.json() : { attachments: [] }))
       .then((data: { attachments?: AttachmentSummary[] }) => {
         if (!cancelled) setPopupAttachments(data.attachments ?? []);
@@ -1384,10 +1403,12 @@ export const MapView = forwardRef<
     const coreUrl = getCoreUrlRef.current?.();
     if (!coreUrl) return;
     const token = getAuthTokenRef.current?.();
+    const shareToken = getShareLinkTokenRef.current?.();
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
     const url = `${coreUrl}/collections/${popupLayer.collectionId}/items/${popup.fid}/attachments/${attachmentId}/file`;
-    const res = await fetch(url, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const res = await fetch(url, { headers });
     if (!res.ok) return;
     const blob = await res.blob();
     const objectUrl = URL.createObjectURL(blob);

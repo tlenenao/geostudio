@@ -284,6 +284,10 @@ export const fr = {
   "appRuntime.saveView": "Enregistrer la vue",
   "appRuntime.viewNameLabel": "Nom de la vue",
 
+  // EmbedPage (GAP-19)
+  "embed.linkExpiredOrRevoked": "Ce lien de partage est expiré ou révoqué.",
+  "embed.notEmbeddable": "Cette ressource ne peut pas être intégrée.",
+
   // CollectionsAdminPage
   "collectionsAdmin.title": "Collections",
   "collectionsAdmin.registerTable": "Enregistrer une table",
@@ -549,6 +553,8 @@ export const fr = {
   "shareForm.createLinkButton": "Créer un lien",
   "shareForm.createLinkFailed": "Échec de la création du lien.",
   "shareForm.linkCreatedPrefix": "Lien créé : ",
+  "shareForm.embedTitle": "Intégrer",
+  "shareForm.embedSnippetAria": "Extrait de code à intégrer (iframe)",
 
   // CreateHarvestSourcePanel / EditHarvestSourcePanel (domaine harvest.*
   // déjà posé par HarvestSourcesAdminPage)

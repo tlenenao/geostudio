@@ -85,6 +85,7 @@ const UsagePage = lazy(() => import("../pages/UsagePage").then((m) => ({ default
 const SettingsComingSoonPage = lazy(() =>
   import("../pages/SettingsComingSoonPage").then((m) => ({ default: m.SettingsComingSoonPage })),
 );
+const EmbedPage = lazy(() => import("../pages/EmbedPage").then((m) => ({ default: m.EmbedPage })));
 
 // Shared by CatalogRoute (general catalog) and BookmarksRoute ("Mes vues"):
 // a bookmark has no editor (SP-14m — no edit flow for this kind), so opening
@@ -293,6 +294,11 @@ function DatasetRoute() {
   return <DatasetPage collectionId={collectionId!} />;
 }
 
+function EmbedRoute() {
+  const { token } = useParams();
+  return <EmbedPage token={token!} />;
+}
+
 function ProtectedLayout() {
   return (
     <RequireAuth>
@@ -426,6 +432,7 @@ export function AppRoutes() {
           <Route path="/settings" element={<SettingsComingSoonPage />} />
         </Route>
         <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
+        <Route path="/embed/:token" element={<EmbedRoute />} />
         <Route path="/sites/:slug" element={<SitePublicRoute />} />
         <Route path="/public/items/:pk" element={<PublicItemRoute />} />
         <Route path="/public/datasets/:collectionId" element={<DatasetRoute />} />
