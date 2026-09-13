@@ -1325,4 +1325,56 @@ def test_sample_on_empty_collection_returns_no_rows(tmp_path, conn):
     )
 
     assert category_key == "value"
+
+
+# GAP-22 (Tâche 11) : masquage de colonnes côté agrégats structurés DuckDB.
+# `masked_fields` est résolu par l'appelant (Tâche 12, privilèges) — ce
+# module n'importe jamais app.roles, il reçoit juste un frozenset de noms
+# de colonnes à traiter comme si elles n'existaient pas. Pas besoin
+# d'écrire de partition GeoParquet réelle : le champ rejeté échoue dans
+# _validate_fields, avant tout accès fichier (cf. run_collection_aggregate,
+# _validate_fields est appelée avant _has_any_file) ; et le champ autorisé,
+# sur une collection sans aucune partition écrite, prend le chemin
+# `_has_any_file` -> False -> ([], category_key) sans jamais lire de
+# parquet, donc category_key seul suffit à prouver que le champ a été
+# accepté par la validation.
+INFO_WITH_SALARY = TableInfo(
+    table_name="employees",
+    pk_column="id",
+    geometry_column=None,
+    geometry_type=None,
+    srid=None,
+    columns=[
+        ColumnInfo(name="region", type="string", required=True),
+        ColumnInfo(name="salary", type="integer", required=True),
+    ],
+)
+
+
+def test_run_collection_aggregate_rejects_masked_field_as_unknown(conn, tmp_path):
+    with pytest.raises(UnknownAggregateField) as exc_info:
+        run_collection_aggregate(
+            conn,
+            base_uri=str(tmp_path),
+            tenant_id="default",
+            collection_id="employees",
+            table_info=INFO_WITH_SALARY,
+            request=AggregateRequestBody(groupBy="salary", agg="count"),
+            masked_fields=frozenset({"salary"}),
+        )
+    assert exc_info.value.field == "groupBy"
+
+
+def test_run_collection_aggregate_allows_field_without_masking(conn, tmp_path):
+    category_key, rows = run_collection_aggregate(
+        conn,
+        base_uri=str(tmp_path),
+        tenant_id="default",
+        collection_id="employees",
+        table_info=INFO_WITH_SALARY,
+        request=AggregateRequestBody(groupBy="salary", agg="count"),
+        masked_fields=frozenset(),
+    )
+    assert category_key == "salary"
+    assert rows == []
     assert rows == []
