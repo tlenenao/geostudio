@@ -75,7 +75,7 @@ restants.
 
 **57 fermés, 5 partiels, 19 ouverts** (total 81 — 79 gaps de la revue initiale + GAP-80/81 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
 
-### ✅ Fermé (57)
+### ✅ Fermé (58)
 
 | GAP | Fermé par / statut détaillé |
 |---|---|
@@ -90,6 +90,7 @@ restants.
 | GAP-12 | SP-54 (liens de partage à échéance, `share_link`) |
 | GAP-13 | SP-52 (widget `variableInput`) |
 | GAP-14 | SP-57a (i18n 7 lots, a11y échantillon 9 pages) + SP-57b (`/v1/`, `docs/adr/`, contribution). Reste : détecteur i18n limité à 4 répertoires (REV-177), échantillon a11y non exhaustif (REV-178), token `--gs-ink-3` sous seuil AA non corrigé (REV-176) *(avec dette résiduelle)* |
+| GAP-19 | GAP-19 (2026-09-13, 14 tâches + 2 correctifs de revue finale) — route publique `/embed/:token` (`EmbedPage.tsx`), `ItemClient` invité dédié transportant `X-Share-Link-Token` (jamais `Authorization`), section « Intégrer » dans `ShareForm.tsx`. **Critique trouvé et corrigé en revue finale de branche, démontré par PoC** : la portée invité (dataSources d'une config) n'était recoupée avec aucune autorisation réelle — tout auteur d'App pouvait référencer une collection/dataset privé d'un tiers jamais partagé avec lui et le lire via un lien de partage de sa propre App ; corrigé en recoupant la portée avec `can(user_id=guest.created_by, ...)` aux deux chokepoints réels (`get_readable_collection`, `get_config_by_item`). Blocage `X-Frame-Options: DENY` sur le routeur Traefik `shell` (préexistant à la branche, jamais lié à GAP-19) aussi trouvé et corrigé en revue finale (routeur `shell-embed` dédié). Reste ouvert, disclosed : icônes de carte personnalisées non câblées pour un visiteur invité (`/map-icons/{id}/file` exige toujours un utilisateur réel) ; CSP `frame-ancestors` non affirmé absent par un test (seul `X-Frame-Options` l'est) ; couches 3D hébergées (`Tile3DLayer`) non câblées côté `MapView` pour le jeton invité. |
 | GAP-24 | SP-53 (`06821047`) — jeton opaque + `POST /pipelines/{id}/trigger` |
 | GAP-28 | SP-47 (domaine `app/usage/`, `GET /usage/summary`) |
 | GAP-30 | SP-46 (`ADMIN_LINKS`) |
@@ -147,7 +148,7 @@ restants.
 | GAP-70 | SP-59 ferme le script de restauration (`deploy/backup/restore.sh`, vérifié présent) et la parité des 7 buckets ; la vérification OIDC réelle reste non rejouée (REV-164, limite d'environnement) |
 | GAP-72 | SP-48 ferme `img-src`/`connect-src` en enforcing (`CORE_CSP_MODE`, vérifié dans `docker-compose.yml`/`security/jobs.py`) ; `script-src` widgets d'extension tiers reste une décision produit ouverte (`traefik_render.py:29`, toujours `'self'` en dur, gardé par 2 tests intentionnels) |
 
-### 🔴 Ouvert / non implémenté (19)
+### 🔴 Ouvert / non implémenté (18)
 
 | GAP | Manque |
 |---|---|
@@ -157,7 +158,6 @@ restants.
 | GAP-16 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-17 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-18 | Référentiel 2 (benchmark), aucune décision produit prise |
-| GAP-19 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-20 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-21 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-22 | Référentiel 2 (benchmark), aucune décision produit prise |
