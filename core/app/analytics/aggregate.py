@@ -79,11 +79,13 @@ def _split_filter_key(raw_name: str) -> tuple[str, str | None]:
 _EXCLUDED_PROPERTIES = frozenset({"tenant_id"})
 
 
-def _valid_column_names(table_info: TableInfo) -> set[str]:
+def _valid_column_names(
+    table_info: TableInfo, masked_fields: frozenset[str] = frozenset()
+) -> set[str]:
     names = {c.name for c in table_info.columns} | {table_info.pk_column}
     if table_info.geometry_column:
         names.add(table_info.geometry_column)
-    return names - _EXCLUDED_PROPERTIES
+    return names - _EXCLUDED_PROPERTIES - masked_fields
 
 
 def _groupby_fields(request: AggregateRequestBody) -> list[str]:
@@ -102,8 +104,12 @@ def _validate_p(agg: str, p: float | None, label: str) -> None:
         raise UnknownAggregateField(label, f"agg '{agg}' does not accept p")
 
 
-def _validate_fields(request: AggregateRequestBody, table_info: TableInfo) -> None:
-    valid = _valid_column_names(table_info)
+def _validate_fields(
+    request: AggregateRequestBody,
+    table_info: TableInfo,
+    masked_fields: frozenset[str] = frozenset(),
+) -> None:
+    valid = _valid_column_names(table_info, masked_fields)
 
     def check(name: str | None, label: str) -> None:
         if name is not None and name not in valid:
@@ -450,9 +456,10 @@ def run_collection_aggregate(
     collection_id: str,
     table_info: TableInfo,
     request: AggregateRequestBody,
+    masked_fields: frozenset[str] = frozenset(),
 ) -> tuple[str | list[str], list[dict[str, Any]]]:
     fields = _groupby_fields(request)
-    _validate_fields(request, table_info)
+    _validate_fields(request, table_info, masked_fields)
 
     # Déterminer le category_key à retourner en cas de collection vide.
     # Ce choix doit refléter le chemin d'exécution choisi par la validation.

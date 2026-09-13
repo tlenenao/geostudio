@@ -45,6 +45,7 @@ const collection: CollectionAdmin = {
   featureCount: 2,
   owner: null,
   attachmentFields: [],
+  sensitiveFields: [],
   license: "",
   licenseUri: "",
   producer: "",

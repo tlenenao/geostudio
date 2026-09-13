@@ -1083,6 +1083,20 @@
             ],
             "title": "Producer"
           },
+          "sensitiveFields": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sensitivefields"
+          },
           "temporalEnd": {
             "anyOf": [
               {

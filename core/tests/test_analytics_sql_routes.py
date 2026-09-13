@@ -292,6 +292,97 @@ def test_invalid_sql_returns_400(env_with_analyst):
     assert resp.status_code == 400
 
 
+INFO_WITH_SALARY = TableInfo(
+    table_name="villes",
+    pk_column="id",
+    geometry_column="geometry",
+    geometry_type="Point",
+    srid=4326,
+    columns=[
+        ColumnInfo(name="region", type="string", required=True),
+        ColumnInfo(name="pop", type="integer", required=True),
+        ColumnInfo(name="salary", type="integer", required=False),
+    ],
+)
+
+
+def fake_introspector_with_salary(session, table_name):
+    if table_name != "villes":
+        raise TableNotFound(table_name)
+    return INFO_WITH_SALARY
+
+
+def _write_partition_with_salary(base_dir, *, tenant_id, collection_id):
+    partition_dir = (
+        base_dir / f"tenant_id={tenant_id}" / f"collection_id={collection_id}" / "dt=2026-09-13"
+    )
+    partition_dir.mkdir(parents=True, exist_ok=True)
+    gdf = gpd.GeoDataFrame(
+        [
+            {
+                "id": 1,
+                "region": "Nord",
+                "pop": 10,
+                "salary": 45000,
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 1.0,
+                "geometry": Point(0, 0),
+            }
+        ],
+        geometry="geometry",
+        crs="EPSG:4326",
+    )
+    gdf.to_parquet(partition_dir / "part-1.parquet")
+
+
+@pytest.fixture()
+def env_with_sensitive_field(tmp_path):
+    # Même montage que env_with_analyst (Task 9), avec en plus une colonne
+    # "salary" réelle : l'introspector partagé du fichier (fake_introspector,
+    # INFO) ne connaît que region/pop, donc cette fixture pose son propre
+    # override pour ce test uniquement, sans toucher aux fixtures existantes.
+    app, client, admin, _regular, analyst, tmp_path, tenant_id, Session = _build_env(
+        tmp_path, with_analyst=True
+    )
+    app.dependency_overrides[collections_routes.get_introspector] = lambda: (
+        fake_introspector_with_salary
+    )
+    col = _register(app, client, admin, public=True)
+    # _register a laissé _as(app, admin) actif : le PATCH suivant s'exécute
+    # avec les droits d'écriture de l'admin, comme test_patch_sets_sensitive_fields.
+    patch_resp = client.patch(f"/v1/collections/{col['id']}", json={"sensitiveFields": ["salary"]})
+    assert patch_resp.status_code == 200
+    _write_partition_with_salary(tmp_path, tenant_id=tenant_id, collection_id=col["id"])
+    return app, client, admin, analyst, tmp_path, tenant_id, col, Session
+
+
+def test_sql_lab_masks_sensitive_field_without_privilege(env_with_sensitive_field):
+    app, client, _admin, analyst, _tmp, _tid, col, _Session = env_with_sensitive_field
+    # Le rôle analyste porte analytics.sql_lab.access mais pas
+    # data.view_sensitive (BUILT_IN_ROLE_PRIVILEGES) : la colonne "salary",
+    # marquée sensible, ne doit jamais être matérialisée dans la vue DuckDB
+    # de l'analyste — pas un filtre a posteriori, une absence de colonne.
+    _as(app, analyst)
+    resp = client.post("/v1/analytics/sql", json={"sql": f"SELECT salary FROM {col['id']}"})
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["errors"][0]["code"] == "sql_error"
+
+
+def test_sql_lab_returns_sensitive_field_with_privilege(env_with_sensitive_field):
+    app, client, admin, _analyst, _tmp, _tid, col, _Session = env_with_sensitive_field
+    # Le rôle admin porte tous les privilèges sauf compliance.manage
+    # (BUILT_IN_ROLE_PRIVILEGES["admin"]), donc data.view_sensitive : la
+    # colonne "salary" doit rester lisible.
+    _as(app, admin)
+    resp = client.post("/v1/analytics/sql", json={"sql": f"SELECT salary FROM {col['id']}"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "salary" in body["columns"]
+    assert body["rows"] == [[45000]]
+
+
 def test_rejected_sql_attempt_is_audited(env_with_analyst):
     app, client, analyst, tmp_path, tenant_id, col, Session = env_with_analyst
     _as(app, analyst)

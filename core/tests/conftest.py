@@ -32,15 +32,24 @@ def pg_engine():
     if not url:
         pytest.skip("CORE_TEST_DATABASE_URL non défini — test postgis skippé")
     engine = create_engine(url)
-    # Le rôle RLS et les extensions vector/pg_trgm existent dans la base de
+    # Les rôles RLS et les extensions vector/pg_trgm existent dans la base de
     # test (idempotent) : les tests DDL (SP-3) et d'embedding (SP-7)
     # construisent leur schéma via Base.metadata.create_all(), jamais
     # `alembic upgrade head` — la migration seule ne suffit donc pas ici.
+    # gis_rls_masked (GAP-22, Task 2/0042) suit le même besoin : les tests
+    # DDL qui exercent sync_masked_role_grants() (Task 3) contournent aussi
+    # la migration, révisé en revue de la Task 3.
     with engine.begin() as conn:
         conn.execute(
             text(
                 "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gis_rls') "
                 "THEN CREATE ROLE gis_rls NOLOGIN; END IF; END $$;"
+            )
+        )
+        conn.execute(
+            text(
+                "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gis_rls_masked') "
+                "THEN CREATE ROLE gis_rls_masked NOLOGIN; END IF; END $$;"
             )
         )
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))

@@ -22,6 +22,7 @@ class Privilege(StrEnum):
     ADMIN_SECRETS_MANAGE = "admin.secrets.manage"
     SETTINGS_INSTANCE_MANAGE = "settings.instance.manage"
     COMPLIANCE_MANAGE = "compliance.manage"
+    DATA_VIEW_SENSITIVE = "data.view_sensitive"
 
 
 # (domaine shell/src/auth/capabilities.ts::DomainId, clé i18n shell/src/i18n/catalog.fr.ts)
@@ -55,6 +56,7 @@ PRIVILEGE_METADATA: dict[Privilege, tuple[str, str]] = {
     # d'étendre DomainId (shell/src/auth/capabilities.ts) pour un seul
     # privilège consommé par une unique action admin, jugé disproportionné.
     Privilege.COMPLIANCE_MANAGE: ("settings", "roles.privilege.complianceManage"),
+    Privilege.DATA_VIEW_SENSITIVE: ("data", "roles.privilege.dataViewSensitive"),
 }
 
 ALL_PRIVILEGE_VALUES: list[str] = [p.value for p in Privilege]

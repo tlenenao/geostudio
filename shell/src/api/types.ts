@@ -849,6 +849,7 @@ export type CollectionAdmin = {
   featureCount: number | null;
   owner: string | null;
   attachmentFields: { key: string; label: string }[];
+  sensitiveFields: string[];
   license: string;
   licenseUri: string;
   producer: string;
@@ -884,6 +885,7 @@ export type CollectionPatchInput = {
   isPublic?: boolean;
   editable?: boolean;
   attachmentFields?: { key: string; label: string }[];
+  sensitiveFields?: string[];
   license?: string;
   licenseUri?: string;
   producer?: string;

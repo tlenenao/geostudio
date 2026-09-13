@@ -51,6 +51,12 @@ class Collection(Base):
     attachment_fields: Mapped[list] = mapped_column(
         JSON, default=list, nullable=False, server_default="[]"
     )
+    # Noms de colonnes réelles marquées sensibles (GAP-22, masquage par
+    # colonne) — jamais pk_column/geometry_column/tenant_id, validé côté
+    # route (app/collections/routes.py::_reject_invalid_sensitive_fields).
+    sensitive_fields: Mapped[list] = mapped_column(
+        JSON, default=list, nullable=False, server_default="[]"
+    )
     # Métadonnées ouvertes (chantier 4.9, docs/superpowers/specs/
     # 2026-09-04-sp41-metadonnees-licence-design.md §1.1). Convention
     # str/default="" (pas None) : un PATCH ne peut jamais distinguer un champ

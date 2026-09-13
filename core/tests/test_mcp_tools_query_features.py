@@ -216,6 +216,92 @@ def test_query_features_on_private_unshared_collection_errors(app_client):
     assert "not found" in error_text
 
 
+def _register_incidents_collection_with_sensitive_salary(app_client):
+    """Same backing table/shape as _register_incidents_collection, plus a
+    `salary` column marked sensitive by writing `Collection.sensitive_fields`
+    directly on the model (no PATCH route for that on this branch yet — Task
+    9) then applying the real Postgres GRANT/REVOKE state via
+    sync_masked_role_grants (Task 3) so `rls_scope(masked=True)` actually
+    denies the column, exactly as test_features_rls.py::
+    pg_rls_table_with_sensitive_column does."""
+    with app_client.session_factory() as session:
+        from app.collections import repository as collections_repo
+        from app.collections.ddl import apply_collection_ddl, sync_masked_role_grants
+
+        session.execute(
+            text(
+                "CREATE TABLE incidents (id serial PRIMARY KEY, tenant_id text NOT NULL, "
+                "titre text, salary integer, geom geometry(Point, 4326))"
+            )
+        )
+        session.commit()
+        apply_collection_ddl(session, "incidents")
+        col = collections_repo.create_collection(
+            session,
+            tenant_id=app_client.tenant.id,
+            owner_id=app_client.mock_user.id,
+            table_name="incidents",
+            title="Incidents",
+            description="",
+            is_public=True,
+            pk_column="id",
+            geometry_column="geom",
+            geometry_type="Point",
+            srid=4326,
+        )
+        session.execute(
+            text(
+                "INSERT INTO incidents (tenant_id, titre, salary, geom) VALUES "
+                "(:tid, 'Nid de poule', 5000, ST_SetSRID(ST_MakePoint(2.3, 48.8), 4326))"
+            ),
+            {"tid": app_client.tenant.id},
+        )
+        session.commit()
+        col.sensitive_fields = ["salary"]
+        session.commit()
+        sync_masked_role_grants(session, "incidents", ["salary"])
+        session.commit()
+        return col.id
+
+
+def test_query_features_masks_sensitive_column_without_privilege_and_shows_it_with(app_client):
+    """GAP-22 Task 8 : query_features (MCP) hérite du même masquage par
+    colonne que les 3 routes REST (Task 6) — mock_user par défaut (rôle
+    "creator") ne porte pas data.view_sensitive, donc `salary` est absente
+    de `properties` ; un utilisateur qui porte ce privilège la reçoit."""
+    from app.roles.privileges import Privilege
+    from app.roles.repository import create_role
+    from app.users.repository import set_user_role
+
+    with app_client:
+        collection_id = _register_incidents_collection_with_sensitive_salary(app_client)
+
+        result = call_tool(app_client, "query_features", {"collectionId": collection_id})
+        assert result["numberReturned"] == 1
+        props = result["features"][0]["properties"]
+        assert props["titre"] == "Nid de poule"
+        assert "salary" not in props
+
+        with app_client.session_factory() as session:
+            custom_role = create_role(
+                session,
+                tenant_id=app_client.tenant.id,
+                name="Voit les champs sensibles",
+                privileges=[Privilege.DATA_VIEW_SENSITIVE.value],
+            )
+            set_user_role(
+                session,
+                tenant_id=app_client.tenant.id,
+                user_id=app_client.mock_user.id,
+                role_id=custom_role.id,
+                role_slug=custom_role.slug,
+            )
+            session.commit()
+
+        result = call_tool(app_client, "query_features", {"collectionId": collection_id})
+    assert result["features"][0]["properties"]["salary"] == 5000
+
+
 def test_query_features_sees_a_private_collection_via_admin_collections_manage(app_client):
     # SP-42/F-coeur-federation-05 : _require_collection_read se prétendait
     # miroir de get_readable_collection (app/collections/routes.py) mais
