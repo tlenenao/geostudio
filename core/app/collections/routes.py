@@ -204,9 +204,17 @@ def get_readable_collection(
     appliqué ici à la visibilité individuelle plutôt qu'au verdict `delete`).
 
     `guest` (GAP-19) : un GuestActor dont `allowed_collection_ids` contient
-    `collection_id` contourne can() — c'est le but (portée invité explicite,
-    même sur une collection privée). Résolu avec `guest.tenant_id`, jamais
-    le tenant par défaut du chemin anonyme ci-dessous."""
+    `collection_id` (portée déclarée par la config de l'App partagée) NE
+    contourne PAS can() à lui seul — trouvaille de la revue finale de
+    branche GAP-19, démontrée par PoC : l'auteur d'une config choisit
+    librement ses `dataSources`, rien ne garantissait jusqu'ici que
+    `guest.created_by` (le créateur du lien de partage) ait lui-même le
+    droit de lire la collection référencée. La portée invité est donc
+    recoupée avec can(..., user_id=guest.created_by, ...) — la délégation
+    n'excède jamais ce que son délégant peut lui-même lire. S'applique
+    UNIQUEMENT quand `user is None` (jamais en plus d'un utilisateur
+    authentifié réel, dont la résolution de tenant/droits ci-dessus n'a
+    rien à voir avec un jeton invité éventuellement présent en même temps)."""
     from app.configs.guest_access import authorize_guest_collection_read
 
     col = None
@@ -222,7 +230,17 @@ def get_readable_collection(
     if col is None:
         raise HTTPException(status_code=404, detail="collection not found")
 
-    if guest is not None and authorize_guest_collection_read(guest, collection_id):
+    if user is None and guest is not None and authorize_guest_collection_read(guest, collection_id):
+        delegated = can(
+            session,
+            user_id=guest.created_by,
+            action="read",
+            item=repo.get_access_facts(col),
+            kind="collection",
+            actor_is_admin=False,
+        )
+        if not delegated:
+            raise HTTPException(status_code=404, detail="collection not found")
         return col
 
     readable = can_manage_collections or can(

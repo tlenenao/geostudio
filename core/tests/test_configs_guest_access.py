@@ -50,6 +50,7 @@ def _guest(**overrides) -> GuestActor:
         tenant_id="t1",
         item_id="app-1",
         share_link_id="link-1",
+        created_by="sharer-1",
         allowed_item_ids=frozenset({"app-1"}),
         allowed_collection_ids=frozenset({"col-a"}),
     )
@@ -142,7 +143,7 @@ def test_resolve_guest_scope_collects_direct_layer_references(session_factory):
             share_link_id="link-1", tenant_id=tenant.id, item_id=app_item_id
         )
 
-        guest = resolve_guest_scope(session, claims)
+        guest = resolve_guest_scope(session, claims, created_by="sharer-1")
 
         assert guest is not None
         assert guest.allowed_item_ids == frozenset({app_item_id})
@@ -155,7 +156,7 @@ def test_resolve_guest_scope_returns_none_for_unknown_item(session_factory):
         claims = ShareLinkTokenClaims(
             share_link_id="l", tenant_id=tenant.id, item_id="does-not-exist"
         )
-        assert resolve_guest_scope(session, claims) is None
+        assert resolve_guest_scope(session, claims, created_by="sharer-1") is None
 
 
 def test_resolve_guest_scope_returns_none_for_non_app_dashboard_kind(session_factory):
@@ -182,7 +183,7 @@ def test_resolve_guest_scope_returns_none_for_non_app_dashboard_kind(session_fac
         configs_repo.create_config(session, config, item.id, tenant_id=tenant.id)
         session.commit()
         claims = ShareLinkTokenClaims(share_link_id="l", tenant_id=tenant.id, item_id=item.id)
-        assert resolve_guest_scope(session, claims) is None
+        assert resolve_guest_scope(session, claims, created_by="sharer-1") is None
 
 
 def test_resolve_guest_scope_follows_dataset_id_to_its_collection(session_factory):
@@ -224,7 +225,7 @@ def test_resolve_guest_scope_follows_dataset_id_to_its_collection(session_factor
         )
         claims = ShareLinkTokenClaims(share_link_id="l", tenant_id=tenant.id, item_id=app_item_id)
 
-        guest = resolve_guest_scope(session, claims)
+        guest = resolve_guest_scope(session, claims, created_by="sharer-1")
 
         assert guest is not None
         assert guest.allowed_item_ids == frozenset({app_item_id, dataset_item.id})
@@ -270,7 +271,7 @@ def test_resolve_guest_scope_ignores_an_arcgis_dataset(session_factory):
         )
         claims = ShareLinkTokenClaims(share_link_id="l", tenant_id=tenant.id, item_id=app_item_id)
 
-        guest = resolve_guest_scope(session, claims)
+        guest = resolve_guest_scope(session, claims, created_by="sharer-1")
 
         assert guest is not None
         # Le dataset ArcGIS est bien listé comme item lisible (résolution de
@@ -346,7 +347,7 @@ def test_resolve_guest_scope_rejects_a_dataset_id_from_another_tenant(session_fa
         )
         claims = ShareLinkTokenClaims(share_link_id="l", tenant_id=tenant_a.id, item_id=app_item_id)
 
-        guest = resolve_guest_scope(session, claims)
+        guest = resolve_guest_scope(session, claims, created_by="sharer-1")
 
         assert guest is not None
         assert foreign_dataset.id not in guest.allowed_item_ids

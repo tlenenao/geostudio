@@ -153,6 +153,89 @@ def test_revoked_token_behaves_exactly_like_no_token(env):
     assert with_token.status_code == without_token.status_code == 404
 
 
+def test_guest_token_cannot_read_a_dataset_item_its_sharer_cannot_read(env):
+    """Trouvaille de la revue finale de branche GAP-19, démontrée par PoC :
+    `resolve_guest_scope` suit `DataSource.datasetId` vers l'item dataset
+    dès qu'il existe dans le MÊME tenant (cloisonnement tenant, Tâche 1),
+    mais ne vérifiait jusqu'ici RIEN de plus — un auteur d'App pouvait
+    référencer le `datasetId` de n'importe quel item du tenant, y compris
+    un dataset privé d'un tiers jamais partagé avec lui, et un jeton invité
+    pour son App donnait alors accès au payload complet de ce dataset
+    (requêtes SQL/pipeline incluses). Corrigé en recoupant avec
+    can(user_id=guest.created_by, ...) sur CET item précis avant de lever le
+    404. Le config app lui-même (racine du jeton) reste lisible : seul
+    l'item secondaire référencé par datasetId, hors de portée légitime du
+    créateur du lien, doit rester 404."""
+    app, client = env
+    Session = client.session_factory
+    tenant_id = client.tenant_id
+    with Session() as s:
+        app_creator = get_or_create_user(
+            s,
+            tenant_id=tenant_id,
+            oidc_sub="app-creator",
+            username="app-creator",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        stranger = get_or_create_user(
+            s,
+            tenant_id=tenant_id,
+            oidc_sub="stranger",
+            username="stranger",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        s.commit()
+
+    # `stranger` possède un dataset privé, jamais partagé avec `app_creator`.
+    app.dependency_overrides[get_current_user] = lambda: stranger
+    dataset_body = {
+        "kind": "dataset",
+        "dataset": {"source": "collection", "collectionId": "incidents", "columns": {}},
+    }
+    dataset_item_id = client.post(
+        "/v1/configs", json={"title": "Dataset privé de stranger", "config": dataset_body}
+    ).json()["itemId"]
+
+    # `app_creator` crée une App qui référence ce dataset par datasetId —
+    # sans jamais avoir eu le droit de le lire lui-même — puis un lien de
+    # partage pour SA App (droits réels sur sa propre App, jamais sur le
+    # dataset de stranger).
+    app.dependency_overrides[get_current_user] = lambda: app_creator
+    app_item_id = _create_app_config(
+        client,
+        data_sources=[
+            {
+                "id": "ds1",
+                "type": "features",
+                "service": "core",
+                "layer": "",
+                "datasetId": dataset_item_id,
+                "query": {},
+            },
+        ],
+    )
+    token = _create_link_token(client, app_item_id)
+
+    app.dependency_overrides.pop(get_current_user)
+
+    # La racine (l'App elle-même) reste lisible : son créateur a bien le
+    # droit de la partager.
+    root = client.get(f"/v1/configs/by-item/{app_item_id}", headers={"X-Share-Link-Token": token})
+    assert root.status_code == 200
+
+    # Le dataset référencé, lui, reste 404 : `owner` (créateur du lien) n'a
+    # jamais eu le droit de le lire — la portée du jeton ne peut pas excéder
+    # ce que son créateur peut lui-même lire.
+    leaked = client.get(
+        f"/v1/configs/by-item/{dataset_item_id}", headers={"X-Share-Link-Token": token}
+    )
+    assert leaked.status_code == 404
+
+
 def test_authenticated_user_unaffected_by_guest_wiring(env):
     app, client = env
     item_id = _create_app_config(client, data_sources=[])

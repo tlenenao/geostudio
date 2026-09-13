@@ -3594,6 +3594,39 @@ test("downloadAttachment sends the bearer token and returns the blob and filenam
   expect(await blob.text()).toBe("binary-content");
 });
 
+test("downloadAttachment attaches X-Share-Link-Token but no Authorization when only a share token is set", async () => {
+  // I2 (revue finale de branche GAP-19) : requestBlob() n'avait jamais reçu
+  // le traitement du jeton invité que Task 10 a donné à request()/
+  // fetchGeoJsonFeatures() — le widget Formulaire, seul consommateur
+  // ItemClient de la pièce jointe, échouait silencieusement en embed
+  // (401, aucun en-tête envoyé du tout).
+  let auth: string | null = null;
+  let shareHeader: string | null = null;
+  server.use(
+    http.get(
+      "https://core.test/v1/collections/col1/items/f1/attachments/att1/file",
+      ({ request }) => {
+        auth = request.headers.get("authorization");
+        shareHeader = request.headers.get("x-share-link-token");
+        return new HttpResponse("binary-content", {
+          headers: {
+            "Content-Type": "image/jpeg",
+            "Content-Disposition": 'attachment; filename="photo.jpg"',
+          },
+        });
+      },
+    ),
+  );
+  const { blob } = await makeClientWithShareToken("share-tok-1").downloadAttachment(
+    "col1",
+    "f1",
+    "att1",
+  );
+  expect(auth).toBeNull();
+  expect(shareHeader).toBe("share-tok-1");
+  expect(await blob.text()).toBe("binary-content");
+});
+
 test("getMapConfig reads printLayout from the top level of the config, not nested under map", async () => {
   server.use(
     http.get("https://core.test/v1/configs/by-item/77", () =>

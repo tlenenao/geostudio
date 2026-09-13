@@ -16,7 +16,19 @@ test_resolve_guest_scope_rejects_a_dataset_id_from_another_tenant) : un
 DataSource.datasetId n'est suivi QUE si get_access_facts(tenant_id=
 claims.tenant_id, ...) le trouve dans le MÊME tenant que l'item racine — un
 identifiant recopié depuis un autre tenant (import, copier-coller) ne donne
-jamais accès à son item ni à sa collection."""
+jamais accès à son item ni à sa collection.
+
+Second invariant de sécurité, ajouté après une revue finale de branche qui a
+démontré par preuve directe (PoC en session) un contournement réel de can() :
+la portée résolue ci-dessous (`allowed_item_ids`/`allowed_collection_ids`)
+n'est PAS elle-même une autorisation — un auteur de config peut y faire
+figurer n'importe quel `layer`/`datasetId` du tenant sans que rien ne
+vérifie qu'il a lui-même le droit de lire cette ressource. `GuestActor`
+porte donc aussi `created_by` (le créateur du ShareLink, jamais l'auteur de
+la config, qui peut différer) : les points d'appel (get_readable_collection,
+get_config_by_item) DOIVENT recouper la portée avec can(session,
+user_id=guest.created_by, ...) avant de retourner quoi que ce soit — la
+délégation n'excède jamais ce que son délégant peut lui-même lire."""
 
 from dataclasses import dataclass
 
@@ -39,6 +51,7 @@ class GuestActor:
     tenant_id: str
     item_id: str
     share_link_id: str
+    created_by: str
     allowed_item_ids: frozenset[str]
     allowed_collection_ids: frozenset[str]
 
@@ -51,7 +64,9 @@ def authorize_guest_collection_read(guest: GuestActor | None, collection_id: str
     return guest is not None and collection_id in guest.allowed_collection_ids
 
 
-def resolve_guest_scope(session: Session, claims: ShareLinkTokenClaims) -> GuestActor | None:
+def resolve_guest_scope(
+    session: Session, claims: ShareLinkTokenClaims, *, created_by: str
+) -> GuestActor | None:
     facts = items_repo.get_access_facts(session, tenant_id=claims.tenant_id, item_id=claims.item_id)
     if facts is None:
         return None
@@ -91,6 +106,7 @@ def resolve_guest_scope(session: Session, claims: ShareLinkTokenClaims) -> Guest
         tenant_id=claims.tenant_id,
         item_id=claims.item_id,
         share_link_id=claims.share_link_id,
+        created_by=created_by,
         allowed_item_ids=frozenset(allowed_item_ids),
         allowed_collection_ids=frozenset(allowed_collection_ids),
     )
@@ -115,4 +131,4 @@ def get_share_link_actor(
     )
     if link is None:
         return None
-    return resolve_guest_scope(session, claims)
+    return resolve_guest_scope(session, claims, created_by=link.created_by)

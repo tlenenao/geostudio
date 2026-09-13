@@ -42,17 +42,18 @@ def _create_private_collection(session, *, tenant_id, owner_id, collection_id):
     return col
 
 
-def _guest(tenant_id, *, allowed=("incidents",)) -> GuestActor:
+def _guest(tenant_id, *, allowed=("incidents",), created_by="owner-1") -> GuestActor:
     return GuestActor(
         tenant_id=tenant_id,
         item_id="app-1",
         share_link_id="link-1",
+        created_by=created_by,
         allowed_item_ids=frozenset({"app-1"}),
         allowed_collection_ids=frozenset(allowed),
     )
 
 
-def test_guest_with_allowed_collection_bypasses_can(session_factory):
+def test_guest_with_allowed_collection_bypasses_can_when_its_creator_may_read_it(session_factory):
     with session_factory() as session:
         tenant = get_or_create_default_tenant(session)
         owner = get_or_create_user(
@@ -69,9 +70,61 @@ def test_guest_with_allowed_collection_bypasses_can(session_factory):
         )
         session.commit()
 
-        col = get_readable_collection(session, None, "incidents", guest=_guest(tenant.id))
+        col = get_readable_collection(
+            session, None, "incidents", guest=_guest(tenant.id, created_by=owner.id)
+        )
 
         assert col.id == "incidents"
+
+
+def test_guest_whose_creator_cannot_read_the_referenced_collection_gets_404(session_factory):
+    """Trouvaille de la revue finale de branche GAP-19, démontrée par PoC :
+    appartenir à `guest.allowed_collection_ids` (la config de l'App choisit
+    librement ses `dataSources`) ne suffisait pas — un auteur de config
+    pouvait faire figurer n'importe quelle collection privée du tenant,
+    qu'il ait lui-même le droit de la lire ou non, et un jeton invité pour
+    CETTE App donnait alors accès à la collection d'un tiers sans rapport.
+    Ce test aurait dû être écrit à la Tâche 2 (le critère d'acceptation
+    « portée == référencée » ne teste que l'inverse : une collection non
+    référencée) ; corrigé ici plutôt que silencieusement, per CLAUDE.md
+    piège n°3."""
+    with session_factory() as session:
+        tenant = get_or_create_default_tenant(session)
+        owner = get_or_create_user(
+            session,
+            tenant_id=tenant.id,
+            oidc_sub="o",
+            username="owner",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        stranger = get_or_create_user(
+            session,
+            tenant_id=tenant.id,
+            oidc_sub="s",
+            username="stranger",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        # "incidents" appartient à `owner`, jamais partagée avec `stranger` —
+        # mais `stranger` a créé le lien de partage d'une App dont la config
+        # référence "incidents" quand même (auteur de config != propriétaire
+        # de la collection référencée).
+        _create_private_collection(
+            session, tenant_id=tenant.id, owner_id=owner.id, collection_id="incidents"
+        )
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            get_readable_collection(
+                session,
+                None,
+                "incidents",
+                guest=_guest(tenant.id, created_by=stranger.id),
+            )
+        assert exc_info.value.status_code == 404
 
 
 def test_guest_without_the_collection_in_scope_still_gets_404(session_factory):
@@ -93,7 +146,10 @@ def test_guest_without_the_collection_in_scope_still_gets_404(session_factory):
 
         with pytest.raises(HTTPException) as exc_info:
             get_readable_collection(
-                session, None, "secret", guest=_guest(tenant.id, allowed=("incidents",))
+                session,
+                None,
+                "secret",
+                guest=_guest(tenant.id, allowed=("incidents",), created_by=owner.id),
             )
         assert exc_info.value.status_code == 404
 
@@ -126,9 +182,58 @@ def test_guest_uses_its_own_tenant_not_the_default_tenant(session_factory):
                     tenant_id="wrong-tenant",
                     item_id="app-1",
                     share_link_id="link-1",
+                    created_by=owner.id,
                     allowed_item_ids=frozenset({"app-1"}),
                     allowed_collection_ids=frozenset({"incidents"}),
                 ),
+            )
+        assert exc_info.value.status_code == 404
+
+
+def test_guest_present_alongside_a_real_authenticated_user_never_triggers_the_bypass(
+    session_factory,
+):
+    """I1 (revue finale de branche) : la résolution de tenant est déjà
+    exclusive user/guest, mais le contournement can() lui-même tournait
+    même quand un VRAI utilisateur authentifié était présent en même temps
+    qu'un jeton invité (d'un tenant/App sans rapport) — un utilisateur
+    authentifié doit systématiquement passer par can(), jamais par la
+    portée d'un jeton invité qui l'accompagnerait par accident."""
+    with session_factory() as session:
+        tenant = get_or_create_default_tenant(session)
+        owner = get_or_create_user(
+            session,
+            tenant_id=tenant.id,
+            oidc_sub="o",
+            username="owner",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        stranger = get_or_create_user(
+            session,
+            tenant_id=tenant.id,
+            oidc_sub="s",
+            username="stranger",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        _create_private_collection(
+            session, tenant_id=tenant.id, owner_id=owner.id, collection_id="incidents"
+        )
+        session.commit()
+
+        # `stranger` est authentifié (paramètre `user`) ET présente, en même
+        # temps, un jeton invité qui référence "incidents" — le jeton ne doit
+        # jamais lui donner accès à une collection qu'il ne peut pas lire
+        # lui-même via can().
+        with pytest.raises(HTTPException) as exc_info:
+            get_readable_collection(
+                session,
+                stranger,
+                "incidents",
+                guest=_guest(tenant.id, created_by=owner.id),
             )
         assert exc_info.value.status_code == 404
 

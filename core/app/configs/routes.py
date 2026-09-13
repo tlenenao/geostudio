@@ -366,10 +366,26 @@ def get_config_by_item(
     # sans utilisateur, seul un jeton invité valide pour CET item évite le
     # 404 (absence de jeton, jeton révoqué/expiré, ou item hors périmètre du
     # jeton se comportent tous de façon identique).
+    #
+    # Trouvaille de la revue finale de branche, corrigée ici : appartenir à
+    # `guest.allowed_item_ids` (portée déclarée par la config elle-même, via
+    # DataSource.datasetId) ne suffit pas — recoupé avec
+    # can(user_id=guest.created_by, ...) pour cet item précis, sans quoi un
+    # datasetId recopié dans une App donne accès au payload complet d'un
+    # dataset (requêtes SQL/pipeline incluses) que le créateur du lien n'a
+    # lui-même jamais eu le droit de lire.
     if user is not None:
         _require_access(session, user=user, item_id=item_id, action="read")
     elif not authorize_guest_item_read(guest, item_id):
         raise HTTPException(status_code=404, detail="config not found")
+    elif guest is not None and item_id != guest.item_id:
+        guest_item_facts = items_repo.get_access_facts(
+            session, tenant_id=guest.tenant_id, item_id=item_id
+        )
+        if guest_item_facts is None or not can(
+            session, user_id=guest.created_by, action="read", item=guest_item_facts
+        ):
+            raise HTTPException(status_code=404, detail="config not found")
     result = repo.get_config_by_item(session, item_id)
     if result is None:
         raise HTTPException(status_code=404, detail="config not found")

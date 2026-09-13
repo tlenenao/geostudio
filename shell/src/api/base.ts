@@ -151,10 +151,13 @@ export async function requestBlob(
   method: string,
   path: string,
   body?: unknown,
+  getShareLinkToken?: () => string | undefined,
 ): Promise<{ blob: Blob; filename: string }> {
   const token = getToken();
+  const shareToken = getShareLinkToken?.();
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
+  else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const res = await fetch(`${coreUrl}${path}`, {
     method,
