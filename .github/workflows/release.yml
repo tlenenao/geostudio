@@ -185,7 +185,7 @@ jobs:
       # aucune Release GitHub à laquelle attacher un fichier.
       - name: SBOM
         continue-on-error: true
-        uses: anchore/sbom-action@v0.24.0
+        uses: anchore/sbom-action@v0.24.2
         with:
           image: ghcr.io/tlenenao/${{ matrix.image }}:${{ github.ref_name }}
           artifact-name: ${{ matrix.image }}-sbom.spdx.json
