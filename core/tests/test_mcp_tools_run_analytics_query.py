@@ -160,6 +160,34 @@ def test_run_analytics_query_dataset_not_found_errors(app_client, _local_duckdb)
     assert "not found" in error_text
 
 
+def test_run_analytics_query_rejects_sensitive_field_for_user_without_privilege(
+    app_client,  # noqa: F811
+    _local_duckdb,
+):
+    """GAP-22 Task 12 : `titre` marqué sensible sur la collection —
+    mock_user (rôle Créateur par défaut, sans data.view_sensitive) ne peut
+    pas l'utiliser comme groupBy, même via le tool MCP."""
+    with app_client:
+        collection_id = _register_incidents_collection(app_client)
+        with app_client.session_factory() as session:
+            from app.collections.models import Collection
+
+            session.query(Collection).filter(Collection.id == collection_id).update(
+                {"sensitive_fields": ["titre"]}
+            )
+            session.commit()
+        dataset_item_id = _create_collection_dataset(app_client, collection_id)
+        error_text = call_tool_expecting_error(
+            app_client,
+            "run_analytics_query",
+            {
+                "datasetId": dataset_item_id,
+                "query": {"groupBy": "titre"},
+            },
+        )
+    assert "titre" in error_text
+
+
 def _register_incidents_collection_owned_by_other(app_client):  # noqa: F811
     """Same schema/data as _register_incidents_collection, but owned by a
     different user (still public at creation, so create_dataset succeeds).

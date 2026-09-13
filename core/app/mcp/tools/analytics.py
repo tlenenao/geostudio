@@ -28,6 +28,8 @@ from app.harvest import routes as harvest_routes
 from app.harvest.egress import EgressBlockedError
 from app.items import repository as items_repo
 from app.mcp.tools.identity import require_access, require_collection_read, resolve_actor
+from app.roles.guards import has_privilege
+from app.roles.privileges import Privilege
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -105,6 +107,11 @@ def register(server: FastMCP, session_factory) -> None:
                 conn = features_routes.get_duckdb_connection_factory()()
                 try:
                     try:
+                        masked_fields = (
+                            frozenset()
+                            if has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+                            else frozenset(col.sensitive_fields)
+                        )
                         category_key, rows = run_collection_aggregate(
                             conn,
                             base_uri=features_routes.get_analytics_base_uri(),
@@ -112,6 +119,7 @@ def register(server: FastMCP, session_factory) -> None:
                             collection_id=col.id,
                             table_info=info,
                             request=query,
+                            masked_fields=masked_fields,
                         )
                     except UnknownAggregateField as exc:
                         raise ValueError(f"{exc.field}: {exc.message}") from exc

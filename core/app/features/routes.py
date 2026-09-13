@@ -277,6 +277,11 @@ def aggregate_features(
 ):
     col = get_readable_collection(session, user, collection_id, guest=guest)
     info = introspect(session, col.table_name)
+    masked_fields = (
+        frozenset()
+        if user is not None and has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+        else frozenset(col.sensitive_fields)
+    )
     conn = conn_factory()
     try:
         try:
@@ -287,6 +292,7 @@ def aggregate_features(
                 collection_id=col.id,
                 table_info=info,
                 request=body,
+                masked_fields=masked_fields,
             )
         except UnknownAggregateField as exc:
             raise _validation_error(
@@ -323,6 +329,11 @@ def export_collection_aggregate(
         )
     col = get_readable_collection(session, user, collection_id)
     info = introspect(session, col.table_name)
+    masked_fields = (
+        frozenset()
+        if user is not None and has_privilege(session, user, Privilege.DATA_VIEW_SENSITIVE.value)
+        else frozenset(col.sensitive_fields)
+    )
     conn = conn_factory()
     try:
         try:
@@ -333,6 +344,7 @@ def export_collection_aggregate(
                 collection_id=col.id,
                 table_info=info,
                 request=body,
+                masked_fields=masked_fields,
             )
         except UnknownAggregateField as exc:
             raise _validation_error(
