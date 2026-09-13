@@ -6,6 +6,8 @@ GET /items/{id} (première couche de service partagée entre route REST et
 tool MCP de ce dépôt, avec app.items.service.get_sharing_service/
 set_sharing_service et app.configs.service.create_config_service)."""
 
+import dataclasses
+
 from fastapi import HTTPException
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
@@ -156,8 +158,28 @@ def register(server: FastMCP, session_factory) -> None:
             except UnsupportedTable as exc:
                 raise ValueError(exc.reason) from exc
             parsed_bbox = _parse_bbox_tuple(bbox) if bbox else None
+            masked = user is None or not has_privilege(
+                session, user, Privilege.DATA_VIEW_SENSITIVE.value
+            )
+            # GAP-22 : sync_masked_role_grants (Task 3) only REVOKEs column-level
+            # SELECT for gis_rls_masked — it never grants table-level SELECT
+            # (§1.2/§3.3 of the design doc: a table-level GRANT would make any
+            # later column REVOKE a no-op). That means a SELECT list that still
+            # *names* a revoked column fails the whole statement with
+            # "permission denied for table" under the masked role — verified
+            # empirically against a real Postgres in this session, it does not
+            # gracefully drop just that column. select_features() builds its
+            # column list from `info.columns` (introspected before entering the
+            # masked scope, so it always includes sensitive columns) — the
+            # sensitive columns must be stripped from `info` itself before the
+            # masked query runs, not just relied on the GRANT/REVOKE alone.
+            if masked and col.sensitive_fields:
+                hidden = set(col.sensitive_fields)
+                info = dataclasses.replace(
+                    info, columns=[c for c in info.columns if c.name not in hidden]
+                )
             try:
-                with rls_scope(session, col.tenant_id):
+                with rls_scope(session, col.tenant_id, masked=masked):
                     page = select_features(
                         session,
                         info,
