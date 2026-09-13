@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { useInstanceInfo, useMetadataCatalog, useUpdateCollection } from "../api/hooks";
+import {
+  useCollectionSchema,
+  useInstanceInfo,
+  useMetadataCatalog,
+  useUpdateCollection,
+} from "../api/hooks";
 import type { CollectionAdmin } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
@@ -21,12 +26,18 @@ export function EditCollectionPanel({
   const updateCollection = useUpdateCollection(collection.id);
   const instanceQuery = useInstanceInfo();
   const catalogQuery = useMetadataCatalog();
+  // GAP-22 : même donnée de schéma qu'un futur éditeur de pièces jointes
+  // basé sur les colonnes réelles — un seul appel `GET
+  // /collections/{id}/schema`, réutilisé pour lister les champs cochables
+  // « Champs sensibles ».
+  const schemaQuery = useCollectionSchema(collection.id);
   const readOnly = instanceQuery.data?.readOnly === true;
   const [title, setTitle] = useState(collection.title);
   const [description, setDescription] = useState(collection.description);
   const [isPublic, setIsPublic] = useState(collection.isPublic);
   const [editable, setEditable] = useState(collection.editable);
   const [attachmentFields, setAttachmentFields] = useState(collection.attachmentFields ?? []);
+  const [sensitiveFields, setSensitiveFields] = useState(collection.sensitiveFields ?? []);
   const [draftKey, setDraftKey] = useState("");
   const [draftLabel, setDraftLabel] = useState("");
   const [license, setLicense] = useState(collection.license || UNSET);
@@ -50,6 +61,14 @@ export function EditCollectionPanel({
   ];
   const languageOptions =
     catalogQuery.data?.languages.map((l) => ({ value: l.id, label: l.label })) ?? [];
+  // Les champs de type "attachment" sont des entrées virtuelles ajoutées par
+  // table_info_to_schema (core/app/collections/schema_json.py) — pas de
+  // colonne SQL réelle derrière, le cœur les rejetterait comme
+  // sensitiveFields inconnu (_reject_invalid_sensitive_fields ne connaît
+  // que les colonnes introspectées). Exclues de la liste à cocher.
+  const sensitiveFieldCandidates = (schemaQuery.data?.fields ?? []).filter(
+    (f) => f.type !== "attachment",
+  );
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -60,6 +79,7 @@ export function EditCollectionPanel({
         isPublic,
         editable,
         attachmentFields,
+        sensitiveFields,
         license: license === UNSET ? "" : license,
         licenseUri,
         producer,
@@ -88,6 +108,12 @@ export function EditCollectionPanel({
 
   function removeAttachmentField(key: string) {
     setAttachmentFields((fields) => fields.filter((f) => f.key !== key));
+  }
+
+  function toggleSensitiveField(name: string, checked: boolean) {
+    setSensitiveFields((fields) =>
+      checked ? [...fields, name] : fields.filter((f) => f !== name),
+    );
   }
 
   return (
@@ -290,6 +316,35 @@ export function EditCollectionPanel({
                       {t("editCollection.addFieldButton")}
                     </Button>
                   </div>
+                </div>
+              ),
+            },
+            {
+              value: "sensitive",
+              label: t("editCollection.sensitiveFieldsTab"),
+              content: (
+                <div className="flex flex-col gap-1 pt-3">
+                  <p className="text-sm font-medium text-ink">
+                    {t("editCollection.sensitiveFieldsTitle")}
+                  </p>
+                  {schemaQuery.isLoading && (
+                    <p className="text-sm text-ink-2">{t("common.loading")}</p>
+                  )}
+                  <ul className="flex flex-col gap-1">
+                    {sensitiveFieldCandidates.map((f) => (
+                      <li key={f.name}>
+                        <label className="flex items-center gap-2 text-sm text-ink">
+                          <input
+                            type="checkbox"
+                            aria-label={f.name}
+                            checked={sensitiveFields.includes(f.name)}
+                            onChange={(e) => toggleSensitiveField(f.name, e.target.checked)}
+                          />
+                          {f.name}
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               ),
             },

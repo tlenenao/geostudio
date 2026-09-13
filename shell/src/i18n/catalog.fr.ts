@@ -587,6 +587,8 @@ export const fr = {
   "editCollection.generalTab": "Général",
   "editCollection.metadataTab": "Métadonnées ouvertes",
   "editCollection.attachmentsTab": "Pièces jointes",
+  "editCollection.sensitiveFieldsTab": "Champs sensibles",
+  "editCollection.sensitiveFieldsTitle": "Champs sensibles",
   "editCollection.noLicenseOption": "Aucune licence déclarée",
   "editCollection.noFrequencyOption": "Non renseignée",
   "editCollection.licenseLabel": "Licence",
