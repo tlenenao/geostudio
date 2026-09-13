@@ -1325,6 +1325,7 @@ def test_sample_on_empty_collection_returns_no_rows(tmp_path, conn):
     )
 
     assert category_key == "value"
+    assert rows == []
 
 
 # GAP-22 (Tâche 11) : masquage de colonnes côté agrégats structurés DuckDB.
@@ -1376,5 +1377,4 @@ def test_run_collection_aggregate_allows_field_without_masking(conn, tmp_path):
         masked_fields=frozenset(),
     )
     assert category_key == "salary"
-    assert rows == []
     assert rows == []
