@@ -210,11 +210,20 @@ def get_readable_collection(
     librement ses `dataSources`, rien ne garantissait jusqu'ici que
     `guest.created_by` (le créateur du lien de partage) ait lui-même le
     droit de lire la collection référencée. La portée invité est donc
-    recoupée avec can(..., user_id=guest.created_by, ...) — la délégation
-    n'excède jamais ce que son délégant peut lui-même lire. S'applique
-    UNIQUEMENT quand `user is None` (jamais en plus d'un utilisateur
-    authentifié réel, dont la résolution de tenant/droits ci-dessus n'a
-    rien à voir avec un jeton invité éventuellement présent en même temps)."""
+    recoupée avec can(..., user_id=guest.created_by, ..., actor_is_admin=
+    False) — délibérément `False` en dur, jamais le privilège réel du
+    créateur : la délégation est donc STRICTEMENT PLUS ÉTROITE que « ce que
+    son délégant peut lui-même lire » pour un administrateur/porteur
+    d'`admin.collections.manage`, pas équivalente à ce privilège. Un tel
+    utilisateur qui partage une App construite sur une collection qu'il ne
+    voit que via ce privilège produira un lien invité qui 404 sur cette
+    collection (échec fermé, jamais une fuite — comportement voulu : le
+    superpouvoir d'un admin ne se délègue jamais à un visiteur anonyme,
+    revue finale de branche, non testé explicitement, suivi REV à ouvrir).
+    S'applique UNIQUEMENT quand `user is None` (jamais en plus d'un
+    utilisateur authentifié réel, dont la résolution de tenant/droits
+    ci-dessus n'a rien à voir avec un jeton invité éventuellement présent en
+    même temps)."""
     from app.configs.guest_access import authorize_guest_collection_read
 
     col = None
