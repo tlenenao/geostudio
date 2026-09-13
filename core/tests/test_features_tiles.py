@@ -129,7 +129,7 @@ def _client(monkeypatch, info: TableInfo | None = None, collection=None):
     col = collection or SimpleNamespace(
         id="demo_incidents", table_name="demo_incidents", tenant_id="default", is_public=True
     )
-    monkeypatch.setattr(tiles_module, "get_readable_collection", lambda s, u, c: col)
+    monkeypatch.setattr(tiles_module, "get_readable_collection", lambda s, u, c, *, guest=None: col)
     app.dependency_overrides[db.get_session] = lambda: None
     app.dependency_overrides[get_current_user_optional] = lambda: None
     app.dependency_overrides[get_introspector] = lambda: (
@@ -198,7 +198,7 @@ def _recording_client(monkeypatch):
     col = SimpleNamespace(
         id="demo_incidents", table_name="demo_incidents", tenant_id="default", is_public=True
     )
-    monkeypatch.setattr(tiles_module, "get_readable_collection", lambda s, u, c: col)
+    monkeypatch.setattr(tiles_module, "get_readable_collection", lambda s, u, c, *, guest=None: col)
     monkeypatch.setattr(tiles_module, "quote_ident", lambda s, name: f'"{name}"')
     app.dependency_overrides[db.get_session] = lambda: session
     app.dependency_overrides[get_current_user_optional] = lambda: None

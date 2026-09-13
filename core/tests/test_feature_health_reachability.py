@@ -46,7 +46,11 @@ def _feature(**overrides) -> Feature:
 
 def test_declared_shell_routes_lists_every_route_of_routes_tsx():
     routes = declared_shell_routes(REPO)
-    assert len(routes) == 28
+    # 28 → 29 (GAP-19) : nouvelle route publique /embed/:token
+    # (shell/src/shell/routes.tsx) — canari volontairement en dur (même
+    # patron que le catalogue de widgets SP-52) pour forcer une décision
+    # consciente à chaque route ajoutée, jamais un décompte automatique.
+    assert len(routes) == 29
     assert "/bookmarks" in routes
     assert "/public/datasets/:collectionId" in routes
 

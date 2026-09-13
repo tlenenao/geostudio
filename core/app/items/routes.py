@@ -293,7 +293,9 @@ def create_share_link_route(
     # (SP-57b) — ce champ url est le lien partageable renvoyé à l'appelant,
     # doit donc être dereferenceable tel quel.
     return ShareLinkCreated(
-        url=f"{base_url}/v1/share-links/{token}", expiresAt=link.expires_at.isoformat()
+        url=f"{base_url}/v1/share-links/{token}",
+        expiresAt=link.expires_at.isoformat(),
+        token=token,
     )
 
 

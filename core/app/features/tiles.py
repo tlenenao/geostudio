@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependency import get_current_user_optional
 from app.collections.introspection import TableInfo, TableNotFound
 from app.collections.routes import get_introspector, get_readable_collection
+from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
 from app.features.routes import get_rls_scope
 from app.sql_ident import quote_ident
@@ -117,13 +118,14 @@ def get_collection_tile(
     x: int,
     y: int,
     user=Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
     session: Session = Depends(get_session),
     introspect=Depends(get_introspector),
     rls=Depends(get_rls_scope),
 ) -> Response:
     # Même porte que GET /items : 404 avant 403, anonyme accepté sur une
-    # collection publique. Aucune variante — la garde est réutilisée verbatim.
-    col = get_readable_collection(session, user, collection_id)
+    # collection publique — plus désormais un jeton invité scopé (GAP-19).
+    col = get_readable_collection(session, user, collection_id, guest=guest)
     try:
         validate_tile_coords(z, x, y)
     except InvalidTileCoords as exc:

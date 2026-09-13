@@ -169,6 +169,34 @@ test("crée un lien de partage à échéance", async () => {
   await waitFor(() => expect(screen.getByText(/eyJ\.\.\./)).toBeInTheDocument());
 });
 
+test("shows an embed snippet with the shell origin after creating a share link", async () => {
+  server.use(
+    http.get("https://core.test/v1/items/7/share-links", () => HttpResponse.json([])),
+    http.post("https://core.test/v1/items/7/share-links", async ({ request }) => {
+      const body = (await request.json()) as { ttlDays: number };
+      expect(body.ttlDays).toBe(14);
+      return HttpResponse.json(
+        {
+          url: "https://core.test/share-links/eyJ...",
+          expiresAt: "2026-10-05T00:00:00",
+          token: "tok-42",
+        },
+        { status: 201 },
+      );
+    }),
+  );
+  render(
+    <Harness>
+      <ShareForm item={item} onDone={vi.fn()} />
+    </Harness>,
+  );
+  await screen.findByRole("checkbox", { name: "Groupe Équipe B" });
+  await userEvent.clear(screen.getByLabelText("Durée du lien (jours)"));
+  await userEvent.type(screen.getByLabelText("Durée du lien (jours)"), "14");
+  await userEvent.click(screen.getByRole("button", { name: "Créer un lien" }));
+  expect(await screen.findByText(/tok-42/)).toBeInTheDocument();
+});
+
 test("liste les liens de partage existants et permet de les révoquer", async () => {
   let revoked = false;
   server.use(

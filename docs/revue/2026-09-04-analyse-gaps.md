@@ -84,9 +84,9 @@ second volet n'est pas fermable par du code et reste ouvert tel quel.
 
 ## État des 81 gaps — trois parties distinctes (mise à jour 2026-09-06)
 
-**59 fermés, 5 partiels, 17 ouverts** (total 81 — 79 gaps de la revue initiale + GAP-80/81 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
+**60 fermés, 5 partiels, 16 ouverts** (total 81 — 79 gaps de la revue initiale + GAP-80/81 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
 
-### ✅ Fermé (59)
+### ✅ Fermé (60)
 
 | GAP | Fermé par / statut détaillé |
 |---|---|
@@ -103,6 +103,7 @@ second volet n'est pas fermable par du code et reste ouvert tel quel.
 | GAP-14 | SP-57a (i18n 7 lots, a11y échantillon 9 pages) + SP-57b (`/v1/`, `docs/adr/`, contribution). Reste : détecteur i18n limité à 4 répertoires (REV-177), échantillon a11y non exhaustif (REV-178), token `--gs-ink-3` sous seuil AA non corrigé (REV-176) *(avec dette résiduelle)* |
 | GAP-16 | 2026-09-06 (spec/plan GAP-16) — `reader.connector.snowflake` (pendant exact de `reader.connector.postgres`, dialecte `snowflake-sqlalchemy` résolu par entry point, aucun nouvel import), nouveau kind de secret `snowflake_dsn` ; `reader.connector.postgres` confirmé compatible Amazon Redshift sans nouveau code (littérature AWS, pas de cluster réel disponible en session). Databricks/BigQuery restent hors périmètre. Round-trip Snowflake réel : `@pytest.mark.snowflake`, jamais câblé en CI, manuel uniquement |
 | GAP-17 | SP-62 (plan `docs/superpowers/plans/2026-09-06-gap17-nl-sql-copilote.md`) — outils MCP `generate_sql_query`/`generate_visual_query` (`core/app/mcp/tools/query_generation.py`), copilote monté sur `SqlLabPage`/`VisualQueryWizardPage` ; le brouillon généré n'est jamais exécuté ni écrit depuis l'outil, seulement inséré par un client tool (`applySqlDraft`/`applyVisualQueryDraft`) — la revue humaine (bouton Exécuter / validation du formulaire) reste le seul chemin d'exécution/écriture, prouvé par un test d'intégration cœur et une spec E2E dédiés |
+| GAP-19 | GAP-19 (2026-09-13, 14 tâches + 2 correctifs de revue finale) — route publique `/embed/:token` (`EmbedPage.tsx`), `ItemClient` invité dédié transportant `X-Share-Link-Token` (jamais `Authorization`), section « Intégrer » dans `ShareForm.tsx`. **Critique trouvé et corrigé en revue finale de branche, démontré par PoC** : la portée invité (dataSources d'une config) n'était recoupée avec aucune autorisation réelle — tout auteur d'App pouvait référencer une collection/dataset privé d'un tiers jamais partagé avec lui et le lire via un lien de partage de sa propre App ; corrigé en recoupant la portée avec `can(user_id=guest.created_by, ...)` aux deux chokepoints réels (`get_readable_collection`, `get_config_by_item`). Blocage `X-Frame-Options: DENY` sur le routeur Traefik `shell` (préexistant à la branche, jamais lié à GAP-19) aussi trouvé et corrigé en revue finale (routeur `shell-embed` dédié). Reste ouvert, disclosed : icônes de carte personnalisées non câblées pour un visiteur invité (`/map-icons/{id}/file` exige toujours un utilisateur réel) ; CSP `frame-ancestors` non affirmé absent par un test (seul `X-Frame-Options` l'est) ; couches 3D hébergées (`Tile3DLayer`) non câblées côté `MapView` pour le jeton invité. |
 | GAP-24 | SP-53 (`06821047`) — jeton opaque + `POST /pipelines/{id}/trigger` |
 | GAP-28 | SP-47 (domaine `app/usage/`, `GET /usage/summary`) |
 | GAP-30 | SP-46 (`ADMIN_LINKS`) |
@@ -160,7 +161,9 @@ second volet n'est pas fermable par du code et reste ouvert tel quel.
 | GAP-70 | SP-59 ferme le script de restauration (`deploy/backup/restore.sh`, vérifié présent) et la parité des 7 buckets ; la vérification OIDC réelle reste non rejouée (REV-164, limite d'environnement) |
 | GAP-72 | SP-48 ferme `img-src`/`connect-src` en enforcing (`CORE_CSP_MODE`, vérifié dans `docker-compose.yml`/`security/jobs.py`) ; `script-src` widgets d'extension tiers reste une décision produit ouverte (`traefik_render.py:29`, toujours `'self'` en dur, gardé par 2 tests intentionnels) |
 
+### 🔴 Ouvert / non implémenté (16)
 ### 🔴 Ouvert / non implémenté (17)
+### 🔴 Ouvert / non implémenté (18)
 
 | GAP | Manque |
 |---|---|
@@ -168,7 +171,6 @@ second volet n'est pas fermable par du code et reste ouvert tel quel.
 | GAP-08 | Géocodage BAN non traité |
 | GAP-10 | Animation temporelle non traitée |
 | GAP-18 | Référentiel 2 (benchmark), aucune décision produit prise |
-| GAP-19 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-20 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-21 | Référentiel 2 (benchmark), aucune décision produit prise |
 | GAP-22 | Référentiel 2 (benchmark), aucune décision produit prise |
@@ -182,9 +184,10 @@ second volet n'est pas fermable par du code et reste ouvert tel quel.
 | GAP-80 | `/bookmarks` (`shell/src/shell/routes.tsx:315`) inatteignable — aucun lien ne pointe vers cette route, `useCreateBookmark` livré par SP-14m sans jamais pouvoir relire le signet créé (cf. addendum ci-dessous) |
 | GAP-81 | `/analytics/sql` (`shell/src/pages/SqlLabPage.tsx`) inatteignable — aucun lien du shell ne pointe vers cette route (cf. addendum ci-dessous pour le détail du câblage de navigation en cause) |
 
-Répartition par référentiel des 18 ouverts : 6 items isolés du référentiel 1
+Répartition par référentiel des 16 ouverts (GAP-17/19 fermés depuis, retirés
+du décompte de référentiel 2) : 6 items isolés du référentiel 1
 (GAP-04/08/10/34/37/55 — chantiers non lancés ou décisions produit non
-tranchées), 10 du référentiel 2 (GAP-17 à GAP-23 + GAP-25 à GAP-27, benchmark
+tranchées), 8 du référentiel 2 (GAP-18/20/21/22/23/25/26/27, benchmark
 concurrentiel — aucune décision produit prise, non vérifiables dans le code
 de GeoStudio), et GAP-80/81 (navigation manquante, mécaniques, coût 1-2 j-h
 chacun).

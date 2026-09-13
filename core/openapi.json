@@ -1272,6 +1272,17 @@
       },
       "DataSource": {
         "properties": {
+          "datasetId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datasetid"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -4352,6 +4363,10 @@
             "title": "Expiresat",
             "type": "string"
           },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
           "url": {
             "title": "Url",
             "type": "string"
@@ -4359,7 +4374,8 @@
         },
         "required": [
           "url",
-          "expiresAt"
+          "expiresAt",
+          "token"
         ],
         "title": "ShareLinkCreated",
         "type": "object"
@@ -5337,6 +5353,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "responses": {
@@ -5438,6 +5470,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],
@@ -5704,6 +5752,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "responses": {
@@ -5866,6 +5930,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "responses": {
@@ -5998,6 +6078,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],
@@ -6260,6 +6356,22 @@
               "title": "Authorization",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
+            }
           }
         ],
         "responses": {
@@ -6306,6 +6418,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],
@@ -6486,6 +6614,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],
@@ -6789,6 +6933,22 @@
               "default": "",
               "title": "Authorization",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Share-Link-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Share-Link-Token"
             }
           }
         ],

@@ -221,10 +221,12 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
     async createShareLink(
       itemId: string,
       ttlDays: number,
-    ): Promise<{ url: string; expiresAt: string }> {
-      return request<{ url: string; expiresAt: string }>("POST", `/items/${itemId}/share-links`, {
-        ttlDays,
-      });
+    ): Promise<{ url: string; expiresAt: string; token: string }> {
+      return request<{ url: string; expiresAt: string; token: string }>(
+        "POST",
+        `/items/${itemId}/share-links`,
+        { ttlDays },
+      );
     },
 
     async listShareLinks(
