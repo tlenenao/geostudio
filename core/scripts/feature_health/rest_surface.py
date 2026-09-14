@@ -15,11 +15,17 @@ est fausse (test dédié).
 
 Limites assumées, pas couvertes — un futur lecteur ne doit pas sur-interpréter
 un vert :
-- la résolution de garde s'arrête au **même module** : un helper importé d'un
-  autre module et qui porterait la garde n'est pas suivi (aucun cas réel à
-  `1516a3a1`, mais rien ne l'empêche d'apparaître) ;
-- profondeur 2 exactement : route → helper → garde. Une chaîne plus longue
-  n'est pas suivie ;
+- la résolution de garde suit un import cross-module sur **un seul saut**
+  (route → fonction importée d'un autre module de `core/app` → garde appelée
+  dans son corps) — patron réel depuis SP-43 (couche de service partagée
+  REST↔MCP), vérifié sur `run_pipeline_service`/`create_webhook_token_service`/
+  `revoke_webhook_token_service` (`app/pipelines/service.py`, spec
+  2026-09-14). Une fabrique `Depends(get_x)` qui **retourne** un garde sans
+  l'appeler (`return rls_scope`), invoqué ensuite via le paramètre local qui
+  reçoit la dépendance, n'est PAS suivie — seul un appel direct compte ;
+- profondeur 2 exactement, que le helper soit local ou importé : route →
+  helper → garde. Une chaîne plus longue (route → service → sous-helper →
+  garde) n'est pas suivie ;
 - une garde présente mais inopérante (mauvais privilège, condition toujours
   vraie) compte comme une garde : ce sous-score mesure la **présence** d'un
   point de contrôle, jamais sa justesse ;
@@ -45,6 +51,11 @@ GUARD_NAMES = frozenset(
         "can",
         "rls_scope",
         "assert_egress_allowed",
+        # SP-61 volet A.1 (spec 2026-09-14) : wrappers de garde vérifiés par
+        # lecture directe de leur corps — chacun recoupe avec `can()`/lève
+        # 404-403 selon le verdict, jamais un simple accesseur.
+        "get_readable_collection",
+        "require_pipeline_access",
     }
 )
 AUTH_REQUIRED = "get_current_user"
@@ -181,6 +192,53 @@ def _capability_flags(repo: pathlib.Path) -> dict[str, str]:
     return flags
 
 
+def _import_targets(tree: ast.Module, repo: pathlib.Path) -> dict[str, pathlib.Path]:
+    """`{nom_local: chemin_absolu_du_module_source}` pour chaque `from app.x.y
+    import a, b as c` résoluble vers un fichier réel de `core/app` — ce dépôt
+    n'a pas d'imports relatifs (vérifié), donc `node.module` est toujours un
+    chemin absolu en pointillés."""
+    targets: dict[str, pathlib.Path] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or not node.module:
+            continue
+        candidate = repo / "core" / (node.module.replace(".", "/") + ".py")
+        if not candidate.is_file():
+            continue
+        for alias in node.names:
+            targets[alias.asname or alias.name] = candidate
+    return targets
+
+
+_IMPORTED_MODULE_CACHE: dict[pathlib.Path, ast.Module] = {}
+
+
+def _guards_in_imported_function(name: str, path: pathlib.Path) -> frozenset[str]:
+    """Les noms de `GUARD_NAMES` appelés dans le corps de la fonction `name`
+    définie dans le module `path` — un seul saut, jamais récursif plus loin.
+    Suffisant pour le patron de couche de service introduit par SP-43 (route →
+    fonction de service importée → garde), vérifié sur
+    `run_pipeline_service`/`create_webhook_token_service`/
+    `revoke_webhook_token_service` (`app/pipelines/service.py`), qui appellent
+    chacune `require_pipeline_access(...)` — jamais suivi avant ce volet
+    puisque ni la route ni la fonction de service ne vivent dans le même
+    fichier que l'appel visible."""
+    tree = _IMPORTED_MODULE_CACHE.get(path)
+    if tree is None:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        _IMPORTED_MODULE_CACHE[path] = tree
+    function = next(
+        (
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef) and n.name == name
+        ),
+        None,
+    )
+    if function is None:
+        return frozenset()
+    return _called_names(function) & GUARD_NAMES
+
+
 def index_rest_routes(repo: pathlib.Path) -> tuple[RouteFact, ...]:
     flags = _capability_flags(repo)
     facts: list[RouteFact] = []
@@ -193,6 +251,7 @@ def index_rest_routes(repo: pathlib.Path) -> tuple[RouteFact, ...]:
             for node in ast.walk(tree)
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
         }
+        imports = _import_targets(tree, repo)
         for node in ast.walk(tree):
             for decorator in _route_decorators(node):
                 called = _called_names(node)
@@ -202,6 +261,10 @@ def index_rest_routes(repo: pathlib.Path) -> tuple[RouteFact, ...]:
                     helper = local_functions.get(name)
                     if helper is not None and helper is not node:
                         guards |= _called_names(helper) & GUARD_NAMES
+                        continue
+                    source = imports.get(name)
+                    if source is not None:
+                        guards |= _guards_in_imported_function(name, source)
                 if AUTH_REQUIRED in dependencies:
                     auth = "required"
                 elif AUTH_OPTIONAL in dependencies:
