@@ -179,3 +179,32 @@ def test_a_route_declared_public_by_design_is_not_penalised():
 
 def test_guard_score_is_not_applicable_without_rest_surface():
     assert score_guard(_feature(shell=("/bookmarks",)), ()).value is None
+
+
+def test_a_directly_called_collection_read_gate_is_recognised_as_a_guard():
+    """`get_collection_tile` (`app/features/tiles.py`) appelle
+    `get_readable_collection(...)` en corps de route — chokepoint d'autorisation
+    des collections (GAP-19/22/50/60), qui recoupe avec `can()` en interne
+    (`app/collections/routes.py`, vérifié). Absent de `GUARD_NAMES` jusqu'ici
+    uniquement par omission — l'appel est déjà visible de `_called_names`."""
+    fact = next(
+        f
+        for f in index_rest_routes(REPO)
+        if (f.method, f.path) == ("GET", "/v1/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt")
+    )
+    assert "get_readable_collection" in fact.guards
+
+
+def test_a_directly_called_pipeline_access_gate_is_recognised_as_a_guard():
+    """`require_pipeline_access` (`app/pipelines/service.py`) appelle `can()` et
+    lève 404/403 — vérifié par lecture directe. Trois routes l'appellent
+    directement en corps (pas via une fonction de service intermédiaire, cf.
+    Tâche 2 pour les trois autres)."""
+    guarded_directly = {
+        "GET /v1/pipelines/{item_id}/runs",
+        "POST /v1/pipelines/{item_id}/preview",
+        "GET /v1/pipelines/{item_id}/webhook-tokens",
+    }
+    by_id = {f"{f.method} {f.path}": f for f in index_rest_routes(REPO)}
+    for surface in guarded_directly:
+        assert "require_pipeline_access" in by_id[surface].guards, surface

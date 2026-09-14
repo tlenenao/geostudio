@@ -45,6 +45,11 @@ GUARD_NAMES = frozenset(
         "can",
         "rls_scope",
         "assert_egress_allowed",
+        # SP-61 volet A.1 (spec 2026-09-14) : wrappers de garde vérifiés par
+        # lecture directe de leur corps — chacun recoupe avec `can()`/lève
+        # 404-403 selon le verdict, jamais un simple accesseur.
+        "get_readable_collection",
+        "require_pipeline_access",
     }
 )
 AUTH_REQUIRED = "get_current_user"
