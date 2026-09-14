@@ -208,3 +208,31 @@ def test_a_directly_called_pipeline_access_gate_is_recognised_as_a_guard():
     by_id = {f"{f.method} {f.path}": f for f in index_rest_routes(REPO)}
     for surface in guarded_directly:
         assert "require_pipeline_access" in by_id[surface].guards, surface
+
+
+def test_guard_reached_through_an_imported_service_function_is_found():
+    """POST /v1/pipelines/{item_id}/run → run_pipeline_route → run_pipeline_service
+    (importé d'app.pipelines.service) → require_pipeline_access(...) → can(). Avant
+    ce volet, cette route ressortait « authentification seule » alors que la
+    garde est réelle — vérifié par lecture directe de service.py:78-93."""
+    by_id = {f"{f.method} {f.path}": f for f in index_rest_routes(REPO)}
+    guarded_via_service = {
+        "POST /v1/pipelines/{item_id}/run": "run_pipeline_service",
+        "POST /v1/pipelines/{item_id}/webhook-tokens": "create_webhook_token_service",
+        "DELETE /v1/pipelines/{item_id}/webhook-tokens/{token_id}": "revoke_webhook_token_service",
+    }
+    for surface in guarded_via_service:
+        assert "require_pipeline_access" in by_id[surface].guards, surface
+
+
+def test_import_resolution_does_not_invent_guards_on_an_unguarded_helper():
+    """Non-régression : une fonction importée dont le corps n'appelle réellement
+    aucun nom de GUARD_NAMES doit rester sans garde détecté — la résolution ne
+    doit jamais sur-détecter."""
+    fact = next(
+        f for f in index_rest_routes(REPO) if (f.method, f.path) == ("GET", "/v1/pipelines/ops")
+    )
+    # /v1/pipelines/ops est déclarée publique par conception (feature.public) —
+    # ce test vérifie l'index brut, pas score_guard : la fonction de route
+    # elle-même n'appelle aucune garde, cross-module ou non.
+    assert fact.guards == frozenset()
