@@ -366,3 +366,84 @@ test("removing a record drops it from query.records", async () => {
   const [sources] = onChange.mock.calls[0];
   expect(sources[0].query.records).toEqual([]);
 });
+
+test("edits the default aggregated field of a statistics source", async () => {
+  const onChange = vi.fn();
+  render(<DataSourcePanel sources={[STATS_SOURCE]} onChange={onChange} />);
+  await userEvent.type(screen.getByLabelText("Champ agrégé (source s1)"), "p");
+  expect((onChange.mock.calls.at(-1)![0] as DataSource[])[0].query.field).toBe("p");
+});
+
+test("edits a measure's field", async () => {
+  const onChange = vi.fn();
+  const source: DataSource = {
+    ...STATS_SOURCE,
+    query: { groupBy: "region", agg: "count", measures: [{ agg: "sum", field: "" }] },
+  };
+  render(<DataSourcePanel sources={[source]} onChange={onChange} />);
+  await userEvent.type(screen.getByLabelText("Champ mesure 1 (source s1)"), "p");
+  const last = (onChange.mock.calls.at(-1)![0] as DataSource[])[0];
+  expect(last.query.measures).toEqual([{ agg: "sum", field: "p" }]);
+});
+
+test("switching a measure's aggregation to percentile seeds a default centile", async () => {
+  const onChange = vi.fn();
+  const source: DataSource = {
+    ...STATS_SOURCE,
+    query: { groupBy: "region", agg: "count", measures: [{ agg: "sum", field: "pop" }] },
+  };
+  render(<DataSourcePanel sources={[source]} onChange={onChange} />);
+  await userEvent.selectOptions(
+    screen.getByLabelText("Agrégation mesure 1 (source s1)"),
+    "percentile",
+  );
+  const last = (onChange.mock.calls.at(-1)![0] as DataSource[])[0];
+  expect(last.query.measures).toEqual([{ agg: "percentile", field: "pop", p: 50 }]);
+});
+
+test("commits a measure's percentile via its dedicated input", () => {
+  const onChange = vi.fn();
+  const source: DataSource = {
+    ...STATS_SOURCE,
+    query: {
+      groupBy: "region",
+      agg: "count",
+      measures: [{ agg: "percentile", field: "pop", p: 75 }],
+    },
+  };
+  render(<DataSourcePanel sources={[source]} onChange={onChange} />);
+  fireEvent.change(screen.getByLabelText("Centile mesure 1 (source s1)"), {
+    target: { value: "95" },
+  });
+  const last = (onChange.mock.calls.at(-1)![0] as DataSource[])[0];
+  expect(last.query.measures).toEqual([{ agg: "percentile", field: "pop", p: 95 }]);
+});
+
+test("removes a measure from a statistics source", async () => {
+  const onChange = vi.fn();
+  const source: DataSource = {
+    ...STATS_SOURCE,
+    query: { groupBy: "region", agg: "count", measures: [{ agg: "sum", field: "pop" }] },
+  };
+  render(<DataSourcePanel sources={[source]} onChange={onChange} />);
+  await userEvent.click(screen.getByRole("button", { name: "Retirer la mesure 1 de s1" }));
+  const last = (onChange.mock.calls.at(-1)![0] as DataSource[])[0];
+  expect(last.query.measures).toEqual([]);
+});
+
+test("shows an empty state when there are no sources", () => {
+  render(<DataSourcePanel sources={[]} onChange={vi.fn()} />);
+  expect(screen.getByText("Aucune source.")).toBeInTheDocument();
+});
+
+test("shows a promoting label and disables the button while a promotion is in flight", () => {
+  const sources: DataSource[] = [
+    { id: "s1", type: "features", service: "core", layer: "parcs", query: {} },
+  ];
+  render(
+    <DataSourcePanel sources={sources} onChange={vi.fn()} onPromote={vi.fn()} promotingId="s1" />,
+  );
+  const button = screen.getByRole("button", { name: "Promouvoir en dataset partagé s1" });
+  expect(button).toBeDisabled();
+  expect(button).toHaveTextContent("Promotion…");
+});
