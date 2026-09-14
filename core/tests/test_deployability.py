@@ -70,6 +70,7 @@ ENV_EXAMPLE = REPO / ".env.example"
 BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
 BACKUP_SH = REPO / "deploy/backup/backup.sh"
 RESTORE_SH = REPO / "deploy/backup/restore.sh"
+INSTALL_SH = REPO / "scripts/install.sh"
 CORE_APP = REPO / "core/app"
 BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
 KEYCLOAK_REALM_JSON = REPO / "deploy/keycloak/geostudio-realm.json"
@@ -1413,4 +1414,38 @@ def test_feature_health_gate_runs_in_ci():
     assert any("--check" in line for line in lines_invoking_cli), (
         "feature_health_cli.py est invoqué en CI mais aucune de ses invocations "
         f"ne porte --check : {lines_invoking_cli}"
+    )
+
+
+def test_install_sh_writes_an_env_var_that_core_actually_reads_back():
+    """`scripts/install.sh` crée le premier compte admin Keycloak et écrit son
+    sub OIDC dans `.env` (`set_env_var CORE_ADMIN_SUBS "$ADMIN_SUB"`,
+    core/tests/test_install_script.py couvre ce comportement en détail via un
+    double docker/jq). Cette variable n'a de sens que si `core/app/` la relit
+    au démarrage (`app/auth/dependency.py::admin_subs()`) : un renommage d'un
+    seul des deux côtés romprait silencieusement le bootstrap du premier
+    admin — aucune erreur, juste un compte jamais reconnu comme admin. Même
+    classe de bug que test_every_core_env_var_is_wired_to_a_service, mais
+    ancrée nommément sur `scripts/install.sh` : c'est cette référence
+    littérale, dans le corps de ce test, à la constante `INSTALL_SH` que
+    `scripts/feature_health/coverage_facts.py::deployability_rules()` sait
+    reconnaître — sans elle, les deux fonctionnalités « premier compte admin »
+    et « installeur guidé » de l'inventaire (`preuve: ["scripts/install.sh"]`)
+    restent invisibles au sous-score `tests` quel que soit le nombre de tests
+    de comportement écrits ailleurs (limite documentée en tête de
+    coverage_facts.py : seule une règle de CE fichier compte pour une preuve
+    `scripts/`)."""
+    install_text = INSTALL_SH.read_text()
+    written = set(re.findall(r'set_env_var\s+([A-Z0-9_]+)\s+"\$ADMIN_SUB"', install_text))
+    assert written, (
+        "install.sh ne semble plus écrire de variable d'environnement pour le "
+        "sub admin créé (set_env_var ... \"$ADMIN_SUB\" introuvable) — "
+        "régression du script ou de la regex de ce test"
+    )
+    read_back = core_env_vars()
+    missing = written - read_back
+    assert not missing, (
+        f"install.sh écrit {sorted(written)} dans .env mais core/app/ ne les "
+        f"relit jamais (os.environ.get(...)) : {sorted(missing)} — le "
+        "bootstrap du premier admin serait silencieusement cassé"
     )
