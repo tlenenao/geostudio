@@ -95,4 +95,10 @@ def check_rows(rows: list[Row], *, ops: dict, qgis_algorithms: dict) -> list[str
                     f"{row.fme_transformer!r} : geostudio_equivalent "
                     f"{row.geostudio_equivalent!r} n'existe pas dans ops_catalog()"
                 )
+        if row.engine == "qgis":
+            if row.geostudio_equivalent not in qgis_algorithms:
+                errors.append(
+                    f"{row.fme_transformer!r} : geostudio_equivalent "
+                    f"{row.geostudio_equivalent!r} n'existe pas dans QGIS_ALGORITHMS"
+                )
     return errors

@@ -101,3 +101,28 @@ def test_check_rows_rejects_unknown_duckdb_op():
     errors = check_rows(rows, ops={"transform.reproject": {}}, qgis_algorithms={})
     assert len(errors) == 1
     assert "transform.nonexistent" in errors[0]
+
+
+def test_check_rows_accepts_existing_qgis_algorithm():
+    rows = [
+        _row(
+            engine="qgis",
+            coverage_status="qgis_frozen",
+            geostudio_equivalent="gdal:contour",
+        )
+    ]
+    errors = check_rows(rows, ops={}, qgis_algorithms={"gdal:contour": {}})
+    assert errors == []
+
+
+def test_check_rows_rejects_unknown_qgis_algorithm():
+    rows = [
+        _row(
+            engine="qgis",
+            coverage_status="qgis_frozen",
+            geostudio_equivalent="qgis:doesnotexist",
+        )
+    ]
+    errors = check_rows(rows, ops={}, qgis_algorithms={"gdal:contour": {}})
+    assert len(errors) == 1
+    assert "qgis:doesnotexist" in errors[0]
