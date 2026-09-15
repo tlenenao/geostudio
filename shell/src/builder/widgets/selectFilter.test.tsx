@@ -108,3 +108,35 @@ test("checking two values accumulates them, unchecking the last one clears the f
   await userEvent.click(screen.getByLabelText("Sud"));
   expect(screen.getByText("crossFilter:{}")).toBeInTheDocument();
 });
+
+test("PropsPanel edits dataSourceId, field and label", async () => {
+  const onChange = vi.fn();
+  const PropsPanel = getWidget("selectFilter")!.PropsPanel!;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = { queryDataSource: vi.fn() } as unknown as ItemClient;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <PropsPanel
+          props={{ dataSourceId: "", field: "", label: "" }}
+          onChange={onChange}
+          dataSources={[
+            { id: "src-1", type: "features", service: "core", layer: "parcs", query: {} },
+          ]}
+        />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await userEvent.selectOptions(screen.getByRole("combobox"), "src-1");
+  expect(onChange).toHaveBeenLastCalledWith({ dataSourceId: "src-1", field: "", label: "" });
+  await userEvent.type(screen.getByLabelText("Champ"), "region");
+  expect(onChange).toHaveBeenLastCalledWith({ dataSourceId: "", field: "n", label: "" });
+  await userEvent.type(screen.getByLabelText("Libellé"), "Région");
+  expect(onChange).toHaveBeenLastCalledWith({ dataSourceId: "", field: "", label: "n" });
+});
+
+test("shows an alert message when the options query fails", async () => {
+  const queryDataSource = vi.fn().mockRejectedValue(new Error("boom"));
+  renderSelect({}, queryDataSource);
+  expect(await screen.findByRole("alert")).toHaveTextContent(/Impossible de charger/);
+});
