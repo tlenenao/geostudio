@@ -13,7 +13,7 @@ beforeEach(() => {
 test("PropsPanel edits the markdown source", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("richSection")!.PropsPanel!;
-  render(<Panel props={{}} onChange={onChange} />);
+  render(<Panel props={{}} dataSources={[]} onChange={onChange} />);
   await userEvent.type(screen.getByLabelText("Markdown"), "#");
   expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ markdown: "#" });
 });

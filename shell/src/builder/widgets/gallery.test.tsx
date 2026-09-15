@@ -50,7 +50,7 @@ const publishedItem: Item = {
 test("PropsPanel edits the type, tag, limit and columns", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("gallery")!.PropsPanel!;
-  render(<Panel props={{}} onChange={onChange} />);
+  render(<Panel props={{}} dataSources={[]} onChange={onChange} />);
 
   await userEvent.selectOptions(screen.getByLabelText("Type d'élément"), "app");
   expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ type: "app" });

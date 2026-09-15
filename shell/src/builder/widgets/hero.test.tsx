@@ -101,13 +101,7 @@ test("isSafeHref rejects an unparseable href", () => {
 test("hero PropsPanel edits title, subtitle, background image, cta label and href", async () => {
   const onChange = vi.fn();
   const PropsPanel = getWidget("hero")!.PropsPanel!;
-  render(
-    <PropsPanel
-      props={{ title: "Bienvenue" }}
-      onChange={onChange}
-      ctx={{ mode: "edit" } as WidgetContext}
-    />,
-  );
+  render(<PropsPanel props={{ title: "Bienvenue" }} onChange={onChange} dataSources={[]} />);
   await userEvent.type(screen.getByLabelText("Titre du bandeau"), "!");
   expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ title: "Bienvenue!" });
 
@@ -131,7 +125,7 @@ test("hero PropsPanel switches alignment to center", async () => {
     <PropsPanel
       props={{ title: "Bienvenue", align: "left" }}
       onChange={onChange}
-      ctx={{ mode: "edit" } as WidgetContext}
+      dataSources={[]}
     />,
   );
   await userEvent.selectOptions(screen.getByLabelText("Alignement"), "center");

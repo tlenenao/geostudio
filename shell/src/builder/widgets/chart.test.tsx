@@ -144,7 +144,13 @@ test("PropsPanel edits the data source, category and value fields for a bar char
   const onChange = vi.fn();
   const Panel = getWidget("chart")!.PropsPanel;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const source: DataSource = { id: "ds1", type: "features", service: "core", layer: "parcs" };
+  const source: DataSource = {
+    id: "ds1",
+    type: "features",
+    service: "core",
+    layer: "parcs",
+    query: {},
+  };
   render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={{} as unknown as ItemClient}>

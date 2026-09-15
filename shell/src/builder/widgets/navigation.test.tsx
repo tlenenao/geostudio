@@ -34,7 +34,7 @@ test("shows a placeholder when there are no pages", () => {
 test("PropsPanel switches the orientation to vertical", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("nav")!.PropsPanel!;
-  render(<Panel props={{}} onChange={onChange} />);
+  render(<Panel props={{}} dataSources={[]} onChange={onChange} />);
   await userEvent.selectOptions(screen.getByLabelText("Orientation du menu"), "vertical");
   expect(onChange).toHaveBeenCalledWith({ direction: "vertical" });
 });

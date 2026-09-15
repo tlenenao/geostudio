@@ -84,7 +84,13 @@ function renderPanel(props: Record<string, unknown>, dataSources: DataSource[] =
 }
 
 test("PropsPanel binds a features data source", async () => {
-  const source: DataSource = { id: "ds1", type: "features", service: "core", layer: "parcs" };
+  const source: DataSource = {
+    id: "ds1",
+    type: "features",
+    service: "core",
+    layer: "parcs",
+    query: {},
+  };
   const onChange = renderPanel({}, [source]);
   await userEvent.selectOptions(screen.getByLabelText("Source de données"), "ds1");
   expect(onChange).toHaveBeenCalledWith({ dataSourceId: "ds1" });
