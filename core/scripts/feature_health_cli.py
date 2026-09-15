@@ -5,8 +5,10 @@
     PYTHONPATH=. uv run python scripts/feature_health_cli.py --repo .. --write
     PYTHONPATH=. uv run python scripts/feature_health_cli.py --repo .. --check-fresh
 
-`--check` n'écrit rien : il calcule et applique les deux planchers de
-`feature_health_thresholds.json`. `--write` regénère
+`--check` n'écrit rien : il calcule et applique les planchers de
+`feature_health_thresholds.json` — un par priorité gardée (`haute`,
+`moyenne`, cette dernière avec sa liste d'exceptions nommées) plus celui de
+la santé médiane. `--write` regénère
 `docs/revue/bilan-fonctionnalites.{html,md}` et ajoute un instantané à
 `docs/revue/historique-sante.jsonl`. `--check-fresh` (REV-181) est un
 troisième mode, DIFFÉRENT de `--check` : il ne dit rien sur les planchers,
@@ -72,15 +74,28 @@ def compute(repo: pathlib.Path):
 
 
 def _check(rows, thresholds) -> int:
+    """Applique un plancher par priorité gardée, plus celui de la médiane.
+
+    `basse` n'est gardée par aucun plancher (absente de `floor_by_priority`).
+    `exceptions_medium_priority` exempte des fonctionnalités **nommées une par
+    une** dans `feature_health_thresholds.json` — jamais un motif générique :
+    une seule y figure aujourd'hui, `catalogue-mes-vues-signets`, dont la
+    preuve est un fichier partagé par 20+ routes sans rapport (cf. REV-190).
+    Sans cette liste, le plancher moyenne devrait être abaissé pour tout le
+    monde à cause d'une seule ligne."""
     measured = [row["sante"] for row in rows if row["sante"] is not None]
     median = statistics.median(measured) if measured else 0.0
+    floor_by_priority = {
+        "haute": thresholds.floor_high_priority,
+        "moyenne": thresholds.floor_medium_priority,
+    }
     failures = [
-        f"{row['feature'].identifier} : santé {row['sante']:.1f} < plancher "
-        f"{thresholds.floor_high_priority}"
+        f"{row['feature'].identifier} : santé {row['sante']:.1f} < plancher {floor}"
         for row in rows
-        if row["feature"].priority == "haute"
+        if (floor := floor_by_priority.get(row["feature"].priority)) is not None
+        and row["feature"].identifier not in thresholds.exceptions_medium_priority
         and row["sante"] is not None
-        and row["sante"] < thresholds.floor_high_priority
+        and row["sante"] < floor
     ]
     print(f"Santé médiane : {median:.1f} (plancher {thresholds.floor_median})")
     if median < thresholds.floor_median:

@@ -97,3 +97,54 @@ def test_extract_committed_metadata_reconstructs_previous_from_the_delta(tmp_pat
     assert date == "2026-09-07"
     assert commit == "abc123"
     assert previous == {"a": 48.0}
+
+
+# `floor_median` est volontairement abaissé à 40.0 dans les deux tests
+# « passants » ci-dessous : une seule ligne à 90.0/82.6 donnerait une médiane
+# sous un plancher réaliste, et l'échec de médiane masquerait la propriété
+# réellement testée (le plancher par priorité).
+def test_check_fails_a_medium_priority_feature_under_its_own_floor(capsys):
+    from scripts.feature_health.scoring import Thresholds
+
+    rows = [_row(identifier="f1", health=85.0, priority="moyenne")]
+    thresholds = Thresholds(
+        weights={"tests": 0.30, "atteignabilite": 0.25, "garde": 0.25, "dette": 0.20},
+        floor_high_priority=90.0,
+        floor_medium_priority=90.0,
+        floor_median=96.0,
+    )
+    exit_code = feature_health_cli._check(rows, thresholds)
+    assert exit_code == 1
+    assert "f1 : santé 85.0 < plancher 90.0" in capsys.readouterr().err
+
+
+def test_check_passes_a_medium_priority_feature_at_its_floor(capsys):
+    from scripts.feature_health.scoring import Thresholds
+
+    rows = [_row(identifier="f1", health=90.0, priority="moyenne")]
+    thresholds = Thresholds(
+        weights={"tests": 0.30, "atteignabilite": 0.25, "garde": 0.25, "dette": 0.20},
+        floor_high_priority=90.0,
+        floor_medium_priority=90.0,
+        floor_median=40.0,
+    )
+    assert feature_health_cli._check(rows, thresholds) == 0
+
+
+def test_check_exempts_a_named_medium_priority_exception(capsys):
+    """`catalogue-mes-vues-signets` (spec §4.bis) reste durablement sous le
+    plancher moyenne — sans cette exception nommée, --check échouerait pour
+    toujours sur cette seule ligne, contrairement à l'intention documentée
+    (exception assumée, pas une régression à corriger)."""
+    from scripts.feature_health.scoring import Thresholds
+
+    rows = [_row(identifier="catalogue-mes-vues-signets", health=82.6, priority="moyenne")]
+    thresholds = Thresholds(
+        weights={"tests": 0.30, "atteignabilite": 0.25, "garde": 0.25, "dette": 0.20},
+        floor_high_priority=90.0,
+        floor_medium_priority=90.0,
+        floor_median=40.0,
+        exceptions_medium_priority=frozenset({"catalogue-mes-vues-signets"}),
+    )
+    assert feature_health_cli._check(rows, thresholds) == 0
+    assert capsys.readouterr().err == ""
