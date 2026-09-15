@@ -84,3 +84,15 @@ def load_rows(path: pathlib.Path) -> list[Row]:
             raise ValueError(f"{path}:{lineno} : JSON invalide ({exc})") from exc
         rows.append(Row.from_dict(data))
     return rows
+
+
+def check_rows(rows: list[Row], *, ops: dict, qgis_algorithms: dict) -> list[str]:
+    errors: list[str] = []
+    for row in rows:
+        if row.coverage_status == "implemented" and row.engine == "duckdb":
+            if row.geostudio_equivalent not in ops:
+                errors.append(
+                    f"{row.fme_transformer!r} : geostudio_equivalent "
+                    f"{row.geostudio_equivalent!r} n'existe pas dans ops_catalog()"
+                )
+    return errors

@@ -4,7 +4,7 @@ import pathlib
 
 import pytest
 
-from scripts.fme_coverage_cli import Row, load_rows
+from scripts.fme_coverage_cli import Row, check_rows, load_rows
 
 
 def _write_jsonl(path: pathlib.Path, rows: list[dict]) -> None:
@@ -72,3 +72,32 @@ def test_load_rows_reports_malformed_json_with_line_number(tmp_path):
     path.write_text("{not json}\n", encoding="utf-8")
     with pytest.raises(ValueError, match=r"matrice\.jsonl:1"):
         load_rows(path)
+
+
+def _row(**overrides) -> Row:
+    base = dict(
+        fme_transformer="Reprojector",
+        fme_category="Geometry",
+        fme_description="d",
+        geostudio_equivalent="transform.reproject",
+        engine="duckdb",
+        engine_license="MIT",
+        coverage_status="implemented",
+        usage_frequency="courant",
+        notes="",
+    )
+    base.update(overrides)
+    return Row(**base)
+
+
+def test_check_rows_accepts_existing_duckdb_op():
+    rows = [_row(geostudio_equivalent="transform.reproject")]
+    errors = check_rows(rows, ops={"transform.reproject": {}}, qgis_algorithms={})
+    assert errors == []
+
+
+def test_check_rows_rejects_unknown_duckdb_op():
+    rows = [_row(geostudio_equivalent="transform.nonexistent")]
+    errors = check_rows(rows, ops={"transform.reproject": {}}, qgis_algorithms={})
+    assert len(errors) == 1
+    assert "transform.nonexistent" in errors[0]
