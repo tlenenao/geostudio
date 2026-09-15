@@ -1951,9 +1951,20 @@ immédiat d'une session :
   `priorite_source` (priorité amorcée vs. revue) jamais affiché dans le
   bilan rendu ; aucun mode `--check` de fraîcheur entre le code/
   l'inventaire et les rendus committés.
-- Questions produit ouvertes (comparatif §8) : Q2 (premiers utilisateurs
-  réels — la seule qui puisse réordonner le phasage), Q10 (temps réel,
-  `REV-108`), Q11 (offline, `REV-120`).
+- Questions produit ouvertes (comparatif §8) : Q10 (temps réel, `REV-108`),
+  Q11 (offline, `REV-120`). **Q2 répondue le 2026-09-15** (comparatif §9,
+  point 7) : produit horizontal mature/personnalisable pour collectivités/
+  structures de taille variable — pas un déploiement nommé unique.
+  Conséquence actée le même jour sur `GAP-29` (positionnement face aux 450+
+  connecteurs FME, jusqu'ici « non fermable par du code ») : posture retenue
+  **viser la parité de couverture comme différenciateur**, pas attendre un
+  client réel. Prochain chantier de fond envisagé pour `core/app/pipelines/`
+  (à brainstormer/spécifier avant tout code, pas encore lancé) : un
+  `OperationContract` (schéma/compilateur/exécuteur/capacités/licence/moteur)
+  au-dessus de plusieurs moteurs (DuckDB par défaut, puis GDAL/PDAL/OTB/Rust
+  selon couverture/licence — QGIS reste un fallback GPL isolé, jamais une
+  catégorie d'op normale), plus une matrice de couverture FME→GeoStudio pour
+  prioriser les ~500 transformers du marché.
 
 ### Suivis non bloquants — ce qu'il faut savoir avant de toucher la stack
 

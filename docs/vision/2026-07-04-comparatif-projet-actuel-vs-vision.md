@@ -546,6 +546,7 @@ réels, Q10 — temps réel, Q11 — offline restent ouvertes) :
 | Question | Décision |
 |---|---|
 | Q1 Finalité | **Produit open-source public** |
+| Q2 Premiers utilisateurs réels | **Produit horizontal mature/personnalisable pour collectivités ou structures de taille variable** (pas un déploiement nommé unique — répondu le 2026-09-15, cf. §9bis pour la conséquence sur le positionnement ETL/GAP-29) |
 | Q3 Cas d'usage n° 1 (6 mois) | **Dashboards / apps métier no-code** |
 | Q4 GeoNode | **Remplacé par un cœur maison** (option C confirmée) |
 | Q5 Langage du cœur | **Python — `builder-service` promu en cœur** |
@@ -591,6 +592,27 @@ réels, Q10 — temps réel, Q11 — offline restent ouvertes) :
    `docs/superpowers/specs/2026-09-07-app-builder-package-extraction-design.md`.
 6. **Nom : GeoStudio** — consolidation documentaire à faire (README réécrit autour du
    produit, couches 1–2 archivées, OGE/GeoCore retirés ou renommés).
+7. **Amendement 2026-09-15 (Q2 répondue) : positionnement ETL/import face au
+   marché.** Le produit visé n'est pas un déploiement unique nommé mais un
+   produit horizontal, mature et personnalisable, pour des collectivités/
+   structures de taille variable — ce qui réordonne `GAP-29`
+   (`docs/revue/2026-09-04-analyse-gaps.md`, écart de couverture face aux
+   450+ connecteurs FME) : la posture retenue est de **viser la parité de
+   couverture comme différenciateur produit**, pas d'attendre qu'un client
+   identifié bute sur un format manquant avant d'investir. Conséquence
+   concrète actée le même jour : le prochain chantier de fond du module
+   `core/app/pipelines/` est une refonte vers un **`OperationContract`**
+   (schéma + compilateur + exécuteur + capacités + licence + moteur) qui
+   formalise ce qui existe déjà en creux (`app/pipelines/ops/schemas.py::
+   OP_KINDS`/`OP_PARAMS`, `app/pipelines/registries.py::READERS`/`WRITERS`)
+   pour router un même op vers plusieurs moteurs (DuckDB comme moteur
+   relationnel/spatial par défaut, puis GDAL/PDAL/OTB/Rust selon
+   couverture/licence — jamais « QGIS comme remplacement de FME » : le
+   sidecar QGIS reste un fallback GPL isolé, pas une catégorie d'op normale),
+   assortie d'une matrice de couverture FME→GeoStudio (moteur, licence,
+   performance) pour prioriser les ~500 transformers. Reste à faire avant
+   tout code : brainstorm + spec dédiée (workflow superpowers du dépôt),
+   ce point ne fait qu'acter la décision de posture.
 
 **Prochain jalon suggéré** (dans l'esprit des SP-0x existants) : *SP-1 — cœur v0* :
 module items/partage/publication dans `builder-service` (schéma `tenant_id` + audit),
