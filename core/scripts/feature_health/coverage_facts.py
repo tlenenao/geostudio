@@ -192,7 +192,9 @@ def score_tests(feature: Feature, facts: CoverageFacts) -> SubScore:
         elif proof.startswith(_INFRA_PREFIXES):
             covering = facts.deployability_rules.get(proof, ())
             rate = 100.0 if covering else 0.0
-            evidence[proof] = list(covering) or "aucune règle de test_deployability.py"
+            evidence[proof] = (
+                list(covering) or "aucune règle de test (test_*.py de core/tests/ et deploy/)"
+            )
             scores.append(rate)
             continue
         else:
