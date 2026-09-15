@@ -303,7 +303,8 @@ def score_guard(feature: Feature, routes: tuple[RouteFact, ...]) -> SubScore:
             scores.append(100.0)
             evidence[surface] = (
                 "authentifié et auto-restreint (tenant/utilisateur), ou "
-                "autorisation déléguée à une surface gardée en aval — vérifié "
+                "autorisation déléguée à une surface gardée en aval, ou donnée "
+                "de référence statique sans notion de propriétaire — vérifié "
                 "en lecture de code (SP « priorite-moyenne-sante-90 » Volet A.3)"
             )
             continue
