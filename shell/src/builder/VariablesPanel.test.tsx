@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import type { Variable } from "../api/types";
@@ -86,4 +86,51 @@ test("shows no editable initial value for a record-typed variable", () => {
   render(<VariablesPanel variables={variables} onChange={onChange} />);
   expect(screen.queryByLabelText("Valeur initiale de la variable v1")).not.toBeInTheDocument();
   expect(screen.getByText("Définie par câblage d'action")).toBeInTheDocument();
+});
+
+test("changes a variable's type to bool resets its initial value to false", async () => {
+  const onChange = vi.fn();
+  const variables: Variable[] = [{ id: "v1", name: "gate", type: "string", initialValue: "x" }];
+  render(<VariablesPanel variables={variables} onChange={onChange} />);
+  await userEvent.selectOptions(screen.getByLabelText("Type de la variable v1"), "bool");
+  const next = onChange.mock.calls.at(-1)![0] as Variable[];
+  expect(next[0]).toEqual({ id: "v1", name: "gate", type: "bool", initialValue: false });
+});
+
+test("changes a variable's type to record resets its initial value to null", async () => {
+  const onChange = vi.fn();
+  const variables: Variable[] = [{ id: "v1", name: "sel", type: "string", initialValue: "x" }];
+  render(<VariablesPanel variables={variables} onChange={onChange} />);
+  await userEvent.selectOptions(screen.getByLabelText("Type de la variable v1"), "record");
+  const next = onChange.mock.calls.at(-1)![0] as Variable[];
+  expect(next[0]).toEqual({ id: "v1", name: "sel", type: "record", initialValue: null });
+});
+
+test("changes a variable's type to list resets its initial value to an empty array", async () => {
+  const onChange = vi.fn();
+  const variables: Variable[] = [{ id: "v1", name: "items", type: "string", initialValue: "x" }];
+  render(<VariablesPanel variables={variables} onChange={onChange} />);
+  await userEvent.selectOptions(screen.getByLabelText("Type de la variable v1"), "list");
+  const next = onChange.mock.calls.at(-1)![0] as Variable[];
+  expect(next[0]).toEqual({ id: "v1", name: "items", type: "list", initialValue: [] });
+});
+
+test("edits a date variable's initial value", () => {
+  const onChange = vi.fn();
+  const variables: Variable[] = [{ id: "v1", name: "when", type: "date", initialValue: "" }];
+  render(<VariablesPanel variables={variables} onChange={onChange} />);
+  fireEvent.change(screen.getByLabelText("Valeur initiale de la variable v1"), {
+    target: { value: "2026-09-15" },
+  });
+  const next = onChange.mock.calls.at(-1)![0] as Variable[];
+  expect(next[0].initialValue).toBe("2026-09-15");
+});
+
+test("changes a variable's type back to string resets its initial value to an empty string", async () => {
+  const onChange = vi.fn();
+  const variables: Variable[] = [{ id: "v1", name: "count", type: "number", initialValue: 5 }];
+  render(<VariablesPanel variables={variables} onChange={onChange} />);
+  await userEvent.selectOptions(screen.getByLabelText("Type de la variable v1"), "string");
+  const next = onChange.mock.calls.at(-1)![0] as Variable[];
+  expect(next[0]).toEqual({ id: "v1", name: "count", type: "string", initialValue: "" });
 });

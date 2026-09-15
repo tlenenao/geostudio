@@ -87,6 +87,11 @@ def test_thresholds_are_loaded_from_the_versioned_json():
     assert 0 < thresholds.floor_median <= 100
 
 
+def test_thresholds_load_the_medium_priority_floor():
+    thresholds = load_thresholds(REPO / "core/scripts/feature_health_thresholds.json")
+    assert 0 < thresholds.floor_medium_priority <= thresholds.floor_high_priority
+
+
 def test_quality_facts_read_the_real_repository():
     facts = collect_quality_facts(REPO)
     assert "app/auth" in facts.mypy_strict_modules

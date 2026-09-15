@@ -24,6 +24,11 @@ class Thresholds:
     weights: dict[str, float]
     floor_high_priority: float
     floor_median: float
+    # Défauts posés sur le dataclass uniquement pour ne casser aucun appelant
+    # positionnel existant ; `load_thresholds` — seul appelant réel du dépôt —
+    # les passe toujours explicitement.
+    floor_medium_priority: float = 0.0
+    exceptions_medium_priority: frozenset[str] = frozenset()
 
 
 def load_thresholds(path: pathlib.Path) -> Thresholds:
@@ -32,6 +37,8 @@ def load_thresholds(path: pathlib.Path) -> Thresholds:
         weights=document["ponderations"],
         floor_high_priority=float(document["plancher_priorite_haute"]),
         floor_median=float(document["plancher_sante_mediane"]),
+        floor_medium_priority=float(document["plancher_priorite_moyenne"]),
+        exceptions_medium_priority=frozenset(document.get("exceptions_priorite_moyenne", ())),
     )
 
 

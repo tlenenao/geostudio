@@ -132,3 +132,57 @@ test("clicking remove calls onRemove", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Supprimer le lien" }));
   expect(onRemove).toHaveBeenCalled();
 });
+
+test("selecting a source field calls onChange with the updated sourceField", async () => {
+  const { onChange } = renderEditor(
+    {},
+    { link: { targetDatasetId: "ds-2", mode: "attribute", sourceField: "", targetField: "" } },
+  );
+  await userEvent.selectOptions(screen.getByLabelText("Champ source"), "commune");
+  expect(onChange).toHaveBeenCalledWith({
+    targetDatasetId: "ds-2",
+    mode: "attribute",
+    sourceField: "commune",
+    targetField: "",
+  });
+});
+
+test("selecting a target field calls onChange with the updated targetField", async () => {
+  const { onChange } = renderEditor(
+    {
+      getDatasetConfig: vi.fn().mockResolvedValue(incidentsDataset),
+      getCollectionSchema: vi.fn().mockResolvedValue(incidentsSchema),
+    },
+    { link: { targetDatasetId: "ds-2", mode: "attribute", sourceField: "", targetField: "" } },
+  );
+  // Attendre "titre" (unique à la cible) plutôt que "commune" (présent dans
+  // les deux selects — Champ source ET Champ cible — ce qui rendrait
+  // getByRole("option", { name: "commune" }) ambigu).
+  await waitFor(() => expect(screen.getByRole("option", { name: "titre" })).toBeInTheDocument());
+  await userEvent.selectOptions(screen.getByLabelText("Champ cible"), "commune");
+  expect(onChange).toHaveBeenCalledWith({
+    targetDatasetId: "ds-2",
+    mode: "attribute",
+    sourceField: "",
+    targetField: "commune",
+  });
+});
+
+test("selecting a spatial precision calls onChange with the updated precision", async () => {
+  const { onChange } = renderEditor(
+    {
+      getDatasetConfig: vi.fn().mockResolvedValue(incidentsDataset),
+      getCollectionSchema: vi.fn().mockResolvedValue(incidentsSchema),
+    },
+    { link: { targetDatasetId: "ds-2", mode: "spatial", precision: "bbox" } },
+  );
+  await waitFor(() =>
+    expect(screen.getByLabelText("Précision spatiale du lien")).toBeInTheDocument(),
+  );
+  await userEvent.selectOptions(screen.getByLabelText("Précision spatiale du lien"), "exact");
+  expect(onChange).toHaveBeenCalledWith({
+    targetDatasetId: "ds-2",
+    mode: "spatial",
+    precision: "exact",
+  });
+});

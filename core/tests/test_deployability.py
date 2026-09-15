@@ -1449,3 +1449,94 @@ def test_install_sh_writes_an_env_var_that_core_actually_reads_back():
         f"relit jamais (os.environ.get(...)) : {sorted(missing)} — le "
         "bootstrap du premier admin serait silencieusement cassé"
     )
+
+
+CODEQL_WORKFLOW = REPO / ".github/workflows/codeql.yml"
+GITLEAKS_WORKFLOW = REPO / ".github/workflows/gitleaks.yml"
+PROXMOX_PLAYBOOK = REPO / "deploy" / "proxmox" / "ansible" / "playbook.yml"
+SLO_RULES = REPO / "deploy" / "observability" / "grafana" / "provisioning" / "alerting" / "rules.yaml"
+BACKUP_DOCKERFILE = REPO / "deploy" / "backup" / "Dockerfile"
+
+
+def test_codeql_workflow_runs_on_push_and_pr_with_security_events_write():
+    doc = yaml.safe_load(CODEQL_WORKFLOW.read_text())
+    # Piège YAML 1.1 : une clé nue `on:` est résolue par PyYAML comme le
+    # booléen True, jamais la chaîne "on" — vérifié empiriquement
+    # (`yaml.safe_load` sur ce fichier donne `doc.keys() ==
+    # ['name', True, 'jobs']`).
+    on = doc[True]
+    assert set(on["push"]["branches"]) >= {"main", "dev"}
+    assert "pull_request" in on
+    job = doc["jobs"]["analyze"]
+    assert job["permissions"]["security-events"] == "write"
+    assert set(job["strategy"]["matrix"]["language"]) == {"python", "javascript-typescript"}
+    uses = [step.get("uses", "") for step in job["steps"]]
+    assert any(u.startswith("github/codeql-action/init@") for u in uses)
+    assert any(u.startswith("github/codeql-action/analyze@") for u in uses)
+
+
+def test_gitleaks_workflow_scans_worktree_only_never_git_history():
+    doc = yaml.safe_load(GITLEAKS_WORKFLOW.read_text())
+    on = doc[True]
+    assert set(on.keys()) == {"push", "pull_request"}, (
+        "gitleaks.yml ne doit déclencher que sur push/pull_request — un "
+        "schedule/workflow_dispatch inviterait à basculer `dir .` vers un "
+        "scan d'historique qui retrouverait la clé age de test toujours "
+        "présente dans l'historique public (cf. commentaire du fichier)."
+    )
+    scan_step = next(s for s in doc["jobs"]["scan"]["steps"] if "run" in s)
+    run = scan_step["run"]
+    assert "dir ." in run
+    assert "git ." not in run
+    assert scan_step.get("continue-on-error") is not True
+
+
+def test_proxmox_playbook_provisions_and_deploys_geostudio():
+    doc = yaml.safe_load(PROXMOX_PLAYBOOK.read_text())
+    play = doc[0]
+    assert play["hosts"] == "geostudio"
+    task_names = [t["name"] for t in play["tasks"]]
+    install_tasks = [
+        t
+        for t in play["tasks"]
+        if t.get("ansible.builtin.command", {}).get("cmd") == "./scripts/install.sh"
+    ]
+    assert len(install_tasks) == 2, (
+        f"le playbook doit lancer scripts/install.sh en deux passes (avant/"
+        f"après le reset de connexion post-installation Docker) : {task_names}"
+    )
+    assert any(
+        t.get("ansible.builtin.git", {}).get("repo") == "{{ geostudio_repo_url }}"
+        for t in play["tasks"]
+    )
+
+
+def test_backup_dockerfile_creates_and_chowns_backup_dir_before_switching_user():
+    text = BACKUP_DOCKERFILE.read_text()
+    mkdir_pos = text.find("mkdir -p /backup/archives /backup/work")
+    user_pos = text.find("\nUSER backup")
+    assert mkdir_pos != -1, "deploy/backup/Dockerfile doit créer /backup/{archives,work}"
+    assert user_pos != -1, "deploy/backup/Dockerfile doit passer USER backup"
+    assert mkdir_pos < user_pos, "/backup doit être créé/chown avant le passage non-root"
+    chown_line = re.search(r"^RUN .*chown[^\n]*$", text, re.MULTILINE)
+    assert chown_line is not None and "/backup" in chown_line.group(0)
+
+
+def test_slo_rules_cover_the_four_documented_slos_and_are_active():
+    doc = yaml.safe_load(SLO_RULES.read_text())
+    slo_group = next(g for g in doc["groups"] if g["name"] == "SLO")
+    rules_by_uid = {r["uid"]: r for r in slo_group["rules"]}
+    expected = {
+        "slo-api-features-latency-p95": 200,
+        "slo-martin-tiles-latency-p95": 0.05,
+        "slo-jobs-backlog": 50,
+        "slo-api-5xx-rate": 0.01,
+    }
+    assert set(expected) <= set(rules_by_uid), sorted(set(expected) - set(rules_by_uid))
+    for uid, threshold in expected.items():
+        rule = rules_by_uid[uid]
+        assert rule["isPaused"] is False, f"{uid} ne doit pas être en pause"
+        assert "slo" in rule["labels"], f"{uid} doit porter un label slo (routage policies.yaml)"
+        threshold_expr = next(d for d in rule["data"] if d["refId"] == "B")
+        params = threshold_expr["model"]["conditions"][0]["evaluator"]["params"]
+        assert params == [threshold], f"{uid}: seuil attendu {threshold}, trouvé {params}"

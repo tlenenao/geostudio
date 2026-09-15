@@ -295,6 +295,19 @@ def score_guard(feature: Feature, routes: tuple[RouteFact, ...]) -> SubScore:
             evidence[surface] = "publique par conception (déclarée)"
             continue
         fact = by_id.get(surface)
+        if (
+            surface in feature.auto_scoped_guard
+            and fact is not None
+            and fact.auth in ("required", "optional")
+        ):
+            scores.append(100.0)
+            evidence[surface] = (
+                "authentifié et auto-restreint (tenant/utilisateur), ou "
+                "autorisation déléguée à une surface gardée en aval, ou donnée "
+                "de référence statique sans notion de propriétaire — vérifié "
+                "en lecture de code (SP « priorite-moyenne-sante-90 » Volet A.3)"
+            )
+            continue
         if fact is None:
             scores.append(0.0)
             evidence[surface] = "route introuvable dans l'index"

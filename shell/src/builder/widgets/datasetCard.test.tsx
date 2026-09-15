@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
-import type { CollectionAdmin, ItemClient } from "../../api/types";
+import type { CollectionAdmin, DataSource, ItemClient } from "../../api/types";
 
 beforeEach(() => {
   _resetRegistry();
@@ -67,6 +68,45 @@ function renderCard(
   );
   return client;
 }
+
+function renderPanel(props: Record<string, unknown>, dataSources: DataSource[] = []) {
+  const onChange = vi.fn();
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const Panel = getWidget("datasetCard")!.PropsPanel!;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={{} as unknown as ItemClient}>
+        <Panel props={props} dataSources={dataSources} onChange={onChange} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  return onChange;
+}
+
+test("PropsPanel binds a features data source", async () => {
+  const source: DataSource = {
+    id: "ds1",
+    type: "features",
+    service: "core",
+    layer: "parcs",
+    query: {},
+  };
+  const onChange = renderPanel({}, [source]);
+  await userEvent.selectOptions(screen.getByLabelText("Source de données"), "ds1");
+  expect(onChange).toHaveBeenCalledWith({ dataSourceId: "ds1" });
+});
+
+test("PropsPanel edits the optional title override", async () => {
+  const onChange = renderPanel({});
+  await userEvent.type(screen.getByLabelText("Titre (optionnel)"), "x");
+  expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ title: "x" });
+});
+
+test("PropsPanel toggles the download buttons checkbox", async () => {
+  const onChange = renderPanel({ showDownload: true });
+  await userEvent.click(screen.getByLabelText("Afficher le téléchargement"));
+  expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ showDownload: false });
+});
 
 test("shows a discreet message when no data source is bound", () => {
   renderCard({}, {}, false);

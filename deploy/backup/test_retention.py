@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
+"""Exerce réellement `deploy/backup/retention.py` (rotation des sauvegardes,
+fenêtre quotidienne de 7 + 4 semaines ISO distinctes hors fenêtre)."""
+
 from datetime import datetime, timedelta
 
 from retention import select_files_to_delete

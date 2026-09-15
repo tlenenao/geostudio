@@ -1,12 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 import { render, screen } from "@testing-library/react";
-import { beforeEach, expect, test } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 
 beforeEach(() => {
   _resetRegistry();
   registerBuiltinWidgets();
+});
+
+test("PropsPanel edits the markdown source", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("richSection")!.PropsPanel!;
+  render(<Panel props={{}} dataSources={[]} onChange={onChange} />);
+  await userEvent.type(screen.getByLabelText("Markdown"), "#");
+  expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ markdown: "#" });
 });
 
 test("richSection renders sanitized Markdown", () => {
