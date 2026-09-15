@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import type { PipelineRefreshPolicy } from "../../api/types";
@@ -69,4 +69,47 @@ test("an invalid advanced cron shows an inline error", async () => {
   await userEvent.clear(screen.getByLabelText("Expression cron"));
   await userEvent.type(screen.getByLabelText("Expression cron"), "not a cron");
   expect(screen.getByRole("alert")).toHaveTextContent("Format cron invalide");
+});
+
+test("switching to weekly mode compiles a default weekly cron and lists all 7 days", async () => {
+  const onChange = vi.fn();
+  const value: PipelineRefreshPolicy = { enabled: true, cron: "*/15 * * * *" };
+  render(<PipelineScheduleEditor value={value} onChange={onChange} />);
+  await userEvent.selectOptions(screen.getByLabelText("Mode de planification"), "weekly");
+  expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "0 2 * * 1" });
+  expect(screen.getByRole("option", { name: "Dimanche" })).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "Samedi" })).toBeInTheDocument();
+});
+
+test("changing the weekly day recompiles the cron with the new day", async () => {
+  const onChange = vi.fn();
+  const value: PipelineRefreshPolicy = { enabled: true, cron: "30 9 * * 1" };
+  render(<PipelineScheduleEditor value={value} onChange={onChange} />);
+  await userEvent.selectOptions(screen.getByLabelText("Jour"), "3");
+  expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "30 9 * * 3" });
+});
+
+test("changing the weekly execution time recompiles the cron with the new time", async () => {
+  const onChange = vi.fn();
+  const value: PipelineRefreshPolicy = { enabled: true, cron: "30 9 * * 1" };
+  render(<PipelineScheduleEditor value={value} onChange={onChange} />);
+  fireEvent.change(screen.getByLabelText("Heure d'exécution"), { target: { value: "14:45" } });
+  expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "45 14 * * 1" });
+});
+
+test("changing the interval minutes recompiles the cron", async () => {
+  const onChange = vi.fn();
+  const value: PipelineRefreshPolicy = { enabled: true, cron: "*/15 * * * *" };
+  render(<PipelineScheduleEditor value={value} onChange={onChange} />);
+  fireEvent.change(screen.getByLabelText("Intervalle en minutes"), { target: { value: "5" } });
+  expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "*/5 * * * *" });
+});
+
+test("switching to advanced mode keeps the current cron as the raw value", async () => {
+  const onChange = vi.fn();
+  const value: PipelineRefreshPolicy = { enabled: true, cron: "*/15 * * * *" };
+  render(<PipelineScheduleEditor value={value} onChange={onChange} />);
+  await userEvent.selectOptions(screen.getByLabelText("Mode de planification"), "advanced");
+  expect(onChange).toHaveBeenLastCalledWith({ enabled: true, cron: "*/15 * * * *" });
+  expect(screen.getByLabelText("Expression cron")).toHaveValue("*/15 * * * *");
 });
