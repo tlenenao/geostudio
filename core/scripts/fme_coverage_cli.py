@@ -19,8 +19,11 @@ ce n'est pas une surface produit."""
 
 from __future__ import annotations
 
+import argparse
 import json
 import pathlib
+import sys
+from collections import Counter
 from dataclasses import dataclass
 
 JSONL = "docs/revue/matrice-couverture-fme.jsonl"
@@ -114,3 +117,80 @@ def check_rows(rows: list[Row], *, ops: dict, qgis_algorithms: dict) -> list[str
                 "sous-projet moteur correspondant ait livré"
             )
     return errors
+
+
+def render_md(rows: list[Row]) -> str:
+    lines = ["# Matrice de couverture FME→GeoStudio", ""]
+    lines.append(f"{len(rows)} transformers FME recensés.")
+    lines.append("")
+    lines.append("## Résumé par statut")
+    lines.append("")
+    lines.append("| Statut | Nombre |")
+    lines.append("|---|---|")
+    status_counts = Counter(row.coverage_status for row in rows)
+    for status in sorted(status_counts):
+        lines.append(f"| `{status}` | {status_counts[status]} |")
+    lines.append("")
+    lines.append("## Résumé par moteur")
+    lines.append("")
+    lines.append("| Moteur | Nombre |")
+    lines.append("|---|---|")
+    engine_counts = Counter(row.engine for row in rows)
+    for engine in sorted(engine_counts):
+        lines.append(f"| `{engine}` | {engine_counts[engine]} |")
+    lines.append("")
+    lines.append("## Détail")
+    lines.append("")
+    lines.append(
+        "| Transformer FME | Catégorie | Équivalent GeoStudio | Moteur | "
+        "Licence | Statut | Fréquence | Notes |"
+    )
+    lines.append("|---|---|---|---|---|---|---|---|")
+    for row in sorted(rows, key=lambda r: (r.fme_category, r.fme_transformer)):
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    row.fme_transformer,
+                    row.fme_category,
+                    row.geostudio_equivalent or "",
+                    row.engine,
+                    row.engine_license,
+                    f"`{row.coverage_status}`",
+                    row.usage_frequency,
+                    row.notes,
+                ]
+            )
+            + " |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo", default="..", type=pathlib.Path)
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--write", action="store_true")
+    arguments = parser.parse_args(argv)
+    repo = arguments.repo.resolve()
+    rows = load_rows(repo / JSONL)
+
+    if arguments.write:
+        (repo / RENDERED_MD).write_text(render_md(rows), encoding="utf-8")
+        print(f"{len(rows)} lignes — {RENDERED_MD} régénéré.")
+
+    if arguments.check:
+        from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
+        from app.pipelines.ops.schemas import ops_catalog
+
+        errors = check_rows(rows, ops=ops_catalog(), qgis_algorithms=QGIS_ALGORITHMS)
+        for error in errors:
+            print(f"ERREUR : {error}", file=sys.stderr)
+        if errors:
+            return 1
+        print(f"{len(rows)} lignes vérifiées, aucune erreur.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -4,7 +4,7 @@ import pathlib
 
 import pytest
 
-from scripts.fme_coverage_cli import Row, check_rows, load_rows
+from scripts.fme_coverage_cli import Row, check_rows, load_rows, main, render_md
 
 
 def _write_jsonl(path: pathlib.Path, rows: list[dict]) -> None:
@@ -164,3 +164,80 @@ def test_check_rows_accepts_planned_status_for_new_engine():
     ]
     errors = check_rows(rows, ops={}, qgis_algorithms={})
     assert errors == []
+
+
+def test_render_md_contains_summary_and_detail():
+    rows = [_row()]
+    rendered = render_md(rows)
+    assert "Reprojector" in rendered
+    assert "`implemented`" in rendered
+    assert "`duckdb`" in rendered
+
+
+def _make_repo(tmp_path, rows) -> pathlib.Path:
+    revue = tmp_path / "docs" / "revue"
+    revue.mkdir(parents=True)
+    _write_jsonl(revue / "matrice-couverture-fme.jsonl", rows)
+    return tmp_path
+
+
+def test_main_check_passes_with_real_ops_catalog(tmp_path):
+    repo = _make_repo(
+        tmp_path,
+        [
+            {
+                "fme_transformer": "Reprojector",
+                "fme_category": "Geometry",
+                "fme_description": "d",
+                "geostudio_equivalent": "transform.reproject",
+                "engine": "duckdb",
+                "engine_license": "MIT",
+                "coverage_status": "implemented",
+                "usage_frequency": "courant",
+                "notes": "",
+            }
+        ],
+    )
+    assert main(["--repo", str(repo), "--check"]) == 0
+
+
+def test_main_check_fails_on_unknown_op(tmp_path):
+    repo = _make_repo(
+        tmp_path,
+        [
+            {
+                "fme_transformer": "Bogus",
+                "fme_category": "Geometry",
+                "fme_description": "d",
+                "geostudio_equivalent": "transform.does_not_exist",
+                "engine": "duckdb",
+                "engine_license": "MIT",
+                "coverage_status": "implemented",
+                "usage_frequency": "courant",
+                "notes": "",
+            }
+        ],
+    )
+    assert main(["--repo", str(repo), "--check"]) == 1
+
+
+def test_main_write_renders_markdown(tmp_path):
+    repo = _make_repo(
+        tmp_path,
+        [
+            {
+                "fme_transformer": "Reprojector",
+                "fme_category": "Geometry",
+                "fme_description": "d",
+                "geostudio_equivalent": "transform.reproject",
+                "engine": "duckdb",
+                "engine_license": "MIT",
+                "coverage_status": "implemented",
+                "usage_frequency": "courant",
+                "notes": "",
+            }
+        ],
+    )
+    assert main(["--repo", str(repo), "--write"]) == 0
+    rendered = (repo / "docs" / "revue" / "matrice-couverture-fme.md").read_text(encoding="utf-8")
+    assert "Reprojector" in rendered
