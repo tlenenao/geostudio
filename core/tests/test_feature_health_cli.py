@@ -148,3 +148,23 @@ def test_check_exempts_a_named_medium_priority_exception(capsys):
     )
     assert feature_health_cli._check(rows, thresholds) == 0
     assert capsys.readouterr().err == ""
+
+
+def test_check_exception_does_not_apply_outside_priorite_moyenne(capsys):
+    """L'exception nommée n'exempte que `priorite: moyenne` — un même
+    identifiant listé mais déclaré `priorite: haute` (simple édition JSONL,
+    aucun changement de code) doit rester gardé par le plancher haute
+    priorité, pas silencieusement dispensé de tout plancher (piège de
+    gate erosion identifié en revue finale de Task 12)."""
+    from scripts.feature_health.scoring import Thresholds
+
+    rows = [_row(identifier="catalogue-mes-vues-signets", health=50.0, priority="haute")]
+    thresholds = Thresholds(
+        weights={"tests": 0.30, "atteignabilite": 0.25, "garde": 0.25, "dette": 0.20},
+        floor_high_priority=90.0,
+        floor_medium_priority=90.0,
+        floor_median=40.0,
+        exceptions_medium_priority=frozenset({"catalogue-mes-vues-signets"}),
+    )
+    assert feature_health_cli._check(rows, thresholds) == 1
+    assert "catalogue-mes-vues-signets" in capsys.readouterr().err

@@ -93,7 +93,10 @@ def _check(rows, thresholds) -> int:
         f"{row['feature'].identifier} : santé {row['sante']:.1f} < plancher {floor}"
         for row in rows
         if (floor := floor_by_priority.get(row["feature"].priority)) is not None
-        and row["feature"].identifier not in thresholds.exceptions_medium_priority
+        and not (
+            row["feature"].priority == "moyenne"
+            and row["feature"].identifier in thresholds.exceptions_medium_priority
+        )
         and row["sante"] is not None
         and row["sante"] < floor
     ]
