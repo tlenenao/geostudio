@@ -30,7 +30,14 @@ class Feature:
     """Une ligne de `docs/revue/inventaire-fonctionnalites.jsonl`.
 
     `proofs` ne porte que des **chemins de fichier**, jamais `chemin:ligne` :
-    les numéros de ligne dérivent en quelques jours (spec §8, mesuré)."""
+    les numéros de ligne dérivent en quelques jours (spec §8, mesuré).
+
+    `auto_scoped_guard` (additif, défaut vide) déclare des surfaces REST déjà
+    correctement autorisées par un mécanisme que `score_guard` ne modélise
+    pas nativement — portée tenant/utilisateur via une requête filtrée, ou
+    donnée de référence partagée sans notion de propriétaire. Chaque entrée
+    est vérifiée route par route avant déclaration (SP
+    « priorite-moyenne-sante-90 » Volet A.3), jamais un totem générique."""
 
     identifier: str
     domain: str
@@ -43,6 +50,7 @@ class Feature:
     priority: str
     priority_source: str
     raw: dict
+    auto_scoped_guard: tuple[str, ...] = ()
 
 
 REQUIRED_KEYS = ("id", "domaine", "fonctionnalite", "preuve", "surfaces", "priorite")
@@ -74,6 +82,7 @@ def load_inventory(path: pathlib.Path) -> tuple[Feature, ...]:
                 priority=row["priorite"],
                 priority_source=row.get("priorite_source", "declaree"),
                 raw=row,
+                auto_scoped_guard=tuple(row.get("garde_auto_scopee", ())),
             )
         )
     identifiers = [feature.identifier for feature in features]

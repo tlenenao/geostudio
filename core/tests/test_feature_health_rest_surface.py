@@ -236,3 +236,73 @@ def test_import_resolution_does_not_invent_guards_on_an_unguarded_helper():
     # ce test vérifie l'index brut, pas score_guard : la fonction de route
     # elle-même n'appelle aucune garde, cross-module ou non.
     assert fact.guards == frozenset()
+
+
+def test_a_declared_auto_scoped_surface_scores_100():
+    """Une route authentifiée mais sans garde nommée reconnue peut être
+    déclarée « auto-scopée » (tenant/utilisateur, ou donnée de référence
+    sans propriétaire) — vérifié route par route avant déclaration, jamais
+    un totem générique (SP « priorite-moyenne-sante-90 » Volet A.3)."""
+    routes = (
+        RouteFact(
+            method="GET",
+            path="/v1/notifications",
+            module="app.notifications.routes",
+            function="get_notifications",
+            guards=frozenset(),
+            auth="required",
+            flag=None,
+        ),
+    )
+    feature = _feature(
+        rest=("GET /v1/notifications",),
+        auto_scoped_guard=("GET /v1/notifications",),
+    )
+    score = score_guard(feature, routes)
+    assert score.value == 100.0
+    assert "auto-restreint" in score.evidence["GET /v1/notifications"]
+
+
+def test_an_undeclared_authenticated_only_surface_still_scores_50():
+    """Non-régression : ne pas déclarer une route dans `auto_scoped_guard`
+    doit laisser le score existant (50) inchangé — la déclaration n'élève
+    jamais un score par défaut, seulement une route vérifiée une à une."""
+    routes = (
+        RouteFact(
+            method="GET",
+            path="/v1/notifications",
+            module="app.notifications.routes",
+            function="get_notifications",
+            guards=frozenset(),
+            auth="required",
+            flag=None,
+        ),
+    )
+    feature = _feature(rest=("GET /v1/notifications",))
+    assert score_guard(feature, routes).value == 50.0
+
+
+def test_the_real_inventory_declares_the_six_auto_scoped_features_correctly():
+    """Contre-témoin sur le dépôt réel : les 6 fonctionnalités visées par le
+    Volet A.3 atteignent bien 100 de garde une fois déclarées — pas une
+    fixture, le vrai `docs/revue/inventaire-fonctionnalites.jsonl` et le vrai
+    index de routes."""
+    from scripts.feature_health.model import load_inventory
+
+    features = {
+        f.identifier: f
+        for f in load_inventory(REPO / "docs/revue/inventaire-fonctionnalites.jsonl")
+    }
+    routes = index_rest_routes(REPO)
+    targeted = [
+        "automatisation-marquer-une-ou-toutes-les-notifications-comme-lues",
+        "automatisation-choisir-sa-preference-de-notification-toutes-echecs-seulement-auc",
+        "automatisation-etre-notifie-dans-une-cloche-persistante-du-shell-des-jobs-en-ech",
+        "cartographie-uploader-une-icone-svg-personnalisee-dans-une-bibliotheque-d-icones",
+        "administration-copilote-ia-dans-le-builder-d-app-orchestrant-des-outils-mcp-reel",
+        "catalogue-metadonnees-catalogue-curate-de-licences-frequences-langues",
+    ]
+    for identifier in targeted:
+        feature = features[identifier]
+        assert feature.auto_scoped_guard, identifier
+        assert score_guard(feature, routes).value == 100.0, identifier
