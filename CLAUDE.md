@@ -1842,6 +1842,70 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   89 passed sur les fichiers touchés (STAC/alertes/migration/features/
   MCP) + re-vérification indépendante du reviewer (292 passed/0 failed
   sur un périmètre élargi) ; `ruff`/`lint-imports` verts.
+- **`priorite-moyenne-sante-90`** — fait passer 32 des 33 fonctionnalités
+  `priorite: "moyenne"` du bilan sous 90 de santé au-dessus de 90, et
+  verrouille le résultat en CI (`plancher_priorite_moyenne`, nouveau champ
+  `Thresholds`). **Volet A (outil)** : `deployability_rules()` généralisée
+  (chaîne `REPO / "a" / "b" / "c"` de profondeur arbitraire, scan de tout
+  `core/tests/test_*.py` + `deploy/**/test_*.py` au lieu du seul
+  `test_deployability.py`, repli par sous-chaîne littérale) — ferme
+  `REV-189` ; nouvelle catégorie déclarée `Feature.auto_scoped_guard` (6
+  routes réelles vérifiées route par route : notifications ×6, map-icons
+  ×4, copilote ×1, catalogue de métadonnées ×1 — auto-restreintes par
+  tenant_id/user_id, délégation d'autorisation en aval, ou donnée de
+  référence statique sans propriétaire). **Volet C** : 5 tests structurels
+  d'infrastructure jamais testée (CodeQL/gitleaks/Proxmox/`deploy/backup`
+  non-root/alerte SLO) ; couverture de `useAuth.ts` (aucun test dédié
+  n'existait) ; ~20 widgets/panneaux du Builder (PropsPanel, cross-filter,
+  export/planification async) ; `EditCollectionPanel.tsx` + 4 branches non-
+  signet de `useOpenItem` (`routes.tsx`) ; rapport PDF planifié
+  core+shell + câblage de compaction CDC. **Volet D (clôture)** : plancher
+  fixé à la valeur réellement mesurée `89.9` (jamais arrondie à la
+  hausse) — pas 90, à cause d'une fonctionnalité que ce plan ne visait
+  pas (`builder-widgets-widget-plage-de-dates-pilote-le-contexte-
+  temporel-global`, 89.998 réel, arrondi à « 90.0 » par le bilan à une
+  décimale) ; exception nommée unique `catalogue-mes-vues-signets`
+  (« Mes vues », plafonnée à ~82.6 — `routes.tsx` partagé par 20+ routes
+  sans rapport, hors périmètre raisonnable, `REV-190`). **Revue finale de
+  branche (opus) : 2 Important trouvés et corrigés sur le mécanisme
+  `auto_scoped_guard`** (piège n°4, invisibles à la revue par tâche) : le
+  hatch accordait 100 avant même de vérifier que la route existe dans
+  l'index réel ou qu'elle est authentifiée (aucun plancher — corrigé,
+  `fact` vérifié avant le raccourci, plus un test de solidité miroir de
+  `test_publiques_declaration_matches_the_ast_unguarded_set`, en
+  sous-ensemble plutôt qu'en bijection puisque « auto-scopée » n'est pas
+  détectable par AST) ; le message d'évidence partagé affirmait à tort
+  que `/v1/copilot/turn` interroge par tenant_id/user_id ou sert une
+  donnée sans propriétaire (il délègue en réalité à un allowlist d'outils
+  MCP) — corrigé, puis une 2e passe de re-revue a trouvé que le correctif
+  avait à son tour rendu le message faux pour `/v1/metadata-catalog`
+  (perte du disjoint « donnée de référence statique »), 3e disjoint
+  restauré. **`npm run build` (jamais exécuté par aucune revue, ni par
+  tâche ni finale — seul `npx vitest run` par fichier l'avait été) a
+  trouvé 7 erreurs `tsc` réelles** dans 6 fichiers de test de widgets
+  (Tasks 5/6, littéralement issues du texte du plan, piège n°3) :
+  `DataSource` sans son champ `query` obligatoire, `PropsPanel` rendu
+  sans son prop `dataSources` obligatoire, un prop `ctx` inexistant sur
+  `PropsPanel` (n'existe que sur `Component`) — zéro impact runtime,
+  corrigées directement par le contrôleur. Suite finale : sweep ciblé sur
+  tous les fichiers touchés par la branche (189 core + 194 shell, tous
+  passés, en foreground — les suites complètes en arrière-plan étaient
+  tuées par le limiteur mémoire de l'environnement du fait de sessions
+  concurrentes, piège n°9) ; `--check`/`--check-fresh` verts dans le
+  worktree de travail ; `ruff`/`ruff format`/`mypy --strict`/`lint-imports`/
+  `eslint`/`prettier`/`npm run build` tous verts. Diff OpenAPI/types TS
+  vide (aucune route touchée). **Risque documenté, non bloquant** : le
+  bilan committé reflète une couverture locale fraîchement mesurée dans
+  le worktree de travail au moment de Task 12/de la clôture — `--check`
+  recalcule en direct depuis `coverage.xml`/`coverage-summary.json` du
+  checkout courant, qui peuvent être périmés sur un autre checkout (`dev`
+  lui-même en a un exemple daté d'avant ce plan) ; à revérifier depuis les
+  artefacts de couverture réels de la CI avant toute bascule de
+  production, même précédent que SP-48/SP-55 (commit `1911e9e6`). Le plan
+  précédent qui a établi le même plancher pour `priorite: "haute"`
+  (`priorite-haute-sante-90`) est également fusionné sur `dev` mais n'a
+  jamais reçu sa propre entrée ici — dette documentaire pré-existante, pas
+  corrigée par ce plan.
 
 ### Conventions tranchées (2026-09-01)
 
