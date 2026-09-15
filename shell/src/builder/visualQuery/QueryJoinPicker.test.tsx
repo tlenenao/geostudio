@@ -68,4 +68,38 @@ describe("QueryJoinPicker", () => {
     await userEvent.selectOptions(screen.getByLabelText("Type de jointure"), "left");
     expect(onChange).toHaveBeenCalledWith({ collectionId: "communes", on: "commune", how: "left" });
   });
+
+  test("changer la collection jointe notifie le parent et réinitialise la colonne de jointure", async () => {
+    const onChange = vi.fn();
+    render(
+      <QueryJoinPicker
+        baseSchema={BASE}
+        joinedSchema={null}
+        collections={[{ id: "communes", title: "Communes" }]}
+        value={{ collectionId: "", on: "", how: "inner" }}
+        onChange={onChange}
+      />,
+    );
+    await userEvent.selectOptions(screen.getByLabelText("Collection à joindre"), "communes");
+    expect(onChange).toHaveBeenCalledWith({ collectionId: "communes", on: "", how: "inner" });
+  });
+
+  test("changer la colonne de jointure notifie le parent", async () => {
+    const onChange = vi.fn();
+    render(
+      <QueryJoinPicker
+        baseSchema={BASE}
+        joinedSchema={JOINED}
+        collections={[{ id: "communes", title: "Communes" }]}
+        value={{ collectionId: "communes", on: "", how: "inner" }}
+        onChange={onChange}
+      />,
+    );
+    await userEvent.selectOptions(screen.getByLabelText("Colonne de jointure"), "commune");
+    expect(onChange).toHaveBeenCalledWith({
+      collectionId: "communes",
+      on: "commune",
+      how: "inner",
+    });
+  });
 });
