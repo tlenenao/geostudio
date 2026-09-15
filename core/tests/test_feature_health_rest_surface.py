@@ -306,3 +306,43 @@ def test_the_real_inventory_declares_the_six_auto_scoped_features_correctly():
         feature = features[identifier]
         assert feature.auto_scoped_guard, identifier
         assert score_guard(feature, routes).value == 100.0, identifier
+
+
+def test_auto_scoped_guard_declarations_are_real_and_authenticated_routes():
+    """`auto_scoped_guard` n'est pas mécaniquement détectable comme `public`
+    (aucun signal AST pour « correctement scopé par la logique applicative »)
+    — pas de test de bijection possible ici, contrairement à
+    `test_publiques_declaration_matches_the_ast_unguarded_set`. Mais un
+    invariant plus faible reste vérifiable et réel : chaque surface déclarée
+    `auto_scoped_guard`, toutes fonctionnalités de l'inventaire réel
+    confondues, doit être (a) une route qui existe bel et bien dans l'index
+    AST réel, et (b) authentifiée (`auth in ("required", "optional")`) — le
+    hatch ne doit jamais pouvoir accorder 100 à une route absente (typo, route
+    renommée) ni à une route réellement publique/non authentifiée. Trouvé et
+    corrigé par la revue finale de branche : `score_guard` accordait 100 à
+    toute surface déclarée avant même de vérifier ces deux points."""
+    from scripts.feature_health.model import load_inventory
+
+    features = load_inventory(REPO / "docs/revue/inventaire-fonctionnalites.jsonl")
+    routes = index_rest_routes(REPO)
+    by_id = {surface_id(fact): fact for fact in routes}
+    declared = {
+        (feature.identifier, surface)
+        for feature in features
+        for surface in feature.auto_scoped_guard
+    }
+    missing = sorted(
+        f"{identifier} → {surface}" for identifier, surface in declared if surface not in by_id
+    )
+    unauthenticated = sorted(
+        f"{identifier} → {surface}"
+        for identifier, surface in declared
+        if surface in by_id and by_id[surface].auth not in ("required", "optional")
+    )
+    assert not missing and not unauthenticated, (
+        "auto_scoped_guard déclare une route absente de l'index AST réel, ou "
+        "réellement non authentifiée — le hatch de score_guard accorderait "
+        "alors 100 à tort.\n"
+        f"Absentes de l'index : {missing}\n"
+        f"Non authentifiées : {unauthenticated}"
+    )
