@@ -9,7 +9,7 @@ import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { ActionBus } from "../ActionBus";
 import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsContext";
 import type { WidgetContext } from "../registry";
-import type { DataSourceState, ItemClient } from "../../api/types";
+import type { DataSource, DataSourceState, ItemClient } from "../../api/types";
 import { ExplorerProvider } from "../ExplorerContext";
 
 vi.mock("../EChart", () => ({
@@ -138,6 +138,109 @@ test("PropsPanel edits the chart type and exposes the advanced JSON escape hatch
   expect(screen.getByLabelText("Option ECharts avancée (JSON)")).toBeInTheDocument();
   await userEvent.selectOptions(screen.getByLabelText("Type de graphique"), "line");
   expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ chartType: "line" }));
+});
+
+test("PropsPanel edits the data source, category and value fields for a bar chart", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("chart")!.PropsPanel;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const source: DataSource = { id: "ds1", type: "features", service: "core", layer: "parcs" };
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={{} as unknown as ItemClient}>
+        <Panel props={{ chartType: "bar" }} dataSources={[source]} onChange={onChange} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await userEvent.selectOptions(screen.getByLabelText("Source de données"), "ds1");
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ dataSourceId: "ds1" }));
+
+  await userEvent.type(screen.getByLabelText("Champ catégorie"), "r");
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ categoryField: "r" }));
+
+  await userEvent.type(screen.getByLabelText("Champ valeur"), "v");
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ valueField: "v" }));
+});
+
+test("PropsPanel edits the sankey target field", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("chart")!.PropsPanel;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={{} as unknown as ItemClient}>
+        <Panel props={{ chartType: "sankey" }} dataSources={[]} onChange={onChange} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await userEvent.type(screen.getByLabelText("Champ cible"), "d");
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ encodings: { target: "d" } }),
+  );
+});
+
+test("PropsPanel edits and removes an existing hierarchy level", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("chart")!.PropsPanel;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={{} as unknown as ItemClient}>
+        <Panel
+          props={{ chartType: "treemap", encodings: { levels: ["region"] } }}
+          dataSources={[]}
+          onChange={onChange}
+        />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await userEvent.type(screen.getByLabelText("Niveau 1"), "x");
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ encodings: { levels: ["regionx"] } }),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Retirer le niveau 1" }));
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ encodings: { levels: [] } }));
+});
+
+test("PropsPanel edits comparePeriod, axis, title, stack/legend/zoom toggles and the advanced option", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("chart")!.PropsPanel;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={{} as unknown as ItemClient}>
+        <Panel props={{ chartType: "line" }} dataSources={[]} onChange={onChange} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await userEvent.selectOptions(screen.getByLabelText("Période de référence"), "sameLastYear");
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ comparePeriod: "sameLastYear" }),
+  );
+
+  await userEvent.selectOptions(screen.getByLabelText("Type d'axe X"), "time");
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ xAxisType: "time" }));
+
+  await userEvent.selectOptions(screen.getByLabelText("Type d'axe Y"), "log");
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ yAxisType: "log" }));
+
+  await userEvent.type(screen.getByLabelText("Unité de l'axe Y"), "€");
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ yAxisUnit: "€" }));
+
+  await userEvent.type(screen.getByLabelText("Titre du graphique"), "T");
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ title: "T" }));
+
+  await userEvent.click(screen.getByLabelText("Empiler les séries"));
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ stack: true }));
+
+  await userEvent.click(screen.getByLabelText("Afficher la légende"));
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ legend: false }));
+
+  await userEvent.click(screen.getByLabelText("Activer le zoom"));
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ zoom: true }));
+
+  await userEvent.type(screen.getByLabelText("Option ECharts avancée (JSON)"), "x");
+  expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ advancedOption: "x" }));
 });
 
 test("PropsPanel shows the compare-periods toggle only for line/area chart types", async () => {
@@ -309,6 +412,54 @@ test("compareEnabled builds a 2-series compare option once timeRange + timeField
   );
   const el = await screen.findByTestId("echart");
   await waitFor(() => expect(el).toHaveAttribute("data-series", "2"));
+  // Distingue la branche de comparaison du graphique par-colonne ordinaire :
+  // ce dernier n'appelle jamais queryDataSource (les données viennent de
+  // ctx.data), seule la branche de comparaison le fait (fenêtre courante +
+  // fenêtre de référence).
+  expect(queryDataSource).toHaveBeenCalledTimes(2);
+});
+
+test("compare mode shows a loading state while the current/reference windows are in flight", async () => {
+  const getDatasetConfig = vi.fn().mockResolvedValue({
+    source: "collection",
+    collectionId: "events",
+    columns: {},
+    timeField: "date",
+    reactsToExtent: false,
+  });
+  const queryDataSource = vi.fn().mockReturnValue(new Promise(() => {}));
+  renderChart(
+    { chartType: "line", compareEnabled: true },
+    { data: { ...wide, datasetId: "ds-1" } },
+    { getDatasetConfig, queryDataSource },
+    { from: "2026-01-01", to: "2026-01-02" },
+  );
+  expect(await screen.findByText(/chargement/i)).toBeInTheDocument();
+  expect(screen.queryByTestId("echart")).not.toBeInTheDocument();
+});
+
+test("compare mode shows an error state when the reference window fails to load", async () => {
+  const getDatasetConfig = vi.fn().mockResolvedValue({
+    source: "collection",
+    collectionId: "events",
+    columns: {},
+    timeField: "date",
+    reactsToExtent: false,
+  });
+  const queryDataSource = vi
+    .fn()
+    .mockImplementation((source: { query: Record<string, unknown> }) =>
+      source.query.date__gte === "2026-01-01"
+        ? Promise.resolve([])
+        : Promise.reject(new Error("fail")),
+    );
+  renderChart(
+    { chartType: "line", compareEnabled: true },
+    { data: { ...wide, datasetId: "ds-1" } },
+    { getDatasetConfig, queryDataSource },
+    { from: "2026-01-01", to: "2026-01-02" },
+  );
+  expect(await screen.findByText(/erreur/i)).toBeInTheDocument();
 });
 
 test("two chart widgets in compare mode on the same dataset and metric do not collide on cache when a cross-filter singles one of them out", async () => {
