@@ -84,6 +84,33 @@ def test_deployability_rules_map_infra_paths_to_test_functions():
     assert "deploy/backup/restore.sh" in rules
 
 
+def test_deployability_rules_follow_a_chain_of_divisions_not_just_one_hop():
+    """`QGIS_DOCKERFILE = REPO / "deploy" / "qgis-worker" / "Dockerfile"`
+    (core/tests/test_deployability.py) est une chaîne à 3 segments — un
+    détecteur limité à un seul saut la manque entièrement (vérifié avant ce
+    correctif : `deployability_rules()` ne renvoyait aucune règle pour ce
+    chemin malgré un test réel qui l'exerce)."""
+    rules = deployability_rules(REPO)
+    assert "deploy/qgis-worker/Dockerfile" in rules
+
+
+def test_deployability_rules_scan_test_files_beyond_test_deployability_py():
+    """Généralise REV-189 (`docs/revue/2026-09-04-backlog.md`) : un test réel
+    qui ne vit pas dans le seul `core/tests/test_deployability.py` (ici
+    `deploy/backup/test_retention.py`) était invisible à ce mécanisme."""
+    rules = deployability_rules(REPO)
+    assert rules["deploy/backup/retention.py"] == ("référence littérale dans test_retention.py",)
+
+
+def test_deployability_rules_fall_back_to_a_literal_path_reference():
+    """`deploy/qgis-worker/server.py` n'est jamais nommé par une constante
+    `REPO / "..."` (`core/tests/test_qgis_worker_server_handler.py` le
+    référence via un chemin construit dynamiquement) — seule sa mention
+    littérale dans le docstring du module le rend détectable."""
+    rules = deployability_rules(REPO)
+    assert "deploy/qgis-worker/server.py" in rules
+
+
 def test_score_uses_the_line_rate_of_each_proof_file():
     facts = CoverageFacts(
         core_rates={"core/app/items/routes.py": 94.2},

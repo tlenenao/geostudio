@@ -32,6 +32,7 @@ import ast
 import dataclasses
 import json
 import pathlib
+import re
 import xml.etree.ElementTree as ET
 
 from scripts.feature_health.model import Feature, SubScore
@@ -82,33 +83,84 @@ def e2e_specs(repo: pathlib.Path) -> dict[str, tuple[str, ...]]:
     return found
 
 
+def _resolve_repo_relative(value: ast.expr) -> str | None:
+    """Résout `REPO / "a" / "b" / ...` en chemin repo-relatif, en suivant une
+    chaîne de divisions de profondeur arbitraire — pas seulement un saut.
+
+    SP « priorite-moyenne-sante-90 » Volet A.1 : le détecteur d'origine ne
+    reconnaissait qu'un seul `REPO / "chemin"` — `QGIS_DOCKERFILE = REPO /
+    "deploy" / "qgis-worker" / "Dockerfile"` (`core/tests/test_deployability.py`)
+    lui était invisible (vérifié : `deployability_rules()` renvoyait
+    `AUCUNE RÈGLE` pour ce fichier malgré un test réel qui l'exerce)."""
+    if isinstance(value, ast.Name) and value.id == "REPO":
+        return ""
+    if (
+        isinstance(value, ast.BinOp)
+        and isinstance(value.op, ast.Div)
+        and isinstance(value.right, ast.Constant)
+    ):
+        base = _resolve_repo_relative(value.left)
+        if base is None:
+            return None
+        segment = str(value.right.value)
+        return f"{base}/{segment}" if base else segment
+    return None
+
+
+def _test_files(repo: pathlib.Path) -> list[pathlib.Path]:
+    """Tout fichier `test_*.py` sous `core/tests/` ou `deploy/**`, à
+    l'exception des tests du mécanisme de mesure lui-même
+    (`test_feature_health*.py`) — généralise REV-189
+    (`docs/revue/2026-09-04-backlog.md`, 2026-09-14) : un test réel qui ne
+    vit pas dans le seul `core/tests/test_deployability.py` (par ex.
+    `deploy/backup/test_retention.py`) était invisible à ce mécanisme.
+
+    L'exclusion de `test_feature_health*.py` n'est pas cosmétique : ces
+    fichiers citent en toutes lettres, dans leurs docstrings et assertions,
+    des chemins d'infrastructure réels à titre d'exemple (cf. les tests du
+    présent module) — sans elle, le repli par sous-chaîne littérale
+    ci-dessous les confondrait avec une vraie preuve de test."""
+    return sorted(
+        path
+        for path in repo.glob("core/tests/test_*.py")
+        if not path.name.startswith("test_feature_health")
+    ) + sorted(repo.glob("deploy/**/test_*.py"))
+
+
+_PATH_LOOKALIKE = re.compile(r"(?:deploy|scripts|\.github)/[\w.\-/]+\.\w+")
+
+
 def deployability_rules(repo: pathlib.Path) -> dict[str, tuple[str, ...]]:
-    path = repo / "core/tests/test_deployability.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    constants: dict[str, str] = {}
-    for node in tree.body:
-        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
-            continue
-        target, value = node.targets[0], node.value
-        if not isinstance(target, ast.Name) or not isinstance(value, ast.BinOp):
-            continue
-        if (
-            isinstance(value.op, ast.Div)
-            and isinstance(value.left, ast.Name)
-            and value.left.id == "REPO"
-            and isinstance(value.right, ast.Constant)
-        ):
-            candidate = str(value.right.value)
-            if (repo / candidate).is_file():
-                constants[target.id] = candidate
     rules: dict[str, list[str]] = {}
-    for node in tree.body:
-        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("test_"):
-            continue
-        names = {child.id for child in ast.walk(node) if isinstance(child, ast.Name)}
-        for constant, file_path in constants.items():
-            if constant in names:
-                rules.setdefault(file_path, []).append(node.name)
+    for path in _test_files(repo):
+        text = path.read_text(encoding="utf-8")
+        tree = ast.parse(text)
+        constants: dict[str, str] = {}
+        for node in tree.body:
+            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                continue
+            target, value = node.targets[0], node.value
+            if not isinstance(target, ast.Name):
+                continue
+            candidate = _resolve_repo_relative(value)
+            if candidate is not None and (repo / candidate).is_file():
+                constants[target.id] = candidate
+        for node in tree.body:
+            if not isinstance(node, ast.FunctionDef) or not node.name.startswith("test_"):
+                continue
+            names = {child.id for child in ast.walk(node) if isinstance(child, ast.Name)}
+            for constant, file_path in constants.items():
+                if constant in names:
+                    rules.setdefault(file_path, []).append(node.name)
+        # Repli par sous-chaîne littérale (même esprit que `e2e_specs()`
+        # ci-dessous) : un test qui exerce un fichier sans jamais construire
+        # de constante `REPO / "..."` — import nu, chemin construit
+        # dynamiquement — reste invisible au mécanisme ci-dessus. Si le
+        # fichier de test le cite en toutes lettres (docstring/commentaire),
+        # et que le chemin cité existe réellement, c'est une preuve valide.
+        for match in sorted(set(_PATH_LOOKALIKE.findall(text))):
+            if match not in rules and (repo / match).is_file():
+                rules.setdefault(match, []).append(f"référence littérale dans {path.name}")
     return {key: tuple(value) for key, value in rules.items()}
 
 
