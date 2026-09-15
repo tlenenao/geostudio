@@ -86,6 +86,9 @@ def load_rows(path: pathlib.Path) -> list[Row]:
     return rows
 
 
+_NOT_YET_INTEGRATED_ENGINES = ("gdal", "pdal", "otb")
+
+
 def check_rows(rows: list[Row], *, ops: dict, qgis_algorithms: dict) -> list[str]:
     errors: list[str] = []
     for row in rows:
@@ -101,4 +104,13 @@ def check_rows(rows: list[Row], *, ops: dict, qgis_algorithms: dict) -> list[str
                     f"{row.fme_transformer!r} : geostudio_equivalent "
                     f"{row.geostudio_equivalent!r} n'existe pas dans QGIS_ALGORITHMS"
                 )
+        if row.coverage_status == "implemented" and (
+            row.engine in _NOT_YET_INTEGRATED_ENGINES or row.engine.startswith("rust:")
+        ):
+            errors.append(
+                f"{row.fme_transformer!r} : coverage_status=implemented avec "
+                f"engine={row.engine!r}, mais ce moteur n'est pas encore intégré "
+                "dans core/app/pipelines/ — utiliser planned_* jusqu'à ce que le "
+                "sous-projet moteur correspondant ait livré"
+            )
     return errors

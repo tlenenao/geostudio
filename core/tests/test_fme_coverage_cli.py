@@ -126,3 +126,41 @@ def test_check_rows_rejects_unknown_qgis_algorithm():
     errors = check_rows(rows, ops={}, qgis_algorithms={"gdal:contour": {}})
     assert len(errors) == 1
     assert "qgis:doesnotexist" in errors[0]
+
+
+def test_check_rows_rejects_premature_gdal_engine_claim():
+    rows = [
+        _row(
+            engine="gdal",
+            coverage_status="implemented",
+            geostudio_equivalent="reader.gdal.whatever",
+        )
+    ]
+    errors = check_rows(rows, ops={}, qgis_algorithms={})
+    assert len(errors) == 1
+    assert "gdal" in errors[0]
+
+
+def test_check_rows_rejects_premature_rust_engine_claim():
+    rows = [
+        _row(
+            engine="rust:geo",
+            coverage_status="implemented",
+            geostudio_equivalent="transform.something",
+        )
+    ]
+    errors = check_rows(rows, ops={}, qgis_algorithms={})
+    assert len(errors) == 1
+    assert "rust:geo" in errors[0]
+
+
+def test_check_rows_accepts_planned_status_for_new_engine():
+    rows = [
+        _row(
+            engine="gdal",
+            coverage_status="planned_gdal",
+            geostudio_equivalent="reader.gdal.whatever",
+        )
+    ]
+    errors = check_rows(rows, ops={}, qgis_algorithms={})
+    assert errors == []
