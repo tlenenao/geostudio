@@ -21,12 +21,7 @@ import pyarrow
 
 from app.cdc.parquet_writer import write_geoparquet_from_relation
 from app.pipelines.runtime import PipelineRuntimeError
-
-
-def _qi(name: str) -> str:
-    # Même duplication délibérée que app.pipelines.runtime._qi/app.cdc.
-    # parquet_writer._qi — convention déjà actée dans ce dépôt.
-    return '"' + name.replace('"', '""') + '"'
+from app.sql_ident import quote_ident_duckdb as _qi
 
 
 def _geometry_column(relation: duckdb.DuckDBPyRelation, *, fn_label: str) -> str:
