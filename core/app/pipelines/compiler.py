@@ -286,6 +286,69 @@ def compile_transform_sql(
     return compiler_fn(params, input_view=input_view, join_view=join_view, input_srid=input_srid)
 
 
+def _output_srid_reproject(
+    params: dict,
+    *,
+    op: str,
+    input_srid: int,
+    join_srid: int | None = None,
+) -> int:
+    p = TransformReprojectParams.model_validate(params)
+    return int(p.targetCrs.rsplit(":", 1)[1])
+
+
+def _output_srid_reconcile_join(
+    params: dict,
+    *,
+    op: str,
+    input_srid: int,
+    join_srid: int | None = None,
+) -> int:
+    assert join_srid is not None, f"{op} requires join_srid"
+    if input_srid != join_srid:
+        raise ValueError(
+            f"'{op}': input CRS (EPSG:{input_srid}) and joined collection CRS "
+            f"(EPSG:{join_srid}) differ — insert transform.reproject first"
+        )
+    return input_srid
+
+
+def _output_srid_h3_aggregate(
+    params: dict,
+    *,
+    op: str,
+    input_srid: int,
+    join_srid: int | None = None,
+) -> int:
+    if input_srid != 4326:
+        raise ValueError(
+            f"'transform.h3Aggregate' requires EPSG:4326 input (got EPSG:{input_srid}) "
+            "— insert transform.reproject first"
+        )
+    return 4326
+
+
+def _output_srid_qgis(
+    params: dict,
+    *,
+    op: str,
+    input_srid: int,
+    join_srid: int | None = None,
+) -> int:
+    p = TransformQgisParams.model_validate(params)
+    return int(p.outputSrid.rsplit(":", 1)[1]) if p.outputSrid is not None else input_srid
+
+
+_TRANSFORM_OUTPUT_SRID: dict[str, Callable[..., int]] = {
+    "transform.reproject": _output_srid_reproject,
+    "transform.intersection": _output_srid_reconcile_join,
+    "transform.countWithin": _output_srid_reconcile_join,
+    "transform.merge": _output_srid_reconcile_join,
+    "transform.h3Aggregate": _output_srid_h3_aggregate,
+    "transform.qgis": _output_srid_qgis,
+}
+
+
 def transform_output_srid(
     op: str,
     params: dict,
@@ -299,25 +362,9 @@ def transform_output_srid(
     §3.4/§3.5 : aucune réconciliation implicite, jamais un résultat spatial
     silencieusement faux. runtime.py convertit ce ValueError en
     PipelineRuntimeError avant de le laisser remonter."""
-    if op == "transform.reproject":
-        p = TransformReprojectParams.model_validate(params)
-        return int(p.targetCrs.rsplit(":", 1)[1])
-    if op in ("transform.intersection", "transform.countWithin", "transform.merge"):
-        assert join_srid is not None, f"{op} requires join_srid"
-        if input_srid != join_srid:
-            raise ValueError(
-                f"'{op}': input CRS (EPSG:{input_srid}) and joined collection CRS "
-                f"(EPSG:{join_srid}) differ — insert transform.reproject first"
-            )
-        return input_srid
-    if op == "transform.h3Aggregate":
-        if input_srid != 4326:
-            raise ValueError(
-                f"'transform.h3Aggregate' requires EPSG:4326 input (got EPSG:{input_srid}) "
-                "— insert transform.reproject first"
-            )
-        return 4326
-    if op == "transform.qgis":
-        p = TransformQgisParams.model_validate(params)
-        return int(p.outputSrid.rsplit(":", 1)[1]) if p.outputSrid is not None else input_srid
-    return input_srid
+    output_srid_fn = _TRANSFORM_OUTPUT_SRID.get(op)
+    if output_srid_fn is None:
+        return input_srid  # passthrough — comportement déjà existant : pas
+        # de branche d'erreur pour un op inconnu, contrairement à
+        # compile_transform_sql (vérifié dans le code réel avant ce plan).
+    return output_srid_fn(params, op=op, input_srid=input_srid, join_srid=join_srid)
