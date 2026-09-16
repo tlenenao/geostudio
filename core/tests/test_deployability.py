@@ -1569,6 +1569,36 @@ def test_backup_dockerfile_creates_and_chowns_backup_dir_before_switching_user()
     assert chown_line is not None and "/backup" in chown_line.group(0)
 
 
+def test_backup_dockerfile_downloads_mc_per_target_arch_from_agpl_source():
+    """Portage arm64 : deploy/backup/Dockerfile téléchargeait le client MinIO
+    `mc` depuis une URL mono-arch codée en dur (.../linux-amd64/mc) — et,
+    trouvaille indépendante de l'arch, cette URL précise renvoie aujourd'hui
+    410 Gone pour LES DEUX architectures (dl.min.io a changé de schéma
+    d'URL, confirmé le 2026-09-17). Le remplacement naïf
+    dl.min.io/aistor/mc/release/linux-{arch}/mc répond 200 mais sert un
+    binaire qui s'identifie lui-même « MinIO Enterprise License » — pas
+    AGPL, en contradiction avec LICENSE-BACKUP.md et le LABEL
+    org.opencontainers.image.licenses de cette image. Le correctif utilise
+    $TARGETARCH (fourni par buildx) ET pointe vers les assets GitHub
+    Releases de minio/mc, toujours publiés sous AGPLv3 (vérifié :
+    `mc --version` y affiche `License GNU AGPLv3`)."""
+    text = BACKUP_DOCKERFILE.read_text()
+    assert "TARGETARCH" in text, (
+        "deploy/backup/Dockerfile doit déclarer et utiliser $TARGETARCH "
+        "pour choisir le binaire mc de la bonne architecture."
+    )
+    assert "dl.min.io" not in text, (
+        "dl.min.io/client/... ne sert plus les binaires mc attendus ici "
+        "(410 Gone) — et son chemin de remplacement /aistor/ sert un "
+        "binaire sous licence propriétaire, pas AGPL. Utiliser les GitHub "
+        "Releases de minio/mc à la place."
+    )
+    assert "github.com/minio/mc/releases/download" in text, (
+        "deploy/backup/Dockerfile doit télécharger mc depuis les GitHub "
+        "Releases de minio/mc (toujours AGPL)."
+    )
+
+
 def test_slo_rules_cover_the_four_documented_slos_and_are_active():
     doc = yaml.safe_load(SLO_RULES.read_text())
     slo_group = next(g for g in doc["groups"] if g["name"] == "SLO")
