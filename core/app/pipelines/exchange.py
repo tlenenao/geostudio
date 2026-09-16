@@ -20,7 +20,7 @@ import duckdb
 import pyarrow
 
 from app.cdc.parquet_writer import write_geoparquet_from_relation
-from app.pipelines.runtime import PipelineRuntimeError
+from app.pipelines.errors import PipelineRuntimeError
 from app.sql_ident import quote_ident_duckdb as _qi
 
 
@@ -41,7 +41,15 @@ def to_arrow_stream(relation: duckdb.DuckDBPyRelation, *, srid: int) -> pyarrow.
     (binding Python/Rust acceptant l'interface Arrow C Data). Force
     ST_SetCRS sur la colonne géométrie avant .arrow() — sans lui, le CRS
     embarqué dans les métadonnées Arrow de la colonne reste vide ({}),
-    vérifié empiriquement (design §1)."""
+    vérifié empiriquement (design §1).
+
+    Schéma de sortie (revue finale de branche, Important #3) : la colonne
+    géométrie CONSERVE son nom d'origine mais est déplacée en dernière
+    position — contrairement à to_geoparquet_file, qui la renomme
+    "geometry" (convention GeoPandas/GeoParquet). Les deux chemins ne
+    produisent donc PAS le même schéma pour une même relation source ; un
+    futur consommateur qui bascule d'un OperationContract.exchange à
+    l'autre doit s'attendre à ce nom de colonne différent."""
     geom_col = _geometry_column(relation, fn_label="to_arrow_stream")
     other_cols = [c for c in relation.columns if c != geom_col]
     select_list = ", ".join(
@@ -68,13 +76,20 @@ def from_arrow_stream(
     Enregistrer sur une connexion un RecordBatchReader non drainé produit
     par CETTE MÊME connexion, puis exécuter une requête dessus, deadlocke
     `conn.execute()` indéfiniment (pas une erreur, un vrai blocage,
-    reproduit sous `timeout`) — DuckDB ne permet pas d'exécuter une
-    nouvelle requête sur une connexion tant qu'un flux Arrow issu de cette
-    connexion n'a pas été intégralement drainé. Aucune garde runtime
-    possible ici : un RecordBatchReader ne permet pas d'introspecter la
-    connexion DuckDB qui l'a produit. Dans l'usage visé (design §3, chemin
-    1), ce n'est normalement jamais un problème : le binding du futur
-    moteur consomme entièrement `reader` avant de renvoyer un NOUVEAU
+    reproduit sous `timeout`).
+
+    Mécanisme précis (corrigé en revue finale de branche, Minor #4 — la
+    formulation précédente était trop large) : ce n'est PAS qu'une
+    connexion refuse toute nouvelle requête tant qu'un flux Arrow issu
+    d'elle traîne quelque part (une requête simple sur la connexion source
+    pendant que `reader` reste non drainé ailleurs s'exécute normalement,
+    vérifié). Le blocage est spécifique à l'auto-référence : enregistrer
+    sur une connexion un flux produit par CETTE MÊME connexion, PUIS
+    exécuter une requête qui lit ce flux SUR CETTE CONNEXION. Aucune garde
+    runtime possible ici : un RecordBatchReader ne permet pas d'introspecter
+    la connexion DuckDB qui l'a produit. Dans l'usage visé (design §3,
+    chemin 1), ce n'est normalement jamais un problème : le binding du
+    futur moteur consomme entièrement `reader` avant de renvoyer un NOUVEAU
     RecordBatchReader en sortie, non lié à la connexion source."""
     tmp_name = f"__exchange_arrow_src_{view_name}"
     conn.register(tmp_name, reader)
@@ -85,9 +100,25 @@ def from_arrow_stream(
 
 
 def to_geoparquet_file(relation: duckdb.DuckDBPyRelation, *, srid: int, path: str) -> None:
-    """Chemin 2 (design §3) : repli GeoParquet natif DuckDB (writer
-    app.cdc.parquet_writer, mesuré 8-10x plus rapide/compact que tout pont
-    GDAL, design §1), pour un moteur qui reste un process séparé mais
-    comprend Parquet."""
+    """Chemin 2 (design §3) : repli GeoParquet, pour un moteur qui reste un
+    process séparé mais comprend Parquet.
+
+    Corrigé en revue finale de branche (Important #1) : ce chemin n'utilise
+    PAS l'écriture Parquet native de DuckDB (`COPY ... TO ... (FORMAT
+    PARQUET)`, qui existe et streamerait sans jamais matérialiser la
+    relation côté Python — vérifié faisable, mais non retenu ici). Il
+    délègue à write_geoparquet_from_relation (app.cdc.parquet_writer), qui
+    fait `relation.select(...).fetchall()` puis construit un
+    gpd.GeoDataFrame ligne par ligne avant `to_parquet` — la relation
+    ENTIÈRE est donc matérialisée en mémoire Python, pas streamée. Ce choix
+    est délibéré (cf. plan, section "Décision prise en amont") : il
+    garantit la convergence sur une seule primitive d'écriture réelle
+    (_write_gdf) avec le chemin CDC existant, au prix de cette limite de
+    passage à l'échelle — à réévaluer par le futur chantier "premier moteur
+    natif" si un besoin de très grands volumes se présente sur ce chemin
+    précisément (le chemin 1, to_arrow_stream, reste un flux paresseux).
+    Renomme aussi la colonne géométrie en "geometry" (cf. to_arrow_stream,
+    qui garde le nom d'origine) : les deux chemins ne sont pas
+    interchangeables schéma pour schéma."""
     geom_col = _geometry_column(relation, fn_label="to_geoparquet_file")
     write_geoparquet_from_relation(relation, srid=srid, geometry_column=geom_col, path=path)

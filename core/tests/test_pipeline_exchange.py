@@ -7,8 +7,8 @@ import pytest
 from shapely.geometry import Point
 
 from app.analytics.duckdb_conn import open_spatial_connection
+from app.pipelines.errors import PipelineRuntimeError
 from app.pipelines.exchange import from_arrow_stream, to_arrow_stream, to_geoparquet_file
-from app.pipelines.runtime import PipelineRuntimeError
 
 
 def test_to_arrow_stream_embeds_projjson_crs_metadata():
