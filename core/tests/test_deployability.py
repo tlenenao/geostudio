@@ -74,6 +74,7 @@ INSTALL_SH = REPO / "scripts/install.sh"
 CORE_APP = REPO / "core/app"
 BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
 KEYCLOAK_REALM_JSON = REPO / "deploy/keycloak/geostudio-realm.json"
+POSTGIS_DOCKERFILE = REPO / "deploy" / "postgis" / "Dockerfile"
 
 # Préfixe des images que nous publions nous-mêmes.
 OWN_IMAGE_RE = re.compile(r"ghcr\.io/[^/]+/(geostudio-[a-z0-9-]+)")
@@ -154,6 +155,31 @@ def build_is_reset(service: dict) -> bool:
 
 def release_matrix() -> list[dict]:
     return load_yaml(RELEASE)["jobs"]["build-and-push"]["strategy"]["matrix"]["include"]
+
+
+def test_postgis_dockerfile_uses_multiarch_base_with_pgdg_packages():
+    """Portage arm64 : `postgis/postgis:16-3.4` est mono-arch amd64 (confirmé
+    via `docker manifest inspect` sur ce tag et les tags récents — aucun n'a
+    d'arm64). Rebase sur `postgres:16-bookworm` (image officielle, multi-arch)
+    + les 4 paquets PGDG installés nous-mêmes — élimine au passage le flake
+    `bullseye-security` (Debian 11, dépôt de sécurité au Valid-Until expiré,
+    observé le 2026-09-12)."""
+    text = POSTGIS_DOCKERFILE.read_text()
+    assert "FROM postgres:16-bookworm" in text, (
+        "deploy/postgis/Dockerfile doit partir de postgres:16-bookworm "
+        "(multi-arch), pas de postgis/postgis:16-3.4 (mono-arch amd64)."
+    )
+    for package in (
+        "postgresql-16-postgis-3",
+        "postgresql-16-postgis-3-scripts",
+        "postgresql-16-pgvector",
+        "postgresql-16-wal2json",
+    ):
+        assert package in text, f"deploy/postgis/Dockerfile doit installer {package}"
+    assert "Check-Valid-Until=false" not in text, (
+        "le contournement bullseye-security n'a plus lieu d'être une fois "
+        "rebasé sur bookworm-pgdg (dépôt PGDG activement maintenu)."
+    )
 
 
 def test_every_build_service_has_a_released_image():
