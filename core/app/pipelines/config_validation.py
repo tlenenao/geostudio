@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.collections import repository as collections_repo
 from app.configs.pipeline_validation import register_pipeline_node_validator
 from app.configs.schemas import PipelineNode
-from app.pipelines.ops.schemas import BINARY_OPS, OP_PARAMS
+from app.pipelines.ops.contracts import BINARY_OPS, OP_PARAMS
 from app.sharing.authorization import can
 from app.users.models import User
 

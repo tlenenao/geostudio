@@ -75,6 +75,186 @@ def secondary_predecessor_id(node_id: str, edges: list[PipelineEdge]) -> str | N
     return incoming[0] if incoming else None
 
 
+def _compile_filter(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformFilterParams.model_validate(params)
+    return f"SELECT * FROM {_qi(input_view)} WHERE ({p.expr})"
+
+
+def _compile_select(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformSelectParams.model_validate(params)
+    cols = ", ".join(
+        f"{_qi(src)} AS {_qi(dst)}" if dst else _qi(src) for src, dst in p.columns.items()
+    )
+    return f"SELECT {cols} FROM {_qi(input_view)}"
+
+
+def _compile_derive(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformDeriveParams.model_validate(params)
+    return f"SELECT *, ({p.expr}) AS {_qi(p.column)} FROM {_qi(input_view)}"
+
+
+def _compile_aggregate(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformAggregateParams.model_validate(params)
+    group_cols = ", ".join(_qi(c) for c in p.groupBy)
+    metric_cols = ", ".join(f"({expr}) AS {_qi(name)}" for name, expr in p.metrics.items())
+    select_cols = ", ".join(filter(None, [group_cols, metric_cols]))
+    group_clause = f" GROUP BY {group_cols}" if group_cols else ""
+    return f"SELECT {select_cols} FROM {_qi(input_view)}{group_clause}"
+
+
+def _compile_join(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformJoinParams.model_validate(params)
+    assert join_view is not None, "transform.join requires join_view"
+    join_kw = "LEFT JOIN" if p.how == "left" else "JOIN"
+    return f"SELECT * FROM {_qi(input_view)} {join_kw} {_qi(join_view)} USING ({_qi(p.on)})"
+
+
+def _compile_buffer(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformBufferParams.model_validate(params)
+    if p.unit == "native":
+        return (
+            f"SELECT * EXCLUDE (geometry), ST_Buffer(geometry, {p.distance}) AS geometry "
+            f"FROM {_qi(input_view)}"
+        )
+    assert input_srid is not None, "transform.buffer(unit='meters') requires input_srid"
+    # always_xy=true est obligatoire ici : cf. plan Global Constraints
+    # (sans lui, ST_Transform applique l'ordre d'axe EPSG (lat,lng) pour
+    # EPSG:4326 et intervertit x/y silencieusement — vérifié contre un
+    # DuckDB réel).
+    src = f"'EPSG:{input_srid}'"
+    return (
+        f"SELECT * EXCLUDE (geometry), "
+        f"ST_Transform(ST_Buffer(ST_Transform(geometry, {src}, 'EPSG:3857', true), "
+        f"{p.distance}), 'EPSG:3857', {src}, true) AS geometry FROM {_qi(input_view)}"
+    )
+
+
+def _compile_reproject(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformReprojectParams.model_validate(params)
+    assert input_srid is not None, "transform.reproject requires input_srid"
+    return (
+        f"SELECT * EXCLUDE (geometry), "
+        f"ST_Transform(geometry, 'EPSG:{input_srid}', '{p.targetCrs}', true) AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_intersection(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformIntersectionParams.model_validate(params)
+    assert join_view is not None, "transform.intersection requires join_view"
+    join_kw = "LEFT JOIN" if p.how == "left" else "JOIN"
+    geom_expr = (
+        "t.geometry" if p.outputGeometry == "left" else "ST_Intersection(t.geometry, o.geometry)"
+    )
+    return (
+        f"SELECT t.* EXCLUDE (geometry), {geom_expr} AS geometry "
+        f"FROM {_qi(input_view)} t {join_kw} {_qi(join_view)} o "
+        f"ON ST_Intersects(t.geometry, o.geometry)"
+    )
+
+
+def _compile_count_within(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformCountWithinParams.model_validate(params)
+    assert join_view is not None, "transform.countWithin requires join_view"
+    if p.predicate == "intersects":
+        predicate_expr = "ST_Intersects(t.geometry, o.geometry)"
+    else:  # contains
+        predicate_expr = "ST_Contains(o.geometry, t.geometry)"
+    return (
+        f"SELECT t.* EXCLUDE (geometry), t.geometry, COUNT(o.geometry) AS {_qi(p.countColumn)} "
+        f"FROM {_qi(input_view)} t LEFT JOIN {_qi(join_view)} o "
+        f"ON {predicate_expr} GROUP BY ALL"
+    )
+
+
+def _compile_h3_aggregate(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformH3AggregateParams.model_validate(params)
+    h3_expr = (
+        f"h3_latlng_to_cell(ST_Y(ST_Centroid(geometry)), "
+        f"ST_X(ST_Centroid(geometry)), {p.resolution})"
+    )
+    select_parts = [
+        f"{h3_expr} AS h3Cell",
+        f"ST_GeomFromText(h3_cell_to_boundary_wkt({h3_expr})) AS geometry",
+    ]
+    metric_cols = ", ".join(f"({expr}) AS {_qi(name)}" for name, expr in p.metrics.items())
+    if metric_cols:
+        select_parts.append(metric_cols)
+    return f"SELECT {', '.join(select_parts)} FROM {_qi(input_view)} GROUP BY h3Cell"
+
+
+def _compile_merge(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    TransformMergeParams.model_validate(params)  # forme seulement, aucun autre champ à lire
+    assert join_view is not None, "transform.merge requires join_view"
+    return f"SELECT * FROM {_qi(input_view)} UNION ALL BY NAME SELECT * FROM {_qi(join_view)}"
+
+
 def compile_transform_sql(
     op: str,
     params: dict,
@@ -83,112 +263,67 @@ def compile_transform_sql(
     join_view: str | None = None,
     input_srid: int | None = None,
 ) -> str:
-    if op == "transform.filter":
-        p = TransformFilterParams.model_validate(params)
-        return f"SELECT * FROM {_qi(input_view)} WHERE ({p.expr})"
+    from app.pipelines.ops.contracts import OPERATIONS
 
-    if op == "transform.select":
-        p = TransformSelectParams.model_validate(params)
-        cols = ", ".join(
-            f"{_qi(src)} AS {_qi(dst)}" if dst else _qi(src) for src, dst in p.columns.items()
+    contract = OPERATIONS.get(op)
+    if contract is None or contract.compile is None:
+        raise ValueError(f"'{op}' is not a transform op")
+    return contract.compile(
+        params, input_view=input_view, join_view=join_view, input_srid=input_srid
+    )
+
+
+def _output_srid_reproject(
+    params: dict,
+    *,
+    op: str,
+    input_srid: int,
+    join_srid: int | None = None,
+) -> int:
+    p = TransformReprojectParams.model_validate(params)
+    return int(p.targetCrs.rsplit(":", 1)[1])
+
+
+def _output_srid_reconcile_join(
+    params: dict,
+    *,
+    op: str,
+    input_srid: int,
+    join_srid: int | None = None,
+) -> int:
+    assert join_srid is not None, f"{op} requires join_srid"
+    if input_srid != join_srid:
+        raise ValueError(
+            f"'{op}': input CRS (EPSG:{input_srid}) and joined collection CRS "
+            f"(EPSG:{join_srid}) differ — insert transform.reproject first"
         )
-        return f"SELECT {cols} FROM {_qi(input_view)}"
+    return input_srid
 
-    if op == "transform.derive":
-        p = TransformDeriveParams.model_validate(params)
-        return f"SELECT *, ({p.expr}) AS {_qi(p.column)} FROM {_qi(input_view)}"
 
-    if op == "transform.aggregate":
-        p = TransformAggregateParams.model_validate(params)
-        group_cols = ", ".join(_qi(c) for c in p.groupBy)
-        metric_cols = ", ".join(f"({expr}) AS {_qi(name)}" for name, expr in p.metrics.items())
-        select_cols = ", ".join(filter(None, [group_cols, metric_cols]))
-        group_clause = f" GROUP BY {group_cols}" if group_cols else ""
-        return f"SELECT {select_cols} FROM {_qi(input_view)}{group_clause}"
-
-    if op == "transform.join":
-        p = TransformJoinParams.model_validate(params)
-        assert join_view is not None, "transform.join requires join_view"
-        join_kw = "LEFT JOIN" if p.how == "left" else "JOIN"
-        return f"SELECT * FROM {_qi(input_view)} {join_kw} {_qi(join_view)} USING ({_qi(p.on)})"
-
-    if op == "transform.buffer":
-        p = TransformBufferParams.model_validate(params)
-        if p.unit == "native":
-            return (
-                f"SELECT * EXCLUDE (geometry), ST_Buffer(geometry, {p.distance}) AS geometry "
-                f"FROM {_qi(input_view)}"
-            )
-        assert input_srid is not None, "transform.buffer(unit='meters') requires input_srid"
-        # always_xy=true est obligatoire ici : cf. plan Global Constraints
-        # (sans lui, ST_Transform applique l'ordre d'axe EPSG (lat,lng) pour
-        # EPSG:4326 et intervertit x/y silencieusement — vérifié contre un
-        # DuckDB réel).
-        src = f"'EPSG:{input_srid}'"
-        return (
-            f"SELECT * EXCLUDE (geometry), "
-            f"ST_Transform(ST_Buffer(ST_Transform(geometry, {src}, 'EPSG:3857', true), "
-            f"{p.distance}), 'EPSG:3857', {src}, true) AS geometry FROM {_qi(input_view)}"
+def _output_srid_h3_aggregate(
+    params: dict,
+    *,
+    op: str,
+    input_srid: int,
+    join_srid: int | None = None,
+) -> int:
+    if input_srid != 4326:
+        raise ValueError(
+            f"'transform.h3Aggregate' requires EPSG:4326 input (got EPSG:{input_srid}) "
+            "— insert transform.reproject first"
         )
+    return 4326
 
-    if op == "transform.reproject":
-        p = TransformReprojectParams.model_validate(params)
-        assert input_srid is not None, "transform.reproject requires input_srid"
-        return (
-            f"SELECT * EXCLUDE (geometry), "
-            f"ST_Transform(geometry, 'EPSG:{input_srid}', '{p.targetCrs}', true) AS geometry "
-            f"FROM {_qi(input_view)}"
-        )
 
-    if op == "transform.intersection":
-        p = TransformIntersectionParams.model_validate(params)
-        assert join_view is not None, "transform.intersection requires join_view"
-        join_kw = "LEFT JOIN" if p.how == "left" else "JOIN"
-        geom_expr = (
-            "t.geometry"
-            if p.outputGeometry == "left"
-            else "ST_Intersection(t.geometry, o.geometry)"
-        )
-        return (
-            f"SELECT t.* EXCLUDE (geometry), {geom_expr} AS geometry "
-            f"FROM {_qi(input_view)} t {join_kw} {_qi(join_view)} o "
-            f"ON ST_Intersects(t.geometry, o.geometry)"
-        )
-
-    if op == "transform.countWithin":
-        p = TransformCountWithinParams.model_validate(params)
-        assert join_view is not None, "transform.countWithin requires join_view"
-        if p.predicate == "intersects":
-            predicate_expr = "ST_Intersects(t.geometry, o.geometry)"
-        else:  # contains
-            predicate_expr = "ST_Contains(o.geometry, t.geometry)"
-        return (
-            f"SELECT t.* EXCLUDE (geometry), t.geometry, COUNT(o.geometry) AS {_qi(p.countColumn)} "
-            f"FROM {_qi(input_view)} t LEFT JOIN {_qi(join_view)} o "
-            f"ON {predicate_expr} GROUP BY ALL"
-        )
-
-    if op == "transform.h3Aggregate":
-        p = TransformH3AggregateParams.model_validate(params)
-        h3_expr = (
-            f"h3_latlng_to_cell(ST_Y(ST_Centroid(geometry)), "
-            f"ST_X(ST_Centroid(geometry)), {p.resolution})"
-        )
-        select_parts = [
-            f"{h3_expr} AS h3Cell",
-            f"ST_GeomFromText(h3_cell_to_boundary_wkt({h3_expr})) AS geometry",
-        ]
-        metric_cols = ", ".join(f"({expr}) AS {_qi(name)}" for name, expr in p.metrics.items())
-        if metric_cols:
-            select_parts.append(metric_cols)
-        return f"SELECT {', '.join(select_parts)} FROM {_qi(input_view)} GROUP BY h3Cell"
-
-    if op == "transform.merge":
-        TransformMergeParams.model_validate(params)  # forme seulement, aucun autre champ à lire
-        assert join_view is not None, "transform.merge requires join_view"
-        return f"SELECT * FROM {_qi(input_view)} UNION ALL BY NAME SELECT * FROM {_qi(join_view)}"
-
-    raise ValueError(f"'{op}' is not a transform op")
+def _output_srid_qgis(
+    params: dict,
+    *,
+    op: str,
+    input_srid: int,
+    join_srid: int | None = None,
+) -> int:
+    p = TransformQgisParams.model_validate(params)
+    return int(p.outputSrid.rsplit(":", 1)[1]) if p.outputSrid is not None else input_srid
 
 
 def transform_output_srid(
@@ -204,25 +339,11 @@ def transform_output_srid(
     §3.4/§3.5 : aucune réconciliation implicite, jamais un résultat spatial
     silencieusement faux. runtime.py convertit ce ValueError en
     PipelineRuntimeError avant de le laisser remonter."""
-    if op == "transform.reproject":
-        p = TransformReprojectParams.model_validate(params)
-        return int(p.targetCrs.rsplit(":", 1)[1])
-    if op in ("transform.intersection", "transform.countWithin", "transform.merge"):
-        assert join_srid is not None, f"{op} requires join_srid"
-        if input_srid != join_srid:
-            raise ValueError(
-                f"'{op}': input CRS (EPSG:{input_srid}) and joined collection CRS "
-                f"(EPSG:{join_srid}) differ — insert transform.reproject first"
-            )
-        return input_srid
-    if op == "transform.h3Aggregate":
-        if input_srid != 4326:
-            raise ValueError(
-                f"'transform.h3Aggregate' requires EPSG:4326 input (got EPSG:{input_srid}) "
-                "— insert transform.reproject first"
-            )
-        return 4326
-    if op == "transform.qgis":
-        p = TransformQgisParams.model_validate(params)
-        return int(p.outputSrid.rsplit(":", 1)[1]) if p.outputSrid is not None else input_srid
-    return input_srid
+    from app.pipelines.ops.contracts import OPERATIONS
+
+    contract = OPERATIONS.get(op)
+    if contract is None or contract.output_srid is None:
+        return input_srid  # passthrough — comportement déjà existant, aucune
+        # branche d'erreur pour un op inconnu, contrairement à
+        # compile_transform_sql.
+    return contract.output_srid(params, op=op, input_srid=input_srid, join_srid=join_srid)

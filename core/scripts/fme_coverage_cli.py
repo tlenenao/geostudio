@@ -11,7 +11,7 @@ fois sans avertissement inline.
 
 --check vérifie mécaniquement les 3 règles du design (cf. docs/superpowers/
 specs/2026-09-15-matrice-couverture-fme-design.md) contre le code réel du
-dépôt (`app.pipelines.ops.schemas.ops_catalog`, `app.pipelines.ops.
+dépôt (`app.pipelines.ops.contracts.ops_catalog`, `app.pipelines.ops.
 qgis_algorithms.QGIS_ALGORITHMS`) — jamais contre une copie déclarée dans le
 JSONL lui-même. --write régénère docs/revue/matrice-couverture-fme.md depuis
 le JSONL. Pas de porte CI : --check n'est appelé dans aucun job de ci.yml,
@@ -189,8 +189,8 @@ def main(argv: list[str]) -> int:
         print(f"{len(rows)} lignes — {RENDERED_MD} régénéré.")
 
     if arguments.check:
+        from app.pipelines.ops.contracts import ops_catalog
         from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
-        from app.pipelines.ops.schemas import ops_catalog
 
         errors = check_rows(rows, ops=ops_catalog(), qgis_algorithms=QGIS_ALGORITHMS)
         for error in errors:

@@ -2,14 +2,8 @@
 import pytest
 from pydantic import ValidationError
 
-from app.pipelines.ops.schemas import (
-    OP_KINDS,
-    OP_PARAMS,
-    WriterCollectionParams,
-    WriterDatasetParams,
-    ops_catalog,
-    parse_op_params,
-)
+from app.pipelines.ops.contracts import OP_KINDS, OP_PARAMS, ops_catalog, parse_op_params
+from app.pipelines.ops.schemas import WriterCollectionParams, WriterDatasetParams
 
 
 def test_all_eight_phase1_ops_are_registered():
@@ -440,7 +434,7 @@ def test_non_binary_ops_do_not_accept_secondary_input_in_catalog():
 
 
 def test_binary_ops_set_matches_catalog_flag():
-    from app.pipelines.ops.schemas import BINARY_OPS
+    from app.pipelines.ops.contracts import BINARY_OPS
 
     assert BINARY_OPS == {
         "transform.join",

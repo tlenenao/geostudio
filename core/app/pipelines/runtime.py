@@ -49,6 +49,7 @@ from app.features.rls import rls_scope
 from app.features.validation import validate_feature
 from app.items import repository as items_repo
 from app.pipelines import compiler, connector_runtime
+from app.pipelines.errors import PipelineRuntimeError  # noqa: F401 (réexporté pour compatibilité)
 from app.pipelines.expr_validation import validate_bounded_expr
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
@@ -86,11 +87,6 @@ def _qi(name: str) -> str:
     # (lui-même une duplication de app.analytics.aggregate._qi) plutôt qu'un
     # import inter-module d'un nom privé `_`-préfixé — cf. compiler.py.
     return '"' + name.replace('"', '""') + '"'
-
-
-class PipelineRuntimeError(Exception):
-    """Erreur d'exécution : la tâche procrastinate (Task 9) l'attrape et
-    marque le run 'failed', jamais 'zombie'."""
 
 
 class NodeStat:
