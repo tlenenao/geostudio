@@ -12,11 +12,15 @@ FROM alpine:3.20
 # d'épinglage par version que deploy/postgis/Dockerfile et
 # deploy/titiler/Dockerfile : une future release mc nécessitera de
 # rebasculer MC_RELEASE à la main.
+# Ne jamais repointer vers l'ancien hébergeur historique de mc — voir le
+# docstring de test_backup_dockerfile_downloads_mc_per_target_arch_from_agpl_source
+# pour l'historique complet du bug (URL morte + piège de licence).
 ARG TARGETARCH
 ARG MC_RELEASE=RELEASE.2025-08-13T08-35-41Z
 RUN apk add --no-cache postgresql16-client age curl jq bash tzdata python3 \
-  && curl -sSL "https://github.com/minio/mc/releases/download/${MC_RELEASE}/mc.linux-${TARGETARCH}.${MC_RELEASE}" -o /usr/local/bin/mc \
-  && chmod +x /usr/local/bin/mc
+  && curl -fsSL "https://github.com/minio/mc/releases/download/${MC_RELEASE}/mc.linux-${TARGETARCH}.${MC_RELEASE}" -o /usr/local/bin/mc \
+  && chmod +x /usr/local/bin/mc \
+  && /usr/local/bin/mc --version
 
 COPY backup.sh /usr/local/bin/backup.sh
 COPY restore.sh /usr/local/bin/restore.sh

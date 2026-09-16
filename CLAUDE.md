@@ -1938,6 +1938,24 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   de release n'a pas pu être vérifié depuis cette session (nécessite un
   `git tag`/push réel, action à déclencher délibérément par Tanguy, hors
   du périmètre d'une session d'exécution de plan).
+  **Revue finale de branche : 1 Critical corrigé.** Le rebasage de
+  `deploy/postgis/Dockerfile` sur `postgres:16-bookworm` avait
+  silencieusement perdu le bootstrap d'extension que fournissait l'ancienne
+  base `postgis/postgis` (son propre script d'initdb créait `postgis` dans
+  `$POSTGRES_DB` au premier démarrage) — cassant tout `docker run` nu de
+  cette image, y compris le nouveau job `test-gate-arm64` et les jobs CI
+  existants (`core`/`core-qgis`/`stac-conformance`), vérifié empiriquement
+  sur une image fraîchement construite (`type "geometry" does not exist`,
+  confirmé par les vrais tests en échec puis en succès une fois corrigé —
+  jamais sur le conteneur `postgis-test` partagé, qui aurait masqué le bug).
+  Corrigé par `deploy/postgis/10_postgis.sh` (`CREATE EXTENSION IF NOT
+  EXISTS postgis`), avec un test de non-régression dédié. **1 Important
+  corrigé dans le même geste** : le téléchargement de `mc` dans
+  `deploy/backup/Dockerfile` utilisait `curl -sSL` sans `-f` — exactement
+  le mécanisme qui avait laissé l'ancienne URL morte passer inaperçue
+  (un corps de réponse d'erreur HTTP est silencieusement accepté comme le
+  binaire) — passé en `curl -fsSL` + un `mc --version` au moment du build
+  pour faire échouer bruyamment toute future casse.
 
 ### Conventions tranchées (2026-09-01)
 

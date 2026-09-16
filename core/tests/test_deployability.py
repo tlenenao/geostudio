@@ -75,6 +75,7 @@ CORE_APP = REPO / "core/app"
 BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
 KEYCLOAK_REALM_JSON = REPO / "deploy/keycloak/geostudio-realm.json"
 POSTGIS_DOCKERFILE = REPO / "deploy" / "postgis" / "Dockerfile"
+POSTGIS_INITDB_SCRIPT = REPO / "deploy" / "postgis" / "10_postgis.sh"
 TITILER_DOCKERFILE = REPO / "deploy" / "titiler" / "Dockerfile"
 
 # Préfixe des images que nous publions nous-mêmes.
@@ -180,6 +181,41 @@ def test_postgis_dockerfile_uses_multiarch_base_with_pgdg_packages():
     assert "Check-Valid-Until=false" not in text, (
         "le contournement bullseye-security n'a plus lieu d'être une fois "
         "rebasé sur bookworm-pgdg (dépôt PGDG activement maintenu)."
+    )
+
+
+def test_postgis_dockerfile_restores_the_extension_bootstrap_the_old_base_did():
+    """Revue finale de branche du portage arm64 : `postgis/postgis` créait
+    l'extension `postgis` dans $POSTGRES_DB au premier démarrage via son
+    propre /docker-entrypoint-initdb.d/10_postgis.sh. `postgres:16-bookworm`
+    n'a AUCUN script de ce genre — installer les paquets PGDG rend
+    l'extension disponible, jamais créée. Sans ce script, tout `docker run`
+    nu de cette image (CI core/core-qgis/stac-conformance, release.yml
+    test-gate + test-gate-arm64, scripts/run-qgis-tests.sh) démarre avec un
+    Postgres nu, pas un PostGIS (confirmé empiriquement :
+    `type "geometry" does not exist` sur une image fraîchement construite
+    avant ce correctif)."""
+    dockerfile_text = POSTGIS_DOCKERFILE.read_text()
+    assert "10_postgis.sh" in dockerfile_text and (
+        "COPY" in dockerfile_text
+    ), (
+        "deploy/postgis/Dockerfile doit copier un script d'initialisation "
+        "dans /docker-entrypoint-initdb.d/ pour recréer l'extension postgis "
+        "au premier démarrage — postgres:16-bookworm n'en fournit aucun."
+    )
+    assert "/docker-entrypoint-initdb.d/10_postgis.sh" in dockerfile_text, (
+        "le script doit être copié dans /docker-entrypoint-initdb.d/, seul "
+        "répertoire que l'image officielle postgres exécute automatiquement "
+        "contre $POSTGRES_DB au premier démarrage."
+    )
+    assert POSTGIS_INITDB_SCRIPT.exists(), (
+        "deploy/postgis/10_postgis.sh doit exister à côté du Dockerfile."
+    )
+    script_text = POSTGIS_INITDB_SCRIPT.read_text()
+    assert "CREATE EXTENSION IF NOT EXISTS postgis" in script_text, (
+        "deploy/postgis/10_postgis.sh doit recréer l'extension postgis "
+        "(CREATE EXTENSION IF NOT EXISTS postgis) — c'est exactement ce que "
+        "faisait l'ancienne base postgis/postgis automatiquement."
     )
 
 

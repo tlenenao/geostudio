@@ -6,7 +6,7 @@
 # est mono-arch amd64, mais sa PROPRE base,
 # ghcr.io/vincentsarago/uvicorn-gunicorn (recette officielle titiler), est
 # multi-arch — le blocage est une lacune de publication côté devseed, pas
-# une limite technique GDAL/rasterio (rasterio 1.5.1 publie des wheels
+# une limite technique GDAL/rasterio (rasterio 1.4.4 publie des wheels
 # manylinux_2_28_aarch64 sur PyPI : pas de compilation requise ici).
 #
 # Épinglage par version PyPI plutôt que COPY src/titiler/ + build depuis les

@@ -16,3 +16,20 @@ RUN apt-get update \
          postgresql-16-pgvector \
          postgresql-16-wal2json \
     && rm -rf /var/lib/apt/lists/*
+
+# L'ancienne base postgis/postgis embarquait /docker-entrypoint-initdb.d/
+# 10_postgis.sh, qui exécutait `CREATE EXTENSION postgis` (+topology,
+# fuzzystrmatch) contre $POSTGRES_DB au premier démarrage. postgres:16-bookworm
+# n'a AUCUN script de ce genre — installer le paquet APT rend l'extension
+# seulement DISPONIBLE, il ne la crée jamais dans aucune base. Sans ce script,
+# tout `docker run` nu de cette image (CI core/core-qgis/stac-conformance,
+# release.yml test-gate + test-gate-arm64, scripts/run-qgis-tests.sh) démarre
+# avec un Postgres nu, pas un PostGIS — trouvé en revue finale de branche
+# (`CREATE TABLE t (geom geometry(...))` échouait en
+# `type "geometry" does not exist`). Seul `postgis` est recréé ici : rien
+# dans ce dépôt n'utilise postgis_topology/postgis_tiger_geocoder/
+# fuzzystrmatch (vérifié par grep) ; `vector`/`pg_trgm` restent créés par la
+# migration Alembic 0012_pgvector_embeddings.py, que tout consommateur réel
+# exécute déjà — pas dupliqués ici.
+COPY 10_postgis.sh /docker-entrypoint-initdb.d/10_postgis.sh
+RUN chmod +x /docker-entrypoint-initdb.d/10_postgis.sh
