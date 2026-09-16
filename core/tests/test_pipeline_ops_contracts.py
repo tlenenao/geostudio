@@ -97,3 +97,32 @@ def test_connector_and_writer_ops_are_not_classified_by_engine():
         assert contract.engine is None
         assert contract.is_copyleft is False
         assert contract.execution_model == "in_process"
+
+
+def test_operation_contract_accepts_explicit_exchange_value():
+    contract = OperationContract(
+        op="transform.fake-native",
+        kind="transform",
+        params_schema=TransformFilterParams,
+        exchange="arrow_stream",
+    )
+    assert contract.exchange == "arrow_stream"
+
+
+def test_all_nineteen_operations_default_exchange_to_none():
+    from app.pipelines.ops.contracts import OPERATIONS
+
+    for op, contract in OPERATIONS.items():
+        assert contract.exchange is None, op
+
+
+def test_ops_catalog_never_exposes_the_exchange_field():
+    # Garde de régression (design §2 : "exchange n'entre jamais dans
+    # ops_catalog()") — passe déjà avant ce champ puisque ops_catalog()
+    # construit un dict à 3 clés fixes, mais documente et verrouille la
+    # garantie plutôt que de la supposer.
+    from app.pipelines.ops.contracts import ops_catalog
+
+    catalog = ops_catalog()
+    for op, entry in catalog.items():
+        assert set(entry) == {"kind", "paramsSchema", "acceptsSecondaryInput"}, op
