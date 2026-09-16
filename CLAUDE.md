@@ -1906,6 +1906,59 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   (`priorite-haute-sante-90`) est également fusionné sur `dev` mais n'a
   jamais reçu sa propre entrée ici — dette documentaire pré-existante, pas
   corrigée par ce plan.
+- **OperationContract** — remplace, pour les 19 op de pipeline déjà
+  livrées, les 5 structures parallèles indexées par nom d'op
+  (`app.pipelines.ops.schemas::OP_PARAMS`/`OP_KINDS`/`BINARY_OPS`,
+  `app.pipelines.compiler::compile_transform_sql`/`transform_output_srid`)
+  par un type unique `OperationContract` (schéma/moteur/licence/modèle
+  d'exécution/compilateur/règle de SRID de sortie) et un registre unique
+  `app.pipelines.ops.contracts::OPERATIONS` — spec
+  `docs/superpowers/specs/2026-09-16-operation-contract-design.md`. Règle
+  généralisée et testée : licence copyleft ⇒ modèle d'exécution `sidecar`
+  obligatoire (`transform.qgis`, seul moteur externe existant, vérifié
+  conforme). Comportement externe inchangé, prouvé par la suite existante
+  (`test_pipeline_compiler.py` vert sans aucune modification) — diff
+  `openapi.json`/`core-schema.d.ts` vide, zéro fichier `shell/` touché.
+  **Écart au texte de la spec, nécessaire (import circulaire réel)** :
+  `OP_KINDS`/`OP_PARAMS`/`BINARY_OPS`/`parse_op_params`/`ops_catalog`
+  déménagent dans `contracts.py` plutôt que rester dans `schemas.py` —
+  `contracts.py` a besoin des classes Pydantic de `schemas.py` au niveau
+  module pour construire `OPERATIONS` ; l'inverse (schemas.py import
+  contracts.py au niveau module pour ses vues dérivées) aurait fermé un
+  cycle à 2 nœuds non résolvable par aucun ordre d'import — vérifié par
+  trace manuelle avant d'écrire le plan. `schemas.py` ne porte plus que les
+  classes Pydantic de forme des params. **Hors périmètre, explicitement
+  (spec §2)** : aucun nouveau moteur câblé (GDAL/PDAL/OTB/Rust), aucune
+  nouvelle op, licence des 7 op readers/writers/connecteurs. **2 retouches
+  documentaires (Task 5, revue de Task 4) faites dans le même geste que
+  cette clôture** : le docstring de `contracts.py` affirmait à tort que
+  `OPERATIONS` était « construit par une tâche ultérieure de ce même
+  chantier » — périmé depuis que la Task 4 a construit le registre dans ce
+  même fichier, reformulé en « construit ci-dessous » ; un commentaire
+  ajouté sur les champs `compile`/`output_srid` d'`OperationContract`
+  (`Callable[..., ...] | None = None`) documentant le piège Python latent
+  — un `def` nu donné en défaut au lieu de `None` deviendrait un attribut
+  de classe lié comme méthode (self/le contrat injecté en premier
+  argument) plutôt qu'un callable simple ; inoffensif aujourd'hui (tous
+  les défauts sont `None`, chaque entrée du registre passe son callable en
+  argument d'instance, jamais en défaut de classe), mais à garder à
+  l'esprit pour tout futur mainteneur de ce champ. Suite finale (conteneur
+  PostGIS jetable dédié `opctr-t5-postgis`, `wal_level=replica` —
+  documenté ci-dessous) : **3063 passed / 9 skipped / 2 failed** en
+  648,81 s. Les 2 échecs (`test_cdc_consumer_postgis.py::
+  test_stream_changes_decodes_and_stops_on_should_stop` et
+  `..._ack_advances_confirmed_flush_lsn`) confirmés sans rapport avec ce
+  plan avant clôture, pas simplement supposés : `SHOW wal_level` sur ce
+  conteneur jetable renvoie `replica`, pas `logical`
+  (`ObjectNotInPrerequisiteState: logical decoding requires wal_level >=
+  logical`) — même classe de limite d'infrastructure de conteneur jetable
+  déjà documentée par SP-62/GAP-29/GAP-16 (`wal_level`, colonnes SP-41/42
+  manquantes) ; `git diff --stat origin/dev...HEAD -- core/tests/
+  test_cdc_consumer_postgis.py core/app/cdc/` est vide — ce plan ne touche
+  ni le test ni le module CDC. ruff/ruff format/lint-imports verts, aucune
+  nouvelle exemption `[tool.importlinter]` ; diff `openapi.json`/
+  `core-schema.d.ts` vide (vérifié, régénéré) ; `git diff --stat -- shell/`
+  vide (vérifié).
 
 ### Conventions tranchées (2026-09-01)
 

@@ -7,10 +7,10 @@ Remplace, pour les 19 op de pipeline déjà livrées, les 5 structures
 parallèles indexées par nom d'op qui existaient jusqu'ici
 (app.pipelines.ops.schemas::OP_PARAMS/OP_KINDS/BINARY_OPS,
 app.pipelines.compiler::compile_transform_sql/transform_output_srid) : le
-registre OPERATIONS (construit par une tâche ultérieure de ce même
-chantier, cf. plan) devient la seule source, ces structures en deviennent
-des vues dérivées, définies dans CE module (pas dans ops/schemas.py — un
-import circulaire réel l'interdit, cf. Écarts au texte de la spec du plan).
+registre OPERATIONS (construit ci-dessous) devient la seule source, ces
+structures en deviennent des vues dérivées, définies dans CE module (pas
+dans ops/schemas.py — un import circulaire réel l'interdit, cf. Écarts au
+texte de la spec du plan).
 
 Règle non négociable, vérifiée à la CONSTRUCTION de chaque contrat (donc à
 chaque import de ce module, pas seulement par un test dédié) :
@@ -58,6 +58,12 @@ class OperationContract:
     engine_license: str | None = None
     is_copyleft: bool = False
     execution_model: Literal["in_process", "sidecar"] = "in_process"
+    # Piège Python latent : un `def` nu donné ici en défaut (au lieu de `None`)
+    # deviendrait un attribut de classe et serait lié comme méthode (self/le
+    # contrat injecté en premier argument), pas un simple callable — inoffensif
+    # aujourd'hui (défauts `None`, chaque entrée du registre passe son
+    # callable en argument d'instance, jamais en défaut de classe), mais à
+    # garder à l'esprit pour tout futur mainteneur de ce champ.
     compile: Callable[..., str] | None = None
     output_srid: Callable[..., int] | None = None
 
