@@ -102,6 +102,9 @@ jobs:
           - image: geostudio-postgis
             context: ./deploy/postgis
             dockerfile: Dockerfile
+          - image: geostudio-titiler
+            context: ./deploy/titiler
+            dockerfile: Dockerfile
           - image: geostudio-appexport-standalone
             context: .
             dockerfile: deploy/appexport-standalone/Dockerfile

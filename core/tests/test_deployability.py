@@ -75,6 +75,7 @@ CORE_APP = REPO / "core/app"
 BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
 KEYCLOAK_REALM_JSON = REPO / "deploy/keycloak/geostudio-realm.json"
 POSTGIS_DOCKERFILE = REPO / "deploy" / "postgis" / "Dockerfile"
+TITILER_DOCKERFILE = REPO / "deploy" / "titiler" / "Dockerfile"
 
 # Préfixe des images que nous publions nous-mêmes.
 OWN_IMAGE_RE = re.compile(r"ghcr\.io/[^/]+/(geostudio-[a-z0-9-]+)")
@@ -180,6 +181,26 @@ def test_postgis_dockerfile_uses_multiarch_base_with_pgdg_packages():
         "le contournement bullseye-security n'a plus lieu d'être une fois "
         "rebasé sur bookworm-pgdg (dépôt PGDG activement maintenu)."
     )
+
+
+def test_titiler_dockerfile_pins_the_currently_deployed_version():
+    """deploy/titiler/Dockerfile rapatrie EXACTEMENT la version consommée
+    aujourd'hui (0.18.4) depuis la recette officielle (base
+    ghcr.io/vincentsarago/uvicorn-gunicorn) — ce chantier ne monte pas de
+    version titiler, il change seulement sa publication (image tierce
+    mono-arch -> construite par nous, multi-arch)."""
+    text = TITILER_DOCKERFILE.read_text()
+    assert "ghcr.io/vincentsarago/uvicorn-gunicorn" in text, (
+        "deploy/titiler/Dockerfile doit repartir de la même base que la "
+        "recette officielle titiler (multi-arch)."
+    )
+    for package in (
+        "titiler.core==0.18.4",
+        "titiler.extensions[cogeo,stac]==0.18.4",
+        "titiler.mosaic==0.18.4",
+        "titiler.application==0.18.4",
+    ):
+        assert package in text, f"deploy/titiler/Dockerfile doit épingler {package}"
 
 
 def test_every_build_service_has_a_released_image():
