@@ -8,9 +8,17 @@ import pandas as pd
 import shapely.wkb
 from shapely.geometry import Point
 
+from app.analytics.duckdb_conn import open_spatial_connection
+from app.cdc import parquet_writer
 from app.cdc.backfill import _normalize_record
 from app.cdc.consumer import decode_wal2json_message
-from app.cdc.parquet_writer import ChangeRow, build_geodataframe, write_geoparquet
+from app.cdc.parquet_writer import (
+    ChangeRow,
+    build_geodataframe,
+    build_geodataframe_from_relation,
+    write_geoparquet,
+    write_geoparquet_from_relation,
+)
 
 
 def _hex(geom) -> str:
@@ -222,3 +230,80 @@ def test_write_geoparquet_roundtrip_preserves_crs_and_columns(tmp_path):
     assert gdf.crs.to_epsg() == 2154
     assert len(gdf) == 1
     assert gdf["_op"].iloc[0] == "insert"
+
+
+def test_build_geodataframe_from_relation_preserves_schema_crs_and_values():
+    conn = open_spatial_connection()
+    rel = conn.sql(
+        "SELECT 1 AS id, ST_Point(700000, 6600000) AS geom, 'a' AS name "
+        "UNION ALL SELECT 2, ST_Point(700100, 6600100), 'b'"
+    )
+    gdf = build_geodataframe_from_relation(rel, srid=2154, geometry_column="geom")
+    assert list(gdf["id"]) == [1, 2]
+    assert list(gdf["name"]) == ["a", "b"]
+    assert gdf.crs.to_epsg() == 2154
+    assert gdf.geometry.iloc[0].equals(Point(700000, 6600000))
+    assert gdf.geometry.iloc[1].equals(Point(700100, 6600100))
+
+
+def test_write_geoparquet_from_relation_round_trip(tmp_path):
+    conn = open_spatial_connection()
+    rel = conn.sql("SELECT 1 AS id, ST_Point(700000, 6600000) AS geom, 'a' AS name")
+    path = str(tmp_path / "relation.parquet")
+    write_geoparquet_from_relation(rel, srid=2154, geometry_column="geom", path=path)
+
+    gdf = gpd.read_parquet(path)
+    assert list(gdf.columns) == ["id", "name", "geometry"]
+    assert gdf.crs.to_epsg() == 2154
+    assert gdf.geometry.iloc[0].equals(Point(700000, 6600000))
+
+
+def test_write_geoparquet_from_relation_with_no_other_columns():
+    # cas limite : une relation ne portant QUE la géométrie (aucune colonne
+    # métier) — other_cols vide, ne doit pas planter le zip().
+    conn = open_spatial_connection()
+    rel = conn.sql("SELECT ST_Point(1, 2) AS geom")
+    gdf = build_geodataframe_from_relation(rel, srid=4326, geometry_column="geom")
+    assert list(gdf.columns) == ["geometry"]
+    assert gdf.geometry.iloc[0].equals(Point(1, 2))
+
+
+def test_write_geoparquet_and_write_geoparquet_from_relation_share_the_writer_primitive(
+    monkeypatch, tmp_path
+):
+    # Preuve de non-duplication (design §2) : les deux chemins d'écriture
+    # (ChangeRow CDC / relation DuckDB générique) doivent converger sur
+    # EXACTEMENT la même primitive d'écriture Parquet, jamais deux appels
+    # indépendants à GeoDataFrame.to_parquet.
+    calls: list[str] = []
+    original = parquet_writer._write_gdf
+
+    def spy(gdf, path):
+        calls.append(path)
+        return original(gdf, path)
+
+    monkeypatch.setattr(parquet_writer, "_write_gdf", spy)
+
+    write_geoparquet(
+        [
+            ChangeRow(
+                op="insert",
+                lsn=1,
+                ts=1.0,
+                pk_column="id",
+                pk_value=1,
+                columns={"id": 1},
+                geometry_column="geom",
+                geometry_wkb_hex=shapely.wkb.dumps(Point(1, 2), hex=True),
+            )
+        ],
+        srid=4326,
+        path=str(tmp_path / "cdc.parquet"),
+    )
+    conn = open_spatial_connection()
+    rel = conn.sql("SELECT 1 AS id, ST_Point(1, 2) AS geom")
+    write_geoparquet_from_relation(
+        rel, srid=4326, geometry_column="geom", path=str(tmp_path / "relation.parquet")
+    )
+
+    assert len(calls) == 2
