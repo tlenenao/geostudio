@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AppExportPanel } from "./AppExportPanel";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
@@ -136,5 +136,114 @@ describe("AppExportPanel", () => {
       expect(screen.getByRole("link", { name: /télécharger/i })).toBeInTheDocument(),
     );
     expect(client.createAppExport).toHaveBeenCalledWith("item1", "standalone");
+  });
+});
+
+it("polls again while the job is still pending, then shows the download link", async () => {
+  let call = 0;
+  const getAppExportJob = vi.fn().mockImplementation(() => {
+    call += 1;
+    const status = call < 2 ? "pending" : "done";
+    return Promise.resolve({
+      id: "job1",
+      status,
+      resultUrl: status === "done" ? "https://x.test/bundle.zip" : null,
+      error: null,
+    });
+  });
+  const client = makeClient({
+    createAppExport: vi.fn().mockResolvedValue({ jobId: "job1" }),
+    getAppExportJob,
+  });
+  render(
+    <ItemClientProvider client={client}>
+      <AppExportPanel itemId="item1" config={config()} />
+    </ItemClientProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
+  await userEvent.click(screen.getByRole("button", { name: /statique/i }));
+  await waitFor(
+    () => expect(screen.getByRole("link", { name: /télécharger/i })).toBeInTheDocument(),
+    { timeout: 5000 },
+  );
+  expect(call).toBeGreaterThanOrEqual(2);
+});
+
+it("surfaces a failure to even create the job", async () => {
+  const client = makeClient({
+    createAppExport: vi.fn().mockRejectedValue(new Error("Request failed: 500")),
+    getAppExportJob: vi.fn(),
+  });
+  render(
+    <ItemClientProvider client={client}>
+      <AppExportPanel itemId="item1" config={config()} />
+    </ItemClientProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
+  await userEvent.click(screen.getByRole("button", { name: /statique/i }));
+  await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/échec/i));
+});
+
+it("closes the mode picker without exporting", async () => {
+  const createAppExport = vi.fn();
+  const client = makeClient({ createAppExport, getAppExportJob: vi.fn() });
+  render(
+    <ItemClientProvider client={client}>
+      <AppExportPanel itemId="item1" config={config()} />
+    </ItemClientProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
+  expect(screen.getByText(/mode d.export/i)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: /fermer/i }));
+  expect(screen.queryByText(/mode d.export/i)).not.toBeInTheDocument();
+  expect(createAppExport).not.toHaveBeenCalled();
+});
+
+it("dismisses the write-widget warning without exporting", async () => {
+  const createAppExport = vi.fn();
+  const client = makeClient({ createAppExport, getAppExportJob: vi.fn() });
+  render(
+    <ItemClientProvider client={client}>
+      <AppExportPanel itemId="item1" config={config(true)} />
+    </ItemClientProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: /exporter/i }));
+  await userEvent.click(screen.getByRole("button", { name: /statique/i }));
+  expect(screen.getByText(/écriture.*désactivée/i)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: /ne pas exporter/i }));
+  expect(screen.queryByText(/écriture.*désactivée/i)).not.toBeInTheDocument();
+  expect(createAppExport).not.toHaveBeenCalled();
+});
+
+describe("AppExportPanel — plafond de poll", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("stops polling after the max attempt budget and surfaces a clear error instead of polling forever", async () => {
+    const createAppExport = vi.fn().mockResolvedValue({ jobId: "job1" });
+    const getAppExportJob = vi
+      .fn()
+      .mockResolvedValue({ id: "job1", status: "running", resultUrl: null, error: null });
+    const client = makeClient({ createAppExport, getAppExportJob });
+    render(
+      <ItemClientProvider client={client}>
+        <AppExportPanel itemId="item1" config={config()} />
+      </ItemClientProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /exporter/i }));
+    fireEvent.click(screen.getByRole("button", { name: /statique/i }));
+
+    // 200 tentatives x 1500ms (MAX_POLL_ATTEMPTS x POLL_INTERVAL_MS) — même
+    // patron que ExportPanel.test.tsx (« plafond de poll », finding I7).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500 * 200);
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/toujours en cours/i);
+    const callsAtCap = getAppExportJob.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500 * 10);
+    });
+    expect(getAppExportJob.mock.calls.length).toBe(callsAtCap);
   });
 });

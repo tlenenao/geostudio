@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CollectionAdmin } from "../api/types";
@@ -108,6 +108,27 @@ beforeEach(() => {
   });
 });
 
+describe("EditCollectionPanel — onglet Général", () => {
+  it("édite le titre, la description et bascule public/éditable", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue(undefined);
+    mockUseUpdateCollection.mockReturnValue({ mutateAsync, isPending: false, isError: false });
+    render(<EditCollectionPanel collection={baseCollection} onClose={vi.fn()} />);
+    await userEvent.type(screen.getByLabelText("Titre"), "!");
+    await userEvent.type(screen.getByLabelText("Description"), "d");
+    await userEvent.click(screen.getByLabelText("Public"));
+    await userEvent.click(screen.getByLabelText("Éditable"));
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Incidents!",
+        description: "d",
+        isPublic: true,
+        editable: false,
+      }),
+    );
+  });
+});
+
 describe("EditCollectionPanel — champs attachment (SP-40)", () => {
   it("affiche les champs attachment déjà déclarés", async () => {
     render(
@@ -147,6 +168,36 @@ describe("EditCollectionPanel — champs attachment (SP-40)", () => {
       expect.objectContaining({ attachmentFields: [{ key: "documents", label: "Documents" }] }),
     );
   });
+
+  it("refuse d'ajouter un champ dont la clé existe déjà", async () => {
+    render(
+      <EditCollectionPanel
+        collection={{ ...baseCollection, attachmentFields: [{ key: "photos", label: "Photos" }] }}
+        onClose={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "Pièces jointes" }));
+    await userEvent.type(screen.getByLabelText("Clé du champ"), "photos");
+    await userEvent.type(screen.getByLabelText("Libellé du champ"), "Doublon");
+    await userEvent.click(screen.getByRole("button", { name: "Ajouter un champ" }));
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("supprime un champ attachment existant", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue(undefined);
+    mockUseUpdateCollection.mockReturnValue({ mutateAsync, isPending: false, isError: false });
+    render(
+      <EditCollectionPanel
+        collection={{ ...baseCollection, attachmentFields: [{ key: "photos", label: "Photos" }] }}
+        onClose={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "Pièces jointes" }));
+    await userEvent.click(screen.getByRole("button", { name: "Retirer" }));
+    expect(screen.queryByDisplayValue("photos")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ attachmentFields: [] }));
+  });
 });
 
 describe("EditCollectionPanel — champs sensibles (GAP-22)", () => {
@@ -184,6 +235,23 @@ describe("EditCollectionPanel — champs sensibles (GAP-22)", () => {
 
     expect(mutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({ sensitiveFields: ["titre"] }),
+    );
+  });
+
+  it("décoche un champ déjà sensible puis soumet sensitiveFields sans lui", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue(undefined);
+    mockUseUpdateCollection.mockReturnValue({ mutateAsync, isPending: false, isError: false });
+    render(
+      <EditCollectionPanel
+        collection={{ ...baseCollection, sensitiveFields: ["titre", "gravite"] }}
+        onClose={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "Champs sensibles" }));
+    await userEvent.click(screen.getByLabelText("titre"));
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ sensitiveFields: ["gravite"] }),
     );
   });
 });
@@ -269,6 +337,41 @@ describe("EditCollectionPanel — métadonnées ouvertes (SP-41)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
     expect(mutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({ temporalStart: null, temporalEnd: null }),
+    );
+  });
+
+  it("édite producteur, contact, généalogie, version, emprise temporelle et l'URI de licence Autre", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue(undefined);
+    mockUseUpdateCollection.mockReturnValue({ mutateAsync, isPending: false, isError: false });
+    render(
+      <EditCollectionPanel
+        collection={{ ...baseCollection, license: "other" }}
+        onClose={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: "Métadonnées ouvertes" }));
+    await userEvent.type(screen.getByLabelText("URI de la licence"), "u");
+    await userEvent.type(screen.getByLabelText("Producteur"), "p");
+    await userEvent.type(screen.getByLabelText("Contact"), "c");
+    await userEvent.type(screen.getByLabelText("Généalogie"), "g");
+    await userEvent.type(screen.getByLabelText("Version"), "1");
+    fireEvent.change(screen.getByLabelText("Début de l'emprise temporelle"), {
+      target: { value: "2026-01-01" },
+    });
+    fireEvent.change(screen.getByLabelText("Fin de l'emprise temporelle"), {
+      target: { value: "2026-01-02" },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        licenseUri: "u",
+        producer: "p",
+        contact: "c",
+        lineage: "g",
+        version: "1",
+        temporalStart: "2026-01-01",
+        temporalEnd: "2026-01-02",
+      }),
     );
   });
 });

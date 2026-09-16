@@ -1154,3 +1154,197 @@ def test_notify_pending_reports_survives_a_notification_write_that_poisons_its_o
         assert fetched.notified_at is not None
         notification = s.scalar(select(Notification).where(Notification.tenant_id == tenant_id))
         assert notification is None
+
+
+def test_notify_sends_email_and_marks_notified(monkeypatch):
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        app_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard"
+        )
+        report_id = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="Weekly report"
+        ).id
+        config = BuilderConfig.model_validate(
+            {
+                "kind": "report",
+                "report": {
+                    "bookmarkItemId": "bookmark-x",
+                    "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+                    "channels": [
+                        {"kind": "email", "to": "ops@example.test", "smtpSecretName": "smtp-1"}
+                    ],
+                },
+            }
+        )
+        configs_repo.create_config(s, config, item_id=report_id, tenant_id=tenant.id)
+        job = export_repo.create_job(
+            s, tenant_id=tenant.id, item_id=app_item.id, user_id=owner.id, format="pdf"
+        )
+        export_repo.mark_done(s, job_id=job.id, result_key="renders/job-1.pdf")
+        run = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=job.id
+        )
+        s.commit()
+
+    sent = []
+    monkeypatch.setattr(
+        report_jobs,
+        "send_email",
+        lambda session, *, tenant_id, channel, subject, body: sent.append((channel, subject, body)),
+    )
+    monkeypatch.setattr(
+        report_jobs, "_presigned_url_for_job", lambda job: "https://s3.test/renders/job-1.pdf"
+    )
+    report_jobs._notify_pending_reports(Session)
+
+    assert len(sent) == 1
+    assert sent[0][0].to == "ops@example.test"
+    assert "Weekly report" in sent[0][1]
+    with Session() as s:
+        fetched = reports_repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
+        assert fetched.notified_at is not None
+
+
+def test_trigger_skips_a_report_whose_config_vanishes_between_listing_and_fetch(monkeypatch):
+    """Filet TOCTOU (jobs.py:169-170) : list_due_reports() (repository.py)
+    ne relit jamais la config au moment du déclenchement — un config
+    supprimé/reconverti entre les deux doit être ignoré, pas planter le
+    sweep pour les autres tenants."""
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        app_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="app", title="Dashboard"
+        )
+        bookmark_id = _seed_bookmark(s, tenant_id=tenant.id, owner_id=owner.id, app_id=app_item.id)
+        report_id = _seed_report(
+            s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=bookmark_id
+        )
+        s.commit()
+
+    real_get_config_by_item = configs_repo.get_config_by_item
+
+    def fake_get_config_by_item(session, item_id):
+        if item_id == report_id:
+            return None
+        return real_get_config_by_item(session, item_id)
+
+    monkeypatch.setattr(report_jobs.configs_repo, "get_config_by_item", fake_get_config_by_item)
+    report_jobs._trigger_due_reports(Session)
+
+    with Session() as s:
+        assert reports_repo.get_latest_run(s, tenant_id=tenant.id, report_item_id=report_id) is None
+
+
+def test_trigger_fails_report_when_bookmark_config_is_missing(monkeypatch):
+    """jobs.py:195-197 : le bookmark référencé est un item lisible (les
+    access facts existent) mais n'a plus de config `bookmark` — distinct du
+    cas "bookmark not readable" (access facts absents), déjà couvert."""
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        orphan_bookmark = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="bookmark", title="Orphan"
+        )
+        report_id = _seed_report(
+            s, tenant_id=tenant.id, owner_id=owner.id, bookmark_item_id=orphan_bookmark.id
+        )
+        s.commit()
+
+    report_jobs._trigger_due_reports(Session)
+
+    with Session() as s:
+        run = reports_repo.get_latest_run(s, tenant_id=tenant.id, report_item_id=report_id)
+        assert run is not None
+        assert run.export_job_id is None
+        audit = s.scalar(
+            select(AuditLog).where(AuditLog.tenant_id == tenant.id, AuditLog.object_id == report_id)
+        )
+        assert audit.payload["error"] == "bookmark config not found"
+
+
+def test_notify_pending_reports_closes_a_run_with_no_export_job(monkeypatch):
+    """jobs.py:313-320 : filet de sécurité pour un run de déclenchement
+    échoué (export_job_id=None) que _record_trigger_failure n'aurait, par
+    hypothèse, pas déjà marqué notifié — rien à notifier, on le clôt."""
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        owner = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="a",
+            username="alice",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        report_id = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=owner.id, resource_type="report", title="Weekly report"
+        ).id
+        run = reports_repo.create_run(
+            s, tenant_id=tenant.id, report_item_id=report_id, export_job_id=None
+        )
+        s.commit()
+
+    report_jobs._notify_pending_reports(Session)
+
+    with Session() as s:
+        fetched = reports_repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
+        assert fetched.notified_at is not None
+
+
+def test_sweep_report_schedules_task_skips_everything_in_read_only_mode(monkeypatch):
+    monkeypatch.setenv("CORE_READ_ONLY_MODE", "true")
+    called = []
+    monkeypatch.setattr(
+        report_jobs, "_trigger_due_reports", lambda factory: called.append("trigger")
+    )
+    monkeypatch.setattr(
+        report_jobs, "_notify_pending_reports", lambda factory: called.append("notify")
+    )
+    report_jobs.sweep_report_schedules_task(timestamp=0)
+    assert called == []
+
+
+def test_sweep_report_schedules_task_runs_trigger_then_notify_outside_read_only_mode(monkeypatch):
+    monkeypatch.delenv("CORE_READ_ONLY_MODE", raising=False)
+    called = []
+    monkeypatch.setattr(
+        report_jobs, "_trigger_due_reports", lambda factory: called.append(("trigger", factory))
+    )
+    monkeypatch.setattr(
+        report_jobs, "_notify_pending_reports", lambda factory: called.append(("notify", factory))
+    )
+    report_jobs.sweep_report_schedules_task(timestamp=0)
+    assert [c[0] for c in called] == ["trigger", "notify"]
+    assert called[0][1] is called[1][1]

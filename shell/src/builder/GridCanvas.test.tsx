@@ -91,3 +91,28 @@ test("the canvas backdrop uses the surface theme token", () => {
   const { container } = renderCanvas();
   expect(container.firstChild).toHaveClass("bg-[var(--gs-color-surface)]");
 });
+
+test("the move handle nudges the item left, down and up by one cell", async () => {
+  const onMoveItem = vi.fn();
+  renderCanvas({ selectedId: "a", onMoveItem });
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-a à gauche" }));
+  expect(onMoveItem).toHaveBeenCalledWith("a", -1, 0);
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-a en bas" }));
+  expect(onMoveItem).toHaveBeenCalledWith("a", 0, 1);
+  await userEvent.click(screen.getByRole("button", { name: "Déplacer widget-a en haut" }));
+  expect(onMoveItem).toHaveBeenCalledWith("a", 0, -1);
+});
+
+test("clicking the empty canvas backdrop deselects while editable", async () => {
+  const onSelect = vi.fn();
+  const { container } = renderCanvas({ selectedId: "a", onSelect });
+  await userEvent.click(container.firstChild as Element);
+  expect(onSelect).toHaveBeenCalledWith(null);
+});
+
+test("clicking the canvas backdrop is a no-op when not editable", async () => {
+  const onSelect = vi.fn();
+  const { container } = renderCanvas({ editable: false, selectedId: null, onSelect });
+  await userEvent.click(container.firstChild as Element);
+  expect(onSelect).not.toHaveBeenCalled();
+});

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ActionBus } from "../ActionBus";
+import { isSafeHref } from "./hero";
 
 beforeEach(() => {
   _resetRegistry();
@@ -91,6 +92,55 @@ test("hero cta click with a javascript: ctaHref does not open a window", async (
   );
   await userEvent.click(screen.getByRole("button", { name: "Voir" }));
   expect(openSpy).not.toHaveBeenCalled();
+});
+
+test("isSafeHref rejects an unparseable href", () => {
+  expect(isSafeHref("http://[::1")).toBe(false);
+});
+
+test("hero PropsPanel edits title, subtitle, background image, cta label and href", async () => {
+  const onChange = vi.fn();
+  const PropsPanel = getWidget("hero")!.PropsPanel!;
+  render(<PropsPanel props={{ title: "Bienvenue" }} onChange={onChange} dataSources={[]} />);
+  await userEvent.type(screen.getByLabelText("Titre du bandeau"), "!");
+  expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ title: "Bienvenue!" });
+
+  await userEvent.type(screen.getByLabelText("Sous-titre"), "s");
+  expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ subtitle: "s" });
+
+  await userEvent.type(screen.getByLabelText("URL de l'image de fond"), "u");
+  expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ backgroundImageUrl: "u" });
+
+  await userEvent.type(screen.getByLabelText("Libellé du CTA"), "c");
+  expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ ctaLabel: "c" });
+
+  await userEvent.type(screen.getByLabelText("Lien du CTA"), "h");
+  expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ ctaHref: "h" });
+});
+
+test("hero PropsPanel switches alignment to center", async () => {
+  const onChange = vi.fn();
+  const PropsPanel = getWidget("hero")!.PropsPanel!;
+  render(
+    <PropsPanel
+      props={{ title: "Bienvenue", align: "left" }}
+      onChange={onChange}
+      dataSources={[]}
+    />,
+  );
+  await userEvent.selectOptions(screen.getByLabelText("Alignement"), "center");
+  expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ align: "center" });
+});
+
+test("hero with align center centers its content", () => {
+  const Hero = getWidget("hero")!.Component;
+  render(
+    <Hero
+      props={{ title: "Bienvenue", align: "center" }}
+      ctx={{ mode: "runtime" } as WidgetContext}
+    />,
+  );
+  expect(screen.getByText("Bienvenue").parentElement).toHaveClass("items-center", "text-center");
 });
 
 test("hero cta click with a relative ctaHref still opens it", async () => {

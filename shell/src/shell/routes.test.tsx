@@ -56,6 +56,14 @@ vi.mock("../pages/AdminExtensionsPage", () => ({
   AdminExtensionsPage: () => <div>admin-extensions</div>,
 }));
 
+vi.mock("../pages/PipelineBuilderPage", () => ({
+  PipelineBuilderPage: ({ pk }: { pk: string | null }) => <div>pipeline-builder-{pk}</div>,
+}));
+
+vi.mock("../pages/ReportEditPage", () => ({
+  ReportEditPage: ({ pk }: { pk: string | null }) => <div>report-edit-{pk}</div>,
+}));
+
 // jsdom n'implémente pas window.matchMedia (cf. AppLayout.test.tsx) ; les
 // routes protégées passent par AppLayout, qui appelle useNarrowViewport
 // (Task 8) sans mock ici. Stub local au fichier (CLAUDE.md, piège n°10),
@@ -346,6 +354,93 @@ test("opening an external item navigates to its item detail page", async () => {
   await userEvent.click((await screen.findAllByRole("button", { name: /ouvrir/i }))[0]);
   expect(await screen.findByText("item-detail-ex-1")).toBeInTheDocument();
 });
+
+test("opening a pipeline navigates to its editor, not a generic app editor", async () => {
+  server.use(
+    http.get("https://core.test/v1/items", () =>
+      HttpResponse.json({
+        items: [
+          {
+            pk: "pl-1",
+            resourceType: "pipeline",
+            title: "Pipeline nocturne",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: null,
+            isPublished: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 12,
+      }),
+    ),
+  );
+  wrap(<AppRoutes />);
+  await userEvent.click((await screen.findAllByRole("button", { name: /ouvrir/i }))[0]);
+  expect(await screen.findByText("pipeline-builder-pl-1")).toBeInTheDocument();
+});
+
+test("opening a report navigates to its editor, not a generic app editor", async () => {
+  server.use(
+    http.get("https://core.test/v1/items", () =>
+      HttpResponse.json({
+        items: [
+          {
+            pk: "rp-1",
+            resourceType: "report",
+            title: "Rapport mensuel",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: null,
+            isPublished: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 12,
+      }),
+    ),
+  );
+  wrap(<AppRoutes />);
+  await userEvent.click((await screen.findAllByRole("button", { name: /ouvrir/i }))[0]);
+  expect(await screen.findByText("report-edit-rp-1")).toBeInTheDocument();
+});
+
+test.each(["tileset3d", "terrain3d"] as const)(
+  "opening a %s item navigates to its item detail page, not a generic app editor",
+  async (resourceType) => {
+    server.use(
+      http.get("https://core.test/v1/items", () =>
+        HttpResponse.json({
+          items: [
+            {
+              pk: "hosted-1",
+              resourceType,
+              title: "Contenu hébergé",
+              abstract: "",
+              owner: "alice",
+              thumbnailUrl: null,
+              date: "",
+              configId: null,
+              isPublished: false,
+            },
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 12,
+        }),
+      ),
+    );
+    wrap(<AppRoutes />);
+    await userEvent.click((await screen.findAllByRole("button", { name: /ouvrir/i }))[0]);
+    expect(await screen.findByText("item-detail-hosted-1")).toBeInTheDocument();
+  },
+);
 
 test("a failed alert config fetch surfaces an error instead of silently doing nothing", async () => {
   server.use(

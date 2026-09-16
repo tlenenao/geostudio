@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
@@ -45,6 +46,24 @@ const publishedItem: Item = {
   license: "",
   language: "fr",
 };
+
+test("PropsPanel edits the type, tag, limit and columns", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("gallery")!.PropsPanel!;
+  render(<Panel props={{}} dataSources={[]} onChange={onChange} />);
+
+  await userEvent.selectOptions(screen.getByLabelText("Type d'élément"), "app");
+  expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ type: "app" });
+
+  await userEvent.type(screen.getByLabelText("Tag"), "x");
+  expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ tag: "x" });
+
+  fireEvent.change(screen.getByLabelText("Limite"), { target: { value: "24" } });
+  expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ limit: 24 });
+
+  fireEvent.change(screen.getByLabelText("Colonnes"), { target: { value: "4" } });
+  expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ columns: 4 });
+});
 
 test("gallery calls listPublicItems with the author's fixed filter props", () => {
   const client = renderGallery({ type: "app", tag: "risques", limit: 6, columns: 2 });

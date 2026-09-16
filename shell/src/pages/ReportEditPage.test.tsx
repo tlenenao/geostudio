@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Item, ItemClient, ReportSchedulePayload } from "../api/types";
@@ -201,4 +202,51 @@ test("persisted mode: un rapport qui échoue à charger affiche une alerte et n'
   expect(alert).toHaveTextContent("introuvable");
   expect(screen.queryByRole("heading", { name: "Programmer un rapport" })).not.toBeInTheDocument();
   expect(saveReportScheduleConfig).not.toHaveBeenCalled();
+});
+
+test("create mode: Enregistrer crée le rapport puis navigue vers sa page d'édition", async () => {
+  const createReportScheduleItem = vi.fn().mockResolvedValue({ pk: "r-new" });
+  renderPage(null, { createReportScheduleItem });
+  await waitFor(() =>
+    expect(screen.getByRole("heading", { name: "Programmer un rapport" })).toBeInTheDocument(),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(createReportScheduleItem).toHaveBeenCalledTimes(1));
+  expect(createReportScheduleItem.mock.calls[0][0]).toMatchObject({
+    owner: "alice",
+    report: { bookmarkItemId: "bm-1" },
+  });
+});
+
+test("persisted mode: Enregistrer sauvegarde le brouillon courant", async () => {
+  const payload: ReportSchedulePayload = {
+    bookmarkItemId: "bm-1",
+    refreshPolicy: { enabled: true, cron: "0 8 * * MON" },
+    channels: [{ kind: "webhook", url: "" }],
+  };
+  const saveReportScheduleConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage("r-1", {
+    getItem: vi.fn().mockResolvedValue(item),
+    getReportScheduleConfig: () => Promise.resolve(payload),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+    saveReportScheduleConfig,
+  });
+  await userEvent.click(await screen.findByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveReportScheduleConfig).toHaveBeenCalledWith("r-1", payload));
+});
+
+test("persisted mode: un échec de sauvegarde affiche le message d'erreur sans naviguer", async () => {
+  const payload: ReportSchedulePayload = {
+    bookmarkItemId: "bm-1",
+    refreshPolicy: { enabled: true, cron: "0 8 * * MON" },
+    channels: [{ kind: "webhook", url: "" }],
+  };
+  renderPage("r-1", {
+    getItem: vi.fn().mockResolvedValue(item),
+    getReportScheduleConfig: () => Promise.resolve(payload),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+    saveReportScheduleConfig: vi.fn().mockRejectedValue(new Error("network down")),
+  });
+  await userEvent.click(await screen.findByRole("button", { name: "Enregistrer" }));
+  expect(await screen.findByText("network down")).toBeInTheDocument();
 });

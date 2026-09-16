@@ -141,6 +141,67 @@ test("PropsPanel adds a tab, selects it, and edits its label", async () => {
   expect(tabs[1].label).toBe("Onglet 2");
 });
 
+test("PropsPanel renames a tab", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("tabs")!.PropsPanel;
+  render(
+    <Panel
+      props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }] }}
+      dataSources={[]}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.type(screen.getByLabelText("Nom de l'onglet Onglet 1"), "x");
+  const tabs = onChange.mock.calls.at(-1)![0].tabs;
+  expect(tabs[0].label).toBe("Onglet 1x");
+});
+
+test("PropsPanel removes a tab and re-selects the first remaining one", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("tabs")!.PropsPanel;
+  render(
+    <Panel
+      props={{
+        tabs: [
+          { id: "t1", label: "Onglet 1", items: [] },
+          { id: "t2", label: "Onglet 2", items: [] },
+        ],
+      }}
+      dataSources={[]}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Supprimer l'onglet Onglet 1" }));
+  const tabs = onChange.mock.calls.at(-1)![0].tabs;
+  expect(tabs.map((t: { label: string }) => t.label)).toEqual(["Onglet 2"]);
+});
+
+test("PropsPanel reorders tabs with the up button", async () => {
+  const onChange = vi.fn();
+  const Panel = getWidget("tabs")!.PropsPanel;
+  render(
+    <Panel
+      props={{
+        tabs: [
+          { id: "t1", label: "Onglet 1", items: [] },
+          { id: "t2", label: "Onglet 2", items: [] },
+        ],
+      }}
+      dataSources={[]}
+      onChange={onChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Monter l'onglet Onglet 2" }));
+  const tabs = onChange.mock.calls.at(-1)![0].tabs as Array<{ label: string }>;
+  expect(tabs.map((t) => t.label)).toEqual(["Onglet 2", "Onglet 1"]);
+});
+
+test("Component shows a placeholder when there are no tabs at all", () => {
+  const Tabs = getWidget("tabs")!.Component;
+  render(<Tabs props={{ tabs: [] }} ctx={{ mode: "runtime" } as WidgetContext} />);
+  expect(screen.getByText("Aucun onglet")).toBeInTheDocument();
+});
+
 test("PropsPanel refuses to remove the last remaining tab", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("tabs")!.PropsPanel;
