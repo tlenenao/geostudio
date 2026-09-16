@@ -24,6 +24,8 @@ import geopandas as gpd
 import shapely.wkb
 from shapely.geometry.base import BaseGeometry
 
+from app.sql_ident import quote_ident_duckdb as _qi
+
 
 @dataclass
 class ChangeRow:
@@ -77,14 +79,6 @@ def _write_gdf(gdf: gpd.GeoDataFrame, path: str) -> None:
 def write_geoparquet(rows: list[ChangeRow], *, srid: int, path: str) -> None:
     gdf = build_geodataframe(rows, srid=srid)
     _write_gdf(gdf, path)
-
-
-def _qi(name: str) -> str:
-    # Duplication délibérée du helper de 2 lignes présent dans
-    # app.analytics.aggregate/app.pipelines.compiler/app.pipelines.runtime —
-    # convention déjà actée dans ce dépôt (cf. app.pipelines.runtime._qi),
-    # pas un import inter-module d'un nom privé `_`-préfixé.
-    return '"' + name.replace('"', '""') + '"'
 
 
 def build_geodataframe_from_relation(
