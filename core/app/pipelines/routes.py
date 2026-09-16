@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 from app.auth.dependency import get_current_user
 from app.db import get_session
 from app.pipelines import repository as pipelines_repo
+from app.pipelines.ops.contracts import ops_catalog
 from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
-from app.pipelines.ops.schemas import ops_catalog
 from app.pipelines.runtime import PipelineRuntimeError, preview_pipeline
 from app.pipelines.service import (
     create_webhook_token_service,

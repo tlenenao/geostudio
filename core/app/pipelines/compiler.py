@@ -8,8 +8,6 @@ transform, exécuté comme sa propre TEMP VIEW par le runtime (Task 8) — ce
 module ne touche jamais une connexion DuckDB, il ne fait que construire des
 chaînes de caractères, testable en pur."""
 
-from collections.abc import Callable
-
 from app.configs.schemas import PipelineEdge, PipelineNode
 from app.pipelines.ops.schemas import (
     TransformAggregateParams,
@@ -257,21 +255,6 @@ def _compile_merge(
     return f"SELECT * FROM {_qi(input_view)} UNION ALL BY NAME SELECT * FROM {_qi(join_view)}"
 
 
-_TRANSFORM_COMPILERS: dict[str, Callable[..., str]] = {
-    "transform.filter": _compile_filter,
-    "transform.select": _compile_select,
-    "transform.derive": _compile_derive,
-    "transform.aggregate": _compile_aggregate,
-    "transform.join": _compile_join,
-    "transform.buffer": _compile_buffer,
-    "transform.reproject": _compile_reproject,
-    "transform.intersection": _compile_intersection,
-    "transform.countWithin": _compile_count_within,
-    "transform.h3Aggregate": _compile_h3_aggregate,
-    "transform.merge": _compile_merge,
-}
-
-
 def compile_transform_sql(
     op: str,
     params: dict,
@@ -280,10 +263,14 @@ def compile_transform_sql(
     join_view: str | None = None,
     input_srid: int | None = None,
 ) -> str:
-    compiler_fn = _TRANSFORM_COMPILERS.get(op)
-    if compiler_fn is None:
+    from app.pipelines.ops.contracts import OPERATIONS
+
+    contract = OPERATIONS.get(op)
+    if contract is None or contract.compile is None:
         raise ValueError(f"'{op}' is not a transform op")
-    return compiler_fn(params, input_view=input_view, join_view=join_view, input_srid=input_srid)
+    return contract.compile(
+        params, input_view=input_view, join_view=join_view, input_srid=input_srid
+    )
 
 
 def _output_srid_reproject(
@@ -339,16 +326,6 @@ def _output_srid_qgis(
     return int(p.outputSrid.rsplit(":", 1)[1]) if p.outputSrid is not None else input_srid
 
 
-_TRANSFORM_OUTPUT_SRID: dict[str, Callable[..., int]] = {
-    "transform.reproject": _output_srid_reproject,
-    "transform.intersection": _output_srid_reconcile_join,
-    "transform.countWithin": _output_srid_reconcile_join,
-    "transform.merge": _output_srid_reconcile_join,
-    "transform.h3Aggregate": _output_srid_h3_aggregate,
-    "transform.qgis": _output_srid_qgis,
-}
-
-
 def transform_output_srid(
     op: str,
     params: dict,
@@ -362,9 +339,11 @@ def transform_output_srid(
     §3.4/§3.5 : aucune réconciliation implicite, jamais un résultat spatial
     silencieusement faux. runtime.py convertit ce ValueError en
     PipelineRuntimeError avant de le laisser remonter."""
-    output_srid_fn = _TRANSFORM_OUTPUT_SRID.get(op)
-    if output_srid_fn is None:
-        return input_srid  # passthrough — comportement déjà existant : pas
-        # de branche d'erreur pour un op inconnu, contrairement à
-        # compile_transform_sql (vérifié dans le code réel avant ce plan).
-    return output_srid_fn(params, op=op, input_srid=input_srid, join_srid=join_srid)
+    from app.pipelines.ops.contracts import OPERATIONS
+
+    contract = OPERATIONS.get(op)
+    if contract is None or contract.output_srid is None:
+        return input_srid  # passthrough — comportement déjà existant, aucune
+        # branche d'erreur pour un op inconnu, contrairement à
+        # compile_transform_sql.
+    return contract.output_srid(params, op=op, input_srid=input_srid, join_srid=join_srid)

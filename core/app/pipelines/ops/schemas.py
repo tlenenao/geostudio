@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Catalogue des opérations du Pipeline : 8 op de données pures livrées en
-Phase 1 (SP-15a — la fourchette 6-8 op de l'étude de faisabilité §5), + 5 op
-de transformation spatiale étage 1 et 1 writer (`writer.dataset`) livrés en
-Phase 3 étage 1 (SP-15c). Chaque op porte un manifeste de params typé
-(Pydantic), publié en JSON Schema par GET /pipelines/ops pour que SP-15b
-réutilise le mécanisme WcWidgetManifest/generatedPropsPanel (SP-8a) sans
-redesign (design SP-15a §5).
+"""Manifestes de params typés (Pydantic) par op de pipeline : 8 op de
+données pures livrées en Phase 1 (SP-15a), + 5 op de transformation
+spatiale étage 1, 1 writer (`writer.dataset`) et 3 connecteurs livrés
+ensuite. Chaque classe ci-dessous est publiée en JSON Schema par
+`app.pipelines.ops.contracts.ops_catalog()` (GET /pipelines/ops) — le
+registre par op (kind/moteur/licence/compilateur/catalogue) vit dans ce
+module contracts.py, pas ici : ce fichier ne fait plus que fournir les
+classes de forme des params, importées par contracts.py pour construire
+`OPERATIONS` (chantier OperationContract, docs/superpowers/specs/
+2026-09-16-operation-contract-design.md).
 
 filter.expr/derive.expr/aggregate.metrics[*]/h3Aggregate.metrics[*] sont des
 chaînes SQL DuckDB bornées, PAS du CEL (correction du design SP-15a §5.1 —
@@ -226,97 +229,3 @@ class ReaderConnectorSnowflakeParams(BaseModel):
 
     secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
     query: str
-
-
-OP_KINDS: dict[str, str] = {
-    "reader.collection": "reader",
-    "transform.filter": "transform",
-    "transform.select": "transform",
-    "transform.derive": "transform",
-    "transform.aggregate": "transform",
-    "transform.join": "transform",
-    "transform.buffer": "transform",
-    "transform.reproject": "transform",
-    "transform.intersection": "transform",
-    "transform.countWithin": "transform",
-    "transform.h3Aggregate": "transform",
-    "transform.qgis": "transform",
-    "writer.collection": "writer",
-    "writer.export": "writer",
-    "writer.dataset": "writer",
-    "reader.connector.rest": "reader",
-    "reader.connector.postgres": "reader",
-    "reader.connector.snowflake": "reader",
-}
-OP_KINDS["transform.merge"] = "transform"
-
-OP_PARAMS: dict[str, type[BaseModel]] = {
-    "reader.collection": ReaderCollectionParams,
-    "transform.filter": TransformFilterParams,
-    "transform.select": TransformSelectParams,
-    "transform.derive": TransformDeriveParams,
-    "transform.aggregate": TransformAggregateParams,
-    "transform.join": TransformJoinParams,
-    "transform.buffer": TransformBufferParams,
-    "transform.reproject": TransformReprojectParams,
-    "transform.intersection": TransformIntersectionParams,
-    "transform.countWithin": TransformCountWithinParams,
-    "transform.h3Aggregate": TransformH3AggregateParams,
-    "transform.qgis": TransformQgisParams,
-    "writer.collection": WriterCollectionParams,
-    "writer.export": WriterExportParams,
-    "writer.dataset": WriterDatasetParams,
-    "reader.connector.rest": ReaderConnectorRestParams,
-    "reader.connector.postgres": ReaderConnectorPostgresParams,
-    "reader.connector.snowflake": ReaderConnectorSnowflakeParams,
-}
-OP_PARAMS["transform.merge"] = TransformMergeParams
-
-# Op dont la seconde entrée peut venir soit de `withCollectionId`, soit d'une
-# arête `role="secondary"` (design SP-15g §2.2/§4.2). Exporté (pas
-# `_`-préfixé) : importé directement par app.pipelines.config_validation,
-# même package app.pipelines, aucune frontière de couches à traverser.
-BINARY_OPS = {
-    "transform.join",
-    "transform.intersection",
-    "transform.countWithin",
-    "transform.merge",
-}
-
-
-def parse_op_params(op: str, params: dict) -> BaseModel:
-    model = OP_PARAMS.get(op)
-    if model is None:
-        raise ValueError(f"unknown op '{op}'")
-    return model.model_validate(params)
-
-
-def _user_facing_description(description: str) -> str:
-    """N'expose que le premier paragraphe d'un docstring de classe (avant le
-    premier saut de ligne vide) comme description utilisateur du catalogue.
-
-    Correctif revue finale GAP-16 (Important I2) : `model_json_schema()`
-    reprend tel quel le docstring Python complet d'une classe de params dans
-    sa clé `description` — pour 5 op (les connecteurs + transform.qgis/
-    transform.merge), ce docstring contient du jargon développeur (noms de
-    classes, chemins de module, renvois "design §n"/"SPnn") qui n'a rien à
-    faire dans le tooltip de palette lu par
-    shell/src/builder/pipeline/PipelinePalette.tsx. Le docstring de classe
-    reste une documentation développeur complète (paragraphes suivants) ;
-    seul le premier paragraphe — rédigé pour être compris par l'auteur d'un
-    pipeline — atteint le catalogue exposé par GET /pipelines/ops."""
-    return description.split("\n\n", 1)[0].strip()
-
-
-def ops_catalog() -> dict[str, dict]:
-    catalog: dict[str, dict] = {}
-    for op, model in OP_PARAMS.items():
-        schema = model.model_json_schema()
-        if schema.get("description"):
-            schema["description"] = _user_facing_description(schema["description"])
-        catalog[op] = {
-            "kind": OP_KINDS[op],
-            "paramsSchema": schema,
-            "acceptsSecondaryInput": op in BINARY_OPS,
-        }
-    return catalog
