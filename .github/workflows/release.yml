@@ -78,8 +78,73 @@ jobs:
           npm run e2e
           npm run build
 
+  test-gate-arm64:
+    # Duplique test-gate sur un runner arm64 NATIF (gratuit pour les dépôts
+    # publics) — pas seulement une vérification que le build buildx aboutit
+    # (ça, c'est le rôle de build-and-push sous QEMU), mais
+    # Postgres/PostGIS/pgvector/wal2json réellement démarrés et exercés par
+    # la suite de tests sur du vrai matériel arm64. Contrairement à
+    # build-and-push, une exécution de tests sous émulation QEMU ne
+    # prouverait rien de fiable (temporisations, I/O, JIT).
+    #
+    # Le volet shell (Vitest/Playwright/`npm run build`) n'est PAS dupliqué
+    # ici : JS/TS pur, aucune dépendance native, le job amd64 (test-gate)
+    # suffit à le garantir.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build postgis+pgvector image
+        run: docker build -t geostudio-postgis-ci:latest ./deploy/postgis
+
+      - name: Start Postgres
+        run: |
+          docker run -d --name ci-postgres \
+            -e POSTGRES_USER=gis -e POSTGRES_PASSWORD=gis -e POSTGRES_DB=gis \
+            -p 5432:5432 geostudio-postgis-ci:latest \
+            -c wal_level=logical \
+            -c output_plugin_libraries=wal2json,pgoutput,test_decoding
+          for i in $(seq 1 30); do
+            docker exec ci-postgres pg_isready -U gis && break
+            sleep 2
+          done
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Migrations up/down
+        working-directory: core
+        env:
+          DATABASE_URL: postgresql+psycopg://gis:gis@localhost:5432/gis
+        run: |
+          uv sync
+          uv run alembic upgrade head
+          uv run alembic downgrade base
+
+      - name: Core tests
+        working-directory: core
+        env:
+          CORE_TEST_DATABASE_URL: postgresql+psycopg://gis:gis@localhost:5432/gis
+        run: |
+          uv run pytest
+          uv run lint-imports
+
+      - name: Stop Postgres
+        if: always()
+        run: docker rm -f ci-postgres
+
+      - name: Build + smoke-test titiler (arm64)
+        run: |
+          docker build -t geostudio-titiler-ci:latest ./deploy/titiler
+          docker run -d --name ci-titiler -e PORT=8000 -p 8000:8000 geostudio-titiler-ci:latest
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/healthz && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8000/healthz
+          docker rm -f ci-titiler
+
   build-and-push:
-    needs: test-gate
+    needs: [test-gate, test-gate-arm64]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -96,18 +161,23 @@ jobs:
           - image: geostudio-core
             context: ./core
             dockerfile: Dockerfile
+            platforms: linux/amd64,linux/arm64
           - image: geostudio-shell
             context: ./shell
             dockerfile: Dockerfile
+            platforms: linux/amd64,linux/arm64
           - image: geostudio-postgis
             context: ./deploy/postgis
             dockerfile: Dockerfile
+            platforms: linux/amd64,linux/arm64
           - image: geostudio-titiler
             context: ./deploy/titiler
             dockerfile: Dockerfile
+            platforms: linux/amd64,linux/arm64
           - image: geostudio-appexport-standalone
             context: .
             dockerfile: deploy/appexport-standalone/Dockerfile
+            platforms: linux/amd64,linux/arm64
           # SP-21 : ces quatre images existaient uniquement en `build:` dans
           # le compose — donc introuvables au déploiement. `context` et
           # `dockerfile` doivent correspondre **exactement** aux valeurs du
@@ -116,17 +186,25 @@ jobs:
           - image: geostudio-export-worker
             context: ./core
             dockerfile: ../deploy/export-worker/Dockerfile
+            platforms: linux/amd64,linux/arm64
           - image: geostudio-qgis-worker
             context: ./deploy/qgis-worker
             dockerfile: Dockerfile
+            # Base qgis/qgis:release-3_34 mono-arch (probable amd64 seul),
+            # image 11 Go — hors périmètre du portage arm64.
+            platforms: linux/amd64
           - image: geostudio-appexport-runtime-builder
             context: .
             dockerfile: deploy/appexport-runtime-builder/Dockerfile
+            platforms: linux/amd64,linux/arm64
           - image: geostudio-backup
             context: ./deploy/backup
             dockerfile: Dockerfile
+            platforms: linux/amd64,linux/arm64
     steps:
       - uses: actions/checkout@v7
+
+      - uses: docker/setup-qemu-action@v4
 
       - uses: docker/setup-buildx-action@v4
 
@@ -140,6 +218,7 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.context }}/${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platforms }}
           push: true
           tags: |
             ghcr.io/tlenenao/${{ matrix.image }}:${{ github.ref_name }}

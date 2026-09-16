@@ -617,6 +617,76 @@ def test_release_gate_starts_postgres_like_ci():
     )
 
 
+def test_release_matrix_declares_multiarch_platforms_except_qgis_worker():
+    """Portage arm64 : chaque entrée de la matrice build-and-push doit
+    déclarer `platforms: linux/amd64,linux/arm64` — sauf
+    `geostudio-qgis-worker` (base qgis/qgis:release-3_34 mono-arch amd64,
+    image 11 Go), qui doit rester `linux/amd64` seul. Sans ce garde-fou, un
+    futur ajout d'entrée de matrice pourrait silencieusement omettre
+    `platforms:` (docker/build-push-action retombe alors sur l'arch native
+    du runner seule, amd64)."""
+    matrix = release_matrix()
+    missing = [e["image"] for e in matrix if not e.get("platforms")]
+    assert not missing, f"entrées de matrice sans `platforms:` : {missing}"
+    by_image = {e["image"]: e["platforms"] for e in matrix}
+    qgis = by_image.pop("geostudio-qgis-worker", None)
+    assert qgis == "linux/amd64", (
+        "geostudio-qgis-worker doit rester linux/amd64 seul (base "
+        f"mono-arch), trouvé : {qgis!r}"
+    )
+    not_multiarch = {
+        img: plats for img, plats in by_image.items() if plats != "linux/amd64,linux/arm64"
+    }
+    assert not not_multiarch, f"entrées non multi-arch (hors qgis-worker) : {not_multiarch}"
+
+
+def test_build_and_push_needs_both_test_gates():
+    """`build-and-push` ne doit publier qu'après le succès des DEUX portes de
+    test — amd64 (`test-gate`) ET arm64 (`test-gate-arm64`, ce chantier).
+    Sans ceci, une image cassée sur arm64 (postgis/titiler) pourrait être
+    publiée dès que la seule porte amd64 est verte."""
+    doc = yaml.safe_load(RELEASE.read_text())
+    needs = doc["jobs"]["build-and-push"]["needs"]
+    needed = {needs} if isinstance(needs, str) else set(needs)
+    assert needed == {"test-gate", "test-gate-arm64"}, (
+        f"build-and-push.needs = {needs!r}, attendu test-gate ET test-gate-arm64"
+    )
+
+
+def test_release_gate_arm64_runs_on_native_arm_runner():
+    """`test-gate-arm64` doit tourner sur `ubuntu-24.04-arm` (runner GitHub
+    natif, gratuit pour les dépôts publics) — jamais sous émulation QEMU,
+    qui ne prouverait rien de fiable sur le comportement réel de
+    Postgres/PostGIS (temporisations, I/O). Vérifie aussi la présence d'une
+    fumée titiler (`/healthz`) sur ce même job."""
+    doc = yaml.safe_load(RELEASE.read_text())
+    job = doc["jobs"].get("test-gate-arm64")
+    assert job is not None, "release.yml n'a plus de job `test-gate-arm64`"
+    assert job.get("runs-on") == "ubuntu-24.04-arm", (
+        f"test-gate-arm64 tourne sur {job.get('runs-on')!r}, attendu "
+        "'ubuntu-24.04-arm' (runner natif)."
+    )
+    runs = " ".join(st.get("run", "") for st in job["steps"])
+    assert "healthz" in runs, (
+        "test-gate-arm64 n'a plus de fumée titiler (aucune étape n'appelle "
+        "/healthz)."
+    )
+
+
+def test_release_gate_arm64_starts_postgres_like_ci():
+    """Miroir arm64 de `test_release_gate_starts_postgres_like_ci` : la
+    porte arm64 doit démarrer Postgres avec au moins les réglages du job
+    `core` de ci.yml, pour la même raison (sinon elle n'exécute pas les
+    mêmes tests que la CI amd64)."""
+    ci_flags = _postgres_run_flags(CI, "core")
+    release_flags = _postgres_run_flags(RELEASE, "test-gate-arm64")
+    missing = ci_flags - release_flags
+    assert not missing, (
+        "release.yml (test-gate-arm64) démarre Postgres sans les réglages "
+        f"que ci.yml (core) lui donne : {sorted(missing)}."
+    )
+
+
 def test_ci_actually_runs_the_qgis_marked_tests():
     """Les 5 tests `@pytest.mark.qgis` skippent SILENCIEUSEMENT dès que
     CORE_TEST_QGIS_WORKER_URL est absent (tests/conftest.py) — un skip ne
