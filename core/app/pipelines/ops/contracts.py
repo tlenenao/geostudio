@@ -66,6 +66,15 @@ class OperationContract:
     # garder à l'esprit pour tout futur mainteneur de ce champ.
     compile: Callable[..., str] | None = None
     output_srid: Callable[..., int] | None = None
+    # Design docs/superpowers/specs/2026-09-16-ipc-echange-duckdb-arrow-
+    # design.md §2 : canal d'échange DuckDB↔futur moteur natif. None pour
+    # les 19 op existantes (aucune ne l'utilise) — le champ existe pour
+    # qu'un futur chantier "premier moteur natif" l'utilise sans redevoir
+    # étendre ce dataclass. Jamais lu par runtime.py dans ce chantier (rien
+    # à brancher, aucun moteur ne le consomme encore) ; jamais exposé par
+    # ops_catalog() (même traitement que engine/engine_license/
+    # execution_model, déjà invisibles côté shell).
+    exchange: Literal["arrow_stream", "geoparquet_file"] | None = None
 
     def __post_init__(self) -> None:
         if self.is_copyleft and self.execution_model != "sidecar":
