@@ -1906,6 +1906,38 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   (`priorite-haute-sante-90`) est également fusionné sur `dev` mais n'a
   jamais reçu sa propre entrée ici — dette documentaire pré-existante, pas
   corrigée par ce plan.
+- **Portage arm64 multi-arch** — ferme le préalable générique à tout hôte
+  arm64 (évaluation Oracle Cloud Ampere A1 Flex, hors périmètre de ce
+  chantier) identifié par `docs/superpowers/specs/2026-09-15-portage-
+  arm64-multiarch-design.md` : `deploy/postgis/Dockerfile` rebasé sur
+  `postgres:16-bookworm` (multi-arch) + 4 paquets PGDG installés
+  nous-mêmes (élimine au passage le flake `bullseye-security`) ;
+  `deploy/titiler/Dockerfile` (nouveau) rapatrie la recette officielle de
+  titiler 0.18.4 au lieu de consommer l'image tierce mono-arch
+  `ghcr.io/developmentseed/titiler` ; `.github/workflows/release.yml`
+  publie désormais les 8 images concernées (toutes sauf
+  `geostudio-qgis-worker`, base mono-arch) en `linux/amd64,linux/arm64`
+  via `docker/setup-qemu-action`, et un nouveau job `test-gate-arm64` fait
+  tourner Postgres/PostGIS/pgvector/wal2json + la suite pytest complète
+  sur un runner `ubuntu-24.04-arm` **natif** avant toute publication.
+  **Trouvaille hors périmètre initial, corrigée dans le même geste** :
+  `deploy/backup/Dockerfile` téléchargeait son client MinIO `mc` depuis une
+  URL (`dl.min.io/client/mc/release/linux-amd64/mc`) qui répond 410 Gone
+  pour les deux architectures depuis un changement de schéma de
+  distribution côté MinIO ; le remplacement naïf (`dl.min.io/aistor/...`)
+  sert un binaire sous licence propriétaire (« MinIO Enterprise
+  License »), incompatible avec `LICENSE-BACKUP.md`/le `LABEL` AGPL déjà
+  posés sur cette image — corrigé en pointant vers les GitHub Releases de
+  `minio/mc`, toujours publiées sous AGPLv3, avec sélection de l'archive
+  par `$TARGETARCH`. Risques du design (extension DuckDB communautaire
+  `h3`, Playwright/Chromium) vérifiés levés empiriquement sous émulation
+  QEMU réelle avant d'écrire le plan d'exécution — pas supposés. **Reste
+  hors périmètre, assumé** : le provisioning Oracle Cloud lui-même
+  (réseau, TLS, runbook, sizing) — chantier séparé, consommateur de
+  celui-ci ; `docker manifest inspect` sur les 8 images après un vrai tag
+  de release n'a pas pu être vérifié depuis cette session (nécessite un
+  `git tag`/push réel, action à déclencher délibérément par Tanguy, hors
+  du périmètre d'une session d'exécution de plan).
 
 ### Conventions tranchées (2026-09-01)
 
