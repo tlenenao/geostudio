@@ -119,6 +119,14 @@ def check_rows(rows: list[Row], *, ops: dict, qgis_algorithms: dict) -> list[str
     return errors
 
 
+def _escape_md_cell(value: str) -> str:
+    """Échappe une valeur de cellule pour un tableau markdown : un `|`
+    littéral casserait la structure du tableau en créant une colonne
+    supplémentaire (ex. un `notes` mentionnant l'opérateur `||` de DuckDB) ;
+    un saut de ligne intégré casserait la ligne elle-même."""
+    return value.replace("|", "\\|").replace("\r\n", " ").replace("\n", " ")
+
+
 def render_md(rows: list[Row]) -> str:
     lines = ["# Matrice de couverture FME→GeoStudio", ""]
     lines.append(f"{len(rows)} transformers FME recensés.")
@@ -150,7 +158,8 @@ def render_md(rows: list[Row]) -> str:
         lines.append(
             "| "
             + " | ".join(
-                [
+                _escape_md_cell(cell)
+                for cell in [
                     row.fme_transformer,
                     row.fme_category,
                     row.geostudio_equivalent or "",

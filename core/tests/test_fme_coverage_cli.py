@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
 import pathlib
+import re
 
 import pytest
 
@@ -172,6 +173,24 @@ def test_render_md_contains_summary_and_detail():
     assert "Reprojector" in rendered
     assert "`implemented`" in rendered
     assert "`duckdb`" in rendered
+
+
+def test_render_md_escapes_pipe_in_notes():
+    rows = [
+        _row(
+            fme_transformer="StringConcatenator",
+            notes="CONCAT(a, '-', b) ou opérateur || — fonction DuckDB",
+        )
+    ]
+    rendered = render_md(rows)
+    detail_line = next(line for line in rendered.splitlines() if "StringConcatenator" in line)
+    assert "\\|\\|" in detail_line
+    # Le tableau markdown ne doit pas gagner de colonnes supplémentaires :
+    # seuls les 9 `|` délimiteurs des 8 cellules doivent rester non échappés
+    # — le `||` littéral des notes doit apparaître comme `\|\|`, jamais
+    # comme un `|` nu qui créerait deux colonnes fantômes.
+    unescaped_pipes = re.findall(r"(?<!\\)\|", detail_line)
+    assert len(unescaped_pipes) == 9
 
 
 def _make_repo(tmp_path, rows) -> pathlib.Path:
