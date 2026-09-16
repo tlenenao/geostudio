@@ -1959,6 +1959,78 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   nouvelle exemption `[tool.importlinter]` ; diff `openapi.json`/
   `core-schema.d.ts` vide (vérifié, régénéré) ; `git diff --stat -- shell/`
   vide (vérifié).
+- **IPC d'échange DuckDB↔Arrow** — pose, côté `core` uniquement, le seam
+  d'échange DuckDB↔futurs moteurs natifs que consommera le prochain
+  chantier « premier moteur natif » (suite d'OperationContract, spec
+  `docs/superpowers/specs/2026-09-16-ipc-echange-duckdb-arrow-design.md`,
+  plan `docs/superpowers/plans/2026-09-16-ipc-echange-duckdb-arrow.md`,
+  4 tâches, subagent-driven-development) : `app/pipelines/exchange.py`
+  (`to_arrow_stream`/`from_arrow_stream` — chemin zéro-copie Arrow ;
+  `to_geoparquet_file` — repli fichier) et `write_geoparquet_from_relation`/
+  `build_geodataframe_from_relation` dans `app/cdc/parquet_writer.py`, plus
+  un champ additif `OperationContract.exchange`
+  (`Literal["arrow_stream", "geoparquet_file"] | None = None`, `app/pipelines/
+  ops/contracts.py`). Rien de tout cela n'est consommé par `runtime.py` ni
+  câblé sur aucun moteur réel — QGIS (`transform.qgis`) reste explicitement
+  hors périmètre (aucun driver Parquet/Arrow dans le GDAL 3.4.1 embarqué
+  par `qgis/qgis:release-3_34`, vérifié empiriquement). Décision prise en
+  amont sur le risque §5 du design : plutôt que d'adapter
+  `build_geodataframe(rows: list[ChangeRow], ...)` pour accepter une
+  relation DuckDB arbitraire, deux fonctions sœurs jamais adossées à
+  `ChangeRow` (dont les 4 colonnes de plomberie CDC `_op`/`_lsn`/`_seq`/
+  `_ts` auraient cassé l'identité de schéma d'un round-trip GeoParquet
+  générique) convergent malgré tout sur l'unique primitive d'écriture
+  réelle `_write_gdf` — prouvé par un test dédié qui espionne cette
+  primitive et vérifie exactement deux appels. **2 écarts réels trouvés en
+  exécutant, absents du texte du plan (piège CLAUDE.md n°3), tous deux de
+  la même classe** : le code fourni verbatim par le plan pour
+  `parquet_writer.py` PUIS pour `exchange.py` dupliquait chacun un helper
+  `_qi` de 2 lignes (quoting d'identifiant DuckDB) avec un commentaire
+  affirmant cette duplication « délibérée » et « déjà actée » — vérifié
+  factuellement faux : `app/analytics/aggregate.py` importe déjà le
+  helper canonique (`from app.sql_ident import quote_ident_duckdb as
+  _qi`, module GAP-15, leaf sans dépendance métier, importable de
+  n'importe quelle couche sans exemption `lint-imports`). Trouvé par le
+  reviewer de Task 1 puis reproduit à l'identique sur Task 2 (le plan
+  avait copié le même commentaire, devenu encore plus faux une fois
+  Task 1 corrigée) — les deux corrigés par import du helper canonique au
+  lieu de la duplication, revérifiés (tests + ruff + lint-imports) avant
+  de committer. **Incident de process distinct, sans rapport avec le
+  code** : l'implémenteur de Task 1 a amendé un commit antérieur sans
+  rapport (le commit de dépôt du plan) au lieu de créer un nouveau commit
+  — violation du protocole git (jamais d'amend, toujours un nouveau
+  commit) détectée en comparant le rapport de l'implémenteur au SHA réel
+  ; corrigée en scindant l'historique en deux commits propres avant de
+  poursuivre. L'implémenteur de Task 3 a par ailleurs signé son commit
+  `Co-Authored-By: Claude Haiku 4.5` au lieu de la ligne d'attribution
+  requise — corrigé par un amend limité au message (contenu inchangé,
+  seul commit non encore reproduit ailleurs). **Piège d'environnement
+  trouvé en clôturant (Task 4)** : l'image jetable `geostudio-postgis-ci:
+  latest` déjà construite par des sessions antérieures porte un schéma
+  figé sans aucune table `alembic_version` — donc pas au niveau des
+  migrations 0035-0042 (index GAP-63, `pipeline_webhook_tokens`, `bbox`
+  d'item, `byte_size`, `erased_at`/`purge_receipts`, `share_link`,
+  `ingestion_jobs.wkt_field`/`geometry_mode`, `sensitive_fields`) —
+  lancer la suite complète dessus tel quel produit 99 échecs/89 erreurs
+  sans aucun rapport avec ce plan ; corrigé en recréant une base vide sur
+  ce même conteneur et en rejouant `alembic upgrade head` (42 migrations)
+  après avoir activé les extensions `postgis`/`vector`/`pg_trgm` — la
+  vraie procédure pour ce conteneur, distincte du piège déjà documenté
+  sur `postgis-test` (qui lui a une base migrée mais pas retouchée après
+  un ALTER TABLE manuel). Suite finale (ce conteneur, une fois migré) :
+  core ciblé (fichiers touchés/voisins) 180 passed/21 skipped/0 failed ;
+  core complet 3076 passed/9 skipped/2 failed — les 2 échecs
+  (`test_cdc_consumer_postgis.py::test_stream_changes_decodes_and_stops_
+  on_should_stop`/`..._ack_advances_confirmed_flush_lsn`) confirmés
+  préexistants et sans rapport (`wal_level=logical` absent sur ce
+  conteneur jetable, même classe que SP-62/GAP-29/GAP-16/OperationContract
+  ci-dessus ; `git diff --stat origin/dev...HEAD -- core/tests/
+  test_cdc_consumer_postgis.py core/app/cdc/` vide) ; ruff/ruff format/
+  mypy --strict (6 modules)/lint-imports tous verts, `mypy app/`
+  informationnel sans nouvelle erreur sur les fichiers touchés ; diff
+  `openapi.json`/`core-schema.d.ts` vide (vérifié, aucune route/modèle
+  exposé) ; `git diff --stat origin/dev...HEAD -- shell/` vide (vérifié,
+  chantier `core-only`).
 
 ### Conventions tranchées (2026-09-01)
 
