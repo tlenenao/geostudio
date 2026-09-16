@@ -1986,16 +1986,23 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   la même classe** : le code fourni verbatim par le plan pour
   `parquet_writer.py` PUIS pour `exchange.py` dupliquait chacun un helper
   `_qi` de 2 lignes (quoting d'identifiant DuckDB) avec un commentaire
-  affirmant cette duplication « délibérée » et « déjà actée » — vérifié
-  factuellement faux : `app/analytics/aggregate.py` importe déjà le
-  helper canonique (`from app.sql_ident import quote_ident_duckdb as
-  _qi`, module GAP-15, leaf sans dépendance métier, importable de
-  n'importe quelle couche sans exemption `lint-imports`). Trouvé par le
-  reviewer de Task 1 puis reproduit à l'identique sur Task 2 (le plan
-  avait copié le même commentaire, devenu encore plus faux une fois
-  Task 1 corrigée) — les deux corrigés par import du helper canonique au
-  lieu de la duplication, revérifiés (tests + ruff + lint-imports) avant
-  de committer. **Incident de process distinct, sans rapport avec le
+  affirmant cette duplication « délibérée » et « déjà actée » — nuance
+  précise (revue finale de branche, ajustée après une première
+  formulation trop absolue) : `app/analytics/aggregate.py` importe bien
+  déjà le helper canonique (`from app.sql_ident import quote_ident_duckdb
+  as _qi`, module GAP-15, leaf sans dépendance métier, importable de
+  n'importe quelle couche sans exemption `lint-imports`), donc la
+  duplication n'était PAS déjà établie pour ces deux nouveaux fichiers ;
+  mais `app/pipelines/{runtime,compiler,connector_runtime}.py` gardent
+  chacun leur propre copie locale, exclusion **documentée et volontaire**
+  (fragilité de `runtime.py` post-SP-43, ~57 monkeypatchs de test, cf.
+  entrée GAP-15 ci-dessus) — donc pas un cas où « tout autre site du
+  dépôt a déjà migré ». Trouvé par le reviewer de Task 1 puis reproduit à
+  l'identique sur Task 2 (le plan avait copié le même commentaire, devenu
+  encore plus trompeur une fois Task 1 corrigée) — les deux corrigés par
+  import du helper canonique au lieu de la duplication (nouveaux fichiers,
+  aucun des trois sites à exclusion documentée n'a été touché), revérifiés
+  (tests + ruff + lint-imports) avant de committer. **Incident de process distinct, sans rapport avec le
   code** : l'implémenteur de Task 1 a amendé un commit antérieur sans
   rapport (le commit de dépôt du plan) au lieu de créer un nouveau commit
   — violation du protocole git (jamais d'amend, toujours un nouveau
@@ -2030,7 +2037,42 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   informationnel sans nouvelle erreur sur les fichiers touchés ; diff
   `openapi.json`/`core-schema.d.ts` vide (vérifié, aucune route/modèle
   exposé) ; `git diff --stat origin/dev...HEAD -- shell/` vide (vérifié,
-  chantier `core-only`).
+  chantier `core-only`). **Revue finale de branche (opus) : 2 Important +
+  2 Minor corrigés avant clôture** — le seam n'a aucun consommateur réel
+  dans ce chantier, donc ces défauts n'ont jamais été exercés en
+  production, mais auraient piégé le futur chantier « premier moteur
+  natif » : (1) `to_geoparquet_file` affirmait à tort un writer Parquet
+  natif DuckDB « 8-10x plus rapide » — le chemin réel
+  (`write_geoparquet_from_relation`) matérialise toute la relation en
+  mémoire Python (`fetchall()` + GeoDataFrame ligne par ligne), un choix
+  délibéré (convergence sur `_write_gdf`) mais pas le chemin natif/streamé
+  décrit — docstring réécrit ; (2) `exchange.py` importait
+  `PipelineRuntimeError` depuis `app.pipelines.runtime`, dont le bloc
+  d'imports (SQLAlchemy, httpx, `app.analytics`, `app.collections`...)
+  précède la définition de la classe — un futur `from app.pipelines.
+  exchange import ...` fait depuis le haut de `runtime.py` aurait levé une
+  `ImportError` sur module partiellement initialisé ; extrait dans un
+  nouveau module leaf `app/pipelines/errors.py`, réexporté par
+  `runtime.py` pour ne casser aucun appelant existant. Les deux chemins ne
+  produisent en outre pas le même schéma (nom de colonne géométrie
+  différent) et le mécanisme du deadlock documenté était plus large que
+  la réalité (le déclencheur réel est l'auto-référence connexion↔flux
+  qu'elle a produit, pas n'importe quelle requête concurrente sur une
+  connexion ayant un flux qui traîne ailleurs) — les deux corrigés dans le
+  même commit de docstring. **Trouvaille de process supplémentaire**, à
+  nouveau via un croisement invisible à la revue par tâche : le commit
+  Task 2 portait encore `Co-Authored-By: Claude Haiku 4.5` (la correction
+  équivalente n'avait été appliquée qu'à Task 3) — squashé par
+  cherry-pick, diff de contenu vide entre l'ancien et le nouvel historique
+  (vérifié). 5 findings Minor supplémentaires (robustesse des cas limites
+  du seam — `srid` non coercé, `srid=0` traité différemment selon le
+  chemin, collision de `view_name` levant une exception DuckDB brute
+  plutôt que `PipelineRuntimeError`, colonnes géométrie multiples non
+  gérées, `import duckdb` désormais chargé dans le process cdc-worker)
+  loggés sans être corrigés (`REV-192`/`REV-193`,
+  `docs/revue/2026-09-04-backlog.md`) — aucun consommateur réel
+  aujourd'hui pour les exercer, le futur chantier « premier moteur natif »
+  devra les lever avant de s'appuyer sur ce seam en production.
 
 ### Conventions tranchées (2026-09-01)
 
