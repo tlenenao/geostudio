@@ -346,7 +346,8 @@ def _compile_create_geometry(
     p = TransformCreateGeometryParams.model_validate(params)
     escaped_wkt = p.wkt.replace("'", "''")
     return (
-        f"SELECT COLUMNS(c -> c <> 'geometry'), ST_GeomFromText('{escaped_wkt}') AS geometry "
+        f"SELECT COLUMNS(c -> lower(c) <> 'geometry'), "
+        f"ST_GeomFromText('{escaped_wkt}') AS geometry "
         f"FROM {_qi(input_view)}"
     )
 
@@ -374,7 +375,7 @@ def _compile_concat_coordinates(
 ) -> str:
     p = TransformConcatCoordinatesParams.model_validate(params)
     return (
-        f"SELECT COLUMNS(c -> c <> 'geometry'), "
+        f"SELECT COLUMNS(c -> lower(c) <> 'geometry'), "
         f"ST_Point({_qi(p.xColumn)}, {_qi(p.yColumn)}) AS geometry "
         f"FROM {_qi(input_view)}"
     )
