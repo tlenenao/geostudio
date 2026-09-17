@@ -1606,7 +1606,7 @@ def test_install_sh_writes_an_env_var_that_core_actually_reads_back():
 
 CODEQL_WORKFLOW = REPO / ".github/workflows/codeql.yml"
 GITLEAKS_WORKFLOW = REPO / ".github/workflows/gitleaks.yml"
-PROXMOX_PLAYBOOK = REPO / "deploy" / "proxmox" / "ansible" / "playbook.yml"
+PROXMOX_PLAYBOOK = REPO / "deploy" / "ansible" / "playbook.yml"
 SLO_RULES = REPO / "deploy" / "observability" / "grafana" / "provisioning" / "alerting" / "rules.yaml"
 BACKUP_DOCKERFILE = REPO / "deploy" / "backup" / "Dockerfile"
 
