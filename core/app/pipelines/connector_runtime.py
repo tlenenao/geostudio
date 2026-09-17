@@ -88,14 +88,15 @@ class ConnectorRuntimeError(Exception):
 
 
 def _resolve_secret(
-    session: Session, tenant_id: str, secret_name: str | None
+    resolver: SecretResolver | None, secret_name: str | None
 ) -> SecretPayload | None:
     if secret_name is None:
         return None
-    payload = secrets_repo.get_secret_payload(session, tenant_id=tenant_id, name=secret_name)
-    if payload is None:
-        raise ConnectorRuntimeError(f"secret '{secret_name}' not found")
-    return payload
+    assert resolver is not None, "secret_resolver requis quand secretName est renseigné"
+    try:
+        return resolver.get(secret_name)
+    except KeyError:
+        raise ConnectorRuntimeError(f"secret '{secret_name}' not found") from None
 
 
 def _build_auth(payload: SecretPayload | None):
@@ -244,13 +245,12 @@ def _run_dlt_and_attach(conn, resource, *, node_id: str, view_name: str) -> None
 def materialize_rest_connector(
     conn,
     *,
-    session: Session,
-    tenant_id: str,
+    secret_resolver: SecretResolver | None,
     node_id: str,
     params: ReaderConnectorRestParams,
     view_name: str,
 ) -> None:
-    payload = _resolve_secret(session, tenant_id, params.secretName)
+    payload = _resolve_secret(secret_resolver, params.secretName)
     auth = _build_auth(payload)
     client = RESTClient(
         base_url=params.baseUrl,
@@ -271,8 +271,7 @@ def materialize_rest_connector(
 def materialize_postgres_connector(
     conn,
     *,
-    session: Session,
-    tenant_id: str,
+    secret_resolver: SecretResolver | None,
     node_id: str,
     params: ReaderConnectorPostgresParams,
     view_name: str,
@@ -287,7 +286,7 @@ def materialize_postgres_connector(
     except SqlSandboxError as exc:
         raise ConnectorRuntimeError(f"reader.connector.postgres query rejected: {exc}") from exc
 
-    payload = _resolve_secret(session, tenant_id, params.secretName)
+    payload = _resolve_secret(secret_resolver, params.secretName)
     if payload.kind != "postgres_dsn":
         raise ConnectorRuntimeError(
             f"secret has kind '{payload.kind}', not usable by reader.connector.postgres "
@@ -310,8 +309,7 @@ def materialize_postgres_connector(
 def materialize_snowflake_connector(
     conn,
     *,
-    session: Session,
-    tenant_id: str,
+    secret_resolver: SecretResolver | None,
     node_id: str,
     params: ReaderConnectorSnowflakeParams,
     view_name: str,
@@ -325,7 +323,7 @@ def materialize_snowflake_connector(
     except SqlSandboxError as exc:
         raise ConnectorRuntimeError(f"reader.connector.snowflake query rejected: {exc}") from exc
 
-    payload = _resolve_secret(session, tenant_id, params.secretName)
+    payload = _resolve_secret(secret_resolver, params.secretName)
     if payload.kind != "snowflake_dsn":
         raise ConnectorRuntimeError(
             f"secret has kind '{payload.kind}', not usable by reader.connector.snowflake "

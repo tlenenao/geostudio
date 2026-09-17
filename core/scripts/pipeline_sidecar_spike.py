@@ -53,10 +53,9 @@ def main() -> int:
         materialize_rest_connector(
             conn,
             # secretName reste None (défaut) => _resolve_secret court-circuite
-            # avant tout accès DB : session=None est donc valide ICI
-            # uniquement (cf. Global Constraints du plan).
-            session=None,  # type: ignore[arg-type]
-            tenant_id="spike",
+            # avant tout accès au resolver : secret_resolver=None est donc
+            # valide ICI uniquement (aucune session DB dans ce spike).
+            secret_resolver=None,
             node_id="n1",
             params=params,
             view_name="v1",
