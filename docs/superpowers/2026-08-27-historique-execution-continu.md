@@ -6457,4 +6457,69 @@ surface déjà livrée.
   `docs/revue/2026-09-04-backlog.md`) — aucun consommateur réel
   aujourd'hui pour les exercer, le futur chantier « premier moteur natif »
   devra les lever avant de s'appuyer sur ce seam en production.
+- **Portage arm64 multi-arch** — ferme le préalable générique à tout hôte
+  arm64 (évaluation Oracle Cloud Ampere A1 Flex, hors périmètre de ce
+  chantier) identifié par `docs/superpowers/specs/2026-09-15-portage-
+  arm64-multiarch-design.md` : `deploy/postgis/Dockerfile` rebasé sur
+  `postgres:16-bookworm` (multi-arch) + 4 paquets PGDG installés
+  nous-mêmes (élimine au passage le flake `bullseye-security`) ;
+  `deploy/titiler/Dockerfile` (nouveau) rapatrie la recette officielle de
+  titiler 0.18.4 au lieu de consommer l'image tierce mono-arch
+  `ghcr.io/developmentseed/titiler` ; `.github/workflows/release.yml`
+  publie désormais les 8 images concernées (toutes sauf
+  `geostudio-qgis-worker`, base mono-arch) en `linux/amd64,linux/arm64`
+  via `docker/setup-qemu-action`, et un nouveau job `test-gate-arm64` fait
+  tourner Postgres/PostGIS/pgvector/wal2json + la suite pytest complète
+  sur un runner `ubuntu-24.04-arm` **natif** avant toute publication.
+  **Trouvaille hors périmètre initial, corrigée dans le même geste** :
+  `deploy/backup/Dockerfile` téléchargeait son client MinIO `mc` depuis une
+  URL (`dl.min.io/client/mc/release/linux-amd64/mc`) qui répond 410 Gone
+  pour les deux architectures depuis un changement de schéma de
+  distribution côté MinIO ; le remplacement naïf (`dl.min.io/aistor/...`)
+  sert un binaire sous licence propriétaire (« MinIO Enterprise
+  License »), incompatible avec `LICENSE-BACKUP.md`/le `LABEL` AGPL déjà
+  posés sur cette image — corrigé en pointant vers les GitHub Releases de
+  `minio/mc`, toujours publiées sous AGPLv3, avec sélection de l'archive
+  par `$TARGETARCH`. Risques du design (extension DuckDB communautaire
+  `h3`, Playwright/Chromium) vérifiés levés empiriquement sous émulation
+  QEMU réelle avant d'écrire le plan d'exécution — pas supposés. **Reste
+  hors périmètre, assumé** : le provisioning Oracle Cloud lui-même
+  (réseau, TLS, runbook, sizing) — chantier séparé, consommateur de
+  celui-ci ; `docker manifest inspect` sur les 8 images après un vrai tag
+  de release n'a pas pu être vérifié depuis cette session (nécessite un
+  `git tag`/push réel, action à déclencher délibérément par Tanguy, hors
+  du périmètre d'une session d'exécution de plan).
+  **Revue finale de branche : 1 Critical corrigé.** Le rebasage de
+  `deploy/postgis/Dockerfile` sur `postgres:16-bookworm` avait
+  silencieusement perdu le bootstrap d'extension que fournissait l'ancienne
+  base `postgis/postgis` (son propre script d'initdb créait `postgis` dans
+  `$POSTGRES_DB` au premier démarrage) — cassant tout `docker run` nu de
+  cette image, y compris le nouveau job `test-gate-arm64` et les jobs CI
+  existants (`core`/`core-qgis`/`stac-conformance`), vérifié empiriquement
+  sur une image fraîchement construite (`type "geometry" does not exist`,
+  confirmé par les vrais tests en échec puis en succès une fois corrigé —
+  jamais sur le conteneur `postgis-test` partagé, qui aurait masqué le bug).
+  Corrigé par `deploy/postgis/10_postgis.sh` (`CREATE EXTENSION IF NOT
+  EXISTS postgis`), avec un test de non-régression dédié. **1 Important
+  corrigé dans le même geste** : le téléchargement de `mc` dans
+  `deploy/backup/Dockerfile` utilisait `curl -sSL` sans `-f` — exactement
+  le mécanisme qui avait laissé l'ancienne URL morte passer inaperçue
+  (un corps de réponse d'erreur HTTP est silencieusement accepté comme le
+  binaire) — passé en `curl -fsSL` + un `mc --version` au moment du build
+  pour faire échouer bruyamment toute future casse. Vérifié empiriquement
+  en re-revue (pas seulement sur la foi du rapport du correctif) : image
+  postgis fraîchement reconstruite avec `postgis` dans `pg_extension`,
+  `CREATE TABLE ... geometry(...)` fonctionnel, réplique de l'image
+  pré-correctif reconstruite pour confirmer la casse réelle (`alembic
+  upgrade head` mourait déjà sur `geometry_columns`, plus large que ce
+  qu'avait mesuré la première revue), URL `mc` morte simulée par
+  `--build-arg MC_RELEASE=...` pour confirmer que le build échoue
+  désormais bruyamment (exit 22). Suivis Minor non bloquants consignés
+  (hors périmètre de ce correctif) : le nouveau test de garde n'est pas
+  ancré ligne par ligne (satisfait par accident si le commentaire voisin
+  était reformaté) ; aucune garde négative n'empêche de réintroduire
+  `postgis_topology`/`fuzzystrmatch` à l'avenir ;
+  `scripts/run-qgis-tests.sh` réutilise une image `geostudio-postgis-ci`
+  déjà présente sans forcer de rebuild, un développeur avec une image
+  pré-correctif ne verrait pas le fix.
 

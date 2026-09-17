@@ -160,7 +160,7 @@ services:
       - traefik.http.services.martin.loadbalancer.server.port=3000
 
   titiler:
-    image: ghcr.io/developmentseed/titiler:0.18.4
+    build: ./deploy/titiler
     environment:
       CPL_VSIL_CURL_ALLOWED_EXTENSIONS: .tif,.TIF,.tiff
       GDAL_HTTP_MERGE_CONSECUTIVE_RANGES: YES

@@ -495,6 +495,17 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
 - **IPC d'échange DuckDB↔Arrow** — pose le seam d'échange DuckDB↔futurs
   moteurs natifs (`app/pipelines/exchange.py`), non consommé par aucun
   moteur réel à ce stade.
+- **Portage arm64 multi-arch** — `deploy/postgis` rebasé sur
+  `postgres:16-bookworm` (multi-arch, + initdb restaurant `postgis`,
+  perdu au rebasage puis corrigé en revue finale) ; `deploy/titiler`
+  (nouveau) rapatrie la recette officielle 0.18.4 au lieu de l'image
+  tierce mono-arch ; `deploy/backup` télécharge `mc` par arch cible
+  depuis les GitHub Releases AGPL de `minio/mc` (`dl.min.io` mort,
+  `curl -f` durci) ; `release.yml` publie 8/9 images en
+  `linux/amd64,linux/arm64` (qgis-worker exclu, base mono-arch) derrière
+  une nouvelle porte de tests native arm64 (`test-gate-arm64`, jamais
+  sous QEMU). Détail complet (revue finale : 1 Critical + 1 Important
+  trouvés et corrigés) dans l'archive.
 
 ### Conventions tranchées (2026-09-01)
 
