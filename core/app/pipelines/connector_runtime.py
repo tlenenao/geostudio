@@ -49,10 +49,14 @@ _REST_SECRET_KINDS = {"api_key", "bearer_token", "basic_auth", "oauth2_client_cr
 
 
 class SecretResolver(Protocol):
-    """Seam introduit pour découpler ce module de app.secrets.repository
-    (Postgres, tenant-scopé) — un futur runtime hors serveur (sidecar
-    desktop sans Postgres, design 2026-09-17 §3/§6) fournira sa propre
-    implémentation (trousseau OS) sans toucher ce module une deuxième fois."""
+    """Seam introduit pour découpler les `materialize_*_connector` d'une
+    dépendance directe à `session`/`tenant_id` (Postgres, tenant-scopé) — ils
+    ne dépendent plus que de ce Protocol. `PostgresSecretResolver`,
+    l'implémentation par défaut, reste dans ce module par design et garde son
+    import direct de app.secrets.repository ; un futur runtime hors serveur
+    (sidecar desktop sans Postgres, design 2026-09-17 §3/§6) fournira sa
+    propre implémentation (trousseau OS) sans toucher ce module une deuxième
+    fois."""
 
     def get(self, name: str) -> SecretPayload: ...
 
@@ -66,9 +70,16 @@ class PostgresSecretResolver:
         self._tenant_id = tenant_id
 
     def get(self, name: str) -> SecretPayload:
-        payload = secrets_repo.get_secret_payload(
-            self._session, tenant_id=self._tenant_id, name=name
-        )
+        try:
+            payload = secrets_repo.get_secret_payload(
+                self._session, tenant_id=self._tenant_id, name=name
+            )
+        except KeyError as exc:
+            # KeyError est le signal « secret absent » de ce Protocol : une
+            # KeyError venue d'ailleurs (CORE_SECRETS_MASTER_KEY manquante,
+            # cf. app.secrets.crypto.load_master_key) ne doit jamais être
+            # confondue avec ça.
+            raise RuntimeError(f"secret backend unavailable: {exc}") from exc
         if payload is None:
             raise KeyError(name)
         return payload

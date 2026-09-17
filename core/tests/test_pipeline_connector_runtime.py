@@ -597,3 +597,29 @@ def test_postgres_secret_resolver_get_raises_keyerror_when_missing(session, tena
     resolver = connector_runtime.PostgresSecretResolver(session, tenant.id)
     with pytest.raises(KeyError):
         resolver.get("does-not-exist")
+
+
+def test_postgres_secret_resolver_get_does_not_mask_backend_failure_as_not_found(
+    session, tenant, user, monkeypatch
+):
+    # Un secret RÉEL existe (donc le "not found" serait faux), mais le
+    # backend de chiffrement ne peut pas déchiffrer sans
+    # CORE_SECRETS_MASTER_KEY (cf. app.secrets.crypto.load_master_key) : la
+    # KeyError('CORE_SECRETS_MASTER_KEY') levée par os.environ[...] ne doit
+    # jamais être confondue avec la KeyError(name) « secret absent » de ce
+    # Protocol.
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="my-bearer",
+        kind="bearer_token",
+        payload={"kind": "bearer_token", "token": "s3cr3t-tok"},
+    )
+    monkeypatch.delenv("CORE_SECRETS_MASTER_KEY", raising=False)
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant.id)
+    with pytest.raises(RuntimeError) as exc_info:
+        resolver.get("my-bearer")
+    message = str(exc_info.value)
+    assert "not found" not in message
+    assert "CORE_SECRETS_MASTER_KEY" in message
