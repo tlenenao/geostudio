@@ -1,0 +1,30 @@
+name: desktop-etl spike (PyInstaller freeze)
+
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - "core/scripts/pipeline_sidecar_spike.py"
+      - "core/scripts/pipeline_sidecar_spike.pyinstaller-args.txt"
+      - "core/app/pipelines/**"
+      - ".github/workflows/desktop-etl-spike.yml"
+
+jobs:
+  freeze-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync
+      - name: Script de contrôle (non gelé)
+        run: uv run python scripts/pipeline_sidecar_spike.py
+      - name: Freeze PyInstaller
+        shell: bash
+        run: |
+          extra_args=$(grep -v '^#' scripts/pipeline_sidecar_spike.pyinstaller-args.txt | tr '\n' ' ')
+          uv run pyinstaller --onefile --name pipeline-sidecar-spike --paths . $extra_args scripts/pipeline_sidecar_spike.py
+      - name: Exécuter le binaire gelé
+        run: .\dist\pipeline-sidecar-spike.exe
