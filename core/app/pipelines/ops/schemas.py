@@ -362,9 +362,9 @@ class TransformReprojectAttributeParams(BaseModel):
 
 class TransformFormatCoordinatesParams(BaseModel):
     """Formate une colonne attribut numérique (coordonnée en degrés
-    décimaux) en texte : soit arrondie en degrés décimaux, soit convertie en
-    degrés/minutes/secondes (DMS, sans indicateur d'hémisphère — à
-    concaténer séparément si besoin)."""
+    décimaux) : soit arrondie à une précision donnée (reste numérique), soit
+    convertie en texte degrés/minutes/secondes (DMS, sans indicateur
+    d'hémisphère — à concaténer séparément si besoin)."""
 
     sourceColumn: str
     targetColumn: str
