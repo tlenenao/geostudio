@@ -5,7 +5,7 @@
 **Demandeur** : Tanguy
 **Documents liés** : `docs/vision/2026-08-20-revue-projet-et-plan-daction.md` (vagues 0-6),
 `docs/vision/2026-07-04-feuille-de-route-geostudio.md` (SP-1→SP-20, 40 arbitrages),
-`docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md`.
+`docs/superpowers/2026-08-27-historique-execution-continu.md`.
 
 ---
 
@@ -198,7 +198,7 @@ Commits conventional sur `dev`, sans PR, préfixe `(SP-42)` — SP-41 est pris.
 | Spec de refactorisation structurelle | `docs/superpowers/specs/2026-09-04-sp43-refactorisation-structurelle-design.md` |
 | Feuille de route révisée SP-43+ | `docs/vision/2026-09-04-feuille-de-route-revisee.md` |
 | README vitrine | `README.md` |
-| `CLAUDE.md` dégonflé | historique détaillé versé dans `docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md` |
+| `CLAUDE.md` dégonflé | historique détaillé versé dans `docs/superpowers/2026-08-27-historique-execution-continu.md` |
 
 ### 8.1 Le README
 

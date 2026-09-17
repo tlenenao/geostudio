@@ -1077,7 +1077,7 @@ cd core && uv run pytest
     troncature shell de `/collections` à 100, historiques par défaut aux
     100 plus récents) sont bien mentionnés dans le message de PR/la
     communication à Tanguy, pas seulement dans la spec.
-- [ ] Relire `docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md`
+- [ ] Relire `docs/superpowers/2026-08-27-historique-execution-continu.md`
   (ou son successeur courant) — ajouter l'entrée SP-50 à `CLAUDE.md`
   §Livré, avec mention explicite : GAP-57/59/60/62 clos ; ce qui reste
   ouvert (pagination shell non câblée pour `/collections` et les 3

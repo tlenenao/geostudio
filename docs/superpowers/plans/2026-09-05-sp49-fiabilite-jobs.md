@@ -1003,7 +1003,7 @@ cd core && uv run pytest tests/test_deployability.py -v
 - [ ] `cd core && uv run ruff check . && uv run ruff format --check .`
 - [ ] `cd core && uv run lint-imports`
 - [ ] `docker compose config` — healthchecks Task 7 vérifiés par valeur.
-- [ ] Relire `docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md`
+- [ ] Relire `docs/superpowers/2026-08-27-historique-execution-continu.md`
   (ou son successeur courant) — ajouter l'entrée SP-49 à `CLAUDE.md`
   §Livré, avec mention explicite : GAP-56/63/64/76 clos, ce qui reste
   ouvert (N+1 de `list_configs_by_kind`, pagination GAP-57, montée de

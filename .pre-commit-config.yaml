@@ -71,3 +71,13 @@ repos:
         entry: npx --prefix shell commitlint --edit
         language: system
         stages: [commit-msg]
+      # Garde-fou posé le 2026-09-17 après une dérive vécue pendant ~35 SP :
+      # la règle « une ligne par chantier sous ### Livré, le récit va dans
+      # l'archive » existait déjà en prose et a été ignorée jusqu'à ce que
+      # CLAUDE.md atteigne 2324 lignes. Python stdlib seul, aucune dépendance.
+      - id: claude-md-size
+        name: taille de CLAUDE.md
+        entry: python3 scripts/check_claude_md_size.py CLAUDE.md .claude-md-size-threshold
+        language: system
+        files: ^CLAUDE\.md$
+        pass_filenames: false

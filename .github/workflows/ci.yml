@@ -406,3 +406,13 @@ jobs:
         working-directory: shell
       - name: commitlint (plage de commits de la PR)
         run: npx --prefix shell commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }}
+
+  claude-md-size:
+    # Miroir CI du hook local `claude-md-size` (.pre-commit-config.yaml) —
+    # garde-fou posé le 2026-09-17 après une dérive vécue pendant ~35 SP
+    # (CLAUDE.md gonflé à 2324 lignes malgré une règle déjà écrite en prose).
+    # Python stdlib seul, aucune dépendance à installer.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 scripts/check_claude_md_size.py CLAUDE.md .claude-md-size-threshold

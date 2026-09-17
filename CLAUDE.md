@@ -30,7 +30,7 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
    plan d'action en **vagues** (0 à 6) : c'est ce document que citent les SP-20
    à SP-27 (« vague 3 », « chantier 4.4 »).
 6. `docs/superpowers/specs/` + `plans/` — chaque SP a sa spec puis son plan datés.
-7. `docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md` — **historique
+7. `docs/superpowers/2026-08-27-historique-execution-continu.md` — **historique
    d'exécution détaillé** (extrait de ce fichier le 2026-08-27) : ce que chaque
    revue finale a trouvé, les décisions de scope, les déviations assumées, la
    liste complète des suivis non bloquants. À lire avant de rouvrir une surface
@@ -120,7 +120,7 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
   certains avec des fichiers root-owned laissés par des conteneurs Docker,
   supprimables seulement avec confirmation explicite).
 - **À la clôture d'un SP** : une ligne dans `### Livré` ci-dessous, et l'entrée
-  détaillée dans `docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md`
+  détaillée dans `docs/superpowers/2026-08-27-historique-execution-continu.md`
   (pas de récit long dans ce fichier — il est chargé à chaque session).
   **Obligatoire dans le même geste, jamais différé** : mettre à jour l'état
   des `GAP-nn` concernés dans `docs/revue/2026-09-04-analyse-gaps.md` (ouvert
@@ -143,18 +143,13 @@ Fork de `gis-project` créé le 2026-07-05 pour exécuter l'« option C »
 ```bash
 # shell (d'abord, car commitlint en dépend)
 cd shell && npm ci
-npm run test         # Vitest — dernier compte mesuré après intégration
-                     # complète de SP-48/50/57a/57b/59/60 (2026-09-06) :
-                     # 236 fichiers, 2074 tests, tous passed. Couverture
-                     # 89,94 % (seuil 88).
-npm run e2e          # Playwright — 166 passed / 4 skipped / 0 failed
-                     # (VITE_AUTH_MODE=mock), suite entièrement verte
-                     # depuis le 2026-09-06.
+npm run test         # Vitest ; doit être entièrement vert, couverture ≥ seuil
+                     # (shell/.coverage-threshold)
+npm run e2e          # Playwright (VITE_AUTH_MODE=mock) ; doit être
+                     # entièrement vert (voir CI sinon)
                      # e2e-oidc/ : suite séparée contre un vrai Keycloak (SP-26)
-npm run build        # tsc --noEmit + vite build ; chunk d'entrée 624 Ko
-                     # (seuil 630, relevé depuis 570 par le catalogue i18n
-                     # SP-57a — 23 chunks de route en lazy() depuis SP-60) ;
-                     # filet de taille : node scripts/check-bundle-size.mjs
+npm run build        # tsc --noEmit + vite build ; filet de taille de bundle :
+                     # node scripts/check-bundle-size.mjs
                      # dist/.vite/manifest.json .bundle-size-threshold
 
 # pre-commit (une fois par poste de travail, après npm ci)
@@ -170,41 +165,25 @@ pre-commit install --hook-type pre-commit --hook-type commit-msg
 
 # cœur
 cd core && uv sync
-uv run pytest        # dernier compte mesuré après intégration complète de
-                     # SP-45/46/47/49/52/53/55/56/58/51/54 sur dev
-                     # (2026-09-06) : 2589 passed / 5 skipped / 0 failed,
-                     # couverture 94,05 % (seuil 85), sur un conteneur
-                     # postgis-test réel (CORE_TEST_DATABASE_URL positionné —
-                     # sinon ~185 tests marqués postgis skippent silencieusement,
-                     # piège vécu pendant la clôture de SP-43 elle-même). Piège
-                     # vécu par SP-42 : ce conteneur n'est PAS tracké par Alembic —
-                     # après une migration qui ajoute des colonnes, il faut un
-                     # ALTER TABLE manuel, sinon des dizaines de tests
-                     # échouent en cascade sur UndefinedColumn sans rapport
-                     # avec le code sous revue. Les 5 skips = les 5 tests
-                     # qgis (3 dans test_qgis_worker_sidecar.py, 2 dans
-                     # test_pipeline_runtime.py — dont un aussi marqué
-                     # postgis) : conftest.py appelle pytest.skip() quand
-                     # CORE_TEST_QGIS_WORKER_URL manque, et un skip ne
-                     # rougit rien — pour les exécuter vraiment :
-                     # `./scripts/run-qgis-tests.sh` (aucun sudo, ne touche
-                     # pas l'hôte) ; la CI les exécute désormais elle aussi
-                     # (job `core-qgis`). Piège supplémentaire vécu à la
-                     # clôture de SP-49 : 2-3 sessions concurrentes lancées
-                     # sur des worktrees différents mais un même conteneur
-                     # postgis-test partagé produisent des dizaines
-                     # d'échecs/erreurs par collision (UniqueViolation sur
-                     # tenants_pkey, DuplicateTable) — aucun rapport avec le
-                     # code sous revue, confirmé en rejouant chaque test en
-                     # isolation (repasse au vert systématiquement une fois
-                     # la contention retombée). Deux échecs INTERMITTENTS
-                     # déjà documentés, à ne pas imputer à son propre travail
-                     # sans vérifier : test_features_rls.py::
-                     # test_scope_preserves_original_sql_error (dérive
-                     # psycopg2/transaction, non diagnostiquée) ;
-                     # test_deployability.py::test_every_compose_substitution_is_documented
-                     # (VITE_AUTH_MODE absent de .env.example malgré sa
-                     # substitution dans docker-compose.yml).
+uv run pytest        # doit être entièrement vert, couverture ≥ seuil
+                     # (.coverage-threshold). CORE_TEST_DATABASE_URL doit
+                     # pointer un postgis-test réel, sinon ~185 tests marqués
+                     # postgis skippent SILENCIEUSEMENT (piège SP-43). Ce
+                     # conteneur n'est PAS tracké par Alembic — après une
+                     # migration qui ajoute des colonnes, ALTER TABLE manuel
+                     # nécessaire, sinon échecs UndefinedColumn en cascade
+                     # sans rapport avec le code sous revue (piège SP-42).
+                     # Skips qgis (conftest.py skip si CORE_TEST_QGIS_WORKER_URL
+                     # manque, un skip ne rougit rien) : `./scripts/run-qgis-tests.sh`
+                     # pour les exécuter vraiment (aussi en CI, job `core-qgis`).
+                     # 2-3 sessions concurrentes sur le même postgis-test partagé
+                     # produisent des collisions (UniqueViolation, DuplicateTable)
+                     # sans rapport avec le code sous revue — rejouer en isolation
+                     # avant de s'imputer une régression (piège SP-49). 2 échecs
+                     # INTERMITTENTS déjà documentés, à vérifier avant de
+                     # s'imputer une régression : test_features_rls.py::
+                     # test_scope_preserves_original_sql_error ;
+                     # test_deployability.py::test_every_compose_substitution_is_documented.
 
 # portes de qualité (mêmes invocations qu'en CI — cf. .github/workflows/ci.yml)
 cd core
@@ -235,6 +214,9 @@ cd core && PYTHONPATH=. uv run python scripts/feature_health_cli.py --repo .. --
 # n'est pas inventoriée ou si la santé médiane passe sous le plancher mesuré
 # (core/scripts/feature_health_thresholds.json).
 
+# garde-fou de taille CLAUDE.md (§ Livré) — câblé en pre-commit et en CI
+python3 scripts/check_claude_md_size.py CLAUDE.md .claude-md-size-threshold
+
 # stack
 docker compose up -d # nécessite .env (cf. .env.example) ; 11 services par
                      # défaut (postgis, pgbouncer, minio, martin, titiler,
@@ -246,14 +228,21 @@ docker compose up -d # nécessite .env (cf. .env.example) ; 11 services par
 
 ## Feuille de route (état d'avancement)
 
-Une ligne par SP. **Le détail — revues finales, défauts trouvés, décisions de
-scope actées avec Tanguy, déviations assumées vis-à-vis du texte des plans — est
-dans `docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md`** : à lire
-avant de reprendre un chantier ouvert ou de rouvrir une surface déjà livrée.
 Chaque SP a sa spec dans `docs/superpowers/specs/` et son plan dans
 `docs/superpowers/plans/`.
 
 ### Livré
+
+**Règle non négociable, sans exception : une ligne par chantier ci-dessous,
+jamais plus.** Tout récit d'exécution — revue finale, défauts trouvés,
+déviations de plan, décisions de scope, chiffres de suite de tests — va
+exclusivement dans `docs/superpowers/2026-08-27-historique-execution-continu.md`
+(archive continue, croît à chaque SP) : à lire avant de reprendre un chantier
+ouvert ou de rouvrir une surface déjà livrée. Ne jamais coller un paragraphe
+long ici — ce fichier est chargé à chaque session ; cette règle existait déjà
+en prose avant le nettoyage du 2026-09-17 et a été ignorée pendant ~35 SP
+d'affilée — voir `scripts/check_claude_md_size.py` (§ Commandes) pour le
+garde-fou posé depuis.
 
 - **SP-0** — shell (catalogue, partage/publication, éditeur de carte, builder) +
   cœur (configs versionnées + rollback). Renommage `→core/` (A14).
@@ -403,1676 +392,109 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
 - **SP-41** — licence/métadonnées ouvertes DCAT-AP+STAC par collection (10
   champs), licence/langue par item (2 champs) ; module `app/catalog/`
   (catalogues curatés, zéro dépendance), migration 0033.
-- **SP-42** — revue globale du dépôt (spec
-  `docs/superpowers/specs/2026-09-04-sp42-revue-globale-design.md`, plan
-  `docs/superpowers/plans/2026-09-04-sp42-revue-globale.md`) : matrice de
-  fonctionnalités (`docs/revue/2026-09-04-matrice-fonctionnalites.md`),
-  analyse des manques (`docs/revue/2026-09-04-analyse-gaps.md`, 79
-  `GAP-nn`), backlog unique (`docs/revue/2026-09-04-backlog.md`, 173
-  `REV-nnn`), rapport de revue (`docs/revue/2026-09-04-rapport-revue.md`),
-  feuille de route révisée
-  (`docs/vision/2026-09-04-feuille-de-route-revisee.md`), spec SP-43
-  (`docs/superpowers/specs/2026-09-04-sp43-refactorisation-structurelle-design.md`),
-  `README.md` réécrit, ce `CLAUDE.md` dégonflé. **Fait marquant : le
-  critical d'autorisation trouvé par la revue avait déjà été déclaré clos
-  trois fois et rouvert trois fois avant elle (REST → MCP →
-  terrain3d/tileset3d), puis une 4e fois par la revue elle-même (sweep cron
-  des pipelines planifiés, `run_pipeline_sweep_task`) — faute de point de
-  passage unique pour l'écriture d'une config. Fermé au point d'écriture
-  (`core/app/pipelines/runtime.py::_write_dataset`) ; c'est la motivation
-  d'ouverture de la spec SP-43.**
-- **SP-44** — débloque le jalon **M14** (GAP-01, seul gap bloquant de SP-42) :
-  les 5 tests `@pytest.mark.qgis` exécutés pour la première fois pour de vrai
-  contre un sidecar `qgis-worker` réel et un `postgis-test` réel (réseau
-  Docker isolé dédié, aucune modification de l'hôte — pas de `sudo`). Ont
-  trouvé, en session, **2 défauts de production réels, jamais vus avant faute
-  d'avoir jamais exécuté ce chemin** : (1) `_lock_down()`
-  (`enable_external_access=false`) bloquait le `COPY TO` du `in.gpkg` du
-  sidecar — `transform.qgis` cassait pour toute exécution réelle, corrigé par
-  `SET allowed_directories` scopé au seul scratch partagé ; (2)
-  `_materialize_qgis_output()` ne filtrait pas `fid` (colonne imposée par la
-  spec GeoPackage sur tout `.gpkg` GDAL), rejetée par `writer.collection`
-  comme propriété inconnue — invisible via `writer.export` (pas de
-  validation de schéma). Un test de régression non marqué `qgis` (donc
-  toujours actif en CI) ajouté pour chacun, falsifié avant fix. Suite
-  complète (2298 tests hors `qgis`) + les 5 `qgis` rejoués verts après coup.
-  **M14 atteint.** Câblage CI, laissé hors périmètre par SP-44, fermé
-  depuis (2026-09-06, commit `122c6394`) : job `core-qgis` dans `ci.yml`
-  (séparé du job `core` — image de base QGIS de 11 Go),
-  `scripts/run-qgis-tests.sh` pour la même exécution en local sans sudo,
-  et `test_ci_actually_runs_the_qgis_marked_tests` qui interdit le retour
-  au skip silencieux.
-- **SP-43** (10 tâches, subagent-driven-development, 2026-09-05) — ferme les
-  6 classes de duplication mécanique identifiées par sa spec : registre
-  `kind_registry.py::privilege_for_kind()` unique (5 sites réels, pas 4 —
-  `terrain3d/routes.py` était un 5e site non documenté, découvert en
-  session) ; comparateur `test_model_alembic_parity.py` modèle↔Alembic (24
-  `server_default=` manquants corrigés + 8 index/contraintes réels + 4
-  index fonctionnels pgvector/trgm filtrés nommément, `REV-175`) ; test
-  caractéristique `toFrontLayer()` ; fixture E2E de collection unique
-  (`mockCollection()` + `test_collections_json_contract.py`) ; module de
-  job partagé `app/jobs/common.py` (6 fichiers, invariant try/except SP-39
-  préservé) ; `aria-expanded`/`aria-controls` câblés sur 9 sites via
-  `usePanelTrigger`. Puis découpage des 3 fichiers les plus mélangés du
-  dépôt : `itemClient.ts` (1743→53 lignes, 15 domaines) + `hooks.ts`
-  (732→14 lignes, 11 domaines) ; `mcp/tools.py` (1135 lignes, 21 tools) en
-  11 domaines + 3 couches de service **partagées REST↔MCP pour la
-  première fois** (`items/service.py`, `configs/service.py`,
-  `pipelines/service.py`) ; `pipelines/runtime.py` en registres
-  `READERS`/`WRITERS` (corps des fonctions restés dans `runtime.py` par
-  nécessité — ~57 `monkeypatch.setattr(runtime, ...)` existants auraient
-  cessé de faire effet si déplacés, `registries.py` n'agrège que des
-  références). **Invariant critique `_write_dataset`/`Privilege.DATA_MANAGE`
-  (rouvert 3× avant SP-42 + 1× par la revue SP-42) vérifié intact
-  end-to-end** (REST/MCP/job passent tous par le même point de garde) —
-  testé par un nouvel appel direct à `run_pipeline()`, jamais couvert à ce
-  niveau avant. La revue finale de branche (croisement entre tâches,
-  piège CLAUDE.md n°4) a trouvé 2 Important corrigés : (1) Tâche 9 avait
-  recréé la classe de duplication que la Tâche 2 fermait, sur un fichier
-  voisin (`configs/routes.py`/`configs/service.py`, 3 gardes dupliquées) ;
-  (2) le câblage ARIA de la Tâche 7 utilisait une seule instance de hook
-  par page au lieu d'une par ligne sur 3 pages admin (`aria-expanded`
-  identique sur toutes les lignes dès qu'une était en édition). Un défaut
-  réel supplémentaire trouvé et corrigé **dans** la Tâche 9 elle-même :
-  `create_item` (MCP) dérivait silencieusement son `resource_type` depuis
-  `config.kind` (plus large, jamais vérifié égal) au lieu du `kind` typé du
-  tool, via le nouveau service partagé — gardé par un check explicite.
-  Écart pré-existant trouvé et **documenté sans être corrigé** (règle du
-  plan, jamais de correction silencieuse d'un écart accidentel outil↔route) :
-  `save_app_config` (MCP) saute les 7 validateurs par kind + 2 gardes de
-  capacité que la route REST équivalente exécute (`REV-174`). Suite finale :
-  core 2326 passed/5 skipped (qgis, sidecar absent de cette session,
-  jamais affirmés passés — déjà vérifiés réels par SP-44)/0 failed ; shell
-  1944 tests/225 fichiers ; E2E 141 passed/4 skipped/1 échec **préexistant
-  à tout ce plan** (confirmé en checkoutant le commit d'avant la Tâche 1 —
-  `e2e/pipeline-builder.spec.ts:111`, sans rapport, non corrigé, hors
-  périmètre).
-- **SP-47** — ferme `REV-097` (les 2 des 18 privilèges sans route) et
-  `GAP-71`/`GAP-28` (`audit_log` en écriture seule, aucune vue d'usage) par
-  une seule construction : `require_any_privilege` (OR de privilèges,
-  `app/roles/guards.py`) ; garde de `/secrets` élargie à
-  `automation.secrets.manage` **OU** `admin.secrets.manage` ; rôle Créateur
-  gagne `automation.secrets.manage` (**décision produit à confirmer par
-  Tanguy a posteriori** — appliquée par défaut par la spec/le plan, cf.
-  décision §2.2 de la spec) ; nouveau domaine `app/usage/` (query-only sur
-  `audit_log`, jamais d'écriture — `app.audit.writer` reste l'unique point
-  d'écriture), `GET /usage/tasks` (`tasks.view` restreint à soi,
-  `tasks.view_all` = tenant entier) et `GET /usage/summary` (agrégats
-  activité-par-acteur + popularité-des-ressources, `tasks.view_all` seul) ;
-  `UsagePage` remplace `TasksComingSoonPage` sur `/tasks`. 3 fixtures miroir
-  du rôle Créateur trouvées et resynchronisées au-delà des 2 listées par le
-  plan (`DEFAULT_ME` e2e/mocks.ts, `BASE_PROFILE` DomainBar.test.tsx) — un
-  4e mirroir (`BUILT_IN_ROLE_PRIVILEGES["creator"]` lui-même dans
-  `test_roles_guards.py`/Task 1) a dû être corrigé en cours de plan : le
-  test `require_any_privilege` de la Tâche 1, écrit avant la Tâche 2,
-  utilisait un `creator` par défaut comme témoin « ne porte aucun des deux
-  privilèges » — cassé par la Tâche 2, corrigé en réassignant ce témoin au
-  rôle `reader` (zéro privilège). `lint-imports` : `app.usage` placé
-  au-dessus d'`app.roles`, aucune exemption nommée nécessaire. Suite
-  finale : core 2340 passed/5 skipped (qgis)/0 failed (postgis-test réel,
-  2 défauts d'environnement trouvés et corrigés en session — colonnes
-  SP-41/SP-42 manquantes sur ce conteneur, tables de jobs pipeline
-  résiduelles d'un run précédent) ; shell 226 fichiers/1952 tests ; E2E 143
-  passed/4 skipped/1 échec préexistant (`pipeline-builder.spec.ts:111`,
-  inchangé).
-- **SP-49** (7 tâches, 2026-09-06) — ferme GAP-56/63/64/76 (revue SP-42),
-  explicitement laissés hors périmètre de SP-43 : `downgrade()` de la
-  migration 0024 (report_runs.export_job_id) devient un no-op documenté
-  (retendre la contrainte NOT NULL était irrécupérable sur toute base
-  ayant une ligne `NULL`, situation normale de fonctionnement) ; index
-  manquants sur `alert_evaluations`/`pipeline_runs` (migration 0035) ;
-  batching des 3 balayages cron (`get_latest_runs_for_items`/
-  `get_latest_evaluations_for_items`, fenêtre `ROW_NUMBER() OVER`, une
-  requête au lieu d'une par pipeline/alerte/rapport) ; N+1 de
-  `GET /harvest/layers`/`feature-layers` fermé sur le patron de
-  `_permissions_by_id` (`get_access_facts_by_ids` + `decide()` en mémoire) ;
-  `get_job`/`mark_running` déplacés dans le bloc `try` d'export/appexport
-  (patron pipelines/ingestion, invariant SP-39 préservé) ; reprise
-  périodique des jobs appexport (`reclaim_stuck_jobs` existait, jamais
-  appelée) et ingestion (nouvelle, ancrée sur `updated_at` faute de
-  `started_at` dédié) ; `scripts/healthcheck_worker_stalled.py`
-  (`JobManager.get_stalled_jobs`, `async` sur cette version verrouillée
-  3.9.0, encapsulé `asyncio.run`) chaîné sur `worker`, seule sonde sur
-  `export-worker` (aucune avant), `pgrep -f server.py` sur `qgis-worker`
-  (aucune avant, pas de route HTTP de vivacité côté sidecar, hors
-  périmètre d'en ajouter une). **Revue finale de branche (piège CLAUDE.md
-  n°4) a trouvé un vrai croisement Tâche 2/Tâche 3** : l'index créé
-  `(tenant_id, <item>_id, created_at)` est ignoré par le batching de la
-  Tâche 3 (`WHERE <item>_id IN (...)` sans `tenant_id`, cross-tenant par
-  construction) — mesuré par `EXPLAIN ANALYZE` à échelle réaliste (2000
-  items, 300k runs, 2,5% sélectivité) : Seq Scan avant correction (28,6ms),
-  Bitmap Index Scan après réordonnancement `<item>_id` en tête (7,2ms, 4x),
-  sans rien coûter aux requêtes tenant_id+item_id existantes. Suite finale
-  (contention réelle mesurée : 2-3 sessions concurrentes sur le même
-  `postgis-test` partagé pendant cette clôture, cf. piège n°9 — chaque
-  échec de la première passe re-vérifié en isolation, confirmé transitoire
-  à chaque fois) : 2348 passed/5 skipped/0 failed. Reste hors périmètre,
-  assumé : N+1 de `configs_repo.list_configs_by_kind` sur
-  `_latest_revision` (trouvaille annexe, jamais assignée à ce plan),
-  pagination complète GAP-57, montée de version procrastinate future
-  (`nb_seconds` déprécié sur `get_stalled_jobs`).
-
-- **SP-46 — découvrabilité : navigation manquante** (5 tâches, spec
-  `docs/superpowers/specs/2026-09-05-sp46-navigation-manquante-design.md`,
-  plan `docs/superpowers/plans/2026-09-05-sp46-navigation-manquante.md`)
-  — ferme GAP-30/GAP-32/GAP-39/GAP-67 identifiés par l'analyse de gaps
-  SP-42 : quatre écrans complets et gardés côté serveur mais atteignables
-  uniquement en tapant leur URL à la main deviennent atteignables par un
-  lien réel : `AdminExtensionsPage.tsx` gagne un tableau `ADMIN_LINKS`
-  (déclarations `{to, label, privilege}`) filtré par
-  `useMe().data?.privileges`, remplaçant les cinq `<Link>` — trois
-  historiques (`/admin/infrastructure`, `/admin/roles`, `/admin/users`,
-  jusqu'ici affichés sans garde, GAP-67) et deux nouveaux
-  (`/admin/collections` GAP-30, `/admin/harvest` GAP-39, gardés dès leur
-  introduction) — doctrine identique à `capabilities.ts` : un privilège
-  manquant masque le lien, jamais ne le grise. `CatalogPage.tsx` gagne un
-  lien conditionnel `type === "pipeline" && !fixedType` vers `/reports`
-  sous le sélecteur de type (GAP-32, atterrissage du domaine
-  Automatisation uniquement — jamais sur `/`, `/bookmarks`, `/reports`
-  lui-même ou toute autre vue à `fixedType` fixé), sans garde de
-  privilège (`/reports` n'est protégée par aucun `RequirePrivilege`).
-  Aucun changement côté cœur (les quatre routes gardent exactement leur
-  garde/absence de garde déjà en vigueur) — diff OpenAPI/types TS vide,
-  vérifié. TDD strict : chaque test de masquage falsifié avant
-  correctif — en particulier GAP-67, où lancer la suite existante
-  **avant** correctif confirme que les deux tests `/admin/roles`/
-  `/admin/users` passaient déjà sans mocker aucun privilège (preuve
-  directe du bug), et où introduire `visibleLinks.map()` à côté des
-  liens en dur (transitoire, Tâches 1-2) produit une vraie duplication
-  observée (`getByRole` échoue en « multiple elements found ») une fois
-  les tests réécrits avec un privilège mocké — écart au texte du plan
-  (qui prédisait ces deux tests déjà verts à ce stade), refermé par le
-  Step suivant du plan lui-même (bascule complète vers `ADMIN_LINKS`,
-  suppression des `<Link>` en dur). `shell/e2e/admin-collections.spec.ts`
-  contenait déjà un test couvrant un scénario proche (non-admin, message
-  de refus sur navigation directe) — sans rapport direct avec le lien de
-  découverte depuis `AdminExtensionsPage`, mais confirmé non régressé.
-  Suite shell complète : 224 fichiers / 1908 tests, 0 échec ; couverture
-  90,30 % (seuil 88) ; `npm run build` propre ; E2E ciblée (8 specs
-  nommées par le plan) 10/10 ; E2E complète sans régression de compte
-  (piège n°6).
-- **SP-45 — durcissement sécurité immédiat** (5 tâches, spec
-  `docs/superpowers/specs/2026-09-05-sp45-durcissement-securite-design.md`,
-  plan `docs/superpowers/plans/2026-09-05-sp45-durcissement-securite.md`)
-  — garde d'egress SSRF sur l'appel LLM sortant du copilote (GAP-02,
-  `app/copilot/egress.py`, patron des 3 gardes d'egress déjà existantes) ;
-  retrait de `MARTIN_SECRET`, réglée mais jamais consommée par `martin`
-  (GAP-41) ; rate-limit dédié sur `POST /collections/empty` (GAP-58) ;
-  rate limiter — clé anonyme par IP réelle (`ProxyHeadersMiddleware`,
-  requis puisque `core` n'est jamais exposé directement, seul Traefik
-  l'est), 2 routes ArcGIS live-query rattachées au groupe `harvest`,
-  sweep périodique du cache module-global (GAP-61) ; `restart:
-  unless-stopped` sur `traefik`, seul service durablement actif à en
-  être dépourvu (GAP-79). GAP-77 (purge d'historique git de la clé
-  privée `age` de test) et GAP-78 (réglages sécurité GitHub) — les deux
-  seules tâches destructrices/production du plan — laissées en attente
-  d'un accord explicite, **puis exécutées séparément après confirmation
-  de Tanguy** : `git filter-repo --replace-text` sur un clone miroir,
-  vérifié absent de `HEAD` et de tout ancêtre de branche avant
-  force-push des 26 branches d'origin (2 branches Dependabot apparues
-  entre le clone miroir initial et la vérification finale ont nécessité
-  un second passage, capturées à temps) ; `secret_scanning`/
-  `secret_scanning_push_protection`/`dependabot_security_updates` bascu-
-  lés à `enabled` via `gh api`. Suite finale (avant la purge, revérifiée
-  identique après réintégration du contenu sur le nouveau `dev` purgé) :
-  cœur 2022 passed/178 skipped/0 failed.
-- **SP-52** (8 tâches, subagent-driven-development, 2026-09-06) — ferme 5
-  manques d'UX du builder d'App identifiés par SP-42 : retrait du code mort
-  `moveItem`/`resizeItem`/`styleFor` (GAP-33) ; suppression d'un widget
-  depuis le canevas (bouton + `Delete`/`Backspace`, `GridCanvas.onRemoveItem`
-  désormais obligatoire, GAP-66a) ; suppression d'une variable (GAP-66c) —
-  toutes deux purgent désormais `config.messages` de tout câblage
-  `ActionsPanel` orphelin via une fonction pure partagée
-  (`actionMessages.ts::pruneMessagesForIds`, posée en tâche dédiée avant ses
-  deux consommateurs pour ne pas écrire la même règle deux fois) ; `setFilter`
-  du copilote fusionne désormais la requête au lieu de la remplacer (GAP-66b,
-  symétrique de `DataSourcePanel::patchQuery`) ; le widget Onglets affiche le
-  contenu réel de l'onglet actif sur le canevas principal en édition, pas
-  seulement un bandeau vide (GAP-54) ; éditeur d'enregistrements JSON pour
-  les sources de données Statique (GAP-51) ; nouveau widget builtin
-  `variableInput`/« Saisie » lisant et écrivant directement une variable
-  typée par son `id` stable (jamais son `name` renommable), nouveau hook
-  `useVariableDefs()` sur `VariablesContext.tsx` + prop optionnel
-  `variables?: Variable[]` threadé sur `PropsPanel`/`LayoutEditor` et les 3
-  widgets conteneurs (GAP-13, chantier 4.24). **Limitation connue laissée
-  telle quelle** (spec §3.1) : le canevas principal du widget Onglets en
-  édition prévisualise toujours le premier onglet (`activeId` interne au
-  `Component`, bandeau non cliquable) — indépendant de l'onglet sélectionné
-  dans le panneau Propriétés ; l'édition du contenu reste au panneau
-  Propriétés, cette tâche n'ajoutait qu'un aperçu. Falsification exécutée
-  systématiquement sur les filets ajoutés : un premier test E2E GAP-54 s'est
-  révélé vacuo (le texte du panneau Propriétés faisait déjà matcher
-  l'assertion) et a dû être re-scopé sur `<main>` ; de même le test de purge
-  de câblage à la suppression de widget (visuel seul) ne détectait pas
-  l'absence réelle de purge — corrigé en asserttant sur l'objet
-  `saveAppConfig` plutôt que sur l'affichage (`ActionsPanel.
-  resolvesOnThisPage` masque déjà visuellement un message orphelin, purgé ou
-  non). Effet de bord cross-tâche trouvé par la suite complète (pas par
-  tâche) : le nouveau widget porte le catalogue à 23 types, `addWidget`'s
-  enum copilote (`clientTools.test.ts`) avait un compte figé à 22, corrigé.
-  Suite finale : shell 227 fichiers/1964 tests, tous passés ; E2E 146
-  passed/4 skipped/1 échec **préexistant, sans rapport**
-  (`e2e/pipeline-builder.spec.ts:111`, cf. entrée SP-43) ; diff OpenAPI/types
-  TS vide (plan shell-only, vérifié plutôt que supposé). Aucun fichier
-  `core/` touché.
-- **SP-56** — formats d'import manquants (GAP-09/GAP-29, chantier 4.14) :
-  XLSX (`parse_xlsx_latlon`, même contrat que le CSV, coercition
-  `datetime`→`isoformat()` — openpyxl rend des types Python natifs par
-  cellule, contrairement au CSV où tout est déjà une chaîne), KML/KMZ
-  (`parse_kml`, réutilise `_read_features` tel quel — GDAL/pyogrio lit KML
-  nativement, driver LIBKML ; `.kmz` se lit **directement**, sans le
-  préfixe `/vsizip/` qu'exige `.zip` Shapefile), GeoParquet
-  (`parse_geoparquet`, via `geopandas.read_parquet` — **pas** `pyogrio`,
-  aucun driver Parquet dans ce build ; aller-retour testé contre
-  `app.cdc.parquet_writer.write_geoparquet`, SP-11). Aucune nouvelle
-  dépendance (`pyogrio`/`geopandas`/`pyarrow`/`openpyxl` déjà présentes).
-  `POST /uploads/inspect` gagne `InspectResponse.fields` (XLSX) ;
-  `ImportFileButton.tsx` accepte les 9 extensions, nouvelle phase
-  `selecting-latlon` (parallèle à `selecting-layer`, sans re-upload).
-  **2 défauts réels trouvés par exécution, absents du texte du plan**
-  (piège CLAUDE.md n°3) : (1) une géométrie manquante revient de
-  `geopandas.read_parquet()` en `NaN` (float), pas en `None` — le
-  pseudo-code de la spec ne testait que `is None` ; (2) le driver KML de
-  GDAL impose un champ `"id"` sur **tout** Placemark (même minimal, sans
-  schéma personnalisé) — collision systématique avec la colonne `id` (PK
-  serial) de `run_import`, qui aurait cassé tout import KML sans
-  exception ; `parse_kml` renomme désormais `id`/`tenant_id`/`geom` en
-  `kml_id`/`kml_tenant_id`/`kml_geom`. Les deux corrigés et vérifiés par
-  falsification.
-- **SP-55** — catalogue : tri/facettes/recherche spatiale/SEO (GAP-05/06/07,
-  chantiers 4.7/4.8/4.10). **GAP-05** : `sort` (5 valeurs, écrase l'ordre
-  RRF quand `q` est posé), `owner`, `keyword` (ET, filtré en Python comme
-  `list_published_items`), `GET /items/facets` (compteurs propriétaire/
-  mot-clé, plafond 50) — sélecteurs + chips à bascule dans `CatalogPage`.
-  **GAP-06** : emprise spatiale persistée sur `Item` (4 colonnes, migration
-  0035), recalculée au point d'écriture unique
-  `app.configs.bbox::recompute_item_bbox` appelé depuis les trois fonctions
-  de bas niveau de `configs/repository.py` (create/update/rollback) —
-  jamais dupliqué côté route ni MCP, prouvé par un test qui appelle
-  `save_app_config` sans jamais toucher la route HTTP ; filtre
-  `bbox=minX,minY,maxX,maxY` composé avec le chemin RRF ; `CatalogSpatialFilter`
-  (carte MapLibre autonome, `dragPan`/`boxZoom` désactivés) dessine le
-  rectangle. **GAP-07** : `sitemap.xml`/`robots.txt`/aperçu social
-  (`og:*`, canonical, échappement HTML) rendus côté serveur
-  (`app/public/routes.py`), routés via deux routeurs Traefik
-  (`seo-static`/`seo-bots`, priorité 20/25) au-dessus du catch-all shell —
-  nouvel env `PUBLIC_BASE_URL` ; `useDocumentMeta` complète côté JS
-  (titre/description/canonical) pour Googlebot et l'onglet navigateur.
-  **Écarts réels trouvés en exécutant (pas dans le plan, piège CLAUDE.md
-  n°3)** : `app.collections` importe déjà `app.configs`
-  (`dataset_validation`/`routes`), donc `recompute_item_bbox` ne peut PAS
-  vivre dans `app.items` (sous `app.configs` dans le contrat de couches) —
-  placé dans `app.configs.bbox` avec 4 exceptions nommées dans
-  `ignore_imports` (même patron que le cycle déjà documenté pour
-  `app.analytics`) ; côté GAP-07, l'overlay prod (`labels: !override`) remplaçait
-  intégralement les labels Traefik du fichier de base — les deux nouveaux
-  routeurs auraient disparu silencieusement en production sans être
-  redéclarés dans `docker-compose.prod.yml` avec ses propres conventions.
-  **Volet SEO (Traefik) partiellement vérifié** : la syntaxe des labels
-  (`HeaderRegexp`, `replacepathregex`) a été confirmée contre la
-  documentation Traefik v3.0 réelle et contre `docker compose config`
-  (résolution par valeur) ; la vérification bout-en-bout via une requête
-  HTTP à travers Traefik n'a **pas** pu être complétée dans la session qui
-  l'a écrit — le conteneur `traefik` ne parvenait pas à joindre le socket
-  Docker (`Error response from daemon`), limitation de cet environnement
-  reproduite à l'identique sur le routeur `core` préexistant (non liée à
-  ce changement) ; les routes `app/public/routes.py` elles-mêmes ont été
-  vérifiées directement sur le port du service `core` (200, contenu
-  correct, `PUBLIC_BASE_URL` résolu). À revérifier contre une stack Docker
-  standard avant mise en production.
-- **SP-58** — conformité RGPD (spec
-  `docs/superpowers/specs/2026-09-05-sp58-conformite-rgpd-design.md`, plan
-  `docs/superpowers/plans/2026-09-05-sp58-conformite-rgpd.md`), 10 tâches :
-  compteurs et mesure de stockage par tenant (`GET /admin/usage`, 4
-  buckets tenant-préfixés paginés + 2 buckets de sortie de job via
-  `byte_size`, migration 0035) ; capacité `CORE_QUOTAS_ENABLED` + 3
-  limites instance-wide, garde appliquée aux 6 points de création réels
-  (items/collections/stockage — tileset3d/terrain3d/ingestion ne
-  connaissaient pas la taille du fichier confirmé avant cette tâche, un
-  `head_object` a dû être ajouté à chacun) ; anonymisation d'utilisateur
-  (`POST /compliance/users/{id}/erase`, RGPD Art. 17 — écrase l'identité,
-  préserve les objets possédés, migration 0036 `users.erased_at`) ;
-  privilège `compliance.manage` (19e, domaine `settings`, **exclu même de
-  l'Administrateur** — `list(ALL_PRIVILEGE_VALUES)` l'y aurait glissé
-  silencieusement sans exclusion explicite) ; `purge_tenant` — suppression
-  complète et irréversible d'un tenant (27 tables tenant-scoped réelles,
-  énumérées via `Base.registry.mappers`, pas une liste recopiée à la main
-  — 5 tables manquaient au texte de la spec : `collection_shares`/
-  `pipeline_runs`/`report_runs`/`harvest_records`/`alert_evaluations`),
-  **DROP réel de la table dynamique de chaque collection** (trouvaille :
-  aucun code existant du dépôt, `unregister_collection` compris, ne le
-  faisait jamais) ; route de déclenchement asynchrone avec confirmation
-  par slug (jamais une case à cocher), `GET /compliance/purges/{id}` (202
-  tant qu'aucun `purge_receipts` n'existe — pas de ligne de statut
-  intermédiaire dans ce plan, limitation de portée assumée) ; UI
-  `ComplianceAdminPage` avec anonymisation et purge dans deux panneaux
-  visuellement distincts (jamais rapprochés, risque explicite de la
-  spec). Garde anti-lockout ajoutée à l'anonymisation au-delà du texte du
-  plan (trouvée nécessaire à l'exécution, falsifiée comme le reste) : le
-  dernier titulaire d'un privilège anti-lockout ne peut pas s'auto-effacer
-  (changer `oidc_sub` l'empêcherait de jamais se reconnecter). Trouvaille
-  au passage : `GET /me` ne renvoyait jamais `tenantId` au shell (seulement
-  `tenantSlug`) alors que le cœur le sert déjà — chemin de lecture oublié
-  (piège CLAUDE.md n°5), corrigé. **Rappel de priorité (spec §0, à ne pas
-  oublier en relisant cette ligne plus tard)** : ce chantier reste noté
-  par la feuille de route révisée comme pertinent seulement dès qu'un
-  tenant externe réel est onboardé (question produit Q2, toujours
-  ouverte) — livrer ce plan ne tranche pas cette question.
-- **SP-51** — parité carte App Builder / éditeur autonome (9 tâches, spec
-  `docs/superpowers/specs/2026-09-05-sp51-parite-carte-design.md`) : GAP-46
-  déjà résolu (vérification seule, aucun code touché) ; GAP-53 (outils de
-  mesure/croquis montés en édition, `interactiveTools` sur `MapEditorPage`) ;
-  GAP-35 (contrôle d'opacité raster) ; GAP-52 3 jumelles réelles fermées
-  (basemap/terrain/caméra sur le widget carte de l'App Builder, réutilisant
-  `BasemapSelect`/`TerrainPanel`/`CameraControls` — la 5e jumelle annoncée,
-  palette theme-primary, était déjà implémentée, retirée du périmètre par
-  la spec) ; GAP-45 (éditeur JSON replié pour `layer.paint`, mode avancé) ;
-  GAP-52 Jenks (`ItemClient.sampleDataSourceField()`, symétrique de
-  `queryDataSource`, résout un `collectionId` depuis un `DataSource`) ;
-  GAP-36 (UI d'auteur pour une couche `deck` — création dans `LayerPicker`,
-  réglages `radiusPixels`/`radius`/`elevationScale` dans `LayersPanel`).
-  **Écart corrigé par rapport au texte du plan (piège CLAUDE.md n°3)** : la
-  Tâche 9 proposait un contrôle de rayon unique partagé heatmap/hexbin —
-  faux contre les `.d.ts` deck.gl réels (`HeatmapLayer.radiusPixels` ≠
-  `HexagonLayer.radius`), corrigé en 3 contrôles distincts. `npm run build`
-  (jamais exécuté avant la revue finale du plan) a aussi trouvé 2 erreurs
-  tsc réelles introduites par la Tâche 9 (lecture non affinée de
-  `MapLayer.props`, `StaticItemClient` non mis à jour pour la nouvelle
-  méthode `ItemClient`), corrigées par un commit séparé. Suite finale :
-  shell 225 fichiers/1962 tests ; E2E 141 passed/4 skipped/1 échec
-  préexistant (`e2e/pipeline-builder.spec.ts:111`, sans rapport). Ce plan
-  ne touche pas `shell/src/api/base.ts` (chevauchement anticipé par les deux
-  specs avec SP-54, mais son seul point de contact possible — GAP-46 —
-  était déjà résolu, donc sans impact) et
-  n'ajoute qu'une méthode additive à `shell/src/api/types.ts`
-  (`sampleDataSourceField`) — vérification croisée de l'absence de
-  collision réelle avec SP-54 faite à la clôture de ce dernier.
-- **SP-54** — surfaces API shell (ItemClient) + partage avancé (7 tâches,
-  spec `docs/superpowers/specs/2026-09-05-sp54-itemclient-api-design.md`),
-  exécuté après SP-51 (même recommandation de séquencement que les deux
-  specs documentaient) : GAP-38 (schéma JSON `AppConfig` factorisé dans
-  `app_config_json_schema()`, source unique pour la route REST et la
-  ressource MCP, garantie identique par un test dédié ;
-  `ItemClient.getAppConfigSchema()` lui donne un premier consommateur
-  shell réel) ; GAP-65 1/3 (`getMe()` lit `id`/`email`/`tenantId`/
-  `capabilities`, `capabilities` réutilise le type `InstanceInfo` déjà
-  exporté plutôt qu'un doublon de type) ; GAP-65 2/3 (TTL de 5 min +
-  `ItemClient.invalidateDatasetCache(pk?)` sur `datasetCache`, sans
-  changer son type public ni les deux call sites existants) ; GAP-40/47
-  volet collections (`listCollections(params?)` relaie `q`, champ de
-  recherche sur `CollectionsAdminPage`, outil MCP `search_collections`) ;
-  GAP-47 reste (`query_features` MCP relaie désormais `geomIntersects`,
-  falsifié par une paire de tests point-qui-intersecte/point-qui-
-  n'intersecte-pas) ; GAP-42/65 groupes (`createGroup`/`addGroupMember`
-  côté `ItemClient`, `create_group`/`add_group_member`/`list_groups` côté
-  MCP, section dédiée dans `ShareForm.tsx`, `READ_ONLY_TOOLS` mis à jour
-  dans le même commit que le garde `is_read_only_mode()` des deux
-  nouveaux tools) ; GAP-12 (liens de partage à échéance — nouvelle table
-  `share_link`, migration 0035 testée upgrade/downgrade/upgrade sur base
-  non vide, jeton HMAC `share_links.py` calqué sur `export_tokens.py`
-  avec le premier mécanisme de révocation-avant-expiration de ce dépôt,
-  4 routes REST dont la résolution publique `GET /share-links/{token}`
-  sans dépendance `get_current_user`, section « Liens à échéance » dans
-  `ShareForm.tsx`).
-  **Écarts trouvés par rapport au texte du plan (piège CLAUDE.md n°3)** :
-  (1) `search_collections` et `list_groups` (MCP) sont les deux premiers
-  tools de ce dépôt à retourner une liste nue — vérifié empiriquement que
-  FastMCP sérialise `content[0].text` comme l'élément unique (pas un
-  tableau JSON) quand un seul résultat matche ; les tests concernés lisent
-  `structuredContent["result"]`, forme fiable quel que soit le nombre
-  d'éléments. (2) Le plan ne listait que 3 routes pour GAP-12
-  (create/revoke/resolve) mais le besoin shell (`listShareLinks`) impose
-  une 4e route GET liste, ajoutée avec le même garde d'autorisation.
-  (3) `ShareLink.expires_at` (colonne `DateTime` naïve, cohérente avec le
-  reste d'`app/sharing/models.py`) renvoie un datetime naïf à la lecture
-  même après y avoir écrit une valeur aware — comparer directement à
-  `datetime.now(UTC)` lève `TypeError`, corrigé par un helper de
-  comparaison locale au repository. Consommation anonyme complète d'un
-  lien de partage (rendu de l'app/carte pour un visiteur sans compte)
-  restée hors périmètre explicite, comme documenté par la spec.
-  Suite finale : core 2357 passed/5 skipped (qgis)/0 failed ; shell 225
-  fichiers/1979 tests ; E2E 141 passed/4 skipped/1 échec préexistant
-  (`e2e/pipeline-builder.spec.ts:111`, sans rapport, même échec que celui
-  déjà mesuré à la clôture de SP-51). Diff `openapi.json`/
-  `core-schema.d.ts` non vide et cohérent avec les 4 nouvelles routes de
-  liens de partage (Tâches 1 et 4 : diff vide, attendu, aucune route
-  REST créée par ces deux tâches). Aucune collision réelle avec SP-51 sur
-  `shell/src/api/base.ts`/`types.ts` : vérifié après coup, les deux jeux
-  d'ajouts additifs coexistent dans les mêmes fichiers sans conflit
-  (`sampleDataSourceField` de SP-51 et les méthodes de SP-54 sont des
-  entrées distinctes de l'interface `ItemClient`, `invalidateDatasetCache`
-  est la seule méthode de SP-54 dans `base.ts`, jamais touché par SP-51).
-- **SP-59** — exploitation : rotation des secrets + restauration scriptée
-  (spec `docs/superpowers/specs/2026-09-06-sp59-exploitation-sauvegarde-
-  oidc-design.md`, plan `docs/superpowers/plans/2026-09-06-sp59-
-  exploitation-sauvegarde-oidc.md`), 8 tâches en deux volets. **Volet A
-  (GAP-75)** : `crypto.py` accepte une clé explicite (`encrypt`/`decrypt`,
-  `key: bytes | None = None`, défaut inchangé) ; `list_all_secrets` —
-  seule fonction cross-tenant d'`app/secrets/repository.py`, réservée au
-  script de rotation ; `rotate_all_secrets` — rotation atomique en deux
-  passes strictes (tout déchiffrer avec l'ancienne clé AVANT toute
-  écriture, puis rechiffrer et flush une seule fois), audit par tenant
-  (`actor_kind="system"`, premier usage réel de cette valeur dans
-  `core/app`) ; script CLI `scripts/rotate_secrets_master_key.py`
-  (`--dry-run`, patron `seed_demo.py`) + runbook dédié. Ni le script ni
-  `CORE_SECRETS_MASTER_KEY_NEW` ne sont câblés dans
-  `docker-compose.yml`/`.env.example` — script d'exploitation ponctuel,
-  pas une capacité de service. **Volet B (GAP-70)** : `deploy/backup/
-  restore.sh` scripte les étapes 3+4 du runbook de restauration
-  (Postgres + MinIO), embarqué dans l'image `backup`. **Trouvaille
-  réelle** : le runbook (et la première version de `restore.sh`) ne
-  recréait que **5** buckets MinIO alors que `backup.sh` en sauvegarde
-  **7** depuis SP-33/SP-40 (`mapicons`/`attachments` jamais reportés côté
-  restauration) — perte de données silencieuse après tout sinistre réel,
-  corrigée dans les deux fichiers, garantie par un nouveau test de parité
-  (`test_restore_recreates_every_bucket_backup_mirrors`). Contradiction
-  interne du runbook corrigée (le paragraphe « Non prouvé à ce jour »
-  contredisait la section « 6. Vérifier » plus bas dans le même fichier) ;
-  nouvelle section 7, checklist de vérification OIDC réelle. **Constat
-  Tâche 8, sans arrondir** : aucun Keycloak réel ni stack complète ne
-  tournait dans cette session (`.env` jamais bootstrappé dans ce
-  worktree, ports 9000/9001 déjà pris par un conteneur d'une autre
-  session concurrente, charge machine mesurée à 10-29 avec 6-13 process
-  `pytest` concurrents d'autres sessions au même instant) — la checklist
-  reste rédigée, **non rejouée**, `REV-164` passe d'ouvert à
-  partiellement fermé (même limite d'environnement que SP-32/SP-55,
-  précédent déjà documenté). Garde de branche vérifiée : aucune route
-  REST ni outil MCP ajouté par erreur (`grep` vide sur `rotate_all_secrets`/
-  `list_all_secrets`/`restore.sh` dans `app/mcp/`, `secrets/routes.py`
-  inchangé). Suite finale : cœur **2603 passed/5 skipped (qgis)/0
-  failed** (les 4 échecs observés sur une exécution complète sous forte
-  contention machine — `test_pipeline_runtime.py` ×6 sur table
-  dupliquée d'une session concurrente, `test_copilot_routes.py` sur une
-  assertion de non-blocage de l'event loop sous charge, piège CLAUDE.md
-  n°7 — ont été reproduits comme passants à 100 % en isolation, sur un
-  conteneur Postgres dédié à cette vérification, non liés aux fichiers
-  touchés par ce plan) ; couverture 94,15 % (seuil 85) ; ruff/mypy
-  --strict (6 modules)/lint-imports tous verts. Aucune migration (spec
-  §4, vérifié : `alembic heads` inchangé).
-- **SP-48 — bascule de la CSP en enforcing** (7 tâches, spec
-  `docs/superpowers/specs/2026-09-06-sp48-csp-enforcing-design.md`, plan
-  `docs/superpowers/plans/2026-09-06-sp48-csp-enforcing.md`) — ferme 3 des
-  4 blocages de GAP-72 : allowlist CSP calculée depuis 3 sources déjà en
-  base (`app/security/csp_hosts.py`/`service.py` — `HarvestSource.url`
-  wms/wmts, `MapConfig.terrain`/`layers` externes, `Extension.module_url`),
-  poussée par une nouvelle tâche périodique (`refresh_csp_dynamic_conf_task`,
-  `*/5 * * * *`) à un volume nommé `csp-dynamic-conf` que Traefik lit via un
-  **provider fichier additif** au provider Docker existant (aucun des 15
-  routeurs concernés, base+prod, n'a perdu `security-headers@docker`) ;
-  `CORE_CSP_MODE` (`report-only` par défaut en base, `enforce` en prod)
-  permet un rollback opérateur sans redéployer d'image ; `shell/nginx.conf`
-  n'a plus sa propre CSP (Traefik en devient l'unique source, blocage 4
-  fermé). **Blocage 3 (script-src pour les widgets d'extension tiers) non
-  fermé, délibérément** : `script_hosts` est calculé mais jamais câblé sur
-  `script-src`, gardé par 2 tests de non-régression intentionnelle
-  falsifiés avant clôture (élargir temporairement `script-src` aux hôtes
-  d'extension fait bien échouer le test dédié) — décision produit remontée
-  à Tanguy, 4 options documentées (spec §4, Option A recommandée). **Écart
-  vs le texte du plan (piège CLAUDE.md n°3)** : `ConfigRevision.data` est
-  l'enveloppe `BuilderConfig.model_dump()` complète, pas directement le
-  corps `MapConfig` comme le plan le supposait — corrigé en lisant
-  `revision.data["map"]`. **Vérification empirique Traefik réelle**
-  (`traefik:v3.0.4`, piège CLAUDE.md n°3) : les deux providers coexistent,
-  le rechargement à chaud du provider fichier fonctionne sans redémarrer le
-  conteneur, une middleware `@file` est utilisable bout-en-bout par un
-  routeur (confirmé par une vraie requête HTTP, avec l'allowlist réellement
-  calculée par le code de ce SP). Seul point non vérifiable dans cet
-  environnement : un routeur défini par labels Docker référençant une
-  middleware `@file` — le socket Docker n'est pas joignable depuis
-  l'intérieur d'un conteneur ici (limitation déjà documentée par SP-55),
-  reste à confirmer sur un vrai déploiement avant la bascule prod
-  définitive. Suite finale : core 2413 passed/219 skipped/0 failed
-  (couverture 88,15 %, seuil 85) ; shell 235 fichiers/2064 tests
-  (couverture 90,51 %, seuil 88) ; E2E 156 passed/4 skipped/1 échec
-  préexistant (`e2e/pipeline-builder.spec.ts:111`, sans rapport avec ce
-  plan — shell/src non touché). Diff OpenAPI/types TS vide, vérifié.
-- **SP-50** — robustesse des surfaces publiques de fédération (spec
-  `docs/superpowers/specs/2026-09-06-sp50-robustesse-federation-design.md`,
-  plan `docs/superpowers/plans/2026-09-06-sp50-robustesse-federation.md`),
-  9 tâches, ferme GAP-57/59/60/62 (revue SP-42) : GAP-60 (`GET
-  /stac/collections/{id}/items` et `.../items/{feature_id}` passent
-  désormais `can_manage_collections` à `get_readable_collection`, comme
-  `get_collection` le fait déjà — un rôle `admin.collections.manage` ne
-  perd plus l'accès aux items après avoir lu la collection) ; GAP-62 (une
-  collection cassée — `TableNotFound`/`UnsupportedTable`/`DBAPIError` à
-  l'introspection ou au calcul d'emprise — dégrade à `bbox=None` au lieu de
-  faire échouer tout `GET /stac/collections`/`GET /dcat/catalog` en 500 ;
-  tuple d'exceptions vérifié identique aux trois sites,
-  `app/collections/routes.py::get_collection` inclus ; `GET
-  /dcat/datasets/{id}` volontairement laissé sans dégradation, hors
-  périmètre GAP-62 par décision de scope) ; GAP-57 (`limit`/`offset` sur
-  `GET /collections` — découpage Python après la liste déjà matérialisée,
-  `numberMatched`/`numberReturned` — et sur `GET /stac/collections`/`GET
-  /dcat/catalog` — mêmes bornes, lien `next` conditionnel — puis
-  `LIMIT`/`OFFSET` poussés en SQL sur les 3 historiques `GET
-  /pipelines/{id}/runs`/`GET /reports/{id}/runs`/`GET
-  /alerts/{id}/evaluations`, défaut 100 lignes les plus récentes) ; GAP-59
-  (plafond de taille de réponse sur l'egress de moissonnage — chokepoint
-  unique `_GuardedTransport.handle_request`, `CORE_HARVEST_MAX_RESPONSE_BYTES`
-  défaut 10 Mio, API `response.stream` vérifiée contre httpx 0.28.1
-  verrouillé avant de coder — puis `HarvestFetchError` sur le document
-  racine illisible des **8** connecteurs, vérifié individuellement par
-  connecteur (le point de bascule racine/enfant diffère réellement : appel
-  unique pour stac/wfs/wms/wmts, double tentative ISO-puis-DC pour csw,
-  paramètre `root=` sur `_get_json` partagé pour arcgis/ckan/ogc_records
-  — jamais par analogie). **Écart trouvé en exécutant, absent du texte du
-  plan (piège CLAUDE.md n°3)** :
-  `test_fetch_returns_empty_on_null_top_level_json` (stac) envoyait en
-  réalité un corps **vide** via `httpx.Response(json=None)` — indiscernable
-  du défaut non fourni, pas le littéral JSON `"null"` — corrigé pour tester
-  réellement ce qu'il prétendait tester. Risques assumés et documentés,
-  non corrigés (hors périmètre shell explicite) : troncature silencieuse
-  de l'admin des collections au-delà de 100 (`collectionsAdmin.ts`
-  n'envoie aucun `limit`) et des 3 historiques pipelines/rapports/alertes
-  aux 100 lignes les plus récentes (aucun des 3 fichiers shell
-  correspondants n'envoie `limit`/`offset` — vérifié, pas supposé).
-  **Piège d'environnement trouvé et contourné en session** : le
-  conteneur `postgis-test` partagé porte des centaines de tables
-  résiduelles (`ingest_*`/`query_*`) et une collision de nom fixe
-  (`villes_out`) accumulées par des sessions antérieures, provoquant des
-  échecs `DuplicateTable`/`IntegrityError` sans rapport avec ce plan —
-  contourné en démarrant un conteneur Postgres jetable dédié à cette
-  session (`geostudio-postgis-ci:latest`, image déjà construite,
-  port 5434), jamais d'opération destructive sur le conteneur partagé.
-  Suite finale (conteneur jetable) : 2611 passed/5 skipped (qgis)/1 failed
-  — `test_mcp_configs_bbox.py::
-  test_save_app_config_via_mcp_recomputes_item_bbox_without_http_route`,
-  confirmé préexistant et sans rapport (même échec reproduit après
-  `git stash` complet des changements de cette branche, contre l'état nu
-  d'`origin/dev`). `ruff`/`ruff format`/`lint-imports`/`mypy --strict` (4
-  modules) verts ; diff `openapi.json`/`core-schema.d.ts` non vide et
-  cohérent (Tâches 4-7 uniquement) ; `npm run build` (shell) propre.
-  **Écart de méthode assumé** : les 9 tâches du plan ont été committées en
-  4 commits groupés par fichier/module plutôt qu'une par tâche stricte —
-  les Tâches 1+2+5 (toutes trois sur `app/stac/routes.py`) et 3+6 (toutes
-  deux sur `app/dcat/routes.py`) s'enchaînaient sur les mêmes fonctions
-  sans point de commit intermédiaire propre.
-- **SP-60** — performance frontend & filets de test (10 tâches, spec
-  `docs/superpowers/specs/2026-09-06-sp60-perf-frontend-design.md`, plan
-  `docs/superpowers/plans/2026-09-06-sp60-perf-frontend.md`) : ferme
-  GAP-68 (perf) et le reliquat de GAP-69 (filets de test troués sur
-  l'infra de qualité). **GAP-69** : plancher sur les 3 extracteurs de
-  `test_deployability.py` (`core_env_vars()`/`compose_substitutions()`/
-  `documented_env_vars()`, REV-076) ; garde security-headers/rate-limit
-  sur les routeurs `core`/`shell` (REV-073) ; les deux tests « lisible
-  anonymement » (attachments + features) vérifient désormais le contenu,
-  pas seulement le code 200 (REV-077) ; ancre positive `readyAnchor` par
-  écran sur la boucle 900px de `triptych-narrow.spec.ts` (REV-075) ;
-  migration de `mockCollection()` sur 8 fichiers E2E supplémentaires
-  au-delà de son unique consommateur SP-43 (le 9e fichier listé par le
-  plan, `ingestion-gpkg.spec.ts`, n'avait en réalité aucun littéral de
-  collection — écart trouvé et documenté plutôt que suivi à la lettre).
-  **GAP-68** : les 4 boucles de sondage restantes annulées au démontage
-  (`Terrain3DUploadButton`/`Tileset3DUploadButton`/`PipelineRunPanel`/
-  `ImportFileButton`, patron `mountedRef`+`timerRef` d'`ExportPanel.tsx`,
-  falsifié systématiquement) ; `MapView` en `lazy()`+`Suspense` dans
-  `MapEditorPage` (résout `INEFFECTIVE_DYNAMIC_IMPORT`) ; découpage par
-  route de `routes.tsx` (23 pages en `lazy()`, 2 `<Suspense>`) ; chunks de
-  vendeur (`manualChunks`) + filet de non-régression sur la taille du
-  bundle (`scripts/check-bundle-size.mjs` + `.bundle-size-threshold`,
-  câblé en CI après `npm run build`). **2 écarts réels trouvés par
-  falsification, absents du texte du plan (piège CLAUDE.md n°3)** :
-  (1) `/tasks` rend `UsagePage` depuis SP-47, pas `TasksComingSoonPage`
-  comme l'affirmait la spec — `GET /usage/tasks` mocké en conséquence ;
-  (2) regrouper `@deck.gl`/`@loaders.gl` (ou `@xyflow` seul) dans un
-  `manualChunks` partagé avec `maplibre-gl` fait basculer ce chunk vers
-  une charge **statique** de l'entrée (mesuré via `entry.imports` du
-  manifeste Vite) — retirés du regroupement manuel, laissés au chunking
-  automatique de Rollup (déjà dynamique, un seul consommateur réel
-  chacun aujourd'hui). Chunk d'entrée : 3 324 Ko → 471 Ko (hors vendor
-  chunks) ; charge JS/CSS initiale mesurée avec vendor chunks en place :
-  562,6 Ko (seuil committé 570). `routes.test.tsx` : 4 sites synchrones
-  convertis en `findBy` (pas 2 comme le texte du plan le prévoyait —
-  2 supplémentaires trouvés seulement sous charge système réelle, pas en
-  exécution isolée). Suite finale : core 2384 passed/219 skipped (postgis
-  hors service cette session, hors les 5 qgis habituels — aucun échec) ;
-  shell 235 fichiers/2068 tests, couverture 90,41 % (seuil 88) ; E2E 156
-  passed/4 skipped/1 échec préexistant (`pipeline-builder.spec.ts:105`,
-  confirmé par bissection sur le commit d'avant ce plan, sans rapport).
-  Diff `openapi.json` vide, attendu (aucune route/modèle du cœur touché).
-- **SP-57b** — ferme GAP-14 volets 5.3 (contrat d'API `/v1/`) + 5.4 (ADR) +
-  5.5 (guide de contribution), spec
-  `docs/superpowers/specs/2026-09-06-sp57b-api-v1-adr-contribution-design.md` :
-  les 33 routeurs du cœur (26 inconditionnels + 7 derrière un flag de
-  capacité) passent sous un routeur imbriqué `v1_router` — `/health`
-  (`@app.get` direct) et le montage `/mcp` restent hors versionnement,
-  contrats externes à protocole fixe. Pas de compatibilité ascendante
-  (décision assumée, aucun consommateur externe réel à ce jour) : migration
-  directe, `GET /items` répond 404. `docs/adr/` créé (11 ADR rétroactifs au
-  format MADR-lite, pointant vers l'arbitrage `Axx` ou la décision figée
-  `CLAUDE.md` d'origine) ; gabarits GitHub (`.github/ISSUE_TEMPLATE/`,
-  `PULL_REQUEST_TEMPLATE.md`) + `SECURITY.md` — `CONTRIBUTING.md`/
-  `CODE_OF_CONDUCT.md` existaient déjà depuis SP-9, GAP-14 se trompait sur
-  ce point. **Le volet 5.3 s'est révélé bien plus large que le texte de
-  GAP-14 ne le suggérait** (piège CLAUDE.md n°3), au-delà même de ce que la
-  spec avait anticipé : outre les ~10 regex hors routage FastAPI
-  (rate-limit `app/ratelimit/limiter.py`, CORS appexport et garde
-  lecture-seule `app/main.py`) et les 3 labels Traefik (`docker-compose.yml`
-  **et** son overlay `docker-compose.prod.yml`, même piège de duplication
-  que SP-55), l'audit un par un des 13 fichiers `CORE_BASE_URL`/
-  `request.base_url` a trouvé 7 sites réels à corriger — dont deux jamais
-  nommés par la spec avant l'exécution : l'URL de lancement admin-tools
-  (`window.open` côté shell) et le lien de partage renvoyé par
-  `POST /items/{id}/share-links`. Côté shell, `createBase()` ajoute `/v1` à
-  la source (`coreUrl`) — point unique couvrant sans édition individuelle
-  les 5+ fichiers de domaine qui construisent leur propre `fetch` avec
-  `base.coreUrl`. Côté tests, la bascule mécanique a débordé le périmètre
-  initialement compté par la spec (80 occurrences/28 specs E2E + 39
-  fichiers Vitest) : `shell/e2e/mocks.ts`, helper partagé par la quasi-
-  totalité des specs E2E, n'était pas dans ce compte (il ne matche pas le
-  glob `*.spec.ts`) et portait pourtant 16 routes absolues dont une en
-  regex littéral (`/https:\/\/core\.test\/items\/.../`) et une en template
-  littéral sur un alias de page (`p.route(...)`) — aucune des deux formes
-  n'était couverte par un premier passage limité à
-  `page.route("https://core.test/...")` en chaîne simple. Suite finale :
-  cœur 2381 passed/219 skipped/0 failed (couverture 88,06 %, seuil 85) ;
-  shell 235 fichiers/2065 tests (couverture 90,51 %, seuil 88) ; E2E 156
-  passed/4 skipped/1 échec préexistant (`pipeline-builder.spec.ts:111`,
-  inchangé, sans rapport). Diff OpenAPI/types TS non vide et cohérent
-  (chaque chemin de route change de préfixe, aucun schéma ne change de
-  forme). Vérification manuelle : `/health`/`/v1/items`/`/items`
-  (404)/`/v1/health` (404)/`/mcp` tous corrects en direct sur le port du
-  service `core` ; labels Traefik vérifiés par valeur (`docker compose
-  config`, avec et sans l'overlay prod) — la vérification bout-en-bout à
-  travers Traefik n'a, comme pour SP-55, pas pu être complétée dans cet
-  environnement (le conteneur `traefik` ne peut pas joindre le socket
-  Docker ici, limitation pré-existante reproduite à l'identique, non liée
-  à ce changement) : à revérifier contre une stack Docker standard avant
-  mise en production.
-- **SP-57a** — i18n complète + audit d'accessibilité (vague 5, GAP-14,
-  spec `docs/superpowers/specs/2026-09-06-sp57a-i18n-a11y-design.md`,
-  plan `docs/superpowers/plans/2026-09-06-sp57a-i18n-a11y.md`), 11 tâches :
-  **volet i18n** — détecteur de couverture (`shell/scripts/
-  check-i18n-coverage.mjs`, filtre commentaires/imports/argument littéral
-  de `t(`, câblé en garde permanente dans `npm run lint`) posé et falsifié
-  avant toute migration ; baseline réelle mesurée à 99 fichiers/798
-  occurrences (pas les 110 théoriques de GAP-14 — plusieurs des 19
-  fichiers déjà "migrés" par SP-29a/SP-30 avaient des chaînes résiduelles
-  non détectées par le script, faute d'accent ou de mot listé) ;
-  `pages/`/`shell/`/`builder/` (racine + 8 sous-dossiers)/`map/` migrés en
-  7 lots séquentiels vers `t()`, 1343 clés au catalogue final (aucune
-  dupliquée, aucune vide), aucun changement de texte affiché. **Volet
-  a11y** — `@axe-core/playwright` branché sur la suite E2E existante,
-  échantillon de 9 pages (une par famille de layout du triptyque + une
-  page publique). 2 violations `serious` réelles trouvées et corrigées :
-  contrôle d'attribution MapLibre imbriquant du contenu focusable dans un
-  `role="img"` décoratif (`CatalogSpatialFilter`, `attributionControl:
-  false`) ; classe Tailwind brute `text-slate-400` (2.33:1, très sous le
-  seuil AA 4.5:1) utilisée pour le texte des états vides sur **17
-  fichiers** de `src/builder/` au lieu d'un token de l'ambiance —
-  remplacée par `text-ink-2` (7.94:1, déjà le token de texte secondaire du
-  design system, SP-34). 1 violation `serious` documentée et exclue (pas
-  corrigée, hors budget) : le token `--gs-ink-3` lui-même (3.65:1,
-  réutilisé par ~20 fichiers) — corriger sa valeur changerait l'ambiance
-  visuelle de tout le shell (`REV-176`). Filets falsifiés systématiquement
-  (détecteur i18n, garde `npm run lint`, audit a11y — injection délibérée
-  d'un défaut, confirmation d'échec, retrait). Suite finale : shell 236
-  fichiers/2069 tests, couverture 90,03 % (seuil 88) ; `npm run build`
-  propre ; E2E 165 passed/4 skipped/1 échec préexistant
-  (`e2e/pipeline-builder.spec.ts:111`, sans rapport). Reste hors périmètre,
-  assumé : extension du détecteur i18n à `ui/`/`api/`/`auth/`/
-  `staticExport/` (`REV-177`), extension de l'audit a11y au reste du
-  catalogue de routes + `eslint-plugin-jsx-a11y` en complément statique
-  (`REV-178`).
-- **SP-53** — Automatisation : compléter les éditeurs + déclenchement par
-  webhook (GAP-24/43/44/48/49/50), merge `06821047`. Sélecteur de secret
-  pour connecteurs pipeline (`SecretParamSelect`, GAP-43) ; `intervalMinutes`
-  exposé sur les panneaux de moissonnage (GAP-44) ; avertissement de
-  binding de widget hors permissions déclarées (GAP-49) ; canal e-mail +
-  requête configurable sur `AlertRuleEditor` (GAP-50) ; `create_alert_rule`/
-  `run_alert_rule` côté MCP (GAP-48) ; déclenchement de pipeline par webhook
-  entrant — `PipelineWebhookToken` haché, `POST /pipelines/{id}/trigger`
-  seule route du dépôt sans `Depends(get_current_user)`, réutilise
-  `run_pipeline_service` (jamais un 3e chemin d'écriture), génération/
-  révocation gardée par `Privilege.AUTOMATION_SECRETS_MANAGE` (GAP-24).
-  **Ce chantier a été mené et fusionné par une session concurrente avant
-  que ce fichier ne le documente** — trouvé après coup (2026-09-06) au
-  moment de rebaser 5 subagents lancés en parallèle sur le même périmètre,
-  sans savoir qu'il était déjà clos : 2 des 5 tracks (webhook complet, UX
-  builder complet) se sont révélés entièrement redondants une fois le
-  merge `06821047` repéré dans l'historique (piège n°12 à l'envers — cette
-  fois le code était en avance sur ce fichier, pas l'inverse — abandonnés
-  sans fusion). Leçon retenue : avant de lancer plusieurs subagents sur un
-  chantier listé « restant » dans la feuille de route révisée, vérifier
-  `git log` pour un merge déjà présent, pas seulement l'absence d'une ligne
-  `### Livré` ici.
-- **GAP-62 (reste) + GAP-15 (volet 1)** — fermés le 2026-09-06, seule partie
-  utile récupérée des 2 tracks restants du lancement ci-dessus. `GET
-  /dcat/datasets/{id}` dégrade désormais à `bbox=None` sur collection cassée
-  (même patron que `get_catalog`/`get_collection`, `_resolve_bbox_degrading`
-  partagée) — 2 tests écrits contre un worktree périmé (pré-SP-57b, sans
-  préfixe `/v1/`) corrigés en les rebasant. `core/app/sql_ident.py` factorise
-  le helper de quoting d'identifiant dupliqué sur 11 fichiers (2 fonctions
-  distinctes gardées, Postgres session-based vs DuckDB systématique — pas
-  fusionnées, comportements réellement différents) ; `core/app/pipelines/
-  {compiler,connector_runtime,runtime}.py` gardent leur propre copie locale,
-  exclusion volontaire (fragilité `runtime.py` post-SP-43, ~57 monkeypatchs
-  de test) ; `introspection_pg.py` n'avait rien à migrer (seul un appel à la
-  fonction SQL native `quote_ident()`, pas le helper Python).
-- **SP-61** — remplace la matrice de fonctionnalités écrite à la main
-  (SP-42, gelée) par une commande rejouable
-  (`core/scripts/feature_health/`, stdlib seule, n'importe jamais `app`,
-  ni base ni `.env`) : quatre sous-scores mesurés sur le dépôt réel
-  (atteignabilité — lien shell entrant réel, GAP-80/`/analytics/sql`
-  retrouvés mécaniquement ; garde — index AST des 147 routes REST/27
-  outils MCP, résolution de garde en profondeur 2, `openapi.json` en
-  contre-témoin puisqu'il omet 26 routes réelles derrière un flag de
-  capacité ; tests — `core/coverage.xml`/`shell/coverage/
-  coverage-summary.json`/`test_deployability.py` ; dette ouverte —
-  `analyse-gaps.md`/`backlog.md` lus sans être dupliqués), agrégés en une
-  **santé** 0-100 pondérée (`None` = non applicable, jamais 0, poids
-  renormalisés) jamais moyennée avec la **priorité** déclarée
-  (`docs/revue/inventaire-fonctionnalites.jsonl`, 307 lignes amorcées
-  depuis la matrice SP-42 puis réconciliées à la main jusqu'à un
-  garde-fou CI vert), rendus HTML+Markdown depuis une source unique
-  (`docs/revue/bilan-fonctionnalites.{html,md}`) et un journal
-  append-only (`historique-sante.jsonl`). `core/tests/
-  test_feature_inventory.py` fait désormais échouer la CI dès qu'une
-  route REST, un outil MCP ou une route shell existe dans le code sans
-  ligne d'inventaire correspondante — la classe de dérive documentée par
-  le piège n°12 (17 SP sans qu'un document de revue soit retouché)
-  devient une porte, pas une discipline. Planchers mesurés et non
-  arrondis avec marge (doctrine `.coverage-threshold`/
-  `.bundle-size-threshold`) : santé médiane 93 (mesuré 93,05), santé
-  plancher priorité haute 40 (mesuré 40,0, tiré par 3 fonctionnalités de
-  déploiement/sauvegarde sans surface REST/MCP à garder). **3 défauts
-  réels trouvés et corrigés en cours de plan, pas de simples écarts de
-  texte de plan** : (1) revue de la Tâche 4 — `open_gaps()` scannait tout
-  le document `analyse-gaps.md` au lieu du seul tableau d'état et
-  matchait le statut par sous-chaîne, faisant passer GAP-03/39/46/47/67
-  pour ouverts alors qu'ils sont **Fermé** (3 avec des chemins de preuve
-  réels, qui auraient faussé le score de dette de fonctionnalités sans
-  rapport) — corrigé par un scan borné au tableau + un matching par mot
-  entier, avec au passage `open_revs()` qui perdait REV-164 (forme
-  alternative de la ligne État) et un mésaccord docstring/code sur la
-  pénalité « inconnu » (−10 documenté, −20 réellement appliqué, le code
-  avait raison) ; (2) revue de la Tâche 5 — description périmée d'une
-  entrée d'inventaire décrivant encore `UsagePage.tsx` (SP-47) comme un
-  placeholder « bientôt disponible » ; (3) revue finale de branche —
-  invariant `publiques` (Tâche 5) jamais recoupé contre l'ensemble réel
-  des routes sans garde de l'index AST (Tâche 2) : une déclaration
-  `publiques` erronée aurait pu rester invisible à tous les garde-fous
-  existants — épinglé par un nouveau test de bijection, et un test de
-  câblage CI (`test_feature_health_gate_runs_in_ci`) resserré après
-  falsification (il restait vert même quand le job réel invoquait
-  `--write` au lieu de `--check`, une sous-chaîne satisfaite ailleurs
-  dans `ci.yml`). Trouvaille auto-corrigée par la Tâche 8 elle-même,
-  avant tout commit : le premier jet de la nouvelle entrée `GAP-81`
-  (`/analytics/sql` inatteignable, même classe que GAP-80) citait des
-  chemins de preuve partagés (`routes.tsx`/`domainRoutes.ts`) qui
-  auraient silencieusement pénalisé le score de dette de 6
-  fonctionnalités sans rapport — repointé sur le seul
-  `SqlLabPage.tsx`, revérifié à un score modifié unique. **Incident de
-  process, sans rapport avec le code** : le premier sous-agent de la
-  Tâche 1 a travaillé et committé dans le checkout principal (`dev`) au
-  lieu du worktree dédié — repéré avant toute revue, corrigé par
-  cherry-pick du commit vers la branche du worktree puis
-  `git reset --hard` sur `dev` (rien n'était poussé). **2 trouvailles de
-  la revue finale de branche documentées sans être corrigées** (suivi
-  explicite de la revue elle-même, `REV-179`/`REV-180`) : le champ
-  `priorite_source` (304/307 priorités encore « amorcées », jamais
-  revues) est transporté par le payload JSON mais jamais affiché par
-  `bilan.js` ; rien ne garantit que les rendus committés aient bien été
-  régénérés après le dernier changement de code ou d'inventaire (aucun
-  mode `--check` de fraîcheur) — exactement la classe de dérive que ce
-  SP existe à combler, risque assumé et journalisé plutôt qu'étendu dans
-  cette branche. Câble aussi un gotcha d'exécution trouvé par les Tâches
-  6/7 : `feature_health_cli.py` exige `PYTHONPATH=.` pour résoudre son
-  propre paquet — absent du texte littéral du plan pour le job CI, ajouté
-  par la Tâche 8. Suite finale : cœur 2784 passed/5 skipped (qgis)/1
-  failed (`test_mcp_configs_bbox.py::
-  test_save_app_config_via_mcp_recomputes_item_bbox_without_http_route`,
-  préexistant et documenté depuis SP-50, `core/app/` non touché par
-  cette branche, diff vérifié vide) ; suite `feature_health` ciblée 182
-  passed ; diff `openapi.json`/`core-schema.d.ts` vide (vérifié, aucune
-  route ni modèle touché) ; `lint-imports` vert sans exemption nouvelle ;
-  `git diff --stat -- shell/` vide (aucun fichier shell touché, vérifié
-  plutôt que supposé). Reste hors périmètre, assumé : le blocage 3 de
-  GAP-72 (CSP `script-src` pour les widgets d'extension tiers, question
-  produit ouverte depuis SP-48) n'est pas concerné par ce SP.
-- **GAP-16** — connecteur entrepôt cloud analytique : nouvelle op
-  `reader.connector.snowflake` (pendant exact de `reader.connector.postgres`,
-  dialecte `snowflake-sqlalchemy` résolu par entry point, aucun nouvel
-  import), nouveau kind de secret `snowflake_dsn` ; `reader.connector.postgres`
-  documenté et confirmé (littérature AWS, pas un cluster réel disponible en
-  session) compatible avec un cluster Amazon Redshift sans aucun nouveau
-  code. Databricks/BigQuery restent hors périmètre. Round-trip Snowflake
-  réel : `@pytest.mark.snowflake`, jamais câblé en CI (pas d'émulateur
-  auto-hébergeable), manuel uniquement. **Pas de nouvelle entrée
-  d'inventaire** (SP-61) : `reader.connector.snowflake` n'est atteignable que
-  via `GET /pipelines/ops`, déjà inventorié — `feature_health_cli.py
-  --check` passe sans modification, vérifié plutôt que supposé (correction
-  du brief de Tâche 7, qui visait à tort la matrice gelée
-  `2026-09-04-matrice-fonctionnalites.md`). **1 vrai défaut de croisement
-  trouvé et corrigé en Tâche 7** (piège n°4) : `test_pipeline_routes.py::
-  test_get_pipelines_ops_returns_all_eighteen` — écrit par une tâche
-  antérieure de ce même plan (catalogue à 18 ops), jamais mis à jour par la
-  Tâche 1 qui a porté le catalogue à 19 — renommé
-  `..._all_nineteen` et étendu à `reader.connector.snowflake`. Suite finale :
-  cœur 2830 passed/6 skipped (5 qgis + 1 snowflake, message de skip
-  vérifié verbatim)/0 failed — 8 échecs observés sur une première passe
-  tous confirmés préexistants et sans rapport avec ce plan (`git diff
-  origin/dev...HEAD` vide sur chaque fichier concerné, rejoués en isolation
-  quand pertinent) : flake d'environnement (répertoire `/tmp/pytest-of-lenen`
-  root-owned par un conteneur d'une session antérieure, contourné par
-  `--basetemp` dédié, pas de sudo disponible) ; `test_deployability.py::
-  test_every_core_env_var_is_wired_to_a_service` (`CORE_EMBEDDING_EGRESS_ALLOWLIST`
-  non câblé, domaine `app/search/egress.py`/SP-7, sans rapport) ;
-  `test_feature_health_debt.py` (4 tests) et
-  `test_feature_health_scoring.py::test_quality_facts_read_the_real_repository`
-  — bug réel mais préexistant du parseur `open_gaps()` (`debt.py`) : la
-  section « 🔴 Ouvert » d'`analyse-gaps.md` n'a qu'une colonne « Manque »,
-  sans le mot « ouvert » lui-même, donc `_is_open_gap_status()` ne détecte
-  aucune des lignes de cette section (seul GAP-57 y est détecté, par
-  accident, via le mot « ouvert » présent dans sa prose) — non corrigé,
-  hors périmètre de ce plan, à traiter par une future tâche sur
-  `feature_health` ; `test_alert_jobs.py::
-  test_evaluate_alert_task_does_not_renotify_while_state_is_stable`
-  intermittent sous charge, revert au vert en isolation. Shell : 240
-  fichiers/2133 tests, tous passés (1 flake `window.matchMedia`
-  order-dépendant sur `AppBuilderPage.test.tsx`, confirmé passant en
-  isolation, sans rapport — même classe que le piège n°10) ; `npm run
-  build` propre, bundle 625,5 Ko (seuil 630). **Concern documenté, non
-  corrigé** : couverture shell mesurée 89,50 % lignes / 87,44 %
-  statements — sous le seuil committé `.coverage-threshold` (89,8/87,7),
-  chute par rapport aux ~90 % mesurés par SP-57a/SP-60 ; `git diff
-  origin/dev...HEAD -- shell/` ne touche que `SecretParamSelect.tsx`
-  (+5/-2) et `PipelinePalette.tsx` (+1, déjà testé à 100 %) — l'analyse
-  ligne par ligne de la couverture v8 montre que les lignes non couvertes
-  de `SecretParamSelect.tsx` (69 % de couverture fichier) sont toutes
-  préexistantes (le composant dropdown principal, jamais testé, pas la
-  branche `snowflake_dsn` ajoutée par ce plan, qui est couverte) — dérive
-  antérieure à ce plan, non expliquée plus avant, à investiguer séparément
-  avant la prochaine clôture de SP touchant le shell.
-- **SP-62** — ferme **GAP-17** (génération de requête en langage naturel
-  avec revue humaine avant exécution, référentiel 2 « acquis du marché » —
-  Felt AI SQL / Metabase Metabot / FME AI Assist, patron « montre la
-  requête générée, l'utilisateur valide ») : 2 outils MCP,
-  `generate_sql_query` (`core/app/mcp/tools/query_generation.py`, gardé
-  par `analytics.sql_lab.access`) et `generate_visual_query` (même
-  fichier, gardé seulement par `require_collection_read` — aucun
-  privilège analytics dédié à la requête visuelle n'existe au catalogue
-  actuel, vérifié dans le code plutôt que supposé) ; le copilote existant
-  (jusqu'ici propre à l'App Builder) est monté sur `SqlLabPage` et
-  `VisualQueryWizardPage` via une base commune extraite
-  (`CopilotChat.tsx`) et deux client tools dédiés
-  (`applySqlDraft`/`applyVisualQueryDraft`). Invariant central, prouvé à
-  trois niveaux (unitaire, intégration cœur, E2E) : le brouillon généré
-  n'est **jamais** exécuté ni écrit depuis l'outil MCP — seulement inséré
-  dans l'éditeur/le formulaire par le client tool, l'exécution SQL passe
-  par le même `POST /v1/analytics/sql` que le SQL tapé à la main
-  (`run_analyst_sql`), et la création de pipeline/dataset/collection
-  depuis la requête visuelle reste au clic humain sur Créer/Mettre à
-  jour. **Deux points d'architecture non évidents, à connaître avant de
-  toucher à cette surface (M5, revue finale de branche)** :
-  `ALLOWED_MCP_TOOL_NAMES` (`core/app/copilot/tools_allowlist.py`) est
-  **globale, pas par surface** — `generate_sql_query`/
-  `generate_visual_query` sont donc techniquement appelables depuis le
-  copilote du builder d'App aussi ; inoffensif (chaque outil refait ses
-  propres contrôles de privilège/lecture de collection, et les deux ne
-  produisent qu'un brouillon), mais aucune garde ne le limite. Et
-  `CopilotTurnRequest.surface` est **purement indicatif** : il ne
-  sélectionne qu'un message système (`_SURFACE_INTROS`), rien côté serveur
-  ne restreint les outils autorisés en fonction de sa valeur. 11 tâches,
-  exécution TDD stricte avec revue par tâche —
-  plusieurs défauts réels trouvés et corrigés, pas seulement des écarts
-  de texte de plan (piège CLAUDE.md n°3) : (1) Tâche 2 (implémentée par
-  un modèle bon marché) livrait un premier jet fragile — 4 Important
-  trouvés en une seule revue : test de comptage d'outils MCP cassé
-  immédiatement (pas seulement plus tard), aucune gestion d'erreur sur
-  l'appel LLM sortant (`EgressBlockedError`/`httpx.HTTPError` auraient pu
-  fuiter le réseau interne), `_strip_code_fence` ne gérait pas une
-  réponse préfixée de prose ni un fence sur une seule ligne, et le test
-  unitaire direct de `_strip_code_fence` exigé par le brief lui-même
-  n'avait jamais été écrit — les 4 corrigés et revérifiés ; (2) Tâche 3 —
-  le test du brief patchait une fonction inexistante
-  (`app.pipelines.service.create_pipeline_item`), repointé sur le vrai
-  point de passage `app.configs.service.create_config_service`, confirmé
-  par un reviewer indépendant comme l'unique chemin de création réel des
-  pipelines ; (3) Tâche 4 — 2 bugs trouvés par falsification dans la
-  fixture de test du brief lui-même (`create_collection()` appelée sans
-  `geometry_type`/`srid`, absence de teardown risquant de contaminer
-  `pg_engine` entre sessions de test partagées) ; (4) Tâche 6 — le texte
-  littéral du brief aurait fermé `handleClientOps` directement sur
-  `activePageId` au lieu d'un `activePageIdRef` : falsifié (confirmé que
-  cette version casse le test caractéristique existant « applique les
-  clientOps sur la page active à l'arrivée de la réponse, pas celle
-  active à l'envoi »), corrigé en restaurant le patron par ref ; (5)
-  Tâche 8 — `isValidGeneratedSummary` (hérité tel quel du brief) ne
-  validait jamais `sourceColumn`/`p` d'une métrique générée, ce qui
-  aurait laissé passer une métrique conforme au schéma mais sémantiquement
-  invalide jusqu'à un `metricExpr()` non-null assertion dans
-  `compilePipeline.ts` — potentiellement **après** création réelle
-  d'objets cœur pendant le flux de création de l'assistant ; corrigé par
-  un `isValidGeneratedMetric` dédié (intervalle ouvert `0 < p < 100`,
-  `sourceColumn` obligatoire sauf pour `count`), falsifié par TDD ; (6)
-  Tâche 9 — `enableMockAuth()` manquait au harnais de test
-  (`useMcpToken` appelle `react-oidc-context` réel hors mode mock) ; (7)
-  Tâche 10 — le test « ne crée jamais » du brief était quasi vide : il
-  tournait en mode édition et espionnait `createEmptyCollection`
-  (atteignable seulement en mode création, jamais cliqué), corrigé en
-  espionnant le vrai chemin d'écriture du mode édition
-  (`savePipelineConfig`/`updateItem`), confirmé comme le primitif réel et
-  atteignable par un test voisin préexistant ; (8) Tâche 11 — la route
-  `/analytics/sql` est gardée par `RequirePrivilege
-  privilege="analytics.sql_lab.access"`, absent de l'utilisateur mock par
-  défaut : corrigé en mockant `ANALYST_ME`, patron du spec E2E
-  `sql-lab.spec.ts` voisin. Écart pré-existant trouvé et **documenté sans
-  être corrigé**, dans le même esprit que `REV-174` (`save_app_config`
-  MCP saute des validateurs REST) : `_strip_code_fence` mishandle encore
-  une forme de fence multi-ligne sans saut de ligne de fermeture (faible
-  probabilité vu le prompt serré de l'outil) ; `_known_field_names`
-  (`generate_visual_query`) a un bug d'aliasing latent
-  (`base_names = names` lie le même objet `set` au lieu de le copier) sur
-  une collision de nom de champ joint, jamais exercé par aucun test (aucun
-  test ne passe `joinCollectionId`) ; le champ `join` de
-  `generate_visual_query` n'est jamais validé contre le schéma
-  (`join.on`/`join.collectionId`) ; quelques bornes non testées
-  explicitement (`p=0`/`p=100`, `count`+`sourceColumn` non-null, un test
-  d'intégration filtres+jointure+résumé conjoint jamais ajouté, seulement
-  au niveau unitaire) — risque faible, non corrigé. Suite finale (Tâche
-  12, conteneur PostGIS jetable `gap17-postgis`) : cœur **2846
-  passed/5 skipped (qgis)/8 failed** — les 8 échecs confirmés un par un
-  comme sans rapport avec ce plan, aucun fichier qu'ils touchent n'étant
-  dans le diff de la branche (`git diff e0ad92e7..39af29f2`) : 2
-  `test_cdc_consumer_postgis.py` (le conteneur jetable de cette session
-  manque `wal_level=logical`, limite d'infrastructure de session, pas du
-  dépôt) ; `test_deployability.py::
-  test_every_core_env_var_is_wired_to_a_service` (`CORE_EMBEDDING_EGRESS_ALLOWLIST`
-  non câblé, domaine `app/search/egress.py`/SP-7, déjà présent au commit
-  de base de la branche) ; 4 `test_feature_health_debt.py` +
-  `test_feature_health_scoring.py::test_quality_facts_read_the_real_repository`
-  (bug réel mais préexistant du parseur `open_gaps()`/`open_revs()` de
-  `debt.py` — la restructuration de `analyse-gaps.md`/`backlog.md` en
-  sections `✅ Fermé`/`🟡 Partiel`/`🔴 Ouvert` sans mot de statut répété
-  par ligne, déjà en place au commit de base de la branche, casse la
-  détection par regex ; `eslint_disabled` mesuré à 12 fichiers réels
-  contre 10 attendus en dur dans le test, les 12 mêmes fichiers déjà
-  présents au commit de base — les deux dérives confirmées identiques
-  avant toute tâche de ce plan, non corrigées, hors périmètre d'un plan
-  de closure documentaire). **Gotcha de session trouvé en exécutant** :
-  le format de `CORE_TEST_DATABASE_URL` compte — `postgresql+psycopg2://`
-  (utilisable par SQLAlchemy) fait échouer 3 fixtures qui ne détendent
-  que le préfixe `postgresql+psycopg://` avant de le passer tel quel à
-  `psycopg2.connect()`/au connecteur `procrastinate` (gotcha déjà
-  rencontré à la clôture de SP-39) — `postgresql+psycopg://` est la forme
-  canonique de ce dépôt, employée pour toute exécution ultérieure. Shell
-  247 fichiers/2158 tests, tous passés ; couverture mesurée 89,55 %
-  lignes / 87,41 % statements, **sous les seuils committés** (89,80/87,70)
-  — dérive confirmée pré-existante et sans rapport avec ce plan :
-  `SecretParamSelect.tsx` (composant dropdown principal, jamais testé
-  depuis sa création SP-53) est à 65,45 % de couverture lignes, fichier
-  jamais touché par aucun des 11 commits de ce plan (`git diff
-  e0ad92e7..39af29f2` vide sur ce fichier), et les 7 fichiers ajoutés par
-  ce plan sont tous couverts à 100 % (`SqlLabCopilotPanel.tsx`,
-  `VisualQueryCopilotPanel.tsx`, `sqlLabClientTools.ts`, etc.) — dérive
-  non corrigée, hors périmètre, à investiguer avant la prochaine clôture
-  de SP touchant le shell. `npm run build` propre (bundle 625,6 Ko, seuil
-  630). E2E **179 tests au total** (pas les 166 documentés par
-  `## Commandes`, resté périmé depuis plusieurs SP sans que ce chantier
-  ne le corrige — nettoyage séparé, plus large, hors périmètre) : 173
-  passed/2 failed/4 skipped. Les 2 échecs confirmés préexistants et sans
-  rapport : `e2e/triptych-narrow.spec.ts:309`/`:357` (« Paramètres »)
-  ancrent sur le texte `SettingsComingSoonPage` d'avant SP-33, jamais mis
-  à jour vers la clé i18n réelle `t("comingSoon.settings")` — même classe
-  que le `readyAnchor` de `/tasks` déjà corrigé par SP-60, mais sur
-  `/settings`, non traité par SP-60. `e2e/pipeline-builder.spec.ts`
-  — l'échec longtemps documenté par ce fichier comme « connu » — est
-  passé proprement dans cette exécution, sans investigation plus poussée
-  (hors périmètre). **Correction d'une affirmation fausse trouvée en
-  vérifiant plutôt qu'en supposant (piège CLAUDE.md n°12)** : cette entrée
-  affirmait initialement un diff `openapi.json`/`core-schema.d.ts` « non
-  vide et cohérent (2 nouvelles routes MCP) » — faux : les outils MCP
-  n'apparaissent jamais dans `openapi.json` (protocole séparé de la
-  spec REST) et `/copilot/turn` lui-même en est absent tant que
-  `CORE_LLM_PROVIDER` n'est pas positionné à l'export (cf. piège n°1) —
-  déjà vérifié à la clôture de la Tâche 1 de ce plan. `git diff
-  e0ad92e7..HEAD -- core/openapi.json shell/src/api/generated/core-schema.d.ts`
-  ne montre que les 8 lignes de flottement `geo+json`/`json` déjà
-  documentées comme préexistantes et sans rapport (routes features, non
-  liées à ce plan). Ce SP ne touche que de la documentation de clôture
-  (inventaire, bilan, `analyse-gaps.md`, ce fichier) — le code des 11
-  tâches précédentes était déjà mergé sur cette branche avant que ce SP
-  ne s'exécute. **Revue finale de branche (piège CLAUDE.md n°4, après la
-  clôture ci-dessus) : 4 Important trouvés, tous des croisements
-  invisibles à la revue par tâche, tous corrigés** (commits
-  `50a044d2`/`6f83a0ff`/`e9429e6d`/`d03c9dab`) : (1) **bloquant** —
-  `SqlLabCopilotPanel` n'envoyait que `{sql}` en contexte, alors que
-  `generate_sql_query` exige un `collectionId` qu'aucun outil allowlisté
-  ne permettait au LLM de découvrir sur cette surface (`explain_dataset`
-  omet exprès `collectionId`, `search_collections`/`list_collections` ne
-  sont pas allowlistés) — avec un vrai fournisseur, la fonctionnalité
-  phare de SQL Lab était probablement inutilisable au premier usage réel,
-  aucun test ne pouvait le détecter (tous fournissaient l'id
-  directement) ; corrigé en donnant à `SqlLabPage` le même
-  `useCollectionsAdmin()` que `VisualQueryWizardPage`, transmis en
-  contexte ; (2) la validation serveur des colonnes de
-  `generate_visual_query` n'atteignait jamais le formulaire (c'est le LLM,
-  pas le JSON validé, qui recompose `applyVisualQueryDraft`) — corrigé en
-  threadant `baseSchema`/`joinedSchema`/`collectionIds` (déjà chargés par
-  le wizard) dans `applyVisualQueryClientOp`, miroir de
-  `_known_field_names` côté serveur mais avec une copie de `Set` correcte
-  (`new Set(names)`, pas l'aliasing du serveur, cf. `REV-184` point 4) ;
-  (3) un `join.collectionId` halluciné était accepté sans vérification —
-  le panneau affichait une jointure « posée » mais `compilePipeline.ts`
-  omettait silencieusement le SQL de jointure ; corrigé en n'acceptant
-  qu'un `collectionId` réellement visible ; (4)
-  `applyVisualQueryClientOp` effaçait les filtres construits à la main
-  dès que **toutes** les lignes générées étaient invalides
-  (`setFilters([])`) — corrigé en un no-op pour ce cas précis (un tableau
-  vide **explicite** reste un effacement légitime), changement
-  intentionnel et documenté d'un test vert. Périmètre explicitement
-  refusé pour ce dernier point : aucune parité avec la pile d'annulation
-  SP-19 du builder d'App (SQL Lab/requête visuelle tiennent leur état en
-  `useState` nu, sans commande Annuler — refonte hors périmètre d'une
-  revue). 5 Minor également fermés dans le même lot (succès UI affiché
-  même quand une op est abandonnée silencieusement ; règles de validation
-  d'une métrique dupliquées sans garantie entre le modèle Pydantic serveur
-  et le validateur client — un `model_validator` les aligne désormais ;
-  un commentaire trompeur ; un docstring manquant sur la désynchronisation
-  schéma d'introspection PostGIS vs sandbox lakehouse ; deux lacunes de
-  doc sur l'allowlist MCP globale — pas par surface — et le caractère
-  purement indicatif de `CopilotTurnRequest.surface`, ajoutées ci-dessus).
-  Une **2e passe de revue finale**, dédiée à vérifier ce correctif lui-même
-  (surtout l'élargissement d'interface `CopilotChat.onClientOps` en
-  `boolean[] | void`, additif et vérifié sans impact sur `CopilotPanel.tsx`
-  ni sa caractérisation), a conclu « Ready to finish this branch: Yes » et
-  trouvé 5 Minor résiduels supplémentaires, non bloquants (aucune perte de
-  donnée ni écriture backend incorrecte), consignés sans être corrigés en
-  `REV-184` (succès rapporté par jambe plutôt que par brouillon entier ;
-  asymétrie serveur/client `sourceColumn`/`p` absent vs `null` explicite ;
-  `isValidGeneratedJoin` ne valide jamais `join.on` ; commentaire imprécis
-  sur `knownColumnNames` ; troncature à 100 collections + course de
-  chargement sur `SqlLabPage`, résiduel déjà connu de SP-50). Suite finale
-  après ce dernier lot : shell 247 fichiers/2170 tests (+12), 0 échec ;
-  cœur suite ciblée (copilot + génération + inventaire) 67 passed ;
-  diff `openapi.json`/`core-schema.d.ts` vide (régénéré, aucune route/
-  modèle REST touché par ce lot) ; E2E ciblée 7/7, E2E complète rejouée
-  deux fois sans nouvelle régression imputable (flakes de parallélisme
-  changeant de spec d'une exécution à l'autre, confirmés en isolation).
-- **GAP-29 (reste)** — 6 formats d'import supplémentaires (13 tâches, spec
-  `docs/superpowers/specs/2026-09-06-gap29-formats-import-design.md`, plan
-  `docs/superpowers/plans/2026-09-06-gap29-formats-import.md`) : Excel
-  multi-feuilles (`list_xlsx_sheets`, réutilise `selecting-layer`), Parquet
-  non-géo (`_is_geoparquet`/`parse_parquet_tabular`, sniff de la clé `"geo"`
-  du footer plutôt qu'une inspection de schéma complète), JSON Lines
-  (`parse_jsonlines`), CSV/WKT (mode `wkt` de `parse_csv_latlon`),
-  GML/INSPIRE (`parse_gml`, traité comme KML — driver GDAL, réutilise
-  `_read_features`), XML générique (`parse_xml_generic`, heuristique
-  d'élément le plus répété via BFS, `defusedxml.ElementTree` uniquement —
-  jamais `xml.etree` nu, XXE). Fonction pivot partagée `GeometryMode`
-  (dataclass `kind: "latlon"|"wkt"|"none"`)/`extract_geometry` posée en
-  Tâche 2, réutilisée par CSV/XLSX/JSON Lines/Parquet/XML (GML en est
-  exclu — `parse_gml` est GDAL-natif comme KML, toujours une géométrie
-  réelle, jamais de mode `latlon`/`wkt`/`none` à résoudre) — 10 branches
-  de dispatch au total dans `run_import` : geojson/json, csv, xlsx,
-  gpkg, zip, kml/kmz, gml, jsonl, xml, parquet. Une collection sans
-  géométrie ne crée plus de
-  Map/Item/Config (`ImportResult.item_id: str | None`, précédent :
-  `register_collection`, le flux admin, ne le faisait déjà pas) ;
-  `ImportFileButton` (nouvelle phase `selecting-geometry`, sélecteur
-  latlon/wkt/none) navigue vers `/admin/collections` dans ce cas au lieu de
-  rester en sondage infini. Migration 0041 (`ingestion_jobs.wkt_field`/
-  `geometry_mode`) écrite à la main — **trouvaille Tâche 11, hors
-  périmètre de cette tâche, signalée sans être réparée** : `alembic
-  revision` est cassé sur tout le dépôt (`script.py.mako` jamais commité).
-  Fixtures de test réelles téléchargées (OSGeo/gdal `archsites.gml` MIT,
-  apache/poi `TwoSheetsNoneHidden.xlsx` Apache-2.0, openai/openai-cookbook
-  `scifact_claims_sample.jsonl` MIT tronqué, microsoft/aspire `books.xml`
-  MIT — licences vérifiées) plutôt que synthétiques, sous
-  `core/tests/fixtures/ingestion/`. **Défauts réels trouvés et corrigés en
-  cours de plan, pas de simples écarts de texte (piège CLAUDE.md n°3)** :
-  KeyError→422 propre sur un `layerName` XLSX inconnu (Task 5) ;
-  `_PARQUET_ERRORS` — `pyarrow.ArrowIOError` n'hérite PAS d'`ArrowException`
-  contrairement à l'hypothèse initiale, les deux branches du tuple
-  d'exceptions sont réellement nécessaires (Task 9) ; un payload XXE lève
-  `defusedxml.common.EntitiesForbidden`, PAS une sous-classe de
-  `ParseError` (MRO vérifié : `EntitiesForbidden`→`DefusedXmlException`→
-  `ValueError`) — le `except ParseError` seul l'aurait laissé fuiter en 500
-  non catché (Task 10) ; `mark_done(item_id: str)` élargi en `str | None`
-  et `geom_types` filtré (`if geom is not None`) pour le chemin sans
-  géométrie, sans quoi `AttributeError` (Task 11). **Clôture (Task 13,
-  2026-09-12)** : diff `openapi.json`/`core-schema.d.ts` **vide** — déjà
-  régénéré par la Task 11 (`InspectRequest.layerName`,
-  `IngestionJobCreate.wktField`/`geometryMode`), rien n'a dérivé depuis.
-  Suite finale cœur (conteneur PostGIS jetable dédié `gap29-task13-postgis`,
-  `--cov=app --cov-report=xml`) : **2873 passed/10 failed/6 skipped**
-  (5 qgis + 1 snowflake, sidecar/émulateur absents de cet environnement,
-  attendu) en 14 min 47 — **les 10 échecs tous confirmés préexistants et
-  sans rapport** (`git diff origin/dev...HEAD --stat -- core/` ne touche
-  que `app/ingestion/*`/la migration/les fixtures/tests d'ingestion,
-  aucun des fichiers en échec) : 2×`test_cdc_consumer_postgis.py`
-  (conteneur jetable sans `wal_level=logical`, même limite que SP-62) ;
-  `test_deployability.py::test_every_core_env_var_is_wired_to_a_service`
-  (`CORE_EMBEDDING_EGRESS_ALLOWLIST`, domaine SP-7, documenté depuis
-  SP-59/SP-62) ; `test_feature_health_coverage.py::
-  test_core_rates_are_keyed_on_repo_relative_paths` — artefact d'ordonnancement
-  de CETTE exécution (le test lit `core/coverage.xml`, écrit seulement à la
-  sortie du process par `--cov-report=xml` : rejoué seul une fois le
-  fichier présent, passe) ; 4×`test_feature_health_debt.py` +
-  `test_feature_health_scoring.py::test_quality_facts_read_the_real_repository`
-  (bug préexistant du parseur `open_gaps()`/`open_revs()` documenté par
-  SP-62/GAP-16, non corrigé, hors périmètre d'un plan de clôture
-  documentaire) ; `test_features_rls.py::test_scope_releases_role_on_exception`
-  — **nouvelle trouvaille d'environnement** : ce test attend
-  `current_user == "gis"` après `RESET ROLE`, hypothèse valide seulement si
-  la connexion de test se logue sous l'utilisateur `gis` (convention du
-  conteneur `postgis-test` partagé/CI) ; le conteneur jetable dédié à cette
-  tâche a été démarré avec des identifiants `postgres:postgres` — `RESET
-  ROLE` revient donc légitimement à `postgres`, pas `gis` ; reproduit en
-  isolation sur ce même conteneur (donc pas une contention de session
-  concurrente), non lié au code de ce plan (`app/features/rls.py` hors
-  diff), à rapprocher de la classe déjà documentée « conteneur jetable ≠
-  convention `postgis-test` » (`wal_level`, colonnes SP-41/42 manquantes).
-  Couverture cœur 94,28 % (seuil 85, en hausse vs 94,15 % SP-59) ;
-  ruff/ruff format/mypy --strict (6 modules)/lint-imports tous verts.
-  Shell : 240 fichiers/2135 tests, tous passés ; lint/format verts (1
-  warning React-hooks préexistant, sans rapport) ; couverture 89,52 %
-  lignes/87,44 % statements — **sous les seuils committés** (89,80/87,70),
-  confirmé préexistant et sans rapport (`SecretParamSelect.tsx`, jamais
-  touché par ce plan, même dérive documentée par le GAP-16 précédent,
-  déjà sous seuil avant ce plan) ; `npm run build` propre, bundle
-  627,8 Ko (seuil 630). E2E ingestion ciblée (`ingestion.spec.ts`,
-  `ingestion-gpkg.spec.ts`, `ingestion-xlsx.spec.ts`) 4/4 ; E2E complète
-  171 passed/3 failed/4 skipped — les 3 confirmés sans rapport : 2×
-  `triptych-narrow.spec.ts` (« Paramètres ») ancrent sur le texte
-  pré-i18n `SettingsComingSoonPage`, déjà corrigé sur `origin/dev`
-  (commit `92c48f54`, postérieur au point de fork `e2c0a219` de ce
-  worktree — non rebasé, hors périmètre d'un plan de clôture documentaire) ;
-  1×`external-widget.spec.ts` (assertion de couleur calculée), rejoué seul
-  et vert — flake sous charge parallèle, classe déjà documentée. Pas de
-  nouvelle E2E ajoutée pour les 6 formats (décision assumée : couverture
-  unitaire déjà large côté `test_ingestion_parsers.py`/
-  `test_ingestion_importer.py`/`test_ingestion_routes.py` côté cœur et
-  `ImportFileButton.test.tsx` côté shell — budget E2E de ce plan non
-  extensible à ce stade). `feature_health_cli.py --check` vert, aucune
-  surface non inventoriée (aucune route REST/outil MCP/route shell
-  nouvelle — seulement des branches de format sur `POST /uploads`/
-  `POST /uploads/inspect`, déjà inventoriées), santé médiane 97,2
-  (plancher 96,0). **GAP-29 reste Partiel, jamais Fermé** :
-  `docs/revue/2026-09-04-analyse-gaps.md` distinguait déjà deux volets
-  sous ce même identifiant — le volet « formats manquants » (ce plan +
-  GAP-09/SP-56) est désormais couvert en détail, mais la ligne du tableau
-  d'état elle-même le formule depuis l'origine comme un écart de
-  *positionnement produit* face au marché (450+ connecteurs FME) « non
-  fermable par du code » — ce second volet n'a reçu aucune décision
-  produit nouvelle et reste ouvert tel quel ; la ligne `REV-123` du
-  backlog (miroir exact) mise à jour dans le même commit.
-- **GAP-19** — SDK d'embedding App/Dashboard (14 tâches, spec
-  `docs/superpowers/specs/2026-09-06-gap19-embed-sdk-design.md`, plan
-  `docs/superpowers/plans/2026-09-06-gap19-embed-sdk.md`,
-  subagent-driven-development) : route publique `/embed/:token`
-  (`shell/src/pages/EmbedPage.tsx`) résout un lien de partage (`GET
-  /share-links/{token}`, SP-54, inchangé), refuse tout `resourceType` hors
-  `app`/`dashboard`, construit un `ItemClient` dédié (jamais celui de
-  l'onglet hôte) transportant le jeton exclusivement via
-  `X-Share-Link-Token` (jamais `Authorization`) et rend l'App via le MÊME
-  `AppRenderer(mode="runtime")` que partout ailleurs (règle d'architecture
-  n°3, jamais un second runtime). Côté cœur : `app/configs/guest_access.py`
-  (`GuestActor`, `resolve_guest_scope`, dépendance FastAPI
-  `get_share_link_actor`) résout la portée d'un lien — l'item racine plus
-  les collections/datasets que sa config référence, y compris via un
-  nouveau champ additif `DataSource.datasetId` — câblée sur 8 routes de
-  lecture (`configs/by-item`, `collections/{id}`+`/schema`, `features`
-  list/get/aggregate, tuiles MVT, attachments list+download) via le
-  chokepoint unique `get_readable_collection` déjà existant. Côté shell :
-  `ItemClient.getShareLinkToken?`/`MapView`/`mapWidget` relaient le jeton
-  jusqu'aux tuiles et pièces jointes (`Authorization` sinon
-  `X-Share-Link-Token`, jamais les deux) ; section « Intégrer » dans
-  `ShareForm.tsx` (extrait `<iframe>`). **2 défauts critiques trouvés et
-  corrigés en revue finale de branche, aucun des deux détecté par les 14
-  tâches elles-mêmes** (piège n°4, croisements invisibles à la revue par
-  tâche) : (1) **contournement réel de `can()`, démontré par PoC en
-  session** — `resolve_guest_scope()` faisait confiance verbatim aux
-  `dataSources` d'une config : tout utilisateur pouvant créer une App
-  pouvait y référencer une collection ou un dataset privé d'un tiers
-  jamais partagé avec lui, créer un lien de partage pour SA PROPRE App
-  (droits réels, sur son propre item), et lire ainsi en clair la
-  collection/le dataset du tiers via le jeton invité résultant — métadonnées,
-  schéma, chaque feature, tuiles vectorielles, octets de pièce jointe,
-  ou pour un dataset son payload complet (requêtes SQL/pipeline incluses).
-  Corrigé en ajoutant `created_by` (le créateur du `ShareLink`, résolu
-  depuis la ligne DB à chaque requête, jamais depuis le JWT) à
-  `GuestActor`, recoupé avec `can(user_id=guest.created_by, ...)` aux deux
-  chokepoints réels (`get_readable_collection`, `get_config_by_item`) — la
-  délégation n'excède jamais ce que son délégant peut lui-même lire (sauf
-  pour un porteur d'`admin.collections.manage`, où `actor_is_admin=False`
-  est posé en dur : la délégation y est alors strictement plus étroite,
-  échec fermé documenté dans le docstring plutôt que testé, suivi REV à
-  ouvrir). Bonus trouvé par le même contournement : le contournement
-  tournait même en présence d'un utilisateur authentifié réel portant en
-  même temps un jeton invité sans rapport (additif, pas exclusif) —
-  restreint à `user is None`. (2) **`X-Frame-Options: DENY` sur le
-  routeur Traefik `shell`** (middleware `security-headers`, `frameDeny=
-  true`, préexistant à cette branche — commit `07429b54`/`20266779`, la
-  prémisse §2.6 de la spec « absent aujourd'hui » était factuellement
-  fausse au moment où elle a été écrite) : sans exemption, aucun
-  navigateur réel n'aurait jamais rendu `/embed/:token` dans l'`<iframe>`
-  d'un tiers — la fonctionnalité entière aurait été inerte en production
-  malgré 14 tâches toutes vertes (aucune ne traverse un vrai Traefik).
-  Corrigé par un routeur dédié `shell-embed` (même service, priorité 5,
-  `PathPrefix /embed/`) référençant `security-headers-embed` (identique à
-  `security-headers` sauf `frameDeny` omis), redéclaré à l'identique dans
-  `docker-compose.prod.yml` (`labels: !override`, piège n°2). Chaque
-  régression falsifiée avant clôture (retrait temporaire du correctif,
-  confirmation de l'échec pour la bonne raison, restauration, retour au
-  vert) — jamais supposée corrigée sur la seule foi de l'implémentation.
-  Turbulence d'infrastructure traversée en session, sans rapport avec le
-  code : un sous-agent implémenteur interrompu en cours de tâche par une
-  limite de session (repris directement par le contrôleur) ; le démon
-  Docker de la session a planté pendant un rejeu complet (`Bus error` sur
-  toute commande `docker`, cause host-level), redémarré côté utilisateur
-  puis conteneur PostGIS dédié recréé avant de confirmer un état propre.
-  3 gaps résiduels disclosed, non corrigés (hors périmètre du plan
-  d'origine, trouvés par la revue finale de branche elle-même en traçant
-  les 12 critères d'acceptation de la spec un par un) : icônes de carte
-  personnalisées non câblées pour un visiteur invité (`GET
-  /map-icons/{id}/file` exige toujours `get_current_user`, jamais
-  optionnel) ; le critère d'acceptation « CSP `frame-ancestors` absente »
-  n'est pas testé (seul `X-Frame-Options` l'est — la CSP dynamique
-  n'émet aujourd'hui aucune directive `frame-ancestors`, vérifié, mais
-  rien ne le garantirait si quelqu'un en ajoutait une) ; couches 3D
-  hébergées (`Tile3DLayer`/`applyDeckLayers`) non câblées côté `MapView`
-  pour le jeton invité. Suite finale : cœur 2857 passed/6 skipped
-  (qgis)/9 failed (tous confirmés préexistants et sans rapport — 8
-  feature_health/deployability déjà documentés, 1
-  `CORE_EMBEDDING_EGRESS_ALLOWLIST` non câblé/SP-7 — sur conteneur
-  PostGIS dédié réel, couverture 94,31 %) ; suite guest_access/share_link
-  ciblée 59/59 (0 skip, conteneur réel) ; shell 242 fichiers/2143 tests,
-  `tsc --noEmit`/`ruff`/`lint-imports` verts. Couverture shell mesurée
-  sous les seuils committés (89,50 % lignes vs 89,80, 87,42 %
-  statements vs 87,70) — dérive antérieure à cette branche et sans
-  rapport (même précédent déjà documenté par GAP-16/GAP-29 : les
-  fichiers réellement touchés par ce chantier sont tous individuellement
-  couverts à 95-100 %). `feature_health_cli.py --check` : santé médiane
-  97,2 (plancher 96,0), vert.
+- **SP-42** — revue globale du dépôt : matrice de fonctionnalités, analyse de
+  79 gaps (`GAP-nn`), backlog unique (173 `REV-nnn`), rapport de revue,
+  feuille de route révisée, spec SP-43.
+- **SP-44** — débloque le jalon **M14** (GAP-01) : les 5 tests
+  `@pytest.mark.qgis` exécutés pour la première fois contre un sidecar réel
+  trouvent et corrigent 2 défauts de production jamais vus (`_lock_down()`
+  bloquait `transform.qgis`, `fid` GeoPackage non filtré). Câblage CI
+  (`core-qgis`) ajouté ensuite.
+- **SP-43** — ferme 6 classes de duplication mécanique (registre de
+  privilège, comparateur modèle↔Alembic, fixtures E2E, module de job
+  partagé, ARIA) puis découpe les 3 fichiers les plus mélangés du dépôt
+  (`itemClient.ts`, `mcp/tools.py`, `pipelines/runtime.py`) en domaines,
+  avec 3 couches de service REST↔MCP partagées pour la première fois.
+- **SP-47** — ferme `REV-097` (2 privilèges sans route) et `GAP-71`/`GAP-28` :
+  `require_any_privilege`, garde OR sur `/secrets`, nouveau domaine
+  `app/usage/` en lecture seule sur `audit_log`, `UsagePage` sur `/tasks`.
+- **SP-49** — ferme GAP-56/63/64/76 : index manquants, batching des
+  balayages cron, N+1 fermés sur `GET /harvest/*`, reprise périodique des
+  jobs appexport/ingestion, sondes de healthcheck worker/export-worker/
+  qgis-worker.
+- **SP-46** — découvrabilité : ferme GAP-30/32/39/67, quatre écrans gardés
+  côté serveur mais invisibles côté UI deviennent atteignables par un lien
+  réel.
+- **SP-45** — durcissement sécurité immédiat : garde d'egress SSRF sur
+  l'appel LLM du copilote (GAP-02), retrait de `MARTIN_SECRET` inutilisé,
+  rate-limit sur `POST /collections/empty`, purge d'historique git d'une
+  clé `age` de test, réglages de sécurité GitHub activés.
+- **SP-52** — 5 manques d'UX du builder d'App : suppression de
+  widget/variable avec purge de câblage `ActionsPanel`, `setFilter` du
+  copilote fusionne au lieu de remplacer, contenu réel de l'onglet actif
+  sur le canevas, éditeur d'enregistrements JSON pour sources Statique,
+  widget `variableInput`.
+- **SP-56** — formats d'import manquants (GAP-09, GAP-29 partiel) : XLSX,
+  KML/KMZ, GeoParquet.
+- **SP-55** — catalogue : tri/facettes/recherche spatiale/SEO
+  (GAP-05/06/07) : `sort`/`owner`/`keyword`/`GET /items/facets`, emprise
+  spatiale persistée + filtre `bbox`, `sitemap.xml`/`robots.txt`/aperçu
+  social côté serveur.
+- **SP-58** — conformité RGPD : quotas de stockage par tenant,
+  anonymisation d'utilisateur (RGPD Art. 17), `purge_tenant` (suppression
+  irréversible complète, 27 tables), privilège `compliance.manage` exclu
+  même de l'Administrateur.
+- **SP-51** — parité carte App Builder / éditeur autonome : outils de
+  mesure/croquis, opacité raster, basemap/terrain/caméra sur le widget
+  carte, éditeur JSON avancé pour `layer.paint`, UI d'auteur pour une
+  couche `deck`.
+- **SP-54** — surfaces API shell (`ItemClient`) + partage avancé : schéma
+  `AppConfig` factorisé, cache dataset TTL, recherche de
+  collections/groupes côté MCP, `geomIntersects` sur `query_features`,
+  liens de partage à échéance (`share_link`).
+- **SP-59** — exploitation : rotation des secrets (atomique en 2 passes) +
+  restauration scriptée (`deploy/backup/restore.sh`) ; trouvaille : 2 des 7
+  buckets MinIO jamais reportés côté restauration, corrigé.
+- **SP-48** — bascule de la CSP en enforcing sur img-src/connect-src
+  (allowlist calculée dynamiquement, poussée à Traefik) ; `script-src` pour
+  les widgets d'extension tiers reste une question produit ouverte.
+- **SP-50** — robustesse des surfaces publiques de fédération
+  (GAP-57/59/60/62) : pagination `/collections`/STAC/DCAT/historiques,
+  plafond de taille sur l'egress de moissonnage, collection cassée ne fait
+  plus échouer tout `/stac/collections`.
+- **SP-60** — performance frontend & filets de test (GAP-68/69) : boucles
+  de sondage annulées au démontage, découpage du bundle par route
+  (`lazy()`), filet de non-régression sur la taille du bundle.
+- **SP-57b** — ferme GAP-14 (contrat d'API `/v1/`, ADR rétroactifs,
+  gabarits GitHub) : les 33 routeurs du cœur passent sous `/v1/` (health et
+  `/mcp` exclus).
+- **SP-57a** — i18n complète (1343 clés, détecteur de couverture câblé en
+  CI) + audit d'accessibilité (axe-core sur 9 pages).
+- **SP-53** — Automatisation : complète les éditeurs (secrets, moissonnage,
+  alertes) + déclenchement de pipeline par webhook entrant
+  (`PipelineWebhookToken`).
+- **GAP-62 (reste) + GAP-15 (volet 1)** — `GET /dcat/datasets/{id}` dégrade
+  sur collection cassée ; `core/app/sql_ident.py` factorise le quoting
+  d'identifiant dupliqué sur 11 fichiers.
+- **SP-61** — remplace la matrice de fonctionnalités écrite à la main par
+  une commande rejouable (`feature_health_cli.py`) : santé 0-100 pondérée
+  par fonctionnalité, CI refuse toute surface non inventoriée.
+- **GAP-16** — connecteur entrepôt cloud analytique `reader.connector.snowflake`.
+- **SP-62** — ferme GAP-17 (génération de requête en langage naturel avec
+  revue humaine) : outils MCP `generate_sql_query`/`generate_visual_query`,
+  copilote monté sur SQL Lab et la requête visuelle ; le brouillon généré
+  n'est jamais exécuté ni écrit automatiquement.
+- **GAP-29 (reste)** — 6 formats d'import supplémentaires (Excel
+  multi-feuilles, Parquet non-géo, JSON Lines, CSV/WKT, GML/INSPIRE, XML
+  générique) ; reste `Partiel` (positionnement produit face au marché non
+  tranché).
+- **GAP-19** — SDK d'embedding App/Dashboard : route publique
+  `/embed/:token`, portée du lien de partage recoupée avec les droits
+  réels de son créateur (contournement de `can()` trouvé et corrigé en
+  revue finale), exemption `X-Frame-Options` dédiée.
 - **GAP-22** — sécurité au niveau colonne : masquage de champ sensible par
-  collection (16 tâches, spec `docs/superpowers/specs/2026-09-06-gap22-
-  securite-colonne-design.md`, plan `docs/superpowers/plans/2026-09-06-
-  gap22-securite-colonne.md`, subagent-driven-development), sur les
-  **trois** mécanismes de lecture réels du dépôt identifiés en amont
-  (spec §1.1) : nouveau privilège global `Privilege.DATA_VIEW_SENSITIVE`
-  (20e, rejoint `admin` par défaut, absent des 3 autres rôles prédéfinis) ;
-  marquage par `Collection.sensitive_fields` (JSON, migration 0042 —
-  renumérotée depuis 0041 lors du rebasage sur `dev`, collision avec
-  0041_ingestion_jobs_wkt_geometry_mode.py/GAP-29 mergé entre-temps,
-  CLAUDE.md piège n°9), éditable via `PATCH /collections/{id}` (422 sur un
-  nom de colonne réservé/pk/tenant_id/geometry ou inexistant) et dans
-  `EditCollectionPanel.tsx` (nouvel onglet « Champs sensibles »).
-  **Chemin (A), Postgres/RLS** : nouveau rôle non-propriétaire
-  `gis_rls_masked` (`sync_masked_role_grants`, `app/collections/ddl.py`) —
-  GRANT/REVOKE SELECT **par colonne uniquement, jamais au niveau table** —
-  sélectionné par `rls_scope(masked=)`/`get_masked_for_user()` sur les 3
-  routes REST de lecture de `features/routes.py`, les tuiles vectorielles
-  MVT et l'outil MCP `query_features`. **Chemins (B)/(C), DuckDB** :
-  agrégats structurés (`POST /collections/{id}/aggregate`, `run_analytics_
-  query` MCP) et **SQL Lab** (`POST /analytics/sql`) — la colonne sensible
-  est **exclue de la matérialisation DuckDB elle-même**, jamais filtrée
-  après coup : vérifié en rejouant `SELECT salary FROM villes` hors pytest
-  contre une collection masquée et en obtenant l'erreur native DuckDB
-  `Binder Error: Referenced column "salary" not found in FROM clause!` —
-  aucune requête SQL Lab, aussi habile soit-elle, ne peut lire une colonne
-  jamais matérialisée. **Défaut réel de croisement trouvé et corrigé
-  PENDANT le plan, pas laissé à une revue finale (Task 8, CLAUDE.md piège
-  n°4)** : `sync_masked_role_grants` ne fait jamais de GRANT table-level
-  par construction — sous Postgres, toute requête qui **nomme**
-  explicitement une colonne révoquée échoue en bloc
-  (`InsufficientPrivilege: permission denied for table`) au lieu de
-  l'omettre silencieusement, contredisant le critère d'acceptation §5.3
-  (colonne absente, jamais une erreur) ; `introspect()` était appelé AVANT
-  `rls_scope(masked=...)` sans jamais filtrer `info.columns` aux 4 sites
-  déjà câblés (catalog.py + les 3 routes REST), donc la requête SQL
-  générée nommait toujours la colonne sensible. Corrigé par un helper
-  partagé `hide_sensitive_columns()` (`app/collections/introspection.py`),
-  câblé rétroactivement sur les 3 routes REST (déjà mergées), les tuiles
-  MVT (câblées dans la foulée) et `query_features` — commit `9c425707`,
-  falsifié deux fois indépendamment (implémenteur et reviewer). **2 bypass
-  hors périmètre, explicites dès la spec (§1.5/§4), jamais absorbés
-  silencieusement** : (1) `app/pipelines/runtime.py::_read_collection`/
-  `_materialize_reader` (`reader.collection`) — un pipeline no-code peut
-  lire une colonne sensible d'une collection source et la ré-exporter
-  telle quelle vers une collection/un export cible, sans aucune
-  vérification de `sensitive_fields` ; (2) `app/appexport/freeze.py::
-  freeze_config`/`app/appexport/snapshot.py::write_snapshot` (exports
-  Statique/Autoporté) appellent `rls_scope(session, tenant_id)` **sans
-  utilisateur du tout** à threader — un export embarque toutes les
-  colonnes, sensibles ou non, indépendamment du privilège du déclencheur.
-  Les deux nécessiteraient un chantier distinct (toucher
-  `app/pipelines/registries.py` + les jobs `appexport`) ; un futur
-  GAP/REV devra les couvrir. **Limitation connue, assumée (spec §4)** :
-  **pas de masquage en écriture** — un utilisateur avec `data.manage` mais
-  sans `data.view_sensitive` peut toujours écrire une valeur dans un champ
-  sensible qu'il ne peut ensuite jamais relire (cohérent avec le périmètre
-  « masquage de champ » du brief, au sens lecture/consultation, comparaison
-  à Metabase/Superset — pas un oubli). **Défaut réel, sans rapport avec le
-  masquage, trouvé par la Task 10 (test bout-en-bout §5.3)** :
-  `app/features/routes.py` appelle `get_readable_collection()` à **6**
-  sites (`list_features`, `aggregate_features`, `export_collection_
-  aggregate`, `export_collection_items`, `get_single_feature`,
-  `_get_writable`) sans jamais passer `can_manage_collections=
-  has_privilege(...)`, contrairement à `collections/routes.py`/
-  `stac/routes.py`/`dcat/routes.py` (étendus par SP-35/GAP-60) — un
-  porteur du seul `admin.collections.manage` reçoit un 404 en lisant des
-  features via l'API OGC sur une collection qu'il peut pourtant
-  administrer ailleurs ; contourné côté fixture de test uniquement
-  (`isPublic: true`), **aucun code de production touché**, décision de
-  scope délibérée — ouvert séparément comme **GAP-82**/**REV-185** plutôt
-  que silencieusement absorbé ou perdu (piège n°12). **2 défauts
-  d'environnement/robustesse trouvés et corrigés lors de la vérification
-  finale (Task 16), tous deux distincts du masquage lui-même** : (1) la
-  migration 0042 tentait un `DROP ROLE gis_rls_masked` sans garde — un
-  rôle Postgres est global au cluster, pas à une seule base ; sous une
-  suite complète où des dizaines de tests grantent réellement ce rôle sur
-  la base de test partagée, `DROP ROLE` échoue en
-  `DependentObjectsStillExist`, faisant échouer en cascade **6** tests de
-  migration sans rapport (`test_metadata_migration_alembic.py`,
-  `test_migration_0024_downgrade.py`, `test_migration_0035_indexes.py`,
-  `test_migration_0042_sensitive_fields.py`, `test_pipeline_webhook_
-  tokens.py`, `test_share_links_migration_alembic.py`) dès qu'une suite
-  complète (locale ou CI) traverse la frontière 0042 — corrigé par un
-  SAVEPOINT tolérant l'échec de `DROP ROLE` (seul le nettoyage best-effort
-  du rôle est sacrifié, jamais la validité du downgrade — `DROP OWNED BY`,
-  scopé à la base courante, reste la garantie réelle et déterministe) ;
-  l'assertion de test correspondante, elle-même incompatible avec un run
-  partagé, remplacée par une vérification locale (absence de grant sur
-  cette base, pas existence globale du rôle) — falsifié par contamination
-  réelle du cluster (139 objets dépendants mesurés), pas simulée ; (2)
-  `test_features_tiles.py` (fichier unitaire pré-existant, distinct du
-  `test_features_tiles_postgis.py` déjà mis à jour par la Task 7) avait
-  deux fixtures `SimpleNamespace` jamais mises à jour avec
-  `sensitive_fields=[]`, faisant échouer 2 tests en `AttributeError` dès
-  que le chemin masqué de `get_collection_tile` y touchait — trouvaille
-  qui n'existe QUE parce que la suite complète a été rejouée avant de
-  clore le plan (piège n°6). Suite finale (conteneur `postgis-test`
-  partagé réel) : cœur **3004 passed/6 skipped (5 qgis + 1 snowflake)/0
-  failed** (couverture 94,32 %, seuil 85) ; shell 247 fichiers/2193 tests,
-  0 échec (couverture lignes 91,12 %/seuil 89,80, statements 88,78 %/seuil
-  87,70) ; `npm run build` propre, bundle 629,6 Ko (seuil 630, marge
-  faible signalée sans être un blocage) ; pre-commit 5/5 ; E2E **178
-  passed/4 skipped/0 failed** ; `test_feature_inventory.py` vert sans
-  ajout (aucune route REST/outil MCP/route shell nouvelle, seulement des
-  champs sur des surfaces existantes). `feature_health_cli.py --check` non
-  rejoué dans cette clôture (aucune nouvelle surface à inventorier).
-  **Revue finale de branche (opus, sur `dev`, après ce qui précède) : 1
-  Critical + 2 Important trouvés, corrigés, falsifiés à deux reprises
-  indépendantes (implémenteur puis reviewer), commit `73843bbd`** — même
-  cause que le défaut de croisement de la Task 8 : l'inventaire du plan
-  cherchait un nom littéral (`rls_scope`/`gis_rls`) plutôt qu'un chemin
-  d'exécution, piège n°11. **C1 (Critical, PoC réel)** : les 3 routes
-  STAC (`app/stac/routes.py::list_items/get_item/search`) lisaient les
-  mêmes tables via `select_features`/`get_feature` que les routes OGC
-  masquées, mais sans jamais appeler `hide_sensitive_columns` ni passer
-  `masked=` — `salary: 45000` renvoyé en clair, y compris à un appelant
-  anonyme sur une collection publique. `app/dcat/routes.py` vérifié
-  indemne (ne lit jamais de ligne de feature, seulement une emprise
-  géométrique). **I1 (Important)** : `app/alerts/jobs.py::_measure_value`
-  — 4e site réel de `run_collection_aggregate`, raté par l'inventaire
-  d'origine (seuls 2 routes REST + 1 outil MCP avaient été câblés) —
-  tournait sans `masked_fields=` ; un porteur du droit de créer une règle
-  d'alerte pouvait lire l'agrégat d'une colonne sensible via l'état
-  évalué/le webhook. Balayage indépendant de tout `run_collection_
-  aggregate`/`run_analyst_sql`/`select_features`/`get_feature` du dépôt
-  confirmé exhaustif par le reviewer : aucun 5e/6e site oublié (le seul
-  autre site, `appexport/miniserver/main.py`, est en aval du bypass
-  appexport déjà documenté ci-dessus, pas un site neuf). **I2
-  (Important)** : le correctif Task 16 de la migration 0042 n'était
-  protégé qu'à moitié — `DROP OWNED BY gis_rls_masked` non gardé,
-  juste avant le SAVEPOINT sur `DROP ROLE` — corrigé par deux SAVEPOINT
-  indépendants plutôt qu'un seul partagé (pour ne jamais confondre
-  « rôle déjà absent » avec « rôle a des dépendants ailleurs dans le
-  cluster », deux tolérances légitimes mais distinctes), reproduit de
-  bout en bout via une vraie migration Alembic + suppression concurrente
-  simulée du rôle sur le cluster partagé. **1 défaut résiduel corrigé
-  dans la foulée (N1, commit `ccaece44`)** : `UnknownAggregateField`
-  n'était pas converti en erreur propre côté alertes — un champ masqué
-  rejeté (résultat attendu, pas un bug) tombait dans le filet générique
-  d'`evaluate_alert_task` (« erreur interne », trace complète journalisée
-  en ERROR), corrigé par la même conversion `AlertEvaluationError` que
-  le reste de la fonction. **3 trouvailles informationnelles consignées
-  sans correctif (REV-186/187/188)** : re-GRANT latent si
-  `apply_collection_ddl` était un jour réappliqué sur une collection déjà
-  `sensitive_fields`-marquée (inatteignable aujourd'hui, aucun chemin
-  réel) ; `app/cdc/backfill.py` réplique les valeurs sensibles en clair
-  vers GeoParquet (masquage à la requête, pas au stockage — choix de
-  conception assumé de la spec §2.3, pas une régression) ;
-  `generate_sql_query`/`generate_visual_query`/`explain_dataset` (SP-62,
-  postérieurs à cette spec) exposent les **noms** de champs sensibles au
-  LLM, jamais les valeurs — confirme le périmètre déjà exclu §4
-  (« masquage de la découverte de schéma »). Suite du lot de correctifs :
-  89 passed sur les fichiers touchés (STAC/alertes/migration/features/
-  MCP) + re-vérification indépendante du reviewer (292 passed/0 failed
-  sur un périmètre élargi) ; `ruff`/`lint-imports` verts.
+  collection sur les 3 mécanismes de lecture (RLS Postgres par colonne,
+  exclusion de la matérialisation DuckDB) ; revue finale a trouvé et
+  corrigé 1 Critical (routes STAC non masquées).
 - **`priorite-moyenne-sante-90`** — fait passer 32 des 33 fonctionnalités
-  `priorite: "moyenne"` du bilan sous 90 de santé au-dessus de 90, et
-  verrouille le résultat en CI (`plancher_priorite_moyenne`, nouveau champ
-  `Thresholds`). **Volet A (outil)** : `deployability_rules()` généralisée
-  (chaîne `REPO / "a" / "b" / "c"` de profondeur arbitraire, scan de tout
-  `core/tests/test_*.py` + `deploy/**/test_*.py` au lieu du seul
-  `test_deployability.py`, repli par sous-chaîne littérale) — ferme
-  `REV-189` ; nouvelle catégorie déclarée `Feature.auto_scoped_guard` (6
-  routes réelles vérifiées route par route : notifications ×6, map-icons
-  ×4, copilote ×1, catalogue de métadonnées ×1 — auto-restreintes par
-  tenant_id/user_id, délégation d'autorisation en aval, ou donnée de
-  référence statique sans propriétaire). **Volet C** : 5 tests structurels
-  d'infrastructure jamais testée (CodeQL/gitleaks/Proxmox/`deploy/backup`
-  non-root/alerte SLO) ; couverture de `useAuth.ts` (aucun test dédié
-  n'existait) ; ~20 widgets/panneaux du Builder (PropsPanel, cross-filter,
-  export/planification async) ; `EditCollectionPanel.tsx` + 4 branches non-
-  signet de `useOpenItem` (`routes.tsx`) ; rapport PDF planifié
-  core+shell + câblage de compaction CDC. **Volet D (clôture)** : plancher
-  fixé à la valeur réellement mesurée `89.9` (jamais arrondie à la
-  hausse) — pas 90, à cause d'une fonctionnalité que ce plan ne visait
-  pas (`builder-widgets-widget-plage-de-dates-pilote-le-contexte-
-  temporel-global`, 89.998 réel, arrondi à « 90.0 » par le bilan à une
-  décimale) ; exception nommée unique `catalogue-mes-vues-signets`
-  (« Mes vues », plafonnée à ~82.6 — `routes.tsx` partagé par 20+ routes
-  sans rapport, hors périmètre raisonnable, `REV-190`). **Revue finale de
-  branche (opus) : 2 Important trouvés et corrigés sur le mécanisme
-  `auto_scoped_guard`** (piège n°4, invisibles à la revue par tâche) : le
-  hatch accordait 100 avant même de vérifier que la route existe dans
-  l'index réel ou qu'elle est authentifiée (aucun plancher — corrigé,
-  `fact` vérifié avant le raccourci, plus un test de solidité miroir de
-  `test_publiques_declaration_matches_the_ast_unguarded_set`, en
-  sous-ensemble plutôt qu'en bijection puisque « auto-scopée » n'est pas
-  détectable par AST) ; le message d'évidence partagé affirmait à tort
-  que `/v1/copilot/turn` interroge par tenant_id/user_id ou sert une
-  donnée sans propriétaire (il délègue en réalité à un allowlist d'outils
-  MCP) — corrigé, puis une 2e passe de re-revue a trouvé que le correctif
-  avait à son tour rendu le message faux pour `/v1/metadata-catalog`
-  (perte du disjoint « donnée de référence statique »), 3e disjoint
-  restauré. **`npm run build` (jamais exécuté par aucune revue, ni par
-  tâche ni finale — seul `npx vitest run` par fichier l'avait été) a
-  trouvé 7 erreurs `tsc` réelles** dans 6 fichiers de test de widgets
-  (Tasks 5/6, littéralement issues du texte du plan, piège n°3) :
-  `DataSource` sans son champ `query` obligatoire, `PropsPanel` rendu
-  sans son prop `dataSources` obligatoire, un prop `ctx` inexistant sur
-  `PropsPanel` (n'existe que sur `Component`) — zéro impact runtime,
-  corrigées directement par le contrôleur. Suite finale : sweep ciblé sur
-  tous les fichiers touchés par la branche (189 core + 194 shell, tous
-  passés, en foreground — les suites complètes en arrière-plan étaient
-  tuées par le limiteur mémoire de l'environnement du fait de sessions
-  concurrentes, piège n°9) ; `--check`/`--check-fresh` verts dans le
-  worktree de travail ; `ruff`/`ruff format`/`mypy --strict`/`lint-imports`/
-  `eslint`/`prettier`/`npm run build` tous verts. Diff OpenAPI/types TS
-  vide (aucune route touchée). **Risque documenté, non bloquant** : le
-  bilan committé reflète une couverture locale fraîchement mesurée dans
-  le worktree de travail au moment de Task 12/de la clôture — `--check`
-  recalcule en direct depuis `coverage.xml`/`coverage-summary.json` du
-  checkout courant, qui peuvent être périmés sur un autre checkout (`dev`
-  lui-même en a un exemple daté d'avant ce plan) ; à revérifier depuis les
-  artefacts de couverture réels de la CI avant toute bascule de
-  production, même précédent que SP-48/SP-55 (commit `1911e9e6`). Le plan
-  précédent qui a établi le même plancher pour `priorite: "haute"`
-  (`priorite-haute-sante-90`) est également fusionné sur `dev` mais n'a
-  jamais reçu sa propre entrée ici — dette documentaire pré-existante, pas
-  corrigée par ce plan.
+  `priorite: "moyenne"` du bilan au-dessus de 90 de santé, plancher
+  verrouillé en CI.
 - **OperationContract** — remplace, pour les 19 op de pipeline déjà
-  livrées, les 5 structures parallèles indexées par nom d'op
-  (`app.pipelines.ops.schemas::OP_PARAMS`/`OP_KINDS`/`BINARY_OPS`,
-  `app.pipelines.compiler::compile_transform_sql`/`transform_output_srid`)
-  par un type unique `OperationContract` (schéma/moteur/licence/modèle
-  d'exécution/compilateur/règle de SRID de sortie) et un registre unique
-  `app.pipelines.ops.contracts::OPERATIONS` — spec
-  `docs/superpowers/specs/2026-09-16-operation-contract-design.md`. Règle
-  généralisée et testée : licence copyleft ⇒ modèle d'exécution `sidecar`
-  obligatoire (`transform.qgis`, seul moteur externe existant, vérifié
-  conforme). Comportement externe inchangé, prouvé par la suite existante
-  (`test_pipeline_compiler.py` vert sans aucune modification) — diff
-  `openapi.json`/`core-schema.d.ts` vide, zéro fichier `shell/` touché.
-  **Écart au texte de la spec, nécessaire (import circulaire réel)** :
-  `OP_KINDS`/`OP_PARAMS`/`BINARY_OPS`/`parse_op_params`/`ops_catalog`
-  déménagent dans `contracts.py` plutôt que rester dans `schemas.py` —
-  `contracts.py` a besoin des classes Pydantic de `schemas.py` au niveau
-  module pour construire `OPERATIONS` ; l'inverse (schemas.py import
-  contracts.py au niveau module pour ses vues dérivées) aurait fermé un
-  cycle à 2 nœuds non résolvable par aucun ordre d'import — vérifié par
-  trace manuelle avant d'écrire le plan. `schemas.py` ne porte plus que les
-  classes Pydantic de forme des params. **Hors périmètre, explicitement
-  (spec §2)** : aucun nouveau moteur câblé (GDAL/PDAL/OTB/Rust), aucune
-  nouvelle op, licence des 7 op readers/writers/connecteurs. **2 retouches
-  documentaires (Task 5, revue de Task 4) faites dans le même geste que
-  cette clôture** : le docstring de `contracts.py` affirmait à tort que
-  `OPERATIONS` était « construit par une tâche ultérieure de ce même
-  chantier » — périmé depuis que la Task 4 a construit le registre dans ce
-  même fichier, reformulé en « construit ci-dessous » ; un commentaire
-  ajouté sur les champs `compile`/`output_srid` d'`OperationContract`
-  (`Callable[..., ...] | None = None`) documentant le piège Python latent
-  — un `def` nu donné en défaut au lieu de `None` deviendrait un attribut
-  de classe lié comme méthode (self/le contrat injecté en premier
-  argument) plutôt qu'un callable simple ; inoffensif aujourd'hui (tous
-  les défauts sont `None`, chaque entrée du registre passe son callable en
-  argument d'instance, jamais en défaut de classe), mais à garder à
-  l'esprit pour tout futur mainteneur de ce champ. Suite finale (conteneur
-  PostGIS jetable dédié `opctr-t5-postgis`, `wal_level=replica` —
-  documenté ci-dessous) : **3063 passed / 9 skipped / 2 failed** en
-  648,81 s. Les 2 échecs (`test_cdc_consumer_postgis.py::
-  test_stream_changes_decodes_and_stops_on_should_stop` et
-  `..._ack_advances_confirmed_flush_lsn`) confirmés sans rapport avec ce
-  plan avant clôture, pas simplement supposés : `SHOW wal_level` sur ce
-  conteneur jetable renvoie `replica`, pas `logical`
-  (`ObjectNotInPrerequisiteState: logical decoding requires wal_level >=
-  logical`) — même classe de limite d'infrastructure de conteneur jetable
-  déjà documentée par SP-62/GAP-29/GAP-16 (`wal_level`, colonnes SP-41/42
-  manquantes) ; `git diff --stat origin/dev...HEAD -- core/tests/
-  test_cdc_consumer_postgis.py core/app/cdc/` est vide — ce plan ne touche
-  ni le test ni le module CDC. ruff/ruff format/lint-imports verts, aucune
-  nouvelle exemption `[tool.importlinter]` ; diff `openapi.json`/
-  `core-schema.d.ts` vide (vérifié, régénéré) ; `git diff --stat -- shell/`
-  vide (vérifié).
-- **IPC d'échange DuckDB↔Arrow** — pose, côté `core` uniquement, le seam
-  d'échange DuckDB↔futurs moteurs natifs que consommera le prochain
-  chantier « premier moteur natif » (suite d'OperationContract, spec
-  `docs/superpowers/specs/2026-09-16-ipc-echange-duckdb-arrow-design.md`,
-  plan `docs/superpowers/plans/2026-09-16-ipc-echange-duckdb-arrow.md`,
-  4 tâches, subagent-driven-development) : `app/pipelines/exchange.py`
-  (`to_arrow_stream`/`from_arrow_stream` — chemin zéro-copie Arrow ;
-  `to_geoparquet_file` — repli fichier) et `write_geoparquet_from_relation`/
-  `build_geodataframe_from_relation` dans `app/cdc/parquet_writer.py`, plus
-  un champ additif `OperationContract.exchange`
-  (`Literal["arrow_stream", "geoparquet_file"] | None = None`, `app/pipelines/
-  ops/contracts.py`). Rien de tout cela n'est consommé par `runtime.py` ni
-  câblé sur aucun moteur réel — QGIS (`transform.qgis`) reste explicitement
-  hors périmètre (aucun driver Parquet/Arrow dans le GDAL 3.4.1 embarqué
-  par `qgis/qgis:release-3_34`, vérifié empiriquement). Décision prise en
-  amont sur le risque §5 du design : plutôt que d'adapter
-  `build_geodataframe(rows: list[ChangeRow], ...)` pour accepter une
-  relation DuckDB arbitraire, deux fonctions sœurs jamais adossées à
-  `ChangeRow` (dont les 4 colonnes de plomberie CDC `_op`/`_lsn`/`_seq`/
-  `_ts` auraient cassé l'identité de schéma d'un round-trip GeoParquet
-  générique) convergent malgré tout sur l'unique primitive d'écriture
-  réelle `_write_gdf` — prouvé par un test dédié qui espionne cette
-  primitive et vérifie exactement deux appels. **2 écarts réels trouvés en
-  exécutant, absents du texte du plan (piège CLAUDE.md n°3), tous deux de
-  la même classe** : le code fourni verbatim par le plan pour
-  `parquet_writer.py` PUIS pour `exchange.py` dupliquait chacun un helper
-  `_qi` de 2 lignes (quoting d'identifiant DuckDB) avec un commentaire
-  affirmant cette duplication « délibérée » et « déjà actée » — nuance
-  précise (revue finale de branche, ajustée après une première
-  formulation trop absolue) : `app/analytics/aggregate.py` importe bien
-  déjà le helper canonique (`from app.sql_ident import quote_ident_duckdb
-  as _qi`, module GAP-15, leaf sans dépendance métier, importable de
-  n'importe quelle couche sans exemption `lint-imports`), donc la
-  duplication n'était PAS déjà établie pour ces deux nouveaux fichiers ;
-  mais `app/pipelines/{runtime,compiler,connector_runtime}.py` gardent
-  chacun leur propre copie locale, exclusion **documentée et volontaire**
-  (fragilité de `runtime.py` post-SP-43, ~57 monkeypatchs de test, cf.
-  entrée GAP-15 ci-dessus) — donc pas un cas où « tout autre site du
-  dépôt a déjà migré ». Trouvé par le reviewer de Task 1 puis reproduit à
-  l'identique sur Task 2 (le plan avait copié le même commentaire, devenu
-  encore plus trompeur une fois Task 1 corrigée) — les deux corrigés par
-  import du helper canonique au lieu de la duplication (nouveaux fichiers,
-  aucun des trois sites à exclusion documentée n'a été touché), revérifiés
-  (tests + ruff + lint-imports) avant de committer. **Incident de process distinct, sans rapport avec le
-  code** : l'implémenteur de Task 1 a amendé un commit antérieur sans
-  rapport (le commit de dépôt du plan) au lieu de créer un nouveau commit
-  — violation du protocole git (jamais d'amend, toujours un nouveau
-  commit) détectée en comparant le rapport de l'implémenteur au SHA réel
-  ; corrigée en scindant l'historique en deux commits propres avant de
-  poursuivre. L'implémenteur de Task 3 a par ailleurs signé son commit
-  `Co-Authored-By: Claude Haiku 4.5` au lieu de la ligne d'attribution
-  requise — corrigé par un amend limité au message (contenu inchangé,
-  seul commit non encore reproduit ailleurs). **Piège d'environnement
-  trouvé en clôturant (Task 4)** : l'image jetable `geostudio-postgis-ci:
-  latest` déjà construite par des sessions antérieures porte un schéma
-  figé sans aucune table `alembic_version` — donc pas au niveau des
-  migrations 0035-0042 (index GAP-63, `pipeline_webhook_tokens`, `bbox`
-  d'item, `byte_size`, `erased_at`/`purge_receipts`, `share_link`,
-  `ingestion_jobs.wkt_field`/`geometry_mode`, `sensitive_fields`) —
-  lancer la suite complète dessus tel quel produit 99 échecs/89 erreurs
-  sans aucun rapport avec ce plan ; corrigé en recréant une base vide sur
-  ce même conteneur et en rejouant `alembic upgrade head` (42 migrations)
-  après avoir activé les extensions `postgis`/`vector`/`pg_trgm` — la
-  vraie procédure pour ce conteneur, distincte du piège déjà documenté
-  sur `postgis-test` (qui lui a une base migrée mais pas retouchée après
-  un ALTER TABLE manuel). Suite finale (ce conteneur, une fois migré) :
-  core ciblé (fichiers touchés/voisins) 180 passed/21 skipped/0 failed ;
-  core complet 3076 passed/9 skipped/2 failed — les 2 échecs
-  (`test_cdc_consumer_postgis.py::test_stream_changes_decodes_and_stops_
-  on_should_stop`/`..._ack_advances_confirmed_flush_lsn`) confirmés
-  préexistants et sans rapport (`wal_level=logical` absent sur ce
-  conteneur jetable, même classe que SP-62/GAP-29/GAP-16/OperationContract
-  ci-dessus ; `git diff --stat origin/dev...HEAD -- core/tests/
-  test_cdc_consumer_postgis.py core/app/cdc/` vide) ; ruff/ruff format/
-  mypy --strict (6 modules)/lint-imports tous verts, `mypy app/`
-  informationnel sans nouvelle erreur sur les fichiers touchés ; diff
-  `openapi.json`/`core-schema.d.ts` vide (vérifié, aucune route/modèle
-  exposé) ; `git diff --stat origin/dev...HEAD -- shell/` vide (vérifié,
-  chantier `core-only`). **Revue finale de branche (opus) : 2 Important +
-  2 Minor corrigés avant clôture** — le seam n'a aucun consommateur réel
-  dans ce chantier, donc ces défauts n'ont jamais été exercés en
-  production, mais auraient piégé le futur chantier « premier moteur
-  natif » : (1) `to_geoparquet_file` affirmait à tort un writer Parquet
-  natif DuckDB « 8-10x plus rapide » — le chemin réel
-  (`write_geoparquet_from_relation`) matérialise toute la relation en
-  mémoire Python (`fetchall()` + GeoDataFrame ligne par ligne), un choix
-  délibéré (convergence sur `_write_gdf`) mais pas le chemin natif/streamé
-  décrit — docstring réécrit ; (2) `exchange.py` importait
-  `PipelineRuntimeError` depuis `app.pipelines.runtime`, dont le bloc
-  d'imports (SQLAlchemy, httpx, `app.analytics`, `app.collections`...)
-  précède la définition de la classe — un futur `from app.pipelines.
-  exchange import ...` fait depuis le haut de `runtime.py` aurait levé une
-  `ImportError` sur module partiellement initialisé ; extrait dans un
-  nouveau module leaf `app/pipelines/errors.py`, réexporté par
-  `runtime.py` pour ne casser aucun appelant existant. Les deux chemins ne
-  produisent en outre pas le même schéma (nom de colonne géométrie
-  différent) et le mécanisme du deadlock documenté était plus large que
-  la réalité (le déclencheur réel est l'auto-référence connexion↔flux
-  qu'elle a produit, pas n'importe quelle requête concurrente sur une
-  connexion ayant un flux qui traîne ailleurs) — les deux corrigés dans le
-  même commit de docstring. **Trouvaille de process supplémentaire**, à
-  nouveau via un croisement invisible à la revue par tâche : le commit
-  Task 2 portait encore `Co-Authored-By: Claude Haiku 4.5` (la correction
-  équivalente n'avait été appliquée qu'à Task 3) — squashé par
-  cherry-pick, diff de contenu vide entre l'ancien et le nouvel historique
-  (vérifié). 5 findings Minor supplémentaires (robustesse des cas limites
-  du seam — `srid` non coercé, `srid=0` traité différemment selon le
-  chemin, collision de `view_name` levant une exception DuckDB brute
-  plutôt que `PipelineRuntimeError`, colonnes géométrie multiples non
-  gérées, `import duckdb` désormais chargé dans le process cdc-worker)
-  loggés sans être corrigés (`REV-192`/`REV-193`,
-  `docs/revue/2026-09-04-backlog.md`) — aucun consommateur réel
-  aujourd'hui pour les exercer, le futur chantier « premier moteur natif »
-  devra les lever avant de s'appuyer sur ce seam en production.
+  livrées, 5 structures parallèles par un registre unique `OPERATIONS`
+  (schéma/moteur/licence/modèle d'exécution/compilateur/SRID).
+- **IPC d'échange DuckDB↔Arrow** — pose le seam d'échange DuckDB↔futurs
+  moteurs natifs (`app/pipelines/exchange.py`), non consommé par aucun
+  moteur réel à ce stade.
 
 ### Conventions tranchées (2026-09-01)
 
@@ -2093,165 +515,79 @@ cette décision a été fermée par SP-34 (cf. `### Livré` ci-dessus).
 
 ### Suivis et dette non bloquante
 
-Le détail complet (43 trouvailles confirmées non corrigées, 35 minor, 79
-gaps, la dette héritée SP-29b→SP-40, 2 trouvailles SP-43, 3 trouvailles
-SP-57a et 2 trouvailles de la revue finale de SP-61 documentées sans être
-corrigées) vit dans **`docs/revue/2026-09-04-backlog.md`** (181 entrées
-`REV-nnn` — 109 fermées, 9 partiellement fermées, 63 ouvertes après une passe
-de revérification hors-SP le 2026-09-06 : avant cette passe, seules 24
-fermetures étaient reflétées malgré des dizaines fermées depuis leur
-rédaction (2026-09-04/05) par 21 SP sans que le document ne soit jamais
-retouché — piège n°12 appliqué au backlog, pas seulement à la matrice de
-fonctionnalités qu'il visait à l'origine ; répartition par statut désormais
-en tête du document, numérotation stable et citable — ne pas renuméroter,
-ajouter en fin de section). Ce qui, dans ce backlog, change le comportement
-immédiat d'une session :
+Détail complet (181 entrées `REV-nnn`, 63 ouvertes) dans
+**`docs/revue/2026-09-04-backlog.md`** — revalidé le 2026-09-06 après une
+dérive documentaire (piège n°12, ce document était resté 21 SP sans être
+retouché). Ce qui suit est un **pointeur**, pas un résumé — ne pas y
+recoller le détail que le backlog porte déjà :
 
-- Jalon **M14 atteint** (SP-44, `REV-095` clos) : les 5 tests
-  `@pytest.mark.qgis` tournent contre un vrai sidecar — 2 défauts de
-  production réels trouvés et corrigés au passage (`_lock_down()` bloquait
-  `transform.qgis`, `fid` GeoPackage non filtré). **Câblés en CI depuis le
-  2026-09-06** (job `core-qgis`) — ils ne skippent plus par défaut ; en
-  local, `scripts/run-qgis-tests.sh` (aucun sudo, ne touche pas l'hôte).
-- `REV-073`/`REV-075`/`REV-076`/`REV-077` clos par **SP-60** (GAP-69) :
-  gardes de borne basse sur les extracteurs de `test_deployability.py`,
-  ancre positive sur `triptych-narrow.spec.ts`, tests « lisible
-  anonymement » qui vérifient le contenu. GAP-68 (perf frontend) clos par
-  la même SP : 4 boucles de sondage annulées au démontage, `MapView`
-  lazy dans `MapEditorPage`, découpage par route de `routes.tsx`, filet
-  de non-régression sur la taille du bundle (`.bundle-size-threshold`).
-- `REV-096` clos par **SP-45** : garde d'egress SSRF sur l'appel LLM
-  sortant du copilote (`app/copilot/egress.py`), même patron que les 3
-  autres surfaces sortantes.
-- `REV-097` clos par **SP-47** : `automation.secrets.manage` garde `/secrets`
-  (OR avec `admin.secrets.manage`, rôle Créateur mis à jour — décision à
-  confirmer a posteriori par Tanguy) ; `tasks.view`/`tasks.view_all` gardent
-  `GET /usage/tasks`/`GET /usage/summary` (nouveau domaine `app/usage/`,
-  lecture seule sur `audit_log`).
-- `aria-expanded`/`aria-controls` : câblé par SP-43 sur 9 sites via
-  `usePanelTrigger` (`REV-088` largement fermé — reste à vérifier au cas par
-  cas sur tout futur déclencheur de panneau en ligne créé après SP-43, la
-  convention n'est pas outillée par un lint automatique).
-- Restauration de sauvegarde : runbook rejoué une fois, succès partiel —
-  données confirmées, reconnexion OIDC réelle jamais vérifiée (`REV-164`,
-  détail aussi ci-dessous).
-- `save_app_config` (MCP) saute les 7 validateurs par kind + 2 gardes de
-  capacité qu'exécute la route REST équivalente — pré-existant, trouvé et
-  documenté (pas corrigé) par SP-43 (`REV-174`).
-- 4 index fonctionnels pgvector/trgm non représentés dans `Base.metadata`,
-  filtrés nommément par le comparateur modèle/Alembic de SP-43 (`REV-175`).
-- **GAP-72 partiellement fermé par SP-48** : CSP en enforcing sur
-  img-src/connect-src (allowlist calculée), `shell/nginx.conf` n'a plus sa
-  propre CSP. **Blocage 3 (script-src pour les widgets d'extension
-  tiers) reste une question produit ouverte** — 4 options documentées
-  (spec SP-48 §4), aucune tranchée, gardée par 2 tests qui échouent si
-  quelqu'un câble `script_hosts` sur `script-src` sans lever cette
-  décision d'abord. À soumettre à Tanguy avant toute tâche de câblage.
-  Vérification empirique complète du câblage Traefik réel (routeur
-  `@docker` référençant une middleware `@file`) toujours à faire sur un
-  vrai déploiement — le socket Docker n'est joignable depuis aucun
-  conteneur dans les environnements de session (limitation SP-55).
-- GAP-57/59/60/62 clos par **SP-50** : liens STAC items cassés pour
-  `admin.collections.manage` (GAP-60), collection cassée faisait échouer
-  tout `/stac/collections`/`/dcat/catalog` (GAP-62), pagination
-  `/collections`/`/stac/collections`/`/dcat/catalog`/3 historiques
-  (GAP-57), plafond de taille + signalement d'échec racine sur les 8
-  connecteurs de moissonnage (GAP-59). Reste hors périmètre, assumé :
-  pagination shell (les 4 consommateurs concernés n'envoient toujours pas
-  `limit`/`offset`), `GET /dcat/datasets/{id}` non aligné sur la
-  dégradation GAP-62.
-- i18n (SP-29a) et audit d'accessibilité (SP-57a) outillés : `npm run lint`
-  échoue désormais sur toute chaîne française codée en dur hors
-  `pages/shell/builder/map` (garde permanente, `shell/scripts/
-  check-i18n-coverage.mjs`) ; `shell/e2e/a11y-audit.spec.ts` audite 9 pages
-  représentatives (axe-core). Token `--gs-ink-3` sous le seuil de
-  contraste AA sur plusieurs pages, exclu et documenté plutôt que corrigé
-  (`REV-176`) ; détecteur i18n limité à 4 répertoires (`REV-177`) ;
-  échantillon a11y non exhaustif (`REV-178`).
-- **Bilan de fonctionnalités outillé (SP-61)** : `docs/revue/
-  2026-09-04-matrice-fonctionnalites.md` est **gelée**, ne plus l'éditer.
-  Le document vivant est `docs/revue/bilan-fonctionnalites.{html,md}`,
-  régénéré par `cd core && PYTHONPATH=. uv run python
-  scripts/feature_health_cli.py --repo .. --write` — obligatoire à la
-  clôture de tout SP après avoir ajouté à `docs/revue/
-  inventaire-fonctionnalites.jsonl` toute surface nouvellement livrée
-  (route REST, outil MCP, route shell) : `core/tests/
-  test_feature_inventory.py` fait échouer la CI si une surface existe
-  dans le code sans ligne d'inventaire, câblé dans le job `feature-health`
-  de `ci.yml`. Reste hors périmètre, journalisé (`REV-179`/`REV-180`) :
-  `priorite_source` (priorité amorcée vs. revue) jamais affiché dans le
-  bilan rendu ; aucun mode `--check` de fraîcheur entre le code/
-  l'inventaire et les rendus committés.
-- Questions produit ouvertes (comparatif §8) : Q10 (temps réel, `REV-108`),
-  Q11 (offline, `REV-120`). **Q2 répondue le 2026-09-15** (comparatif §9,
-  point 7) : produit horizontal mature/personnalisable pour collectivités/
-  structures de taille variable — pas un déploiement nommé unique.
-  Conséquence actée le même jour sur `GAP-29` (positionnement face aux 450+
-  connecteurs FME, jusqu'ici « non fermable par du code ») : posture retenue
-  **viser la parité de couverture comme différenciateur**, pas attendre un
-  client réel. Prochain chantier de fond envisagé pour `core/app/pipelines/`
-  (à brainstormer/spécifier avant tout code, pas encore lancé) : un
-  `OperationContract` (schéma/compilateur/exécuteur/capacités/licence/moteur)
-  au-dessus de plusieurs moteurs (DuckDB par défaut, puis GDAL/PDAL/OTB/Rust
-  selon couverture/licence — QGIS reste un fallback GPL isolé, jamais une
-  catégorie d'op normale), plus une matrice de couverture FME→GeoStudio pour
-  prioriser les ~500 transformers du marché.
+- Jalon **M14** atteint (SP-44, `REV-095`) : `@pytest.mark.qgis` tourne
+  contre un sidecar réel, câblé en CI (`core-qgis`) ; en local
+  `scripts/run-qgis-tests.sh`.
+- `REV-073`/`075`/`076`/`077` + GAP-68/69 clos par **SP-60** : filets de
+  déployabilité/E2E/perf frontend.
+- `REV-096` clos par **SP-45** : garde d'egress SSRF sur l'appel LLM du
+  copilote.
+- `REV-097` clos par **SP-47** : `automation.secrets.manage` garde
+  `/secrets`, domaine `app/usage/` créé.
+- `aria-expanded`/`aria-controls` câblé par SP-43 (`REV-088` largement
+  fermé, pas de lint automatique).
+- Restauration de sauvegarde : succès partiel, reconnexion OIDC jamais
+  vérifiée (`REV-164`, détail dans la section suivante).
+- `save_app_config` (MCP) saute des validateurs REST — connu, non corrigé
+  (`REV-174`).
+- 4 index fonctionnels pgvector/trgm filtrés nommément par le comparateur
+  modèle/Alembic (`REV-175`).
+- GAP-72 partiellement fermé par **SP-48** : CSP `enforce` par défaut en
+  prod (`report-only` en dev, rollback via `CORE_CSP_MODE`) sur
+  img-src/connect-src ; `script-src` pour les widgets d'extension tiers
+  reste une question produit ouverte (spec SP-48 §4) — à trancher avant
+  tout câblage. Vérification Traefik bout-en-bout toujours à faire sur un
+  vrai déploiement (limitation SP-55).
+- GAP-57/59/60/62 clos par **SP-50** (fédération : pagination, plafond de
+  taille d'egress, dégradation gracieuse sur collection cassée).
+  Pagination shell et `GET /dcat/datasets/{id}` restent hors périmètre.
+- i18n (SP-29a) + a11y (SP-57a) outillés : `npm run lint` bloque le
+  français en dur, `a11y-audit.spec.ts` audite 9 pages
+  (`REV-176`/`177`/`178`).
+- Bilan de fonctionnalités outillé (SP-61) : `docs/revue/
+  bilan-fonctionnalites.{html,md}`, régénéré par
+  `feature_health_cli.py --write`, CI refuse toute surface non
+  inventoriée. Matrice `2026-09-04-matrice-fonctionnalites.md` **gelée**,
+  ne plus l'éditer (`REV-179`/`180`).
+- Questions produit ouvertes : Q10 temps réel (`REV-108`), Q11 offline
+  (`REV-120`). Q2 répondue 2026-09-15 : produit horizontal, parité de
+  couverture de connecteurs comme différenciateur face à FME —
+  `OperationContract` envisagé pour `core/app/pipelines/`, pas encore
+  lancé.
 
 ### Suivis non bloquants — ce qu'il faut savoir avant de toucher la stack
 
-Contexte détaillé par SP dans l'archive. Ce qui change le comportement d'une
-session, sur la stack et l'environnement de dev :
+Contexte détaillé par SP dans l'archive. Pointeurs seulement — ce qui
+change le comportement d'une session sur la stack/l'environnement de dev :
 
-- **Stack par défaut vérifiée de bout en bout (2026-08-29)** : les 11
-  services démarrent tous `healthy` (`docker compose up -d`, image
-  `core`/`worker`/`cdc-worker` reconstruite). `libexpat.so.1` manquant pour
-  `defusedxml` (`app/mapicons/svg.py`, `app/harvest/connectors/ows.py`)
-  était réel (`python:3.12-slim`/Debian trixie n'embarque plus `libexpat1`
-  par défaut) — corrigé dans `core/Dockerfile` (`apt-get install
-  libexpat1`), corrige les trois images qui partagent ce Dockerfile.
-- **`pg-data` / démarrage à blanc** : `core` applique déjà `alembic upgrade
-  head` avant `uvicorn` (idempotent) — pas de correctif de plus à apporter
-  là. Un `core` qui crash-loop avec `shell` restant `Created` vient
-  typiquement de `CORE_SECRETS_MASTER_KEY` vide dans `.env` (gardes
-  SP-15e/SP-26). **La vraie cause n'était pas un `.env` plus ancien** :
-  `scripts/bootstrap-env.sh` ne générait jamais cette clé — corrigé par
-  SP-42 (`openssl rand -base64 32`). Si `shell` reste `Created` : vérifier
-  `docker logs core` avant de soupçonner `pg-data`.
-- **Martin (:3000 hôte) en conflit de port** : pas une panne du dépôt — un
-  process déjà présent sur la machine de l'opérateur (ex. un `node.exe`
-  Windows côté hôte WSL2, invisible de `ss` côté Linux) fait échouer le
-  port-forwarding de Docker Desktop. Corrigé de façon pérenne en déplaçant
-  le mapping hôte vers `3010` (`docker-compose.yml`).
-- `deploy/postgis/Dockerfile` + `pg_hba.conf` (non commités) sont **inertes** —
-  Postgres lit `$PGDATA/pg_hba.conf`. Ne pas les câbler : ils affaibliraient
-  `scram-sha-256` en `md5`.
-- **CSP en Report-Only**, jamais basculée en enforcing : 4 bloqueurs concrets
-  documentés en commentaire dans `docker-compose.prod.yml`.
-- **Restauration de sauvegarde** : un runbook existe
-  (`docs/runbooks/2026-07-24-restauration-sauvegardes.md`) et a été rejoué
-  une fois avec succès partiel — survie des données prouvée (psql +
-  `GET /items/{id}`), mais la reconnexion via un vrai flux OIDC/Keycloak
-  n'a jamais été vérifiée (l'exercice substituait `CORE_AUTH_MODE=mock`) ;
-  aucune automatisation, non rejoué depuis (avant SP-31/SP-32). Détail :
-  `docs/revue/2026-09-04-backlog.md` (`REV-164`).
-- **Conteneur `postgis-test` non tracké par Alembic** : après une migration
-  qui ajoute des colonnes, un `ALTER TABLE` manuel est nécessaire sur ce
-  conteneur, sinon des dizaines de tests échouent en cascade sur
-  `UndefinedColumn` sans rapport avec le code sous revue (vécu SP-39,
-  SP-40, SP-42).
-- Rate limiter (SP-26/3.4) clé sur l'en-tête `Authorization` brut : budget « par
-  jeton », donc réinitialisé à chaque rafraîchissement OIDC.
-- Ne **pas** réintroduire `dependency-type` sur l'entrée Dependabot `uv` :
-  l'option y est silencieusement ignorée par GitHub, pas rejetée.
-- Une vraie clé privée `age` de test subsiste dans l'historique public (commit
-  `0b4733a`, redactée depuis, absente de `HEAD`) — à confirmer jetable ou
-  rotationner. `secret_scanning`/`dependabot_security_updates` sont
-  **désactivés** sur ce dépôt.
-- Couverture shell : mesurer **après** nettoyage de `dist/`/`dist-export/` — la
-  config `vitest` de ce dépôt compte ces artefacts gitignorés comme source non
-  couverte (piège documenté 4 fois).
-- Régénération OpenAPI/TS : la commande nue échoue, il faut l'incantation réelle
-  de `ci.yml` (`PYTHONPATH=.` + `CORE_SECRETS_MASTER_KEY` de test).
+- Stack vérifiée de bout en bout (11 services `healthy`) ; `libexpat1`
+  manquant sur `python:3.12-slim`/trixie, corrigé dans `core/Dockerfile`.
+- `core` applique `alembic upgrade head` avant `uvicorn`. `shell` restant
+  `Created` = généralement `CORE_SECRETS_MASTER_KEY` vide — `docker logs
+  core` avant de soupçonner `pg-data`.
+- Martin : port hôte déplacé à `3010` (conflits fréquents côté hôte).
+- `deploy/postgis/Dockerfile`/`pg_hba.conf` (non commités) sont inertes —
+  ne pas les câbler, affaibliraient `scram-sha-256`.
+- Conteneur `postgis-test` non tracké par Alembic — `ALTER TABLE` manuel
+  après une migration qui ajoute des colonnes, sinon échecs
+  `UndefinedColumn` sans rapport.
+- Rate limiter clé sur l'en-tête `Authorization` brut : budget « par
+  jeton », réinitialisé à chaque rafraîchissement OIDC.
+- Ne pas réintroduire `dependency-type` sur l'entrée Dependabot `uv`
+  (silencieusement ignoré par GitHub).
+- Clé privée `age` de test dans l'historique public (commit `0b4733a`,
+  redactée, absente de `HEAD`) — à confirmer jetable ou rotationner.
+  `secret_scanning`/`dependabot_security_updates` désactivés sur ce dépôt.
+- Couverture shell : mesurer après nettoyage de `dist/`/`dist-export/`
+  (comptés comme source non couverte sinon).
+- Régénération OpenAPI/TS : commande nue échoue, incantation réelle dans
+  `ci.yml` (`PYTHONPATH=.` + `CORE_SECRETS_MASTER_KEY` de test).
 
 ## Pièges récurrents de ce dépôt (classes de défauts déjà payées plusieurs fois)
 
