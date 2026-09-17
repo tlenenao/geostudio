@@ -62,7 +62,7 @@ ansible-vault encrypt group_vars/vault.yml
 # geostudio_profiles (doit rester vide : qgis-worker est mono-arch amd64,
 # incompatible avec cette instance arm64)
 
-ansible-playbook -i inventory.ini --ask-vault-pass ../ansible/playbook.yml
+ansible-playbook -i inventory.ini --ask-vault-pass ../../ansible/playbook.yml
 ```
 
 À la fin, le résumé imprimé par `scripts/install.sh` (URL publique, compte
