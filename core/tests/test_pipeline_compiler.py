@@ -590,3 +590,37 @@ def test_compile_extract_elevation_reads_z_for_3d_geometry(conn_spatial):
     conn_spatial.execute(f"CREATE TEMP VIEW out3d AS {sql}")
     row = conn_spatial.execute("SELECT z FROM out3d").fetchone()
     assert row == (3.0,)
+
+
+def test_compile_extract_dimension_is_2_for_2d_geometry(conn_spatial):
+    sql = compile_transform_sql("transform.extractDimension", {}, input_view="base")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT dimension FROM out WHERE id = 1").fetchone()
+    assert row == (2,)
+
+
+def test_compile_extract_dimension_is_3_for_3d_geometry(conn_spatial):
+    conn_spatial.execute("CREATE TABLE base3d (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute("INSERT INTO base3d VALUES (1, ST_GeomFromText('POINT Z (1 2 3)'))")
+    sql = compile_transform_sql("transform.extractDimension", {}, input_view="base3d")
+    conn_spatial.execute(f"CREATE TEMP VIEW out3d AS {sql}")
+    row = conn_spatial.execute("SELECT dimension FROM out3d").fetchone()
+    assert row == (3,)
+
+
+def test_compile_count_vertices(conn_spatial):
+    conn_spatial.execute("CREATE TABLE line (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO line VALUES (1, ST_GeomFromText('LINESTRING(0 0, 1 1, 2 2)'))"
+    )
+    sql = compile_transform_sql("transform.countVertices", {"column": "n"}, input_view="line")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT n FROM out").fetchone()
+    assert row == (3,)
+
+
+def test_compile_extract_srid_returns_the_pipeline_srid(conn_spatial):
+    sql = compile_transform_sql("transform.extractSrid", {}, input_view="base", input_srid=4326)
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT srid FROM out WHERE id = 1").fetchone()
+    assert row == (4326,)

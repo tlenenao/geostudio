@@ -305,3 +305,32 @@ class TransformExtractElevationParams(BaseModel):
     n'a pas de Z)."""
 
     column: str = "elevation"
+
+
+class TransformExtractDimensionParams(BaseModel):
+    """Dimension de COORDONNÉES de la géométrie (2 ou 3 selon la présence
+    d'un Z) → colonne attribut.
+
+    Distinct de la dimension topologique (point/ligne/polygone) : ST_Dimension
+    de DuckDB retourne cette dernière (0/1/2), pas ce que ce nœud expose
+    (vérifié empiriquement, design vague 1 transformers DuckDB §0)."""
+
+    column: str = "dimension"
+
+
+class TransformCountVerticesParams(BaseModel):
+    """Nombre de sommets de la géométrie → colonne attribut."""
+
+    column: str = "vertexCount"
+
+
+class TransformExtractSridParams(BaseModel):
+    """SRID (code EPSG) du système de coordonnées courant du pipeline →
+    colonne attribut constante.
+
+    Le SRID est un état porté par le runtime du pipeline, pas un attribut de
+    la géométrie elle-même : DuckDB spatial ne stocke aucun SRID sur le type
+    GEOMETRY (vérifié empiriquement, design vague 1 transformers DuckDB
+    §0)."""
+
+    column: str = "srid"
