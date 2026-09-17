@@ -595,3 +595,24 @@ def test_materialize_snowflake_connector_round_trips_query(
     )
     rows = conn.execute("SELECT id, name FROM node_sf4 ORDER BY id").fetchall()
     assert rows == [(1, "Nord"), (2, "Sud")]
+
+
+def test_postgres_secret_resolver_get_returns_payload(session, tenant, user):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="my-bearer",
+        kind="bearer_token",
+        payload={"kind": "bearer_token", "token": "s3cr3t-tok"},
+    )
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant.id)
+    payload = resolver.get("my-bearer")
+    assert payload.kind == "bearer_token"
+    assert payload.token == "s3cr3t-tok"
+
+
+def test_postgres_secret_resolver_get_raises_keyerror_when_missing(session, tenant):
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant.id)
+    with pytest.raises(KeyError):
+        resolver.get("does-not-exist")

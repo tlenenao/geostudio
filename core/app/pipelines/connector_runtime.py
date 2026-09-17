@@ -16,6 +16,7 @@ os.environ.setdefault("RUNTIME__DLTHUB_TELEMETRY", "false")
 import shutil
 import tempfile
 import uuid
+from typing import Protocol
 
 import dlt
 import sqlalchemy as sa
@@ -45,6 +46,32 @@ from app.secrets import repository as secrets_repo
 from app.secrets.schemas import SecretPayload
 
 _REST_SECRET_KINDS = {"api_key", "bearer_token", "basic_auth", "oauth2_client_credentials"}
+
+
+class SecretResolver(Protocol):
+    """Seam introduit pour découpler ce module de app.secrets.repository
+    (Postgres, tenant-scopé) — un futur runtime hors serveur (sidecar
+    desktop sans Postgres, design 2026-09-17 §3/§6) fournira sa propre
+    implémentation (trousseau OS) sans toucher ce module une deuxième fois."""
+
+    def get(self, name: str) -> SecretPayload: ...
+
+
+class PostgresSecretResolver:
+    """Implémentation par défaut, utilisée par le cœur serveur — même
+    requête que l'ancien _resolve_secret(session, tenant_id, ...)."""
+
+    def __init__(self, session: Session, tenant_id: str) -> None:
+        self._session = session
+        self._tenant_id = tenant_id
+
+    def get(self, name: str) -> SecretPayload:
+        payload = secrets_repo.get_secret_payload(
+            self._session, tenant_id=self._tenant_id, name=name
+        )
+        if payload is None:
+            raise KeyError(name)
+        return payload
 
 
 def _qi(name: str) -> str:
