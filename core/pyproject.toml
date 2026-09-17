@@ -112,6 +112,9 @@ dev = [
     # `pip-audit --strict` (qui s'audite donc lui-même) refusait de passer.
     # Jamais embarqué dans une image : outil de dev/CI uniquement.
     "pip>=26.2",
+    "pyinstaller>=6.11",  # Spike desktop-etl (docs/superpowers/specs/2026-09-17-desktop-etl-standalone-design.md
+    # §9) : outil de dev/build uniquement, jamais embarqué dans une image
+    # core (même statut que ruff/mypy ci-dessus).
 ]
 
 [tool.pytest.ini_options]
