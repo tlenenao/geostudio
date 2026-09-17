@@ -16,6 +16,7 @@ os.environ.setdefault("RUNTIME__DLTHUB_TELEMETRY", "false")
 import shutil
 import tempfile
 import uuid
+from typing import Protocol
 
 import dlt
 import sqlalchemy as sa
@@ -47,6 +48,43 @@ from app.secrets.schemas import SecretPayload
 _REST_SECRET_KINDS = {"api_key", "bearer_token", "basic_auth", "oauth2_client_credentials"}
 
 
+class SecretResolver(Protocol):
+    """Seam introduit pour découpler les `materialize_*_connector` d'une
+    dépendance directe à `session`/`tenant_id` (Postgres, tenant-scopé) — ils
+    ne dépendent plus que de ce Protocol. `PostgresSecretResolver`,
+    l'implémentation par défaut, reste dans ce module par design et garde son
+    import direct de app.secrets.repository ; un futur runtime hors serveur
+    (sidecar desktop sans Postgres, design 2026-09-17 §3/§6) fournira sa
+    propre implémentation (trousseau OS) sans toucher ce module une deuxième
+    fois."""
+
+    def get(self, name: str) -> SecretPayload: ...
+
+
+class PostgresSecretResolver:
+    """Implémentation par défaut, utilisée par le cœur serveur — même
+    requête que l'ancien _resolve_secret(session, tenant_id, ...)."""
+
+    def __init__(self, session: Session, tenant_id: str) -> None:
+        self._session = session
+        self._tenant_id = tenant_id
+
+    def get(self, name: str) -> SecretPayload:
+        try:
+            payload = secrets_repo.get_secret_payload(
+                self._session, tenant_id=self._tenant_id, name=name
+            )
+        except KeyError as exc:
+            # KeyError est le signal « secret absent » de ce Protocol : une
+            # KeyError venue d'ailleurs (CORE_SECRETS_MASTER_KEY manquante,
+            # cf. app.secrets.crypto.load_master_key) ne doit jamais être
+            # confondue avec ça.
+            raise RuntimeError(f"secret backend unavailable: {exc}") from exc
+        if payload is None:
+            raise KeyError(name)
+        return payload
+
+
 def _qi(name: str) -> str:
     # Duplication délibérée (3e copie du dépôt) — cf. runtime.py, même
     # rationale : helper de 2 lignes, pas un import inter-module d'un nom
@@ -61,14 +99,15 @@ class ConnectorRuntimeError(Exception):
 
 
 def _resolve_secret(
-    session: Session, tenant_id: str, secret_name: str | None
+    resolver: SecretResolver | None, secret_name: str | None
 ) -> SecretPayload | None:
     if secret_name is None:
         return None
-    payload = secrets_repo.get_secret_payload(session, tenant_id=tenant_id, name=secret_name)
-    if payload is None:
-        raise ConnectorRuntimeError(f"secret '{secret_name}' not found")
-    return payload
+    assert resolver is not None, "secret_resolver requis quand secretName est renseigné"
+    try:
+        return resolver.get(secret_name)
+    except KeyError:
+        raise ConnectorRuntimeError(f"secret '{secret_name}' not found") from None
 
 
 def _build_auth(payload: SecretPayload | None):
@@ -217,13 +256,12 @@ def _run_dlt_and_attach(conn, resource, *, node_id: str, view_name: str) -> None
 def materialize_rest_connector(
     conn,
     *,
-    session: Session,
-    tenant_id: str,
+    secret_resolver: SecretResolver | None,
     node_id: str,
     params: ReaderConnectorRestParams,
     view_name: str,
 ) -> None:
-    payload = _resolve_secret(session, tenant_id, params.secretName)
+    payload = _resolve_secret(secret_resolver, params.secretName)
     auth = _build_auth(payload)
     client = RESTClient(
         base_url=params.baseUrl,
@@ -244,8 +282,7 @@ def materialize_rest_connector(
 def materialize_postgres_connector(
     conn,
     *,
-    session: Session,
-    tenant_id: str,
+    secret_resolver: SecretResolver | None,
     node_id: str,
     params: ReaderConnectorPostgresParams,
     view_name: str,
@@ -260,7 +297,7 @@ def materialize_postgres_connector(
     except SqlSandboxError as exc:
         raise ConnectorRuntimeError(f"reader.connector.postgres query rejected: {exc}") from exc
 
-    payload = _resolve_secret(session, tenant_id, params.secretName)
+    payload = _resolve_secret(secret_resolver, params.secretName)
     if payload.kind != "postgres_dsn":
         raise ConnectorRuntimeError(
             f"secret has kind '{payload.kind}', not usable by reader.connector.postgres "
@@ -283,8 +320,7 @@ def materialize_postgres_connector(
 def materialize_snowflake_connector(
     conn,
     *,
-    session: Session,
-    tenant_id: str,
+    secret_resolver: SecretResolver | None,
     node_id: str,
     params: ReaderConnectorSnowflakeParams,
     view_name: str,
@@ -298,7 +334,7 @@ def materialize_snowflake_connector(
     except SqlSandboxError as exc:
         raise ConnectorRuntimeError(f"reader.connector.snowflake query rejected: {exc}") from exc
 
-    payload = _resolve_secret(session, tenant_id, params.secretName)
+    payload = _resolve_secret(secret_resolver, params.secretName)
     if payload.kind != "snowflake_dsn":
         raise ConnectorRuntimeError(
             f"secret has kind '{payload.kind}', not usable by reader.connector.snowflake "
