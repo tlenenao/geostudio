@@ -22,16 +22,19 @@ from app.pipelines.ops.schemas import (
     TransformExtractElevationParams,
     TransformExtractSridParams,
     TransformFilterParams,
+    TransformFormatCoordinatesParams,
     TransformH3AggregateParams,
     TransformIntersectionParams,
     TransformJoinParams,
     TransformMergeParams,
     TransformQgisParams,
+    TransformReprojectAttributeParams,
     TransformReprojectParams,
     TransformRotateGeometryParams,
     TransformRoundCoordinatesParams,
     TransformScaleGeometryParams,
     TransformSelectParams,
+    TransformSetSridParams,
     TransformSwapCoordinatesParams,
     TransformTranslateGeometryParams,
 )
@@ -438,6 +441,57 @@ def _compile_extract_srid(
     return f"SELECT *, {input_srid} AS {_qi(p.column)} FROM {_qi(input_view)}"
 
 
+def _compile_set_srid(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    TransformSetSridParams.model_validate(params)  # forme seulement, lu par _output_srid_set_srid
+    return f"SELECT * FROM {_qi(input_view)}"
+
+
+def _compile_reproject_attribute(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformReprojectAttributeParams.model_validate(params)
+    point_expr = f"ST_Point({_qi(p.xColumn)}, {_qi(p.yColumn)})"
+    transformed = f"ST_Transform({point_expr}, '{p.sourceCrs}', '{p.targetCrs}', true)"
+    return (
+        f"SELECT * EXCLUDE ({_qi(p.xColumn)}, {_qi(p.yColumn)}), "
+        f"ST_X({transformed}) AS {_qi(p.xColumn)}, ST_Y({transformed}) AS {_qi(p.yColumn)} "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_format_coordinates(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformFormatCoordinatesParams.model_validate(params)
+    src = _qi(p.sourceColumn)
+    if p.format == "decimalDegrees":
+        expr = f"ROUND({src}, {p.precision})"
+    else:
+        deg = f"CAST(floor(abs({src})) AS INTEGER)"
+        minutes = f"CAST(floor((abs({src}) - floor(abs({src}))) * 60) AS INTEGER)"
+        seconds = (
+            f"(abs({src}) - floor(abs({src})) - "
+            f"floor((abs({src}) - floor(abs({src}))) * 60) / 60.0) * 3600"
+        )
+        sign = f"CASE WHEN {src} < 0 THEN '-' ELSE '' END"
+        expr = f"{sign} || printf('%d°%d''%.{p.precision}f\"', {deg}, {minutes}, {seconds})"
+    return f"SELECT *, ({expr}) AS {_qi(p.targetColumn)} FROM {_qi(input_view)}"
+
+
 def compile_transform_sql(
     op: str,
     params: dict,
@@ -507,6 +561,17 @@ def _output_srid_qgis(
 ) -> int:
     p = TransformQgisParams.model_validate(params)
     return int(p.outputSrid.rsplit(":", 1)[1]) if p.outputSrid is not None else input_srid
+
+
+def _output_srid_set_srid(
+    params: dict,
+    *,
+    op: str,
+    input_srid: int,
+    join_srid: int | None = None,
+) -> int:
+    p = TransformSetSridParams.model_validate(params)
+    return p.targetSrid
 
 
 def transform_output_srid(

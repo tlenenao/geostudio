@@ -334,3 +334,39 @@ class TransformExtractSridParams(BaseModel):
     §0)."""
 
     column: str = "srid"
+
+
+class TransformSetSridParams(BaseModel):
+    """Réassigne le SRID du pipeline SANS reprojeter les coordonnées — à
+    utiliser quand les coordonnées sont correctes mais le SRID détecté à la
+    lecture est faux.
+
+    Pour reprojeter réellement les coordonnées, utiliser transform.reproject.
+    Ne couvre pas le retrait de SRID (CoordinateSystemRemover de la matrice
+    FME) : le SRID est un entier obligatoire dans ce runtime, jamais absent
+    (design vague 1 transformers DuckDB §0)."""
+
+    targetSrid: int = Field(..., gt=0)
+
+
+class TransformReprojectAttributeParams(BaseModel):
+    """Reprojette une paire de coordonnées portée par DEUX COLONNES ATTRIBUT
+    (pas la géométrie de la feature) — distinct de transform.reproject qui
+    reprojette la géométrie. Écrase xColumn/yColumn en place."""
+
+    xColumn: str
+    yColumn: str
+    sourceCrs: str = Field(..., pattern=r"^[A-Za-z]+:\d+$")
+    targetCrs: str = Field(..., pattern=r"^[A-Za-z]+:\d+$")
+
+
+class TransformFormatCoordinatesParams(BaseModel):
+    """Formate une colonne attribut numérique (coordonnée en degrés
+    décimaux) en texte : soit arrondie en degrés décimaux, soit convertie en
+    degrés/minutes/secondes (DMS, sans indicateur d'hémisphère — à
+    concaténer séparément si besoin)."""
+
+    sourceColumn: str
+    targetColumn: str
+    format: Literal["decimalDegrees", "dms"] = "decimalDegrees"
+    precision: int = Field(4, ge=0, le=10)

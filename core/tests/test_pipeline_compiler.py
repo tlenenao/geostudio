@@ -624,3 +624,64 @@ def test_compile_extract_srid_returns_the_pipeline_srid(conn_spatial):
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
     row = conn_spatial.execute("SELECT srid FROM out WHERE id = 1").fetchone()
     assert row == (4326,)
+
+
+def test_compile_set_srid_does_not_change_the_geometry(conn_spatial):
+    sql = compile_transform_sql("transform.setSrid", {"targetSrid": 2154}, input_view="base")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT ST_AsText(geometry) FROM out WHERE id = 1").fetchone()
+    assert row == ("POINT (3 45)",)
+
+
+def test_set_srid_overrides_the_output_srid():
+    from app.pipelines.compiler import transform_output_srid
+
+    srid = transform_output_srid("transform.setSrid", {"targetSrid": 2154}, input_srid=4326)
+    assert srid == 2154
+
+
+def test_compile_reproject_attribute_uses_correct_axis_order(conn_spatial):
+    conn_spatial.execute(
+        "CREATE TABLE attr_xy (id INTEGER, lon DOUBLE, lat DOUBLE, geometry GEOMETRY)"
+    )
+    conn_spatial.execute("INSERT INTO attr_xy VALUES (1, 3.0, 45.0, ST_Point(0, 0))")
+    sql = compile_transform_sql(
+        "transform.reprojectAttribute",
+        {"xColumn": "lon", "yColumn": "lat", "sourceCrs": "EPSG:4326", "targetCrs": "EPSG:3857"},
+        input_view="attr_xy",
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    lon, lat = conn_spatial.execute("SELECT lon, lat FROM out WHERE id = 1").fetchone()
+    assert lon == pytest.approx(333958.47, abs=1)
+    assert lat == pytest.approx(5621521.49, abs=1)
+
+
+def test_compile_format_coordinates_decimal_degrees(conn_spatial):
+    conn_spatial.execute("CREATE TABLE lat_table (id INTEGER, lat DOUBLE)")
+    conn_spatial.execute("INSERT INTO lat_table VALUES (1, 48.858093)")
+    sql = compile_transform_sql(
+        "transform.formatCoordinates",
+        {
+            "sourceColumn": "lat",
+            "targetColumn": "latText",
+            "format": "decimalDegrees",
+            "precision": 2,
+        },
+        input_view="lat_table",
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT latText FROM out").fetchone()
+    assert row == (48.86,)
+
+
+def test_compile_format_coordinates_dms(conn_spatial):
+    conn_spatial.execute("CREATE TABLE lat_table (id INTEGER, lat DOUBLE)")
+    conn_spatial.execute("INSERT INTO lat_table VALUES (1, 48.858093), (2, -48.858093)")
+    sql = compile_transform_sql(
+        "transform.formatCoordinates",
+        {"sourceColumn": "lat", "targetColumn": "latText", "format": "dms", "precision": 2},
+        input_view="lat_table",
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn_spatial.execute("SELECT latText FROM out ORDER BY id").fetchall()
+    assert rows == [("48°51'29.13\"",), ("-48°51'29.13\"",)]
