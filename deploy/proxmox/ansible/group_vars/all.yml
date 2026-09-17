@@ -3,3 +3,4 @@ geostudio_repo_dest: "/home/geostudio/geostudio"
 geostudio_public_host: ""
 geostudio_profiles: ""
 geostudio_seed_demo: false
+geostudio_core_etl_enabled: false

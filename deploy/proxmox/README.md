@@ -91,7 +91,7 @@ ansible-vault encrypt group_vars/vault.yml
 # découverte auto *.ts.net), geostudio_profiles (ex. "observability"),
 # geostudio_seed_demo
 
-ansible-playbook -i inventory.ini --ask-vault-pass playbook.yml
+ansible-playbook -i inventory.ini --ask-vault-pass ../../ansible/playbook.yml
 ```
 
 À la fin, le résumé imprimé par `scripts/install.sh` (URL publique, compte

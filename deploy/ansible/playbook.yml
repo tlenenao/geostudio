@@ -41,6 +41,7 @@
         TS_AUTHKEY: "{{ vault_ts_authkey }}"
         INSTALL_PROFILES: "{{ geostudio_profiles }}"
         INSTALL_SEED_DEMO: "{{ '1' if geostudio_seed_demo else '0' }}"
+        INSTALL_CORE_ETL_ENABLED: "{{ '1' if geostudio_core_etl_enabled else '0' }}"
         INSTALL_ADMIN_EMAIL: "{{ vault_geostudio_admin_email }}"
         BACKUP_S3_ENDPOINT: "{{ vault_backup_s3_endpoint }}"
         BACKUP_S3_ACCESS_KEY: "{{ vault_backup_s3_access_key }}"
