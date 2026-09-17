@@ -85,7 +85,7 @@ resource "oci_core_subnet" "geostudio" {
 
 resource "oci_core_instance" "geostudio" {
   compartment_id      = var.compartment_id
-  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
+  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[var.availability_domain_index].name
   shape               = var.instance_shape
   display_name        = var.instance_name
 
@@ -107,5 +107,15 @@ resource "oci_core_instance" "geostudio" {
 
   metadata = {
     ssh_authorized_keys = var.ssh_public_key
+  }
+
+  # `data.oci_core_images.ubuntu_arm` est trié par TIMECREATED DESC :
+  # `images[0].id` change dès que Canonical publie une nouvelle image. Or
+  # `source_id` force le remplacement de la ressource — un simple `tofu apply`
+  # de routine détruirait donc l'instance et son boot volume (toutes les
+  # données GeoStudio avec). L'image de base est résolue une seule fois, à la
+  # création.
+  lifecycle {
+    ignore_changes = [source_details[0].source_id]
   }
 }

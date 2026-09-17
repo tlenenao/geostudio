@@ -37,11 +37,17 @@ tofu apply
 
 Notez l'`output instance_public_ip` — reportez-le dans `inventory.ini` (§2).
 
+L'image de base est résolue une seule fois à la création — les futures
+publications d'image Canonical ne déclenchent pas un remplacement destructif
+de l'instance existante.
+
 **Note capacité** : Ampere A1 Flex sur le tier gratuit connaît des pénuries
 de capacité fréquentes selon la région (`tofu apply` échoue avec
 `Out of host capacity`) — pas de retry automatisé ici, relancez `tofu apply`
-manuellement (éventuellement dans une autre région/AD) jusqu'à ce que la
-capacité soit disponible.
+manuellement jusqu'à ce que la capacité soit disponible. Pour viser un autre
+domaine de disponibilité de la même région sans toucher à `main.tf`, changez
+`availability_domain_index` (0, 1, 2…) dans `terraform.tfvars` ; pour changer
+de région, c'est la variable `region`.
 
 ## 2. Configurer et lancer GeoStudio (Ansible)
 

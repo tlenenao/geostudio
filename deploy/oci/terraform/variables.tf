@@ -28,6 +28,12 @@ variable "compartment_id" {
   type        = string
 }
 
+variable "availability_domain_index" {
+  description = "Index (0-based) du domaine de disponibilité à utiliser dans la région cible — changez-le pour contourner une pénurie de capacité Ampere A1 sur le domaine par défaut"
+  type        = number
+  default     = 0
+}
+
 variable "admin_ssh_cidr" {
   description = "CIDR autorisé en SSH (22) sur l'instance — jamais 0.0.0.0/0, restreindre à votre IP (ex. 203.0.113.4/32)"
   type        = string
