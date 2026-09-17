@@ -283,3 +283,25 @@ class TransformRoundCoordinatesParams(BaseModel):
     système de coordonnées courant)."""
 
     gridSize: float = Field(..., gt=0)
+
+
+class TransformConcatCoordinatesParams(BaseModel):
+    """Construit la géométrie (un point) à partir de deux colonnes attribut
+    X/Y existantes — remplace la géométrie courante."""
+
+    xColumn: str
+    yColumn: str
+
+
+class TransformExtractCoordinatesParams(BaseModel):
+    """X et Y de la géométrie → deux colonnes attribut séparées."""
+
+    xColumn: str = "x"
+    yColumn: str = "y"
+
+
+class TransformExtractElevationParams(BaseModel):
+    """Composante Z de la géométrie → colonne attribut (NULL si la géométrie
+    n'a pas de Z)."""
+
+    column: str = "elevation"

@@ -545,3 +545,48 @@ def test_compile_round_coordinates(conn_spatial):
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
     rows = conn_spatial.execute("SELECT ST_AsText(geometry) FROM out ORDER BY id").fetchall()
     assert rows == [("POINT (3 45)",), ("POINT (3 45)",)]
+
+
+def test_compile_concat_coordinates_builds_a_point_from_attribute_columns(conn_spatial):
+    conn_spatial.execute("CREATE TABLE xy (id INTEGER, lon DOUBLE, lat DOUBLE, geometry GEOMETRY)")
+    conn_spatial.execute("INSERT INTO xy VALUES (1, 3.0, 45.0, NULL)")
+    sql = compile_transform_sql(
+        "transform.concatCoordinates", {"xColumn": "lon", "yColumn": "lat"}, input_view="xy"
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    wkt = conn_spatial.execute("SELECT ST_AsText(geometry) FROM out").fetchone()[0]
+    assert wkt == "POINT (3 45)"
+
+
+def test_compile_extract_coordinates_default_column_names(conn_spatial):
+    sql = compile_transform_sql("transform.extractCoordinates", {}, input_view="base")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT x, y FROM out WHERE id = 1").fetchone()
+    assert row == (3.0, 45.0)
+
+
+def test_compile_extract_coordinates_custom_column_names(conn_spatial):
+    sql = compile_transform_sql(
+        "transform.extractCoordinates",
+        {"xColumn": "longitude", "yColumn": "latitude"},
+        input_view="base",
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT longitude, latitude FROM out WHERE id = 1").fetchone()
+    assert row == (3.0, 45.0)
+
+
+def test_compile_extract_elevation_is_null_for_2d_geometry(conn_spatial):
+    sql = compile_transform_sql("transform.extractElevation", {}, input_view="base")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT elevation FROM out WHERE id = 1").fetchone()
+    assert row == (None,)
+
+
+def test_compile_extract_elevation_reads_z_for_3d_geometry(conn_spatial):
+    conn_spatial.execute("CREATE TABLE base3d (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute("INSERT INTO base3d VALUES (1, ST_GeomFromText('POINT Z (1 2 3)'))")
+    sql = compile_transform_sql("transform.extractElevation", {"column": "z"}, input_view="base3d")
+    conn_spatial.execute(f"CREATE TEMP VIEW out3d AS {sql}")
+    row = conn_spatial.execute("SELECT z FROM out3d").fetchone()
+    assert row == (3.0,)

@@ -12,9 +12,12 @@ from app.configs.schemas import PipelineEdge, PipelineNode
 from app.pipelines.ops.schemas import (
     TransformAggregateParams,
     TransformBufferParams,
+    TransformConcatCoordinatesParams,
     TransformCountWithinParams,
     TransformCreateGeometryParams,
     TransformDeriveParams,
+    TransformExtractCoordinatesParams,
+    TransformExtractElevationParams,
     TransformFilterParams,
     TransformH3AggregateParams,
     TransformIntersectionParams,
@@ -354,6 +357,45 @@ def _compile_round_coordinates(
         f"SELECT * EXCLUDE (geometry), ST_ReducePrecision(geometry, {p.gridSize}) AS geometry "
         f"FROM {_qi(input_view)}"
     )
+
+
+def _compile_concat_coordinates(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformConcatCoordinatesParams.model_validate(params)
+    return (
+        f"SELECT * EXCLUDE (geometry), ST_Point({_qi(p.xColumn)}, {_qi(p.yColumn)}) AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_extract_coordinates(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformExtractCoordinatesParams.model_validate(params)
+    return (
+        f"SELECT *, ST_X(geometry) AS {_qi(p.xColumn)}, ST_Y(geometry) AS {_qi(p.yColumn)} "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_extract_elevation(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformExtractElevationParams.model_validate(params)
+    return f"SELECT *, ST_Z(geometry) AS {_qi(p.column)} FROM {_qi(input_view)}"
 
 
 def compile_transform_sql(
