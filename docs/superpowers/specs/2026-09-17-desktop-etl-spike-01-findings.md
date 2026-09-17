@@ -85,12 +85,12 @@ AssertionError: plug_run_context hook returned None
 
 La taille de 161 Mo sur Linux est attendue pour un onefile embarquant :
 - `dlt` + ses dépendances (data integration)
-- `geopandas`, `pyarrow`, `shapely`, `pyproj` (manipulation géospatiale)
+- `pyarrow`, `pandas`, `numpy` (tirés transitivement par `dlt`/`duckdb`)
 - `duckdb` (moteur analytique)
 - `sqlalchemy` (ORM)
 - Toutes les transitivités du runtime Python
 
-À titre de comparaison avec l'estimation du design (§8 du document `2026-09-17-desktop-etl-standalone-design.md`) : ce spike n'embarque qu'un sous-ensemble (une opération connecteur seule, pas l'éditeur UI, pas FastAPI complet, pas Postgres), donc son taille donne un ordre de grandeur prudent par paquet inclus — le socle sidecar complet sera probablement plus lourd de 50-100 Mo pour y ajouter `reader.file`, `writer.file`, et les stabilisateurs hors dépendances (icônes, assets).
+À titre de comparaison avec l'estimation du design (§8 du document `2026-09-17-desktop-etl-standalone-design.md`) : ce spike n'embarque qu'un sous-ensemble (une opération connecteur seule, pas l'éditeur UI, pas FastAPI complet, pas Postgres), donc sa taille donne un ordre de grandeur prudent par paquet inclus — le socle sidecar complet sera probablement plus lourd de 50-100 Mo pour y ajouter `reader.file`, `writer.file`, et les stabilisateurs hors dépendances (icônes, assets).
 
 ## Impact sur le découpage du design (§11)
 
@@ -99,8 +99,7 @@ La taille de 161 Mo sur Linux est attendue pour un onefile embarquant :
 Aucune restriction d'architecture n'est nécessaire :
 
 - Pas de fallback sur un dossier de données PyInstaller plutôt qu'un onefile — la taille reste raisonnable pour une distribution desktop Windows.
-- Pas d'exclusion de connecteur (`reader.connector.rest` s'embarque sans problème sous Windows ni macOS).
-- Pas de dépendance Windows-spécifique dans la recette — le flag `--collect-all dlt` s'applique identiquement sur toutes les plateformes.
-- Pas de limitation à une sous-arborescence de `core/app/pipelines/` — la preuve du concept inclut la totalité de la stack de connectorisation (`dlt`, accès Postgres via sqlalchemy, accès REST, parseurs géospatiales).
+- Pas de dépendance Windows-spécifique dans la recette — le flag `--collect-all dlt` s'applique identiquement sur toutes les plateformes. Windows a été prouvé (CI `windows-latest`, run vert) ; macOS n'a jamais été tenté et reste hors périmètre v1 (le design, §8, fixe « Cible v1 : Windows uniquement »).
+- Ce qui a été prouvé porte sur `dlt` + `duckdb` + `sqlalchemy` + le chemin `reader.connector.rest`, avec `pyarrow`/`pandas`/`numpy` tirés transitivement (vérifié dans `Analysis-00.toc` du build : `pyarrow` 1383 modules, `pandas` 692, `numpy` 397). **`geopandas`, `shapely` et `pyproj` n'ont jamais fait partie du graphe gelé** — `Analysis-00.toc` les montre à 0 occurrence (le seul texte « pyproj » du dépôt est dans `app/pipelines/egress.py`, et c'est le mot « pyproject.toml », pas le paquet). Ces trois paquets vivent sous `app/ingestion/parsers.py` et `app/cdc/{parquet_writer,compaction}.py`, jamais importés par `app/pipelines/connector_runtime.py`. C'est un **risque résiduel non prouvé** : `pyproj` a besoin de son répertoire de données PROJ (`proj.db`, typiquement `--collect-data pyproj`) et `shapely` de sa bibliothèque native GEOS, particulièrement fragile sous Windows — ce point restera à prouver quand la phase suivante ajoutera `reader.file`/le support de formats géospatiaux.
 
-Le déploiement du sidecar dans un runtime Tauri et sa communication HTTP loopback avec la webview (détaillée en §2 du design) restent à valider, mais **la faisabilité de geler et exécuter le moteur pipeline lui-même est complètement de-risquée**.
+Le déploiement du sidecar dans un runtime Tauri et sa communication HTTP loopback avec la webview (détaillée en §2 du design) restent à valider. La faisabilité de geler et exécuter le moteur pipeline pour la stack déjà testée (`dlt`/`duckdb`/`sqlalchemy`/REST) est de-risquée ; le freeze de la manipulation géospatiale (`geopandas`/`shapely`/`pyproj`) ne l'est pas encore.

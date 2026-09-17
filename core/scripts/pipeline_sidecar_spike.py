@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Spike PyInstaller (design docs/superpowers/specs/2026-09-17-desktop-etl-
 standalone-design.md §9) : fige app.pipelines.connector_runtime — et tout
-son graphe d'imports transitif (dlt, duckdb, sqlalchemy, geopandas, pyarrow,
-shapely, pyproj) — en binaire autonome, puis exécute un reader.connector.rest
+son graphe d'imports transitif (dlt, duckdb, sqlalchemy, pyarrow) — en binaire
+autonome, puis exécute un reader.connector.rest
 réel contre un serveur HTTP local (aucun réseau externe requis) pour confirmer
 que le freeze n'a rien perdu.
 
