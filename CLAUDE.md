@@ -506,6 +506,13 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   une nouvelle porte de tests native arm64 (`test-gate-arm64`, jamais
   sous QEMU). Détail complet (revue finale : 1 Critical + 1 Important
   trouvés et corrigés) dans l'archive.
+- **Provisioning OCI** — module OpenTofu `deploy/oci/terraform/` (Ampere A1
+  Flex arm64, tier gratuit), playbook Ansible extrait en commun
+  (`deploy/ansible/`), `CORE_ETL_ENABLED` découplé du sidecar QGIS (jamais
+  démarré sur cette cible arm64). Revue finale : 3 Critical (playbook cassé
+  pour Proxmox et OCI par l'extraction, test de déployabilité et inventaire
+  de fonctionnalités désynchronisés du chemin déplacé) + 4 Important trouvés
+  et corrigés — détail dans l'archive.
 
 ### Conventions tranchées (2026-09-01)
 

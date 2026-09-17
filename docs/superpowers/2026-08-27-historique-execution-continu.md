@@ -6522,4 +6522,70 @@ surface déjà livrée.
   `scripts/run-qgis-tests.sh` réutilise une image `geostudio-postgis-ci`
   déjà présente sans forcer de rebuild, un développeur avec une image
   pré-correctif ne verrait pas le fix.
+- **Provisioning OCI** — plan `docs/superpowers/plans/2026-09-17-provisioning-oci.md`,
+  exécuté en subagent-driven-development (4 tâches, directement sur `dev`,
+  pas de worktree). Module OpenTofu `deploy/oci/terraform/` (provider
+  `oracle/oci` ~> 5.0 : VCN, subnet, IGW, route table, security list
+  SSH/22-only depuis `var.admin_ssh_cidr`, instance Ampere A1 Flex arm64
+  Ubuntu 22.04) — tous les noms d'arguments Terraform vérifiés en session
+  par une revue avec accès web contre `github.com/oracle/terraform-provider-oci`
+  (branche `master`), aucune hallucination trouvée, y compris un détail
+  fin (`cidr_blocks` pluriel non déprécié, préféré au singulier déprécié
+  que la mémoire d'un LLM produit le plus souvent). Playbook Ansible
+  extrait de `deploy/proxmox/ansible/` vers `deploy/ansible/` (partagé
+  entre les deux cibles) ; `scripts/install.sh` gagne
+  `INSTALL_CORE_ETL_ENABLED`, découplé du profil compose `etl` (relabellisé
+  pour ne référencer que le sidecar QGIS, jamais démarré sur cette cible
+  arm64 — `geostudio_profiles` reste vide en dur côté OCI, décision de
+  déploiement et non détection d'architecture).
+  **Revue finale de branche : 3 Critical + 4 Important, tous corrigés et
+  re-vérifiés par exécution (pas seulement relecture) dans une seule vague
+  de correctifs.** Les 3 Critical partagent une seule cause racine — le
+  déplacement du playbook (tâche 2) n'a pas été suivi jusqu'à ses
+  consommateurs : (1) `vars_files: [group_vars/all.yml, group_vars/vault.yml]`
+  se résout contre le **répertoire du playbook** en Ansible (vérifié contre
+  le source ansible-core, `lib/ansible/playbook/base.py`/`parsing/dataloader.py`),
+  jamais le cwd ni l'inventaire — cassait le provisioning Proxmox
+  fonctionnel ET OCI ; corrigé en `{{ inventory_dir }}/group_vars/...`.
+  (2) `core/tests/test_deployability.py::PROXMOX_PLAYBOOK` pointait encore
+  l'ancien chemin (`FileNotFoundError` à l'exécution — jamais rejoué avant
+  cette revue, seule `tests/test_install_script.py` avait tourné sur cette
+  branche). (3) `docs/revue/inventaire-fonctionnalites.jsonl` pointait
+  aussi l'ancien chemin, faisant échouer `feature_health_cli.py --check`
+  (santé 40.0 < plancher 89.9) — corrigé, plus un `--write` de
+  régénération dont le diff (446 lignes sur `bilan-fonctionnalites.md`)
+  s'est révélé dominé par une dérive de couverture pré-existante et sans
+  rapport (déjà `PÉRIMÉ` avant tout correctif de cette session, confirmé
+  par `--check-fresh`), pas une régression introduite ici. Les 4 Important :
+  `scripts/install.sh` activait silencieusement le moteur ETL sous
+  `INSTALL_YES=1` sans `INSTALL_CORE_ETL_ENABLED` renseigné (violait la
+  non-régression promise par la spec §5 — un test qui fixait la variable à
+  `"0"` masquait le cas réellement défaut/absent) ; secrets opérateur OCI
+  (`inventory.ini`, `vault.yml`) absents du `.gitignore` racine (leurs
+  jumeaux Proxmox y sont) ; `oci_core_instance` sans
+  `lifecycle.ignore_changes` sur `source_details[0].source_id` — une
+  republication d'image Ubuntu par Canonical aurait déclenché un
+  remplacement destructif de l'instance au `tofu apply` suivant ;
+  domaine de disponibilité figé à l'index 0, rendant inapplicable le
+  conseil du README de contourner une pénurie de capacité en changeant de
+  domaine. Un 8e défaut plan-mandated, plus mineur, trouvé et corrigé sans
+  re-demander (piège CLAUDE.md n°3) avant même la revue finale : le README
+  OCI référençait le playbook partagé avec un `../ansible/playbook.yml`
+  (une profondeur de trop depuis `deploy/oci/ansible/`), copié verbatim
+  du texte du plan. Suivis Minor non bloquants consignés : pas de filet de
+  régression sur l'ancrage `inventory_dir` des futurs `vars_files` ;
+  `inventory_dir` non défini pour un inventaire dynamique/inline (non
+  utilisé par ce provisioning) ; mode non-interactif désormais silencieux
+  sur la décision ETL prise ; pas de `validation` Terraform empêchant un
+  index de domaine de disponibilité hors bornes sur une région
+  mono-domaine ; bump de `ubuntu_version` sur une instance existante
+  devenu un no-op silencieux par le même `lifecycle.ignore_changes`.
+  Incident sans rapport observé en cours d'exécution : une session
+  concurrente sur ce même `dev` a committé par-dessus un correctif en
+  cours (`60d18427`, brainstorm ETL desktop standalone) — un `git commit
+  --amend` visant seulement une ligne d'attribution de commit erronée
+  (« Claude Haiku 4.5 » au lieu de « Claude Sonnet 5 ») a été abandonné
+  au profit de laisser la ligne fautive en l'état plutôt que de rebaser
+  l'historique partagé sous activité concurrente pour un correctif
+  cosmétique.
 
