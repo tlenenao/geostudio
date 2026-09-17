@@ -145,6 +145,7 @@ def _run_install(install_workdir, fake_bin_path, *, extra_env=None, timeout=30):
     env["INSTALL_YES"] = "1"
     env["INSTALL_PROFILES"] = ""
     env["INSTALL_SEED_DEMO"] = "0"
+    env["INSTALL_CORE_ETL_ENABLED"] = "0"
     env["GEOSTUDIO_PUBLIC_HOST"] = "geostudio-test.example"
     env["TS_AUTHKEY"] = "tskey-test-fake"
     env["BACKUP_S3_ENDPOINT"] = ""
@@ -216,3 +217,25 @@ def test_install_selects_profiles_and_launches_the_stack_with_them(install_workd
 
     assert result.returncode == 0, result.stderr
     assert "--profile observability up -d" in log
+
+
+def test_install_enables_the_core_etl_engine_independently_of_the_qgis_profile(
+    install_workdir, fake_bin_path
+):
+    result, _ = _run_install(
+        install_workdir,
+        fake_bin_path,
+        extra_env={"INSTALL_CORE_ETL_ENABLED": "1"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    env_lines = (install_workdir / ".env").read_text().splitlines()
+    assert "CORE_ETL_ENABLED=true" in env_lines
+
+
+def test_install_leaves_the_core_etl_engine_disabled_by_default(install_workdir, fake_bin_path):
+    result, _ = _run_install(install_workdir, fake_bin_path)
+
+    assert result.returncode == 0, result.stderr
+    env_lines = (install_workdir / ".env").read_text().splitlines()
+    assert "CORE_ETL_ENABLED=false" in env_lines
