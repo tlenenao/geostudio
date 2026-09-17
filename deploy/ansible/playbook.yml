@@ -2,8 +2,8 @@
 - name: Provisionner GeoStudio sur la VM Proxmox
   hosts: geostudio
   vars_files:
-    - group_vars/all.yml
-    - group_vars/vault.yml
+    - "{{ inventory_dir }}/group_vars/all.yml"
+    - "{{ inventory_dir }}/group_vars/vault.yml"
 
   tasks:
     - name: Attendre que SSH soit disponible (premier boot cloud-init)
