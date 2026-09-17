@@ -1,0 +1,11 @@
+geostudio_repo_url: "https://github.com/tlenenao/geostudio.git"
+geostudio_repo_dest: "/home/ubuntu/geostudio"
+geostudio_public_host: ""
+# Jamais "etl" ici : qgis-worker (mono-arch amd64) ne doit jamais tourner sur
+# cette cible, quelle que soit l'architecture réelle de l'hôte — une
+# décision de déploiement, pas une détection (cf. CLAUDE.md, spec §0/§4).
+geostudio_profiles: ""
+geostudio_seed_demo: false
+# Le moteur de pipelines (reader.connector, DuckDB) est indépendant du
+# sidecar QGIS ci-dessus (profil compose etl) — activable seul (Task 1).
+geostudio_core_etl_enabled: true
