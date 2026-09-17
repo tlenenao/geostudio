@@ -97,7 +97,7 @@ def test_non_collection_fields_carry_no_format_hint():
     assert "format" not in catalog["transform.join"]["paramsSchema"]["properties"]["on"]
 
 
-def test_all_nineteen_ops_are_registered():
+def test_all_thirty_four_ops_are_registered():
     assert set(OP_PARAMS) == {
         "reader.collection",
         "transform.filter",
@@ -118,6 +118,21 @@ def test_all_nineteen_ops_are_registered():
         "reader.connector.postgres",
         "transform.merge",
         "reader.connector.snowflake",
+        "transform.swapCoordinates",
+        "transform.translateGeometry",
+        "transform.scaleGeometry",
+        "transform.rotateGeometry",
+        "transform.createGeometry",
+        "transform.concatCoordinates",
+        "transform.roundCoordinates",
+        "transform.extractElevation",
+        "transform.extractDimension",
+        "transform.countVertices",
+        "transform.extractCoordinates",
+        "transform.extractSrid",
+        "transform.setSrid",
+        "transform.reprojectAttribute",
+        "transform.formatCoordinates",
     }
     assert set(OP_KINDS) == set(OP_PARAMS)
 

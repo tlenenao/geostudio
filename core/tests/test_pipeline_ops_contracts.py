@@ -43,7 +43,7 @@ def test_non_copyleft_engine_defaults_to_in_process_and_no_copyleft():
     assert contract.output_srid is None
 
 
-def test_operations_registry_has_exactly_the_nineteen_known_ops():
+def test_operations_registry_has_exactly_the_thirty_four_known_ops():
     from app.pipelines.ops.contracts import OPERATIONS
 
     assert set(OPERATIONS) == {
@@ -66,6 +66,21 @@ def test_operations_registry_has_exactly_the_nineteen_known_ops():
         "reader.connector.postgres",
         "reader.connector.snowflake",
         "transform.merge",
+        "transform.swapCoordinates",
+        "transform.translateGeometry",
+        "transform.scaleGeometry",
+        "transform.rotateGeometry",
+        "transform.createGeometry",
+        "transform.concatCoordinates",
+        "transform.roundCoordinates",
+        "transform.extractElevation",
+        "transform.extractDimension",
+        "transform.countVertices",
+        "transform.extractCoordinates",
+        "transform.extractSrid",
+        "transform.setSrid",
+        "transform.reprojectAttribute",
+        "transform.formatCoordinates",
     }
 
 
@@ -109,7 +124,7 @@ def test_operation_contract_accepts_explicit_exchange_value():
     assert contract.exchange == "arrow_stream"
 
 
-def test_all_nineteen_operations_default_exchange_to_none():
+def test_all_operations_default_exchange_to_none():
     from app.pipelines.ops.contracts import OPERATIONS
 
     for op, contract in OPERATIONS.items():
@@ -126,3 +141,9 @@ def test_ops_catalog_never_exposes_the_exchange_field():
     catalog = ops_catalog()
     for op, entry in catalog.items():
         assert set(entry) == {"kind", "paramsSchema", "acceptsSecondaryInput"}, op
+
+
+def test_operations_registry_has_thirty_four_entries_after_wave_1():
+    from app.pipelines.ops.contracts import OPERATIONS
+
+    assert len(OPERATIONS) == 34

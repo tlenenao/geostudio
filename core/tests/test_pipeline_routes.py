@@ -59,14 +59,13 @@ def test_pipelines_routes_absent_when_disabled(monkeypatch):
     assert client.get("/v1/pipelines/does-not-exist/webhook-tokens").status_code == 404
 
 
-def test_get_pipelines_ops_returns_all_nineteen(monkeypatch):
+def test_get_pipelines_ops_returns_all_thirty_four(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     response = client.get("/v1/pipelines/ops")
     assert response.status_code == 200
     body = response.json()
-    # Phase 1 (8) + spatial (5) + writer.dataset (1) + qgis (1) + connectors (3,
-    # GAP-16 ajoute reader.connector.snowflake) + transform.merge (1, SP-15g)
-    # = 19 total.
+    # 19 op existantes (cf. design OperationContract) + 15 op vague 1 (géométrie/coordonnées/SRID,
+    # cf. design vague 1 transformers DuckDB) = 34 total.
     assert set(body) == {
         "reader.collection",
         "transform.filter",
@@ -87,6 +86,21 @@ def test_get_pipelines_ops_returns_all_nineteen(monkeypatch):
         "reader.connector.postgres",
         "reader.connector.snowflake",
         "transform.merge",
+        "transform.swapCoordinates",
+        "transform.translateGeometry",
+        "transform.scaleGeometry",
+        "transform.rotateGeometry",
+        "transform.createGeometry",
+        "transform.concatCoordinates",
+        "transform.roundCoordinates",
+        "transform.extractElevation",
+        "transform.extractDimension",
+        "transform.countVertices",
+        "transform.extractCoordinates",
+        "transform.extractSrid",
+        "transform.setSrid",
+        "transform.reprojectAttribute",
+        "transform.formatCoordinates",
     }
     for op in (
         "transform.join",
