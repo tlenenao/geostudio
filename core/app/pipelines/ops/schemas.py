@@ -254,3 +254,32 @@ class TransformTranslateGeometryParams(BaseModel):
 
     dx: float
     dy: float
+
+
+class TransformRotateGeometryParams(BaseModel):
+    """Rotation de la géométrie autour de son propre centroïde.
+
+    PAS autour de l'origine (0, 0) : ST_Rotate de DuckDB tourne nativement
+    autour de l'origine, ce nœud recentre avant/après. Géométrie 3D refusée,
+    même limite que transform.translateGeometry (ce nœud compose
+    ST_Translate en interne, design vague 1 transformers DuckDB §0)."""
+
+    radians: float
+
+
+class TransformCreateGeometryParams(BaseModel):
+    """Remplace la géométrie de chaque ligne par une géométrie WKT littérale
+    (ex. "POINT(2.35 48.85)"). Utile pour créer une géométrie constante ou
+    tester un pipeline sans source spatiale réelle."""
+
+    wkt: str
+
+
+class TransformRoundCoordinatesParams(BaseModel):
+    """Réduit la précision des coordonnées de la géométrie à une taille de
+    grille donnée (ex. gridSize=0.0001 ≈ 11 m en EPSG:4326).
+
+    PAS un nombre de décimales : une taille de grille (mêmes unités que le
+    système de coordonnées courant)."""
+
+    gridSize: float = Field(..., gt=0)

@@ -488,3 +488,60 @@ def test_compile_scale_geometry_keeps_z_untouched(conn_spatial):
         "SELECT ST_X(geometry), ST_Y(geometry), ST_Z(geometry) FROM out3d"
     ).fetchone()
     assert (x, y, z) == pytest.approx((4.0, 6.0, 4.0))
+
+
+def test_compile_rotate_geometry_around_own_centroid(conn_spatial):
+    # Un carré loin de l'origine tourné de 90° autour de SON PROPRE centre
+    # (pas de l'origine (0,0) — ST_Rotate seul tourne autour de l'origine,
+    # ce nœud recentre avant/après, design §4.1).
+    conn_spatial.execute("CREATE TABLE square (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO square VALUES "
+        "(1, ST_GeomFromText('POLYGON((10 10, 12 10, 12 12, 10 12, 10 10))'))"
+    )
+    import math
+
+    sql = compile_transform_sql(
+        "transform.rotateGeometry", {"radians": math.pi / 2}, input_view="square"
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    wkt = conn_spatial.execute("SELECT ST_AsText(geometry) FROM out").fetchone()[0]
+    assert wkt == "POLYGON ((12 10, 12 12, 10 12, 10 10, 12 10))"
+
+
+def test_compile_rotate_geometry_rejects_3d_geometry(conn_spatial):
+    # rotateGeometry compose ST_Translate en interne (recentrage) — même
+    # garde 3D que translateGeometry, même cause (§0).
+    conn_spatial.execute("CREATE TABLE base3d (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute("INSERT INTO base3d VALUES (1, ST_GeomFromText('POINT Z (1 2 3)'))")
+    sql = compile_transform_sql("transform.rotateGeometry", {"radians": 1.0}, input_view="base3d")
+    conn_spatial.execute(f"CREATE TEMP VIEW out3d AS {sql}")
+    with pytest.raises(duckdb.InvalidInputException, match="3D geometry not supported"):
+        conn_spatial.execute("SELECT * FROM out3d").fetchall()
+
+
+def test_compile_create_geometry_replaces_geometry_with_literal_wkt(conn_spatial):
+    sql = compile_transform_sql(
+        "transform.createGeometry", {"wkt": "POINT(2.35 48.85)"}, input_view="base"
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn_spatial.execute("SELECT ST_AsText(geometry) FROM out ORDER BY id").fetchall()
+    assert rows == [("POINT (2.35 48.85)",), ("POINT (2.35 48.85)",)]
+
+
+def test_compile_create_geometry_escapes_single_quotes(conn_spatial):
+    # wkt vient d'un champ texte libre côté config — jamais interpolé sans
+    # échappement dans le SQL généré (une géométrie littérale ne devrait
+    # jamais contenir de guillemet simple, mais le compilateur ne doit pas
+    # produire de SQL invalide/injectable si un jour c'est le cas).
+    sql = compile_transform_sql(
+        "transform.createGeometry", {"wkt": "POINT(1 2)'; DROP TABLE base; --"}, input_view="base"
+    )
+    assert "''" in sql
+
+
+def test_compile_round_coordinates(conn_spatial):
+    sql = compile_transform_sql("transform.roundCoordinates", {"gridSize": 0.01}, input_view="base")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn_spatial.execute("SELECT ST_AsText(geometry) FROM out ORDER BY id").fetchall()
+    assert rows == [("POINT (3 45)",), ("POINT (3 45)",)]

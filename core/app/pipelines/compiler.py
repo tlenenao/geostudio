@@ -13,6 +13,7 @@ from app.pipelines.ops.schemas import (
     TransformAggregateParams,
     TransformBufferParams,
     TransformCountWithinParams,
+    TransformCreateGeometryParams,
     TransformDeriveParams,
     TransformFilterParams,
     TransformH3AggregateParams,
@@ -21,6 +22,8 @@ from app.pipelines.ops.schemas import (
     TransformMergeParams,
     TransformQgisParams,
     TransformReprojectParams,
+    TransformRotateGeometryParams,
+    TransformRoundCoordinatesParams,
     TransformScaleGeometryParams,
     TransformSelectParams,
     TransformSwapCoordinatesParams,
@@ -299,6 +302,56 @@ def _compile_translate_geometry(
         f"'transform.translateGeometry: 3D geometry not supported (ST_Translate "
         f"corrupts Z coordinates in this DuckDB spatial version)') "
         f"ELSE ST_Translate(geometry, {p.dx}, {p.dy}) END) AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_rotate_geometry(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformRotateGeometryParams.model_validate(params)
+    centered = "ST_Translate(geometry, -ST_X(ST_Centroid(geometry)), -ST_Y(ST_Centroid(geometry)))"
+    rotated = f"ST_Rotate({centered}, {p.radians})"
+    recentered = (
+        f"ST_Translate({rotated}, ST_X(ST_Centroid(geometry)), ST_Y(ST_Centroid(geometry)))"
+    )
+    return (
+        f"SELECT * EXCLUDE (geometry), (CASE WHEN ST_HasZ(geometry) THEN error("
+        f"'transform.rotateGeometry: 3D geometry not supported (ST_Translate "
+        f"corrupts Z coordinates in this DuckDB spatial version)') "
+        f"ELSE {recentered} END) AS geometry FROM {_qi(input_view)}"
+    )
+
+
+def _compile_create_geometry(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformCreateGeometryParams.model_validate(params)
+    escaped_wkt = p.wkt.replace("'", "''")
+    return (
+        f"SELECT * EXCLUDE (geometry), ST_GeomFromText('{escaped_wkt}') AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_round_coordinates(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformRoundCoordinatesParams.model_validate(params)
+    return (
+        f"SELECT * EXCLUDE (geometry), ST_ReducePrecision(geometry, {p.gridSize}) AS geometry "
         f"FROM {_qi(input_view)}"
     )
 
