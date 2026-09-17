@@ -5,9 +5,22 @@ FROM alpine:3.20
 # terminal), pas le client MinIO — découvert en vérifiant Step 11 (lance une
 # UI interactive au lieu de configurer un alias). Le client MinIO officiel
 # n'est pas empaqueté sous Alpine ; on récupère le binaire statique officiel.
+# TARGETARCH (auto-fourni par buildx : linux/amd64 -> "amd64", linux/arm64
+# -> "arm64") choisit le binaire mc de la bonne architecture. Téléchargement
+# depuis les GitHub Releases de minio/mc (toujours publiées sous AGPLv3,
+# vérifié : `mc --version` y affiche `License GNU AGPLv3`). Même modèle
+# d'épinglage par version que deploy/postgis/Dockerfile et
+# deploy/titiler/Dockerfile : une future release mc nécessitera de
+# rebasculer MC_RELEASE à la main.
+# Ne jamais repointer vers l'ancien hébergeur historique de mc — voir le
+# docstring de test_backup_dockerfile_downloads_mc_per_target_arch_from_agpl_source
+# pour l'historique complet du bug (URL morte + piège de licence).
+ARG TARGETARCH
+ARG MC_RELEASE=RELEASE.2025-08-13T08-35-41Z
 RUN apk add --no-cache postgresql16-client age curl jq bash tzdata python3 \
-  && curl -sSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc \
-  && chmod +x /usr/local/bin/mc
+  && curl -fsSL "https://github.com/minio/mc/releases/download/${MC_RELEASE}/mc.linux-${TARGETARCH}.${MC_RELEASE}" -o /usr/local/bin/mc \
+  && chmod +x /usr/local/bin/mc \
+  && /usr/local/bin/mc --version
 
 COPY backup.sh /usr/local/bin/backup.sh
 COPY restore.sh /usr/local/bin/restore.sh

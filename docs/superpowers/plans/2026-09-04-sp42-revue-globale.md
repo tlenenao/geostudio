@@ -83,7 +83,7 @@ Compose, GitHub Actions, `ruff`, `mypy`, `import-linter`, ESLint, Prettier.
 | `docs/vision/2026-09-04-feuille-de-route-revisee.md` | phasage SP-43+ |
 | `README.md` | réécrit, vitrine open-source |
 | `CLAUDE.md` | dégonflé, entrée SP-42 |
-| `docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md` | reçoit l'historique déplacé |
+| `docs/superpowers/2026-08-27-historique-execution-continu.md` | reçoit l'historique déplacé |
 
 **Schéma d'une ligne de matrice** (une par ligne dans le JSONL, sans saut de
 ligne interne) :
@@ -1247,7 +1247,7 @@ git commit -m "docs(vision): feuille de route révisée SP-44+ issue de la revue
 
 **Fichiers :**
 - Modifier : `CLAUDE.md`
-- Modifier : `docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md`
+- Modifier : `docs/superpowers/2026-08-27-historique-execution-continu.md`
 
 `CLAUDE.md` est chargé intégralement à chaque session. Il porte aujourd'hui des
 récits d'exécution de plusieurs centaines de lignes qui ne changent le
@@ -1256,7 +1256,7 @@ comportement d'aucune session.
 - [ ] **Étape 1 : mesurer**
 
 ```bash
-wc -l CLAUDE.md docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md
+wc -l CLAUDE.md docs/superpowers/2026-08-27-historique-execution-continu.md
 ```
 
 - [ ] **Étape 2 : déplacer, ne pas supprimer**
@@ -1290,7 +1290,7 @@ livrables.
 ```bash
 wc -l CLAUDE.md
 grep -c "REV-" docs/revue/2026-09-04-backlog.md
-git add CLAUDE.md docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md
+git add CLAUDE.md docs/superpowers/2026-08-27-historique-execution-continu.md
 git commit -m "docs: dégonfle CLAUDE.md et verse l'historique détaillé à l'archive (SP-42)"
 ```
 

@@ -63,6 +63,8 @@ services:
       - traefik.http.services.martin.loadbalancer.server.port=3000
 
   titiler:
+    image: ghcr.io/tlenenao/geostudio-titiler:${GEOSTUDIO_VERSION:-latest}
+    build: !reset null
     restart: unless-stopped
     ports: !reset []
     # labels: !override — même raison que martin ci-dessus (le fichier de

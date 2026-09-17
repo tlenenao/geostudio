@@ -74,6 +74,9 @@ INSTALL_SH = REPO / "scripts/install.sh"
 CORE_APP = REPO / "core/app"
 BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
 KEYCLOAK_REALM_JSON = REPO / "deploy/keycloak/geostudio-realm.json"
+POSTGIS_DOCKERFILE = REPO / "deploy" / "postgis" / "Dockerfile"
+POSTGIS_INITDB_SCRIPT = REPO / "deploy" / "postgis" / "10_postgis.sh"
+TITILER_DOCKERFILE = REPO / "deploy" / "titiler" / "Dockerfile"
 
 # Préfixe des images que nous publions nous-mêmes.
 OWN_IMAGE_RE = re.compile(r"ghcr\.io/[^/]+/(geostudio-[a-z0-9-]+)")
@@ -154,6 +157,86 @@ def build_is_reset(service: dict) -> bool:
 
 def release_matrix() -> list[dict]:
     return load_yaml(RELEASE)["jobs"]["build-and-push"]["strategy"]["matrix"]["include"]
+
+
+def test_postgis_dockerfile_uses_multiarch_base_with_pgdg_packages():
+    """Portage arm64 : `postgis/postgis:16-3.4` est mono-arch amd64 (confirmé
+    via `docker manifest inspect` sur ce tag et les tags récents — aucun n'a
+    d'arm64). Rebase sur `postgres:16-bookworm` (image officielle, multi-arch)
+    + les 4 paquets PGDG installés nous-mêmes — élimine au passage le flake
+    `bullseye-security` (Debian 11, dépôt de sécurité au Valid-Until expiré,
+    observé le 2026-09-12)."""
+    text = POSTGIS_DOCKERFILE.read_text()
+    assert "FROM postgres:16-bookworm" in text, (
+        "deploy/postgis/Dockerfile doit partir de postgres:16-bookworm "
+        "(multi-arch), pas de postgis/postgis:16-3.4 (mono-arch amd64)."
+    )
+    for package in (
+        "postgresql-16-postgis-3",
+        "postgresql-16-postgis-3-scripts",
+        "postgresql-16-pgvector",
+        "postgresql-16-wal2json",
+    ):
+        assert package in text, f"deploy/postgis/Dockerfile doit installer {package}"
+    assert "Check-Valid-Until=false" not in text, (
+        "le contournement bullseye-security n'a plus lieu d'être une fois "
+        "rebasé sur bookworm-pgdg (dépôt PGDG activement maintenu)."
+    )
+
+
+def test_postgis_dockerfile_restores_the_extension_bootstrap_the_old_base_did():
+    """Revue finale de branche du portage arm64 : `postgis/postgis` créait
+    l'extension `postgis` dans $POSTGRES_DB au premier démarrage via son
+    propre /docker-entrypoint-initdb.d/10_postgis.sh. `postgres:16-bookworm`
+    n'a AUCUN script de ce genre — installer les paquets PGDG rend
+    l'extension disponible, jamais créée. Sans ce script, tout `docker run`
+    nu de cette image (CI core/core-qgis/stac-conformance, release.yml
+    test-gate + test-gate-arm64, scripts/run-qgis-tests.sh) démarre avec un
+    Postgres nu, pas un PostGIS (confirmé empiriquement :
+    `type "geometry" does not exist` sur une image fraîchement construite
+    avant ce correctif)."""
+    dockerfile_text = POSTGIS_DOCKERFILE.read_text()
+    assert "10_postgis.sh" in dockerfile_text and (
+        "COPY" in dockerfile_text
+    ), (
+        "deploy/postgis/Dockerfile doit copier un script d'initialisation "
+        "dans /docker-entrypoint-initdb.d/ pour recréer l'extension postgis "
+        "au premier démarrage — postgres:16-bookworm n'en fournit aucun."
+    )
+    assert "/docker-entrypoint-initdb.d/10_postgis.sh" in dockerfile_text, (
+        "le script doit être copié dans /docker-entrypoint-initdb.d/, seul "
+        "répertoire que l'image officielle postgres exécute automatiquement "
+        "contre $POSTGRES_DB au premier démarrage."
+    )
+    assert POSTGIS_INITDB_SCRIPT.exists(), (
+        "deploy/postgis/10_postgis.sh doit exister à côté du Dockerfile."
+    )
+    script_text = POSTGIS_INITDB_SCRIPT.read_text()
+    assert "CREATE EXTENSION IF NOT EXISTS postgis" in script_text, (
+        "deploy/postgis/10_postgis.sh doit recréer l'extension postgis "
+        "(CREATE EXTENSION IF NOT EXISTS postgis) — c'est exactement ce que "
+        "faisait l'ancienne base postgis/postgis automatiquement."
+    )
+
+
+def test_titiler_dockerfile_pins_the_currently_deployed_version():
+    """deploy/titiler/Dockerfile rapatrie EXACTEMENT la version consommée
+    aujourd'hui (0.18.4) depuis la recette officielle (base
+    ghcr.io/vincentsarago/uvicorn-gunicorn) — ce chantier ne monte pas de
+    version titiler, il change seulement sa publication (image tierce
+    mono-arch -> construite par nous, multi-arch)."""
+    text = TITILER_DOCKERFILE.read_text()
+    assert "ghcr.io/vincentsarago/uvicorn-gunicorn" in text, (
+        "deploy/titiler/Dockerfile doit repartir de la même base que la "
+        "recette officielle titiler (multi-arch)."
+    )
+    for package in (
+        "titiler.core==0.18.4",
+        "titiler.extensions[cogeo,stac]==0.18.4",
+        "titiler.mosaic==0.18.4",
+        "titiler.application==0.18.4",
+    ):
+        assert package in text, f"deploy/titiler/Dockerfile doit épingler {package}"
 
 
 def test_every_build_service_has_a_released_image():
@@ -567,6 +650,76 @@ def test_release_gate_starts_postgres_like_ci():
         f"release.yml (test-gate) démarre Postgres sans les réglages que "
         f"ci.yml (core) lui donne : {sorted(missing)}. La porte de release "
         "n'exécute donc pas les mêmes tests que la CI."
+    )
+
+
+def test_release_matrix_declares_multiarch_platforms_except_qgis_worker():
+    """Portage arm64 : chaque entrée de la matrice build-and-push doit
+    déclarer `platforms: linux/amd64,linux/arm64` — sauf
+    `geostudio-qgis-worker` (base qgis/qgis:release-3_34 mono-arch amd64,
+    image 11 Go), qui doit rester `linux/amd64` seul. Sans ce garde-fou, un
+    futur ajout d'entrée de matrice pourrait silencieusement omettre
+    `platforms:` (docker/build-push-action retombe alors sur l'arch native
+    du runner seule, amd64)."""
+    matrix = release_matrix()
+    missing = [e["image"] for e in matrix if not e.get("platforms")]
+    assert not missing, f"entrées de matrice sans `platforms:` : {missing}"
+    by_image = {e["image"]: e["platforms"] for e in matrix}
+    qgis = by_image.pop("geostudio-qgis-worker", None)
+    assert qgis == "linux/amd64", (
+        "geostudio-qgis-worker doit rester linux/amd64 seul (base "
+        f"mono-arch), trouvé : {qgis!r}"
+    )
+    not_multiarch = {
+        img: plats for img, plats in by_image.items() if plats != "linux/amd64,linux/arm64"
+    }
+    assert not not_multiarch, f"entrées non multi-arch (hors qgis-worker) : {not_multiarch}"
+
+
+def test_build_and_push_needs_both_test_gates():
+    """`build-and-push` ne doit publier qu'après le succès des DEUX portes de
+    test — amd64 (`test-gate`) ET arm64 (`test-gate-arm64`, ce chantier).
+    Sans ceci, une image cassée sur arm64 (postgis/titiler) pourrait être
+    publiée dès que la seule porte amd64 est verte."""
+    doc = yaml.safe_load(RELEASE.read_text())
+    needs = doc["jobs"]["build-and-push"]["needs"]
+    needed = {needs} if isinstance(needs, str) else set(needs)
+    assert needed == {"test-gate", "test-gate-arm64"}, (
+        f"build-and-push.needs = {needs!r}, attendu test-gate ET test-gate-arm64"
+    )
+
+
+def test_release_gate_arm64_runs_on_native_arm_runner():
+    """`test-gate-arm64` doit tourner sur `ubuntu-24.04-arm` (runner GitHub
+    natif, gratuit pour les dépôts publics) — jamais sous émulation QEMU,
+    qui ne prouverait rien de fiable sur le comportement réel de
+    Postgres/PostGIS (temporisations, I/O). Vérifie aussi la présence d'une
+    fumée titiler (`/healthz`) sur ce même job."""
+    doc = yaml.safe_load(RELEASE.read_text())
+    job = doc["jobs"].get("test-gate-arm64")
+    assert job is not None, "release.yml n'a plus de job `test-gate-arm64`"
+    assert job.get("runs-on") == "ubuntu-24.04-arm", (
+        f"test-gate-arm64 tourne sur {job.get('runs-on')!r}, attendu "
+        "'ubuntu-24.04-arm' (runner natif)."
+    )
+    runs = " ".join(st.get("run", "") for st in job["steps"])
+    assert "healthz" in runs, (
+        "test-gate-arm64 n'a plus de fumée titiler (aucune étape n'appelle "
+        "/healthz)."
+    )
+
+
+def test_release_gate_arm64_starts_postgres_like_ci():
+    """Miroir arm64 de `test_release_gate_starts_postgres_like_ci` : la
+    porte arm64 doit démarrer Postgres avec au moins les réglages du job
+    `core` de ci.yml, pour la même raison (sinon elle n'exécute pas les
+    mêmes tests que la CI amd64)."""
+    ci_flags = _postgres_run_flags(CI, "core")
+    release_flags = _postgres_run_flags(RELEASE, "test-gate-arm64")
+    missing = ci_flags - release_flags
+    assert not missing, (
+        "release.yml (test-gate-arm64) démarre Postgres sans les réglages "
+        f"que ci.yml (core) lui donne : {sorted(missing)}."
     )
 
 
@@ -1520,6 +1673,36 @@ def test_backup_dockerfile_creates_and_chowns_backup_dir_before_switching_user()
     assert mkdir_pos < user_pos, "/backup doit être créé/chown avant le passage non-root"
     chown_line = re.search(r"^RUN .*chown[^\n]*$", text, re.MULTILINE)
     assert chown_line is not None and "/backup" in chown_line.group(0)
+
+
+def test_backup_dockerfile_downloads_mc_per_target_arch_from_agpl_source():
+    """Portage arm64 : deploy/backup/Dockerfile téléchargeait le client MinIO
+    `mc` depuis une URL mono-arch codée en dur (.../linux-amd64/mc) — et,
+    trouvaille indépendante de l'arch, cette URL précise renvoie aujourd'hui
+    410 Gone pour LES DEUX architectures (dl.min.io a changé de schéma
+    d'URL, confirmé le 2026-09-17). Le remplacement naïf
+    dl.min.io/aistor/mc/release/linux-{arch}/mc répond 200 mais sert un
+    binaire qui s'identifie lui-même « MinIO Enterprise License » — pas
+    AGPL, en contradiction avec LICENSE-BACKUP.md et le LABEL
+    org.opencontainers.image.licenses de cette image. Le correctif utilise
+    $TARGETARCH (fourni par buildx) ET pointe vers les assets GitHub
+    Releases de minio/mc, toujours publiés sous AGPLv3 (vérifié :
+    `mc --version` y affiche `License GNU AGPLv3`)."""
+    text = BACKUP_DOCKERFILE.read_text()
+    assert "TARGETARCH" in text, (
+        "deploy/backup/Dockerfile doit déclarer et utiliser $TARGETARCH "
+        "pour choisir le binaire mc de la bonne architecture."
+    )
+    assert "dl.min.io" not in text, (
+        "dl.min.io/client/... ne sert plus les binaires mc attendus ici "
+        "(410 Gone) — et son chemin de remplacement /aistor/ sert un "
+        "binaire sous licence propriétaire, pas AGPL. Utiliser les GitHub "
+        "Releases de minio/mc à la place."
+    )
+    assert "github.com/minio/mc/releases/download" in text, (
+        "deploy/backup/Dockerfile doit télécharger mc depuis les GitHub "
+        "Releases de minio/mc (toujours AGPL)."
+    )
 
 
 def test_slo_rules_cover_the_four_documented_slos_and_are_active():

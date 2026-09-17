@@ -1887,7 +1887,7 @@ CLAUDE.md n°4) et une violation du périmètre exclu (spec §3).
 
 **Files:**
 - Aucun fichier de production modifié.
-- Peut modifier : `docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md`
+- Peut modifier : `docs/superpowers/2026-08-27-historique-execution-continu.md`
   ou l'équivalent le plus récent (entrée `### Livré`), et
   `docs/revue/2026-09-04-analyse-gaps.md` (GAP-25 : ouvert → fermé),
   conformément à la discipline CLAUDE.md « à la clôture d'un SP ». Si ce
@@ -2007,7 +2007,7 @@ préexistant documenté reste le seul rouge.
 
 - [ ] **Step 7 : mettre à jour la documentation de clôture**
 
-Ajouter une ligne dans `docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md`
+Ajouter une ligne dans `docs/superpowers/2026-08-27-historique-execution-continu.md`
 (ou son successeur le plus récent si ce fichier a été remplacé entre-temps
 — vérifier `docs/superpowers/` avant d'écrire) décrivant ce chantier,
 passer `GAP-25` d'ouvert à fermé dans
@@ -2017,7 +2017,7 @@ ajouter une ligne dans `### Livré` de `CLAUDE.md`.
 - [ ] **Step 8 : commit final de documentation**
 
 ```bash
-git add docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md \
+git add docs/superpowers/2026-08-27-historique-execution-continu.md \
         docs/revue/2026-09-04-analyse-gaps.md \
         CLAUDE.md
 git commit -m "docs: clôture GAP-25 (couche sémantique minimale, métriques nommées)"

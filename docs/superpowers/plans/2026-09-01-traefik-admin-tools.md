@@ -1738,7 +1738,7 @@ existantes — ce chantier n'a pas de numéro SP, l'indiquer explicitement)
 décrivant ce qui a été livré, tout suivi non bloquant trouvé pendant les
 Steps 1-7 ci-dessus, et l'état des jalons/questions ouvertes pertinentes
 (cf. gabarit des entrées `### Livré` déjà présentes, et
-`docs/superpowers/2026-08-27-historique-execution-sp0-sp26.md` pour le
+`docs/superpowers/2026-08-27-historique-execution-continu.md` pour le
 niveau de détail attendu dans l'historique séparé si ce chantier grossit).
 
 - [ ] **Step 10: Commit final**
