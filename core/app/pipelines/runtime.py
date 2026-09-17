@@ -253,11 +253,11 @@ def _read_connector_rest(
     (ce reader n'en a pas besoin) : présents uniquement pour que READERS
     expose un appel uniforme à _prepare() (cf. app.pipelines.registries)."""
     p = ReaderConnectorRestParams.model_validate(params)
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id)
     try:
         connector_runtime.materialize_rest_connector(
             conn,
-            session=session,
-            tenant_id=tenant_id,
+            secret_resolver=resolver,
             node_id=node_id,
             params=p,
             view_name=view_name,
@@ -281,11 +281,11 @@ def _read_connector_postgres(
     """reader.connector.postgres (registre READERS) — pendant de
     _read_connector_rest ci-dessus, même rationale."""
     p = ReaderConnectorPostgresParams.model_validate(params)
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id)
     try:
         connector_runtime.materialize_postgres_connector(
             conn,
-            session=session,
-            tenant_id=tenant_id,
+            secret_resolver=resolver,
             node_id=node_id,
             params=p,
             view_name=view_name,
@@ -309,11 +309,11 @@ def _read_connector_snowflake(
     """reader.connector.snowflake (registre READERS) — pendant de
     _read_connector_postgres, même rationale (GAP-16)."""
     p = ReaderConnectorSnowflakeParams.model_validate(params)
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id)
     try:
         connector_runtime.materialize_snowflake_connector(
             conn,
-            session=session,
-            tenant_id=tenant_id,
+            secret_resolver=resolver,
             node_id=node_id,
             params=p,
             view_name=view_name,
