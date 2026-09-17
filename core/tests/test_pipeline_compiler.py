@@ -428,3 +428,63 @@ def test_transform_output_srid_merge_passes_on_match():
         join_srid=4326,
     )
     assert srid == 4326
+
+
+def test_compile_swap_coordinates(conn_spatial):
+    sql = compile_transform_sql("transform.swapCoordinates", {}, input_view="base")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    x, y = conn_spatial.execute(
+        "SELECT ST_X(geometry), ST_Y(geometry) FROM out WHERE id = 1"
+    ).fetchone()
+    assert (x, y) == (45.0, 3.0)
+
+
+def test_compile_translate_geometry(conn_spatial):
+    sql = compile_transform_sql(
+        "transform.translateGeometry", {"dx": 1.0, "dy": 2.0}, input_view="base"
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    x, y = conn_spatial.execute(
+        "SELECT ST_X(geometry), ST_Y(geometry) FROM out WHERE id = 1"
+    ).fetchone()
+    assert (x, y) == pytest.approx((4.0, 47.0))
+
+
+def test_compile_translate_geometry_rejects_3d_geometry(conn_spatial):
+    # Régression : ST_Translate corrompt silencieusement les géométries 3D
+    # dans cette version de DuckDB spatial (§0 du plan) — ce nœud doit
+    # échouer bruyamment plutôt que produire des coordonnées fausses.
+    conn_spatial.execute("CREATE TABLE base3d (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute("INSERT INTO base3d VALUES (1, ST_GeomFromText('POINT Z (1 2 3)'))")
+    sql = compile_transform_sql(
+        "transform.translateGeometry", {"dx": 1.0, "dy": 2.0}, input_view="base3d"
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out3d AS {sql}")
+    with pytest.raises(duckdb.InvalidInputException, match="3D geometry not supported"):
+        conn_spatial.execute("SELECT * FROM out3d").fetchall()
+
+
+def test_compile_scale_geometry(conn_spatial):
+    sql = compile_transform_sql(
+        "transform.scaleGeometry", {"xs": 2.0, "ys": 3.0}, input_view="base"
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    x, y = conn_spatial.execute(
+        "SELECT ST_X(geometry), ST_Y(geometry) FROM out WHERE id = 1"
+    ).fetchone()
+    assert (x, y) == pytest.approx((6.0, 135.0))
+
+
+def test_compile_scale_geometry_keeps_z_untouched(conn_spatial):
+    # Contrôle négatif du garde 3D : Scale, contrairement à Translate/Rotate,
+    # est vérifié correct sur une géométrie avec Z (§0) — pas de garde ici.
+    conn_spatial.execute("CREATE TABLE base3d (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute("INSERT INTO base3d VALUES (1, ST_GeomFromText('POINT Z (2 3 4)'))")
+    sql = compile_transform_sql(
+        "transform.scaleGeometry", {"xs": 2.0, "ys": 2.0}, input_view="base3d"
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out3d AS {sql}")
+    x, y, z = conn_spatial.execute(
+        "SELECT ST_X(geometry), ST_Y(geometry), ST_Z(geometry) FROM out3d"
+    ).fetchone()
+    assert (x, y, z) == pytest.approx((4.0, 6.0, 4.0))

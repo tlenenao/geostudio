@@ -21,7 +21,10 @@ from app.pipelines.ops.schemas import (
     TransformMergeParams,
     TransformQgisParams,
     TransformReprojectParams,
+    TransformScaleGeometryParams,
     TransformSelectParams,
+    TransformSwapCoordinatesParams,
+    TransformTranslateGeometryParams,
 )
 
 
@@ -253,6 +256,51 @@ def _compile_merge(
     TransformMergeParams.model_validate(params)  # forme seulement, aucun autre champ à lire
     assert join_view is not None, "transform.merge requires join_view"
     return f"SELECT * FROM {_qi(input_view)} UNION ALL BY NAME SELECT * FROM {_qi(join_view)}"
+
+
+def _compile_scale_geometry(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformScaleGeometryParams.model_validate(params)
+    return (
+        f"SELECT * EXCLUDE (geometry), ST_Scale(geometry, {p.xs}, {p.ys}) AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_swap_coordinates(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    TransformSwapCoordinatesParams.model_validate(params)  # forme seulement, aucun champ
+    return (
+        f"SELECT * EXCLUDE (geometry), ST_FlipCoordinates(geometry) AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_translate_geometry(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformTranslateGeometryParams.model_validate(params)
+    return (
+        f"SELECT * EXCLUDE (geometry), (CASE WHEN ST_HasZ(geometry) THEN error("
+        f"'transform.translateGeometry: 3D geometry not supported (ST_Translate "
+        f"corrupts Z coordinates in this DuckDB spatial version)') "
+        f"ELSE ST_Translate(geometry, {p.dx}, {p.dy}) END) AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
 
 
 def compile_transform_sql(

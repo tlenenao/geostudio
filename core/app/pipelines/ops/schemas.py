@@ -229,3 +229,28 @@ class ReaderConnectorSnowflakeParams(BaseModel):
 
     secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
     query: str
+
+
+class TransformScaleGeometryParams(BaseModel):
+    """Mise à l'échelle de la géométrie autour de l'origine (0, 0) — PAS
+    autour du centre de la géométrie (vérifié empiriquement contre DuckDB
+    spatial réel)."""
+
+    xs: float
+    ys: float
+
+
+class TransformSwapCoordinatesParams(BaseModel):
+    """Permute X et Y de la géométrie (ex. données saisies en latitude/longitude
+    au lieu de longitude/latitude)."""
+
+
+class TransformTranslateGeometryParams(BaseModel):
+    """Translation de la géométrie.
+
+    Géométrie 3D (avec Z) refusée : ST_Translate de l'extension spatiale
+    DuckDB corrompt les coordonnées d'une géométrie avec Z (vérifié
+    empiriquement, design vague 1 transformers DuckDB §0)."""
+
+    dx: float
+    dy: float
