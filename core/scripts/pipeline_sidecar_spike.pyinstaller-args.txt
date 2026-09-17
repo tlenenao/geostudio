@@ -1,0 +1,30 @@
+# Recette PyInstaller validée sur Linux (poste de dev, 2026-09-17) pour
+# core/scripts/pipeline_sidecar_spike.py.
+#
+# Commande complète :
+#   cd core && uv run pyinstaller --onefile --name pipeline-sidecar-spike \
+#     --paths . --collect-all dlt scripts/pipeline_sidecar_spike.py
+#
+# Une option par ligne ci-dessous (hors --onefile --name ... --paths .
+# scripts/pipeline_sidecar_spike.py, qui restent fixes) :
+--collect-all dlt
+
+# Pourquoi : le freeze naïf (sans option) produit un binaire qui échoue à
+# l'exécution avec :
+#
+#   dlt/common/configuration/plugins.py:89: UserWarning: Plugin dlt from dlt
+#   failed to load: No module named 'dlt.__plugins__'
+#   ...
+#   File "dlt/common/configuration/specs/pluggable_run_context.py", line 255,
+#   in _plug
+#   AssertionError: plug_run_context hook returned None
+#
+# dlt déclare son propre plugin interne via un entry point setuptools
+# (groupe "dlt", nom "dlt", valeur "dlt.__plugins__" — voir
+# `importlib.metadata.distribution("dlt").entry_points`) et le charge au
+# runtime via `importlib.metadata` + `pluggy`, jamais par un `import`
+# statique. PyInstaller ne peut donc pas détecter par analyse de graphe
+# d'imports que `dlt.__plugins__` (et plus généralement les sous-modules de
+# `dlt` chargés dynamiquement) doivent être embarqués. `--collect-all dlt`
+# force l'embarquement de tout le paquet `dlt` (code + métadonnées de
+# distribution), ce qui restaure la découverte du plugin.
