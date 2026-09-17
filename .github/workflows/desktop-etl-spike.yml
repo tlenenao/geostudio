@@ -20,6 +20,8 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - run: uv sync
       - name: Script de contrôle (non gelé)
+        env:
+          PYTHONPATH: .
         run: uv run python scripts/pipeline_sidecar_spike.py
       - name: Freeze PyInstaller
         shell: bash
