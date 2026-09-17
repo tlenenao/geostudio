@@ -137,7 +137,7 @@ def fake_bin_path(tmp_path):
     return bin_dir, log_file
 
 
-def _run_install(install_workdir, fake_bin_path, *, extra_env=None, timeout=30):
+def _run_install(install_workdir, fake_bin_path, *, extra_env=None, unset_env=None, timeout=30):
     bin_dir, log_file = fake_bin_path
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
@@ -152,6 +152,9 @@ def _run_install(install_workdir, fake_bin_path, *, extra_env=None, timeout=30):
     env["INSTALL_ADMIN_EMAIL"] = "admin@test.example"
     if extra_env:
         env.update(extra_env)
+    if unset_env:
+        for name in unset_env:
+            env.pop(name, None)
     result = subprocess.run(
         ["bash", str(install_workdir / "scripts/install.sh")],
         cwd=install_workdir,
@@ -233,8 +236,27 @@ def test_install_enables_the_core_etl_engine_independently_of_the_qgis_profile(
     assert "CORE_ETL_ENABLED=true" in env_lines
 
 
-def test_install_leaves_the_core_etl_engine_disabled_by_default(install_workdir, fake_bin_path):
+def test_install_leaves_the_core_etl_engine_disabled_when_explicitly_set_to_zero(
+    install_workdir, fake_bin_path
+):
     result, _ = _run_install(install_workdir, fake_bin_path)
+
+    assert result.returncode == 0, result.stderr
+    env_lines = (install_workdir / ".env").read_text().splitlines()
+    assert "CORE_ETL_ENABLED=false" in env_lines
+
+
+def test_install_leaves_the_core_etl_engine_disabled_by_default_when_unset(
+    install_workdir, fake_bin_path
+):
+    # Spec §5 : en non-interactif (INSTALL_YES=1) sans INSTALL_CORE_ETL_ENABLED,
+    # le défaut doit rester `false` — `confirm` répond « y » à tout dès que
+    # INSTALL_YES=1, il ne doit donc jamais être consulté dans ce cas.
+    result, _ = _run_install(
+        install_workdir,
+        fake_bin_path,
+        unset_env={"INSTALL_CORE_ETL_ENABLED"},
+    )
 
     assert result.returncode == 0, result.stderr
     env_lines = (install_workdir / ".env").read_text().splitlines()
