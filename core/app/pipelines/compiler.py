@@ -346,7 +346,7 @@ def _compile_create_geometry(
     p = TransformCreateGeometryParams.model_validate(params)
     escaped_wkt = p.wkt.replace("'", "''")
     return (
-        f"SELECT * EXCLUDE (geometry), ST_GeomFromText('{escaped_wkt}') AS geometry "
+        f"SELECT COLUMNS(c -> c <> 'geometry'), ST_GeomFromText('{escaped_wkt}') AS geometry "
         f"FROM {_qi(input_view)}"
     )
 
@@ -374,7 +374,8 @@ def _compile_concat_coordinates(
 ) -> str:
     p = TransformConcatCoordinatesParams.model_validate(params)
     return (
-        f"SELECT * EXCLUDE (geometry), ST_Point({_qi(p.xColumn)}, {_qi(p.yColumn)}) AS geometry "
+        f"SELECT COLUMNS(c -> c <> 'geometry'), "
+        f"ST_Point({_qi(p.xColumn)}, {_qi(p.yColumn)}) AS geometry "
         f"FROM {_qi(input_view)}"
     )
 
@@ -481,12 +482,10 @@ def _compile_format_coordinates(
     if p.format == "decimalDegrees":
         expr = f"ROUND({src}, {p.precision})"
     else:
-        deg = f"CAST(floor(abs({src})) AS INTEGER)"
-        minutes = f"CAST(floor((abs({src}) - floor(abs({src}))) * 60) AS INTEGER)"
-        seconds = (
-            f"(abs({src}) - floor(abs({src})) - "
-            f"floor((abs({src}) - floor(abs({src}))) * 60) / 60.0) * 3600"
-        )
+        total_seconds = f"ROUND(abs({src}) * 3600, {p.precision})"
+        deg = f"CAST(floor({total_seconds} / 3600) AS INTEGER)"
+        minutes = f"CAST(floor(({total_seconds} - {deg} * 3600) / 60) AS INTEGER)"
+        seconds = f"({total_seconds} - {deg} * 3600 - {minutes} * 60)"
         sign = f"CASE WHEN {src} < 0 THEN '-' ELSE '' END"
         expr = f"{sign} || printf('%d°%d''%.{p.precision}f\"', {deg}, {minutes}, {seconds})"
     return f"SELECT *, ({expr}) AS {_qi(p.targetColumn)} FROM {_qi(input_view)}"

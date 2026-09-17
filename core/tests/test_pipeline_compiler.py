@@ -540,6 +540,17 @@ def test_compile_create_geometry_escapes_single_quotes(conn_spatial):
     assert "''" in sql
 
 
+def test_compile_create_geometry_works_without_a_geometry_column(conn_spatial):
+    conn_spatial.execute("CREATE TABLE attrs_no_geom (id INTEGER, name VARCHAR)")
+    conn_spatial.execute("INSERT INTO attrs_no_geom VALUES (1, 'a')")
+    sql = compile_transform_sql(
+        "transform.createGeometry", {"wkt": "POINT(2.35 48.85)"}, input_view="attrs_no_geom"
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out_no_geom AS {sql}")
+    wkt = conn_spatial.execute("SELECT ST_AsText(geometry) FROM out_no_geom").fetchone()[0]
+    assert wkt == "POINT (2.35 48.85)"
+
+
 def test_compile_round_coordinates(conn_spatial):
     sql = compile_transform_sql("transform.roundCoordinates", {"gridSize": 0.01}, input_view="base")
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
@@ -555,6 +566,17 @@ def test_compile_concat_coordinates_builds_a_point_from_attribute_columns(conn_s
     )
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
     wkt = conn_spatial.execute("SELECT ST_AsText(geometry) FROM out").fetchone()[0]
+    assert wkt == "POINT (3 45)"
+
+
+def test_compile_concat_coordinates_works_without_a_geometry_column(conn_spatial):
+    conn_spatial.execute("CREATE TABLE xy_no_geom (id INTEGER, lon DOUBLE, lat DOUBLE)")
+    conn_spatial.execute("INSERT INTO xy_no_geom VALUES (1, 3.0, 45.0)")
+    sql = compile_transform_sql(
+        "transform.concatCoordinates", {"xColumn": "lon", "yColumn": "lat"}, input_view="xy_no_geom"
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out_no_geom AS {sql}")
+    wkt = conn_spatial.execute("SELECT ST_AsText(geometry) FROM out_no_geom").fetchone()[0]
     assert wkt == "POINT (3 45)"
 
 
@@ -685,3 +707,16 @@ def test_compile_format_coordinates_dms(conn_spatial):
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
     rows = conn_spatial.execute("SELECT latText FROM out ORDER BY id").fetchall()
     assert rows == [("48°51'29.13\"",), ("-48°51'29.13\"",)]
+
+
+def test_compile_format_coordinates_dms_carries_seconds_rounding_into_minutes(conn_spatial):
+    conn_spatial.execute("CREATE TABLE lat_table2 (id INTEGER, lat DOUBLE)")
+    conn_spatial.execute("INSERT INTO lat_table2 VALUES (1, 48.99999999)")
+    sql = compile_transform_sql(
+        "transform.formatCoordinates",
+        {"sourceColumn": "lat", "targetColumn": "latText", "format": "dms", "precision": 2},
+        input_view="lat_table2",
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out2 AS {sql}")
+    row = conn_spatial.execute("SELECT latText FROM out2").fetchone()
+    assert row == ("49°0'0.00\"",)
