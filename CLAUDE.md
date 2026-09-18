@@ -513,6 +513,10 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   pour Proxmox et OCI par l'extraction, test de déployabilité et inventaire
   de fonctionnalités désynchronisés du chemin déplacé) + 4 Important trouvés
   et corrigés — détail dans l'archive.
+- **Vague 1 transformers DuckDB** — 15 nouvelles op `transform.*` (permutation, translation,
+  échelle, rotation, création/arrondi de géométrie, extraction/construction de coordonnées,
+  SRID en lecture/écriture, formatage DMS), catalogue à 34 op ; 18 des 90 lignes `planned_duckdb`
+  de la matrice FME passées à `implemented`.
 
 ### Conventions tranchées (2026-09-01)
 

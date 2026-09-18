@@ -229,3 +229,144 @@ class ReaderConnectorSnowflakeParams(BaseModel):
 
     secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
     query: str
+
+
+class TransformScaleGeometryParams(BaseModel):
+    """Mise à l'échelle de la géométrie autour de l'origine (0, 0) — PAS
+    autour du centre de la géométrie (vérifié empiriquement contre DuckDB
+    spatial réel)."""
+
+    xs: float
+    ys: float
+
+
+class TransformSwapCoordinatesParams(BaseModel):
+    """Permute X et Y de la géométrie (ex. données saisies en latitude/longitude
+    au lieu de longitude/latitude)."""
+
+
+class TransformTranslateGeometryParams(BaseModel):
+    """Translation de la géométrie.
+
+    Géométrie 3D (avec Z) refusée : ST_Translate de l'extension spatiale
+    DuckDB corrompt les coordonnées d'une géométrie avec Z (vérifié
+    empiriquement, design vague 1 transformers DuckDB §0)."""
+
+    dx: float
+    dy: float
+
+
+class TransformRotateGeometryParams(BaseModel):
+    """Rotation de la géométrie autour de son propre centroïde.
+
+    PAS autour de l'origine (0, 0) : ST_Rotate de DuckDB tourne nativement
+    autour de l'origine, ce nœud recentre avant/après. Géométrie 3D refusée,
+    même limite que transform.translateGeometry (ce nœud compose
+    ST_Translate en interne, design vague 1 transformers DuckDB §0)."""
+
+    radians: float
+
+
+class TransformCreateGeometryParams(BaseModel):
+    """Remplace la géométrie de chaque ligne par une géométrie WKT littérale
+    (ex. "POINT(2.35 48.85)"). Utile pour créer une géométrie constante ou
+    tester un pipeline sans source spatiale réelle."""
+
+    wkt: str
+
+
+class TransformRoundCoordinatesParams(BaseModel):
+    """Réduit la précision des coordonnées de la géométrie à une taille de
+    grille donnée (ex. gridSize=0.0001 ≈ 11 m en EPSG:4326).
+
+    PAS un nombre de décimales : une taille de grille (mêmes unités que le
+    système de coordonnées courant)."""
+
+    gridSize: float = Field(..., gt=0)
+
+
+class TransformConcatCoordinatesParams(BaseModel):
+    """Construit la géométrie (un point) à partir de deux colonnes attribut
+    X/Y existantes — remplace la géométrie courante."""
+
+    xColumn: str
+    yColumn: str
+
+
+class TransformExtractCoordinatesParams(BaseModel):
+    """X et Y de la géométrie → deux colonnes attribut séparées."""
+
+    xColumn: str = "x"
+    yColumn: str = "y"
+
+
+class TransformExtractElevationParams(BaseModel):
+    """Composante Z de la géométrie → colonne attribut (NULL si la géométrie
+    n'a pas de Z)."""
+
+    column: str = "elevation"
+
+
+class TransformExtractDimensionParams(BaseModel):
+    """Dimension de COORDONNÉES de la géométrie (2 ou 3 selon la présence
+    d'un Z) → colonne attribut.
+
+    Distinct de la dimension topologique (point/ligne/polygone) : ST_Dimension
+    de DuckDB retourne cette dernière (0/1/2), pas ce que ce nœud expose
+    (vérifié empiriquement, design vague 1 transformers DuckDB §0)."""
+
+    column: str = "dimension"
+
+
+class TransformCountVerticesParams(BaseModel):
+    """Nombre de sommets de la géométrie → colonne attribut."""
+
+    column: str = "vertexCount"
+
+
+class TransformExtractSridParams(BaseModel):
+    """SRID (code EPSG) du système de coordonnées courant du pipeline →
+    colonne attribut constante.
+
+    Le SRID est un état porté par le runtime du pipeline, pas un attribut de
+    la géométrie elle-même : DuckDB spatial ne stocke aucun SRID sur le type
+    GEOMETRY (vérifié empiriquement, design vague 1 transformers DuckDB
+    §0)."""
+
+    column: str = "srid"
+
+
+class TransformSetSridParams(BaseModel):
+    """Réassigne le SRID du pipeline SANS reprojeter les coordonnées — à
+    utiliser quand les coordonnées sont correctes mais le SRID détecté à la
+    lecture est faux.
+
+    Pour reprojeter réellement les coordonnées, utiliser transform.reproject.
+    Ne couvre pas le retrait de SRID (CoordinateSystemRemover de la matrice
+    FME) : le SRID est un entier obligatoire dans ce runtime, jamais absent
+    (design vague 1 transformers DuckDB §0)."""
+
+    targetSrid: int = Field(..., gt=0)
+
+
+class TransformReprojectAttributeParams(BaseModel):
+    """Reprojette une paire de coordonnées portée par DEUX COLONNES ATTRIBUT
+    (pas la géométrie de la feature) — distinct de transform.reproject qui
+    reprojette la géométrie. Écrase xColumn/yColumn en place."""
+
+    xColumn: str
+    yColumn: str
+    sourceCrs: str = Field(..., pattern=r"^[A-Za-z]+:\d+$")
+    targetCrs: str = Field(..., pattern=r"^[A-Za-z]+:\d+$")
+
+
+class TransformFormatCoordinatesParams(BaseModel):
+    """Formate une colonne attribut numérique (coordonnée en degrés
+    décimaux) : soit arrondie à une précision donnée (reste numérique), soit
+    convertie en texte degrés/minutes/secondes (DMS, sans indicateur
+    d'hémisphère — à concaténer séparément si besoin)."""
+
+    sourceColumn: str
+    targetColumn: str
+    format: Literal["decimalDegrees", "dms"] = "decimalDegrees"
+    precision: int = Field(4, ge=0, le=10)

@@ -12,16 +12,31 @@ from app.configs.schemas import PipelineEdge, PipelineNode
 from app.pipelines.ops.schemas import (
     TransformAggregateParams,
     TransformBufferParams,
+    TransformConcatCoordinatesParams,
+    TransformCountVerticesParams,
     TransformCountWithinParams,
+    TransformCreateGeometryParams,
     TransformDeriveParams,
+    TransformExtractCoordinatesParams,
+    TransformExtractDimensionParams,
+    TransformExtractElevationParams,
+    TransformExtractSridParams,
     TransformFilterParams,
+    TransformFormatCoordinatesParams,
     TransformH3AggregateParams,
     TransformIntersectionParams,
     TransformJoinParams,
     TransformMergeParams,
     TransformQgisParams,
+    TransformReprojectAttributeParams,
     TransformReprojectParams,
+    TransformRotateGeometryParams,
+    TransformRoundCoordinatesParams,
+    TransformScaleGeometryParams,
     TransformSelectParams,
+    TransformSetSridParams,
+    TransformSwapCoordinatesParams,
+    TransformTranslateGeometryParams,
 )
 
 
@@ -255,6 +270,228 @@ def _compile_merge(
     return f"SELECT * FROM {_qi(input_view)} UNION ALL BY NAME SELECT * FROM {_qi(join_view)}"
 
 
+def _compile_scale_geometry(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformScaleGeometryParams.model_validate(params)
+    return (
+        f"SELECT * EXCLUDE (geometry), ST_Scale(geometry, {p.xs}, {p.ys}) AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_swap_coordinates(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    TransformSwapCoordinatesParams.model_validate(params)  # forme seulement, aucun champ
+    return (
+        f"SELECT * EXCLUDE (geometry), ST_FlipCoordinates(geometry) AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_translate_geometry(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformTranslateGeometryParams.model_validate(params)
+    return (
+        f"SELECT * EXCLUDE (geometry), (CASE WHEN ST_HasZ(geometry) THEN error("
+        f"'transform.translateGeometry: 3D geometry not supported (ST_Translate "
+        f"corrupts Z coordinates in this DuckDB spatial version)') "
+        f"ELSE ST_Translate(geometry, {p.dx}, {p.dy}) END) AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_rotate_geometry(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformRotateGeometryParams.model_validate(params)
+    centered = "ST_Translate(geometry, -ST_X(ST_Centroid(geometry)), -ST_Y(ST_Centroid(geometry)))"
+    rotated = f"ST_Rotate({centered}, {p.radians})"
+    recentered = (
+        f"ST_Translate({rotated}, ST_X(ST_Centroid(geometry)), ST_Y(ST_Centroid(geometry)))"
+    )
+    return (
+        f"SELECT * EXCLUDE (geometry), (CASE WHEN ST_HasZ(geometry) THEN error("
+        f"'transform.rotateGeometry: 3D geometry not supported (ST_Translate "
+        f"corrupts Z coordinates in this DuckDB spatial version)') "
+        f"ELSE {recentered} END) AS geometry FROM {_qi(input_view)}"
+    )
+
+
+def _compile_create_geometry(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformCreateGeometryParams.model_validate(params)
+    escaped_wkt = p.wkt.replace("'", "''")
+    return (
+        f"SELECT COLUMNS(c -> lower(c) <> 'geometry'), "
+        f"ST_GeomFromText('{escaped_wkt}') AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_round_coordinates(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformRoundCoordinatesParams.model_validate(params)
+    return (
+        f"SELECT * EXCLUDE (geometry), ST_ReducePrecision(geometry, {p.gridSize}) AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_concat_coordinates(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformConcatCoordinatesParams.model_validate(params)
+    return (
+        f"SELECT COLUMNS(c -> lower(c) <> 'geometry'), "
+        f"ST_Point({_qi(p.xColumn)}, {_qi(p.yColumn)}) AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_extract_coordinates(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformExtractCoordinatesParams.model_validate(params)
+    return (
+        f"SELECT *, ST_X(geometry) AS {_qi(p.xColumn)}, ST_Y(geometry) AS {_qi(p.yColumn)} "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_extract_elevation(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformExtractElevationParams.model_validate(params)
+    return f"SELECT *, ST_Z(geometry) AS {_qi(p.column)} FROM {_qi(input_view)}"
+
+
+def _compile_extract_dimension(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformExtractDimensionParams.model_validate(params)
+    return (
+        f"SELECT *, (CASE WHEN ST_HasZ(geometry) THEN 3 ELSE 2 END) AS {_qi(p.column)} "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_count_vertices(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformCountVerticesParams.model_validate(params)
+    return f"SELECT *, ST_NPoints(geometry) AS {_qi(p.column)} FROM {_qi(input_view)}"
+
+
+def _compile_extract_srid(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformExtractSridParams.model_validate(params)
+    assert input_srid is not None, "transform.extractSrid requires input_srid"
+    return f"SELECT *, {input_srid} AS {_qi(p.column)} FROM {_qi(input_view)}"
+
+
+def _compile_set_srid(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    TransformSetSridParams.model_validate(params)  # forme seulement, lu par _output_srid_set_srid
+    return f"SELECT * FROM {_qi(input_view)}"
+
+
+def _compile_reproject_attribute(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformReprojectAttributeParams.model_validate(params)
+    point_expr = f"ST_Point({_qi(p.xColumn)}, {_qi(p.yColumn)})"
+    transformed = f"ST_Transform({point_expr}, '{p.sourceCrs}', '{p.targetCrs}', true)"
+    return (
+        f"SELECT * EXCLUDE ({_qi(p.xColumn)}, {_qi(p.yColumn)}), "
+        f"ST_X({transformed}) AS {_qi(p.xColumn)}, ST_Y({transformed}) AS {_qi(p.yColumn)} "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_format_coordinates(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformFormatCoordinatesParams.model_validate(params)
+    src = _qi(p.sourceColumn)
+    if p.format == "decimalDegrees":
+        expr = f"ROUND({src}, {p.precision})"
+    else:
+        total_seconds = f"ROUND(abs({src}) * 3600, {p.precision})"
+        deg = f"CAST(floor({total_seconds} / 3600) AS INTEGER)"
+        minutes = f"CAST(floor(({total_seconds} - {deg} * 3600) / 60) AS INTEGER)"
+        seconds = f"({total_seconds} - {deg} * 3600 - {minutes} * 60)"
+        sign = f"CASE WHEN {src} < 0 THEN '-' ELSE '' END"
+        expr = f"{sign} || printf('%d°%d''%.{p.precision}f\"', {deg}, {minutes}, {seconds})"
+    return f"SELECT *, ({expr}) AS {_qi(p.targetColumn)} FROM {_qi(input_view)}"
+
+
 def compile_transform_sql(
     op: str,
     params: dict,
@@ -324,6 +561,17 @@ def _output_srid_qgis(
 ) -> int:
     p = TransformQgisParams.model_validate(params)
     return int(p.outputSrid.rsplit(":", 1)[1]) if p.outputSrid is not None else input_srid
+
+
+def _output_srid_set_srid(
+    params: dict,
+    *,
+    op: str,
+    input_srid: int,
+    join_srid: int | None = None,
+) -> int:
+    p = TransformSetSridParams.model_validate(params)
+    return p.targetSrid
 
 
 def transform_output_srid(
