@@ -61,13 +61,14 @@ type CanvasNodeData = PipelineNode & {
   acceptsSecondaryInput: boolean;
   nodeStat?: PipelineNodeStat;
   isNext: boolean;
+  errorCount: number;
 };
 
 function PipelineNodeBox({ data, selected }: NodeProps) {
   const node = data as unknown as CanvasNodeData;
   return (
     <div
-      className={`relative rounded-md border-2 px-3 py-2 text-xs ${KIND_COLOR[node.kind]} ${selected ? "ring-2 ring-accent" : ""}`}
+      className={`relative rounded-md border-2 px-3 py-2 text-xs ${KIND_COLOR[node.kind]} ${selected ? "ring-2 ring-accent" : ""} ${node.errorCount > 0 ? "border-danger" : ""}`}
     >
       <Handle type="target" position={Position.Left} id="primary" />
       {node.acceptsSecondaryInput && (
@@ -81,6 +82,15 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
       <div className="font-medium">{node.title ?? node.op}</div>
       <div className="text-[10px] text-ink-2">{node.op}</div>
       <Handle type="source" position={Position.Right} />
+      {node.errorCount > 0 && (
+        <span
+          role="status"
+          aria-label={t("pipelineCanvas.nodeErrorAria", { count: node.errorCount })}
+          className="absolute -left-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[10px] text-surface"
+        >
+          !
+        </span>
+      )}
       {node.nodeStat && (
         <span
           role="status"
@@ -174,7 +184,12 @@ function InsertOnEdgeButton({
 function toFlowNode(
   n: PipelineNode,
   selected: boolean,
-  extra: { acceptsSecondaryInput: boolean; nodeStat?: PipelineNodeStat; isNext: boolean },
+  extra: {
+    acceptsSecondaryInput: boolean;
+    nodeStat?: PipelineNodeStat;
+    isNext: boolean;
+    errorCount: number;
+  },
 ): Node {
   return {
     id: n.id,
@@ -206,6 +221,7 @@ function PipelineCanvasInner({
   opsCatalog,
   nodeStats,
   runStatus,
+  nodeErrors,
 }: {
   nodes: PipelineNode[];
   edges: PipelineEdge[];
@@ -217,6 +233,7 @@ function PipelineCanvasInner({
   opsCatalog: PipelineOpsCatalog;
   nodeStats?: Record<string, PipelineNodeStat>;
   runStatus?: "queued" | "running" | "succeeded" | "failed";
+  nodeErrors?: Record<string, string[]>;
 }) {
   const nodeTypes = { pipelineNode: PipelineNodeBox };
   const edgeTypes = {
@@ -287,6 +304,7 @@ function PipelineCanvasInner({
             acceptsSecondaryInput: opsCatalog[n.op]?.acceptsSecondaryInput ?? false,
             nodeStat: nodeStats?.[n.id],
             isNext: n.id === nextNodeId,
+            errorCount: nodeErrors?.[n.id]?.length ?? 0,
           }),
         )}
         edges={edges.map(toFlowEdge)}

@@ -387,6 +387,21 @@ test("unsaved mode: no history panel before the first save (no pipelineId yet)",
   expect(screen.queryByText("Historique")).not.toBeInTheDocument();
 });
 
+test("unsaved mode: graph-level errors are shown in a banner", async () => {
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(screen.getByText("Le pipeline doit contenir au moins une source.")).toBeInTheDocument();
+  expect(screen.getByText("Le pipeline doit contenir au moins une écriture.")).toBeInTheDocument();
+});
+
+test("unsaved mode: shows a reason why Enregistrer is disabled", async () => {
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(
+    screen.getByText("Le graphe contient des erreurs à corriger avant l'enregistrement."),
+  ).toBeInTheDocument();
+});
+
 test("sous viewport étroit, affiche trois onglets Étapes/Canevas/Propriétés avec Canevas actif par défaut", async () => {
   stubMatchMedia(true);
   renderPage(null);

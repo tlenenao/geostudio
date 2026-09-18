@@ -274,3 +274,37 @@ test("no spinner is shown once the run is no longer 'running'", () => {
   );
   expect(screen.queryByRole("status", { name: "Exécution en cours" })).not.toBeInTheDocument();
 });
+
+test("a node with validation errors shows an error badge even when not selected", () => {
+  render(
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+      nodeErrors={{ r1: ["collectionId est requis."] }}
+    />,
+  );
+  expect(screen.getByRole("status", { name: "1 erreur(s) sur ce nœud" })).toBeInTheDocument();
+});
+
+test("a node with no validation errors shows no error badge", () => {
+  render(
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+      nodeErrors={{ r1: [] }}
+    />,
+  );
+  expect(screen.queryByText("!")).not.toBeInTheDocument();
+});

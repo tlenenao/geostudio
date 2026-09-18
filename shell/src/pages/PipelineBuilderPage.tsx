@@ -18,6 +18,7 @@ import type {
   PipelineRun,
 } from "../api/types";
 import { hasPermission } from "../auth/permissions";
+import { Banner } from "../ui/kit/Banner";
 import { Button } from "../ui/kit/Button";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { PipelineCanvas } from "../builder/pipeline/PipelineCanvas";
@@ -187,6 +188,17 @@ export function PipelineBuilderPage({
                   {initialTitle ?? t("pipelineBuilder.defaultTitle")}
                 </h2>
               </div>
+              {validation.graphErrors.length > 0 && (
+                <div className="p-2">
+                  <Banner variant="danger">
+                    <ul className="list-disc pl-4">
+                      {validation.graphErrors.map((err) => (
+                        <li key={err}>{err}</li>
+                      ))}
+                    </ul>
+                  </Banner>
+                </div>
+              )}
               <div className="flex-1 overflow-auto p-2">
                 <PipelineCanvas
                   nodes={draft.nodes}
@@ -199,6 +211,7 @@ export function PipelineBuilderPage({
                   opsCatalog={catalog}
                   nodeStats={latestRun?.nodeStats}
                   runStatus={latestRun?.status}
+                  nodeErrors={validation.nodeErrors}
                 />
               </div>
             </div>
@@ -265,6 +278,9 @@ export function PipelineBuilderPage({
                   {t("common.save")}
                 </Button>
                 {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
+                {!valid && !readOnly && (
+                  <p className="text-xs text-ink-2">{t("pipelineBuilder.saveDisabledReason")}</p>
+                )}
                 {saveError && (
                   <p role="alert" className="text-xs text-danger">
                     {saveError}

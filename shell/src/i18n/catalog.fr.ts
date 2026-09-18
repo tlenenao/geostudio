@@ -462,6 +462,8 @@ export const fr = {
   "pipelineBuilder.selectedNodeLabel": "Nœud sélectionné",
   "pipelineBuilder.executionLabel": "Exécution",
   "pipelineBuilder.scheduleLabel": "Planification",
+  "pipelineBuilder.saveDisabledReason":
+    "Le graphe contient des erreurs à corriger avant l'enregistrement.",
 
   // ReportEditPage
   "reportEdit.defaultTitle": "Rapport planifié",
@@ -1055,6 +1057,7 @@ export const fr = {
   "pipelineCanvas.transformH3Aggregate": "Agréger H3",
   "pipelineCanvas.runningAria": "Exécution en cours",
   "pipelineCanvas.insertStepAria": "Insérer une étape sur cette arête",
+  "pipelineCanvas.nodeErrorAria": "{count} erreur(s) sur ce nœud",
 
   // PipelinePalette (builder/pipeline)
   "pipelinePalette.sectionSources": "Sources",
