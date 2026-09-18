@@ -13,7 +13,13 @@ on:
 
 jobs:
   e2e-windows:
-    runs-on: windows-latest
+    # PAS windows-latest : résout aujourd'hui vers windows-2025-vs2026, dont
+    # le WebView2 Runtime casse sous automatisation WebDriver ("DevToolsActivePort
+    # file doesn't exist" à chaque session, confirmé par une CI réelle sur ce
+    # dépôt, Tâche 8) — régression connue de l'image, pas de ce projet
+    # (github.com/actions/runner-images/issues/14738, ouverte, sans date de
+    # correctif annoncée). windows-2022 (WebView2 131.x) n'a pas ce défaut.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
