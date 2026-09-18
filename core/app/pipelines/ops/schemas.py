@@ -370,3 +370,26 @@ class TransformFormatCoordinatesParams(BaseModel):
     targetColumn: str
     format: Literal["decimalDegrees", "dms"] = "decimalDegrees"
     precision: int = Field(4, ge=0, le=10)
+
+
+class ReaderFileParams(BaseModel):
+    """reader.file (design desktop-etl §3) : chemin local absolu, lu via
+    ST_Read() (DuckDB spatial/GDAL) — jamais une collection. srid optionnel :
+    si absent, détecté depuis le CRS du fichier (st_crs()), repli sur 4326
+    si le fichier n'en porte aucun (même repli que table_info.srid or 4326
+    pour reader.collection)."""
+
+    path: str
+    srid: int | None = None
+
+
+class WriterFileParams(BaseModel):
+    """writer.file (design desktop-etl §3) : chemin local absolu, écrit via
+    COPY ... FORMAT GDAL DRIVER <driver> — n'importe quel driver vectoriel
+    GDAL (GPKG par défaut, vérifié empiriquement ; GeoJSON aussi vérifié).
+    Les drivers non vectoriels (ex. CSV) échouent à l'écriture d'une colonne
+    géométrie — pas garanti par ce schéma, mais par COPY lui-même à
+    l'exécution."""
+
+    path: str
+    driver: str = "GPKG"
