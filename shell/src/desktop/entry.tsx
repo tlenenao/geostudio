@@ -37,8 +37,17 @@ function EditPipelineRoute() {
 // en Error). Course confirmée réelle sur la VM Windows (Tâche 6) : sans
 // retry, écran "Erreur de démarrage : undefined" ((err as Error).message
 // sur une chaîne vaut undefined) à chaque lancement.
+// 10s suffit largement sur une machine de dev déjà "chaude", mais un
+// binaire PyInstaller onefile (~124 Mo) s'extrait dans un dossier temp à
+// CHAQUE lancement, et un binaire fraîchement construit/téléchargé peut
+// être scanné par l'antivirus avant sa première exécution -- démontré
+// réel en CI (Tâche 8) : "Erreur de démarrage : sidecar not ready yet" à
+// chaque run sur un runner Windows tout frais, alors que la même app
+// démarre en moins d'une seconde sur une machine déjà utilisée. 45s
+// couvre ce cas sans pénaliser le cas rapide (le retry sort dès que le
+// sidecar répond, jamais après un délai fixe).
 async function getSidecarConnectionWithRetry(
-  timeoutMs = 10_000,
+  timeoutMs = 45_000,
   intervalMs = 150,
 ): Promise<{ baseUrl: string; token: string }> {
   const deadline = Date.now() + timeoutMs;

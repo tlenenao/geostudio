@@ -108,14 +108,18 @@ describe("desktop-etl golden path", () => {
 
   it("creates, runs, and confirms a file-to-file pipeline", async function () {
     // Démarrage de l'app (spawn du sidecar + retry côté entry.tsx) peut
-    // prendre plusieurs secondes ; exécution réelle du pipeline est rapide
-    // (fichier à 2 features) mais on garde une marge généreuse pour l'IPC.
-    this.timeout(120_000);
+    // prendre plusieurs secondes -- jusqu'à 45s en pratique sur un runner CI
+    // tout frais (binaire PyInstaller onefile ~124 Mo jamais exécuté avant,
+    // extraction + scan antivirus potentiel, cf. entry.tsx et Tâche 8).
+    // Exécution réelle du pipeline elle-même est rapide (fichier à 2
+    // features) mais le budget global doit couvrir ce pire cas de démarrage.
+    this.timeout(180_000);
 
     // 1. Signal de disponibilité : la palette n'apparaît qu'une fois la
-    // connexion au sidecar établie et le catalogue d'op chargé.
+    // connexion au sidecar établie et le catalogue d'op chargé -- doit
+    // dépasser le budget de getSidecarConnectionWithRetry (45s, entry.tsx).
     const readerButton = await $("button=reader.file");
-    await readerButton.waitForExist({ timeout: 30_000 });
+    await readerButton.waitForExist({ timeout: 60_000 });
 
     // 2. Ajout des deux nœuds (clic palette, pas de drag requis pour AJOUTER
     // un nœud -- le drag ne sert qu'à CONNECTER deux nœuds entre eux).
