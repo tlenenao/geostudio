@@ -30,8 +30,6 @@ fn get_sidecar_connection(state: tauri::State<SidecarState>) -> Result<SidecarCo
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_dialog::init())
         .manage(SidecarState(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![get_sidecar_connection])
         .setup(|app| {
