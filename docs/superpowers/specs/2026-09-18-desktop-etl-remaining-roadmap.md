@@ -9,7 +9,7 @@
 
 ## 1. Où on en est réellement (vérifié dans le code, pas dans CLAUDE.md)
 
-Fait à ce jour (`dev`, HEAD `04327f5d` après clôture des Phases F+G et la revue finale de branche (Tâche 8)) :
+Fait à ce jour (`dev`, HEAD `7c64588e` après clôture des Phases F+G, revue finale de branche et CI Windows réelle vérifiée verte (Tâche 8)) :
 
 - **Spike freeze PyInstaller** (D1) : GO, `--collect-all dlt` suffit pour
   `connector_runtime.py` (dlt/duckdb/sqlalchemy) sur Linux **et**
@@ -59,7 +59,7 @@ Fait à ce jour (`dev`, HEAD `04327f5d` après clôture des Phases F+G et la rev
 - ~~Aucun fichier Tauri/Rust (`src-tauri/`, `Cargo.toml`,
   `tauri.conf.json`) n'existe dans le dépôt — la Phase G part de zéro.~~
   **Périmé** : Phase G close (plan Phase F+G, Tâches 3-7,
-  `d58ac5a2..04327f5d`) — `desktop-etl/src-tauri/` existe, compile, tourne,
+  `d58ac5a2..7c64588e`) — `desktop-etl/src-tauri/` existe, compile, tourne,
   chemin d'or E2E vérifié réellement (manuellement puis via un test
   WebDriver automatisé passant). Détail complet §4, section Phase G.
 - **Aucun code PKCE/loopback OIDC natif** n'existe dans le dépôt (grep
@@ -298,13 +298,21 @@ pas différé à une phase ultérieure.
 
 **Statut : clos** (plan
 `docs/superpowers/plans/2026-09-18-desktop-etl-phase-fg.md`, Tâches 1, 3-7,
-commits `d58ac5a2..04327f5d`). Chemin d'or E2E vérifié réellement bout-en-
+commits `d58ac5a2..7c64588e`). Chemin d'or E2E vérifié réellement bout-en-
 bout sur Windows (pas seulement compilé) : création d'un pipeline
 `reader.file`→`writer.file`, connexion, sauvegarde, exécution, statut
 `succeeded`, fichier `.gpkg` réel écrit sur disque — d'abord manuellement
 via le protocole CDP de WebView2 (Tâche 6), puis automatisé et rejoué avec
 succès via un test WebDriver réel (`tauri-driver`+`msedgedriver`, Tâche 7,
-1 passing en 8.8s).
+1 passing en 8.8s), puis **confirmé vert en CI GitHub Actions réelle**
+(les deux workflows Windows, `desktop-etl-sidecar-freeze.yml` et
+`desktop-etl-webdriver.yml`, commit `7c64588e`) — pas seulement en local.
+Cette dernière étape a trouvé 2 défauts supplémentaires invisibles depuis
+une machine de dev déjà "chaude" : `windows-latest` résout aujourd'hui
+vers une image dont le WebView2 casse sous automatisation WebDriver
+(épinglé sur `windows-2022`) ; le délai de connexion au sidecar (10s)
+était trop court pour un binaire PyInstaller fraîchement extrait sur un
+runner tout frais (porté à 45s).
 
 Déviations par rapport au design d'origine, trouvées uniquement en
 exécutant réellement l'application (jamais visibles par relecture seule) :
