@@ -33,6 +33,14 @@ export function createDesktopItemClient(connection: {
   // §3.1 — seul un PUT existe) : le payload actif doit donc être gardé ici,
   // côté client desktop, en plus d'être poussé au sidecar à chaque PUT.
   const localPayloads = new Map<string, PipelinePayload>();
+  // PipelineBuilderPage (route /pipelines/:pk/edit) appelle aussi
+  // useItem(pk) -> client.getItem(pk) pour le garde de permission
+  // (hasPermission(itemQuery.data, "write")) — sans ce cache, getItem()
+  // rejetait toujours (méthode générique "hors périmètre desktop"),
+  // itemQuery passait en isError, et la page affichait "Pipeline
+  // introuvable." juste après un Enregistrer réussi. Trouvé en exécutant
+  // le golden path réel sur Windows (Tâche 6).
+  const localItems = new Map<string, Item>();
 
   async function sidecarFetch<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await fetch(`${baseUrl}${path}`, {
@@ -57,7 +65,7 @@ export function createDesktopItemClient(connection: {
       const pk = crypto.randomUUID();
       localPayloads.set(pk, input.pipeline);
       await sidecarFetch<void>("PUT", `/pipelines/${pk}`, input.pipeline);
-      return {
+      const item: Item = {
         pk,
         resourceType: "pipeline",
         title: input.title,
@@ -71,6 +79,8 @@ export function createDesktopItemClient(connection: {
         language: "fr",
         permissions: OWNER_PERMISSIONS,
       };
+      localItems.set(pk, item);
+      return item;
     },
 
     async getPipelineConfig(pk: string): Promise<PipelinePayload> {
@@ -174,8 +184,10 @@ export function createDesktopItemClient(connection: {
     async getItemFacets(..._args: unknown[]) {
       return unsupported();
     },
-    async getItem(..._args: unknown[]) {
-      return unsupported();
+    async getItem(pk: string): Promise<Item> {
+      const item = localItems.get(pk);
+      if (!item) throw new Error(`getItem: no local pipeline for ${pk}`);
+      return item;
     },
     async getItemBySlug(..._args: unknown[]) {
       return unsupported();

@@ -62,6 +62,26 @@ describe("createDesktopItemClient", () => {
     expect(roundtripped).toEqual(payload);
   });
 
+  it("getItem returns the Item created by createPipelineItem (PipelineBuilderPage's edit route needs both)", async () => {
+    // Sans ceci, useItem(pk) (appelé par la route /pipelines/:pk/edit pour
+    // le garde de permission hasPermission(itemQuery.data, "write")) rejette
+    // toujours, itemQuery passe en isError, et la page affiche "Pipeline
+    // introuvable." juste après un Enregistrer réussi — trouvé en exécutant
+    // le golden path réel (Tâche 6, VM Windows), pas par ce fichier de test.
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const client = createDesktopItemClient(CONNECTION);
+    const payload = { nodes: [], edges: [] };
+    const item = await client.createPipelineItem({ title: "t", owner: "o", pipeline: payload });
+    const fetched = await client.getItem(item.pk);
+    expect(fetched).toEqual(item);
+  });
+
+  it("getItem rejects for an unknown pk", async () => {
+    const client = createDesktopItemClient(CONNECTION);
+    await expect(client.getItem("unknown-pk")).rejects.toThrow();
+  });
+
   it("listConfigRevisions resolves to an empty list instead of rejecting", async () => {
     const client = createDesktopItemClient(CONNECTION);
     await expect(client.listConfigRevisions("any-pk")).resolves.toEqual([]);
