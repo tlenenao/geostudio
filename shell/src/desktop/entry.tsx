@@ -18,7 +18,11 @@ enableMockAuth();
 const queryClient = new QueryClient();
 
 function NewPipelineRoute() {
-  return <PipelineBuilderPage pk={null} initialTitle="Nouveau pipeline" />;
+  // Pas de initialTitle : PipelineBuilderPage retombe déjà sur
+  // t("pipelineBuilder.defaultTitle") en son absence (voir
+  // PipelineBuilderPage.tsx:187) — inutile de dupliquer la chaîne ici en
+  // dur (trouvé par le linter i18n, revue finale de branche, Tâche 8).
+  return <PipelineBuilderPage pk={null} />;
 }
 
 function EditPipelineRoute() {
