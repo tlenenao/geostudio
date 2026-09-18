@@ -13,9 +13,15 @@ from app.configs.schemas import PipelinePayload
 from app.pipelines import runtime
 from app.pipelines.errors import PipelineRuntimeError
 from app.pipelines.ops.contracts import OP_KINDS, ops_catalog
-from app.pipelines.routes import _RUNS_MAX_LIMIT
 from app.pipelines.sidecar.runner import PipelineStore, start_run
 from app.pipelines.sidecar.tracker import RunRegistry
+
+# Dupliqué de app.pipelines.routes._RUNS_MAX_LIMIT (pas importé : cet import
+# entraînerait tout le graphe de app.pipelines.routes — jobs/notifications/
+# observability/roles — dans le sidecar, à l'exact opposé du but de ce
+# paquet, cf. docs/superpowers/specs/2026-09-18-desktop-etl-remaining-
+# roadmap.md §2.4).
+_RUNS_MAX_LIMIT = 1000
 
 # session=None n'est vérifié sûr (design desktop-etl, Global Constraints du
 # plan) que pour reader.file/writer.file et les op transform.* (aucune ne
