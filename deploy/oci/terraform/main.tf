@@ -65,10 +65,8 @@ resource "oci_core_security_list" "geostudio" {
     source_type = "CIDR_BLOCK"
 
     tcp_options {
-      destination_port_range {
-        min = 22
-        max = 22
-      }
+      min = 22
+      max = 22
     }
   }
 }
