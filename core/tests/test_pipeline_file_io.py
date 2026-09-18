@@ -7,11 +7,11 @@ import pytest
 
 from app.analytics.duckdb_conn import open_connection
 from app.auth.dependency import is_pipeline_file_io_enabled
-from app.configs.schemas import PipelineNode
+from app.configs.schemas import PipelineNode, PipelinePayload
 from app.pipelines import registries, runtime
 from app.pipelines.errors import PipelineRuntimeError
 from app.pipelines.ops.contracts import OPERATIONS, ops_catalog
-from app.pipelines.runtime import NodeStat
+from app.pipelines.runtime import NodeStat, run_pipeline
 
 
 def test_is_pipeline_file_io_enabled_defaults_to_false(monkeypatch):
@@ -212,3 +212,55 @@ def test_write_file_excludes_reserved_fid_columns(tmp_path, monkeypatch):
 
 def test_writers_registry_has_writer_file():
     assert registries.WRITERS["writer.file"] is runtime._write_file
+
+
+def test_run_pipeline_file_to_file_round_trip(tmp_path, monkeypatch):
+    monkeypatch.setenv("CORE_PIPELINE_FILE_IO_ENABLED", "true")
+    in_path = _write_geojson(tmp_path, name="in.geojson")
+    out_path = tmp_path / "subdir" / "out.gpkg"
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.file",
+                    "params": {"path": in_path},
+                },
+                {
+                    "id": "t1",
+                    "kind": "transform",
+                    "op": "transform.select",
+                    # TransformSelectParams.columns : dict {source: renommage
+                    # optionnel | None}, PAS une liste — vérifié dans
+                    # app/pipelines/compiler.py::_compile_select avant
+                    # d'écrire ce test.
+                    "params": {"columns": {"label": None, "geometry": None}},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.file",
+                    "params": {"path": str(out_path)},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
+    stats = run_pipeline(
+        session=None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+    )
+    assert {s.op for s in stats} == {"reader.file", "transform.select", "writer.file"}
+    check_conn = _connection()
+    rows = check_conn.execute(f"SELECT label FROM ST_Read('{out_path}') ORDER BY label").fetchall()
+    assert rows == [("a",), ("b",)]
