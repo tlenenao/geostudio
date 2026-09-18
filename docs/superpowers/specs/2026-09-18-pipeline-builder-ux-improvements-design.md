@@ -186,3 +186,77 @@ leur propre cycle brainstorm → spec → plan s'ils sont retenus pour
 exécution. Le reste (§0 bugs, et la majorité des §1-7) tient dans une
 taille de SP habituelle et peut être découpé en tâches indépendantes lors
 d'un futur plan.
+
+Recherche de code réelle (2026-09-18, avant écriture du plan) — deux
+correctifs factuels et trois bonnes nouvelles côté backend :
+
+- **La palette (§2) est déjà dynamique** : `GET /pipelines/ops`
+  (`core/app/pipelines/routes.py:62-64` → `ops_catalog()`,
+  `contracts.py:424-438`) expose déjà les 34 op activées, et
+  `PipelinePalette.tsx` construit déjà ses 3 sections depuis cette route
+  (`usePipelineOps`). Le gap réel n'est que cosmétique (recherche, icônes,
+  libellés humains, favoris) — aucune route à ajouter.
+- **`node_stats` par run existe déjà en base** (`PipelineRun.node_stats`,
+  `core/app/pipelines/models.py:15-43`, écrit nœud par nœud pendant le run
+  — `repository.py:135-147`) et **est déjà renvoyé pour chaque run de
+  l'historique**, pas seulement le dernier (`RunStatus.nodeStats`,
+  `GET /pipelines/{item_id}/runs`, `routes.py:86-110`). Forme :
+  `{nodeId, op, rowCount}` — pas de statut/erreur/durée par nœud, mais
+  assez pour distinguer "nœud atteint (N lignes)" de "nœud jamais atteint"
+  sur un run passé. L'item §6 "détail par nœud pour chaque run" est donc
+  quasi entièrement frontend : `PipelineBuilderPage.tsx:200` n'exploite
+  aujourd'hui que le *dernier* run pour badger le canvas.
+- **`croniter>=6.2` est déjà une dépendance backend** (SP-15h,
+  `pyproject.toml:44`), déjà utilisée pour le balayage cron
+  (`repository.py:5,198`) — exposer "prochaine exécution" au frontend
+  est un endpoint stateless trivial, aucune nouvelle dépendance.
+- **L'arrêt partiel d'exécution existe déjà côté preview** :
+  `_execute_transform_chain(..., stop_at=...)` (`runtime.py:663-741`)
+  s'arrête déjà au nœud demandé. `run_pipeline()` (vrai run,
+  `runtime.py:1089+`) n'expose pas ce paramètre — "Exécuter jusqu'à ce
+  nœud" en run réel demanderait de le plomber à travers `run_pipeline` et
+  de sauter la boucle des writers, réutilisant une logique déjà en place.
+  Néanmoins la fonctionnalité complète (nouveau statut de run "partiel",
+  persistance, UI dédiée) reste un morceau cohérent en soi — reportée en
+  backlog (cf. ci-dessous) plutôt que downscopée dans le premier plan.
+
+## Périmètre retenu pour le premier plan (2026-09-18)
+
+`docs/superpowers/plans/2026-09-18-pipeline-builder-ux-improvements.md`
+ne couvre **pas** l'intégralité de ce backlog : à ~34 items indépendants,
+tout faire en un seul plan de taille SP habituelle n'est pas réaliste
+(comparer SP-27, 20 tâches, déjà qualifié de gros chantier). Coupe décidée
+par impact/effort, sans nouvelle confirmation — à corriger si le premier
+plan livré ne correspond pas à ce qui était attendu.
+
+**Dans le premier plan (~16 tâches)** :
+- §0 : les 3 bugs, intégralement.
+- §1 : badge d'erreur visible sur le nœud (extension du bug graphErrors),
+  indicateur de fraîcheur d'aperçu par nœud (extension du bug aperçu
+  périmé), liste de transforms insérables dérivée du catalogue au lieu de
+  la liste codée en dur, bouton de suppression visible sur le nœud.
+- §2 : recherche/filtre texte, libellés humains + description visible.
+- §3 : validation inline par champ.
+- §4 : panneau "feature" (clic sur une géométrie → attributs).
+- §5 : pagination/virtualisation, formatage par type.
+- §6 : détail par nœud pour chaque run historique (déjà en base, cf.
+  ci-dessus), durée calculée + dates formatées, prochaine exécution cron
+  affichée en clair.
+
+**Reporté en backlog (hors premier plan)** :
+- §1 : câblage `useUndoableDraft`, ajout de nœud au clavier (`/`),
+  mini-map, bookmarks/zones nommées, connexion d'arêtes au clavier,
+  ⚙️ sous-pipelines réutilisables.
+- §2 : icônes par catégorie/sous-catégorie, favoris/récemment utilisés.
+- §3 : regroupement des champs par section (`x-group`), aide contextuelle
+  enrichie (liens doc, exemples), ⚙️ éditeur CEL dédié.
+- §4 : symbologie minimale par type de géométrie, sélection liée
+  carte↔tableau, légende.
+- §5 : tri/filtre client léger, compteur "N lignes affichées / total".
+- §6 : "Exécuter jusqu'à ce nœud" comme fonctionnalité complète de run
+  partiel persisté (infra `stop_at` déjà prête côté preview, cf.
+  ci-dessus — reste un morceau cohérent en soi), ⚙️ suivi live SSE.
+- §7 : tout le lot accessibilité/responsive (navigation clavier du
+  canvas, comportement sous 900px, couverture par l'audit axe-core
+  SP-57a) — cohérent de le traiter en bloc une fois les items clavier du
+  §1 eux-mêmes adressés, donc reporté avec eux plutôt que découpé.
