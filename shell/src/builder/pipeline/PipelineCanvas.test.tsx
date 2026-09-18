@@ -356,3 +356,19 @@ test("the edge insertion menu is derived from opsCatalog, including an op not in
   // readers/writers never appear in this menu — only transform.* ops.
   expect(screen.queryByRole("menuitem", { name: "reader.collection" })).not.toBeInTheDocument();
 });
+
+test("renders a minimap", () => {
+  render(
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+    />,
+  );
+  expect(document.querySelector(".react-flow__minimap")).not.toBeNull();
+});

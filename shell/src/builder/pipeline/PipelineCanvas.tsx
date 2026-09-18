@@ -5,6 +5,7 @@ import {
   Controls,
   EdgeLabelRenderer,
   Handle,
+  MiniMap,
   Position,
   ReactFlow,
   ReactFlowProvider,
@@ -306,6 +307,7 @@ function PipelineCanvasInner({
       >
         <Background />
         <Controls />
+        <MiniMap pannable zoomable />
       </ReactFlow>
     </div>
   );
