@@ -14,6 +14,7 @@ import os
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import Response
+from starlette.middleware.cors import CORSMiddleware
 
 from app.configs.schemas import PipelinePayload
 from app.pipelines import runtime
@@ -73,6 +74,25 @@ def create_sidecar_app(*, base_uri: str, token: str | None = None) -> FastAPI:
             except UnicodeEncodeError:
                 return Response(status_code=401, content="missing or invalid bearer token")
             return await call_next(request)
+
+    # CORS : la webview Tauri (Windows, origine http(s)://tauri.localhost)
+    # appelle ce process en cross-origin (127.0.0.1:<port> != tauri.localhost)
+    # — sans ceci, chaque fetch() est bloqué côté navigateur avant même
+    # d'atteindre les routes ci-dessous, ce qui laisse React Query en
+    # attente indéfiniment sans jamais lever d'erreur visible ("Chargement…"
+    # perpétuel — trouvé en vérification Windows réelle, Tâche 6 du plan
+    # Phase F+G). Ajouté APRÈS _enforce_loopback_auth ci-dessus : chez
+    # Starlette, le middleware ajouté en dernier devient la couche la plus
+    # externe (vérifié empiriquement — un ordre inverse fait échouer le
+    # préflight OPTIONS en 401, l'auth le voyant avant CORS) ; c'est donc
+    # CORSMiddleware qui doit être ajouté en dernier pour intercepter les
+    # préflights OPTIONS (jamais porteurs d'Authorization) avant l'auth.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://tauri.localhost", "https://tauri.localhost"],
+        allow_methods=["GET", "PUT", "POST"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 
     @app.put("/pipelines/{item_id}", status_code=204)
     def put_pipeline(item_id: str, payload: PipelinePayload) -> Response:
