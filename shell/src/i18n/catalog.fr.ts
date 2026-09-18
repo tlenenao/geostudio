@@ -461,6 +461,8 @@ export const fr = {
   "pipelineBuilder.defaultTitle": "Pipeline",
   "pipelineBuilder.selectedNodeLabel": "Nœud sélectionné",
   "pipelineBuilder.executionLabel": "Exécution",
+  "pipelineBuilder.undo": "Annuler",
+  "pipelineBuilder.redo": "Rétablir",
   "pipelineBuilder.scheduleLabel": "Planification",
   "pipelineBuilder.saveDisabledReason":
     "Le graphe contient des erreurs à corriger avant l'enregistrement.",

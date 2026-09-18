@@ -156,6 +156,29 @@ test("unsaved mode: clicking a palette entry adds a node to the canvas", async (
   await waitFor(() => expect(screen.getAllByText("reader.collection").length).toBeGreaterThan(1));
 });
 
+test("unsaved mode: Annuler reverts the last palette-added node", async () => {
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "reader.collection" }));
+  await waitFor(() => expect(screen.getAllByText("reader.collection").length).toBeGreaterThan(1));
+  // useUndoableDraft's 400ms coalescing window means canUndo only flips
+  // true once it elapses after setDraft — poll for it instead of asserting
+  // immediately (brief's plan assumed the preceding waitFor already
+  // outlasted the window; measured, it resolves as soon as the node
+  // renders, well under 400ms).
+  await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+  await waitFor(() => expect(screen.getAllByText("reader.collection")).toHaveLength(1));
+  expect(screen.getByRole("button", { name: "Rétablir" })).toBeEnabled();
+});
+
+test("unsaved mode: Annuler and Rétablir start disabled", async () => {
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Rétablir" })).toBeDisabled();
+});
+
 test("persisted mode: loads the existing graph and shows Exécuter", async () => {
   const payload: PipelinePayload = {
     nodes: [

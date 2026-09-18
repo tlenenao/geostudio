@@ -21,6 +21,7 @@ import { hasPermission } from "../auth/permissions";
 import { Banner } from "../ui/kit/Banner";
 import { Button } from "../ui/kit/Button";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
+import { useUndoableDraft } from "../builder/useUndoableDraft";
 import { PipelineCanvas } from "../builder/pipeline/PipelineCanvas";
 import { PipelineNodeInspector } from "../builder/pipeline/PipelineNodeInspector";
 import { PipelinePalette, PIPELINE_OP_DND_TYPE } from "../builder/pipeline/PipelinePalette";
@@ -66,14 +67,36 @@ export function PipelineBuilderPage({
   // itemQuery.isLoading/isError (même patron que DatasetEditPage.tsx:52-58).
   const readOnly = pk !== null && !hasPermission(itemQuery.data, "write");
 
-  const [draft, setDraft] = useState<PipelinePayload>(EMPTY_PAYLOAD);
+  const { draft, setDraft, seedDraft, resetDraft, undo, redo, canUndo, canRedo } =
+    useUndoableDraft<PipelinePayload>();
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [latestRun, setLatestRun] = useState<PipelineRun | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (pk !== null && configQuery.data) setDraft(configQuery.data);
-  }, [pk, configQuery.data]);
+    if (pk === null) {
+      seedDraft(EMPTY_PAYLOAD);
+      return;
+    }
+    if (configQuery.data) seedDraft(configQuery.data);
+  }, [pk, configQuery.data, seedDraft]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const target = document.activeElement;
+      const isTextField =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+      if (isTextField) return;
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undo, redo]);
 
   if (pk !== null && (configQuery.isLoading || itemQuery.isLoading))
     return <p role="status">{t("common.loading")}</p>;
@@ -95,28 +118,39 @@ export function PipelineBuilderPage({
       </p>
     );
   if (opsQuery.isLoading || !opsQuery.data) return <p role="status">{t("common.loading")}</p>;
+  if (draft === null) return <p role="status">{t("common.loading")}</p>;
 
   const catalog = opsQuery.data;
+  // Narrowing from the `draft === null` guard above does not survive into the
+  // nested `function` declarations below (onInsertOnEdge/onDropOnCanvas/
+  // onAddViaPalette/onSave) — TypeScript resets control-flow narrowing at a
+  // function boundary. Capturing it in a freshly-declared, non-nullable
+  // const sidesteps that instead of asserting `draft!` at each read site.
+  const currentDraft: PipelinePayload = draft;
   const validation = validatePipelineGraphLocally(draft.nodes, draft.edges, catalog);
   const valid = isPipelineValid(validation);
   const selectedNode = draft.nodes.find((n) => n.id === selectedNodeId) ?? null;
 
   function setNodes(nodes: PipelineNode[]) {
-    setDraft((d) => ({ ...d, nodes }));
+    setDraft((d) => (d ? { ...d, nodes } : d));
   }
   function setEdges(edges: PipelineEdge[]) {
-    setDraft((d) => ({ ...d, edges }));
+    setDraft((d) => (d ? { ...d, edges } : d));
   }
   function setRefreshPolicy(refreshPolicy: PipelineRefreshPolicy | null) {
-    setDraft((d) => ({ ...d, refreshPolicy }));
+    setDraft((d) => (d ? { ...d, refreshPolicy } : d));
   }
   function updateSelectedNodeParams(params: Record<string, unknown>) {
     if (!selectedNode) return;
-    setNodes(draft.nodes.map((n) => (n.id === selectedNode.id ? { ...n, params } : n)));
+    setDraft((d) =>
+      d
+        ? { ...d, nodes: d.nodes.map((n) => (n.id === selectedNode.id ? { ...n, params } : n)) }
+        : d,
+    );
   }
   function onInsertOnEdge(edgeId: string, op: string) {
     const kind = catalog[op]?.kind ?? "transform";
-    const result = insertNodeOnEdge(draft.nodes, draft.edges, edgeId, {
+    const result = insertNodeOnEdge(currentDraft.nodes, currentDraft.edges, edgeId, {
       id: genNodeId(),
       kind,
       op,
@@ -125,12 +159,12 @@ export function PipelineBuilderPage({
       params: {},
       title: op,
     });
-    setDraft(result);
+    setDraft((d) => (d ? { ...d, ...result } : d));
   }
   function onDropOnCanvas(op: string, position: { x: number; y: number }) {
     const kind = catalog[op]?.kind ?? "transform";
     setNodes([
-      ...draft.nodes,
+      ...currentDraft.nodes,
       { id: genNodeId(), kind, op, x: position.x, y: position.y, params: {}, title: op },
     ]);
   }
@@ -140,7 +174,7 @@ export function PipelineBuilderPage({
   // ajout successif pour ne pas empiler les nœuds exactement l'un sur
   // l'autre.
   function onAddViaPalette(op: string) {
-    onDropOnCanvas(op, { x: 40, y: 40 + draft.nodes.length * 90 });
+    onDropOnCanvas(op, { x: 40, y: 40 + currentDraft.nodes.length * 90 });
   }
 
   async function onSave() {
@@ -150,12 +184,12 @@ export function PipelineBuilderPage({
         const item = await createPipeline.mutateAsync({
           title: initialTitle ?? "",
           owner: username ?? "",
-          pipeline: draft,
+          pipeline: currentDraft,
         });
         navigate(`/pipelines/${item.pk}/edit`, { replace: true });
         return;
       }
-      await savePipeline.mutateAsync(draft);
+      await savePipeline.mutateAsync(currentDraft);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : t("actions.saveFailed"));
     }
@@ -183,10 +217,18 @@ export function PipelineBuilderPage({
           label: t("appBuilder.canvasLabel"),
           content: (
             <div className="flex h-full flex-col overflow-hidden">
-              <div className="border-b border-rule p-2">
+              <div className="flex items-center justify-between border-b border-rule p-2">
                 <h2 className="text-lg font-semibold text-ink">
                   {initialTitle ?? t("pipelineBuilder.defaultTitle")}
                 </h2>
+                <div className="flex items-center gap-1">
+                  <Button size="sm" variant="outline" disabled={!canUndo} onClick={undo}>
+                    {t("pipelineBuilder.undo")}
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={!canRedo} onClick={redo}>
+                    {t("pipelineBuilder.redo")}
+                  </Button>
+                </div>
               </div>
               {validation.graphErrors.length > 0 && (
                 <div className="p-2">
@@ -269,7 +311,7 @@ export function PipelineBuilderPage({
                   <ConfigHistoryPanel
                     pk={pk}
                     currentVersion={null}
-                    onRestored={async () => setDraft(await client.getPipelineConfig(pk))}
+                    onRestored={async () => resetDraft(await client.getPipelineConfig(pk))}
                   />
                 </div>
               )}

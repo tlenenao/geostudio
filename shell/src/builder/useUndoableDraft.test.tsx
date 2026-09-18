@@ -23,21 +23,21 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 test("seedDraft sets the initial draft without creating an undo step", () => {
-  const { result } = renderHook(() => useUndoableDraft());
+  const { result } = renderHook(() => useUndoableDraft<AppConfig>());
   act(() => result.current.seedDraft(config("A")));
   expect(result.current.draft).toEqual(config("A"));
   expect(result.current.canUndo).toBe(false);
 });
 
 test("seedDraft never overwrites an already-seeded draft", () => {
-  const { result } = renderHook(() => useUndoableDraft());
+  const { result } = renderHook(() => useUndoableDraft<AppConfig>());
   act(() => result.current.seedDraft(config("A")));
   act(() => result.current.seedDraft(config("B")));
   expect(result.current.draft).toEqual(config("A"));
 });
 
 test("canUndo flips true once the coalesce window elapses after a setDraft call", () => {
-  const { result } = renderHook(() => useUndoableDraft());
+  const { result } = renderHook(() => useUndoableDraft<AppConfig>());
   act(() => result.current.seedDraft(config("A")));
   act(() => result.current.setDraft(config("B")));
   expect(result.current.canUndo).toBe(false); // still pending
@@ -46,7 +46,7 @@ test("canUndo flips true once the coalesce window elapses after a setDraft call"
 });
 
 test("undo restores the pre-edit config and flushes a still-pending burst immediately", () => {
-  const { result } = renderHook(() => useUndoableDraft());
+  const { result } = renderHook(() => useUndoableDraft<AppConfig>());
   act(() => result.current.seedDraft(config("A")));
   act(() => result.current.setDraft(config("B")));
   // No advanceTimersByTime: the window hasn't elapsed, but undo() must not
@@ -58,7 +58,7 @@ test("undo restores the pre-edit config and flushes a still-pending burst immedi
 });
 
 test("a rapid burst of setDraft calls within the window collapses into one undo step", () => {
-  const { result } = renderHook(() => useUndoableDraft());
+  const { result } = renderHook(() => useUndoableDraft<AppConfig>());
   act(() => result.current.seedDraft(config("A")));
   act(() => {
     result.current.setDraft(config("Ab"));
@@ -75,7 +75,7 @@ test("a rapid burst of setDraft calls within the window collapses into one undo 
 });
 
 test("redo restores what undo just reverted", () => {
-  const { result } = renderHook(() => useUndoableDraft());
+  const { result } = renderHook(() => useUndoableDraft<AppConfig>());
   act(() => result.current.seedDraft(config("A")));
   act(() => result.current.setDraft(config("B")));
   void act(() => vi.advanceTimersByTime(400));
@@ -87,7 +87,7 @@ test("redo restores what undo just reverted", () => {
 });
 
 test("a new edit after undo purges the redo branch", () => {
-  const { result } = renderHook(() => useUndoableDraft());
+  const { result } = renderHook(() => useUndoableDraft<AppConfig>());
   act(() => result.current.seedDraft(config("A")));
   act(() => result.current.setDraft(config("B")));
   void act(() => vi.advanceTimersByTime(400));
@@ -99,7 +99,7 @@ test("a new edit after undo purges the redo branch", () => {
 });
 
 test("setDraft supports the functional-updater form", () => {
-  const { result } = renderHook(() => useUndoableDraft());
+  const { result } = renderHook(() => useUndoableDraft<AppConfig>());
   act(() => result.current.seedDraft(config("A")));
   act(() =>
     result.current.setDraft((prev) =>
@@ -119,7 +119,7 @@ test("setDraft supports the functional-updater form", () => {
 // chaining, so this must keep holding — verified directly here rather than
 // assumed (SP-19 final-branch-review fix pass, finding C1).
 test("two setDraft calls issued synchronously in the same handler each build on the other's result", () => {
-  const { result } = renderHook(() => useUndoableDraft());
+  const { result } = renderHook(() => useUndoableDraft<AppConfig>());
   act(() => result.current.seedDraft(config("A")));
   act(() => {
     result.current.setDraft((prev) =>
@@ -143,7 +143,7 @@ test("two setDraft calls issued synchronously in the same handler each build on 
 // of regression, since the E2E suite runs a production build (no
 // double-invoke) and the other unit tests above never wrap in <StrictMode>.
 test("undo/redo remain correct under <StrictMode> double-invocation of state updaters", () => {
-  const { result } = renderHook(() => useUndoableDraft(), { wrapper: StrictMode });
+  const { result } = renderHook(() => useUndoableDraft<AppConfig>(), { wrapper: StrictMode });
   act(() => result.current.seedDraft(config("A")));
   act(() => result.current.setDraft(config("B")));
   void act(() => vi.advanceTimersByTime(400));
@@ -170,7 +170,7 @@ test("undo/redo remain correct under <StrictMode> double-invocation of state upd
 });
 
 test("resetDraft remplace le brouillon et vide la pile", () => {
-  const { result } = renderHook(() => useUndoableDraft(), { wrapper: StrictMode });
+  const { result } = renderHook(() => useUndoableDraft<AppConfig>(), { wrapper: StrictMode });
 
   act(() => result.current.seedDraft(config("A")));
   act(() => result.current.setDraft(config("B")));
@@ -189,7 +189,7 @@ test("resetDraft remplace le brouillon et vide la pile", () => {
 });
 
 test("resetDraft annule un burst d'édition encore en attente", () => {
-  const { result } = renderHook(() => useUndoableDraft(), { wrapper: StrictMode });
+  const { result } = renderHook(() => useUndoableDraft<AppConfig>(), { wrapper: StrictMode });
 
   act(() => result.current.seedDraft(config("A")));
   act(() => result.current.setDraft(config("B"))); // burst armé, pas encore flushé
