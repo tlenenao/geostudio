@@ -1,17 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { usePipelinePreview } from "../../api/hooks";
+import type { PipelinePayload } from "../../api/types";
 import { t } from "../../i18n";
 import { PipelinePreviewMap } from "./PipelinePreviewMap";
 
 export function PipelinePreviewPanel({
   pipelineId,
   nodeId,
+  draft,
+  isDraftStale,
 }: {
   pipelineId: string;
   nodeId: string | null;
+  draft?: PipelinePayload;
+  isDraftStale?: boolean;
 }) {
-  const previewQuery = usePipelinePreview(pipelineId, nodeId);
+  const previewQuery = usePipelinePreview(pipelineId, nodeId, draft);
   const [view, setView] = useState<"table" | "map">("table");
 
   if (nodeId === null) return null;
@@ -29,6 +34,14 @@ export function PipelinePreviewPanel({
 
   return (
     <div className="flex flex-col gap-2">
+      {isDraftStale && (
+        <p
+          role="status"
+          className="w-fit rounded-full bg-warn-soft px-2 py-0.5 text-[10px] text-warn"
+        >
+          {t("pipelinePreview.stale")}
+        </p>
+      )}
       {hasGeometry && (
         <div className="flex gap-1 text-xs">
           <button

@@ -44,11 +44,15 @@ export function usePipelineOps() {
   });
 }
 
-export function usePipelinePreview(pipelineId: string, nodeId: string | null) {
+export function usePipelinePreview(
+  pipelineId: string,
+  nodeId: string | null,
+  draft?: PipelinePayload,
+) {
   const client = useItemClientInternal();
   return useQuery({
-    queryKey: ["pipeline-preview", pipelineId, nodeId],
-    queryFn: () => client.previewPipeline(pipelineId, nodeId!),
+    queryKey: ["pipeline-preview", pipelineId, nodeId, draft],
+    queryFn: () => client.previewPipeline(pipelineId, nodeId!, draft),
     enabled: nodeId !== null,
   });
 }

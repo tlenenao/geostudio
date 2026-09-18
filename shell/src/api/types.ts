@@ -528,7 +528,11 @@ export interface ItemClient {
   listPipelineWebhookTokens(pk: string): Promise<PipelineWebhookToken[]>;
   createPipelineWebhookToken(pk: string): Promise<{ id: string; token: string; createdAt: string }>;
   revokePipelineWebhookToken(pk: string, tokenId: string): Promise<void>;
-  previewPipeline(pk: string, upToNodeId: string): Promise<Record<string, unknown>[]>;
+  previewPipeline(
+    pk: string,
+    upToNodeId: string,
+    draft?: PipelinePayload,
+  ): Promise<Record<string, unknown>[]>;
   createAlertRuleItem(input: {
     title: string;
     owner: string;

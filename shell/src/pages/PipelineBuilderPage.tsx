@@ -234,7 +234,14 @@ export function PipelineBuilderPage({
                     errors={validation.nodeErrors[selectedNode.id] ?? []}
                     onChange={updateSelectedNodeParams}
                   />
-                  {pk !== null && <PipelinePreviewPanel pipelineId={pk} nodeId={selectedNode.id} />}
+                  {pk !== null && (
+                    <PipelinePreviewPanel
+                      pipelineId={pk}
+                      nodeId={selectedNode.id}
+                      draft={draft}
+                      isDraftStale={configQuery.data !== undefined && configQuery.data !== draft}
+                    />
+                  )}
                 </>
               )}
               {pk !== null && (

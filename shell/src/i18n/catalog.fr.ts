@@ -1069,6 +1069,7 @@ export const fr = {
   "pipelinePreview.unavailable": "Aperçu indisponible.",
   "pipelinePreview.tableView": "Tableau",
   "pipelinePreview.mapView": "Carte",
+  "pipelinePreview.stale": "Aperçu à régénérer (paramètres modifiés depuis le dernier calcul)",
 
   // PipelineRunPanel (builder/pipeline)
   "pipelineRun.statusQueued": "En attente",

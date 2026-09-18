@@ -91,10 +91,15 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
       return request<PipelineRun[]>("GET", `/pipelines/${pk}/runs${qs ? `?${qs}` : ""}`);
     },
 
-    async previewPipeline(pk: string, upToNodeId: string): Promise<Record<string, unknown>[]> {
+    async previewPipeline(
+      pk: string,
+      upToNodeId: string,
+      draft?: PipelinePayload,
+    ): Promise<Record<string, unknown>[]> {
       return request<Record<string, unknown>[]>(
         "POST",
         `/pipelines/${pk}/preview?upTo=${encodeURIComponent(upToNodeId)}`,
+        draft !== undefined ? { pipeline: draft } : undefined,
       );
     },
 

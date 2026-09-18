@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
-import type { ItemClient } from "../../api/types";
+import type { ItemClient, PipelinePayload } from "../../api/types";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { PipelinePreviewPanel } from "./PipelinePreviewPanel";
 
@@ -11,13 +11,16 @@ vi.mock("maplibre-gl", async () => {
   return { Map: MockMap, setWorkerUrl: () => {} };
 });
 
-function renderPanel(previewPipeline = vi.fn().mockResolvedValue([{ id: 1, pop: 1200 }])) {
+function renderPanel(
+  previewPipeline = vi.fn().mockResolvedValue([{ id: 1, pop: 1200 }]),
+  extraProps: { draft?: PipelinePayload; isDraftStale?: boolean } = {},
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client: Partial<ItemClient> = { previewPipeline };
   render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client as ItemClient}>
-        <PipelinePreviewPanel pipelineId="p-1" nodeId="r1" />
+        <PipelinePreviewPanel pipelineId="p-1" nodeId="r1" {...extraProps} />
       </ItemClientProvider>
     </QueryClientProvider>,
   );
@@ -27,7 +30,7 @@ function renderPanel(previewPipeline = vi.fn().mockResolvedValue([{ id: 1, pop: 
 test("fetches the preview for the given node and renders it as a table", async () => {
   const { previewPipeline } = renderPanel();
   await waitFor(() => expect(screen.getByRole("cell", { name: "1200" })).toBeInTheDocument());
-  expect(previewPipeline).toHaveBeenCalledWith("p-1", "r1");
+  expect(previewPipeline).toHaveBeenCalledWith("p-1", "r1", undefined);
 });
 
 test("shows nothing when no node is selected", () => {
@@ -70,4 +73,21 @@ test("clicking Carte swaps the table for the map view", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Carte" }));
   expect(screen.getByTestId("pipeline-preview-map")).toBeInTheDocument();
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
+});
+
+test("forwards the draft to previewPipeline when provided", async () => {
+  const draft: PipelinePayload = { nodes: [], edges: [] };
+  const { previewPipeline } = renderPanel(undefined, { draft });
+  await waitFor(() => expect(previewPipeline).toHaveBeenCalledWith("p-1", "r1", draft));
+});
+
+test("shows a staleness hint when isDraftStale is true", async () => {
+  renderPanel(undefined, { isDraftStale: true });
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Aperçu à régénérer"));
+});
+
+test("shows no staleness hint by default", async () => {
+  const { previewPipeline } = renderPanel();
+  await waitFor(() => expect(previewPipeline).toHaveBeenCalled());
+  expect(screen.queryByText("Aperçu à régénérer", { exact: false })).not.toBeInTheDocument();
 });
