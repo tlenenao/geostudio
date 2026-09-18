@@ -9,7 +9,7 @@
 
 ## 1. Où on en est réellement (vérifié dans le code, pas dans CLAUDE.md)
 
-Fait à ce jour (`dev`, HEAD `dced8a5a` après clôture des Phases F+G) :
+Fait à ce jour (`dev`, HEAD `04327f5d` après clôture des Phases F+G et la revue finale de branche (Tâche 8)) :
 
 - **Spike freeze PyInstaller** (D1) : GO, `--collect-all dlt` suffit pour
   `connector_runtime.py` (dlt/duckdb/sqlalchemy) sur Linux **et**
@@ -59,7 +59,7 @@ Fait à ce jour (`dev`, HEAD `dced8a5a` après clôture des Phases F+G) :
 - ~~Aucun fichier Tauri/Rust (`src-tauri/`, `Cargo.toml`,
   `tauri.conf.json`) n'existe dans le dépôt — la Phase G part de zéro.~~
   **Périmé** : Phase G close (plan Phase F+G, Tâches 3-7,
-  `d58ac5a2..dced8a5a`) — `desktop-etl/src-tauri/` existe, compile, tourne,
+  `d58ac5a2..04327f5d`) — `desktop-etl/src-tauri/` existe, compile, tourne,
   chemin d'or E2E vérifié réellement (manuellement puis via un test
   WebDriver automatisé passant). Détail complet §4, section Phase G.
 - **Aucun code PKCE/loopback OIDC natif** n'existe dans le dépôt (grep
@@ -298,7 +298,7 @@ pas différé à une phase ultérieure.
 
 **Statut : clos** (plan
 `docs/superpowers/plans/2026-09-18-desktop-etl-phase-fg.md`, Tâches 1, 3-7,
-commits `d58ac5a2..dced8a5a`). Chemin d'or E2E vérifié réellement bout-en-
+commits `d58ac5a2..04327f5d`). Chemin d'or E2E vérifié réellement bout-en-
 bout sur Windows (pas seulement compilé) : création d'un pipeline
 `reader.file`→`writer.file`, connexion, sauvegarde, exécution, statut
 `succeeded`, fichier `.gpkg` réel écrit sur disque — d'abord manuellement
@@ -346,6 +346,42 @@ exécutant réellement l'application (jamais visibles par relecture seule) :
   chemin UNC *ou* un lecteur réseau mappé (Windows le résout en UNC en
   interne) — contournement : miroir local du sous-arbre nécessaire pour
   la vérification WebDriver de la Tâche 7 (non conservé dans le dépôt).
+- **Persistance disque `.gspipeline` non livrée — correction du récit,
+  pas du code** (trouvé en revue finale de branche, Tâche 8). Le titre de
+  cette phase et le §3.2 du design promettaient une persistance via
+  `fs`/`dialog` Tauri (« créer un pipeline » implique « le persister » —
+  raison même de la fusion de la Phase H ci-dessous). Ce qui est
+  réellement livré : `DesktopItemClient.ts` garde le payload actif et
+  l'`Item` créé dans deux `Map` **en mémoire du process webview**,
+  perdues à la fermeture de l'application — aucun fichier `.gspipeline`,
+  aucun appel `@tauri-apps/plugin-fs`/`plugin-dialog`. Le chemin d'or
+  vérifié (créer → connecter → configurer → enregistrer → exécuter →
+  vérifier la sortie) tient dans **une seule session** de l'application ;
+  rouvrir l'app perd le pipeline construit. Les dépendances `tauri-plugin-fs`/
+  `tauri-plugin-dialog` (Rust), `@tauri-apps/plugin-fs`/`plugin-dialog`
+  (npm) et les permissions `fs:*`/`dialog:*` posées par la Tâche 3 pour
+  cet usage jamais arrivé ont été retirées (code mort, Tâche 8) —
+  **la persistance disque réelle reste entièrement à faire**, déplacée
+  explicitement en Phase I (§ ci-dessous, nouveau point).
+- **Sidecar orphelin à la fermeture de l'app — hypothèse posée par une
+  revue puis réfutée par falsification réelle, pas un défaut** (Tâche 8).
+  Le design §3.3 point 5 supposait sans jamais l'avoir vérifié que
+  `tauri-plugin-shell` termine le sidecar automatiquement à la fermeture ;
+  la revue finale de branche a jugé cette hypothèse non levée et a proposé
+  un correctif (`RunEvent::Exit` + `CommandChild.kill()`). Vérification
+  réelle sur Windows avec chronométrage précis (piège CLAUDE.md « une
+  assertion de durée ne prouve jamais une propriété de concurrence —
+  mesurer le recouvrement des intervalles ») : **le sidecar se termine de
+  lui-même ~5,1 s après la fermeture de la fenêtre, identiquement avec ou
+  sans le correctif proposé** (4 mesures : 5,07-5,22 s dans les deux
+  configurations). Le correctif n'avait donc aucun effet observable — il a
+  été retiré (YAGNI) plutôt que conservé pour un problème non confirmé. La
+  première observation d'un sidecar orphelin (qui a motivé la proposition
+  de correctif) était un artefact de mesure : délai d'observation trop
+  court après la fermeture, jamais un abandon durable du processus.
+  Mécanisme réel du délai de ~5 s non identifié (job Windows implicite
+  côté `tao`/`tauri-plugin-shell` probable, jamais confirmé dans leur
+  documentation) — sans conséquence pratique tant qu'il reste borné.
 
 ### Phase H — (fusionnée dans G)
 
@@ -353,6 +389,11 @@ Le découpage initial du design séparait « persistance locale » de
 l'intégration Tauri — regroupées ici car le chemin d'or de la Phase G ne
 peut pas être démontré sans un mécanisme de sauvegarde/ouverture de
 fichier réel (« créer un pipeline » implique déjà « le persister »).
+**Correction (Tâche 8, revue finale)** : la fusion a eu lieu, mais la
+persistance disque promise par cette phase n'a en réalité jamais été
+construite — seul le chemin d'or intra-session l'a été (bullet
+ci-dessus). La fusion H→G reste la bonne décision de découpage ; c'est
+la case « persistance » de G elle-même qui reste à cocher, en Phase I.
 
 ### Phase I — Connecteurs desktop + secrets trousseau OS + UX de chemin
 
@@ -365,7 +406,11 @@ DI n'existe pas encore. **Écriture** d'un secret dans le trousseau OS n'a
 aucun seam existant à réutiliser (§1) — UI + code desktop entièrement
 neufs. Amélioration UX différée de la correction §2 point 2 : un vrai
 sélecteur de fichier natif (`format: "file-path"` nouveau, composant Tauri
-`dialog`) remplaçant le champ texte brut pour `path`.
+`dialog`) remplaçant le champ texte brut pour `path`. **Reporté depuis la
+Phase G (Tâche 8, revue finale, cf. note de correction ci-dessus) :**
+persistance disque réelle du pipeline lui-même (`.gspipeline` via
+`@tauri-apps/plugin-fs`/`plugin-dialog`, réintroduits alors) — aujourd'hui
+le pipeline construit ne survit qu'à la session en cours de l'application.
 
 ### Phase J — Push vers un cœur distant
 
