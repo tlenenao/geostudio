@@ -1036,6 +1036,12 @@ def _write_file(conn, *, node: PipelineNode, view_by_node: dict, srid: int) -> N
     # empiriquement avant d'écrire ce plan.
     keep = [c for c in cols if c.lower() not in ("fid", "ogc_fid")]
     select_list = ", ".join(_qi(c) for c in keep)
+    # Contrairement au scratch_dir de _execute_qgis_transform (garanti
+    # préexistant), le répertoire cible de writer.file peut ne pas exister :
+    # GDAL/sqlite ne crée jamais les répertoires intermédiaires manquants et
+    # échoue avec "sqlite3_open ... unable to open database file".
+    if parent := os.path.dirname(p.path):
+        os.makedirs(parent, exist_ok=True)
     conn.execute(
         f"COPY (SELECT {select_list} FROM {_qi(input_view)}) TO {_ql(p.path)} "
         f"WITH (FORMAT GDAL, DRIVER {_ql(p.driver)}, SRS {_ql(f'EPSG:{srid}')})"
