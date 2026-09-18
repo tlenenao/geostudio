@@ -6707,4 +6707,76 @@ surface déjà livrée.
   cette phase (Phases F→K de la feuille de route) : spike de gel
   géospatial PyInstaller, bootstrap Tauri, connecteurs/trousseau OS,
   push vers un cœur distant, packaging/distribution.
+- **`reader.file`/`writer.file` côté cœur** — clos 2026-09-18, plan
+  `2026-09-18-desktop-etl-reader-writer-file.md`, 6 tâches en
+  subagent-driven-development + 2 vagues de correctifs post-revue
+  finale. Ajoute au registre `OPERATIONS` (`ops/contracts.py`) deux op,
+  `reader.file`/`writer.file`, matérialisant/écrivant un fichier
+  géospatial local via DuckDB spatial (`ST_Read`/`COPY ... FORMAT
+  GDAL`) — même mécanisme que `_execute_qgis_transform`, jamais la
+  sérialisation manuelle de `_write_export`. Gardées par
+  `CORE_PIPELINE_FILE_IO_ENABLED` (défaut `false`, accès disque
+  arbitraire = risque de traversée de chemin sur un cœur hébergé
+  multi-tenant ; le futur sidecar desktop l'activera dans son propre
+  environnement). `OperationContract.enabled_when` (mécanisme générique
+  de visibilité palette, réutilisable). `_lock_down()` élargi
+  (`extra_allowed_dirs`) pour que `writer.file` puisse écrire hors
+  `/scratch` une fois le flag actif. Les 6 tâches ont chacune été
+  approuvées en revue de tâche.
+  **Revue finale de branche — 1 Critical + 2 Important, tous corrigés
+  en 2 vagues :**
+  - **C1 (Critical, sécurité)** : `_prepare()` élargissait
+    `allowed_directories` pour **tout** le run (toute la chaîne de
+    transforms partage la même connexion DuckDB verrouillée), pas
+    seulement pour `_write_file` — et ce élargissement n'était **pas**
+    gardé par le flag. Un nœud `writer.file` **jamais exécuté** (ex. via
+    `POST /pipelines/{id}/preview?upTo=<nœud antérieur>`) suffisait à
+    faire entrer un répertoire arbitraire dans l'allowlist ; un
+    `transform.derive` antérieur utilisant `read_text()` dans une
+    sous-requête scalaire (non rejeté par `validate_bounded_expr()`, qui
+    ne filtre que les références de table) pouvait alors lire n'importe
+    quel fichier lisible par le process du cœur (démontré : `/etc/passwd`
+    via `preview_pipeline()` réel, flag **éteint**). Chaque revue de
+    tâche (3 et 5) avait vérifié la bonne propriété — `_write_file`
+    contrôle le flag en première instruction — mais pas la bonne surface :
+    l'élargissement avait un second consommateur implicite, toute la
+    chaîne de transforms via le bac à sable DuckDB partagé. **Variante
+    nette du piège n°11** : vérifier le chemin d'exécution du garde ne
+    suffit pas, il faut énumérer *tous* les consommateurs de la capacité
+    relâchée. Correctif : une condition (`if is_pipeline_file_io_enabled()
+    else []`) autour du calcul de `writer_file_dirs`, flag éteint ⇒
+    `allowed_directories == ['/scratch']` comme avant ce chantier. Testé
+    par falsification (retirer le garde → le test redevient rouge).
+  - **I1 (Important)** : `_read_file` n'excluait pas `fid` (GeoPackage) ni
+    `OGC_FID` (GeoJSON/Shapefile) — la colonne d'identifiant synthétique
+    que GDAL réserve — cassant `reader.file → writer.collection`
+    (rejeté comme propriété inconnue) pour tout format. Le docstring
+    affirmait à tort « même mécanisme que `_materialize_qgis_output` »,
+    qui exclut bien `fid` en sortie QGIS. Corrigé en 2 passes (1re passe :
+    `fid` exact-case seulement, incomplète ; re-revue a trouvé le trou
+    `OGC_FID` ; 2e passe : exclusion insensible à la casse `{"fid",
+    "ogc_fid"}`, alignée sur celle déjà correcte de `_write_file`).
+  - **I2 (Important)** : `_read_file` construit `SELECT … AS geometry`
+    sans détecter qu'une colonne non-géométrique porte déjà ce nom
+    (ex. `properties.geometry` d'un GeoJSON) — DuckDB renomme alors
+    silencieusement la vraie géométrie (`geometry_1`/`geom` selon le
+    cas), et toute la chaîne aval lit la mauvaise colonne sans la
+    moindre erreur. Corrigé en 2 passes (1re passe : comparaison
+    exact-case, ne détectait pas une collision `Geometry` capitalisée ;
+    re-revue a reproduit la corruption silencieuse via ce variant de
+    casse ; 2e passe : comparaison insensible à la casse des deux
+    côtés).
+  Chaque vague de correctifs a été falsifiée (retrait temporaire →
+  test rouge confirmé) avant d'être re-revue. Écrit pendant l'exécution :
+  une session concurrente committait en parallèle sur le même `dev` les
+  Phases E du sidecar desktop-etl (`b4578e79`/`70038719`/`680b258a`/
+  `c4cb132c`, cf. entrée précédente) — aucune collision de fichiers,
+  seulement un entrelacement de commits (piège n°9). Suite complète du
+  cœur : 2878 passed/0 failed/272 skipped, couverture 87.76 % (après le
+  1er lot de tâches ; les 2 vagues de correctifs n'ont touché que
+  `runtime.py`/`test_pipeline_file_io.py`, revérifiées focalisées).
+  Non couvert (assumé, cf. plan) : spike PyInstaller, API loopback
+  sidecar, sélecteur de fichier shell, drivers GDAL autres que
+  GPKG/GeoJSON. Laissé sur `dev` local, non poussé (décision utilisateur
+  2026-09-18, branche partagée avec la session concurrente ci-dessus).
 
