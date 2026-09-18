@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth.dependency import get_current_user
+from app.configs.schemas import PipelinePayload
 from app.db import get_session
 from app.pipelines import repository as pipelines_repo
 from app.pipelines.ops.contracts import ops_catalog
@@ -53,6 +54,10 @@ class WebhookTokenSummary(BaseModel):
     id: str
     createdAt: str
     lastUsedAt: str | None
+
+
+class PipelinePreviewRequest(BaseModel):
+    pipeline: PipelinePayload | None = None
 
 
 def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
@@ -114,15 +119,17 @@ def list_pipeline_runs(
 def preview_pipeline_route(
     item_id: str,
     upTo: str = Query(...),
+    body: PipelinePreviewRequest | None = None,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
     require_pipeline_access(session, user=user, item_id=item_id, action="read")
     config = require_pipeline_config(session, item_id)
+    payload = body.pipeline if body and body.pipeline is not None else config.config.pipeline
     try:
         return preview_pipeline(
             session=session,
-            payload=config.config.pipeline,
+            payload=payload,
             tenant_id=user.tenant_id,
             user=user,
             up_to=upTo,

@@ -279,6 +279,97 @@ def test_preview_route_rejects_unknown_pipeline(monkeypatch):
     assert response.status_code == 404
 
 
+def _seed_preview_pipeline(client):
+    Session = client.session_factory  # type: ignore[attr-defined]
+    tenant = client.tenant  # type: ignore[attr-defined]
+    owner = client.user  # type: ignore[attr-defined]
+    with Session() as s:
+        item = items_repo.create_item(
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="pipeline",
+            title="Pipeline preview",
+        )
+        configs_repo.create_config(
+            s,
+            BuilderConfig.model_validate(
+                {
+                    "version": 1,
+                    "kind": "pipeline",
+                    "pipeline": {
+                        "nodes": [
+                            {
+                                "id": "r1",
+                                "kind": "reader",
+                                "op": "reader.collection",
+                                "params": {"collectionId": "x"},
+                            },
+                            {
+                                "id": "w1",
+                                "kind": "writer",
+                                "op": "writer.export",
+                                "params": {"format": "csv", "key": "o.csv"},
+                            },
+                        ],
+                        "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+                    },
+                }
+            ),
+            item_id=item.id,
+            tenant_id=tenant.id,
+        )
+        s.commit()
+        return item.id
+
+
+def test_preview_route_uses_the_persisted_config_when_no_body_is_sent(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_preview_pipeline(client)
+    captured = {}
+
+    def fake_preview_pipeline(*, payload, **kwargs):
+        captured["collectionId"] = payload.nodes[0].params["collectionId"]
+        return [{"id": 1}]
+
+    monkeypatch.setattr("app.pipelines.routes.preview_pipeline", fake_preview_pipeline)
+    response = client.post(f"/v1/pipelines/{item_id}/preview?upTo=r1")
+    assert response.status_code == 200
+    assert captured["collectionId"] == "x"
+
+
+def test_preview_route_uses_the_request_body_pipeline_when_provided(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_preview_pipeline(client)
+    captured = {}
+
+    def fake_preview_pipeline(*, payload, **kwargs):
+        captured["collectionId"] = payload.nodes[0].params["collectionId"]
+        return [{"id": 1}]
+
+    monkeypatch.setattr("app.pipelines.routes.preview_pipeline", fake_preview_pipeline)
+    draft = {
+        "nodes": [
+            {
+                "id": "r1",
+                "kind": "reader",
+                "op": "reader.collection",
+                "params": {"collectionId": "y"},
+            },
+            {
+                "id": "w1",
+                "kind": "writer",
+                "op": "writer.export",
+                "params": {"format": "csv", "key": "o.csv"},
+            },
+        ],
+        "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+    }
+    response = client.post(f"/v1/pipelines/{item_id}/preview?upTo=r1", json={"pipeline": draft})
+    assert response.status_code == 200
+    assert captured["collectionId"] == "y"
+
+
 # --- Déclenchement de pipeline par webhook entrant (GAP-24, SP-53) ---
 
 
