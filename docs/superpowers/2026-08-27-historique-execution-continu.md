@@ -6673,4 +6673,36 @@ surface déjà livrée.
   construction), et `reader.file`/`writer.file` côté cœur (dépend d'un
   spike DuckDB spatial en binaire PyInstaller, jamais fait) — cf. les
   sections « Ce que ce plan ne couvre pas » des deux plans.
+- **Sidecar desktop-etl, Phase E (moteur + API loopback)** — clos
+  2026-09-18, plan `2026-09-18-desktop-etl-sidecar-engine.md`, 5 tâches,
+  commits `b4578e79`/`70038719`/`680b258a`/`c4cb132c` (Tâche 5 de
+  vérification n'ajoute pas de commit de code). Consomme les deux seams
+  de la vague précédente (`RunTracker`/`SecretResolver`, cf. entrée
+  ci-dessus) pour faire tourner `run_pipeline()` sans Postgres : `Run
+  Registry`/`InMemoryRunTracker` (suivi de run en mémoire, id/status/
+  timestamps/nodeStats identiques à `RunStatus`), `PipelineStore`/
+  `start_run` (charge active par `itemId`, appelle `runtime.run_pipeline()`
+  directement — pas de `run_pipeline_task` Postgres), une app FastAPI
+  loopback qui rejoue le contrat HTTP verrouillé au §3.1 de la feuille de
+  route (`PUT`/`GET ops`/`POST run`/`GET runs`/`POST preview`), puis un
+  entrypoint réel (`core/scripts/pipeline_sidecar.py`) avec handshake de
+  port (imprime le port choisi sur stdout avant de servir, patron attendu
+  par un futur lancement en sous-processus Tauri). Testable dès
+  aujourd'hui via `httpx.ASGITransport`/`TestClient` — aucun Tauri, aucun
+  Windows, aucun PyInstaller à ce stade (Phases F/G/K, encore ouvertes).
+  Tâche 5 (bout-en-bout) : les 4 fichiers de test du sidecar (18 tests)
+  et la suite complète du cœur passent (2901 passed/272 skipped/0
+  failed, `postgis`/`qgis` skippent comme toujours en l'absence de
+  `CORE_TEST_DATABASE_URL`/`CORE_TEST_QGIS_WORKER_URL` dans cet
+  environnement, sans rapport avec cette phase), portes de qualité
+  clean (ruff/format/lint-imports/couverture 87.84 %). Confirmé par
+  grep : l'app du sidecar n'est jamais montée dans le `v1_router` de
+  `core/app/main.py` — aucune surface externe nouvelle, donc pas de mise
+  à jour de `docs/revue/inventaire-fonctionnalites.jsonl` ni de
+  régénération du bilan de fonctionnalités pour cette phase. Pas
+  d'entrée `### Livré` dans `CLAUDE.md` à ce stade — réservée à la
+  livraison complète du produit desktop-etl. Reste hors périmètre de
+  cette phase (Phases F→K de la feuille de route) : spike de gel
+  géospatial PyInstaller, bootstrap Tauri, connecteurs/trousseau OS,
+  push vers un cœur distant, packaging/distribution.
 
