@@ -39,6 +39,7 @@ from sqlalchemy.orm import Session
 from app.analytics.aggregate import _dedup_cte, _has_any_file
 from app.analytics.duckdb_conn import open_connection
 from app.audit.writer import write_audit
+from app.auth.dependency import is_pipeline_file_io_enabled
 from app.collections import repository as collections_repo
 from app.collections.introspection import TableInfo, TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
@@ -56,6 +57,7 @@ from app.pipelines.ops.schemas import (
     ReaderConnectorPostgresParams,
     ReaderConnectorRestParams,
     ReaderConnectorSnowflakeParams,
+    ReaderFileParams,
     TransformAggregateParams,
     TransformCountWithinParams,
     TransformDeriveParams,
@@ -330,6 +332,47 @@ def _read_connector_snowflake(
         )
     except connector_runtime.ConnectorRuntimeError as exc:
         raise PipelineRuntimeError(str(exc)) from exc
+    return 4326
+
+
+def _read_file(
+    conn,
+    *,
+    session: Session,
+    tenant_id: str,
+    node_id: str,
+    params: dict,
+    view_name: str,
+    user: User,
+    base_uri: str,
+) -> int:
+    """reader.file (registre READERS, design desktop-etl §3) — matérialise
+    un fichier local via ST_Read() (DuckDB spatial/GDAL), même mécanisme que
+    _materialize_qgis_output pour la sortie du sidecar QGIS.
+    session/tenant_id/node_id/user/base_uri ignorés (même convention que
+    _read_connector_rest) : accès disque local, jamais de collection ni de
+    secret. S'exécute dans la boucle reader de _prepare(), AVANT
+    _lock_down() : aucun besoin d'un répertoire autorisé, contrairement à
+    writer.file."""
+    if not is_pipeline_file_io_enabled():
+        raise PipelineRuntimeError("reader.file requires CORE_PIPELINE_FILE_IO_ENABLED=true")
+    p = ReaderFileParams.model_validate(params)
+    probe_cols = conn.execute(f"SELECT * FROM ST_Read({_ql(p.path)}) LIMIT 0").description
+    geom_cols = [d[0] for d in probe_cols if d[1].id == "geometry"]
+    if not geom_cols:
+        raise PipelineRuntimeError(f"reader.file: '{p.path}' has no geometry column")
+    geom_col = geom_cols[0]
+    other_cols = [d[0] for d in probe_cols if d[0] != geom_col]
+    select_list = ", ".join([_qi(c) for c in other_cols] + [f"{_qi(geom_col)} AS geometry"])
+    conn.execute(
+        f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT {select_list} FROM ST_Read({_ql(p.path)})"
+    )
+    if p.srid is not None:
+        return p.srid
+    row = conn.execute(f"SELECT st_crs(geometry) FROM {_qi(view_name)} LIMIT 1").fetchone()
+    crs = row[0] if row else None
+    if crs and crs.upper().startswith("EPSG:"):
+        return int(crs.split(":", 1)[1])
     return 4326
 
 
