@@ -113,6 +113,9 @@ test("clicking a node calls onSelectNode with its id", () => {
 
 test("the edge's insert button is present and triggers onInsertOnEdge with the edge id and a chosen op", () => {
   const onInsertOnEdge = vi.fn();
+  const catalog: PipelineOpsCatalog = {
+    "transform.filter": { kind: "transform", paramsSchema: { properties: {} } },
+  };
   render(
     <PipelineCanvas
       nodes={NODES}
@@ -122,7 +125,7 @@ test("the edge's insert button is present and triggers onInsertOnEdge with the e
       onNodesChange={vi.fn()}
       onEdgesChange={vi.fn()}
       onInsertOnEdge={onInsertOnEdge}
-      opsCatalog={{}}
+      opsCatalog={catalog}
     />,
   );
   const insertButton = screen.getByRole("button", { name: "Insérer une étape sur cette arête" });
@@ -133,11 +136,20 @@ test("the edge's insert button is present and triggers onInsertOnEdge with the e
     "id",
     insertButton.getAttribute("aria-controls"),
   );
-  fireEvent.click(screen.getByRole("menuitem", { name: "Filtrer" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "transform.filter" }));
   expect(onInsertOnEdge).toHaveBeenCalledWith("e1", "transform.filter");
 });
 
 test("the edge insertion menu offers the 5 spatial transform ops", () => {
+  const catalog: PipelineOpsCatalog = Object.fromEntries(
+    [
+      "transform.buffer",
+      "transform.reproject",
+      "transform.intersection",
+      "transform.countWithin",
+      "transform.h3Aggregate",
+    ].map((op) => [op, { kind: "transform", paramsSchema: { properties: {} } }]),
+  );
   render(
     <PipelineCanvas
       nodes={NODES}
@@ -147,12 +159,18 @@ test("the edge insertion menu offers the 5 spatial transform ops", () => {
       onNodesChange={vi.fn()}
       onEdgesChange={vi.fn()}
       onInsertOnEdge={vi.fn()}
-      opsCatalog={{}}
+      opsCatalog={catalog}
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Insérer une étape sur cette arête" }));
-  for (const label of ["Buffer", "Reprojeter", "Intersection", "Compter dans", "Agréger H3"]) {
-    expect(screen.getByRole("menuitem", { name: label })).toBeInTheDocument();
+  for (const op of [
+    "transform.buffer",
+    "transform.reproject",
+    "transform.intersection",
+    "transform.countWithin",
+    "transform.h3Aggregate",
+  ]) {
+    expect(screen.getByRole("menuitem", { name: op })).toBeInTheDocument();
   }
 });
 
@@ -205,6 +223,9 @@ test("a node whose op does not accept a secondary input renders only one target 
 });
 
 test("the edge insertion menu offers Fusionner (transform.merge)", () => {
+  const catalog: PipelineOpsCatalog = {
+    "transform.merge": { kind: "transform", paramsSchema: { properties: {} } },
+  };
   render(
     <PipelineCanvas
       nodes={NODES}
@@ -214,11 +235,11 @@ test("the edge insertion menu offers Fusionner (transform.merge)", () => {
       onNodesChange={vi.fn()}
       onEdgesChange={vi.fn()}
       onInsertOnEdge={vi.fn()}
-      opsCatalog={{}}
+      opsCatalog={catalog}
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Insérer une étape sur cette arête" }));
-  expect(screen.getByRole("menuitem", { name: "Fusionner" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "transform.merge" })).toBeInTheDocument();
 });
 
 test("a node present in nodeStats shows its row count as a badge", () => {
@@ -307,4 +328,31 @@ test("a node with no validation errors shows no error badge", () => {
     />,
   );
   expect(screen.queryByText("!")).not.toBeInTheDocument();
+});
+
+test("the edge insertion menu is derived from opsCatalog, including an op not in the old hardcoded list", () => {
+  const catalog: PipelineOpsCatalog = {
+    "reader.collection": { kind: "reader", paramsSchema: { properties: {} } },
+    "writer.collection": { kind: "writer", paramsSchema: { properties: {} } },
+    "transform.swapCoordinates": {
+      kind: "transform",
+      paramsSchema: { properties: {}, description: "Permuter lat/lng" },
+    },
+  };
+  render(
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={catalog}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Insérer une étape sur cette arête" }));
+  expect(screen.getByRole("menuitem", { name: "transform.swapCoordinates" })).toBeInTheDocument();
+  // readers/writers never appear in this menu — only transform.* ops.
+  expect(screen.queryByRole("menuitem", { name: "reader.collection" })).not.toBeInTheDocument();
 });

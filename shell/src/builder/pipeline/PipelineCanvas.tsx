@@ -28,25 +28,6 @@ import { genEdgeId, hasIncomingEdge, topologicalOrder, wouldCreateCycle } from "
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 import { t } from "../../i18n";
 
-// Les 6 op transform.* insérables sur une arête (cf. plan Task 6 — clic sur
-// le "+" d'une arête, pas de drag-drop précis sur le tracé SVG). SP-15c
-// ajoute les 5 op spatiales étage 1 ; SP-15g ajoute transform.merge (fusion
-// ligne à ligne). writer.dataset n'y figure jamais (ce n'est pas une op
-// transform, jamais candidate à cette liste, cf. design §5).
-const INSERTABLE_TRANSFORMS: { op: string; label: string }[] = [
-  { op: "transform.filter", label: t("pipelineCanvas.transformFilter") },
-  { op: "transform.select", label: t("pipelineCanvas.transformSelect") },
-  { op: "transform.derive", label: t("pipelineCanvas.transformDerive") },
-  { op: "transform.aggregate", label: t("pipelineCanvas.transformAggregate") },
-  { op: "transform.join", label: t("pipelineCanvas.transformJoin") },
-  { op: "transform.merge", label: t("pipelineCanvas.transformMerge") },
-  { op: "transform.buffer", label: t("pipelineCanvas.transformBuffer") },
-  { op: "transform.reproject", label: t("pipelineCanvas.transformReproject") },
-  { op: "transform.intersection", label: t("pipelineCanvas.transformIntersection") },
-  { op: "transform.countWithin", label: t("pipelineCanvas.transformCountWithin") },
-  { op: "transform.h3Aggregate", label: t("pipelineCanvas.transformH3Aggregate") },
-];
-
 const KIND_COLOR: Record<PipelineNode["kind"], string> = {
   reader: "border-emerald-500 bg-emerald-50",
   transform: "border-amber-500 bg-amber-50",
@@ -118,11 +99,16 @@ function InsertOnEdgeButton({
   targetY,
   data,
   onInsert,
-}: EdgeProps & { onInsert: (edgeId: string, op: string) => void }) {
+  opsCatalog,
+}: EdgeProps & { onInsert: (edgeId: string, op: string) => void; opsCatalog: PipelineOpsCatalog }) {
   const [open, setOpen] = useState(false);
   const insertMenu = usePanelTrigger(open);
   const [edgePath, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY });
   const role = (data as { role?: string } | undefined)?.role;
+  const insertableTransforms = Object.entries(opsCatalog)
+    .filter(([, entry]) => entry.kind === "transform")
+    .map(([op]) => op)
+    .sort();
   return (
     <>
       <path
@@ -158,18 +144,18 @@ function InsertOnEdgeButton({
               role="menu"
               className="absolute z-10 mt-1 rounded border border-rule bg-surface text-xs shadow"
             >
-              {INSERTABLE_TRANSFORMS.map((transform) => (
-                <li key={transform.op}>
+              {insertableTransforms.map((op) => (
+                <li key={op}>
                   <button
                     type="button"
                     role="menuitem"
                     className="block w-full whitespace-nowrap px-2 py-1 text-left hover:bg-sunken"
                     onClick={() => {
-                      onInsert(id, transform.op);
+                      onInsert(id, op);
                       setOpen(false);
                     }}
                   >
-                    {transform.label}
+                    {op}
                   </button>
                 </li>
               ))}
@@ -237,7 +223,9 @@ function PipelineCanvasInner({
 }) {
   const nodeTypes = { pipelineNode: PipelineNodeBox };
   const edgeTypes = {
-    insertable: (props: EdgeProps) => <InsertOnEdgeButton {...props} onInsert={onInsertOnEdge} />,
+    insertable: (props: EdgeProps) => (
+      <InsertOnEdgeButton {...props} onInsert={onInsertOnEdge} opsCatalog={opsCatalog} />
+    ),
   };
 
   const onConnect: OnConnect = useCallback(

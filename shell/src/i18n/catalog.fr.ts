@@ -1044,17 +1044,6 @@ export const fr = {
   "copilot.send": "Envoyer",
 
   // PipelineCanvas (builder/pipeline)
-  "pipelineCanvas.transformFilter": "Filtrer",
-  "pipelineCanvas.transformSelect": "Sélectionner",
-  "pipelineCanvas.transformDerive": "Dériver",
-  "pipelineCanvas.transformAggregate": "Agréger",
-  "pipelineCanvas.transformJoin": "Joindre",
-  "pipelineCanvas.transformMerge": "Fusionner",
-  "pipelineCanvas.transformBuffer": "Buffer",
-  "pipelineCanvas.transformReproject": "Reprojeter",
-  "pipelineCanvas.transformIntersection": "Intersection",
-  "pipelineCanvas.transformCountWithin": "Compter dans",
-  "pipelineCanvas.transformH3Aggregate": "Agréger H3",
   "pipelineCanvas.runningAria": "Exécution en cours",
   "pipelineCanvas.insertStepAria": "Insérer une étape sur cette arête",
   "pipelineCanvas.nodeErrorAria": "{count} erreur(s) sur ce nœud",
