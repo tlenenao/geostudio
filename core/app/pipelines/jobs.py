@@ -9,6 +9,7 @@ raison de import_paths)."""
 import logging
 import os
 from collections.abc import Callable
+from typing import Protocol
 
 from app.auth.dependency import is_etl_enabled, is_read_only_mode
 from app.configs import repository as configs_repo
@@ -136,6 +137,40 @@ def _make_progress_callback(
             )
 
     return _on_node_complete
+
+
+class RunTracker(Protocol):
+    """Seam introduit pour découpler run_pipeline_task de
+    app.pipelines.repository (Postgres) — un futur sidecar desktop (design
+    2026-09-17 §4, suivi de run en mémoire, sans Postgres) fournira sa
+    propre implémentation sans dupliquer app.pipelines.runtime.run_pipeline."""
+
+    def mark_running(self) -> None: ...
+    def mark_succeeded(self, node_stats: dict) -> None: ...
+    def mark_failed(self, error: str) -> None: ...
+
+
+class PostgresRunTracker:
+    """Implémentation par défaut, utilisée par le worker procrastinate —
+    une transaction courte par transition de statut, comme l'ancien code
+    inline (jamais une transaction partagée pour tout le run)."""
+
+    def __init__(self, session_factory, *, run_id: str, tenant_id: str) -> None:
+        self._session_factory = session_factory
+        self._run_id = run_id
+        self._tenant_id = tenant_id
+
+    def mark_running(self) -> None:
+        with request_scoped_session(self._session_factory) as session:
+            pipelines_repo.mark_running(session, run_id=self._run_id)
+
+    def mark_succeeded(self, node_stats: dict) -> None:
+        with request_scoped_session(self._session_factory) as session:
+            pipelines_repo.mark_succeeded(session, run_id=self._run_id, node_stats=node_stats)
+
+    def mark_failed(self, error: str) -> None:
+        with request_scoped_session(self._session_factory) as session:
+            pipelines_repo.mark_failed(session, run_id=self._run_id, error=error)
 
 
 @app.task(queue="etl")
