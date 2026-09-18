@@ -36,8 +36,8 @@ tout premier appel de l'une de ces deux fonctions (donc après que
 app.pipelines.runtime a fini de charger, quel que soit ce qui a déclenché
 ce premier import), app.pipelines.runtime est déjà entièrement défini :
 _read_collection, _read_connector_rest, _read_connector_postgres,
-_read_connector_snowflake, _read_file, _write_collection, _write_export et
-_write_dataset existent tous en tant
+_read_connector_snowflake, _read_file, _write_collection, _write_export,
+_write_dataset et _write_file existent tous en tant
 qu'attributs du module au moment où ce fichier-ci y accède ci-dessous."""
 
 from collections.abc import Callable
@@ -66,4 +66,5 @@ WRITERS: dict[str, Callable] = {
     # ce registre référence la même fonction, il n'introduit aucun second
     # chemin d'appel.
     "writer.dataset": _runtime._write_dataset,
+    "writer.file": _runtime._write_file,
 }

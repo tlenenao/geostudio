@@ -7,9 +7,11 @@ import pytest
 
 from app.analytics.duckdb_conn import open_connection
 from app.auth.dependency import is_pipeline_file_io_enabled
+from app.configs.schemas import PipelineNode
 from app.pipelines import registries, runtime
 from app.pipelines.errors import PipelineRuntimeError
 from app.pipelines.ops.contracts import OPERATIONS, ops_catalog
+from app.pipelines.runtime import NodeStat
 
 
 def test_is_pipeline_file_io_enabled_defaults_to_false(monkeypatch):
@@ -156,3 +158,57 @@ def test_read_file_srid_param_overrides_detection(tmp_path, monkeypatch):
 
 def test_readers_registry_has_reader_file():
     assert registries.READERS["reader.file"] is runtime._read_file
+
+
+def _materialized_view(conn, *, view_name="node_r1"):
+    conn.execute("INSTALL spatial; LOAD spatial;")
+    conn.execute(
+        f"CREATE TEMP TABLE {view_name} AS "
+        "SELECT 'a' AS label, ST_Point(1, 2) AS geometry "
+        "UNION ALL SELECT 'b', ST_Point(3, 4)"
+    )
+    return view_name
+
+
+def test_write_file_raises_when_disabled(tmp_path, monkeypatch):
+    monkeypatch.delenv("CORE_PIPELINE_FILE_IO_ENABLED", raising=False)
+    conn = _connection()
+    view_name = _materialized_view(conn)
+    node = PipelineNode(
+        id="w1", kind="writer", op="writer.file", params={"path": str(tmp_path / "out.gpkg")}
+    )
+    with pytest.raises(PipelineRuntimeError, match="CORE_PIPELINE_FILE_IO_ENABLED"):
+        runtime._write_file(conn, node=node, view_by_node={"w1": view_name}, srid=4326)
+
+
+def test_write_file_writes_readable_gpkg(tmp_path, monkeypatch):
+    monkeypatch.setenv("CORE_PIPELINE_FILE_IO_ENABLED", "true")
+    conn = _connection()
+    view_name = _materialized_view(conn)
+    out_path = tmp_path / "out.gpkg"
+    node = PipelineNode(id="w1", kind="writer", op="writer.file", params={"path": str(out_path)})
+    stat = runtime._write_file(conn, node=node, view_by_node={"w1": view_name}, srid=4326)
+    assert isinstance(stat, NodeStat)
+    assert stat.rowCount == 2
+    check_conn = _connection()
+    rows = check_conn.execute(f"SELECT label FROM ST_Read('{out_path}') ORDER BY label").fetchall()
+    assert rows == [("a",), ("b",)]
+
+
+def test_write_file_excludes_reserved_fid_columns(tmp_path, monkeypatch):
+    monkeypatch.setenv("CORE_PIPELINE_FILE_IO_ENABLED", "true")
+    conn = _connection()
+    view_name = "node_r1"
+    conn.execute(
+        f"CREATE TEMP TABLE {view_name} AS "
+        "SELECT 1 AS \"OGC_FID\", 'a' AS label, ST_Point(1, 2) AS geometry"
+    )
+    out_path = tmp_path / "out.gpkg"
+    node = PipelineNode(id="w1", kind="writer", op="writer.file", params={"path": str(out_path)})
+    stat = runtime._write_file(conn, node=node, view_by_node={"w1": view_name}, srid=4326)
+    assert stat.rowCount == 1
+    assert out_path.exists()
+
+
+def test_writers_registry_has_writer_file():
+    assert registries.WRITERS["writer.file"] is runtime._write_file

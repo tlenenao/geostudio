@@ -70,6 +70,7 @@ from app.pipelines.ops.schemas import (
     WriterCollectionParams,
     WriterDatasetParams,
     WriterExportParams,
+    WriterFileParams,
 )
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
@@ -1016,6 +1017,33 @@ def _write_export(
     return NodeStat(node.id, node.op, len(rows))
 
 
+def _write_file(conn, *, node: PipelineNode, view_by_node: dict, srid: int) -> NodeStat:
+    """writer.file (registre WRITERS, design desktop-etl §3) — écrit via
+    COPY ... FORMAT GDAL DRIVER ... (même mécanisme que le in_path de
+    _execute_qgis_transform), pas la sérialisation manuelle de
+    _write_export. Signature sans session/tenant_id/user (même traitement
+    que writer.export, cf. registries.py) : accès disque local, jamais de
+    collection."""
+    if not is_pipeline_file_io_enabled():
+        raise PipelineRuntimeError("writer.file requires CORE_PIPELINE_FILE_IO_ENABLED=true")
+    p = WriterFileParams.model_validate(node.params)
+    input_view = view_by_node[node.id]
+    cols = [d[0] for d in conn.execute(f"SELECT * FROM {_qi(input_view)} LIMIT 0").description]
+    # "fid"/"OGC_FID" sont les noms synthétiques que GDAL réserve à son
+    # propre champ d'identifiant de ligne — un writer.file en aval d'un
+    # reader.file qui les a laissés passer fait échouer COPY ... DRIVER
+    # 'GPKG' ("Cannot find OGR field for Arrow array OGC_FID"), vérifié
+    # empiriquement avant d'écrire ce plan.
+    keep = [c for c in cols if c.lower() not in ("fid", "ogc_fid")]
+    select_list = ", ".join(_qi(c) for c in keep)
+    conn.execute(
+        f"COPY (SELECT {select_list} FROM {_qi(input_view)}) TO {_ql(p.path)} "
+        f"WITH (FORMAT GDAL, DRIVER {_ql(p.driver)}, SRS {_ql(f'EPSG:{srid}')})"
+    )
+    row_count = conn.execute(f"SELECT count(*) FROM {_qi(input_view)}").fetchone()[0]
+    return NodeStat(node.id, node.op, row_count)
+
+
 def run_pipeline(
     session: Session,
     *,
@@ -1079,6 +1107,10 @@ def run_pipeline(
                 assert s3_client is not None and exports_bucket is not None
                 stat = writer_fn(
                     conn, s3_client, exports_bucket, node=node, view_by_node=view_by_node
+                )
+            elif node.op == "writer.file":
+                stat = writer_fn(
+                    conn, node=node, view_by_node=view_by_node, srid=srid_by_node[pred_id]
                 )
             else:
                 stat = writer_fn(
