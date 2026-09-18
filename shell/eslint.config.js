@@ -24,6 +24,7 @@ export default tseslint.config(
     ignores: [
       "dist",
       "dist-export",
+      "dist-desktop",
       "coverage",
       "src/api/generated",
       "test-results",
