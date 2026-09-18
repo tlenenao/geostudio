@@ -222,41 +222,39 @@ correctifs factuels et trois bonnes nouvelles côté backend :
 
 ## Périmètre retenu pour le premier plan (2026-09-18)
 
-`docs/superpowers/plans/2026-09-18-pipeline-builder-ux-improvements.md`
-ne couvre **pas** l'intégralité de ce backlog : à ~34 items indépendants,
-tout faire en un seul plan de taille SP habituelle n'est pas réaliste
-(comparer SP-27, 20 tâches, déjà qualifié de gros chantier). Coupe décidée
-par impact/effort, sans nouvelle confirmation — à corriger si le premier
-plan livré ne correspond pas à ce qui était attendu.
+**Correction (même jour) :** une première version de cette section
+proposait une coupe à ~16 tâches, décidée avant que le plan complet ne
+soit livré et sans revalidation avec Tanguy. Le plan effectivement écrit
+et commité — `docs/superpowers/plans/2026-09-18-pipeline-builder-ux-improvements.md`
+(`a206c529`), 22 tâches TDD — a repris le périmètre initialement validé
+("bugs + tout le non-structurel des §1-7") et l'a mené à bien avec du code
+réel, en ne reportant qu'un seul item au-delà des ⚙️ déjà actés. La coupe
+à 16 tâches ci-dessous n'a donc **jamais été appliquée** ; cette section
+est corrigée pour refléter le plan réel plutôt que l'inverse (piège n°12
+du dépôt).
 
-**Dans le premier plan (~16 tâches)** :
-- §0 : les 3 bugs, intégralement.
-- §1 : badge d'erreur visible sur le nœud (extension du bug graphErrors),
-  indicateur de fraîcheur d'aperçu par nœud (extension du bug aperçu
-  périmé), liste de transforms insérables dérivée du catalogue au lieu de
-  la liste codée en dur, bouton de suppression visible sur le nœud.
-- §2 : recherche/filtre texte, libellés humains + description visible.
-- §3 : validation inline par champ.
-- §4 : panneau "feature" (clic sur une géométrie → attributs).
-- §5 : pagination/virtualisation, formatage par type.
-- §6 : détail par nœud pour chaque run historique (déjà en base, cf.
-  ci-dessus), durée calculée + dates formatées, prochaine exécution cron
-  affichée en clair.
+**Dans le plan (22 tâches, `a206c529`)** : §0 intégralement (Tasks 1-3) ;
+§1 canvas sauf sous-pipelines réutilisables — badge d'erreur par nœud,
+indicateur de fraîcheur d'aperçu, liste de transforms dérivée du
+catalogue, mini-map, undo/redo, bouton de suppression, recherche/ajout au
+clavier, connexion d'arêtes au clavier, zones annotées persistées (Tasks
+1, 4-10) ; §2 palette — recherche, icônes, description visible, favoris
+(Tasks 8, 11-12) ; §3 inspecteur sauf éditeur CEL — regroupement
+requis/optionnel, erreurs inline par champ (Tasks 13-14) ; §4 preview
+carte — couleur par type de géométrie + légende, sélection liée
+carte↔tableau + panneau d'attributs de feature (Tasks 15-16) ; §5 preview
+tableau — pagination, formatage par type, tri de colonnes (Tasks 17-19) ;
+§6 exécution/planification sauf suivi SSE — détail par nœud par run
+historique, durée calculée, prochaine exécution cron affichée en clair
+(Tasks 20-22).
 
-**Reporté en backlog (hors premier plan)** :
-- §1 : câblage `useUndoableDraft`, ajout de nœud au clavier (`/`),
-  mini-map, bookmarks/zones nommées, connexion d'arêtes au clavier,
-  ⚙️ sous-pipelines réutilisables.
-- §2 : icônes par catégorie/sous-catégorie, favoris/récemment utilisés.
-- §3 : regroupement des champs par section (`x-group`), aide contextuelle
-  enrichie (liens doc, exemples), ⚙️ éditeur CEL dédié.
-- §4 : symbologie minimale par type de géométrie, sélection liée
-  carte↔tableau, légende.
-- §5 : tri/filtre client léger, compteur "N lignes affichées / total".
-- §6 : "Exécuter jusqu'à ce nœud" comme fonctionnalité complète de run
-  partiel persisté (infra `stop_at` déjà prête côté preview, cf.
-  ci-dessus — reste un morceau cohérent en soi), ⚙️ suivi live SSE.
-- §7 : tout le lot accessibilité/responsive (navigation clavier du
-  canvas, comportement sous 900px, couverture par l'audit axe-core
-  SP-57a) — cohérent de le traiter en bloc une fois les items clavier du
-  §1 eux-mêmes adressés, donc reporté avec eux plutôt que découpé.
+**Reporté (hors ce plan)** : les 3 items ⚙️ (sous-pipelines réutilisables,
+éditeur CEL dédié, suivi live SSE), plus **"Exécuter jusqu'à ce nœud"**
+comme fonctionnalité complète de run partiel persisté — découvert en
+cours de plan comme touchant `app/pipelines/jobs.py` (le worker), pas
+seulement la route ; l'infra `stop_at` reste prête côté preview
+(`_execute_transform_chain`, cf. plus haut) pour qui reprend ce chantier.
+§7 a11y/responsive n'a **pas besoin** d'item séparé : le plan a trouvé que
+`shell/e2e/a11y-audit.spec.ts` (SP-57a) et
+`shell/e2e/triptych-narrow.spec.ts` couvrent déjà cette page — seule la
+vraie navigation clavier manquante est ajoutée (Tasks 8-9).
