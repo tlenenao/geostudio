@@ -11,6 +11,8 @@ import os
 from collections.abc import Callable
 from typing import Protocol
 
+from sqlalchemy.orm import Session, sessionmaker
+
 from app.auth.dependency import is_etl_enabled, is_read_only_mode
 from app.configs import repository as configs_repo
 from app.configs.schemas import PipelinePayload
@@ -153,11 +155,22 @@ class RunTracker(Protocol):
 class PostgresRunTracker:
     """Implémentation par défaut, utilisée par le worker procrastinate —
     une transaction courte par transition de statut, comme l'ancien code
-    inline (jamais une transaction partagée pour tout le run)."""
+    inline (jamais une transaction partagée pour tout le run), sauf
+    `mark_running` : celle-ci partageait auparavant la transaction de
+    `get_run` (deux commits au lieu d'un après ce refactor, même état
+    final en base, comportement observable inchangé)."""
 
-    def __init__(self, session_factory, *, run_id: str, tenant_id: str) -> None:
+    def __init__(
+        self, session_factory: sessionmaker[Session], *, run_id: str, tenant_id: str
+    ) -> None:
         self._session_factory = session_factory
         self._run_id = run_id
+        # Non utilisé par les 3 méthodes ci-dessous (pipelines_repo.mark_*
+        # filtre seulement par run_id, déjà le cas avant ce chantier, aucune
+        # régression) : conservé comme contrat pressenti pour une future
+        # implémentation en mémoire côté sidecar desktop, qui en aura
+        # probablement besoin pour scoper son état — pas un filtre de
+        # sécurité actif ici.
         self._tenant_id = tenant_id
 
     def mark_running(self) -> None:
@@ -176,10 +189,10 @@ class PostgresRunTracker:
 @app.task(queue="etl")
 def run_pipeline_task(run_id: str, tenant_id: str) -> None:
     factory = _session_factory()
-    tracker = PostgresRunTracker(factory, run_id=run_id, tenant_id=tenant_id)
-    # Toujours lié avant le premier bloc protégé : si get_run lève avant
-    # l'affectation réelle (ci-dessous), les handlers `except` doivent
-    # pouvoir le lire sans UnboundLocalError (même piège que
+    tracker: RunTracker = PostgresRunTracker(factory, run_id=run_id, tenant_id=tenant_id)
+    # Toujours lié avant le premier bloc protégé : si get_run/mark_running
+    # lève avant l'affectation réelle (ci-dessous), les handlers `except`
+    # doivent pouvoir le lire sans UnboundLocalError (même piège que
     # app.ingestion.tasks._notify, trouvé en revue de la Tâche 4, SP-39) —
     # None encode "item inconnu", donc pas de notification best-effort
     # possible dans ce cas (le statut du run est déjà marqué "failed" par
@@ -194,15 +207,14 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                 logger.error("pipeline run %s introuvable (tenant %s)", run_id, tenant_id)
                 return
             pipeline_item_id = run.pipeline_item_id
-        # Écart assumé par rapport au brief verbatim (Step 1) : `item_id` n'est
-        # affecté qu'APRÈS tracker.mark_running(), pas avant — comme dans le
-        # code original où pipelines_repo.mark_running(...) précédait
-        # `item_id = run.pipeline_item_id` dans le même bloc `with`. Affecter
-        # `item_id` avant l'appel (comme l'écrivait le brief) change un
-        # comportement observable : si mark_running() lève, `item_id` resterait
-        # lié et les handlers `except` écriraient une notification que le code
-        # original n'écrivait jamais dans ce cas — régression trouvée en
-        # exécutant test_early_failure_before_item_id_bound_does_not_crash
+        # `item_id` n'est affecté qu'APRÈS tracker.mark_running(), pas avant —
+        # comme dans le code original où pipelines_repo.mark_running(...)
+        # précédait `item_id = run.pipeline_item_id` dans le même bloc `with`.
+        # Affecter `item_id` avant l'appel changerait un comportement
+        # observable : si mark_running() lève, `item_id` resterait lié et les
+        # handlers `except` écriraient une notification que le code original
+        # n'écrivait jamais dans ce cas — régression couverte par
+        # test_early_failure_before_item_id_bound_does_not_crash
         # (tests/test_pipeline_jobs.py), qui vérifie précisément l'absence de
         # cette notification.
         tracker.mark_running()

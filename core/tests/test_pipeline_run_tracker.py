@@ -75,3 +75,16 @@ def test_postgres_run_tracker_mark_failed_stores_error():
         run = pipelines_repo.get_run(session, tenant_id=tenant_id, run_id=run_id)
         assert run.status == "failed"
         assert run.error == "boom"
+
+
+def test_postgres_run_tracker_mark_running_on_unknown_run_is_a_noop():
+    # pipelines_repo.mark_running/mark_succeeded/mark_failed font un
+    # session.get(...) et ne font rien silencieusement si le run est
+    # introuvable (pas d'exception) — ancre ce contrat pour les 3 méthodes
+    # de PostgresRunTracker, pas seulement pour un run existant.
+    factory = _session_factory()
+    tracker = pipeline_jobs.PostgresRunTracker(factory, run_id="does-not-exist", tenant_id="t1")
+
+    tracker.mark_running()  # ne doit lever aucune exception
+    tracker.mark_succeeded({})  # ne doit lever aucune exception
+    tracker.mark_failed("boom")  # ne doit lever aucune exception
