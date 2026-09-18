@@ -26,11 +26,35 @@ function EditPipelineRoute() {
   return <PipelineBuilderPage pk={pk!} />;
 }
 
+// La poignée `.setup()` de main.rs (Rust) peuple SidecarState de façon
+// asynchrone après le spawn du sidecar — le premier invoke() de la webview
+// arrive presque toujours avant, et rejette avec la chaîne brute
+// "sidecar not ready yet" (Result<T, String> Tauri : rejet en chaîne, pas
+// en Error). Course confirmée réelle sur la VM Windows (Tâche 6) : sans
+// retry, écran "Erreur de démarrage : undefined" ((err as Error).message
+// sur une chaîne vaut undefined) à chaque lancement.
+async function getSidecarConnectionWithRetry(
+  timeoutMs = 10_000,
+  intervalMs = 150,
+): Promise<{ baseUrl: string; token: string }> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown;
+  while (Date.now() < deadline) {
+    try {
+      return await invoke<{ baseUrl: string; token: string }>("get_sidecar_connection");
+    } catch (err) {
+      lastError = err;
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 async function bootstrap() {
   const root = document.getElementById("root");
   if (!root) throw new Error("desktop entry: #root introuvable");
 
-  const connection = await invoke<{ baseUrl: string; token: string }>("get_sidecar_connection");
+  const connection = await getSidecarConnectionWithRetry();
   const client = createDesktopItemClient(connection);
 
   createRoot(root).render(
@@ -51,5 +75,6 @@ async function bootstrap() {
 
 bootstrap().catch((err) => {
   const root = document.getElementById("root");
-  if (root) root.textContent = `Erreur de démarrage : ${(err as Error).message}`;
+  const message = err instanceof Error ? err.message : String(err);
+  if (root) root.textContent = `Erreur de démarrage : ${message}`;
 });
