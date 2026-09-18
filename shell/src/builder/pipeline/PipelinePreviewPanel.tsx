@@ -3,6 +3,7 @@ import { useState } from "react";
 import { usePipelinePreview } from "../../api/hooks";
 import type { PipelinePayload } from "../../api/types";
 import { t } from "../../i18n";
+import { Badge } from "../../ui/kit/Badge";
 import { PipelinePreviewMap } from "./PipelinePreviewMap";
 
 export function PipelinePreviewPanel({
@@ -35,12 +36,9 @@ export function PipelinePreviewPanel({
   return (
     <div className="flex flex-col gap-2">
       {isDraftStale && (
-        <p
-          role="status"
-          className="w-fit rounded-full bg-warn-soft px-2 py-0.5 text-[10px] text-warn"
-        >
-          {t("pipelinePreview.stale")}
-        </p>
+        <div role="status">
+          <Badge variant="warn">{t("pipelinePreview.stale")}</Badge>
+        </div>
       )}
       {hasGeometry && (
         <div className="flex gap-1 text-xs">
