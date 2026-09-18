@@ -55,3 +55,19 @@ test("does not call fitBounds when there are no geometries to show", () => {
   render(<PipelinePreviewMap rows={[{ id: 1, geometry: null }]} />);
   expect(mapInstances[0].fitBoundsArgs).toHaveLength(0);
 });
+
+test("rebuilds the map when the rows prop changes (different selected node)", () => {
+  const { rerender } = render(
+    <PipelinePreviewMap rows={[{ id: 1, geometry: { type: "Point", coordinates: [1.0, 1.0] } }]} />,
+  );
+  expect(mapInstances).toHaveLength(1);
+  rerender(
+    <PipelinePreviewMap rows={[{ id: 2, geometry: { type: "Point", coordinates: [9.0, 9.0] } }]} />,
+  );
+  expect(mapInstances).toHaveLength(2); // a fresh map, not the stale one
+  const latestMap = mapInstances[1];
+  const source = latestMap.getSource("pipeline-preview") as {
+    spec: { data: GeoJSON.FeatureCollection };
+  };
+  expect(source.spec.data.features[0].geometry).toEqual({ type: "Point", coordinates: [9.0, 9.0] });
+});

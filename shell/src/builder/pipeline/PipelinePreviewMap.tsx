@@ -95,8 +95,7 @@ export function PipelinePreviewMap({ rows }: { rows: Record<string, unknown>[] }
       if (bounds) map.fitBounds(bounds, { padding: 20, maxZoom: 16 });
     });
     return () => map.remove();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [rows]);
 
   return <div ref={containerRef} data-testid="pipeline-preview-map" style={{ height: 300 }} />;
 }
