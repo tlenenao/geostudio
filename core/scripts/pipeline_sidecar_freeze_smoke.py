@@ -4,7 +4,9 @@ donné en argv[1]) à travers un cycle réel reader.file -> writer.file, sur
 HTTP loopback, pour prouver que le freeze n'a rien perdu. Utilisé en CI
 (Tâche 2) et à la main sur la VM Windows de développement."""
 
+import os
 import re
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -19,6 +21,12 @@ def main() -> int:
         print("usage: pipeline_sidecar_freeze_smoke.py <path-to-frozen-binary>", file=sys.stderr)
         return 2
     binary_path = sys.argv[1]
+    # Jeton requis : sans lui, ce smoke test ne valide le binaire gelé que
+    # dans la configuration token=None, qui n'est jamais celle de
+    # production (Tauri passe toujours GEOSTUDIO_SIDECAR_TOKEN, cf. Tâche 3)
+    # — trouvé en revue finale de branche (Tâche 8).
+    token = secrets.token_hex(16)
+    auth_headers = {"Authorization": f"Bearer {token}"}
 
     with tempfile.TemporaryDirectory(prefix="geostudio-freeze-smoke-") as tmp:
         in_path = Path(tmp) / "in.geojson"
@@ -34,6 +42,7 @@ def main() -> int:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env={**os.environ, "GEOSTUDIO_SIDECAR_TOKEN": token},
         )
         try:
             first_line = proc.stdout.readline()
@@ -48,7 +57,7 @@ def main() -> int:
             deadline = time.monotonic() + 10.0
             while time.monotonic() < deadline:
                 try:
-                    httpx.get(f"{base}/pipelines/ops", timeout=1.0)
+                    httpx.get(f"{base}/pipelines/ops", headers=auth_headers, timeout=1.0)
                     break
                 except httpx.TransportError:
                     time.sleep(0.2)
@@ -73,12 +82,14 @@ def main() -> int:
                 ],
                 "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
             }
-            put_res = httpx.put(f"{base}/pipelines/smoke", json=payload, timeout=5.0)
+            put_res = httpx.put(
+                f"{base}/pipelines/smoke", json=payload, headers=auth_headers, timeout=5.0
+            )
             if put_res.status_code != 204:
                 print(f"FAIL: PUT returned {put_res.status_code}: {put_res.text}", file=sys.stderr)
                 return 1
 
-            run_res = httpx.post(f"{base}/pipelines/smoke/run", timeout=5.0)
+            run_res = httpx.post(f"{base}/pipelines/smoke/run", headers=auth_headers, timeout=5.0)
             if run_res.status_code != 202:
                 print(f"FAIL: run returned {run_res.status_code}: {run_res.text}", file=sys.stderr)
                 return 1
@@ -86,7 +97,9 @@ def main() -> int:
             deadline = time.monotonic() + 15.0
             status = None
             while time.monotonic() < deadline:
-                runs = httpx.get(f"{base}/pipelines/smoke/runs", timeout=2.0).json()
+                runs = httpx.get(
+                    f"{base}/pipelines/smoke/runs", headers=auth_headers, timeout=2.0
+                ).json()
                 status = runs[0]["status"] if runs else None
                 if status in ("succeeded", "failed"):
                     break
