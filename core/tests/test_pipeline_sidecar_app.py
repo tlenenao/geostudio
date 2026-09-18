@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import asyncio
 import time
 
 import pytest
@@ -232,3 +233,37 @@ def test_authed_app_allows_missing_host_header(authed_client):
         extensions={},
     )
     assert res.status_code == 200
+
+
+def test_authed_app_rejects_non_ascii_authorization_header_without_crashing(tmp_path):
+    # Regression test: non-ASCII in Authorization header must return 401, not 500.
+    # TestClient/httpx can't send raw non-ASCII headers (client-side validation),
+    # so drive the ASGI app directly with a raw scope.
+    app = create_sidecar_app(base_uri=str(tmp_path), token="s3cr3t")
+
+    async def run():
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/pipelines/ops",
+            "headers": [(b"authorization", b"Bearer \xe9")],
+            "query_string": b"",
+            "server": ("127.0.0.1", 80),
+            "client": ("127.0.0.1", 12345),
+            "scheme": "http",
+            "root_path": "",
+        }
+        status_holder = {}
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message):
+            if message["type"] == "http.response.start":
+                status_holder["status"] = message["status"]
+
+        await app(scope, receive, send)
+        return status_holder.get("status")
+
+    status = asyncio.run(run())
+    assert status == 401

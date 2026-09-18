@@ -59,9 +59,18 @@ def create_sidecar_app(*, base_uri: str, token: str | None = None) -> FastAPI:
             if host_header is not None and host_header.split(":")[0] != "127.0.0.1":
                 return Response(status_code=400, content="invalid Host header")
             authorization = request.headers.get("authorization")
-            if authorization is None or not hmac.compare_digest(
-                authorization, expected_authorization
-            ):
+            if authorization is None:
+                return Response(status_code=401, content="missing or invalid bearer token")
+            # Encode both sides to bytes to avoid TypeError on non-ASCII characters
+            # (Starlette decodes HTTP headers as latin-1, so any byte sequence is
+            # valid as a str; hmac.compare_digest rejects non-ASCII in str comparison).
+            try:
+                if not hmac.compare_digest(
+                    authorization.encode("utf-8"),
+                    expected_authorization.encode("utf-8"),
+                ):
+                    return Response(status_code=401, content="missing or invalid bearer token")
+            except UnicodeEncodeError:
                 return Response(status_code=401, content="missing or invalid bearer token")
             return await call_next(request)
 
