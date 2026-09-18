@@ -176,9 +176,10 @@ class PostgresRunTracker:
 @app.task(queue="etl")
 def run_pipeline_task(run_id: str, tenant_id: str) -> None:
     factory = _session_factory()
-    # Toujours lié avant le premier bloc protégé : si get_run/mark_running
-    # lève avant l'affectation réelle (ci-dessous), les handlers `except`
-    # doivent pouvoir le lire sans UnboundLocalError (même piège que
+    tracker = PostgresRunTracker(factory, run_id=run_id, tenant_id=tenant_id)
+    # Toujours lié avant le premier bloc protégé : si get_run lève avant
+    # l'affectation réelle (ci-dessous), les handlers `except` doivent
+    # pouvoir le lire sans UnboundLocalError (même piège que
     # app.ingestion.tasks._notify, trouvé en revue de la Tâche 4, SP-39) —
     # None encode "item inconnu", donc pas de notification best-effort
     # possible dans ce cas (le statut du run est déjà marqué "failed" par
@@ -192,8 +193,20 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             if run is None:
                 logger.error("pipeline run %s introuvable (tenant %s)", run_id, tenant_id)
                 return
-            pipelines_repo.mark_running(session, run_id=run_id)
-            item_id = run.pipeline_item_id
+            pipeline_item_id = run.pipeline_item_id
+        # Écart assumé par rapport au brief verbatim (Step 1) : `item_id` n'est
+        # affecté qu'APRÈS tracker.mark_running(), pas avant — comme dans le
+        # code original où pipelines_repo.mark_running(...) précédait
+        # `item_id = run.pipeline_item_id` dans le même bloc `with`. Affecter
+        # `item_id` avant l'appel (comme l'écrivait le brief) change un
+        # comportement observable : si mark_running() lève, `item_id` resterait
+        # lié et les handlers `except` écriraient une notification que le code
+        # original n'écrivait jamais dans ce cas — régression trouvée en
+        # exécutant test_early_failure_before_item_id_bound_does_not_crash
+        # (tests/test_pipeline_jobs.py), qui vérifie précisément l'absence de
+        # cette notification.
+        tracker.mark_running()
+        item_id = pipeline_item_id
 
         with request_scoped_session(factory) as session:
             payload = _get_pipeline_payload(session, item_id=item_id)
@@ -217,17 +230,11 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                     factory, run_id=run_id, tenant_id=tenant_id
                 ),
             )
-        with request_scoped_session(factory) as session:
-            pipelines_repo.mark_succeeded(
-                session,
-                run_id=run_id,
-                node_stats={s.nodeId: s.to_dict() for s in stats},
-            )
+        tracker.mark_succeeded({s.nodeId: s.to_dict() for s in stats})
         assert item_id is not None  # affecté ci-dessus, jamais atteint sinon (cf. return/raise)
         _notify(factory, tenant_id=tenant_id, item_id=item_id, status="success")
     except (PipelineRuntimeError, ValueError) as exc:
-        with request_scoped_session(factory) as session:
-            pipelines_repo.mark_failed(session, run_id=run_id, error=str(exc))
+        tracker.mark_failed(str(exc))
         if item_id is not None:
             _notify(
                 factory,
@@ -240,8 +247,7 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
             logger.info("pipeline run %s : notification ignorée (item inconnu)", run_id)
     except Exception as exc:  # toute erreur inattendue finit "failed", jamais zombie
         logger.exception("pipeline run %s : erreur inattendue", run_id)
-        with request_scoped_session(factory) as session:
-            pipelines_repo.mark_failed(session, run_id=run_id, error=f"erreur interne : {exc}")
+        tracker.mark_failed(f"erreur interne : {exc}")
         if item_id is not None:
             _notify(
                 factory,
