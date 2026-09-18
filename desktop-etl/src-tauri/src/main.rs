@@ -36,9 +36,19 @@ fn main() {
         .invoke_handler(tauri::generate_handler![get_sidecar_connection])
         .setup(|app| {
             let token = uuid::Uuid::new_v4().to_string();
+            // tauri-plugin-shell résout ce nom relativement au dossier de
+            // l'exécutable final (relative_command_path, process/mod.rs) —
+            // il faut donc le nom NU, sans le préfixe "binaries/" ni le
+            // suffixe de triplet-cible : c'est sous cette forme que Tauri
+            // copie le externalBin à côté du binaire final (bundle ou
+            // `cargo tauri build --debug --no-bundle`), jamais dans un
+            // sous-dossier binaries/. Vérifié en faisant échouer le spawn
+            // avec le chemin complet (Tâche 6, vérification Windows
+            // réelle) : Io(NotFound) — la ressource existe bien mais pas à
+            // ce chemin.
             let sidecar_command = app
                 .shell()
-                .sidecar("binaries/pipeline-sidecar")
+                .sidecar("pipeline-sidecar")
                 .expect("failed to resolve sidecar binary")
                 .env("GEOSTUDIO_SIDECAR_TOKEN", &token);
             let (mut rx, _child) = sidecar_command.spawn().expect("failed to spawn sidecar");
