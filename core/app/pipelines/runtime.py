@@ -367,14 +367,23 @@ def _read_file(
     if not geom_cols:
         raise PipelineRuntimeError(f"reader.file: '{p.path}' has no geometry column")
     geom_col = geom_cols[0]
-    other_cols = [d[0] for d in probe_cols if d[0] != geom_col and d[0] != "fid"]
-    if geom_col != "geometry" and "geometry" in other_cols:
+    # "fid"/"OGC_FID" (comparés sans casse, comme _write_file) sont les noms
+    # synthétiques que GeoPackage/GDAL réservent à leur propre identifiant de
+    # ligne — un writer.collection en aval les rejette comme propriété
+    # inconnue s'ils survivent.
+    other_cols = [
+        d[0] for d in probe_cols if d[0] != geom_col and d[0].lower() not in ("fid", "ogc_fid")
+    ]
+    if geom_col.lower() != "geometry" and any(c.lower() == "geometry" for c in other_cols):
         # Collision de nom : une colonne non-géométrique du fichier s'appelle
         # déjà "geometry" (ex. properties.geometry dans un GeoJSON) — DuckDB
         # a alors renommé la VRAIE colonne géométrie (ex. "geom") pour éviter
         # le doublon. Sans ce garde, l'alias "AS geometry" ci-dessous
         # écraserait silencieusement la colonne réelle par cet attribut
-        # utilisateur (corruption silencieuse, vérifiée empiriquement).
+        # utilisateur (corruption silencieuse, vérifiée empiriquement). La
+        # comparaison est insensible à la casse : DuckDB résout les
+        # identifiants sans respecter la casse, donc une variante comme
+        # "Geometry" cause la même collision qu'une correspondance exacte.
         raise PipelineRuntimeError(
             f"reader.file: '{p.path}' has a non-geometry column named 'geometry', "
             "which would collide with the geometry column alias"

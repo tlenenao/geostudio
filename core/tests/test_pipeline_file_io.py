@@ -270,6 +270,72 @@ def test_read_file_raises_on_geometry_name_collision(tmp_path, monkeypatch):
         )
 
 
+def _write_geojson_with_capitalized_geometry_property(tmp_path):
+    path = tmp_path / "collision-case.geojson"
+    feature_collection = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                # "Geometry" (G majuscule) : distincte de "geometry" en Python,
+                # mais DuckDB résout les identifiants sans respecter la casse —
+                # le garde de collision doit donc comparer sans casse lui aussi.
+                "properties": {"label": "a", "Geometry": "not-a-geometry"},
+                "geometry": {"type": "Point", "coordinates": [1.0, 2.0]},
+            },
+        ],
+    }
+    path.write_text(json.dumps(feature_collection))
+    return str(path)
+
+
+def test_read_file_raises_on_geometry_name_collision_case_insensitive(tmp_path, monkeypatch):
+    # N1 (re-revue, IMPORTANT incomplet) : le garde de collision ajouté par
+    # la revue précédente comparait "geometry" en respectant la casse. Une
+    # propriété "Geometry" (G majuscule) passait donc le garde, alors que
+    # DuckDB déduplique l'identifiant réel (case-insensitive) en le
+    # renommant "geometry_1" — la même corruption silencieuse que le garde
+    # devait empêcher, juste atteignable via une variante de casse.
+    monkeypatch.setenv("CORE_PIPELINE_FILE_IO_ENABLED", "true")
+    path = _write_geojson_with_capitalized_geometry_property(tmp_path)
+    conn = _connection()
+    with pytest.raises(PipelineRuntimeError, match="geometry"):
+        runtime._read_file(
+            conn,
+            session=None,
+            tenant_id="t1",
+            node_id="r1",
+            params={"path": path},
+            view_name="node_r1",
+            user=None,
+            base_uri="unused",
+        )
+
+
+def test_read_file_excludes_ogc_fid_column_from_geojson(tmp_path, monkeypatch):
+    # N2 (re-revue, IMPORTANT incomplet) : ST_Read() sur un GeoJSON (ou un
+    # Shapefile) expose un identifiant de ligne synthétique nommé "OGC_FID"
+    # (pas "fid", réservé au GeoPackage) — le garde d'exclusion de _read_file
+    # ne retirait que "fid" en casse exacte, donc "OGC_FID" survivait et
+    # faisait échouer un writer.collection en aval, exactement le défaut que
+    # I1 devait fermer pour ces formats.
+    monkeypatch.setenv("CORE_PIPELINE_FILE_IO_ENABLED", "true")
+    path = _write_geojson(tmp_path)
+    conn = _connection()
+    runtime._read_file(
+        conn,
+        session=None,
+        tenant_id="t1",
+        node_id="r1",
+        params={"path": path},
+        view_name="node_r1",
+        user=None,
+        base_uri="unused",
+    )
+    cols = {d[0].lower() for d in conn.execute("SELECT * FROM node_r1 LIMIT 0").description}
+    assert "ogc_fid" not in cols
+
+
 def test_readers_registry_has_reader_file():
     assert registries.READERS["reader.file"] is runtime._read_file
 
