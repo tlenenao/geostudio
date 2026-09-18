@@ -7,6 +7,8 @@ on:
       - "desktop-etl/**"
       - "shell/src/desktop/**"
       - "shell/src/builder/pipeline/**"
+      - "core/app/pipelines/**"
+      - "core/scripts/pipeline_sidecar*.py"
       - ".github/workflows/desktop-etl-webdriver.yml"
 
 jobs:
@@ -48,5 +50,5 @@ jobs:
       - name: WebdriverIO
         working-directory: desktop-etl/e2e
         run: |
-          npm install
+          npm ci
           npm test

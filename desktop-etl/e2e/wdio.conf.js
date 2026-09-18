@@ -35,11 +35,17 @@ export const config = {
     // les rejette ("unexpected argument '--debug' found"). Trouvé en
     // exécutant réellement ce fichier sur Windows (Tâche 7, vérification
     // réelle), pas visible par lecture seule du brief.
-    spawnSync("cargo", ["tauri", "build", "--debug", "--no-bundle"], {
+    const result = spawnSync("cargo", ["tauri", "build", "--debug", "--no-bundle"], {
       cwd: path.resolve(__dirname, "../src-tauri"),
       stdio: "inherit",
       shell: true,
     });
+    // Sans ce garde, un échec de build laissait wdio continuer et échouer
+    // plus loin sur "no msedge binary at ..." -- message trompeur qui
+    // pointe vers le mauvais problème (revue finale de branche, Tâche 8).
+    if (result.status !== 0) {
+      throw new Error(`cargo tauri build a échoué (code ${result.status})`);
+    }
   },
   beforeSession: () => {
     tauriDriver = spawn(path.resolve(os.homedir(), ".cargo", "bin", "tauri-driver"), [], {
