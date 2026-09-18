@@ -63,6 +63,21 @@ Fait à ce jour (`dev`, HEAD `9f820ce4`) :
   l'attribut Keycloak `pkce.code.challenge.method`) — la Phase J part de
   zéro (le design §5 en esquisse déjà le patron en prose : `gh auth
   login`/`aws sso login`).
+- **Freeze PyInstaller de l'entrypoint réel** (`core/scripts/
+  pipeline_sidecar.py`, Tâche 2 Phase F+G) : GO au premier essai sur
+  `windows-latest` (run CI `35367493909`, vert de bout en bout dès la
+  première exécution — aucune itération nécessaire).
+  `--collect-all dlt` (recette D1 inchangée) suffit ; le risque documenté
+  au §1 (import transitif de `procrastinate` via
+  `app.pipelines.runtime` → `app.collections.repository`/
+  `app.items.repository`, jamais exercé par le spike D1) **ne s'est pas
+  matérialisé** — `--collect-all procrastinate` n'a pas été nécessaire, le
+  smoke test bout-en-bout (`pipeline_sidecar_freeze_smoke.py`,
+  `reader.file` → `writer.file` sur le binaire gelé) passe sans lui. Job
+  dédié `.github/workflows/desktop-etl-sidecar-freeze.yml` (déclenché par
+  push sur les chemins concernés + `workflow_dispatch`), artefact
+  `pipeline-sidecar-windows` publié (rétention 7 jours) — prêt pour la
+  Phase G (Tâche 3, copie sous `desktop-etl/src-tauri/binaries/`).
 
 ## 2. Corrections apportées au design original (§2, §6, §11)
 
