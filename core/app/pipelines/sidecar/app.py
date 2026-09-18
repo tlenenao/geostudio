@@ -2,11 +2,17 @@
 """API loopback du sidecar desktop-etl (design §4, roadmap §3.1) : rejoue
 la forme des routes cœur (app.pipelines.routes) sans Postgres/auth/tenant —
 mono-utilisateur, mono-process, 127.0.0.1 uniquement (jamais exposé sur
-0.0.0.0, cf. Phase E du plan et l'entrypoint de la Tâche 4)."""
+0.0.0.0, cf. Phase E du plan et l'entrypoint de la Tâche 4).
 
+Phase G (docs/superpowers/plans/2026-09-18-desktop-etl-phase-fg.md, Tâche 1) :
+`token` ferme le DNS rebinding avant que ce process ne soit un vrai
+sous-processus lancé par Tauri — `None` (le défaut) reproduit exactement le
+comportement d'avant cette tâche, pour ne rien casser des tests Phase E."""
+
+import hmac
 import os
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import Response
 
 from app.configs.schemas import PipelinePayload
@@ -35,7 +41,7 @@ _SIDECAR_SAFE_OPS = frozenset(
 )
 
 
-def create_sidecar_app(*, base_uri: str) -> FastAPI:
+def create_sidecar_app(*, base_uri: str, token: str | None = None) -> FastAPI:
     # Actif par défaut côté sidecar desktop, jamais côté cœur (design §3) —
     # posé ici, pas supposé déjà présent dans l'environnement appelant.
     os.environ["CORE_PIPELINE_FILE_IO_ENABLED"] = "true"
@@ -43,6 +49,21 @@ def create_sidecar_app(*, base_uri: str) -> FastAPI:
     app = FastAPI()
     store = PipelineStore()
     registry = RunRegistry()
+
+    if token is not None:
+        expected_authorization = f"Bearer {token}"
+
+        @app.middleware("http")
+        async def _enforce_loopback_auth(request: Request, call_next):
+            host_header = request.headers.get("host")
+            if host_header is not None and host_header.split(":")[0] != "127.0.0.1":
+                return Response(status_code=400, content="invalid Host header")
+            authorization = request.headers.get("authorization")
+            if authorization is None or not hmac.compare_digest(
+                authorization, expected_authorization
+            ):
+                return Response(status_code=401, content="missing or invalid bearer token")
+            return await call_next(request)
 
     @app.put("/pipelines/{item_id}", status_code=204)
     def put_pipeline(item_id: str, payload: PipelinePayload) -> Response:

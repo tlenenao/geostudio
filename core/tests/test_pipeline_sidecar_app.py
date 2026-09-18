@@ -176,3 +176,59 @@ def test_runs_large_limit_does_not_error(client):
     res = client.get("/pipelines/item-1/runs?limit=5000")
     assert res.status_code == 200
     assert res.json() == []
+
+
+def test_default_app_has_no_auth_and_ignores_host(client):
+    # Unauthenticated fixture (token=None, the default) — behavior for
+    # every other test in this file must stay exactly as before this task.
+    res = client.get("/pipelines/ops", headers={"Host": "anything-goes.example"})
+    assert res.status_code == 200
+
+
+@pytest.fixture
+def authed_client(tmp_path):
+    app = create_sidecar_app(base_uri=str(tmp_path), token="s3cr3t")
+    return TestClient(app, base_url="http://127.0.0.1")
+
+
+def test_authed_app_rejects_missing_authorization_header(authed_client):
+    res = authed_client.get("/pipelines/ops")
+    assert res.status_code == 401
+
+
+def test_authed_app_rejects_wrong_token(authed_client):
+    res = authed_client.get("/pipelines/ops", headers={"Authorization": "Bearer wrong"})
+    assert res.status_code == 401
+
+
+def test_authed_app_accepts_correct_token(authed_client):
+    res = authed_client.get("/pipelines/ops", headers={"Authorization": "Bearer s3cr3t"})
+    assert res.status_code == 200
+
+
+def test_authed_app_rejects_spoofed_host_header(authed_client):
+    res = authed_client.get(
+        "/pipelines/ops",
+        headers={"Authorization": "Bearer s3cr3t", "Host": "evil.example.com"},
+    )
+    assert res.status_code == 400
+
+
+def test_authed_app_accepts_host_with_port_suffix(authed_client):
+    res = authed_client.get(
+        "/pipelines/ops",
+        headers={"Authorization": "Bearer s3cr3t", "Host": "127.0.0.1:9999"},
+    )
+    assert res.status_code == 200
+
+
+def test_authed_app_allows_missing_host_header(authed_client):
+    # httpx always sends Host in practice; this documents the deliberate
+    # choice (design §4) to only reject a Host header that is PRESENT and
+    # wrong, never to require one — see the plan's rationale in Task 1.
+    res = authed_client.get(
+        "/pipelines/ops",
+        headers={"Authorization": "Bearer s3cr3t"},
+        extensions={},
+    )
+    assert res.status_code == 200

@@ -11,6 +11,7 @@ première ligne de stdout est "PORT=<n>\\n", où <n> est le port TCP
 login`/`aws sso login` pour un listener loopback (design §5)."""
 
 import argparse
+import os
 import socket
 import sys
 import tempfile
@@ -34,8 +35,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base-uri", default=None)
     args = parser.parse_args(argv)
     base_uri = args.base_uri or tempfile.mkdtemp(prefix="geostudio-sidecar-")
+    token = os.environ.get("GEOSTUDIO_SIDECAR_TOKEN") or None
 
-    app = create_sidecar_app(base_uri=base_uri)
+    app = create_sidecar_app(base_uri=base_uri, token=token)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", 0))
