@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "GeoStudio ETL",
+  "version": "0.1.0",
+  "identifier": "fr.geostudio.desktop-etl",
+  "build": {
+    "frontendDist": "../../shell/dist-desktop"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "GeoStudio ETL",
+        "width": 1280,
+        "height": 800
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis"],
+    "externalBin": ["binaries/pipeline-sidecar"]
+  }
+}
