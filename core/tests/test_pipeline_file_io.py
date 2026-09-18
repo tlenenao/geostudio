@@ -67,6 +67,48 @@ def test_lock_down_with_extra_dirs_allows_write_under_them(tmp_path):
     assert os.path.exists(out_path)
 
 
+def _noop_reader(conn, *, session, tenant_id, node_id, params, view_name, user, base_uri):
+    # Reader minimal sans dépendance DB, juste pour donner à _prepare() un
+    # nœud reader valide (elle exige "at least one reader node" — cf.
+    # PipelinePayload) sans passer par reader.collection (session réelle).
+    conn.execute(f"CREATE TEMP TABLE {view_name} AS SELECT 1 AS n")
+    return 4326
+
+
+def test_prepare_does_not_widen_allowed_directories_when_file_io_disabled(tmp_path, monkeypatch):
+    # C1 (revue finale, CRITICAL) : un nœud writer.file dans le payload ne
+    # doit PAS élargir allowed_directories quand le flag est éteint — sinon
+    # un transform.derive lu AVANT ce writer (ex. en preview tronquée) peut
+    # lire un fichier arbitraire hors /scratch avec le flag OFF.
+    monkeypatch.delenv("CORE_PIPELINE_FILE_IO_ENABLED", raising=False)
+    monkeypatch.setitem(registries.READERS, "reader.noop", _noop_reader)
+    conn = _connection()
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.noop",
+                    "params": {},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.file",
+                    "params": {"path": str(tmp_path / "out.gpkg")},
+                },
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        }
+    )
+    runtime._prepare(conn, None, payload, tenant_id="t1", user=None, base_uri="unused")
+    conn.execute("CREATE TEMP TABLE t AS SELECT 1 AS n")
+    leak_path = str(tmp_path / "leak.csv")
+    with pytest.raises(duckdb.PermissionException):
+        conn.execute(f"COPY (SELECT * FROM t) TO '{leak_path}' WITH (FORMAT CSV)")
+
+
 def test_lock_down_with_extra_dirs_still_blocks_paths_outside_them(tmp_path):
     conn = _connection()
     conn.execute("CREATE TEMP TABLE t AS SELECT 1 AS n")
@@ -154,6 +196,78 @@ def test_read_file_srid_param_overrides_detection(tmp_path, monkeypatch):
         base_uri="unused",
     )
     assert srid == 2154
+
+
+def test_read_file_excludes_geopackage_fid_column(tmp_path, monkeypatch):
+    # I1 (revue finale, IMPORTANT) : ST_Read() sur un GeoPackage expose
+    # toujours "fid" (spec OGC GeoPackage) — sans exclusion, un writer.collection
+    # en aval rejette cette propriété comme inconnue.
+    monkeypatch.setenv("CORE_PIPELINE_FILE_IO_ENABLED", "true")
+    write_conn = _connection()
+    write_conn.execute("INSTALL spatial; LOAD spatial;")
+    write_conn.execute(
+        "CREATE TEMP TABLE src AS SELECT 'a' AS label, ST_Point(1, 2) AS geometry "
+        "UNION ALL SELECT 'b', ST_Point(3, 4)"
+    )
+    gpkg_path = tmp_path / "in.gpkg"
+    write_conn.execute(
+        f"COPY (SELECT * FROM src) TO '{gpkg_path}' "
+        "WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:4326')"
+    )
+    read_conn = _connection()
+    runtime._read_file(
+        read_conn,
+        session=None,
+        tenant_id="t1",
+        node_id="r1",
+        params={"path": str(gpkg_path)},
+        view_name="node_r1",
+        user=None,
+        base_uri="unused",
+    )
+    cols = {d[0] for d in read_conn.execute("SELECT * FROM node_r1 LIMIT 0").description}
+    assert "fid" not in cols
+    assert cols == {"label", "geometry"}
+
+
+def _write_geojson_with_geometry_property(tmp_path):
+    path = tmp_path / "collision.geojson"
+    feature_collection = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                # La clé "geometry" DANS properties (une chaîne, pas une
+                # géométrie) entre en collision avec le nom que _read_file
+                # veut donner à la vraie colonne géométrie.
+                "properties": {"label": "a", "geometry": "not-a-geometry"},
+                "geometry": {"type": "Point", "coordinates": [1.0, 2.0]},
+            },
+        ],
+    }
+    path.write_text(json.dumps(feature_collection))
+    return str(path)
+
+
+def test_read_file_raises_on_geometry_name_collision(tmp_path, monkeypatch):
+    # I2 (revue finale, IMPORTANT) : sans ce garde, DuckDB renomme
+    # silencieusement la vraie colonne géométrie (ex. "geom") et l'alias
+    # "AS geometry" écrase alors la propriété utilisateur — corruption
+    # silencieuse, jamais une erreur.
+    monkeypatch.setenv("CORE_PIPELINE_FILE_IO_ENABLED", "true")
+    path = _write_geojson_with_geometry_property(tmp_path)
+    conn = _connection()
+    with pytest.raises(PipelineRuntimeError, match="geometry"):
+        runtime._read_file(
+            conn,
+            session=None,
+            tenant_id="t1",
+            node_id="r1",
+            params={"path": path},
+            view_name="node_r1",
+            user=None,
+            base_uri="unused",
+        )
 
 
 def test_readers_registry_has_reader_file():

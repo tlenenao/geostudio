@@ -348,8 +348,12 @@ def _read_file(
     base_uri: str,
 ) -> int:
     """reader.file (registre READERS, design desktop-etl §3) — matérialise
-    un fichier local via ST_Read() (DuckDB spatial/GDAL), même mécanisme que
-    _materialize_qgis_output pour la sortie du sidecar QGIS.
+    un fichier local via ST_Read() (DuckDB spatial/GDAL), même détection de
+    la colonne géométrie par TYPE (jamais par nom) que
+    _materialize_qgis_output pour la sortie du sidecar QGIS ; comme elle,
+    élimine aussi "fid" — colonne d'identifiant de ligne synthétique imposée
+    par la spec OGC GeoPackage sur tout .gpkg — pour la même raison : un
+    writer.collection en aval la rejette comme "unknown property 'fid'".
     session/tenant_id/node_id/user/base_uri ignorés (même convention que
     _read_connector_rest) : accès disque local, jamais de collection ni de
     secret. S'exécute dans la boucle reader de _prepare(), AVANT
@@ -363,7 +367,18 @@ def _read_file(
     if not geom_cols:
         raise PipelineRuntimeError(f"reader.file: '{p.path}' has no geometry column")
     geom_col = geom_cols[0]
-    other_cols = [d[0] for d in probe_cols if d[0] != geom_col]
+    other_cols = [d[0] for d in probe_cols if d[0] != geom_col and d[0] != "fid"]
+    if geom_col != "geometry" and "geometry" in other_cols:
+        # Collision de nom : une colonne non-géométrique du fichier s'appelle
+        # déjà "geometry" (ex. properties.geometry dans un GeoJSON) — DuckDB
+        # a alors renommé la VRAIE colonne géométrie (ex. "geom") pour éviter
+        # le doublon. Sans ce garde, l'alias "AS geometry" ci-dessous
+        # écraserait silencieusement la colonne réelle par cet attribut
+        # utilisateur (corruption silencieuse, vérifiée empiriquement).
+        raise PipelineRuntimeError(
+            f"reader.file: '{p.path}' has a non-geometry column named 'geometry', "
+            "which would collide with the geometry column alias"
+        )
     select_list = ", ".join([_qi(c) for c in other_cols] + [f"{_qi(geom_col)} AS geometry"])
     conn.execute(
         f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT {select_list} FROM ST_Read({_ql(p.path)})"
@@ -497,11 +512,23 @@ def _prepare(
         )
         join_srid_by_node[node.id] = table_info.srid or 4326
 
-    writer_file_dirs = [
-        os.path.dirname(node.params["path"])
-        for node in payload.nodes
-        if node.op == "writer.file" and isinstance(node.params.get("path"), str)
-    ]
+    # Élargissement de allowed_directories réservé au flag actif : sinon un
+    # nœud writer.file ciblant un chemin arbitraire (ex. /etc) élargit quand
+    # même la connexion verrouillée pour TOUTE la chaîne de transform, même
+    # avec CORE_PIPELINE_FILE_IO_ENABLED=false et même si ce nœud writer
+    # n'est jamais exécuté (ex. preview qui s'arrête avant lui) — une lecture
+    # arbitraire de fichier local via transform.derive + read_text() devient
+    # alors possible avec le flag éteint (trouvé en revue finale, vérifié
+    # empiriquement contre preview_pipeline()).
+    writer_file_dirs = (
+        [
+            os.path.dirname(node.params["path"])
+            for node in payload.nodes
+            if node.op == "writer.file" and isinstance(node.params.get("path"), str)
+        ]
+        if is_pipeline_file_io_enabled()
+        else []
+    )
     _lock_down(conn, extra_allowed_dirs=writer_file_dirs)
     return ordered, view_by_node, srid_by_node, join_srid_by_node
 
