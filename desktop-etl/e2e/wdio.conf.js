@@ -28,7 +28,14 @@ export const config = {
   onPrepare: () => {
     // desktop-etl/src-tauri est un projet Cargo pur (pas de package.json,
     // donc pas de script npm "tauri") -- appel direct de `cargo tauri build`.
-    spawnSync("cargo", ["tauri", "build", "--", "--debug", "--no-bundle"], {
+    // Pas de "--" avant --debug/--no-bundle : ce sont des options de
+    // `cargo tauri build` lui-même (voir `cargo tauri build --help`), pas
+    // des arguments à transmettre au `cargo build` sous-jacent — avec "--"
+    // elles finissaient sur la ligne de commande du vrai `cargo build`, qui
+    // les rejette ("unexpected argument '--debug' found"). Trouvé en
+    // exécutant réellement ce fichier sur Windows (Tâche 7, vérification
+    // réelle), pas visible par lecture seule du brief.
+    spawnSync("cargo", ["tauri", "build", "--debug", "--no-bundle"], {
       cwd: path.resolve(__dirname, "../src-tauri"),
       stdio: "inherit",
       shell: true,
