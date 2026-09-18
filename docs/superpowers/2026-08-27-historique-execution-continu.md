@@ -6676,9 +6676,11 @@ surface déjà livrée.
 - **Sidecar desktop-etl, Phase E (moteur + API loopback)** — clos
   2026-09-18, plan `2026-09-18-desktop-etl-sidecar-engine.md`, 5 tâches,
   commits `b4578e79`/`70038719`/`680b258a`/`c4cb132c` (Tâche 5 de
-  vérification n'ajoute pas de commit de code). Consomme les deux seams
-  de la vague précédente (`RunTracker`/`SecretResolver`, cf. entrée
-  ci-dessus) pour faire tourner `run_pipeline()` sans Postgres : `Run
+  vérification n'ajoute pas de commit de code). Consomme le seam
+  `RunTracker` (par conformité structurelle, sans annotation de type au
+  point d'appel) ; `SecretResolver` reste inutilisé jusqu'à la Phase I
+  (corrigé en revue finale de branche : la phrase initiale affirmait à
+  tort que les deux seams de la vague précédente étaient consommés). `Run
   Registry`/`InMemoryRunTracker` (suivi de run en mémoire, id/status/
   timestamps/nodeStats identiques à `RunStatus`), `PipelineStore`/
   `start_run` (charge active par `itemId`, appelle `runtime.run_pipeline()`

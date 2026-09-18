@@ -69,3 +69,14 @@ def test_list_isolates_records_by_item_id():
     registry = RunRegistry()
     registry.create("item-1")
     assert registry.list("item-2", limit=10, offset=0) == []
+
+
+def test_list_returns_a_snapshot_not_the_live_record():
+    registry = RunRegistry()
+    registry.create("item-1")
+
+    records = registry.list("item-1", limit=10, offset=0)
+    records[0]["nodeStats"]["x"] = 1
+
+    records_again = registry.list("item-1", limit=10, offset=0)
+    assert records_again[0]["nodeStats"] == {}

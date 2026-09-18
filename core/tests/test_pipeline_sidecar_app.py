@@ -98,3 +98,81 @@ def test_put_then_preview_returns_rows(client, tmp_path):
     rows = res.json()
     assert len(rows) == 2
     assert {row["label"] for row in rows} == {"a", "b"}
+
+
+def _cyclic_payload_dict(in_path: str, out_path: str) -> dict:
+    # r1 -> t1 -> t2 -> t1 (cycle) et t2 -> w1 : le PUT du sidecar ne
+    # valide pas la forme du graphe (contrairement au cœur, cf. Fix 1) —
+    # seul le POST preview/run le découvre, via
+    # app.pipelines.compiler.topological_order (ValueError bare).
+    return {
+        "nodes": [
+            {"id": "r1", "kind": "reader", "op": "reader.file", "params": {"path": in_path}},
+            {
+                "id": "t1",
+                "kind": "transform",
+                "op": "transform.filter",
+                "params": {"expr": "true"},
+            },
+            {
+                "id": "t2",
+                "kind": "transform",
+                "op": "transform.filter",
+                "params": {"expr": "true"},
+            },
+            {"id": "w1", "kind": "writer", "op": "writer.file", "params": {"path": out_path}},
+        ],
+        "edges": [
+            {"id": "e1", "from": "r1", "to": "t1"},
+            {"id": "e2", "from": "t1", "to": "t2"},
+            {"id": "e3", "from": "t2", "to": "t1"},
+            {"id": "e4", "from": "t2", "to": "w1"},
+        ],
+    }
+
+
+def test_preview_on_cyclic_graph_returns_400_not_500(client, tmp_path):
+    in_path = _write_geojson(tmp_path, "in.geojson")
+    out_path = str(tmp_path / "out.gpkg")
+    put_res = client.put("/pipelines/item-cycle", json=_cyclic_payload_dict(in_path, out_path))
+    assert put_res.status_code == 204
+
+    res = client.post("/pipelines/item-cycle/preview?upTo=t1")
+    assert res.status_code == 400
+    assert "acyclic" in res.json()["detail"]
+
+
+def test_get_ops_excludes_session_dependent_ops(client):
+    catalog = client.get("/pipelines/ops").json()
+    for op in (
+        "reader.collection",
+        "writer.collection",
+        "writer.dataset",
+        "writer.export",
+        "reader.connector.rest",
+        "reader.connector.postgres",
+        "reader.connector.snowflake",
+    ):
+        assert op not in catalog, f"{op} touche Session mais est exposé par le sidecar"
+
+
+def test_get_ops_still_includes_transform_ops(client):
+    catalog = client.get("/pipelines/ops").json()
+    assert "transform.filter" in catalog
+    assert catalog["transform.filter"]["kind"] == "transform"
+
+
+def test_runs_rejects_negative_limit(client):
+    res = client.get("/pipelines/item-1/runs?limit=-1")
+    assert res.status_code == 422
+
+
+def test_runs_rejects_negative_offset(client):
+    res = client.get("/pipelines/item-1/runs?offset=-1")
+    assert res.status_code == 422
+
+
+def test_runs_large_limit_does_not_error(client):
+    res = client.get("/pipelines/item-1/runs?limit=5000")
+    assert res.status_code == 200
+    assert res.json() == []

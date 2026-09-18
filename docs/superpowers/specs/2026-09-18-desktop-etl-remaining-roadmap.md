@@ -133,7 +133,14 @@ du code réel avant d'écrire ce document (piège CLAUDE.md #3) :
    `runtime.py` (le module qu'il importe pour `reader.file`/`writer.file`)
    importe `connector_runtime.py` de toute façon. `--collect-all dlt`
    reste donc nécessaire au freeze même en v1 « fichier→fichier
-   seulement » — pas une option à activer plus tard.
+   seulement » — pas une option à activer plus tard. Le périmètre de gel
+   est en réalité plus large que « `dlt` seul » : `import
+   app.pipelines.sidecar.app` tire aussi `procrastinate` et `sqlalchemy`
+   de façon transitive (via `app.pipelines.runtime` →
+   `app.collections.repository`/`app.items.repository`, qui font un
+   `import procrastinate` au niveau module), alors même que le paquet
+   `sidecar` lui-même ne s'en sert jamais. La Phase F/K devra donc vérifier
+   ces deux paquets au même titre que `dlt`, pas seulement lui.
 5. **`PipelineRunPanel.tsx` ne poll jamais un run par id** — il appelle
    `GET /pipelines/{pk}/runs?limit=100` en boucle (`setTimeout` 1500 ms,
    patron `ImportFileButton.tsx`) et prend `latest[0]` comme run courant
@@ -242,6 +249,18 @@ desktop implémentant `PipelinesMethods` (§2.3, §3.1) + persistance
 design §10) : créer un pipeline fichier→fichier, exécuter, vérifier le
 fichier de sortie. **Marque la v1 « utilisable » au sens minimal du
 design** (objectif §1, sans connecteurs ni push).
+
+**Point de sécurité à traiter dans cette phase, pas après.** Le listener
+loopback du sidecar (Phase E) n'a ni jeton d'authentification ni
+validation de l'en-tête `Host` — vulnérable au DNS rebinding depuis une
+page web malveillante (un site distant pourrait `PUT` une charge de
+pipeline arbitraire et déclencher une lecture/écriture de fichier local
+via `reader.file`/`writer.file`). Non exploitable aujourd'hui (rien ne
+démarre ni ne package ce sidecar encore), mais la Phase G est celle qui le
+transforme en process réel lancé par Tauri : elle doit donc étendre le
+handshake `PORT=<n>` (cf. plan Phase E Tâche 4) en `PORT=<n> TOKEN=<t>`
+avec jeton requis sur chaque requête, et/ou poser une allowlist `Host` —
+pas différé à une phase ultérieure.
 
 ### Phase H — (fusionnée dans G)
 

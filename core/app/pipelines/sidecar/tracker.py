@@ -33,7 +33,10 @@ class RunRegistry:
 
     def list(self, item_id: str, *, limit: int, offset: int) -> list[dict]:
         with self._lock:
-            records = list(self._records.get(item_id, []))
+            records = [
+                {**record, "nodeStats": dict(record["nodeStats"])}
+                for record in self._records.get(item_id, [])
+            ]
         return records[offset : offset + limit]
 
     def _update(self, item_id: str, run_id: str, **fields: object) -> None:
