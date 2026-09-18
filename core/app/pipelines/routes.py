@@ -123,7 +123,7 @@ def preview_pipeline_route(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
-    require_pipeline_access(session, user=user, item_id=item_id, action="read")
+    require_pipeline_access(session, user=user, item_id=item_id, action="write")
     config = require_pipeline_config(session, item_id)
     payload = body.pipeline if body and body.pipeline is not None else config.config.pipeline
     try:
