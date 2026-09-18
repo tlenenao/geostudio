@@ -6780,3 +6780,75 @@ surface déjà livrée.
   GPKG/GeoJSON. Laissé sur `dev` local, non poussé (décision utilisateur
   2026-09-18, branche partagée avec la session concurrente ci-dessus).
 
+
+- **Desktop ETL — Phase F+G** (2026-09-18, plan
+  `docs/superpowers/plans/2026-09-18-desktop-etl-phase-fg.md`, commits
+  `d58ac5a2..dced8a5a`) — gel PyInstaller de l'entrypoint réel du sidecar
+  (Phase F, GO au premier essai, `geopandas`/`shapely`/`pyproj` confirmés
+  absents du graphe d'imports réel — risque anticipé ne s'est pas
+  matérialisé) ; bootstrap Tauri (`desktop-etl/src-tauri/`), jeton +
+  validation Host sur le loopback (auth/DNS-rebinding fermé), canvas
+  pipeline existant réutilisé tel quel derrière un `DesktopItemClient`
+  loopback (Phase G). Exécuté en session Linux/WSL2 sans VM Windows
+  dédiée : accès au même hôte Windows via l'interop WSL2↔Windows
+  (`powershell.exe`/`cmd.exe` invocables depuis bash), avec l'accord de
+  l'utilisateur pour installer Rust + VS Build Tools + Tauri CLI côté
+  Windows et driver la vérification réellement plutôt que de s'arrêter
+  au dernier commit compilé.
+  - **8 défauts réels trouvés uniquement par exécution effective**, aucun
+    visible en relecture statique ni en revue de tâche classique : 1 sur
+    le sidecar (`TypeError` non-ASCII sur l'en-tête `Authorization`,
+    Tâche 1) ; 1 sur le build Tauri (`icons/icon.ico` manquant, jamais
+    anticipé par le plan) ; puis, en lançant réellement l'app (Tâche 6) :
+    CORS totalement absent (webview `http://tauri.localhost` vs sidecar
+    `127.0.0.1:<port>` = cross-origin bloqué, symptôme "Chargement…"
+    perpétuel sans erreur visible — le plus dur à diagnostiquer, trouvé
+    via les DevTools WebView2 + lecture du code source, pas un message
+    d'erreur), nom de sidecar mal résolu par `tauri-plugin-shell`
+    (`.sidecar("binaries/pipeline-sidecar")` au lieu du nom nu),
+    sortie Vite mal nommée (`index.desktop.html` au lieu de
+    `index.html`, jamais chargée par Tauri), course de démarrage
+    `get_sidecar_connection` confirmée réelle (anticipée par la Tâche 5,
+    jamais vérifiée avant), `DesktopItemClient.getItem()` manquant
+    (`useItem` aussi appelé par la route d'édition, pas seulement
+    `getPipelineConfig`) ; puis en écrivant et lançant le test E2E
+    WebDriver (Tâche 7) : `cargo tauri build -- --debug --no-bundle`
+    envoyait ses options au `cargo build` sous-jacent (`--` mal placé,
+    présent tel quel dans le brief du plan lui-même) et
+    `$("*=succeeded")` compilait vers la stratégie WebDriver "partial
+    link text" (éléments `<a>` uniquement, jamais un `<span>`).
+  - **Golden path vérifié réel bout-en-bout deux fois** : manuellement
+    via le protocole CDP de WebView2 (créer un pipeline reader.file→
+    writer.file, connecter par glisser-déposer simulé, remplir les
+    paramètres, enregistrer, exécuter, statut `succeeded`, fichier
+    `.gpkg` de 98 Ko vérifié sur disque) puis automatiquement via un test
+    WebdriverIO réel contre `tauri-driver`+`msedgedriver` (1 passing,
+    8.8s) — aucun mock, application réellement compilée et lancée.
+  - **2 limitations d'infrastructure contournées, pas des défauts de
+    code** : la compilation incrémentale de `cargo` échoue sur un chemin
+    UNC WSL (`CARGO_TARGET_DIR` local en contournement) ; la résolution
+    `frontendDist` de `tauri-build` échoue aussi sur un lecteur réseau
+    mappé (Windows le résout en UNC en interne malgré la lettre de
+    lecteur) — contourné par un miroir local jetable pour la vérification
+    WebDriver de la Tâche 7, jamais committé.
+  - 7 revues de tâche (dont 2 rondes de correctifs sur des trouvailles
+    Important) + 1 revue finale sur les 3 derniers correctifs trouvés en
+    exécution réelle — toutes indépendantes du contrôleur, avec
+    vérification par falsification sur les points les plus sensibles
+    (ordre des middlewares CORS, round-trip `getItem`).
+  - Suite complète cœur : 2919 passed/0 failed/272 skipped, couverture
+    87.86 %. Suite shell : 2276/2276 (1 échec non-déterministe rencontré
+    sur `MapEditorPage.test.tsx` lors d'une première passe, confirmé
+    flaky par une 2e exécution propre — `window.matchMedia` non stubbé
+    selon l'ordre d'exécution des fichiers, piège CLAUDE.md #10, sans
+    rapport avec ce chantier ni introduit par lui, non creusé plus avant
+    ici). Bundle normal non affecté (630,1 Ko / seuil 631 Ko).
+  - Aucune nouvelle surface serveur (sidecar jamais monté dans
+    `core/app/main.py`, `desktop-etl/` reste un produit distribuable
+    séparé) — pas de mise à jour de l'inventaire de fonctionnalités
+    requise.
+  - Reste ouvert : Phases I (connecteurs desktop + secrets trousseau OS),
+    J (push vers un cœur distant), K (packaging/distribution) — pas de
+    ligne `### Livré` dans CLAUDE.md tant que le produit desktop-etl
+    complet n'a pas expédié (précédent des phases desktop-etl
+    antérieures).
