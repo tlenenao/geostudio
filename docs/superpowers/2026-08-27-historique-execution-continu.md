@@ -6588,4 +6588,195 @@ surface déjà livrée.
   au profit de laisser la ligne fautive en l'état plutôt que de rebaser
   l'historique partagé sous activité concurrente pour un correctif
   cosmétique.
+- **Socle sidecar desktop-etl, tranches 1+2 (`SecretResolver` +
+  `RunTracker`)** — prépare la réutilisation de
+  `app.pipelines.runtime.run_pipeline()` par un futur sidecar desktop
+  (trousseau OS, suivi de run en mémoire, sans Postgres) sans dupliquer le
+  moteur de pipeline (design `2026-09-17-desktop-etl-standalone-design.md`
+  §3/§4/§11). Deux tranches, deux plans, ni l'une ni l'autre n'avait
+  d'entrée ici jusqu'à cette vague de correctifs — piège CLAUDE.md n°12 en
+  train de se répéter (le récit de `### Livré` était correct mais ce
+  fichier-ci avait dérivé), refermé dans le même geste que la revue finale
+  ci-dessous.
+  **Tranche 1** (`SecretResolver`, plan
+  `2026-09-17-desktop-etl-secret-resolver-seam.md`, 4 tâches, commits
+  `ddc5d8c2`/`3e2d2870`/`87ca8a0d` puis fix `4ac2e369`) : Protocol
+  `SecretResolver` + `PostgresSecretResolver` introduits sur
+  `connector_runtime.py`, les 3 `materialize_*_connector` reçoivent
+  désormais `secret_resolver` au lieu de `session`/`tenant_id`,
+  `runtime.py` construit le résolveur Postgres au point d'appel —
+  signature du registre `READERS` inchangée, comportement observable
+  strictement inchangé côté route REST/MCP. Revue finale « With fixes » :
+  1 Important corrigé (`except KeyError` trop large dans
+  `PostgresSecretResolver.get()` confondait `CORE_SECRETS_MASTER_KEY`
+  absent — backend de secrets indisponible — avec un secret réellement
+  absent ; falsifié en retirant la variable d'environnement pour confirmer
+  le mauvais message d'erreur, puis corrigé en traduisant toute `KeyError`
+  venue du backend en `RuntimeError`, ne laissant que la `KeyError(name)`
+  explicite signaler l'absence réelle). 2 points arbitrés par l'humain
+  laissés en l'état : import résiduel de `app.secrets.repository` dans
+  `PostgresSecretResolver` (gardé par design, seuls les
+  `materialize_*_connector` sont découplés) et une ligne d'attribution de
+  commit erronée (« Claude Haiku 4.5 » au lieu de « Claude Sonnet 5 » sur
+  `3e2d2870`) — un `git commit --amend` a été abandonné faute de vouloir
+  rebaser l'historique partagé sous activité concurrente pour un
+  correctif cosmétique, cf. l'incident noté sous « Provisioning OCI »
+  ci-dessus. 3 Minor consignés : pas de test sur la branche
+  `assert resolver is not None` (secretName renseigné sans résolveur),
+  `SecretResolver` non `@runtime_checkable`, référence obsolète
+  « (Task 5) » dans une docstring. Suivi hors-branche surfacé et **non**
+  corrigé dans cette tranche (traité comme suivi dédié) : le service
+  `worker` du compose n'a pas `CORE_SECRETS_MASTER_KEY` dans son
+  `environment:` — tout run de pipeline non-preview utilisant un secret de
+  connecteur échouerait aujourd'hui en pratique (classe piège CLAUDE.md
+  #2 « livré ≠ câblé »).
+  **Tranche 2** (`RunTracker`, plan
+  `2026-09-18-desktop-etl-run-tracker-seam.md`, 3 tâches, commits
+  `25329f1d`/`f0ee019c`) : Protocol `RunTracker` + `PostgresRunTracker`
+  introduits sur `jobs.py`, `run_pipeline_task` bascule ses 3 appels
+  `pipelines_repo.mark_running/mark_succeeded/mark_failed` sur le tracker.
+  Le texte verbatim du plan (Task 2, Step 1) contenait un vrai bug d'ordre
+  (`item_id` affecté avant `tracker.mark_running()` au lieu d'après,
+  changeant un comportement observable en cas d'échec précoce) — trouvé
+  par l'implémenteur, confirmé par falsification indépendante du reviewer
+  de tâche sur un Postgres jetable réel
+  (`test_early_failure_before_item_id_bound_does_not_crash` échouait avec
+  le texte verbatim), corrigé en restaurant l'ordre exact du comportement
+  pré-refactor. Revue finale de branche « With fixes » : 2 Important
+  (le Protocol `RunTracker` n'était consommé par aucune annotation de
+  type, contrairement à `SecretResolver` dans la tranche jumelle — rien ne
+  vérifiait qu'une future implémentation alternative respecte le contrat ;
+  les deux plans de ce chantier n'étaient pas versionnés et cette entrée
+  d'historique manquait, piège n°12 récidivant) et 5 Minor (commentaire
+  ne mentionnant que `get_run` alors que `mark_running` peut aussi lever
+  avant l'affectation de `item_id` ; docstring de `PostgresRunTracker`
+  affirmant à tort qu'aucune transition ne partage jamais de transaction,
+  alors que `mark_running` partageait auparavant celle de `get_run` ;
+  `tenant_id` stocké mais non utilisé par les 3 méthodes sans commentaire
+  expliquant pourquoi il est conservé ; `session_factory` non typé ;
+  contrat "run inconnu" (`mark_*` en no-op silencieux) non testé) —
+  corrigés dans une seule vague de correctifs, avec un 4e test
+  (`test_postgres_run_tracker_mark_running_on_unknown_run_is_a_noop`,
+  étendu aux 3 méthodes) rejoué contre le même Postgres jetable réel
+  (13 tests passés, `tests/test_pipeline_run_tracker.py` +
+  `tests/test_pipeline_jobs.py`).
+  Point de vigilance pour la suite (consigné, pas corrigé) :
+  `app/export/jobs.py`, `app/appexport/jobs.py`, `app/ingestion/tasks.py`,
+  `app/harvest/jobs.py` ont la même structure `mark_running/...` inline
+  que `pipelines/jobs.py` avait avant ce chantier — ne pas généraliser ce
+  patron à ces 4 jumelles sans besoin réel (seul `run_pipeline` doit être
+  réutilisable hors Postgres pour l'instant), asymétrie assumée.
+  Ce chantier « socle sidecar » n'est pas terminé : restent hors périmètre
+  l'API loopback HTTP du sidecar (port éphémère, forme SSE, framework HTTP
+  à choisir), une 2e implémentation en mémoire de `SecretResolver`/
+  `RunTracker` (n'existera qu'une fois le sidecar lui-même en cours de
+  construction), et `reader.file`/`writer.file` côté cœur (dépend d'un
+  spike DuckDB spatial en binaire PyInstaller, jamais fait) — cf. les
+  sections « Ce que ce plan ne couvre pas » des deux plans.
+- **Sidecar desktop-etl, Phase E (moteur + API loopback)** — clos
+  2026-09-18, plan `2026-09-18-desktop-etl-sidecar-engine.md`, 5 tâches,
+  commits `b4578e79`/`70038719`/`680b258a`/`c4cb132c` (Tâche 5 de
+  vérification n'ajoute pas de commit de code). Consomme le seam
+  `RunTracker` (par conformité structurelle, sans annotation de type au
+  point d'appel) ; `SecretResolver` reste inutilisé jusqu'à la Phase I
+  (corrigé en revue finale de branche : la phrase initiale affirmait à
+  tort que les deux seams de la vague précédente étaient consommés). `Run
+  Registry`/`InMemoryRunTracker` (suivi de run en mémoire, id/status/
+  timestamps/nodeStats identiques à `RunStatus`), `PipelineStore`/
+  `start_run` (charge active par `itemId`, appelle `runtime.run_pipeline()`
+  directement — pas de `run_pipeline_task` Postgres), une app FastAPI
+  loopback qui rejoue le contrat HTTP verrouillé au §3.1 de la feuille de
+  route (`PUT`/`GET ops`/`POST run`/`GET runs`/`POST preview`), puis un
+  entrypoint réel (`core/scripts/pipeline_sidecar.py`) avec handshake de
+  port (imprime le port choisi sur stdout avant de servir, patron attendu
+  par un futur lancement en sous-processus Tauri). Testable dès
+  aujourd'hui via `httpx.ASGITransport`/`TestClient` — aucun Tauri, aucun
+  Windows, aucun PyInstaller à ce stade (Phases F/G/K, encore ouvertes).
+  Tâche 5 (bout-en-bout) : les 4 fichiers de test du sidecar (18 tests)
+  et la suite complète du cœur passent (2901 passed/272 skipped/0
+  failed, `postgis`/`qgis` skippent comme toujours en l'absence de
+  `CORE_TEST_DATABASE_URL`/`CORE_TEST_QGIS_WORKER_URL` dans cet
+  environnement, sans rapport avec cette phase), portes de qualité
+  clean (ruff/format/lint-imports/couverture 87.84 %). Confirmé par
+  grep : l'app du sidecar n'est jamais montée dans le `v1_router` de
+  `core/app/main.py` — aucune surface externe nouvelle, donc pas de mise
+  à jour de `docs/revue/inventaire-fonctionnalites.jsonl` ni de
+  régénération du bilan de fonctionnalités pour cette phase. Pas
+  d'entrée `### Livré` dans `CLAUDE.md` à ce stade — réservée à la
+  livraison complète du produit desktop-etl. Reste hors périmètre de
+  cette phase (Phases F→K de la feuille de route) : spike de gel
+  géospatial PyInstaller, bootstrap Tauri, connecteurs/trousseau OS,
+  push vers un cœur distant, packaging/distribution.
+- **`reader.file`/`writer.file` côté cœur** — clos 2026-09-18, plan
+  `2026-09-18-desktop-etl-reader-writer-file.md`, 6 tâches en
+  subagent-driven-development + 2 vagues de correctifs post-revue
+  finale. Ajoute au registre `OPERATIONS` (`ops/contracts.py`) deux op,
+  `reader.file`/`writer.file`, matérialisant/écrivant un fichier
+  géospatial local via DuckDB spatial (`ST_Read`/`COPY ... FORMAT
+  GDAL`) — même mécanisme que `_execute_qgis_transform`, jamais la
+  sérialisation manuelle de `_write_export`. Gardées par
+  `CORE_PIPELINE_FILE_IO_ENABLED` (défaut `false`, accès disque
+  arbitraire = risque de traversée de chemin sur un cœur hébergé
+  multi-tenant ; le futur sidecar desktop l'activera dans son propre
+  environnement). `OperationContract.enabled_when` (mécanisme générique
+  de visibilité palette, réutilisable). `_lock_down()` élargi
+  (`extra_allowed_dirs`) pour que `writer.file` puisse écrire hors
+  `/scratch` une fois le flag actif. Les 6 tâches ont chacune été
+  approuvées en revue de tâche.
+  **Revue finale de branche — 1 Critical + 2 Important, tous corrigés
+  en 2 vagues :**
+  - **C1 (Critical, sécurité)** : `_prepare()` élargissait
+    `allowed_directories` pour **tout** le run (toute la chaîne de
+    transforms partage la même connexion DuckDB verrouillée), pas
+    seulement pour `_write_file` — et ce élargissement n'était **pas**
+    gardé par le flag. Un nœud `writer.file` **jamais exécuté** (ex. via
+    `POST /pipelines/{id}/preview?upTo=<nœud antérieur>`) suffisait à
+    faire entrer un répertoire arbitraire dans l'allowlist ; un
+    `transform.derive` antérieur utilisant `read_text()` dans une
+    sous-requête scalaire (non rejeté par `validate_bounded_expr()`, qui
+    ne filtre que les références de table) pouvait alors lire n'importe
+    quel fichier lisible par le process du cœur (démontré : `/etc/passwd`
+    via `preview_pipeline()` réel, flag **éteint**). Chaque revue de
+    tâche (3 et 5) avait vérifié la bonne propriété — `_write_file`
+    contrôle le flag en première instruction — mais pas la bonne surface :
+    l'élargissement avait un second consommateur implicite, toute la
+    chaîne de transforms via le bac à sable DuckDB partagé. **Variante
+    nette du piège n°11** : vérifier le chemin d'exécution du garde ne
+    suffit pas, il faut énumérer *tous* les consommateurs de la capacité
+    relâchée. Correctif : une condition (`if is_pipeline_file_io_enabled()
+    else []`) autour du calcul de `writer_file_dirs`, flag éteint ⇒
+    `allowed_directories == ['/scratch']` comme avant ce chantier. Testé
+    par falsification (retirer le garde → le test redevient rouge).
+  - **I1 (Important)** : `_read_file` n'excluait pas `fid` (GeoPackage) ni
+    `OGC_FID` (GeoJSON/Shapefile) — la colonne d'identifiant synthétique
+    que GDAL réserve — cassant `reader.file → writer.collection`
+    (rejeté comme propriété inconnue) pour tout format. Le docstring
+    affirmait à tort « même mécanisme que `_materialize_qgis_output` »,
+    qui exclut bien `fid` en sortie QGIS. Corrigé en 2 passes (1re passe :
+    `fid` exact-case seulement, incomplète ; re-revue a trouvé le trou
+    `OGC_FID` ; 2e passe : exclusion insensible à la casse `{"fid",
+    "ogc_fid"}`, alignée sur celle déjà correcte de `_write_file`).
+  - **I2 (Important)** : `_read_file` construit `SELECT … AS geometry`
+    sans détecter qu'une colonne non-géométrique porte déjà ce nom
+    (ex. `properties.geometry` d'un GeoJSON) — DuckDB renomme alors
+    silencieusement la vraie géométrie (`geometry_1`/`geom` selon le
+    cas), et toute la chaîne aval lit la mauvaise colonne sans la
+    moindre erreur. Corrigé en 2 passes (1re passe : comparaison
+    exact-case, ne détectait pas une collision `Geometry` capitalisée ;
+    re-revue a reproduit la corruption silencieuse via ce variant de
+    casse ; 2e passe : comparaison insensible à la casse des deux
+    côtés).
+  Chaque vague de correctifs a été falsifiée (retrait temporaire →
+  test rouge confirmé) avant d'être re-revue. Écrit pendant l'exécution :
+  une session concurrente committait en parallèle sur le même `dev` les
+  Phases E du sidecar desktop-etl (`b4578e79`/`70038719`/`680b258a`/
+  `c4cb132c`, cf. entrée précédente) — aucune collision de fichiers,
+  seulement un entrelacement de commits (piège n°9). Suite complète du
+  cœur : 2878 passed/0 failed/272 skipped, couverture 87.76 % (après le
+  1er lot de tâches ; les 2 vagues de correctifs n'ont touché que
+  `runtime.py`/`test_pipeline_file_io.py`, revérifiées focalisées).
+  Non couvert (assumé, cf. plan) : spike PyInstaller, API loopback
+  sidecar, sélecteur de fichier shell, drivers GDAL autres que
+  GPKG/GeoJSON. Laissé sur `dev` local, non poussé (décision utilisateur
+  2026-09-18, branche partagée avec la session concurrente ci-dessus).
 

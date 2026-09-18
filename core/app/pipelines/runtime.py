@@ -39,6 +39,7 @@ from sqlalchemy.orm import Session
 from app.analytics.aggregate import _dedup_cte, _has_any_file
 from app.analytics.duckdb_conn import open_connection
 from app.audit.writer import write_audit
+from app.auth.dependency import is_pipeline_file_io_enabled
 from app.collections import repository as collections_repo
 from app.collections.introspection import TableInfo, TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
@@ -56,6 +57,7 @@ from app.pipelines.ops.schemas import (
     ReaderConnectorPostgresParams,
     ReaderConnectorRestParams,
     ReaderConnectorSnowflakeParams,
+    ReaderFileParams,
     TransformAggregateParams,
     TransformCountWithinParams,
     TransformDeriveParams,
@@ -68,6 +70,7 @@ from app.pipelines.ops.schemas import (
     WriterCollectionParams,
     WriterDatasetParams,
     WriterExportParams,
+    WriterFileParams,
 )
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
@@ -87,6 +90,16 @@ def _qi(name: str) -> str:
     # (lui-même une duplication de app.analytics.aggregate._qi) plutôt qu'un
     # import inter-module d'un nom privé `_`-préfixé — cf. compiler.py.
     return '"' + name.replace('"', '""') + '"'
+
+
+def _ql(value: str) -> str:
+    # Littéral SQL DuckDB (jamais un identifiant, contrairement à _qi
+    # ci-dessus) — ST_Read()/COPY ... TO n'acceptent pas de paramètre lié
+    # pour leur argument chemin, donc tout chemin utilisateur interpolé DOIT
+    # passer par ici. Même patron que app.collections.ddl._quote_literal /
+    # app.analytics.aggregate._quote_literal (duplication déjà acceptée
+    # dans ce dépôt, même raisonnement que _qi lui-même).
+    return "'" + value.replace("'", "''") + "'"
 
 
 class NodeStat:
@@ -323,7 +336,74 @@ def _read_connector_snowflake(
     return 4326
 
 
-def _lock_down(conn: duckdb.DuckDBPyConnection) -> None:
+def _read_file(
+    conn,
+    *,
+    session: Session,
+    tenant_id: str,
+    node_id: str,
+    params: dict,
+    view_name: str,
+    user: User,
+    base_uri: str,
+) -> int:
+    """reader.file (registre READERS, design desktop-etl §3) — matérialise
+    un fichier local via ST_Read() (DuckDB spatial/GDAL), même détection de
+    la colonne géométrie par TYPE (jamais par nom) que
+    _materialize_qgis_output pour la sortie du sidecar QGIS ; comme elle,
+    élimine aussi "fid" — colonne d'identifiant de ligne synthétique imposée
+    par la spec OGC GeoPackage sur tout .gpkg — pour la même raison : un
+    writer.collection en aval la rejette comme "unknown property 'fid'".
+    session/tenant_id/node_id/user/base_uri ignorés (même convention que
+    _read_connector_rest) : accès disque local, jamais de collection ni de
+    secret. S'exécute dans la boucle reader de _prepare(), AVANT
+    _lock_down() : aucun besoin d'un répertoire autorisé, contrairement à
+    writer.file."""
+    if not is_pipeline_file_io_enabled():
+        raise PipelineRuntimeError("reader.file requires CORE_PIPELINE_FILE_IO_ENABLED=true")
+    p = ReaderFileParams.model_validate(params)
+    probe_cols = conn.execute(f"SELECT * FROM ST_Read({_ql(p.path)}) LIMIT 0").description
+    geom_cols = [d[0] for d in probe_cols if d[1].id == "geometry"]
+    if not geom_cols:
+        raise PipelineRuntimeError(f"reader.file: '{p.path}' has no geometry column")
+    geom_col = geom_cols[0]
+    # "fid"/"OGC_FID" (comparés sans casse, comme _write_file) sont les noms
+    # synthétiques que GeoPackage/GDAL réservent à leur propre identifiant de
+    # ligne — un writer.collection en aval les rejette comme propriété
+    # inconnue s'ils survivent.
+    other_cols = [
+        d[0] for d in probe_cols if d[0] != geom_col and d[0].lower() not in ("fid", "ogc_fid")
+    ]
+    if geom_col.lower() != "geometry" and any(c.lower() == "geometry" for c in other_cols):
+        # Collision de nom : une colonne non-géométrique du fichier s'appelle
+        # déjà "geometry" (ex. properties.geometry dans un GeoJSON) — DuckDB
+        # a alors renommé la VRAIE colonne géométrie (ex. "geom") pour éviter
+        # le doublon. Sans ce garde, l'alias "AS geometry" ci-dessous
+        # écraserait silencieusement la colonne réelle par cet attribut
+        # utilisateur (corruption silencieuse, vérifiée empiriquement). La
+        # comparaison est insensible à la casse : DuckDB résout les
+        # identifiants sans respecter la casse, donc une variante comme
+        # "Geometry" cause la même collision qu'une correspondance exacte.
+        raise PipelineRuntimeError(
+            f"reader.file: '{p.path}' has a non-geometry column named 'geometry', "
+            "which would collide with the geometry column alias"
+        )
+    select_list = ", ".join([_qi(c) for c in other_cols] + [f"{_qi(geom_col)} AS geometry"])
+    conn.execute(
+        f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT {select_list} FROM ST_Read({_ql(p.path)})"
+    )
+    if p.srid is not None:
+        return p.srid
+    row = conn.execute(f"SELECT st_crs(geometry) FROM {_qi(view_name)} LIMIT 1").fetchone()
+    crs = row[0] if row else None
+    if crs and crs.upper().startswith("EPSG:"):
+        return int(crs.split(":", 1)[1])
+    return 4326
+
+
+def _lock_down(
+    conn: duckdb.DuckDBPyConnection, *, extra_allowed_dirs: list[str] | None = None
+) -> None:
     # allowed_directories doit être posé AVANT enable_external_access=false :
     # c'est la seule échappatoire documentée par DuckDB ("List of
     # directories/prefixes that are ALWAYS allowed to be queried — even when
@@ -331,9 +411,14 @@ def _lock_down(conn: duckdb.DuckDBPyConnection) -> None:
     # ne peut plus écrire in.gpkg vers _QGIS_SCRATCH_ROOT après ce
     # verrouillage (PermissionException réelle, jamais vue avant faute
     # d'avoir exécuté ce chemin contre une connexion réellement verrouillée —
-    # cf. M14/REV-095). Périmètre volontairement limité au seul répertoire
-    # scratch partagé avec le sidecar QGIS, pas un accès externe généralisé.
-    conn.execute(f"SET allowed_directories = ['{_QGIS_SCRATCH_ROOT}']")
+    # cf. M14/REV-095). extra_allowed_dirs (design desktop-etl §3, réutilise
+    # la même échappatoire) : répertoires cibles de tout nœud writer.file du
+    # payload, calculés par l'appelant (_prepare()) AVANT ce verrouillage —
+    # même bug évité une seconde fois, cette fois pour un chemin arbitraire
+    # choisi par l'auteur du pipeline, jamais fixe comme _QGIS_SCRATCH_ROOT.
+    allowed_dirs = [_QGIS_SCRATCH_ROOT, *(extra_allowed_dirs or [])]
+    quoted = ", ".join(_ql(d) for d in allowed_dirs)
+    conn.execute(f"SET allowed_directories = [{quoted}]")
     conn.execute("SET enable_external_access = false")
     conn.execute("SET lock_configuration = true")
 
@@ -436,7 +521,24 @@ def _prepare(
         )
         join_srid_by_node[node.id] = table_info.srid or 4326
 
-    _lock_down(conn)
+    # Élargissement de allowed_directories réservé au flag actif : sinon un
+    # nœud writer.file ciblant un chemin arbitraire (ex. /etc) élargit quand
+    # même la connexion verrouillée pour TOUTE la chaîne de transform, même
+    # avec CORE_PIPELINE_FILE_IO_ENABLED=false et même si ce nœud writer
+    # n'est jamais exécuté (ex. preview qui s'arrête avant lui) — une lecture
+    # arbitraire de fichier local via transform.derive + read_text() devient
+    # alors possible avec le flag éteint (trouvé en revue finale, vérifié
+    # empiriquement contre preview_pipeline()).
+    writer_file_dirs = (
+        [
+            os.path.dirname(node.params["path"])
+            for node in payload.nodes
+            if node.op == "writer.file" and isinstance(node.params.get("path"), str)
+        ]
+        if is_pipeline_file_io_enabled()
+        else []
+    )
+    _lock_down(conn, extra_allowed_dirs=writer_file_dirs)
     return ordered, view_by_node, srid_by_node, join_srid_by_node
 
 
@@ -951,6 +1053,39 @@ def _write_export(
     return NodeStat(node.id, node.op, len(rows))
 
 
+def _write_file(conn, *, node: PipelineNode, view_by_node: dict, srid: int) -> NodeStat:
+    """writer.file (registre WRITERS, design desktop-etl §3) — écrit via
+    COPY ... FORMAT GDAL DRIVER ... (même mécanisme que le in_path de
+    _execute_qgis_transform), pas la sérialisation manuelle de
+    _write_export. Signature sans session/tenant_id/user (même traitement
+    que writer.export, cf. registries.py) : accès disque local, jamais de
+    collection."""
+    if not is_pipeline_file_io_enabled():
+        raise PipelineRuntimeError("writer.file requires CORE_PIPELINE_FILE_IO_ENABLED=true")
+    p = WriterFileParams.model_validate(node.params)
+    input_view = view_by_node[node.id]
+    cols = [d[0] for d in conn.execute(f"SELECT * FROM {_qi(input_view)} LIMIT 0").description]
+    # "fid"/"OGC_FID" sont les noms synthétiques que GDAL réserve à son
+    # propre champ d'identifiant de ligne — un writer.file en aval d'un
+    # reader.file qui les a laissés passer fait échouer COPY ... DRIVER
+    # 'GPKG' ("Cannot find OGR field for Arrow array OGC_FID"), vérifié
+    # empiriquement avant d'écrire ce plan.
+    keep = [c for c in cols if c.lower() not in ("fid", "ogc_fid")]
+    select_list = ", ".join(_qi(c) for c in keep)
+    # Contrairement au scratch_dir de _execute_qgis_transform (garanti
+    # préexistant), le répertoire cible de writer.file peut ne pas exister :
+    # GDAL/sqlite ne crée jamais les répertoires intermédiaires manquants et
+    # échoue avec "sqlite3_open ... unable to open database file".
+    if parent := os.path.dirname(p.path):
+        os.makedirs(parent, exist_ok=True)
+    conn.execute(
+        f"COPY (SELECT {select_list} FROM {_qi(input_view)}) TO {_ql(p.path)} "
+        f"WITH (FORMAT GDAL, DRIVER {_ql(p.driver)}, SRS {_ql(f'EPSG:{srid}')})"
+    )
+    row_count = conn.execute(f"SELECT count(*) FROM {_qi(input_view)}").fetchone()[0]
+    return NodeStat(node.id, node.op, row_count)
+
+
 def run_pipeline(
     session: Session,
     *,
@@ -1014,6 +1149,10 @@ def run_pipeline(
                 assert s3_client is not None and exports_bucket is not None
                 stat = writer_fn(
                     conn, s3_client, exports_bucket, node=node, view_by_node=view_by_node
+                )
+            elif node.op == "writer.file":
+                stat = writer_fn(
+                    conn, node=node, view_by_node=view_by_node, srid=srid_by_node[pred_id]
                 )
             else:
                 stat = writer_fn(

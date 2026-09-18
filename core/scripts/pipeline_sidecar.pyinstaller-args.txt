@@ -1,0 +1,15 @@
+# Recette de gel pour l'entrypoint réel (core/scripts/pipeline_sidecar.py),
+# distincte de pipeline_sidecar_spike.pyinstaller-args.txt (D1, gèle un
+# graphe d'imports plus étroit). Voir docs/superpowers/plans/2026-09-18-
+# desktop-etl-phase-fg.md, Tâche 2, pour le raisonnement complet.
+#
+# Commande complète :
+#   cd core && uv run pyinstaller --onefile --name pipeline-sidecar \
+#     --paths . --collect-all dlt scripts/pipeline_sidecar.py
+--collect-all dlt
+
+# Si le smoke test (pipeline_sidecar_freeze_smoke.py) échoue avec un
+# ModuleNotFoundError/ImportError mentionnant "procrastinate", ajouter une
+# ligne "--collect-all procrastinate" ici et documenter l'erreur observée
+# dans ce fichier, même patron que la découverte "--collect-all dlt" du
+# spike D1 (docs/superpowers/specs/2026-09-17-desktop-etl-spike-01-findings.md).

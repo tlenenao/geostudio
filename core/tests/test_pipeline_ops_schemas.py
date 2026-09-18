@@ -68,8 +68,16 @@ def test_writer_export_requires_format_and_key():
 
 
 def test_ops_catalog_exposes_json_schema_per_op():
+    # set(catalog) != set(OP_PARAMS) en général depuis OperationContract.
+    # enabled_when (reader.file/writer.file restent dans OP_PARAMS mais
+    # disparaissent du catalogue quand leur flag est éteint) — le carve-out
+    # explicite compare contre OPERATIONS plutôt que de coder en dur les 2
+    # noms d'op gatées ici.
+    from app.pipelines.ops.contracts import OPERATIONS
+
     catalog = ops_catalog()
-    assert set(catalog) == set(OP_PARAMS)
+    expected = {op for op, c in OPERATIONS.items() if c.enabled_when is None or c.enabled_when()}
+    assert set(catalog) == expected
     for op, entry in catalog.items():
         assert entry["kind"] == OP_KINDS[op]
         assert "properties" in entry["paramsSchema"]
@@ -97,7 +105,7 @@ def test_non_collection_fields_carry_no_format_hint():
     assert "format" not in catalog["transform.join"]["paramsSchema"]["properties"]["on"]
 
 
-def test_all_thirty_four_ops_are_registered():
+def test_all_thirty_six_ops_are_registered():
     assert set(OP_PARAMS) == {
         "reader.collection",
         "transform.filter",
@@ -133,6 +141,8 @@ def test_all_thirty_four_ops_are_registered():
         "transform.setSrid",
         "transform.reprojectAttribute",
         "transform.formatCoordinates",
+        "reader.file",
+        "writer.file",
     }
     assert set(OP_KINDS) == set(OP_PARAMS)
 

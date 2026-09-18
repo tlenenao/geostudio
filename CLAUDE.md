@@ -517,6 +517,22 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   échelle, rotation, création/arrondi de géométrie, extraction/construction de coordonnées,
   SRID en lecture/écriture, formatage DMS), catalogue à 34 op ; 18 des 90 lignes `planned_duckdb`
   de la matrice FME passées à `implemented`.
+- **Socle sidecar desktop-etl (seams SecretResolver + RunTracker)** —
+  deux Protocol additifs dans `core/app/pipelines/` (`SecretResolver`/
+  `PostgresSecretResolver` sur `connector_runtime.py`, `RunTracker`/
+  `PostgresRunTracker` sur `jobs.py`) préparant la réutilisation de
+  `run_pipeline()` par un futur sidecar desktop sans Postgres (design
+  2026-09-17 §3/§4) ; comportement observable inchangé, pas encore
+  consommé par une 2e implémentation.
+- **`reader.file`/`writer.file` (desktop-etl)** — 2 op fichier-local via
+  DuckDB spatial (`ST_Read`/`COPY GDAL`), gardées par
+  `CORE_PIPELINE_FILE_IO_ENABLED` (défaut `false`, hors périmètre serveur) ;
+  revue finale a trouvé et corrigé 1 Critical (élargissement de
+  `allowed_directories` non gardé par le flag = lecture de fichier
+  arbitraire même flag éteint, via un nœud `writer.file` jamais exécuté —
+  variante du piège n°11 : le consommateur vérifié n'était pas le seul) +
+  2 Important (colonnes `fid`/`OGC_FID` non exclues en lecture, collision
+  de nom avec la colonne `geometry`).
 
 ### Conventions tranchées (2026-09-01)
 

@@ -43,7 +43,7 @@ def test_non_copyleft_engine_defaults_to_in_process_and_no_copyleft():
     assert contract.output_srid is None
 
 
-def test_operations_registry_has_exactly_the_thirty_four_known_ops():
+def test_operations_registry_has_exactly_the_thirty_six_known_ops():
     from app.pipelines.ops.contracts import OPERATIONS
 
     assert set(OPERATIONS) == {
@@ -81,6 +81,8 @@ def test_operations_registry_has_exactly_the_thirty_four_known_ops():
         "transform.setSrid",
         "transform.reprojectAttribute",
         "transform.formatCoordinates",
+        "reader.file",
+        "writer.file",
     }
 
 
@@ -143,7 +145,7 @@ def test_ops_catalog_never_exposes_the_exchange_field():
         assert set(entry) == {"kind", "paramsSchema", "acceptsSecondaryInput"}, op
 
 
-def test_operations_registry_has_thirty_four_entries_after_wave_1():
+def test_operations_registry_has_thirty_six_entries_after_reader_writer_file():
     from app.pipelines.ops.contracts import OPERATIONS
 
-    assert len(OPERATIONS) == 34
+    assert len(OPERATIONS) == 36

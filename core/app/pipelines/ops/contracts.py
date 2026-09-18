@@ -24,12 +24,14 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from app.auth.dependency import is_pipeline_file_io_enabled
 from app.pipelines import compiler as _compiler
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
     ReaderConnectorPostgresParams,
     ReaderConnectorRestParams,
     ReaderConnectorSnowflakeParams,
+    ReaderFileParams,
     TransformAggregateParams,
     TransformBufferParams,
     TransformConcatCoordinatesParams,
@@ -60,6 +62,7 @@ from app.pipelines.ops.schemas import (
     WriterCollectionParams,
     WriterDatasetParams,
     WriterExportParams,
+    WriterFileParams,
 )
 
 
@@ -90,6 +93,14 @@ class OperationContract:
     # ops_catalog() (même traitement que engine/engine_license/
     # execution_model, déjà invisibles côté shell).
     exchange: Literal["arrow_stream", "geoparquet_file"] | None = None
+    # Design docs/superpowers/specs/2026-09-17-desktop-etl-standalone-design.md
+    # §3 : capacité instance-wide optionnelle (même patron que
+    # is_etl_enabled) qui gate la VISIBILITÉ de l'op dans ops_catalog() —
+    # PAS le garde-fou de sécurité réel, qui vit au point d'exécution
+    # (app.pipelines.runtime, jamais ici) : ce champ ne remplace aucune
+    # vérification, il évite seulement de proposer une op inutilisable dans
+    # la palette de l'éditeur.
+    enabled_when: Callable[[], bool] | None = None
 
     def __post_init__(self) -> None:
         if self.is_copyleft and self.execution_model != "sidecar":
@@ -362,6 +373,18 @@ OPERATIONS: dict[str, OperationContract] = {
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_format_coordinates,
     ),
+    "reader.file": OperationContract(
+        op="reader.file",
+        kind="reader",
+        params_schema=ReaderFileParams,
+        enabled_when=is_pipeline_file_io_enabled,
+    ),
+    "writer.file": OperationContract(
+        op="writer.file",
+        kind="writer",
+        params_schema=WriterFileParams,
+        enabled_when=is_pipeline_file_io_enabled,
+    ),
 }
 
 OP_KINDS: dict[str, str] = {op: c.kind for op, c in OPERATIONS.items()}
@@ -401,6 +424,9 @@ def _user_facing_description(description: str) -> str:
 def ops_catalog() -> dict[str, dict]:
     catalog: dict[str, dict] = {}
     for op, model in OP_PARAMS.items():
+        contract = OPERATIONS[op]
+        if contract.enabled_when is not None and not contract.enabled_when():
+            continue
         schema = model.model_json_schema()
         if schema.get("description"):
             schema["description"] = _user_facing_description(schema["description"])

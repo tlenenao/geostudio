@@ -46,6 +46,17 @@ def is_etl_enabled() -> bool:
     return os.environ.get("CORE_ETL_ENABLED", "false").lower() == "true"
 
 
+def is_pipeline_file_io_enabled() -> bool:
+    """CORE_PIPELINE_FILE_IO_ENABLED (design desktop-etl §3) — capacité
+    instance-wide optionnelle, même convention que is_etl_enabled : lue à
+    chaque appel, sans cache. Défaut false : reader.file/writer.file font de
+    l'accès disque arbitraire (chemin choisi par l'auteur du pipeline), un
+    risque de traversée de chemin inacceptable sur un cœur hébergé
+    multi-tenant — le futur sidecar desktop (poste mono-utilisateur, design
+    §1) l'activera dans son propre environnement, jamais par défaut ici."""
+    return os.environ.get("CORE_PIPELINE_FILE_IO_ENABLED", "false").lower() == "true"
+
+
 def is_export_enabled() -> bool:
     """CORE_EXPORT_ENABLED (SP-17a) — capacité instance-wide optionnelle,
     même convention que is_etl_enabled : lue à chaque appel, sans cache.
