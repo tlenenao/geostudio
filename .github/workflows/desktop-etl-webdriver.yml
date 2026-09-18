@@ -43,6 +43,8 @@ jobs:
           npm run build:desktop-runtime
       - name: Install tauri-driver
         run: cargo install tauri-driver --locked
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version "^2" --locked
       - name: WebdriverIO
         working-directory: desktop-etl/e2e
         run: |
