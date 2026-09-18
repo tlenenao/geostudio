@@ -517,6 +517,13 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   échelle, rotation, création/arrondi de géométrie, extraction/construction de coordonnées,
   SRID en lecture/écriture, formatage DMS), catalogue à 34 op ; 18 des 90 lignes `planned_duckdb`
   de la matrice FME passées à `implemented`.
+- **Socle sidecar desktop-etl (seams SecretResolver + RunTracker)** —
+  deux Protocol additifs dans `core/app/pipelines/` (`SecretResolver`/
+  `PostgresSecretResolver` sur `connector_runtime.py`, `RunTracker`/
+  `PostgresRunTracker` sur `jobs.py`) préparant la réutilisation de
+  `run_pipeline()` par un futur sidecar desktop sans Postgres (design
+  2026-09-17 §3/§4) ; comportement observable inchangé, pas encore
+  consommé par une 2e implémentation.
 
 ### Conventions tranchées (2026-09-01)
 

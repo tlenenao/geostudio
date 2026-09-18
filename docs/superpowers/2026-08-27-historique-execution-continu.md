@@ -6588,4 +6588,89 @@ surface déjà livrée.
   au profit de laisser la ligne fautive en l'état plutôt que de rebaser
   l'historique partagé sous activité concurrente pour un correctif
   cosmétique.
+- **Socle sidecar desktop-etl, tranches 1+2 (`SecretResolver` +
+  `RunTracker`)** — prépare la réutilisation de
+  `app.pipelines.runtime.run_pipeline()` par un futur sidecar desktop
+  (trousseau OS, suivi de run en mémoire, sans Postgres) sans dupliquer le
+  moteur de pipeline (design `2026-09-17-desktop-etl-standalone-design.md`
+  §3/§4/§11). Deux tranches, deux plans, ni l'une ni l'autre n'avait
+  d'entrée ici jusqu'à cette vague de correctifs — piège CLAUDE.md n°12 en
+  train de se répéter (le récit de `### Livré` était correct mais ce
+  fichier-ci avait dérivé), refermé dans le même geste que la revue finale
+  ci-dessous.
+  **Tranche 1** (`SecretResolver`, plan
+  `2026-09-17-desktop-etl-secret-resolver-seam.md`, 4 tâches, commits
+  `ddc5d8c2`/`3e2d2870`/`87ca8a0d` puis fix `4ac2e369`) : Protocol
+  `SecretResolver` + `PostgresSecretResolver` introduits sur
+  `connector_runtime.py`, les 3 `materialize_*_connector` reçoivent
+  désormais `secret_resolver` au lieu de `session`/`tenant_id`,
+  `runtime.py` construit le résolveur Postgres au point d'appel —
+  signature du registre `READERS` inchangée, comportement observable
+  strictement inchangé côté route REST/MCP. Revue finale « With fixes » :
+  1 Important corrigé (`except KeyError` trop large dans
+  `PostgresSecretResolver.get()` confondait `CORE_SECRETS_MASTER_KEY`
+  absent — backend de secrets indisponible — avec un secret réellement
+  absent ; falsifié en retirant la variable d'environnement pour confirmer
+  le mauvais message d'erreur, puis corrigé en traduisant toute `KeyError`
+  venue du backend en `RuntimeError`, ne laissant que la `KeyError(name)`
+  explicite signaler l'absence réelle). 2 points arbitrés par l'humain
+  laissés en l'état : import résiduel de `app.secrets.repository` dans
+  `PostgresSecretResolver` (gardé par design, seuls les
+  `materialize_*_connector` sont découplés) et une ligne d'attribution de
+  commit erronée (« Claude Haiku 4.5 » au lieu de « Claude Sonnet 5 » sur
+  `3e2d2870`) — un `git commit --amend` a été abandonné faute de vouloir
+  rebaser l'historique partagé sous activité concurrente pour un
+  correctif cosmétique, cf. l'incident noté sous « Provisioning OCI »
+  ci-dessus. 3 Minor consignés : pas de test sur la branche
+  `assert resolver is not None` (secretName renseigné sans résolveur),
+  `SecretResolver` non `@runtime_checkable`, référence obsolète
+  « (Task 5) » dans une docstring. Suivi hors-branche surfacé et **non**
+  corrigé dans cette tranche (traité comme suivi dédié) : le service
+  `worker` du compose n'a pas `CORE_SECRETS_MASTER_KEY` dans son
+  `environment:` — tout run de pipeline non-preview utilisant un secret de
+  connecteur échouerait aujourd'hui en pratique (classe piège CLAUDE.md
+  #2 « livré ≠ câblé »).
+  **Tranche 2** (`RunTracker`, plan
+  `2026-09-18-desktop-etl-run-tracker-seam.md`, 3 tâches, commits
+  `25329f1d`/`f0ee019c`) : Protocol `RunTracker` + `PostgresRunTracker`
+  introduits sur `jobs.py`, `run_pipeline_task` bascule ses 3 appels
+  `pipelines_repo.mark_running/mark_succeeded/mark_failed` sur le tracker.
+  Le texte verbatim du plan (Task 2, Step 1) contenait un vrai bug d'ordre
+  (`item_id` affecté avant `tracker.mark_running()` au lieu d'après,
+  changeant un comportement observable en cas d'échec précoce) — trouvé
+  par l'implémenteur, confirmé par falsification indépendante du reviewer
+  de tâche sur un Postgres jetable réel
+  (`test_early_failure_before_item_id_bound_does_not_crash` échouait avec
+  le texte verbatim), corrigé en restaurant l'ordre exact du comportement
+  pré-refactor. Revue finale de branche « With fixes » : 2 Important
+  (le Protocol `RunTracker` n'était consommé par aucune annotation de
+  type, contrairement à `SecretResolver` dans la tranche jumelle — rien ne
+  vérifiait qu'une future implémentation alternative respecte le contrat ;
+  les deux plans de ce chantier n'étaient pas versionnés et cette entrée
+  d'historique manquait, piège n°12 récidivant) et 5 Minor (commentaire
+  ne mentionnant que `get_run` alors que `mark_running` peut aussi lever
+  avant l'affectation de `item_id` ; docstring de `PostgresRunTracker`
+  affirmant à tort qu'aucune transition ne partage jamais de transaction,
+  alors que `mark_running` partageait auparavant celle de `get_run` ;
+  `tenant_id` stocké mais non utilisé par les 3 méthodes sans commentaire
+  expliquant pourquoi il est conservé ; `session_factory` non typé ;
+  contrat "run inconnu" (`mark_*` en no-op silencieux) non testé) —
+  corrigés dans une seule vague de correctifs, avec un 4e test
+  (`test_postgres_run_tracker_mark_running_on_unknown_run_is_a_noop`,
+  étendu aux 3 méthodes) rejoué contre le même Postgres jetable réel
+  (13 tests passés, `tests/test_pipeline_run_tracker.py` +
+  `tests/test_pipeline_jobs.py`).
+  Point de vigilance pour la suite (consigné, pas corrigé) :
+  `app/export/jobs.py`, `app/appexport/jobs.py`, `app/ingestion/tasks.py`,
+  `app/harvest/jobs.py` ont la même structure `mark_running/...` inline
+  que `pipelines/jobs.py` avait avant ce chantier — ne pas généraliser ce
+  patron à ces 4 jumelles sans besoin réel (seul `run_pipeline` doit être
+  réutilisable hors Postgres pour l'instant), asymétrie assumée.
+  Ce chantier « socle sidecar » n'est pas terminé : restent hors périmètre
+  l'API loopback HTTP du sidecar (port éphémère, forme SSE, framework HTTP
+  à choisir), une 2e implémentation en mémoire de `SecretResolver`/
+  `RunTracker` (n'existera qu'une fois le sidecar lui-même en cours de
+  construction), et `reader.file`/`writer.file` côté cœur (dépend d'un
+  spike DuckDB spatial en binaire PyInstaller, jamais fait) — cf. les
+  sections « Ce que ce plan ne couvre pas » des deux plans.
 
