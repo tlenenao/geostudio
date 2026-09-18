@@ -89,6 +89,16 @@ def _qi(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
+def _ql(value: str) -> str:
+    # Littéral SQL DuckDB (jamais un identifiant, contrairement à _qi
+    # ci-dessus) — ST_Read()/COPY ... TO n'acceptent pas de paramètre lié
+    # pour leur argument chemin, donc tout chemin utilisateur interpolé DOIT
+    # passer par ici. Même patron que app.collections.ddl._quote_literal /
+    # app.analytics.aggregate._quote_literal (duplication déjà acceptée
+    # dans ce dépôt, même raisonnement que _qi lui-même).
+    return "'" + value.replace("'", "''") + "'"
+
+
 class NodeStat:
     def __init__(self, node_id: str, op: str, row_count: int | None = None):
         self.nodeId = node_id
@@ -323,7 +333,9 @@ def _read_connector_snowflake(
     return 4326
 
 
-def _lock_down(conn: duckdb.DuckDBPyConnection) -> None:
+def _lock_down(
+    conn: duckdb.DuckDBPyConnection, *, extra_allowed_dirs: list[str] | None = None
+) -> None:
     # allowed_directories doit être posé AVANT enable_external_access=false :
     # c'est la seule échappatoire documentée par DuckDB ("List of
     # directories/prefixes that are ALWAYS allowed to be queried — even when
@@ -331,9 +343,14 @@ def _lock_down(conn: duckdb.DuckDBPyConnection) -> None:
     # ne peut plus écrire in.gpkg vers _QGIS_SCRATCH_ROOT après ce
     # verrouillage (PermissionException réelle, jamais vue avant faute
     # d'avoir exécuté ce chemin contre une connexion réellement verrouillée —
-    # cf. M14/REV-095). Périmètre volontairement limité au seul répertoire
-    # scratch partagé avec le sidecar QGIS, pas un accès externe généralisé.
-    conn.execute(f"SET allowed_directories = ['{_QGIS_SCRATCH_ROOT}']")
+    # cf. M14/REV-095). extra_allowed_dirs (design desktop-etl §3, réutilise
+    # la même échappatoire) : répertoires cibles de tout nœud writer.file du
+    # payload, calculés par l'appelant (_prepare()) AVANT ce verrouillage —
+    # même bug évité une seconde fois, cette fois pour un chemin arbitraire
+    # choisi par l'auteur du pipeline, jamais fixe comme _QGIS_SCRATCH_ROOT.
+    allowed_dirs = [_QGIS_SCRATCH_ROOT, *(extra_allowed_dirs or [])]
+    quoted = ", ".join(_ql(d) for d in allowed_dirs)
+    conn.execute(f"SET allowed_directories = [{quoted}]")
     conn.execute("SET enable_external_access = false")
     conn.execute("SET lock_configuration = true")
 
@@ -436,7 +453,12 @@ def _prepare(
         )
         join_srid_by_node[node.id] = table_info.srid or 4326
 
-    _lock_down(conn)
+    writer_file_dirs = [
+        os.path.dirname(node.params["path"])
+        for node in payload.nodes
+        if node.op == "writer.file" and isinstance(node.params.get("path"), str)
+    ]
+    _lock_down(conn, extra_allowed_dirs=writer_file_dirs)
     return ordered, view_by_node, srid_by_node, join_srid_by_node
 
 

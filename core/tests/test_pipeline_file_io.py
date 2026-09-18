@@ -1,5 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
+import os
+
+import duckdb
+import pytest
+
+from app.analytics.duckdb_conn import open_connection
 from app.auth.dependency import is_pipeline_file_io_enabled
+from app.pipelines import runtime
 from app.pipelines.ops.contracts import OPERATIONS, ops_catalog
 
 
@@ -32,3 +39,38 @@ def test_reader_file_and_writer_file_visible_in_catalog_when_enabled(monkeypatch
 def test_operations_registry_has_reader_and_writer_file_contracts():
     assert OPERATIONS["reader.file"].kind == "reader"
     assert OPERATIONS["writer.file"].kind == "writer"
+
+
+def _connection() -> duckdb.DuckDBPyConnection:
+    return open_connection(endpoint_url="http://localhost:9000", access_key="x", secret_key="y")
+
+
+def test_lock_down_without_extra_dirs_blocks_arbitrary_write(tmp_path):
+    conn = _connection()
+    conn.execute("CREATE TEMP TABLE t AS SELECT 1 AS n")
+    runtime._lock_down(conn)
+    out_path = str(tmp_path / "out.csv")
+    with pytest.raises(duckdb.PermissionException):
+        conn.execute(f"COPY (SELECT * FROM t) TO '{out_path}' WITH (FORMAT CSV)")
+
+
+def test_lock_down_with_extra_dirs_allows_write_under_them(tmp_path):
+    conn = _connection()
+    conn.execute("CREATE TEMP TABLE t AS SELECT 1 AS n")
+    runtime._lock_down(conn, extra_allowed_dirs=[str(tmp_path)])
+    out_path = str(tmp_path / "out.csv")
+    conn.execute(f"COPY (SELECT * FROM t) TO '{out_path}' WITH (FORMAT CSV)")
+    assert os.path.exists(out_path)
+
+
+def test_lock_down_with_extra_dirs_still_blocks_paths_outside_them(tmp_path):
+    conn = _connection()
+    conn.execute("CREATE TEMP TABLE t AS SELECT 1 AS n")
+    other_dir = tmp_path / "other"
+    other_dir.mkdir()
+    allowed_dir = tmp_path / "allowed"
+    allowed_dir.mkdir()
+    runtime._lock_down(conn, extra_allowed_dirs=[str(allowed_dir)])
+    out_path = str(other_dir / "out.csv")
+    with pytest.raises(duckdb.PermissionException):
+        conn.execute(f"COPY (SELECT * FROM t) TO '{out_path}' WITH (FORMAT CSV)")
