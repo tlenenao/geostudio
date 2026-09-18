@@ -11,6 +11,23 @@ import { mkdtempSync, existsSync, statSync, writeFileSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+// Diagnostic uniquement sur échec (Tâche 8, investigation CI réelle) :
+// capture une image + le DOM au moment où un test échoue, pour voir l'état
+// réel de l'app plutôt que de deviner depuis les seuls logs WebDriver.
+afterEach(async function () {
+  if (this.currentTest?.state !== "failed") return;
+  const diagDir = join(process.cwd(), "diagnostics");
+  try {
+    const { mkdirSync } = await import("node:fs");
+    mkdirSync(diagDir, { recursive: true });
+    await browser.saveScreenshot(join(diagDir, "failure.png"));
+    const source = await browser.getPageSource();
+    writeFileSync(join(diagDir, "failure.html"), source);
+  } catch (err) {
+    console.error("diagnostic capture failed:", err);
+  }
+});
+
 const GEOJSON_INPUT = {
   type: "FeatureCollection",
   features: [

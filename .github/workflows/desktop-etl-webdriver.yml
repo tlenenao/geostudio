@@ -58,3 +58,11 @@ jobs:
         run: |
           npm ci
           npm test
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-diagnostics
+          path: desktop-etl/e2e/diagnostics
+          if-no-files-found: ignore
+          retention-days: 7
