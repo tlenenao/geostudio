@@ -324,6 +324,11 @@ ENV_WIRING_EXEMPTIONS = {
     # dans le zip — pas celui de ce dépôt.
     "APPEXPORT_STANDALONE_DATA_DIR",
     "APPEXPORT_STANDALONE_RUNTIME_DIR",
+    # Capacité réservée au futur sidecar desktop (design desktop-etl §3) :
+    # jamais réglée par un service du compose de ce dépôt, désactivée par
+    # défaut. Le sidecar la positionne dans son propre environnement (hors
+    # périmètre). Lue par app/auth/dependency.py pour l'introspection.
+    "CORE_PIPELINE_FILE_IO_ENABLED",
 }
 
 
