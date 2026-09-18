@@ -1,0 +1,39 @@
+name: desktop-etl sidecar freeze (real entrypoint)
+
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - "core/scripts/pipeline_sidecar.py"
+      - "core/scripts/pipeline_sidecar.pyinstaller-args.txt"
+      - "core/scripts/pipeline_sidecar_freeze_smoke.py"
+      - "core/app/pipelines/**"
+      - ".github/workflows/desktop-etl-sidecar-freeze.yml"
+
+jobs:
+  freeze-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync
+      - name: Script de contrôle (non gelé)
+        env:
+          PYTHONPATH: .
+        run: uv run pytest tests/test_pipeline_sidecar_entrypoint.py -v
+      - name: Freeze PyInstaller
+        shell: bash
+        run: |
+          extra_args=$(grep -v '^#' scripts/pipeline_sidecar.pyinstaller-args.txt | tr '\n' ' ')
+          uv run pyinstaller --onefile --name pipeline-sidecar --paths . $extra_args scripts/pipeline_sidecar.py
+      - name: Smoke test du binaire gelé
+        run: uv run python scripts/pipeline_sidecar_freeze_smoke.py dist/pipeline-sidecar.exe
+      - name: Upload artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-sidecar-windows
+          path: core/dist/pipeline-sidecar.exe
+          retention-days: 7
