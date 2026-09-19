@@ -390,3 +390,52 @@ test("a visible delete button on a node removes it via onNodesChange", () => {
   fireEvent.click(screen.getByRole("button", { name: "Supprimer Villes" }));
   expect(onNodesChange).toHaveBeenCalledWith(NODES.filter((n) => n.id !== "r1"));
 });
+
+test("clicking the connect affordance on a node, then clicking another node, creates a primary edge between them", () => {
+  const onEdgesChange = vi.fn();
+  const nodes: PipelineNode[] = [
+    { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: {}, title: "R" },
+    { id: "t1", kind: "transform", op: "transform.filter", x: 300, y: 0, params: {}, title: "T" },
+  ];
+  render(
+    <PipelineCanvas
+      nodes={nodes}
+      edges={[]}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={onEdgesChange}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Connecter depuis R" }));
+  fireEvent.click(screen.getByText("T"));
+  expect(onEdgesChange).toHaveBeenCalledWith([
+    expect.objectContaining({ from: "r1", to: "t1", id: expect.any(String) }),
+  ]);
+});
+
+test("pressing Escape cancels an in-progress connection", () => {
+  const onEdgesChange = vi.fn();
+  const nodes: PipelineNode[] = [
+    { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: {}, title: "R" },
+    { id: "t1", kind: "transform", op: "transform.filter", x: 300, y: 0, params: {}, title: "T" },
+  ];
+  render(
+    <PipelineCanvas
+      nodes={nodes}
+      edges={[]}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={onEdgesChange}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Connecter depuis R" }));
+  fireEvent.keyDown(window, { key: "Escape" });
+  fireEvent.click(screen.getByText("T"));
+  expect(onEdgesChange).not.toHaveBeenCalled();
+});

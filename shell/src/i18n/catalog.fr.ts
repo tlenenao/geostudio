@@ -1050,6 +1050,7 @@ export const fr = {
   "pipelineCanvas.insertStepAria": "Insérer une étape sur cette arête",
   "pipelineCanvas.nodeErrorAria": "{count} erreur(s) sur ce nœud",
   "pipelineCanvas.deleteNodeAria": "Supprimer {title}",
+  "pipelineCanvas.startConnectAria": "Connecter depuis {title}",
 
   // PipelinePalette (builder/pipeline)
   "pipelinePalette.sectionSources": "Sources",

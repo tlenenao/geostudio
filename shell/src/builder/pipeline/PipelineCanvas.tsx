@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Background,
   Controls,
@@ -45,13 +45,15 @@ type CanvasNodeData = PipelineNode & {
   isNext: boolean;
   errorCount: number;
   onDelete: (nodeId: string) => void;
+  onStartConnect: (nodeId: string) => void;
+  isConnectingSource: boolean;
 };
 
 function PipelineNodeBox({ data, selected }: NodeProps) {
   const node = data as unknown as CanvasNodeData;
   return (
     <div
-      className={`relative rounded-md border-2 px-3 py-2 text-xs ${KIND_COLOR[node.kind]} ${selected ? "ring-2 ring-accent" : ""} ${node.errorCount > 0 ? "border-danger" : ""}`}
+      className={`relative rounded-md border-2 px-3 py-2 text-xs ${KIND_COLOR[node.kind]} ${selected ? "ring-2 ring-accent" : ""} ${node.errorCount > 0 ? "border-danger" : ""} ${node.isConnectingSource ? "ring-2 ring-accent" : ""}`}
     >
       <Handle type="target" position={Position.Left} id="primary" />
       {node.acceptsSecondaryInput && (
@@ -99,6 +101,18 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
         }}
       >
         ×
+      </button>
+      <button
+        type="button"
+        aria-label={t("pipelineCanvas.startConnectAria", { title: node.title ?? node.op })}
+        aria-pressed={node.isConnectingSource}
+        className="absolute -bottom-2 -left-2 flex h-4 w-4 items-center justify-center rounded-full border border-rule bg-surface text-[10px] leading-none text-ink-2 hover:bg-sunken"
+        onClick={(e) => {
+          e.stopPropagation();
+          node.onStartConnect(node.id);
+        }}
+      >
+        ↝
       </button>
     </div>
   );
@@ -189,6 +203,8 @@ function toFlowNode(
     isNext: boolean;
     errorCount: number;
     onDelete: (nodeId: string) => void;
+    onStartConnect: (nodeId: string) => void;
+    isConnectingSource: boolean;
   },
 ): Node {
   return {
@@ -303,6 +319,28 @@ function PipelineCanvasInner({
     [nodes, edges, onNodesChange, onEdgesChange],
   );
 
+  const [connectingFromId, setConnectingFromId] = useState<string | null>(null);
+
+  const completeConnection = useCallback(
+    (targetId: string) => {
+      if (!connectingFromId) return;
+      setConnectingFromId(null);
+      if (hasIncomingEdge(edges, targetId)) return;
+      if (wouldCreateCycle(nodes, edges, { from: connectingFromId, to: targetId })) return;
+      onEdgesChange([...edges, { id: genEdgeId(), from: connectingFromId, to: targetId }]);
+    },
+    [connectingFromId, nodes, edges, onEdgesChange],
+  );
+
+  useEffect(() => {
+    if (!connectingFromId) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setConnectingFromId(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [connectingFromId]);
+
   const order = topologicalOrder(nodes, edges);
   const nextNodeId = runStatus === "running" ? order.find((id) => !nodeStats?.[id]) : undefined;
 
@@ -316,6 +354,8 @@ function PipelineCanvasInner({
             isNext: n.id === nextNodeId,
             errorCount: nodeErrors?.[n.id]?.length ?? 0,
             onDelete: deleteNode,
+            onStartConnect: (id) => setConnectingFromId(id),
+            isConnectingSource: n.id === connectingFromId,
           }),
         )}
         edges={edges.map(toFlowEdge)}
@@ -324,6 +364,9 @@ function PipelineCanvasInner({
         onConnect={onConnect}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
+        onNodeClick={(_, flowNode) => {
+          if (connectingFromId && flowNode.id !== connectingFromId) completeConnection(flowNode.id);
+        }}
         onPaneClick={() => onSelectNode(null)}
         deleteKeyCode={["Backspace", "Delete"]}
       >
