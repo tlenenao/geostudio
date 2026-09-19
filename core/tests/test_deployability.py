@@ -1402,6 +1402,40 @@ def test_csp_dynamic_conf_volume_is_shared_between_worker_and_traefik():
     )
 
 
+def test_csp_dynamic_conf_has_an_ownership_init_service():
+    """Un volume Docker nommé est peuplé (et donc son propriétaire fixé) par
+    le PREMIER conteneur qui l'utilise — traefik (root) ou worker (uid
+    1001, cf. core/Dockerfile) selon lequel démarre en premier, un ordre
+    non déterministe. Constaté en déploiement réel : traefik a gagné la
+    course, `worker` ne pouvait plus écrire
+    (`PermissionError: [Errno 13] Permission denied`) et la CSP dynamique
+    ne s'est jamais mise à jour. Un service d'init dédié, dont `worker`
+    dépend avec `service_completed_successfully`, élimine la course."""
+    base = load_yaml(BASE)
+    init = base["services"].get("csp-dynamic-conf-init")
+    assert init is not None, (
+        "docker-compose.yml doit déclarer un service "
+        "`csp-dynamic-conf-init` qui chown le volume avant `worker`"
+    )
+    assert any("csp-dynamic-conf" in v for v in (init.get("volumes") or [])), (
+        f"csp-dynamic-conf-init doit monter csp-dynamic-conf, a trouvé : {init.get('volumes')}"
+    )
+    assert init.get("restart") in (None, "no"), (
+        "csp-dynamic-conf-init doit s'exécuter une seule fois et sortir "
+        f"(restart: {init.get('restart')!r} le ferait boucler)"
+    )
+
+    worker_depends_on = services(BASE)["worker"].get("depends_on") or {}
+    init_dep = worker_depends_on.get("csp-dynamic-conf-init")
+    assert init_dep is not None, (
+        "worker doit dépendre de csp-dynamic-conf-init dans docker-compose.yml"
+    )
+    assert init_dep.get("condition") == "service_completed_successfully", (
+        f"worker.depends_on.csp-dynamic-conf-init.condition = {init_dep.get('condition')!r}, "
+        "attendu 'service_completed_successfully'"
+    )
+
+
 def test_traefik_command_enables_file_provider_with_watch():
     command = services(BASE)["traefik"]["command"]
     assert "--providers.file.watch=true" in command
