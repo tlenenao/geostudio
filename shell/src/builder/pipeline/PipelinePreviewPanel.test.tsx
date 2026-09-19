@@ -130,3 +130,39 @@ test("selecting a feature on the map is reflected when switching back to the tab
   const rows = screen.getAllByRole("row");
   expect(rows[2]).toHaveClass("bg-sunken"); // header row + row 0 + selected row 1
 });
+
+test("resets the selected row when the node changes", async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const previewPipeline = vi
+    .fn()
+    .mockResolvedValueOnce([{ id: 1, pop: 1200 }])
+    .mockResolvedValueOnce([{ id: 2, pop: 800 }]);
+  const client: Partial<ItemClient> = { previewPipeline };
+
+  const { rerender } = render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client as ItemClient}>
+        <PipelinePreviewPanel pipelineId="p-1" nodeId="r1" />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  // Select a row in node r1
+  await waitFor(() => expect(screen.getByRole("cell", { name: "1200" })).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("cell", { name: "1200" }).closest("tr")!);
+  expect(screen.getByText("Attributs de la feature")).toBeInTheDocument();
+
+  // Re-render with a different node
+  rerender(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client as ItemClient}>
+        <PipelinePreviewPanel pipelineId="p-1" nodeId="r2" />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  // The attributes panel should be gone (selectedIndex reset to null)
+  await waitFor(() =>
+    expect(screen.queryByText("Attributs de la feature")).not.toBeInTheDocument(),
+  );
+});

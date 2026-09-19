@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePipelinePreview } from "../../api/hooks";
 import type { PipelinePayload } from "../../api/types";
 import { t } from "../../i18n";
@@ -20,6 +20,10 @@ export function PipelinePreviewPanel({
   const previewQuery = usePipelinePreview(pipelineId, nodeId, draft);
   const [view, setView] = useState<"table" | "map">("table");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    setSelectedIndex(null);
+  }, [nodeId]);
 
   if (nodeId === null) return null;
   if (previewQuery.isLoading) return <p role="status">{t("pipelinePreview.loading")}</p>;
