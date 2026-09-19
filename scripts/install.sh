@@ -347,9 +347,24 @@ prompt_admin() {
   shell_client_id="$($COMPOSE exec -T keycloak "$kc" get clients -r geostudio \
       -q clientId=geostudio-shell --fields id 2>/dev/null \
     | jq -r '.[0].id')"
+  if [ -z "$shell_client_id" ] || [ "$shell_client_id" = "null" ]; then
+    echo "✗ Client Keycloak 'geostudio-shell' introuvable dans le realm geostudio — impossible de synchroniser les URLs de redirection." >&2
+    exit 1
+  fi
   $COMPOSE exec -T keycloak "$kc" update "clients/${shell_client_id}" -r geostudio \
     -s "redirectUris=[\"https://${PUBLIC_HOST}/\",\"https://${PUBLIC_HOST}/*\"]" \
     -s "webOrigins=[\"+\"]" \
+    >/dev/null
+  # post.logout.redirect.uris est un attribut imbriqué dont le nom contient
+  # des points — `-s attributes.post\.logout\.redirect\.uris=...` et la
+  # variante avec guillemets échouent SILENCIEUSEMENT (code 0, rien
+  # modifié, vérifié empiriquement contre un vrai Keycloak 24.0.5). Seul un
+  # corps JSON via `-f -` fonctionne ; kcadm fait un merge partiel côté
+  # serveur, donc un corps ne contenant que `attributes` ne touche à rien
+  # d'autre sur le client (vérifié : redirectUris/clientId/enabled
+  # préservés).
+  echo "{\"attributes\":{\"post.logout.redirect.uris\":\"https://${PUBLIC_HOST}/##https://${PUBLIC_HOST}/*\"}}" \
+    | $COMPOSE exec -T keycloak "$kc" update "clients/${shell_client_id}" -r geostudio -f - \
     >/dev/null
 
   local admin_temp_password
