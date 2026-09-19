@@ -4,6 +4,7 @@ import { useItemClient } from "../../api/hooks";
 import type { PipelineRun } from "../../api/types";
 import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
+import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 
 const STATUS_LABEL: Record<PipelineRun["status"], string> = {
   queued: t("pipelineRun.statusQueued"),
@@ -16,6 +17,46 @@ const STATUS_LABEL: Record<PipelineRun["status"], string> = {
 // panneau tronquait silencieusement l'historique à la limite par défaut du
 // cœur (100) sans jamais l'envoyer ni exposer de contrôle.
 const RUNS_PAGE_SIZE = 100;
+
+function RunRow({ run }: { run: PipelineRun }) {
+  const [open, setOpen] = useState(false);
+  const detail = usePanelTrigger(open);
+  const nodeEntries = Object.values(run.nodeStats);
+  return (
+    <li className="border-t border-rule pt-1">
+      <div className="flex items-center gap-2">
+        <span>{STATUS_LABEL[run.status]}</span>
+        {run.startedAt && <span className="text-ink-2">{run.startedAt}</span>}
+        {nodeEntries.length > 0 && (
+          <button
+            type="button"
+            aria-label={t("pipelineRun.detailAria", { id: run.id })}
+            aria-expanded={detail.triggerProps["aria-expanded"]}
+            aria-controls={detail.triggerProps["aria-controls"]}
+            className="text-accent underline"
+            onClick={() => setOpen((o) => !o)}
+          >
+            {open ? t("pipelineRun.hideDetail") : t("pipelineRun.showDetail")}
+          </button>
+        )}
+      </div>
+      {run.error && (
+        <p role="alert" className="text-danger">
+          {run.error}
+        </p>
+      )}
+      {open && nodeEntries.length > 0 && (
+        <ul {...detail.panelProps} className="ml-4 mt-1 flex flex-col gap-0.5 text-ink-2">
+          {nodeEntries.map((stat) => (
+            <li key={stat.nodeId}>
+              {stat.op} : {stat.rowCount ?? "—"}
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
 
 // Patron de poll identique à shell/src/shell/ImportFileButton.tsx (SP-6a) —
 // boucle récursive manuelle via le client, pas un refetchInterval react-query
@@ -117,15 +158,7 @@ export function PipelineRunPanel({
       )}
       <ul className="flex flex-col gap-1 text-xs">
         {runs.map((run) => (
-          <li key={run.id} className="border-t border-rule pt-1">
-            <span>{STATUS_LABEL[run.status]}</span>
-            {run.startedAt && <span className="ml-2 text-ink-2">{run.startedAt}</span>}
-            {run.error && (
-              <p role="alert" className="text-danger">
-                {run.error}
-              </p>
-            )}
-          </li>
+          <RunRow key={run.id} run={run} />
         ))}
       </ul>
       {runs.length >= limit && (

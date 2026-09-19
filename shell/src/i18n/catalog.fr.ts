@@ -1093,6 +1093,9 @@ export const fr = {
   // ce bouton évite de tronquer silencieusement l'historique au-delà de la
   // limite par défaut du cœur (100).
   "pipelineRun.loadMore": "Charger plus",
+  "pipelineRun.detailAria": "Détail du run {id}",
+  "pipelineRun.showDetail": "Détail",
+  "pipelineRun.hideDetail": "Masquer le détail",
 
   // PipelineWebhookTrigger (builder/pipeline)
   "pipelineWebhook.heading": "Déclenchement par webhook",

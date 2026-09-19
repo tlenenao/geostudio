@@ -206,3 +206,43 @@ test("calls onLatestRunChange with null when there is no run yet", async () => {
   );
   await waitFor(() => expect(onLatestRunChange).toHaveBeenCalledWith(null));
 });
+
+test("expanding a run shows its per-node row counts", async () => {
+  renderPanel({
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-0",
+        status: "succeeded",
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: "2026-08-06T10:00:02Z",
+        error: null,
+        nodeStats: {
+          r1: { nodeId: "r1", op: "reader.collection", rowCount: 42 },
+          w1: { nodeId: "w1", op: "writer.collection", rowCount: 40 },
+        },
+      },
+    ]),
+  });
+  await waitFor(() => expect(screen.getByText("succeeded")).toBeInTheDocument());
+  expect(screen.queryByText("reader.collection : 42")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Détail du run run-0" }));
+  expect(screen.getByText("reader.collection : 42")).toBeInTheDocument();
+  expect(screen.getByText("writer.collection : 40")).toBeInTheDocument();
+});
+
+test("a run with no nodeStats shows no expand toggle", async () => {
+  renderPanel({
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-0",
+        status: "queued",
+        startedAt: null,
+        finishedAt: null,
+        error: null,
+        nodeStats: {},
+      },
+    ]),
+  });
+  await waitFor(() => expect(screen.getByText("En attente")).toBeInTheDocument());
+  expect(screen.queryByRole("button", { name: "Détail du run run-0" })).not.toBeInTheDocument();
+});
