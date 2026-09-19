@@ -348,7 +348,7 @@ services:
       # read_terrain3d_tile, app/terrain3d/routes.py) — appel interne, jamais
       # exposé au navigateur.
       TITILER_URL: ${TITILER_URL:-http://titiler:8000}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-core
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: ${MINIO_USER}
@@ -484,7 +484,7 @@ services:
       CORE_TERRAIN3D_MAX_UPLOAD_BYTES: ${CORE_TERRAIN3D_MAX_UPLOAD_BYTES:-2147483648}
       CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS: ${CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS:-900}
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-worker
       QGIS_WORKER_URL: http://qgis-worker:8000
       QGIS_WORKER_TIMEOUT_SECONDS: "600"
@@ -653,7 +653,7 @@ services:
       S3_ACCESS_KEY: ${MINIO_USER}
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_CDC_BUCKET: geostudio-cdc
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-cdc-worker
     networks: [gis-net]
     depends_on:

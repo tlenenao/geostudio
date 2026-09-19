@@ -184,6 +184,25 @@ set_env_var() {
 
 ensure_env_file
 
+configure_otel_export() {
+  # docker-compose.yml exporte inconditionnellement core/worker/cdc-worker
+  # vers otel-lgtm:4318 — sans le profil `observability` démarré, cet hôte
+  # n'existe pas et les trois services retentent l'export en boucle
+  # (bruit de log permanent, constaté en déploiement réel). Positionner
+  # l'endpoint seulement quand ce profil est sélectionné.
+  local enabled=false
+  for p in "${SELECTED_PROFILES[@]+"${SELECTED_PROFILES[@]}"}"; do
+    [ "$p" = "observability" ] && enabled=true
+  done
+  if [ "$enabled" = true ]; then
+    set_env_var OTEL_EXPORTER_OTLP_ENDPOINT "http://otel-lgtm:4318"
+  else
+    set_env_var OTEL_EXPORTER_OTLP_ENDPOINT ""
+  fi
+}
+
+configure_otel_export
+
 prompt_etl_engine() {
   echo ""
   local etl_enabled=false
