@@ -133,6 +133,10 @@ export class MockMap {
   getLayer(id: string) {
     return this.layers.find((l) => l.id === id);
   }
+  setFilter(id: string, filter: unknown) {
+    const layer = this.layers.find((l) => l.id === id);
+    if (layer) layer.filter = filter;
+  }
   getSource(id: string) {
     return this.sources.find((s) => s.id === id);
   }

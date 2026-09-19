@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, expect, test, vi } from "vitest";
 import type { ItemClient, PipelinePayload } from "../../api/types";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
+import { mapInstances } from "../../test/MockMaplibreMap";
 import { PipelinePreviewPanel } from "./PipelinePreviewPanel";
 
 vi.mock("maplibre-gl", async () => {
   const { MockMap } = await import("../../test/MockMaplibreMap");
   return { Map: MockMap, setWorkerUrl: () => {} };
+});
+
+beforeEach(() => {
+  mapInstances.length = 0;
 });
 
 function renderPanel(
@@ -90,4 +96,37 @@ test("shows no staleness hint by default", async () => {
   const { previewPipeline } = renderPanel();
   await waitFor(() => expect(previewPipeline).toHaveBeenCalled());
   expect(screen.queryByText("Aperçu à régénérer", { exact: false })).not.toBeInTheDocument();
+});
+
+test("clicking a table row shows its attributes below the table", async () => {
+  renderPanel(
+    vi.fn().mockResolvedValue([
+      { id: 1, pop: 1200 },
+      { id: 2, pop: 800 },
+    ]),
+  );
+  await waitFor(() => expect(screen.getByRole("cell", { name: "1200" })).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("cell", { name: "800" }).closest("tr")!);
+  const heading = screen.getByText("Attributs de la feature");
+  // "800" also appears in the table cell for the same row: scope the
+  // assertion to the attributes panel to avoid an ambiguous multi-match.
+  expect(within(heading.closest("div")!).getByText("800")).toBeInTheDocument();
+});
+
+test("selecting a feature on the map is reflected when switching back to the table", async () => {
+  renderPanel(
+    vi.fn().mockResolvedValue([
+      { id: 1, geometry: { type: "Point", coordinates: [1, 1] } },
+      { id: 2, geometry: { type: "Point", coordinates: [2, 2] } },
+    ]),
+  );
+  await waitFor(() => expect(screen.getByRole("button", { name: "Carte" })).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "Carte" }));
+  const map = mapInstances[0];
+  map.fireOnLayer("click", "pipeline-preview-circle", {
+    features: [{ properties: { __rowIndex: 1 } }],
+  });
+  await userEvent.click(screen.getByRole("button", { name: "Tableau" }));
+  const rows = screen.getAllByRole("row");
+  expect(rows[2]).toHaveClass("bg-sunken"); // header row + row 0 + selected row 1
 });

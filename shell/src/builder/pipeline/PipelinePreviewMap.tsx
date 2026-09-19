@@ -77,14 +77,28 @@ const LEGEND_ENTRIES: {
 // PipelinePreviewPanel's table, construite entièrement côté client à partir
 // des lignes déjà décodées en GeoJSON par POST /pipelines/{id}/preview
 // (ST_AsGeoJSON côté runtime, aucun appel réseau supplémentaire ici).
-export function PipelinePreviewMap({ rows }: { rows: Record<string, unknown>[] }) {
+export function PipelinePreviewMap({
+  rows,
+  selectedIndex = null,
+  onSelectIndex,
+}: {
+  rows: Record<string, unknown>[];
+  selectedIndex?: number | null;
+  onSelectIndex?: (index: number) => void;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
     const features: GeoJSON.Feature[] = rows
-      .filter((r) => r.geometry != null)
-      .map((r) => ({ type: "Feature", properties: {}, geometry: r.geometry as GeoJSON.Geometry }));
+      .map((r, i) => ({ r, i }))
+      .filter(({ r }) => r.geometry != null)
+      .map(({ r, i }) => ({
+        type: "Feature",
+        properties: { __rowIndex: i },
+        geometry: r.geometry as GeoJSON.Geometry,
+      }));
     const featureCollection: GeoJSON.FeatureCollection = { type: "FeatureCollection", features };
 
     const map = new maplibregl.Map({
@@ -93,6 +107,7 @@ export function PipelinePreviewMap({ rows }: { rows: Record<string, unknown>[] }
       center: [0, 0],
       zoom: 1,
     });
+    mapRef.current = map;
     map.on("load", () => {
       map.addSource(SOURCE_ID, { type: "geojson", data: featureCollection });
       map.addLayer({
@@ -116,11 +131,39 @@ export function PipelinePreviewMap({ rows }: { rows: Record<string, unknown>[] }
         filter: ["==", ["geometry-type"], "Point"],
         paint: { "circle-color": "#dc2626", "circle-radius": 5 },
       });
+      map.addLayer({
+        id: `${SOURCE_ID}-selected`,
+        type: "line",
+        source: SOURCE_ID,
+        filter: ["==", ["get", "__rowIndex"], selectedIndex ?? -1],
+        paint: { "line-color": "#facc15", "line-width": 3 },
+      });
+      const handleClick = (e: maplibregl.MapLayerMouseEvent) => {
+        const idx = e.features?.[0]?.properties?.__rowIndex;
+        if (typeof idx === "number") onSelectIndex?.(idx);
+      };
+      map.on("click", `${SOURCE_ID}-fill`, handleClick);
+      map.on("click", `${SOURCE_ID}-line`, handleClick);
+      map.on("click", `${SOURCE_ID}-circle`, handleClick);
       const bounds = computeBounds(features);
       if (bounds) map.fitBounds(bounds, { padding: 20, maxZoom: 16 });
     });
-    return () => map.remove();
+    return () => {
+      mapRef.current = null;
+      map.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows]);
+
+  useEffect(() => {
+    if (mapRef.current?.getLayer(`${SOURCE_ID}-selected`)) {
+      mapRef.current.setFilter(`${SOURCE_ID}-selected`, [
+        "==",
+        ["get", "__rowIndex"],
+        selectedIndex ?? -1,
+      ]);
+    }
+  }, [selectedIndex]);
 
   const kinds = presentGeometryKinds(rows);
   return (

@@ -98,3 +98,32 @@ test("renders a legend swatch only for geometry kinds actually present in rows",
   expect(screen.queryByText("Polygone")).not.toBeInTheDocument();
   expect(screen.queryByText("Ligne")).not.toBeInTheDocument();
 });
+
+test("clicking a rendered feature calls onSelectIndex with that feature's row index", () => {
+  const onSelectIndex = vi.fn();
+  render(
+    <PipelinePreviewMap
+      rows={[
+        { id: 1, geometry: { type: "Point", coordinates: [1, 1] } },
+        { id: 2, geometry: { type: "Point", coordinates: [2, 2] } },
+      ]}
+      onSelectIndex={onSelectIndex}
+    />,
+  );
+  const map = mapInstances[0];
+  map.fireOnLayer("click", "pipeline-preview-circle", {
+    features: [{ properties: { __rowIndex: 1 } }],
+  });
+  expect(onSelectIndex).toHaveBeenCalledWith(1);
+});
+
+test("filters the selection outline layer to the selectedIndex", () => {
+  render(
+    <PipelinePreviewMap
+      rows={[{ id: 1, geometry: { type: "Point", coordinates: [1, 1] } }]}
+      selectedIndex={0}
+    />,
+  );
+  const map = mapInstances[0];
+  expect(map.getLayer("pipeline-preview-selected")).toBeDefined();
+});

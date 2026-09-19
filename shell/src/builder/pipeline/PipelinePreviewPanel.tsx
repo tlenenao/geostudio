@@ -19,6 +19,7 @@ export function PipelinePreviewPanel({
 }) {
   const previewQuery = usePipelinePreview(pipelineId, nodeId, draft);
   const [view, setView] = useState<"table" | "map">("table");
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   if (nodeId === null) return null;
   if (previewQuery.isLoading) return <p role="status">{t("pipelinePreview.loading")}</p>;
@@ -59,7 +60,11 @@ export function PipelinePreviewPanel({
         </div>
       )}
       {hasGeometry && view === "map" ? (
-        <PipelinePreviewMap rows={rows} />
+        <PipelinePreviewMap
+          rows={rows}
+          selectedIndex={selectedIndex}
+          onSelectIndex={setSelectedIndex}
+        />
       ) : (
         <table className="w-full text-xs">
           <thead>
@@ -73,7 +78,11 @@ export function PipelinePreviewPanel({
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={i} className="border-t border-rule">
+              <tr
+                key={i}
+                onClick={() => setSelectedIndex(i)}
+                className={`cursor-pointer border-t border-rule ${i === selectedIndex ? "bg-sunken" : ""}`}
+              >
                 {columns.map((c) => (
                   <td key={c} className="p-1">
                     {String(row[c])}
@@ -83,6 +92,21 @@ export function PipelinePreviewPanel({
             ))}
           </tbody>
         </table>
+      )}
+      {selectedIndex !== null && rows[selectedIndex] && (
+        <div className="rounded border border-rule p-2 text-xs">
+          <p className="mb-1 font-medium text-ink-2">{t("pipelinePreview.featureAttributes")}</p>
+          <dl className="grid grid-cols-2 gap-x-2 gap-y-1">
+            {Object.entries(rows[selectedIndex])
+              .filter(([c]) => c !== "geometry")
+              .map(([k, v]) => (
+                <div key={k} className="contents">
+                  <dt className="text-ink-2">{k}</dt>
+                  <dd className="text-ink">{String(v)}</dd>
+                </div>
+              ))}
+          </dl>
+        </div>
       )}
     </div>
   );
