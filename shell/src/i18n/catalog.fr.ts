@@ -1076,6 +1076,7 @@ export const fr = {
   "pipelinePreview.previousPage": "Précédent",
   "pipelinePreview.nextPage": "Suivant",
   "pipelinePreview.rowRange": "Lignes {from}–{to} sur {total}",
+  "pipelinePreview.viewOnMap": "Voir sur la carte",
   "pipelinePreview.stale": "Aperçu à régénérer (paramètres modifiés depuis le dernier calcul)",
   "pipelinePreviewMap.legendPolygon": "Polygone",
   "pipelinePreviewMap.legendLine": "Ligne",

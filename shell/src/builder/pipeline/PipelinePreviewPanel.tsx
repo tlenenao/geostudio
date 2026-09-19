@@ -9,6 +9,17 @@ import { PipelinePreviewMap } from "./PipelinePreviewMap";
 
 const PAGE_SIZE = 20;
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}/;
+
+function formatCell(value: unknown): string {
+  if (typeof value === "number") return value.toLocaleString("fr-FR");
+  if (typeof value === "string" && ISO_DATE_RE.test(value)) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString("fr-FR");
+  }
+  return String(value);
+}
+
 export function PipelinePreviewPanel({
   pipelineId,
   nodeId,
@@ -98,11 +109,27 @@ export function PipelinePreviewPanel({
                     onClick={() => setSelectedIndex(i)}
                     className={`cursor-pointer border-t border-rule ${i === selectedIndex ? "bg-sunken" : ""}`}
                   >
-                    {columns.map((c) => (
-                      <td key={c} className="p-1">
-                        {String(row[c])}
-                      </td>
-                    ))}
+                    {columns.map((c) =>
+                      c === "geometry" ? (
+                        <td key={c} className="p-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedIndex(i);
+                              setView("map");
+                            }}
+                            className="text-accent underline"
+                          >
+                            {t("pipelinePreview.viewOnMap")}
+                          </button>
+                        </td>
+                      ) : (
+                        <td key={c} className="p-1">
+                          {formatCell(row[c])}
+                        </td>
+                      ),
+                    )}
                   </tr>
                 );
               })}

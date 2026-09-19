@@ -17,6 +17,8 @@ beforeEach(() => {
   mapInstances.length = 0;
 });
 
+const FORMATTED_1200 = (1200).toLocaleString("fr-FR");
+
 function renderPanel(
   previewPipeline = vi.fn().mockResolvedValue([{ id: 1, pop: 1200 }]),
   extraProps: { draft?: PipelinePayload; isDraftStale?: boolean } = {},
@@ -35,7 +37,9 @@ function renderPanel(
 
 test("fetches the preview for the given node and renders it as a table", async () => {
   const { previewPipeline } = renderPanel();
-  await waitFor(() => expect(screen.getByRole("cell", { name: "1200" })).toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByRole("cell", { name: FORMATTED_1200 })).toBeInTheDocument(),
+  );
   expect(previewPipeline).toHaveBeenCalledWith("p-1", "r1", undefined);
 });
 
@@ -105,7 +109,9 @@ test("clicking a table row shows its attributes below the table", async () => {
       { id: 2, pop: 800 },
     ]),
   );
-  await waitFor(() => expect(screen.getByRole("cell", { name: "1200" })).toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByRole("cell", { name: FORMATTED_1200 })).toBeInTheDocument(),
+  );
   await userEvent.click(screen.getByRole("cell", { name: "800" }).closest("tr")!);
   const heading = screen.getByText("Attributs de la feature");
   // "800" also appears in the table cell for the same row: scope the
@@ -185,8 +191,10 @@ test("resets the selected row when the node changes", async () => {
   );
 
   // Select a row in node r1
-  await waitFor(() => expect(screen.getByRole("cell", { name: "1200" })).toBeInTheDocument());
-  await userEvent.click(screen.getByRole("cell", { name: "1200" }).closest("tr")!);
+  await waitFor(() =>
+    expect(screen.getByRole("cell", { name: FORMATTED_1200 })).toBeInTheDocument(),
+  );
+  await userEvent.click(screen.getByRole("cell", { name: FORMATTED_1200 }).closest("tr")!);
   expect(screen.getByText("Attributs de la feature")).toBeInTheDocument();
 
   // Re-render with a different node
@@ -205,4 +213,37 @@ test("resets the selected row when the node changes", async () => {
   // data ever resolves, without ever exercising the selectedIndex reset.
   await waitFor(() => expect(screen.getByRole("cell", { name: "800" })).toBeInTheDocument());
   expect(screen.queryByText("Attributs de la feature")).not.toBeInTheDocument();
+});
+
+test("formats a number with French thousands separators", async () => {
+  renderPanel(vi.fn().mockResolvedValue([{ id: 1, pop: 1234567 }]));
+  await waitFor(() =>
+    expect(
+      screen.getByRole("cell", { name: (1234567).toLocaleString("fr-FR") }),
+    ).toBeInTheDocument(),
+  );
+});
+
+test("shows a Voir sur la carte button instead of raw geometry JSON", async () => {
+  renderPanel(
+    vi.fn().mockResolvedValue([{ id: 1, geometry: { type: "Point", coordinates: [1, 2] } }]),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Voir sur la carte" })).toBeInTheDocument(),
+  );
+  expect(screen.queryByText("[object Object]")).not.toBeInTheDocument();
+});
+
+test("clicking Voir sur la carte switches to map view with that row selected", async () => {
+  renderPanel(
+    vi.fn().mockResolvedValue([
+      { id: 1, geometry: { type: "Point", coordinates: [1, 2] } },
+      { id: 2, geometry: { type: "Point", coordinates: [3, 4] } },
+    ]),
+  );
+  await waitFor(() =>
+    expect(screen.getAllByRole("button", { name: "Voir sur la carte" })).toHaveLength(2),
+  );
+  await userEvent.click(screen.getAllByRole("button", { name: "Voir sur la carte" })[1]);
+  expect(screen.getByTestId("pipeline-preview-map")).toBeInTheDocument();
 });
