@@ -234,6 +234,29 @@ test("shows a Voir sur la carte button instead of raw geometry JSON", async () =
   expect(screen.queryByText("[object Object]")).not.toBeInTheDocument();
 });
 
+test("clicking a column header sorts rows ascending, then descending on a second click", async () => {
+  renderPanel(
+    vi.fn().mockResolvedValue([
+      { id: 1, pop: 300 },
+      { id: 2, pop: 100 },
+      { id: 3, pop: 200 },
+    ]),
+  );
+  await waitFor(() => expect(screen.getByRole("cell", { name: "300" })).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("columnheader", { name: "pop" }));
+  let cells = screen
+    .getAllByRole("row")
+    .slice(1)
+    .map((r) => within(r).getAllByRole("cell")[1].textContent);
+  expect(cells).toEqual(["100", "200", "300"]);
+  await userEvent.click(screen.getByRole("columnheader", { name: "pop" }));
+  cells = screen
+    .getAllByRole("row")
+    .slice(1)
+    .map((r) => within(r).getAllByRole("cell")[1].textContent);
+  expect(cells).toEqual(["300", "200", "100"]);
+});
+
 test("clicking Voir sur la carte switches to map view with that row selected", async () => {
   renderPanel(
     vi.fn().mockResolvedValue([

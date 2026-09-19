@@ -11,6 +11,11 @@ const PAGE_SIZE = 20;
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}/;
 
+function compareCells(a: unknown, b: unknown): number {
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return String(a).localeCompare(String(b));
+}
+
 function formatCell(value: unknown): string {
   if (typeof value === "number") return value.toLocaleString("fr-FR");
   if (typeof value === "string" && ISO_DATE_RE.test(value)) {
@@ -35,6 +40,8 @@ export function PipelinePreviewPanel({
   const [view, setView] = useState<"table" | "map">("table");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [page, setPage] = useState(0);
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const rows = previewQuery.data ?? [];
 
   useEffect(() => {
@@ -43,7 +50,7 @@ export function PipelinePreviewPanel({
 
   useEffect(() => {
     setPage(0);
-  }, [rows]);
+  }, [rows, sortColumn, sortDirection]);
 
   if (nodeId === null) return null;
   if (previewQuery.isLoading) return <p role="status">{t("pipelinePreview.loading")}</p>;
@@ -56,6 +63,15 @@ export function PipelinePreviewPanel({
 
   const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
   const hasGeometry = columns.includes("geometry");
+
+  const rowsWithIndex = rows.map((row, i) => ({ row, i }));
+  const sortedRows =
+    sortColumn === null
+      ? rowsWithIndex
+      : [...rowsWithIndex].sort((a, b) => {
+          const cmp = compareCells(a.row[sortColumn], b.row[sortColumn]);
+          return sortDirection === "asc" ? cmp : -cmp;
+        });
 
   return (
     <div className="flex flex-col gap-2">
@@ -94,45 +110,60 @@ export function PipelinePreviewPanel({
             <thead>
               <tr>
                 {columns.map((c) => (
-                  <th key={c} className="p-1 text-left">
+                  <th
+                    key={c}
+                    className="cursor-pointer p-1 text-left"
+                    onClick={() => {
+                      if (sortColumn === c) {
+                        setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+                      } else {
+                        setSortColumn(c);
+                        setSortDirection("asc");
+                      }
+                    }}
+                    aria-sort={
+                      sortColumn === c
+                        ? sortDirection === "desc"
+                          ? "descending"
+                          : "ascending"
+                        : "none"
+                    }
+                  >
                     {c}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((row, sliceIndex) => {
-                const i = page * PAGE_SIZE + sliceIndex;
-                return (
-                  <tr
-                    key={i}
-                    onClick={() => setSelectedIndex(i)}
-                    className={`cursor-pointer border-t border-rule ${i === selectedIndex ? "bg-sunken" : ""}`}
-                  >
-                    {columns.map((c) =>
-                      c === "geometry" ? (
-                        <td key={c} className="p-1">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedIndex(i);
-                              setView("map");
-                            }}
-                            className="text-accent underline"
-                          >
-                            {t("pipelinePreview.viewOnMap")}
-                          </button>
-                        </td>
-                      ) : (
-                        <td key={c} className="p-1">
-                          {formatCell(row[c])}
-                        </td>
-                      ),
-                    )}
-                  </tr>
-                );
-              })}
+              {sortedRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(({ row, i }) => (
+                <tr
+                  key={i}
+                  onClick={() => setSelectedIndex(i)}
+                  className={`cursor-pointer border-t border-rule ${i === selectedIndex ? "bg-sunken" : ""}`}
+                >
+                  {columns.map((c) =>
+                    c === "geometry" ? (
+                      <td key={c} className="p-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedIndex(i);
+                            setView("map");
+                          }}
+                          className="text-accent underline"
+                        >
+                          {t("pipelinePreview.viewOnMap")}
+                        </button>
+                      </td>
+                    ) : (
+                      <td key={c} className="p-1">
+                        {formatCell(row[c])}
+                      </td>
+                    ),
+                  )}
+                </tr>
+              ))}
             </tbody>
           </table>
           {rows.length > 0 && (
