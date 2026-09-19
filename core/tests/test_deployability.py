@@ -67,6 +67,7 @@ BASE = REPO / "docker-compose.yml"
 PROD = REPO / "docker-compose.prod.yml"
 RELEASE = REPO / ".github/workflows/release.yml"
 BUILD_AND_PUSH = REPO / ".github/workflows/_build-and-push.yml"
+PUBLISH_EDGE = REPO / ".github/workflows/publish-edge.yml"
 ENV_EXAMPLE = REPO / ".env.example"
 BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
 BACKUP_SH = REPO / "deploy/backup/backup.sh"
@@ -1813,3 +1814,48 @@ def test_slo_rules_cover_the_four_documented_slos_and_are_active():
         threshold_expr = next(d for d in rule["data"] if d["refId"] == "B")
         params = threshold_expr["model"]["conditions"][0]["evaluator"]["params"]
         assert params == [threshold], f"{uid}: seuil attendu {threshold}, trouvé {params}"
+
+
+def test_publish_edge_triggers_only_on_merge_to_main():
+    """Rebuild sur CHAQUE exécution de CI (chaque push, chaque PR) inonderait
+    le registre d'images pour des commits jamais mergés — vérifié contre
+    `release.yml` réel que rien de tel n'existe aujourd'hui (déclenché
+    seulement par `push: tags:`, jamais par `branches:`), ce qui a
+    précisément laissé geostudio-titiler sans jamais être construit.
+    Décision actée (arbitrage utilisateur, plus resserrée que la spec §2.3
+    qui envisageait dev+main) : un tag `edge` reconstruit sur MERGE vers
+    `main` UNIQUEMENT — `dev` (branche de travail quotidienne, cf.
+    CLAUDE.md) reste hors de ce déclencheur pour ne pas rebuild les 9
+    images à chaque commit de la journée, seulement à chaque promotion
+    réelle vers `main`."""
+    assert PUBLISH_EDGE.exists(), "attendu : .github/workflows/publish-edge.yml"
+    doc = yaml.safe_load(PUBLISH_EDGE.read_text())
+    # PyYAML résout la clé `on:` non quotée en booléen `True` (YAML 1.1) —
+    # vérifié empiriquement contre release.yml réel, cf. commentaire de
+    # test_build_and_push_matrix_lives_in_the_reusable_workflow ci-dessus.
+    on = doc[True]
+    branches = set(on["push"]["branches"])
+    assert branches == {"main"}, f"déclencheur inattendu : {branches}"
+    assert "pull_request" not in on, (
+        "publish-edge.yml ne doit jamais se déclencher sur une PR — "
+        "seulement sur un merge réel vers main"
+    )
+
+
+def test_publish_edge_calls_the_reusable_workflow_with_the_edge_tag():
+    doc = yaml.safe_load(PUBLISH_EDGE.read_text())
+    job = doc["jobs"]["build-and-push"]
+    assert job.get("uses") == "./.github/workflows/_build-and-push.yml"
+    with_inputs = job["with"]
+    assert with_inputs["image_tag"] == "edge"
+    assert with_inputs["also_tag_latest"] is False
+    assert with_inputs["run_scans"] is False
+
+
+def test_publish_edge_verifies_all_images_landed():
+    doc = yaml.safe_load(PUBLISH_EDGE.read_text())
+    verify = doc["jobs"].get("verify-published")
+    assert verify is not None, "publish-edge.yml doit avoir un job verify-published"
+    assert verify["needs"] == "build-and-push" or "build-and-push" in verify["needs"]
+    runs = " ".join(step.get("run", "") for step in verify["steps"])
+    assert "check_published_images.py edge" in runs
