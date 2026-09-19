@@ -53,7 +53,11 @@ if [ "$1" = "compose" ]; then
           get)
             resource="$3"
             if [ "$resource" = "clients" ]; then
-              echo "[{\"id\":\"shell-client-fake-id\"}]"
+              if [ "${FAKE_KC_SHELL_CLIENT_MISSING:-0}" = "1" ]; then
+                echo "[]"
+              else
+                echo "[{\"id\":\"shell-client-fake-id\"}]"
+              fi
             elif grep -q "kcadm.sh create users" "$FAKE_BIN_LOG" 2>/dev/null; then
               echo "[{\"id\":\"created-fake-id\"}]"
             elif [ -n "${FAKE_KC_EXISTING_USER_ID:-}" ]; then
@@ -61,6 +65,16 @@ if [ "$1" = "compose" ]; then
             else
               echo "[]"
             fi
+            exit 0
+            ;;
+          update)
+            prev=""
+            for a in "$@"; do
+              if [ "$prev" = "-f" ] && [ "$a" = "-" ]; then
+                echo "STDIN_BODY: $(cat)" >> "$FAKE_BIN_LOG"
+              fi
+              prev="$a"
+            done
             exit 0
             ;;
           create)
@@ -107,7 +121,8 @@ if filt == ".[0].id // empty":
     value = first_id(data)
     print(value if value is not None else "")
 elif filt == ".[0].id":
-    print(first_id(data))
+    value = first_id(data)
+    print(value if value is not None else "null")
 else:
     sys.exit(f"fake jq: unsupported filter {filt!r}")
 """
@@ -302,4 +317,36 @@ def test_install_refreshes_redirect_uris_even_when_admin_account_already_exists(
         "update clients/shell-client-fake-id -r geostudio "
         '-s redirectUris=["https://geostudio-test.example/",'
         '"https://geostudio-test.example/*"] -s webOrigins=["+"]'
+    ) in log
+
+
+def test_install_fails_explicitly_when_the_shell_client_is_missing(install_workdir, fake_bin_path):
+    """Si `geostudio-shell` n'existe pas dans le realm, jq renvoie `null`
+    (jq -r '.[0].id' sur une liste vide) — sans garde, la commande update
+    suivante deviendrait `update clients/null`, qui échoue côté Keycloak
+    réel de façon silencieuse pour ce script (code de sortie non vérifié).
+    install.sh doit détecter ce cas et échouer explicitement AVANT de
+    tenter le moindre update."""
+    result, log = _run_install(
+        install_workdir,
+        fake_bin_path,
+        extra_env={"FAKE_KC_SHELL_CLIENT_MISSING": "1"},
+    )
+
+    assert result.returncode != 0
+    assert "clients/null" not in log
+    assert "update clients/shell-client-fake-id" not in log
+
+
+def test_install_refreshes_post_logout_redirect_uris_every_run(install_workdir, fake_bin_path):
+    """Même mal que redirectUris (§1.5) mais sur post.logout.redirect.uris,
+    utilisé par shell/src/auth/AuthProvider.tsx (post_logout_redirect_uri) —
+    sans ce rafraîchissement, la déconnexion resterait cassée sur tout
+    déploiement où PUBLIC_HOST diffère du tout premier import du realm."""
+    result, log = _run_install(install_workdir, fake_bin_path)
+
+    assert result.returncode == 0, result.stderr
+    assert (
+        'STDIN_BODY: {"attributes":{"post.logout.redirect.uris":'
+        '"https://geostudio-test.example/##https://geostudio-test.example/*"}}'
     ) in log
