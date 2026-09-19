@@ -374,7 +374,7 @@ launch_stack() {
   echo "Attente de la disponibilité du cœur..."
   # Ni curl ni wget ne sont présents dans l'image core (python:3.12-slim +
   # uvicorn — vérifié empiriquement, même écueil que kcadm.sh/Keycloak dans
-  # prompt_admin) : on interroge /me avec l'interpréteur Python déjà présent
+  # prompt_admin) : on interroge /v1/me avec l'interpréteur Python déjà présent
   # dans le conteneur, qui sert aussi bien à faire la requête qu'à distinguer
   # "erreur HTTP" (code renvoyé) de "pas de connexion encore" (000).
   local code="000"
@@ -382,7 +382,7 @@ launch_stack() {
     code="$($COMPOSE exec -T core python3 -c '
 import urllib.request, urllib.error
 try:
-    urllib.request.urlopen("http://localhost:8200/me", timeout=2)
+    urllib.request.urlopen("http://localhost:8200/v1/me", timeout=2)
     print(200)
 except urllib.error.HTTPError as e:
     print(e.code)
