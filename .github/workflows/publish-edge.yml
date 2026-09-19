@@ -46,7 +46,13 @@ jobs:
   verify-published:
     needs: build-and-push
     runs-on: ubuntu-latest
+    # Spécifier N'IMPORTE quelle permission met TOUTES les autres à `none`
+    # (règle GitHub) — `contents: read` doit rester explicite ici pour que
+    # `actions/checkout` fonctionne, sinon il aurait silencieusement perdu
+    # l'accès qu'il tenait implicitement des permissions par défaut du
+    # dépôt (revue du correctif de la revue finale, N1).
     permissions:
+      contents: read
       packages: read
     steps:
       - uses: actions/checkout@v7
