@@ -463,6 +463,8 @@ export const fr = {
   "pipelineBuilder.executionLabel": "Exécution",
   "pipelineBuilder.undo": "Annuler",
   "pipelineBuilder.redo": "Rétablir",
+  "pipelineBuilder.addNoteButton": "Ajouter une zone",
+  "pipelineBuilder.newNoteLabel": "Nouvelle zone",
   "pipelineBuilder.scheduleLabel": "Planification",
   "pipelineBuilder.saveDisabledReason":
     "Le graphe contient des erreurs à corriger avant l'enregistrement.",
@@ -1051,6 +1053,7 @@ export const fr = {
   "pipelineCanvas.nodeErrorAria": "{count} erreur(s) sur ce nœud",
   "pipelineCanvas.deleteNodeAria": "Supprimer {title}",
   "pipelineCanvas.startConnectAria": "Connecter depuis {title}",
+  "pipelineCanvas.noteLabelAria": "Étiquette de la zone",
 
   // PipelinePalette (builder/pipeline)
   "pipelinePalette.sectionSources": "Sources",

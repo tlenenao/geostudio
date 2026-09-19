@@ -4,6 +4,7 @@ import type { PipelineEdge, PipelineNode } from "../../api/types";
 import {
   genEdgeId,
   genNodeId,
+  genNoteId,
   hasIncomingEdge,
   insertNodeOnEdge,
   topologicalOrder,
@@ -16,6 +17,10 @@ test("genNodeId and genEdgeId produce distinct, non-empty ids", () => {
   expect(a).not.toBe(b);
   expect(a.length).toBeGreaterThan(0);
   expect(genEdgeId().length).toBeGreaterThan(0);
+});
+
+test("genNoteId produces ids prefixed note-", () => {
+  expect(genNoteId()).toMatch(/^note-/);
 });
 
 test("hasIncomingEdge is true only for a node that is some edge's 'to'", () => {

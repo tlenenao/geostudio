@@ -11,6 +11,7 @@ import {
 import { useAuth } from "../auth/useAuth";
 import { useItemClient } from "../api/ItemClientProvider";
 import type {
+  PipelineCanvasNote,
   PipelineEdge,
   PipelineNode,
   PipelinePayload,
@@ -33,7 +34,7 @@ import { PipelinePreviewPanel } from "../builder/pipeline/PipelinePreviewPanel";
 import { PipelineRunPanel } from "../builder/pipeline/PipelineRunPanel";
 import { PipelineScheduleEditor } from "../builder/pipeline/PipelineScheduleEditor";
 import { PipelineWebhookTrigger } from "../builder/pipeline/PipelineWebhookTrigger";
-import { genNodeId, insertNodeOnEdge } from "../builder/pipeline/graphOps";
+import { genNodeId, genNoteId, insertNodeOnEdge } from "../builder/pipeline/graphOps";
 import { isPipelineValid, validatePipelineGraphLocally } from "../builder/pipeline/validation";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
@@ -160,6 +161,22 @@ export function PipelineBuilderPage({
   function setRefreshPolicy(refreshPolicy: PipelineRefreshPolicy | null) {
     setDraft((d) => (d ? { ...d, refreshPolicy } : d));
   }
+  function setNotes(notes: PipelineCanvasNote[]) {
+    setDraft((d) => (d ? { ...d, notes } : d));
+  }
+  function onAddNote() {
+    setNotes([
+      ...(currentDraft.notes ?? []),
+      {
+        id: genNoteId(),
+        label: t("pipelineBuilder.newNoteLabel"),
+        x: 40,
+        y: 40,
+        width: 200,
+        height: 120,
+      },
+    ]);
+  }
   function updateSelectedNodeParams(params: Record<string, unknown>) {
     if (!selectedNode) return;
     setDraft((d) =>
@@ -248,6 +265,9 @@ export function PipelineBuilderPage({
                   <Button size="sm" variant="outline" disabled={!canRedo} onClick={redo}>
                     {t("pipelineBuilder.redo")}
                   </Button>
+                  <Button size="sm" variant="outline" onClick={onAddNote}>
+                    {t("pipelineBuilder.addNoteButton")}
+                  </Button>
                 </div>
               </div>
               {validation.graphErrors.length > 0 && (
@@ -274,6 +294,8 @@ export function PipelineBuilderPage({
                   nodeStats={latestRun?.nodeStats}
                   runStatus={latestRun?.status}
                   nodeErrors={validation.nodeErrors}
+                  notes={draft.notes ?? []}
+                  onNotesChange={setNotes}
                 />
               </div>
             </div>

@@ -20,6 +20,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type {
+  PipelineCanvasNote,
   PipelineEdge,
   PipelineNode,
   PipelineNodeStat,
@@ -116,6 +117,40 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
       </button>
     </div>
   );
+}
+
+type CanvasNoteData = PipelineCanvasNote & {
+  onLabelChange: (id: string, label: string) => void;
+};
+
+function CanvasNoteBox({ data }: NodeProps) {
+  const note = data as unknown as CanvasNoteData;
+  return (
+    <div
+      style={{ width: note.width, height: note.height }}
+      className="rounded-md border-2 border-dashed border-rule bg-sunken/40 p-2"
+    >
+      <input
+        aria-label={t("pipelineCanvas.noteLabelAria")}
+        className="w-full bg-transparent text-xs font-medium text-ink-2 outline-none"
+        value={note.label}
+        onChange={(e) => note.onLabelChange(note.id, e.target.value)}
+      />
+    </div>
+  );
+}
+
+function toFlowNoteNode(
+  n: PipelineCanvasNote,
+  onLabelChange: (id: string, label: string) => void,
+): Node {
+  return {
+    id: n.id,
+    position: { x: n.x, y: n.y },
+    data: { ...n, onLabelChange } as unknown as Record<string, unknown>,
+    type: "canvasNote",
+    zIndex: -1,
+  };
 }
 
 function InsertOnEdgeButton({
@@ -238,6 +273,8 @@ function PipelineCanvasInner({
   nodeStats,
   runStatus,
   nodeErrors,
+  notes,
+  onNotesChange,
 }: {
   nodes: PipelineNode[];
   edges: PipelineEdge[];
@@ -250,8 +287,10 @@ function PipelineCanvasInner({
   nodeStats?: Record<string, PipelineNodeStat>;
   runStatus?: "queued" | "running" | "succeeded" | "failed";
   nodeErrors?: Record<string, string[]>;
+  notes: PipelineCanvasNote[];
+  onNotesChange: (notes: PipelineCanvasNote[]) => void;
 }) {
-  const nodeTypes = { pipelineNode: PipelineNodeBox };
+  const nodeTypes = { pipelineNode: PipelineNodeBox, canvasNote: CanvasNoteBox };
   const edgeTypes = {
     insertable: (props: EdgeProps) => (
       <InsertOnEdgeButton {...props} onInsert={onInsertOnEdge} opsCatalog={opsCatalog} />
@@ -279,28 +318,40 @@ function PipelineCanvasInner({
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      let next = nodes;
+      let nextNodes = nodes;
+      let nextNotes = notes;
       for (const change of changes) {
         if (change.type === "position" && change.position) {
-          next = next.map((n) =>
-            n.id === change.id ? { ...n, x: change.position!.x, y: change.position!.y } : n,
-          );
+          const isNote = change.id.startsWith("note-");
+          if (isNote) {
+            nextNotes = nextNotes.map((n) =>
+              n.id === change.id ? { ...n, x: change.position!.x, y: change.position!.y } : n,
+            );
+          } else {
+            nextNodes = nextNodes.map((n) =>
+              n.id === change.id ? { ...n, x: change.position!.x, y: change.position!.y } : n,
+            );
+          }
         }
         if (change.type === "remove") {
-          next = next.filter((n) => n.id !== change.id);
+          if (change.id.startsWith("note-"))
+            nextNotes = nextNotes.filter((n) => n.id !== change.id);
+          else nextNodes = nextNodes.filter((n) => n.id !== change.id);
         }
         // Ne réagit qu'à l'événement "sélectionné" (jamais "déselectionné") :
         // un clic sur un nouveau nœud émet deux changements dans un ordre non
         // garanti (ancien nœud selected:false, nouveau selected:true) — ne
         // traiter que selected:true rend la sélection robuste à cet ordre.
         // La désélection (clic sur le fond) passe par onPaneClick ci-dessous.
-        if (change.type === "select" && change.selected) {
+        // Une zone annotée (préfixe "note-") ne devient jamais le nœud actif.
+        if (change.type === "select" && change.selected && !change.id.startsWith("note-")) {
           onSelectNode(change.id);
         }
       }
-      if (next !== nodes) onNodesChange(next);
+      if (nextNodes !== nodes) onNodesChange(nextNodes);
+      if (nextNotes !== notes) onNotesChange(nextNotes);
     },
-    [nodes, onNodesChange, onSelectNode],
+    [nodes, notes, onNodesChange, onNotesChange, onSelectNode],
   );
 
   const handleEdgesChange = useCallback(
@@ -347,17 +398,24 @@ function PipelineCanvasInner({
   return (
     <div className="h-full">
       <ReactFlow
-        nodes={nodes.map((n) =>
-          toFlowNode(n, n.id === selectedNodeId, {
-            acceptsSecondaryInput: opsCatalog[n.op]?.acceptsSecondaryInput ?? false,
-            nodeStat: nodeStats?.[n.id],
-            isNext: n.id === nextNodeId,
-            errorCount: nodeErrors?.[n.id]?.length ?? 0,
-            onDelete: deleteNode,
-            onStartConnect: (id) => setConnectingFromId(id),
-            isConnectingSource: n.id === connectingFromId,
-          }),
-        )}
+        nodes={[
+          ...nodes.map((n) =>
+            toFlowNode(n, n.id === selectedNodeId, {
+              acceptsSecondaryInput: opsCatalog[n.op]?.acceptsSecondaryInput ?? false,
+              nodeStat: nodeStats?.[n.id],
+              isNext: n.id === nextNodeId,
+              errorCount: nodeErrors?.[n.id]?.length ?? 0,
+              onDelete: deleteNode,
+              onStartConnect: (id) => setConnectingFromId(id),
+              isConnectingSource: n.id === connectingFromId,
+            }),
+          ),
+          ...notes.map((n) =>
+            toFlowNoteNode(n, (id, label) =>
+              onNotesChange(notes.map((x) => (x.id === id ? { ...x, label } : x))),
+            ),
+          ),
+        ]}
         edges={edges.map(toFlowEdge)}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
@@ -365,7 +423,12 @@ function PipelineCanvasInner({
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onNodeClick={(_, flowNode) => {
-          if (connectingFromId && flowNode.id !== connectingFromId) completeConnection(flowNode.id);
+          if (
+            connectingFromId &&
+            flowNode.id !== connectingFromId &&
+            !flowNode.id.startsWith("note-")
+          )
+            completeConnection(flowNode.id);
         }}
         onPaneClick={() => onSelectNode(null)}
         deleteKeyCode={["Backspace", "Delete"]}

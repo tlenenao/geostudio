@@ -87,6 +87,8 @@ test("renders one labeled element per node", () => {
       onEdgesChange={vi.fn()}
       onInsertOnEdge={vi.fn()}
       opsCatalog={{}}
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   expect(screen.getByText("Villes")).toBeInTheDocument();
@@ -105,6 +107,8 @@ test("clicking a node calls onSelectNode with its id", () => {
       onEdgesChange={vi.fn()}
       onInsertOnEdge={vi.fn()}
       opsCatalog={{}}
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   fireEvent.click(screen.getByText("Villes"));
@@ -126,6 +130,8 @@ test("the edge's insert button is present and triggers onInsertOnEdge with the e
       onEdgesChange={vi.fn()}
       onInsertOnEdge={onInsertOnEdge}
       opsCatalog={catalog}
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   const insertButton = screen.getByRole("button", { name: "Insérer une étape sur cette arête" });
@@ -160,6 +166,8 @@ test("the edge insertion menu offers the 5 spatial transform ops", () => {
       onEdgesChange={vi.fn()}
       onInsertOnEdge={vi.fn()}
       opsCatalog={catalog}
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Insérer une étape sur cette arête" }));
@@ -199,6 +207,8 @@ test("a node whose op accepts a secondary input renders a second target handle",
       onEdgesChange={vi.fn()}
       onInsertOnEdge={vi.fn()}
       opsCatalog={BINARY_CATALOG}
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   const joinNodeEl = screen.getByText("J").closest(".react-flow__node")!;
@@ -216,6 +226,8 @@ test("a node whose op does not accept a secondary input renders only one target 
       onEdgesChange={vi.fn()}
       onInsertOnEdge={vi.fn()}
       opsCatalog={{}}
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   const readerNodeEl = screen.getByText("Villes").closest(".react-flow__node")!;
@@ -236,6 +248,8 @@ test("the edge insertion menu offers Fusionner (transform.merge)", () => {
       onEdgesChange={vi.fn()}
       onInsertOnEdge={vi.fn()}
       opsCatalog={catalog}
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Insérer une étape sur cette arête" }));
@@ -255,6 +269,8 @@ test("a node present in nodeStats shows its row count as a badge", () => {
       opsCatalog={{}}
       nodeStats={{ r1: { nodeId: "r1", op: "reader.collection", rowCount: 42 } }}
       runStatus="running"
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   expect(screen.getByText("42")).toBeInTheDocument();
@@ -273,6 +289,8 @@ test("the first not-yet-completed node in topological order shows a spinner whil
       opsCatalog={{}}
       nodeStats={{}}
       runStatus="running"
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   expect(screen.getByRole("status", { name: "Exécution en cours" })).toBeInTheDocument();
@@ -291,6 +309,8 @@ test("no spinner is shown once the run is no longer 'running'", () => {
       opsCatalog={{}}
       nodeStats={{}}
       runStatus="succeeded"
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   expect(screen.queryByRole("status", { name: "Exécution en cours" })).not.toBeInTheDocument();
@@ -308,6 +328,8 @@ test("a node with validation errors shows an error badge even when not selected"
       onInsertOnEdge={vi.fn()}
       opsCatalog={{}}
       nodeErrors={{ r1: ["collectionId est requis."] }}
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   expect(screen.getByRole("status", { name: "1 erreur(s) sur ce nœud" })).toBeInTheDocument();
@@ -325,6 +347,8 @@ test("a node with no validation errors shows no error badge", () => {
       onInsertOnEdge={vi.fn()}
       opsCatalog={{}}
       nodeErrors={{ r1: [] }}
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   expect(screen.queryByText("!")).not.toBeInTheDocument();
@@ -349,6 +373,8 @@ test("the edge insertion menu is derived from opsCatalog, including an op not in
       onEdgesChange={vi.fn()}
       onInsertOnEdge={vi.fn()}
       opsCatalog={catalog}
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Insérer une étape sur cette arête" }));
@@ -368,6 +394,8 @@ test("renders a minimap", () => {
       onEdgesChange={vi.fn()}
       onInsertOnEdge={vi.fn()}
       opsCatalog={{}}
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   expect(document.querySelector(".react-flow__minimap")).not.toBeNull();
@@ -385,6 +413,8 @@ test("a visible delete button on a node removes it via onNodesChange", () => {
       onEdgesChange={vi.fn()}
       onInsertOnEdge={vi.fn()}
       opsCatalog={{}}
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Supprimer Villes" }));
@@ -407,6 +437,8 @@ test("clicking the connect affordance on a node, then clicking another node, cre
       onEdgesChange={onEdgesChange}
       onInsertOnEdge={vi.fn()}
       opsCatalog={{}}
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Connecter depuis R" }));
@@ -432,10 +464,56 @@ test("pressing Escape cancels an in-progress connection", () => {
       onEdgesChange={onEdgesChange}
       onInsertOnEdge={vi.fn()}
       opsCatalog={{}}
+      notes={[]}
+      onNotesChange={vi.fn()}
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Connecter depuis R" }));
   fireEvent.keyDown(window, { key: "Escape" });
   fireEvent.click(screen.getByText("T"));
   expect(onEdgesChange).not.toHaveBeenCalled();
+});
+
+test("renders a canvas note and editing its label calls onNotesChange", () => {
+  const onNotesChange = vi.fn();
+  render(
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+      notes={[{ id: "note-1", label: "Étape 1", x: 0, y: 0, width: 200, height: 120 }]}
+      onNotesChange={onNotesChange}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Étiquette de la zone"), {
+    target: { value: "Étape 1 renommée" },
+  });
+  expect(onNotesChange).toHaveBeenCalledWith([
+    { id: "note-1", label: "Étape 1 renommée", x: 0, y: 0, width: 200, height: 120 },
+  ]);
+});
+
+test("clicking a note does not call onSelectNode", () => {
+  const onSelectNode = vi.fn();
+  render(
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={onSelectNode}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+      notes={[{ id: "note-1", label: "Étape 1", x: 0, y: 0, width: 200, height: 120 }]}
+      onNotesChange={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByLabelText("Étiquette de la zone"));
+  expect(onSelectNode).not.toHaveBeenCalled();
 });

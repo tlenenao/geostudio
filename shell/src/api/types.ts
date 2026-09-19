@@ -1024,10 +1024,20 @@ export type PipelineRefreshPolicy = {
   cron: string;
 };
 
+export type PipelineCanvasNote = {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 export type PipelinePayload = {
   nodes: PipelineNode[];
   edges: PipelineEdge[];
   refreshPolicy?: PipelineRefreshPolicy | null;
+  notes?: PipelineCanvasNote[];
 };
 
 export interface AlertCondition {

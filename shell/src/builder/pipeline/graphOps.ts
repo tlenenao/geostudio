@@ -16,6 +16,10 @@ export function genEdgeId(): string {
   return genId("e");
 }
 
+export function genNoteId(): string {
+  return genId("note");
+}
+
 export function hasIncomingEdge(
   edges: PipelineEdge[],
   nodeId: string,

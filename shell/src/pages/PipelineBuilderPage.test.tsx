@@ -549,3 +549,49 @@ test("unsaved mode: pressing / while typing in a text field does not steal focus
   await user.type(screen.getByRole("searchbox", { name: "Rechercher une opération" }), "a/b");
   expect(screen.getByRole("searchbox", { name: "Rechercher une opération" })).toHaveValue("a/b");
 });
+
+test("unsaved mode: Ajouter une zone adds an editable note to the canvas", async () => {
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une zone" }));
+  expect(screen.getByLabelText("Étiquette de la zone")).toHaveValue("Nouvelle zone");
+});
+
+test("persisted mode: saving includes notes added on the canvas", async () => {
+  const payload: PipelinePayload = {
+    nodes: [
+      {
+        id: "r1",
+        kind: "reader",
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: { collectionId: "villes" },
+        title: "Villes",
+      },
+      {
+        id: "w1",
+        kind: "writer",
+        op: "writer.collection",
+        x: 300,
+        y: 0,
+        params: { collectionId: "villes_propres" },
+        title: "Écriture",
+      },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+  };
+  const savePipelineConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage("p-1", { getPipelineConfig: () => Promise.resolve(payload), savePipelineConfig });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une zone" }));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(savePipelineConfig).toHaveBeenCalledWith(
+      "p-1",
+      expect.objectContaining({
+        notes: [expect.objectContaining({ label: "Nouvelle zone" })],
+      }),
+    ),
+  );
+});
