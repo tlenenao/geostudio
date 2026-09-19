@@ -66,6 +66,7 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 BASE = REPO / "docker-compose.yml"
 PROD = REPO / "docker-compose.prod.yml"
 RELEASE = REPO / ".github/workflows/release.yml"
+BUILD_AND_PUSH = REPO / ".github/workflows/_build-and-push.yml"
 ENV_EXAMPLE = REPO / ".env.example"
 BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
 BACKUP_SH = REPO / "deploy/backup/backup.sh"
@@ -156,7 +157,57 @@ def build_is_reset(service: dict) -> bool:
 
 
 def release_matrix() -> list[dict]:
-    return load_yaml(RELEASE)["jobs"]["build-and-push"]["strategy"]["matrix"]["include"]
+    return load_yaml(BUILD_AND_PUSH)["jobs"]["build-and-push"]["strategy"]["matrix"]["include"]
+
+
+def test_build_and_push_matrix_lives_in_the_reusable_workflow():
+    """§2 de la spec 2026-09-19 : la matrice des 9 images doit vivre dans un
+    SEUL fichier (`_build-and-push.yml`, réutilisable par `release.yml` ET
+    par le futur `publish-edge.yml`) — jamais recopiée, sous peine de
+    dériver silencieusement entre les deux (classe de bug déjà payée sur ce
+    dépôt, cf. CLAUDE.md piège n°2)."""
+    assert BUILD_AND_PUSH.exists(), (
+        "attendu : .github/workflows/_build-and-push.yml (workflow réutilisable)"
+    )
+    doc = yaml.safe_load(BUILD_AND_PUSH.read_text())
+    # PyYAML résout la clé `on:` non quotée en booléen `True` (YAML 1.1),
+    # pas en chaîne "on" — vérifié empiriquement contre release.yml réel
+    # (`list(doc.keys())` donne `['name', True, 'jobs']`).
+    assert "workflow_call" in doc[True], (
+        "_build-and-push.yml doit être déclenchable via `on: workflow_call`"
+    )
+    matrix = doc["jobs"]["build-and-push"]["strategy"]["matrix"]["include"]
+    images = {e["image"] for e in matrix}
+    assert images == {
+        "geostudio-core",
+        "geostudio-shell",
+        "geostudio-postgis",
+        "geostudio-titiler",
+        "geostudio-appexport-standalone",
+        "geostudio-export-worker",
+        "geostudio-qgis-worker",
+        "geostudio-appexport-runtime-builder",
+        "geostudio-backup",
+    }, f"matrice inattendue : {images}"
+
+
+def test_release_yml_calls_the_reusable_build_workflow():
+    """release.yml ne doit plus déclarer la matrice en dur — seulement
+    appeler le workflow réutilisable, avec les deux tags historiques
+    (le tag poussé + `latest`) et les scans activés."""
+    doc = yaml.safe_load(RELEASE.read_text())
+    job = doc["jobs"]["build-and-push"]
+    assert job.get("uses") == "./.github/workflows/_build-and-push.yml", (
+        f"release.yml build-and-push.uses = {job.get('uses')!r}, "
+        "attendu './.github/workflows/_build-and-push.yml'"
+    )
+    assert job["needs"] == ["test-gate", "test-gate-arm64"] or set(job["needs"]) == {
+        "test-gate",
+        "test-gate-arm64",
+    }
+    with_inputs = job["with"]
+    assert with_inputs["also_tag_latest"] is True
+    assert with_inputs["run_scans"] is True
 
 
 def test_postgis_dockerfile_uses_multiarch_base_with_pgdg_packages():
