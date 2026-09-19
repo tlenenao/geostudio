@@ -50,7 +50,7 @@ def image_exists(image: str, tag: str) -> bool:
     try:
         with urllib.request.urlopen(request, timeout=10):  # noqa: S310
             return True
-    except urllib.error.HTTPError:
+    except urllib.error.URLError:
         return False
 
 
