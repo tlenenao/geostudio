@@ -83,7 +83,6 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 |---|---|---|---|---|---|---|---|---|---|
 | Interne | Galerie interne de composants du kit UI | `interne-galerie-interne-de-composants-du-kit-ui` | 40.9 | = | basse (amorcée) | 35.5 | 0.0 | — | 100.0 |
 | Catalogue | Mes vues (signets) | `catalogue-mes-vues-signets` | 82.6 | = | moyenne (amorcée) | 71.0 | — | — | 100.0 |
-| Automatisation | Planifier l'exécution récurrente d'un pipeline (cron) | `automatisation-planifier-l-execution-recurrente-d-un-pipeline-cron` | 85.1 | = | moyenne (amorcée) | 91.9 | 100.0 | 50.0 | 100.0 |
 | Builder — Widgets | Widget Table (tri, pagination, cross-filter, action setFilter) | `builder-widgets-widget-table-tri-pagination-cross-filter-action-setfilter` | 90.5 | = | haute (amorcée) | 84.2 | — | — | 100.0 |
 | Catalogue | Catalogue (recherche, filtre type, filtre portée, pagination) | `catalogue-catalogue-recherche-filtre-type-filtre-portee-pagination` | 90.6 | = | haute (amorcée) | 97.2 | 75.0 | — | 100.0 |
 | Builder — Widgets | Widget Carte (symbologie, popup, cross-filter, actions flyTo/highlight) | `builder-widgets-widget-carte-symbologie-popup-cross-filter-actions-flyto-highlig` | 91.4 | = | haute (amorcée) | 85.7 | — | — | 100.0 |
@@ -190,6 +189,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Plateforme IA | Générer une application de saisie complète sur une collection depuis un agent MCP | `plateforme-ia-generer-une-application-de-saisie-complete-sur-une-collection-depu` | 97.5 | = | moyenne (amorcée) | 93.8 | 100.0 | — | 100.0 |
 | Catalogue/Portails publics | Intégrer une App/Dashboard dans un site tiers (embed) | `catalogue-integrer-une-app-dashboard-dans-un-site-tiers-embed` | 97.5 | = | moyenne (amorcée) | 93.8 | 100.0 | — | 100.0 |
 | Cartographie | Choisir une icône Lucide curatée pour la symbologie catégorielle d'une couche | `cartographie-choisir-une-icone-lucide-curatee-pour-la-symbologie-categorielle-d-` | 97.5 | = | moyenne (amorcée) | 95.9 | — | — | 100.0 |
+| Automatisation | Planifier l'exécution récurrente d'un pipeline (cron) | `automatisation-planifier-l-execution-recurrente-d-un-pipeline-cron` | 97.6 | +12.5 | moyenne (amorcée) | 91.9 | 100.0 | 100.0 | 100.0 |
 | Catalogue/Items | Lire/mettre à jour un config par id ou par item | `catalogue-items-lire-mettre-a-jour-un-config-par-id-ou-par-item` | 98.4 | = | haute (amorcée) | 94.7 | 100.0 | 100.0 | 100.0 |
 | Automatisation | Exporter une App en bundle Statique (données gelées, sans backend) | `automatisation-exporter-une-app-en-bundle-statique-donnees-gelees-sans-backend` | 97.6 | = | moyenne (amorcée) | 92.0 | 100.0 | 100.0 | 100.0 |
 | Automatisation | Exporter une App en mode Connecté (CORS restreint au domaine cible) | `automatisation-exporter-une-app-en-mode-connecte-cors-restreint-au-domaine-cible` | 97.6 | = | moyenne (amorcée) | 92.0 | 100.0 | 100.0 | 100.0 |
