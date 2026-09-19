@@ -469,6 +469,10 @@ export const fr = {
   "pipelineBuilder.saveDisabledReason":
     "Le graphe contient des erreurs à corriger avant l'enregistrement.",
 
+  // PipelineNodeInspector
+  "pipelineNodeInspector.requiredSection": "Paramètres requis",
+  "pipelineNodeInspector.optionalSection": "Paramètres optionnels",
+
   // ReportEditPage
   "reportEdit.defaultTitle": "Rapport planifié",
   "reportEdit.notFound": "Rapport introuvable.",

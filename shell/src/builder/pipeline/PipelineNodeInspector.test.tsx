@@ -292,3 +292,53 @@ test("passed-in errors render as alerts", () => {
   );
   expect(screen.getByRole("alert")).toHaveTextContent("collectionId est requis.");
 });
+
+test("groups fields into Paramètres requis and Paramètres optionnels sections", () => {
+  const node: PipelineNode = {
+    id: "n1",
+    kind: "reader",
+    op: "reader.collection",
+    x: 0,
+    y: 0,
+    params: {},
+  };
+  const opEntry: PipelineOpEntry = {
+    kind: "reader",
+    paramsSchema: {
+      properties: {
+        collectionId: { type: "string" },
+        limit: { type: "number" },
+      },
+      required: ["collectionId"],
+    },
+  };
+  renderInspector(node, opEntry);
+  const requiredHeading = screen.getByText("Paramètres requis");
+  const optionalHeading = screen.getByText("Paramètres optionnels");
+  expect(requiredHeading.compareDocumentPosition(screen.getByLabelText("collectionId"))).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+  expect(optionalHeading.compareDocumentPosition(screen.getByLabelText("limit"))).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+});
+
+test("omits the optional section heading when every field is required", () => {
+  const node: PipelineNode = {
+    id: "n1",
+    kind: "reader",
+    op: "reader.collection",
+    x: 0,
+    y: 0,
+    params: {},
+  };
+  const opEntry: PipelineOpEntry = {
+    kind: "reader",
+    paramsSchema: {
+      properties: { collectionId: { type: "string" } },
+      required: ["collectionId"],
+    },
+  };
+  renderInspector(node, opEntry);
+  expect(screen.queryByText("Paramètres optionnels")).not.toBeInTheDocument();
+});
