@@ -134,6 +134,7 @@ export function PipelinePreviewPanel({
                     className="cursor-pointer p-1 text-left"
                     onClick={() => toggleSort(c)}
                     onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         toggleSort(c);
@@ -159,6 +160,7 @@ export function PipelinePreviewPanel({
                   tabIndex={0}
                   onClick={() => setSelectedIndex(i)}
                   onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
                     if (e.key === "Enter" || e.key === " ") {
                       if (e.key === " ") e.preventDefault();
                       setSelectedIndex(i);

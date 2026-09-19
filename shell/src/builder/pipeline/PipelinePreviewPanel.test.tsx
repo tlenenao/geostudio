@@ -367,3 +367,30 @@ test("clicking Voir sur la carte switches to map view with that row selected", a
   await userEvent.click(screen.getAllByRole("button", { name: "Voir sur la carte" })[1]);
   expect(screen.getByTestId("pipeline-preview-map")).toBeInTheDocument();
 });
+
+// I7 follow-up: when the "Voir sur la carte" button is focused, pressing Space
+// must not be swallowed by the row's onKeyDown handler (which also checks for
+// Space). The row handler must guard against event bubbling with
+// `if (e.target !== e.currentTarget) return;` to allow nested interactive
+// elements to function normally.
+test("pressing Space on the Voir sur la carte button switches to map view", async () => {
+  const user = userEvent.setup();
+  renderPanel(
+    vi.fn().mockResolvedValue([{ id: 1, geometry: { type: "Point", coordinates: [1, 2] } }]),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Voir sur la carte" })).toBeInTheDocument(),
+  );
+  // Start in map view
+  await user.click(screen.getByRole("button", { name: "Carte" }));
+  expect(screen.getByTestId("pipeline-preview-map")).toBeInTheDocument();
+  // Switch back to table view
+  await user.click(screen.getByRole("button", { name: "Tableau" }));
+  expect(screen.queryByTestId("pipeline-preview-map")).not.toBeInTheDocument();
+  // Now the button is visible in the table. Focus it and press Space.
+  const button = screen.getByRole("button", { name: "Voir sur la carte" });
+  button.focus();
+  await user.keyboard(" ");
+  // Space should activate the button and switch to map view
+  expect(screen.getByTestId("pipeline-preview-map")).toBeInTheDocument();
+});
