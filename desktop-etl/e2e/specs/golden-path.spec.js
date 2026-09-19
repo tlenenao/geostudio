@@ -118,13 +118,20 @@ describe("desktop-etl golden path", () => {
     // 1. Signal de disponibilité : la palette n'apparaît qu'une fois la
     // connexion au sidecar établie et le catalogue d'op chargé -- doit
     // dépasser le budget de getSidecarConnectionWithRetry (45s, entry.tsx).
-    const readerButton = await $("button=reader.file");
+    // `*=` (contient), pas `=` (égalité stricte) : depuis shell 664e5042
+    // (pipeline builder UX), la description de l'op est un <span> toujours
+    // visible dans le bouton (plus seulement un attribut `title` au survol)
+    // -- le texte normalisé du bouton n'est donc plus jamais exactement
+    // "reader.file"/"writer.file" seul. Sans risque de collision : les deux
+    // occurrences de chaque nom (le libellé + l'auto-référence en tête de
+    // sa propre description) restent confinées à ce même bouton.
+    const readerButton = await $("button*=reader.file");
     await readerButton.waitForExist({ timeout: 60_000 });
 
     // 2. Ajout des deux nœuds (clic palette, pas de drag requis pour AJOUTER
     // un nœud -- le drag ne sert qu'à CONNECTER deux nœuds entre eux).
     await readerButton.click();
-    const writerButton = await $("button=writer.file");
+    const writerButton = await $("button*=writer.file");
     await writerButton.click();
 
     await browser.waitUntil(async () => (await $$(".react-flow__node")).length === 2, {
