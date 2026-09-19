@@ -66,9 +66,12 @@ export function PipelinePalette({ onAdd }: { onAdd?: (op: string) => void }) {
                       type="button"
                       draggable
                       onDragStart={(e) => {
-                        recordUse(op);
                         e.dataTransfer.setData(PIPELINE_OP_DND_TYPE, op);
                         e.dataTransfer.effectAllowed = "move";
+                        // Cf. commentaire jumeau plus bas (section par kind) : recordUse()
+                        // doit être différé hors du gestionnaire `dragstart` synchrone,
+                        // sinon Chromium bloque indéfiniment le glisser-déposer natif.
+                        setTimeout(() => recordUse(op), 0);
                       }}
                       onClick={() => {
                         recordUse(op);
@@ -103,9 +106,16 @@ export function PipelinePalette({ onAdd }: { onAdd?: (op: string) => void }) {
                     type="button"
                     draggable
                     onDragStart={(e) => {
-                      recordUse(op);
                       e.dataTransfer.setData(PIPELINE_OP_DND_TYPE, op);
                       e.dataTransfer.effectAllowed = "move";
+                      // Chromium interrompt un glisser-déposer HTML5 natif quand le DOM
+                      // est modifié de façon synchrone dans le gestionnaire `dragstart` :
+                      // recordUse() déclenche un re-rendu React (montage/réordonnancement
+                      // de la section « Récemment utilisés ») avant que le navigateur
+                      // n'ait fini d'armer le glisser, ce qui bloque indéfiniment le
+                      // mouseup/drop final. Différer d'un tick laisse le navigateur
+                      // terminer l'initialisation du glisser avant que React ne re-rende.
+                      setTimeout(() => recordUse(op), 0);
                     }}
                     onClick={() => {
                       recordUse(op);

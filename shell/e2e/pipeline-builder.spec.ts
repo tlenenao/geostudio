@@ -193,7 +193,13 @@ test("un utilisateur relie une seconde source sur la poignée secondaire d'un tr
   // Les libellés de la palette (`.cursor-grab`) sont ciblés explicitement :
   // une fois un nœud déposé, son op apparaît aussi dans le nœud (titre +
   // sous-titre), ce qui rendrait `getByText` ambigu (mode strict Playwright).
-  const paletteItem = (op: string) => page.locator(".cursor-grab", { hasText: op });
+  // `.last()` : dès qu'un op a été glissé une première fois, il apparaît
+  // aussi dans la section « Récemment utilisés » (rendue avant les sections
+  // permanentes Sources/Transforms/Écritures dans le DOM) — sans `.last()`,
+  // glisser deux fois le même op (ex. reader.collection ci-dessous) viole le
+  // mode strict Playwright (2 éléments `.cursor-grab` correspondants). La
+  // section permanente est toujours la dernière correspondance.
+  const paletteItem = (op: string) => page.locator(".cursor-grab", { hasText: op }).last();
   // Positions volontairement resserrées et étagées verticalement : l'app
   // place un nœud déposé à `event.clientX/Y` bruts (coordonnées page, non
   // relatives au pane React Flow ni compensées du pan/zoom) — au-delà d'un
@@ -202,10 +208,20 @@ test("un utilisateur relie une seconde source sur la poignée secondaire d'un tr
   // cibler. Cette disposition reste dans la zone sûre tout en gardant
   // chaque nœud vertical séparé des autres pour que les segments de
   // glisser-déposer entre poignées ne traversent pas un nœud tiers.
+  // `x` volontairement ≤ 0 pour les 4 nœuds (measuré empiriquement, cf.
+  // PipelineCanvas.tsx) : avec le décalage clientX/Y ci-dessus, tout nœud
+  // dont le bord droit dépasse le tiers gauche du pane chevauche la
+  // MiniMap ajoutée en bas à droite du canevas — seule sa poignée droite
+  // (donc la portion la plus à droite du nœud) s'y retrouve alors piégée
+  // (`subtree intercepts pointer events`, la MiniMap accepte pan/zoom sur
+  // toute sa surface). Garder `x: 0` garde chaque nœud, poignée droite
+  // comprise, largement à gauche de la MiniMap quel que soit `y` ; l'écart
+  // vertical (déjà supérieur à la hauteur d'un nœud) reste seul responsable
+  // de la séparation entre les 4 nœuds.
   await paletteItem("reader.collection").dragTo(canvas, { targetPosition: { x: 0, y: 210 } });
   await paletteItem("reader.collection").dragTo(canvas, { targetPosition: { x: 0, y: 50 } });
-  await paletteItem("transform.join").dragTo(canvas, { targetPosition: { x: 70, y: 150 } });
-  await paletteItem("writer.collection").dragTo(canvas, { targetPosition: { x: 100, y: 320 } });
+  await paletteItem("transform.join").dragTo(canvas, { targetPosition: { x: 0, y: 150 } });
+  await paletteItem("writer.collection").dragTo(canvas, { targetPosition: { x: 0, y: 320 } });
 
   const nodes = page.locator(".react-flow__node");
   const primaryReader = nodes.nth(0);
