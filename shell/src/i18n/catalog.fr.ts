@@ -1049,6 +1049,7 @@ export const fr = {
   "pipelineCanvas.runningAria": "Exécution en cours",
   "pipelineCanvas.insertStepAria": "Insérer une étape sur cette arête",
   "pipelineCanvas.nodeErrorAria": "{count} erreur(s) sur ce nœud",
+  "pipelineCanvas.deleteNodeAria": "Supprimer {title}",
 
   // PipelinePalette (builder/pipeline)
   "pipelinePalette.sectionSources": "Sources",

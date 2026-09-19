@@ -372,3 +372,21 @@ test("renders a minimap", () => {
   );
   expect(document.querySelector(".react-flow__minimap")).not.toBeNull();
 });
+
+test("a visible delete button on a node removes it via onNodesChange", () => {
+  const onNodesChange = vi.fn();
+  render(
+    <PipelineCanvas
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={onNodesChange}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Supprimer Villes" }));
+  expect(onNodesChange).toHaveBeenCalledWith(NODES.filter((n) => n.id !== "r1"));
+});

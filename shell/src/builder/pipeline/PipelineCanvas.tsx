@@ -44,6 +44,7 @@ type CanvasNodeData = PipelineNode & {
   nodeStat?: PipelineNodeStat;
   isNext: boolean;
   errorCount: number;
+  onDelete: (nodeId: string) => void;
 };
 
 function PipelineNodeBox({ data, selected }: NodeProps) {
@@ -88,6 +89,17 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
           className="absolute -right-2 -top-2 h-3 w-3 animate-spin rounded-full border-2 border-accent border-t-transparent"
         />
       )}
+      <button
+        type="button"
+        aria-label={t("pipelineCanvas.deleteNodeAria", { title: node.title ?? node.op })}
+        className="absolute -bottom-2 -right-2 flex h-4 w-4 items-center justify-center rounded-full border border-rule bg-surface text-[10px] leading-none text-ink-2 hover:bg-sunken hover:text-danger"
+        onClick={(e) => {
+          e.stopPropagation();
+          node.onDelete(node.id);
+        }}
+      >
+        ×
+      </button>
     </div>
   );
 }
@@ -176,6 +188,7 @@ function toFlowNode(
     nodeStat?: PipelineNodeStat;
     isNext: boolean;
     errorCount: number;
+    onDelete: (nodeId: string) => void;
   },
 ): Node {
   return {
@@ -282,6 +295,14 @@ function PipelineCanvasInner({
     [edges, onEdgesChange],
   );
 
+  const deleteNode = useCallback(
+    (nodeId: string) => {
+      onNodesChange(nodes.filter((n) => n.id !== nodeId));
+      onEdgesChange(edges.filter((e) => e.from !== nodeId && e.to !== nodeId));
+    },
+    [nodes, edges, onNodesChange, onEdgesChange],
+  );
+
   const order = topologicalOrder(nodes, edges);
   const nextNodeId = runStatus === "running" ? order.find((id) => !nodeStats?.[id]) : undefined;
 
@@ -294,6 +315,7 @@ function PipelineCanvasInner({
             nodeStat: nodeStats?.[n.id],
             isNext: n.id === nextNodeId,
             errorCount: nodeErrors?.[n.id]?.length ?? 0,
+            onDelete: deleteNode,
           }),
         )}
         edges={edges.map(toFlowEdge)}
