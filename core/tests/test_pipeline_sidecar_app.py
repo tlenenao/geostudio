@@ -267,3 +267,32 @@ def test_authed_app_rejects_non_ascii_authorization_header_without_crashing(tmp_
 
     status = asyncio.run(run())
     assert status == 401
+
+
+def test_get_ops_includes_cors_header_for_tauri_origin(client):
+    # Trouvé en vérification Windows réelle (Tâche 6, plan Phase F+G) : sans
+    # CORSMiddleware, chaque fetch() de la webview Tauri (origine
+    # http://tauri.localhost) vers ce process (127.0.0.1:<port>) est un
+    # cross-origin bloqué côté navigateur avant même d'atteindre nos routes
+    # — React Query reste bloqué en isLoading indéfiniment, sans jamais lever
+    # d'erreur visible ("Chargement…" perpétuel).
+    res = client.get("/pipelines/ops", headers={"Origin": "http://tauri.localhost"})
+    assert res.headers.get("access-control-allow-origin") == "http://tauri.localhost"
+
+
+def test_preflight_options_is_not_blocked_by_auth(authed_client):
+    # Un préflight OPTIONS ne porte jamais l'en-tête Authorization — si
+    # CORSMiddleware n'est pas la couche la plus externe (ajoutée avant
+    # _enforce_loopback_auth), le préflight se ferait rejeter en 401 par le
+    # middleware d'auth avant même d'atteindre CORSMiddleware, cassant le
+    # CORS pour toute requête authentifiée.
+    res = authed_client.options(
+        "/pipelines/ops",
+        headers={
+            "Origin": "http://tauri.localhost",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization",
+        },
+    )
+    assert res.status_code == 200
+    assert res.headers.get("access-control-allow-origin") == "http://tauri.localhost"

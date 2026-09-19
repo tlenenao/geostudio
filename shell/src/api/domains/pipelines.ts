@@ -17,6 +17,7 @@ type PipelinesMethods = Pick<
   | "getPipelineConfig"
   | "savePipelineConfig"
   | "getPipelineOps"
+  | "getPipelineNextRun"
   | "runPipeline"
   | "getPipelineRuns"
   | "previewPipeline"
@@ -79,6 +80,13 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
       return request<PipelineOpsCatalog>("GET", "/pipelines/ops");
     },
 
+    async getPipelineNextRun(cron: string): Promise<{ nextRun: string }> {
+      return request<{ nextRun: string }>(
+        "GET",
+        `/pipelines/next-run?cron=${encodeURIComponent(cron)}`,
+      );
+    },
+
     async runPipeline(pk: string): Promise<{ runId: string }> {
       return request<{ runId: string }>("POST", `/pipelines/${pk}/run`);
     },
@@ -91,10 +99,15 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
       return request<PipelineRun[]>("GET", `/pipelines/${pk}/runs${qs ? `?${qs}` : ""}`);
     },
 
-    async previewPipeline(pk: string, upToNodeId: string): Promise<Record<string, unknown>[]> {
+    async previewPipeline(
+      pk: string,
+      upToNodeId: string,
+      draft?: PipelinePayload,
+    ): Promise<Record<string, unknown>[]> {
       return request<Record<string, unknown>[]>(
         "POST",
         `/pipelines/${pk}/preview?upTo=${encodeURIComponent(upToNodeId)}`,
+        draft !== undefined ? { pipeline: draft } : undefined,
       );
     },
 

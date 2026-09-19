@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import type { CollectionAdmin, ItemClient, PipelineNode, PipelineOpEntry } from "../../api/types";
@@ -291,4 +291,103 @@ test("passed-in errors render as alerts", () => {
     </QueryClientProvider>,
   );
   expect(screen.getByRole("alert")).toHaveTextContent("collectionId est requis.");
+});
+
+test("groups fields into Paramètres requis and Paramètres optionnels sections", () => {
+  const node: PipelineNode = {
+    id: "n1",
+    kind: "reader",
+    op: "reader.collection",
+    x: 0,
+    y: 0,
+    params: {},
+  };
+  const opEntry: PipelineOpEntry = {
+    kind: "reader",
+    paramsSchema: {
+      properties: {
+        collectionId: { type: "string" },
+        limit: { type: "number" },
+      },
+      required: ["collectionId"],
+    },
+  };
+  renderInspector(node, opEntry);
+  const requiredHeading = screen.getByText("Paramètres requis");
+  const optionalHeading = screen.getByText("Paramètres optionnels");
+  expect(requiredHeading.compareDocumentPosition(screen.getByLabelText("collectionId"))).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+  expect(optionalHeading.compareDocumentPosition(screen.getByLabelText("limit"))).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+});
+
+test("omits the optional section heading when every field is required", () => {
+  const node: PipelineNode = {
+    id: "n1",
+    kind: "reader",
+    op: "reader.collection",
+    x: 0,
+    y: 0,
+    params: {},
+  };
+  const opEntry: PipelineOpEntry = {
+    kind: "reader",
+    paramsSchema: {
+      properties: { collectionId: { type: "string" } },
+      required: ["collectionId"],
+    },
+  };
+  renderInspector(node, opEntry);
+  expect(screen.queryByText("Paramètres optionnels")).not.toBeInTheDocument();
+});
+
+test("a field-specific error renders under its own control, not only in the bottom list", () => {
+  render(
+    <PipelineNodeInspector
+      node={{
+        id: "n1",
+        kind: "reader",
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: {},
+        title: "R",
+      }}
+      opEntry={{
+        kind: "reader",
+        paramsSchema: {
+          properties: { collectionId: { type: "string" } },
+          required: ["collectionId"],
+        },
+      }}
+      errors={["collectionId est requis."]}
+      onChange={vi.fn()}
+    />,
+  );
+  const field = screen.getByLabelText("collectionId").closest("div")!;
+  expect(within(field).getByText("collectionId est requis.")).toBeInTheDocument();
+});
+
+test("an unmatched, node-level error still renders in the bottom fallback list", () => {
+  render(
+    <PipelineNodeInspector
+      node={{
+        id: "n1",
+        kind: "transform",
+        op: "transform.join",
+        x: 0,
+        y: 0,
+        params: {},
+        title: "J",
+      }}
+      opEntry={{ kind: "transform", paramsSchema: { properties: {} }, acceptsSecondaryInput: true }}
+      errors={["transform.join : requiert une arête primaire entrante."]}
+      onChange={vi.fn()}
+    />,
+  );
+  expect(
+    screen.getByText("transform.join : requiert une arête primaire entrante."),
+  ).toBeInTheDocument();
 });

@@ -29,27 +29,26 @@
 // without going through setDraftState's updater form at all — setDraftState
 // is only ever called with a plain, already-computed value.
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AppConfig } from "../api/types";
 import { applyRedo, applyUndo, createUndoStack, pushUndo, type UndoStack } from "./undoStack";
 
 const COALESCE_WINDOW_MS = 400;
 
-export type UndoableDraft = {
-  draft: AppConfig | null;
-  setDraft: (update: AppConfig | null | ((prev: AppConfig | null) => AppConfig | null)) => void;
-  seedDraft: (value: AppConfig) => void;
-  resetDraft: (value: AppConfig) => void;
+export type UndoableDraft<T> = {
+  draft: T | null;
+  setDraft: (update: T | null | ((prev: T | null) => T | null)) => void;
+  seedDraft: (value: T) => void;
+  resetDraft: (value: T) => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
 };
 
-export function useUndoableDraft(): UndoableDraft {
-  const [draft, setDraftState] = useState<AppConfig | null>(null);
-  const draftRef = useRef<AppConfig | null>(null);
-  const stackRef = useRef<UndoStack<AppConfig>>(createUndoStack());
-  const pendingBaselineRef = useRef<AppConfig | null>(null);
+export function useUndoableDraft<T>(): UndoableDraft<T> {
+  const [draft, setDraftState] = useState<T | null>(null);
+  const draftRef = useRef<T | null>(null);
+  const stackRef = useRef<UndoStack<T>>(createUndoStack());
+  const pendingBaselineRef = useRef<T | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -77,13 +76,11 @@ export function useUndoableDraft(): UndoableDraft {
     [],
   );
 
-  const setDraft = useCallback<UndoableDraft["setDraft"]>(
+  const setDraft = useCallback<UndoableDraft<T>["setDraft"]>(
     (update) => {
       const prev = draftRef.current;
       const next =
-        typeof update === "function"
-          ? (update as (p: AppConfig | null) => AppConfig | null)(prev)
-          : update;
+        typeof update === "function" ? (update as (p: T | null) => T | null)(prev) : update;
       if (next !== prev && prev !== null) {
         if (pendingBaselineRef.current === null) pendingBaselineRef.current = prev;
         if (timerRef.current !== null) clearTimeout(timerRef.current);
@@ -101,7 +98,7 @@ export function useUndoableDraft(): UndoableDraft {
   // directly (instead of `prev ?? value` inside a setState updater) mirrors
   // the original AppBuilderPage seeding effect (never clobbers in-flight
   // edits on a refetch).
-  const seedDraft = useCallback((value: AppConfig) => {
+  const seedDraft = useCallback((value: T) => {
     if (draftRef.current !== null) return;
     draftRef.current = value;
     setDraftState(value);
@@ -114,7 +111,7 @@ export function useUndoableDraft(): UndoableDraft {
   // que son brouillon local pendant que le serveur porte déjà la version
   // N+1. Tout le bookkeeping se fait ici, jamais dans un updater passé à
   // setDraftState (<StrictMode> l'invoquerait deux fois — SP-19, C1).
-  const resetDraft = useCallback((value: AppConfig) => {
+  const resetDraft = useCallback((value: T) => {
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
       timerRef.current = null;

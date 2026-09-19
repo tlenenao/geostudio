@@ -461,7 +461,17 @@ export const fr = {
   "pipelineBuilder.defaultTitle": "Pipeline",
   "pipelineBuilder.selectedNodeLabel": "Nœud sélectionné",
   "pipelineBuilder.executionLabel": "Exécution",
+  "pipelineBuilder.undo": "Annuler",
+  "pipelineBuilder.redo": "Rétablir",
+  "pipelineBuilder.addNoteButton": "Ajouter une zone",
+  "pipelineBuilder.newNoteLabel": "Nouvelle zone",
   "pipelineBuilder.scheduleLabel": "Planification",
+  "pipelineBuilder.saveDisabledReason":
+    "Le graphe contient des erreurs à corriger avant l'enregistrement.",
+
+  // PipelineNodeInspector
+  "pipelineNodeInspector.requiredSection": "Paramètres requis",
+  "pipelineNodeInspector.optionalSection": "Paramètres optionnels",
 
   // ReportEditPage
   "reportEdit.defaultTitle": "Rapport planifié",
@@ -1042,30 +1052,35 @@ export const fr = {
   "copilot.send": "Envoyer",
 
   // PipelineCanvas (builder/pipeline)
-  "pipelineCanvas.transformFilter": "Filtrer",
-  "pipelineCanvas.transformSelect": "Sélectionner",
-  "pipelineCanvas.transformDerive": "Dériver",
-  "pipelineCanvas.transformAggregate": "Agréger",
-  "pipelineCanvas.transformJoin": "Joindre",
-  "pipelineCanvas.transformMerge": "Fusionner",
-  "pipelineCanvas.transformBuffer": "Buffer",
-  "pipelineCanvas.transformReproject": "Reprojeter",
-  "pipelineCanvas.transformIntersection": "Intersection",
-  "pipelineCanvas.transformCountWithin": "Compter dans",
-  "pipelineCanvas.transformH3Aggregate": "Agréger H3",
   "pipelineCanvas.runningAria": "Exécution en cours",
   "pipelineCanvas.insertStepAria": "Insérer une étape sur cette arête",
+  "pipelineCanvas.nodeErrorAria": "{count} erreur(s) sur ce nœud",
+  "pipelineCanvas.deleteNodeAria": "Supprimer {title}",
+  "pipelineCanvas.startConnectAria": "Connecter depuis {title}",
+  "pipelineCanvas.noteLabelAria": "Étiquette de la zone",
 
   // PipelinePalette (builder/pipeline)
   "pipelinePalette.sectionSources": "Sources",
   "pipelinePalette.sectionTransforms": "Transforms",
   "pipelinePalette.sectionWriters": "Écritures",
+  "pipelinePalette.sectionRecent": "Récemment utilisés",
+  "pipelinePalette.searchAria": "Rechercher une opération",
+  "pipelinePalette.searchPlaceholder": "Rechercher…",
 
   // PipelinePreviewPanel (builder/pipeline)
   "pipelinePreview.loading": "Chargement de l'aperçu…",
   "pipelinePreview.unavailable": "Aperçu indisponible.",
   "pipelinePreview.tableView": "Tableau",
   "pipelinePreview.mapView": "Carte",
+  "pipelinePreview.featureAttributes": "Attributs de la feature",
+  "pipelinePreview.previousPage": "Précédent",
+  "pipelinePreview.nextPage": "Suivant",
+  "pipelinePreview.rowRange": "Lignes {from}–{to} sur {total}",
+  "pipelinePreview.viewOnMap": "Voir sur la carte",
+  "pipelinePreview.stale": "Aperçu à régénérer (paramètres modifiés depuis le dernier calcul)",
+  "pipelinePreviewMap.legendPolygon": "Polygone",
+  "pipelinePreviewMap.legendLine": "Ligne",
+  "pipelinePreviewMap.legendPoint": "Point",
 
   // PipelineRunPanel (builder/pipeline)
   "pipelineRun.statusQueued": "En attente",
@@ -1078,6 +1093,9 @@ export const fr = {
   // ce bouton évite de tronquer silencieusement l'historique au-delà de la
   // limite par défaut du cœur (100).
   "pipelineRun.loadMore": "Charger plus",
+  "pipelineRun.detailAria": "Détail du run {id}",
+  "pipelineRun.showDetail": "Détail",
+  "pipelineRun.hideDetail": "Masquer le détail",
 
   // PipelineWebhookTrigger (builder/pipeline)
   "pipelineWebhook.heading": "Déclenchement par webhook",
@@ -1114,6 +1132,7 @@ export const fr = {
   "pipelineSchedule.cronExpressionLabel": "Expression cron",
   "pipelineSchedule.cronExpressionAria": "Expression cron",
   "pipelineSchedule.invalidCronFormat": "Format cron invalide (5 champs attendus).",
+  "pipelineSchedule.nextRun": "Prochaine exécution : {when}",
 
   // SecretParamSelect (builder/pipeline)
   "secretParamSelect.choose": "Choisir…",

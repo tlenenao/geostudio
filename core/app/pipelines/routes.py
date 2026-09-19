@@ -5,12 +5,15 @@ par requête : cf. design §3.2 et ce plan, Global Constraints)."""
 
 import os
 from collections.abc import Callable
+from datetime import UTC, datetime
 
+import croniter
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth.dependency import get_current_user
+from app.configs.schemas import PipelinePayload
 from app.db import get_session
 from app.pipelines import repository as pipelines_repo
 from app.pipelines.ops.contracts import ops_catalog
@@ -55,6 +58,14 @@ class WebhookTokenSummary(BaseModel):
     lastUsedAt: str | None
 
 
+class PipelinePreviewRequest(BaseModel):
+    pipeline: PipelinePayload | None = None
+
+
+class NextRunResponse(BaseModel):
+    nextRun: str
+
+
 def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
     return default_task_deferrer()
 
@@ -67,6 +78,22 @@ def get_pipeline_ops() -> dict:
 @router.get("/pipelines/ops/qgis-algorithms")
 def get_qgis_algorithms() -> dict:
     return QGIS_ALGORITHMS
+
+
+@router.get("/pipelines/next-run", response_model=NextRunResponse)
+def get_pipeline_next_run(
+    cron: str = Query(...),
+    user: User = Depends(get_current_user),
+) -> NextRunResponse:
+    if not croniter.croniter.is_valid(cron):
+        raise HTTPException(status_code=400, detail=f"invalid cron expression: {cron!r}")
+    try:
+        next_tick = croniter.croniter(cron, datetime.now(UTC)).get_next(datetime)
+    except croniter.CroniterBadDateError as exc:
+        raise HTTPException(
+            status_code=400, detail=f"cron expression has no future occurrence: {cron!r}"
+        ) from exc
+    return NextRunResponse(nextRun=next_tick.isoformat())
 
 
 @router.post("/pipelines/{item_id}/run", response_model=RunResponse, status_code=202)
@@ -114,15 +141,17 @@ def list_pipeline_runs(
 def preview_pipeline_route(
     item_id: str,
     upTo: str = Query(...),
+    body: PipelinePreviewRequest | None = None,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
-    require_pipeline_access(session, user=user, item_id=item_id, action="read")
+    require_pipeline_access(session, user=user, item_id=item_id, action="write")
     config = require_pipeline_config(session, item_id)
+    payload = body.pipeline if body and body.pipeline is not None else config.config.pipeline
     try:
         return preview_pipeline(
             session=session,
-            payload=config.config.pipeline,
+            payload=payload,
             tenant_id=user.tenant_id,
             user=user,
             up_to=upTo,

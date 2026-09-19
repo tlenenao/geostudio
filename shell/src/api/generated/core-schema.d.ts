@@ -2789,6 +2789,33 @@ export interface components {
             /** Onenter */
             onEnter?: components["schemas"]["Message"][];
         };
+        /** PipelineCanvasNote */
+        PipelineCanvasNote: {
+            /**
+             * Height
+             * @default 120
+             */
+            height: number;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Width
+             * @default 200
+             */
+            width: number;
+            /**
+             * X
+             * @default 0
+             */
+            x: number;
+            /**
+             * Y
+             * @default 0
+             */
+            y: number;
+        };
         /** PipelineEdge */
         PipelineEdge: {
             /** From */
@@ -2836,6 +2863,8 @@ export interface components {
             edges?: components["schemas"]["PipelineEdge"][];
             /** Nodes */
             nodes?: components["schemas"]["PipelineNode"][];
+            /** Notes */
+            notes?: components["schemas"]["PipelineCanvasNote"][];
             refreshPolicy?: components["schemas"]["PipelineRefreshPolicy"] | null;
         };
         /** PipelineRefreshPolicy */

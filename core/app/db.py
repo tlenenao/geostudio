@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -20,6 +21,31 @@ def make_engine(url: str) -> Engine:
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
         )
+        # `check_same_thread=False` only lifts sqlite3's own thread-affinity
+        # check, it does not make concurrent cursor use on this one shared
+        # connection safe. A lock around the whole checkout (session
+        # lifetime) was tried and reverted: FastAPI keeps every `yield`
+        # dependency open until the whole request finishes, so that
+        # serialized two full concurrent requests end to end — exactly the
+        # property test_synchronous_provider_call_does_not_block_the_event_loop
+        # checks is false. Locking only the actual cursor.execute() calls
+        # (the GIL-releasing C operation where two threads' statements can
+        # interleave on the shared connection) keeps that window to
+        # microseconds instead of a whole request.
+        _execute_lock = threading.Lock()
+
+        @event.listens_for(engine, "before_cursor_execute")
+        def _lock_before_execute(conn, cursor, statement, parameters, context, executemany):
+            _execute_lock.acquire()
+
+        @event.listens_for(engine, "after_cursor_execute")
+        def _unlock_after_execute(conn, cursor, statement, parameters, context, executemany):
+            _execute_lock.release()
+
+        @event.listens_for(engine, "handle_error")
+        def _unlock_on_error(exception_context):
+            if _execute_lock.locked():
+                _execute_lock.release()
     else:
         connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
         engine = create_engine(url, connect_args=connect_args)

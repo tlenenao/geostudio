@@ -11,6 +11,7 @@ import {
 import { useAuth } from "../auth/useAuth";
 import { useItemClient } from "../api/ItemClientProvider";
 import type {
+  PipelineCanvasNote,
   PipelineEdge,
   PipelineNode,
   PipelinePayload,
@@ -18,16 +19,22 @@ import type {
   PipelineRun,
 } from "../api/types";
 import { hasPermission } from "../auth/permissions";
+import { Banner } from "../ui/kit/Banner";
 import { Button } from "../ui/kit/Button";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
+import { useUndoableDraft } from "../builder/useUndoableDraft";
 import { PipelineCanvas } from "../builder/pipeline/PipelineCanvas";
 import { PipelineNodeInspector } from "../builder/pipeline/PipelineNodeInspector";
-import { PipelinePalette, PIPELINE_OP_DND_TYPE } from "../builder/pipeline/PipelinePalette";
+import {
+  PipelinePalette,
+  PIPELINE_OP_DND_TYPE,
+  PIPELINE_PALETTE_SEARCH_ID,
+} from "../builder/pipeline/PipelinePalette";
 import { PipelinePreviewPanel } from "../builder/pipeline/PipelinePreviewPanel";
 import { PipelineRunPanel } from "../builder/pipeline/PipelineRunPanel";
 import { PipelineScheduleEditor } from "../builder/pipeline/PipelineScheduleEditor";
 import { PipelineWebhookTrigger } from "../builder/pipeline/PipelineWebhookTrigger";
-import { genNodeId, insertNodeOnEdge } from "../builder/pipeline/graphOps";
+import { genNodeId, genNoteId, insertNodeOnEdge } from "../builder/pipeline/graphOps";
 import { isPipelineValid, validatePipelineGraphLocally } from "../builder/pipeline/validation";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
@@ -65,14 +72,52 @@ export function PipelineBuilderPage({
   // itemQuery.isLoading/isError (même patron que DatasetEditPage.tsx:52-58).
   const readOnly = pk !== null && !hasPermission(itemQuery.data, "write");
 
-  const [draft, setDraft] = useState<PipelinePayload>(EMPTY_PAYLOAD);
+  const { draft, setDraft, seedDraft, resetDraft, undo, redo, canUndo, canRedo } =
+    useUndoableDraft<PipelinePayload>();
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [latestRun, setLatestRun] = useState<PipelineRun | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (pk !== null && configQuery.data) setDraft(configQuery.data);
-  }, [pk, configQuery.data]);
+    if (pk === null) {
+      seedDraft(EMPTY_PAYLOAD);
+      return;
+    }
+    if (configQuery.data) seedDraft(configQuery.data);
+  }, [pk, configQuery.data, seedDraft]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const target = document.activeElement;
+      const isTextField =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+      if (isTextField) return;
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undo, redo]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "/") return;
+      const target = document.activeElement;
+      const isTextField =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+      if (isTextField) return;
+      e.preventDefault();
+      document.getElementById(PIPELINE_PALETTE_SEARCH_ID)?.focus();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   if (pk !== null && (configQuery.isLoading || itemQuery.isLoading))
     return <p role="status">{t("common.loading")}</p>;
@@ -94,28 +139,55 @@ export function PipelineBuilderPage({
       </p>
     );
   if (opsQuery.isLoading || !opsQuery.data) return <p role="status">{t("common.loading")}</p>;
+  if (draft === null) return <p role="status">{t("common.loading")}</p>;
 
   const catalog = opsQuery.data;
+  // Narrowing from the `draft === null` guard above does not survive into the
+  // nested `function` declarations below (onInsertOnEdge/onDropOnCanvas/
+  // onAddViaPalette/onSave) — TypeScript resets control-flow narrowing at a
+  // function boundary. Capturing it in a freshly-declared, non-nullable
+  // const sidesteps that instead of asserting `draft!` at each read site.
+  const currentDraft: PipelinePayload = draft;
   const validation = validatePipelineGraphLocally(draft.nodes, draft.edges, catalog);
   const valid = isPipelineValid(validation);
   const selectedNode = draft.nodes.find((n) => n.id === selectedNodeId) ?? null;
 
   function setNodes(nodes: PipelineNode[]) {
-    setDraft((d) => ({ ...d, nodes }));
+    setDraft((d) => (d ? { ...d, nodes } : d));
   }
   function setEdges(edges: PipelineEdge[]) {
-    setDraft((d) => ({ ...d, edges }));
+    setDraft((d) => (d ? { ...d, edges } : d));
   }
   function setRefreshPolicy(refreshPolicy: PipelineRefreshPolicy | null) {
-    setDraft((d) => ({ ...d, refreshPolicy }));
+    setDraft((d) => (d ? { ...d, refreshPolicy } : d));
+  }
+  function setNotes(notes: PipelineCanvasNote[]) {
+    setDraft((d) => (d ? { ...d, notes } : d));
+  }
+  function onAddNote() {
+    setNotes([
+      ...(currentDraft.notes ?? []),
+      {
+        id: genNoteId(),
+        label: t("pipelineBuilder.newNoteLabel"),
+        x: 40,
+        y: 40,
+        width: 200,
+        height: 120,
+      },
+    ]);
   }
   function updateSelectedNodeParams(params: Record<string, unknown>) {
     if (!selectedNode) return;
-    setNodes(draft.nodes.map((n) => (n.id === selectedNode.id ? { ...n, params } : n)));
+    setDraft((d) =>
+      d
+        ? { ...d, nodes: d.nodes.map((n) => (n.id === selectedNode.id ? { ...n, params } : n)) }
+        : d,
+    );
   }
   function onInsertOnEdge(edgeId: string, op: string) {
     const kind = catalog[op]?.kind ?? "transform";
-    const result = insertNodeOnEdge(draft.nodes, draft.edges, edgeId, {
+    const result = insertNodeOnEdge(currentDraft.nodes, currentDraft.edges, edgeId, {
       id: genNodeId(),
       kind,
       op,
@@ -124,12 +196,12 @@ export function PipelineBuilderPage({
       params: {},
       title: op,
     });
-    setDraft(result);
+    setDraft((d) => (d ? { ...d, ...result } : d));
   }
   function onDropOnCanvas(op: string, position: { x: number; y: number }) {
     const kind = catalog[op]?.kind ?? "transform";
     setNodes([
-      ...draft.nodes,
+      ...currentDraft.nodes,
       { id: genNodeId(), kind, op, x: position.x, y: position.y, params: {}, title: op },
     ]);
   }
@@ -139,7 +211,7 @@ export function PipelineBuilderPage({
   // ajout successif pour ne pas empiler les nœuds exactement l'un sur
   // l'autre.
   function onAddViaPalette(op: string) {
-    onDropOnCanvas(op, { x: 40, y: 40 + draft.nodes.length * 90 });
+    onDropOnCanvas(op, { x: 40, y: 40 + currentDraft.nodes.length * 90 });
   }
 
   async function onSave() {
@@ -149,12 +221,12 @@ export function PipelineBuilderPage({
         const item = await createPipeline.mutateAsync({
           title: initialTitle ?? "",
           owner: username ?? "",
-          pipeline: draft,
+          pipeline: currentDraft,
         });
         navigate(`/pipelines/${item.pk}/edit`, { replace: true });
         return;
       }
-      await savePipeline.mutateAsync(draft);
+      await savePipeline.mutateAsync(currentDraft);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : t("actions.saveFailed"));
     }
@@ -182,11 +254,33 @@ export function PipelineBuilderPage({
           label: t("appBuilder.canvasLabel"),
           content: (
             <div className="flex h-full flex-col overflow-hidden">
-              <div className="border-b border-rule p-2">
+              <div className="flex items-center justify-between border-b border-rule p-2">
                 <h2 className="text-lg font-semibold text-ink">
                   {initialTitle ?? t("pipelineBuilder.defaultTitle")}
                 </h2>
+                <div className="flex items-center gap-1">
+                  <Button size="sm" variant="outline" disabled={!canUndo} onClick={undo}>
+                    {t("pipelineBuilder.undo")}
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={!canRedo} onClick={redo}>
+                    {t("pipelineBuilder.redo")}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={onAddNote}>
+                    {t("pipelineBuilder.addNoteButton")}
+                  </Button>
+                </div>
               </div>
+              {validation.graphErrors.length > 0 && (
+                <div className="p-2">
+                  <Banner variant="danger">
+                    <ul className="list-disc pl-4">
+                      {validation.graphErrors.map((err) => (
+                        <li key={err}>{err}</li>
+                      ))}
+                    </ul>
+                  </Banner>
+                </div>
+              )}
               <div className="flex-1 overflow-auto p-2">
                 <PipelineCanvas
                   nodes={draft.nodes}
@@ -199,6 +293,9 @@ export function PipelineBuilderPage({
                   opsCatalog={catalog}
                   nodeStats={latestRun?.nodeStats}
                   runStatus={latestRun?.status}
+                  nodeErrors={validation.nodeErrors}
+                  notes={draft.notes ?? []}
+                  onNotesChange={setNotes}
                 />
               </div>
             </div>
@@ -221,7 +318,14 @@ export function PipelineBuilderPage({
                     errors={validation.nodeErrors[selectedNode.id] ?? []}
                     onChange={updateSelectedNodeParams}
                   />
-                  {pk !== null && <PipelinePreviewPanel pipelineId={pk} nodeId={selectedNode.id} />}
+                  {pk !== null && !readOnly && (
+                    <PipelinePreviewPanel
+                      pipelineId={pk}
+                      nodeId={selectedNode.id}
+                      draft={draft}
+                      isDraftStale={configQuery.data !== undefined && configQuery.data !== draft}
+                    />
+                  )}
                 </>
               )}
               {pk !== null && (
@@ -249,7 +353,7 @@ export function PipelineBuilderPage({
                   <ConfigHistoryPanel
                     pk={pk}
                     currentVersion={null}
-                    onRestored={async () => setDraft(await client.getPipelineConfig(pk))}
+                    onRestored={async () => resetDraft(await client.getPipelineConfig(pk))}
                   />
                 </div>
               )}
@@ -265,6 +369,9 @@ export function PipelineBuilderPage({
                   {t("common.save")}
                 </Button>
                 {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
+                {!valid && !readOnly && (
+                  <p className="text-xs text-ink-2">{t("pipelineBuilder.saveDisabledReason")}</p>
+                )}
                 {saveError && (
                   <p role="alert" className="text-xs text-danger">
                     {saveError}

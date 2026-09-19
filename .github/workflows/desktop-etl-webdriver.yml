@@ -1,0 +1,68 @@
+name: desktop-etl WebDriver E2E
+
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - "desktop-etl/**"
+      - "shell/src/desktop/**"
+      - "shell/src/builder/pipeline/**"
+      - "core/app/pipelines/**"
+      - "core/scripts/pipeline_sidecar*.py"
+      - ".github/workflows/desktop-etl-webdriver.yml"
+
+jobs:
+  e2e-windows:
+    # PAS windows-latest : résout aujourd'hui vers windows-2025-vs2026, dont
+    # le WebView2 Runtime casse sous automatisation WebDriver ("DevToolsActivePort
+    # file doesn't exist" à chaque session, confirmé par une CI réelle sur ce
+    # dépôt, Tâche 8) — régression connue de l'image, pas de ce projet
+    # (github.com/actions/runner-images/issues/14738, ouverte, sans date de
+    # correctif annoncée). windows-2022 (WebView2 131.x) n'a pas ce défaut.
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: Freeze sidecar
+        working-directory: core
+        shell: bash
+        # Même recette que desktop-etl-sidecar-freeze.yml (lue depuis
+        # pipeline_sidecar.pyinstaller-args.txt, pas dupliquée en dur ici)
+        # pour ne jamais diverger si cette recette gagne un nouveau
+        # --collect-all (cf. le commentaire de ce fichier).
+        run: |
+          uv sync
+          extra_args=$(grep -v '^#' scripts/pipeline_sidecar.pyinstaller-args.txt | tr '\n' ' ')
+          uv run pyinstaller --onefile --name pipeline-sidecar --paths . $extra_args scripts/pipeline_sidecar.py
+      - name: Prepare sidecar binary
+        run: node desktop-etl/scripts/prepare-sidecar-binary.mjs core/dist/pipeline-sidecar.exe
+      - name: install msedgedriver
+        run: |
+          cargo install --git https://github.com/chippers/msedgedriver-tool
+          & "$HOME/.cargo/bin/msedgedriver-tool.exe"
+          $PWD.Path >> $env:GITHUB_PATH
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Build shell desktop runtime
+        working-directory: shell
+        run: |
+          npm ci
+          npm run build:desktop-runtime
+      - name: Install tauri-driver
+        run: cargo install tauri-driver --locked
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: WebdriverIO
+        working-directory: desktop-etl/e2e
+        run: |
+          npm ci
+          npm test
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-diagnostics
+          path: desktop-etl/e2e/diagnostics
+          if-no-files-found: ignore
+          retention-days: 7

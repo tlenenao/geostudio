@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import type { ItemClient, PipelineOpsCatalog } from "../../api/types";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { PipelinePalette } from "./PipelinePalette";
 
+beforeEach(() => localStorage.clear());
+
 const CATALOG: PipelineOpsCatalog = {
-  "reader.collection": { kind: "reader", paramsSchema: { properties: {}, required: [] } },
+  "reader.collection": {
+    kind: "reader",
+    paramsSchema: { properties: {}, required: [], description: "Import data from a collection" },
+  },
   "transform.filter": { kind: "transform", paramsSchema: { properties: {}, required: [] } },
   "writer.collection": { kind: "writer", paramsSchema: { properties: {}, required: [] } },
 };
@@ -54,18 +59,24 @@ test("clicking an entry calls onAdd with the op id (keyboard-accessible fallback
   const onAdd = vi.fn();
   renderPalette(onAdd);
   await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
-  fireEvent.click(screen.getByRole("button", { name: "reader.collection" }));
+  fireEvent.click(screen.getByRole("button", { name: /reader\.collection/ }));
   expect(onAdd).toHaveBeenCalledWith("reader.collection");
 });
 
 test("entries render as native buttons (focusable, no onAdd required)", async () => {
   renderPalette();
   await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
-  const button = screen.getByRole("button", { name: "reader.collection" });
+  const button = screen.getByRole("button", { name: /reader\.collection/ });
   expect(() => fireEvent.click(button)).not.toThrow();
 });
 
-test("op entries with a paramsSchema.description get it as a hover title", async () => {
+test("shows the operation's description as visible text, not only on hover", async () => {
+  renderPalette();
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(screen.getByText("Import data from a collection")).toBeInTheDocument();
+});
+
+test("op entries with a paramsSchema.description show it as visible text", async () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const catalogWithDescription: PipelineOpsCatalog = {
     ...CATALOG,
@@ -89,19 +100,56 @@ test("op entries with a paramsSchema.description get it as a hover title", async
     </QueryClientProvider>,
   );
   await waitFor(() => expect(screen.getByText("reader.connector.postgres")).toBeInTheDocument());
-  const entryWithDescription = screen
-    .getByText("reader.connector.postgres")
-    .closest("[draggable]") as HTMLElement;
-  expect(entryWithDescription).toHaveAttribute(
-    "title",
-    "Fonctionne également contre un cluster Amazon Redshift.",
-  );
+  expect(
+    screen.getByText("Fonctionne également contre un cluster Amazon Redshift."),
+  ).toBeInTheDocument();
+});
 
-  // Entry with no description (e.g. "reader.collection" from CATALOG) gets
-  // no title attribute at all — never an empty string, which some screen
-  // readers/tools would still surface as an (empty) tooltip.
-  const entryWithoutDescription = screen
-    .getByText("reader.collection")
-    .closest("[draggable]") as HTMLElement;
-  expect(entryWithoutDescription).not.toHaveAttribute("title");
+test("typing in the search field filters the op list by id", async () => {
+  const userEventInstance = await import("@testing-library/user-event").then((m) =>
+    m.default.setup(),
+  );
+  renderPalette();
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  await userEventInstance.type(
+    screen.getByRole("searchbox", { name: "Rechercher une opération" }),
+    "filter",
+  );
+  expect(screen.getByText("transform.filter")).toBeInTheDocument();
+  expect(screen.queryByText("reader.collection")).not.toBeInTheDocument();
+});
+
+test("completing a drag (dragstart then dragend) records the op as recently used", async () => {
+  renderPalette();
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(screen.queryByText("Récemment utilisés")).not.toBeInTheDocument();
+  const entry = screen.getByText("reader.collection").closest("[draggable]") as HTMLElement;
+  const dataTransfer = {
+    setData: (type: string, value: string) => {
+      (dataTransfer as any)[type] = value;
+    },
+    effectAllowed: "",
+  };
+  fireEvent.dragStart(entry, { dataTransfer });
+  expect(screen.queryByText("Récemment utilisés")).not.toBeInTheDocument();
+  fireEvent.dragEnd(entry, { dataTransfer });
+  expect(screen.getByText("Récemment utilisés")).toBeInTheDocument();
+  expect(screen.getAllByText("reader.collection")).toHaveLength(2);
+});
+
+test("using an op via the palette adds it to a Récemment utilisés section", async () => {
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <ItemClientProvider client={{ getPipelineOps: () => Promise.resolve(CATALOG) } as ItemClient}>
+        <PipelinePalette onAdd={vi.fn()} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(screen.queryByText("Récemment utilisés")).not.toBeInTheDocument();
+  await fireEvent.click(screen.getAllByRole("button", { name: /reader\.collection/ })[0]);
+  expect(screen.getByText("Récemment utilisés")).toBeInTheDocument();
+  expect(screen.getAllByText("reader.collection")).toHaveLength(2);
 });

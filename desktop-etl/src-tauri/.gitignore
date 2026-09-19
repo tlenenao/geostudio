@@ -1,0 +1,9 @@
+# Généré par Cargo
+/target/
+
+# Généré par Tauri (schémas de capacités)
+/gen/schemas
+
+# Binaire sidecar gelé (Tâche 2) — jamais committé, replacé à chaque build
+# via desktop-etl/scripts/prepare-sidecar-binary.mjs
+/binaries/

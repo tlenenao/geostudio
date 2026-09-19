@@ -14,6 +14,16 @@ export function isPipelineValid(result: PipelineValidationResult): boolean {
   );
 }
 
+// Matches validateNodeParamsShape's message format ("${field} est requis.")
+// by prefix — a pure convenience matcher, not a change to
+// PipelineValidationResult's shape. An error that doesn't start with any
+// known field name (a structural op-level error, e.g. "requiert une arête
+// primaire entrante") never matches any field and keeps rendering in the
+// node-level fallback list.
+export function fieldErrorsFor(field: string, errors: string[]): string[] {
+  return errors.filter((e) => e.startsWith(`${field} `));
+}
+
 // Vérification de forme uniquement (présence des champs requis) — jamais la
 // sémantique d'une expression SQL bornée, cf. plan Global Constraints et
 // design SP-15a §5.1 (frontière déjà actée, non rouverte ici).

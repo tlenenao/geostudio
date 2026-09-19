@@ -279,6 +279,140 @@ def test_preview_route_rejects_unknown_pipeline(monkeypatch):
     assert response.status_code == 404
 
 
+def _seed_preview_pipeline(client):
+    Session = client.session_factory  # type: ignore[attr-defined]
+    tenant = client.tenant  # type: ignore[attr-defined]
+    owner = client.user  # type: ignore[attr-defined]
+    with Session() as s:
+        item = items_repo.create_item(
+            s,
+            tenant_id=tenant.id,
+            owner_id=owner.id,
+            resource_type="pipeline",
+            title="Pipeline preview",
+        )
+        configs_repo.create_config(
+            s,
+            BuilderConfig.model_validate(
+                {
+                    "version": 1,
+                    "kind": "pipeline",
+                    "pipeline": {
+                        "nodes": [
+                            {
+                                "id": "r1",
+                                "kind": "reader",
+                                "op": "reader.collection",
+                                "params": {"collectionId": "x"},
+                            },
+                            {
+                                "id": "w1",
+                                "kind": "writer",
+                                "op": "writer.export",
+                                "params": {"format": "csv", "key": "o.csv"},
+                            },
+                        ],
+                        "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+                    },
+                }
+            ),
+            item_id=item.id,
+            tenant_id=tenant.id,
+        )
+        s.commit()
+        return item.id
+
+
+def test_preview_route_uses_the_persisted_config_when_no_body_is_sent(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_preview_pipeline(client)
+    captured = {}
+
+    def fake_preview_pipeline(*, payload, **kwargs):
+        captured["collectionId"] = payload.nodes[0].params["collectionId"]
+        return [{"id": 1}]
+
+    monkeypatch.setattr("app.pipelines.routes.preview_pipeline", fake_preview_pipeline)
+    response = client.post(f"/v1/pipelines/{item_id}/preview?upTo=r1")
+    assert response.status_code == 200
+    assert captured["collectionId"] == "x"
+
+
+def test_preview_route_uses_the_request_body_pipeline_when_provided(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_preview_pipeline(client)
+    captured = {}
+
+    def fake_preview_pipeline(*, payload, **kwargs):
+        captured["collectionId"] = payload.nodes[0].params["collectionId"]
+        return [{"id": 1}]
+
+    monkeypatch.setattr("app.pipelines.routes.preview_pipeline", fake_preview_pipeline)
+    draft = {
+        "nodes": [
+            {
+                "id": "r1",
+                "kind": "reader",
+                "op": "reader.collection",
+                "params": {"collectionId": "y"},
+            },
+            {
+                "id": "w1",
+                "kind": "writer",
+                "op": "writer.export",
+                "params": {"format": "csv", "key": "o.csv"},
+            },
+        ],
+        "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+    }
+    response = client.post(f"/v1/pipelines/{item_id}/preview?upTo=r1", json={"pipeline": draft})
+    assert response.status_code == 200
+    assert captured["collectionId"] == "y"
+
+
+def test_preview_route_forbidden_for_read_only_shared_user(monkeypatch):
+    # I1, final review: preview requires action="write" (not "read") because
+    # the route accepts an arbitrary draft graph body and connector secrets
+    # are tenant-scoped, not pipeline-scoped — a read-only-shared user must
+    # get 403, not a working preview. Sharing setup follows the precedent in
+    # test_items_routes.py::test_patch_item_by_group_viewer_returns_403.
+    from app.sharing.models import Group, GroupMember, ItemShare
+
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_preview_pipeline(client)
+    with client.session_factory() as session:
+        bob = get_or_create_user(
+            session,
+            tenant_id=client.tenant.id,
+            oidc_sub="sub-bob",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        group = Group(
+            id="g-preview-viewers",
+            tenant_id=client.tenant.id,
+            name="Preview viewers",
+            created_by=client.user.id,
+        )
+        session.add(group)
+        session.flush()
+        session.add(GroupMember(group_id=group.id, user_id=bob.id, tenant_id=client.tenant.id))
+        session.add(
+            ItemShare(item_id=item_id, group_id=group.id, tenant_id=client.tenant.id, role="viewer")
+        )
+        session.commit()
+        session.refresh(bob)
+
+    client.app.dependency_overrides[get_current_user] = lambda: bob
+    try:
+        response = client.post(f"/v1/pipelines/{item_id}/preview?upTo=r1")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 403
+
+
 # --- Déclenchement de pipeline par webhook entrant (GAP-24, SP-53) ---
 
 
@@ -527,3 +661,35 @@ def test_get_qgis_algorithms_returns_full_allowlist(monkeypatch):
 def test_get_qgis_algorithms_absent_when_etl_disabled(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=False)
     assert client.get("/v1/pipelines/ops/qgis-algorithms").status_code == 404
+
+
+def test_next_run_route_computes_the_next_occurrence(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    response = client.get("/v1/pipelines/next-run?cron=0+2+*+*+*")
+    assert response.status_code == 200
+    body = response.json()
+    assert "nextRun" in body
+    from datetime import UTC, datetime
+
+    next_run = datetime.fromisoformat(body["nextRun"])
+    assert next_run > datetime.now(UTC)
+
+
+def test_next_run_route_rejects_an_invalid_cron_expression(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    response = client.get("/v1/pipelines/next-run?cron=not-a-cron")
+    assert response.status_code == 400
+
+
+def test_next_run_route_rejects_a_syntactically_valid_but_unreachable_cron(monkeypatch):
+    # "0 0 30 2 *" (Feb 30th) passes croniter.is_valid() but has no future
+    # occurrence: get_next() raises CroniterBadDateError, which must not
+    # surface as an unhandled 500 (I4, final review).
+    client = _make_app(monkeypatch, etl_enabled=True)
+    response = client.get("/v1/pipelines/next-run?cron=0+0+30+2+*")
+    assert response.status_code == 400
+
+
+def test_next_run_route_absent_when_etl_disabled(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=False)
+    assert client.get("/v1/pipelines/next-run?cron=0+2+*+*+*").status_code == 404

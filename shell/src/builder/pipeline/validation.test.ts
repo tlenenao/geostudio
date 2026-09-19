@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
 import type { PipelineEdge, PipelineNode, PipelineOpsCatalog } from "../../api/types";
-import { isPipelineValid, validatePipelineGraphLocally } from "./validation";
+import { fieldErrorsFor, isPipelineValid, validatePipelineGraphLocally } from "./validation";
 
 const CATALOG: PipelineOpsCatalog = {
   "reader.collection": {
@@ -199,4 +199,21 @@ test("a non-binary op with a secondary edge is flagged on that node", () => {
   ];
   const result = validatePipelineGraphLocally(nodes, edges, CATALOG);
   expect(result.nodeErrors.t1).toContain("transform.filter n'accepte pas d'arête secondaire.");
+});
+
+test("fieldErrorsFor returns only errors that start with '<field> '", () => {
+  const errors = [
+    "collectionId est requis.",
+    "reader.collection : requiert une arête primaire entrante.",
+  ];
+  expect(fieldErrorsFor("collectionId", errors)).toEqual(["collectionId est requis."]);
+  expect(fieldErrorsFor("other", errors)).toEqual([]);
+});
+
+test("fieldErrorsFor guards against field-name prefix collisions", () => {
+  // Regression proof: "collection" is a strict prefix of "collectionId",
+  // but the trailing space in the prefix check ensures we don't match
+  // "collectionId est requis." when filtering for "collection".
+  const errors = ["collectionId est requis."];
+  expect(fieldErrorsFor("collection", errors)).toEqual([]);
 });

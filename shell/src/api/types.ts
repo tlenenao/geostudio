@@ -523,12 +523,17 @@ export interface ItemClient {
   getPipelineConfig(pk: string): Promise<PipelinePayload>;
   savePipelineConfig(pk: string, payload: PipelinePayload): Promise<void>;
   getPipelineOps(): Promise<PipelineOpsCatalog>;
+  getPipelineNextRun(cron: string): Promise<{ nextRun: string }>;
   runPipeline(pk: string): Promise<{ runId: string }>;
   getPipelineRuns(pk: string, params?: PageParams): Promise<PipelineRun[]>;
   listPipelineWebhookTokens(pk: string): Promise<PipelineWebhookToken[]>;
   createPipelineWebhookToken(pk: string): Promise<{ id: string; token: string; createdAt: string }>;
   revokePipelineWebhookToken(pk: string, tokenId: string): Promise<void>;
-  previewPipeline(pk: string, upToNodeId: string): Promise<Record<string, unknown>[]>;
+  previewPipeline(
+    pk: string,
+    upToNodeId: string,
+    draft?: PipelinePayload,
+  ): Promise<Record<string, unknown>[]>;
   createAlertRuleItem(input: {
     title: string;
     owner: string;
@@ -1020,10 +1025,20 @@ export type PipelineRefreshPolicy = {
   cron: string;
 };
 
+export type PipelineCanvasNote = {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 export type PipelinePayload = {
   nodes: PipelineNode[];
   edges: PipelineEdge[];
   refreshPolicy?: PipelineRefreshPolicy | null;
+  notes?: PipelineCanvasNote[];
 };
 
 export interface AlertCondition {

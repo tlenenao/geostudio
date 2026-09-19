@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 import type { PipelineNode, PipelineOpEntry, PipelineOpParamProperty } from "../../api/types";
+import { t } from "../../i18n";
+import { fieldErrorsFor } from "./validation";
 import { CollectionParamSelect } from "./CollectionParamSelect";
 import { SecretParamSelect } from "./SecretParamSelect";
 
@@ -115,11 +117,16 @@ export function PipelineNodeInspector({
   // "mode" : tout futur champ portant une description en bénéficiera.
   function renderField(name: string, prop: PipelineOpParamProperty) {
     const control = renderControl(name, prop);
-    if (!prop.description) return control;
+    const fieldErrors = fieldErrorsFor(name, errors);
     return (
       <div key={name} className="flex flex-col gap-1">
         {control}
-        <p className="text-xs text-ink-2">{prop.description}</p>
+        {prop.description && <p className="text-xs text-ink-2">{prop.description}</p>}
+        {fieldErrors.map((err) => (
+          <p key={err} role="alert" className="text-xs text-danger">
+            {err}
+          </p>
+        ))}
       </div>
     );
   }
@@ -219,12 +226,39 @@ export function PipelineNodeInspector({
     );
   }
 
+  const requiredNames = new Set(opEntry.paramsSchema.required ?? []);
+  const entries = Object.entries(opEntry.paramsSchema.properties);
+  const requiredEntries = entries.filter(([name]) => requiredNames.has(name));
+  const optionalEntries = entries.filter(([name]) => !requiredNames.has(name));
+
+  const allFieldNames = Object.keys(opEntry.paramsSchema.properties);
+  const unmatchedErrors = errors.filter(
+    (e) => !allFieldNames.some((name) => fieldErrorsFor(name, [e]).length > 0),
+  );
+
   return (
     <div className="flex flex-col gap-2 p-2">
-      {Object.entries(opEntry.paramsSchema.properties).map(([name, prop]) =>
-        renderField(name, prop),
+      {requiredEntries.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {optionalEntries.length > 0 && (
+            <h4 className="text-[10px] font-semibold uppercase text-ink-2">
+              {t("pipelineNodeInspector.requiredSection")}
+            </h4>
+          )}
+          {requiredEntries.map(([name, prop]) => renderField(name, prop))}
+        </div>
       )}
-      {errors.map((err) => (
+      {optionalEntries.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {requiredEntries.length > 0 && (
+            <h4 className="text-[10px] font-semibold uppercase text-ink-2">
+              {t("pipelineNodeInspector.optionalSection")}
+            </h4>
+          )}
+          {optionalEntries.map(([name, prop]) => renderField(name, prop))}
+        </div>
+      )}
+      {unmatchedErrors.map((err) => (
         <p key={err} role="alert" className="text-xs text-danger">
           {err}
         </p>

@@ -11,7 +11,7 @@ import {
   useUploadThumbnail,
 } from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
-import type { PrintLayoutConfig, RenderMode, WidgetItem } from "../api/types";
+import type { AppConfig, PrintLayoutConfig, RenderMode, WidgetItem } from "../api/types";
 import { hasPermission } from "../auth/permissions";
 import { ActionsPanel } from "../builder/ActionsPanel";
 import { AppExportPanel } from "../builder/appexport/AppExportPanel";
@@ -71,7 +71,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const [promotingId, setPromotingId] = useState<string | null>(null);
   const mainRef = useRef<HTMLElement>(null);
   const { draft, setDraft, seedDraft, resetDraft, undo, redo, canUndo, canRedo } =
-    useUndoableDraft();
+    useUndoableDraft<AppConfig>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<RenderMode>("edit");
   const [breakpoint, setBreakpoint] = useState<Breakpoint>("lg");

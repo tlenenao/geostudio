@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -64,6 +64,7 @@ function stubMatchMedia(matches: boolean) {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   vi.stubGlobal("ResizeObserver", NoopResizeObserver);
   stubMatchMedia(false);
 });
@@ -148,12 +149,49 @@ test("unsaved mode: Aperçu and Exécuter are absent (no pipelineId yet)", async
 // keyboard/click fallback to drag-and-drop. Before this fix, PipelinePalette
 // rendered a non-interactive <div draggable>, so this click was a no-op and
 // the op text appeared exactly once (the palette entry itself).
+//
+// I5, final review: Task 12 ("recently used ops") made the same click
+// handler also call recordUse(op), which renders a second static copy of
+// "reader.collection" in "Récemment utilisés" regardless of whether the node
+// was actually added to the canvas — `length > 1` no longer falsifies a
+// broken onAdd/onDropOnCanvas wiring, since recordUse alone already gets to
+// 2. The canvas-added node (title === op, PipelineBuilderPage.onDropOnCanvas)
+// renders TWO further matches — its title div and its op-label div
+// (PipelineCanvas.tsx's PipelineNodeBox renders both `node.title ?? node.op`
+// and `node.op`, and here they're the same string) — so exactly 4 total
+// (palette entry + recent-ops entry + node title + node op label) proves the
+// node was truly added; a no-op onAdd would stall at 2.
 test("unsaved mode: clicking a palette entry adds a node to the canvas", async () => {
   renderPage(null);
   await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
   expect(screen.getAllByText("reader.collection")).toHaveLength(1);
   await userEvent.click(screen.getByRole("button", { name: "reader.collection" }));
+  await waitFor(() => expect(screen.getAllByText("reader.collection")).toHaveLength(4));
+});
+
+test("unsaved mode: Annuler reverts the last palette-added node", async () => {
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "reader.collection" }));
   await waitFor(() => expect(screen.getAllByText("reader.collection").length).toBeGreaterThan(1));
+  // useUndoableDraft's 400ms coalescing window means canUndo only flips
+  // true once it elapses after setDraft — poll for it instead of asserting
+  // immediately (brief's plan assumed the preceding waitFor already
+  // outlasted the window; measured, it resolves as soon as the node
+  // renders, well under 400ms).
+  await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+  // After undo, there are still 2 instances: one in Sources, one in Récemment utilisés
+  // (the recent ops list persists independently of the canvas).
+  await waitFor(() => expect(screen.getAllByText("reader.collection")).toHaveLength(2));
+  expect(screen.getByRole("button", { name: "Rétablir" })).toBeEnabled();
+});
+
+test("unsaved mode: Annuler and Rétablir start disabled", async () => {
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Rétablir" })).toBeDisabled();
 });
 
 test("persisted mode: loads the existing graph and shows Exécuter", async () => {
@@ -387,6 +425,21 @@ test("unsaved mode: no history panel before the first save (no pipelineId yet)",
   expect(screen.queryByText("Historique")).not.toBeInTheDocument();
 });
 
+test("unsaved mode: graph-level errors are shown in a banner", async () => {
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(screen.getByText("Le pipeline doit contenir au moins une source.")).toBeInTheDocument();
+  expect(screen.getByText("Le pipeline doit contenir au moins une écriture.")).toBeInTheDocument();
+});
+
+test("unsaved mode: shows a reason why Enregistrer is disabled", async () => {
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(
+    screen.getByText("Le graphe contient des erreurs à corriger avant l'enregistrement."),
+  ).toBeInTheDocument();
+});
+
 test("sous viewport étroit, affiche trois onglets Étapes/Canevas/Propriétés avec Canevas actif par défaut", async () => {
   stubMatchMedia(true);
   renderPage(null);
@@ -413,6 +466,55 @@ test("persisted mode: verrouille Enregistrer quand permissions.write est false (
   expect(
     screen.getByText("Modification réservée aux éditeurs de cet élément."),
   ).toBeInTheDocument();
+});
+
+// I1, final review: preview now requires action="write" server-side (Task 2 —
+// the route accepts an arbitrary draft graph body and connector secrets are
+// tenant-scoped, not pipeline-scoped), but the panel was still rendered
+// unconditionally whenever a node was selected, regardless of `readOnly`. A
+// read-only-shared user selecting any node got a permanent "Aperçu
+// indisponible" alert and fired a 403 POST on every keystroke (the preview
+// query key includes the live draft). The test above uses an empty graph, so
+// no node can ever be selected there — this variant seeds a real node so it
+// can be clicked, then proves the panel (and its underlying query) is absent.
+test("persisted mode: n'affiche pas l'aperçu pour un utilisateur en lecture seule, même nœud sélectionné (I1)", async () => {
+  const payload: PipelinePayload = {
+    nodes: [
+      {
+        id: "r1",
+        kind: "reader",
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: { collectionId: "villes" },
+        title: "Villes",
+      },
+      {
+        id: "w1",
+        kind: "writer",
+        op: "writer.collection",
+        x: 300,
+        y: 0,
+        params: { collectionId: "villes_propres" },
+        title: "Écriture",
+      },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+  };
+  const previewPipeline = vi.fn().mockResolvedValue([{ id: 1 }]);
+  renderPage("p-1", {
+    getItem: vi
+      .fn()
+      .mockResolvedValue({ ...OWNED_PIPELINE_ITEM, permissions: READ_ONLY_PERMISSIONS }),
+    getPipelineConfig: vi.fn().mockResolvedValue(payload),
+    previewPipeline,
+  });
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  fireEvent.click(screen.getByText("Villes"));
+  await waitFor(() => expect(screen.getByText("Nœud sélectionné")).toBeInTheDocument());
+  expect(screen.queryByText("Aperçu indisponible.")).not.toBeInTheDocument();
+  expect(screen.queryByText("Chargement de l'aperçu…")).not.toBeInTheDocument();
+  expect(previewPipeline).not.toHaveBeenCalled();
 });
 
 test("persisted mode: reste en chargement tant que l'item n'est pas résolu, ne verrouille pas Enregistrer par erreur (SP-42, revue finale, point 2, Critical)", async () => {
@@ -493,4 +595,67 @@ test("persisted mode: une config qui échoue à charger affiche une alerte et n'
   expect(alert).toHaveTextContent("introuvable");
   expect(screen.queryByText("reader.collection")).not.toBeInTheDocument();
   expect(savePipelineConfig).not.toHaveBeenCalled();
+});
+
+test("unsaved mode: pressing / focuses the palette search field", async () => {
+  const user = userEvent.setup();
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  await user.keyboard("/");
+  expect(screen.getByRole("searchbox", { name: "Rechercher une opération" })).toHaveFocus();
+});
+
+test("unsaved mode: pressing / while typing in a text field does not steal focus", async () => {
+  const user = userEvent.setup();
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  await user.click(screen.getByRole("searchbox", { name: "Rechercher une opération" }));
+  await user.type(screen.getByRole("searchbox", { name: "Rechercher une opération" }), "a/b");
+  expect(screen.getByRole("searchbox", { name: "Rechercher une opération" })).toHaveValue("a/b");
+});
+
+test("unsaved mode: Ajouter une zone adds an editable note to the canvas", async () => {
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une zone" }));
+  expect(screen.getByLabelText("Étiquette de la zone")).toHaveValue("Nouvelle zone");
+});
+
+test("persisted mode: saving includes notes added on the canvas", async () => {
+  const payload: PipelinePayload = {
+    nodes: [
+      {
+        id: "r1",
+        kind: "reader",
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: { collectionId: "villes" },
+        title: "Villes",
+      },
+      {
+        id: "w1",
+        kind: "writer",
+        op: "writer.collection",
+        x: 300,
+        y: 0,
+        params: { collectionId: "villes_propres" },
+        title: "Écriture",
+      },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+  };
+  const savePipelineConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage("p-1", { getPipelineConfig: () => Promise.resolve(payload), savePipelineConfig });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une zone" }));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() =>
+    expect(savePipelineConfig).toHaveBeenCalledWith(
+      "p-1",
+      expect.objectContaining({
+        notes: [expect.objectContaining({ label: "Nouvelle zone" })],
+      }),
+    ),
+  );
 });

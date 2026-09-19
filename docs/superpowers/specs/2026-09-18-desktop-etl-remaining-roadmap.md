@@ -9,7 +9,7 @@
 
 ## 1. Où on en est réellement (vérifié dans le code, pas dans CLAUDE.md)
 
-Fait à ce jour (`dev`, HEAD `9f820ce4`) :
+Fait à ce jour (`dev`, HEAD `7c64588e` après clôture des Phases F+G, revue finale de branche et CI Windows réelle vérifiée verte (Tâche 8)) :
 
 - **Spike freeze PyInstaller** (D1) : GO, `--collect-all dlt` suffit pour
   `connector_runtime.py` (dlt/duckdb/sqlalchemy) sur Linux **et**
@@ -56,8 +56,12 @@ Fait à ce jour (`dev`, HEAD `9f820ce4`) :
     pour les 4 plans desktop-etl précédents (commit `774ea184`).
 - **`writer.core.collection`** : n'existe pas encore (confirmé par grep) —
   Phase J.
-- **Aucun fichier Tauri/Rust** (`src-tauri/`, `Cargo.toml`,
-  `tauri.conf.json`) n'existe dans le dépôt — la Phase G part de zéro.
+- ~~Aucun fichier Tauri/Rust (`src-tauri/`, `Cargo.toml`,
+  `tauri.conf.json`) n'existe dans le dépôt — la Phase G part de zéro.~~
+  **Périmé** : Phase G close (plan Phase F+G, Tâches 3-7,
+  `d58ac5a2..7c64588e`) — `desktop-etl/src-tauri/` existe, compile, tourne,
+  chemin d'or E2E vérifié réellement (manuellement puis via un test
+  WebDriver automatisé passant). Détail complet §4, section Phase G.
 - **Aucun code PKCE/loopback OIDC natif** n'existe dans le dépôt (grep
   `PKCE|code_verifier|code_challenge` : zéro hit en dehors des docs et de
   l'attribut Keycloak `pkce.code.challenge.method`) — la Phase J part de
@@ -251,6 +255,21 @@ sidecar v1 s'il n'appelle jamais `app/ingestion/parsers.py`/`app/cdc/*`,
 auquel cas cette phase se réduit à confirmer une non-dépendance plutôt qu'à
 réparer un freeze cassé).
 
+**Statut : clos** (plan
+`docs/superpowers/plans/2026-09-18-desktop-etl-phase-fg.md`, Tâche 2,
+commits `90b7adf9..07b6083c`). Le risque anticipé ne s'est pas matérialisé :
+un AST walk réel des imports transitifs de
+`app.pipelines.sidecar.{app,runner,tracker}` a confirmé zéro occurrence de
+`geopandas`/`shapely`/`pyproj` — ces paquets ne sont jamais chargés par le
+sidecar (le support géospatial vient de l'extension DuckDB `spatial`,
+embarquant GDAL en statique, comme anticipé au paragraphe ci-dessus). Le
+freeze réel (`--collect-all dlt`, recette D1 inchangée) a suffi du premier
+coup en CI Windows (`windows-latest`, run `35367493909` puis
+`35378754802` après le fix CORS de la Tâche 6) ; `--collect-all
+procrastinate` (fallback documenté dans
+`core/scripts/pipeline_sidecar.pyinstaller-args.txt`) n'a jamais été
+nécessaire.
+
 ### Phase G — Bootstrap Tauri + persistance locale + chemin d'or E2E
 
 **Objectif.** `src-tauri/` neuf (Rust + `tauri.conf.json`), lancement du
@@ -277,12 +296,112 @@ handshake `PORT=<n>` (cf. plan Phase E Tâche 4) en `PORT=<n> TOKEN=<t>`
 avec jeton requis sur chaque requête, et/ou poser une allowlist `Host` —
 pas différé à une phase ultérieure.
 
+**Statut : clos** (plan
+`docs/superpowers/plans/2026-09-18-desktop-etl-phase-fg.md`, Tâches 1, 3-7,
+commits `d58ac5a2..7c64588e`). Chemin d'or E2E vérifié réellement bout-en-
+bout sur Windows (pas seulement compilé) : création d'un pipeline
+`reader.file`→`writer.file`, connexion, sauvegarde, exécution, statut
+`succeeded`, fichier `.gpkg` réel écrit sur disque — d'abord manuellement
+via le protocole CDP de WebView2 (Tâche 6), puis automatisé et rejoué avec
+succès via un test WebDriver réel (`tauri-driver`+`msedgedriver`, Tâche 7,
+1 passing en 8.8s), puis **confirmé vert en CI GitHub Actions réelle**
+(les deux workflows Windows, `desktop-etl-sidecar-freeze.yml` et
+`desktop-etl-webdriver.yml`, commit `7c64588e`) — pas seulement en local.
+Cette dernière étape a trouvé 2 défauts supplémentaires invisibles depuis
+une machine de dev déjà "chaude" : `windows-latest` résout aujourd'hui
+vers une image dont le WebView2 casse sous automatisation WebDriver
+(épinglé sur `windows-2022`) ; le délai de connexion au sidecar (10s)
+était trop court pour un binaire PyInstaller fraîchement extrait sur un
+runner tout frais (porté à 45s).
+
+Déviations par rapport au design d'origine, trouvées uniquement en
+exécutant réellement l'application (jamais visibles par relecture seule) :
+- **Handshake simplifié** (Tâche 1) : `PORT=<n>\nTOKEN=<t>` (design §4)
+  réduit à `PORT=<n>` seul — le jeton transite par la variable
+  d'environnement `GEOSTUDIO_SIDECAR_TOKEN` que Tauri positionne lui-même
+  avant le spawn, l'échoit sur stdout ne vérifierait rien de plus.
+- **CORS absent du design original** : la webview Tauri (origine
+  `http://tauri.localhost`) appelle le sidecar en cross-origin
+  (`127.0.0.1:<port>`) — sans `CORSMiddleware`, tout `fetch()` était
+  bloqué côté navigateur avant d'atteindre les routes, sans jamais lever
+  d'erreur visible ("Chargement…" perpétuel). Le plus difficile à
+  diagnostiquer des défauts trouvés en Tâche 6.
+- **`tauri-plugin-shell` résout `.sidecar()` par nom nu** (sans le
+  préfixe `binaries/` du chemin de configuration `externalBin`, sans le
+  suffixe de triplet-cible) — le code initial passait le chemin de
+  configuration complet, spawn échouait toujours.
+- **`DesktopItemClient.getItem()`** nécessaire en plus de
+  `getPipelineConfig()` (route d'édition, garde de permission) — absent
+  de la liste de méthodes du design initial.
+- **Icône Windows** (`icons/icon.ico`) jamais mentionnée par le design —
+  `tauri-build` l'exige pour générer la ressource `.exe`. Icône de
+  substitution générée par `cargo tauri icon`, à remplacer avant
+  diffusion.
+- **Deux défauts dans le fichier E2E lui-même** (Tâche 7, brief pourtant
+  "vérifié") : `cargo tauri build -- --debug --no-bundle` envoyait les
+  deux options au `cargo build` sous-jacent au lieu de `cargo tauri
+  build` (`--` mal placé) ; `$("*=succeeded")` compile vers la stratégie
+  WebDriver "partial link text" (éléments `<a>` uniquement), jamais un
+  `<span>` — les deux invisibles sans exécution réelle du test.
+- **Environnement de vérification** : ce plan a été vérifié depuis une
+  session Linux/WSL2, sans VM Windows séparée — accès au *même* hôte
+  Windows via l'interop WSL2↔Windows (`powershell.exe`/`cmd.exe`
+  atteignables depuis bash, filesystem partagé via `\\wsl.localhost\...`).
+  Deux limitations d'infrastructure rencontrées et contournées (aucune
+  n'est un défaut de code) : la compilation incrémentale de `cargo`
+  échoue sur un chemin UNC (contournement : `CARGO_TARGET_DIR` local) ;
+  la résolution `frontendDist` de `tauri-build` échoue aussi sur un
+  chemin UNC *ou* un lecteur réseau mappé (Windows le résout en UNC en
+  interne) — contournement : miroir local du sous-arbre nécessaire pour
+  la vérification WebDriver de la Tâche 7 (non conservé dans le dépôt).
+- **Persistance disque `.gspipeline` non livrée — correction du récit,
+  pas du code** (trouvé en revue finale de branche, Tâche 8). Le titre de
+  cette phase et le §3.2 du design promettaient une persistance via
+  `fs`/`dialog` Tauri (« créer un pipeline » implique « le persister » —
+  raison même de la fusion de la Phase H ci-dessous). Ce qui est
+  réellement livré : `DesktopItemClient.ts` garde le payload actif et
+  l'`Item` créé dans deux `Map` **en mémoire du process webview**,
+  perdues à la fermeture de l'application — aucun fichier `.gspipeline`,
+  aucun appel `@tauri-apps/plugin-fs`/`plugin-dialog`. Le chemin d'or
+  vérifié (créer → connecter → configurer → enregistrer → exécuter →
+  vérifier la sortie) tient dans **une seule session** de l'application ;
+  rouvrir l'app perd le pipeline construit. Les dépendances `tauri-plugin-fs`/
+  `tauri-plugin-dialog` (Rust), `@tauri-apps/plugin-fs`/`plugin-dialog`
+  (npm) et les permissions `fs:*`/`dialog:*` posées par la Tâche 3 pour
+  cet usage jamais arrivé ont été retirées (code mort, Tâche 8) —
+  **la persistance disque réelle reste entièrement à faire**, déplacée
+  explicitement en Phase I (§ ci-dessous, nouveau point).
+- **Sidecar orphelin à la fermeture de l'app — hypothèse posée par une
+  revue puis réfutée par falsification réelle, pas un défaut** (Tâche 8).
+  Le design §3.3 point 5 supposait sans jamais l'avoir vérifié que
+  `tauri-plugin-shell` termine le sidecar automatiquement à la fermeture ;
+  la revue finale de branche a jugé cette hypothèse non levée et a proposé
+  un correctif (`RunEvent::Exit` + `CommandChild.kill()`). Vérification
+  réelle sur Windows avec chronométrage précis (piège CLAUDE.md « une
+  assertion de durée ne prouve jamais une propriété de concurrence —
+  mesurer le recouvrement des intervalles ») : **le sidecar se termine de
+  lui-même ~5,1 s après la fermeture de la fenêtre, identiquement avec ou
+  sans le correctif proposé** (4 mesures : 5,07-5,22 s dans les deux
+  configurations). Le correctif n'avait donc aucun effet observable — il a
+  été retiré (YAGNI) plutôt que conservé pour un problème non confirmé. La
+  première observation d'un sidecar orphelin (qui a motivé la proposition
+  de correctif) était un artefact de mesure : délai d'observation trop
+  court après la fermeture, jamais un abandon durable du processus.
+  Mécanisme réel du délai de ~5 s non identifié (job Windows implicite
+  côté `tao`/`tauri-plugin-shell` probable, jamais confirmé dans leur
+  documentation) — sans conséquence pratique tant qu'il reste borné.
+
 ### Phase H — (fusionnée dans G)
 
 Le découpage initial du design séparait « persistance locale » de
 l'intégration Tauri — regroupées ici car le chemin d'or de la Phase G ne
 peut pas être démontré sans un mécanisme de sauvegarde/ouverture de
 fichier réel (« créer un pipeline » implique déjà « le persister »).
+**Correction (Tâche 8, revue finale)** : la fusion a eu lieu, mais la
+persistance disque promise par cette phase n'a en réalité jamais été
+construite — seul le chemin d'or intra-session l'a été (bullet
+ci-dessus). La fusion H→G reste la bonne décision de découpage ; c'est
+la case « persistance » de G elle-même qui reste à cocher, en Phase I.
 
 ### Phase I — Connecteurs desktop + secrets trousseau OS + UX de chemin
 
@@ -295,7 +414,11 @@ DI n'existe pas encore. **Écriture** d'un secret dans le trousseau OS n'a
 aucun seam existant à réutiliser (§1) — UI + code desktop entièrement
 neufs. Amélioration UX différée de la correction §2 point 2 : un vrai
 sélecteur de fichier natif (`format: "file-path"` nouveau, composant Tauri
-`dialog`) remplaçant le champ texte brut pour `path`.
+`dialog`) remplaçant le champ texte brut pour `path`. **Reporté depuis la
+Phase G (Tâche 8, revue finale, cf. note de correction ci-dessus) :**
+persistance disque réelle du pipeline lui-même (`.gspipeline` via
+`@tauri-apps/plugin-fs`/`plugin-dialog`, réintroduits alors) — aujourd'hui
+le pipeline construit ne survit qu'à la session en cours de l'application.
 
 ### Phase J — Push vers un cœur distant
 
