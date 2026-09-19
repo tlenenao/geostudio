@@ -98,6 +98,13 @@ export function createDesktopItemClient(connection: {
       return sidecarFetch<PipelineOpsCatalog>("GET", "/pipelines/ops");
     },
 
+    async getPipelineNextRun(cron: string): Promise<{ nextRun: string }> {
+      return sidecarFetch<{ nextRun: string }>(
+        "GET",
+        `/pipelines/next-run?cron=${encodeURIComponent(cron)}`,
+      );
+    },
+
     async runPipeline(pk: string): Promise<{ runId: string }> {
       return sidecarFetch<{ runId: string }>("POST", `/pipelines/${pk}/run`);
     },

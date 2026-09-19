@@ -44,6 +44,15 @@ export function usePipelineOps() {
   });
 }
 
+export function usePipelineNextRun(cron: string, enabled: boolean) {
+  const client = useItemClientInternal();
+  return useQuery({
+    queryKey: ["pipeline-next-run", cron],
+    queryFn: () => client.getPipelineNextRun(cron),
+    enabled,
+  });
+}
+
 export function usePipelinePreview(
   pipelineId: string,
   nodeId: string | null,

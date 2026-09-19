@@ -523,6 +523,7 @@ export interface ItemClient {
   getPipelineConfig(pk: string): Promise<PipelinePayload>;
   savePipelineConfig(pk: string, payload: PipelinePayload): Promise<void>;
   getPipelineOps(): Promise<PipelineOpsCatalog>;
+  getPipelineNextRun(cron: string): Promise<{ nextRun: string }>;
   runPipeline(pk: string): Promise<{ runId: string }>;
   getPipelineRuns(pk: string, params?: PageParams): Promise<PipelineRun[]>;
   listPipelineWebhookTokens(pk: string): Promise<PipelineWebhookToken[]>;

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
+import { usePipelineNextRun } from "../../api/hooks";
 import type { PipelineRefreshPolicy } from "../../api/types";
 import { t } from "../../i18n";
 
@@ -83,6 +84,7 @@ export function PipelineScheduleEditor({
   const enabled = value?.enabled ?? false;
   const cron = value?.cron ?? "*/15 * * * *";
   const [form, setForm] = useState<ScheduleForm>(() => parseCron(cron));
+  const nextRunQuery = usePipelineNextRun(cron, enabled);
 
   useEffect(() => {
     setForm(parseCron(cron));
@@ -130,6 +132,13 @@ export function PipelineScheduleEditor({
               <option value="advanced">{t("pipelineSchedule.modeAdvanced")}</option>
             </select>
           </label>
+          {enabled && nextRunQuery.data && (
+            <p className="text-xs text-ink-2">
+              {t("pipelineSchedule.nextRun", {
+                when: new Date(nextRunQuery.data.nextRun).toLocaleString("fr-FR"),
+              })}
+            </p>
+          )}
           {form.mode === "interval" && (
             <label className="flex flex-col gap-1">
               {t("pipelineSchedule.intervalLabel")}

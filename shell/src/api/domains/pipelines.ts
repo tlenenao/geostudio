@@ -17,6 +17,7 @@ type PipelinesMethods = Pick<
   | "getPipelineConfig"
   | "savePipelineConfig"
   | "getPipelineOps"
+  | "getPipelineNextRun"
   | "runPipeline"
   | "getPipelineRuns"
   | "previewPipeline"
@@ -77,6 +78,13 @@ export function createPipelinesMethods(base: ItemClientBase): PipelinesMethods {
 
     async getPipelineOps(): Promise<PipelineOpsCatalog> {
       return request<PipelineOpsCatalog>("GET", "/pipelines/ops");
+    },
+
+    async getPipelineNextRun(cron: string): Promise<{ nextRun: string }> {
+      return request<{ nextRun: string }>(
+        "GET",
+        `/pipelines/next-run?cron=${encodeURIComponent(cron)}`,
+      );
     },
 
     async runPipeline(pk: string): Promise<{ runId: string }> {

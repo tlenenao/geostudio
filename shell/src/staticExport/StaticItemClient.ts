@@ -240,6 +240,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async getPipelineOps(..._args: unknown[]) {
       return unsupported();
     },
+    async getPipelineNextRun(..._args: unknown[]) {
+      return unsupported();
+    },
     async runPipeline(..._args: unknown[]) {
       return unsupported();
     },

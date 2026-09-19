@@ -1132,6 +1132,7 @@ export const fr = {
   "pipelineSchedule.cronExpressionLabel": "Expression cron",
   "pipelineSchedule.cronExpressionAria": "Expression cron",
   "pipelineSchedule.invalidCronFormat": "Format cron invalide (5 champs attendus).",
+  "pipelineSchedule.nextRun": "Prochaine exécution : {when}",
 
   // SecretParamSelect (builder/pipeline)
   "secretParamSelect.choose": "Choisir…",
