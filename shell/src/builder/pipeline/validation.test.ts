@@ -209,3 +209,11 @@ test("fieldErrorsFor returns only errors that start with '<field> '", () => {
   expect(fieldErrorsFor("collectionId", errors)).toEqual(["collectionId est requis."]);
   expect(fieldErrorsFor("other", errors)).toEqual([]);
 });
+
+test("fieldErrorsFor guards against field-name prefix collisions", () => {
+  // Regression proof: "collection" is a strict prefix of "collectionId",
+  // but the trailing space in the prefix check ensures we don't match
+  // "collectionId est requis." when filtering for "collection".
+  const errors = ["collectionId est requis."];
+  expect(fieldErrorsFor("collection", errors)).toEqual([]);
+});
