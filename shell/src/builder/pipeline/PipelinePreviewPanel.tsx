@@ -4,7 +4,10 @@ import { usePipelinePreview } from "../../api/hooks";
 import type { PipelinePayload } from "../../api/types";
 import { t } from "../../i18n";
 import { Badge } from "../../ui/kit/Badge";
+import { Button } from "../../ui/kit/Button";
 import { PipelinePreviewMap } from "./PipelinePreviewMap";
+
+const PAGE_SIZE = 20;
 
 export function PipelinePreviewPanel({
   pipelineId,
@@ -20,10 +23,16 @@ export function PipelinePreviewPanel({
   const previewQuery = usePipelinePreview(pipelineId, nodeId, draft);
   const [view, setView] = useState<"table" | "map">("table");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [page, setPage] = useState(0);
+  const rows = previewQuery.data ?? [];
 
   useEffect(() => {
     setSelectedIndex(null);
   }, [nodeId]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [rows]);
 
   if (nodeId === null) return null;
   if (previewQuery.isLoading) return <p role="status">{t("pipelinePreview.loading")}</p>;
@@ -34,7 +43,6 @@ export function PipelinePreviewPanel({
       </p>
     );
 
-  const rows = previewQuery.data ?? [];
   const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
   const hasGeometry = columns.includes("geometry");
 
@@ -70,32 +78,64 @@ export function PipelinePreviewPanel({
           onSelectIndex={setSelectedIndex}
         />
       ) : (
-        <table className="w-full text-xs">
-          <thead>
-            <tr>
-              {columns.map((c) => (
-                <th key={c} className="p-1 text-left">
-                  {c}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr
-                key={i}
-                onClick={() => setSelectedIndex(i)}
-                className={`cursor-pointer border-t border-rule ${i === selectedIndex ? "bg-sunken" : ""}`}
-              >
+        <>
+          <table className="w-full text-xs">
+            <thead>
+              <tr>
                 {columns.map((c) => (
-                  <td key={c} className="p-1">
-                    {String(row[c])}
-                  </td>
+                  <th key={c} className="p-1 text-left">
+                    {c}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((row, sliceIndex) => {
+                const i = page * PAGE_SIZE + sliceIndex;
+                return (
+                  <tr
+                    key={i}
+                    onClick={() => setSelectedIndex(i)}
+                    className={`cursor-pointer border-t border-rule ${i === selectedIndex ? "bg-sunken" : ""}`}
+                  >
+                    {columns.map((c) => (
+                      <td key={c} className="p-1">
+                        {String(row[c])}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {rows.length > 0 && (
+            <div className="flex items-center gap-2 text-xs">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={page === 0}
+                onClick={() => setPage((p) => p - 1)}
+              >
+                {t("pipelinePreview.previousPage")}
+              </Button>
+              <span>
+                {t("pipelinePreview.rowRange", {
+                  from: page * PAGE_SIZE + 1,
+                  to: Math.min((page + 1) * PAGE_SIZE, rows.length),
+                  total: rows.length,
+                })}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={(page + 1) * PAGE_SIZE >= rows.length}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                {t("pipelinePreview.nextPage")}
+              </Button>
+            </div>
+          )}
+        </>
       )}
       {selectedIndex !== null && rows[selectedIndex] && (
         <div className="rounded border border-rule p-2 text-xs">

@@ -131,6 +131,43 @@ test("selecting a feature on the map is reflected when switching back to the tab
   expect(rows[2]).toHaveClass("bg-sunken"); // header row + row 0 + selected row 1
 });
 
+test("paginates rows at 20 per page and shows a counter", async () => {
+  const rows = Array.from({ length: 45 }, (_, i) => ({ id: i, pop: i * 10 }));
+  renderPanel(vi.fn().mockResolvedValue(rows));
+  await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(21)); // header + 20
+  expect(screen.getByText("Lignes 1–20 sur 45")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Précédent" })).toBeDisabled();
+  await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
+  expect(screen.getByText("Lignes 21–40 sur 45")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Précédent" })).toBeEnabled();
+});
+
+test("resets to the first page when the previewed rows change", async () => {
+  const rows45 = Array.from({ length: 45 }, (_, i) => ({ id: i }));
+  const rows5 = Array.from({ length: 5 }, (_, i) => ({ id: i }));
+  const previewPipeline = vi.fn().mockResolvedValueOnce(rows45).mockResolvedValueOnce(rows5);
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client: Partial<ItemClient> = { previewPipeline };
+  const { rerender } = render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client as ItemClient}>
+        <PipelinePreviewPanel pipelineId="p-1" nodeId="r1" />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByText("Lignes 1–20 sur 45")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
+  expect(screen.getByText("Lignes 21–40 sur 45")).toBeInTheDocument();
+  rerender(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client as ItemClient}>
+        <PipelinePreviewPanel pipelineId="p-1" nodeId="w1" />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByText("Lignes 1–5 sur 5")).toBeInTheDocument());
+});
+
 test("resets the selected row when the node changes", async () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const previewPipeline = vi
