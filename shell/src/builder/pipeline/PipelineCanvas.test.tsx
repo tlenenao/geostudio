@@ -517,3 +517,28 @@ test("clicking a note does not call onSelectNode", () => {
   fireEvent.click(screen.getByLabelText("Étiquette de la zone"));
   expect(onSelectNode).not.toHaveBeenCalled();
 });
+
+test("clicking the connect affordance on a node, then clicking a note, does not create an edge", () => {
+  const onEdgesChange = vi.fn();
+  const nodes: PipelineNode[] = [
+    { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: {}, title: "R" },
+    { id: "t1", kind: "transform", op: "transform.filter", x: 300, y: 0, params: {}, title: "T" },
+  ];
+  render(
+    <PipelineCanvas
+      nodes={nodes}
+      edges={[]}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={onEdgesChange}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+      notes={[{ id: "note-1", label: "A note", x: 100, y: 100, width: 200, height: 120 }]}
+      onNotesChange={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Connecter depuis R" }));
+  fireEvent.click(screen.getByLabelText("Étiquette de la zone"));
+  expect(onEdgesChange).not.toHaveBeenCalled();
+});
