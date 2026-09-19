@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePipelinePreview } from "../../api/hooks";
 import type { PipelinePayload } from "../../api/types";
 import { t } from "../../i18n";
@@ -42,11 +42,20 @@ export function PipelinePreviewPanel({
   const [page, setPage] = useState(0);
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const rows = previewQuery.data ?? [];
+  // `previewQuery.data ?? []` allocates a new array identity on every render
+  // while data is undefined (e.g. during a refetch), which would make a
+  // `[rows]` dependency fire on unrelated renders instead of on actual data
+  // changes — memoized so identity only changes when the underlying data
+  // does (I6, final review).
+  const rows = useMemo(() => previewQuery.data ?? [], [previewQuery.data]);
 
+  // The preview re-executes on every draft edit, not just on a node switch
+  // (Task 2) — a row selected before an edit must not silently point at "the
+  // same index in the new result set", so this resets on the row set itself
+  // changing, in addition to the node changing (I6, final review).
   useEffect(() => {
     setSelectedIndex(null);
-  }, [nodeId]);
+  }, [nodeId, rows]);
 
   useEffect(() => {
     setPage(0);

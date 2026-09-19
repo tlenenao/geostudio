@@ -215,6 +215,65 @@ test("resets the selected row when the node changes", async () => {
   expect(screen.queryByText("Attributs de la feature")).not.toBeInTheDocument();
 });
 
+// I6, final review: since Task 2, the preview re-executes on every draft
+// edit (not just node switches) — a row selected before an edit must not
+// silently point at "the same index in the new result set". Same node,
+// same pipelineId, only the `draft` identity changes (queryKey includes
+// `draft`, so it's a genuinely new query variant) — the sibling
+// "resets the selected row when the node changes" test above covers the
+// nodeId-change path; this covers the data-only-change path.
+test("resets the selected row when the previewed data changes without the node changing", async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const previewPipeline = vi
+    .fn()
+    .mockResolvedValueOnce([{ id: 1, pop: 1200 }])
+    .mockResolvedValueOnce([{ id: 2, pop: 800 }]);
+  const client: Partial<ItemClient> = { previewPipeline };
+  // React Query's queryKey comparison is structural, not by identity — the
+  // two drafts must differ in content (not just object identity) for the
+  // rerender to actually trigger a distinct query/refetch.
+  const draftA: PipelinePayload = { nodes: [], edges: [] };
+  const draftB: PipelinePayload = {
+    nodes: [
+      {
+        id: "n1",
+        kind: "transform",
+        op: "transform.filter",
+        x: 0,
+        y: 0,
+        params: { expr: "true" },
+        title: "n1",
+      },
+    ],
+    edges: [],
+  };
+
+  const { rerender } = render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client as ItemClient}>
+        <PipelinePreviewPanel pipelineId="p-1" nodeId="r1" draft={draftA} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() =>
+    expect(screen.getByRole("cell", { name: FORMATTED_1200 })).toBeInTheDocument(),
+  );
+  await userEvent.click(screen.getByRole("cell", { name: FORMATTED_1200 }).closest("tr")!);
+  expect(screen.getByText("Attributs de la feature")).toBeInTheDocument();
+
+  rerender(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client as ItemClient}>
+        <PipelinePreviewPanel pipelineId="p-1" nodeId="r1" draft={draftB} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => expect(screen.getByRole("cell", { name: "800" })).toBeInTheDocument());
+  expect(screen.queryByText("Attributs de la feature")).not.toBeInTheDocument();
+});
+
 test("formats a number with French thousands separators", async () => {
   renderPanel(vi.fn().mockResolvedValue([{ id: 1, pop: 1234567 }]));
   await waitFor(() =>
