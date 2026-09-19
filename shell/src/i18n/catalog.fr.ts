@@ -1073,6 +1073,9 @@ export const fr = {
   "pipelinePreview.tableView": "Tableau",
   "pipelinePreview.mapView": "Carte",
   "pipelinePreview.stale": "Aperçu à régénérer (paramètres modifiés depuis le dernier calcul)",
+  "pipelinePreviewMap.legendPolygon": "Polygone",
+  "pipelinePreviewMap.legendLine": "Ligne",
+  "pipelinePreviewMap.legendPoint": "Point",
 
   // PipelineRunPanel (builder/pipeline)
   "pipelineRun.statusQueued": "En attente",

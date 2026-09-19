@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 import { mapInstances } from "../../test/MockMaplibreMap";
 import { PipelinePreviewMap } from "./PipelinePreviewMap";
@@ -70,4 +70,31 @@ test("rebuilds the map when the rows prop changes (different selected node)", ()
     spec: { data: GeoJSON.FeatureCollection };
   };
   expect(source.spec.data.features[0].geometry).toEqual({ type: "Point", coordinates: [9.0, 9.0] });
+});
+
+test("uses a distinct fill color for polygons, line color for lines, and circle color for points", () => {
+  render(
+    <PipelinePreviewMap rows={[{ id: 1, geometry: { type: "Point", coordinates: [1, 1] } }]} />,
+  );
+  const map = mapInstances[0];
+  const fillLayer = map.getLayer("pipeline-preview-fill") as unknown as {
+    paint: { "fill-color": string };
+  };
+  const lineLayer = map.getLayer("pipeline-preview-line") as unknown as {
+    paint: { "line-color": string };
+  };
+  const circleLayer = map.getLayer("pipeline-preview-circle") as unknown as {
+    paint: { "circle-color": string };
+  };
+  expect(fillLayer.paint["fill-color"]).not.toBe(lineLayer.paint["line-color"]);
+  expect(lineLayer.paint["line-color"]).not.toBe(circleLayer.paint["circle-color"]);
+});
+
+test("renders a legend swatch only for geometry kinds actually present in rows", () => {
+  render(
+    <PipelinePreviewMap rows={[{ id: 1, geometry: { type: "Point", coordinates: [1, 1] } }]} />,
+  );
+  expect(screen.getByText("Point")).toBeInTheDocument();
+  expect(screen.queryByText("Polygone")).not.toBeInTheDocument();
+  expect(screen.queryByText("Ligne")).not.toBeInTheDocument();
 });
