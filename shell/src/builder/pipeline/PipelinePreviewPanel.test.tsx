@@ -161,8 +161,11 @@ test("resets the selected row when the node changes", async () => {
     </QueryClientProvider>,
   );
 
-  // The attributes panel should be gone (selectedIndex reset to null)
-  await waitFor(() =>
-    expect(screen.queryByText("Attributs de la feature")).not.toBeInTheDocument(),
-  );
+  // Wait for r2's data to actually render, THEN check the panel is gone —
+  // otherwise the transient loading state (isLoading true on key change,
+  // because usePipelinePreview keys its query on nodeId and "r2" has never
+  // been queried before) trivially satisfies "not in document" before r2's
+  // data ever resolves, without ever exercising the selectedIndex reset.
+  await waitFor(() => expect(screen.getByRole("cell", { name: "800" })).toBeInTheDocument());
+  expect(screen.queryByText("Attributs de la feature")).not.toBeInTheDocument();
 });
