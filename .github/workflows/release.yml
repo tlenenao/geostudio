@@ -159,11 +159,21 @@ jobs:
   verify-published:
     needs: build-and-push
     runs-on: ubuntu-latest
+    permissions:
+      packages: read
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
       - name: Vérifie que les 9 images existent sous ce tag
         working-directory: core
+        env:
+          # Sans authentification, "jamais publiée" et "publiée mais
+          # encore privée" renvoient le même 403 (vérifié empiriquement
+          # contre le vrai registre) — un nouveau package GHCR naît privé
+          # par défaut, ce qui aurait rendu ce garde-fou rouge au tout
+          # premier succès de publication de geostudio-titiler.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_TAG: ${{ github.ref_name }}
         run: |
           uv sync
-          uv run python scripts/check_published_images.py "${{ github.ref_name }}"
+          uv run python scripts/check_published_images.py "$IMAGE_TAG"

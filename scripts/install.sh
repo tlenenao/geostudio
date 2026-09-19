@@ -178,8 +178,17 @@ set_env_var() {
   # $1 = nom, $2 = valeur — jamais d'écrasement d'une AUTRE variable que
   # celle ciblée (même précaution que bootstrap-env.sh : sed -i.bak, ligne
   # exacte "^NAME=", suffixe .bak supprimé immédiatement après).
-  sed -i.bak "s|^${1}=.*|${1}=${2}|" .env
-  rm -f .env.bak
+  # Upsert : un `.env` d'un déploiement antérieur à l'ajout d'une variable
+  # (ex. OTEL_EXPORTER_OTLP_ENDPOINT, SP-19) n'a pas encore la ligne —
+  # `ensure_env_file` conserve ce `.env` tel quel (idempotent), donc un
+  # `sed` pur remplacement resterait un no-op silencieux dans ce cas
+  # (trouvé en revue finale, contre-exemple réel sur ce poste).
+  if grep -q "^${1}=" .env; then
+    sed -i.bak "s|^${1}=.*|${1}=${2}|" .env
+    rm -f .env.bak
+  else
+    printf '%s=%s\n' "${1}" "${2}" >>.env
+  fi
 }
 
 ensure_env_file

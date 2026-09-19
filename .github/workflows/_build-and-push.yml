@@ -87,11 +87,20 @@ jobs:
       - name: Compute tags
         id: tags
         shell: bash
+        env:
+          # Interpolation dans `env:` plutôt que directement dans `run:` —
+          # une valeur de matrice/input contenant `$(...)` interpolée en
+          # dur dans le script serait exécutée avant même que bash ne le
+          # lise (revue finale, M1 ; risque faible ici, ces valeurs sont
+          # figées dans ce fichier, mais patron plus sûr par défaut).
+          IMAGE: ${{ matrix.image }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          ALSO_TAG_LATEST: ${{ inputs.also_tag_latest }}
         run: |
-          tags="ghcr.io/tlenenao/${{ matrix.image }}:${{ inputs.image_tag }}"
-          if [ "${{ inputs.also_tag_latest }}" = "true" ]; then
+          tags="ghcr.io/tlenenao/${IMAGE}:${IMAGE_TAG}"
+          if [ "$ALSO_TAG_LATEST" = "true" ]; then
             tags="${tags}
-          ghcr.io/tlenenao/${{ matrix.image }}:latest"
+          ghcr.io/tlenenao/${IMAGE}:latest"
           fi
           {
             echo "tags<<GEOSTUDIO_TAGS_EOF"
@@ -111,6 +120,15 @@ jobs:
       # bloque jamais la publication. Réservé aux vraies releases
       # (run_scans) — coûteux à répéter sur les 9 images à chaque merge sur
       # main, alors qu'un tag `edge` est déjà remplacé au merge suivant.
+      # Épinglé à la version exacte publiée par Aqua Security plutôt qu'à
+      # `@master` (référence flottante) — `aquasecurity/trivy-action` a été
+      # ciblée par une attaque de la chaîne d'approvisionnement (cf. notes
+      # de la release v0.35.0), dont les mainteneurs se sont protégés
+      # depuis via les releases GitHub immuables (vérifié : v0.36.0 est
+      # marquée `immutable`, son tag ne peut donc plus être déplacé après
+      # coup). Cette étape et SBOM sont informationnelles — une défaillance
+      # d'infrastructure (perte réseau en re-téléchargeant une image 11 Go,
+      # limite de taux GHCR) ne doit jamais rendre la publication red.
       - name: Trivy (report-only)
         if: inputs.run_scans
         continue-on-error: true
@@ -122,6 +140,16 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "0"
 
+      # SP-22, résidu de revue : un `continue-on-error: true` ici tolérait
+      # *tout* échec, y compris un vrai rejet SARIF (403, catégorie
+      # invalide) que l'on veut voir — ces étapes n'ont encore jamais tourné
+      # pour de vrai, leur première exécution réelle est donc aussi leur
+      # premier test. Remplacé par un garde précis plutôt qu'un filet
+      # large : l'étape est sautée (pas « passée en échouant ») quand Trivy
+      # n'a produit aucun fichier SARIF (panne d'infra à l'étape
+      # précédente, déjà absorbée par son propre `continue-on-error`), mais
+      # s'exécute et remonte un échec réel et visible si le SARIF existe et
+      # que l'upload lui-même échoue.
       - name: Upload Trivy results
         if: inputs.run_scans && hashFiles(format('trivy-{0}.sarif', matrix.image)) != ''
         uses: github/codeql-action/upload-sarif@v4
@@ -129,6 +157,10 @@ jobs:
           sarif_file: trivy-${{ matrix.image }}.sarif
           category: trivy-${{ matrix.image }}
 
+      # `upload-artifact: true` (défaut de l'action) publie déjà le SBOM
+      # comme artefact de run — nécessaire ici puisque ni `release.yml` ni
+      # `publish-edge.yml` ne créent de Release GitHub à laquelle attacher
+      # un fichier.
       - name: SBOM
         if: inputs.run_scans
         continue-on-error: true

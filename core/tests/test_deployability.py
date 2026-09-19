@@ -1870,5 +1870,43 @@ def test_release_yml_verifies_all_images_landed_under_the_pushed_tag():
     assert verify is not None, "release.yml doit avoir un job verify-published"
     assert verify["needs"] == "build-and-push" or "build-and-push" in verify["needs"]
     runs = " ".join(step.get("run", "") for step in verify["steps"])
+    envs = " ".join(str(step.get("env", "")) for step in verify["steps"])
     assert "check_published_images.py" in runs
-    assert "github.ref_name" in runs
+    # `github.ref_name` est passé par `env:` (revue finale, M1 : éviter
+    # d'interpoler une expression GitHub directement dans un `run:` shell)
+    # plutôt qu'interpolé en dur dans le script.
+    assert "github.ref_name" in envs
+    assert "IMAGE_TAG" in runs
+
+
+_GITHUB_PERMISSION_LEVELS = {"none": 0, "read": 1, "write": 2}
+
+
+def _permissions_shortfall(caller: dict, callee: dict) -> list[str]:
+    """Retourne les scopes où `caller` accorde moins que ce que `callee`
+    déclare — GitHub refuse un appel `uses:` réutilisable dont le job
+    appelé demande plus de permissions que l'appelant n'en accorde,
+    validation statique au démarrage du run (avant l'exécution de la
+    moindre étape). Trouvé en revue finale (C1) : `publish-edge.yml`
+    n'accordait pas `security-events: write`, requis par
+    `_build-and-push.yml` (utilisé seulement quand `run_scans: true`, mais
+    la validation ne tient pas compte des `if:` conditionnels)."""
+    shortfall = []
+    for scope, required_level in callee.items():
+        granted_level = _GITHUB_PERMISSION_LEVELS.get(caller.get(scope, "none"), 0)
+        if granted_level < _GITHUB_PERMISSION_LEVELS.get(required_level, 0):
+            shortfall.append(scope)
+    return shortfall
+
+
+def test_every_caller_of_build_and_push_grants_at_least_its_permissions():
+    callee_permissions = load_yaml(BUILD_AND_PUSH)["jobs"]["build-and-push"]["permissions"]
+
+    for caller_path in (RELEASE, PUBLISH_EDGE):
+        doc = yaml.safe_load(caller_path.read_text())
+        caller_permissions = doc["jobs"]["build-and-push"].get("permissions") or {}
+        shortfall = _permissions_shortfall(caller_permissions, callee_permissions)
+        assert shortfall == [], (
+            f"{caller_path.name} n'accorde pas assez de permissions au job "
+            f"build-and-push de {BUILD_AND_PUSH.name} : manque {shortfall}"
+        )

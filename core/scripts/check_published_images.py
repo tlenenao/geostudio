@@ -4,12 +4,19 @@
 existent réellement sur GHCR sous un tag donné — cf.
 core/tests/test_check_published_images.py pour le contexte (geostudio-
 titiler, déclaré dans la matrice mais jamais publié, trouvé en
-déploiement réel). Requête anonyme au registre (le token d'échange OAuth2
-de Docker Distribution ne nécessite aucune authentification pour un
-package public) : aucun secret requis pour exécuter ce script."""
+déploiement réel). Fonctionne sans secret pour un package public
+(le token d'échange OAuth2 de Docker Distribution ne nécessite aucune
+authentification dans ce cas) ; si la variable d'environnement
+GITHUB_TOKEN est présente, elle est envoyée en Basic auth sur l'endpoint
+de token — nécessaire pour distinguer une image jamais publiée d'une
+image publiée mais encore privée (GHCR crée tout nouveau package en
+visibilité privée par défaut ; les deux cas renvoient le même 403 en
+anonyme, vérifié empiriquement contre le vrai registre)."""
 
 import argparse
+import base64
 import json
+import os
 import pathlib
 import sys
 import urllib.error
@@ -30,7 +37,13 @@ def release_images() -> list[str]:
 
 def _fetch_token(image: str) -> str:
     url = f"https://ghcr.io/token?service=ghcr.io&scope=repository:{OWNER}/{image}:pull"
-    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
+    request = urllib.request.Request(url)  # noqa: S310
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if github_token:
+        actor = os.environ.get("GITHUB_ACTOR", OWNER)
+        credentials = base64.b64encode(f"{actor}:{github_token}".encode()).decode()
+        request.add_header("Authorization", f"Basic {credentials}")
+    with urllib.request.urlopen(request, timeout=10) as resp:  # noqa: S310
         return json.load(resp)["token"]
 
 

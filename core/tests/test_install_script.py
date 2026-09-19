@@ -391,3 +391,35 @@ def test_install_disables_otel_export_when_observability_profile_is_not_selected
     env_lines = (install_workdir / ".env").read_text().splitlines()
     assert "OTEL_EXPORTER_OTLP_ENDPOINT=" in env_lines
     assert "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318" not in env_lines
+
+
+def test_install_adds_a_missing_env_var_instead_of_silently_skipping_it(
+    install_workdir, fake_bin_path
+):
+    """set_env_var faisait un `sed` pur remplacement — no-op silencieux si la
+    ligne n'existe pas encore dans `.env`. `ensure_env_file` conserve un
+    `.env` existant tel quel (idempotent), donc un déploiement antérieur à
+    l'ajout d'une variable (ex. OTEL_EXPORTER_OTLP_ENDPOINT) ne l'obtenait
+    jamais en relançant install.sh, même avec le bon profil sélectionné —
+    trouvé en revue finale, reproduit ici en retirant la ligne du `.env`
+    avant de lancer l'installeur."""
+    env_path = install_workdir / ".env"
+    lines = [
+        line
+        for line in env_path.read_text().splitlines()
+        if not line.startswith("OTEL_EXPORTER_OTLP_ENDPOINT=")
+    ]
+    env_path.write_text("\n".join(lines) + "\n")
+
+    result, _ = _run_install(
+        install_workdir,
+        fake_bin_path,
+        extra_env={
+            "INSTALL_PROFILES": "observability",
+            "FAKE_COMPOSE_PROFILES": "observability\netl",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    env_lines = env_path.read_text().splitlines()
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318" in env_lines
