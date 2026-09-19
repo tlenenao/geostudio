@@ -219,3 +219,39 @@ def test_reader_connector_node_saves_without_secret_or_query_check(env):
     )
     response = env.post("/v1/configs", json=body)
     assert response.status_code == 201
+
+
+def test_pipeline_payload_round_trips_canvas_notes(env):
+    body = _linear_pipeline()
+    body["config"]["pipeline"]["notes"] = [
+        {
+            "id": "note-1",
+            "label": "Étape de nettoyage",
+            "x": 10,
+            "y": 20,
+            "width": 200,
+            "height": 120,
+        }
+    ]
+    response = env.post("/v1/configs", json=body)
+    assert response.status_code == 201
+    item_id = response.json()["itemId"]
+    fetched = env.get(f"/v1/configs/by-item/{item_id}")
+    assert fetched.json()["config"]["pipeline"]["notes"] == [
+        {
+            "id": "note-1",
+            "label": "Étape de nettoyage",
+            "x": 10,
+            "y": 20,
+            "width": 200,
+            "height": 120,
+        }
+    ]
+
+
+def test_pipeline_payload_defaults_notes_to_empty_list(env):
+    response = env.post("/v1/configs", json=_linear_pipeline())
+    assert response.status_code == 201
+    item_id = response.json()["itemId"]
+    fetched = env.get(f"/v1/configs/by-item/{item_id}")
+    assert fetched.json()["config"]["pipeline"]["notes"] == []

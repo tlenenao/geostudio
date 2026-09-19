@@ -3557,6 +3557,44 @@
         "title": "Page",
         "type": "object"
       },
+      "PipelineCanvasNote": {
+        "properties": {
+          "height": {
+            "default": 120,
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "width": {
+            "default": 200,
+            "title": "Width",
+            "type": "integer"
+          },
+          "x": {
+            "default": 0,
+            "title": "X",
+            "type": "integer"
+          },
+          "y": {
+            "default": 0,
+            "title": "Y",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "PipelineCanvasNote",
+        "type": "object"
+      },
       "PipelineEdge": {
         "properties": {
           "from": {
@@ -3674,6 +3712,13 @@
               "$ref": "#/components/schemas/PipelineNode"
             },
             "title": "Nodes",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineCanvasNote"
+            },
+            "title": "Notes",
             "type": "array"
           },
           "refreshPolicy": {

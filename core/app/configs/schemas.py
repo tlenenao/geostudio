@@ -241,6 +241,15 @@ class PipelineEdge(BaseModel):
     # config_validation)
 
 
+class PipelineCanvasNote(BaseModel):
+    id: str
+    label: str
+    x: int = 0
+    y: int = 0
+    width: int = 200
+    height: int = 120
+
+
 class PipelineRefreshPolicy(BaseModel):
     enabled: bool = False
     cron: str
@@ -258,6 +267,7 @@ class PipelinePayload(BaseModel):
     nodes: list[PipelineNode] = Field(default_factory=list)
     edges: list[PipelineEdge] = Field(default_factory=list)
     refreshPolicy: PipelineRefreshPolicy | None = None
+    notes: list[PipelineCanvasNote] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_graph(self) -> "PipelinePayload":
