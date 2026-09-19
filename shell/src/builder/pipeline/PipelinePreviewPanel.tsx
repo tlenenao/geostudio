@@ -73,6 +73,15 @@ export function PipelinePreviewPanel({
   const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
   const hasGeometry = columns.includes("geometry");
 
+  function toggleSort(c: string) {
+    if (sortColumn === c) {
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortColumn(c);
+      setSortDirection("asc");
+    }
+  }
+
   const rowsWithIndex = rows.map((row, i) => ({ row, i }));
   const sortedRows =
     sortColumn === null
@@ -121,13 +130,13 @@ export function PipelinePreviewPanel({
                 {columns.map((c) => (
                   <th
                     key={c}
+                    tabIndex={0}
                     className="cursor-pointer p-1 text-left"
-                    onClick={() => {
-                      if (sortColumn === c) {
-                        setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
-                      } else {
-                        setSortColumn(c);
-                        setSortDirection("asc");
+                    onClick={() => toggleSort(c)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleSort(c);
                       }
                     }}
                     aria-sort={
@@ -147,7 +156,14 @@ export function PipelinePreviewPanel({
               {sortedRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(({ row, i }) => (
                 <tr
                   key={i}
+                  tabIndex={0}
                   onClick={() => setSelectedIndex(i)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      if (e.key === " ") e.preventDefault();
+                      setSelectedIndex(i);
+                    }
+                  }}
                   className={`cursor-pointer border-t border-rule ${i === selectedIndex ? "bg-sunken" : ""}`}
                 >
                   {columns.map((c) =>

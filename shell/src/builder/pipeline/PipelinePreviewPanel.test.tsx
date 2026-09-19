@@ -316,6 +316,44 @@ test("clicking a column header sorts rows ascending, then descending on a second
   expect(cells).toEqual(["300", "200", "100"]);
 });
 
+// I7, final review: the sort headers were mouse-only (a bare onClick on a
+// <th>, no focusability or key handling), inconsistent with the keyboard
+// paths this plan added elsewhere (search shortcut, keyboard edge
+// connection). Pressing Enter on a focused header must sort exactly like a
+// click.
+test("pressing Enter on a focused column header sorts the table", async () => {
+  renderPanel(
+    vi.fn().mockResolvedValue([
+      { id: 1, pop: 300 },
+      { id: 2, pop: 100 },
+      { id: 3, pop: 200 },
+    ]),
+  );
+  await waitFor(() => expect(screen.getByRole("cell", { name: "300" })).toBeInTheDocument());
+  const header = screen.getByRole("columnheader", { name: "pop" });
+  header.focus();
+  fireEvent.keyDown(header, { key: "Enter" });
+  const cells = screen
+    .getAllByRole("row")
+    .slice(1)
+    .map((r) => within(r).getAllByRole("cell")[1].textContent);
+  expect(cells).toEqual(["100", "200", "300"]);
+});
+
+// I7, final review: row selection was mouse-only (onClick on a <tr>, no
+// tabIndex/onKeyDown) — pressing Enter on a focused row must select it, same
+// as a click.
+test("pressing Enter on a focused row selects it", async () => {
+  renderPanel();
+  await waitFor(() =>
+    expect(screen.getByRole("cell", { name: FORMATTED_1200 })).toBeInTheDocument(),
+  );
+  const row = screen.getByRole("cell", { name: FORMATTED_1200 }).closest("tr")!;
+  row.focus();
+  fireEvent.keyDown(row, { key: "Enter" });
+  expect(screen.getByText("Attributs de la feature")).toBeInTheDocument();
+});
+
 test("clicking Voir sur la carte switches to map view with that row selected", async () => {
   renderPanel(
     vi.fn().mockResolvedValue([
