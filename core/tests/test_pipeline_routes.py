@@ -370,6 +370,49 @@ def test_preview_route_uses_the_request_body_pipeline_when_provided(monkeypatch)
     assert captured["collectionId"] == "y"
 
 
+def test_preview_route_forbidden_for_read_only_shared_user(monkeypatch):
+    # I1, final review: preview requires action="write" (not "read") because
+    # the route accepts an arbitrary draft graph body and connector secrets
+    # are tenant-scoped, not pipeline-scoped — a read-only-shared user must
+    # get 403, not a working preview. Sharing setup follows the precedent in
+    # test_items_routes.py::test_patch_item_by_group_viewer_returns_403.
+    from app.sharing.models import Group, GroupMember, ItemShare
+
+    client = _make_app(monkeypatch, etl_enabled=True)
+    item_id = _seed_preview_pipeline(client)
+    with client.session_factory() as session:
+        bob = get_or_create_user(
+            session,
+            tenant_id=client.tenant.id,
+            oidc_sub="sub-bob",
+            username="bob",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        group = Group(
+            id="g-preview-viewers",
+            tenant_id=client.tenant.id,
+            name="Preview viewers",
+            created_by=client.user.id,
+        )
+        session.add(group)
+        session.flush()
+        session.add(GroupMember(group_id=group.id, user_id=bob.id, tenant_id=client.tenant.id))
+        session.add(
+            ItemShare(item_id=item_id, group_id=group.id, tenant_id=client.tenant.id, role="viewer")
+        )
+        session.commit()
+        session.refresh(bob)
+
+    client.app.dependency_overrides[get_current_user] = lambda: bob
+    try:
+        response = client.post(f"/v1/pipelines/{item_id}/preview?upTo=r1")
+    finally:
+        client.app.dependency_overrides[get_current_user] = lambda: client.user
+    assert response.status_code == 403
+
+
 # --- Déclenchement de pipeline par webhook entrant (GAP-24, SP-53) ---
 
 

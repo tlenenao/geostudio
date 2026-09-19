@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -466,6 +466,55 @@ test("persisted mode: verrouille Enregistrer quand permissions.write est false (
   expect(
     screen.getByText("Modification réservée aux éditeurs de cet élément."),
   ).toBeInTheDocument();
+});
+
+// I1, final review: preview now requires action="write" server-side (Task 2 —
+// the route accepts an arbitrary draft graph body and connector secrets are
+// tenant-scoped, not pipeline-scoped), but the panel was still rendered
+// unconditionally whenever a node was selected, regardless of `readOnly`. A
+// read-only-shared user selecting any node got a permanent "Aperçu
+// indisponible" alert and fired a 403 POST on every keystroke (the preview
+// query key includes the live draft). The test above uses an empty graph, so
+// no node can ever be selected there — this variant seeds a real node so it
+// can be clicked, then proves the panel (and its underlying query) is absent.
+test("persisted mode: n'affiche pas l'aperçu pour un utilisateur en lecture seule, même nœud sélectionné (I1)", async () => {
+  const payload: PipelinePayload = {
+    nodes: [
+      {
+        id: "r1",
+        kind: "reader",
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: { collectionId: "villes" },
+        title: "Villes",
+      },
+      {
+        id: "w1",
+        kind: "writer",
+        op: "writer.collection",
+        x: 300,
+        y: 0,
+        params: { collectionId: "villes_propres" },
+        title: "Écriture",
+      },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+  };
+  const previewPipeline = vi.fn().mockResolvedValue([{ id: 1 }]);
+  renderPage("p-1", {
+    getItem: vi
+      .fn()
+      .mockResolvedValue({ ...OWNED_PIPELINE_ITEM, permissions: READ_ONLY_PERMISSIONS }),
+    getPipelineConfig: vi.fn().mockResolvedValue(payload),
+    previewPipeline,
+  });
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  fireEvent.click(screen.getByText("Villes"));
+  await waitFor(() => expect(screen.getByText("Nœud sélectionné")).toBeInTheDocument());
+  expect(screen.queryByText("Aperçu indisponible.")).not.toBeInTheDocument();
+  expect(screen.queryByText("Chargement de l'aperçu…")).not.toBeInTheDocument();
+  expect(previewPipeline).not.toHaveBeenCalled();
 });
 
 test("persisted mode: reste en chargement tant que l'item n'est pas résolu, ne verrouille pas Enregistrer par erreur (SP-42, revue finale, point 2, Critical)", async () => {

@@ -318,7 +318,7 @@ export function PipelineBuilderPage({
                     errors={validation.nodeErrors[selectedNode.id] ?? []}
                     onChange={updateSelectedNodeParams}
                   />
-                  {pk !== null && (
+                  {pk !== null && !readOnly && (
                     <PipelinePreviewPanel
                       pipelineId={pk}
                       nodeId={selectedNode.id}
