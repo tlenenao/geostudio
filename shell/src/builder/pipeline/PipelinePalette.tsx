@@ -68,10 +68,13 @@ export function PipelinePalette({ onAdd }: { onAdd?: (op: string) => void }) {
                       onDragStart={(e) => {
                         e.dataTransfer.setData(PIPELINE_OP_DND_TYPE, op);
                         e.dataTransfer.effectAllowed = "move";
-                        // Cf. commentaire jumeau plus bas (section par kind) : recordUse()
-                        // doit être différé hors du gestionnaire `dragstart` synchrone,
-                        // sinon Chromium bloque indéfiniment le glisser-déposer natif.
-                        setTimeout(() => recordUse(op), 0);
+                      }}
+                      onDragEnd={() => {
+                        // Cf. commentaire jumeau plus bas (section par kind) : `dragend`
+                        // ne se déclenche qu'une fois la session de glisser-déposer
+                        // native entièrement conclue, donc enregistrer l'usage ici ne
+                        // peut jamais interférer avec un glisser en cours.
+                        recordUse(op);
                       }}
                       onClick={() => {
                         recordUse(op);
@@ -108,14 +111,18 @@ export function PipelinePalette({ onAdd }: { onAdd?: (op: string) => void }) {
                     onDragStart={(e) => {
                       e.dataTransfer.setData(PIPELINE_OP_DND_TYPE, op);
                       e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragEnd={() => {
                       // Chromium interrompt un glisser-déposer HTML5 natif quand le DOM
                       // est modifié de façon synchrone dans le gestionnaire `dragstart` :
                       // recordUse() déclenche un re-rendu React (montage/réordonnancement
-                      // de la section « Récemment utilisés ») avant que le navigateur
-                      // n'ait fini d'armer le glisser, ce qui bloque indéfiniment le
-                      // mouseup/drop final. Différer d'un tick laisse le navigateur
-                      // terminer l'initialisation du glisser avant que React ne re-rende.
-                      setTimeout(() => recordUse(op), 0);
+                      // de la section « Récemment utilisés »). `dragend` ne se déclenche
+                      // qu'une fois la session de glisser-déposer native entièrement
+                      // conclue (dépose ou annulation) : le re-rendu qu'il provoque ne
+                      // peut donc structurellement jamais interférer avec un glisser en
+                      // cours — plus de dépendance au minutage/à l'ordonnancement du
+                      // navigateur, contrairement à un `setTimeout(0)`.
+                      recordUse(op);
                     }}
                     onClick={() => {
                       recordUse(op);

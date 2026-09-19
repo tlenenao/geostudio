@@ -119,6 +119,24 @@ test("typing in the search field filters the op list by id", async () => {
   expect(screen.queryByText("reader.collection")).not.toBeInTheDocument();
 });
 
+test("completing a drag (dragstart then dragend) records the op as recently used", async () => {
+  renderPalette();
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(screen.queryByText("Récemment utilisés")).not.toBeInTheDocument();
+  const entry = screen.getByText("reader.collection").closest("[draggable]") as HTMLElement;
+  const dataTransfer = {
+    setData: (type: string, value: string) => {
+      (dataTransfer as any)[type] = value;
+    },
+    effectAllowed: "",
+  };
+  fireEvent.dragStart(entry, { dataTransfer });
+  expect(screen.queryByText("Récemment utilisés")).not.toBeInTheDocument();
+  fireEvent.dragEnd(entry, { dataTransfer });
+  expect(screen.getByText("Récemment utilisés")).toBeInTheDocument();
+  expect(screen.getAllByText("reader.collection")).toHaveLength(2);
+});
+
 test("using an op via the palette adds it to a Récemment utilisés section", async () => {
   render(
     <QueryClientProvider
