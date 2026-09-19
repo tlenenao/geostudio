@@ -51,7 +51,10 @@ if [ "$1" = "compose" ]; then
             exit 0
             ;;
           get)
-            if grep -q "kcadm.sh create users" "$FAKE_BIN_LOG" 2>/dev/null; then
+            resource="$3"
+            if [ "$resource" = "clients" ]; then
+              echo "[{\"id\":\"shell-client-fake-id\"}]"
+            elif grep -q "kcadm.sh create users" "$FAKE_BIN_LOG" 2>/dev/null; then
               echo "[{\"id\":\"created-fake-id\"}]"
             elif [ -n "${FAKE_KC_EXISTING_USER_ID:-}" ]; then
               echo "[{\"id\":\"${FAKE_KC_EXISTING_USER_ID}\"}]"
@@ -261,3 +264,42 @@ def test_install_leaves_the_core_etl_engine_disabled_by_default_when_unset(
     assert result.returncode == 0, result.stderr
     env_lines = (install_workdir / ".env").read_text().splitlines()
     assert "CORE_ETL_ENABLED=false" in env_lines
+
+
+def test_install_refreshes_the_shell_client_redirect_uris_every_run(install_workdir, fake_bin_path):
+    """§1.5 de la spec 2026-09-19 : le realm Keycloak n'est importé qu'une
+    seule fois par Keycloak lui-même (`--import-realm` n'écrase jamais un
+    realm déjà existant, vérifié empiriquement en session) — si le tout
+    premier import s'est produit avec un GEOSTUDIO_PUBLIC_HOST différent
+    (vide, ancien domaine...), les redirectUris restent périmés pour
+    toujours sans ce correctif. install.sh doit donc les réappliquer via
+    `kcadm.sh update` à CHAQUE lancement, pas seulement à la création."""
+    result, log = _run_install(install_workdir, fake_bin_path)
+
+    assert result.returncode == 0, result.stderr
+    assert "get clients -r geostudio -q clientId=geostudio-shell" in log
+    assert (
+        "update clients/shell-client-fake-id -r geostudio "
+        '-s redirectUris=["https://geostudio-test.example/",'
+        '"https://geostudio-test.example/*"] -s webOrigins=["+"]'
+    ) in log
+
+
+def test_install_refreshes_redirect_uris_even_when_admin_account_already_exists(
+    install_workdir, fake_bin_path
+):
+    """Le rafraîchissement ne doit pas dépendre de la branche "création de
+    compte" de prompt_admin — il doit aussi jouer quand le compte admin
+    existe déjà (relance normale d'un déploiement stable)."""
+    result, log = _run_install(
+        install_workdir,
+        fake_bin_path,
+        extra_env={"FAKE_KC_EXISTING_USER_ID": "existing-user-42"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (
+        "update clients/shell-client-fake-id -r geostudio "
+        '-s redirectUris=["https://geostudio-test.example/",'
+        '"https://geostudio-test.example/*"] -s webOrigins=["+"]'
+    ) in log
