@@ -155,3 +155,15 @@ jobs:
       also_tag_latest: true
       run_scans: true
     secrets: inherit
+
+  verify-published:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: Vérifie que les 9 images existent sous ce tag
+        working-directory: core
+        run: |
+          uv sync
+          uv run python scripts/check_published_images.py "${{ github.ref_name }}"
