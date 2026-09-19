@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
+import { Database, Save, Wand2 } from "lucide-react";
 import { usePipelineOps } from "../../api/hooks";
 import type { PipelineNodeKind } from "../../api/types";
 import { Input } from "../../ui/kit/Input";
@@ -12,6 +13,12 @@ const SECTION_LABEL: Record<PipelineNodeKind, string> = {
   reader: t("pipelinePalette.sectionSources"),
   transform: t("pipelinePalette.sectionTransforms"),
   writer: t("pipelinePalette.sectionWriters"),
+};
+
+const KIND_ICON: Record<PipelineNodeKind, React.ComponentType<{ className?: string }>> = {
+  reader: Database,
+  transform: Wand2,
+  writer: Save,
 };
 
 // REV-060 (backlog 2026-09-04) : le drag-and-drop était l'unique moyen
@@ -46,23 +53,30 @@ export function PipelinePalette({ onAdd }: { onAdd?: (op: string) => void }) {
         <div key={kind}>
           <h3 className="mb-1 font-semibold text-ink-2">{SECTION_LABEL[kind]}</h3>
           <ul className="flex flex-col gap-1">
-            {byKind[kind].map((op) => (
-              <li key={op}>
-                <button
-                  type="button"
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData(PIPELINE_OP_DND_TYPE, op);
-                    e.dataTransfer.effectAllowed = "move";
-                  }}
-                  onClick={() => onAdd?.(op)}
-                  title={catalog[op]?.paramsSchema.description}
-                  className="w-full cursor-grab rounded border border-rule bg-surface px-2 py-1 text-left text-ink hover:bg-sunken"
-                >
-                  {op}
-                </button>
-              </li>
-            ))}
+            {byKind[kind].map((op) => {
+              const Icon = KIND_ICON[kind];
+              const description = catalog[op]?.paramsSchema.description;
+              return (
+                <li key={op}>
+                  <button
+                    type="button"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData(PIPELINE_OP_DND_TYPE, op);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onClick={() => onAdd?.(op)}
+                    className="flex w-full cursor-grab items-start gap-2 rounded border border-rule bg-surface px-2 py-1 text-left text-ink hover:bg-sunken"
+                  >
+                    <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-2" />
+                    <span className="flex flex-col">
+                      <span>{op}</span>
+                      {description && <span className="text-[10px] text-ink-2">{description}</span>}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </div>
       ))}

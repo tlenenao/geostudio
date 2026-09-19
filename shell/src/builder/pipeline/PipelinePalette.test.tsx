@@ -7,7 +7,10 @@ import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { PipelinePalette } from "./PipelinePalette";
 
 const CATALOG: PipelineOpsCatalog = {
-  "reader.collection": { kind: "reader", paramsSchema: { properties: {}, required: [] } },
+  "reader.collection": {
+    kind: "reader",
+    paramsSchema: { properties: {}, required: [], description: "Import data from a collection" },
+  },
   "transform.filter": { kind: "transform", paramsSchema: { properties: {}, required: [] } },
   "writer.collection": { kind: "writer", paramsSchema: { properties: {}, required: [] } },
 };
@@ -54,18 +57,24 @@ test("clicking an entry calls onAdd with the op id (keyboard-accessible fallback
   const onAdd = vi.fn();
   renderPalette(onAdd);
   await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
-  fireEvent.click(screen.getByRole("button", { name: "reader.collection" }));
+  fireEvent.click(screen.getByRole("button", { name: /reader\.collection/ }));
   expect(onAdd).toHaveBeenCalledWith("reader.collection");
 });
 
 test("entries render as native buttons (focusable, no onAdd required)", async () => {
   renderPalette();
   await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
-  const button = screen.getByRole("button", { name: "reader.collection" });
+  const button = screen.getByRole("button", { name: /reader\.collection/ });
   expect(() => fireEvent.click(button)).not.toThrow();
 });
 
-test("op entries with a paramsSchema.description get it as a hover title", async () => {
+test("shows the operation's description as visible text, not only on hover", async () => {
+  renderPalette();
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(screen.getByText("Import data from a collection")).toBeInTheDocument();
+});
+
+test("op entries with a paramsSchema.description show it as visible text", async () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const catalogWithDescription: PipelineOpsCatalog = {
     ...CATALOG,
@@ -89,21 +98,9 @@ test("op entries with a paramsSchema.description get it as a hover title", async
     </QueryClientProvider>,
   );
   await waitFor(() => expect(screen.getByText("reader.connector.postgres")).toBeInTheDocument());
-  const entryWithDescription = screen
-    .getByText("reader.connector.postgres")
-    .closest("[draggable]") as HTMLElement;
-  expect(entryWithDescription).toHaveAttribute(
-    "title",
-    "Fonctionne également contre un cluster Amazon Redshift.",
-  );
-
-  // Entry with no description (e.g. "reader.collection" from CATALOG) gets
-  // no title attribute at all — never an empty string, which some screen
-  // readers/tools would still surface as an (empty) tooltip.
-  const entryWithoutDescription = screen
-    .getByText("reader.collection")
-    .closest("[draggable]") as HTMLElement;
-  expect(entryWithoutDescription).not.toHaveAttribute("title");
+  expect(
+    screen.getByText("Fonctionne également contre un cluster Amazon Redshift."),
+  ).toBeInTheDocument();
 });
 
 test("typing in the search field filters the op list by id", async () => {
