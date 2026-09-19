@@ -1859,3 +1859,16 @@ def test_publish_edge_verifies_all_images_landed():
     assert verify["needs"] == "build-and-push" or "build-and-push" in verify["needs"]
     runs = " ".join(step.get("run", "") for step in verify["steps"])
     assert "check_published_images.py edge" in runs
+
+
+def test_release_yml_verifies_all_images_landed_under_the_pushed_tag():
+    """geostudio-titiler était déclaré dans la matrice mais jamais publié
+    sous v0.1.0 (404 anonyme réel sur GHCR) — aucune étape de release.yml
+    ne le détectait avant ce garde-fou."""
+    doc = yaml.safe_load(RELEASE.read_text())
+    verify = doc["jobs"].get("verify-published")
+    assert verify is not None, "release.yml doit avoir un job verify-published"
+    assert verify["needs"] == "build-and-push" or "build-and-push" in verify["needs"]
+    runs = " ".join(step.get("run", "") for step in verify["steps"])
+    assert "check_published_images.py" in runs
+    assert "github.ref_name" in runs
