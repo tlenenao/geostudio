@@ -1,0 +1,38 @@
+name: Publish edge images
+
+# Reconstruit les 9 images sous le tag `edge` à chaque MERGE vers `main`
+# — jamais sur chaque exécution de CI (chaque push/PR inonderait le
+# registre pour des commits jamais mergés), et jamais sur `dev` (branche
+# de travail quotidienne, cf. CLAUDE.md — un rebuild des 9 images à
+# chaque commit de la journée serait un coût CI disproportionné).
+# `release.yml` reste le seul déclencheur de vraies releases versionnées
+# (push d'un tag `v*.*.*`). Pas de re-exécution de test-gate/
+# test-gate-arm64 ici : ci.yml a déjà gaté ce même commit avant que le
+# merge n'ait lieu.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-push:
+    uses: ./.github/workflows/_build-and-push.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image_tag: edge
+      also_tag_latest: false
+      run_scans: false
+    secrets: inherit
+
+  verify-published:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: Vérifie que les 9 images existent sous le tag edge
+        working-directory: core
+        run: |
+          uv sync
+          uv run python scripts/check_published_images.py edge
