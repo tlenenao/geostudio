@@ -227,10 +227,13 @@ orphelines pour rien. Vérifié contre le fichier réel :
 (aucun déclencheur `branches:`) — c'est précisément ce qui a laissé
 `titiler` sans jamais être construit : rien ne rebuild entre deux tags.
 
-Décision : un déclencheur **sur merge vers `dev`/`main`** (pas sur chaque
-CI), qui reconstruit les 9 images sous un tag mouvant (`edge` ou `dev`) —
-distinct du déclenchement par tag existant, qui reste pour les vraies
-releases versionnées (`v0.1.0`, `v0.1.1`…). Les déploiements de
+Décision : un déclencheur **sur merge vers `main` uniquement** (pas sur
+chaque CI, pas sur `dev` — branche de travail quotidienne, cf. CLAUDE.md ;
+un rebuild des 9 images à chaque commit de la journée serait un coût
+disproportionné pour un gain nul, puisque seule la promotion vers `main`
+compte comme un état publiable), qui reconstruit les 9 images sous un tag
+mouvant `edge` — distinct du déclenchement par tag existant, qui reste
+pour les vraies releases versionnées (`v0.1.0`, `v0.1.1`…). Les déploiements de
 dogfooding/auto-hébergement (`deploy/proxmox`, `deploy/oci` —
 `GEOSTUDIO_VERSION` dans `.env`) pointent alors sur `edge`, toujours
 synchro avec le code, plutôt que sur `v0.1.0`, qui dérive comme constaté en
@@ -267,4 +270,4 @@ tagging, une vérification qui échoue si une image de la matrice
 | 1.5 | Realm importé une seule fois | Ouvert | Plan : `kcadm.sh update` idempotent dans `install.sh` |
 | 1.6 | Volume CSP root vs uid 1001 | Ouvert (contourné à la main sur cette VM) | Plan : fixer la propriété du volume à l'installation |
 | 1.7 | Spam OTel sans profil `observability` | Ouvert | Plan : conditionner l'endpoint OTLP au profil actif |
-| 2 | Images `v0.1.0` divergentes du source | Ouvert, 3/9 images confirmées cassées | Décidé (§2.3) : tag `edge` reconstruit sur merge dev/main + porte de complétude CI — reste à écrire le plan d'exécution |
+| 2 | Images `v0.1.0` divergentes du source | Ouvert, 3/9 images confirmées cassées | Décidé (§2.3) : tag `edge` reconstruit sur merge vers `main` seulement + porte de complétude CI — plan d'exécution écrit (`docs/superpowers/plans/2026-09-19-fiabilisation-deploiement-proxmox-fraicheur-images.md`) |

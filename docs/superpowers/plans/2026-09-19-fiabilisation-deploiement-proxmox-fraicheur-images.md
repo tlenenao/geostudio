@@ -19,9 +19,9 @@ l'intérieur de chacun) :
   que si le profil `observability` est actif.
 - **Groupe D** (Tasks 7-11) : la matrice de build des 9 images devient un
   workflow réutilisable, appelé par `release.yml` (tag → `v0.1.0`+`latest`,
-  scans activés) et un nouveau `publish-edge.yml` (merge `dev`/`main` →
-  `edge`, pas de scans), plus une porte qui vérifie que les 9 images
-  existent réellement sur le registre sous le tag publié.
+  scans activés) et un nouveau `publish-edge.yml` (merge sur `main`
+  seulement → `edge`, pas de scans), plus une porte qui vérifie que les 9
+  images existent réellement sur le registre sous le tag publié.
 
 **Tech Stack:** Bash (`scripts/install.sh`), Docker Compose Spec (YAML),
 GitHub Actions (YAML), Python 3.12/pytest/uv (`core/`).
@@ -720,8 +720,8 @@ jobs:
 
       # Report-only : exit-code 0 quel que soit le résultat, ce scan ne
       # bloque jamais la publication. Réservé aux vraies releases
-      # (run_scans) — coûteux à répéter sur les 9 images à chaque merge
-      # dev/main, alors qu'un tag `edge` est déjà remplacé au merge suivant.
+      # (run_scans) — coûteux à répéter sur les 9 images à chaque merge sur
+      # main, alors qu'un tag `edge` est déjà remplacé au merge suivant.
       - name: Trivy (report-only)
         if: inputs.run_scans
         continue-on-error: true
@@ -993,7 +993,7 @@ git add core/scripts/check_published_images.py
 git commit -m "feat(ci): script de vérification que les images publiées existent réellement"
 ```
 
-### Task 10: `publish-edge.yml` — rebuild sur merge dev/main, tag `edge`
+### Task 10: `publish-edge.yml` — rebuild sur merge vers `main`, tag `edge`
 
 **Files:**
 - Create: `.github/workflows/publish-edge.yml`
@@ -1011,14 +1011,18 @@ Ajouter à `core/tests/test_deployability.py` :
 PUBLISH_EDGE = REPO / ".github/workflows/publish-edge.yml"
 
 
-def test_publish_edge_triggers_on_merge_not_on_every_ci_run():
+def test_publish_edge_triggers_only_on_merge_to_main():
     """Rebuild sur CHAQUE exécution de CI (chaque push, chaque PR) inonderait
     le registre d'images pour des commits jamais mergés — vérifié contre
     `release.yml` réel que rien de tel n'existe aujourd'hui (déclenché
     seulement par `push: tags:`, jamais par `branches:`), ce qui a
     précisément laissé geostudio-titiler sans jamais être construit.
-    Décision actée (spec §2.3) : un tag `edge` reconstruit sur MERGE vers
-    dev/main, pas sur chaque CI."""
+    Décision actée (arbitrage utilisateur, plus resserrée que la spec §2.3
+    qui envisageait dev+main) : un tag `edge` reconstruit sur MERGE vers
+    `main` UNIQUEMENT — `dev` (branche de travail quotidienne, cf.
+    CLAUDE.md) reste hors de ce déclencheur pour ne pas rebuild les 9
+    images à chaque commit de la journée, seulement à chaque promotion
+    réelle vers `main`."""
     assert PUBLISH_EDGE.exists(), "attendu : .github/workflows/publish-edge.yml"
     doc = yaml.safe_load(PUBLISH_EDGE.read_text())
     # PyYAML résout la clé `on:` non quotée en booléen `True` (YAML 1.1) —
@@ -1026,10 +1030,10 @@ def test_publish_edge_triggers_on_merge_not_on_every_ci_run():
     # test_build_and_push_matrix_lives_in_the_reusable_workflow ci-dessus.
     on = doc[True]
     branches = set(on["push"]["branches"])
-    assert branches == {"dev", "main"}, f"déclencheur inattendu : {branches}"
+    assert branches == {"main"}, f"déclencheur inattendu : {branches}"
     assert "pull_request" not in on, (
         "publish-edge.yml ne doit jamais se déclencher sur une PR — "
-        "seulement sur un merge réel vers dev/main"
+        "seulement sur un merge réel vers main"
     )
 
 
@@ -1069,15 +1073,18 @@ git commit -m "test(ci): couvre le déclencheur et le contenu de publish-edge.ym
 ```yaml
 name: Publish edge images
 
-# Reconstruit les 9 images sous le tag `edge` à chaque MERGE vers dev/main
+# Reconstruit les 9 images sous le tag `edge` à chaque MERGE vers `main`
 # — jamais sur chaque exécution de CI (chaque push/PR inonderait le
-# registre pour des commits jamais mergés). `release.yml` reste le seul
-# déclencheur de vraies releases versionnées (push d'un tag `v*.*.*`).
-# Pas de re-exécution de test-gate/test-gate-arm64 ici : ci.yml a déjà
-# gaté ce même commit avant que le merge n'ait lieu.
+# registre pour des commits jamais mergés), et jamais sur `dev` (branche
+# de travail quotidienne, cf. CLAUDE.md — un rebuild des 9 images à
+# chaque commit de la journée serait un coût CI disproportionné).
+# `release.yml` reste le seul déclencheur de vraies releases versionnées
+# (push d'un tag `v*.*.*`). Pas de re-exécution de test-gate/
+# test-gate-arm64 ici : ci.yml a déjà gaté ce même commit avant que le
+# merge n'ait lieu.
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
 
 jobs:
   build-and-push:
@@ -1115,7 +1122,7 @@ Expected: PASS (fichier entier).
 python3 -c "import yaml; yaml.safe_load(open('.github/workflows/publish-edge.yml'))"
 cd core && uv run pytest tests/test_deployability.py -v
 git add .github/workflows/publish-edge.yml core/tests/test_deployability.py
-git commit -m "feat(ci): reconstruit les images sous le tag edge à chaque merge dev/main"
+git commit -m "feat(ci): reconstruit les images sous le tag edge à chaque merge vers main"
 ```
 
 ### Task 11: Ajouter la porte de complétude au workflow de release existant
