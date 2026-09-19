@@ -638,6 +638,15 @@ def test_next_run_route_rejects_an_invalid_cron_expression(monkeypatch):
     assert response.status_code == 400
 
 
+def test_next_run_route_rejects_a_syntactically_valid_but_unreachable_cron(monkeypatch):
+    # "0 0 30 2 *" (Feb 30th) passes croniter.is_valid() but has no future
+    # occurrence: get_next() raises CroniterBadDateError, which must not
+    # surface as an unhandled 500 (I4, final review).
+    client = _make_app(monkeypatch, etl_enabled=True)
+    response = client.get("/v1/pipelines/next-run?cron=0+0+30+2+*")
+    assert response.status_code == 400
+
+
 def test_next_run_route_absent_when_etl_disabled(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=False)
     assert client.get("/v1/pipelines/next-run?cron=0+2+*+*+*").status_code == 404

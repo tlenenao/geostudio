@@ -87,7 +87,12 @@ def get_pipeline_next_run(
 ) -> NextRunResponse:
     if not croniter.croniter.is_valid(cron):
         raise HTTPException(status_code=400, detail=f"invalid cron expression: {cron!r}")
-    next_tick = croniter.croniter(cron, datetime.now(UTC)).get_next(datetime)
+    try:
+        next_tick = croniter.croniter(cron, datetime.now(UTC)).get_next(datetime)
+    except croniter.CroniterBadDateError as exc:
+        raise HTTPException(
+            status_code=400, detail=f"cron expression has no future occurrence: {cron!r}"
+        ) from exc
     return NextRunResponse(nextRun=next_tick.isoformat())
 
 
