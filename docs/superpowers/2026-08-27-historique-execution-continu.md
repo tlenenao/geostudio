@@ -6852,3 +6852,162 @@ surface déjà livrée.
     ligne `### Livré` dans CLAUDE.md tant que le produit desktop-etl
     complet n'a pas expédié (précédent des phases desktop-etl
     antérieures).
+
+- **Pipeline builder UX** — clos 2026-09-19, plan
+  `docs/superpowers/plans/2026-09-18-pipeline-builder-ux-improvements.md`,
+  22 tâches en subagent-driven-development + 1 revue finale de branche +
+  2 rondes de correctifs (dont un correctif de durcissement post-revue).
+  Corrige 3 bugs réels (bannière/badge d'erreurs de graphe jamais rendus,
+  aperçu de pipeline figé sur le brouillon persisté au lieu du brouillon
+  en cours d'édition, carte de preview figée sur le nœud précédent) et
+  livre les améliorations non structurelles du design associé : minimap,
+  undo/redo généralisé (`useUndoableDraft<T>`, partagé avec
+  `AppBuilderPage`), suppression/connexion de nœud au clic (sans drag),
+  zones annotées persistées (`PipelineCanvasNote`, champ additif sans
+  migration), recherche + raccourci `/` + récents dans la palette,
+  regroupement requis/optionnel et erreurs de champ inline dans
+  l'inspecteur, couleurs par géométrie + légende + sélection partagée
+  table/carte + panneau d'attributs + pagination/tri/formatage dans
+  l'aperçu, détail par nœud + durée calculée par run, prochaine
+  exécution planifiée (`GET /pipelines/next-run` via `croniter`, déjà
+  une dépendance du cœur).
+  **Décision humaine en cours de plan** : la Tâche 2 a rendu la route de
+  preview capable d'exécuter un graphe arbitraire posté en corps de
+  requête (pas seulement la config persistée) tout en ne gardant que
+  `action="read"` — or les secrets de connecteur (`reader.connector.*`)
+  sont scopés par tenant, pas par pipeline, donc un simple partage en
+  lecture aurait suffi à sonder n'importe quel secret du tenant via un
+  graphe forgé. Tanguy a tranché : `action="write"`. Corrigé, et le
+  gel de l'accès en lecture seule a nécessité un correctif séparé en
+  revue finale (voir plus bas, I1).
+  **19 revues de tâche indépendantes du contrôleur**, la plupart clean,
+  quelques rondes de correctifs notables : Tâche 10 (zones annotées) —
+  1 Important trouvé en revue finale de tâche, un vrai bug hors périmètre
+  du brief découvert et corrigé par l'implémenteur lui-même (compléter
+  une connexion en mode « connecter » sur une zone annotée créait une
+  arête vers un id de nœud inexistant), livré sans test puis complété ;
+  Tâche 16 (sélection partagée + panneau d'attributs) — 2 rondes : un
+  vrai bug (`selectedIndex` jamais réinitialisé au changement de nœud,
+  `PipelinePreviewPanel` non keyé par son parent) puis un **faux positif
+  dans le test censé le prouver** (le `waitFor` de test convergeait sur
+  l'état de chargement transitoire de React Query avant que les données
+  du nouveau nœud n'arrivent, donc le test passait même sans le correctif
+  — même classe de piège que le n°10 de CLAUDE.md, retrouvée deux fois
+  dans ce seul chantier, cf. Tâche 14 ci-dessous) — corrigé et re-vérifié
+  par traçage indépendant, pas seulement ré-exécution.
+  À plusieurs reprises, le texte littéral du brief contenait des
+  fragments de code faux, toujours détectés et corrigés par
+  l'implémenteur avant le rouge attendu (piège n°3) : Tâche 6 (l'effet
+  de coalescing 400 ms du undo n'a pas le temps de s'armer avant le
+  `waitFor` du test tel qu'écrit ; le rétrécissement TypeScript de
+  `draft` ne survit pas aux déclarations `function` imbriquées — d'où
+  la convention `currentDraft` reprise ensuite par les Tâches 10/22),
+  Tâche 17 (ordre de déclaration violant les règles des Hooks dans le
+  brief lui-même), Tâche 14 (le test suggéré par le brief pour
+  `fieldErrorsFor` ne prouvait pas que l'espace de fin dans
+  `` `${field} ` `` comptait réellement — complété par un cas de
+  collision de préfixe).
+  **Revue finale de branche** (modèle le plus capable, base→tête des 31
+  commits du plan) : 0 Critical, 7 Important, 4 constats sur le plan
+  lui-même. Point le plus à risque du plan — l'invariant d'index
+  d'origine à travers tri × sélection × pagination × bouton carte dans
+  `PipelinePreviewPanel.tsx` — tracé à la main sur un scénario composé et
+  confirmé correct. Les 7 Important, tous corrigés puis re-revus :
+  - **I1** — `PipelinePreviewPanel` restait monté sans garde `readOnly`
+    après le durcissement `action="write"` de la Tâche 2 : un utilisateur
+    partagé en lecture seule recevait une alerte « Aperçu indisponible »
+    et déclenchait un POST 403 à chaque frappe clavier. Piège n°4 du
+    dépôt (garde-fou posé sur une surface, jamais reporté sur sa
+    jumelle). Corrigé (`pk !== null && !readOnly && …`) + test shell
+    (graphe non vide, prouve la sélection puis l'absence du panneau) +
+    test pytest 403 (rôle `viewer`, auto-distinguant du 404 puisque
+    `require_pipeline_access` renvoie 404 sur échec de lecture, 403
+    seulement si la lecture réussit mais pas l'action demandée).
+  - **I4** — `GET /pipelines/next-run` renvoyait un 500 non géré sur un
+    cron syntaxiquement valide mais inatteignable (ex. 30 février) :
+    `is_valid()` ne garantit pas que `get_next()` réussisse. Corrigé par
+    un `try/except CroniterBadDateError` → 400, vérifié contre le
+    comportement réel du paquet `croniter` installé (pas la doc).
+  - **I5** — un test préexistant (REV-060, « cliquer une entrée de
+    palette ajoute un nœud ») avait perdu son pouvoir de falsification
+    à cause de la Tâche 12 (le même clic déclenche aussi `recordUse`,
+    qui rend une 2e occurrence du texte dans « Récemment utilisés ») —
+    resserré à un compte exact documenté par un commentaire dérivant
+    l'arithmétique (2 palette/récents + 2 rendus du nœud canevas lui-même).
+  - **I6** — la sélection de ligne n'était réinitialisée qu'au
+    changement de nœud, pas au changement de données (le brouillon se
+    ré-exécute à chaque édition depuis la Tâche 2) ; cause racine :
+    `rows` changeait d'identité à chaque rendu quand `data` était
+    `undefined`. Corrigé par un `useMemo` sur `rows` + fusion du
+    déclencheur de réinitialisation.
+  - **I7** — tri de colonnes et sélection de ligne étaient accessibles
+    à la souris seulement, incohérent avec le reste du plan (Tâches 8/9).
+    Rendu clavier-opérable (Entrée/Espace), en rejetant explicitement
+    les patrons `<button>` imbriqué et `role="button"` sur `<tr>` après
+    vérification de leurs implications ARIA réelles. **La re-revue de ce
+    correctif a trouvé une régression clavier introduite par le
+    correctif lui-même** : le `onKeyDown` de la ligne n'avait pas de
+    garde `e.target !== e.currentTarget`, donc il interceptait aussi les
+    touches remontant du bouton « Voir sur la carte » imbriqué,
+    supprimant l'activation Espace de ce bouton — corrigé (garde
+    ajoutée sur les deux gestionnaires clavier) et re-vérifié.
+  Un correctif de tâche a ensuite lui-même exigé un correctif de
+  correctif : le sous-agent chargé du suivi clavier d'I7 a poussé un
+  commit contenant, en plus du vrai correctif, 3 fichiers non liés
+  déjà présents dans l'arbre de travail (`git add` trop large) —
+  détecté par une lecture systématique de `git show --stat` après
+  chaque commit de sous-agent, jamais uniquement la liste de fichiers
+  annoncée dans son rapport, corrigé par `git rm --cached` + amend.
+  **Suite E2E jamais exécutée pendant les 22 tâches** (le plan justifiait
+  l'absence de tâche a11y/responsive dédiée en s'appuyant sur
+  `e2e/a11y-audit.spec.ts`/`e2e/triptych-narrow.spec.ts`, sans jamais les
+  relancer — piège n°6). À la clôture : ces deux suites passent
+  intégralement (17/17, 18/18), confirmant que la justification du plan
+  tenait — mais `pipeline-builder.spec.ts` avait 2 échecs reproductibles
+  (timeout de 30 s au dépôt d'une op sur le canevas par glisser-déposer).
+  Investigation en `superpowers:systematic-debugging` strict (une
+  variable à la fois, git-free — les tentatives d'isolation par
+  `git checkout`/`stash` étaient bloquées par le classificateur de
+  permissions de cet environnement) : la MiniMap de la Tâche 5, suspectée
+  en premier, a été testée et innocentée ; cause réelle trouvée par
+  élimination — `recordUse(op)` (Tâche 12) tournait de façon synchrone
+  dans `onDragStart`, et Chromium gèle la session de glisser-déposer
+  HTML5 native si le DOM mute de façon synchrone avant que le
+  navigateur ait fini de l'armer. Corrigé une première fois par un
+  `setTimeout(0)`, puis durci en revue (la temporisation n'était qu'un
+  contournement dépendant du minutage, pas une élimination structurelle
+  de la course) en déplaçant `recordUse` sur `onDragEnd`, qui ne peut
+  par construction jamais interférer avec un glisser-déposer en cours.
+  Un 3e échec (`external-widget.spec.ts`, assertion de couleur CORS) a
+  été jugé flaky préexistant, sans rapport avec ce plan (aucun commit du
+  plan ne touche ce fichier ni le rendu de widgets).
+  Bilan de fonctionnalités régénéré deux fois (une première fois avec
+  une couverture antérieure au plan par erreur, détecté en revue finale
+  — 3 « régressions » signalées par le bilan committé pendant le plan
+  étaient en réalité des artefacts de couverture périmée, résolues à la
+  régénération finale avec de vrais gains) ; `--check` échoue uniquement
+  sur `automatisation-planifier-l-execution-recurrente-d-un-pipeline-cron`
+  (85,1 < plancher 89,9, sous-score « garde » structurellement bas sur
+  la nouvelle route `GET /pipelines/next-run`) — préexistant sur `dev`
+  avant ce plan (78,4), pas une régression introduite ici ; nécessite une
+  décision produit séparée (garde explicite ou entrée dans
+  `exceptions_priorite_moyenne`), laissé ouvert.
+  Suite complète cœur : 3194 passed/0 failed/6 skipped. Suite shell :
+  251 fichiers/2337 tests, tous verts, seuils de couverture dépassés
+  (91,36/82,20/85,39/89,14). `tsc --noEmit`/`ruff`/`eslint` propres.
+  Un commit non lié d'une session concurrente (`fix(deploy): corrige le
+  schéma tcp_options de oci_core_security_list`) est arrivé sur `dev` au
+  milieu du plan — repéré, exclu de toutes les revues et de la revue
+  finale par un choix correct de bases de comparaison.
+  Reste ouvert (non bloquant, consigné en revue finale, non repris ici
+  en détail) : `PipelineCanvasNote.id` sans contrainte de forme ni
+  d'unicité croisée avec les ids de nœuds (le préfixe `note-` sert de
+  discriminant de type sans garde serveur) ; `readOnly` ne désactive pas
+  Annuler/Rétablir/Ajouter une zone/suppression/connexion de nœud
+  (trompeur, sans risque de persistance) ; le panneau d'attributs reste
+  non formaté (`String(v)`) alors que le tableau utilise `formatCell`
+  depuis la Tâche 18 ; la section « Récemment utilisés » n'est pas
+  filtrée par la recherche de palette ; la Tâche 4 a tranché au passage
+  une question UX (libellés français → ids bruts dans le menu d'insertion
+  sur arête) sans la poser explicitement — cohérent avec la palette
+  existante, mais jamais consigné comme décision produit.

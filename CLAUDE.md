@@ -533,6 +533,14 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   variante du piège n°11 : le consommateur vérifié n'était pas le seul) +
   2 Important (colonnes `fid`/`OGC_FID` non exclues en lecture, collision
   de nom avec la colonne `geometry`).
+- **Pipeline builder UX** — 22 tâches (undo/redo, connexion/suppression de
+  nœud au clic, zones annotées persistées, palette recherchable + récents,
+  tri/pagination/formatage de l'aperçu tableau, détail par run, prochaine
+  exécution planifiée) + revue finale + 2 rondes de correctifs :
+  autorisation de l'aperçu resserrée à `action="write"` (secrets
+  connecteur non scopés par pipeline) et un vrai hang E2E trouvé et
+  corrigé (`recordUse` dans `dragstart` gelait le drag natif Chromium,
+  déplacé sur `dragend`).
 
 ### Conventions tranchées (2026-09-01)
 
