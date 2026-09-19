@@ -1059,6 +1059,7 @@ export const fr = {
   "pipelinePalette.sectionSources": "Sources",
   "pipelinePalette.sectionTransforms": "Transforms",
   "pipelinePalette.sectionWriters": "Écritures",
+  "pipelinePalette.sectionRecent": "Récemment utilisés",
   "pipelinePalette.searchAria": "Rechercher une opération",
   "pipelinePalette.searchPlaceholder": "Rechercher…",
 

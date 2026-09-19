@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import type { ItemClient, PipelineOpsCatalog } from "../../api/types";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { PipelinePalette } from "./PipelinePalette";
+
+beforeEach(() => localStorage.clear());
 
 const CATALOG: PipelineOpsCatalog = {
   "reader.collection": {
@@ -115,4 +117,21 @@ test("typing in the search field filters the op list by id", async () => {
   );
   expect(screen.getByText("transform.filter")).toBeInTheDocument();
   expect(screen.queryByText("reader.collection")).not.toBeInTheDocument();
+});
+
+test("using an op via the palette adds it to a Récemment utilisés section", async () => {
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <ItemClientProvider client={{ getPipelineOps: () => Promise.resolve(CATALOG) } as ItemClient}>
+        <PipelinePalette onAdd={vi.fn()} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(screen.queryByText("Récemment utilisés")).not.toBeInTheDocument();
+  await fireEvent.click(screen.getAllByRole("button", { name: /reader\.collection/ })[0]);
+  expect(screen.getByText("Récemment utilisés")).toBeInTheDocument();
+  expect(screen.getAllByText("reader.collection")).toHaveLength(2);
 });

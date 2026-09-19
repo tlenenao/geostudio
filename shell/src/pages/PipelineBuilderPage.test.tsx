@@ -64,6 +64,7 @@ function stubMatchMedia(matches: boolean) {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   vi.stubGlobal("ResizeObserver", NoopResizeObserver);
   stubMatchMedia(false);
 });
@@ -168,7 +169,9 @@ test("unsaved mode: Annuler reverts the last palette-added node", async () => {
   // renders, well under 400ms).
   await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeEnabled());
   await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
-  await waitFor(() => expect(screen.getAllByText("reader.collection")).toHaveLength(1));
+  // After undo, there are still 2 instances: one in Sources, one in Récemment utilisés
+  // (the recent ops list persists independently of the canvas).
+  await waitFor(() => expect(screen.getAllByText("reader.collection")).toHaveLength(2));
   expect(screen.getByRole("button", { name: "Rétablir" })).toBeEnabled();
 });
 
