@@ -18,6 +18,17 @@ const STATUS_LABEL: Record<PipelineRun["status"], string> = {
 // cœur (100) sans jamais l'envoyer ni exposer de contrôle.
 const RUNS_PAGE_SIZE = 100;
 
+function formatDuration(startedAt: string | null, finishedAt: string | null): string | null {
+  if (!startedAt || !finishedAt) return null;
+  const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const totalSeconds = Math.round(ms / 1000);
+  if (totalSeconds < 60) return `${totalSeconds} s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes} min ${seconds} s`;
+}
+
 function RunRow({ run }: { run: PipelineRun }) {
   const [open, setOpen] = useState(false);
   const detail = usePanelTrigger(open);
@@ -26,7 +37,12 @@ function RunRow({ run }: { run: PipelineRun }) {
     <li className="border-t border-rule pt-1">
       <div className="flex items-center gap-2">
         <span>{STATUS_LABEL[run.status]}</span>
-        {run.startedAt && <span className="text-ink-2">{run.startedAt}</span>}
+        {run.startedAt && (
+          <span className="text-ink-2">{new Date(run.startedAt).toLocaleString("fr-FR")}</span>
+        )}
+        {formatDuration(run.startedAt, run.finishedAt) && (
+          <span className="text-ink-2">{formatDuration(run.startedAt, run.finishedAt)}</span>
+        )}
         {nodeEntries.length > 0 && (
           <button
             type="button"

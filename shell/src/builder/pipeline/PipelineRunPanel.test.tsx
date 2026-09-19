@@ -246,3 +246,40 @@ test("a run with no nodeStats shows no expand toggle", async () => {
   await waitFor(() => expect(screen.getByText("En attente")).toBeInTheDocument());
   expect(screen.queryByRole("button", { name: "Détail du run run-0" })).not.toBeInTheDocument();
 });
+
+test("shows a computed duration and a localized date for a finished run", async () => {
+  renderPanel({
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-0",
+        status: "succeeded",
+        startedAt: "2026-08-06T10:00:00.000Z",
+        finishedAt: "2026-08-06T10:00:05.000Z",
+        error: null,
+        nodeStats: {},
+      },
+    ]),
+  });
+  await waitFor(() => expect(screen.getByText("succeeded")).toBeInTheDocument());
+  expect(screen.getByText("5 s")).toBeInTheDocument();
+  expect(
+    screen.getByText(new Date("2026-08-06T10:00:00.000Z").toLocaleString("fr-FR")),
+  ).toBeInTheDocument();
+});
+
+test("shows no duration for a run still in progress", async () => {
+  renderPanel({
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-0",
+        status: "running",
+        startedAt: "2026-08-06T10:00:00.000Z",
+        finishedAt: null,
+        error: null,
+        nodeStats: {},
+      },
+    ]),
+  });
+  await waitFor(() => expect(screen.getByText("En cours")).toBeInTheDocument());
+  expect(screen.queryByText(/^\d+ s$/)).not.toBeInTheDocument();
+});
