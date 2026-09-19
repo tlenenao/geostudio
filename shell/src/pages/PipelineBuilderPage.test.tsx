@@ -149,12 +149,24 @@ test("unsaved mode: Aperçu and Exécuter are absent (no pipelineId yet)", async
 // keyboard/click fallback to drag-and-drop. Before this fix, PipelinePalette
 // rendered a non-interactive <div draggable>, so this click was a no-op and
 // the op text appeared exactly once (the palette entry itself).
+//
+// I5, final review: Task 12 ("recently used ops") made the same click
+// handler also call recordUse(op), which renders a second static copy of
+// "reader.collection" in "Récemment utilisés" regardless of whether the node
+// was actually added to the canvas — `length > 1` no longer falsifies a
+// broken onAdd/onDropOnCanvas wiring, since recordUse alone already gets to
+// 2. The canvas-added node (title === op, PipelineBuilderPage.onDropOnCanvas)
+// renders TWO further matches — its title div and its op-label div
+// (PipelineCanvas.tsx's PipelineNodeBox renders both `node.title ?? node.op`
+// and `node.op`, and here they're the same string) — so exactly 4 total
+// (palette entry + recent-ops entry + node title + node op label) proves the
+// node was truly added; a no-op onAdd would stall at 2.
 test("unsaved mode: clicking a palette entry adds a node to the canvas", async () => {
   renderPage(null);
   await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
   expect(screen.getAllByText("reader.collection")).toHaveLength(1);
   await userEvent.click(screen.getByRole("button", { name: "reader.collection" }));
-  await waitFor(() => expect(screen.getAllByText("reader.collection").length).toBeGreaterThan(1));
+  await waitFor(() => expect(screen.getAllByText("reader.collection")).toHaveLength(4));
 });
 
 test("unsaved mode: Annuler reverts the last palette-added node", async () => {
