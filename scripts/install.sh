@@ -334,6 +334,24 @@ prompt_admin() {
     exit 1
   fi
 
+  echo "Synchronisation des URLs de redirection OIDC (idempotent, à chaque lancement)..."
+  # Keycloak n'importe un realm que s'il n'existe pas déjà en base
+  # (--import-realm n'écrase jamais un realm existant, vérifié
+  # empiriquement) : le fichier realm régénéré par ce script à chaque
+  # lancement (cf. `sed` plus haut sur GEOSTUDIO_PUBLIC_HOST) n'est donc
+  # JAMAIS relu après le tout premier boot. Si ce premier import s'est
+  # produit avec un hôte différent (vide, ancien domaine), les
+  # redirectUris du client restent périmés pour toujours sans ce
+  # correctif — réappliqué ici via l'API admin à chaque lancement.
+  local shell_client_id
+  shell_client_id="$($COMPOSE exec -T keycloak "$kc" get clients -r geostudio \
+      -q clientId=geostudio-shell --fields id 2>/dev/null \
+    | jq -r '.[0].id')"
+  $COMPOSE exec -T keycloak "$kc" update "clients/${shell_client_id}" -r geostudio \
+    -s "redirectUris=[\"https://${PUBLIC_HOST}/\",\"https://${PUBLIC_HOST}/*\"]" \
+    -s "webOrigins=[\"+\"]" \
+    >/dev/null
+
   local admin_temp_password
   admin_temp_password="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24)"
 
