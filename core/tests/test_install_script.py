@@ -350,3 +350,44 @@ def test_install_refreshes_post_logout_redirect_uris_every_run(install_workdir, 
         'STDIN_BODY: {"attributes":{"post.logout.redirect.uris":'
         '"https://geostudio-test.example/##https://geostudio-test.example/*"}}'
     ) in log
+
+
+def test_install_enables_otel_export_when_observability_profile_is_selected(
+    install_workdir, fake_bin_path
+):
+    """§1.7 de la spec 2026-09-19 : core/worker/cdc-worker exportent vers
+    otel-lgtm inconditionnellement dans docker-compose.yml. Sans le profil
+    `observability` démarré, ça boucle en échec réseau indéfiniment
+    (`Failed to resolve 'otel-lgtm'`, constaté en session, plusieurs
+    lignes de log par minute). install.sh doit positionner l'endpoint
+    seulement quand ce profil est sélectionné."""
+    result, _ = _run_install(
+        install_workdir,
+        fake_bin_path,
+        extra_env={
+            "INSTALL_PROFILES": "observability",
+            "FAKE_COMPOSE_PROFILES": "observability\netl",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    env_lines = (install_workdir / ".env").read_text().splitlines()
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318" in env_lines
+
+
+def test_install_disables_otel_export_when_observability_profile_is_not_selected(
+    install_workdir, fake_bin_path
+):
+    result, _ = _run_install(
+        install_workdir,
+        fake_bin_path,
+        extra_env={
+            "INSTALL_PROFILES": "",
+            "FAKE_COMPOSE_PROFILES": "observability\netl",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    env_lines = (install_workdir / ".env").read_text().splitlines()
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT=" in env_lines
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318" not in env_lines
