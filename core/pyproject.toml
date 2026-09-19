@@ -9,6 +9,18 @@ dependencies = [
     "sqlalchemy>=2.0",
     "pydantic>=2.7",
     "httpx>=0.27",
+    "anyio>=4.14.2,<4.15",  # transitif (httpx/mcp/starlette/sse-starlette/
+                      # watchfiles) ; contrainte explicite car la 4.14.1 que
+                      # le résolveur choisissait porte
+                      # CVE-2026-63374/64847/63349 et `pip-audit --strict`
+                      # refusait de passer. Déclaré ici (dépendances
+                      # principales, pas dev) car anyio est embarqué dans
+                      # l'image de prod via httpx/starlette/mcp. Borne haute
+                      # délibérée : 4.15.0 déprécie `anyio.abc.BlockingPortal`
+                      # (utilisé par la version de starlette installée), et
+                      # `filterwarnings = ["error"]` transforme ce
+                      # DeprecationWarning en échec de collecte pytest sur
+                      # tout module import ant `fastapi.testclient`.
     "requests>=2.31",  # SP-15f : garde SSRF pour reader.connector.rest — dlt's
                        # RESTClient utilise `requests`, pas httpx (que le reste
                        # du dépôt utilise déjà) ; déclaré ici en dépendance
