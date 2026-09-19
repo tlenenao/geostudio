@@ -29,11 +29,39 @@ def _geometry_column(relation: duckdb.DuckDBPyRelation, *, fn_label: str) -> str
     même garantie que app.pipelines.runtime._materialize_reader/
     _materialize_qgis_output. Une seule colonne géométrie attendue (même
     contrat qu'une collection) : en cas de pluralité inattendue, la
-    première suffit à ne jamais perdre la géométrie silencieusement."""
+    première suffit à ne jamais perdre la géométrie silencieusement. Les
+    colonnes géométrie NON sélectionnées (au-delà de la première) traversent
+    malgré tout Arrow/GeoParquet comme n'importe quelle autre colonne — sans
+    ST_SetCRS ni décodage WKB, elles atterrissent comme valeurs opaques
+    non-géométrie (binaire brut côté Arrow, colonne non convertie côté
+    GeoParquet) plutôt que d'être reconnues comme géométrie secondaire."""
     geom_cols = [d[0] for d in relation.description if d[1].id == "geometry"]
     if not geom_cols:
         raise PipelineRuntimeError(f"{fn_label} : la relation ne porte aucune colonne géométrie")
     return geom_cols[0]
+
+
+def _coerce_srid(srid: object, *, fn_label: str) -> int:
+    """Coercition stricte, appelée par les deux chemins publics (Arrow et
+    GeoParquet) avant toute interpolation SQL ou tout calcul de CRS.
+
+    Durcissement REV-192 : `srid` était annoté `int` mais jamais vérifié à
+    l'exécution. Vérifié empiriquement avant correctif : une chaîne non
+    numérique (ex. "abc") ou `None` ne levait aucune erreur — `to_arrow_stream`
+    l'interpolait telle quelle dans le littéral SQL `'EPSG:{srid}'` et
+    produisait silencieusement des métadonnées CRS bidon
+    (`{"crs_type": "authority_code", "crs": "EPSG:abc"}`). `srid<=0` révélait
+    en plus une divergence entre chemins : 0 produisait "EPSG:0" (bidon) côté
+    Arrow mais `crs=None` côté GeoParquet (falsy court-circuite `if srid`
+    dans build_geodataframe_from_relation) ; -1 produisait "EPSG:-1" (bidon)
+    côté Arrow mais une `pyproj.exceptions.CRSError` non contrôlée côté
+    GeoParquet. `int(srid)` lève un `TypeError`/`ValueError` clair pour toute
+    valeur non convertible, avant que quoi que ce soit ne touche DuckDB ou
+    pyproj."""
+    srid_int = int(srid)  # type: ignore[call-overload]  # coercition volontaire, cf. docstring
+    if srid_int <= 0:
+        raise PipelineRuntimeError(f"{fn_label} : srid invalide ({srid_int}), doit être positif")
+    return srid_int
 
 
 def to_arrow_stream(relation: duckdb.DuckDBPyRelation, *, srid: int) -> pyarrow.RecordBatchReader:
@@ -50,6 +78,7 @@ def to_arrow_stream(relation: duckdb.DuckDBPyRelation, *, srid: int) -> pyarrow.
     produisent donc PAS le même schéma pour une même relation source ; un
     futur consommateur qui bascule d'un OperationContract.exchange à
     l'autre doit s'attendre à ce nom de colonne différent."""
+    srid = _coerce_srid(srid, fn_label="to_arrow_stream")
     geom_col = _geometry_column(relation, fn_label="to_arrow_stream")
     other_cols = [c for c in relation.columns if c != geom_col]
     select_list = ", ".join(
@@ -95,6 +124,10 @@ def from_arrow_stream(
     conn.register(tmp_name, reader)
     try:
         conn.execute(f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT * FROM {_qi(tmp_name)}")
+    except duckdb.CatalogException as exc:
+        raise PipelineRuntimeError(
+            f"from_arrow_stream : view_name {view_name!r} existe déjà"
+        ) from exc
     finally:
         conn.unregister(tmp_name)
 
@@ -120,5 +153,6 @@ def to_geoparquet_file(relation: duckdb.DuckDBPyRelation, *, srid: int, path: st
     Renomme aussi la colonne géométrie en "geometry" (cf. to_arrow_stream,
     qui garde le nom d'origine) : les deux chemins ne sont pas
     interchangeables schéma pour schéma."""
+    srid = _coerce_srid(srid, fn_label="to_geoparquet_file")
     geom_col = _geometry_column(relation, fn_label="to_geoparquet_file")
     write_geoparquet_from_relation(relation, srid=srid, geometry_column=geom_col, path=path)
