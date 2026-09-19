@@ -49,6 +49,12 @@ variable "cpu_cores" {
   default     = 4
 }
 
+variable "cpu_type" {
+  description = "Modèle de CPU QEMU. Le défaut Proxmox (kvm64) n'expose pas x86-64-v2 (SSE4.2/POPCNT), ce que les images récentes (Keycloak, MinIO) exigent au démarrage (`Fatal glibc error: CPU does not support x86-64-v2`) ; \"host\" expose le CPU physique du nœud — acceptable ici car ce module cible un nœud Proxmox unique sans cluster/migration à vif."
+  type        = string
+  default     = "host"
+}
+
 variable "memory_mb" {
   description = "RAM allouée, en Mo"
   type        = number
