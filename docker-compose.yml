@@ -516,6 +516,8 @@ services:
         condition: service_started
       minio:
         condition: service_started
+      csp-dynamic-conf-init:
+        condition: service_completed_successfully
     restart: unless-stopped
     # `procrastinate healthchecks` vérifie la connexion et le schéma de la
     # file — ne détecte pas un worker occupé par une tâche qui ne rend
@@ -729,6 +731,24 @@ services:
     depends_on:
       pgbouncer:
         condition: service_started
+
+  # ─── Init ──────────────────────────────────────────────
+
+  csp-dynamic-conf-init:
+    # SP-48/GAP-72, corrigé après un déploiement réel : un volume Docker
+    # nommé est peuplé (propriétaire fixé) par le PREMIER conteneur qui
+    # l'utilise. Sans ce service, `traefik` (root) ou `worker` (uid 1001)
+    # peut gagner la course au premier démarrage, non déterministe — si
+    # `traefik` gagne, `worker` ne peut plus jamais écrire la CSP
+    # dynamique (`PermissionError: Permission denied`, constaté en
+    # session). `worker` (ci-dessous) attend explicitement la fin de ce
+    # service avant de démarrer, ce qui fixe la propriété une fois pour
+    # toutes avant que quiconque d'autre ne touche au volume.
+    image: busybox:1.36.1
+    command: ["chown", "1001:1001", "/csp-dynamic"]
+    volumes:
+      - csp-dynamic-conf:/csp-dynamic
+    networks: [gis-net]
 
   # ─── Auth ──────────────────────────────────────────────
 
