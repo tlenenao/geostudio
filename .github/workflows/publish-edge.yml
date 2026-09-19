@@ -1,0 +1,71 @@
+name: Publish edge images
+
+# Reconstruit les 9 images sous le tag `edge` à chaque MERGE vers `main`
+# — jamais sur chaque exécution de CI (chaque push/PR inonderait le
+# registre pour des commits jamais mergés), et jamais sur `dev` (branche
+# de travail quotidienne, cf. CLAUDE.md — un rebuild des 9 images à
+# chaque commit de la journée serait un coût CI disproportionné).
+# `release.yml` reste le seul déclencheur de vraies releases versionnées
+# (push d'un tag `v*.*.*`). Pas de re-exécution de test-gate/
+# test-gate-arm64 ici : ci.yml a déjà gaté ce même commit avant que le
+# merge n'ait lieu.
+on:
+  push:
+    branches: [main]
+
+# Deux merges rapprochés sur `main` déclencheraient deux runs concurrents
+# publiant le même tag `edge` en parallèle (revue finale, M3) — le second
+# à terminer écrase silencieusement l'image de l'autre, sans qu'aucun des
+# deux runs n'échoue. `cancel-in-progress` annule le run en cours au
+# profit du plus récent, cohérent avec la nature « suivi de la tête de
+# `main` » de ce canal.
+concurrency:
+  group: publish-edge
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    uses: ./.github/workflows/_build-and-push.yml
+    # `_build-and-push.yml` demande contents:read/packages:write/
+    # security-events:write (revue finale, C1) — un appelant réutilisable
+    # ne peut jamais accorder MOINS que ce que le job appelé déclare, sous
+    # peine d'échec de validation statique au tout premier merge (GitHub
+    # rejette le run avant même d'exécuter une étape). `security-events`
+    # n'est jamais consommé ici (run_scans: false coupe Trivy/SBOM), mais
+    # doit rester accordé pour que la validation passe.
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    with:
+      image_tag: edge
+      also_tag_latest: false
+      run_scans: false
+    secrets: inherit
+
+  verify-published:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    # Spécifier N'IMPORTE quelle permission met TOUTES les autres à `none`
+    # (règle GitHub) — `contents: read` doit rester explicite ici pour que
+    # `actions/checkout` fonctionne, sinon il aurait silencieusement perdu
+    # l'accès qu'il tenait implicitement des permissions par défaut du
+    # dépôt (revue du correctif de la revue finale, N1).
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: Vérifie que les 9 images existent sous le tag edge
+        working-directory: core
+        env:
+          # Sans authentification, "jamais publiée" et "publiée mais
+          # encore privée" renvoient le même 403 (vérifié empiriquement
+          # contre le vrai registre) — un nouveau package GHCR naît privé
+          # par défaut, ce qui aurait rendu ce garde-fou rouge au tout
+          # premier succès de publication de geostudio-titiler.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          uv sync
+          uv run python scripts/check_published_images.py edge

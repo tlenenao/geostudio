@@ -66,6 +66,8 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 BASE = REPO / "docker-compose.yml"
 PROD = REPO / "docker-compose.prod.yml"
 RELEASE = REPO / ".github/workflows/release.yml"
+BUILD_AND_PUSH = REPO / ".github/workflows/_build-and-push.yml"
+PUBLISH_EDGE = REPO / ".github/workflows/publish-edge.yml"
 ENV_EXAMPLE = REPO / ".env.example"
 BOOTSTRAP_ENV_SH = REPO / "scripts/bootstrap-env.sh"
 BACKUP_SH = REPO / "deploy/backup/backup.sh"
@@ -156,7 +158,57 @@ def build_is_reset(service: dict) -> bool:
 
 
 def release_matrix() -> list[dict]:
-    return load_yaml(RELEASE)["jobs"]["build-and-push"]["strategy"]["matrix"]["include"]
+    return load_yaml(BUILD_AND_PUSH)["jobs"]["build-and-push"]["strategy"]["matrix"]["include"]
+
+
+def test_build_and_push_matrix_lives_in_the_reusable_workflow():
+    """§2 de la spec 2026-09-19 : la matrice des 9 images doit vivre dans un
+    SEUL fichier (`_build-and-push.yml`, réutilisable par `release.yml` ET
+    par le futur `publish-edge.yml`) — jamais recopiée, sous peine de
+    dériver silencieusement entre les deux (classe de bug déjà payée sur ce
+    dépôt, cf. CLAUDE.md piège n°2)."""
+    assert BUILD_AND_PUSH.exists(), (
+        "attendu : .github/workflows/_build-and-push.yml (workflow réutilisable)"
+    )
+    doc = yaml.safe_load(BUILD_AND_PUSH.read_text())
+    # PyYAML résout la clé `on:` non quotée en booléen `True` (YAML 1.1),
+    # pas en chaîne "on" — vérifié empiriquement contre release.yml réel
+    # (`list(doc.keys())` donne `['name', True, 'jobs']`).
+    assert "workflow_call" in doc[True], (
+        "_build-and-push.yml doit être déclenchable via `on: workflow_call`"
+    )
+    matrix = doc["jobs"]["build-and-push"]["strategy"]["matrix"]["include"]
+    images = {e["image"] for e in matrix}
+    assert images == {
+        "geostudio-core",
+        "geostudio-shell",
+        "geostudio-postgis",
+        "geostudio-titiler",
+        "geostudio-appexport-standalone",
+        "geostudio-export-worker",
+        "geostudio-qgis-worker",
+        "geostudio-appexport-runtime-builder",
+        "geostudio-backup",
+    }, f"matrice inattendue : {images}"
+
+
+def test_release_yml_calls_the_reusable_build_workflow():
+    """release.yml ne doit plus déclarer la matrice en dur — seulement
+    appeler le workflow réutilisable, avec les deux tags historiques
+    (le tag poussé + `latest`) et les scans activés."""
+    doc = yaml.safe_load(RELEASE.read_text())
+    job = doc["jobs"]["build-and-push"]
+    assert job.get("uses") == "./.github/workflows/_build-and-push.yml", (
+        f"release.yml build-and-push.uses = {job.get('uses')!r}, "
+        "attendu './.github/workflows/_build-and-push.yml'"
+    )
+    assert job["needs"] == ["test-gate", "test-gate-arm64"] or set(job["needs"]) == {
+        "test-gate",
+        "test-gate-arm64",
+    }
+    with_inputs = job["with"]
+    assert with_inputs["also_tag_latest"] is True
+    assert with_inputs["run_scans"] is True
 
 
 def test_postgis_dockerfile_uses_multiarch_base_with_pgdg_packages():
@@ -1402,6 +1454,40 @@ def test_csp_dynamic_conf_volume_is_shared_between_worker_and_traefik():
     )
 
 
+def test_csp_dynamic_conf_has_an_ownership_init_service():
+    """Un volume Docker nommé est peuplé (et donc son propriétaire fixé) par
+    le PREMIER conteneur qui l'utilise — traefik (root) ou worker (uid
+    1001, cf. core/Dockerfile) selon lequel démarre en premier, un ordre
+    non déterministe. Constaté en déploiement réel : traefik a gagné la
+    course, `worker` ne pouvait plus écrire
+    (`PermissionError: [Errno 13] Permission denied`) et la CSP dynamique
+    ne s'est jamais mise à jour. Un service d'init dédié, dont `worker`
+    dépend avec `service_completed_successfully`, élimine la course."""
+    base = load_yaml(BASE)
+    init = base["services"].get("csp-dynamic-conf-init")
+    assert init is not None, (
+        "docker-compose.yml doit déclarer un service "
+        "`csp-dynamic-conf-init` qui chown le volume avant `worker`"
+    )
+    assert any("csp-dynamic-conf" in v for v in (init.get("volumes") or [])), (
+        f"csp-dynamic-conf-init doit monter csp-dynamic-conf, a trouvé : {init.get('volumes')}"
+    )
+    assert init.get("restart") in (None, "no"), (
+        "csp-dynamic-conf-init doit s'exécuter une seule fois et sortir "
+        f"(restart: {init.get('restart')!r} le ferait boucler)"
+    )
+
+    worker_depends_on = services(BASE)["worker"].get("depends_on") or {}
+    init_dep = worker_depends_on.get("csp-dynamic-conf-init")
+    assert init_dep is not None, (
+        "worker doit dépendre de csp-dynamic-conf-init dans docker-compose.yml"
+    )
+    assert init_dep.get("condition") == "service_completed_successfully", (
+        f"worker.depends_on.csp-dynamic-conf-init.condition = {init_dep.get('condition')!r}, "
+        "attendu 'service_completed_successfully'"
+    )
+
+
 def test_traefik_command_enables_file_provider_with_watch():
     command = services(BASE)["traefik"]["command"]
     assert "--providers.file.watch=true" in command
@@ -1728,3 +1814,99 @@ def test_slo_rules_cover_the_four_documented_slos_and_are_active():
         threshold_expr = next(d for d in rule["data"] if d["refId"] == "B")
         params = threshold_expr["model"]["conditions"][0]["evaluator"]["params"]
         assert params == [threshold], f"{uid}: seuil attendu {threshold}, trouvé {params}"
+
+
+def test_publish_edge_triggers_only_on_merge_to_main():
+    """Rebuild sur CHAQUE exécution de CI (chaque push, chaque PR) inonderait
+    le registre d'images pour des commits jamais mergés — vérifié contre
+    `release.yml` réel que rien de tel n'existe aujourd'hui (déclenché
+    seulement par `push: tags:`, jamais par `branches:`), ce qui a
+    précisément laissé geostudio-titiler sans jamais être construit.
+    Décision actée (arbitrage utilisateur, plus resserrée que la spec §2.3
+    qui envisageait dev+main) : un tag `edge` reconstruit sur MERGE vers
+    `main` UNIQUEMENT — `dev` (branche de travail quotidienne, cf.
+    CLAUDE.md) reste hors de ce déclencheur pour ne pas rebuild les 9
+    images à chaque commit de la journée, seulement à chaque promotion
+    réelle vers `main`."""
+    assert PUBLISH_EDGE.exists(), "attendu : .github/workflows/publish-edge.yml"
+    doc = yaml.safe_load(PUBLISH_EDGE.read_text())
+    # PyYAML résout la clé `on:` non quotée en booléen `True` (YAML 1.1) —
+    # vérifié empiriquement contre release.yml réel, cf. commentaire de
+    # test_build_and_push_matrix_lives_in_the_reusable_workflow ci-dessus.
+    on = doc[True]
+    branches = set(on["push"]["branches"])
+    assert branches == {"main"}, f"déclencheur inattendu : {branches}"
+    assert "pull_request" not in on, (
+        "publish-edge.yml ne doit jamais se déclencher sur une PR — "
+        "seulement sur un merge réel vers main"
+    )
+
+
+def test_publish_edge_calls_the_reusable_workflow_with_the_edge_tag():
+    doc = yaml.safe_load(PUBLISH_EDGE.read_text())
+    job = doc["jobs"]["build-and-push"]
+    assert job.get("uses") == "./.github/workflows/_build-and-push.yml"
+    with_inputs = job["with"]
+    assert with_inputs["image_tag"] == "edge"
+    assert with_inputs["also_tag_latest"] is False
+    assert with_inputs["run_scans"] is False
+
+
+def test_publish_edge_verifies_all_images_landed():
+    doc = yaml.safe_load(PUBLISH_EDGE.read_text())
+    verify = doc["jobs"].get("verify-published")
+    assert verify is not None, "publish-edge.yml doit avoir un job verify-published"
+    assert verify["needs"] == "build-and-push" or "build-and-push" in verify["needs"]
+    runs = " ".join(step.get("run", "") for step in verify["steps"])
+    assert "check_published_images.py edge" in runs
+
+
+def test_release_yml_verifies_all_images_landed_under_the_pushed_tag():
+    """geostudio-titiler était déclaré dans la matrice mais jamais publié
+    sous v0.1.0 (404 anonyme réel sur GHCR) — aucune étape de release.yml
+    ne le détectait avant ce garde-fou."""
+    doc = yaml.safe_load(RELEASE.read_text())
+    verify = doc["jobs"].get("verify-published")
+    assert verify is not None, "release.yml doit avoir un job verify-published"
+    assert verify["needs"] == "build-and-push" or "build-and-push" in verify["needs"]
+    runs = " ".join(step.get("run", "") for step in verify["steps"])
+    envs = " ".join(str(step.get("env", "")) for step in verify["steps"])
+    assert "check_published_images.py" in runs
+    # `github.ref_name` est passé par `env:` (revue finale, M1 : éviter
+    # d'interpoler une expression GitHub directement dans un `run:` shell)
+    # plutôt qu'interpolé en dur dans le script.
+    assert "github.ref_name" in envs
+    assert "IMAGE_TAG" in runs
+
+
+_GITHUB_PERMISSION_LEVELS = {"none": 0, "read": 1, "write": 2}
+
+
+def _permissions_shortfall(caller: dict, callee: dict) -> list[str]:
+    """Retourne les scopes où `caller` accorde moins que ce que `callee`
+    déclare — GitHub refuse un appel `uses:` réutilisable dont le job
+    appelé demande plus de permissions que l'appelant n'en accorde,
+    validation statique au démarrage du run (avant l'exécution de la
+    moindre étape). Trouvé en revue finale (C1) : `publish-edge.yml`
+    n'accordait pas `security-events: write`, requis par
+    `_build-and-push.yml` (utilisé seulement quand `run_scans: true`, mais
+    la validation ne tient pas compte des `if:` conditionnels)."""
+    shortfall = []
+    for scope, required_level in callee.items():
+        granted_level = _GITHUB_PERMISSION_LEVELS.get(caller.get(scope, "none"), 0)
+        if granted_level < _GITHUB_PERMISSION_LEVELS.get(required_level, 0):
+            shortfall.append(scope)
+    return shortfall
+
+
+def test_every_caller_of_build_and_push_grants_at_least_its_permissions():
+    callee_permissions = load_yaml(BUILD_AND_PUSH)["jobs"]["build-and-push"]["permissions"]
+
+    for caller_path in (RELEASE, PUBLISH_EDGE):
+        doc = yaml.safe_load(caller_path.read_text())
+        caller_permissions = doc["jobs"]["build-and-push"].get("permissions") or {}
+        shortfall = _permissions_shortfall(caller_permissions, callee_permissions)
+        assert shortfall == [], (
+            f"{caller_path.name} n'accorde pas assez de permissions au job "
+            f"build-and-push de {BUILD_AND_PUSH.name} : manque {shortfall}"
+        )

@@ -7011,3 +7011,105 @@ surface déjà livrée.
   une question UX (libellés français → ids bruts dans le menu d'insertion
   sur arête) sans la poser explicitement — cohérent avec la palette
   existante, mais jamais consigné comme décision produit.
+- **Fiabilisation déploiement Proxmox + fraîcheur images** — clos
+  2026-09-20, plan
+  `docs/superpowers/plans/2026-09-19-fiabilisation-deploiement-proxmox-fraicheur-images.md`,
+  spec `2026-09-19-fiabilisation-deploiement-proxmox-fraicheur-images-design.md`
+  (§1.5/§1.6/§1.7/§2). Quatre groupes indépendants, 11 tâches : (A)
+  `install.sh` réapplique `redirectUris`/`webOrigins` **et**
+  `post.logout.redirect.uris` du client Keycloak `geostudio-shell` à
+  chaque lancement (Keycloak `--import-realm` n'écrase jamais un realm
+  existant — un realm importé une première fois avec un `PUBLIC_HOST`
+  différent restait périmé pour toujours sinon) ; (B) service Compose
+  `csp-dynamic-conf-init` dédié (busybox, `chown 1001:1001`) dont
+  `worker` dépend via `service_completed_successfully`, pour éliminer
+  une course de propriété sur le volume nommé `csp-dynamic-conf`
+  (`traefik`, root, ou `worker`, uid 1001, pouvait gagner la course de
+  premier peuplement selon l'ordre de démarrage) ; (C)
+  `OTEL_EXPORTER_OTLP_ENDPOINT` n'est plus exporté par
+  `core`/`worker`/`cdc-worker` que si le profil compose `observability`
+  est sélectionné (sinon boucle d'échec réseau contre un hôte
+  `otel-lgtm` absent) ; (D) la matrice de build des 9 images, dupliquée
+  en dur dans `release.yml`, extraite en workflow réutilisable
+  `_build-and-push.yml` (`workflow_call`), appelé par `release.yml`
+  (tag poussé + `latest`, scans activés) et un nouveau `publish-edge.yml`
+  (merge sur `main` uniquement, jamais `dev` ni PR, tag `edge`, pas de
+  scans — arbitrage plus resserré que le §2.3 de la spec), plus un
+  script `check_published_images.py` (interroge GHCR) câblé en porte de
+  complétude sur les deux, fermant le trou qui avait laissé
+  `geostudio-titiler` déclaré dans la matrice mais jamais réellement
+  publié sous v0.1.0.
+  Task 2 (revue) : 2 Important plan-mandatés trouvés puis corrigés sur
+  décision humaine — aucune garde d'erreur si le client Keycloak est
+  introuvable (`update clients/null` échouerait silencieusement, même
+  piège que celui corrigé) ; `post.logout.redirect.uris` (déconnexion)
+  souffrait du même mal que `redirectUris` sans être dans le périmètre
+  littéral du brief. Correctif vérifié **empiriquement contre un vrai
+  conteneur Keycloak 24.0.5** avant d'écrire le fix (piège n°3) :
+  `kcadm.sh update -s 'attributes."post.logout.redirect.uris"=...'`
+  s'exécute avec un code 0 mais ne modifie **rien** (silencieux) ; seul
+  un corps JSON minimal via `-f -` fonctionne, et fait un merge partiel
+  côté serveur (vérifié : ne touche pas les autres champs du client).
+  Task 4 : déviation assumée du texte littéral du plan (`busybox:1.36`
+  → `1.36.1`) — le tag à 2 composants aurait été rejeté par la règle de
+  pin d'image existante (`FLOATING_TAG_RE`), vérifiée mécaniquement par
+  le reviewer contre le vrai regex, tag de remplacement confirmé publié
+  via `docker manifest inspect`.
+  Task 9 (revue) : 1 Important plan-mandaté — gestion d'erreur réseau
+  asymétrique dans `image_exists()` (2e appel ne catchait que
+  `HTTPError`, pas `URLError`, plantage non catché sur un hoquet réseau
+  transitoire) ; vérifié par un mock ciblé prouvant l'exception non
+  catchée, corrigé (élargi à `URLError`, sa classe mère).
+  **Revue finale de branche** (modèle le plus capable, 16 commits,
+  base→tête) : 1 Critical, 2 Important, 8 Minor. **C1** —
+  `publish-edge.yml` n'accordait pas `security-events: write`, requis
+  par `_build-and-push.yml` : GitHub refuse la validation statique d'un
+  appel de workflow réutilisable dont l'appelant accorde moins que ce
+  que le job appelé déclare, **même quand l'étape concernée est gardée
+  par un `if:` jamais vrai** — le tout premier merge vers `main` aurait
+  rendu `publish-edge.yml` invalide, donc inerte, sans qu'aucun test
+  local ne le détecte (jamais exécuté sur GitHub Actions dans cette
+  session). **I1** — `set_env_var` (install.sh) faisait un `sed` pur
+  remplacement, no-op silencieux si la clé n'existe pas encore dans un
+  `.env` d'un déploiement antérieur à son ajout ; vérifié sur ce poste
+  qu'un `.env` réel (29 août) n'avait pas la ligne `OTEL_EXPORTER_OTLP_ENDPOINT`.
+  **I2** — `check_published_images.py` ne distinguait pas « jamais
+  publiée » de « privée » (GHCR renvoie le même 403 anonyme pour les
+  deux, et un nouveau package GHCR naît privé par défaut), ce qui aurait
+  rendu la porte rouge au premier succès réel de publication de
+  `geostudio-titiler`. Décisions humaines : corriger les 3 + 3 des 8
+  Minor (durcissement injection shell via `env:`, restauration des
+  commentaires de rationale sécurité perdus à l'extraction, garde
+  `concurrency` sur `publish-edge.yml`) ; les 5 autres Minor laissés en
+  dette. Le contrôleur a écrit ce correctif lui-même (pas de dispatch)
+  vu la vérification empirique déjà faite (GHCR sondé en direct :
+  `geostudio-titiler` confirmé 403 anonyme, token+manifest réels testés
+  pour un tag existant/inexistant). **La re-revue de ce correctif a
+  trouvé un nouveau défaut Important (N1) introduit par le correctif
+  lui-même** : ajouter `permissions: {packages: read}` sans
+  `contents: read` explicite met `contents` à `none` (règle GitHub : dès
+  qu'une permission est spécifiée, toutes les autres non listées
+  tombent à `none`) — aurait cassé `actions/checkout` à la toute
+  première étape des deux jobs `verify-published`. Vérifié contre le
+  réglage réel du dépôt (`default_workflow_permissions: read`) et contre
+  le précédent déjà établi dans `codeql.yml`/`gitleaks.yml` (`contents:
+  read` toujours explicite dès qu'un bloc `permissions:` existe).
+  Corrigé en 1 commit d'une ligne par fichier, re-revu, fermé.
+  Chaque correctif de revue (Task 2, Task 9, final) a été vérifié **par
+  falsification** plutôt que par lecture seule : réinjection du défaut,
+  confirmation que le test correspondant vire rouge, restauration —
+  patron systématique sur ce plan, jamais un seul cas de test qui
+  passerait trivialement.
+  Suite complète cœur à la clôture : 2949 passed/1 failed/270 skipped —
+  l'unique échec (`test_health_floors_hold`) est confirmé pré-existant
+  et sans rapport (artefacts de couverture locaux non trackés,
+  `core/coverage.xml`/`shell/coverage/coverage-summary.json`, mtime
+  antérieur de plusieurs heures à cette exécution, comparant des
+  fonctionnalités — collections/RLS/OGC API SQL — qu'aucun commit de ce
+  plan ne touche, confirmé par `git diff --stat` vide sur
+  `core/app/**`/`shell/src/**`). Un flake supplémentaire rencontré une
+  fois en cours de revue (`test_synchronous_provider_call_does_not_block_the_event_loop`,
+  piège n°7 : assertion de durée sous charge) a été rejoué isolément et
+  passe. Aucune nouvelle surface REST/MCP/shell livrée par ce plan — pas
+  d'entrée requise dans l'inventaire de fonctionnalités ni de
+  régénération du bilan.

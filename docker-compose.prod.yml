@@ -85,7 +85,15 @@ services:
     ports: !reset []
     environment:
       GEOSTUDIO_PUBLIC_HOST: ${GEOSTUDIO_PUBLIC_HOST}
-      KC_HOSTNAME: https://${GEOSTUDIO_PUBLIC_HOST}
+      # --hostname (KC_HOSTNAME) attend un nom d'hôte nu, pas une URL avec
+      # schéma (vérifié contre `kc.sh start --help-all` réel — c'est
+      # --hostname-url/KC_HOSTNAME_URL qui veut "scheme, host, port and
+      # path") : avec un schéma inclus ici, Keycloak reconstruit ses URLs
+      # frontend en préfixant encore "https://" par-dessus, produisant des
+      # redirections OIDC cassées ("https://https//..."). KC_PROXY_HEADERS
+      # (xforwarded, ci-dessous) fait déjà déduire le schéma HTTPS depuis
+      # X-Forwarded-Proto.
+      KC_HOSTNAME: ${GEOSTUDIO_PUBLIC_HOST}
       KC_HTTP_RELATIVE_PATH: /auth
       KC_PROXY_HEADERS: xforwarded
     entrypoint: ["sh", "-c"]

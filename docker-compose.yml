@@ -348,7 +348,7 @@ services:
       # read_terrain3d_tile, app/terrain3d/routes.py) — appel interne, jamais
       # exposé au navigateur.
       TITILER_URL: ${TITILER_URL:-http://titiler:8000}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-core
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: ${MINIO_USER}
@@ -484,7 +484,7 @@ services:
       CORE_TERRAIN3D_MAX_UPLOAD_BYTES: ${CORE_TERRAIN3D_MAX_UPLOAD_BYTES:-2147483648}
       CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS: ${CORE_TERRAIN3D_CONVERSION_TIMEOUT_SECONDS:-900}
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-worker
       QGIS_WORKER_URL: http://qgis-worker:8000
       QGIS_WORKER_TIMEOUT_SECONDS: "600"
@@ -516,6 +516,8 @@ services:
         condition: service_started
       minio:
         condition: service_started
+      csp-dynamic-conf-init:
+        condition: service_completed_successfully
     restart: unless-stopped
     # `procrastinate healthchecks` vérifie la connexion et le schéma de la
     # file — ne détecte pas un worker occupé par une tâche qui ne rend
@@ -651,7 +653,7 @@ services:
       S3_ACCESS_KEY: ${MINIO_USER}
       S3_SECRET_KEY: ${MINIO_PASSWORD}
       S3_CDC_BUCKET: geostudio-cdc
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-cdc-worker
     networks: [gis-net]
     depends_on:
@@ -729,6 +731,24 @@ services:
     depends_on:
       pgbouncer:
         condition: service_started
+
+  # ─── Init ──────────────────────────────────────────────
+
+  csp-dynamic-conf-init:
+    # SP-48/GAP-72, corrigé après un déploiement réel : un volume Docker
+    # nommé est peuplé (propriétaire fixé) par le PREMIER conteneur qui
+    # l'utilise. Sans ce service, `traefik` (root) ou `worker` (uid 1001)
+    # peut gagner la course au premier démarrage, non déterministe — si
+    # `traefik` gagne, `worker` ne peut plus jamais écrire la CSP
+    # dynamique (`PermissionError: Permission denied`, constaté en
+    # session). `worker` (ci-dessous) attend explicitement la fin de ce
+    # service avant de démarrer, ce qui fixe la propriété une fois pour
+    # toutes avant que quiconque d'autre ne touche au volume.
+    image: busybox:1.36.1
+    command: ["chown", "1001:1001", "/csp-dynamic"]
+    volumes:
+      - csp-dynamic-conf:/csp-dynamic
+    networks: [gis-net]
 
   # ─── Auth ──────────────────────────────────────────────
 
@@ -834,7 +854,17 @@ services:
   # ─── Ingress ───────────────────────────────────────────
 
   traefik:
-    image: traefik:v3.0.4
+    # v3.0.4 embarquait un client Docker interne câblé sur l'API 1.24, que
+    # les Docker Engine récents (API >= 1.40 minimum, ex. 1.56 installé via
+    # get.docker.com) refusent purement et simplement ("client version 1.24
+    # is too old") — provider Docker en échec permanent, aucun routage par
+    # label ne fonctionne. Pas de flag `apiVersion`/variable d'environnement
+    # pour contourner (vérifié contre `traefik --help` réel) : seule une
+    # version dont le client Docker embarqué est plus récent résout le
+    # problème. v3.7.13 vérifiée empiriquement (déploiement Proxmox réel,
+    # 2026-09-19) : provider Docker fonctionnel, aucune régression sur
+    # providers.file/ACME/entrypoints (mêmes flags, syntaxe inchangée).
+    image: traefik:v3.7.13
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false

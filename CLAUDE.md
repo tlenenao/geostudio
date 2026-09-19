@@ -541,6 +541,17 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   connecteur non scopés par pipeline) et un vrai hang E2E trouvé et
   corrigé (`recordUse` dans `dragstart` gelait le drag natif Chromium,
   déplacé sur `dragend`).
+- **Fiabilisation déploiement Proxmox + fraîcheur images** — realm
+  Keycloak (`redirectUris`/`webOrigins`/`post.logout.redirect.uris`)
+  resynchronisé à chaque lancement d'`install.sh`, service d'init dédié
+  pour la propriété du volume `csp-dynamic-conf`, export OTel conditionné
+  au profil `observability`, matrice de build extraite en workflow
+  réutilisable `_build-and-push.yml` + `publish-edge.yml` (tag `edge` sur
+  merge `main`) + porte de complétude `check_published_images.py`
+  (authentifiée GHCR) sur les deux workflows de publication ; revue
+  finale a trouvé et corrigé 1 Critical (permissions manquantes sur
+  l'appel réutilisable) + 2 Important, puis un correctif de correctif
+  (permission `contents` implicitement retirée par le premier correctif).
 
 ### Conventions tranchées (2026-09-01)
 

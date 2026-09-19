@@ -178,11 +178,39 @@ set_env_var() {
   # $1 = nom, $2 = valeur — jamais d'écrasement d'une AUTRE variable que
   # celle ciblée (même précaution que bootstrap-env.sh : sed -i.bak, ligne
   # exacte "^NAME=", suffixe .bak supprimé immédiatement après).
-  sed -i.bak "s|^${1}=.*|${1}=${2}|" .env
-  rm -f .env.bak
+  # Upsert : un `.env` d'un déploiement antérieur à l'ajout d'une variable
+  # (ex. OTEL_EXPORTER_OTLP_ENDPOINT, SP-19) n'a pas encore la ligne —
+  # `ensure_env_file` conserve ce `.env` tel quel (idempotent), donc un
+  # `sed` pur remplacement resterait un no-op silencieux dans ce cas
+  # (trouvé en revue finale, contre-exemple réel sur ce poste).
+  if grep -q "^${1}=" .env; then
+    sed -i.bak "s|^${1}=.*|${1}=${2}|" .env
+    rm -f .env.bak
+  else
+    printf '%s=%s\n' "${1}" "${2}" >>.env
+  fi
 }
 
 ensure_env_file
+
+configure_otel_export() {
+  # docker-compose.yml exporte inconditionnellement core/worker/cdc-worker
+  # vers otel-lgtm:4318 — sans le profil `observability` démarré, cet hôte
+  # n'existe pas et les trois services retentent l'export en boucle
+  # (bruit de log permanent, constaté en déploiement réel). Positionner
+  # l'endpoint seulement quand ce profil est sélectionné.
+  local enabled=false
+  for p in "${SELECTED_PROFILES[@]+"${SELECTED_PROFILES[@]}"}"; do
+    [ "$p" = "observability" ] && enabled=true
+  done
+  if [ "$enabled" = true ]; then
+    set_env_var OTEL_EXPORTER_OTLP_ENDPOINT "http://otel-lgtm:4318"
+  else
+    set_env_var OTEL_EXPORTER_OTLP_ENDPOINT ""
+  fi
+}
+
+configure_otel_export
 
 prompt_etl_engine() {
   echo ""
@@ -334,6 +362,39 @@ prompt_admin() {
     exit 1
   fi
 
+  echo "Synchronisation des URLs de redirection OIDC (idempotent, à chaque lancement)..."
+  # Keycloak n'importe un realm que s'il n'existe pas déjà en base
+  # (--import-realm n'écrase jamais un realm existant, vérifié
+  # empiriquement) : le fichier realm régénéré par ce script à chaque
+  # lancement (cf. `sed` plus haut sur GEOSTUDIO_PUBLIC_HOST) n'est donc
+  # JAMAIS relu après le tout premier boot. Si ce premier import s'est
+  # produit avec un hôte différent (vide, ancien domaine), les
+  # redirectUris du client restent périmés pour toujours sans ce
+  # correctif — réappliqué ici via l'API admin à chaque lancement.
+  local shell_client_id
+  shell_client_id="$($COMPOSE exec -T keycloak "$kc" get clients -r geostudio \
+      -q clientId=geostudio-shell --fields id 2>/dev/null \
+    | jq -r '.[0].id')"
+  if [ -z "$shell_client_id" ] || [ "$shell_client_id" = "null" ]; then
+    echo "✗ Client Keycloak 'geostudio-shell' introuvable dans le realm geostudio — impossible de synchroniser les URLs de redirection." >&2
+    exit 1
+  fi
+  $COMPOSE exec -T keycloak "$kc" update "clients/${shell_client_id}" -r geostudio \
+    -s "redirectUris=[\"https://${PUBLIC_HOST}/\",\"https://${PUBLIC_HOST}/*\"]" \
+    -s "webOrigins=[\"+\"]" \
+    >/dev/null
+  # post.logout.redirect.uris est un attribut imbriqué dont le nom contient
+  # des points — `-s attributes.post\.logout\.redirect\.uris=...` et la
+  # variante avec guillemets échouent SILENCIEUSEMENT (code 0, rien
+  # modifié, vérifié empiriquement contre un vrai Keycloak 24.0.5). Seul un
+  # corps JSON via `-f -` fonctionne ; kcadm fait un merge partiel côté
+  # serveur, donc un corps ne contenant que `attributes` ne touche à rien
+  # d'autre sur le client (vérifié : redirectUris/clientId/enabled
+  # préservés).
+  echo "{\"attributes\":{\"post.logout.redirect.uris\":\"https://${PUBLIC_HOST}/##https://${PUBLIC_HOST}/*\"}}" \
+    | $COMPOSE exec -T keycloak "$kc" update "clients/${shell_client_id}" -r geostudio -f - \
+    >/dev/null
+
   local admin_temp_password
   admin_temp_password="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24)"
 
@@ -374,7 +435,7 @@ launch_stack() {
   echo "Attente de la disponibilité du cœur..."
   # Ni curl ni wget ne sont présents dans l'image core (python:3.12-slim +
   # uvicorn — vérifié empiriquement, même écueil que kcadm.sh/Keycloak dans
-  # prompt_admin) : on interroge /me avec l'interpréteur Python déjà présent
+  # prompt_admin) : on interroge /v1/me avec l'interpréteur Python déjà présent
   # dans le conteneur, qui sert aussi bien à faire la requête qu'à distinguer
   # "erreur HTTP" (code renvoyé) de "pas de connexion encore" (000).
   local code="000"
@@ -382,7 +443,7 @@ launch_stack() {
     code="$($COMPOSE exec -T core python3 -c '
 import urllib.request, urllib.error
 try:
-    urllib.request.urlopen("http://localhost:8200/me", timeout=2)
+    urllib.request.urlopen("http://localhost:8200/v1/me", timeout=2)
     print(200)
 except urllib.error.HTTPError as e:
     print(e.code)

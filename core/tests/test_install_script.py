@@ -51,13 +51,30 @@ if [ "$1" = "compose" ]; then
             exit 0
             ;;
           get)
-            if grep -q "kcadm.sh create users" "$FAKE_BIN_LOG" 2>/dev/null; then
+            resource="$3"
+            if [ "$resource" = "clients" ]; then
+              if [ "${FAKE_KC_SHELL_CLIENT_MISSING:-0}" = "1" ]; then
+                echo "[]"
+              else
+                echo "[{\"id\":\"shell-client-fake-id\"}]"
+              fi
+            elif grep -q "kcadm.sh create users" "$FAKE_BIN_LOG" 2>/dev/null; then
               echo "[{\"id\":\"created-fake-id\"}]"
             elif [ -n "${FAKE_KC_EXISTING_USER_ID:-}" ]; then
               echo "[{\"id\":\"${FAKE_KC_EXISTING_USER_ID}\"}]"
             else
               echo "[]"
             fi
+            exit 0
+            ;;
+          update)
+            prev=""
+            for a in "$@"; do
+              if [ "$prev" = "-f" ] && [ "$a" = "-" ]; then
+                echo "STDIN_BODY: $(cat)" >> "$FAKE_BIN_LOG"
+              fi
+              prev="$a"
+            done
             exit 0
             ;;
           create)
@@ -104,7 +121,8 @@ if filt == ".[0].id // empty":
     value = first_id(data)
     print(value if value is not None else "")
 elif filt == ".[0].id":
-    print(first_id(data))
+    value = first_id(data)
+    print(value if value is not None else "null")
 else:
     sys.exit(f"fake jq: unsupported filter {filt!r}")
 """
@@ -261,3 +279,147 @@ def test_install_leaves_the_core_etl_engine_disabled_by_default_when_unset(
     assert result.returncode == 0, result.stderr
     env_lines = (install_workdir / ".env").read_text().splitlines()
     assert "CORE_ETL_ENABLED=false" in env_lines
+
+
+def test_install_refreshes_the_shell_client_redirect_uris_every_run(install_workdir, fake_bin_path):
+    """§1.5 de la spec 2026-09-19 : le realm Keycloak n'est importé qu'une
+    seule fois par Keycloak lui-même (`--import-realm` n'écrase jamais un
+    realm déjà existant, vérifié empiriquement en session) — si le tout
+    premier import s'est produit avec un GEOSTUDIO_PUBLIC_HOST différent
+    (vide, ancien domaine...), les redirectUris restent périmés pour
+    toujours sans ce correctif. install.sh doit donc les réappliquer via
+    `kcadm.sh update` à CHAQUE lancement, pas seulement à la création."""
+    result, log = _run_install(install_workdir, fake_bin_path)
+
+    assert result.returncode == 0, result.stderr
+    assert "get clients -r geostudio -q clientId=geostudio-shell" in log
+    assert (
+        "update clients/shell-client-fake-id -r geostudio "
+        '-s redirectUris=["https://geostudio-test.example/",'
+        '"https://geostudio-test.example/*"] -s webOrigins=["+"]'
+    ) in log
+
+
+def test_install_refreshes_redirect_uris_even_when_admin_account_already_exists(
+    install_workdir, fake_bin_path
+):
+    """Le rafraîchissement ne doit pas dépendre de la branche "création de
+    compte" de prompt_admin — il doit aussi jouer quand le compte admin
+    existe déjà (relance normale d'un déploiement stable)."""
+    result, log = _run_install(
+        install_workdir,
+        fake_bin_path,
+        extra_env={"FAKE_KC_EXISTING_USER_ID": "existing-user-42"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (
+        "update clients/shell-client-fake-id -r geostudio "
+        '-s redirectUris=["https://geostudio-test.example/",'
+        '"https://geostudio-test.example/*"] -s webOrigins=["+"]'
+    ) in log
+
+
+def test_install_fails_explicitly_when_the_shell_client_is_missing(install_workdir, fake_bin_path):
+    """Si `geostudio-shell` n'existe pas dans le realm, jq renvoie `null`
+    (jq -r '.[0].id' sur une liste vide) — sans garde, la commande update
+    suivante deviendrait `update clients/null`, qui échoue côté Keycloak
+    réel de façon silencieuse pour ce script (code de sortie non vérifié).
+    install.sh doit détecter ce cas et échouer explicitement AVANT de
+    tenter le moindre update."""
+    result, log = _run_install(
+        install_workdir,
+        fake_bin_path,
+        extra_env={"FAKE_KC_SHELL_CLIENT_MISSING": "1"},
+    )
+
+    assert result.returncode != 0
+    assert "clients/null" not in log
+    assert "update clients/shell-client-fake-id" not in log
+
+
+def test_install_refreshes_post_logout_redirect_uris_every_run(install_workdir, fake_bin_path):
+    """Même mal que redirectUris (§1.5) mais sur post.logout.redirect.uris,
+    utilisé par shell/src/auth/AuthProvider.tsx (post_logout_redirect_uri) —
+    sans ce rafraîchissement, la déconnexion resterait cassée sur tout
+    déploiement où PUBLIC_HOST diffère du tout premier import du realm."""
+    result, log = _run_install(install_workdir, fake_bin_path)
+
+    assert result.returncode == 0, result.stderr
+    assert (
+        'STDIN_BODY: {"attributes":{"post.logout.redirect.uris":'
+        '"https://geostudio-test.example/##https://geostudio-test.example/*"}}'
+    ) in log
+
+
+def test_install_enables_otel_export_when_observability_profile_is_selected(
+    install_workdir, fake_bin_path
+):
+    """§1.7 de la spec 2026-09-19 : core/worker/cdc-worker exportent vers
+    otel-lgtm inconditionnellement dans docker-compose.yml. Sans le profil
+    `observability` démarré, ça boucle en échec réseau indéfiniment
+    (`Failed to resolve 'otel-lgtm'`, constaté en session, plusieurs
+    lignes de log par minute). install.sh doit positionner l'endpoint
+    seulement quand ce profil est sélectionné."""
+    result, _ = _run_install(
+        install_workdir,
+        fake_bin_path,
+        extra_env={
+            "INSTALL_PROFILES": "observability",
+            "FAKE_COMPOSE_PROFILES": "observability\netl",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    env_lines = (install_workdir / ".env").read_text().splitlines()
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318" in env_lines
+
+
+def test_install_disables_otel_export_when_observability_profile_is_not_selected(
+    install_workdir, fake_bin_path
+):
+    result, _ = _run_install(
+        install_workdir,
+        fake_bin_path,
+        extra_env={
+            "INSTALL_PROFILES": "",
+            "FAKE_COMPOSE_PROFILES": "observability\netl",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    env_lines = (install_workdir / ".env").read_text().splitlines()
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT=" in env_lines
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318" not in env_lines
+
+
+def test_install_adds_a_missing_env_var_instead_of_silently_skipping_it(
+    install_workdir, fake_bin_path
+):
+    """set_env_var faisait un `sed` pur remplacement — no-op silencieux si la
+    ligne n'existe pas encore dans `.env`. `ensure_env_file` conserve un
+    `.env` existant tel quel (idempotent), donc un déploiement antérieur à
+    l'ajout d'une variable (ex. OTEL_EXPORTER_OTLP_ENDPOINT) ne l'obtenait
+    jamais en relançant install.sh, même avec le bon profil sélectionné —
+    trouvé en revue finale, reproduit ici en retirant la ligne du `.env`
+    avant de lancer l'installeur."""
+    env_path = install_workdir / ".env"
+    lines = [
+        line
+        for line in env_path.read_text().splitlines()
+        if not line.startswith("OTEL_EXPORTER_OTLP_ENDPOINT=")
+    ]
+    env_path.write_text("\n".join(lines) + "\n")
+
+    result, _ = _run_install(
+        install_workdir,
+        fake_bin_path,
+        extra_env={
+            "INSTALL_PROFILES": "observability",
+            "FAKE_COMPOSE_PROFILES": "observability\netl",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    env_lines = env_path.read_text().splitlines()
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318" in env_lines
