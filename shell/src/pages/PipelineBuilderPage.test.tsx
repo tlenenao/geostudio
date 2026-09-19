@@ -532,3 +532,20 @@ test("persisted mode: une config qui échoue à charger affiche une alerte et n'
   expect(screen.queryByText("reader.collection")).not.toBeInTheDocument();
   expect(savePipelineConfig).not.toHaveBeenCalled();
 });
+
+test("unsaved mode: pressing / focuses the palette search field", async () => {
+  const user = userEvent.setup();
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  await user.keyboard("/");
+  expect(screen.getByRole("searchbox", { name: "Rechercher une opération" })).toHaveFocus();
+});
+
+test("unsaved mode: pressing / while typing in a text field does not steal focus", async () => {
+  const user = userEvent.setup();
+  renderPage(null);
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  await user.click(screen.getByRole("searchbox", { name: "Rechercher une opération" }));
+  await user.type(screen.getByRole("searchbox", { name: "Rechercher une opération" }), "a/b");
+  expect(screen.getByRole("searchbox", { name: "Rechercher une opération" })).toHaveValue("a/b");
+});

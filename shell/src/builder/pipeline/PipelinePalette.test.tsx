@@ -105,3 +105,17 @@ test("op entries with a paramsSchema.description get it as a hover title", async
     .closest("[draggable]") as HTMLElement;
   expect(entryWithoutDescription).not.toHaveAttribute("title");
 });
+
+test("typing in the search field filters the op list by id", async () => {
+  const userEventInstance = await import("@testing-library/user-event").then((m) =>
+    m.default.setup(),
+  );
+  renderPalette();
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  await userEventInstance.type(
+    screen.getByRole("searchbox", { name: "Rechercher une opération" }),
+    "filter",
+  );
+  expect(screen.getByText("transform.filter")).toBeInTheDocument();
+  expect(screen.queryByText("reader.collection")).not.toBeInTheDocument();
+});

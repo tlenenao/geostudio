@@ -1055,6 +1055,8 @@ export const fr = {
   "pipelinePalette.sectionSources": "Sources",
   "pipelinePalette.sectionTransforms": "Transforms",
   "pipelinePalette.sectionWriters": "Écritures",
+  "pipelinePalette.searchAria": "Rechercher une opération",
+  "pipelinePalette.searchPlaceholder": "Rechercher…",
 
   // PipelinePreviewPanel (builder/pipeline)
   "pipelinePreview.loading": "Chargement de l'aperçu…",

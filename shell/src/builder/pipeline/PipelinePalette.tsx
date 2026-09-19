@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useState } from "react";
 import { usePipelineOps } from "../../api/hooks";
 import type { PipelineNodeKind } from "../../api/types";
+import { Input } from "../../ui/kit/Input";
 import { t } from "../../i18n";
 
 export const PIPELINE_OP_DND_TYPE = "application/x-geostudio-pipeline-op";
+export const PIPELINE_PALETTE_SEARCH_ID = "pipeline-palette-search";
 
 const SECTION_LABEL: Record<PipelineNodeKind, string> = {
   reader: t("pipelinePalette.sectionSources"),
@@ -21,11 +24,24 @@ const SECTION_LABEL: Record<PipelineNodeKind, string> = {
 export function PipelinePalette({ onAdd }: { onAdd?: (op: string) => void }) {
   const opsQuery = usePipelineOps();
   const catalog = opsQuery.data ?? {};
+  const [query, setQuery] = useState("");
+  const normalizedQuery = query.trim().toLowerCase();
   const byKind: Record<PipelineNodeKind, string[]> = { reader: [], transform: [], writer: [] };
-  for (const [op, entry] of Object.entries(catalog)) byKind[entry.kind].push(op);
+  for (const [op, entry] of Object.entries(catalog)) {
+    if (normalizedQuery && !op.toLowerCase().includes(normalizedQuery)) continue;
+    byKind[entry.kind].push(op);
+  }
 
   return (
     <div className="flex flex-col gap-3 p-2 text-xs">
+      <Input
+        id={PIPELINE_PALETTE_SEARCH_ID}
+        role="searchbox"
+        aria-label={t("pipelinePalette.searchAria")}
+        placeholder={t("pipelinePalette.searchPlaceholder")}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
       {(["reader", "transform", "writer"] as const).map((kind) => (
         <div key={kind}>
           <h3 className="mb-1 font-semibold text-ink-2">{SECTION_LABEL[kind]}</h3>

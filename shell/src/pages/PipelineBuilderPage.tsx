@@ -24,7 +24,11 @@ import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { useUndoableDraft } from "../builder/useUndoableDraft";
 import { PipelineCanvas } from "../builder/pipeline/PipelineCanvas";
 import { PipelineNodeInspector } from "../builder/pipeline/PipelineNodeInspector";
-import { PipelinePalette, PIPELINE_OP_DND_TYPE } from "../builder/pipeline/PipelinePalette";
+import {
+  PipelinePalette,
+  PIPELINE_OP_DND_TYPE,
+  PIPELINE_PALETTE_SEARCH_ID,
+} from "../builder/pipeline/PipelinePalette";
 import { PipelinePreviewPanel } from "../builder/pipeline/PipelinePreviewPanel";
 import { PipelineRunPanel } from "../builder/pipeline/PipelineRunPanel";
 import { PipelineScheduleEditor } from "../builder/pipeline/PipelineScheduleEditor";
@@ -97,6 +101,22 @@ export function PipelineBuilderPage({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [undo, redo]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "/") return;
+      const target = document.activeElement;
+      const isTextField =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+      if (isTextField) return;
+      e.preventDefault();
+      document.getElementById(PIPELINE_PALETTE_SEARCH_ID)?.focus();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   if (pk !== null && (configQuery.isLoading || itemQuery.isLoading))
     return <p role="status">{t("common.loading")}</p>;
