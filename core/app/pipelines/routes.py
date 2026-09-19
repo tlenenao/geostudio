@@ -5,7 +5,9 @@ par requête : cf. design §3.2 et ce plan, Global Constraints)."""
 
 import os
 from collections.abc import Callable
+from datetime import UTC, datetime
 
+import croniter
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -60,6 +62,10 @@ class PipelinePreviewRequest(BaseModel):
     pipeline: PipelinePayload | None = None
 
 
+class NextRunResponse(BaseModel):
+    nextRun: str
+
+
 def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
     return default_task_deferrer()
 
@@ -72,6 +78,17 @@ def get_pipeline_ops() -> dict:
 @router.get("/pipelines/ops/qgis-algorithms")
 def get_qgis_algorithms() -> dict:
     return QGIS_ALGORITHMS
+
+
+@router.get("/pipelines/next-run", response_model=NextRunResponse)
+def get_pipeline_next_run(
+    cron: str = Query(...),
+    user: User = Depends(get_current_user),
+) -> NextRunResponse:
+    if not croniter.croniter.is_valid(cron):
+        raise HTTPException(status_code=400, detail=f"invalid cron expression: {cron!r}")
+    next_tick = croniter.croniter(cron, datetime.now(UTC)).get_next(datetime)
+    return NextRunResponse(nextRun=next_tick.isoformat())
 
 
 @router.post("/pipelines/{item_id}/run", response_model=RunResponse, status_code=202)

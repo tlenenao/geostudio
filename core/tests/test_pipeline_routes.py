@@ -618,3 +618,26 @@ def test_get_qgis_algorithms_returns_full_allowlist(monkeypatch):
 def test_get_qgis_algorithms_absent_when_etl_disabled(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=False)
     assert client.get("/v1/pipelines/ops/qgis-algorithms").status_code == 404
+
+
+def test_next_run_route_computes_the_next_occurrence(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    response = client.get("/v1/pipelines/next-run?cron=0+2+*+*+*")
+    assert response.status_code == 200
+    body = response.json()
+    assert "nextRun" in body
+    from datetime import UTC, datetime
+
+    next_run = datetime.fromisoformat(body["nextRun"])
+    assert next_run > datetime.now(UTC)
+
+
+def test_next_run_route_rejects_an_invalid_cron_expression(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=True)
+    response = client.get("/v1/pipelines/next-run?cron=not-a-cron")
+    assert response.status_code == 400
+
+
+def test_next_run_route_absent_when_etl_disabled(monkeypatch):
+    client = _make_app(monkeypatch, etl_enabled=False)
+    assert client.get("/v1/pipelines/next-run?cron=0+2+*+*+*").status_code == 404
