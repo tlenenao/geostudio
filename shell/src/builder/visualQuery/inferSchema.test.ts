@@ -73,6 +73,15 @@ describe("inferOutputColumns", () => {
     expect(result.columns.map((c) => c.name)).not.toContain("brut");
   });
 
+  test("colonne de type list est exclue silencieusement", () => {
+    const withList: CollectionSchema = {
+      ...BASE,
+      fields: [...BASE.fields, { name: "tags", type: "list", required: false, itemType: "string" }],
+    };
+    const result = inferOutputColumns(withList, null, null, null);
+    expect(result.columns.map((c) => c.name)).not.toContain("tags");
+  });
+
   test("infère le type de sortie des quatre nouvelles fonctions", () => {
     const schema: CollectionSchema = {
       fields: [

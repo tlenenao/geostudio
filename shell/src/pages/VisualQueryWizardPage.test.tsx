@@ -333,6 +333,23 @@ describe("VisualQueryWizardPage", () => {
     expect(within(columnSelect).queryByRole("option", { name: "photos" })).not.toBeInTheDocument();
   });
 
+  test("Filtrer ne propose jamais un champ list comme colonne", async () => {
+    renderWizard({
+      getCollectionSchema: () =>
+        Promise.resolve({
+          ...BASE_SCHEMA,
+          fields: [...BASE_SCHEMA.fields, { name: "tags", type: "list", required: false }],
+        }),
+    });
+    await screen.findByRole("option", { name: "Incidents" });
+    await userEvent.selectOptions(screen.getByLabelText("Collection de base"), "incidents");
+    await screen.findByText("Filtrer");
+    await userEvent.click(screen.getByRole("button", { name: "Ajouter un filtre" }));
+    const columnSelect = await screen.findByLabelText("Colonne du filtre 1");
+    expect(screen.getByRole("option", { name: "commune" })).toBeInTheDocument();
+    expect(within(columnSelect).queryByRole("option", { name: "tags" })).not.toBeInTheDocument();
+  });
+
   test("affiche une erreur si le provisionnement échoue, sans créer le dataset ni le pipeline", async () => {
     const client = renderWizard({
       createEmptyCollection: vi.fn().mockRejectedValue(new Error("quota dépassé")),
