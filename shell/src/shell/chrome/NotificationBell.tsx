@@ -13,7 +13,7 @@ import { Badge } from "../../ui/kit/Badge";
 import { Popover } from "../../ui/kit/Popover";
 import { t } from "../../i18n";
 import type { MessageKey } from "../../i18n";
-import { useOpenItem } from "../routes";
+import { useOpenItem } from "../useOpenItem";
 
 const KIND_LABEL_KEYS: Record<NotificationSummary["kind"], MessageKey> = {
   ingestion: "notifications.kindIngestion",
