@@ -556,6 +556,12 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   backlog : durcissements exchange.py/parquet_writer.py, rattachement de
   preuve useOpenItem.ts, variante liste/array de bout en bout sur
   FieldType (collections). GAP-83 clos.
+- **Page Paramètres fusionnée avec Administration** — remplace l'écran
+  `/settings` « bientôt disponible » par une vraie page (profil,
+  préférence de notifications, lien de compte Keycloak) ; fusionne la
+  navigation Administration/Paramètres en un seul point d'entrée
+  toujours visible (`SettingsNav`), visibilité des 7 destinations admin
+  inchangée.
 
 ### Conventions tranchées (2026-09-01)
 
