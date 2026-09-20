@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// L'état des neuf domaines du produit, dérivé d'une source unique : le profil
+// L'état des huit domaines du produit, dérivé d'une source unique : le profil
 // servi par `GET /me` (privilèges du rôle + capacités du déploiement).
 //
 // Doctrine (spec §6.2) : un privilège manquant MASQUE, une capacité coupée
