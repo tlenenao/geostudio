@@ -489,3 +489,18 @@ class TransformDetectChangesParams(BaseModel):
     withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
     keyColumns: list[str]
     statusColumn: str
+
+
+class TransformMergeChildrenParams(BaseModel):
+    """Rattache à chaque ligne principale (parent) la liste des lignes correspondantes de
+    l'entrée secondaire (enfants), regroupées en une colonne LIST de STRUCT — schéma des
+    enfants résolu à l'exécution. `parentOn`/`childOn` peuvent désigner des colonnes de noms
+    différents (ex. `id` côté parent, `parentId` côté enfant) : contrairement à
+    `transform.join` (clause SQL `USING`, qui impose un nom identique des deux côtés), cette
+    jointure s'écrit `t.col = o.col` et n'a pas cette contrainte. Un parent sans enfant
+    correspondant reçoit une liste vide (`[]`), jamais `[{...: NULL}]`."""
+
+    withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
+    parentOn: str
+    childOn: str
+    childrenColumn: str

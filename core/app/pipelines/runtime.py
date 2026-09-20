@@ -66,6 +66,7 @@ from app.pipelines.ops.schemas import (
     TransformH3AggregateParams,
     TransformIntersectionParams,
     TransformJoinParams,
+    TransformMergeChildrenParams,
     TransformMergeParams,
     TransformQgisParams,
     WriterCollectionParams,
@@ -84,6 +85,7 @@ _JOIN_PARAM_MODELS: dict[str, type] = {
     "transform.countWithin": TransformCountWithinParams,
     "transform.merge": TransformMergeParams,
     "transform.detectChanges": TransformDetectChangesParams,
+    "transform.mergeChildren": TransformMergeChildrenParams,
 }
 
 

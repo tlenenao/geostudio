@@ -32,6 +32,7 @@ from app.pipelines.ops.schemas import (
     TransformH3AggregateParams,
     TransformIntersectionParams,
     TransformJoinParams,
+    TransformMergeChildrenParams,
     TransformMergeParams,
     TransformQgisParams,
     TransformReprojectAttributeParams,
@@ -655,6 +656,34 @@ def _compile_detect_changes(
     return (
         f"SELECT {key_select}, ({status_expr}) AS {_qi(p.statusColumn)} "
         f"FROM {_qi(input_view)} t FULL OUTER JOIN {_qi(join_view)} o ON {key_join}"
+    )
+
+
+def _compile_merge_children(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
+) -> str:
+    p = TransformMergeChildrenParams.model_validate(params)
+    assert join_view is not None, "transform.mergeChildren requires join_view"
+    assert join_columns is not None
+    child_cols = [c for c in join_columns if c != p.childOn]
+    struct_fields = ", ".join(f"{_qi(c)} := o.{_qi(c)}" for c in child_cols)
+    # FILTER + COALESCE(..., []) : sans ça, un LEFT JOIN sans correspondance produit une
+    # ligne o.* toute NULL que `list(struct_pack(...))` agrège en [{...: NULL}] au lieu
+    # d'une liste vide — vérifié empiriquement contre un DuckDB réel (v1.5.5).
+    children_expr = (
+        f"COALESCE(list(struct_pack({struct_fields})) "
+        f"FILTER (WHERE o.{_qi(p.childOn)} IS NOT NULL), [])"
+    )
+    return (
+        f"SELECT t.*, {children_expr} AS {_qi(p.childrenColumn)} "
+        f"FROM {_qi(input_view)} t LEFT JOIN {_qi(join_view)} o "
+        f"ON t.{_qi(p.parentOn)} = o.{_qi(p.childOn)} GROUP BY ALL"
     )
 
 

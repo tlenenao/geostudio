@@ -470,6 +470,76 @@ def test_compile_detect_changes_without_join_view_raises():
         )
 
 
+def test_compile_merge_children_packs_matching_rows_into_a_struct_list(conn):
+    conn.execute("CREATE TABLE parents (id INTEGER, name VARCHAR)")
+    conn.execute("INSERT INTO parents VALUES (1, 'A'), (2, 'B')")
+    conn.execute("CREATE TABLE children (parentId INTEGER, label VARCHAR)")
+    conn.execute("INSERT INTO children VALUES (1, 'c1'), (1, 'c2'), (2, 'c3')")
+    sql = compile_transform_sql(
+        "transform.mergeChildren",
+        {"parentOn": "id", "childOn": "parentId", "childrenColumn": "children"},
+        input_view="parents",
+        join_view="children",
+        input_columns=["id", "name"],
+        join_columns=["parentId", "label"],
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn.execute("SELECT id, name, children FROM out WHERE id = 1").fetchone()
+    assert row[0:2] == (1, "A")
+    assert len(row[2]) == 2
+    assert {c["label"] for c in row[2]} == {"c1", "c2"}
+
+
+def test_compile_merge_children_preserves_multiple_parent_columns(conn):
+    conn.execute("CREATE TABLE parents (id INTEGER, name VARCHAR, category VARCHAR)")
+    conn.execute("INSERT INTO parents VALUES (1, 'A', 'x'), (2, 'B', 'y')")
+    conn.execute("CREATE TABLE children (parentId INTEGER, label VARCHAR, qty INTEGER)")
+    conn.execute("INSERT INTO children VALUES (1, 'c1', 10), (1, 'c2', 20), (2, 'c3', 30)")
+    sql = compile_transform_sql(
+        "transform.mergeChildren",
+        {"parentOn": "id", "childOn": "parentId", "childrenColumn": "children"},
+        input_view="parents",
+        join_view="children",
+        input_columns=["id", "name", "category"],
+        join_columns=["parentId", "label", "qty"],
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = {
+        r[0]: r for r in conn.execute("SELECT id, name, category, children FROM out").fetchall()
+    }
+    assert rows[1][0:3] == (1, "A", "x")
+    assert len(rows[1][3]) == 2
+    assert rows[2][0:3] == (2, "B", "y")
+    assert len(rows[2][3]) == 1
+
+
+def test_compile_merge_children_yields_empty_list_for_unmatched_parents(conn):
+    conn.execute("CREATE TABLE parents (id INTEGER, name VARCHAR)")
+    conn.execute("INSERT INTO parents VALUES (1, 'A'), (2, 'B'), (3, 'C')")
+    conn.execute("CREATE TABLE children (parentId INTEGER, label VARCHAR)")
+    conn.execute("INSERT INTO children VALUES (1, 'c1')")
+    sql = compile_transform_sql(
+        "transform.mergeChildren",
+        {"parentOn": "id", "childOn": "parentId", "childrenColumn": "children"},
+        input_view="parents",
+        join_view="children",
+        input_columns=["id", "name"],
+        join_columns=["parentId", "label"],
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn.execute("SELECT children FROM out WHERE id = 3").fetchone()
+    assert row[0] == []
+
+
+def test_compile_merge_children_without_join_view_raises():
+    with pytest.raises(AssertionError):
+        compile_transform_sql(
+            "transform.mergeChildren",
+            {"parentOn": "id", "childOn": "parentId", "childrenColumn": "children"},
+            input_view="parents",
+        )
+
+
 def test_compile_merge_without_join_view_raises():
     with pytest.raises(AssertionError):
         compile_transform_sql("transform.merge", {}, input_view="base")
