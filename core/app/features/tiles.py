@@ -79,7 +79,19 @@ def build_mvt_sql(quote: Callable[[str], str], info: TableInfo) -> str:
     assert info.geometry_column is not None, "build_mvt_sql exige une géométrie"
     table = f"public.{quote(info.table_name)}"
     geom = f"t.{quote(info.geometry_column)}"
-    props = ", ".join(f"t.{quote(name)} AS {quote(name)}" for name in mvt_property_columns(info))
+    by_name = {c.name: c for c in info.columns}
+
+    def _projection(name: str) -> str:
+        # ST_AsMVT n'accepte que des propriétés scalaires : une colonne "list"
+        # (text[]/int[]... introspecté) doit être sérialisée en JSON plutôt que
+        # projetée en array brut, que ST_AsMVT ne sait pas encoder.
+        ident = quote(name)
+        col = by_name.get(name)
+        if col is not None and col.type == "list":
+            return f"to_jsonb(t.{ident})::text AS {ident}"
+        return f"t.{ident} AS {ident}"
+
+    props = ", ".join(_projection(name) for name in mvt_property_columns(info))
     props_clause = f", {props}" if props else ""
     return (
         "SELECT ST_AsMVT(tile, :layer, :extent, 'geom', :fid) FROM ("
