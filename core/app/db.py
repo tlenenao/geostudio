@@ -47,7 +47,23 @@ def make_engine(url: str) -> Engine:
             if _execute_lock.locked():
                 _execute_lock.release()
     else:
-        connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
+        connect_args: dict[str, object] = {}
+        if url.startswith("sqlite"):
+            connect_args["check_same_thread"] = False
+        elif url.startswith("postgresql"):
+            # PgBouncer runs in transaction pooling mode (docker-compose.yml,
+            # POOL_MODE: transaction): a client's logical connection can be
+            # handed a different physical backend connection between
+            # statements. psycopg3 autoprepares a query as a named server-side
+            # statement ("_pg3_N") after `prepare_threshold` uses of it
+            # (default 5) — the name collides as soon as it's already
+            # prepared on whichever backend connection this client gets
+            # handed next, raising psycopg.errors.DuplicatePreparedStatement.
+            # Disabling autoprepare is what psycopg's own docs recommend for
+            # transaction-mode poolers (found in production: every request
+            # calls get_or_create_default_tenant(), hitting the threshold
+            # almost immediately).
+            connect_args["prepare_threshold"] = None
         engine = create_engine(url, connect_args=connect_args)
 
     if engine.dialect.name == "sqlite":

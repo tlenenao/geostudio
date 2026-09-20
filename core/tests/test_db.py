@@ -1,8 +1,36 @@
 # SPDX-License-Identifier: Apache-2.0
 from sqlalchemy import inspect
 
+import app.db as db_module
 from app.db import init_db, make_engine, make_session_factory
 from app.tenants.models import Tenant
+
+
+def test_make_engine_disables_psycopg_autoprepare_on_postgres(monkeypatch):
+    """PgBouncer runs in transaction pooling mode (docker-compose.yml): a
+    client's logical connection can be handed a different physical backend
+    connection between statements. Without prepare_threshold=None, psycopg3
+    autoprepares frequently-run queries (e.g. get_or_create_default_tenant,
+    called on every authenticated request) as named server-side statements
+    that collide across backends — psycopg.errors.DuplicatePreparedStatement
+    in production. Reproduced live on the Proxmox deployment 2026-09-20."""
+    captured = {}
+
+    class _StubDialect:
+        name = "postgresql"
+
+    class _StubEngine:
+        dialect = _StubDialect()
+
+    def fake_create_engine(url, **kwargs):
+        captured["connect_args"] = kwargs.get("connect_args")
+        return _StubEngine()
+
+    monkeypatch.setattr(db_module, "create_engine", fake_create_engine)
+
+    make_engine("postgresql+psycopg://user:pass@unreachable-host:1/db")
+
+    assert captured["connect_args"] == {"prepare_threshold": None}
 
 
 def test_init_db_creates_all_tables_on_sqlite():
