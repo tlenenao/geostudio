@@ -418,3 +418,46 @@ def test_transform_join_with_only_secondary_edge_and_no_primary_edge_is_rejected
     response = env.post("/v1/configs", json=body)
     assert response.status_code == 422
     assert "requires a primary input edge" in response.json()["detail"]
+
+
+def test_transform_merge_children_via_secondary_edge_saves(env):
+    # Régression Task 8 : transform.mergeChildren (accepts_secondary_input) manquait
+    # de `_COLLECTION_PARAM_FIELD` — `_validate_node` faisait `getattr(params, None)`,
+    # un TypeError non catché (500) au lieu d'un 422/201 propre. Toute config avec ce
+    # nœud plantait à la sauvegarde, secondEdge ou withCollectionId indifféremment.
+    body = _pipeline_body_binary_op(
+        "transform.mergeChildren",
+        {"parentOn": "id", "childOn": "parentId", "childrenColumn": "children"},
+        nodes_extra=[
+            {
+                "id": "r2",
+                "kind": "reader",
+                "op": "reader.collection",
+                "params": {"collectionId": "readable"},
+            }
+        ],
+        edges_extra=[{"id": "e3", "from": "r2", "to": "t1", "role": "secondary"}],
+    )
+    response = env.post("/v1/configs", json=body)
+    assert response.status_code == 201
+
+
+def test_transform_detect_changes_via_secondary_edge_saves(env):
+    # Même défaut, même correctif, pour transform.detectChanges (Task 7) : trouvé en
+    # implémentant Task 8, jamais exercé par un test jusqu'ici (aucun test ne postait
+    # de config avec ce nœud via /v1/configs).
+    body = _pipeline_body_binary_op(
+        "transform.detectChanges",
+        {"keyColumns": ["id"], "statusColumn": "status"},
+        nodes_extra=[
+            {
+                "id": "r2",
+                "kind": "reader",
+                "op": "reader.collection",
+                "params": {"collectionId": "readable"},
+            }
+        ],
+        edges_extra=[{"id": "e3", "from": "r2", "to": "t1", "role": "secondary"}],
+    )
+    response = env.post("/v1/configs", json=body)
+    assert response.status_code == 201
