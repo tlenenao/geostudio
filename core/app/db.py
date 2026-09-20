@@ -32,6 +32,31 @@ def make_engine(url: str) -> Engine:
         # (the GIL-releasing C operation where two threads' statements can
         # interleave on the shared connection) keeps that window to
         # microseconds instead of a whole request.
+        #
+        # Known residual (mesuré 2026-09-20, CI dev cassée) : ce verrou ne
+        # couvre que `execute()`, pas la lecture des lignes qui suit
+        # (`cursor.fetchall()`/matérialisation ORM), qui reste hors verrou.
+        # Deux effets distincts en découlent :
+        # 1. TOCTOU applicatif (get_or_create_default_tenant/
+        #    ensure_built_in_roles/get_or_create_user lisent « rien
+        #    n'existe » avant qu'une requête concurrente n'ait committé le
+        #    sien → IntegrityError sur une contrainte unique) — CORRIGÉ
+        #    (SAVEPOINT + retry sur IntegrityError dans les trois
+        #    fonctions, app/tenants/repository.py et app/roles/
+        #    repository.py et app/users/repository.py).
+        # 2. Corruption de ligne au niveau du curseur C (deux threads OS
+        #    matérialisant des lignes sur le même curseur partagé en
+        #    même temps → une ligne `None` au lieu d'un ORM object,
+        #    `AttributeError`/`IndexError` selon le point de chute) — PAS
+        #    corrigé : mesuré à ~2-3 % des exécutions de
+        #    test_synchronous_provider_call_does_not_block_the_event_loop
+        #    sur 100 reruns, malgré (1) fermé. Fermer ceci demanderait
+        #    d'élargir le verrou à la lecture des lignes (pas seulement à
+        #    l'exécution), un changement de portée dépôt-large volontairement
+        #    non fait en session (décision explicite, cf. historique
+        #    d'exécution) — artefact du harnais de test (StaticPool +
+        #    SQLite en mémoire), jamais reproductible en prod (Postgres via
+        #    PgBouncer, connexions réellement isolées).
         _execute_lock = threading.Lock()
 
         @event.listens_for(engine, "before_cursor_execute")

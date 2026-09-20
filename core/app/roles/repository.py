@@ -3,11 +3,21 @@ import uuid
 from collections.abc import Sequence
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.roles.models import Role
 from app.roles.privileges import BUILT_IN_ROLE_NAMES, BUILT_IN_ROLE_PRIVILEGES, PRIVILEGE_METADATA
 from app.users.models import User
+
+
+def _existing_built_in_roles(session: Session, *, tenant_id: str) -> dict[str, Role]:
+    return {
+        role.slug: role
+        for role in session.scalars(
+            select(Role).where(Role.tenant_id == tenant_id, Role.is_built_in.is_(True))
+        ).all()
+    }
 
 
 def ensure_built_in_roles(session: Session, *, tenant_id: str) -> dict[str, Role]:
@@ -21,12 +31,8 @@ def ensure_built_in_roles(session: Session, *, tenant_id: str) -> dict[str, Role
     prédéfini dans une future release atteigne les tenants existants — sans
     elle, un rôle prédéfini déjà créé reste figé à jamais (aucun PATCH
     possible sur un rôle is_built_in)."""
-    existing = {
-        role.slug: role
-        for role in session.scalars(
-            select(Role).where(Role.tenant_id == tenant_id, Role.is_built_in.is_(True))
-        ).all()
-    }
+    existing = _existing_built_in_roles(session, tenant_id=tenant_id)
+    created = []
     for slug, privileges in BUILT_IN_ROLE_PRIVILEGES.items():
         if slug in existing:
             role = existing[slug]
@@ -41,9 +47,36 @@ def ensure_built_in_roles(session: Session, *, tenant_id: str) -> dict[str, Role
             is_built_in=True,
             privileges=list(privileges),
         )
-        session.add(role)
+        created.append(role)
         existing[slug] = role
-    session.flush()
+    if not created:
+        session.flush()
+        return existing
+    try:
+        # Même course TOCTOU que get_or_create_default_tenant (voir son
+        # commentaire) : deux requêtes concurrentes pour le même tenant tout
+        # juste créé peuvent toutes deux lire « aucun rôle » avant que l'une
+        # n'ait committé les siens — UNIQUE (tenant_id, slug). SAVEPOINT borne
+        # le rollback aux seuls rôles perdants de CETTE requête.
+        with session.begin_nested():
+            for role in created:
+                session.add(role)
+            session.flush()
+    except IntegrityError:
+        for role in created:
+            session.expunge(role)
+        existing = _existing_built_in_roles(session, tenant_id=tenant_id)
+        for slug, privileges in BUILT_IN_ROLE_PRIVILEGES.items():
+            if slug not in existing:
+                # La requête concurrente a perdu la course sur CE rôle précis
+                # (rare : elle a créé certains slugs, pas tous) — rien d'autre
+                # à faire ici que de laisser remonter, `get_or_create_user`
+                # n'a pas de meilleure réponse à donner qu'un 500 retryable.
+                raise
+            role = existing[slug]
+            role.name = BUILT_IN_ROLE_NAMES[slug]
+            role.privileges = list(privileges)
+        session.flush()
     return existing
 
 
