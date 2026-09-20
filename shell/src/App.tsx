@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as ToastPrimitive from "@radix-ui/react-toast";
 import { loadConfig } from "./config";
+import { ConfigProvider } from "./ConfigContext";
 import { AuthProvider } from "./auth/AuthProvider";
 import { useAuth } from "./auth/useAuth";
 import { buildExportAwareToken } from "./auth/exportAwareToken";
@@ -47,7 +48,9 @@ export default function App() {
         <AppErrorBoundary>
           <AuthProvider config={config}>
             <QueryClientProvider client={queryClient}>
-              <AppShell />
+              <ConfigProvider config={config}>
+                <AppShell />
+              </ConfigProvider>
             </QueryClientProvider>
           </AuthProvider>
         </AppErrorBoundary>
