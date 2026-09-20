@@ -386,6 +386,11 @@ class TransformBulkRenameAttributesParams(BaseModel):
     replacement: str
 
 
+class TransformScanSchemaParams(BaseModel):
+    """Retourne une ligne par colonne de l'entrée (columnName, columnType) — méta-introspection
+    du schéma, sans transformation ligne à ligne."""
+
+
 class ReaderFileParams(BaseModel):
     """reader.file (design desktop-etl §3) : chemin local absolu, lu via
     ST_Read() (DuckDB spatial/GDAL) — jamais une collection. srid optionnel :

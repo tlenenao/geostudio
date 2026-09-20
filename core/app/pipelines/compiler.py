@@ -35,6 +35,7 @@ from app.pipelines.ops.schemas import (
     TransformRotateGeometryParams,
     TransformRoundCoordinatesParams,
     TransformScaleGeometryParams,
+    TransformScanSchemaParams,
     TransformSelectParams,
     TransformSetSridParams,
     TransformSwapCoordinatesParams,
@@ -521,6 +522,17 @@ def _compile_bulk_rename_attributes(
         f"COLUMNS('{escaped_pattern}') AS '{escaped_replacement}' "
         f"FROM {_qi(input_view)}"
     )
+
+
+def _compile_scan_schema(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    TransformScanSchemaParams.model_validate(params)  # forme seulement, aucun champ
+    return f"SELECT column_name, column_type FROM (DESCRIBE {_qi(input_view)})"
 
 
 def compile_transform_sql(

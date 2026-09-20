@@ -753,3 +753,14 @@ def test_compile_format_coordinates_dms_carries_seconds_rounding_into_minutes(co
     conn_spatial.execute(f"CREATE TEMP VIEW out2 AS {sql}")
     row = conn_spatial.execute("SELECT latText FROM out2").fetchone()
     assert row == ("49°0'0.00\"",)
+
+
+def test_compile_scan_schema(conn):
+    sql = compile_transform_sql("transform.scanSchema", {}, input_view="base")
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn.execute("SELECT column_name, column_type FROM out ORDER BY column_name").fetchall()
+    assert rows == [
+        ("id", "INTEGER"),
+        ("pop", "INTEGER"),
+        ("region", "VARCHAR"),
+    ]

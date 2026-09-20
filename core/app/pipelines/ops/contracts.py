@@ -57,6 +57,7 @@ from app.pipelines.ops.schemas import (
     TransformRotateGeometryParams,
     TransformRoundCoordinatesParams,
     TransformScaleGeometryParams,
+    TransformScanSchemaParams,
     TransformSelectParams,
     TransformSetSridParams,
     TransformSwapCoordinatesParams,
@@ -229,6 +230,14 @@ OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_bulk_rename_attributes,
+    ),
+    "transform.scanSchema": OperationContract(
+        op="transform.scanSchema",
+        kind="transform",
+        params_schema=TransformScanSchemaParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_scan_schema,
     ),
     "writer.collection": OperationContract(
         op="writer.collection",
