@@ -346,6 +346,11 @@ jobs:
   feature-health:
     runs-on: ubuntu-latest
     needs: [core, shell]
+    # contents: write uniquement pour le commit bot de l'étape d'auto-fix
+    # ci-dessous (push dev/main seulement) ; défaut du dépôt = read
+    # (default_workflow_permissions), donc sans ceci `git push` échouerait.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -366,12 +371,45 @@ jobs:
         working-directory: core
         env:
           PYTHONPATH: .
+      # Auto-fix : la fraîcheur des rendus committés dérive dès qu'un commit
+      # normal (pas seulement une clôture de SP) touche core/app, shell/src
+      # ou l'inventaire — la discipline manuelle documentée en CLAUDE.md a
+      # déjà été oubliée ≥6 fois (commits « docs: regenerate feature-health
+      # bilan... »). Plutôt qu'un rappel de plus, on régénère et on commit
+      # automatiquement sur push (jamais sur pull_request : la PR dev→main
+      # doit rester gardée par --check-fresh ci-dessous, avant fusion).
+      # Idempotent par construction : si déjà frais, aucun commit n'est créé
+      # ; le garde `[ci-bot]` évite en plus de re-déclencher cette étape sur
+      # son propre commit.
+      - name: Auto-régénère le bilan si périmé (push uniquement)
+        if: github.event_name == 'push' && !contains(github.event.head_commit.message, '[ci-bot]')
+        env:
+          PYTHONPATH: .
+        run: |
+          set -e
+          cd core
+          if uv run python scripts/feature_health_cli.py --repo .. --check-fresh; then
+            echo "Bilan déjà à jour, rien à committer."
+            exit 0
+          fi
+          uv run python scripts/feature_health_cli.py --repo .. --write
+          cd ..
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/revue/bilan-fonctionnalites.md docs/revue/bilan-fonctionnalites.html docs/revue/historique-sante.jsonl
+          if git diff --cached --quiet; then
+            echo "Aucun changement après régénération (inattendu) — rien à committer."
+            exit 0
+          fi
+          git commit -m "chore(revue): régénère automatiquement le bilan de fonctionnalités [ci-bot]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
       # REV-181 : garde-fou de fraîcheur — les rendus committés
       # (docs/revue/bilan-fonctionnalites.{html,md}) doivent avoir été
       # régénérés après le dernier changement de code/inventaire. --check
       # (ci-dessus) ne calcule que les planchers de santé/priorité ; ce mode
       # est différent, il diffe les rendus recalculés en mémoire contre les
-      # fichiers committés.
+      # fichiers committés. Sur push, l'étape d'auto-fix précédente l'a déjà
+      # satisfait ; ce step reste le seul gate pour pull_request.
       - run: uv run python scripts/feature_health_cli.py --repo .. --check-fresh
         working-directory: core
         env:
