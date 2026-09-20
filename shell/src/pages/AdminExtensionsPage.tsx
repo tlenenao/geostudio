@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useAllExtensions, useInstanceInfo, useSetExtensionEnabled } from "../api/hooks";
-import { AdminNav } from "../shell/chrome/AdminNav";
+import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 
@@ -16,7 +16,7 @@ export function AdminExtensionsPage() {
         browse={{
           id: "back",
           label: t("domain.catalog"),
-          content: <AdminNav />,
+          content: <SettingsNav />,
         }}
         work={{
           id: "extensions",

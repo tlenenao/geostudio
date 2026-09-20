@@ -4,12 +4,13 @@ import { useMe } from "../../api/hooks";
 import { Panel } from "../../ui/kit/Panel";
 import { t, type MessageKey } from "../../i18n";
 
-// Liens partagés par les sept pages d'administration : avant ce composant,
-// seule AdminExtensionsPage listait ces liens (SP-46, GAP-67) et toutes les
-// autres pages n'affichaient qu'un unique "retour au catalogue" — impossible
-// de rejoindre un écran admin voisin sans repasser par Extensions. Même
-// doctrine que capabilities.ts : un privilège manquant MASQUE le lien.
-const ADMIN_LINKS: readonly { to: string; labelKey: MessageKey; privilege: string }[] = [
+// Liens partagés par la page Paramètres et les sept pages d'administration :
+// fusion des anciens domaines "admin" et "settings" (capabilities.ts) en un
+// seul point d'entrée toujours visible — "Général" (vers /settings) n'exige
+// aucun privilège, les sept entrées admin gardent leur filtrage inchangé.
+// Même doctrine que capabilities.ts : un privilège manquant MASQUE le lien.
+const SETTINGS_LINKS: readonly { to: string; labelKey: MessageKey; privilege?: string }[] = [
+  { to: "/settings", labelKey: "settingsNav.linkGeneral" },
   {
     to: "/admin/extensions",
     labelKey: "extensions.linkExtensions",
@@ -35,11 +36,12 @@ const ADMIN_LINKS: readonly { to: string; labelKey: MessageKey; privilege: strin
   },
 ] as const;
 
-export function AdminNav() {
+export function SettingsNav() {
   const meQuery = useMe();
   const location = useLocation();
-  const visibleLinks = ADMIN_LINKS.filter(
-    (link) => meQuery.data?.privileges.includes(link.privilege) === true,
+  const visibleLinks = SETTINGS_LINKS.filter(
+    (link) =>
+      link.privilege === undefined || meQuery.data?.privileges.includes(link.privilege) === true,
   );
 
   return (
@@ -48,7 +50,7 @@ export function AdminNav() {
         {t("nav.backToCatalog")}
       </Link>
       <nav
-        aria-label={t("adminNav.label")}
+        aria-label={t("settingsNav.label")}
         className="mt-1 flex flex-col gap-0.5 border-t border-rule pt-2"
       >
         {visibleLinks.map((link) => {

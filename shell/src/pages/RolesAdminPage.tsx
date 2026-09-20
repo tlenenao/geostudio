@@ -7,7 +7,7 @@ import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { CreateRolePanel } from "../shell/CreateRolePanel";
 import { EditRolePanel } from "../shell/EditRolePanel";
-import { AdminNav } from "../shell/chrome/AdminNav";
+import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 
@@ -36,7 +36,7 @@ export function RolesAdminPage() {
         browse={{
           id: "back",
           label: t("domain.catalog"),
-          content: <AdminNav />,
+          content: <SettingsNav />,
         }}
         work={{
           id: "roles",

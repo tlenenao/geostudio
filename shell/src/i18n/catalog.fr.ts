@@ -223,10 +223,13 @@ export const fr = {
   // d'administration/édition en triptyque) — réutilisé par plusieurs pages.
   "nav.backToCatalog": "← Retour au catalogue",
 
-  // AdminNav (shell/chrome/AdminNav.tsx) — panneau de gauche partagé par les
-  // sept pages d'administration, filtré par privilège comme la barre de
-  // domaines (capabilities.ts) : un privilège manquant masque le lien.
-  "adminNav.label": "Navigation d'administration",
+  // SettingsNav (shell/chrome/SettingsNav.tsx) — panneau de gauche partagé
+  // par la page Paramètres et les sept pages d'administration (fusion des
+  // anciens domaines "admin"/"settings", capabilities.ts) : "Général" est
+  // toujours visible, les sept liens admin restent filtrés par privilège
+  // comme la barre de domaines — un privilège manquant masque le lien.
+  "settingsNav.label": "Navigation des paramètres",
+  "settingsNav.linkGeneral": "Général →",
   "extensions.linkExtensions": "Extensions →",
   "extensions.linkInfrastructure": "Outils d'infrastructure →",
   "extensions.linkRoles": "Rôles et privilèges →",

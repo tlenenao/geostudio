@@ -6,7 +6,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../test/msw/server";
 import { createItemClient } from "../../api/itemClient";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
-import { AdminNav } from "./AdminNav";
+import { SettingsNav } from "./SettingsNav";
 
 function mockMe(privileges: string[]) {
   server.use(
@@ -30,7 +30,7 @@ function renderNav(initialPath = "/admin/extensions") {
     <MemoryRouter initialEntries={[initialPath]}>
       <QueryClientProvider client={queryClient}>
         <ItemClientProvider client={client}>
-          <AdminNav />
+          <SettingsNav />
         </ItemClientProvider>
       </QueryClientProvider>
     </MemoryRouter>,
@@ -47,13 +47,14 @@ const ALL_PRIVILEGES = [
   "compliance.manage",
 ];
 
-test("toujours un lien retour au catalogue, même sans aucun privilège", async () => {
+test("toujours les liens retour au catalogue et Général, même sans aucun privilège", async () => {
   mockMe([]);
   renderNav();
   expect(await screen.findByRole("link", { name: "← Retour au catalogue" })).toHaveAttribute(
     "href",
     "/",
   );
+  expect(screen.getByRole("link", { name: "Général →" })).toHaveAttribute("href", "/settings");
   for (const name of [
     "Extensions →",
     "Outils d'infrastructure →",
@@ -67,9 +68,13 @@ test("toujours un lien retour au catalogue, même sans aucun privilège", async 
   }
 });
 
-test("affiche les sept liens admin quand tous les privilèges sont détenus", async () => {
+test("affiche Général et les sept liens admin quand tous les privilèges sont détenus", async () => {
   mockMe(ALL_PRIVILEGES);
   renderNav();
+  expect(await screen.findByRole("link", { name: "Général →" })).toHaveAttribute(
+    "href",
+    "/settings",
+  );
   expect(await screen.findByRole("link", { name: "Extensions →" })).toHaveAttribute(
     "href",
     "/admin/extensions",
@@ -100,10 +105,11 @@ test("affiche les sept liens admin quand tous les privilèges sont détenus", as
   );
 });
 
-test("ne montre que le lien Rôles quand seul admin.roles.manage est détenu", async () => {
+test("ne montre que Général et Rôles quand seul admin.roles.manage est détenu", async () => {
   mockMe(["admin.roles.manage"]);
   renderNav();
   expect(await screen.findByRole("link", { name: "Rôles et privilèges →" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Général →" })).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Utilisateurs →" })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Extensions →" })).not.toBeInTheDocument();
 });
@@ -115,6 +121,13 @@ test("marque la page courante comme active (aria-current) parmi les liens admin"
   expect(rolesLink).toHaveAttribute("aria-current", "page");
   const usersLink = screen.getByRole("link", { name: "Utilisateurs →" });
   expect(usersLink).not.toHaveAttribute("aria-current");
+});
+
+test("marque Général comme actif sur /settings", async () => {
+  mockMe([]);
+  renderNav("/settings");
+  const generalLink = await screen.findByRole("link", { name: "Général →" });
+  expect(generalLink).toHaveAttribute("aria-current", "page");
 });
 
 test("permet de naviguer d'une page admin à une autre sans repasser par /admin/extensions", async () => {

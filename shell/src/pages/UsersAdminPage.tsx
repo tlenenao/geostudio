@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useRoles, useUpdateUserRole, useUsers } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
-import { AdminNav } from "../shell/chrome/AdminNav";
+import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 
@@ -43,7 +43,7 @@ export function UsersAdminPage() {
         browse={{
           id: "back",
           label: t("domain.catalog"),
-          content: <AdminNav />,
+          content: <SettingsNav />,
         }}
         work={{
           id: "users",

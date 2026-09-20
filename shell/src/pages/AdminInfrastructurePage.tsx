@@ -2,7 +2,7 @@
 import type { AdminToolName } from "../api/types";
 import { useInstanceInfo, useLaunchAdminTool } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
-import { AdminNav } from "../shell/chrome/AdminNav";
+import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 
@@ -27,7 +27,7 @@ export function AdminInfrastructurePage() {
         browse={{
           id: "back",
           label: t("domain.catalog"),
-          content: <AdminNav />,
+          content: <SettingsNav />,
         }}
         work={{
           id: "infrastructure",

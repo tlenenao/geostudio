@@ -4,7 +4,7 @@ import { useEraseUser, useMe, usePurgeStatus, useRequestTenantPurge } from "../a
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Panel } from "../ui/kit/Panel";
-import { AdminNav } from "../shell/chrome/AdminNav";
+import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 
@@ -145,7 +145,7 @@ export function ComplianceAdminPage() {
         browse={{
           id: "back",
           label: t("domain.catalog"),
-          content: <AdminNav />,
+          content: <SettingsNav />,
         }}
         work={{
           id: "compliance",
