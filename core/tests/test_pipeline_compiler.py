@@ -540,6 +540,32 @@ def test_compile_merge_children_without_join_view_raises():
         )
 
 
+def test_compile_map_schema_fills_missing_target_columns_with_null(conn):
+    sql = compile_transform_sql(
+        "transform.mapSchema",
+        {"targetColumns": ["id", "region", "elevation"]},
+        input_view="base",
+        input_columns=["id", "region", "pop"],
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    cols = [d[0] for d in conn.execute("SELECT * FROM out LIMIT 0").description]
+    assert cols == ["id", "region", "elevation"]
+    row = conn.execute("SELECT elevation FROM out LIMIT 1").fetchone()
+    assert row == (None,)
+
+
+def test_compile_map_schema_drops_source_columns_not_in_target_list(conn):
+    sql = compile_transform_sql(
+        "transform.mapSchema",
+        {"targetColumns": ["id"]},
+        input_view="base",
+        input_columns=["id", "region", "pop"],
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    cols = [d[0] for d in conn.execute("SELECT * FROM out LIMIT 0").description]
+    assert cols == ["id"]
+
+
 def test_compile_merge_without_join_view_raises():
     with pytest.raises(AssertionError):
         compile_transform_sql("transform.merge", {}, input_view="base")

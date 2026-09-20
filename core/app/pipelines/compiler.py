@@ -32,6 +32,7 @@ from app.pipelines.ops.schemas import (
     TransformH3AggregateParams,
     TransformIntersectionParams,
     TransformJoinParams,
+    TransformMapSchemaParams,
     TransformMergeChildrenParams,
     TransformMergeParams,
     TransformQgisParams,
@@ -685,6 +686,23 @@ def _compile_merge_children(
         f"FROM {_qi(input_view)} t LEFT JOIN {_qi(join_view)} o "
         f"ON t.{_qi(p.parentOn)} = o.{_qi(p.childOn)} GROUP BY ALL"
     )
+
+
+def _compile_map_schema(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
+) -> str:
+    p = TransformMapSchemaParams.model_validate(params)
+    assert input_columns is not None
+    select_parts = [
+        f"{_qi(c)}" if c in input_columns else f"NULL AS {_qi(c)}" for c in p.targetColumns
+    ]
+    return f"SELECT {', '.join(select_parts)} FROM {_qi(input_view)}"
 
 
 def compile_transform_sql(

@@ -504,3 +504,11 @@ class TransformMergeChildrenParams(BaseModel):
     parentOn: str
     childOn: str
     childrenColumn: str
+
+
+class TransformMapSchemaParams(BaseModel):
+    """Reprojette le schéma de l'entrée sur une liste de colonnes cible statique, dans
+    l'ordre : correspondance par nom de colonne identique, colonne cible absente de la
+    source → NULL, colonne source hors de la liste cible → éliminée."""
+
+    targetColumns: list[str]

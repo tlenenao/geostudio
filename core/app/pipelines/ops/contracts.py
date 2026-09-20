@@ -54,6 +54,7 @@ from app.pipelines.ops.schemas import (
     TransformH3AggregateParams,
     TransformIntersectionParams,
     TransformJoinParams,
+    TransformMapSchemaParams,
     TransformMergeChildrenParams,
     TransformMergeParams,
     TransformQgisParams,
@@ -471,6 +472,15 @@ OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_merge_children,
+    ),
+    "transform.mapSchema": OperationContract(
+        op="transform.mapSchema",
+        kind="transform",
+        params_schema=TransformMapSchemaParams,
+        needs_columns=True,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_map_schema,
     ),
     "reader.file": OperationContract(
         op="reader.file",
