@@ -43,7 +43,7 @@ function renderBar(profile: Profile, initialPath = "/") {
   );
 }
 
-test("affiche les huit domaines accessibles à un créateur, avec Analytique mais sans Administration", () => {
+test("affiche les huit domaines accessibles à un créateur, avec Analytique et Paramètres", () => {
   renderBar(BASE_PROFILE);
   for (const label of [
     "Catalogue",
@@ -57,15 +57,11 @@ test("affiche les huit domaines accessibles à un créateur, avec Analytique mai
   ]) {
     expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
   }
-  expect(screen.queryByRole("link", { name: "Administration" })).not.toBeInTheDocument();
 });
 
-test("affiche Administration pour un administrateur", () => {
-  renderBar({
-    ...BASE_PROFILE,
-    privileges: new Set([...BASE_PROFILE.privileges, "admin.users.manage"]),
-  });
-  expect(screen.getByRole("link", { name: "Administration" })).toBeInTheDocument();
+test("Paramètres reste visible même sans aucun privilège admin.*", () => {
+  renderBar({ ...BASE_PROFILE, privileges: new Set() });
+  expect(screen.getByRole("link", { name: "Paramètres" })).toBeInTheDocument();
 });
 
 test("Analytique pointe vers le catalogue filtré (bookmark), pas vers SQL Lab, pour un créateur", () => {
@@ -112,17 +108,4 @@ test("Automatisation verrouillée quand la capacité etlEnabled est coupée", ()
   renderBar({ ...BASE_PROFILE, capabilities: { ...BASE_PROFILE.capabilities, etlEnabled: false } });
   const automation = screen.getByText("Automatisation");
   expect(automation.closest("[aria-disabled]")).toHaveAttribute("aria-disabled", "true");
-});
-
-test("SP-42/F-securite-autorisation-08(b) : Administration pointe vers la route accessible au privilège réellement détenu", () => {
-  renderBar({
-    ...BASE_PROFILE,
-    // Ni admin.extensions.manage (destination par défaut de DOMAIN_PATHS)
-    // ni aucun autre privilège admin que admin.users.manage.
-    privileges: new Set([...BASE_PROFILE.privileges, "admin.users.manage"]),
-  });
-  expect(screen.getByRole("link", { name: "Administration" })).toHaveAttribute(
-    "href",
-    "/admin/users",
-  );
 });

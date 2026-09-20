@@ -31,15 +31,7 @@ export type Profile = {
 };
 
 export type DomainId =
-  | "catalog"
-  | "maps"
-  | "data"
-  | "apps"
-  | "automation"
-  | "analytics"
-  | "tasks"
-  | "admin"
-  | "settings";
+  "catalog" | "maps" | "data" | "apps" | "automation" | "analytics" | "tasks" | "settings";
 
 export type DomainState = "visible" | "locked" | "hidden";
 
@@ -90,18 +82,11 @@ export const DOMAINS: readonly DomainDef[] = [
   // ci-dessus), gaté sur rien de plus que la lecture du catalogue.
   { id: "analytics", labelKey: "domain.analytics", requiresPrivilege: "analytics.view" },
   { id: "tasks", labelKey: "domain.tasks", requiresPrivilege: "tasks.view" },
-  {
-    id: "admin",
-    labelKey: "domain.admin",
-    requiresPrivilege: [
-      "admin.users.manage",
-      "admin.roles.manage",
-      "admin.harvest.manage",
-      "admin.collections.manage",
-      "admin.extensions.manage",
-      "admin.secrets.manage",
-    ],
-  },
+  // Fusionné avec l'ancien domaine "admin" : "settings" est désormais
+  // l'unique point d'entrée, toujours visible — la visibilité par privilège
+  // des 7 destinations admin se fait dans SettingsNav
+  // (shell/chrome/SettingsNav.tsx), pas ici. Un privilège manquant masque
+  // toujours l'entrée correspondante, doctrine inchangée.
   { id: "settings", labelKey: "domain.settings" },
 ] as const;
 

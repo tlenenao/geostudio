@@ -71,7 +71,7 @@ test(
       </MemoryRouter>,
     );
     await userEvent.click(screen.getByRole("button", { name: "Plus" }));
-    expect(screen.getByRole("link", { name: "Administration" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Paramètres" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Données" })).toBeInTheDocument();
   },
   OPEN_TIMEOUT,
@@ -95,9 +95,7 @@ test(
     expect(screen.getByRole("link", { name: "Automatisation" })).not.toHaveAttribute(
       "aria-current",
     );
-    expect(screen.getByRole("link", { name: "Administration" })).not.toHaveAttribute(
-      "aria-current",
-    );
+    expect(screen.getByRole("link", { name: "Paramètres" })).not.toHaveAttribute("aria-current");
   },
   OPEN_TIMEOUT,
 );

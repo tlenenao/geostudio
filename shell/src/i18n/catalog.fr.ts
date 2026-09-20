@@ -43,7 +43,6 @@ export const fr = {
   "domain.automation": "Automatisation",
   "domain.analytics": "Analytique",
   "domain.tasks": "Tâches",
-  "domain.admin": "Administration",
   "domain.settings": "Paramètres",
   "domainBar.label": "Domaines",
   "bottomNav.label": "Navigation",
