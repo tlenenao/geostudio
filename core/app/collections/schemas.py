@@ -135,7 +135,20 @@ class EmptyCollectionColumn(BaseModel):
     # inférée par le wizard ne colle jamais à cette limite.
     name: str = Field(min_length=1, max_length=59)
     sqlType: Literal[
-        "text", "integer", "bigint", "double precision", "boolean", "date", "timestamptz"
+        "text",
+        "integer",
+        "bigint",
+        "double precision",
+        "boolean",
+        "date",
+        "timestamptz",
+        "text[]",
+        "integer[]",
+        "bigint[]",
+        "double precision[]",
+        "boolean[]",
+        "date[]",
+        "timestamptz[]",
     ]
 
     @field_validator("name")

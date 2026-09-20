@@ -101,3 +101,24 @@ def test_column_names_are_quoted_defensively(env):
         s.commit()
         rows = s.execute(text(f'SELECT "select" FROM public.{col.table_name}')).fetchall()
         assert rows == []
+
+
+def test_creates_a_collection_with_a_list_column(env):
+    Session, tenant, user = env
+    with Session() as s:
+        col = create_empty_collection(
+            s,
+            tenant_id=tenant.id,
+            owner_id=user.id,
+            title="Requête avec tags",
+            columns=[EmptyCollectionColumn(name="tags", sqlType="text[]")],
+            geometry_type=None,
+            srid=None,
+            introspect=introspect_table,
+            apply_ddl=apply_collection_ddl,
+        )
+        s.commit()
+        info = introspect_table(s, col.table_name)
+        by_name = {c.name: c for c in info.columns}
+        assert by_name["tags"].type == "list"
+        assert by_name["tags"].list_item_type == "string"
