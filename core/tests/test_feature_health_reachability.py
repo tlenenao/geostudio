@@ -86,8 +86,12 @@ def test_sql_lab_has_no_inbound_link():
 
 
 def test_admin_collections_has_an_inbound_link():
+    """La fusion Paramètres/Administration a déplacé ce lien : il ne vit
+    plus dans `AdminExtensionsPage.tsx` (qui ne fait plus que rendre
+    `SettingsNav`) mais dans `SettingsNav.tsx`, le point d'entrée unique
+    partagé par les sept pages admin."""
     inbound = collect_shell_inbound(REPO, declared_shell_routes(REPO))
-    assert "shell/src/pages/AdminExtensionsPage.tsx" in inbound["/admin/collections"]
+    assert "shell/src/shell/chrome/SettingsNav.tsx" in inbound["/admin/collections"]
 
 
 def test_rest_url_built_by_interpolation_is_not_counted_as_an_inbound_link():
