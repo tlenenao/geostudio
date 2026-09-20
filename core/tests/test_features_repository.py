@@ -26,7 +26,7 @@ def pg_incidents(pg_engine, pg_session_factory):
         conn.execute(
             text(
                 "CREATE TABLE t_feat (id serial PRIMARY KEY, titre text NOT NULL, "
-                "nb integer, tenant_id text NOT NULL DEFAULT 'default', "
+                "nb integer, tags text[], tenant_id text NOT NULL DEFAULT 'default', "
                 "geom geometry(Point, 4326))"
             )
         )
@@ -113,7 +113,11 @@ def test_select_is_tenant_bound_and_geojson(info, pg_session_factory):
     f = page.features[0]
     assert f["type"] == "Feature" and f["id"] == 1
     assert f["geometry"] == {"type": "Point", "coordinates": [1.0, 45.0]}
-    assert f["properties"] == {"titre": "a", "nb": 1}  # ni pk, ni tenant_id, ni geom
+    assert f["properties"] == {
+        "titre": "a",
+        "nb": 1,
+        "tags": None,
+    }  # ni pk, ni tenant_id, ni geom
 
 
 def test_pagination_and_bbox_and_filters(info, pg_session_factory):
@@ -301,3 +305,24 @@ def test_replace_preserves_unsupported_readonly_columns(pg_engine, pg_session_fa
     finally:
         with pg_engine.begin() as conn:
             conn.execute(text("DROP TABLE IF EXISTS t_feat_ro"))
+
+
+def test_insert_and_read_back_a_list_property(info, pg_session_factory):
+    with pg_session_factory() as session:
+        with rls_scope(session, "default"):
+            fid = insert_feature(
+                session,
+                info,
+                properties={"titre": "e", "tags": ["urgent", "voirie"]},
+                geometry={"type": "Point", "coordinates": [5.0, 49.0]},
+            )
+        session.commit()
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        feature = get_feature(session, info, fid=str(fid))
+        assert feature["properties"]["tags"] == ["urgent", "voirie"]
+
+
+def test_filtering_on_a_list_column_is_rejected(info, pg_session_factory):
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        with pytest.raises(FilterError):
+            select_features(session, info, limit=10, offset=0, filters={"tags": "urgent"})
