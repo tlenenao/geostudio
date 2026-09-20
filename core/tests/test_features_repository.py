@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 from dataclasses import replace
+from datetime import date
 
 import pytest
 from sqlalchemy import text
@@ -26,7 +27,8 @@ def pg_incidents(pg_engine, pg_session_factory):
         conn.execute(
             text(
                 "CREATE TABLE t_feat (id serial PRIMARY KEY, titre text NOT NULL, "
-                "nb integer, tags text[], tenant_id text NOT NULL DEFAULT 'default', "
+                "nb integer, tags text[], counts integer[], important_dates date[], "
+                "tenant_id text NOT NULL DEFAULT 'default', "
                 "geom geometry(Point, 4326))"
             )
         )
@@ -117,6 +119,8 @@ def test_select_is_tenant_bound_and_geojson(info, pg_session_factory):
         "titre": "a",
         "nb": 1,
         "tags": None,
+        "counts": None,
+        "important_dates": None,
     }  # ni pk, ni tenant_id, ni geom
 
 
@@ -320,6 +324,51 @@ def test_insert_and_read_back_a_list_property(info, pg_session_factory):
     with pg_session_factory() as session, rls_scope(session, "default"):
         feature = get_feature(session, info, fid=str(fid))
         assert feature["properties"]["tags"] == ["urgent", "voirie"]
+
+
+def test_insert_and_read_back_an_integer_list_property(info, pg_session_factory):
+    # Revue finale I2 (risque 1) : un integer[] (int4[]) nourri d'un
+    # list[int] Python — vérifier empiriquement que psycopg ne l'adapte pas
+    # en int8[] (ce qui reposerait sur un cast implicite d'assignation).
+    with pg_session_factory() as session:
+        with rls_scope(session, "default"):
+            fid = insert_feature(
+                session,
+                info,
+                properties={"titre": "f", "counts": [1, 2, 3]},
+                geometry={"type": "Point", "coordinates": [5.0, 49.0]},
+            )
+        session.commit()
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        feature = get_feature(session, info, fid=str(fid))
+        assert feature["properties"]["counts"] == [1, 2, 3]
+
+
+def test_insert_and_read_back_a_date_list_property(info, pg_session_factory):
+    # Revue finale I2 (risque 2) : un date[] nourri d'un list[str] Python de
+    # dates ISO (c'est exactement ce que validation.py._type_ok exige pour un
+    # item "date") — vérifié empiriquement : l'écriture réussit sans cast
+    # explicite (SQLAlchemy/psycopg laisse le serveur PostgreSQL inférer le
+    # type du paramètre depuis la colonne cible de l'INSERT, qui sait alors
+    # parser le littéral texte comme une date — pas d'adaptation côté
+    # driver en text[]). La lecture, elle, renvoie des `datetime.date`
+    # Python natifs (comportement standard du driver pour une colonne date,
+    # scalaire ou tableau — cohérent avec le fait que `_row_to_feature` ne
+    # fait aucune conversion de type ; la sérialisation JSON en chaînes ISO
+    # est déléguée à `jsonable_encoder` au niveau de la route FastAPI, hors
+    # périmètre de ce test de repository).
+    with pg_session_factory() as session:
+        with rls_scope(session, "default"):
+            fid = insert_feature(
+                session,
+                info,
+                properties={"titre": "g", "important_dates": ["2026-01-01", "2026-06-15"]},
+                geometry={"type": "Point", "coordinates": [5.0, 49.0]},
+            )
+        session.commit()
+    with pg_session_factory() as session, rls_scope(session, "default"):
+        feature = get_feature(session, info, fid=str(fid))
+        assert feature["properties"]["important_dates"] == [date(2026, 1, 1), date(2026, 6, 15)]
 
 
 def test_filtering_on_a_list_column_is_rejected(info, pg_session_factory):

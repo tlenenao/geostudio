@@ -55,10 +55,17 @@ def _coerce_srid(srid: object, *, fn_label: str) -> int:
     Arrow mais `crs=None` côté GeoParquet (falsy court-circuite `if srid`
     dans build_geodataframe_from_relation) ; -1 produisait "EPSG:-1" (bidon)
     côté Arrow mais une `pyproj.exceptions.CRSError` non contrôlée côté
-    GeoParquet. `int(srid)` lève un `TypeError`/`ValueError` clair pour toute
-    valeur non convertible, avant que quoi que ce soit ne touche DuckDB ou
-    pyproj."""
-    srid_int = int(srid)  # type: ignore[call-overload]  # coercition volontaire, cf. docstring
+    GeoParquet.
+
+    Durcissement Minor #2 (revue finale de branche) : `int(srid)` lève un
+    `TypeError`/`ValueError` clair pour toute valeur non convertible — mais
+    ce module n'expose que `PipelineRuntimeError` à ses appelants (cf.
+    conversion de `duckdb.CatalogException` dans `from_arrow_stream`) ;
+    laisser fuiter l'exception native ici romprait ce même contrat."""
+    try:
+        srid_int = int(srid)  # type: ignore[call-overload]  # coercition volontaire, cf. docstring
+    except (TypeError, ValueError) as exc:
+        raise PipelineRuntimeError(f"{fn_label} : srid invalide ({srid!r})") from exc
     if srid_int <= 0:
         raise PipelineRuntimeError(f"{fn_label} : srid invalide ({srid_int}), doit être positif")
     return srid_int
@@ -125,9 +132,18 @@ def from_arrow_stream(
     try:
         conn.execute(f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT * FROM {_qi(tmp_name)}")
     except duckdb.CatalogException as exc:
-        raise PipelineRuntimeError(
-            f"from_arrow_stream : view_name {view_name!r} existe déjà"
-        ) from exc
+        # Minor #1 (revue finale de branche) : un CatalogException peut
+        # survenir pour une raison SANS RAPPORT avec une collision de nom
+        # (ex. une fonction/un type inconnu) — vérifié empiriquement (message
+        # réel observé : "Catalog Error: Scalar Function with name ... does
+        # not exist!"). Ne reporter le message spécifique "existe déjà" que
+        # lorsque le message DuckDB le confirme réellement, jamais par
+        # défaut pour toute CatalogException.
+        if "already exists" in str(exc):
+            raise PipelineRuntimeError(
+                f"from_arrow_stream : view_name {view_name!r} existe déjà"
+            ) from exc
+        raise PipelineRuntimeError(f"from_arrow_stream : {exc}") from exc
     finally:
         conn.unregister(tmp_name)
 

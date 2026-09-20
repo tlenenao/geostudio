@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
 
+import duckdb
 import geopandas as gpd
 import pyarrow
 import pytest
@@ -94,14 +95,14 @@ def test_from_arrow_stream_unregisters_its_internal_arrow_source():
 
 
 def test_srid_is_coerced_to_int_before_sql_interpolation():
-    # Vérifié empiriquement avant ce test : passer une chaîne non numérique
-    # ne lève AUCUNE erreur aujourd'hui — elle est interpolée telle quelle
-    # dans le littéral SQL 'EPSG:{srid}' et produit silencieusement des
-    # métadonnées CRS bidon ({"crs_type": "authority_code", "crs":
-    # "EPSG:abc"}) sur la colonne Arrow, jamais détectée par l'appelant.
+    # Revue finale de branche (Minor #2) : le module n'expose que
+    # PipelineRuntimeError à ses appelants (cf. la conversion de
+    # CatalogException plus bas) — _coerce_srid doit tenir la même
+    # promesse pour un srid non convertible en int, pas laisser fuiter un
+    # TypeError/ValueError brut.
     conn = open_spatial_connection()
     rel = conn.sql("SELECT 1 AS id, ST_Point(1, 2) AS geom")
-    with pytest.raises((TypeError, ValueError)):
+    with pytest.raises(PipelineRuntimeError):
         to_arrow_stream(rel, srid="abc")
 
 
@@ -121,6 +122,48 @@ def test_srid_zero_or_negative_is_rejected_consistently(tmp_path):
         rel2 = conn.sql("SELECT 1 AS id, ST_Point(1, 2) AS geom")
         with pytest.raises(PipelineRuntimeError):
             to_geoparquet_file(rel2, srid=bad_srid, path=str(tmp_path / f"x_{bad_srid}.parquet"))
+
+
+class _ConnRaisingUnrelatedCatalogException:
+    """Délègue à une vraie connexion DuckDB, sauf le CREATE TEMP TABLE de
+    from_arrow_stream, où elle simule un CatalogException SANS RAPPORT avec
+    une collision de nom (ex. fonction scalaire inconnue) — reproduit le
+    message réel observé empiriquement ("Catalog Error: Scalar Function
+    with name no_such_func does not exist!") sans dépendre d'un SELECT qui
+    échouerait dès .arrow(), avant même d'atteindre from_arrow_stream."""
+
+    def __init__(self, real_conn):
+        self._real = real_conn
+
+    def register(self, name, reader):
+        return self._real.register(name, reader)
+
+    def unregister(self, name):
+        return self._real.unregister(name)
+
+    def execute(self, sql, *args, **kwargs):
+        if "CREATE TEMP TABLE" in sql:
+            raise duckdb.CatalogException(
+                "Catalog Error: Scalar Function with name no_such_func does not exist!"
+            )
+        return self._real.execute(sql, *args, **kwargs)
+
+
+def test_from_arrow_stream_unrelated_catalog_exception_is_not_reported_as_name_collision():
+    # Revue finale de branche (Minor #1) : le except duckdb.CatalogException
+    # actuel réutilise le message "existe déjà" pour N'IMPORTE QUELLE
+    # CatalogException (ex. une fonction/un type inconnu), pas seulement une
+    # collision de nom — vérifié empiriquement (cf. docstring de
+    # _ConnRaisingUnrelatedCatalogException) : ce message réel n'a rien à
+    # voir avec un nom déjà pris.
+    real_conn = open_spatial_connection()
+    conn = _ConnRaisingUnrelatedCatalogException(real_conn)
+    other_conn = open_spatial_connection()
+    rel = other_conn.sql("SELECT 1 AS id, ST_Point(1, 2) AS geom")
+    reader = to_arrow_stream(rel, srid=4326)
+    with pytest.raises(PipelineRuntimeError) as excinfo:
+        from_arrow_stream(conn, reader, view_name="whatever_never_used_before")
+    assert "existe déjà" not in str(excinfo.value)
 
 
 def test_view_name_collision_raises_pipeline_runtime_error():
