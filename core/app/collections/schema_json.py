@@ -15,6 +15,8 @@ def table_info_to_schema(info: TableInfo, attachment_fields: list[dict] | None =
             entry["maxLength"] = col.max_length
         if col.enum_values is not None:
             entry["values"] = col.enum_values
+        if col.list_item_type is not None:
+            entry["itemType"] = col.list_item_type
         fields.append(entry)
     for spec in attachment_fields or []:
         fields.append(
