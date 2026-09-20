@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.db import retry_on_sqlite_row_corruption
 from app.roles.repository import ensure_built_in_roles
 from app.users.models import User
 
@@ -22,8 +23,10 @@ def get_or_create_user(
     bootstrap_analyst: bool = False,
 ) -> User:
     roles = ensure_built_in_roles(session, tenant_id=tenant_id)
-    user = session.scalar(
-        select(User).where(User.tenant_id == tenant_id, User.oidc_sub == oidc_sub)
+    user = retry_on_sqlite_row_corruption(
+        lambda: session.scalar(
+            select(User).where(User.tenant_id == tenant_id, User.oidc_sub == oidc_sub)
+        )
     )
     just_created = False
     if user is None:
@@ -57,8 +60,10 @@ def get_or_create_user(
             just_created = True
         except IntegrityError:
             session.expunge(new_user)
-            user = session.scalar(
-                select(User).where(User.tenant_id == tenant_id, User.oidc_sub == oidc_sub)
+            user = retry_on_sqlite_row_corruption(
+                lambda: session.scalar(
+                    select(User).where(User.tenant_id == tenant_id, User.oidc_sub == oidc_sub)
+                )
             )
             if user is None:
                 raise

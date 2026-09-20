@@ -6,18 +6,19 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.db import retry_on_sqlite_row_corruption
 from app.roles.models import Role
 from app.roles.privileges import BUILT_IN_ROLE_NAMES, BUILT_IN_ROLE_PRIVILEGES, PRIVILEGE_METADATA
 from app.users.models import User
 
 
 def _existing_built_in_roles(session: Session, *, tenant_id: str) -> dict[str, Role]:
-    return {
-        role.slug: role
-        for role in session.scalars(
+    roles = retry_on_sqlite_row_corruption(
+        lambda: session.scalars(
             select(Role).where(Role.tenant_id == tenant_id, Role.is_built_in.is_(True))
         ).all()
-    }
+    )
+    return {role.slug: role for role in roles}
 
 
 def ensure_built_in_roles(session: Session, *, tenant_id: str) -> dict[str, Role]:

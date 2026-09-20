@@ -3,13 +3,16 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.db import retry_on_sqlite_row_corruption
 from app.tenants.models import Tenant
 
 DEFAULT_TENANT_SLUG = "default"
 
 
 def get_or_create_default_tenant(session: Session) -> Tenant:
-    tenant = session.scalar(select(Tenant).where(Tenant.slug == DEFAULT_TENANT_SLUG))
+    tenant = retry_on_sqlite_row_corruption(
+        lambda: session.scalar(select(Tenant).where(Tenant.slug == DEFAULT_TENANT_SLUG))
+    )
     if tenant is not None:
         return tenant
     # Décision 2026-07-10 (spec SP-3, notes de revue SP-3a) : tenants.id est un
@@ -34,7 +37,9 @@ def get_or_create_default_tenant(session: Session) -> Tenant:
             session.add(new_tenant)
             session.flush()
     except IntegrityError:
-        tenant = session.scalar(select(Tenant).where(Tenant.slug == DEFAULT_TENANT_SLUG))
+        tenant = retry_on_sqlite_row_corruption(
+            lambda: session.scalar(select(Tenant).where(Tenant.slug == DEFAULT_TENANT_SLUG))
+        )
         if tenant is None:
             raise
         return tenant

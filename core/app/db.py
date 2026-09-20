@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
 from sqlalchemy import Engine, create_engine, event
@@ -46,15 +46,20 @@ def make_engine(url: str) -> Engine:
         #    repository.py et app/users/repository.py).
         # 2. Corruption de ligne au niveau du curseur C (deux threads OS
         #    matérialisant des lignes sur le même curseur partagé en
-        #    même temps → une ligne `None` au lieu d'un ORM object,
-        #    `AttributeError`/`IndexError` selon le point de chute) — PAS
-        #    corrigé : mesuré à ~2-3 % des exécutions de
-        #    test_synchronous_provider_call_does_not_block_the_event_loop
-        #    sur 100 reruns, malgré (1) fermé. Fermer ceci demanderait
-        #    d'élargir le verrou à la lecture des lignes (pas seulement à
-        #    l'exécution), un changement de portée dépôt-large volontairement
-        #    non fait en session (décision explicite, cf. historique
-        #    d'exécution) — artefact du harnais de test (StaticPool +
+        #    même temps → une ligne tronquée au lieu d'un tuple complet,
+        #    `IndexError` dans le row processor SQLAlchemy) — CORRIGÉ
+        #    (2026-09-20) sans élargir le verrou à la lecture des lignes
+        #    (ça resérialiserait execute() et fetch() et redéviendrait la
+        #    même sérialisation bout-en-bout déjà écartée au paragraphe
+        #    précédent, vu que fetch() suit execute() dans le même thread
+        #    sans jamais relâcher le GIL entre les deux). À la place :
+        #    `retry_on_sqlite_row_corruption()` relit la même requête —
+        #    la ligne réelle en base n'a pas bougé, seule sa lecture a été
+        #    corrompue par la course, une deuxième lecture immédiate
+        #    suffit. Appliqué aux 3 lectures déjà identifiées comme
+        #    partageant cette course TOCTOU (get_or_create_default_tenant/
+        #    ensure_built_in_roles/get_or_create_user, voir leurs
+        #    commentaires) — artefact du harnais de test (StaticPool +
         #    SQLite en mémoire), jamais reproductible en prod (Postgres via
         #    PgBouncer, connexions réellement isolées).
         _execute_lock = threading.Lock()
@@ -152,6 +157,23 @@ def init_db(engine: Engine) -> None:
     # "relation already exists".
     if engine.dialect.name == "sqlite":
         Base.metadata.create_all(engine)
+
+
+def retry_on_sqlite_row_corruption[T](read: Callable[[], T]) -> T:
+    """Relit `read()` jusqu'à 3 fois si SQLAlchemy lève `IndexError` en
+    matérialisant une ligne — l'artefact de curseur documenté dans
+    `make_engine` (StaticPool + connexion SQLite en mémoire partagée entre
+    threads, jamais reproductible en prod). La ligne en base n'a pas bougé,
+    seule cette lecture a été corrompue par la course ; une relecture
+    immédiate suffit."""
+    attempts = 3
+    for attempt in range(attempts):
+        try:
+            return read()
+        except IndexError:
+            if attempt == attempts - 1:
+                raise
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 @contextmanager
