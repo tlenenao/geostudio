@@ -59,13 +59,16 @@ def test_pipelines_routes_absent_when_disabled(monkeypatch):
     assert client.get("/v1/pipelines/does-not-exist/webhook-tokens").status_code == 404
 
 
-def test_get_pipelines_ops_returns_all_thirty_four(monkeypatch):
+def test_get_pipelines_ops_returns_all_forty_five(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     response = client.get("/v1/pipelines/ops")
     assert response.status_code == 200
     body = response.json()
     # 19 op existantes (cf. design OperationContract) + 15 op vague 1 (géométrie/coordonnées/SRID,
-    # cf. design vague 1 transformers DuckDB) = 34 total.
+    # cf. design vague 1 transformers DuckDB) + 11 op vague 2 (schéma/cardinalité,
+    # cf. design vague 2 transformers DuckDB) = 45 total exposées par la route
+    # (reader.file/writer.file restent hors catalogue tant que
+    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 47, route à 45).
     assert set(body) == {
         "reader.collection",
         "transform.filter",
@@ -101,12 +104,25 @@ def test_get_pipelines_ops_returns_all_thirty_four(monkeypatch):
         "transform.setSrid",
         "transform.reprojectAttribute",
         "transform.formatCoordinates",
+        "transform.bulkRemoveAttributes",
+        "transform.bulkRenameAttributes",
+        "transform.scanSchema",
+        "transform.explodeList",
+        "transform.explodeGeometry",
+        "transform.exposeAttributes",
+        "transform.validateAttributes",
+        "transform.sort",
+        "transform.detectChanges",
+        "transform.mergeChildren",
+        "transform.mapSchema",
     }
     for op in (
         "transform.join",
         "transform.intersection",
         "transform.countWithin",
         "transform.merge",
+        "transform.detectChanges",
+        "transform.mergeChildren",
     ):
         assert body[op]["acceptsSecondaryInput"] is True
     assert body["reader.collection"]["acceptsSecondaryInput"] is False

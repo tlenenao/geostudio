@@ -105,7 +105,7 @@ def test_non_collection_fields_carry_no_format_hint():
     assert "format" not in catalog["transform.join"]["paramsSchema"]["properties"]["on"]
 
 
-def test_all_thirty_six_ops_are_registered():
+def test_all_forty_seven_ops_are_registered():
     assert set(OP_PARAMS) == {
         "reader.collection",
         "transform.filter",
@@ -143,6 +143,17 @@ def test_all_thirty_six_ops_are_registered():
         "transform.formatCoordinates",
         "reader.file",
         "writer.file",
+        "transform.bulkRemoveAttributes",
+        "transform.bulkRenameAttributes",
+        "transform.scanSchema",
+        "transform.explodeList",
+        "transform.explodeGeometry",
+        "transform.exposeAttributes",
+        "transform.validateAttributes",
+        "transform.sort",
+        "transform.detectChanges",
+        "transform.mergeChildren",
+        "transform.mapSchema",
     }
     assert set(OP_KINDS) == set(OP_PARAMS)
 

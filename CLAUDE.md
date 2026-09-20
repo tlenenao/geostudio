@@ -562,6 +562,14 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   navigation Administration/Paramètres en un seul point d'entrée
   toujours visible (`SettingsNav`), visibilité des 7 destinations admin
   inchangée.
+- **Vague 2 transformers DuckDB (schéma/cardinalité)** — 11 nouvelles op
+  (bulkRemoveAttributes/bulkRenameAttributes/scanSchema/explodeList/
+  explodeGeometry/exposeAttributes/validateAttributes/sort/detectChanges/
+  mergeChildren/mapSchema), mécanisme `needs_columns` pour l'introspection
+  de schéma à l'exécution ; catalogue exposé (`GET /pipelines/ops`) à 45 op,
+  registre brut (`OPERATIONS`, `reader.file`/`writer.file` inclus derrière
+  leur propre flag) à 47 ; 12 lignes `planned_duckdb` de la matrice FME
+  passées à `implemented`.
 
 ### Conventions tranchées (2026-09-01)
 
