@@ -412,3 +412,16 @@ class WriterFileParams(BaseModel):
 
     path: str
     driver: str = "GPKG"
+
+
+class TransformExplodeListParams(BaseModel):
+    """Explose une colonne LIST en plusieurs lignes (une par élément), autres colonnes
+    dupliquées."""
+
+    column: str
+
+
+class TransformExplodeGeometryParams(BaseModel):
+    """Explose une géométrie multi-partie (MULTIPOINT/MULTILINESTRING/MULTIPOLYGON/
+    GEOMETRYCOLLECTION) en une ligne par sous-géométrie simple. Sans effet sur une géométrie
+    déjà simple (le nombre de lignes ne change pas)."""

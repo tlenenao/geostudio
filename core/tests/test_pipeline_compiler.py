@@ -764,3 +764,36 @@ def test_compile_scan_schema(conn):
         ("pop", "INTEGER"),
         ("region", "VARCHAR"),
     ]
+
+
+def test_compile_explode_list_multiplies_rows(conn):
+    conn.execute("CREATE TABLE with_list (id INTEGER, tags VARCHAR[])")
+    conn.execute("INSERT INTO with_list VALUES (1, ['a', 'b', 'c']), (2, ['x'])")
+    sql = compile_transform_sql("transform.explodeList", {"column": "tags"}, input_view="with_list")
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn.execute("SELECT id, tags FROM out ORDER BY id, tags").fetchall()
+    assert rows == [(1, "a"), (1, "b"), (1, "c"), (2, "x")]
+
+
+def test_compile_explode_geometry_dumps_multipoint(conn_spatial):
+    conn_spatial.execute("CREATE TABLE multi (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO multi VALUES (1, ST_GeomFromText('MULTIPOINT (0 0, 1 1, 2 2)'))"
+    )
+    sql = compile_transform_sql("transform.explodeGeometry", {}, input_view="multi")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn_spatial.execute(
+        "SELECT id, ST_AsText(geometry) FROM out ORDER BY ST_AsText(geometry)"
+    ).fetchall()
+    assert rows == [
+        (1, "POINT (0 0)"),
+        (1, "POINT (1 1)"),
+        (1, "POINT (2 2)"),
+    ]
+
+
+def test_compile_explode_geometry_on_single_part_geometry_is_a_noop_on_row_count(conn_spatial):
+    sql = compile_transform_sql("transform.explodeGeometry", {}, input_view="base")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    count = conn_spatial.execute("SELECT count(*) FROM out").fetchone()[0]
+    assert count == 2  # falsification : un point simple ne se dédouble pas

@@ -19,6 +19,8 @@ from app.pipelines.ops.schemas import (
     TransformCountWithinParams,
     TransformCreateGeometryParams,
     TransformDeriveParams,
+    TransformExplodeGeometryParams,
+    TransformExplodeListParams,
     TransformExtractCoordinatesParams,
     TransformExtractDimensionParams,
     TransformExtractElevationParams,
@@ -533,6 +535,32 @@ def _compile_scan_schema(
 ) -> str:
     TransformScanSchemaParams.model_validate(params)  # forme seulement, aucun champ
     return f"SELECT column_name, column_type FROM (DESCRIBE {_qi(input_view)})"
+
+
+def _compile_explode_list(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformExplodeListParams.model_validate(params)
+    col = _qi(p.column)
+    return f"SELECT * EXCLUDE ({col}), UNNEST({col}) AS {col} FROM {_qi(input_view)}"
+
+
+def _compile_explode_geometry(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    TransformExplodeGeometryParams.model_validate(params)  # forme seulement, aucun champ
+    return (
+        f"SELECT * EXCLUDE (geometry), unnest(ST_Dump(geometry)).geom AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
 
 
 def compile_transform_sql(
