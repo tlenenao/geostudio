@@ -355,8 +355,10 @@ for (const screen of SCREENS) {
 // (WIDE_BOUNDARY_WIDTH = 900 ci-dessus). SP-36 puis SP-37 ont depuis fermé
 // les deux défauts pré-existants et sans rapport de l'écran Cartes (cf.
 // son entrée dans SCREENS) — plus aucun écran de ce fichier ne porte de
-// wideBoundaryKnownIssue. Tâches/Paramètres n'ont jamais été concernés
-// (aucune grille TriptychLayout ne s'y rend).
+// wideBoundaryKnownIssue. Tâches (UsagePage, SP-47) et Paramètres
+// (SettingsPage, chantier Paramètres/Administration 2026-09-20) rendent
+// tous deux une grille TriptychLayout complète et n'ont simplement
+// jamais eu besoin de ce contournement.
 for (const screen of SCREENS) {
   test(`${screen.name} à 900 px (juste au-dessus du seuil relevé) : aucun contenu clippé`, async ({
     page,
