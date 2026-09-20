@@ -209,13 +209,6 @@ export const fr = {
 
   // AdminExtensionsPage
   "extensions.title": "Extensions",
-  "extensions.backToCatalog": "← Retour au catalogue",
-  "extensions.linkInfrastructure": "Outils d'infrastructure →",
-  "extensions.linkRoles": "Rôles et privilèges →",
-  "extensions.linkUsers": "Utilisateurs →",
-  "extensions.linkCollections": "Collections →",
-  "extensions.linkHarvest": "Moissonnage →",
-  "extensions.linkCompliance": "Conformité (RGPD) →",
   "extensions.loading": "Chargement…",
   "extensions.loadError": "Échec du chargement des extensions.",
   "extensions.updateError": "Échec de la mise à jour de l'extension.",
@@ -229,6 +222,18 @@ export const fr = {
   // Motif de navigation partagé (lien de retour au catalogue depuis un écran
   // d'administration/édition en triptyque) — réutilisé par plusieurs pages.
   "nav.backToCatalog": "← Retour au catalogue",
+
+  // AdminNav (shell/chrome/AdminNav.tsx) — panneau de gauche partagé par les
+  // sept pages d'administration, filtré par privilège comme la barre de
+  // domaines (capabilities.ts) : un privilège manquant masque le lien.
+  "adminNav.label": "Navigation d'administration",
+  "extensions.linkExtensions": "Extensions →",
+  "extensions.linkInfrastructure": "Outils d'infrastructure →",
+  "extensions.linkRoles": "Rôles et privilèges →",
+  "extensions.linkUsers": "Utilisateurs →",
+  "extensions.linkCollections": "Collections →",
+  "extensions.linkHarvest": "Moissonnage →",
+  "extensions.linkCompliance": "Conformité (RGPD) →",
 
   // AdminInfrastructurePage
   "infrastructure.title": "Infrastructure",

@@ -21,7 +21,7 @@
   },
   {
     "file": "src/pages/CollectionsAdminPage.tsx",
-    "line": 82,
+    "line": 75,
     "reason": "Pré-existant : setRegistering(true) ouvre RegisterCollectionPanel en ligne (registering && <RegisterCollectionPanel/>) sans aria-expanded/aria-controls, alors que ce même fichier câble déjà usePanelTrigger() pour ses panneaux editing/sharing voisins. Dette REV-088."
   },
   {
@@ -41,7 +41,7 @@
   },
   {
     "file": "src/pages/RolesAdminPage.tsx",
-    "line": 55,
+    "line": 48,
     "reason": "Pré-existant : setCreating(true) ouvre CreateRolePanel en ligne (creating && <CreateRolePanel/>) sans aria-expanded/aria-controls, alors que ce même fichier câble déjà usePanelTrigger() pour son panneau editPanel voisin (par ligne de rôle). Dette REV-088."
   },
   {

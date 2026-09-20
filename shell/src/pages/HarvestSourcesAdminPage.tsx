@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import {
   useDeleteHarvestSource,
   useHarvestSources,
@@ -9,11 +8,11 @@ import {
 } from "../api/hooks";
 import type { HarvestSource } from "../api/types";
 import { Button } from "../ui/kit/Button";
-import { Panel } from "../ui/kit/Panel";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { CreateHarvestSourcePanel } from "../shell/CreateHarvestSourcePanel";
 import { EditHarvestSourcePanel } from "../shell/EditHarvestSourcePanel";
+import { AdminNav } from "../shell/chrome/AdminNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 
@@ -50,13 +49,7 @@ export function HarvestSourcesAdminPage() {
         browse={{
           id: "back",
           label: t("domain.catalog"),
-          content: (
-            <Panel className="m-3 flex flex-col gap-3 text-sm">
-              <Link to="/" className="text-accent hover:underline">
-                {t("nav.backToCatalog")}
-              </Link>
-            </Panel>
-          ),
+          content: <AdminNav />,
         }}
         work={{
           id: "sources",

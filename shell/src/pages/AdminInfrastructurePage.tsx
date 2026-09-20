@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-import { Link } from "react-router-dom";
 import type { AdminToolName } from "../api/types";
 import { useInstanceInfo, useLaunchAdminTool } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
-import { Panel } from "../ui/kit/Panel";
+import { AdminNav } from "../shell/chrome/AdminNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 
@@ -28,13 +27,7 @@ export function AdminInfrastructurePage() {
         browse={{
           id: "back",
           label: t("domain.catalog"),
-          content: (
-            <Panel className="m-3 flex flex-col gap-3 text-sm">
-              <Link to="/" className="text-accent hover:underline">
-                {t("nav.backToCatalog")}
-              </Link>
-            </Panel>
-          ),
+          content: <AdminNav />,
         }}
         work={{
           id: "infrastructure",

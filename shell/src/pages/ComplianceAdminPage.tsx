@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { useEraseUser, useMe, usePurgeStatus, useRequestTenantPurge } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Panel } from "../ui/kit/Panel";
+import { AdminNav } from "../shell/chrome/AdminNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 
@@ -145,16 +145,7 @@ export function ComplianceAdminPage() {
         browse={{
           id: "back",
           label: t("domain.catalog"),
-          content: (
-            <Panel className="m-3 flex flex-col gap-3 text-sm">
-              <Link to="/" className="text-accent hover:underline">
-                {t("nav.backToCatalog")}
-              </Link>
-              <Link to="/admin/users" className="text-accent hover:underline">
-                {t("extensions.linkUsers")}
-              </Link>
-            </Panel>
-          ),
+          content: <AdminNav />,
         }}
         work={{
           id: "compliance",

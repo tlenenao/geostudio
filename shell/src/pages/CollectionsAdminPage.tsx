@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { useCollectionsAdmin, useDeleteCollection, useInstanceInfo } from "../api/hooks";
 import type { CollectionAdmin } from "../api/types";
 import { Gate } from "../auth/Gate";
 import { Locked } from "../auth/Locked";
 import { Button } from "../ui/kit/Button";
-import { Panel } from "../ui/kit/Panel";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { CollectionSharePanel } from "../shell/CollectionSharePanel";
 import { EditCollectionPanel } from "../shell/EditCollectionPanel";
 import { RegisterCollectionPanel } from "../shell/RegisterCollectionPanel";
+import { AdminNav } from "../shell/chrome/AdminNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 
@@ -63,13 +62,7 @@ export function CollectionsAdminPage() {
         browse={{
           id: "back",
           label: t("domain.catalog"),
-          content: (
-            <Panel className="m-3 flex flex-col gap-3 text-sm">
-              <Link to="/" className="text-accent hover:underline">
-                {t("nav.backToCatalog")}
-              </Link>
-            </Panel>
-          ),
+          content: <AdminNav />,
         }}
         work={{
           id: "collections",
