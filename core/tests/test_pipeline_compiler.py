@@ -808,3 +808,34 @@ def test_compile_expose_attributes_expands_struct_fields(conn):
     conn.execute(f"CREATE TEMP VIEW out AS {sql}")
     row = conn.execute("SELECT id, a, b FROM out").fetchone()
     assert row == (1, 10, "x")
+
+
+def test_compile_validate_attributes_checks_non_null_columns(conn):
+    conn.execute("CREATE TABLE nullable (id INTEGER, region VARCHAR)")
+    conn.execute("INSERT INTO nullable VALUES (1, 'Nord'), (2, NULL)")
+    sql = compile_transform_sql(
+        "transform.validateAttributes",
+        {"nonNullColumns": ["region"], "nonNullResultColumn": "isValid"},
+        input_view="nullable",
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn.execute("SELECT id, isValid FROM out ORDER BY id").fetchall()
+    assert rows == [(1, True), (2, False)]
+
+
+def test_compile_validate_attributes_checks_uniqueness(conn):
+    conn.execute("CREATE TABLE dupes (id INTEGER, region VARCHAR)")
+    conn.execute("INSERT INTO dupes VALUES (1, 'Nord'), (2, 'Nord'), (3, 'Sud')")
+    sql = compile_transform_sql(
+        "transform.validateAttributes",
+        {"uniqueColumns": ["region"], "uniqueResultColumn": "isUnique"},
+        input_view="dupes",
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn.execute("SELECT id, isUnique FROM out ORDER BY id").fetchall()
+    assert rows == [(1, False), (2, False), (3, True)]
+
+
+def test_compile_validate_attributes_requires_at_least_one_check():
+    with pytest.raises(Exception, match="at least one"):
+        compile_transform_sql("transform.validateAttributes", {}, input_view="base")

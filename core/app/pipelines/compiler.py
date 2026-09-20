@@ -43,6 +43,7 @@ from app.pipelines.ops.schemas import (
     TransformSetSridParams,
     TransformSwapCoordinatesParams,
     TransformTranslateGeometryParams,
+    TransformValidateAttributesParams,
 )
 
 
@@ -574,6 +575,26 @@ def _compile_expose_attributes(
     p = TransformExposeAttributesParams.model_validate(params)
     col = _qi(p.column)
     return f"SELECT * EXCLUDE ({col}), {col}.* FROM {_qi(input_view)}"
+
+
+def _compile_validate_attributes(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformValidateAttributesParams.model_validate(params)
+    extra_cols = []
+    if p.nonNullColumns and p.nonNullResultColumn:
+        checks = " AND ".join(f"{_qi(c)} IS NOT NULL" for c in p.nonNullColumns)
+        extra_cols.append(f"({checks}) AS {_qi(p.nonNullResultColumn)}")
+    if p.uniqueColumns and p.uniqueResultColumn:
+        partition = ", ".join(_qi(c) for c in p.uniqueColumns)
+        extra_cols.append(
+            f"(COUNT(*) OVER (PARTITION BY {partition}) = 1) AS {_qi(p.uniqueResultColumn)}"
+        )
+    return f"SELECT *, {', '.join(extra_cols)} FROM {_qi(input_view)}"
 
 
 def compile_transform_sql(

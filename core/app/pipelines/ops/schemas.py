@@ -432,3 +432,25 @@ class TransformExposeAttributesParams(BaseModel):
     top-level, sans connaître leurs noms à l'avance."""
 
     column: str
+
+
+class TransformValidateAttributesParams(BaseModel):
+    """Valide des attributs explicites (non-null et/ou unicité) et écrit le résultat booléen
+    dans une colonne dédiée par vérification demandée. Colonnes explicites uniquement — pas de
+    mode « toutes les colonnes automatiquement »."""
+
+    nonNullColumns: list[str] = Field(default_factory=list)
+    nonNullResultColumn: str | None = None
+    uniqueColumns: list[str] = Field(default_factory=list)
+    uniqueResultColumn: str | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one_check(self) -> "TransformValidateAttributesParams":
+        has_non_null = bool(self.nonNullColumns) and self.nonNullResultColumn is not None
+        has_unique = bool(self.uniqueColumns) and self.uniqueResultColumn is not None
+        if not has_non_null and not has_unique:
+            raise ValueError(
+                "transform.validateAttributes requires at least one check "
+                "(nonNullColumns+nonNullResultColumn or uniqueColumns+uniqueResultColumn)"
+            )
+        return self
