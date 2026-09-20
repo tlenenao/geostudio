@@ -280,6 +280,15 @@ prompt_public_host() {
 }
 
 prompt_public_host
+# export, pas seulement set_env_var : docker compose priorise une variable
+# de shell déjà définie (même vide) sur `.env` pour la substitution
+# ${GEOSTUDIO_PUBLIC_HOST} — sans cet export, un appelant qui fixe la
+# variable à "" pour déclencher la découverte automatique (Ansible,
+# playbook.yml) la voit rester vide pour tous les `$COMPOSE up` suivants
+# de ce process, malgré la valeur découverte correctement écrite dans
+# `.env` juste en dessous (trouvé en redéploiement Proxmox réel, keycloak
+# démarrait avec KC_HOSTNAME vide et crash-loopait).
+export GEOSTUDIO_PUBLIC_HOST="$PUBLIC_HOST"
 set_env_var GEOSTUDIO_PUBLIC_HOST "$PUBLIC_HOST"
 
 activate_funnel() {

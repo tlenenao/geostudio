@@ -1008,3 +1008,12 @@ test("télécharge une pièce jointe authentifiée au clic sur son nom", async (
   expect(downloadAttachment).toHaveBeenCalledWith("incidents", "7", "att1");
   expect(createObjectURL).toHaveBeenCalledWith(blob);
 });
+
+const listFields: FormField[] = [
+  { name: "tags", type: "list", label: "Tags", order: 0, hidden: false, required: false },
+];
+
+test("un champ list n'apparaît ni dans le rendu ni dans la soumission du formulaire", async () => {
+  renderForm(listFields);
+  expect(screen.queryByLabelText("Tags")).not.toBeInTheDocument();
+});

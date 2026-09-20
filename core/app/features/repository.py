@@ -74,7 +74,7 @@ def _where(session: Session, info: TableInfo, bbox, geom_intersects, filters):
             col = by_name.get(name)
             if col is None:
                 raise FilterError(name, f"unknown filter property '{name}'")
-            if col.type == "unsupported":
+            if col.type in ("unsupported", "list"):
                 raise FilterError(name, "property not filterable")
             ident = quote_ident(session, name)
             if suffix == "__in":

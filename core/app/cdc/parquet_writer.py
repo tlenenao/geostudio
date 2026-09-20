@@ -18,13 +18,16 @@ malgré tout sur UNE seule primitive d'écriture réelle (_write_gdf) :
 jamais un writer Parquet réinventé."""
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-import duckdb
 import geopandas as gpd
 import shapely.wkb
 from shapely.geometry.base import BaseGeometry
 
 from app.sql_ident import quote_ident_duckdb as _qi
+
+if TYPE_CHECKING:
+    import duckdb
 
 
 @dataclass
@@ -82,7 +85,7 @@ def write_geoparquet(rows: list[ChangeRow], *, srid: int, path: str) -> None:
 
 
 def build_geodataframe_from_relation(
-    relation: duckdb.DuckDBPyRelation, *, srid: int, geometry_column: str
+    relation: "duckdb.DuckDBPyRelation", *, srid: int, geometry_column: str
 ) -> gpd.GeoDataFrame:
     """Même sortie que build_geodataframe (une gpd.GeoDataFrame) mais lue
     directement depuis une relation DuckDB plutôt qu'un tampon ChangeRow —
@@ -109,7 +112,7 @@ def build_geodataframe_from_relation(
 
 
 def write_geoparquet_from_relation(
-    relation: duckdb.DuckDBPyRelation, *, srid: int, geometry_column: str, path: str
+    relation: "duckdb.DuckDBPyRelation", *, srid: int, geometry_column: str, path: str
 ) -> None:
     gdf = build_geodataframe_from_relation(relation, srid=srid, geometry_column=geometry_column)
     _write_gdf(gdf, path)

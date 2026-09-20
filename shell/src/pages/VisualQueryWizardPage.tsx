@@ -201,18 +201,23 @@ export function VisualQueryWizardPage({
 
   // GET /collections/{id}/schema fusionne les champs `attachment` déclarés
   // (chantier 4.12) comme pseudo-champs sans colonne SQL réelle — jamais
-  // filtrable, joignable ni résumable, donc exclus une seule fois ici plutôt
-  // que dans chacun des 3 composants de requête visuelle qui consomment
+  // filtrable, joignable ni résumable. Une colonne `list` (REV-191) n'est
+  // pas encore filtrable/joignable/résumable non plus dans ce wizard — même
+  // exclusion, même point de passage unique plutôt que répété dans chacun
+  // des 3 composants de requête visuelle qui consomment
   // baseSchema/joinedSchema (revue finale de branche, I3).
-  function withoutAttachmentFields(schema: CollectionSchema): CollectionSchema {
-    return { ...schema, fields: schema.fields.filter((f) => f.type !== "attachment") };
+  function withoutUnrepresentableFields(schema: CollectionSchema): CollectionSchema {
+    return {
+      ...schema,
+      fields: schema.fields.filter((f) => f.type !== "attachment" && f.type !== "list"),
+    };
   }
 
   const baseSchema: CollectionSchema | undefined = baseSchemaQuery.data
-    ? withoutAttachmentFields(baseSchemaQuery.data)
+    ? withoutUnrepresentableFields(baseSchemaQuery.data)
     : undefined;
   const joinedSchema: CollectionSchema | null = joinedSchemaQuery.data
-    ? withoutAttachmentFields(joinedSchemaQuery.data)
+    ? withoutUnrepresentableFields(joinedSchemaQuery.data)
     : null;
 
   // Calculé une fois pour être réutilisé à la fois par le garde-fou

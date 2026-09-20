@@ -552,6 +552,10 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   finale a trouvé et corrigé 1 Critical (permissions manquantes sur
   l'appel réutilisable) + 2 Important, puis un correctif de correctif
   (permission `contents` implicitement retirée par le premier correctif).
+- **`cloture-rev-190-191-192-193`** — ferme 4 entrées indépendantes du
+  backlog : durcissements exchange.py/parquet_writer.py, rattachement de
+  preuve useOpenItem.ts, variante liste/array de bout en bout sur
+  FieldType (collections). GAP-83 clos.
 
 ### Conventions tranchées (2026-09-01)
 
@@ -572,7 +576,8 @@ cette décision a été fermée par SP-34 (cf. `### Livré` ci-dessus).
 
 ### Suivis et dette non bloquante
 
-Détail complet (181 entrées `REV-nnn`, 63 ouvertes) dans
+Détail complet (194 entrées `REV-nnn`, 16 ouvertes, recompté le 2026-09-20
+par classification robuste de chaque ligne `**État :**`) dans
 **`docs/revue/2026-09-04-backlog.md`** — revalidé le 2026-09-06 après une
 dérive documentaire (piège n°12, ce document était resté 21 SP sans être
 retouché). Ce qui suit est un **pointeur**, pas un résumé — ne pas y

@@ -102,3 +102,16 @@ def test_table_info_to_schema_appends_declared_attachment_fields():
         "required": False,
         "label": "Photos",
     }
+
+
+def test_list_field_exposes_item_type():
+    schema = table_info_to_schema(
+        _info(
+            [
+                ColumnInfo(name="tags", type="list", list_item_type="string", required=False),
+            ]
+        )
+    )
+    assert schema["fields"] == [
+        {"name": "tags", "type": "list", "required": False, "itemType": "string"},
+    ]

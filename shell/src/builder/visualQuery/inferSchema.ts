@@ -33,6 +33,7 @@ const FIELD_TYPE_TO_SQL: Record<CollectionFieldType, string | null> = {
   date: "date",
   datetime: "timestamptz",
   enum: "text",
+  list: null,
   attachment: null,
   unsupported: null,
 };

@@ -85,6 +85,23 @@ def test_sql_quotes_every_identifier_and_carries_the_columns():
     assert "ST_AsMVTGeom(" in sql
 
 
+def test_list_column_is_projected_as_a_json_string_in_mvt_sql():
+    # ST_AsMVT n'accepte que des propriétés scalaires (spec REV-191 §D) : une
+    # colonne "list" (text[] introspecté) doit passer par to_jsonb(...)::text
+    # plutôt que la colonne array brute, que ST_AsMVT ne sait pas sérialiser.
+    info = _info(
+        columns=[
+            ColumnInfo(name="id", type="integer", required=False),
+            ColumnInfo(name="titre", type="string", required=True),
+            ColumnInfo(name="tenant_id", type="string", required=True),
+            ColumnInfo(name="tags", type="list", list_item_type="string", required=False),
+        ]
+    )
+    sql = build_mvt_sql(_quote, info)
+    assert 'to_jsonb(t."tags")::text AS "tags"' in sql
+    assert 't."tags" AS "tags"' not in sql
+
+
 def test_sql_drops_rows_whose_tile_geometry_is_null():
     assert "IS NOT NULL" in build_mvt_sql(_quote, _info())
 

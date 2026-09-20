@@ -38,3 +38,27 @@ def test_geometry_type_and_srid_default_to_none():
 def test_rejects_a_reserved_column_name(reserved_name):
     with pytest.raises(ValidationError):
         EmptyCollectionColumn(name=reserved_name, sqlType="text")
+
+
+def test_accepts_array_sql_types():
+    payload = EmptyCollectionCreate(
+        title="Ma requête",
+        columns=[EmptyCollectionColumn(name="tags", sqlType="text[]")],
+    )
+    assert payload.columns[0].sqlType == "text[]"
+
+
+@pytest.mark.parametrize(
+    "sql_type",
+    [
+        "text[]",
+        "integer[]",
+        "bigint[]",
+        "double precision[]",
+        "boolean[]",
+        "date[]",
+        "timestamptz[]",
+    ],
+)
+def test_accepts_every_array_sql_type(sql_type):
+    assert EmptyCollectionColumn(name="c", sqlType=sql_type).sqlType == sql_type

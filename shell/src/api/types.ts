@@ -326,6 +326,7 @@ export type CollectionFieldType =
   | "date"
   | "datetime"
   | "enum"
+  | "list"
   | "attachment"
   | "unsupported";
 
@@ -335,6 +336,7 @@ export type CollectionSchemaField = {
   required: boolean;
   maxLength?: number;
   values?: string[];
+  itemType?: CollectionFieldType;
   label?: string;
 };
 

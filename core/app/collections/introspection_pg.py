@@ -30,6 +30,22 @@ _TYPE_MAP: dict[str, FieldType] = {
     "timestamp without time zone": "datetime",
 }
 
+_ARRAY_ELEMENT_TYPE_MAP: dict[str, FieldType] = {
+    "text": "string",
+    "varchar": "string",
+    "bpchar": "string",
+    "int2": "integer",
+    "int4": "integer",
+    "int8": "integer",
+    "numeric": "number",
+    "float4": "number",
+    "float8": "number",
+    "bool": "boolean",
+    "date": "date",
+    "timestamp": "datetime",
+    "timestamptz": "datetime",
+}
+
 _GEOM_TYPES = {
     "POINT": "Point",
     "LINESTRING": "LineString",
@@ -128,6 +144,7 @@ def introspect_table(session: Session, table_name: str) -> TableInfo:
         if name == geometry_column:
             continue
         enum_values = None
+        list_item_type = None
         if data_type == "USER-DEFINED":
             enum_values = (
                 session.execute(
@@ -145,6 +162,11 @@ def introspect_table(session: Session, table_name: str) -> TableInfo:
             )
             ftype: FieldType = "enum" if enum_values else "unsupported"
             enum_values = list(enum_values) or None
+        elif data_type == "ARRAY":
+            element = udt_name.removeprefix("_")
+            item_type = _ARRAY_ELEMENT_TYPE_MAP.get(element)
+            ftype = "list" if item_type is not None else "unsupported"
+            list_item_type = item_type
         else:
             ftype = _TYPE_MAP.get(data_type, "unsupported")
         required = is_nullable == "NO" and default is None and is_identity != "YES"
@@ -155,6 +177,7 @@ def introspect_table(session: Session, table_name: str) -> TableInfo:
                 required=required,
                 max_length=max_len,
                 enum_values=enum_values,
+                list_item_type=list_item_type,
             )
         )
 

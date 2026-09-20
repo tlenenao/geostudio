@@ -317,6 +317,72 @@ def test_tile_omits_sensitive_property_without_privilege(pg_engine):
             )
 
 
+def test_a_list_property_appears_as_json_in_the_tile(pg_engine):
+    """REV-191 §D : ST_AsMVT n'accepte que des propriétés scalaires ; une
+    colonne list (text[] introspecté) doit sortir en JSON, pas en array brut
+    que ST_AsMVT ne sait pas sérialiser. Table dédiée plutôt que `pg_app`
+    (fixe sur `demo_incidents`, sans colonne array) — même patron que
+    `test_tile_omits_sensitive_property_without_privilege` ci-dessus."""
+    table = "demo_incidents_tags_tile"
+    Base.metadata.create_all(pg_engine)
+    with pg_engine.begin() as conn:
+        conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
+        conn.execute(
+            text(
+                f"CREATE TABLE {table} (id serial PRIMARY KEY, titre text NOT NULL, "
+                "tags text[], geom geometry(Point, 4326))"
+            )
+        )
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        admin = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="admin-tags-tile",
+            username="admin-tags-tile",
+            email=None,
+            first_name="",
+            last_name="",
+            bootstrap_admin=True,
+        )
+        s.commit()
+    app = create_app()
+
+    def override_session():
+        with request_scoped_session(Session) as session:
+            yield session
+
+    app.dependency_overrides[db.get_session] = override_session
+    app.dependency_overrides[get_current_user] = lambda: admin
+    app.dependency_overrides[get_current_user_optional] = lambda: admin
+    client = TestClient(app)
+    try:
+        create_r = client.post("/v1/collections", json={"tableName": table})
+        assert create_r.status_code == 201, create_r.text
+        item_r = client.post(
+            f"/v1/collections/{table}/items",
+            json={
+                "type": "Feature",
+                "properties": {"titre": "x", "tags": ["urgent", "voirie"]},
+                "geometry": {"type": "Point", "coordinates": [2.35, 48.85]},
+            },
+        )
+        assert item_r.status_code == 201, item_r.text
+        r = client.get(f"/v1/collections/{table}/tiles/0/0/0.mvt")
+        assert r.status_code == 200
+        # to_jsonb(...)::text met un espace après la virgule (confirmé
+        # empiriquement contre le Postgres réel du conteneur de test — ne pas
+        # supposer un format compact).
+        assert b'["urgent", "voirie"]' in r.content
+    finally:
+        with pg_engine.begin() as conn:
+            conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
+            conn.execute(
+                text("TRUNCATE collection_shares, collections, audit_log, users, tenants CASCADE")
+            )
+
+
 def test_serving_a_tile_writes_no_audit_row(pg_app):
     """Décision de spec §3.1 : une vue de carte produit des centaines de
     tuiles, les auditer noierait la table."""

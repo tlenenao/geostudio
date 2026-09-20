@@ -23,6 +23,8 @@ def pg_session(pg_session_factory, pg_engine):
                 date_incident date,
                 resolu boolean DEFAULT false,
                 payload jsonb,
+                tags text[],
+                scores integer[],
                 geom geometry(Point, 4326)
             )""")
         )
@@ -47,6 +49,15 @@ def test_introspects_types(pg_session):
     assert by_name["resolu"].type == "boolean"
     assert by_name["resolu"].required is False  # NOT NULL absent / défaut présent
     assert by_name["payload"].type == "unsupported"  # jsonb hors périmètre v1
+
+
+def test_array_columns_introspect_as_list_with_item_type(pg_session):
+    info = introspect_table(pg_session, "t_incidents")
+    by_name = {c.name: c for c in info.columns}
+    assert by_name["tags"].type == "list"
+    assert by_name["tags"].list_item_type == "string"
+    assert by_name["scores"].type == "list"
+    assert by_name["scores"].list_item_type == "integer"
 
 
 def test_unknown_table(pg_session):

@@ -3,5 +3,5 @@
   "plancher_priorite_haute": 90,
   "plancher_priorite_moyenne": 89.9,
   "plancher_sante_mediane": 96,
-  "exceptions_priorite_moyenne": ["catalogue-mes-vues-signets"]
+  "exceptions_priorite_moyenne": []
 }

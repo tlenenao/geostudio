@@ -11,7 +11,7 @@ from typing import Literal
 from sqlalchemy.orm import Session
 
 FieldType = Literal[
-    "string", "integer", "number", "boolean", "date", "datetime", "enum", "unsupported"
+    "string", "integer", "number", "boolean", "date", "datetime", "enum", "list", "unsupported"
 ]
 
 
@@ -35,6 +35,7 @@ class ColumnInfo:
     required: bool
     max_length: int | None = None
     enum_values: list[str] | None = None
+    list_item_type: FieldType | None = None
 
 
 @dataclass(frozen=True)

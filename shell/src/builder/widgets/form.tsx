@@ -100,7 +100,7 @@ function FieldOverrides({
               />
               {t("widgetForm.hiddenToggle")}
             </label>
-            {f.type !== "unsupported" && f.type !== "attachment" && (
+            {f.type !== "unsupported" && f.type !== "attachment" && f.type !== "list" && (
               <label className="flex items-center gap-1 whitespace-nowrap text-[10px]">
                 <input
                   type="checkbox"
@@ -453,10 +453,10 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const client = useItemClient();
   const queryClient = useQueryClient();
   const fields = ((props.fields as FormField[] | undefined) ?? [])
-    .filter((f) => !f.hidden && f.type !== "unsupported")
+    .filter((f) => !f.hidden && f.type !== "unsupported" && f.type !== "list")
     .sort((a, b) => a.order - b.order);
   const allFields = ((props.fields as FormField[] | undefined) ?? []).filter(
-    (f) => f.type !== "unsupported",
+    (f) => f.type !== "unsupported" && f.type !== "list",
   );
   const geometryType = props.geometryType as string | null | undefined;
   const [lon, setLon] = useState<string>("");
