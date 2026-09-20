@@ -1,4 +1,4 @@
-# Vague 2 des transformers/lecteurs `planned_duckdb` — 15 nouvelles op
+# Vague 2 des transformers/lecteurs `planned_duckdb` — 20 nouvelles op
 
 **Date** : 2026-09-20
 **Demande** : « lance une spec pour réaliser tous les transformers duckdb restant », puis « rajoute tous les
@@ -15,10 +15,14 @@ FME de transformation + 9 lignes FME de lecture (« Google BigQuery », « Micro
 « Oracle Spatial Relational », « Apache Parquet », « CSV », « JSON », « S3Connector », «
 AzureBlobStorageConnector », « GoogleCloudStorageConnector »).
 
-**Retrait complet du sidecar QGIS** (demandé dans la même conversation, motivé par la licence GPL-2.0-or-later
-et par la charge opérationnelle d'un sidecar de plus) est **hors de ce document** : sujet de nature différente
-(retrait/migration d'une capacité existante en production, 19 lignes `qgis_frozen`, pas ajout d'op) —
-traité par un design séparé, `docs/superpowers/specs/2026-09-20-retrait-sidecar-qgis-design.md` (§7 y renvoie).
+Une 3e demande, dans la même conversation — retirer le sidecar QGIS (GPL-2.0-or-later) — a été décomposée à
+part (impact : 19 lignes `qgis_frozen`, dont 6 raster sans équivalent DuckDB et 2 cas de triangulation
+incertains, cf. classification en tête de tâche). Tanguy n'a retenu, pour **ce document**, que le sous-ensemble
+qui est en réalité un chantier de même nature que le reste de cette spec — de nouvelles op `transform.*` pures
+DuckDB — sans toucher au sidecar lui-même : **§8** couvre cette migration vecteur. Le retrait mécanique du
+sidecar (docker-compose, `CORE_ETL_ENABLED`, migration des pipelines prod existants), le chemin GDAL direct
+pour les 6 op raster, et les 2 cas de triangulation restent explicitement hors de ce document (§9) — le
+sidecar QGIS continue de tourner et de servir les lignes non couvertes par §8.
 
 ## 0. Constat de départ — le texte de Vague 1 se trompe sur l'ampleur du problème (vérifié, pas supposé)
 
@@ -59,12 +63,14 @@ d'introspection.
 
 ## 1. Ce que ce chantier construit, en une phrase
 
-**15 nouvelles entrées `OperationContract`** : 11 op `transform.*` couvrant les 12 transformers FME des
+**20 nouvelles entrées `OperationContract`** : 11 op `transform.*` couvrant les 12 transformers FME des
 familles « schéma dynamique » et « cardinalité/ordre changé » (8 en `compile` pur, 3 utilisant une extension
 minimale et chirurgicale du contrat — `needs_columns` — pour recevoir la liste des colonnes réelles de
-leur(s) entrée(s), jamais une connexion DuckDB dans `compiler.py`, qui reste un module pur), et 4 nouvelles op
-`reader.connector.*` (`bigquery`/`mssql`/`oracle`/`blob`) suivant exactement le patron déjà en production de
-`reader.connector.postgres`/`snowflake` (§6) — catalogue à 34 + 11 + 4 = **49 op**.
+leur(s) entrée(s), jamais une connexion DuckDB dans `compiler.py`, qui reste un module pur) ; 4 nouvelles op
+`reader.connector.*` (`bigquery`/`mssql`/`oracle`/`blob`, §6) suivant exactement le patron déjà en production
+de `reader.connector.postgres`/`snowflake` ; et 5 nouvelles op `transform.*` remplaçant 7 des 19 lignes
+`qgis_frozen` de la matrice par un équivalent DuckDB pur, sans toucher au sidecar QGIS (§8) — catalogue à
+34 + 11 + 4 + 5 = **54 op**.
 
 ## 2. Périmètre
 
@@ -195,7 +201,8 @@ CLAUDE.md n°7 (une assertion de durée/petite échelle ne prouve rien sur une p
   `input_columns`/`join_columns` résolus par `DESCRIBE` correspondent bien au schéma réel de la vue —
   falsification explicite : injecter une colonne renommée entre l'écriture de la config et l'exécution,
   confirmer que le SQL généré s'adapte plutôt que de référencer une colonne disparue.
-- **Test de non-régression sur le compte d'op** : `len(OPERATIONS) == 49` (34 + 11 transform + 4 reader).
+- **Test de non-régression sur le compte d'op** : `len(OPERATIONS) == 49` (34 + 11 transform + 4 reader — état
+  intermédiaire avant les 5 op supplémentaires de §8, qui portent le total final à 54, cf. §8.3).
 - **`test_pipeline_routes.py`** : `GET /pipelines/ops` contient les 15 nouvelles clés avec leur
   `kind`/`paramsSchema`.
 - **Falsification de l'ordre pour `transform.sort`** (`test_pipeline_runtime.py`) : pipeline reader → sort →
@@ -303,19 +310,102 @@ même modèle de confiance que `reader.connector.postgres`/`snowflake` (jamais d
   et les extras `filesystem`/`s3`/`az`/`gs` de `dlt` — à vérifier lesquels sont déjà présents (le patron
   Snowflake/Postgres existant a peut-être déjà tiré une partie de ces extras transitivement).
 
-## 7. Ce que ce document ne fait pas
+## 8. Migration vecteur des algorithmes QGIS gelés (7 lignes `qgis_frozen` → DuckDB pur)
 
-Ne construit aucun nouveau moteur d'exécution (les 4 lecteurs §7 réutilisent `_run_dlt_and_attach` sans le
-modifier). Ne tranche pas les familles « appel externe par ligne », « connecteurs de flux » ou le bloc
-« Integrations » (~20 connecteurs SaaS bespoke — Box, Dropbox, CKAN, ArcGIS Online, Autodesk, Slack, Trello,
-RabbitMQ, MongoDB, Google Sheets…) — explicitement écarté par Tanguy de ce chantier (choix du 2e tour de
-cadrage), toujours hors périmètre, carte inchangée depuis Vague 1 §3.2 sur ce point. Ne construit aucun
-`writer.connector.*` (DatabaseUpdater/DatabaseDeleter) — écrire vers un système externe est une capacité qui
-n'existe nulle part aujourd'hui (seuls `writer.collection`/`export`/`dataset` écrivent, tous vers le cœur
-GeoStudio lui-même) et mériterait son propre design (garde d'egress en écriture, sémantique de mode) plutôt
-qu'un ajout mécanique ici — explicitement écarté par Tanguy du 2e tour de cadrage. Ne touche pas au sidecar
-QGIS ni aux 19 lignes `qgis_frozen` — sujet traité par un document séparé (voir renvoi en tête de ce
-document). Ne restreint pas structurellement l'usage de `transform.sort` (décision assumée en §3.3, à
-revisiter explicitement si un incident de données mal ordonnées survient en production). Ne construit pas le
-matching automatique par type de SchemaMapper ni le mode « toutes colonnes » de AttributeValidator —
-réductions de périmètre documentées en §2.1, pas des oublis.
+Classification de départ (vérifiée, pas supposée) : des 50 algorithmes de l'allowlist QGIS
+(`core/app/pipelines/ops/qgis_algorithms.json`), **12 seulement sont réellement consommés** par les 19 lignes
+`qgis_frozen` de la matrice — les 38 autres sont de la capacité inutilisée, aucune migration requise pour
+elles. Sur ces 12 : 6 sont des opérations raster (hors périmètre ici, §9), 2 relèvent d'une triangulation sans
+équivalent DuckDB trouvé (hors périmètre ici, §9), et **2 sont déjà atteignables aujourd'hui par composition
+d'op existantes** (vérifié empiriquement, aucun nouveau code) :
+
+- **Clipper** (`native:clip`) — `transform.intersection` avec `outputGeometry="intersection"`
+  (`TransformIntersectionParams`, `core/app/pipelines/ops/schemas.py` ligne 79) produit déjà exactement
+  `ST_Intersection(t.geometry, o.geometry)` (`compiler.py::_compile_intersection`) — testé contre un DuckDB
+  réel, confirmé. Même caveat déjà documenté pour `SpatialFilter` dans la matrice : une entrée qui intersecte
+  plusieurs features de l'overlay en ressort dupliquée une fois par correspondance, contrairement à
+  `native:clip`.
+- **Dissolver** (`native:dissolve`) — `transform.aggregate` avec `metrics: {"geometry":
+  "ST_Union_Agg(geometry)"}` (`groupBy` optionnel) produit déjà le dissolve standard — testé contre un DuckDB
+  réel (3 polygones, 2 adjacents fusionnés en un seul, le 3e resté séparé, résultat exact attendu).
+
+Ces deux lignes passent `qgis_frozen` → `implemented` (`geostudio_equivalent` = la combinaison d'op, cf. la
+même limite déjà notée en Vague 1 §3.2 dernier point : le vérificateur mécanique
+`fme_coverage_cli.py --check` exige une clé unique de `ops_catalog()`, pas une composition — à traiter comme
+une extension de taxonomie ou laissée en note, même decision que pour les ~8 lignes « déjà atteignables par
+composition » de Vague 1).
+
+### 8.1 5 nouvelles op `transform.*`
+
+| Op GeoStudio | FME couvert | Mécanisme | Entrée secondaire |
+|---|---|---|---|
+| `transform.centroid` | CenterPointReplacer | `ST_Centroid(geometry)` | non |
+| `transform.simplify` | Generalizer | `ST_Simplify`/`ST_SimplifyPreserveTopology(geometry, tolerance)` | non |
+| `transform.convexHull` | HullReplacer | `ST_ConvexHull(geometry)` | non |
+| `transform.boundingGeometry` | BoundingBoxReplacer | `ST_Envelope`/`ST_MinimumRotatedRectangle(geometry)` | non |
+| `transform.snapToLayer` | Snapper | `ST_Snap(t.geometry, o.geometry, tolerance)` | **oui** (`withCollectionId`) |
+
+Toutes les 5 en `compile` pur, patron identique aux 34 op existantes — aucune n'a besoin de `needs_columns`.
+Fonctions vérifiées comme existantes par introspection de `duckdb_functions()` (`ST_Centroid`, `ST_Simplify`,
+`ST_SimplifyPreserveTopology`, `ST_ConvexHull`, `ST_Envelope`, `ST_MinimumRotatedRectangle`, `ST_Snap`) —
+**signatures exactes et comportement sémantique non vérifiés** (piège CLAUDE.md n°3, comme pour les
+identifiants DuckDB spatial de Vague 1 §3) : à confirmer contre `duckdb.org/docs/current/core_extensions/
+spatial` ou un DuckDB réel avant d'écrire le premier test du plan, en particulier :
+
+- `transform.simplify` : `preserveTopology: bool = True` sélectionne entre les deux fonctions — reste à
+  vérifier si `ST_SimplifyPreserveTopology` accepte les mêmes types de géométrie que `ST_Simplify` (GEOS a
+  parfois des restrictions différentes selon la fonction).
+- `transform.boundingGeometry` : `mode: Literal["envelope", "orientedRectangle"]` — couvre les 2 modes 2D de
+  BoundingBoxReplacer déjà notés dans la matrice (« seuls les modes 2D sont couverts, pas le mode cube 3D »).
+  Ne couvre pas MinimumSpanningCircleReplacer (aucune fonction `ST_MinimumBoundingCircle`-like trouvée dans
+  `duckdb_functions()` — `ST_MaximumInscribedCircle` est un calcul différent, le plus grand cercle **inscrit**
+  dans la géométrie, pas le plus petit cercle qui la **contient** — reste sur QGIS, §9).
+- `transform.snapToLayer` : `ST_Snap` prend une géométrie de référence unique — comportement à définir/tester
+  si l'entrée secondaire (`withCollectionId`) contient plusieurs features (snap contre la plus proche ? contre
+  toutes en cascade ? actuellement indéterminé, à trancher dans le plan plutôt que deviné ici).
+
+### 8.2 Fichiers touchés (§8)
+
+Mêmes 3 fichiers que le reste de ce document (`schemas.py`, `compiler.py`, `contracts.py`) — aucun nouveau
+fichier, aucun changement à `runtime.py` (aucune des 5 n'a besoin de `needs_columns`). `engine_license="MIT
+(DuckDB)"` pour les 5 — aucune ne dépend de QGIS, ce qui est tout l'intérêt de cette migration.
+
+### 8.3 Tests et portes de qualité (§8)
+
+Même discipline que §4/§5 : un test par `_compile_xxx` contre un DuckDB réel avec géométrie connue
+(assertion sur le résultat, pas la forme du SQL) ; `len(OPERATIONS) == 54` (34 + 11 + 4 + 5 — les 2
+reclassifications Clipper/Dissolver n'ajoutent aucune entrée, elles réutilisent des op déjà comptées) ;
+`docs/revue/matrice-couverture-fme.jsonl` : les 7 lignes
+(5 nouvelles op + Clipper + Dissolver) passent `qgis_frozen` → `implemented` ; `CLAUDE.md ### Livré` mentionne
+« 7 des 19 lignes `qgis_frozen` migrées vers DuckDB pur (5 nouvelles op + 2 par composition), sidecar QGIS
+toujours en place pour les 12 restantes ».
+
+## 9. Ce que ce document ne fait pas
+
+Ne construit aucun nouveau moteur d'exécution (les 4 lecteurs §6 réutilisent `_run_dlt_and_attach` sans le
+modifier ; les 5 op §8 sont du `compile` pur). Ne tranche pas les familles « appel externe par ligne »,
+« connecteurs de flux » ou le bloc « Integrations » (~20 connecteurs SaaS bespoke — Box, Dropbox, CKAN,
+ArcGIS Online, Autodesk, Slack, Trello, RabbitMQ, MongoDB, Google Sheets…) — explicitement écarté par Tanguy
+de ce chantier (choix du 2e tour de cadrage), toujours hors périmètre, carte inchangée depuis Vague 1 §3.2 sur
+ce point. Ne construit aucun `writer.connector.*` (DatabaseUpdater/DatabaseDeleter) — écrire vers un système
+externe est une capacité qui n'existe nulle part aujourd'hui (seuls `writer.collection`/`export`/`dataset`
+écrivent, tous vers le cœur GeoStudio lui-même) et mériterait son propre design (garde d'egress en écriture,
+sémantique de mode) plutôt qu'un ajout mécanique ici — explicitement écarté par Tanguy du 2e tour de cadrage.
+
+**Ne retire pas le sidecar QGIS** — 12 des 19 lignes `qgis_frozen` continuent d'en dépendre après ce
+document (6 op raster : ContourGenerator/RasterResampler/RasterToPolygonCoercer/RasterAspectCalculator/
+RasterHillshader/RasterSlopeCalculator ; 2 cas de triangulation sans équivalent DuckDB trouvé :
+TINGenerator/SurfaceModeller/DEMGenerator ; AreaOnAreaOverlayer, dont le mode auto-overlay sur une seule
+couche ne se réduit pas à une composition simple ; MinimumSpanningCircleReplacer, cercle englobant minimal
+sans fonction DuckDB équivalente ; Densifier, aucune fonction `ST_Densify`/`ST_Segmentize` trouvée dans
+`duckdb_functions()`). Le retrait mécanique du sidecar (docker-compose, `CORE_ETL_ENABLED`, migration des
+pipelines prod existants qui utilisent `transform.qgis` aujourd'hui, `LICENSE-QGIS.md`), le chemin GDAL direct
+pour les 6 op raster (candidat identifié : `gdaldem`/`gdal_contour`/`gdalwarp`/`gdal_polygonize.py`, MIT/X,
+précédent déjà dans la stack via `titiler`/rasterio — non conçu ici), et les 2 cas de triangulation (piste non
+vérifiée : Shapely/GEOS `shapely.ops.triangulate`, BSD, en process dans le worker) restent des chantiers
+séparés, non entamés par ce document.
+
+Ne restreint pas structurellement l'usage de `transform.sort` (décision assumée en §3.3, à revisiter
+explicitement si un incident de données mal ordonnées survient en production). Ne construit pas le matching
+automatique par type de SchemaMapper ni le mode « toutes colonnes » de AttributeValidator — réductions de
+périmètre documentées en §2.1, pas des oublis.
