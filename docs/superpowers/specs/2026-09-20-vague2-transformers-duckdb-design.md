@@ -1,12 +1,24 @@
-# Vague 2 des transformers `planned_duckdb` — 11 nouvelles op, familles « schéma/forme » + « ordre/cardinalité »
+# Vague 2 des transformers/lecteurs `planned_duckdb` — 15 nouvelles op
 
 **Date** : 2026-09-20
-**Demande** : « lance une spec pour réaliser tous les transformers duckdb restant ».
+**Demande** : « lance une spec pour réaliser tous les transformers duckdb restant », puis « rajoute tous les
+readers et writers » (précisé ensuite : lecteurs SQL par dialecte + lecteurs objet/fichiers tabulaires
+DuckDB — pas le bloc SaaS bespoke, pas un nouveau `writer.connector.*`, ces deux derniers restant hors
+périmètre, cf. §6).
 **Référence** : `docs/superpowers/specs/2026-09-17-vague1-transformers-duckdb-design.md` (Vague 1, 15 op livrées,
 catalogue à 34 op) — son §3.2 cartographiait le reste des 90 lignes `planned_duckdb` en familles et concluait
 que « construire les 90 transformers » est un programme, pas un chantier. Ce document exécute la **prochaine**
-tranche, choisie par Tanguy parmi les familles cartographiées : la famille « schéma dynamique » (~8 lignes) et
-la famille « cardinalité/ordre changé » (~4 lignes) — 12 transformers FME au total.
+tranche, choisie par Tanguy parmi les familles cartographiées : la famille « schéma dynamique » (~8 lignes,
+§1-§4), la famille « cardinalité/ordre changé » (~4 lignes, §1-§4), et deux sous-familles de lecteurs
+identifiées par Vague 1 §3.2 comme les candidats les plus sûrs du reste de la matrice (§6) — 12 transformers
+FME de transformation + 9 lignes FME de lecture (« Google BigQuery », « Microsoft SQL Server Spatial »,
+« Oracle Spatial Relational », « Apache Parquet », « CSV », « JSON », « S3Connector », «
+AzureBlobStorageConnector », « GoogleCloudStorageConnector »).
+
+**Retrait complet du sidecar QGIS** (demandé dans la même conversation, motivé par la licence GPL-2.0-or-later
+et par la charge opérationnelle d'un sidecar de plus) est **hors de ce document** : sujet de nature différente
+(retrait/migration d'une capacité existante en production, 19 lignes `qgis_frozen`, pas ajout d'op) —
+traité par un design séparé, `docs/superpowers/specs/2026-09-20-retrait-sidecar-qgis-design.md` (§7 y renvoie).
 
 ## 0. Constat de départ — le texte de Vague 1 se trompe sur l'ampleur du problème (vérifié, pas supposé)
 
@@ -34,7 +46,7 @@ jamais contre la documentation seule), cette prémisse s'avère en grande partie
 - **`ORDER BY`** dans une vue survit empiriquement à travers une chaîne de vues (testé : 20 000 lignes,
   8 threads, tri → vue intermédiaire de projection → vue avec fonction fenêtrée — ordre préservé dans les
   trois cas). Ce n'est **pas une garantie documentée** de DuckDB — juste un comportement observé à cette
-  échelle (voir §5, décision assumée sur ce point précis).
+  échelle (voir §3.3, décision assumée sur ce point précis).
 
 **Conséquence** : sur les 12 transformers FME des deux familles, **seuls 3** (ChangeDetector, FeatureMerger,
 SchemaMapper) ont un besoin réel d'introspection dynamique qu'aucune primitive SQL statique ne couvre —
@@ -47,11 +59,12 @@ d'introspection.
 
 ## 1. Ce que ce chantier construit, en une phrase
 
-**11 nouvelles entrées `OperationContract`** couvrant les 12 transformers FME des familles « schéma
-dynamique » et « cardinalité/ordre changé » : 8 en `compile` pur (patron déjà prouvé par les 34 op
-existantes, y compris 2 qui changent la cardinalité), et 3 utilisant une extension minimale et chirurgicale du
-contrat (`needs_columns`) pour recevoir la liste des colonnes réelles de leur(s) entrée(s) — jamais une
-connexion DuckDB dans `compiler.py`, qui reste un module pur.
+**15 nouvelles entrées `OperationContract`** : 11 op `transform.*` couvrant les 12 transformers FME des
+familles « schéma dynamique » et « cardinalité/ordre changé » (8 en `compile` pur, 3 utilisant une extension
+minimale et chirurgicale du contrat — `needs_columns` — pour recevoir la liste des colonnes réelles de
+leur(s) entrée(s), jamais une connexion DuckDB dans `compiler.py`, qui reste un module pur), et 4 nouvelles op
+`reader.connector.*` (`bigquery`/`mssql`/`oracle`/`blob`) suivant exactement le patron déjà en production de
+`reader.connector.postgres`/`snowflake` (§6) — catalogue à 34 + 11 + 4 = **49 op**.
 
 ## 2. Périmètre
 
@@ -182,8 +195,8 @@ CLAUDE.md n°7 (une assertion de durée/petite échelle ne prouve rien sur une p
   `input_columns`/`join_columns` résolus par `DESCRIBE` correspondent bien au schéma réel de la vue —
   falsification explicite : injecter une colonne renommée entre l'écriture de la config et l'exécution,
   confirmer que le SQL généré s'adapte plutôt que de référencer une colonne disparue.
-- **Test de non-régression sur le compte d'op** : `len(OPERATIONS) == 45` (34 + 11).
-- **`test_pipeline_routes.py`** : `GET /pipelines/ops` contient les 11 nouvelles clés avec leur
+- **Test de non-régression sur le compte d'op** : `len(OPERATIONS) == 49` (34 + 11 transform + 4 reader).
+- **`test_pipeline_routes.py`** : `GET /pipelines/ops` contient les 15 nouvelles clés avec leur
   `kind`/`paramsSchema`.
 - **Falsification de l'ordre pour `transform.sort`** (`test_pipeline_runtime.py`) : pipeline reader → sort →
   writer, volume de données suffisant pour forcer un plan multi-thread (vérifier via `EXPLAIN` ou un volume
@@ -196,6 +209,11 @@ CLAUDE.md n°7 (une assertion de durée/petite échelle ne prouve rien sur une p
 - **`transform.detectChanges`** : test des 4 valeurs de `statusColumn` (`inserted`/`deleted`/`updated`/
   `unchanged`) avec un jeu de données couvrant les 4 cas simultanément (FULL OUTER JOIN mal construit produit
   souvent un faux `unchanged` sur une ligne réellement `updated` — cas à couvrir explicitement).
+- **Les 4 op `reader.connector.*`** (§6) : tests dédiés dans `test_pipeline_connector_runtime.py` (patron
+  déjà suivi par `materialize_postgres_connector`/`materialize_snowflake_connector` — un secret du mauvais
+  `kind` doit être rejeté explicitement, une requête non SELECT-only doit être rejetée par
+  `validate_select_only` avant tout appel réseau) — falsification par injection d'un `kind` erroné et d'une
+  requête `INSERT`/`DELETE`, confirmer le rejet avant de le corriger.
 
 ## 5. Portes de qualité et surfaces à régénérer avant clôture
 
@@ -204,23 +222,100 @@ appliquées à ce chantier :
 
 - `ruff check`/`ruff format --check`/`mypy --strict` (si `app.pipelines` est dans le périmètre strict —
   vérifier `core/pyproject.toml`) ; `lint-imports` ; suite complète `core`.
-- Régénérer `openapi.json` + `core-schema.d.ts` (piège CLAUDE.md n°1) — diff non vide attendu (11 nouveaux
+- Régénérer `openapi.json` + `core-schema.d.ts` (piège CLAUDE.md n°1) — diff non vide attendu (15 nouveaux
   schémas de params).
-- `docs/revue/matrice-couverture-fme.jsonl` : les 12 lignes FME couvertes passent `planned_duckdb` →
-  `implemented`, `geostudio_equivalent` renseigné, puis
+- `docs/revue/matrice-couverture-fme.jsonl` : les 12 lignes FME de transformation **et** les 9 lignes FME de
+  lecture (§6) couvertes passent `planned_duckdb` → `implemented`, `geostudio_equivalent` renseigné, puis
   `python3 core/scripts/fme_coverage_cli.py --write` puis `--check`.
 - `docs/revue/inventaire-fonctionnalites.jsonl` : `GET /pipelines/ops` existe déjà, aucune nouvelle route —
   à vérifier plutôt que supposer, comme en Vague 1.
 - Aucun fichier `shell/` à modifier — `PipelinePalette.tsx`/`PipelineNodeInspector.tsx` restent
-  générique-depuis-catalogue, vérifié en Vague 1 et non changé depuis.
-- `CLAUDE.md` à la clôture : une ligne dans `### Livré` (« Vague 2 des transformers DuckDB — 11 nouvelles op,
-  catalogue à 45 op, mécanisme `needs_columns` pour l'introspection de schéma à l'exécution »).
+  générique-depuis-catalogue, vérifié en Vague 1 et non changé depuis. Le formulaire de création de secret
+  (`SecretsAdminPage` ou équivalent) doit en revanche gagner les nouveaux `kind` — **à vérifier contre le
+  code réel du composant avant de supposer un changement front nul**, contrairement au reste de ce chantier
+  (piège CLAUDE.md n°12 : ne pas présumer par analogie avec Vague 1 que « aucun fichier shell » s'applique
+  encore une fois sans l'avoir revérifié pour ce cas précis).
+- `CLAUDE.md` à la clôture : une ligne dans `### Livré` (« Vague 2 des transformers/lecteurs DuckDB — 15
+  nouvelles op (11 transform + 4 reader.connector.*), catalogue à 49 op, mécanisme `needs_columns` pour
+  l'introspection de schéma à l'exécution »).
 
-## 6. Ce que ce document ne fait pas
+## 6. Lecteurs : dialectes SQL + objet/stockage (§3.2 de Vague 1, candidats déjà identifiés comme les plus sûrs)
 
-Ne construit aucun nouveau moteur, aucun nouveau connecteur. Ne tranche pas les familles « appel externe par
-ligne », « nouveaux lecteurs », « connecteurs de flux » ou « Integrations » — toujours hors périmètre, carte
-inchangée depuis Vague 1 §3.2. Ne restreint pas structurellement l'usage de `transform.sort` (décision
-assumée en §3.3, à revisiter explicitement si un incident de données mal ordonnées survient en production).
-Ne construit pas le matching automatique par type de SchemaMapper ni le mode « toutes colonnes » de
-AttributeValidator — réductions de périmètre documentées en §2.1, pas des oublis.
+### 6.1 Dialectes SQL — `reader.connector.bigquery`/`mssql`/`oracle`
+
+Vérifié dans le code : `materialize_postgres_connector`/`materialize_snowflake_connector`
+(`core/app/pipelines/connector_runtime.py`, lignes 282-358) ne font que `sa.create_engine(payload.dsn)` puis
+`exec_driver_sql(params.query)` — le dialecte SQLAlchemy est résolu par le **schéma du DSN**
+(`postgresql://…`, `snowflake://…`) via les entry points du paquet driver installé, jamais importé
+explicitement dans ce module. `materialize_bigquery_connector`/`materialize_mssql_connector`/
+`materialize_oracle_connector` sont des copies quasi identiques de `materialize_snowflake_connector` —
+seuls changent le `payload.kind` attendu et le paquet driver ajouté aux dépendances (`sqlalchemy-bigquery`,
+`pymssql` ou `pyodbc`, `python-oracledb` en mode thin — ce dernier déjà noté dans la matrice comme évitant
+la dépendance Instant Client propriétaire).
+
+- `ReaderConnectorBigQueryParams`/`ReaderConnectorMssqlParams`/`ReaderConnectorOracleParams` : même forme
+  exacte que `ReaderConnectorSnowflakeParams` (`secretName: str`, `query: str`), même validation
+  SELECT-only par `validate_select_only` réutilisée telle quelle.
+- 3 nouveaux kinds de secret (`app/secrets/schemas.py`, union discriminée « additive par construction »,
+  vérifié en tête de fichier) : `BigQueryDsnPayload`/`MssqlDsnPayload`/`OracleDsnPayload`, même forme que
+  `PostgresDsnPayload`/`SnowflakeDsnPayload` (`dsn: str` opaque, jamais parsé côté cœur). **Non vérifié dans
+  ce document** : la forme exacte du DSN attendu par `sqlalchemy-bigquery` pour l'authentification (un
+  chemin de fichier de credentials ne survivrait pas au trajet secret chiffré → chaîne opaque → DSN — à
+  vérifier contre le README réel de `sqlalchemy-bigquery` avant d'écrire le premier test, piège CLAUDE.md
+  n°3 ; une alternative serait un JSON de service account inline dans le DSN, à confirmer supporté).
+
+### 6.2 Objet/stockage — `reader.connector.blob` (S3, Azure Blob, GCS)
+
+Répond explicitement à la question laissée ouverte par Vague 1 §3.2 (« d'où vient le fichier lu par un
+pipeline serveur ») pour ce sous-ensemble précis : **jamais d'upload, jamais une URL arbitraire** — toujours
+un objet dans un bucket pour lequel le tenant a configuré un secret de connexion au préalable, exactement le
+même modèle de confiance que `reader.connector.postgres`/`snowflake` (jamais de connexion anonyme,
+`secretName` toujours requis).
+
+- Un seul op `reader.connector.blob` pour les 3 fournisseurs (S3/Azure Blob/GCS) plutôt que 3 op distinctes —
+  cohérent avec la source `filesystem` générique de dlt via `fsspec`, qui résout le fournisseur depuis le
+  préfixe de l'URI (`s3://`, `az://`, `gs://`) exactement comme `sa.create_engine` résout le dialecte SQL
+  depuis le préfixe du DSN en §7.1 — même idiome, appliqué à un mécanisme différent.
+- `ReaderConnectorBlobParams` : `secretName: str`, `path: str` (URI complet avec préfixe de schéma,
+  potentiellement un glob), `format: Literal["csv", "json", "parquet"]`.
+- Réutilise `_run_dlt_and_attach` tel quel (`core/app/pipelines/connector_runtime.py` ligne 195) — la
+  fonction est déjà générique sur n'importe quel `dlt.resource`, aucune modification nécessaire.
+- 3 nouveaux kinds de secret (`s3_credentials`/`azure_blob_credentials`/`gcs_credentials`) : contrairement
+  aux DSN SQL opaques, les credentials objet/stockage sont typiquement structurés (clé d'accès/clé secrète/
+  région pour S3, compte/clé pour Azure Blob, JSON de compte de service pour GCS) — **forme exacte des
+  champs non vérifiée dans ce document**, à confirmer contre la doc réelle de `s3fs`/`adlfs`/`gcsfs` (les
+  3 implémentations fsspec que dlt utilise sous le capot pour ces 3 préfixes) avant d'écrire le premier test.
+- **Excel (.xlsx) volontairement exclu de cette op** : la source `filesystem` de dlt auto-détecte et parse
+  CSV/JSON/Parquet nativement, mais pas un classeur Excel binaire (nécessiterait l'extension communautaire
+  DuckDB `excel`, déjà notée dans la matrice, ligne Microsoft Excel) — hors périmètre de ce chantier, pas un
+  oubli : follow-up possible une fois `reader.connector.blob` en place, pas construit ici.
+
+### 6.3 Fichiers touchés (§6)
+
+- `core/app/pipelines/ops/schemas.py` : 4 nouvelles classes `ReaderConnectorXxxParams`.
+- `core/app/pipelines/connector_runtime.py` : 4 nouvelles fonctions `materialize_xxx_connector`.
+- `core/app/pipelines/ops/contracts.py` : 4 nouvelles entrées `OPERATIONS`, `kind="reader"`, engine/licence à
+  documenter par connecteur (dlt Apache-2.0 + driver SQL propre à chaque dialecte pour §7.1 ; dlt + fsspec/
+  s3fs/adlfs/gcsfs pour §7.2 — licences déjà relevées comme permissives dans la matrice, à reconfirmer contre
+  le `pyproject.toml` réel une fois les dépendances ajoutées).
+- `app/secrets/schemas.py` : 6 nouveaux kinds (§7.1 + §7.2), union discriminée étendue.
+- Dépendances `core/pyproject.toml` : `sqlalchemy-bigquery`, `pymssql` (ou `pyodbc`), `python-oracledb`,
+  et les extras `filesystem`/`s3`/`az`/`gs` de `dlt` — à vérifier lesquels sont déjà présents (le patron
+  Snowflake/Postgres existant a peut-être déjà tiré une partie de ces extras transitivement).
+
+## 7. Ce que ce document ne fait pas
+
+Ne construit aucun nouveau moteur d'exécution (les 4 lecteurs §7 réutilisent `_run_dlt_and_attach` sans le
+modifier). Ne tranche pas les familles « appel externe par ligne », « connecteurs de flux » ou le bloc
+« Integrations » (~20 connecteurs SaaS bespoke — Box, Dropbox, CKAN, ArcGIS Online, Autodesk, Slack, Trello,
+RabbitMQ, MongoDB, Google Sheets…) — explicitement écarté par Tanguy de ce chantier (choix du 2e tour de
+cadrage), toujours hors périmètre, carte inchangée depuis Vague 1 §3.2 sur ce point. Ne construit aucun
+`writer.connector.*` (DatabaseUpdater/DatabaseDeleter) — écrire vers un système externe est une capacité qui
+n'existe nulle part aujourd'hui (seuls `writer.collection`/`export`/`dataset` écrivent, tous vers le cœur
+GeoStudio lui-même) et mériterait son propre design (garde d'egress en écriture, sémantique de mode) plutôt
+qu'un ajout mécanique ici — explicitement écarté par Tanguy du 2e tour de cadrage. Ne touche pas au sidecar
+QGIS ni aux 19 lignes `qgis_frozen` — sujet traité par un document séparé (voir renvoi en tête de ce
+document). Ne restreint pas structurellement l'usage de `transform.sort` (décision assumée en §3.3, à
+revisiter explicitement si un incident de données mal ordonnées survient en production). Ne construit pas le
+matching automatique par type de SchemaMapper ni le mode « toutes colonnes » de AttributeValidator —
+réductions de périmètre documentées en §2.1, pas des oublis.
