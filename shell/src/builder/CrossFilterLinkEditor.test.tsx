@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import type { CollectionSchema, DatasetConfig, ItemClient } from "../api/types";
@@ -100,6 +100,28 @@ test("attribute mode ne propose jamais un champ attachment comme champ cible (re
   await waitFor(() => expect(screen.getByLabelText("Champ cible")).toBeInTheDocument());
   expect(screen.getByRole("option", { name: "commune" })).toBeInTheDocument();
   expect(screen.queryByRole("option", { name: "photos" })).not.toBeInTheDocument();
+});
+
+test("attribute mode ne propose jamais un champ list comme champ cible (revue finale, I1)", async () => {
+  renderEditor(
+    {
+      getDatasetConfig: vi.fn().mockResolvedValue(incidentsDataset),
+      getCollectionSchema: vi.fn().mockResolvedValue({
+        ...incidentsSchema,
+        fields: [...incidentsSchema.fields, { name: "tags", type: "list", required: false }],
+      }),
+    },
+    { link: { targetDatasetId: "ds-2", mode: "attribute", sourceField: "", targetField: "" } },
+  );
+  const targetSelect = screen.getByLabelText("Champ cible");
+  // Attendre "titre" (unique à la cible, cf. commentaire du test "selecting
+  // a target field..." plus bas) plutôt que "commune" (présent aussi dans
+  // Champ source), pour prouver que le schéma cible a bien été chargé avant
+  // de vérifier l'absence de "tags".
+  await waitFor(() =>
+    expect(within(targetSelect).getByRole("option", { name: "titre" })).toBeInTheDocument(),
+  );
+  expect(within(targetSelect).queryByRole("option", { name: "tags" })).not.toBeInTheDocument();
 });
 
 test("spatial mode shows a precision select only when the target collection has geometry", async () => {
