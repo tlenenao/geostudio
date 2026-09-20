@@ -435,6 +435,8 @@ class TransformExposeAttributesParams(BaseModel):
 
 
 class SortKey(BaseModel):
+    """Une clé de tri : colonne et direction."""
+
     column: str
     direction: Literal["asc", "desc"] = "asc"
 
