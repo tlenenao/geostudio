@@ -48,7 +48,6 @@ export const fr = {
   "domainBar.label": "Domaines",
   "bottomNav.label": "Navigation",
   "bottomNav.more": "Plus",
-  "comingSoon.settings": "Les paramètres d'instance arrivent prochainement.",
 
   // UsagePage (/tasks) — journal d'activité (audit_log en lecture), pas un
   // tableau de bord de supervision temps réel des jobs (SP-47 §7)
@@ -237,6 +236,29 @@ export const fr = {
   "extensions.linkCollections": "Collections →",
   "extensions.linkHarvest": "Moissonnage →",
   "extensions.linkCompliance": "Conformité (RGPD) →",
+
+  // SettingsPage (pages/SettingsPage.tsx) — espace personnel : profil en
+  // lecture seule (identité gérée par Keycloak), préférence de notifications
+  // (déjà servie par le cœur, GET/PATCH /notifications/preference), lien
+  // vers la console de compte Keycloak (masqué en mode mock).
+  "settings.heading": "Paramètres",
+  "settings.detail": "Aide",
+  "settings.helpText":
+    "Ces réglages sont personnels : ils ne sont visibles que par vous, pas partagés avec les autres utilisateurs.",
+  "settings.profileTitle": "Profil",
+  "settings.profileUsername": "Nom d'utilisateur",
+  "settings.profileEmail": "Email",
+  "settings.profileName": "Nom complet",
+  "settings.profileRole": "Rôle",
+  "settings.profileTenant": "Tenant",
+  "settings.notificationsTitle": "Notifications",
+  "settings.notificationsAll": "Toutes",
+  "settings.notificationsFailuresOnly": "Échecs seulement",
+  "settings.notificationsNone": "Aucune",
+  "settings.notificationsSaveError": "Échec de l'enregistrement de la préférence.",
+  "settings.accountTitle": "Compte",
+  "settings.accountKeycloakLink":
+    "Gérer mon compte (mot de passe, authentification à deux facteurs) →",
 
   // AdminInfrastructurePage
   "infrastructure.title": "Infrastructure",

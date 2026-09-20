@@ -296,14 +296,16 @@ const SCREENS: Array<{
   {
     name: "Paramètres",
     path: "/settings",
-    // SettingsComingSoonPage.tsx ne rend qu'un <EmptyState> — aucune grille
-    // TriptychLayout à cet écran (confirmé par lecture directe du fichier,
-    // pas supposé) : passage réel et significatif, pas vacant. Aucun appel
-    // réseau non plus (rendu synchrone) : l'ancre est un filet de
-    // cohérence, pas une preuve de settle nécessaire ici.
-    // Texte migré vers la clé i18n `comingSoon.settings` par SP-57a — le
-    // littéral d'origine ("... arrivent avec SP-33.") n'existe plus.
-    readyAnchor: (p) => p.getByText("Les paramètres d'instance arrivent prochainement.").waitFor(),
+    // SettingsPage.tsx (fusion Paramètres/Administration) rend une grille
+    // TriptychLayout complète : profil (GET /me, déjà mocké par mockCore())
+    // et préférence de notifications (GET /notifications/preference, mockée
+    // ci-dessous). L'ancre attend la section Profil, seule à dépendre d'un
+    // appel réseau non couvert par défaut par mockCore().
+    before: (p) =>
+      p.route("https://core.test/v1/notifications/preference", (route) =>
+        route.fulfill({ json: { value: "all" } }),
+      ),
+    readyAnchor: (p) => p.getByRole("heading", { name: "Profil" }).waitFor(),
   },
 ];
 
