@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { useDeleteRole, useRoles } from "../api/hooks";
 import type { Role } from "../api/types";
 import { Button } from "../ui/kit/Button";
-import { Panel } from "../ui/kit/Panel";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { CreateRolePanel } from "../shell/CreateRolePanel";
 import { EditRolePanel } from "../shell/EditRolePanel";
+import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 
@@ -37,13 +36,7 @@ export function RolesAdminPage() {
         browse={{
           id: "back",
           label: t("domain.catalog"),
-          content: (
-            <Panel className="m-3 flex flex-col gap-3 text-sm">
-              <Link to="/" className="text-accent hover:underline">
-                {t("nav.backToCatalog")}
-              </Link>
-            </Panel>
-          ),
+          content: <SettingsNav />,
         }}
         work={{
           id: "roles",

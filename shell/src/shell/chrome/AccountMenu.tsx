@@ -1,25 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useAuth } from "../../auth/useAuth";
 import { useMe } from "../../api/hooks";
-import type { Me } from "../../api/types";
+import { roleLabel } from "../../auth/roleLabel";
 import { Avatar } from "../../ui/kit/Avatar";
 import { Popover } from "../../ui/kit/Popover";
 import { Badge } from "../../ui/kit/Badge";
 import { t } from "../../i18n";
-import type { MessageKey } from "../../i18n";
-
-const BUILT_IN_ROLE_LABEL_KEYS: Record<string, MessageKey> = {
-  admin: "account.roleAdmin",
-  analyst: "account.roleAnalyst",
-  creator: "account.roleCreator",
-  reader: "account.roleReader",
-};
-
-function roleLabel(me: Me | undefined): string {
-  if (!me) return "";
-  const key = BUILT_IN_ROLE_LABEL_KEYS[me.role.slug];
-  return key ? t(key) : me.role.name;
-}
 
 function initials(username: string): string {
   return username.slice(0, 2).toUpperCase();

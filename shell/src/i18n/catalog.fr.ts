@@ -43,12 +43,10 @@ export const fr = {
   "domain.automation": "Automatisation",
   "domain.analytics": "Analytique",
   "domain.tasks": "Tâches",
-  "domain.admin": "Administration",
   "domain.settings": "Paramètres",
   "domainBar.label": "Domaines",
   "bottomNav.label": "Navigation",
   "bottomNav.more": "Plus",
-  "comingSoon.settings": "Les paramètres d'instance arrivent prochainement.",
 
   // UsagePage (/tasks) — journal d'activité (audit_log en lecture), pas un
   // tableau de bord de supervision temps réel des jobs (SP-47 §7)
@@ -209,13 +207,6 @@ export const fr = {
 
   // AdminExtensionsPage
   "extensions.title": "Extensions",
-  "extensions.backToCatalog": "← Retour au catalogue",
-  "extensions.linkInfrastructure": "Outils d'infrastructure →",
-  "extensions.linkRoles": "Rôles et privilèges →",
-  "extensions.linkUsers": "Utilisateurs →",
-  "extensions.linkCollections": "Collections →",
-  "extensions.linkHarvest": "Moissonnage →",
-  "extensions.linkCompliance": "Conformité (RGPD) →",
   "extensions.loading": "Chargement…",
   "extensions.loadError": "Échec du chargement des extensions.",
   "extensions.updateError": "Échec de la mise à jour de l'extension.",
@@ -229,6 +220,44 @@ export const fr = {
   // Motif de navigation partagé (lien de retour au catalogue depuis un écran
   // d'administration/édition en triptyque) — réutilisé par plusieurs pages.
   "nav.backToCatalog": "← Retour au catalogue",
+
+  // SettingsNav (shell/chrome/SettingsNav.tsx) — panneau de gauche partagé
+  // par la page Paramètres et les sept pages d'administration (fusion des
+  // anciens domaines "admin"/"settings", capabilities.ts) : "Général" est
+  // toujours visible, les sept liens admin restent filtrés par privilège
+  // comme la barre de domaines — un privilège manquant masque le lien.
+  "settingsNav.label": "Navigation des paramètres",
+  "settingsNav.linkGeneral": "Général →",
+  "extensions.linkExtensions": "Extensions →",
+  "extensions.linkInfrastructure": "Outils d'infrastructure →",
+  "extensions.linkRoles": "Rôles et privilèges →",
+  "extensions.linkUsers": "Utilisateurs →",
+  "extensions.linkCollections": "Collections →",
+  "extensions.linkHarvest": "Moissonnage →",
+  "extensions.linkCompliance": "Conformité (RGPD) →",
+
+  // SettingsPage (pages/SettingsPage.tsx) — espace personnel : profil en
+  // lecture seule (identité gérée par Keycloak), préférence de notifications
+  // (déjà servie par le cœur, GET/PATCH /notifications/preference), lien
+  // vers la console de compte Keycloak (masqué en mode mock).
+  "settings.heading": "Paramètres",
+  "settings.detail": "Aide",
+  "settings.helpText":
+    "Ces réglages sont personnels : ils ne sont visibles que par vous, pas partagés avec les autres utilisateurs.",
+  "settings.profileTitle": "Profil",
+  "settings.profileUsername": "Nom d'utilisateur",
+  "settings.profileEmail": "Email",
+  "settings.profileName": "Nom complet",
+  "settings.profileRole": "Rôle",
+  "settings.profileTenant": "Tenant",
+  "settings.notificationsTitle": "Notifications",
+  "settings.notificationsAll": "Toutes",
+  "settings.notificationsFailuresOnly": "Échecs seulement",
+  "settings.notificationsNone": "Aucune",
+  "settings.notificationsSaveError": "Échec de l'enregistrement de la préférence.",
+  "settings.accountTitle": "Compte",
+  "settings.accountKeycloakLink":
+    "Gérer mon compte (mot de passe, authentification à deux facteurs) →",
 
   // AdminInfrastructurePage
   "infrastructure.title": "Infrastructure",

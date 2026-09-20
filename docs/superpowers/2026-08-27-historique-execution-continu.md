@@ -7113,3 +7113,73 @@ surface déjà livrée.
   passe. Aucune nouvelle surface REST/MCP/shell livrée par ce plan — pas
   d'entrée requise dans l'inventaire de fonctionnalités ni de
   régénération du bilan.
+- **Page Paramètres fusionnée avec Administration** — clos 2026-09-20,
+  plan `docs/superpowers/plans/2026-09-20-settings-page-fusionnee.md`,
+  5 tâches en subagent-driven-development + revue par tâche + revue
+  finale de branche. Remplace l'écran `/settings` « bientôt disponible »
+  (`SettingsComingSoonPage.tsx`, EmptyState statique) par une vraie page
+  et fusionne la navigation Administration/Paramètres en un seul point
+  d'entrée. Tâche 1 (`bace205a`) expose la config runtime aux pages via
+  un nouveau `useConfig` (contexte déjà existant côté bootstrap, jamais
+  consommable depuis une page jusqu'ici — nécessaire pour que
+  `SettingsPage` sache si l'app tourne en mode mock, condition du masquage
+  du lien de compte Keycloak). Tâche 2 (`d14d0211`) renomme `AdminNav` en
+  `SettingsNav` et lui ajoute une entrée « Général » toujours visible
+  (sans privilège), les 7 autres restant filtrées comme avant ; la revue
+  de tâche a trouvé une déviation assumée et documentée plutôt qu'un bug :
+  le test suggéré littéralement par le brief pour la condition d'affichage
+  aurait été sujet à une course de minutage asynchrone (rendu avant que
+  la privilège-dérivation de `capabilities.ts` ait convergé), corrigé en
+  passant par `findByRole`/`waitFor` au lieu d'une assertion synchrone.
+  Tâche 3 (`24a651f4`) livre `SettingsPage.tsx` : profil en lecture seule
+  (`GET /me`), préférence de notifications (`GET`/`PATCH
+  /notifications/preference`), lien vers la console de compte Keycloak
+  masqué en mode mock. Revue de tâche : le stub `matchMedia` nécessaire
+  aux tests a été correctement gardé local au fichier de test (piège
+  n°10 de CLAUDE.md, jamais remonté dans `shell/src/test/setup.ts`) et le
+  format de câblage de la préférence de notifications (`camelCase` côté
+  TS, `snake_case` côté payload REST existant depuis SP-39) a été vérifié
+  indépendamment contre `app/notifications/` plutôt que supposé symétrique
+  par construction. Tâche 4 (`62c7bf4f`) fusionne le domaine `admin` dans
+  `settings` (routes, catalogue i18n, `capabilities.ts`) ; un correctif de
+  suivi d'une ligne (`42cb58bd`) a ensuite corrigé un commentaire d'en-tête
+  resté à « neuf domaines » alors que la fusion en laisse huit — la revue
+  de la Tâche 4 avait corrigé la même phrase dans le fichier de test sans
+  remarquer qu'elle était dupliquée, mot pour mot, dans l'en-tête du
+  fichier source (piège n°4 : croisement entre deux endroits qui portent
+  la même affirmation). Tâche 5 (`d9c3baca`) ajoute la spec E2E de
+  navigation Paramètres fusionnée + persistance de la préférence de
+  notifications ; la revue a rencontré un flake transitoire sans rapport
+  sur `e2e/publication.spec.ts` (rejoué isolément, confirmé sans lien
+  avec ce plan) et une déviation de forme sur le message de commit
+  (longueur d'en-tête réduite pour passer `commitlint`), sans impact sur
+  le contenu.
+  **Revue finale de branche** : 1 Critical, 1 Important, plusieurs Minor.
+  **C1** — `docs/revue/inventaire-fonctionnalites.jsonl` (ligne 266,
+  fonctionnalité « Paramètres d'instance et de tenant ») pointait encore
+  son unique preuve vers `shell/src/pages/SettingsComingSoonPage.tsx`,
+  supprimé par la Tâche 3 : `core/tests/test_feature_inventory.py::
+  test_every_proof_path_still_exists` rouge, porte CI cassée pour tout le
+  dépôt, pas seulement pour ce chantier — corrigé (preuve repointée vers
+  `SettingsPage.tsx`/`SettingsPage.test.tsx`/`SettingsNav.tsx`, bilan de
+  fonctionnalités régénéré) dans un commit séparé (`9e4ba610`). **I1** —
+  clôture documentaire due par CLAUDE.md (« dans le même geste, jamais
+  différé ») : ni la ligne `### Livré` ni l'entrée détaillée de ce fichier
+  n'avaient été posées à la fin du plan — cette entrée et la ligne
+  `### Livré` correspondante closent I1. Parmi les Minor : un commentaire
+  faux dans `e2e/triptych-narrow.spec.ts` (affirmait que ni Tâches ni
+  Paramètres ne rendent de grille `TriptychLayout`, devenu faux depuis
+  `UsagePage`/SP-47 et maintenant `SettingsPage`) — corrigé séparément ;
+  des erreurs de lecture silencieuses dans `ProfileSection`/
+  `NotificationsSection` (échec réseau non signalé à l'utilisateur, pas de
+  toast ni d'état d'erreur visible) laissées en suivi non bloquant ;
+  `/settings` absent des 9 pages couvertes par `a11y-audit.spec.ts`
+  (SP-57a) laissé en suivi non bloquant ; aucun `aria-current` sur la
+  barre de domaine pour les 7 routes `/admin/*` après la fusion — une
+  petite régression réelle (le signal existait avant sur l'ancien domaine
+  `admin`), laissée en suivi non bloquant car `SettingsNav` porte lui-même
+  encore `aria-current` sur son entrée active.
+  Commits du plan : `bace205a`, `d14d0211`, `24a651f4`, `62c7bf4f`,
+  `42cb58bd`, `d9c3baca` ; clôture : `9e4ba610` (Critical) + ce commit
+  (Important, docs) + le commit suivant (Minor, commentaire
+  `triptych-narrow.spec.ts`).

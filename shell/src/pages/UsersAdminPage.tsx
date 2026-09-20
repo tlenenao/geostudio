@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { useRoles, useUpdateUserRole, useUsers } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
-import { Panel } from "../ui/kit/Panel";
+import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 
@@ -44,13 +43,7 @@ export function UsersAdminPage() {
         browse={{
           id: "back",
           label: t("domain.catalog"),
-          content: (
-            <Panel className="m-3 flex flex-col gap-3 text-sm">
-              <Link to="/" className="text-accent hover:underline">
-                {t("nav.backToCatalog")}
-              </Link>
-            </Panel>
-          ),
+          content: <SettingsNav />,
         }}
         work={{
           id: "users",

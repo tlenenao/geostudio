@@ -2,8 +2,10 @@
 import uuid
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.db import retry_on_sqlite_row_corruption
 from app.roles.repository import ensure_built_in_roles
 from app.users.models import User
 
@@ -21,9 +23,12 @@ def get_or_create_user(
     bootstrap_analyst: bool = False,
 ) -> User:
     roles = ensure_built_in_roles(session, tenant_id=tenant_id)
-    user = session.scalar(
-        select(User).where(User.tenant_id == tenant_id, User.oidc_sub == oidc_sub)
+    user = retry_on_sqlite_row_corruption(
+        lambda: session.scalar(
+            select(User).where(User.tenant_id == tenant_id, User.oidc_sub == oidc_sub)
+        )
     )
+    just_created = False
     if user is None:
         if bootstrap_admin:
             initial_role = roles["admin"]
@@ -31,7 +36,7 @@ def get_or_create_user(
             initial_role = roles["analyst"]
         else:
             initial_role = roles["creator"]
-        user = User(
+        new_user = User(
             id=uuid.uuid4().hex,
             tenant_id=tenant_id,
             oidc_sub=oidc_sub,
@@ -42,8 +47,27 @@ def get_or_create_user(
             role_id=initial_role.id,
             is_admin=(initial_role.slug == "admin"),
         )
-        session.add(user)
-    else:
+        try:
+            # Même course TOCTOU que get_or_create_default_tenant/
+            # ensure_built_in_roles (voir leurs commentaires) : deux requêtes
+            # concurrentes pour le même utilisateur tout juste vu la première
+            # fois peuvent toutes deux lire « aucun utilisateur » avant que
+            # l'une n'ait committé le sien — uq_users_tenant_oidc_sub.
+            with session.begin_nested():
+                session.add(new_user)
+                session.flush()
+            user = new_user
+            just_created = True
+        except IntegrityError:
+            session.expunge(new_user)
+            user = retry_on_sqlite_row_corruption(
+                lambda: session.scalar(
+                    select(User).where(User.tenant_id == tenant_id, User.oidc_sub == oidc_sub)
+                )
+            )
+            if user is None:
+                raise
+    if not just_created:
         user.username = username
         user.email = email
         user.first_name = first_name

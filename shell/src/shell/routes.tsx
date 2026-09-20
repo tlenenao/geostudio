@@ -80,8 +80,8 @@ const KitGalleryPage = lazy(() =>
   import("../pages/KitGalleryPage").then((m) => ({ default: m.KitGalleryPage })),
 );
 const UsagePage = lazy(() => import("../pages/UsagePage").then((m) => ({ default: m.UsagePage })));
-const SettingsComingSoonPage = lazy(() =>
-  import("../pages/SettingsComingSoonPage").then((m) => ({ default: m.SettingsComingSoonPage })),
+const SettingsPage = lazy(() =>
+  import("../pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
 );
 const EmbedPage = lazy(() => import("../pages/EmbedPage").then((m) => ({ default: m.EmbedPage })));
 
@@ -342,7 +342,7 @@ export function AppRoutes() {
               </RequirePrivilege>
             }
           />
-          <Route path="/settings" element={<SettingsComingSoonPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
         <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
         <Route path="/embed/:token" element={<EmbedRoute />} />

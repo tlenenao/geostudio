@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
 from sqlalchemy import Engine, create_engine, event
@@ -32,6 +32,36 @@ def make_engine(url: str) -> Engine:
         # (the GIL-releasing C operation where two threads' statements can
         # interleave on the shared connection) keeps that window to
         # microseconds instead of a whole request.
+        #
+        # Known residual (mesuré 2026-09-20, CI dev cassée) : ce verrou ne
+        # couvre que `execute()`, pas la lecture des lignes qui suit
+        # (`cursor.fetchall()`/matérialisation ORM), qui reste hors verrou.
+        # Deux effets distincts en découlent :
+        # 1. TOCTOU applicatif (get_or_create_default_tenant/
+        #    ensure_built_in_roles/get_or_create_user lisent « rien
+        #    n'existe » avant qu'une requête concurrente n'ait committé le
+        #    sien → IntegrityError sur une contrainte unique) — CORRIGÉ
+        #    (SAVEPOINT + retry sur IntegrityError dans les trois
+        #    fonctions, app/tenants/repository.py et app/roles/
+        #    repository.py et app/users/repository.py).
+        # 2. Corruption de ligne au niveau du curseur C (deux threads OS
+        #    matérialisant des lignes sur le même curseur partagé en
+        #    même temps → une ligne tronquée au lieu d'un tuple complet,
+        #    `IndexError` dans le row processor SQLAlchemy) — CORRIGÉ
+        #    (2026-09-20) sans élargir le verrou à la lecture des lignes
+        #    (ça resérialiserait execute() et fetch() et redéviendrait la
+        #    même sérialisation bout-en-bout déjà écartée au paragraphe
+        #    précédent, vu que fetch() suit execute() dans le même thread
+        #    sans jamais relâcher le GIL entre les deux). À la place :
+        #    `retry_on_sqlite_row_corruption()` relit la même requête —
+        #    la ligne réelle en base n'a pas bougé, seule sa lecture a été
+        #    corrompue par la course, une deuxième lecture immédiate
+        #    suffit. Appliqué aux 3 lectures déjà identifiées comme
+        #    partageant cette course TOCTOU (get_or_create_default_tenant/
+        #    ensure_built_in_roles/get_or_create_user, voir leurs
+        #    commentaires) — artefact du harnais de test (StaticPool +
+        #    SQLite en mémoire), jamais reproductible en prod (Postgres via
+        #    PgBouncer, connexions réellement isolées).
         _execute_lock = threading.Lock()
 
         @event.listens_for(engine, "before_cursor_execute")
@@ -47,7 +77,23 @@ def make_engine(url: str) -> Engine:
             if _execute_lock.locked():
                 _execute_lock.release()
     else:
-        connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
+        connect_args: dict[str, object] = {}
+        if url.startswith("sqlite"):
+            connect_args["check_same_thread"] = False
+        elif url.startswith("postgresql"):
+            # PgBouncer runs in transaction pooling mode (docker-compose.yml,
+            # POOL_MODE: transaction): a client's logical connection can be
+            # handed a different physical backend connection between
+            # statements. psycopg3 autoprepares a query as a named server-side
+            # statement ("_pg3_N") after `prepare_threshold` uses of it
+            # (default 5) — the name collides as soon as it's already
+            # prepared on whichever backend connection this client gets
+            # handed next, raising psycopg.errors.DuplicatePreparedStatement.
+            # Disabling autoprepare is what psycopg's own docs recommend for
+            # transaction-mode poolers (found in production: every request
+            # calls get_or_create_default_tenant(), hitting the threshold
+            # almost immediately).
+            connect_args["prepare_threshold"] = None
         engine = create_engine(url, connect_args=connect_args)
 
     if engine.dialect.name == "sqlite":
@@ -111,6 +157,23 @@ def init_db(engine: Engine) -> None:
     # "relation already exists".
     if engine.dialect.name == "sqlite":
         Base.metadata.create_all(engine)
+
+
+def retry_on_sqlite_row_corruption[T](read: Callable[[], T]) -> T:
+    """Relit `read()` jusqu'à 3 fois si SQLAlchemy lève `IndexError` en
+    matérialisant une ligne — l'artefact de curseur documenté dans
+    `make_engine` (StaticPool + connexion SQLite en mémoire partagée entre
+    threads, jamais reproductible en prod). La ligne en base n'a pas bougé,
+    seule cette lecture a été corrompue par la course ; une relecture
+    immédiate suffit."""
+    attempts = 3
+    for attempt in range(attempts):
+        try:
+            return read()
+        except IndexError:
+            if attempt == attempts - 1:
+                raise
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 @contextmanager

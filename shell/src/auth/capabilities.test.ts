@@ -73,7 +73,7 @@ function stateOf(id: string, profile: Profile) {
 }
 
 describe("domainState", () => {
-  it("déclare les neuf domaines de la spec", () => {
+  it("déclare les huit domaines de la spec", () => {
     expect(DOMAINS.map((d) => d.id)).toEqual([
       "catalog",
       "maps",
@@ -82,15 +82,14 @@ describe("domainState", () => {
       "automation",
       "analytics",
       "tasks",
-      "admin",
       "settings",
     ]);
   });
 
-  it("masque le domaine admin sans aucun privilège admin.*, le montre à l'admin", () => {
-    expect(stateOf("admin", reader)).toBe("hidden");
-    expect(stateOf("admin", creator)).toBe("hidden");
-    expect(stateOf("admin", admin)).toBe("visible");
+  it("le domaine settings (fusionné avec l'ancien admin) est toujours visible, quel que soit le privilège", () => {
+    expect(stateOf("settings", reader)).toBe("visible");
+    expect(stateOf("settings", creator)).toBe("visible");
+    expect(stateOf("settings", admin)).toBe("visible");
   });
 
   it("verrouille — sans masquer — un domaine dont la capacité est coupée", () => {
@@ -139,18 +138,17 @@ describe("domainState", () => {
 
   it("un domaine visible doit toujours pouvoir atteindre le privilège réellement gardé par sa destination (F-securite-autorisation-08)", () => {
     // Cf. shell/src/shell/routes.tsx pour la garde RequirePrivilege réelle de
-    // chaque destination de DOMAIN_PATHS (domainRoutes.ts) — dupliqué ici
-    // faute de pouvoir importer routes.tsx (React Router) dans un test de
-    // logique pure. admin est délibérément absent : sa destination varie
-    // par profil (getDomainPath), déjà couvert par domainRoutes.test.ts.
-    // Vide aujourd'hui (SP-42, revue de la dernière passe de correctifs,
-    // points 7/8) : ni Cartes (/?type=map) ni Analytique (/?type=bookmark)
-    // n'ont plus de destination gardée — gardé comme filet pour un futur
-    // domaine dont la destination exigerait réellement un privilège.
+    // chaque destination de DOMAIN_PATHS (domainRoutes.ts). Vide aujourd'hui
+    // (SP-42, revue de la dernière passe de correctifs, points 7/8) : ni
+    // Cartes (/?type=map) ni Analytique (/?type=bookmark) n'ont plus de
+    // destination gardée — gardé comme filet pour un futur domaine dont la
+    // destination exigerait réellement un privilège. "admin" (dont la
+    // destination variait par profil via getDomainPath) a disparu avec la
+    // fusion Paramètres/Administration : /settings est désormais une
+    // destination statique pour tous les profils.
     const destinationPrivilege: Partial<Record<string, string>> = {};
     for (const profile of [admin, creator, analyst, reader]) {
       for (const domain of DOMAINS) {
-        if (domain.id === "admin") continue;
         const required = destinationPrivilege[domain.id];
         if (!required) continue;
         if (domainState(domain, profile) === "visible") {
@@ -173,7 +171,6 @@ describe("navigableDomains", () => {
   it("ne rend que le visible et le verrouillé, dans l'ordre déclaré", () => {
     const etlOff: Profile = { ...creator, capabilities: { ...ALL_ON, etlEnabled: false } };
     const rendered = navigableDomains(etlOff);
-    expect(rendered.map((r) => r.domain.id)).not.toContain("admin");
     // "analytics" présent : `creator` a analytics.view (SP-42, revue de la
     // dernière passe de correctifs, points 7/8 ci-dessus) — pas un effet de
     // etlOff.
