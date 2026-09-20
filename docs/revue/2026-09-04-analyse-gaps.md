@@ -84,7 +84,11 @@ second volet n'est pas fermable par du code et reste ouvert tel quel.
 
 ## État des 83 gaps — trois parties distinctes (mise à jour 2026-09-16)
 
-**61 fermés, 5 partiels, 17 ouverts** (total 83 — 79 gaps de la revue initiale + GAP-80/81/82/83 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
+**62 fermés, 5 partiels, 16 ouverts** (total 83 — 79 gaps de la revue initiale + GAP-80/81/82/83 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
+
+**Mise à jour du 2026-09-20** : GAP-83 fermé par le plan
+`docs/superpowers/plans/2026-09-20-cloture-rev-190-191-192-193.md` — voir
+l'entrée `GAP-83` de la table « ✅ Fermé » ci-dessous pour le détail.
 
 **Mise à jour du 2026-09-13** : GAP-22 (référentiel 2 — sécurité au niveau
 colonne) fermé par le plan `docs/superpowers/plans/2026-09-06-gap22-
@@ -92,7 +96,7 @@ securite-colonne.md` (16 tâches, spec `docs/superpowers/specs/2026-09-06-
 gap22-securite-colonne-design.md`) — voir l'entrée `GAP-22` de la table
 « ✅ Fermé » ci-dessous pour le détail.
 
-### ✅ Fermé (61)
+### ✅ Fermé (62)
 
 | GAP | Fermé par / statut détaillé |
 |---|---|
@@ -157,6 +161,7 @@ gap22-securite-colonne-design.md`) — voir l'entrée `GAP-22` de la table
 | GAP-77 | SP-45 — revérifié ce jour contre `origin/main`/`origin/dev`/tag `v0.1.0` d'origin (voir encadré ci-dessus, fausse alerte locale écartée) |
 | GAP-78 | SP-45 (`secret_scanning`/`dependabot_security_updates` enabled) |
 | GAP-79 | SP-45 (`restart:` sur `traefik`, vérifié absent d'aucune contre-mention dans `docker-compose.yml`) |
+| GAP-83 | Plan `docs/superpowers/plans/2026-09-20-cloture-rev-190-191-192-193.md` (commits `3ce0dc4c`/`947e9d23`/`2c3ce82a`/`841ce85f`/`9f56757c`/`e3defcfa`/`116bcae3`) — support de bout en bout de la variante liste/array sur `FieldType` (introspection, validation, écriture/lecture, tuiles MVT, schéma JSON, `POST /collections/empty`, exclusion côté formulaire/wizard shell). Voir `REV-191` |
 
 ### 🟡 Partiel (5)
 
@@ -188,19 +193,16 @@ gap22-securite-colonne-design.md`) — voir l'entrée `GAP-22` de la table
 | GAP-80 | `/bookmarks` (`shell/src/shell/routes.tsx:315`) inatteignable — aucun lien ne pointe vers cette route, `useCreateBookmark` livré par SP-14m sans jamais pouvoir relire le signet créé (cf. addendum ci-dessous) |
 | GAP-81 | `/analytics/sql` (`shell/src/pages/SqlLabPage.tsx`) inatteignable — aucun lien du shell ne pointe vers cette route (cf. addendum ci-dessous pour le détail du câblage de navigation en cause) |
 | GAP-82 | `app/features/routes.py` appelle `get_readable_collection()` à 6 sites (`list_features`, `aggregate_features`, `export_collection_aggregate`, `export_collection_items`, `get_single_feature`, `_get_writable`) sans jamais passer `can_manage_collections=has_privilege(...)`, contrairement à `collections/routes.py`/`stac/routes.py`/`dcat/routes.py` — un porteur du seul `admin.collections.manage` reçoit un 404 en lisant des features via l'API OGC sur une collection qu'il peut pourtant administrer ailleurs. Trouvé par la Task 10 du plan GAP-22 (2026-09-13, test bout-en-bout §5.3), sans rapport avec le masquage de colonne lui-même — contourné côté fixture de test uniquement (`isPublic: true`), aucun code de production touché, hors périmètre délibéré de ce plan. Voir `REV-185`. |
-| GAP-83 | `FieldType` (`app/collections/introspection.py`) n'a aucune variante liste/array — `transform.derive`/`transform.aggregate.metrics` peuvent déjà produire une colonne DuckDB de type LIST aujourd'hui (aucune restriction de nom de fonction dans `expr_validation.py`), mais `writer.collection` ne peut jamais la persister : rejet propre (`unknown_property`/`invalid_type` dans `validate_feature`, jamais de crash) puisqu'aucune collection ne peut déclarer de colonne liste. `writer.export`/`writer.dataset` ne sont pas affectés (JSON/CSV/Parquet tolèrent déjà les listes). Trouvé en préparant le chantier `OperationContract` (2026-09-16), explicitement laissé hors périmètre de ce chantier (blast radius : DDL + schéma de formulaire + encodage MVT/OGC, pas seulement le contrat d'op). Voir `REV-191`. |
 
-Répartition par référentiel des 17 ouverts (GAP-17/19/22 fermés depuis,
+Répartition par référentiel des 16 ouverts (GAP-17/19/22 fermés depuis,
 retirés du décompte de référentiel 2 ; GAP-82 ajouté le 2026-09-13, trouvé
-par la Task 10 du plan GAP-22 ; GAP-83 ajouté le 2026-09-16, trouvé en
-préparant le chantier `OperationContract`) : 6 items isolés du référentiel 1
+par la Task 10 du plan GAP-22 ; GAP-83, ajouté le 2026-09-16, fermé le
+2026-09-20) : 6 items isolés du référentiel 1
 (GAP-04/08/10/34/37/55 — chantiers non lancés ou décisions produit non
 tranchées), 7 du référentiel 2 (GAP-18/20/21/23/25/26/27, benchmark
 concurrentiel — aucune décision produit prise, non vérifiables dans le code
-de GeoStudio), GAP-80/81/82 (navigation manquante + propagation de
-privilège manquante, mécaniques, coût 1-2 j-h chacun), et GAP-83
-(`FieldType` sans variante liste/array — capacité manquante, coût 5-8 j-h,
-plusieurs verticales du module `collections`).
+de GeoStudio), et GAP-80/81/82 (navigation manquante + propagation de
+privilège manquante, mécaniques, coût 1-2 j-h chacun).
 
 ---
 

@@ -1534,7 +1534,14 @@
               "double precision",
               "boolean",
               "date",
-              "timestamptz"
+              "timestamptz",
+              "text[]",
+              "integer[]",
+              "bigint[]",
+              "double precision[]",
+              "boolean[]",
+              "date[]",
+              "timestamptz[]"
             ],
             "title": "Sqltype",
             "type": "string"

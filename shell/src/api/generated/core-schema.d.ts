@@ -2144,7 +2144,7 @@ export interface components {
              * Sqltype
              * @enum {string}
              */
-            sqlType: "text" | "integer" | "bigint" | "double precision" | "boolean" | "date" | "timestamptz";
+            sqlType: "text" | "integer" | "bigint" | "double precision" | "boolean" | "date" | "timestamptz" | "text[]" | "integer[]" | "bigint[]" | "double precision[]" | "boolean[]" | "date[]" | "timestamptz[]";
         };
         /** EmptyCollectionCreate */
         EmptyCollectionCreate: {
