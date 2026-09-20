@@ -478,3 +478,14 @@ class TransformValidateAttributesParams(BaseModel):
                 "(nonNullColumns+nonNullResultColumn or uniqueColumns+uniqueResultColumn)"
             )
         return self
+
+
+class TransformDetectChangesParams(BaseModel):
+    """Compare l'entrée principale (état « avant ») à une collection ou un flux secondaire
+    (état « après ») sur des colonnes clés, et écrit le statut de chaque ligne
+    (inserted/deleted/updated/unchanged) — comparaison automatique de toutes les colonnes
+    communes, résolues à l'exécution."""
+
+    withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
+    keyColumns: list[str]
+    statusColumn: str

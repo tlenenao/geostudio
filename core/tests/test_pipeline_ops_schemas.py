@@ -466,6 +466,7 @@ def test_binary_ops_set_matches_catalog_flag():
         "transform.intersection",
         "transform.countWithin",
         "transform.merge",
+        "transform.detectChanges",
     }
 
 

@@ -3017,6 +3017,110 @@ def test_preview_join_via_secondary_edge_matches_with_collection_id(tmp_path, mo
     assert rows[0]["region"] == "Nord"  # from r1 — proves the join actually matched on id=1
 
 
+def test_preview_detect_changes_resolves_columns_after_upstream_rename(tmp_path, monkeypatch):
+    # Falsification (design §4) : la colonne "region" du flux primaire est
+    # renommée en "area_name" par un transform.bulkRenameAttributes EN AMONT
+    # de transform.detectChanges, sur le canevas — le flux secondaire (une
+    # autre collection) garde, lui, "region". Le nœud detectChanges ne
+    # nomme jamais "region"/"area_name" dans ses params (seulement
+    # keyColumns=["id"] et statusColumn) : si le mécanisme needs_columns
+    # résolvait les colonnes depuis un schéma figé au moment de la
+    # préparation du reader (avant le renommage), plutôt que par un DESCRIBE
+    # de la vue immédiatement en amont au moment de la compilation,
+    # transform.detectChanges référencerait `t.region` — une colonne qui
+    # n'existe plus dans la vue renommée — et l'exécution échouerait
+    # (Binder Error) au lieu de s'adapter.
+    _write_partition(
+        tmp_path,
+        collection_id="before_coll",
+        rows=[
+            _row(1, "Nord", 10, x=1.0, y=45.0),
+            _row(2, "Sud", 5, x=2.0, y=46.0),
+            _row(3, "Est", 20, x=3.0, y=47.0),
+        ],
+    )
+    _write_partition(
+        tmp_path,
+        collection_id="after_coll",
+        rows=[
+            _row(1, "Nord", 10, x=1.0, y=45.0),  # inchangé
+            _row(2, "Ouest", 99, x=2.0, y=46.0),  # pop modifié (5 -> 99)
+            _row(4, "X", 1, x=9.0, y=9.0),  # nouveau
+        ],
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_table_info_for_collection",
+        lambda session, collection_id: _table_info_srid(collection_id, 4326),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "before_coll"},
+                },
+                {
+                    "id": "t0",
+                    "kind": "transform",
+                    "op": "transform.bulkRenameAttributes",
+                    "params": {"pattern": "^region$", "replacement": "area_name"},
+                },
+                {
+                    "id": "r2",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "after_coll"},
+                },
+                {
+                    "id": "t1",
+                    "kind": "transform",
+                    "op": "transform.detectChanges",
+                    "params": {"keyColumns": ["id"], "statusColumn": "status"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t0"},
+                {"id": "e2", "from": "t0", "to": "t1"},
+                {"id": "e3", "from": "r2", "to": "t1", "role": "secondary"},
+                {"id": "e4", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
+
+    rows = runtime.preview_pipeline(
+        session=None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        up_to="t1",
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+    )
+    status_by_id = {r["id"]: r["status"] for r in rows}
+    assert status_by_id == {1: "unchanged", 2: "updated", 3: "deleted", 4: "inserted"}
+    # La colonne renommée ne doit apparaître nulle part dans la sortie —
+    # transform.detectChanges ne projette que les clés + le statut.
+    assert set(rows[0].keys()) == {"id", "status"}
+
+
 def test_execute_transform_chain_invokes_on_node_complete_per_node(tmp_path, monkeypatch):
     _write_partition(tmp_path, rows=[_row(1, "Nord", 10, x=1.0, y=45.0)])
     monkeypatch.setattr(

@@ -438,6 +438,38 @@ def test_compile_merge(conn):
     assert rows == [(1, "Nord", 10), (2, "Sud", 5), (3, "Nord", 20), (10, None, 99)]
 
 
+def test_compile_detect_changes_marks_inserted_deleted_updated_unchanged(conn):
+    conn.execute("CREATE TABLE before_t (id INTEGER, region VARCHAR)")
+    conn.execute("INSERT INTO before_t VALUES (1, 'Nord'), (2, 'Sud'), (3, 'Est')")
+    conn.execute("CREATE TABLE after_t (id INTEGER, region VARCHAR)")
+    conn.execute("INSERT INTO after_t VALUES (1, 'Nord'), (2, 'Ouest'), (4, 'Sud')")
+    sql = compile_transform_sql(
+        "transform.detectChanges",
+        {"keyColumns": ["id"], "statusColumn": "status"},
+        input_view="before_t",
+        join_view="after_t",
+        input_columns=["id", "region"],
+        join_columns=["id", "region"],
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    out_rows = conn.execute("SELECT * FROM out ORDER BY id NULLS LAST").fetchall()
+    rows = dict((row[0], row[-1]) for row in out_rows)
+    # id=1 inchangé, id=2 modifié (region différente), id=3 supprimé, id=4 ajouté
+    assert rows[1] == "unchanged"
+    assert rows[2] == "updated"
+    assert rows[3] == "deleted"
+    assert rows[4] == "inserted"
+
+
+def test_compile_detect_changes_without_join_view_raises():
+    with pytest.raises(AssertionError):
+        compile_transform_sql(
+            "transform.detectChanges",
+            {"keyColumns": ["id"], "statusColumn": "status"},
+            input_view="before_t",
+        )
+
+
 def test_compile_merge_without_join_view_raises():
     with pytest.raises(AssertionError):
         compile_transform_sql("transform.merge", {}, input_view="base")

@@ -61,6 +61,7 @@ from app.pipelines.ops.schemas import (
     TransformAggregateParams,
     TransformCountWithinParams,
     TransformDeriveParams,
+    TransformDetectChangesParams,
     TransformFilterParams,
     TransformH3AggregateParams,
     TransformIntersectionParams,
@@ -82,6 +83,7 @@ _JOIN_PARAM_MODELS: dict[str, type] = {
     "transform.intersection": TransformIntersectionParams,
     "transform.countWithin": TransformCountWithinParams,
     "transform.merge": TransformMergeParams,
+    "transform.detectChanges": TransformDetectChangesParams,
 }
 
 
@@ -722,12 +724,27 @@ def _execute_transform_chain(
                 scratch_run_id=scratch_run_id,
             )
         else:
+            from app.pipelines.ops.contracts import OPERATIONS
+
+            contract = OPERATIONS[node.op]
+            input_columns = None
+            join_columns = None
+            if contract.needs_columns:
+                input_columns = [
+                    d[0] for d in conn.execute(f"DESCRIBE {_qi(input_view)}").fetchall()
+                ]
+                if join_view is not None:
+                    join_columns = [
+                        d[0] for d in conn.execute(f"DESCRIBE {_qi(join_view)}").fetchall()
+                    ]
             sql = compiler.compile_transform_sql(
                 node.op,
                 node.params,
                 input_view=input_view,
                 join_view=join_view,
                 input_srid=input_srid,
+                input_columns=input_columns,
+                join_columns=join_columns,
             )
             conn.execute(f"CREATE TEMP VIEW {_qi(view_name)} AS {sql}")
         view_by_node[node.id] = view_name

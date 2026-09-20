@@ -41,6 +41,7 @@ from app.pipelines.ops.schemas import (
     TransformCountWithinParams,
     TransformCreateGeometryParams,
     TransformDeriveParams,
+    TransformDetectChangesParams,
     TransformExplodeGeometryParams,
     TransformExplodeListParams,
     TransformExposeAttributesParams,
@@ -84,6 +85,11 @@ class OperationContract:
     engine_license: str | None = None
     is_copyleft: bool = False
     execution_model: Literal["in_process", "sidecar"] = "in_process"
+    # Vague 2 (design docs/superpowers/specs/2026-09-20-vague2-transformers-duckdb-design.md
+    # §3.1) : quand True, compile_transform_sql résout input_columns/join_columns via un
+    # DESCRIBE (app.pipelines.runtime) avant d'appeler `compile` — extension chirurgicale,
+    # jamais de connexion DuckDB dans ce module lui-même.
+    needs_columns: bool = False
     # Piège Python latent : un `def` nu donné ici en défaut (au lieu de `None`)
     # deviendrait un attribut de classe et serait lié comme méthode (self/le
     # contrat injecté en premier argument), pas un simple callable — inoffensif
@@ -444,6 +450,16 @@ OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_sort,
+    ),
+    "transform.detectChanges": OperationContract(
+        op="transform.detectChanges",
+        kind="transform",
+        params_schema=TransformDetectChangesParams,
+        accepts_secondary_input=True,
+        needs_columns=True,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_detect_changes,
     ),
     "reader.file": OperationContract(
         op="reader.file",

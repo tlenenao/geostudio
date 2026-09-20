@@ -19,6 +19,7 @@ from app.pipelines.ops.schemas import (
     TransformCountWithinParams,
     TransformCreateGeometryParams,
     TransformDeriveParams,
+    TransformDetectChangesParams,
     TransformExplodeGeometryParams,
     TransformExplodeListParams,
     TransformExposeAttributesParams,
@@ -625,6 +626,38 @@ def _compile_sort(
     return f"SELECT * FROM {_qi(input_view)} ORDER BY {', '.join(order_parts)}"
 
 
+def _compile_detect_changes(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
+) -> str:
+    p = TransformDetectChangesParams.model_validate(params)
+    assert join_view is not None, "transform.detectChanges requires join_view"
+    assert input_columns is not None and join_columns is not None
+    common_cols = [c for c in input_columns if c in join_columns and c not in p.keyColumns]
+    key_join = " AND ".join(f"t.{_qi(k)} = o.{_qi(k)}" for k in p.keyColumns)
+    key_select = ", ".join(f"COALESCE(t.{_qi(k)}, o.{_qi(k)}) AS {_qi(k)}" for k in p.keyColumns)
+    if common_cols:
+        diff_expr = " OR ".join(f"t.{_qi(c)} IS DISTINCT FROM o.{_qi(c)}" for c in common_cols)
+    else:
+        diff_expr = "FALSE"
+    status_expr = (
+        f"CASE "
+        f"WHEN t.{_qi(p.keyColumns[0])} IS NULL THEN 'inserted' "
+        f"WHEN o.{_qi(p.keyColumns[0])} IS NULL THEN 'deleted' "
+        f"WHEN {diff_expr} THEN 'updated' "
+        f"ELSE 'unchanged' END"
+    )
+    return (
+        f"SELECT {key_select}, ({status_expr}) AS {_qi(p.statusColumn)} "
+        f"FROM {_qi(input_view)} t FULL OUTER JOIN {_qi(join_view)} o ON {key_join}"
+    )
+
+
 def compile_transform_sql(
     op: str,
     params: dict,
@@ -632,15 +665,19 @@ def compile_transform_sql(
     input_view: str,
     join_view: str | None = None,
     input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
 ) -> str:
     from app.pipelines.ops.contracts import OPERATIONS
 
     contract = OPERATIONS.get(op)
     if contract is None or contract.compile is None:
         raise ValueError(f"'{op}' is not a transform op")
-    return contract.compile(
-        params, input_view=input_view, join_view=join_view, input_srid=input_srid
-    )
+    kwargs: dict = {"input_view": input_view, "join_view": join_view, "input_srid": input_srid}
+    if contract.needs_columns:
+        kwargs["input_columns"] = input_columns
+        kwargs["join_columns"] = join_columns
+    return contract.compile(params, **kwargs)
 
 
 def _output_srid_reproject(
