@@ -31,6 +31,11 @@ def _type_ok(col: ColumnInfo, value) -> bool:
             return True
         except ValueError:
             return False
+    if col.type == "list":
+        if not isinstance(value, list):
+            return False
+        item_col = ColumnInfo(name=col.name, type=col.list_item_type, required=False)
+        return all(_type_ok(item_col, item) for item in value)
     return False  # enum géré à part ; unsupported refusé à part
 
 

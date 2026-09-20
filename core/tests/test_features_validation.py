@@ -17,6 +17,7 @@ INFO = TableInfo(
         ColumnInfo(name="date_incident", type="date", required=False),
         ColumnInfo(name="resolu", type="boolean", required=False),
         ColumnInfo(name="payload", type="unsupported", required=False),
+        ColumnInfo(name="tags", type="list", list_item_type="string", required=False),
     ],
 )
 
@@ -113,3 +114,23 @@ def test_null_properties_is_valid_rfc7946():
     errors = validate_feature(INFO, {"type": "Feature", "properties": None, "geometry": None})
     # properties:null = {} → seule l'exigence required s'applique
     assert _codes(errors) == {("titre", "missing_required")}
+
+
+def test_valid_list_value_passes():
+    errors = validate_feature(INFO, _f({"titre": "x", "tags": ["a", "b"]}))
+    assert errors == []
+
+
+def test_list_value_with_wrong_element_type_is_rejected():
+    errors = validate_feature(INFO, _f({"titre": "x", "tags": ["a", 1]}))
+    assert ("tags", "invalid_type") in _codes(errors)
+
+
+def test_list_value_that_is_not_a_list_is_rejected():
+    errors = validate_feature(INFO, _f({"titre": "x", "tags": "not-a-list"}))
+    assert ("tags", "invalid_type") in _codes(errors)
+
+
+def test_list_value_none_is_valid():
+    errors = validate_feature(INFO, _f({"titre": "x", "tags": None}))
+    assert errors == []
