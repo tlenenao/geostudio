@@ -127,6 +127,39 @@ def test_compile_unknown_transform_op_raises():
         compile_transform_sql("reader.collection", {"collectionId": "x"}, input_view="base")
 
 
+def test_compile_bulk_remove_attributes(conn):
+    sql = compile_transform_sql(
+        "transform.bulkRemoveAttributes",
+        {"pattern": "^pop$"},
+        input_view="base",
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    cols = [d[0] for d in conn.execute("SELECT * FROM out LIMIT 0").description]
+    assert cols == ["id", "region"]
+
+
+def test_compile_bulk_rename_attributes(conn):
+    sql = compile_transform_sql(
+        "transform.bulkRenameAttributes",
+        {"pattern": "^(pop)$", "replacement": r"\1_count"},
+        input_view="base",
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    cols = [d[0] for d in conn.execute("SELECT * FROM out LIMIT 0").description]
+    assert sorted(cols) == ["id", "pop_count", "region"]
+
+
+def test_compile_bulk_rename_attributes_escapes_single_quotes(conn):
+    sql = compile_transform_sql(
+        "transform.bulkRenameAttributes",
+        {"pattern": "^(pop)$", "replacement": "it's_\\1"},
+        input_view="base",
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    cols = [d[0] for d in conn.execute("SELECT * FROM out LIMIT 0").description]
+    assert "it's_pop" in cols
+
+
 @pytest.fixture()
 def conn_spatial():
     c = duckdb.connect(":memory:")

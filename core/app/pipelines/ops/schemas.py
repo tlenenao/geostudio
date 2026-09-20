@@ -372,6 +372,20 @@ class TransformFormatCoordinatesParams(BaseModel):
     precision: int = Field(4, ge=0, le=10)
 
 
+class TransformBulkRemoveAttributesParams(BaseModel):
+    """Supprime toutes les colonnes dont le nom correspond à un motif regex."""
+
+    pattern: str
+
+
+class TransformBulkRenameAttributesParams(BaseModel):
+    """Renomme en masse les colonnes correspondant à un motif regex, par gabarit de
+    remplacement avec rétro-référence (ex. pattern="foo_(.*)", replacement="\\1_bar")."""
+
+    pattern: str
+    replacement: str
+
+
 class ReaderFileParams(BaseModel):
     """reader.file (design desktop-etl §3) : chemin local absolu, lu via
     ST_Read() (DuckDB spatial/GDAL) — jamais une collection. srid optionnel :

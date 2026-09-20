@@ -12,6 +12,8 @@ from app.configs.schemas import PipelineEdge, PipelineNode
 from app.pipelines.ops.schemas import (
     TransformAggregateParams,
     TransformBufferParams,
+    TransformBulkRemoveAttributesParams,
+    TransformBulkRenameAttributesParams,
     TransformConcatCoordinatesParams,
     TransformCountVerticesParams,
     TransformCountWithinParams,
@@ -490,6 +492,35 @@ def _compile_format_coordinates(
         sign = f"CASE WHEN {src} < 0 THEN '-' ELSE '' END"
         expr = f"{sign} || printf('%d°%d''%.{p.precision}f\"', {deg}, {minutes}, {seconds})"
     return f"SELECT *, ({expr}) AS {_qi(p.targetColumn)} FROM {_qi(input_view)}"
+
+
+def _compile_bulk_remove_attributes(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformBulkRemoveAttributesParams.model_validate(params)
+    escaped = p.pattern.replace("'", "''")
+    return f"SELECT COLUMNS(c -> NOT regexp_matches(c, '{escaped}')) FROM {_qi(input_view)}"
+
+
+def _compile_bulk_rename_attributes(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformBulkRenameAttributesParams.model_validate(params)
+    escaped_pattern = p.pattern.replace("'", "''")
+    escaped_replacement = p.replacement.replace("'", "''")
+    return (
+        f"SELECT COLUMNS(c -> NOT regexp_matches(c, '{escaped_pattern}')), "
+        f"COLUMNS('{escaped_pattern}') AS '{escaped_replacement}' "
+        f"FROM {_qi(input_view)}"
+    )
 
 
 def compile_transform_sql(
