@@ -387,7 +387,7 @@ class TransformBulkRenameAttributesParams(BaseModel):
 
 
 class TransformScanSchemaParams(BaseModel):
-    """Retourne une ligne par colonne de l'entrée (columnName, columnType) — méta-introspection
+    """Retourne une ligne par colonne de l'entrée (column_name, column_type) — méta-introspection
     du schéma, sans transformation ligne à ligne."""
 
 
