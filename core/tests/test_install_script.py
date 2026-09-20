@@ -36,6 +36,7 @@ if [ "$1" = "compose" ]; then
       exit 0
       ;;
     up)
+      echo "up GEOSTUDIO_PUBLIC_HOST=${GEOSTUDIO_PUBLIC_HOST-<unset>}" >> "$FAKE_BIN_LOG"
       exit 0
       ;;
     exec)
@@ -90,6 +91,11 @@ if [ "$1" = "compose" ]; then
         fi
         echo 401
         exit 0
+      elif [ "$service" = "tunnel" ] && [ "$1" = "tailscale" ] && [ "$2" = "status" ]; then
+        if [ -n "${FAKE_TS_DISCOVERED_HOST:-}" ]; then
+          printf '{"Self":{"DNSName":"%s."}}\n' "$FAKE_TS_DISCOVERED_HOST"
+        fi
+        exit 0
       else
         exit 0
       fi
@@ -123,6 +129,9 @@ if filt == ".[0].id // empty":
 elif filt == ".[0].id":
     value = first_id(data)
     print(value if value is not None else "null")
+elif filt == ".Self.DNSName // empty":
+    value = data.get("Self", {}).get("DNSName")
+    print(value if value else "")
 else:
     sys.exit(f"fake jq: unsupported filter {filt!r}")
 """
@@ -423,3 +432,31 @@ def test_install_adds_a_missing_env_var_instead_of_silently_skipping_it(
     assert result.returncode == 0, result.stderr
     env_lines = env_path.read_text().splitlines()
     assert "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-lgtm:4318" in env_lines
+
+
+def test_install_exports_the_discovered_public_host_before_launching_the_stack(
+    install_workdir, fake_bin_path
+):
+    """Trouvé en redéploiement Proxmox réel (2026-09-20) : Ansible passe
+    GEOSTUDIO_PUBLIC_HOST="" (chaîne vide, mais bien définie) dans
+    l'environnement d'install.sh pour déclencher la découverte automatique.
+    `set_env_var` n'écrit le nom d'hôte découvert que dans `.env` — jamais
+    dans l'environnement du process — et Docker Compose priorise une
+    variable de shell déjà définie (même vide) sur `.env` pour la
+    substitution `${GEOSTUDIO_PUBLIC_HOST}`. Résultat en production :
+    `launch_stack` démarrait Keycloak avec KC_HOSTNAME vide ("Strict
+    hostname resolution configured but no hostname setting provided"),
+    crash-loop, puis timeout d'authentification à l'API Admin."""
+    result, log = _run_install(
+        install_workdir,
+        fake_bin_path,
+        extra_env={
+            "GEOSTUDIO_PUBLIC_HOST": "",
+            "FAKE_TS_DISCOVERED_HOST": "discovered.tailc68a0c.ts.net",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    env_lines = (install_workdir / ".env").read_text().splitlines()
+    assert "GEOSTUDIO_PUBLIC_HOST=discovered.tailc68a0c.ts.net" in env_lines
+    assert "up GEOSTUDIO_PUBLIC_HOST=discovered.tailc68a0c.ts.net" in log
