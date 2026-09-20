@@ -43,6 +43,7 @@ from app.pipelines.ops.schemas import (
     TransformDeriveParams,
     TransformExplodeGeometryParams,
     TransformExplodeListParams,
+    TransformExposeAttributesParams,
     TransformExtractCoordinatesParams,
     TransformExtractDimensionParams,
     TransformExtractElevationParams,
@@ -417,6 +418,14 @@ OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_explode_geometry,
+    ),
+    "transform.exposeAttributes": OperationContract(
+        op="transform.exposeAttributes",
+        kind="transform",
+        params_schema=TransformExposeAttributesParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_expose_attributes,
     ),
     "reader.file": OperationContract(
         op="reader.file",

@@ -21,6 +21,7 @@ from app.pipelines.ops.schemas import (
     TransformDeriveParams,
     TransformExplodeGeometryParams,
     TransformExplodeListParams,
+    TransformExposeAttributesParams,
     TransformExtractCoordinatesParams,
     TransformExtractDimensionParams,
     TransformExtractElevationParams,
@@ -561,6 +562,18 @@ def _compile_explode_geometry(
         f"SELECT * EXCLUDE (geometry), unnest(ST_Dump(geometry)).geom AS geometry "
         f"FROM {_qi(input_view)}"
     )
+
+
+def _compile_expose_attributes(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformExposeAttributesParams.model_validate(params)
+    col = _qi(p.column)
+    return f"SELECT * EXCLUDE ({col}), {col}.* FROM {_qi(input_view)}"
 
 
 def compile_transform_sql(

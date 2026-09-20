@@ -425,3 +425,10 @@ class TransformExplodeGeometryParams(BaseModel):
     """Explose une géométrie multi-partie (MULTIPOINT/MULTILINESTRING/MULTIPOLYGON/
     GEOMETRYCOLLECTION) en une ligne par sous-géométrie simple. Sans effet sur une géométrie
     déjà simple (le nombre de lignes ne change pas)."""
+
+
+class TransformExposeAttributesParams(BaseModel):
+    """Expose les champs d'une colonne STRUCT (ou LIST-de-STRUCT) source comme colonnes
+    top-level, sans connaître leurs noms à l'avance."""
+
+    column: str

@@ -797,3 +797,14 @@ def test_compile_explode_geometry_on_single_part_geometry_is_a_noop_on_row_count
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
     count = conn_spatial.execute("SELECT count(*) FROM out").fetchone()[0]
     assert count == 2  # falsification : un point simple ne se dédouble pas
+
+
+def test_compile_expose_attributes_expands_struct_fields(conn):
+    conn.execute("CREATE TABLE nested (id INTEGER, payload STRUCT(a INTEGER, b VARCHAR))")
+    conn.execute("INSERT INTO nested VALUES (1, {'a': 10, 'b': 'x'})")
+    sql = compile_transform_sql(
+        "transform.exposeAttributes", {"column": "payload"}, input_view="nested"
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn.execute("SELECT id, a, b FROM out").fetchone()
+    assert row == (1, 10, "x")
