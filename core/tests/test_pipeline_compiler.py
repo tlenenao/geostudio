@@ -839,3 +839,24 @@ def test_compile_validate_attributes_checks_uniqueness(conn):
 def test_compile_validate_attributes_requires_at_least_one_check():
     with pytest.raises(Exception, match="at least one"):
         compile_transform_sql("transform.validateAttributes", {}, input_view="base")
+
+
+def test_compile_sort_by_single_column_ascending(conn):
+    sql = compile_transform_sql(
+        "transform.sort", {"by": [{"column": "pop", "direction": "asc"}]}, input_view="base"
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn.execute("SELECT pop FROM out").fetchall()
+    assert rows == [(5,), (10,), (20,)]
+
+
+def test_compile_sort_by_spatial_hilbert(conn_spatial):
+    sql = compile_transform_sql("transform.sort", {"bySpatialHilbert": True}, input_view="base")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    count = conn_spatial.execute("SELECT count(*) FROM out").fetchone()[0]
+    assert count == 2  # falsification de forme : la requête s'exécute et ne perd aucune ligne
+
+
+def test_compile_sort_requires_at_least_one_sort_key():
+    with pytest.raises(Exception, match="at least one"):
+        compile_transform_sql("transform.sort", {}, input_view="base")

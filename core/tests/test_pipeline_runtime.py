@@ -3,6 +3,7 @@ import csv
 import dataclasses
 import io
 import json
+import random
 
 import geopandas as gpd
 import pytest
@@ -385,6 +386,97 @@ def test_write_export_csv_geometry_as_geojson_string(tmp_path, monkeypatch):
     geometry_cell = data_row[header.index("geometry")]
     parsed_geometry = json.loads(geometry_cell)  # doit être une chaîne GeoJSON valide
     assert parsed_geometry == {"type": "Point", "coordinates": [1.5, 45.5]}
+
+
+def test_run_pipeline_sort_order_survives_to_directly_connected_writer(tmp_path, monkeypatch):
+    """Falsification empirique (design §3.3, piège CLAUDE.md n°7 : une mesure de
+    durée ne prouve rien sur le fond, il faut recouvrir le mécanisme réel — ici,
+    exécuter à une échelle qui déclenche le parallélisme réel de DuckDB, pas se
+    fier à une intuition sur un échantillon minuscule). DuckDB tourne avec
+    threads=nproc par défaut (16 sur cette machine, vérifié empiriquement) ;
+    20 000 lignes est une échelle suffisante pour que le scanner parallèle du
+    Parquet et l'opérateur ORDER BY travaillent réellement sur plusieurs
+    threads, pas une intuition. Ce test couvre le cas d'un writer DIRECTEMENT
+    connecté au nœud transform.sort (reader.collection -> transform.sort ->
+    writer.export, aucun nœud intermédiaire) — le seul cas pour lequel le
+    design (§3.3) promet un ordre garanti ; au-delà, c'est explicitement
+    best-effort et non couvert ici."""
+    ROW_COUNT = 20_000
+    shuffled_pops = list(range(ROW_COUNT))
+    random.Random(42).shuffle(shuffled_pops)  # entrée délibérément non triée
+    rows = [
+        _row(i, "Nord", pop, x=float(i % 200), y=float(i // 200))
+        for i, pop in enumerate(shuffled_pops)
+    ]
+    _write_partition(tmp_path, rows=rows)
+    monkeypatch.setattr(
+        runtime,
+        "_table_info_for_collection",
+        lambda session, collection_id: _table_info_for(collection_id),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "s1",
+                    "kind": "transform",
+                    "op": "transform.sort",
+                    "params": {"by": [{"column": "pop", "direction": "asc"}]},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "sorted.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "s1"},
+                {"id": "e2", "from": "s1", "to": "w1"},
+            ],
+        }
+    )
+    fake_s3 = _FakeS3()
+
+    stats = runtime.run_pipeline(
+        None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+        s3_client=fake_s3,
+        exports_bucket="exports",
+    )
+
+    assert any(stat.op == "transform.sort" and stat.rowCount == ROW_COUNT for stat in stats)
+    body = fake_s3.calls[0]["Body"].decode("utf-8")
+    reader = csv.reader(io.StringIO(body))
+    header = next(reader)
+    pop_index = header.index("pop")
+    observed = [int(row[pop_index]) for row in reader]
+    assert len(observed) == ROW_COUNT  # falsification de forme : aucune ligne perdue
+    # Falsification du fond (design §3.3) : à 20 000 lignes, avec DuckDB en
+    # parallélisme réel (16 threads par défaut ici), l'ordre de
+    # transform.sort survit-il jusqu'au writer.export DIRECTEMENT connecté ?
+    # Réponse mesurée, jamais supposée — voir le rapport de tâche pour le
+    # résultat effectif et sa discussion.
+    assert observed == sorted(observed)
 
 
 @pytest.mark.postgis

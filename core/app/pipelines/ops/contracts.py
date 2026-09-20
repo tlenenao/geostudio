@@ -63,6 +63,7 @@ from app.pipelines.ops.schemas import (
     TransformScanSchemaParams,
     TransformSelectParams,
     TransformSetSridParams,
+    TransformSortParams,
     TransformSwapCoordinatesParams,
     TransformTranslateGeometryParams,
     TransformValidateAttributesParams,
@@ -435,6 +436,14 @@ OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_validate_attributes,
+    ),
+    "transform.sort": OperationContract(
+        op="transform.sort",
+        kind="transform",
+        params_schema=TransformSortParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_sort,
     ),
     "reader.file": OperationContract(
         op="reader.file",

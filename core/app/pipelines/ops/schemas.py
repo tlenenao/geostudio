@@ -434,6 +434,28 @@ class TransformExposeAttributesParams(BaseModel):
     column: str
 
 
+class SortKey(BaseModel):
+    column: str
+    direction: Literal["asc", "desc"] = "asc"
+
+
+class TransformSortParams(BaseModel):
+    """Trie les lignes par une liste de colonnes et/ou par proximité spatiale (courbe de
+    Hilbert sur la géométrie). Ordre garanti uniquement pour un nœud writer directement
+    connecté en aval — au-delà, best-effort (décision assumée, design §3.3)."""
+
+    by: list[SortKey] = Field(default_factory=list)
+    bySpatialHilbert: bool = False
+
+    @model_validator(mode="after")
+    def _at_least_one_sort_key(self) -> "TransformSortParams":
+        if not self.by and not self.bySpatialHilbert:
+            raise ValueError(
+                "transform.sort requires at least one sort key (by or bySpatialHilbert)"
+            )
+        return self
+
+
 class TransformValidateAttributesParams(BaseModel):
     """Valide des attributs explicites (non-null et/ou unicité) et écrit le résultat booléen
     dans une colonne dédiée par vérification demandée. Colonnes explicites uniquement — pas de

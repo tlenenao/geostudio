@@ -41,6 +41,7 @@ from app.pipelines.ops.schemas import (
     TransformScanSchemaParams,
     TransformSelectParams,
     TransformSetSridParams,
+    TransformSortParams,
     TransformSwapCoordinatesParams,
     TransformTranslateGeometryParams,
     TransformValidateAttributesParams,
@@ -595,6 +596,33 @@ def _compile_validate_attributes(
             f"(COUNT(*) OVER (PARTITION BY {partition}) = 1) AS {_qi(p.uniqueResultColumn)}"
         )
     return f"SELECT *, {', '.join(extra_cols)} FROM {_qi(input_view)}"
+
+
+def _compile_sort(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformSortParams.model_validate(params)
+    order_parts = []
+    if p.bySpatialHilbert:
+        # ST_Hilbert(geom GEOMETRY, bounds BOX_2D) -> UINTEGER (signature
+        # vérifiée empiriquement contre un DuckDB spatial réel, v1.5.5 :
+        # duckdb_functions() liste bien un overload (GEOMETRY, BOX_2D), comme
+        # supposé au design). Mais ST_Extent_Agg(geometry) renvoie une
+        # GEOMETRY (l'enveloppe convexe/rectangle en géométrie), PAS un
+        # BOX_2D — il faut la repasser par ST_Extent() pour obtenir le type
+        # BOX_2D attendu par ce second paramètre (écart réel au texte du
+        # brief, qui supposait ST_Extent_Agg directement utilisable comme
+        # bounds).
+        order_parts.append(
+            f"ST_Hilbert(geometry, (SELECT ST_Extent(ST_Extent_Agg(geometry)) "
+            f"FROM {_qi(input_view)}))"
+        )
+    order_parts += [f"{_qi(k.column)} {k.direction.upper()}" for k in p.by]
+    return f"SELECT * FROM {_qi(input_view)} ORDER BY {', '.join(order_parts)}"
 
 
 def compile_transform_sql(
