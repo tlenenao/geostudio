@@ -610,3 +610,11 @@ class TransformMapSchemaParams(BaseModel):
     source → NULL, colonne source hors de la liste cible → éliminée."""
 
     targetColumns: list[str]
+
+
+class TransformCentroidParams(BaseModel):
+    """Remplace la géométrie par son centre de gravité (barycentre)."""
+
+
+class TransformConvexHullParams(BaseModel):
+    """Remplace la géométrie par son enveloppe convexe."""

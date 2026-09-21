@@ -988,3 +988,25 @@ def test_compile_sort_by_spatial_hilbert(conn_spatial):
 def test_compile_sort_requires_at_least_one_sort_key():
     with pytest.raises(Exception, match="at least one"):
         compile_transform_sql("transform.sort", {}, input_view="base")
+
+
+def test_compile_centroid(conn_spatial):
+    conn_spatial.execute("CREATE TABLE poly (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO poly VALUES (1, ST_GeomFromText('POLYGON ((0 0, 4 0, 4 4, 0 4, 0 0))'))"
+    )
+    sql = compile_transform_sql("transform.centroid", {}, input_view="poly")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT ST_AsText(geometry) FROM out").fetchone()
+    assert row == ("POINT (2 2)",)
+
+
+def test_compile_convex_hull(conn_spatial):
+    conn_spatial.execute("CREATE TABLE pts (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO pts VALUES (1, ST_GeomFromText('MULTIPOINT (0 0, 4 0, 4 4, 0 4, 2 2)'))"
+    )
+    sql = compile_transform_sql("transform.convexHull", {}, input_view="pts")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT ST_NPoints(geometry) FROM out").fetchone()
+    assert row == (5,)  # 4 coins du carré + retour au premier point (anneau fermé)

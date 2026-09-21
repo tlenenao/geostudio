@@ -14,7 +14,9 @@ from app.pipelines.ops.schemas import (
     TransformBufferParams,
     TransformBulkRemoveAttributesParams,
     TransformBulkRenameAttributesParams,
+    TransformCentroidParams,
     TransformConcatCoordinatesParams,
+    TransformConvexHullParams,
     TransformCountVerticesParams,
     TransformCountWithinParams,
     TransformCreateGeometryParams,
@@ -566,6 +568,30 @@ def _compile_explode_geometry(
     return (
         f"SELECT * EXCLUDE (geometry), unnest(ST_Dump(geometry)).geom AS geometry "
         f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_centroid(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    TransformCentroidParams.model_validate(params)  # forme seulement, aucun champ
+    return f"SELECT * EXCLUDE (geometry), ST_Centroid(geometry) AS geometry FROM {_qi(input_view)}"
+
+
+def _compile_convex_hull(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    TransformConvexHullParams.model_validate(params)  # forme seulement, aucun champ
+    return (
+        f"SELECT * EXCLUDE (geometry), ST_ConvexHull(geometry) AS geometry FROM {_qi(input_view)}"
     )
 
 
