@@ -80,10 +80,13 @@ dependencies = [
                        # comme snowflake-sqlalchemy/sqlalchemy-bigquery).
                        # Borne haute délibérée : le projet a adopté un
                        # schéma de version proche du calendaire (26.0.0 au
-                       # moment de cet ajout, après des séries 1.x/2.x) —
-                       # `<27` évite une bascule silencieuse vers une
-                       # prochaine série majeure non vérifiée, plutôt qu'une
-                       # borne `<3` qui serait déjà fausse aujourd'hui.
+                       # moment de cet ajout, après les séries 1.x/2.x/3.x/
+                       # 4.x — vérifié contre le changelog amont réel,
+                       # doc/src/release_notes.rst, pas déduit d'un tri
+                       # lexicographique de numéros de version) — `<27`
+                       # évite une bascule silencieuse vers une prochaine
+                       # série majeure non vérifiée, plutôt qu'une borne
+                       # `<3` qui serait déjà fausse aujourd'hui.
                        # License-Expression PyPI réelle (pas supposée) :
                        # "UPL-1.0 OR Apache-2.0" (double licence, vérifiée
                        # via importlib.metadata) — Apache-2.0 retenue.

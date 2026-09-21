@@ -2859,6 +2859,49 @@ export interface components {
             /** Tokenurl */
             tokenUrl: string;
         };
+        /**
+         * OracleDsnPayload
+         * @description DSN SQLAlchemy complet vers Oracle Database, forme
+         *     `oracle+oracledb://user:pass@hostname:port[/dbname][?service_name=<service>]`
+         *     (vérifiée directement contre le module source réel
+         *     `sqlalchemy/dialects/oracle/oracledb.py` du dépôt sqlalchemy/sqlalchemy —
+         *     docstring `:connectstring:` en tête de module —, pas seulement la doc
+         *     publiée, piège CLAUDE.md n°3). Driver retenu : `python-oracledb` (le
+         *     driver officiel qui remplace cx_Oracle), en mode **thin** — pur Python,
+         *     aucune bibliothèque cliente Oracle native à installer sur l'image du
+         *     worker. Vérifié empiriquement (pas seulement lu dans la doc) : le mode
+         *     thin est celui utilisé par défaut par `sa.create_engine()` pour ce
+         *     dialecte — `OracleDialect_oracledb.__init__` (code source réel) n'appelle
+         *     `oracledb.init_oracle_client()` (qui bascule en mode thick) que si
+         *     `thick_mode` est explicitement vrai ; par défaut (`thick_mode=None`),
+         *     aucun appel de ce type n'a lieu, et `oracledb.is_thin_mode()` renvoie
+         *     `True` sans configuration après un simple `sa.create_engine(...)` sans
+         *     connexion. Ce module n'a donc besoin d'aucune initialisation
+         *     supplémentaire dans `materialize_oracle_connector`.
+         *
+         *     Comme postgres_dsn/snowflake_dsn/mssql_dsn (et contrairement à
+         *     bigquery_dsn) : le cœur ne parse ni ne valide ce DSN, il le passe tel
+         *     quel à sa.create_engine() ; sa.create_engine() reste paresseux pour ce
+         *     dialecte — vérifié empiriquement (aucun appel réseau avant .connect(),
+         *     retour en configuration locale seulement) — et le mot de passe est
+         *     masqué par `str(engine.url)`.
+         *
+         *     `query` est validée SELECT-only en la parsant avec le dialecte SQL de
+         *     DuckDB (app.pipelines.connector_runtime), pas le vrai SQL Oracle (PL/SQL)
+         *     — même heuristique de défense en profondeur que les autres DSN de ce
+         *     module, mêmes limites potentielles non vérifiées ici (ex. `ROWNUM`/
+         *     `FETCH FIRST n ROWS ONLY`, pseudo-colonnes Oracle) : une requête acceptée
+         *     ici peut malgré tout échouer côté serveur avec une erreur explicite.
+         */
+        OracleDsnPayload: {
+            /** Dsn */
+            dsn: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "oracle_dsn";
+        };
         /** OwnerFacet */
         OwnerFacet: {
             /** Count */
@@ -3176,7 +3219,7 @@ export interface components {
             /** Name */
             name: string;
             /** Payload */
-            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"];
+            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"];
         };
         /** ShareLinkCreated */
         ShareLinkCreated: {

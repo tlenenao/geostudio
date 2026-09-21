@@ -3557,6 +3557,26 @@
         "title": "OAuth2ClientCredentialsPayload",
         "type": "object"
       },
+      "OracleDsnPayload": {
+        "description": "DSN SQLAlchemy complet vers Oracle Database, forme\n`oracle+oracledb://user:pass@hostname:port[/dbname][?service_name=<service>]`\n(v\u00e9rifi\u00e9e directement contre le module source r\u00e9el\n`sqlalchemy/dialects/oracle/oracledb.py` du d\u00e9p\u00f4t sqlalchemy/sqlalchemy \u2014\ndocstring `:connectstring:` en t\u00eate de module \u2014, pas seulement la doc\npubli\u00e9e, pi\u00e8ge CLAUDE.md n\u00b03). Driver retenu : `python-oracledb` (le\ndriver officiel qui remplace cx_Oracle), en mode **thin** \u2014 pur Python,\naucune biblioth\u00e8que cliente Oracle native \u00e0 installer sur l'image du\nworker. V\u00e9rifi\u00e9 empiriquement (pas seulement lu dans la doc) : le mode\nthin est celui utilis\u00e9 par d\u00e9faut par `sa.create_engine()` pour ce\ndialecte \u2014 `OracleDialect_oracledb.__init__` (code source r\u00e9el) n'appelle\n`oracledb.init_oracle_client()` (qui bascule en mode thick) que si\n`thick_mode` est explicitement vrai ; par d\u00e9faut (`thick_mode=None`),\naucun appel de ce type n'a lieu, et `oracledb.is_thin_mode()` renvoie\n`True` sans configuration apr\u00e8s un simple `sa.create_engine(...)` sans\nconnexion. Ce module n'a donc besoin d'aucune initialisation\nsuppl\u00e9mentaire dans `materialize_oracle_connector`.\n\nComme postgres_dsn/snowflake_dsn/mssql_dsn (et contrairement \u00e0\nbigquery_dsn) : le c\u0153ur ne parse ni ne valide ce DSN, il le passe tel\nquel \u00e0 sa.create_engine() ; sa.create_engine() reste paresseux pour ce\ndialecte \u2014 v\u00e9rifi\u00e9 empiriquement (aucun appel r\u00e9seau avant .connect(),\nretour en configuration locale seulement) \u2014 et le mot de passe est\nmasqu\u00e9 par `str(engine.url)`.\n\n`query` est valid\u00e9e SELECT-only en la parsant avec le dialecte SQL de\nDuckDB (app.pipelines.connector_runtime), pas le vrai SQL Oracle (PL/SQL)\n\u2014 m\u00eame heuristique de d\u00e9fense en profondeur que les autres DSN de ce\nmodule, m\u00eames limites potentielles non v\u00e9rifi\u00e9es ici (ex. `ROWNUM`/\n`FETCH FIRST n ROWS ONLY`, pseudo-colonnes Oracle) : une requ\u00eate accept\u00e9e\nici peut malgr\u00e9 tout \u00e9chouer c\u00f4t\u00e9 serveur avec une erreur explicite.",
+        "properties": {
+          "dsn": {
+            "title": "Dsn",
+            "type": "string"
+          },
+          "kind": {
+            "const": "oracle_dsn",
+            "default": "oracle_dsn",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dsn"
+        ],
+        "title": "OracleDsnPayload",
+        "type": "object"
+      },
       "OwnerFacet": {
         "properties": {
           "count": {
@@ -4426,6 +4446,7 @@
                 "bigquery_dsn": "#/components/schemas/BigQueryDsnPayload",
                 "mssql_dsn": "#/components/schemas/MssqlDsnPayload",
                 "oauth2_client_credentials": "#/components/schemas/OAuth2ClientCredentialsPayload",
+                "oracle_dsn": "#/components/schemas/OracleDsnPayload",
                 "postgres_dsn": "#/components/schemas/PostgresDsnPayload",
                 "smtp": "#/components/schemas/SmtpCredentialsPayload",
                 "snowflake_dsn": "#/components/schemas/SnowflakeDsnPayload"
@@ -4459,6 +4480,9 @@
               },
               {
                 "$ref": "#/components/schemas/MssqlDsnPayload"
+              },
+              {
+                "$ref": "#/components/schemas/OracleDsnPayload"
               }
             ],
             "title": "Payload"
