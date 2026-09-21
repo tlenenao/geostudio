@@ -1886,7 +1886,8 @@ export interface components {
          *     l'appel, sans y faire pour autant le moindre appel réseau tant qu'un
          *     JSON de compte de service bien formé (champs `client_email`/
          *     `token_uri`/`private_key` présents, clé RSA syntaxiquement valide) lui
-         *     est fourni ; un JSON malformé y échoue *localement* avant tout aussi.
+         *     est fourni ; un JSON malformé y échoue *localement* avant tout appel
+         *     réseau.
          *
          *     Mise en garde distincte de postgres_dsn/snowflake_dsn : le mot de passe
          *     d'un DSN Postgres/Snowflake est masqué par `str(url)` de SQLAlchemy
