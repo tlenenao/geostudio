@@ -136,12 +136,15 @@ class MssqlDsnPayload(BaseModel):
     Limitation documentée à connaître avant d'écrire `query` (analogue à la
     réserve SAMPLE/TOP/MINUS de SnowflakeDsnPayload, mais dans l'autre sens) :
     `query` est validée SELECT-only en la parsant avec le dialecte SQL de
-    DuckDB (app.pipelines.connector_runtime), pas le T-SQL réel. `TOP n` et
-    les identifiants entre crochets `[col]` (syntaxe T-SQL propriétaire) ne
-    sont pas reconnus par le parseur DuckDB et sont donc rejetés ici, alors
-    qu'ils seraient valides sur un vrai SQL Server — à reformuler en
-    `ORDER BY ... OFFSET n ROWS FETCH NEXT m ROWS ONLY` et guillemets
-    doubles. À l'inverse, `LIMIT n` est accepté ici (syntaxe DuckDB valide)
+    DuckDB (app.pipelines.connector_runtime), pas le T-SQL réel. `TOP n`
+    n'est pas reconnu par le parseur DuckDB et est donc rejeté ici, alors
+    qu'il serait valide sur un vrai SQL Server — à reformuler en
+    `ORDER BY ... OFFSET n ROWS FETCH NEXT m ROWS ONLY`. Un identifiant entre
+    crochets `[col]` (syntaxe T-SQL propriétaire) passe la validation DuckDB
+    tant qu'il ne contient ni espace ni caractère spécial (`[id]` accepté,
+    `[my column]` rejeté — vérifié empiriquement contre le vrai parseur, pas
+    supposé) ; reformuler en guillemets doubles (`"my column"`) si besoin
+    d'un identifiant à espace. À l'inverse, `LIMIT n` est accepté ici (syntaxe DuckDB valide)
     mais n'est PAS du T-SQL valide — SQL Server ne connaît pas la clause
     LIMIT — et une requête qui passe cette validation peut donc échouer
     côté serveur avec une erreur explicite au moment de l'exécution."""

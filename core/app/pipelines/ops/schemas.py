@@ -261,11 +261,12 @@ class ReaderConnectorMssqlParams(BaseModel):
     qu'à l'exécution (app.pipelines.connector_runtime), jamais ici (forme
     seulement) ni à la sauvegarde (design §6) — même heuristique dialecte
     DuckDB que Postgres/Snowflake/BigQuery, avec une limite documentée dans
-    l'autre sens que Snowflake : `TOP n` et les identifiants entre crochets
-    `[col]` (T-SQL) ne sont pas reconnus par le parseur DuckDB et sont donc
-    rejetés ici bien que valides sur un vrai SQL Server ; à l'inverse
-    `LIMIT n` est accepté ici mais n'est pas du T-SQL valide et peut
-    échouer côté serveur (cf. MssqlDsnPayload)."""
+    l'autre sens que Snowflake : `TOP n` n'est pas reconnu par le parseur
+    DuckDB et est donc rejeté ici bien que valide sur un vrai SQL Server ;
+    un identifiant entre crochets `[col]` (T-SQL) passe si sans espace
+    (`[id]` accepté, `[my column]` rejeté) ; à l'inverse `LIMIT n` est
+    accepté ici mais n'est pas du T-SQL valide et peut échouer côté serveur
+    (cf. MssqlDsnPayload)."""
 
     secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
     query: str
