@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Matérialisation dlt des op reader.connector.* (design SP-15f §3 ; 5 op à
-ce jour — rest/postgres/snowflake/bigquery/mssql, cf. GAP-16 et Vague 2
+ce jour — rest/postgres/snowflake/bigquery/mssql/oracle, cf. GAP-16 et Vague 2
 §6.1) —
 chaque appel exécute un vrai pipeline dlt vers un fichier DuckDB scratch
 dédié, l'ATTACH en lecture seule dans la connexion du runtime, sélectionne
@@ -42,6 +42,7 @@ from app.pipelines.egress import EgressBlockedError, build_guarded_session
 from app.pipelines.ops.schemas import (
     ReaderConnectorBigQueryParams,
     ReaderConnectorMssqlParams,
+    ReaderConnectorOracleParams,
     ReaderConnectorPostgresParams,
     ReaderConnectorRestParams,
     ReaderConnectorSnowflakeParams,
@@ -402,6 +403,55 @@ def materialize_snowflake_connector(
         # l'installation (vérifié empiriquement, design §3.3) — même
         # patron que le dialecte "postgresql" ci-dessus, jamais importé
         # explicitement non plus.
+        engine = sa.create_engine(payload.dsn)
+        try:
+            with engine.connect() as db_conn:
+                rows = db_conn.execution_options(yield_per=1000).exec_driver_sql(params.query)
+                yield from (dict(row._mapping) for row in rows)
+        finally:
+            engine.dispose()
+
+    _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
+
+
+def materialize_oracle_connector(
+    conn,
+    *,
+    secret_resolver: SecretResolver | None,
+    node_id: str,
+    params: ReaderConnectorOracleParams,
+    view_name: str,
+) -> None:
+    # Pendant exact de materialize_postgres_connector/materialize_snowflake_connector/
+    # materialize_mssql_connector (Vague 2 §6.1) — même heuristique
+    # SELECT-only, même défense en profondeur documentée : `params.query`
+    # cible Oracle Database (PL/SQL) mais est parsée avec le dialecte SQL de
+    # DuckDB, pas le vrai SQL Oracle (cf. ReaderConnectorOracleParams).
+    try:
+        validate_select_only(parse_ast(conn, params.query))
+    except SqlSandboxError as exc:
+        raise ConnectorRuntimeError(f"reader.connector.oracle query rejected: {exc}") from exc
+
+    payload = _resolve_secret(secret_resolver, params.secretName)
+    if payload.kind != "oracle_dsn":
+        raise ConnectorRuntimeError(
+            f"secret has kind '{payload.kind}', not usable by reader.connector.oracle "
+            "(expected oracle_dsn)"
+        )
+
+    @dlt.resource(name="records", write_disposition="replace")
+    def _records():
+        # Aucun import explicite de oracledb ici : comme pour
+        # "mssql+pymssql", le dialecte "oracle+oracledb" est intégré à
+        # SQLAlchemy elle-même (sqlalchemy/dialects/oracle/oracledb.py,
+        # vérifié contre le code source réel) — sa.create_engine() importe
+        # oracledb en interne (`OracleDialect_oracledb.import_dbapi`), le
+        # paquet n'a besoin que d'être installé. Mode thin (pur Python) par
+        # défaut, aucune initialisation supplémentaire requise (cf.
+        # OracleDsnPayload, vérifié empiriquement). Comme postgres/snowflake/
+        # mssql (et contrairement à bigquery) : sa.create_engine() reste
+        # paresseux pour ce dialecte, aucun appel réseau avant .connect()
+        # (vérifié empiriquement).
         engine = sa.create_engine(payload.dsn)
         try:
             with engine.connect() as db_conn:

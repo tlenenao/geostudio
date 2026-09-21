@@ -30,6 +30,7 @@ from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
     ReaderConnectorBigQueryParams,
     ReaderConnectorMssqlParams,
+    ReaderConnectorOracleParams,
     ReaderConnectorPostgresParams,
     ReaderConnectorRestParams,
     ReaderConnectorSnowflakeParams,
@@ -293,6 +294,11 @@ OPERATIONS: dict[str, OperationContract] = {
         op="reader.connector.mssql",
         kind="reader",
         params_schema=ReaderConnectorMssqlParams,
+    ),
+    "reader.connector.oracle": OperationContract(
+        op="reader.connector.oracle",
+        kind="reader",
+        params_schema=ReaderConnectorOracleParams,
     ),
     "transform.merge": OperationContract(
         op="transform.merge",

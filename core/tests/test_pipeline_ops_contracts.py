@@ -43,7 +43,7 @@ def test_non_copyleft_engine_defaults_to_in_process_and_no_copyleft():
     assert contract.output_srid is None
 
 
-def test_operations_registry_has_exactly_the_forty_nine_known_ops():
+def test_operations_registry_has_exactly_the_fifty_known_ops():
     from app.pipelines.ops.contracts import OPERATIONS
 
     assert set(OPERATIONS) == {
@@ -67,6 +67,7 @@ def test_operations_registry_has_exactly_the_forty_nine_known_ops():
         "reader.connector.snowflake",
         "reader.connector.bigquery",
         "reader.connector.mssql",
+        "reader.connector.oracle",
         "transform.merge",
         "transform.swapCoordinates",
         "transform.translateGeometry",
@@ -121,6 +122,7 @@ def test_connector_and_writer_ops_are_not_classified_by_engine():
         "reader.connector.snowflake",
         "reader.connector.bigquery",
         "reader.connector.mssql",
+        "reader.connector.oracle",
         "writer.collection",
         "writer.export",
         "writer.dataset",
@@ -160,7 +162,7 @@ def test_ops_catalog_never_exposes_the_exchange_field():
         assert set(entry) == {"kind", "paramsSchema", "acceptsSecondaryInput"}, op
 
 
-def test_operations_registry_has_forty_nine_entries_after_vague_2():
+def test_operations_registry_has_fifty_entries_after_vague_2():
     from app.pipelines.ops.contracts import OPERATIONS
 
-    assert len(OPERATIONS) == 49
+    assert len(OPERATIONS) == 50

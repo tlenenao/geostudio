@@ -67,6 +67,26 @@ dependencies = [
                        # driver DBAPI importé en interne par ce dialecte.
                        # LGPL-2.1, vérifiée sur PyPI (classifiers réels,
                        # pas supposée).
+    "oracledb>=2.0,<27",  # Vague 2 §6.1 : reader.connector.oracle — driver
+                       # DBAPI officiel Oracle (remplace cx_Oracle), utilisé
+                       # en mode thin (pur Python, aucune bibliothèque
+                       # cliente Oracle native requise) par défaut — vérifié
+                       # empiriquement contre le code source réel du
+                       # dialecte SQLAlchemy intégré "oracle+oracledb"
+                       # (sqlalchemy/dialects/oracle/oracledb.py) : ce
+                       # paquet ne fournit que le driver DBAPI importé en
+                       # interne par ce dialecte, même patron que pymssql
+                       # ci-dessus (pas un dialecte tiers à entry points
+                       # comme snowflake-sqlalchemy/sqlalchemy-bigquery).
+                       # Borne haute délibérée : le projet a adopté un
+                       # schéma de version proche du calendaire (26.0.0 au
+                       # moment de cet ajout, après des séries 1.x/2.x) —
+                       # `<27` évite une bascule silencieuse vers une
+                       # prochaine série majeure non vérifiée, plutôt qu'une
+                       # borne `<3` qui serait déjà fausse aujourd'hui.
+                       # License-Expression PyPI réelle (pas supposée) :
+                       # "UPL-1.0 OR Apache-2.0" (double licence, vérifiée
+                       # via importlib.metadata) — Apache-2.0 retenue.
     "psycopg[binary]>=3.1",
     "psycopg2-binary>=2.9",  # SP-11a : seul driver Python avec support du protocole
                              # de réplication logique (psycopg v3 ne l'expose pas) ;

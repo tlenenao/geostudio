@@ -272,6 +272,26 @@ class ReaderConnectorMssqlParams(BaseModel):
     query: str
 
 
+class ReaderConnectorOracleParams(BaseModel):
+    """Lecture d'une requête SQL libre (SELECT uniquement) sur une base
+    Oracle Database distante, via un secret de connexion dédié (oracle_dsn).
+
+    Vague 2 §6.1, pendant de ReaderConnectorPostgresParams/
+    ReaderConnectorSnowflakeParams/ReaderConnectorBigQueryParams/
+    ReaderConnectorMssqlParams. `secretName` référence toujours un secret
+    oracle_dsn — même contrat (pas de notion de DSN non authentifié).
+    `query` n'est validée SELECT-only qu'à l'exécution
+    (app.pipelines.connector_runtime), jamais ici (forme seulement) ni à la
+    sauvegarde (design §6) — même heuristique dialecte DuckDB que
+    Postgres/Snowflake/BigQuery/MSSQL : le SQL Oracle (PL/SQL) diverge du SQL
+    standard sur plusieurs points (`ROWNUM`, séquences `NEXTVAL`, jointure
+    `(+)`) qu'un texte accepté ici peut malgré tout faire échouer côté Oracle
+    avec une erreur explicite."""
+
+    secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
+    query: str
+
+
 class TransformScaleGeometryParams(BaseModel):
     """Mise à l'échelle de la géométrie autour de l'origine (0, 0) — PAS
     autour du centre de la géométrie (vérifié empiriquement contre DuckDB

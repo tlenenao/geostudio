@@ -37,9 +37,9 @@ app.pipelines.runtime a fini de charger, quel que soit ce qui a déclenché
 ce premier import), app.pipelines.runtime est déjà entièrement défini :
 _read_collection, _read_connector_rest, _read_connector_postgres,
 _read_connector_snowflake, _read_connector_bigquery, _read_connector_mssql,
-_read_file, _write_collection, _write_export, _write_dataset et
-_write_file existent tous en tant qu'attributs du module au moment où ce
-fichier-ci y accède ci-dessous."""
+_read_connector_oracle, _read_file, _write_collection, _write_export,
+_write_dataset et _write_file existent tous en tant qu'attributs du module
+au moment où ce fichier-ci y accède ci-dessous."""
 
 from collections.abc import Callable
 
@@ -52,6 +52,7 @@ READERS: dict[str, Callable] = {
     "reader.connector.snowflake": _runtime._read_connector_snowflake,
     "reader.connector.bigquery": _runtime._read_connector_bigquery,
     "reader.connector.mssql": _runtime._read_connector_mssql,
+    "reader.connector.oracle": _runtime._read_connector_oracle,
     "reader.file": _runtime._read_file,
 }
 

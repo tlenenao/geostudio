@@ -770,6 +770,82 @@ def test_mssql_dialect_resolves_lazily_without_network():
         engine.dispose()
 
 
+from app.pipelines.ops.schemas import ReaderConnectorOracleParams  # noqa: E402
+
+
+def test_materialize_oracle_connector_rejects_non_select(conn, session, tenant):
+    params = ReaderConnectorOracleParams(secretName="does-not-matter", query="DELETE FROM towns")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
+        connector_runtime.materialize_oracle_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="ora1",
+            params=params,
+            view_name="node_ora1",
+        )
+
+
+def test_materialize_oracle_connector_wrong_secret_kind_raises(conn, session, tenant, user):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="bearer-secret",
+        kind="bearer_token",
+        payload={"kind": "bearer_token", "token": "tok"},
+    )
+    params = ReaderConnectorOracleParams(secretName="bearer-secret", query="SELECT 1")
+    with pytest.raises(
+        connector_runtime.ConnectorRuntimeError, match="not usable by reader.connector.oracle"
+    ):
+        connector_runtime.materialize_oracle_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="ora2",
+            params=params,
+            view_name="node_ora2",
+        )
+
+
+def test_materialize_oracle_connector_missing_secret_raises(conn, session, tenant):
+    params = ReaderConnectorOracleParams(secretName="does-not-exist", query="SELECT 1")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
+        connector_runtime.materialize_oracle_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="ora3",
+            params=params,
+            view_name="node_ora3",
+        )
+
+
+def test_oracle_dialect_resolves_lazily_in_thin_mode_without_network():
+    # Vérifie la forme du DSN (Vague 2 §6.1) sans se connecter à un vrai
+    # serveur : comme pour postgres/snowflake/mssql (et contrairement à
+    # bigquery, cf. ci-dessus), sa.create_engine() pour le dialecte
+    # "oracle+oracledb" est paresseux — aucun appel réseau avant .connect()
+    # (vérifié empiriquement : retour immédiat, aucune exception). Vérifie
+    # aussi que le mode thin (pur Python, sans client Oracle natif) est bien
+    # celui utilisé par défaut, sans appel explicite à
+    # oracledb.init_oracle_client() ni thick_mode=True — vérifié
+    # empiriquement contre oracledb.is_thin_mode() (True par défaut avant
+    # toute connexion, cf. ReaderConnectorOracleParams/OracleDsnPayload pour
+    # la vérification contre le code source réel du dialecte SQLAlchemy).
+    import oracledb
+    import sqlalchemy as sa
+
+    engine = sa.create_engine(
+        "oracle+oracledb://scott:s3cr3t-pass@myhost:1521/?service_name=orclpdb1"
+    )
+    try:
+        assert engine.dialect.name == "oracle"
+        assert engine.dialect.driver == "oracledb"
+        assert "s3cr3t-pass" not in str(engine.url)  # le mot de passe est masqué par défaut
+        assert oracledb.is_thin_mode() is True
+    finally:
+        engine.dispose()
+
+
 def test_postgres_secret_resolver_get_returns_payload(session, tenant, user):
     _create_secret(
         session,

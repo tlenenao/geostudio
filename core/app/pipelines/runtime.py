@@ -56,6 +56,7 @@ from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
     ReaderConnectorBigQueryParams,
     ReaderConnectorMssqlParams,
+    ReaderConnectorOracleParams,
     ReaderConnectorPostgresParams,
     ReaderConnectorRestParams,
     ReaderConnectorSnowflakeParams,
@@ -388,6 +389,35 @@ def _read_connector_mssql(
     resolver = connector_runtime.PostgresSecretResolver(session, tenant_id)
     try:
         connector_runtime.materialize_mssql_connector(
+            conn,
+            secret_resolver=resolver,
+            node_id=node_id,
+            params=p,
+            view_name=view_name,
+        )
+    except connector_runtime.ConnectorRuntimeError as exc:
+        raise PipelineRuntimeError(str(exc)) from exc
+    return 4326
+
+
+def _read_connector_oracle(
+    conn,
+    *,
+    session: Session,
+    tenant_id: str,
+    node_id: str,
+    params: dict,
+    view_name: str,
+    user: User,
+    base_uri: str,
+) -> int:
+    """reader.connector.oracle (registre READERS) — pendant de
+    _read_connector_mssql/_read_connector_bigquery/_read_connector_snowflake,
+    même rationale (Vague 2 §6.1)."""
+    p = ReaderConnectorOracleParams.model_validate(params)
+    resolver = connector_runtime.PostgresSecretResolver(session, tenant_id)
+    try:
+        connector_runtime.materialize_oracle_connector(
             conn,
             secret_resolver=resolver,
             node_id=node_id,
