@@ -1864,6 +1864,48 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * BigQueryDsnPayload
+         * @description DSN SQLAlchemy complet vers Google BigQuery, forme
+         *     `bigquery://project/dataset?credentials_base64=<JSON compte de service
+         *     encodé en base64>` — vérifiée directement contre le code source réel de
+         *     `sqlalchemy-bigquery` (googleapis/python-bigquery-sqlalchemy, modules
+         *     `parse_url.py`/`base.py`/`_helpers.py`, pas seulement son README, piège
+         *     CLAUDE.md n°3), pas contre sa documentation. Pas de `credentials_path` :
+         *     un chemin de fichier sur disque ne survivrait pas au trajet secret
+         *     chiffré -> chaîne opaque -> DSN (design GAP-16 §12/Vague 2 §6.1) —
+         *     `credentials_base64` embarque le JSON du compte de service intégralement
+         *     dans la chaîne de connexion, round-trippable comme n'importe quel autre
+         *     DSN opaque de ce module. Comme postgres_dsn/snowflake_dsn : le cœur ne
+         *     parse ni ne valide ce DSN, il le passe tel quel à sa.create_engine().
+         *
+         *     Différence de comportement vérifiée empiriquement par rapport à
+         *     postgres_dsn/snowflake_dsn : `sa.create_engine()` n'est PAS totalement
+         *     paresseux pour ce dialecte — il construit localement un objet
+         *     `google.auth.service_account.Credentials` (et un client BigQuery) dès
+         *     l'appel, sans y faire pour autant le moindre appel réseau tant qu'un
+         *     JSON de compte de service bien formé (champs `client_email`/
+         *     `token_uri`/`private_key` présents, clé RSA syntaxiquement valide) lui
+         *     est fourni ; un JSON malformé y échoue *localement* avant tout aussi.
+         *
+         *     Mise en garde distincte de postgres_dsn/snowflake_dsn : le mot de passe
+         *     d'un DSN Postgres/Snowflake est masqué par `str(url)` de SQLAlchemy
+         *     (`URL.__str__` connaît le champ password) — `credentials_base64`, lui,
+         *     est un paramètre de requête ordinaire aux yeux de SQLAlchemy et n'est
+         *     JAMAIS masqué par cette méthode. Aucun code de ce dépôt n'appelle
+         *     `str(engine.url)`/`str(engine)` sur un engine bigquery (vérifié par
+         *     grep, 2026-09-21) ; à ne jamais introduire pour ce DSN précis sans
+         *     masquage explicite au préalable.
+         */
+        BigQueryDsnPayload: {
+            /** Dsn */
+            dsn: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "bigquery_dsn";
+        };
         /** Body_create_map_icon_v1_map_icons_post */
         Body_create_map_icon_v1_map_icons_post: {
             /** Category */
@@ -3089,7 +3131,7 @@ export interface components {
             /** Name */
             name: string;
             /** Payload */
-            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"];
+            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"];
         };
         /** ShareLinkCreated */
         ShareLinkCreated: {

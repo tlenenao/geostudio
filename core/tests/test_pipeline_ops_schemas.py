@@ -105,7 +105,7 @@ def test_non_collection_fields_carry_no_format_hint():
     assert "format" not in catalog["transform.join"]["paramsSchema"]["properties"]["on"]
 
 
-def test_all_forty_seven_ops_are_registered():
+def test_all_forty_eight_ops_are_registered():
     assert set(OP_PARAMS) == {
         "reader.collection",
         "transform.filter",
@@ -126,6 +126,7 @@ def test_all_forty_seven_ops_are_registered():
         "reader.connector.postgres",
         "transform.merge",
         "reader.connector.snowflake",
+        "reader.connector.bigquery",
         "transform.swapCoordinates",
         "transform.translateGeometry",
         "transform.scaleGeometry",
@@ -576,6 +577,31 @@ def test_reader_connector_snowflake_appears_in_catalog_with_secret_name_format_h
     assert props["secretName"]["format"] == "secret-name"
 
 
+def test_reader_connector_bigquery_is_kind_reader():
+    assert OP_KINDS["reader.connector.bigquery"] == "reader"
+
+
+def test_reader_connector_bigquery_requires_secret_name_and_query():
+    params = parse_op_params(
+        "reader.connector.bigquery",
+        {"secretName": "warehouse-bq", "query": "SELECT * FROM towns"},
+    )
+    assert params.secretName == "warehouse-bq"
+    assert params.query == "SELECT * FROM towns"
+    with pytest.raises(ValidationError):
+        parse_op_params("reader.connector.bigquery", {"query": "SELECT 1"})
+    with pytest.raises(ValidationError):
+        parse_op_params("reader.connector.bigquery", {"secretName": "x"})
+
+
+def test_reader_connector_bigquery_appears_in_catalog_with_secret_name_format_hint():
+    catalog = ops_catalog()
+    assert catalog["reader.connector.bigquery"]["kind"] == "reader"
+    props = catalog["reader.connector.bigquery"]["paramsSchema"]["properties"]
+    assert "query" in props
+    assert props["secretName"]["format"] == "secret-name"
+
+
 def test_reader_connector_postgres_description_documents_redshift_compatibility():
     # GAP-16 §9 : seul le PREMIER PARAGRAPHE du docstring de classe devient le
     # paramsSchema.description exposé par GET /pipelines/ops (revue finale I2,
@@ -604,6 +630,7 @@ _DEV_JARGON_MARKERS = ("app.pipelines", "design", "SP-1", "GAP-16", "§")
         "reader.connector.snowflake",
         "reader.connector.postgres",
         "reader.connector.rest",
+        "reader.connector.bigquery",
         "transform.qgis",
         "transform.merge",
     ],

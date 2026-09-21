@@ -39,6 +39,21 @@ dependencies = [
                        # résolution de dépendances. Apache-2.0, comme sa
                        # dépendance transitive snowflake-connector-python
                        # (vérifiées toutes deux sur PyPI).
+    "sqlalchemy-bigquery>=1.17,<2",  # Vague 2 §6.1 : reader.connector.bigquery —
+                       # dialecte SQLAlchemy pour Google BigQuery, résolu
+                       # automatiquement par sa.create_engine("bigquery://...")
+                       # via les entry points du paquet (aucun import
+                       # explicite requis dans ce dépôt), même patron que
+                       # snowflake-sqlalchemy ci-dessus. Authentification par
+                       # compte de service passée inline dans le DSN via le
+                       # paramètre de requête `credentials_base64` (JSON du
+                       # compte de service encodé en base64) — jamais un
+                       # `credentials_path` sur disque, qui ne survivrait pas
+                       # au trajet secret chiffré -> chaîne opaque -> DSN
+                       # (vérifié contre sqlalchemy_bigquery/parse_url.py et
+                       # base.py du dépôt googleapis/python-bigquery-sqlalchemy
+                       # réel, pas seulement le README). MIT, vérifiée sur
+                       # PyPI (classifiers).
     "psycopg[binary]>=3.1",
     "psycopg2-binary>=2.9",  # SP-11a : seul driver Python avec support du protocole
                              # de réplication logique (psycopg v3 ne l'expose pas) ;

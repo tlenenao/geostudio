@@ -579,6 +579,26 @@
         "title": "BearerTokenPayload",
         "type": "object"
       },
+      "BigQueryDsnPayload": {
+        "description": "DSN SQLAlchemy complet vers Google BigQuery, forme\n`bigquery://project/dataset?credentials_base64=<JSON compte de service\nencod\u00e9 en base64>` \u2014 v\u00e9rifi\u00e9e directement contre le code source r\u00e9el de\n`sqlalchemy-bigquery` (googleapis/python-bigquery-sqlalchemy, modules\n`parse_url.py`/`base.py`/`_helpers.py`, pas seulement son README, pi\u00e8ge\nCLAUDE.md n\u00b03), pas contre sa documentation. Pas de `credentials_path` :\nun chemin de fichier sur disque ne survivrait pas au trajet secret\nchiffr\u00e9 -> cha\u00eene opaque -> DSN (design GAP-16 \u00a712/Vague 2 \u00a76.1) \u2014\n`credentials_base64` embarque le JSON du compte de service int\u00e9gralement\ndans la cha\u00eene de connexion, round-trippable comme n'importe quel autre\nDSN opaque de ce module. Comme postgres_dsn/snowflake_dsn : le c\u0153ur ne\nparse ni ne valide ce DSN, il le passe tel quel \u00e0 sa.create_engine().\n\nDiff\u00e9rence de comportement v\u00e9rifi\u00e9e empiriquement par rapport \u00e0\npostgres_dsn/snowflake_dsn : `sa.create_engine()` n'est PAS totalement\nparesseux pour ce dialecte \u2014 il construit localement un objet\n`google.auth.service_account.Credentials` (et un client BigQuery) d\u00e8s\nl'appel, sans y faire pour autant le moindre appel r\u00e9seau tant qu'un\nJSON de compte de service bien form\u00e9 (champs `client_email`/\n`token_uri`/`private_key` pr\u00e9sents, cl\u00e9 RSA syntaxiquement valide) lui\nest fourni ; un JSON malform\u00e9 y \u00e9choue *localement* avant tout aussi.\n\nMise en garde distincte de postgres_dsn/snowflake_dsn : le mot de passe\nd'un DSN Postgres/Snowflake est masqu\u00e9 par `str(url)` de SQLAlchemy\n(`URL.__str__` conna\u00eet le champ password) \u2014 `credentials_base64`, lui,\nest un param\u00e8tre de requ\u00eate ordinaire aux yeux de SQLAlchemy et n'est\nJAMAIS masqu\u00e9 par cette m\u00e9thode. Aucun code de ce d\u00e9p\u00f4t n'appelle\n`str(engine.url)`/`str(engine)` sur un engine bigquery (v\u00e9rifi\u00e9 par\ngrep, 2026-09-21) ; \u00e0 ne jamais introduire pour ce DSN pr\u00e9cis sans\nmasquage explicite au pr\u00e9alable.",
+        "properties": {
+          "dsn": {
+            "title": "Dsn",
+            "type": "string"
+          },
+          "kind": {
+            "const": "bigquery_dsn",
+            "default": "bigquery_dsn",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dsn"
+        ],
+        "title": "BigQueryDsnPayload",
+        "type": "object"
+      },
       "Body_create_map_icon_v1_map_icons_post": {
         "properties": {
           "category": {
@@ -4383,6 +4403,7 @@
                 "api_key": "#/components/schemas/ApiKeyPayload",
                 "basic_auth": "#/components/schemas/BasicAuthPayload",
                 "bearer_token": "#/components/schemas/BearerTokenPayload",
+                "bigquery_dsn": "#/components/schemas/BigQueryDsnPayload",
                 "oauth2_client_credentials": "#/components/schemas/OAuth2ClientCredentialsPayload",
                 "postgres_dsn": "#/components/schemas/PostgresDsnPayload",
                 "smtp": "#/components/schemas/SmtpCredentialsPayload",
@@ -4411,6 +4432,9 @@
               },
               {
                 "$ref": "#/components/schemas/SnowflakeDsnPayload"
+              },
+              {
+                "$ref": "#/components/schemas/BigQueryDsnPayload"
               }
             ],
             "title": "Payload"

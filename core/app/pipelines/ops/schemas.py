@@ -231,6 +231,25 @@ class ReaderConnectorSnowflakeParams(BaseModel):
     query: str
 
 
+class ReaderConnectorBigQueryParams(BaseModel):
+    """Lecture d'une requête SQL libre (SELECT uniquement) sur Google
+    BigQuery, via un secret de connexion dédié (bigquery_dsn).
+
+    Vague 2 §6.1, pendant de ReaderConnectorPostgresParams/
+    ReaderConnectorSnowflakeParams. `secretName` référence toujours un
+    secret bigquery_dsn — même contrat (pas de notion de DSN non
+    authentifié). `query` n'est validée SELECT-only qu'à l'exécution
+    (app.pipelines.connector_runtime), jamais ici (forme seulement) ni à la
+    sauvegarde (design §6) — même heuristique dialecte DuckDB que
+    Postgres/Snowflake : GoogleSQL diverge du SQL standard sur plusieurs
+    points (backticks pour les identifiants, fonctions/opérateurs BigQuery
+    propriétaires) qu'un texte accepté ici peut malgré tout faire échouer
+    côté BigQuery avec une erreur explicite."""
+
+    secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
+    query: str
+
+
 class TransformScaleGeometryParams(BaseModel):
     """Mise à l'échelle de la géométrie autour de l'origine (0, 0) — PAS
     autour du centre de la géométrie (vérifié empiriquement contre DuckDB

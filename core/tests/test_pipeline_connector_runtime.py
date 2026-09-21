@@ -578,6 +578,130 @@ def test_materialize_snowflake_connector_round_trips_query(
     assert rows == [(1, "Nord"), (2, "Sud")]
 
 
+from app.pipelines.ops.schemas import ReaderConnectorBigQueryParams  # noqa: E402
+
+# Clé RSA jetable générée localement pour ce fichier de test uniquement
+# (jamais associée à un vrai compte de service Google) — nécessaire car
+# sa.create_engine() pour le dialecte "bigquery" n'est PAS totalement
+# paresseux comme pour postgres/snowflake : il construit localement un objet
+# google.auth.service_account.Credentials à partir du JSON embarqué dans
+# `credentials_base64`, ce qui exige une clé syntaxiquement valide (vérifié
+# empiriquement : un JSON avec une clé absente/mal formée échoue ici, avant
+# tout appel réseau, cf. BigQueryDsnPayload).
+_FAKE_SERVICE_ACCOUNT_RSA_PEM = """-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCzr+PZqf6u837c
+j+igCwaoMBhlnWDEuHMSmOLH/cDkZdV6R+p2RZSQ00ZSBCMpLL/EyDqcE2wjilUr
+ySpLTjbw27xXnBoFw9MZH2iuIF366EnBAKg50foQSZPMZZFso1jFvYvSrsbYMNOp
+NdrLtQ25YpXAj/mogwUX1ToJTaDBvel7QrXAcdhRA0CURgD91DtU+l6VRh3CrvP6
+GyT7KtExILLMlE5eq3TVHSy48E8/BuVdLNBdSOEqOjJXYP/m3/m7jeqG07tfA3wB
+ps9BtP9CqGq/urd2oz1mhz10I9PhM7my5bgiOLHZBvg1ptXnAH33kAh7wN8zcVnk
+JHl8UWoHAgMBAAECggEAPp82EU2lbON/eu7Ma7pr/4GDfyZx6x09PWX64ygUaYTz
++UHG/KETPcXj5AF9H4Rw8Ou3QV2jel9jf3cEPmpry1VJNl840nmEwGSp3sV4+1Cp
+I5JPDpeXRsXdtIZRQENNVNzSNgKjWgTqPzZ9ojDfL5SkDBAhOhEvXTb6mvNq6xnm
+Y64hcTwTDxyoG5Qos6sss53Vv5J+igyjtD1yG3CJXyuTKPGDjdudSQYVYvzQBeVr
+OJzri0B1va1KaFEhmusv7y4NT+XFmpJcbFcNM0RifbbAZEpLeQ1br7B6IMzxvOIw
+DZdfHiEdccRBd7QkHBKvDbkJuCDxOGm0gG2BoCP6wQKBgQDsvX4TwfZpljD3CKYN
+z1QMgIxE71EY8yc8bKpfpCoaCfGE7DB01DC+LGFKrQEdoZsaoZdkItUQDru3QPqw
+qIzN7UC+VZxDUcvRXcl0CEtk9nhHtyKTFVX4ZI2jUD0/jCoF6OABIHXddgZNN5b2
+oqBp43GiFKI5himdBYBmwilwWwKBgQDCTivfPnFXeGGVlKIkxQIyQC6CxHD1yQnZ
+b9Zh45JH+A21C0nLvT2GdLBsZCRsIyTDT/s8+MVnJD9ap571LBGXpicxanq/VU9w
+jN7z/cQaI7vzBwozlgRRJVjO8J8WD2mAUpeM+x+BaYd9wXlHMGSdzYyybXTNYmAS
+el7Tt6wcxQKBgD5xRL3lXR9AdC3UZCgkVWDuzxCnptZT3Dd92fpcDJbNpJyQx78o
+8KpYflj6BN9R7t05XfsVjOktWaneQ8Ew0+LE/1y0rAC9pGrWt/oY7fn1YIhZ746o
+BAL+UrWOxnjqeXMRl3P0oeIF7WeUkAcBohoL2b8MfjV6A6Pc/Z8c+10dAoGAKqSb
+TkhW+Zpq2Dghia5O+BZL3tkb7WUsqzK3Ow6FuRPAdl4+2N70VMDhQziLIcxoshCo
+k84JDMTQvqWQ5j/AsKZ/bYHv5HPllk7kU2n7Er2K7yA5Ze7jjaeDoQ7/6wiA3+/A
+YOlwFafCW6ANbMk7G8LTwQjynGydpxCCJTbnJ/0CgYEAkBsMsYzGFA3dax2SjEuu
+kzSMd5CNRnSUIEvkEtwtuFWwVSBp+EmEuL/j67+XdJ1V9/hVh8QsriWVlr3gbS5F
+ObcY9WWAl9CwLRlBjp2QKQRzbg1P1608gcqA3ePi7/psTO332q3YBR1nYe7s7VRV
+orLyAE2SpSrRYUkemuAJaoA=
+-----END PRIVATE KEY-----
+"""
+
+
+def _bigquery_dsn() -> str:
+    import base64
+    import json
+
+    info = {
+        "type": "service_account",
+        "project_id": "sp15f-test-project",
+        "private_key_id": "abc123",
+        "private_key": _FAKE_SERVICE_ACCOUNT_RSA_PEM,
+        "client_email": "sp15f-test@sp15f-test-project.iam.gserviceaccount.com",
+        "client_id": "123456789",
+        "token_uri": "https://oauth2.googleapis.com/token",
+    }
+    encoded = base64.b64encode(json.dumps(info).encode()).decode()
+    return f"bigquery://sp15f-test-project/sp15f_dataset?credentials_base64={encoded}"
+
+
+def test_materialize_bigquery_connector_rejects_non_select(conn, session, tenant):
+    params = ReaderConnectorBigQueryParams(secretName="does-not-matter", query="DELETE FROM towns")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
+        connector_runtime.materialize_bigquery_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="bq1",
+            params=params,
+            view_name="node_bq1",
+        )
+
+
+def test_materialize_bigquery_connector_wrong_secret_kind_raises(conn, session, tenant, user):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="bearer-secret",
+        kind="bearer_token",
+        payload={"kind": "bearer_token", "token": "tok"},
+    )
+    params = ReaderConnectorBigQueryParams(secretName="bearer-secret", query="SELECT 1")
+    with pytest.raises(
+        connector_runtime.ConnectorRuntimeError, match="not usable by reader.connector.bigquery"
+    ):
+        connector_runtime.materialize_bigquery_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="bq2",
+            params=params,
+            view_name="node_bq2",
+        )
+
+
+def test_materialize_bigquery_connector_missing_secret_raises(conn, session, tenant):
+    params = ReaderConnectorBigQueryParams(secretName="does-not-exist", query="SELECT 1")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
+        connector_runtime.materialize_bigquery_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="bq3",
+            params=params,
+            view_name="node_bq3",
+        )
+
+
+def test_bigquery_dialect_resolves_without_network_given_well_formed_credentials():
+    # Vérifie la forme du DSN (BigQueryDsnPayload) sans se connecter à un
+    # vrai projet BigQuery. Contrairement à
+    # test_snowflake_dialect_resolves_lazily_without_network, sa.create_engine()
+    # n'est PAS totalement paresseux pour ce dialecte : il construit
+    # localement des Credentials à partir du JSON de compte de service
+    # embarqué dans `credentials_base64` — d'où l'usage d'une clé RSA
+    # syntaxiquement valide (bien que jetable) plutôt que d'un texte
+    # arbitraire, sans quoi cet appel échouerait localement avant même
+    # d'atteindre ce test. Aucun appel réseau n'a lieu ici (pas de
+    # .connect()) — vérifié empiriquement (design Vague 2 §6.1).
+    import sqlalchemy as sa
+
+    engine = sa.create_engine(_bigquery_dsn())
+    try:
+        assert engine.dialect.name == "bigquery"
+    finally:
+        engine.dispose()
+
+
 def test_postgres_secret_resolver_get_returns_payload(session, tenant, user):
     _create_secret(
         session,

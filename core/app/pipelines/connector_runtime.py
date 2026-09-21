@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Matérialisation dlt des deux op reader.connector.* (design SP-15f §3) —
+"""Matérialisation dlt des op reader.connector.* (design SP-15f §3 ; 4 op à
+ce jour — rest/postgres/snowflake/bigquery, cf. GAP-16 et Vague 2 §6.1) —
 chaque appel exécute un vrai pipeline dlt vers un fichier DuckDB scratch
 dédié, l'ATTACH en lecture seule dans la connexion du runtime, sélectionne
 la table racine "records" en TEMP TABLE, puis nettoie (finally). Aucun état
@@ -38,6 +39,7 @@ from sqlalchemy.orm import Session
 from app.analytics.sql_sandbox import SqlSandboxError, parse_ast, validate_select_only
 from app.pipelines.egress import EgressBlockedError, build_guarded_session
 from app.pipelines.ops.schemas import (
+    ReaderConnectorBigQueryParams,
     ReaderConnectorPostgresParams,
     ReaderConnectorRestParams,
     ReaderConnectorSnowflakeParams,
@@ -348,6 +350,56 @@ def materialize_snowflake_connector(
         # l'installation (vérifié empiriquement, design §3.3) — même
         # patron que le dialecte "postgresql" ci-dessus, jamais importé
         # explicitement non plus.
+        engine = sa.create_engine(payload.dsn)
+        try:
+            with engine.connect() as db_conn:
+                rows = db_conn.execution_options(yield_per=1000).exec_driver_sql(params.query)
+                yield from (dict(row._mapping) for row in rows)
+        finally:
+            engine.dispose()
+
+    _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
+
+
+def materialize_bigquery_connector(
+    conn,
+    *,
+    secret_resolver: SecretResolver | None,
+    node_id: str,
+    params: ReaderConnectorBigQueryParams,
+    view_name: str,
+) -> None:
+    # Pendant exact de materialize_postgres_connector/materialize_snowflake_connector
+    # (Vague 2 §6.1) — même heuristique SELECT-only, même défense en
+    # profondeur documentée : `params.query` cible BigQuery (GoogleSQL) mais
+    # est parsée avec le dialecte SQL de DuckDB, pas GoogleSQL (même limite
+    # documentée que pour Snowflake, cf. ReaderConnectorBigQueryParams).
+    try:
+        validate_select_only(parse_ast(conn, params.query))
+    except SqlSandboxError as exc:
+        raise ConnectorRuntimeError(f"reader.connector.bigquery query rejected: {exc}") from exc
+
+    payload = _resolve_secret(secret_resolver, params.secretName)
+    if payload.kind != "bigquery_dsn":
+        raise ConnectorRuntimeError(
+            f"secret has kind '{payload.kind}', not usable by reader.connector.bigquery "
+            "(expected bigquery_dsn)"
+        )
+
+    @dlt.resource(name="records", write_disposition="replace")
+    def _records():
+        # Aucun import de sqlalchemy_bigquery : le paquet s'enregistre comme
+        # dialecte SQLAlchemy via ses entry points au moment de
+        # l'installation (vérifié empiriquement contre le setup.py réel du
+        # paquet, design Vague 2 §6.1) — même patron que "postgresql"/
+        # "snowflake" ci-dessus, jamais importé explicitement non plus.
+        # Différence vérifiée empiriquement par rapport à postgres/snowflake
+        # (cf. BigQueryDsnPayload) : cet appel construit localement un
+        # client BigQuery/des Credentials à partir du JSON de compte de
+        # service embarqué dans le DSN (`credentials_base64`) — aucun appel
+        # réseau tant que .connect()/l'exécution de la requête n'a pas lieu,
+        # mais un JSON de compte de service malformé y échoue ici plutôt
+        # qu'à l'exécution de la requête.
         engine = sa.create_engine(payload.dsn)
         try:
             with engine.connect() as db_conn:

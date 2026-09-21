@@ -28,6 +28,7 @@ from app.auth.dependency import is_pipeline_file_io_enabled
 from app.pipelines import compiler as _compiler
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
+    ReaderConnectorBigQueryParams,
     ReaderConnectorPostgresParams,
     ReaderConnectorRestParams,
     ReaderConnectorSnowflakeParams,
@@ -281,6 +282,11 @@ OPERATIONS: dict[str, OperationContract] = {
         op="reader.connector.snowflake",
         kind="reader",
         params_schema=ReaderConnectorSnowflakeParams,
+    ),
+    "reader.connector.bigquery": OperationContract(
+        op="reader.connector.bigquery",
+        kind="reader",
+        params_schema=ReaderConnectorBigQueryParams,
     ),
     "transform.merge": OperationContract(
         op="transform.merge",
