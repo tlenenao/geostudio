@@ -29,6 +29,7 @@ from app.pipelines import compiler as _compiler
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
     ReaderConnectorBigQueryParams,
+    ReaderConnectorMssqlParams,
     ReaderConnectorPostgresParams,
     ReaderConnectorRestParams,
     ReaderConnectorSnowflakeParams,
@@ -287,6 +288,11 @@ OPERATIONS: dict[str, OperationContract] = {
         op="reader.connector.bigquery",
         kind="reader",
         params_schema=ReaderConnectorBigQueryParams,
+    ),
+    "reader.connector.mssql": OperationContract(
+        op="reader.connector.mssql",
+        kind="reader",
+        params_schema=ReaderConnectorMssqlParams,
     ),
     "transform.merge": OperationContract(
         op="transform.merge",

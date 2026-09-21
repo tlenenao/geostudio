@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Matérialisation dlt des op reader.connector.* (design SP-15f §3 ; 4 op à
-ce jour — rest/postgres/snowflake/bigquery, cf. GAP-16 et Vague 2 §6.1) —
+"""Matérialisation dlt des op reader.connector.* (design SP-15f §3 ; 5 op à
+ce jour — rest/postgres/snowflake/bigquery/mssql, cf. GAP-16 et Vague 2
+§6.1) —
 chaque appel exécute un vrai pipeline dlt vers un fichier DuckDB scratch
 dédié, l'ATTACH en lecture seule dans la connexion du runtime, sélectionne
 la table racine "records" en TEMP TABLE, puis nettoie (finally). Aucun état
@@ -40,6 +41,7 @@ from app.analytics.sql_sandbox import SqlSandboxError, parse_ast, validate_selec
 from app.pipelines.egress import EgressBlockedError, build_guarded_session
 from app.pipelines.ops.schemas import (
     ReaderConnectorBigQueryParams,
+    ReaderConnectorMssqlParams,
     ReaderConnectorPostgresParams,
     ReaderConnectorRestParams,
     ReaderConnectorSnowflakeParams,
@@ -308,6 +310,56 @@ def materialize_postgres_connector(
 
     @dlt.resource(name="records", write_disposition="replace")
     def _records():
+        engine = sa.create_engine(payload.dsn)
+        try:
+            with engine.connect() as db_conn:
+                rows = db_conn.execution_options(yield_per=1000).exec_driver_sql(params.query)
+                yield from (dict(row._mapping) for row in rows)
+        finally:
+            engine.dispose()
+
+    _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
+
+
+def materialize_mssql_connector(
+    conn,
+    *,
+    secret_resolver: SecretResolver | None,
+    node_id: str,
+    params: ReaderConnectorMssqlParams,
+    view_name: str,
+) -> None:
+    # Pendant exact de materialize_postgres_connector/
+    # materialize_snowflake_connector (Vague 2 §6.1) — même heuristique
+    # SELECT-only, même défense en profondeur documentée : `params.query`
+    # cible Microsoft SQL Server (T-SQL) mais est parsée avec le dialecte
+    # SQL de DuckDB, pas le T-SQL réel (même limite documentée, dans
+    # l'autre sens que Snowflake, cf. ReaderConnectorMssqlParams).
+    try:
+        validate_select_only(parse_ast(conn, params.query))
+    except SqlSandboxError as exc:
+        raise ConnectorRuntimeError(f"reader.connector.mssql query rejected: {exc}") from exc
+
+    payload = _resolve_secret(secret_resolver, params.secretName)
+    if payload.kind != "mssql_dsn":
+        raise ConnectorRuntimeError(
+            f"secret has kind '{payload.kind}', not usable by reader.connector.mssql "
+            "(expected mssql_dsn)"
+        )
+
+    @dlt.resource(name="records", write_disposition="replace")
+    def _records():
+        # Aucun import de pymssql ici : contrairement à
+        # snowflake-sqlalchemy/sqlalchemy-bigquery (dialectes tiers
+        # enregistrés via leurs propres entry points), le dialecte
+        # "mssql+pymssql" est intégré à SQLAlchemy elle-même
+        # (sqlalchemy/dialects/mssql/pymssql.py, vérifié contre le code
+        # source réel) — sa.create_engine() se charge d'importer pymssql en
+        # interne (`MSDialect_pymssql.import_dbapi`), le paquet n'a besoin
+        # que d'être installé. Comme postgres/snowflake (et contrairement à
+        # bigquery) : sa.create_engine() reste paresseux pour ce dialecte,
+        # aucun appel réseau avant .connect() (vérifié empiriquement, cf.
+        # MssqlDsnPayload).
         engine = sa.create_engine(payload.dsn)
         try:
             with engine.connect() as db_conn:

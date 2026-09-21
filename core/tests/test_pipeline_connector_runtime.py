@@ -702,6 +702,74 @@ def test_bigquery_dialect_resolves_without_network_given_well_formed_credentials
         engine.dispose()
 
 
+from app.pipelines.ops.schemas import ReaderConnectorMssqlParams  # noqa: E402
+
+
+def test_materialize_mssql_connector_rejects_non_select(conn, session, tenant):
+    params = ReaderConnectorMssqlParams(secretName="does-not-matter", query="DELETE FROM towns")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
+        connector_runtime.materialize_mssql_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="ms1",
+            params=params,
+            view_name="node_ms1",
+        )
+
+
+def test_materialize_mssql_connector_wrong_secret_kind_raises(conn, session, tenant, user):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="bearer-secret",
+        kind="bearer_token",
+        payload={"kind": "bearer_token", "token": "tok"},
+    )
+    params = ReaderConnectorMssqlParams(secretName="bearer-secret", query="SELECT 1")
+    with pytest.raises(
+        connector_runtime.ConnectorRuntimeError, match="not usable by reader.connector.mssql"
+    ):
+        connector_runtime.materialize_mssql_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="ms2",
+            params=params,
+            view_name="node_ms2",
+        )
+
+
+def test_materialize_mssql_connector_missing_secret_raises(conn, session, tenant):
+    params = ReaderConnectorMssqlParams(secretName="does-not-exist", query="SELECT 1")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
+        connector_runtime.materialize_mssql_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="ms3",
+            params=params,
+            view_name="node_ms3",
+        )
+
+
+def test_mssql_dialect_resolves_lazily_without_network():
+    # Vérifie la forme du DSN (Vague 2 §6.1) sans se connecter à un vrai
+    # serveur : comme pour postgres/snowflake (et contrairement à bigquery,
+    # cf. ci-dessus), sa.create_engine() pour le dialecte "mssql+pymssql"
+    # est paresseux — aucun appel réseau avant .connect(). Ce test
+    # échouerait si pymssql n'était pas installé, ou si le DSN n'était pas
+    # de la forme attendue (mssql+pymssql://user:pass@host:port/dbname,
+    # cf. ReaderConnectorMssqlParams).
+    import sqlalchemy as sa
+
+    engine = sa.create_engine("mssql+pymssql://u:s3cr3t-pass@myhost:1433/mydb")
+    try:
+        assert engine.dialect.name == "mssql"
+        assert engine.dialect.driver == "pymssql"
+        assert "s3cr3t-pass" not in str(engine.url)  # le mot de passe est masqué par défaut
+    finally:
+        engine.dispose()
+
+
 def test_postgres_secret_resolver_get_returns_payload(session, tenant, user):
     _create_secret(
         session,

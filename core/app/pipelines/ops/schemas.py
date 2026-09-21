@@ -250,6 +250,27 @@ class ReaderConnectorBigQueryParams(BaseModel):
     query: str
 
 
+class ReaderConnectorMssqlParams(BaseModel):
+    """Lecture d'une requête SQL libre (SELECT uniquement) sur un Microsoft
+    SQL Server distant, via un secret de connexion dédié (mssql_dsn).
+
+    Vague 2 §6.1, pendant de ReaderConnectorPostgresParams/
+    ReaderConnectorSnowflakeParams/ReaderConnectorBigQueryParams.
+    `secretName` référence toujours un secret mssql_dsn — même contrat (pas
+    de notion de DSN non authentifié). `query` n'est validée SELECT-only
+    qu'à l'exécution (app.pipelines.connector_runtime), jamais ici (forme
+    seulement) ni à la sauvegarde (design §6) — même heuristique dialecte
+    DuckDB que Postgres/Snowflake/BigQuery, avec une limite documentée dans
+    l'autre sens que Snowflake : `TOP n` et les identifiants entre crochets
+    `[col]` (T-SQL) ne sont pas reconnus par le parseur DuckDB et sont donc
+    rejetés ici bien que valides sur un vrai SQL Server ; à l'inverse
+    `LIMIT n` est accepté ici mais n'est pas du T-SQL valide et peut
+    échouer côté serveur (cf. MssqlDsnPayload)."""
+
+    secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
+    query: str
+
+
 class TransformScaleGeometryParams(BaseModel):
     """Mise à l'échelle de la géométrie autour de l'origine (0, 0) — PAS
     autour du centre de la géométrie (vérifié empiriquement contre DuckDB

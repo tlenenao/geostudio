@@ -54,6 +54,19 @@ dependencies = [
                        # base.py du dépôt googleapis/python-bigquery-sqlalchemy
                        # réel, pas seulement le README). MIT, vérifiée sur
                        # PyPI (classifiers).
+    "pymssql>=2.3,<3",  # Vague 2 §6.1 : reader.connector.mssql — driver DBAPI
+                       # pur Python (FreeTDS statiquement embarqué dans ses
+                       # wheels officielles) pour Microsoft SQL Server, préféré
+                       # à pyodbc (nécessiterait unixodbc + un driver ODBC
+                       # système sur l'image du worker) faute de limitation
+                       # bloquante trouvée. Contrairement à
+                       # snowflake-sqlalchemy/sqlalchemy-bigquery ci-dessus :
+                       # le dialecte SQLAlchemy "mssql+pymssql" est intégré à
+                       # SQLAlchemy elle-même (dialects/mssql/pymssql.py, pas
+                       # un entry point tiers) — ce paquet ne fournit que le
+                       # driver DBAPI importé en interne par ce dialecte.
+                       # LGPL-2.1, vérifiée sur PyPI (classifiers réels,
+                       # pas supposée).
     "psycopg[binary]>=3.1",
     "psycopg2-binary>=2.9",  # SP-11a : seul driver Python avec support du protocole
                              # de réplication logique (psycopg v3 ne l'expose pas) ;

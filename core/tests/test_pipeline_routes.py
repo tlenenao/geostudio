@@ -59,17 +59,17 @@ def test_pipelines_routes_absent_when_disabled(monkeypatch):
     assert client.get("/v1/pipelines/does-not-exist/webhook-tokens").status_code == 404
 
 
-def test_get_pipelines_ops_returns_all_forty_six(monkeypatch):
+def test_get_pipelines_ops_returns_all_forty_seven(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     response = client.get("/v1/pipelines/ops")
     assert response.status_code == 200
     body = response.json()
     # 19 op existantes (cf. design OperationContract) + 15 op vague 1 (géométrie/coordonnées/SRID,
     # cf. design vague 1 transformers DuckDB) + 11 op vague 2 (schéma/cardinalité,
-    # cf. design vague 2 transformers DuckDB) + 1 lecteur BigQuery (Vague 2 §6.1,
-    # Task 12) = 46 total exposées par la route (reader.file/writer.file restent hors
-    # catalogue tant que CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 48,
-    # route à 46).
+    # cf. design vague 2 transformers DuckDB) + 2 lecteurs BigQuery/MSSQL (Vague 2 §6.1,
+    # Task 12/13) = 47 total exposées par la route (reader.file/writer.file restent hors
+    # catalogue tant que CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 49,
+    # route à 47).
     assert set(body) == {
         "reader.collection",
         "transform.filter",
@@ -90,6 +90,7 @@ def test_get_pipelines_ops_returns_all_forty_six(monkeypatch):
         "reader.connector.postgres",
         "reader.connector.snowflake",
         "reader.connector.bigquery",
+        "reader.connector.mssql",
         "transform.merge",
         "transform.swapCoordinates",
         "transform.translateGeometry",

@@ -115,6 +115,41 @@ class BigQueryDsnPayload(BaseModel):
     dsn: str
 
 
+class MssqlDsnPayload(BaseModel):
+    """DSN SQLAlchemy complet vers Microsoft SQL Server, forme
+    `mssql+pymssql://user:pass@host:port/dbname` (vérifiée directement
+    contre le module source réel `sqlalchemy/dialects/mssql/pymssql.py` du
+    dépôt sqlalchemy/sqlalchemy, docstring `:connectstring:` +
+    l'exemple `"mssql+pymssql://user:pass@host/db"` du docstring de
+    `sqlalchemy/dialects/mssql/base.py`, pas seulement la doc publiée —
+    piège CLAUDE.md n°3). Driver retenu : `pymssql` (pur Python, s'appuie
+    sur FreeTDS embarqué dans ses wheels officielles) plutôt que `pyodbc`
+    (nécessiterait `unixodbc` + un driver ODBC système sur l'image du
+    worker) — aucune limitation bloquante trouvée qui imposerait pyodbc.
+    Comme postgres_dsn/snowflake_dsn/bigquery_dsn : le cœur ne parse ni ne
+    valide ce DSN, il le passe tel quel à sa.create_engine() ; comme
+    postgres_dsn/snowflake_dsn (et contrairement à bigquery_dsn),
+    sa.create_engine() reste paresseux pour ce dialecte — aucun appel
+    réseau avant .connect(), et le mot de passe est masqué par
+    `str(engine.url)`.
+
+    Limitation documentée à connaître avant d'écrire `query` (analogue à la
+    réserve SAMPLE/TOP/MINUS de SnowflakeDsnPayload, mais dans l'autre sens) :
+    `query` est validée SELECT-only en la parsant avec le dialecte SQL de
+    DuckDB (app.pipelines.connector_runtime), pas le T-SQL réel. `TOP n` et
+    les identifiants entre crochets `[col]` (syntaxe T-SQL propriétaire) ne
+    sont pas reconnus par le parseur DuckDB et sont donc rejetés ici, alors
+    qu'ils seraient valides sur un vrai SQL Server — à reformuler en
+    `ORDER BY ... OFFSET n ROWS FETCH NEXT m ROWS ONLY` et guillemets
+    doubles. À l'inverse, `LIMIT n` est accepté ici (syntaxe DuckDB valide)
+    mais n'est PAS du T-SQL valide — SQL Server ne connaît pas la clause
+    LIMIT — et une requête qui passe cette validation peut donc échouer
+    côté serveur avec une erreur explicite au moment de l'exécution."""
+
+    kind: Literal["mssql_dsn"] = "mssql_dsn"
+    dsn: str
+
+
 SecretPayload = Annotated[
     ApiKeyPayload
     | BearerTokenPayload
@@ -123,7 +158,8 @@ SecretPayload = Annotated[
     | PostgresDsnPayload
     | SmtpCredentialsPayload
     | SnowflakeDsnPayload
-    | BigQueryDsnPayload,
+    | BigQueryDsnPayload
+    | MssqlDsnPayload,
     Field(discriminator="kind"),
 ]
 
@@ -136,6 +172,7 @@ SECRET_PAYLOAD_ADAPTER: TypeAdapter[
     | SmtpCredentialsPayload
     | SnowflakeDsnPayload
     | BigQueryDsnPayload
+    | MssqlDsnPayload
 ] = TypeAdapter(SecretPayload)
 
 
