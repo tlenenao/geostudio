@@ -59,7 +59,7 @@ def test_pipelines_routes_absent_when_disabled(monkeypatch):
     assert client.get("/v1/pipelines/does-not-exist/webhook-tokens").status_code == 404
 
 
-def test_get_pipelines_ops_returns_all_forty_nine(monkeypatch):
+def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     response = client.get("/v1/pipelines/ops")
     assert response.status_code == 200
@@ -67,9 +67,10 @@ def test_get_pipelines_ops_returns_all_forty_nine(monkeypatch):
     # 19 op existantes (cf. design OperationContract) + 15 op vague 1 (géométrie/coordonnées/SRID,
     # cf. design vague 1 transformers DuckDB) + 11 op vague 2 (schéma/cardinalité,
     # cf. design vague 2 transformers DuckDB) + 4 lecteurs BigQuery/MSSQL/Oracle/Blob
-    # (Vague 2 §6.1, Task 12/13/14/15) = 49 total exposées par la route
+    # (Vague 2 §6.1, Task 12/13/14/15) + 2 op de retrait QGIS (Task 18 :
+    # centroid/convexHull) = 51 total exposées par la route
     # (reader.file/writer.file restent hors catalogue tant que
-    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 51, route à 49).
+    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 53, route à 51).
     assert set(body) == {
         "reader.collection",
         "transform.filter",
@@ -120,6 +121,8 @@ def test_get_pipelines_ops_returns_all_forty_nine(monkeypatch):
         "transform.detectChanges",
         "transform.mergeChildren",
         "transform.mapSchema",
+        "transform.centroid",
+        "transform.convexHull",
     }
     for op in (
         "transform.join",
