@@ -570,6 +570,13 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   registre brut (`OPERATIONS`, `reader.file`/`writer.file` inclus derrière
   leur propre flag) à 47 ; 12 lignes `planned_duckdb` de la matrice FME
   passées à `implemented`.
+- **Vague 2 lecteurs DuckDB (SQL + objet/stockage)** — 4 nouvelles op
+  (reader.connector.bigquery/mssql/oracle/blob), catalogue exposé (`GET
+  /pipelines/ops`) à 49 op, registre brut (`OPERATIONS`) à 51 ;
+  `reader.connector.blob` résout la question « d'où vient le fichier »
+  (Vague 1) par un secret de connexion pré-configuré au bucket, jamais un
+  upload ni une URL arbitraire. 9 lignes `planned_duckdb` de la matrice FME
+  passées à `implemented`.
 
 ### Conventions tranchées (2026-09-01)
 
