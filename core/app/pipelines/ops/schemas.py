@@ -292,6 +292,43 @@ class ReaderConnectorOracleParams(BaseModel):
     query: str
 
 
+class ReaderConnectorBlobParams(BaseModel):
+    """Lecture d'un fichier tabulaire unique (CSV/JSONL/Parquet) depuis un
+    objet de stockage cloud (S3, Azure Blob, GCS), résolu par un secret de
+    connexion pré-configuré au bucket — jamais un upload ni une URL
+    arbitraire (Task 15, Vague 2 §6.1). Diffère des autres
+    `reader.connector.*` : pas de requête SQL, la source dlt `filesystem`
+    (fsspec) fournie par le paquet `dlt` de base.
+
+    Le fournisseur est résolu depuis le préfixe de `path` (`s3://`, `az://`,
+    `gs://`) : `secretName` doit référencer un secret du kind correspondant
+    (`s3_credentials`/`azure_blob_credentials`/`gcs_credentials`), sinon
+    `materialize_blob_connector` rejette avant toute extraction.
+
+    `path` doit désigner un objet UNIQUE et complet (ex.
+    `s3://bucket/prefix/data.csv`), jamais un répertoire ni un motif — vérifié
+    empiriquement (piège CLAUDE.md n°3) que la source `filesystem` de dlt
+    n'accepte PAS un `bucket_url` pointant directement sur un fichier
+    (aucune ligne extraite, silencieusement) : ce module découpe `path` en un
+    `bucket_url` racine (schéma + bucket) et un `file_glob` (le reste du
+    chemin, utilisé comme motif littéral) — vérifié que dlt sait alors
+    sélectionner exactement ce seul fichier, y compris sous plusieurs niveaux
+    de préfixe. Si le nom de fichier contient lui-même un métacaractère glob
+    (`*`/`?`/`[]`, rare mais légal dans une clé S3), d'autres objets voisins
+    pourraient être sélectionnés — cas non intercepté explicitement ici.
+
+    `format="json"` n'existe volontairement pas : la source `filesystem` de
+    dlt n'expose que `read_csv`/`read_jsonl`/`read_parquet` (pas de
+    `read_json` générique pour un tableau JSON — vérifié par introspection
+    du module réel `dlt.sources.filesystem`, piège CLAUDE.md n°3) ; `"jsonl"`
+    désigne donc explicitement du JSON Lines (un objet JSON par ligne), pas
+    un tableau JSON arbitraire."""
+
+    secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
+    path: str
+    format: Literal["csv", "jsonl", "parquet"]
+
+
 class TransformScaleGeometryParams(BaseModel):
     """Mise à l'échelle de la géométrie autour de l'origine (0, 0) — PAS
     autour du centre de la géométrie (vérifié empiriquement contre DuckDB

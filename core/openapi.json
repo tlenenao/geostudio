@@ -522,6 +522,31 @@
         "title": "AttachmentRead",
         "type": "object"
       },
+      "AzureBlobCredentialsPayload": {
+        "description": "Identifiants d'acc\u00e8s \u00e0 un compte Azure Blob Storage pour\n`reader.connector.blob` (Task 15, Vague 2 \u00a76.1).\n\nChamps align\u00e9s sur le constructeur r\u00e9el de\n`dlt.common.configuration.specs.azure_credentials.AzureCredentialsWithoutDefaults`\n(`azure_storage_account_name`/`azure_storage_account_key`, v\u00e9rifi\u00e9 par\nintrospection du paquet `dlt` install\u00e9) : ce module construit un\n`AzureCredentialsWithoutDefaults(...)` \u00e0 partir de ces 2 champs \u2014 c'est\ncette classe qui produit ensuite les kwargs adlfs r\u00e9els\n(`.to_adlfs_credentials()` \u2192 `account_name`/`account_key`).",
+        "properties": {
+          "accountKey": {
+            "title": "Accountkey",
+            "type": "string"
+          },
+          "accountName": {
+            "title": "Accountname",
+            "type": "string"
+          },
+          "kind": {
+            "const": "azure_blob_credentials",
+            "default": "azure_blob_credentials",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountName",
+          "accountKey"
+        ],
+        "title": "AzureBlobCredentialsPayload",
+        "type": "object"
+      },
       "BaseMap": {
         "properties": {
           "style": {
@@ -1956,6 +1981,27 @@
           "label"
         ],
         "title": "FrequencyCatalogEntry",
+        "type": "object"
+      },
+      "GcsCredentialsPayload": {
+        "description": "Compte de service Google Cloud Storage (JSON coll\u00e9 tel quel, tous ses\nchamps standard \u2014 `type`/`project_id`/`private_key`/`client_email`/...)\npour `reader.connector.blob` (Task 15, Vague 2 \u00a76.1).\n\nCe module ne mappe pas champ \u00e0 champ : il passe `json.dumps(serviceAccountInfo)`\n\u00e0 `GcpServiceAccountCredentials.parse_native_representation()` \u2014 v\u00e9rifi\u00e9\nempiriquement que cette m\u00e9thode ignore silencieusement les champs du JSON\nnon repris par le dataclass (`client_id`, `auth_provider_x509_cert_url`,\n`universe_domain`, etc., pi\u00e8ge CLAUDE.md n\u00b03 : pas suppos\u00e9, test\u00e9), donc\nun JSON de compte de service copi\u00e9-coll\u00e9 tel quel depuis la console GCP\nfonctionne sans filtrage manuel.",
+        "properties": {
+          "kind": {
+            "const": "gcs_credentials",
+            "default": "gcs_credentials",
+            "title": "Kind",
+            "type": "string"
+          },
+          "serviceAccountInfo": {
+            "additionalProperties": true,
+            "title": "Serviceaccountinfo",
+            "type": "object"
+          }
+        },
+        "required": [
+          "serviceAccountInfo"
+        ],
+        "title": "GcsCredentialsPayload",
         "type": "object"
       },
       "GroupRead": {
@@ -4353,6 +4399,42 @@
         "title": "RollbackRequest",
         "type": "object"
       },
+      "S3CredentialsPayload": {
+        "description": "Identifiants d'acc\u00e8s \u00e0 un bucket S3 (ou compatible S3 \u2014 MinIO, etc. via\n`endpointUrl`) pour `reader.connector.blob` (Task 15, Vague 2 \u00a76.1).\n\nChamps align\u00e9s \u2014 pas devin\u00e9s \u2014 sur le constructeur r\u00e9el de\n`dlt.common.configuration.specs.aws_credentials.AwsCredentials`\n(`aws_access_key_id`/`aws_secret_access_key`/`endpoint_url`, v\u00e9rifi\u00e9 par\nintrospection du paquet `dlt` install\u00e9, pi\u00e8ge CLAUDE.md n\u00b03) : ce module\nconstruit un `AwsCredentials(...)` directement \u00e0 partir de ces 3 champs\net le passe tel quel \u00e0 `dlt.sources.filesystem.filesystem(credentials=)` \u2014\nc'est CETTE classe, jamais ce payload, qui sait produire les kwargs r\u00e9els\nde s3fs (`.to_s3fs_credentials()` \u2192 `key`/`secret`/`endpoint_url`).",
+        "properties": {
+          "awsAccessKeyId": {
+            "title": "Awsaccesskeyid",
+            "type": "string"
+          },
+          "awsSecretAccessKey": {
+            "title": "Awssecretaccesskey",
+            "type": "string"
+          },
+          "endpointUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpointurl"
+          },
+          "kind": {
+            "const": "s3_credentials",
+            "default": "s3_credentials",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "awsAccessKeyId",
+          "awsSecretAccessKey"
+        ],
+        "title": "S3CredentialsPayload",
+        "type": "object"
+      },
       "SearchBody": {
         "properties": {
           "bbox": {
@@ -4441,13 +4523,16 @@
             "discriminator": {
               "mapping": {
                 "api_key": "#/components/schemas/ApiKeyPayload",
+                "azure_blob_credentials": "#/components/schemas/AzureBlobCredentialsPayload",
                 "basic_auth": "#/components/schemas/BasicAuthPayload",
                 "bearer_token": "#/components/schemas/BearerTokenPayload",
                 "bigquery_dsn": "#/components/schemas/BigQueryDsnPayload",
+                "gcs_credentials": "#/components/schemas/GcsCredentialsPayload",
                 "mssql_dsn": "#/components/schemas/MssqlDsnPayload",
                 "oauth2_client_credentials": "#/components/schemas/OAuth2ClientCredentialsPayload",
                 "oracle_dsn": "#/components/schemas/OracleDsnPayload",
                 "postgres_dsn": "#/components/schemas/PostgresDsnPayload",
+                "s3_credentials": "#/components/schemas/S3CredentialsPayload",
                 "smtp": "#/components/schemas/SmtpCredentialsPayload",
                 "snowflake_dsn": "#/components/schemas/SnowflakeDsnPayload"
               },
@@ -4483,6 +4568,15 @@
               },
               {
                 "$ref": "#/components/schemas/OracleDsnPayload"
+              },
+              {
+                "$ref": "#/components/schemas/S3CredentialsPayload"
+              },
+              {
+                "$ref": "#/components/schemas/AzureBlobCredentialsPayload"
+              },
+              {
+                "$ref": "#/components/schemas/GcsCredentialsPayload"
               }
             ],
             "title": "Payload"

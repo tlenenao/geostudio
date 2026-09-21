@@ -4,7 +4,7 @@ discriminée par `kind`, additive par construction : ajouter un kind =
 ajouter une variante Pydantic, aucune migration requise pour les lignes
 existantes."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter
 
@@ -190,6 +190,59 @@ class OracleDsnPayload(BaseModel):
     dsn: str
 
 
+class S3CredentialsPayload(BaseModel):
+    """Identifiants d'accès à un bucket S3 (ou compatible S3 — MinIO, etc. via
+    `endpointUrl`) pour `reader.connector.blob` (Task 15, Vague 2 §6.1).
+
+    Champs alignés — pas devinés — sur le constructeur réel de
+    `dlt.common.configuration.specs.aws_credentials.AwsCredentials`
+    (`aws_access_key_id`/`aws_secret_access_key`/`endpoint_url`, vérifié par
+    introspection du paquet `dlt` installé, piège CLAUDE.md n°3) : ce module
+    construit un `AwsCredentials(...)` directement à partir de ces 3 champs
+    et le passe tel quel à `dlt.sources.filesystem.filesystem(credentials=)` —
+    c'est CETTE classe, jamais ce payload, qui sait produire les kwargs réels
+    de s3fs (`.to_s3fs_credentials()` → `key`/`secret`/`endpoint_url`)."""
+
+    kind: Literal["s3_credentials"] = "s3_credentials"
+    awsAccessKeyId: str
+    awsSecretAccessKey: str
+    endpointUrl: str | None = None
+
+
+class AzureBlobCredentialsPayload(BaseModel):
+    """Identifiants d'accès à un compte Azure Blob Storage pour
+    `reader.connector.blob` (Task 15, Vague 2 §6.1).
+
+    Champs alignés sur le constructeur réel de
+    `dlt.common.configuration.specs.azure_credentials.AzureCredentialsWithoutDefaults`
+    (`azure_storage_account_name`/`azure_storage_account_key`, vérifié par
+    introspection du paquet `dlt` installé) : ce module construit un
+    `AzureCredentialsWithoutDefaults(...)` à partir de ces 2 champs — c'est
+    cette classe qui produit ensuite les kwargs adlfs réels
+    (`.to_adlfs_credentials()` → `account_name`/`account_key`)."""
+
+    kind: Literal["azure_blob_credentials"] = "azure_blob_credentials"
+    accountName: str
+    accountKey: str
+
+
+class GcsCredentialsPayload(BaseModel):
+    """Compte de service Google Cloud Storage (JSON collé tel quel, tous ses
+    champs standard — `type`/`project_id`/`private_key`/`client_email`/...)
+    pour `reader.connector.blob` (Task 15, Vague 2 §6.1).
+
+    Ce module ne mappe pas champ à champ : il passe `json.dumps(serviceAccountInfo)`
+    à `GcpServiceAccountCredentials.parse_native_representation()` — vérifié
+    empiriquement que cette méthode ignore silencieusement les champs du JSON
+    non repris par le dataclass (`client_id`, `auth_provider_x509_cert_url`,
+    `universe_domain`, etc., piège CLAUDE.md n°3 : pas supposé, testé), donc
+    un JSON de compte de service copié-collé tel quel depuis la console GCP
+    fonctionne sans filtrage manuel."""
+
+    kind: Literal["gcs_credentials"] = "gcs_credentials"
+    serviceAccountInfo: dict[str, Any]
+
+
 SecretPayload = Annotated[
     ApiKeyPayload
     | BearerTokenPayload
@@ -200,7 +253,10 @@ SecretPayload = Annotated[
     | SnowflakeDsnPayload
     | BigQueryDsnPayload
     | MssqlDsnPayload
-    | OracleDsnPayload,
+    | OracleDsnPayload
+    | S3CredentialsPayload
+    | AzureBlobCredentialsPayload
+    | GcsCredentialsPayload,
     Field(discriminator="kind"),
 ]
 
@@ -215,6 +271,9 @@ SECRET_PAYLOAD_ADAPTER: TypeAdapter[
     | BigQueryDsnPayload
     | MssqlDsnPayload
     | OracleDsnPayload
+    | S3CredentialsPayload
+    | AzureBlobCredentialsPayload
+    | GcsCredentialsPayload
 ] = TypeAdapter(SecretPayload)
 
 

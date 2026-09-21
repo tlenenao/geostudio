@@ -29,6 +29,7 @@ from app.pipelines import compiler as _compiler
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
     ReaderConnectorBigQueryParams,
+    ReaderConnectorBlobParams,
     ReaderConnectorMssqlParams,
     ReaderConnectorOracleParams,
     ReaderConnectorPostgresParams,
@@ -299,6 +300,19 @@ OPERATIONS: dict[str, OperationContract] = {
         op="reader.connector.oracle",
         kind="reader",
         params_schema=ReaderConnectorOracleParams,
+    ),
+    "reader.connector.blob": OperationContract(
+        op="reader.connector.blob",
+        kind="reader",
+        params_schema=ReaderConnectorBlobParams,
+        # Écart au brief de Task 15 (même écart, même rationale que Task
+        # 12/13/14) : aucun des 6 autres readers déjà livrés
+        # (rest/postgres/snowflake/bigquery/mssql/oracle) ne pose
+        # `engine`/`engine_license` sur son OperationContract — ces deux
+        # champs ne sont utilisés que par les transforms DuckDB dans ce
+        # registre (vérifié par grep sur ce module, aucune autre occurrence
+        # de `engine_license` dans app.pipelines). Rester cohérent avec les 6
+        # lecteurs existants plutôt qu'introduire une exception isolée.
     ),
     "transform.merge": OperationContract(
         op="transform.merge",

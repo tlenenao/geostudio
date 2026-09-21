@@ -1832,6 +1832,30 @@ export interface components {
             /** Id */
             id: string;
         };
+        /**
+         * AzureBlobCredentialsPayload
+         * @description Identifiants d'accès à un compte Azure Blob Storage pour
+         *     `reader.connector.blob` (Task 15, Vague 2 §6.1).
+         *
+         *     Champs alignés sur le constructeur réel de
+         *     `dlt.common.configuration.specs.azure_credentials.AzureCredentialsWithoutDefaults`
+         *     (`azure_storage_account_name`/`azure_storage_account_key`, vérifié par
+         *     introspection du paquet `dlt` installé) : ce module construit un
+         *     `AzureCredentialsWithoutDefaults(...)` à partir de ces 2 champs — c'est
+         *     cette classe qui produit ensuite les kwargs adlfs réels
+         *     (`.to_adlfs_credentials()` → `account_name`/`account_key`).
+         */
+        AzureBlobCredentialsPayload: {
+            /** Accountkey */
+            accountKey: string;
+            /** Accountname */
+            accountName: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "azure_blob_credentials";
+        };
         /** BaseMap */
         BaseMap: {
             /** Style */
@@ -2296,6 +2320,31 @@ export interface components {
             id: string;
             /** Label */
             label: string;
+        };
+        /**
+         * GcsCredentialsPayload
+         * @description Compte de service Google Cloud Storage (JSON collé tel quel, tous ses
+         *     champs standard — `type`/`project_id`/`private_key`/`client_email`/...)
+         *     pour `reader.connector.blob` (Task 15, Vague 2 §6.1).
+         *
+         *     Ce module ne mappe pas champ à champ : il passe `json.dumps(serviceAccountInfo)`
+         *     à `GcpServiceAccountCredentials.parse_native_representation()` — vérifié
+         *     empiriquement que cette méthode ignore silencieusement les champs du JSON
+         *     non repris par le dataclass (`client_id`, `auth_provider_x509_cert_url`,
+         *     `universe_domain`, etc., piège CLAUDE.md n°3 : pas supposé, testé), donc
+         *     un JSON de compte de service copié-collé tel quel depuis la console GCP
+         *     fonctionne sans filtrage manuel.
+         */
+        GcsCredentialsPayload: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "gcs_credentials";
+            /** Serviceaccountinfo */
+            serviceAccountInfo: {
+                [key: string]: unknown;
+            };
         };
         /** GroupRead */
         GroupRead: {
@@ -3196,6 +3245,33 @@ export interface components {
             /** Version */
             version: number;
         };
+        /**
+         * S3CredentialsPayload
+         * @description Identifiants d'accès à un bucket S3 (ou compatible S3 — MinIO, etc. via
+         *     `endpointUrl`) pour `reader.connector.blob` (Task 15, Vague 2 §6.1).
+         *
+         *     Champs alignés — pas devinés — sur le constructeur réel de
+         *     `dlt.common.configuration.specs.aws_credentials.AwsCredentials`
+         *     (`aws_access_key_id`/`aws_secret_access_key`/`endpoint_url`, vérifié par
+         *     introspection du paquet `dlt` installé, piège CLAUDE.md n°3) : ce module
+         *     construit un `AwsCredentials(...)` directement à partir de ces 3 champs
+         *     et le passe tel quel à `dlt.sources.filesystem.filesystem(credentials=)` —
+         *     c'est CETTE classe, jamais ce payload, qui sait produire les kwargs réels
+         *     de s3fs (`.to_s3fs_credentials()` → `key`/`secret`/`endpoint_url`).
+         */
+        S3CredentialsPayload: {
+            /** Awsaccesskeyid */
+            awsAccessKeyId: string;
+            /** Awssecretaccesskey */
+            awsSecretAccessKey: string;
+            /** Endpointurl */
+            endpointUrl?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "s3_credentials";
+        };
         /** SearchBody */
         SearchBody: {
             /** Bbox */
@@ -3219,7 +3295,7 @@ export interface components {
             /** Name */
             name: string;
             /** Payload */
-            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"];
+            payload: components["schemas"]["ApiKeyPayload"] | components["schemas"]["BearerTokenPayload"] | components["schemas"]["BasicAuthPayload"] | components["schemas"]["OAuth2ClientCredentialsPayload"] | components["schemas"]["PostgresDsnPayload"] | components["schemas"]["SmtpCredentialsPayload"] | components["schemas"]["SnowflakeDsnPayload"] | components["schemas"]["BigQueryDsnPayload"] | components["schemas"]["MssqlDsnPayload"] | components["schemas"]["OracleDsnPayload"] | components["schemas"]["S3CredentialsPayload"] | components["schemas"]["AzureBlobCredentialsPayload"] | components["schemas"]["GcsCredentialsPayload"];
         };
         /** ShareLinkCreated */
         ShareLinkCreated: {

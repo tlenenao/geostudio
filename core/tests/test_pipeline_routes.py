@@ -59,17 +59,17 @@ def test_pipelines_routes_absent_when_disabled(monkeypatch):
     assert client.get("/v1/pipelines/does-not-exist/webhook-tokens").status_code == 404
 
 
-def test_get_pipelines_ops_returns_all_forty_eight(monkeypatch):
+def test_get_pipelines_ops_returns_all_forty_nine(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     response = client.get("/v1/pipelines/ops")
     assert response.status_code == 200
     body = response.json()
     # 19 op existantes (cf. design OperationContract) + 15 op vague 1 (géométrie/coordonnées/SRID,
     # cf. design vague 1 transformers DuckDB) + 11 op vague 2 (schéma/cardinalité,
-    # cf. design vague 2 transformers DuckDB) + 3 lecteurs BigQuery/MSSQL/Oracle (Vague 2 §6.1,
-    # Task 12/13/14) = 48 total exposées par la route (reader.file/writer.file restent hors
-    # catalogue tant que CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 50,
-    # route à 48).
+    # cf. design vague 2 transformers DuckDB) + 4 lecteurs BigQuery/MSSQL/Oracle/Blob
+    # (Vague 2 §6.1, Task 12/13/14/15) = 49 total exposées par la route
+    # (reader.file/writer.file restent hors catalogue tant que
+    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 51, route à 49).
     assert set(body) == {
         "reader.collection",
         "transform.filter",
@@ -91,6 +91,7 @@ def test_get_pipelines_ops_returns_all_forty_eight(monkeypatch):
         "reader.connector.snowflake",
         "reader.connector.bigquery",
         "reader.connector.mssql",
+        "reader.connector.blob",
         "reader.connector.oracle",
         "transform.merge",
         "transform.swapCoordinates",

@@ -891,3 +891,242 @@ def test_postgres_secret_resolver_get_does_not_mask_backend_failure_as_not_found
     message = str(exc_info.value)
     assert "not found" not in message
     assert "CORE_SECRETS_MASTER_KEY" in message
+
+
+from dlt.common.configuration.specs import (  # noqa: E402
+    AwsCredentials,
+    AzureCredentialsWithoutDefaults,
+    GcpServiceAccountCredentials,
+)
+
+from app.pipelines.ops.schemas import ReaderConnectorBlobParams  # noqa: E402
+
+
+def test_materialize_blob_connector_rejects_wrong_secret_kind(conn):
+    class _FakeResolver:
+        def get(self, name):
+            from app.secrets.schemas import PostgresDsnPayload
+
+            return PostgresDsnPayload(dsn="postgresql://x")
+
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="s3_credentials"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=_FakeResolver(),
+            node_id="n1",
+            params=ReaderConnectorBlobParams(
+                secretName="s1", path="s3://bucket/data.csv", format="csv"
+            ),
+            view_name="out",
+        )
+
+
+def test_materialize_blob_connector_unsupported_scheme_raises(conn, session, tenant, user):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="s3-secret",
+        kind="s3_credentials",
+        payload={
+            "kind": "s3_credentials",
+            "awsAccessKeyId": "AKIA",
+            "awsSecretAccessKey": "secret",
+        },
+    )
+    params = ReaderConnectorBlobParams(
+        secretName="s3-secret", path="ftp://host/data.csv", format="csv"
+    )
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="unsupported path scheme"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="b1",
+            params=params,
+            view_name="node_b1",
+        )
+
+
+def test_materialize_blob_connector_missing_secret_raises(conn, session, tenant):
+    params = ReaderConnectorBlobParams(
+        secretName="does-not-exist", path="s3://bucket/data.csv", format="csv"
+    )
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="b2",
+            params=params,
+            view_name="node_b2",
+        )
+
+
+class _FakeBlobResource:
+    """Point à l'endroit exact où intercepter la matérialisation blob sans
+    infra cloud réelle : `connector_runtime.filesystem(...)` (jamais appelé
+    contre un vrai S3/Azure/GCS dans ce module de test — pas d'infra
+    disponible en CI, cf. brief Task 15 Step 2) puis `| reader()` puis
+    `.apply_hints(...)`. `_run_dlt_and_attach` est monkeypatché séparément
+    pour ne jamais réellement lancer dlt.pipeline().run() contre ce faux
+    objet."""
+
+    def __or__(self, other):
+        return self
+
+    def apply_hints(self, **kwargs):
+        pass
+
+
+def _patch_blob_internals(monkeypatch, captured):
+    def _fake_filesystem(*, bucket_url, credentials=None, file_glob="*"):
+        captured["bucket_url"] = bucket_url
+        captured["credentials"] = credentials
+        captured["file_glob"] = file_glob
+        return _FakeBlobResource()
+
+    def _fake_reader_factory(name):
+        def _reader():
+            captured["reader"] = name
+            return _FakeBlobResource()
+
+        return _reader
+
+    monkeypatch.setattr(connector_runtime, "filesystem", _fake_filesystem)
+    monkeypatch.setattr(connector_runtime, "read_csv", _fake_reader_factory("csv"))
+    monkeypatch.setattr(connector_runtime, "read_jsonl", _fake_reader_factory("jsonl"))
+    monkeypatch.setattr(connector_runtime, "read_parquet", _fake_reader_factory("parquet"))
+    monkeypatch.setattr(
+        connector_runtime,
+        "_BLOB_READERS",
+        {
+            "csv": connector_runtime.read_csv,
+            "jsonl": connector_runtime.read_jsonl,
+            "parquet": connector_runtime.read_parquet,
+        },
+    )
+    monkeypatch.setattr(connector_runtime, "_run_dlt_and_attach", lambda *a, **k: None)
+
+
+def test_materialize_blob_connector_builds_aws_credentials_and_splits_path(
+    monkeypatch, conn, session, tenant, user
+):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="s3-secret",
+        kind="s3_credentials",
+        payload={
+            "kind": "s3_credentials",
+            "awsAccessKeyId": "AKIA123",
+            "awsSecretAccessKey": "shh",
+            "endpointUrl": "http://minio.local:9000",
+        },
+    )
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+
+    params = ReaderConnectorBlobParams(
+        secretName="s3-secret", path="s3://bucket/prefix/data.csv", format="csv"
+    )
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        node_id="b3",
+        params=params,
+        view_name="node_b3",
+    )
+
+    assert captured["bucket_url"] == "s3://bucket"
+    assert captured["file_glob"] == "prefix/data.csv"
+    assert captured["reader"] == "csv"
+    creds = captured["credentials"]
+    assert isinstance(creds, AwsCredentials)
+    assert creds.aws_access_key_id == "AKIA123"
+    assert creds.aws_secret_access_key == "shh"
+    assert creds.endpoint_url == "http://minio.local:9000"
+
+
+def test_materialize_blob_connector_builds_azure_credentials(
+    monkeypatch, conn, session, tenant, user
+):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="azure-secret",
+        kind="azure_blob_credentials",
+        payload={
+            "kind": "azure_blob_credentials",
+            "accountName": "myaccount",
+            "accountKey": "base64key==",
+        },
+    )
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+
+    params = ReaderConnectorBlobParams(
+        secretName="azure-secret", path="az://container/nested/data.jsonl", format="jsonl"
+    )
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        node_id="b4",
+        params=params,
+        view_name="node_b4",
+    )
+
+    assert captured["bucket_url"] == "az://container"
+    assert captured["file_glob"] == "nested/data.jsonl"
+    assert captured["reader"] == "jsonl"
+    creds = captured["credentials"]
+    assert isinstance(creds, AzureCredentialsWithoutDefaults)
+    assert creds.azure_storage_account_name == "myaccount"
+    assert creds.azure_storage_account_key == "base64key=="
+
+
+def test_materialize_blob_connector_builds_gcs_credentials(
+    monkeypatch, conn, session, tenant, user
+):
+    service_account_info = {
+        "type": "service_account",
+        "project_id": "proj1",
+        "private_key_id": "kid1",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n",
+        "client_email": "x@proj1.iam.gserviceaccount.com",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        # champ hors dataclass GcpServiceAccountCredentials, présent dans un
+        # vrai JSON de compte de service GCP — doit être ignoré sans erreur
+        # (vérifié empiriquement, cf. GcsCredentialsPayload).
+        "universe_domain": "googleapis.com",
+    }
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="gcs-secret",
+        kind="gcs_credentials",
+        payload={"kind": "gcs_credentials", "serviceAccountInfo": service_account_info},
+    )
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+
+    params = ReaderConnectorBlobParams(
+        secretName="gcs-secret", path="gs://bucket/data.parquet", format="parquet"
+    )
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        node_id="b5",
+        params=params,
+        view_name="node_b5",
+    )
+
+    assert captured["bucket_url"] == "gs://bucket"
+    assert captured["file_glob"] == "data.parquet"
+    assert captured["reader"] == "parquet"
+    creds = captured["credentials"]
+    assert isinstance(creds, GcpServiceAccountCredentials)
+    assert creds.project_id == "proj1"
+    assert creds.client_email == "x@proj1.iam.gserviceaccount.com"

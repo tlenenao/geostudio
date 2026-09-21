@@ -105,7 +105,7 @@ def test_non_collection_fields_carry_no_format_hint():
     assert "format" not in catalog["transform.join"]["paramsSchema"]["properties"]["on"]
 
 
-def test_all_fifty_ops_are_registered():
+def test_all_fifty_one_ops_are_registered():
     assert set(OP_PARAMS) == {
         "reader.collection",
         "transform.filter",
@@ -129,6 +129,7 @@ def test_all_fifty_ops_are_registered():
         "reader.connector.bigquery",
         "reader.connector.mssql",
         "reader.connector.oracle",
+        "reader.connector.blob",
         "transform.swapCoordinates",
         "transform.translateGeometry",
         "transform.scaleGeometry",

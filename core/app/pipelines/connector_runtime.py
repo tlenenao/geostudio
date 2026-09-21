@@ -15,13 +15,21 @@ import os
 # téléphoner à l'extérieur par variable d'environnement oubliée.
 os.environ.setdefault("RUNTIME__DLTHUB_TELEMETRY", "false")
 
+import json
 import shutil
 import tempfile
 import uuid
 from typing import Protocol
+from urllib.parse import urlsplit
 
 import dlt
 import sqlalchemy as sa
+from dlt.common.configuration.specs import (
+    AwsCredentials,
+    AzureCredentialsWithoutDefaults,
+    GcpServiceAccountCredentials,
+)
+from dlt.sources.filesystem import filesystem, read_csv, read_jsonl, read_parquet
 from dlt.sources.helpers.rest_client import RESTClient
 from dlt.sources.helpers.rest_client.auth import (
     APIKeyAuth,
@@ -41,6 +49,7 @@ from app.analytics.sql_sandbox import SqlSandboxError, parse_ast, validate_selec
 from app.pipelines.egress import EgressBlockedError, build_guarded_session
 from app.pipelines.ops.schemas import (
     ReaderConnectorBigQueryParams,
+    ReaderConnectorBlobParams,
     ReaderConnectorMssqlParams,
     ReaderConnectorOracleParams,
     ReaderConnectorPostgresParams,
@@ -51,6 +60,19 @@ from app.secrets import repository as secrets_repo
 from app.secrets.schemas import SecretPayload
 
 _REST_SECRET_KINDS = {"api_key", "bearer_token", "basic_auth", "oauth2_client_credentials"}
+
+# reader.connector.blob (Task 15) : fournisseur résolu depuis le schéma d'URL
+# de `params.path` — "az" et "gs" sont les protocoles fsspec canoniques
+# enregistrés respectivement par adlfs/gcsfs (vérifié par introspection de
+# `fsspec.registry.known_implementations`, piège CLAUDE.md n°3 : adlfs
+# s'enregistre aussi sous "abfs"/"abfss"/"adl", non couverts ici par choix,
+# un seul alias par fournisseur).
+_BLOB_SCHEME_KINDS = {
+    "s3": "s3_credentials",
+    "az": "azure_blob_credentials",
+    "gs": "gcs_credentials",
+}
+_BLOB_READERS = {"csv": read_csv, "jsonl": read_jsonl, "parquet": read_parquet}
 
 
 class SecretResolver(Protocol):
@@ -511,3 +533,75 @@ def materialize_bigquery_connector(
             engine.dispose()
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
+
+
+def materialize_blob_connector(
+    conn,
+    *,
+    secret_resolver: SecretResolver | None,
+    node_id: str,
+    params: ReaderConnectorBlobParams,
+    view_name: str,
+) -> None:
+    """reader.connector.blob (Task 15, Vague 2 §6.1) — pendant structurel des
+    autres `materialize_*_connector` (même signature, même
+    `_run_dlt_and_attach` final) mais mécaniquement différent : pas de
+    requête SQL ni de dialecte SQLAlchemy, la source dlt `filesystem`
+    (fsspec) déjà présente dans le paquet `dlt` de base.
+
+    Le fournisseur est déduit du schéma d'URL de `params.path` (vérifié par
+    `urlsplit`, pas par un simple `str.startswith` sur un préfixe littéral).
+    Le secret doit être du kind attendu pour ce schéma, sinon rejet avant
+    toute extraction — même patron défensif que les autres readers.
+
+    `params.path` est découpé en un `bucket_url` racine (schéma + bucket
+    seuls) et un `file_glob` (le reste du chemin) : vérifié empiriquement
+    (cf. docstring de ReaderConnectorBlobParams) que
+    `filesystem(bucket_url=<chemin complet du fichier>)` ne retourne
+    silencieusement aucune ligne — seule la combinaison bucket_url-racine +
+    file_glob-littéral sélectionne effectivement le fichier visé, y compris
+    sous plusieurs niveaux de préfixe (vérifié avec un `file_glob` contenant
+    lui-même un `/`)."""
+    payload = _resolve_secret(secret_resolver, params.secretName)
+    parsed = urlsplit(params.path)
+    expected_kind = _BLOB_SCHEME_KINDS.get(parsed.scheme)
+    if expected_kind is None:
+        raise ConnectorRuntimeError(
+            f"reader.connector.blob: unsupported path scheme in '{params.path}' "
+            f"(expected one of {sorted(f'{s}://' for s in _BLOB_SCHEME_KINDS)})"
+        )
+    if payload.kind != expected_kind:
+        raise ConnectorRuntimeError(
+            f"secret has kind '{payload.kind}', not usable for this path scheme "
+            f"(expected {expected_kind})"
+        )
+
+    if payload.kind == "s3_credentials":
+        credentials = AwsCredentials(
+            aws_access_key_id=payload.awsAccessKeyId,
+            aws_secret_access_key=payload.awsSecretAccessKey,
+            endpoint_url=payload.endpointUrl,
+        )
+    elif payload.kind == "azure_blob_credentials":
+        credentials = AzureCredentialsWithoutDefaults(
+            azure_storage_account_name=payload.accountName,
+            azure_storage_account_key=payload.accountKey,
+        )
+    else:
+        credentials = GcpServiceAccountCredentials()
+        # parse_native_representation accepte une chaîne JSON de compte de
+        # service et ignore silencieusement les champs qu'elle ne reprend
+        # pas dans son dataclass — vérifié empiriquement (cf. docstring de
+        # GcsCredentialsPayload), donc un JSON collé tel quel depuis la
+        # console GCP fonctionne sans filtrage manuel côté cœur.
+        credentials.parse_native_representation(json.dumps(payload.serviceAccountInfo))
+
+    bucket_url = f"{parsed.scheme}://{parsed.netloc}"
+    file_glob = parsed.path.lstrip("/")
+    resource = (
+        filesystem(bucket_url=bucket_url, credentials=credentials, file_glob=file_glob)
+        | _BLOB_READERS[params.format]()
+    )
+    resource.apply_hints(table_name="records", write_disposition="replace")
+
+    _run_dlt_and_attach(conn, resource, node_id=node_id, view_name=view_name)
