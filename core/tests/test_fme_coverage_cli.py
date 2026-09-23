@@ -190,7 +190,9 @@ def test_render_md_escapes_pipe_in_notes():
     # — le `||` littéral des notes doit apparaître comme `\|\|`, jamais
     # comme un `|` nu qui créerait deux colonnes fantômes.
     unescaped_pipes = re.findall(r"(?<!\\)\|", detail_line)
-    assert len(unescaped_pipes) == 9
+    # Tableau par catégorie : 7 cellules (Catégorie retirée, portée par le
+    # titre de section ### <Catégorie>) → 8 délimiteurs `|` non échappés.
+    assert len(unescaped_pipes) == 8
 
 
 def _make_repo(tmp_path, rows) -> pathlib.Path:

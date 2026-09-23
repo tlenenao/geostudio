@@ -147,32 +147,49 @@ def render_md(rows: list[Row]) -> str:
     for engine in sorted(engine_counts):
         lines.append(f"| `{engine}` | {engine_counts[engine]} |")
     lines.append("")
-    lines.append("## Détail")
+    lines.append("## Détail par catégorie")
     lines.append("")
-    lines.append(
-        "| Transformer FME | Catégorie | Équivalent GeoStudio | Moteur | "
-        "Licence | Statut | Fréquence | Notes |"
-    )
-    lines.append("|---|---|---|---|---|---|---|---|")
-    for row in sorted(rows, key=lambda r: (r.fme_category, r.fme_transformer)):
-        lines.append(
-            "| "
-            + " | ".join(
-                _escape_md_cell(cell)
-                for cell in [
-                    row.fme_transformer,
-                    row.fme_category,
-                    row.geostudio_equivalent or "",
-                    row.engine,
-                    row.engine_license,
-                    f"`{row.coverage_status}`",
-                    row.usage_frequency,
-                    row.notes,
-                ]
-            )
-            + " |"
+    categories = sorted({row.fme_category for row in rows})
+    lines.append("Sommaire : " + " · ".join(f"[{cat}](#{_md_anchor(cat)})" for cat in categories))
+    lines.append("")
+    for category in categories:
+        cat_rows = sorted(
+            (row for row in rows if row.fme_category == category),
+            key=lambda r: r.fme_transformer,
         )
+        lines.append(f"### {category} ({len(cat_rows)})")
+        lines.append("")
+        lines.append(
+            "| Transformer FME | Équivalent GeoStudio | Moteur | Licence | "
+            "Statut | Fréquence | Notes |"
+        )
+        lines.append("|---|---|---|---|---|---|---|")
+        for row in cat_rows:
+            lines.append(
+                "| "
+                + " | ".join(
+                    _escape_md_cell(cell)
+                    for cell in [
+                        row.fme_transformer,
+                        row.geostudio_equivalent or "",
+                        row.engine,
+                        row.engine_license,
+                        f"`{row.coverage_status}`",
+                        row.usage_frequency,
+                        row.notes,
+                    ]
+                )
+                + " |"
+            )
+        lines.append("")
     return "\n".join(lines) + "\n"
+
+
+def _md_anchor(heading: str) -> str:
+    """Reproduit la règle d'ancrage GitHub : minuscules, espaces → tirets,
+    ponctuation retirée — pour que le sommaire pointe vers le bon `###`."""
+    slug = heading.lower().replace(" ", "-")
+    return "".join(c for c in slug if c.isalnum() or c == "-")
 
 
 def main(argv: list[str]) -> int:
