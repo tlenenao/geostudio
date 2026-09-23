@@ -4,12 +4,13 @@ natif en repli (design docs/superpowers/specs/
 2026-09-16-ipc-echange-duckdb-arrow-design.md). Suite d'OperationContract
 (docs/superpowers/specs/2026-09-16-operation-contract-design.md) : pose le
 seam d'échange (champ OperationContract.exchange, app.pipelines.ops.
-contracts) qu'un futur chantier "premier moteur natif" consommera — QGIS
-(transform.qgis) reste explicitement hors périmètre, son échange fichier
-GPKG (app.pipelines.runtime._execute_qgis_transform/_materialize_qgis_
-output) n'est pas unifié avec ce module (aucun driver Parquet/Arrow dans le
-GDAL 3.4.1 embarqué par l'image qgis/qgis:release-3_34, vérifié
-empiriquement — design §1).
+contracts) qu'un futur chantier "premier moteur natif" consommera. À
+l'écriture de ce module, transform.qgis (moteur copyleft sidecar, son
+échange fichier GPKG) restait explicitement hors périmètre — aucun driver
+Parquet/Arrow dans le GDAL 3.4.1 embarqué par l'image
+qgis/qgis:release-3_34, vérifié empiriquement (design §1). Ce moteur a
+depuis été retiré (Task 28 du volet 3 de retrait du sidecar QGIS) : la
+question ne se pose donc plus.
 
 Round-trip jamais invoqué depuis app.pipelines.runtime dans ce chantier :
 aucun moteur natif n'a de binding installé ici pour le consommer (design
@@ -26,9 +27,9 @@ from app.sql_ident import quote_ident_duckdb as _qi
 
 def _geometry_column(relation: duckdb.DuckDBPyRelation, *, fn_label: str) -> str:
     """Détection par TYPE DuckDB (GEOMETRY), jamais par nom de colonne —
-    même garantie que app.pipelines.runtime._materialize_reader/
-    _materialize_qgis_output. Une seule colonne géométrie attendue (même
-    contrat qu'une collection) : en cas de pluralité inattendue, la
+    même garantie que app.pipelines.runtime._materialize_reader. Une seule
+    colonne géométrie attendue (même contrat qu'une collection) : en cas de
+    pluralité inattendue, la
     première suffit à ne jamais perdre la géométrie silencieusement. Les
     colonnes géométrie NON sélectionnées (au-delà de la première) traversent
     malgré tout Arrow/GeoParquet comme n'importe quelle autre colonne — sans

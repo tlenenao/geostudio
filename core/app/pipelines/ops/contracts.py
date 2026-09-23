@@ -67,7 +67,6 @@ from app.pipelines.ops.schemas import (
     TransformMergeChildrenParams,
     TransformMergeParams,
     TransformMinimumBoundingCircleParams,
-    TransformQgisParams,
     TransformReprojectAttributeParams,
     TransformReprojectParams,
     TransformResolveOverlapsParams,
@@ -237,16 +236,6 @@ OPERATIONS: dict[str, OperationContract] = {
         engine_license="MIT (DuckDB) + Apache-2.0 (extension communautaire h3)",
         compile=_compiler._compile_h3_aggregate,
         output_srid=_compiler._output_srid_h3_aggregate,
-    ),
-    "transform.qgis": OperationContract(
-        op="transform.qgis",
-        kind="transform",
-        params_schema=TransformQgisParams,
-        engine="qgis",
-        engine_license="GPL-2.0-or-later (QGIS)",
-        is_copyleft=True,
-        execution_model="sidecar",
-        output_srid=_compiler._output_srid_qgis,
     ),
     "transform.bulkRemoveAttributes": OperationContract(
         op="transform.bulkRemoveAttributes",
@@ -641,7 +630,7 @@ def _user_facing_description(description: str) -> str:
 
     Correctif revue finale GAP-16 (Important I2) : `model_json_schema()`
     reprend tel quel le docstring Python complet d'une classe de params dans
-    sa clé `description` — pour 5 op (les connecteurs + transform.qgis/
+    sa clé `description` — pour plusieurs op (les connecteurs +
     transform.merge), ce docstring contient du jargon développeur (noms de
     classes, chemins de module, renvois "design §n"/"SPnn") qui n'a rien à
     faire dans le tooltip de palette lu par

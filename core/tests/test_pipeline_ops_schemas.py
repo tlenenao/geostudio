@@ -121,7 +121,6 @@ def test_all_fifty_one_ops_are_registered():
         "transform.countWithin",
         "transform.h3Aggregate",
         "writer.dataset",
-        "transform.qgis",
         "reader.connector.rest",
         "reader.connector.postgres",
         "transform.merge",
@@ -279,84 +278,6 @@ def test_new_collection_referencing_fields_carry_collection_id_format_hint():
         catalog["writer.dataset"]["paramsSchema"]["properties"]["collectionId"]["format"]
         == "collection-id"
     )
-
-
-def test_fifteenth_op_is_registered():
-    assert "transform.qgis" in OP_PARAMS
-    assert "transform.qgis" in OP_KINDS
-    assert OP_KINDS["transform.qgis"] == "transform"
-
-
-def test_transform_qgis_accepts_allowlisted_id_with_required_params():
-    params = parse_op_params(
-        "transform.qgis",
-        {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
-    )
-    assert params.algorithmId == "native:centroids"
-    assert params.params == {"ALL_PARTS": False}
-    assert params.outputSrid is None
-
-
-def test_transform_qgis_rejects_non_allowlisted_id():
-    with pytest.raises(ValidationError):
-        parse_op_params(
-            "transform.qgis",
-            {"algorithmId": "native:totallymadeup", "params": {}},
-        )
-
-
-def test_transform_qgis_rejects_missing_required_param():
-    # native:centroids requires ALL_PARTS beyond INPUT/OUTPUT (design Task 2 —
-    # INPUT/OUTPUT are runtime-injected, never authored, cf. spike finding
-    # in test_pipeline_qgis_algorithms.py::test_centroids_required_params_...).
-    with pytest.raises(ValidationError):
-        parse_op_params(
-            "transform.qgis",
-            {"algorithmId": "native:centroids", "params": {}},
-        )
-
-
-def test_transform_qgis_does_not_require_input_output_in_params():
-    # INPUT/OUTPUT are required by native:simplifygeometries' own schema but
-    # are filled in by the runtime (scratch file paths), never by the author.
-    params = parse_op_params(
-        "transform.qgis",
-        {
-            "algorithmId": "native:simplifygeometries",
-            "params": {"METHOD": 0, "TOLERANCE": 1.0},
-        },
-    )
-    assert "INPUT" not in params.params
-    assert "OUTPUT" not in params.params
-
-
-def test_transform_qgis_accepts_optional_output_srid():
-    params = parse_op_params(
-        "transform.qgis",
-        {
-            "algorithmId": "gdal:warpreproject",
-            "params": {
-                "TARGET_CRS": "EPSG:2154",
-                "DATA_TYPE": 0,
-                "MULTITHREADING": False,
-                "RESAMPLING": 0,
-            },
-            "outputSrid": "EPSG:2154",
-        },
-    )
-    assert params.outputSrid == "EPSG:2154"
-
-
-def test_transform_qgis_rejects_malformed_output_srid():
-    with pytest.raises(ValidationError):
-        parse_op_params(
-            "transform.qgis",
-            {
-                "algorithmId": "native:dissolve",
-                "params": {"SEPARATE_DISJOINT": False},
-                "outputSrid": "not-a-crs",
-            },
-        )
 
 
 def test_reader_connector_ops_are_kind_reader():
@@ -653,7 +574,8 @@ def test_reader_connector_postgres_description_documents_redshift_compatibility(
 
 
 # Revue finale de branche GAP-16, Important I2 : le docstring Python complet
-# de 5 ops (noms de classes, chemins de module, renvois "design §n"/"SPnn")
+# de plusieurs ops (noms de classes, chemins de module, renvois "design
+# §n"/"SPnn")
 # atteignait tel quel le tooltip de palette (paramsSchema.description, lu par
 # shell/src/builder/pipeline/PipelinePalette.tsx) — jargon développeur exposé
 # tel quel à l'auteur de pipeline. Seul le premier paragraphe du docstring de
@@ -670,7 +592,6 @@ _DEV_JARGON_MARKERS = ("app.pipelines", "design", "SP-1", "GAP-16", "§")
         "reader.connector.rest",
         "reader.connector.bigquery",
         "reader.connector.mssql",
-        "transform.qgis",
         "transform.merge",
     ],
 )

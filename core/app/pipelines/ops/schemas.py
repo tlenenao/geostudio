@@ -128,42 +128,6 @@ class WriterDatasetParams(BaseModel):
         return self
 
 
-class TransformQgisParams(BaseModel):
-    """Exécute un algorithme QGIS Processing de la liste autorisée. Renseignez
-    `outputSrid` explicitement si l'algorithme change le système de
-    coordonnées (ex. une reprojection) ; laissé vide, la sortie garde le
-    système de coordonnées de l'entrée. Attention : les distances/tolérances
-    d'un algorithme QGIS sont dans les unités du système de coordonnées de
-    la couche d'entrée, jamais converties automatiquement en mètres.
-
-    Allowlist gelée : app.pipelines.ops.qgis_algorithms.QGIS_ALGORITHMS
-    (design SP-15d §5/§10). `params` ne doit JAMAIS contenir INPUT/OUTPUT —
-    le runtime les injecte (chemins scratch, design §6). La règle
-    « pas de conversion d'unité automatique » est vraie pour la quasi-totalité
-    des 50 op de l'allowlist, fausse pour un algorithme de reprojection
-    (vérifié empiriquement en design, §2)."""
-
-    algorithmId: str
-    params: dict[str, Any] = Field(default_factory=dict)
-    outputSrid: str | None = Field(default=None, pattern=r"^[A-Za-z]+:\d+$")
-
-    @model_validator(mode="after")
-    def _check_allowlisted_and_required_params(self) -> "TransformQgisParams":
-        from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
-
-        schema = QGIS_ALGORITHMS.get(self.algorithmId)
-        if schema is None:
-            raise ValueError(f"algorithme non autorisé : {self.algorithmId}")
-        required = {name for name, p in schema["parameters"].items() if not p["optional"]} - {
-            "INPUT",
-            "OUTPUT",
-        }
-        missing = required - self.params.keys()
-        if missing:
-            raise ValueError(f"{self.algorithmId} : paramètres requis manquants {sorted(missing)}")
-        return self
-
-
 class ReaderConnectorRestParams(BaseModel):
     """Lecture d'une ressource REST paginée, avec authentification optionnelle
     (clé API, jeton, identifiants, ou OAuth2 client_credentials) et

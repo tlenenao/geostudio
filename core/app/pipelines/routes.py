@@ -17,7 +17,6 @@ from app.configs.schemas import PipelinePayload
 from app.db import get_session
 from app.pipelines import repository as pipelines_repo
 from app.pipelines.ops.contracts import ops_catalog
-from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
 from app.pipelines.runtime import PipelineRuntimeError, preview_pipeline
 from app.pipelines.service import (
     create_webhook_token_service,
@@ -73,11 +72,6 @@ def get_task_deferrer() -> Callable[[str, str], None]:  # overridden in tests
 @router.get("/pipelines/ops")
 def get_pipeline_ops() -> dict:
     return ops_catalog()
-
-
-@router.get("/pipelines/ops/qgis-algorithms")
-def get_qgis_algorithms() -> dict:
-    return QGIS_ALGORITHMS
 
 
 @router.get("/pipelines/next-run", response_model=NextRunResponse)
@@ -159,8 +153,6 @@ def preview_pipeline_route(
             access_key=os.environ.get("S3_ACCESS_KEY", ""),
             secret_key=os.environ.get("S3_SECRET_KEY", ""),
             base_uri=f"s3://{os.environ.get('S3_CDC_BUCKET', 'geostudio-cdc')}/cdc",
-            qgis_worker_url=os.environ.get("QGIS_WORKER_URL", ""),
-            qgis_worker_timeout_seconds=int(os.environ.get("QGIS_WORKER_TIMEOUT_SECONDS", "600")),
         )
     except PipelineRuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

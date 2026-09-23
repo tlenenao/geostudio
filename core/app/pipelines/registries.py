@@ -6,13 +6,14 @@ repris de app.harvest.connectors.__init__ (`_REGISTRY: dict[str,
 HarvestConnector]` + `get_connector(source_type)`), seul registre
 préexistant du dépôt.
 
-Les transforms non-QGIS restent dans app.pipelines.compiler (déjà un
-dispatcher fonctionnel pur, testé isolément) : ce module ne couvre que les 3
-readers et les 3 writers. transform.qgis (_execute_qgis_transform,
-_lock_down) N'EST PAS déplacé dans un registre par cette étape (spec SP-43
-§2.1) : c'est le seul transform avec un effet de bord (I/O + réseau vers le
-sidecar qgis-worker) — laissé inline dans runtime.py, avec sa branche
-`if node.op == "transform.qgis":` actuelle dans _execute_transform_chain().
+Les transforms restent dans app.pipelines.compiler (déjà un dispatcher
+fonctionnel pur, testé isolément) : ce module ne couvre que les readers et
+les writers. transform.qgis (_execute_qgis_transform, sa branche
+`if node.op == "transform.qgis":` dans _execute_transform_chain()) n'a
+jamais été déplacé dans un registre par cette étape (spec SP-43 §2.1) —
+c'était le seul transform avec un effet de bord (I/O + réseau vers le
+sidecar qgis-worker) ; le moteur a été retiré (Task 28 du volet 3 de
+retrait du sidecar QGIS), la question ne se pose donc plus.
 
 Les fonctions référencées ci-dessous restent DÉFINIES dans
 app.pipelines.runtime, jamais dupliquées ici : plusieurs tests

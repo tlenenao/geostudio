@@ -58,7 +58,6 @@ def test_operations_registry_has_exactly_the_fifty_one_known_ops():
         "transform.intersection",
         "transform.countWithin",
         "transform.h3Aggregate",
-        "transform.qgis",
         "writer.collection",
         "writer.export",
         "writer.dataset",
@@ -108,18 +107,6 @@ def test_operations_registry_has_exactly_the_fifty_one_known_ops():
         "transform.densify",
         "transform.minimumBoundingCircle",
     }
-
-
-def test_qgis_operation_contract_declares_copyleft_sidecar_metadata():
-    from app.pipelines.ops.contracts import OPERATIONS
-
-    contract = OPERATIONS["transform.qgis"]
-    assert contract.engine == "qgis"
-    assert contract.engine_license == "GPL-2.0-or-later (QGIS)"
-    assert contract.is_copyleft is True
-    assert contract.execution_model == "sidecar"
-    assert contract.compile is None
-    assert contract.output_srid is not None
 
 
 def test_connector_and_writer_ops_are_not_classified_by_engine():
@@ -176,4 +163,4 @@ def test_ops_catalog_never_exposes_the_exchange_field():
 def test_operations_registry_has_fifty_one_entries_after_vague_2():
     from app.pipelines.ops.contracts import OPERATIONS
 
-    assert len(OPERATIONS) == 60
+    assert len(OPERATIONS) == 59

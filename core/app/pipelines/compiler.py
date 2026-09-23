@@ -38,7 +38,6 @@ from app.pipelines.ops.schemas import (
     TransformMapSchemaParams,
     TransformMergeChildrenParams,
     TransformMergeParams,
-    TransformQgisParams,
     TransformReprojectAttributeParams,
     TransformReprojectParams,
     TransformResolveOverlapsParams,
@@ -857,17 +856,6 @@ def _output_srid_h3_aggregate(
             "— insert transform.reproject first"
         )
     return 4326
-
-
-def _output_srid_qgis(
-    params: dict,
-    *,
-    op: str,
-    input_srid: int,
-    join_srid: int | None = None,
-) -> int:
-    p = TransformQgisParams.model_validate(params)
-    return int(p.outputSrid.rsplit(":", 1)[1]) if p.outputSrid is not None else input_srid
 
 
 def _output_srid_set_srid(

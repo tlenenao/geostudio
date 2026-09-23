@@ -71,14 +71,15 @@ def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
     # centroid/convexHull/simplify/boundingGeometry) + 4 op de retrait QGIS
     # (Task 21/22/24/25 : transform.snapToLayer, transform.resolveOverlaps,
     # transform.triangulate, transform.densify) + 1 op de retrait QGIS (Task 26 :
-    # transform.minimumBoundingCircle) = 58 total exposées par la route. Ces 9 op
-    # couvrent 10 lignes FME (transform.triangulate mappe TINGenerator ET
-    # SurfaceModeller) ; Clipper et Dissolver sont 2 lignes FME distinctes, sans
-    # rapport avec ce compte de 9, dont la reclassification (composition d'op vs.
-    # rester qgis_frozen) reste une décision ouverte de Task 27 Step 3-4, pas
-    # encore tranchée ici — cf. plan Task 27.
+    # transform.minimumBoundingCircle) - transform.qgis lui-même, retiré (Task 28) =
+    # 57 total exposées par la route. Les 9 op de retrait QGIS couvrent 10 lignes
+    # FME (transform.triangulate mappe TINGenerator ET SurfaceModeller) ; Clipper
+    # et Dissolver sont 2 lignes FME distinctes, sans rapport avec ce compte de 9,
+    # dont la reclassification (composition d'op vs. rester qgis_frozen) reste une
+    # décision ouverte de Task 27 Step 3-4, pas encore tranchée ici — cf. plan
+    # Task 27.
     # (reader.file/writer.file restent hors catalogue tant que
-    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 60, route à 58).
+    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 59, route à 57).
     assert set(body) == {
         "reader.collection",
         "transform.filter",
@@ -91,7 +92,6 @@ def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
         "transform.intersection",
         "transform.countWithin",
         "transform.h3Aggregate",
-        "transform.qgis",
         "writer.collection",
         "writer.export",
         "writer.dataset",
@@ -686,21 +686,6 @@ def test_list_pipeline_runs_accepts_limit_and_offset(monkeypatch):
 
     resp2 = client.get(f"/v1/pipelines/{item_id}/runs?limit=2&offset=4")
     assert len(resp2.json()) == 1
-
-
-def test_get_qgis_algorithms_returns_full_allowlist(monkeypatch):
-    client = _make_app(monkeypatch, etl_enabled=True)
-    response = client.get("/v1/pipelines/ops/qgis-algorithms")
-    assert response.status_code == 200
-    body = response.json()
-    assert len(body) == 50
-    assert "native:centroids" in body
-    assert "ALL_PARTS" in body["native:centroids"]["parameters"]
-
-
-def test_get_qgis_algorithms_absent_when_etl_disabled(monkeypatch):
-    client = _make_app(monkeypatch, etl_enabled=False)
-    assert client.get("/v1/pipelines/ops/qgis-algorithms").status_code == 404
 
 
 def test_next_run_route_computes_the_next_occurrence(monkeypatch):

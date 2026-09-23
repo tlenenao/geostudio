@@ -28,12 +28,9 @@ import csv
 import io
 import json
 import os
-import shutil
-import uuid
 from collections.abc import Callable
 
 import duckdb
-import httpx
 from sqlalchemy.orm import Session
 
 from app.analytics.aggregate import _dedup_cte, _has_any_file
@@ -72,7 +69,6 @@ from app.pipelines.ops.schemas import (
     TransformJoinParams,
     TransformMergeChildrenParams,
     TransformMergeParams,
-    TransformQgisParams,
     TransformSnapToLayerParams,
     WriterCollectionParams,
     WriterDatasetParams,
@@ -475,8 +471,8 @@ def _read_file(
     """reader.file (registre READERS, design desktop-etl §3) — matérialise
     un fichier local via ST_Read() (DuckDB spatial/GDAL), même détection de
     la colonne géométrie par TYPE (jamais par nom) que
-    _materialize_qgis_output pour la sortie du sidecar QGIS ; comme elle,
-    élimine aussi "fid" — colonne d'identifiant de ligne synthétique imposée
+    _materialize_reader (cf. en-tête du module) ; comme elle, élimine aussi
+    "fid" — colonne d'identifiant de ligne synthétique imposée
     par la spec OGC GeoPackage sur tout .gpkg — pour la même raison : un
     writer.collection en aval la rejette comme "unknown property 'fid'".
     session/tenant_id/node_id/user/base_uri ignorés (même convention que
@@ -532,16 +528,13 @@ def _lock_down(
     # allowed_directories doit être posé AVANT enable_external_access=false :
     # c'est la seule échappatoire documentée par DuckDB ("List of
     # directories/prefixes that are ALWAYS allowed to be queried — even when
-    # enable_external_access is false"), sans laquelle _execute_qgis_transform
-    # ne peut plus écrire in.gpkg vers _QGIS_SCRATCH_ROOT après ce
-    # verrouillage (PermissionException réelle, jamais vue avant faute
-    # d'avoir exécuté ce chemin contre une connexion réellement verrouillée —
-    # cf. M14/REV-095). extra_allowed_dirs (design desktop-etl §3, réutilise
-    # la même échappatoire) : répertoires cibles de tout nœud writer.file du
+    # enable_external_access is false"). extra_allowed_dirs (design
+    # desktop-etl §3) : répertoires cibles de tout nœud writer.file du
     # payload, calculés par l'appelant (_prepare()) AVANT ce verrouillage —
-    # même bug évité une seconde fois, cette fois pour un chemin arbitraire
-    # choisi par l'auteur du pipeline, jamais fixe comme _QGIS_SCRATCH_ROOT.
-    allowed_dirs = [_QGIS_SCRATCH_ROOT, *(extra_allowed_dirs or [])]
+    # sans quoi une écriture writer.file après verrouillage lèverait une
+    # PermissionException réelle (chemin arbitraire choisi par l'auteur du
+    # pipeline, jamais accessible sans figurer dans cette liste).
+    allowed_dirs = [*(extra_allowed_dirs or [])]
     quoted = ", ".join(_ql(d) for d in allowed_dirs)
     conn.execute(f"SET allowed_directories = [{quoted}]")
     conn.execute("SET enable_external_access = false")
@@ -667,124 +660,6 @@ def _prepare(
     return ordered, view_by_node, srid_by_node, join_srid_by_node
 
 
-# Racine du volume scratch partagé avec le sidecar qgis-worker (design SP-15d
-# §4). Module-level plutôt qu'en dur dans _execute_qgis_transform : les tests
-# qui exercent le dispatch HTTP (sans sidecar réel) le redirigent vers un
-# tmp_path via monkeypatch, /scratch lui-même n'étant accessible en écriture
-# qu'à l'intérieur des conteneurs (etl-scratch), jamais dans l'environnement
-# d'exécution des tests.
-_QGIS_SCRATCH_ROOT = "/scratch"
-
-
-def _materialize_qgis_output(conn, *, out_path: str, view_name: str, algorithm_id: str) -> None:
-    """Matérialise le GPKG produit par le sidecar en TEMP TABLE, colonne
-    géométrie renommée en "geometry" quel que soit son nom réel dans le
-    fichier — GDAL/QGIS écrit couramment "geom", jamais garanti "geometry"
-    (vérifié empiriquement : DuckDB's COPY ... TO ... FORMAT GDAL DRIVER GPKG
-    nomme déjà sa propre colonne géométrie "geom" par défaut). Détection par
-    TYPE DuckDB (GEOMETRY), jamais par nom — même garantie que
-    _materialize_reader fournit déjà pour les readers (cf. en-tête du
-    module). Un ST_Read sans aucune colonne de type GEOMETRY (algorithme dont
-    la sortie n'est pas une couche vecteur) lève une PipelineRuntimeError
-    propre, jamais un KeyError/IndexError silencieux.
-
-    "fid" est systématiquement éliminée : c'est la colonne d'identifiant de
-    ligne imposée par la spec OGC GeoPackage elle-même (pas une convention
-    GDAL parmi d'autres) sur TOUT fichier .gpkg, y compris pour des
-    algorithmes qui ne préservent aucun identifiant source (ex.
-    native:dissolve) — vérifié empiriquement : un writer.collection en aval
-    la rejette comme "unknown property 'fid'", jamais rencontré par les
-    writers qui ne valident pas de schéma (export CSV), d'où son invisibilité
-    jusqu'ici contre un sidecar réel."""
-    probe_cols = conn.execute(f"SELECT * FROM ST_Read('{out_path}') LIMIT 0").description
-    geom_cols = [d[0] for d in probe_cols if d[1].id == "geometry"]
-    if not geom_cols:
-        raise PipelineRuntimeError(
-            f"transform.qgis ({algorithm_id}) : la sortie du sidecar ne porte "
-            "aucune colonne géométrie"
-        )
-    # Une seule colonne géométrie attendue (même contrat qu'une collection) :
-    # en cas de pluralité inattendue, la première suffit à ne jamais perdre
-    # la géométrie silencieusement — cas non rencontré dans l'allowlist SP-15d.
-    geom_col = geom_cols[0]
-    other_cols = [d[0] for d in probe_cols if d[0] != geom_col and d[0] != "fid"]
-    select_list = ", ".join([_qi(c) for c in other_cols] + [f"{_qi(geom_col)} AS geometry"])
-    conn.execute(
-        f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT {select_list} FROM ST_Read('{out_path}')"
-    )
-
-
-def _execute_qgis_transform(
-    conn,
-    node: PipelineNode,
-    *,
-    input_view: str,
-    input_srid: int,
-    qgis_worker_url: str,
-    qgis_worker_timeout_seconds: int,
-    scratch_run_id: str,
-) -> None:
-    if not qgis_worker_url:
-        raise PipelineRuntimeError(
-            "transform.qgis requires QGIS_WORKER_URL to be configured (profile 'etl')"
-        )
-    p = TransformQgisParams.model_validate(node.params)
-    scratch_dir = f"{_QGIS_SCRATCH_ROOT}/{scratch_run_id}/{node.id}"
-    in_path = f"{scratch_dir}/in.gpkg"
-    out_path = f"{scratch_dir}/out.gpkg"
-    os.makedirs(scratch_dir, exist_ok=True)
-    # SRS explicite obligatoire : sans elle, DuckDB écrit "Undefined
-    # geographic SRS" (vérifié en design §2) et qgis_process interprète les
-    # géométries dans un CRS inconnu.
-    try:
-        conn.execute(
-            f"COPY (SELECT * FROM {_qi(input_view)}) TO '{in_path}' "
-            f"WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:{input_srid}')"
-        )
-        try:
-            response = httpx.post(
-                f"{qgis_worker_url}/run",
-                json={
-                    "algorithmId": p.algorithmId,
-                    "inputs": {**p.params, "INPUT": in_path, "OUTPUT": out_path},
-                },
-                timeout=qgis_worker_timeout_seconds,
-            )
-        except httpx.TimeoutException as exc:
-            raise PipelineRuntimeError(
-                f"transform.qgis ({p.algorithmId}) : timeout après {qgis_worker_timeout_seconds}s"
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise PipelineRuntimeError(
-                f"transform.qgis ({p.algorithmId}) : échec de connexion au sidecar "
-                f"qgis-worker : {exc}"
-            ) from exc
-        if response.status_code != 200:
-            # Défense en profondeur : le sidecar (server.py _respond) émet
-            # toujours du JSON, même pour ses propres 400 (Finding 3), mais un
-            # intermédiaire (proxy, gateway) pourrait renvoyer un corps non-JSON
-            # — .json() ne doit jamais lui-même faire planter le run.
-            try:
-                detail = response.json().get("error", response.text)
-            except ValueError:
-                detail = response.text
-            raise PipelineRuntimeError(f"transform.qgis ({p.algorithmId}) : {detail}")
-        view_name = f"node_{node.id}"
-        _materialize_qgis_output(
-            conn,
-            out_path=out_path,
-            view_name=view_name,
-            algorithm_id=p.algorithmId,
-        )
-    finally:
-        # Best-effort : ne bloque jamais le run (ni ne masque une erreur déjà
-        # en cours de propagation) si le nettoyage échoue (design §12, risque
-        # accepté — un scratch non nettoyé après un CRASH reste un problème
-        # d'exploitation mineur). Couvre désormais TOUS les chemins de sortie
-        # (succès, erreur sidecar, exception locale), pas seulement le succès.
-        shutil.rmtree(scratch_dir, ignore_errors=True)
-
-
 def _execute_transform_chain(
     conn,
     ordered: list[PipelineNode],
@@ -794,12 +669,9 @@ def _execute_transform_chain(
     join_srid_by_node: dict[str, int],
     *,
     stop_at: str | None = None,
-    qgis_worker_url: str = "",
-    qgis_worker_timeout_seconds: int = 600,
     on_node_complete: Callable[["NodeStat"], None] | None = None,
 ) -> list["NodeStat"]:
     stats: list[NodeStat] = []
-    scratch_run_id = uuid.uuid4().hex
     for node in ordered:
         if node.kind == "reader":
             stat = NodeStat(node.id, node.op, _view_row_count(conn, view_by_node[node.id]))
@@ -839,17 +711,7 @@ def _execute_transform_chain(
         from app.pipelines.ops.contracts import OPERATIONS
 
         contract = OPERATIONS[node.op]
-        if node.op == "transform.qgis":
-            _execute_qgis_transform(
-                conn,
-                node,
-                input_view=input_view,
-                input_srid=input_srid,
-                qgis_worker_url=qgis_worker_url,
-                qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
-                scratch_run_id=scratch_run_id,
-            )
-        elif contract.execute is not None:
+        if contract.execute is not None:
             contract.execute(conn, input_view=input_view, view_name=view_name, params=node.params)
         else:
             input_columns = None
@@ -899,8 +761,6 @@ def preview_pipeline(
     secret_key: str,
     base_uri: str,
     limit: int = 50,
-    qgis_worker_url: str = "",
-    qgis_worker_timeout_seconds: int = 600,
 ) -> list[dict]:
     target = next((n for n in payload.nodes if n.id == up_to), None)
     if target is None:
@@ -926,8 +786,6 @@ def preview_pipeline(
             srid_by_node,
             join_srid_by_node,
             stop_at=up_to,
-            qgis_worker_url=qgis_worker_url,
-            qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
         )
         view_name = view_by_node[up_to]
         # Même conversion que _write_collection : DuckDB renvoie "geometry" en
@@ -1197,8 +1055,7 @@ def _write_export(
 
 def _write_file(conn, *, node: PipelineNode, view_by_node: dict, srid: int) -> NodeStat:
     """writer.file (registre WRITERS, design desktop-etl §3) — écrit via
-    COPY ... FORMAT GDAL DRIVER ... (même mécanisme que le in_path de
-    _execute_qgis_transform), pas la sérialisation manuelle de
+    COPY ... FORMAT GDAL DRIVER ..., pas la sérialisation manuelle de
     _write_export. Signature sans session/tenant_id/user (même traitement
     que writer.export, cf. registries.py) : accès disque local, jamais de
     collection."""
@@ -1214,10 +1071,10 @@ def _write_file(conn, *, node: PipelineNode, view_by_node: dict, srid: int) -> N
     # empiriquement avant d'écrire ce plan.
     keep = [c for c in cols if c.lower() not in ("fid", "ogc_fid")]
     select_list = ", ".join(_qi(c) for c in keep)
-    # Contrairement au scratch_dir de _execute_qgis_transform (garanti
-    # préexistant), le répertoire cible de writer.file peut ne pas exister :
-    # GDAL/sqlite ne crée jamais les répertoires intermédiaires manquants et
-    # échoue avec "sqlite3_open ... unable to open database file".
+    # Le répertoire cible de writer.file peut ne pas exister (contrairement à
+    # un scratch dir toujours pré-créé par l'appelant) : GDAL/sqlite ne crée
+    # jamais les répertoires intermédiaires manquants et échoue avec
+    # "sqlite3_open ... unable to open database file".
     if parent := os.path.dirname(p.path):
         os.makedirs(parent, exist_ok=True)
     conn.execute(
@@ -1240,8 +1097,6 @@ def run_pipeline(
     base_uri: str,
     s3_client=None,
     exports_bucket: str | None = None,
-    qgis_worker_url: str = "",
-    qgis_worker_timeout_seconds: int = 600,
     on_node_complete: Callable[["NodeStat"], None] | None = None,
 ) -> list[NodeStat]:
     # Import local, même rationale que dans _prepare() : voir registries.py
@@ -1268,8 +1123,6 @@ def run_pipeline(
             view_by_node,
             srid_by_node,
             join_srid_by_node,
-            qgis_worker_url=qgis_worker_url,
-            qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
             on_node_complete=on_node_complete,
         )
         for node in ordered:
