@@ -633,3 +633,14 @@ class TransformBoundingGeometryParams(BaseModel):
     ("envelope") ou rectangle orienté minimal ("orientedRectangle")."""
 
     mode: Literal["envelope", "orientedRectangle"] = "envelope"
+
+
+class TransformSnapToLayerParams(BaseModel):
+    """Ajuste (« snap ») la géométrie sur la géométrie de référence de l'entrée secondaire
+    dans une tolérance donnée. `ST_Snap` de DuckDB Spatial prend une géométrie de
+    référence unique (pas une agrégation) : l'entrée secondaire doit être réduite à une
+    seule ligne en amont (ex. via `transform.aggregate` + `ST_Union_Agg`), sans quoi la
+    jointure croisée avec plusieurs lignes de référence produit un résultat incorrect."""
+
+    withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
+    tolerance: float

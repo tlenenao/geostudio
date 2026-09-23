@@ -68,9 +68,10 @@ def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
     # cf. design vague 1 transformers DuckDB) + 11 op vague 2 (schéma/cardinalité,
     # cf. design vague 2 transformers DuckDB) + 4 lecteurs BigQuery/MSSQL/Oracle/Blob
     # (Vague 2 §6.1, Task 12/13/14/15) + 4 op de retrait QGIS (Task 18/19/20 :
-    # centroid/convexHull/simplify/boundingGeometry) = 53 total exposées par la route
+    # centroid/convexHull/simplify/boundingGeometry) + 1 op de retrait QGIS
+    # (Task 21 : transform.snapToLayer) = 54 total exposées par la route
     # (reader.file/writer.file restent hors catalogue tant que
-    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 55, route à 53).
+    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 56, route à 54).
     assert set(body) == {
         "reader.collection",
         "transform.filter",
@@ -125,6 +126,7 @@ def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
         "transform.convexHull",
         "transform.simplify",
         "transform.boundingGeometry",
+        "transform.snapToLayer",
     }
     for op in (
         "transform.join",
@@ -133,6 +135,7 @@ def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
         "transform.merge",
         "transform.detectChanges",
         "transform.mergeChildren",
+        "transform.snapToLayer",
     ):
         assert body[op]["acceptsSecondaryInput"] is True
     assert body["reader.collection"]["acceptsSecondaryInput"] is False

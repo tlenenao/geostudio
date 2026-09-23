@@ -162,6 +162,7 @@ def test_all_fifty_one_ops_are_registered():
         "transform.detectChanges",
         "transform.mergeChildren",
         "transform.mapSchema",
+        "transform.snapToLayer",
     }
     assert set(OP_KINDS) == set(OP_PARAMS)
 
@@ -487,6 +488,7 @@ def test_binary_ops_set_matches_catalog_flag():
         "transform.merge",
         "transform.detectChanges",
         "transform.mergeChildren",
+        "transform.snapToLayer",
     }
 
 

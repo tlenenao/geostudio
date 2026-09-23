@@ -48,6 +48,7 @@ from app.pipelines.ops.schemas import (
     TransformSelectParams,
     TransformSetSridParams,
     TransformSimplifyParams,
+    TransformSnapToLayerParams,
     TransformSortParams,
     TransformSwapCoordinatesParams,
     TransformTranslateGeometryParams,
@@ -758,6 +759,22 @@ def _compile_map_schema(
         f"{_qi(c)}" if c in input_columns else f"NULL AS {_qi(c)}" for c in p.targetColumns
     ]
     return f"SELECT {', '.join(select_parts)} FROM {_qi(input_view)}"
+
+
+def _compile_snap_to_layer(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformSnapToLayerParams.model_validate(params)
+    assert join_view is not None, "transform.snapToLayer requires join_view"
+    return (
+        f"SELECT t.* EXCLUDE (geometry), "
+        f"ST_Snap(t.geometry, o.geometry, {p.tolerance}) AS geometry "
+        f"FROM {_qi(input_view)} t, {_qi(join_view)} o"
+    )
 
 
 def compile_transform_sql(

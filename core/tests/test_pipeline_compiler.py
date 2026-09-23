@@ -1046,3 +1046,26 @@ def test_compile_bounding_geometry_oriented_rectangle(conn_spatial):
         "transform.boundingGeometry", {"mode": "orientedRectangle"}, input_view="base"
     )
     assert "ST_MinimumRotatedRectangle" in sql
+
+
+def test_compile_snap_to_layer(conn_spatial):
+    conn_spatial.execute("CREATE TABLE ref (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute("INSERT INTO ref VALUES (1, ST_GeomFromText('POINT (3.0005 45.0005)'))")
+    sql = compile_transform_sql(
+        "transform.snapToLayer",
+        {"tolerance": 0.01},
+        input_view="base",
+        join_view="ref",
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT ST_AsText(geometry) FROM out WHERE id = 1").fetchone()
+    assert row == ("POINT (3.0005 45.0005)",)
+
+
+def test_compile_snap_to_layer_without_join_view_raises():
+    with pytest.raises(AssertionError):
+        compile_transform_sql(
+            "transform.snapToLayer",
+            {"tolerance": 0.01},
+            input_view="base",
+        )

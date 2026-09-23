@@ -31,6 +31,7 @@ _COLLECTION_PARAM_FIELD = {
     "transform.merge": "withCollectionId",
     "transform.detectChanges": "withCollectionId",
     "transform.mergeChildren": "withCollectionId",
+    "transform.snapToLayer": "withCollectionId",
     "writer.collection": "collectionId",
     "writer.dataset": "collectionId",
 }

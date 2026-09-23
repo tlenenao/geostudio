@@ -73,6 +73,7 @@ from app.pipelines.ops.schemas import (
     TransformMergeChildrenParams,
     TransformMergeParams,
     TransformQgisParams,
+    TransformSnapToLayerParams,
     WriterCollectionParams,
     WriterDatasetParams,
     WriterExportParams,
@@ -90,6 +91,7 @@ _JOIN_PARAM_MODELS: dict[str, type] = {
     "transform.merge": TransformMergeParams,
     "transform.detectChanges": TransformDetectChangesParams,
     "transform.mergeChildren": TransformMergeChildrenParams,
+    "transform.snapToLayer": TransformSnapToLayerParams,
 }
 
 

@@ -74,6 +74,7 @@ from app.pipelines.ops.schemas import (
     TransformSelectParams,
     TransformSetSridParams,
     TransformSimplifyParams,
+    TransformSnapToLayerParams,
     TransformSortParams,
     TransformSwapCoordinatesParams,
     TransformTranslateGeometryParams,
@@ -549,6 +550,15 @@ OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_map_schema,
+    ),
+    "transform.snapToLayer": OperationContract(
+        op="transform.snapToLayer",
+        kind="transform",
+        params_schema=TransformSnapToLayerParams,
+        accepts_secondary_input=True,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_snap_to_layer,
     ),
     "reader.file": OperationContract(
         op="reader.file",
