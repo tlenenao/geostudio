@@ -102,6 +102,12 @@ class OperationContract:
     # DESCRIBE (app.pipelines.runtime) avant d'appeler `compile` — extension chirurgicale,
     # jamais de connexion DuckDB dans ce module lui-même.
     needs_columns: bool = False
+    # Design docs/superpowers/specs/2026-09-20-vague2-transformers-duckdb-design.md §7.2 :
+    # mutuellement exclusif avec `compile` — un op "transform" a l'un ou l'autre, jamais les
+    # deux, jamais aucun des deux. Signature : (conn, *, input_view, view_name, params) -> None,
+    # matérialise `view_name` lui-même (contrairement à `compile`, qui retourne une simple
+    # chaîne SQL exécutée par l'appelant).
+    execute: Callable[..., None] | None = None
     # Piège Python latent : un `def` nu donné ici en défaut (au lieu de `None`)
     # deviendrait un attribut de classe et serait lié comme méthode (self/le
     # contrat injecté en premier argument), pas un simple callable — inoffensif
