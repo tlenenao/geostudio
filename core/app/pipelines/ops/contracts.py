@@ -26,6 +26,7 @@ from pydantic import BaseModel
 
 from app.auth.dependency import is_pipeline_file_io_enabled
 from app.pipelines import compiler as _compiler
+from app.pipelines.ops import execute as _execute
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
     ReaderConnectorBigQueryParams,
@@ -79,6 +80,7 @@ from app.pipelines.ops.schemas import (
     TransformSortParams,
     TransformSwapCoordinatesParams,
     TransformTranslateGeometryParams,
+    TransformTriangulateParams,
     TransformValidateAttributesParams,
     WriterCollectionParams,
     WriterDatasetParams,
@@ -575,6 +577,14 @@ OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_resolve_overlaps,
+    ),
+    "transform.triangulate": OperationContract(
+        op="transform.triangulate",
+        kind="transform",
+        params_schema=TransformTriangulateParams,
+        engine="duckdb",
+        engine_license="BSD-3-Clause (Shapely)",
+        execute=_execute._execute_triangulate,
     ),
     "reader.file": OperationContract(
         op="reader.file",

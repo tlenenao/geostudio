@@ -8,6 +8,9 @@ TABLE/VIEW nommée `view_name`, lisible par le nœud suivant), `runtime.py` ne v
 différence."""
 
 import pandas as pd
+import shapely.ops
+import shapely.wkb
+from shapely.geometry import MultiPoint
 
 
 def _qi(name: str) -> str:
@@ -36,3 +39,20 @@ def _write_geometry_rows(conn, df: pd.DataFrame, *, view_name: str) -> None:
     )
     conn.execute(f"CREATE TEMP TABLE {_qi(view_name)} AS SELECT {select_list} FROM _execute_tmp_df")
     conn.unregister("_execute_tmp_df")
+
+
+def _execute_triangulate(conn, *, input_view: str, view_name: str, params: dict) -> None:
+    from app.pipelines.ops.schemas import TransformTriangulateParams
+
+    TransformTriangulateParams.model_validate(params)  # forme seulement, aucun champ
+    df = _read_geometry_rows(conn, input_view)
+    points = [shapely.wkb.loads(bytes(wkb)) for wkb in df["geometry"]]
+    triangles = shapely.ops.triangulate(MultiPoint([p.coords[0] for p in points]))
+    other_cols = [c for c in df.columns if c != "geometry"]
+    out = pd.DataFrame(
+        {
+            **{c: [df[c].iloc[0]] * len(triangles) for c in other_cols},
+            "geometry": [shapely.wkb.dumps(t) for t in triangles],
+        }
+    )
+    _write_geometry_rows(conn, out, view_name=view_name)

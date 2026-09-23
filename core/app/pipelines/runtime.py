@@ -836,6 +836,9 @@ def _execute_transform_chain(
         except ValueError as exc:
             raise PipelineRuntimeError(str(exc)) from exc
         view_name = f"node_{node.id}"
+        from app.pipelines.ops.contracts import OPERATIONS
+
+        contract = OPERATIONS[node.op]
         if node.op == "transform.qgis":
             _execute_qgis_transform(
                 conn,
@@ -846,10 +849,9 @@ def _execute_transform_chain(
                 qgis_worker_timeout_seconds=qgis_worker_timeout_seconds,
                 scratch_run_id=scratch_run_id,
             )
+        elif contract.execute is not None:
+            contract.execute(conn, input_view=input_view, view_name=view_name, params=node.params)
         else:
-            from app.pipelines.ops.contracts import OPERATIONS
-
-            contract = OPERATIONS[node.op]
             input_columns = None
             join_columns = None
             if contract.needs_columns:

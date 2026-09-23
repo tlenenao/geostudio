@@ -650,3 +650,8 @@ class TransformResolveOverlapsParams(BaseModel):
     """Décompose un ensemble de géométries qui se chevauchent en features géométriques
     disjointes (parties non chevauchantes + parties communes). Géométrie uniquement —
     n'associe pas les attributs des features d'origine à chaque morceau de sortie."""
+
+
+class TransformTriangulateParams(BaseModel):
+    """Triangulation de Delaunay de la géométrie (points) en entrée — une ligne de sortie par
+    triangle. Calculée en process via Shapely (BSD-3-Clause), pas en SQL."""

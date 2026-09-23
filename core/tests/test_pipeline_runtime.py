@@ -388,6 +388,85 @@ def test_write_export_csv_geometry_as_geojson_string(tmp_path, monkeypatch):
     assert parsed_geometry == {"type": "Point", "coordinates": [1.5, 45.5]}
 
 
+def test_run_pipeline_transform_triangulate_end_to_end(tmp_path, monkeypatch):
+    # Task 24 : pipeline à 2 nœuds reader.collection -> transform.triangulate -> writer.export,
+    # même patron que test_write_export_geojson_serializes_geometry (pas de postgis-test requis,
+    # session=None + s3_client=_FakeS3()) — vérifie que le dispatch générique `elif
+    # contract.execute is not None` de _execute_transform_chain (Step 8) est bien atteint pour
+    # une vraie op `execute` de bout en bout, pas seulement au niveau execute.py.
+    _write_partition(
+        tmp_path,
+        rows=[
+            _row(1, "Nord", 10, x=0.0, y=0.0),
+            _row(2, "Sud", 5, x=4.0, y=0.0),
+            _row(3, "Est", 8, x=2.0, y=4.0),
+            _row(4, "Ouest", 3, x=1.0, y=1.0),
+        ],
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_table_info_for_collection",
+        lambda session, collection_id: _table_info_for(collection_id),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "t1",
+                    "kind": "transform",
+                    "op": "transform.triangulate",
+                    "params": {},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "geojson", "key": "out.geojson"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
+    fake_s3 = _FakeS3()
+
+    stats = runtime.run_pipeline(
+        None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+        s3_client=fake_s3,
+        exports_bucket="exports",
+    )
+
+    assert any(stat.op == "transform.triangulate" and stat.rowCount >= 2 for stat in stats)
+    body = fake_s3.calls[0]["Body"]
+    parsed = json.loads(body)
+    assert parsed["type"] == "FeatureCollection"
+    assert len(parsed["features"]) >= 2  # au moins 2 triangles pour 4 points non colinéaires
+    for feature in parsed["features"]:
+        assert feature["geometry"]["type"] == "Polygon"
+
+
 def test_run_pipeline_sort_order_survives_to_directly_connected_writer(tmp_path, monkeypatch):
     """Falsification empirique (design §3.3, piège CLAUDE.md n°7 : une mesure de
     durée ne prouve rien sur le fond, il faut recouvrir le mécanisme réel — ici,
