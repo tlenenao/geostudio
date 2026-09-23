@@ -71,8 +71,12 @@ def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
     # centroid/convexHull/simplify/boundingGeometry) + 4 op de retrait QGIS
     # (Task 21/22/24/25 : transform.snapToLayer, transform.resolveOverlaps,
     # transform.triangulate, transform.densify) + 1 op de retrait QGIS (Task 26 :
-    # transform.minimumBoundingCircle, 8/9 ; le 9e algo QGIS est couvert par composition
-    # d'op déjà livrées, pas de nouvelle op) = 58 total exposées par la route
+    # transform.minimumBoundingCircle) = 58 total exposées par la route. Ces 9 op
+    # couvrent 10 lignes FME (transform.triangulate mappe TINGenerator ET
+    # SurfaceModeller) ; Clipper et Dissolver sont 2 lignes FME distinctes, sans
+    # rapport avec ce compte de 9, dont la reclassification (composition d'op vs.
+    # rester qgis_frozen) reste une décision ouverte de Task 27 Step 3-4, pas
+    # encore tranchée ici — cf. plan Task 27.
     # (reader.file/writer.file restent hors catalogue tant que
     # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 60, route à 58).
     assert set(body) == {
