@@ -67,10 +67,10 @@ def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
     # 19 op existantes (cf. design OperationContract) + 15 op vague 1 (géométrie/coordonnées/SRID,
     # cf. design vague 1 transformers DuckDB) + 11 op vague 2 (schéma/cardinalité,
     # cf. design vague 2 transformers DuckDB) + 4 lecteurs BigQuery/MSSQL/Oracle/Blob
-    # (Vague 2 §6.1, Task 12/13/14/15) + 3 op de retrait QGIS (Task 18/19 :
-    # centroid/convexHull/simplify) = 52 total exposées par la route
+    # (Vague 2 §6.1, Task 12/13/14/15) + 4 op de retrait QGIS (Task 18/19/20 :
+    # centroid/convexHull/simplify/boundingGeometry) = 53 total exposées par la route
     # (reader.file/writer.file restent hors catalogue tant que
-    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 54, route à 52).
+    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 55, route à 53).
     assert set(body) == {
         "reader.collection",
         "transform.filter",
@@ -124,6 +124,7 @@ def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
         "transform.centroid",
         "transform.convexHull",
         "transform.simplify",
+        "transform.boundingGeometry",
     }
     for op in (
         "transform.join",

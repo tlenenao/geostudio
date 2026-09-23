@@ -11,6 +11,7 @@ chaînes de caractères, testable en pur."""
 from app.configs.schemas import PipelineEdge, PipelineNode
 from app.pipelines.ops.schemas import (
     TransformAggregateParams,
+    TransformBoundingGeometryParams,
     TransformBufferParams,
     TransformBulkRemoveAttributesParams,
     TransformBulkRenameAttributesParams,
@@ -609,6 +610,18 @@ def _compile_simplify(
         f"SELECT * EXCLUDE (geometry), {fn}(geometry, {p.tolerance}) AS geometry "
         f"FROM {_qi(input_view)}"
     )
+
+
+def _compile_bounding_geometry(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformBoundingGeometryParams.model_validate(params)
+    fn = "ST_Envelope" if p.mode == "envelope" else "ST_MinimumRotatedRectangle"
+    return f"SELECT * EXCLUDE (geometry), {fn}(geometry) AS geometry FROM {_qi(input_view)}"
 
 
 def _compile_expose_attributes(

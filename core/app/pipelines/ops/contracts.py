@@ -37,6 +37,7 @@ from app.pipelines.ops.schemas import (
     ReaderConnectorSnowflakeParams,
     ReaderFileParams,
     TransformAggregateParams,
+    TransformBoundingGeometryParams,
     TransformBufferParams,
     TransformBulkRemoveAttributesParams,
     TransformBulkRenameAttributesParams,
@@ -487,6 +488,14 @@ OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_simplify,
+    ),
+    "transform.boundingGeometry": OperationContract(
+        op="transform.boundingGeometry",
+        kind="transform",
+        params_schema=TransformBoundingGeometryParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_bounding_geometry,
     ),
     "transform.exposeAttributes": OperationContract(
         op="transform.exposeAttributes",

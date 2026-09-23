@@ -626,3 +626,10 @@ class TransformSimplifyParams(BaseModel):
 
     tolerance: float
     preserveTopology: bool = True
+
+
+class TransformBoundingGeometryParams(BaseModel):
+    """Remplace la géométrie par sa boîte englobante : rectangle aligné aux axes
+    ("envelope") ou rectangle orienté minimal ("orientedRectangle")."""
+
+    mode: Literal["envelope", "orientedRectangle"] = "envelope"

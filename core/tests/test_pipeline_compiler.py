@@ -1026,3 +1026,23 @@ def test_compile_simplify_reduces_vertex_count(conn_spatial):
 def test_compile_simplify_preserve_topology_true_by_default(conn_spatial):
     sql = compile_transform_sql("transform.simplify", {"tolerance": 0.1}, input_view="base")
     assert "ST_SimplifyPreserveTopology" in sql
+
+
+def test_compile_bounding_geometry_envelope(conn_spatial):
+    conn_spatial.execute("CREATE TABLE pts (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO pts VALUES (1, ST_GeomFromText('MULTIPOINT (0 0, 4 0, 4 4, 0 4)'))"
+    )
+    sql = compile_transform_sql(
+        "transform.boundingGeometry", {"mode": "envelope"}, input_view="pts"
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT ST_Area(geometry) FROM out").fetchone()
+    assert row == (16.0,)
+
+
+def test_compile_bounding_geometry_oriented_rectangle(conn_spatial):
+    sql = compile_transform_sql(
+        "transform.boundingGeometry", {"mode": "orientedRectangle"}, input_view="base"
+    )
+    assert "ST_MinimumRotatedRectangle" in sql
