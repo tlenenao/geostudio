@@ -591,6 +591,26 @@ def test_transform_output_srid_merge_passes_on_match():
     assert srid == 4326
 
 
+def test_transform_output_srid_snap_to_layer_raises_on_mismatch():
+    with pytest.raises(ValueError, match="transform.reproject"):
+        compiler.transform_output_srid(
+            "transform.snapToLayer",
+            {"tolerance": 0.01},
+            input_srid=4326,
+            join_srid=3857,
+        )
+
+
+def test_transform_output_srid_snap_to_layer_passes_on_match():
+    srid = compiler.transform_output_srid(
+        "transform.snapToLayer",
+        {"tolerance": 0.01},
+        input_srid=4326,
+        join_srid=4326,
+    )
+    assert srid == 4326
+
+
 def test_compile_swap_coordinates(conn_spatial):
     sql = compile_transform_sql("transform.swapCoordinates", {}, input_view="base")
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")

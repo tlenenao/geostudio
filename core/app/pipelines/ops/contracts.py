@@ -559,6 +559,7 @@ OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_snap_to_layer,
+        output_srid=_compiler._output_srid_reconcile_join,
     ),
     "reader.file": OperationContract(
         op="reader.file",
