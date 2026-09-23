@@ -203,6 +203,61 @@ def test_preview_rejects_writer_node_as_up_to(tmp_path, monkeypatch):
         )
 
 
+def test_preview_rejects_unknown_transform_op(tmp_path, monkeypatch):
+    # I5, revue finale du retrait QGIS : OPERATIONS[node.op] levait un
+    # KeyError brut sur un op retiré/inconnu (ex. un nœud transform.qgis
+    # hérité après upgrade) au lieu du PipelineRuntimeError que le CHANGELOG
+    # promet — ce qui faisait rendre un 500 côté aperçu au lieu d'un 400.
+    _write_partition(tmp_path, rows=[_row(1, "Nord", 10)])
+    monkeypatch.setattr(
+        runtime,
+        "_table_info_for_collection",
+        lambda session, collection_id: _table_info_for(collection_id),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {"id": "t1", "kind": "transform", "op": "transform.qgis", "params": {}},
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
+    with pytest.raises(runtime.PipelineRuntimeError, match="transform.qgis"):
+        runtime.preview_pipeline(
+            session=None,
+            payload=payload,
+            tenant_id="t1",
+            user=None,
+            up_to="t1",
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
+            base_uri=str(tmp_path),
+        )
+
+
 def test_preview_pipeline_serializes_geometry(tmp_path, monkeypatch):
     # Régression finding 1 (revue finale SP-15a) : preview_pipeline renvoyait
     # la géométrie en WKB (bytes) — jsonable_encoder (route FastAPI) plantait

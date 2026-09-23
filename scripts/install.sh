@@ -213,7 +213,7 @@ prompt_etl_engine() {
       etl_enabled=true
     fi
     echo "INSTALL_CORE_ETL_ENABLED=${INSTALL_CORE_ETL_ENABLED} — moteur de pipelines $([ "$etl_enabled" = true ] && echo activé || echo désactivé)."
-  elif [ "${INSTALL_YES:-0}" != "1" ] && confirm "Activer le moteur de pipelines no-code (CORE_ETL_ENABLED — reader.connector, DuckDB ; indépendant du sidecar QGIS ci-dessus) ?"; then
+  elif [ "${INSTALL_YES:-0}" != "1" ] && confirm "Activer le moteur de pipelines no-code (CORE_ETL_ENABLED — reader.connector, DuckDB) ?"; then
     etl_enabled=true
   fi
   set_env_var CORE_ETL_ENABLED "$etl_enabled"

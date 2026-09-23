@@ -244,7 +244,9 @@ migrent ici). Approche **cœur-first** : document déclaratif `Pipeline`
 (étage 1 in-process DuckDB+CEL+pandas+dlt pour les données pures et le spatial
 courant ; étage 2 **sidecar `qgis_process`** GPL, opt-in via profil compose
 `etl`, pour la longue traîne géo profonde — ~1000+ algorithmes sans en écrire
-un), formats GDAL, connecteurs **dlt**, orchestration **procrastinate + OTel**.
+un — **retiré 2026-09-24, cf. amendement A39 §8 et `CHANGELOG.md` : aucun
+sidecar GPL dans ce dépôt**), formats GDAL, connecteurs **dlt**, orchestration
+**procrastinate + OTel**.
 **n8n / Kestra / Apache Hop restent des cartes de repli nommées, jamais le
 centre.** Dépend de SP-11 (runtime DuckDB) ; s'exécute en 4 phases livrables
 (socle headless → canvas → spatial+sidecar → automatisation). Le poste de risque
