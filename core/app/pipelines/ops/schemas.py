@@ -662,3 +662,8 @@ class TransformDensifyParams(BaseModel):
     la longueur donnée. Calculé en process via Shapely."""
 
     maxSegmentLength: float
+
+
+class TransformMinimumBoundingCircleParams(BaseModel):
+    """Remplace la géométrie par le plus petit cercle qui la contient entièrement. Calculé
+    en process via Shapely (agrège toutes les lignes de l'entrée en un seul cercle)."""

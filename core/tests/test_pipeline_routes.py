@@ -70,9 +70,11 @@ def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
     # (Vague 2 §6.1, Task 12/13/14/15) + 4 op de retrait QGIS (Task 18/19/20 :
     # centroid/convexHull/simplify/boundingGeometry) + 4 op de retrait QGIS
     # (Task 21/22/24/25 : transform.snapToLayer, transform.resolveOverlaps,
-    # transform.triangulate, transform.densify) = 57 total exposées par la route
+    # transform.triangulate, transform.densify) + 1 op de retrait QGIS (Task 26 :
+    # transform.minimumBoundingCircle, 8/9 ; le 9e algo QGIS est couvert par composition
+    # d'op déjà livrées, pas de nouvelle op) = 58 total exposées par la route
     # (reader.file/writer.file restent hors catalogue tant que
-    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 59, route à 57).
+    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 60, route à 58).
     assert set(body) == {
         "reader.collection",
         "transform.filter",
@@ -131,6 +133,7 @@ def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
         "transform.resolveOverlaps",
         "transform.triangulate",
         "transform.densify",
+        "transform.minimumBoundingCircle",
     }
     for op in (
         "transform.join",

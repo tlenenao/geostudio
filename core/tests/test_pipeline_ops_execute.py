@@ -87,3 +87,21 @@ def test_execute_densify_adds_vertices_every_max_segment_length(conn):
     _execute_densify(conn, input_view="line", view_name="out", params={"maxSegmentLength": 2})
     row = conn.execute("SELECT ST_NPoints(geometry) FROM out WHERE id = 1").fetchone()
     assert row == (6,)
+
+
+def test_execute_minimum_bounding_circle(conn):
+    conn.execute("CREATE TABLE pts (id INTEGER, geometry GEOMETRY)")
+    conn.execute(
+        "INSERT INTO pts VALUES (1, ST_Point(0, 0)), (2, ST_Point(4, 0)), (3, ST_Point(2, 3))"
+    )
+    from app.pipelines.ops.execute import _execute_minimum_bounding_circle
+
+    _execute_minimum_bounding_circle(conn, input_view="pts", view_name="out", params={})
+    row = conn.execute("SELECT ST_GeometryType(geometry) FROM out").fetchone()
+    assert row == ("POLYGON",)
+
+    # Agrégation géométrie-seule (comme resolveOverlaps/triangulate) : les 3 lignes en
+    # entrée produisent EXACTEMENT une ligne en sortie (le cercle englobant unique), pas
+    # une ligne par point d'entrée.
+    count = conn.execute("SELECT count(*) FROM out").fetchone()[0]
+    assert count == 1

@@ -66,6 +66,7 @@ from app.pipelines.ops.schemas import (
     TransformMapSchemaParams,
     TransformMergeChildrenParams,
     TransformMergeParams,
+    TransformMinimumBoundingCircleParams,
     TransformQgisParams,
     TransformReprojectAttributeParams,
     TransformReprojectParams,
@@ -594,6 +595,14 @@ OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="BSD-3-Clause (Shapely)",
         execute=_execute._execute_densify,
+    ),
+    "transform.minimumBoundingCircle": OperationContract(
+        op="transform.minimumBoundingCircle",
+        kind="transform",
+        params_schema=TransformMinimumBoundingCircleParams,
+        engine="duckdb",
+        engine_license="BSD-3-Clause (Shapely)",
+        execute=_execute._execute_minimum_bounding_circle,
     ),
     "reader.file": OperationContract(
         op="reader.file",

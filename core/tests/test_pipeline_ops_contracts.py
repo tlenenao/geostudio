@@ -106,6 +106,7 @@ def test_operations_registry_has_exactly_the_fifty_one_known_ops():
         "transform.resolveOverlaps",
         "transform.triangulate",
         "transform.densify",
+        "transform.minimumBoundingCircle",
     }
 
 
@@ -175,4 +176,4 @@ def test_ops_catalog_never_exposes_the_exchange_field():
 def test_operations_registry_has_fifty_one_entries_after_vague_2():
     from app.pipelines.ops.contracts import OPERATIONS
 
-    assert len(OPERATIONS) == 59
+    assert len(OPERATIONS) == 60

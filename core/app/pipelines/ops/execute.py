@@ -10,7 +10,7 @@ différence."""
 import pandas as pd
 import shapely.ops
 import shapely.wkb
-from shapely.geometry import MultiPoint
+from shapely.geometry import GeometryCollection, MultiPoint
 
 
 def _qi(name: str) -> str:
@@ -70,3 +70,16 @@ def _execute_densify(conn, *, input_view: str, view_name: str, params: dict) -> 
         ]
     )
     _write_geometry_rows(conn, df, view_name=view_name)
+
+
+def _execute_minimum_bounding_circle(
+    conn, *, input_view: str, view_name: str, params: dict
+) -> None:
+    from app.pipelines.ops.schemas import TransformMinimumBoundingCircleParams
+
+    TransformMinimumBoundingCircleParams.model_validate(params)  # forme seulement
+    df = _read_geometry_rows(conn, input_view)
+    geoms = [shapely.wkb.loads(bytes(g)) for g in df["geometry"]]
+    circle = shapely.minimum_bounding_circle(GeometryCollection(geoms))
+    out = pd.DataFrame({"geometry": [shapely.wkb.dumps(circle)]})
+    _write_geometry_rows(conn, out, view_name=view_name)
