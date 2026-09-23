@@ -16,10 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `qgis-worker` container and its `docker-compose.yml` wiring (`etl` profile,
   shared `etl-scratch` volume entry), the `core-qgis` CI job, and the
   `geostudio-qgis-worker` published image. The 50-algorithm allowlist
-  (`core/app/pipelines/ops/qgis_algorithms.{py,json}`) is kept deliberately —
-  it is still used by `core/scripts/fme_coverage_cli.py` to validate the 7
-  raster rows below — but nothing in the pipeline runtime executes against it
-  any more.
+  (`core/app/pipelines/ops/qgis_algorithms.{py,json}`) is kept as a
+  historical FME↔QGIS reference table — no row in the coverage matrix
+  currently validates against it (the 7 raster rows below are
+  `capability_removed`, not `qgis_frozen`) — and nothing in the pipeline
+  runtime executes against it.
   **There is no automatic migration.** Any existing pipeline with a
   `transform.qgis` node will fail to load/run after upgrading
   (`OPERATIONS.get("transform.qgis")` returns `None`). 12 of the 19 FME

@@ -102,7 +102,6 @@ ensure_jq
 profile_label() {
   case "$1" in
     observability) echo "Observabilité (Grafana/Loki/Tempo/Prometheus)" ;;
-    etl) echo "Sidecar QGIS (transform.qgis, isolé, image mono-arch amd64)" ;;
     *) echo "$1" ;;
   esac
 }
@@ -145,12 +144,6 @@ prompt_profiles() {
         SELECTED_PROFILES+=("$profile")
       fi
     done <<< "$available"
-  fi
-
-  # QGIS (SP-17) : toujours affiché, jamais activable tant qu'absent du
-  # dépôt — ne ment pas à l'utilisateur (spec §5.2).
-  if ! grep -qx "etl" <<< "$available"; then
-    echo "  (Sidecar QGIS (transform.qgis) — à venir, pas encore disponible dans ce dépôt)"
   fi
 
   echo ""

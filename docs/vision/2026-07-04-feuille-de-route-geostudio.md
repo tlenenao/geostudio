@@ -706,6 +706,15 @@ commune, ce trimestre ? ») sans SQL, sur l'API analytique de SP-11.
 > consomme les datasets produits par le moteur de SP-15. Pas deux moteurs de
 > transformation (règle d'archi #3).
 
+> **Amendement 2026-09-24 (A39) :** l'étage 2 « sidecar `qgis_process` GPL
+> opt-in » ci-dessus et dans le tableau §8 est **retiré définitivement**
+> (raison de licence GPL-2.0-or-later, jamais un problème technique) — cf.
+> `### Livré` de `CLAUDE.md` et `CHANGELOG.md`. Le moteur ETL reste
+> **cœur-first, un seul étage** : DuckDB/CEL/pandas/dlt in-process. 12 des 19
+> transformers FME que le sidecar couvrait ont un remplacement DuckDB/Shapely
+> natif ; les 7 restants (tous raster) n'ont aucun équivalent dans ce
+> moteur — absence de support raster, pas une lacune du sidecar retiré.
+
 **Contenu.**
 - **Datasets partagés** (A28) : nouveau type d'item (catalogué, partageable via
   `can()`, versionné, audité) = source + pipeline de transformations déclaratif
@@ -1358,7 +1367,7 @@ commitée.** Aucune dépendance amont ; SP-20 en dépend. Voir la spec dédiée
 | A36 | Storytelling : intégration | **Mode de layout sur `PageManager`**, pas de nouveau widget conteneur | Quick win |
 | A37 | Storytelling : timing | **Quick win immédiat, indépendant** de SP-13/SP-11/SP-14 | Quick win |
 | A38 | Communauté des portails | **Différée** (commentaires, follow, discussions) — hors périmètre v1 | SP-13 |
-| A39 | Moteur ETL (Go/No-Go) | **GO cœur-first** : document `Pipeline` déclaratif + canvas no-code + runtime deux étages (in-process DuckDB/CEL/pandas/dlt ; sidecar `qgis_process` GPL opt-in) + orchestration procrastinate. **NO-GO n8n au centre** (repli nommé avec Kestra/Apache Hop). Subsume le pipeline de transformations de SP-14/A28. Posture GPL = sous-processus (agrégation), cœur Apache-2.0 intact. | SP-15 |
+| A39 | Moteur ETL (Go/No-Go) | **GO cœur-first** : document `Pipeline` déclaratif + canvas no-code + runtime deux étages (in-process DuckDB/CEL/pandas/dlt ; sidecar `qgis_process` GPL opt-in) + orchestration procrastinate. **NO-GO n8n au centre** (repli nommé avec Kestra/Apache Hop). Subsume le pipeline de transformations de SP-14/A28. Posture GPL = sous-processus (agrégation), cœur Apache-2.0 intact. **Amendement 2026-09-24 : étage 2 (sidecar QGIS) retiré, cf. ci-dessus.** | SP-15 |
 | A40 | Undo/redo du builder | **Pile d'instantanés de la `BuilderConfig` entière**, un pas par action commitée (pas de pile de commandes avec inverse par type) | SP-19 |
 
 **Conséquences immédiates des décisions** :
@@ -1425,7 +1434,7 @@ Q2/Q10/Q11 tranchent autrement) :
 | Le CDC déraille (slot qui gonfle le WAL, worker arrêté, schéma modifié) | Disque plein côté PostGIS, lakehouse périmé | Spike d'ouverture SP-11, alerte sur le lag et la taille du slot (SP-10), procédure de re-backfill documentée, `ALTER` = re-backfill assumé en v1 |
 | Étalement des connecteurs de moissonnage (5 retenus, tous livrés) | SP-12 clos côté connecteurs | Un connecteur = un incrément livrable ; ordre A22 figé ; tous livrés au 2026-07-24 |
 | Le canvas de graphe ETL dérape (SP-15) | Chantier qui gonfle | MVP borné (topologie linéaire+join, canvas hand-rolled), Phase 1 livrée sans UI (auteur MCP/JSON) avant le canvas ; React Flow (MIT) seulement si nécessaire |
-| Posture GPL du sidecar `qgis_process` (SP-15) | Blocage distribution | Étage 2 opt-in (profil compose `etl`), sidecar = sous-processus (agrégation) ; cœur Apache-2.0 intact ; posture confirmée avant release |
+| Posture GPL du sidecar `qgis_process` (SP-15) | Blocage distribution | Étage 2 opt-in (profil compose `etl`), sidecar = sous-processus (agrégation) ; cœur Apache-2.0 intact ; posture confirmée avant release — **retiré 2026-09-24, risque clos par suppression plutôt que confirmation.** |
 | Deux moteurs de transformation (SP-15 vs SP-14) | Viole règle #3 | A39 : SP-14 consomme le moteur de SP-15, ne le duplique pas |
 
 ---

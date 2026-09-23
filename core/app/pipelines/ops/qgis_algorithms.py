@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """Allowlist gelée des 50 algorithmes QGIS Processing historiquement exposés
 par transform.qgis (design SP-15d §5/§10, moteur retiré — Task 28 du volet 3
-de retrait du sidecar QGIS). Ne sert plus qu'à valider les lignes
-`qgis_frozen` restantes de la matrice de couverture FME
-(docs/revue/matrice-couverture-fme.jsonl) : scripts/fme_coverage_cli.py
-vérifie que le `geostudio_equivalent` de toute ligne `engine: "qgis"` est
-une clé réelle de QGIS_ALGORITHMS — ces algorithmes (essentiellement
-raster) restent hors périmètre du moteur de pipeline DuckDB. Généré par
+de retrait du sidecar QGIS). Conservée comme référentiel historique de
+correspondance FME↔QGIS (aucune ligne `qgis_frozen`/`engine: "qgis"` ne
+subsiste dans la matrice de couverture FME depuis Task 31 du retrait — le
+mécanisme de validation de `scripts/fme_coverage_cli.py` qui la consommait
+n'a donc plus rien à valider ; il reste en place pour toute ligne future qui
+referait référence à ces algorithmes). Généré par
 scripts/generate_qgis_algorithm_schemas.py contre l'image pinnée
 qgis/qgis:release-3_34 — ne pas éditer qgis_algorithms.json à la main,
 relancer le script si l'allowlist doit changer."""

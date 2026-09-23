@@ -710,7 +710,13 @@ def _execute_transform_chain(
         view_name = f"node_{node.id}"
         from app.pipelines.ops.contracts import OPERATIONS
 
-        contract = OPERATIONS[node.op]
+        contract = OPERATIONS.get(node.op)
+        if contract is None:
+            raise PipelineRuntimeError(
+                f"opération de pipeline inconnue : {node.op!r} — a-t-elle été "
+                "retirée ? Voir CHANGELOG.md pour la liste des ruptures et "
+                "leur migration."
+            )
         if contract.execute is not None:
             contract.execute(conn, input_view=input_view, view_name=view_name, params=node.params)
         else:

@@ -581,7 +581,9 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   Clipper/Dissolver), 7 lignes raster reclassifiées `capability_removed`
   (aucun support raster dans le moteur de pipeline). Sidecar, job CI
   `core-qgis`, image de publication retirés ; allowlist QGIS
-  (`ops/qgis_algorithms.*`) gardée délibérément pour `fme_coverage_cli.py`.
+  (`ops/qgis_algorithms.*`) gardée comme référentiel historique (plus aucun
+  consommateur en exécution : 0 ligne `qgis_frozen`/`engine: "qgis"` dans la
+  matrice FME depuis cette même clôture).
   Catalogue exposé (`GET /pipelines/ops`) à 57 op, brut à 59. **Rupture pour
   tout déploiement existant utilisant `transform.qgis`**, aucune migration
   automatique (cf. `CHANGELOG.md`).

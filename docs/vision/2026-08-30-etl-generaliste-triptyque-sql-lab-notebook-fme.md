@@ -53,6 +53,11 @@ Dans l'autre sens (notebook → pipeline), le pont existe déjà structurellemen
 
 **Le principe organisateur** : le risque d'exécution de code générique reste concentré dans un seul composant délibérément conçu pour ça (Notebook, sessions isolées, quotas, reaping), plutôt que dispersé dans le registre de pipeline — qui garde la rigueur qui fait sa valeur actuelle (déclaratif, borné, revu comme du code cœur). C'est la réponse concrète au risque de dispersion nommé en §9 du document du 07-09 : la généricité arrive par un composant dédié et contenu, pas par la dilution du moteur existant.
 
+**Note 2026-09-24 :** le sidecar QGIS décrit ci-dessus a été retiré (licence
+GPL-2.0-or-later) ; le patron « déléguer à un service externe isolé » reste
+valide en principe pour un futur nœud Notebook, mais n'a plus d'implémentation
+de référence dans ce dépôt. Cf. `CHANGELOG.md`.
+
 ## 4. Gains à faible risque, indépendants de la décision de positionnement
 
 Identifiés lors de l'investigation, réalisables sans attendre une décision sur le Notebook :

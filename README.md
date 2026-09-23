@@ -134,11 +134,10 @@ logique Postgres alimente un lakehouse GeoParquet pour l'analytique.
 ```
 
 Martin (tuiles vectorielles) et TiTiler (raster/COG) sont utilisés en
-interne par le cœur, derrière Traefik. Cinq services supplémentaires
-n'existent que derrière un profil compose optionnel : `etl` (sidecar QGIS
-pour les transformations spatiales), `export` (rendu Playwright des
-exports/rapports), `appexport` (construction du bundle Autoporté),
-`observability` (Grafana/Prometheus/Loki/Tempo).
+interne par le cœur, derrière Traefik. Quatre services supplémentaires
+n'existent que derrière un profil compose optionnel : `export` (rendu
+Playwright des exports/rapports), `appexport` (construction du bundle
+Autoporté), `observability` (Grafana/Prometheus/Loki/Tempo).
 
 ## État du projet
 
