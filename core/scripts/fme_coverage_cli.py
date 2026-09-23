@@ -38,6 +38,7 @@ _VALID_STATUSES = {
     "planned_rust",
     "qgis_frozen",
     "license_blocked",
+    "capability_removed",
     "out_of_scope",
     "unknown",
 }

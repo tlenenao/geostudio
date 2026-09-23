@@ -173,9 +173,6 @@ uv run pytest        # doit être entièrement vert, couverture ≥ seuil
                      # migration qui ajoute des colonnes, ALTER TABLE manuel
                      # nécessaire, sinon échecs UndefinedColumn en cascade
                      # sans rapport avec le code sous revue (piège SP-42).
-                     # Skips qgis (conftest.py skip si CORE_TEST_QGIS_WORKER_URL
-                     # manque, un skip ne rougit rien) : `./scripts/run-qgis-tests.sh`
-                     # pour les exécuter vraiment (aussi en CI, job `core-qgis`).
                      # 2-3 sessions concurrentes sur le même postgis-test partagé
                      # produisent des collisions (UniqueViolation, DuplicateTable)
                      # sans rapport avec le code sous revue — rejouer en isolation
@@ -218,12 +215,14 @@ cd core && PYTHONPATH=. uv run python scripts/feature_health_cli.py --repo .. --
 python3 scripts/check_claude_md_size.py CLAUDE.md .claude-md-size-threshold
 
 # stack
-docker compose up -d # nécessite .env (cf. .env.example) ; 11 services par
+docker compose up -d # nécessite .env (cf. .env.example) ; 12 services par
                      # défaut (postgis, pgbouncer, minio, martin, titiler,
-                     # core, worker, cdc-worker, keycloak, shell, traefik)
-                     # + 5 derrière un profil : etl (qgis-worker), export
-                     # (export-worker), appexport, observability (otel-lgtm,
-                     # postgres-exporter)
+                     # core, worker, cdc-worker, csp-dynamic-conf-init,
+                     # keycloak, shell, traefik) + 4 derrière un profil :
+                     # export (export-worker), appexport
+                     # (appexport-runtime-builder), observability
+                     # (otel-lgtm, postgres-exporter) — le profil `etl` a
+                     # disparu avec le sidecar qgis-worker, son seul membre
 ```
 
 ## Feuille de route (état d'avancement)
@@ -577,6 +576,15 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   (Vague 1) par un secret de connexion pré-configuré au bucket, jamais un
   upload ni une URL arbitraire. 9 lignes `planned_duckdb` de la matrice FME
   passées à `implemented`.
+- **Retrait complet du moteur `transform.qgis` (GPL-2.0-or-later)** — 12 des
+  19 lignes `qgis_frozen` migrées (9 op DuckDB/Shapely neuves + composition
+  Clipper/Dissolver), 7 lignes raster reclassifiées `capability_removed`
+  (aucun support raster dans le moteur de pipeline). Sidecar, job CI
+  `core-qgis`, image de publication retirés ; allowlist QGIS
+  (`ops/qgis_algorithms.*`) gardée délibérément pour `fme_coverage_cli.py`.
+  Catalogue exposé (`GET /pipelines/ops`) à 57 op, brut à 59. **Rupture pour
+  tout déploiement existant utilisant `transform.qgis`**, aucune migration
+  automatique (cf. `CHANGELOG.md`).
 
 ### Conventions tranchées (2026-09-01)
 
@@ -604,9 +612,10 @@ dérive documentaire (piège n°12, ce document était resté 21 SP sans être
 retouché). Ce qui suit est un **pointeur**, pas un résumé — ne pas y
 recoller le détail que le backlog porte déjà :
 
-- Jalon **M14** atteint (SP-44, `REV-095`) : `@pytest.mark.qgis` tourne
-  contre un sidecar réel, câblé en CI (`core-qgis`) ; en local
-  `scripts/run-qgis-tests.sh`.
+- Jalon **M14** atteint (SP-44, `REV-095`) : `@pytest.mark.qgis` tournait
+  contre un sidecar réel, câblé en CI (`core-qgis`) — capacité
+  intégralement retirée depuis (sidecar QGIS, GPL-2.0-or-later), cf.
+  `### Livré`.
 - `REV-073`/`075`/`076`/`077` + GAP-68/69 clos par **SP-60** : filets de
   déployabilité/E2E/perf frontend.
 - `REV-096` clos par **SP-45** : garde d'egress SSRF sur l'appel LLM du

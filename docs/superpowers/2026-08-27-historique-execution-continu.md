@@ -7183,3 +7183,75 @@ surface déjà livrée.
   `42cb58bd`, `d9c3baca` ; clôture : `9e4ba610` (Critical) + ce commit
   (Important, docs) + le commit suivant (Minor, commentaire
   `triptych-narrow.spec.ts`).
+- **Vague 2 — transformers, lecteurs, retrait complet du sidecar QGIS**
+  (spec `docs/superpowers/specs/2026-09-20-vague2-transformers-duckdb-design.md`,
+  plan `docs/superpowers/plans/2026-09-20-vague2-and-qgis-removal.md`, 31
+  tâches). Volet 1 (Tasks 1-10) : 11 nouvelles op `transform.*` (schéma
+  dynamique + cardinalité/ordre), mécanisme `needs_columns`. Volet 2
+  (Tasks 11-17) : 4 nouvelles op `reader.connector.*` (bigquery/mssql/
+  oracle/blob). Volet 3 (Tasks 18-31) : retrait complet du moteur
+  `transform.qgis` (GPL-2.0-or-later) — 9 nouvelles op de remplacement
+  (6 en `compile` SQL pur : centroid/convexHull/simplify/
+  boundingGeometry/snapToLayer/resolveOverlaps ; 3 via un nouveau
+  mécanisme `execute` en Python/Shapely : triangulate/densify/
+  minimumBoundingCircle) + 2 par composition d'op déjà existantes
+  (Clipper→`transform.intersection`, Dissolver→`transform.aggregate` +
+  `ST_Union_Agg`) couvrant 12 des 19 lignes `qgis_frozen` de la matrice ;
+  les 7 lignes raster restantes (ContourGenerator, DEMGenerator,
+  RasterAspectCalculator, RasterHillshader, RasterResampler,
+  RasterToPolygonCoercer, RasterSlopeCalculator) reclassifiées vers une
+  nouvelle valeur de taxonomie `capability_removed` (Task 31, distincte
+  d'`unknown` : la recherche a abouti, la capacité a existé via QGIS,
+  elle est retirée par choix de licence — aucun support raster nulle part
+  dans le moteur de pipeline, blocage architectural). Retrait mécanique
+  (Task 28, `1d5f51ac`) : tout le code d'exécution `transform.qgis` dans
+  `core/app/pipelines/` (schemas, contract, compiler, runtime, jobs,
+  routes) ; `_lock_down()` ne référence plus le scratch QGIS. Task 29
+  (`765136b1`) retire `deploy/qgis-worker/` et le profil compose `etl`
+  (son seul membre). Task 30 (`c43d480e`) retire le job CI `core-qgis` et
+  l'image `geostudio-qgis-worker` de la matrice de publication. Task 31
+  (ce commit) clôture la documentation : taxonomie étendue, 7 lignes
+  raster reclassifiées, 4 lignes de l'inventaire de fonctionnalités
+  corrigées (1 supprimée — la capacité QGIS elle-même — et 3 nettoyées de
+  références à `deploy/qgis-worker/`), bilan de fonctionnalités
+  régénéré (0 surface orpheline), CHANGELOG (rupture documentée, table de
+  migration des 19 anciens `algorithmId`).
+  **Garder délibérément** (déviation assumée par rapport à l'ambition
+  initiale du plan « 0 trace de QGIS dans le dépôt ») :
+  `core/app/pipelines/ops/qgis_algorithms.{py,json}` (l'allowlist des 50
+  algorithmes) et les 2 scripts `scripts/generate_qgis_algorithm_schemas.py`/
+  `scripts/generate_qgis_worker_allowlist.py` — encore consommés par
+  `core/scripts/fme_coverage_cli.py` pour valider les 7 lignes raster
+  `capability_removed` ; documenté dans le commit `1d5f51ac` lui-même,
+  repéré et confirmé exact en revue de clôture plutôt que pris pour argent
+  comptant depuis le texte du plan (piège CLAUDE.md n°12). Catalogue
+  exposé (`GET /pipelines/ops`) : 45 (fin volet 1) → 49 (fin volet 2) → 58
+  (fin des 9 op de remplacement, Task 26, `transform.qgis` encore présent)
+  → **57** après le retrait de `transform.qgis` lui-même (Task 28) ;
+  registre brut (`OPERATIONS`) : 47 → 51 → 60 → **59**. Le chiffre « 58 »
+  écrit dans le texte du plan pour l'état d'arrivée ne correspond en
+  réalité qu'à un point intermédiaire (avant que Task 28 ne retire
+  `transform.qgis` du registre) — corrigé dans `CLAUDE.md` (57 exposé/59
+  brut) plutôt que recopié tel quel.
+  Régénération OpenAPI/TS (Step 6) : diff vide, confirmé pour la 4e fois
+  dans ce même plan (Tasks 10, 17, 28, 31) — le routeur `pipelines`
+  entier reste gated par `CORE_ETL_ENABLED` (faux dans l'environnement
+  d'export), donc jamais présent dans `openapi.json` quel que soit le
+  nombre d'op.
+  Dérive documentaire pré-existante trouvée et corrigée en cours de
+  route, sans rapport direct avec QGIS : le compte de services
+  docker-compose par défaut dans `CLAUDE.md` § Commandes était resté à
+  11 depuis l'ajout du service `csp-dynamic-conf-init` par un SP
+  antérieur (fiabilisation Proxmox) — corrigé à 12 en même temps que le
+  retrait du profil `etl`, plutôt que de laisser cohabiter deux dérives
+  sur la même ligne éditée.
+  Suite complète rejouée avant clôture (piège CLAUDE.md n°6) :
+  `cd core && uv run pytest` (contre un `postgis-test` réel, port hôte
+  5433) 3279 passed, 1 skipped (`test_health_floors_hold`, artefacts de
+  couverture absents hors CI — attendu), **0 failed** : le seul échec
+  pré-existant depuis la Task 29 (`test_every_proof_path_still_exists`,
+  3 chemins morts sous `deploy/qgis-worker/*`) a bien disparu, fermé par
+  le nettoyage de l'inventaire de cette même tâche ; `ruff check`/`ruff
+  format --check`/`lint-imports` verts. `cd shell && npm run test`
+  255 fichiers / 2358 tests passés ; `npm run build` (tsc --noEmit + vite
+  build) réussi.

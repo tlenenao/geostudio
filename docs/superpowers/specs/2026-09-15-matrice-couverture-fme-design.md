@@ -60,7 +60,7 @@ Champs :
 - `usage_frequency` (enum) : `"courant" | "niche" | "inconnu"` — signal faible tiré de la mise en avant du transformer dans la doc FME elle-même, sert uniquement à prioriser un futur sous-projet, jamais une mesure fiable d'usage réel.
 - `notes` (str) : libre, peut rester vide.
 
-Pour les statuts `out_of_scope`/`unknown`/`license_blocked` sans moteur candidat clair : `engine: "n/a"`, `engine_license: ""` (chaîne vide, pas `null`) — le script de vérification n'exige rien sur ces deux champs quand `coverage_status` ∈ `{"out_of_scope", "unknown"}` ; pour `license_blocked`, `engine_license` doit documenter la licence bloquante trouvée (ex. `"GPL-3.0"`), jamais rester vide.
+Pour les statuts `out_of_scope`/`unknown`/`license_blocked`/`capability_removed` sans moteur candidat clair : `engine: "n/a"`, `engine_license: ""` (chaîne vide, pas `null`) — le script de vérification n'exige rien sur ces deux champs quand `coverage_status` ∈ `{"out_of_scope", "unknown"}` ; pour `license_blocked`/`capability_removed`, `engine_license` doit documenter la licence bloquante (ou l'ex-licence retirée) trouvée (ex. `"GPL-3.0"`, `"GPL-2.0-or-later (QGIS, retiré)"`), jamais rester vide.
 
 ## Taxonomie `coverage_status`
 
@@ -74,6 +74,7 @@ Pour les statuts `out_of_scope`/`unknown`/`license_blocked` sans moteur candidat
 | `planned_rust` | Couvrable via une crate Rust dédiée (`engine: "rust:<crate>"`) pas encore intégrée |
 | `qgis_frozen` | Déjà couvert par l'allowlist QGIS gelée existante — jamais attribué à un nouveau besoin, uniquement pour documenter l'existant |
 | `license_blocked` | Seule implémentation open-source connue = GPL ou plus restrictif, aucune alternative MIT/BSD/Apache/EDL connue |
+| `capability_removed` | Une solution existait (sidecar QGIS) et a été retirée pour raison de licence (GPL-2.0-or-later, cf. retrait du sidecar) — distinct d'`unknown` : la recherche a abouti, la capacité a existé, elle n'existe plus par choix explicite |
 | `out_of_scope` | Hors périmètre produit GeoStudio (EDI, bases legacy propriétaires, notions FME sans rapport avec la géospatiale) |
 | `unknown` | Pas encore catégorisé (recherche insuffisante à date) |
 
