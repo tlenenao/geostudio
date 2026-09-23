@@ -154,6 +154,7 @@ def test_all_fifty_one_ops_are_registered():
         "transform.explodeGeometry",
         "transform.centroid",
         "transform.convexHull",
+        "transform.simplify",
         "transform.exposeAttributes",
         "transform.validateAttributes",
         "transform.sort",

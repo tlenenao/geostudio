@@ -1010,3 +1010,19 @@ def test_compile_convex_hull(conn_spatial):
     conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
     row = conn_spatial.execute("SELECT ST_NPoints(geometry) FROM out").fetchone()
     assert row == (5,)  # 4 coins du carré + retour au premier point (anneau fermé)
+
+
+def test_compile_simplify_reduces_vertex_count(conn_spatial):
+    conn_spatial.execute("CREATE TABLE line (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO line VALUES (1, ST_GeomFromText('LINESTRING (0 0, 1 0.01, 2 0, 3 0.01, 4 0)'))"
+    )
+    sql = compile_transform_sql("transform.simplify", {"tolerance": 0.1}, input_view="line")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT ST_NPoints(geometry) FROM out").fetchone()
+    assert row[0] < 5
+
+
+def test_compile_simplify_preserve_topology_true_by_default(conn_spatial):
+    sql = compile_transform_sql("transform.simplify", {"tolerance": 0.1}, input_view="base")
+    assert "ST_SimplifyPreserveTopology" in sql

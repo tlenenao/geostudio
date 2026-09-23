@@ -72,6 +72,7 @@ from app.pipelines.ops.schemas import (
     TransformScanSchemaParams,
     TransformSelectParams,
     TransformSetSridParams,
+    TransformSimplifyParams,
     TransformSortParams,
     TransformSwapCoordinatesParams,
     TransformTranslateGeometryParams,
@@ -478,6 +479,14 @@ OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_convex_hull,
+    ),
+    "transform.simplify": OperationContract(
+        op="transform.simplify",
+        kind="transform",
+        params_schema=TransformSimplifyParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_simplify,
     ),
     "transform.exposeAttributes": OperationContract(
         op="transform.exposeAttributes",

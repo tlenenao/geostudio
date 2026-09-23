@@ -46,6 +46,7 @@ from app.pipelines.ops.schemas import (
     TransformScanSchemaParams,
     TransformSelectParams,
     TransformSetSridParams,
+    TransformSimplifyParams,
     TransformSortParams,
     TransformSwapCoordinatesParams,
     TransformTranslateGeometryParams,
@@ -592,6 +593,21 @@ def _compile_convex_hull(
     TransformConvexHullParams.model_validate(params)  # forme seulement, aucun champ
     return (
         f"SELECT * EXCLUDE (geometry), ST_ConvexHull(geometry) AS geometry FROM {_qi(input_view)}"
+    )
+
+
+def _compile_simplify(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformSimplifyParams.model_validate(params)
+    fn = "ST_SimplifyPreserveTopology" if p.preserveTopology else "ST_Simplify"
+    return (
+        f"SELECT * EXCLUDE (geometry), {fn}(geometry, {p.tolerance}) AS geometry "
+        f"FROM {_qi(input_view)}"
     )
 
 

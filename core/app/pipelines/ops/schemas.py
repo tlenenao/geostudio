@@ -618,3 +618,11 @@ class TransformCentroidParams(BaseModel):
 
 class TransformConvexHullParams(BaseModel):
     """Remplace la géométrie par son enveloppe convexe."""
+
+
+class TransformSimplifyParams(BaseModel):
+    """Réduit le nombre de sommets de la géométrie selon une tolérance spatiale.
+    preserveTopology=True (défaut) évite l'auto-intersection de polygones simplifiés."""
+
+    tolerance: float
+    preserveTopology: bool = True
