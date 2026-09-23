@@ -1024,18 +1024,16 @@ def test_unpinned_reason_accepts_own_image_behind_substitution():
 
 
 # Revue finale SP-26 (C1) : core/Dockerfile (service `worker`, même image que
-# `core`) et deploy/qgis-worker/Dockerfile se passent des fichiers via le
-# volume nommé `etl-scratch:/scratch` (docker-compose.yml) —
-# core/app/pipelines/runtime.py y écrit `in.gpkg` comme l'utilisateur `app`,
-# le sidecar QGIS y écrit `out.gpkg` comme l'utilisateur `qgis`. Ces deux
-# tests figent statiquement le correctif (vérifié empiriquement en session :
-# build réel des deux images, `id -u` comparé, écriture croisée réussie dans
-# les deux ordres de démarrage possibles) pour qu'une future modification de
-# l'un des deux Dockerfiles ne fasse pas diverger silencieusement les uid, ou
-# ne retire pas la création de /scratch.
+# `core`) écrit/lit des fichiers dans le volume nommé `etl-scratch:/scratch`
+# (docker-compose.yml) — core/app/pipelines/runtime.py (reader.file/
+# writer.file) et core/app/terrain3d/jobs.py y passent par l'utilisateur
+# `app`. Le sidecar QGIS qui partageait autrefois ce volume (uid convergent
+# avec `app`, garde anti-PermissionError) a été retiré en entier (Task 29,
+# 2026-09-23) : la convergence d'uid entre deux Dockerfiles n'a plus d'objet,
+# seul le test ci-dessous (création/chown de /scratch dans core/Dockerfile
+# lui-même) reste pertinent.
 
 CORE_DOCKERFILE = REPO / "core" / "Dockerfile"
-QGIS_DOCKERFILE = REPO / "deploy" / "qgis-worker" / "Dockerfile"
 
 
 def _useradd_uid(dockerfile: pathlib.Path) -> str | None:
@@ -1043,35 +1041,17 @@ def _useradd_uid(dockerfile: pathlib.Path) -> str | None:
     return match.group(1) if match else None
 
 
-def test_core_and_qgis_worker_pin_the_same_scratch_uid():
-    core_uid = _useradd_uid(CORE_DOCKERFILE)
-    qgis_uid = _useradd_uid(QGIS_DOCKERFILE)
-    assert core_uid is not None, "core/Dockerfile doit fixer un --uid explicite pour `app`"
-    assert qgis_uid is not None, (
-        "deploy/qgis-worker/Dockerfile doit fixer un --uid explicite pour `qgis`"
-    )
-    assert core_uid == qgis_uid, (
-        f"uid divergents entre core/Dockerfile (app={core_uid}) et "
-        f"deploy/qgis-worker/Dockerfile (qgis={qgis_uid}) — le partage de "
-        "fichiers via etl-scratch échouera en PermissionError selon l'ordre "
-        "de démarrage des conteneurs."
-    )
-
-
 SCRATCH_DOCKERFILES = [
     pytest.param(CORE_DOCKERFILE, "app", id="core"),
-    pytest.param(QGIS_DOCKERFILE, "qgis", id="qgis-worker"),
 ]
 
 
 @pytest.mark.parametrize("dockerfile,user_name", SCRATCH_DOCKERFILES)
 def test_dockerfile_creates_and_chowns_scratch_before_switching_user(dockerfile, user_name):
-    """Généralisé en revue finale SP-26 round 2 (M2) : à l'origine, seul
-    core/Dockerfile était épinglé ici — deploy/qgis-worker/Dockerfile porte
-    exactement le même mkdir+chown de /scratch, tout aussi structurant pour
-    le partage `etl-scratch` (test_core_and_qgis_worker_pin_the_same_scratch_uid
-    juste au-dessus vérifie que les DEUX uid convergent, mais rien ne
-    vérifiait jusqu'ici que le mkdir+chown de qgis-worker existe encore)."""
+    """core/Dockerfile doit créer et chown `/scratch` (volume `etl-scratch`)
+    avant de passer à l'utilisateur non-root, sans quoi `reader.file`/
+    `writer.file` et la conversion terrain3D (`app/terrain3d/jobs.py`)
+    échoueraient en PermissionError."""
     text = dockerfile.read_text()
     mkdir_pos = text.find("mkdir -p /scratch")
     user_pos = text.find(f"\nUSER {user_name}")

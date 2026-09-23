@@ -233,15 +233,11 @@ services:
     image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
     build: !reset null
 
-  # SP-21 : ces trois services restaient en `build:` (fichier de base), donc
+  # SP-21 : ces deux services restaient en `build:` (fichier de base), donc
   # non déployables sans compiler sur l'hôte. Leurs `profiles:` restent ceux
   # du fichier de base — substituer l'image n'allume aucune capacité.
   export-worker:
     image: ghcr.io/tlenenao/geostudio-export-worker:${GEOSTUDIO_VERSION:-latest}
-    build: !reset null
-
-  qgis-worker:
-    image: ghcr.io/tlenenao/geostudio-qgis-worker:${GEOSTUDIO_VERSION:-latest}
     build: !reset null
 
   appexport-runtime-builder:
