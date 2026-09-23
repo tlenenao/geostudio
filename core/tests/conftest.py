@@ -59,28 +59,12 @@ def pg_engine():
 
 
 @pytest.fixture(scope="session")
-def qgis_worker_url():
-    url = os.environ.get("CORE_TEST_QGIS_WORKER_URL")
-    if not url:
-        pytest.skip("CORE_TEST_QGIS_WORKER_URL non défini — test qgis skippé")
-    return url
-
-
-@pytest.fixture(scope="session")
-def qgis_scratch_dir():
-    path = os.environ.get("CORE_TEST_QGIS_SCRATCH_DIR")
-    if not path:
-        pytest.skip("CORE_TEST_QGIS_SCRATCH_DIR non défini — test qgis skippé")
-    return Path(path)
-
-
-@pytest.fixture(scope="session")
 def snowflake_test_dsn():
     # GAP-16 : contrairement à pg_engine (un conteneur postgis-test réel est
-    # toujours disponible dans cet environnement) ou qgis_worker_url (un
-    # sidecar Docker OSS auto-hébergeable), il n'existe pas d'émulateur
-    # Snowflake officiel — ce fixture ne skippe donc JAMAIS pour une raison
-    # temporaire : il documente une limite permanente (design §12).
+    # toujours disponible dans cet environnement), il n'existe pas
+    # d'émulateur Snowflake officiel — ce fixture ne skippe donc JAMAIS pour
+    # une raison temporaire : il documente une limite permanente (design
+    # §12).
     dsn = os.environ.get("CORE_TEST_SNOWFLAKE_DSN")
     if not dsn:
         pytest.skip(
@@ -93,7 +77,7 @@ def snowflake_test_dsn():
 @pytest.fixture(scope="session")
 def chromium_available():
     """Sonde le binaire Chromium de Playwright sans jamais ouvrir de page ;
-    skip proprement (miroir du patron pg_engine/qgis_worker_url ci-dessus)
+    skip proprement (miroir du patron pg_engine ci-dessus)
     si le package n'est pas installé ou si `playwright install --with-deps
     chromium` n'a pas été exécuté dans cet environnement. Utilise
     start()/stop() explicites (jamais le context manager `with

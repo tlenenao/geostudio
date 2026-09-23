@@ -162,7 +162,7 @@ def release_matrix() -> list[dict]:
 
 
 def test_build_and_push_matrix_lives_in_the_reusable_workflow():
-    """§2 de la spec 2026-09-19 : la matrice des 9 images doit vivre dans un
+    """§2 de la spec 2026-09-19 : la matrice des 8 images doit vivre dans un
     SEUL fichier (`_build-and-push.yml`, réutilisable par `release.yml` ET
     par le futur `publish-edge.yml`) — jamais recopiée, sous peine de
     dériver silencieusement entre les deux (classe de bug déjà payée sur ce
@@ -186,7 +186,6 @@ def test_build_and_push_matrix_lives_in_the_reusable_workflow():
         "geostudio-titiler",
         "geostudio-appexport-standalone",
         "geostudio-export-worker",
-        "geostudio-qgis-worker",
         "geostudio-appexport-runtime-builder",
         "geostudio-backup",
     }, f"matrice inattendue : {images}"
@@ -242,8 +241,8 @@ def test_postgis_dockerfile_restores_the_extension_bootstrap_the_old_base_did():
     propre /docker-entrypoint-initdb.d/10_postgis.sh. `postgres:16-bookworm`
     n'a AUCUN script de ce genre — installer les paquets PGDG rend
     l'extension disponible, jamais créée. Sans ce script, tout `docker run`
-    nu de cette image (CI core/core-qgis/stac-conformance, release.yml
-    test-gate + test-gate-arm64, scripts/run-qgis-tests.sh) démarre avec un
+    nu de cette image (CI core/stac-conformance, release.yml
+    test-gate + test-gate-arm64) démarre avec un
     Postgres nu, pas un PostGIS (confirmé empiriquement :
     `type "geometry" does not exist` sur une image fraîchement construite
     avant ce correctif)."""
@@ -710,27 +709,23 @@ def test_release_gate_starts_postgres_like_ci():
     )
 
 
-def test_release_matrix_declares_multiarch_platforms_except_qgis_worker():
+def test_release_matrix_declares_multiarch_platforms_for_every_image():
     """Portage arm64 : chaque entrée de la matrice build-and-push doit
-    déclarer `platforms: linux/amd64,linux/arm64` — sauf
-    `geostudio-qgis-worker` (base qgis/qgis:release-3_34 mono-arch amd64,
-    image 11 Go), qui doit rester `linux/amd64` seul. Sans ce garde-fou, un
+    déclarer `platforms: linux/amd64,linux/arm64`. Sans ce garde-fou, un
     futur ajout d'entrée de matrice pourrait silencieusement omettre
     `platforms:` (docker/build-push-action retombe alors sur l'arch native
-    du runner seule, amd64)."""
+    du runner seule, amd64). L'ancienne exception mono-arch
+    (`geostudio-qgis-worker`, base qgis/qgis:release-3_34) a disparu avec
+    le retrait du sidecar QGIS — plus aucune image de la matrice n'est
+    mono-arch."""
     matrix = release_matrix()
     missing = [e["image"] for e in matrix if not e.get("platforms")]
     assert not missing, f"entrées de matrice sans `platforms:` : {missing}"
     by_image = {e["image"]: e["platforms"] for e in matrix}
-    qgis = by_image.pop("geostudio-qgis-worker", None)
-    assert qgis == "linux/amd64", (
-        "geostudio-qgis-worker doit rester linux/amd64 seul (base "
-        f"mono-arch), trouvé : {qgis!r}"
-    )
     not_multiarch = {
         img: plats for img, plats in by_image.items() if plats != "linux/amd64,linux/arm64"
     }
-    assert not not_multiarch, f"entrées non multi-arch (hors qgis-worker) : {not_multiarch}"
+    assert not not_multiarch, f"entrées non multi-arch : {not_multiarch}"
 
 
 def test_build_and_push_needs_both_test_gates():
@@ -777,37 +772,6 @@ def test_release_gate_arm64_starts_postgres_like_ci():
     assert not missing, (
         "release.yml (test-gate-arm64) démarre Postgres sans les réglages "
         f"que ci.yml (core) lui donne : {sorted(missing)}."
-    )
-
-
-def test_ci_actually_runs_the_qgis_marked_tests():
-    """Les 5 tests `@pytest.mark.qgis` skippent SILENCIEUSEMENT dès que
-    CORE_TEST_QGIS_WORKER_URL est absent (tests/conftest.py) — un skip ne
-    rougit aucune CI. Ils ont ainsi dormi de SP-15d (2026-08-06) à SP-44
-    (2026-09-05), où leur première exécution réelle a trouvé DEUX bugs de
-    production (`_lock_down()` bloquait le COPY du sidecar ; `fid` GeoPackage
-    non filtré). Ce test interdit le retour à cet état : si le job disparaît,
-    ou cesse de fournir l'une des deux variables, la CI rougit au lieu de
-    reprendre le skip.
-
-    Ne vérifie que le câblage déclaré, jamais l'exécution — c'est le parti de
-    tout ce fichier."""
-    doc = yaml.safe_load(CI.read_text())
-    job = doc["jobs"].get("core-qgis")
-    assert job is not None, (
-        "ci.yml n'a plus de job `core-qgis` : les 5 tests @pytest.mark.qgis "
-        "sont redevenus silencieusement skippés en CI."
-    )
-    env = job.get("env", {})
-    for var in ("CORE_TEST_QGIS_WORKER_URL", "CORE_TEST_QGIS_SCRATCH_DIR"):
-        assert env.get(var), (
-            f"ci.yml (core-qgis) ne fournit pas {var} — les fixtures de "
-            "tests/conftest.py skippent alors les 5 tests sans rien signaler."
-        )
-    runs = " ".join(st.get("run", "") for st in job["steps"])
-    assert "-m qgis" in runs, (
-        "ci.yml (core-qgis) ne sélectionne plus les tests marqués qgis "
-        "(`pytest -m qgis`)."
     )
 
 

@@ -221,8 +221,7 @@ filterwarnings = [
 ]
 markers = [
     "postgis: nécessite un PostGIS réel (CORE_TEST_DATABASE_URL) ; skippé sinon",
-    "qgis: nécessite un sidecar qgis-worker réel (CORE_TEST_QGIS_WORKER_URL) ; skippé sinon — sidecar HTTP testé pour lui-même (deploy/qgis-worker/server.py), plus consommé par aucune op de pipeline depuis Task 28",
-    "snowflake: nécessite un compte Snowflake réel (CORE_TEST_SNOWFLAKE_DSN) ; skippé sinon — JAMAIS câblé en CI (service cloud propriétaire, pas de sidecar auto-hébergeable équivalent au qgis-worker) ; manuel uniquement",
+    "snowflake: nécessite un compte Snowflake réel (CORE_TEST_SNOWFLAKE_DSN) ; skippé sinon — JAMAIS câblé en CI (service cloud propriétaire, pas de sidecar auto-hébergeable équivalent) ; manuel uniquement",
     "playwright: nécessite le binaire Chromium (playwright install --with-deps chromium) ; skippé sinon",
     "docker: nécessite un démon Docker réel (build local de l'image, jamais un pull) ; skippé sinon",
 ]
