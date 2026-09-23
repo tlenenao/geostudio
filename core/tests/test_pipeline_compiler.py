@@ -1089,3 +1089,16 @@ def test_compile_snap_to_layer_without_join_view_raises():
             {"tolerance": 0.01},
             input_view="base",
         )
+
+
+def test_compile_resolve_overlaps_splits_into_disjoint_and_shared_parts(conn_spatial):
+    conn_spatial.execute("CREATE TABLE overlapping (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO overlapping VALUES "
+        "(1, ST_GeomFromText('POLYGON ((0 0, 2 0, 2 2, 0 2, 0 0))')), "
+        "(2, ST_GeomFromText('POLYGON ((1 1, 3 1, 3 3, 1 3, 1 1))'))"
+    )
+    sql = compile_transform_sql("transform.resolveOverlaps", {}, input_view="overlapping")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    count = conn_spatial.execute("SELECT count(*) FROM out").fetchone()[0]
+    assert count == 3  # 2 parties disjointes + 1 partie commune

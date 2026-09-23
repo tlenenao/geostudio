@@ -41,6 +41,7 @@ from app.pipelines.ops.schemas import (
     TransformQgisParams,
     TransformReprojectAttributeParams,
     TransformReprojectParams,
+    TransformResolveOverlapsParams,
     TransformRotateGeometryParams,
     TransformRoundCoordinatesParams,
     TransformScaleGeometryParams,
@@ -774,6 +775,23 @@ def _compile_snap_to_layer(
         f"SELECT t.* EXCLUDE (geometry), "
         f"ST_Snap(t.geometry, o.geometry, {p.tolerance}) AS geometry "
         f"FROM {_qi(input_view)} t, {_qi(join_view)} o"
+    )
+
+
+def _compile_resolve_overlaps(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    TransformResolveOverlapsParams.model_validate(params)  # forme seulement, aucun champ
+    return (
+        f"WITH agg AS (SELECT list(geometry) AS geoms FROM {_qi(input_view)}), "
+        f"noded AS (SELECT ST_Node(ST_Collect(geoms)) AS n FROM agg), "
+        f"edges AS (SELECT UNNEST(ST_Dump(n)).geom AS g FROM noded), "
+        f"edge_list AS (SELECT list(g) AS glist FROM edges) "
+        f"SELECT UNNEST(ST_Dump(ST_Polygonize(glist))).geom AS geometry FROM edge_list"
     )
 
 

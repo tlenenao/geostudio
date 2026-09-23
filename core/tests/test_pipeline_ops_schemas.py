@@ -163,6 +163,7 @@ def test_all_fifty_one_ops_are_registered():
         "transform.mergeChildren",
         "transform.mapSchema",
         "transform.snapToLayer",
+        "transform.resolveOverlaps",
     }
     assert set(OP_KINDS) == set(OP_PARAMS)
 

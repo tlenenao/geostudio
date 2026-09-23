@@ -67,6 +67,7 @@ from app.pipelines.ops.schemas import (
     TransformQgisParams,
     TransformReprojectAttributeParams,
     TransformReprojectParams,
+    TransformResolveOverlapsParams,
     TransformRotateGeometryParams,
     TransformRoundCoordinatesParams,
     TransformScaleGeometryParams,
@@ -560,6 +561,14 @@ OPERATIONS: dict[str, OperationContract] = {
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_snap_to_layer,
         output_srid=_compiler._output_srid_reconcile_join,
+    ),
+    "transform.resolveOverlaps": OperationContract(
+        op="transform.resolveOverlaps",
+        kind="transform",
+        params_schema=TransformResolveOverlapsParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_resolve_overlaps,
     ),
     "reader.file": OperationContract(
         op="reader.file",

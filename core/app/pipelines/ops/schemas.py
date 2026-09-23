@@ -644,3 +644,9 @@ class TransformSnapToLayerParams(BaseModel):
 
     withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
     tolerance: float
+
+
+class TransformResolveOverlapsParams(BaseModel):
+    """Décompose un ensemble de géométries qui se chevauchent en features géométriques
+    disjointes (parties non chevauchantes + parties communes). Géométrie uniquement —
+    n'associe pas les attributs des features d'origine à chaque morceau de sortie."""
