@@ -1025,13 +1025,18 @@ def test_unpinned_reason_accepts_own_image_behind_substitution():
 
 # Revue finale SP-26 (C1) : core/Dockerfile (service `worker`, même image que
 # `core`) écrit/lit des fichiers dans le volume nommé `etl-scratch:/scratch`
-# (docker-compose.yml) — core/app/pipelines/runtime.py (reader.file/
-# writer.file) et core/app/terrain3d/jobs.py y passent par l'utilisateur
-# `app`. Le sidecar QGIS qui partageait autrefois ce volume (uid convergent
-# avec `app`, garde anti-PermissionError) a été retiré en entier (Task 29,
-# 2026-09-23) : la convergence d'uid entre deux Dockerfiles n'a plus d'objet,
-# seul le test ci-dessous (création/chown de /scratch dans core/Dockerfile
-# lui-même) reste pertinent.
+# (docker-compose.yml) via l'utilisateur `app`. Seul
+# `core/app/terrain3d/jobs.py` (`_TERRAIN3D_SCRATCH_ROOT = "/scratch"`, ligne
+# 29) dépend structurellement de ce chemin en dur — `core/app/pipelines/
+# runtime.py` (reader.file/writer.file) n'y touche pas : ses répertoires
+# autorisés (`extra_allowed_dirs`) sont des chemins arbitraires fournis par
+# l'auteur du pipeline, jamais `/scratch` (vérifié contre `_prepare()`/
+# `_lock_down()`, revue Task 29 du retrait qgis-worker, 2026-09-23). Le
+# sidecar QGIS qui partageait autrefois ce volume (uid convergent avec
+# `app`, garde anti-PermissionError) a été retiré en entier (même Task 29) :
+# la convergence d'uid entre deux Dockerfiles n'a plus d'objet, seul le test
+# ci-dessous (création/chown de /scratch dans core/Dockerfile lui-même,
+# pour terrain3d) reste pertinent.
 
 CORE_DOCKERFILE = REPO / "core" / "Dockerfile"
 
@@ -1049,9 +1054,12 @@ SCRATCH_DOCKERFILES = [
 @pytest.mark.parametrize("dockerfile,user_name", SCRATCH_DOCKERFILES)
 def test_dockerfile_creates_and_chowns_scratch_before_switching_user(dockerfile, user_name):
     """core/Dockerfile doit créer et chown `/scratch` (volume `etl-scratch`)
-    avant de passer à l'utilisateur non-root, sans quoi `reader.file`/
-    `writer.file` et la conversion terrain3D (`app/terrain3d/jobs.py`)
-    échoueraient en PermissionError."""
+    avant de passer à l'utilisateur non-root, sans quoi la conversion
+    terrain3D (`app/terrain3d/jobs.py`, `_TERRAIN3D_SCRATCH_ROOT = "/scratch"`
+    en dur) échouerait en PermissionError. `reader.file`/`writer.file`
+    (`app/pipelines/runtime.py`) n'en dépendent pas : leurs répertoires
+    autorisés sont fournis par l'auteur du pipeline (`extra_allowed_dirs`),
+    jamais `/scratch` par défaut."""
     text = dockerfile.read_text()
     mkdir_pos = text.find("mkdir -p /scratch")
     user_pos = text.find(f"\nUSER {user_name}")
