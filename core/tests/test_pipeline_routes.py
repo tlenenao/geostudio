@@ -68,11 +68,11 @@ def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
     # cf. design vague 1 transformers DuckDB) + 11 op vague 2 (schéma/cardinalité,
     # cf. design vague 2 transformers DuckDB) + 4 lecteurs BigQuery/MSSQL/Oracle/Blob
     # (Vague 2 §6.1, Task 12/13/14/15) + 4 op de retrait QGIS (Task 18/19/20 :
-    # centroid/convexHull/simplify/boundingGeometry) + 3 op de retrait QGIS
-    # (Task 21/22/24 : transform.snapToLayer, transform.resolveOverlaps,
-    # transform.triangulate) = 56 total exposées par la route (reader.file/writer.file
-    # restent hors catalogue tant que CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre
-    # brut à 58, route à 56).
+    # centroid/convexHull/simplify/boundingGeometry) + 4 op de retrait QGIS
+    # (Task 21/22/24/25 : transform.snapToLayer, transform.resolveOverlaps,
+    # transform.triangulate, transform.densify) = 57 total exposées par la route
+    # (reader.file/writer.file restent hors catalogue tant que
+    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 59, route à 57).
     assert set(body) == {
         "reader.collection",
         "transform.filter",
@@ -130,6 +130,7 @@ def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
         "transform.snapToLayer",
         "transform.resolveOverlaps",
         "transform.triangulate",
+        "transform.densify",
     }
     for op in (
         "transform.join",

@@ -56,3 +56,17 @@ def _execute_triangulate(conn, *, input_view: str, view_name: str, params: dict)
         }
     )
     _write_geometry_rows(conn, out, view_name=view_name)
+
+
+def _execute_densify(conn, *, input_view: str, view_name: str, params: dict) -> None:
+    from app.pipelines.ops.schemas import TransformDensifyParams
+
+    p = TransformDensifyParams.model_validate(params)
+    df = _read_geometry_rows(conn, input_view)
+    df = df.assign(
+        geometry=[
+            shapely.wkb.dumps(shapely.segmentize(shapely.wkb.loads(bytes(g)), p.maxSegmentLength))
+            for g in df["geometry"]
+        ]
+    )
+    _write_geometry_rows(conn, df, view_name=view_name)

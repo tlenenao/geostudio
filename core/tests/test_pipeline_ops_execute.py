@@ -77,3 +77,13 @@ def test_execute_triangulate_merges_distinct_groups_into_one_global_cloud(conn):
         "SELECT min(ST_XMin(geometry)), max(ST_XMax(geometry)) FROM out_grouped"
     ).fetchone()
     assert bounds[0] < 50 and bounds[1] > 50  # une géométrie de sortie s'étend sur les 2 nuages
+
+
+def test_execute_densify_adds_vertices_every_max_segment_length(conn):
+    conn.execute("CREATE TABLE line (id INTEGER, geometry GEOMETRY)")
+    conn.execute("INSERT INTO line VALUES (1, ST_GeomFromText('LINESTRING (0 0, 10 0)'))")
+    from app.pipelines.ops.execute import _execute_densify
+
+    _execute_densify(conn, input_view="line", view_name="out", params={"maxSegmentLength": 2})
+    row = conn.execute("SELECT ST_NPoints(geometry) FROM out WHERE id = 1").fetchone()
+    assert row == (6,)

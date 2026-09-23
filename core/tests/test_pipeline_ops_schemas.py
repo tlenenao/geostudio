@@ -165,6 +165,7 @@ def test_all_fifty_one_ops_are_registered():
         "transform.snapToLayer",
         "transform.resolveOverlaps",
         "transform.triangulate",
+        "transform.densify",
     }
     assert set(OP_KINDS) == set(OP_PARAMS)
 

@@ -655,3 +655,10 @@ class TransformResolveOverlapsParams(BaseModel):
 class TransformTriangulateParams(BaseModel):
     """Triangulation de Delaunay de la géométrie (points) en entrée — une ligne de sortie par
     triangle. Calculée en process via Shapely (BSD-3-Clause), pas en SQL."""
+
+
+class TransformDensifyParams(BaseModel):
+    """Ajoute des sommets le long de chaque segment de la géométrie pour qu'aucun ne dépasse
+    la longueur donnée. Calculé en process via Shapely."""
+
+    maxSegmentLength: float

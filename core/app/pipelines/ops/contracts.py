@@ -48,6 +48,7 @@ from app.pipelines.ops.schemas import (
     TransformCountVerticesParams,
     TransformCountWithinParams,
     TransformCreateGeometryParams,
+    TransformDensifyParams,
     TransformDeriveParams,
     TransformDetectChangesParams,
     TransformExplodeGeometryParams,
@@ -585,6 +586,14 @@ OPERATIONS: dict[str, OperationContract] = {
         engine="duckdb",
         engine_license="BSD-3-Clause (Shapely)",
         execute=_execute._execute_triangulate,
+    ),
+    "transform.densify": OperationContract(
+        op="transform.densify",
+        kind="transform",
+        params_schema=TransformDensifyParams,
+        engine="duckdb",
+        engine_license="BSD-3-Clause (Shapely)",
+        execute=_execute._execute_densify,
     ),
     "reader.file": OperationContract(
         op="reader.file",
