@@ -597,7 +597,7 @@ cette décision a été fermée par SP-34 (cf. `### Livré` ci-dessus).
 
 ### Suivis et dette non bloquante
 
-Détail complet (194 entrées `REV-nnn`, 16 ouvertes, recompté le 2026-09-20
+Détail complet (195 entrées `REV-nnn`, 17 ouvertes, recompté le 2026-09-20
 par classification robuste de chaque ligne `**État :**`) dans
 **`docs/revue/2026-09-04-backlog.md`** — revalidé le 2026-09-06 après une
 dérive documentaire (piège n°12, ce document était resté 21 SP sans être
