@@ -447,11 +447,19 @@ test("matrice rôle×flag : l'option Pipeline n'est visible que si automation.ma
           HttpResponse.json({ readOnly: false, etlEnabled }),
         ),
       );
+      const queryClient = makeQueryClient(privileges);
       const { unmount } = render(
-        <Harness queryClient={makeQueryClient(privileges)}>
+        <Harness queryClient={queryClient}>
           <NewItemButton />
         </Harness>,
       );
+      // `canCreatePipeline` dépend de useInstanceInfo() (fetch MSW réel,
+      // async) en plus de useMe() (seedé synchrone). Sans attendre que la
+      // query "instance" ait résolu, `etlEnabled` vaut toujours `false` au
+      // moment de cette assertion — la matrice ne discriminerait alors
+      // jamais vieille logique (etlEnabled seul) et nouvelle logique
+      // (automation.manage && etlEnabled). Cf. NewItemButton.test.tsx D03.
+      await waitFor(() => expect(queryClient.getQueryState(["instance"])?.status).toBe("success"));
       const trigger = screen.queryByRole("button", { name: "Nouveau" });
       const expectPipelineVisible = privileges.includes("automation.manage") && etlEnabled;
       if (trigger) {
