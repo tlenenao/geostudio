@@ -65,7 +65,14 @@ export function NewItemButton() {
   const canCreateApp = privileges === undefined || privileges.includes("apps.manage");
   const canCreateMap = privileges === undefined || privileges.includes("maps.manage");
   const canCreateDataset = privileges === undefined || privileges.includes("data.manage");
-  const hasAnyCreatableKind = canCreateApp || canCreateMap || canCreateDataset || etlEnabled;
+  // D03 : pipeline/visual-query gatés uniquement sur etlEnabled jusqu'ici —
+  // un rôle sans automation.manage remplissait tout le formulaire pour
+  // échouer sur un 403 serveur final. Même doublet privilège+capacité que
+  // la barre de domaines (capabilities.ts:61-66, doctrine "un privilège
+  // manquant MASQUE, une capacité coupée VERROUILLE").
+  const canCreatePipeline =
+    (privileges === undefined || privileges.includes("automation.manage")) && etlEnabled;
+  const hasAnyCreatableKind = canCreateApp || canCreateMap || canCreateDataset || canCreatePipeline;
 
   // Slug auto-suivi du titre tant que l'utilisateur ne l'a pas édité lui-même.
   useEffect(() => {
@@ -82,7 +89,7 @@ export function NewItemButton() {
       ((kind === "app" || kind === "dashboard" || kind === "site") && canCreateApp) ||
       (kind === "map" && canCreateMap) ||
       (kind === "dataset" && canCreateDataset) ||
-      ((kind === "pipeline" || kind === "visual-query") && etlEnabled);
+      ((kind === "pipeline" || kind === "visual-query") && canCreatePipeline);
     if (stillAllowed) return;
     const fallback: Kind | undefined = canCreateApp
       ? "app"
@@ -90,11 +97,11 @@ export function NewItemButton() {
         ? "map"
         : canCreateDataset
           ? "dataset"
-          : etlEnabled
+          : canCreatePipeline
             ? "visual-query"
             : undefined;
     if (fallback) setKind(fallback);
-  }, [privileges, kind, canCreateApp, canCreateMap, canCreateDataset, etlEnabled]);
+  }, [privileges, kind, canCreateApp, canCreateMap, canCreateDataset, canCreatePipeline]);
 
   if (!hasAnyCreatableKind) return null;
 
@@ -204,10 +211,10 @@ export function NewItemButton() {
               {canCreateDataset && (
                 <option value="dataset">{t("newItem.datasetSharedOption")}</option>
               )}
-              {etlEnabled && (
+              {canCreatePipeline && (
                 <option value="visual-query">{t("newItem.datasetVisualQueryOption")}</option>
               )}
-              {etlEnabled && <option value="pipeline">{t("newItem.pipelineOption")}</option>}
+              {canCreatePipeline && <option value="pipeline">{t("newItem.pipelineOption")}</option>}
             </select>
           </label>
           {kind !== "map" && kind !== "dataset" && kind !== "pipeline" && (
