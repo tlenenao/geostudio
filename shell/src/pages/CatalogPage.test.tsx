@@ -276,6 +276,85 @@ test("masque le lien vers /reports sur une vue à fixedType fixé (ex. /reports 
   expect(screen.queryByRole("link", { name: "Rapports planifiés →" })).not.toBeInTheDocument();
 });
 
+test("propose un lien vers /bookmarks quand le type de la barre de domaines est bookmark (atterrissage Analytique)", async () => {
+  function wrapperWithBookmarkType({ children }: { children: ReactNode }) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "test-token" });
+    return (
+      <MemoryRouter initialEntries={["/?type=bookmark"]}>
+        <QueryClientProvider client={queryClient}>
+          <ItemClientProvider client={client}>{children}</ItemClientProvider>
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+  }
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper: wrapperWithBookmarkType });
+  expect(await screen.findByRole("link", { name: "Signets →" })).toHaveAttribute(
+    "href",
+    "/bookmarks",
+  );
+});
+
+test("masque le lien vers /bookmarks hors de l'atterrissage Analytique (catalogue général)", async () => {
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
+  await screen.findByRole("combobox", { name: "Type" });
+  expect(screen.queryByRole("link", { name: "Signets →" })).not.toBeInTheDocument();
+});
+
+test("masque le lien vers /bookmarks sur /bookmarks lui-même (fixedType fixé)", async () => {
+  render(<CatalogPage onOpenItem={() => {}} fixedType="bookmark" />, { wrapper });
+  expect(screen.queryByRole("link", { name: "Signets →" })).not.toBeInTheDocument();
+});
+
+test("propose un lien vers /analytics/sql sur l'atterrissage Analytique pour un privilège analytics.sql_lab.access", async () => {
+  server.use(
+    http.get("https://core.test/v1/me", () =>
+      HttpResponse.json({
+        id: "u1",
+        username: "alice",
+        tenantId: "t1",
+        role: { id: "r1", name: "Analyste", slug: "analyst" },
+        privileges: ["analytics.sql_lab.access"],
+        version: "0.1.0",
+        tenantSlug: "demo",
+      }),
+    ),
+  );
+  function wrapperWithBookmarkType({ children }: { children: ReactNode }) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "test-token" });
+    return (
+      <MemoryRouter initialEntries={["/?type=bookmark"]}>
+        <QueryClientProvider client={queryClient}>
+          <ItemClientProvider client={client}>{children}</ItemClientProvider>
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+  }
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper: wrapperWithBookmarkType });
+  expect(await screen.findByRole("link", { name: "SQL Lab →" })).toHaveAttribute(
+    "href",
+    "/analytics/sql",
+  );
+});
+
+test("masque le lien vers /analytics/sql sans le privilège analytics.sql_lab.access", async () => {
+  function wrapperWithBookmarkType({ children }: { children: ReactNode }) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "test-token" });
+    return (
+      <MemoryRouter initialEntries={["/?type=bookmark"]}>
+        <QueryClientProvider client={queryClient}>
+          <ItemClientProvider client={client}>{children}</ItemClientProvider>
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+  }
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper: wrapperWithBookmarkType });
+  await screen.findByRole("link", { name: "Signets →" });
+  expect(screen.queryByRole("link", { name: "SQL Lab →" })).not.toBeInTheDocument();
+});
+
 test("prend le type initial depuis le paramètre d'URL ?type=", async () => {
   function wrapperWithInitialType({ children }: { children: ReactNode }) {
     const queryClient = new QueryClient({

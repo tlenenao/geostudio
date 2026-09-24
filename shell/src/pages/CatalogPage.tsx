@@ -149,6 +149,18 @@ export function CatalogPage({
                   {t("catalog.scheduledReportsLink")}
                 </Link>
               )}
+              {type === "bookmark" && !fixedType && (
+                <Link to="/bookmarks" className="text-accent hover:underline">
+                  {t("catalog.bookmarksLink")}
+                </Link>
+              )}
+              {type === "bookmark" &&
+                !fixedType &&
+                me.data?.privileges.includes("analytics.sql_lab.access") === true && (
+                  <Link to="/analytics/sql" className="text-accent hover:underline">
+                    {t("catalog.sqlLabLink")}
+                  </Link>
+                )}
               <label className="flex flex-col gap-1 text-sm text-ink">
                 {t("catalog.scopeLabel")}
                 <select

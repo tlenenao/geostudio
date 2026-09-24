@@ -98,6 +98,8 @@ export const fr = {
   "catalog.searchLabel": "Rechercher",
   "catalog.typeLabel": "Type",
   "catalog.scheduledReportsLink": "Rapports planifiés →",
+  "catalog.bookmarksLink": "Signets →",
+  "catalog.sqlLabLink": "SQL Lab →",
   "catalog.scopeLabel": "Portée",
   "catalog.sortByLabel": "Trier par",
   "catalog.ownerLabel": "Propriétaire",
