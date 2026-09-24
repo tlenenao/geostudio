@@ -38,7 +38,8 @@ route. Le détail complet, avec sa preuve dans le code, est dans
   collection ; formulaires avec pièces jointes (photos, documents) par
   entité.
 - **Automatiser sans code** : pipelines ETL en graphe (lecteurs REST/
-  Postgres, transformations spatiales via QGIS Processing, écritures),
+  Postgres/BigQuery/MSSQL/Oracle/objet, transformations spatiales et
+  tabulaires — 57 opérations DuckDB/Shapely, écritures),
   exécution à la demande ou planifiée (cron), alertes de seuil notifiées par
   email/webhook au changement d'état, rapports PDF planifiés d'une vue
   enregistrée, cloche de notifications in-app.
@@ -134,11 +135,10 @@ logique Postgres alimente un lakehouse GeoParquet pour l'analytique.
 ```
 
 Martin (tuiles vectorielles) et TiTiler (raster/COG) sont utilisés en
-interne par le cœur, derrière Traefik. Cinq services supplémentaires
-n'existent que derrière un profil compose optionnel : `etl` (sidecar QGIS
-pour les transformations spatiales), `export` (rendu Playwright des
-exports/rapports), `appexport` (construction du bundle Autoporté),
-`observability` (Grafana/Prometheus/Loki/Tempo).
+interne par le cœur, derrière Traefik. Quatre services supplémentaires
+n'existent que derrière un profil compose optionnel : `export` (rendu
+Playwright des exports/rapports), `appexport` (construction du bundle
+Autoporté), `observability` (Grafana/Prometheus/Loki/Tempo).
 
 ## État du projet
 
@@ -159,9 +159,8 @@ testées ne sont accessibles que par une URL directe faute de lien de
 navigation câblé (l'inventaire exact, avec sa preuve, est dans la matrice
 de fonctionnalités) ; la restauration d'une sauvegarde n'a jamais été
 rejouée de bout en bout ; la Content-Security-Policy tourne en mode
-« report-only », pas encore bloquant ; les transformations spatiales QGIS
-n'ont pas été exécutées contre un vrai sidecar dans un environnement de
-test. Ce dépôt documente ces manques explicitement plutôt que de les
+« report-only », pas encore bloquant. Ce dépôt documente ces manques
+explicitement plutôt que de les
 taire — voir la matrice et [`docs/revue/2026-09-04-backlog.md`](docs/revue/2026-09-04-backlog.md)
 pour le détail et le suivi.
 

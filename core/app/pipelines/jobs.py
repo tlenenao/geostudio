@@ -234,10 +234,6 @@ def run_pipeline_task(run_id: str, tenant_id: str) -> None:
                 base_uri=_analytics_base_uri(),
                 s3_client=_s3_client_from_env(),
                 exports_bucket=os.environ.get("S3_EXPORTS_BUCKET", "geostudio-exports"),
-                qgis_worker_url=os.environ.get("QGIS_WORKER_URL", ""),
-                qgis_worker_timeout_seconds=int(
-                    os.environ.get("QGIS_WORKER_TIMEOUT_SECONDS", "600")
-                ),
                 on_node_complete=_make_progress_callback(
                     factory, run_id=run_id, tenant_id=tenant_id
                 ),

@@ -128,42 +128,6 @@ class WriterDatasetParams(BaseModel):
         return self
 
 
-class TransformQgisParams(BaseModel):
-    """Exécute un algorithme QGIS Processing de la liste autorisée. Renseignez
-    `outputSrid` explicitement si l'algorithme change le système de
-    coordonnées (ex. une reprojection) ; laissé vide, la sortie garde le
-    système de coordonnées de l'entrée. Attention : les distances/tolérances
-    d'un algorithme QGIS sont dans les unités du système de coordonnées de
-    la couche d'entrée, jamais converties automatiquement en mètres.
-
-    Allowlist gelée : app.pipelines.ops.qgis_algorithms.QGIS_ALGORITHMS
-    (design SP-15d §5/§10). `params` ne doit JAMAIS contenir INPUT/OUTPUT —
-    le runtime les injecte (chemins scratch, design §6). La règle
-    « pas de conversion d'unité automatique » est vraie pour la quasi-totalité
-    des 50 op de l'allowlist, fausse pour un algorithme de reprojection
-    (vérifié empiriquement en design, §2)."""
-
-    algorithmId: str
-    params: dict[str, Any] = Field(default_factory=dict)
-    outputSrid: str | None = Field(default=None, pattern=r"^[A-Za-z]+:\d+$")
-
-    @model_validator(mode="after")
-    def _check_allowlisted_and_required_params(self) -> "TransformQgisParams":
-        from app.pipelines.ops.qgis_algorithms import QGIS_ALGORITHMS
-
-        schema = QGIS_ALGORITHMS.get(self.algorithmId)
-        if schema is None:
-            raise ValueError(f"algorithme non autorisé : {self.algorithmId}")
-        required = {name for name, p in schema["parameters"].items() if not p["optional"]} - {
-            "INPUT",
-            "OUTPUT",
-        }
-        missing = required - self.params.keys()
-        if missing:
-            raise ValueError(f"{self.algorithmId} : paramètres requis manquants {sorted(missing)}")
-        return self
-
-
 class ReaderConnectorRestParams(BaseModel):
     """Lecture d'une ressource REST paginée, avec authentification optionnelle
     (clé API, jeton, identifiants, ou OAuth2 client_credentials) et
@@ -229,6 +193,104 @@ class ReaderConnectorSnowflakeParams(BaseModel):
 
     secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
     query: str
+
+
+class ReaderConnectorBigQueryParams(BaseModel):
+    """Lecture d'une requête SQL libre (SELECT uniquement) sur Google
+    BigQuery, via un secret de connexion dédié (bigquery_dsn).
+
+    Vague 2 §6.1, pendant de ReaderConnectorPostgresParams/
+    ReaderConnectorSnowflakeParams. `secretName` référence toujours un
+    secret bigquery_dsn — même contrat (pas de notion de DSN non
+    authentifié). `query` n'est validée SELECT-only qu'à l'exécution
+    (app.pipelines.connector_runtime), jamais ici (forme seulement) ni à la
+    sauvegarde (design §6) — même heuristique dialecte DuckDB que
+    Postgres/Snowflake : GoogleSQL diverge du SQL standard sur plusieurs
+    points (backticks pour les identifiants, fonctions/opérateurs BigQuery
+    propriétaires) qu'un texte accepté ici peut malgré tout faire échouer
+    côté BigQuery avec une erreur explicite."""
+
+    secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
+    query: str
+
+
+class ReaderConnectorMssqlParams(BaseModel):
+    """Lecture d'une requête SQL libre (SELECT uniquement) sur un Microsoft
+    SQL Server distant, via un secret de connexion dédié (mssql_dsn).
+
+    Vague 2 §6.1, pendant de ReaderConnectorPostgresParams/
+    ReaderConnectorSnowflakeParams/ReaderConnectorBigQueryParams.
+    `secretName` référence toujours un secret mssql_dsn — même contrat (pas
+    de notion de DSN non authentifié). `query` n'est validée SELECT-only
+    qu'à l'exécution (app.pipelines.connector_runtime), jamais ici (forme
+    seulement) ni à la sauvegarde (design §6) — même heuristique dialecte
+    DuckDB que Postgres/Snowflake/BigQuery, avec une limite documentée dans
+    l'autre sens que Snowflake : `TOP n` n'est pas reconnu par le parseur
+    DuckDB et est donc rejeté ici bien que valide sur un vrai SQL Server ;
+    un identifiant entre crochets `[col]` (T-SQL) passe si sans espace
+    (`[id]` accepté, `[my column]` rejeté) ; à l'inverse `LIMIT n` est
+    accepté ici mais n'est pas du T-SQL valide et peut échouer côté serveur
+    (cf. MssqlDsnPayload)."""
+
+    secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
+    query: str
+
+
+class ReaderConnectorOracleParams(BaseModel):
+    """Lecture d'une requête SQL libre (SELECT uniquement) sur une base
+    Oracle Database distante, via un secret de connexion dédié (oracle_dsn).
+
+    Vague 2 §6.1, pendant de ReaderConnectorPostgresParams/
+    ReaderConnectorSnowflakeParams/ReaderConnectorBigQueryParams/
+    ReaderConnectorMssqlParams. `secretName` référence toujours un secret
+    oracle_dsn — même contrat (pas de notion de DSN non authentifié).
+    `query` n'est validée SELECT-only qu'à l'exécution
+    (app.pipelines.connector_runtime), jamais ici (forme seulement) ni à la
+    sauvegarde (design §6) — même heuristique dialecte DuckDB que
+    Postgres/Snowflake/BigQuery/MSSQL : le SQL Oracle (PL/SQL) diverge du SQL
+    standard sur plusieurs points (`ROWNUM`, séquences `NEXTVAL`, jointure
+    `(+)`) qu'un texte accepté ici peut malgré tout faire échouer côté Oracle
+    avec une erreur explicite."""
+
+    secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
+    query: str
+
+
+class ReaderConnectorBlobParams(BaseModel):
+    """Lecture d'un fichier tabulaire unique (CSV/JSONL/Parquet) depuis un
+    objet de stockage cloud (S3, Azure Blob, GCS), résolu par un secret de
+    connexion pré-configuré au bucket — jamais un upload ni une URL
+    arbitraire (Task 15, Vague 2 §6.1). Diffère des autres
+    `reader.connector.*` : pas de requête SQL, la source dlt `filesystem`
+    (fsspec) fournie par le paquet `dlt` de base.
+
+    Le fournisseur est résolu depuis le préfixe de `path` (`s3://`, `az://`,
+    `gs://`) : `secretName` doit référencer un secret du kind correspondant
+    (`s3_credentials`/`azure_blob_credentials`/`gcs_credentials`), sinon
+    `materialize_blob_connector` rejette avant toute extraction.
+
+    `path` doit désigner un objet UNIQUE et complet (ex.
+    `s3://bucket/prefix/data.csv`), jamais un répertoire ni un motif — vérifié
+    empiriquement (piège CLAUDE.md n°3) que la source `filesystem` de dlt
+    n'accepte PAS un `bucket_url` pointant directement sur un fichier
+    (aucune ligne extraite, silencieusement) : ce module découpe `path` en un
+    `bucket_url` racine (schéma + bucket) et un `file_glob` (le reste du
+    chemin, utilisé comme motif littéral) — vérifié que dlt sait alors
+    sélectionner exactement ce seul fichier, y compris sous plusieurs niveaux
+    de préfixe. Si le nom de fichier contient lui-même un métacaractère glob
+    (`*`/`?`/`[]`, rare mais légal dans une clé S3), d'autres objets voisins
+    pourraient être sélectionnés — cas non intercepté explicitement ici.
+
+    `format="json"` n'existe volontairement pas : la source `filesystem` de
+    dlt n'expose que `read_csv`/`read_jsonl`/`read_parquet` (pas de
+    `read_json` générique pour un tableau JSON — vérifié par introspection
+    du module réel `dlt.sources.filesystem`, piège CLAUDE.md n°3) ; `"jsonl"`
+    désigne donc explicitement du JSON Lines (un objet JSON par ligne), pas
+    un tableau JSON arbitraire."""
+
+    secretName: str = Field(..., json_schema_extra={"format": "secret-name"})
+    path: str
+    format: Literal["csv", "jsonl", "parquet"]
 
 
 class TransformScaleGeometryParams(BaseModel):
@@ -372,6 +434,25 @@ class TransformFormatCoordinatesParams(BaseModel):
     precision: int = Field(4, ge=0, le=10)
 
 
+class TransformBulkRemoveAttributesParams(BaseModel):
+    """Supprime toutes les colonnes dont le nom correspond à un motif regex."""
+
+    pattern: str
+
+
+class TransformBulkRenameAttributesParams(BaseModel):
+    """Renomme en masse les colonnes correspondant à un motif regex, par gabarit de
+    remplacement avec rétro-référence (ex. pattern="foo_(.*)", replacement="\\1_bar")."""
+
+    pattern: str
+    replacement: str
+
+
+class TransformScanSchemaParams(BaseModel):
+    """Retourne une ligne par colonne de l'entrée (column_name, column_type) — méta-introspection
+    du schéma, sans transformation ligne à ligne."""
+
+
 class ReaderFileParams(BaseModel):
     """reader.file (design desktop-etl §3) : chemin local absolu, lu via
     ST_Read() (DuckDB spatial/GDAL) — jamais une collection. srid optionnel :
@@ -393,3 +474,160 @@ class WriterFileParams(BaseModel):
 
     path: str
     driver: str = "GPKG"
+
+
+class TransformExplodeListParams(BaseModel):
+    """Explose une colonne LIST en plusieurs lignes (une par élément), autres colonnes
+    dupliquées."""
+
+    column: str
+
+
+class TransformExplodeGeometryParams(BaseModel):
+    """Explose une géométrie multi-partie (MULTIPOINT/MULTILINESTRING/MULTIPOLYGON/
+    GEOMETRYCOLLECTION) en une ligne par sous-géométrie simple. Sans effet sur une géométrie
+    déjà simple (le nombre de lignes ne change pas)."""
+
+
+class TransformExposeAttributesParams(BaseModel):
+    """Expose les champs d'une colonne STRUCT (ou LIST-de-STRUCT) source comme colonnes
+    top-level, sans connaître leurs noms à l'avance."""
+
+    column: str
+
+
+class SortKey(BaseModel):
+    """Une clé de tri : colonne et direction."""
+
+    column: str
+    direction: Literal["asc", "desc"] = "asc"
+
+
+class TransformSortParams(BaseModel):
+    """Trie les lignes par une liste de colonnes et/ou par proximité spatiale (courbe de
+    Hilbert sur la géométrie). Ordre garanti uniquement pour un nœud writer directement
+    connecté en aval — au-delà, best-effort (décision assumée, design §3.3)."""
+
+    by: list[SortKey] = Field(default_factory=list)
+    bySpatialHilbert: bool = False
+
+    @model_validator(mode="after")
+    def _at_least_one_sort_key(self) -> "TransformSortParams":
+        if not self.by and not self.bySpatialHilbert:
+            raise ValueError(
+                "transform.sort requires at least one sort key (by or bySpatialHilbert)"
+            )
+        return self
+
+
+class TransformValidateAttributesParams(BaseModel):
+    """Valide des attributs explicites (non-null et/ou unicité) et écrit le résultat booléen
+    dans une colonne dédiée par vérification demandée. Colonnes explicites uniquement — pas de
+    mode « toutes les colonnes automatiquement »."""
+
+    nonNullColumns: list[str] = Field(default_factory=list)
+    nonNullResultColumn: str | None = None
+    uniqueColumns: list[str] = Field(default_factory=list)
+    uniqueResultColumn: str | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one_check(self) -> "TransformValidateAttributesParams":
+        has_non_null = bool(self.nonNullColumns) and self.nonNullResultColumn is not None
+        has_unique = bool(self.uniqueColumns) and self.uniqueResultColumn is not None
+        if not has_non_null and not has_unique:
+            raise ValueError(
+                "transform.validateAttributes requires at least one check "
+                "(nonNullColumns+nonNullResultColumn or uniqueColumns+uniqueResultColumn)"
+            )
+        return self
+
+
+class TransformDetectChangesParams(BaseModel):
+    """Compare l'entrée principale (état « avant ») à une collection ou un flux secondaire
+    (état « après ») sur des colonnes clés, et écrit le statut de chaque ligne
+    (inserted/deleted/updated/unchanged) — comparaison automatique de toutes les colonnes
+    communes, résolues à l'exécution."""
+
+    withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
+    keyColumns: list[str]
+    statusColumn: str
+
+
+class TransformMergeChildrenParams(BaseModel):
+    """Rattache à chaque ligne principale (parent) la liste des lignes correspondantes de
+    l'entrée secondaire (enfants), regroupées en une colonne LIST de STRUCT — schéma des
+    enfants résolu à l'exécution. `parentOn`/`childOn` peuvent désigner des colonnes de noms
+    différents (ex. `id` côté parent, `parentId` côté enfant) : contrairement à
+    `transform.join` (clause SQL `USING`, qui impose un nom identique des deux côtés), cette
+    jointure s'écrit `t.col = o.col` et n'a pas cette contrainte. Un parent sans enfant
+    correspondant reçoit une liste vide (`[]`), jamais `[{...: NULL}]`."""
+
+    withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
+    parentOn: str
+    childOn: str
+    childrenColumn: str
+
+
+class TransformMapSchemaParams(BaseModel):
+    """Reprojette le schéma de l'entrée sur une liste de colonnes cible statique, dans
+    l'ordre : correspondance par nom de colonne identique, colonne cible absente de la
+    source → NULL, colonne source hors de la liste cible → éliminée."""
+
+    targetColumns: list[str]
+
+
+class TransformCentroidParams(BaseModel):
+    """Remplace la géométrie par son centre de gravité (barycentre)."""
+
+
+class TransformConvexHullParams(BaseModel):
+    """Remplace la géométrie par son enveloppe convexe."""
+
+
+class TransformSimplifyParams(BaseModel):
+    """Réduit le nombre de sommets de la géométrie selon une tolérance spatiale.
+    preserveTopology=True (défaut) évite l'auto-intersection de polygones simplifiés."""
+
+    tolerance: float
+    preserveTopology: bool = True
+
+
+class TransformBoundingGeometryParams(BaseModel):
+    """Remplace la géométrie par sa boîte englobante : rectangle aligné aux axes
+    ("envelope") ou rectangle orienté minimal ("orientedRectangle")."""
+
+    mode: Literal["envelope", "orientedRectangle"] = "envelope"
+
+
+class TransformSnapToLayerParams(BaseModel):
+    """Ajuste (« snap ») la géométrie sur la géométrie de référence de l'entrée secondaire
+    dans une tolérance donnée. `ST_Snap` de DuckDB Spatial prend une géométrie de
+    référence unique (pas une agrégation) : l'entrée secondaire doit être réduite à une
+    seule ligne en amont (ex. via `transform.aggregate` + `ST_Union_Agg`), sans quoi la
+    jointure croisée avec plusieurs lignes de référence produit un résultat incorrect."""
+
+    withCollectionId: str | None = Field(None, json_schema_extra={"format": "collection-id"})
+    tolerance: float
+
+
+class TransformResolveOverlapsParams(BaseModel):
+    """Décompose un ensemble de géométries qui se chevauchent en features géométriques
+    disjointes (parties non chevauchantes + parties communes). Géométrie uniquement —
+    n'associe pas les attributs des features d'origine à chaque morceau de sortie."""
+
+
+class TransformTriangulateParams(BaseModel):
+    """Triangulation de Delaunay de la géométrie (points) en entrée — une ligne de sortie par
+    triangle. Calculée en process via Shapely (BSD-3-Clause), pas en SQL."""
+
+
+class TransformDensifyParams(BaseModel):
+    """Ajoute des sommets le long de chaque segment de la géométrie pour qu'aucun ne dépasse
+    la longueur donnée. Calculé en process via Shapely."""
+
+    maxSegmentLength: float
+
+
+class TransformMinimumBoundingCircleParams(BaseModel):
+    """Remplace la géométrie par le plus petit cercle qui la contient entièrement. Calculé
+    en process via Shapely (agrège toutes les lignes de l'entrée en un seul cercle)."""

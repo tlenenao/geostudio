@@ -1,9 +1,9 @@
 name: Publish edge images
 
-# Reconstruit les 9 images sous le tag `edge` à chaque MERGE vers `main`
+# Reconstruit les 8 images sous le tag `edge` à chaque MERGE vers `main`
 # — jamais sur chaque exécution de CI (chaque push/PR inonderait le
 # registre pour des commits jamais mergés), et jamais sur `dev` (branche
-# de travail quotidienne, cf. CLAUDE.md — un rebuild des 9 images à
+# de travail quotidienne, cf. CLAUDE.md — un rebuild des 8 images à
 # chaque commit de la journée serait un coût CI disproportionné).
 # `release.yml` reste le seul déclencheur de vraies releases versionnées
 # (push d'un tag `v*.*.*`). Pas de re-exécution de test-gate/
@@ -57,7 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
-      - name: Vérifie que les 9 images existent sous le tag edge
+      - name: Vérifie que les 8 images existent sous le tag edge
         working-directory: core
         env:
           # Sans authentification, "jamais publiée" et "publiée mais

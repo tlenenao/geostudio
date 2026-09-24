@@ -105,7 +105,7 @@ def test_non_collection_fields_carry_no_format_hint():
     assert "format" not in catalog["transform.join"]["paramsSchema"]["properties"]["on"]
 
 
-def test_all_thirty_six_ops_are_registered():
+def test_all_fifty_one_ops_are_registered():
     assert set(OP_PARAMS) == {
         "reader.collection",
         "transform.filter",
@@ -121,11 +121,14 @@ def test_all_thirty_six_ops_are_registered():
         "transform.countWithin",
         "transform.h3Aggregate",
         "writer.dataset",
-        "transform.qgis",
         "reader.connector.rest",
         "reader.connector.postgres",
         "transform.merge",
         "reader.connector.snowflake",
+        "reader.connector.bigquery",
+        "reader.connector.mssql",
+        "reader.connector.oracle",
+        "reader.connector.blob",
         "transform.swapCoordinates",
         "transform.translateGeometry",
         "transform.scaleGeometry",
@@ -143,6 +146,26 @@ def test_all_thirty_six_ops_are_registered():
         "transform.formatCoordinates",
         "reader.file",
         "writer.file",
+        "transform.bulkRemoveAttributes",
+        "transform.bulkRenameAttributes",
+        "transform.scanSchema",
+        "transform.explodeList",
+        "transform.explodeGeometry",
+        "transform.centroid",
+        "transform.convexHull",
+        "transform.simplify",
+        "transform.boundingGeometry",
+        "transform.exposeAttributes",
+        "transform.validateAttributes",
+        "transform.sort",
+        "transform.detectChanges",
+        "transform.mergeChildren",
+        "transform.mapSchema",
+        "transform.snapToLayer",
+        "transform.resolveOverlaps",
+        "transform.triangulate",
+        "transform.densify",
+        "transform.minimumBoundingCircle",
     }
     assert set(OP_KINDS) == set(OP_PARAMS)
 
@@ -255,84 +278,6 @@ def test_new_collection_referencing_fields_carry_collection_id_format_hint():
         catalog["writer.dataset"]["paramsSchema"]["properties"]["collectionId"]["format"]
         == "collection-id"
     )
-
-
-def test_fifteenth_op_is_registered():
-    assert "transform.qgis" in OP_PARAMS
-    assert "transform.qgis" in OP_KINDS
-    assert OP_KINDS["transform.qgis"] == "transform"
-
-
-def test_transform_qgis_accepts_allowlisted_id_with_required_params():
-    params = parse_op_params(
-        "transform.qgis",
-        {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
-    )
-    assert params.algorithmId == "native:centroids"
-    assert params.params == {"ALL_PARTS": False}
-    assert params.outputSrid is None
-
-
-def test_transform_qgis_rejects_non_allowlisted_id():
-    with pytest.raises(ValidationError):
-        parse_op_params(
-            "transform.qgis",
-            {"algorithmId": "native:totallymadeup", "params": {}},
-        )
-
-
-def test_transform_qgis_rejects_missing_required_param():
-    # native:centroids requires ALL_PARTS beyond INPUT/OUTPUT (design Task 2 —
-    # INPUT/OUTPUT are runtime-injected, never authored, cf. spike finding
-    # in test_pipeline_qgis_algorithms.py::test_centroids_required_params_...).
-    with pytest.raises(ValidationError):
-        parse_op_params(
-            "transform.qgis",
-            {"algorithmId": "native:centroids", "params": {}},
-        )
-
-
-def test_transform_qgis_does_not_require_input_output_in_params():
-    # INPUT/OUTPUT are required by native:simplifygeometries' own schema but
-    # are filled in by the runtime (scratch file paths), never by the author.
-    params = parse_op_params(
-        "transform.qgis",
-        {
-            "algorithmId": "native:simplifygeometries",
-            "params": {"METHOD": 0, "TOLERANCE": 1.0},
-        },
-    )
-    assert "INPUT" not in params.params
-    assert "OUTPUT" not in params.params
-
-
-def test_transform_qgis_accepts_optional_output_srid():
-    params = parse_op_params(
-        "transform.qgis",
-        {
-            "algorithmId": "gdal:warpreproject",
-            "params": {
-                "TARGET_CRS": "EPSG:2154",
-                "DATA_TYPE": 0,
-                "MULTITHREADING": False,
-                "RESAMPLING": 0,
-            },
-            "outputSrid": "EPSG:2154",
-        },
-    )
-    assert params.outputSrid == "EPSG:2154"
-
-
-def test_transform_qgis_rejects_malformed_output_srid():
-    with pytest.raises(ValidationError):
-        parse_op_params(
-            "transform.qgis",
-            {
-                "algorithmId": "native:dissolve",
-                "params": {"SEPARATE_DISJOINT": False},
-                "outputSrid": "not-a-crs",
-            },
-        )
 
 
 def test_reader_connector_ops_are_kind_reader():
@@ -466,6 +411,9 @@ def test_binary_ops_set_matches_catalog_flag():
         "transform.intersection",
         "transform.countWithin",
         "transform.merge",
+        "transform.detectChanges",
+        "transform.mergeChildren",
+        "transform.snapToLayer",
     }
 
 
@@ -563,6 +511,56 @@ def test_reader_connector_snowflake_appears_in_catalog_with_secret_name_format_h
     assert props["secretName"]["format"] == "secret-name"
 
 
+def test_reader_connector_bigquery_is_kind_reader():
+    assert OP_KINDS["reader.connector.bigquery"] == "reader"
+
+
+def test_reader_connector_bigquery_requires_secret_name_and_query():
+    params = parse_op_params(
+        "reader.connector.bigquery",
+        {"secretName": "warehouse-bq", "query": "SELECT * FROM towns"},
+    )
+    assert params.secretName == "warehouse-bq"
+    assert params.query == "SELECT * FROM towns"
+    with pytest.raises(ValidationError):
+        parse_op_params("reader.connector.bigquery", {"query": "SELECT 1"})
+    with pytest.raises(ValidationError):
+        parse_op_params("reader.connector.bigquery", {"secretName": "x"})
+
+
+def test_reader_connector_bigquery_appears_in_catalog_with_secret_name_format_hint():
+    catalog = ops_catalog()
+    assert catalog["reader.connector.bigquery"]["kind"] == "reader"
+    props = catalog["reader.connector.bigquery"]["paramsSchema"]["properties"]
+    assert "query" in props
+    assert props["secretName"]["format"] == "secret-name"
+
+
+def test_reader_connector_mssql_is_kind_reader():
+    assert OP_KINDS["reader.connector.mssql"] == "reader"
+
+
+def test_reader_connector_mssql_requires_secret_name_and_query():
+    params = parse_op_params(
+        "reader.connector.mssql",
+        {"secretName": "warehouse-mssql", "query": "SELECT * FROM towns"},
+    )
+    assert params.secretName == "warehouse-mssql"
+    assert params.query == "SELECT * FROM towns"
+    with pytest.raises(ValidationError):
+        parse_op_params("reader.connector.mssql", {"query": "SELECT 1"})
+    with pytest.raises(ValidationError):
+        parse_op_params("reader.connector.mssql", {"secretName": "x"})
+
+
+def test_reader_connector_mssql_appears_in_catalog_with_secret_name_format_hint():
+    catalog = ops_catalog()
+    assert catalog["reader.connector.mssql"]["kind"] == "reader"
+    props = catalog["reader.connector.mssql"]["paramsSchema"]["properties"]
+    assert "query" in props
+    assert props["secretName"]["format"] == "secret-name"
+
+
 def test_reader_connector_postgres_description_documents_redshift_compatibility():
     # GAP-16 §9 : seul le PREMIER PARAGRAPHE du docstring de classe devient le
     # paramsSchema.description exposé par GET /pipelines/ops (revue finale I2,
@@ -576,7 +574,8 @@ def test_reader_connector_postgres_description_documents_redshift_compatibility(
 
 
 # Revue finale de branche GAP-16, Important I2 : le docstring Python complet
-# de 5 ops (noms de classes, chemins de module, renvois "design §n"/"SPnn")
+# de plusieurs ops (noms de classes, chemins de module, renvois "design
+# §n"/"SPnn")
 # atteignait tel quel le tooltip de palette (paramsSchema.description, lu par
 # shell/src/builder/pipeline/PipelinePalette.tsx) — jargon développeur exposé
 # tel quel à l'auteur de pipeline. Seul le premier paragraphe du docstring de
@@ -591,7 +590,8 @@ _DEV_JARGON_MARKERS = ("app.pipelines", "design", "SP-1", "GAP-16", "§")
         "reader.connector.snowflake",
         "reader.connector.postgres",
         "reader.connector.rest",
-        "transform.qgis",
+        "reader.connector.bigquery",
+        "reader.connector.mssql",
         "transform.merge",
     ],
 )

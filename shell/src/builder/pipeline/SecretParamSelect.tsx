@@ -69,13 +69,20 @@ const KIND_LABELS: Record<SecretPayload["kind"], string> = {
   postgres_dsn: t("secretParamSelect.kindPostgresDsn"),
   smtp: t("secretParamSelect.kindSmtp"),
   snowflake_dsn: t("secretParamSelect.kindSnowflakeDsn"),
+  bigquery_dsn: t("secretParamSelect.kindBigqueryDsn"),
+  mssql_dsn: t("secretParamSelect.kindMssqlDsn"),
+  oracle_dsn: t("secretParamSelect.kindOracleDsn"),
+  s3_credentials: t("secretParamSelect.kindS3Credentials"),
+  azure_blob_credentials: t("secretParamSelect.kindAzureBlobCredentials"),
+  gcs_credentials: t("secretParamSelect.kindGcsCredentials"),
 };
 
 const ALL_KINDS = Object.keys(KIND_LABELS) as SecretPayload["kind"][];
 
 // Un formulaire minimal par variante, pas un générateur JSON Schema complet —
 // les variantes de SecretPayload sont fixes et connues (design SP-53 §1 ;
-// 7 depuis GAP-16, snowflake_dsn).
+// 13 depuis Vague 2 : bigquery_dsn/mssql_dsn/oracle_dsn/s3_credentials/
+// azure_blob_credentials/gcs_credentials en plus des 7 précédentes).
 function SecretCreateForm({
   kindFilter,
   onCreated,
@@ -121,7 +128,23 @@ function SecretCreateForm({
         };
       case "postgres_dsn":
       case "snowflake_dsn":
+      case "bigquery_dsn":
+      case "mssql_dsn":
+      case "oracle_dsn":
         return { kind, dsn: field("dsn") };
+      case "s3_credentials":
+        return {
+          kind,
+          awsAccessKeyId: field("awsAccessKeyId"),
+          awsSecretAccessKey: field("awsSecretAccessKey"),
+          endpointUrl: field("endpointUrl") || undefined,
+        };
+      case "azure_blob_credentials":
+        return { kind, accountName: field("accountName"), accountKey: field("accountKey") };
+      case "gcs_credentials": {
+        const parsed = JSON.parse(field("serviceAccountInfo") || "{}") as Record<string, unknown>;
+        return { kind, serviceAccountInfo: parsed };
+      }
       case "smtp":
         return {
           kind,
@@ -139,7 +162,14 @@ function SecretCreateForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const payload = buildPayload();
+    setError(null);
+    let payload: SecretPayload | null;
+    try {
+      payload = buildPayload();
+    } catch {
+      setError(t("secretParamSelect.serviceAccountInfoInvalid"));
+      return;
+    }
     if (!name || !payload) return;
     try {
       const created = await createSecret({ name, payload });
@@ -282,7 +312,11 @@ function SecretCreateForm({
           </label>
         </>
       )}
-      {(kind === "postgres_dsn" || kind === "snowflake_dsn") && (
+      {(kind === "postgres_dsn" ||
+        kind === "snowflake_dsn" ||
+        kind === "bigquery_dsn" ||
+        kind === "mssql_dsn" ||
+        kind === "oracle_dsn") && (
         <label className="flex flex-col gap-1 text-xs">
           {t("secretParamSelect.dsnLabel")}
           <input
@@ -291,6 +325,72 @@ function SecretCreateForm({
             className="h-8 rounded border border-rule bg-surface px-2 text-ink"
             value={field("dsn")}
             onChange={(e) => setFieldValue("dsn", e.target.value)}
+          />
+        </label>
+      )}
+      {kind === "s3_credentials" && (
+        <>
+          <label className="flex flex-col gap-1 text-xs">
+            {t("secretParamSelect.awsAccessKeyIdLabel")}
+            <input
+              aria-label={t("secretParamSelect.awsAccessKeyIdAria")}
+              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              value={field("awsAccessKeyId")}
+              onChange={(e) => setFieldValue("awsAccessKeyId", e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs">
+            {t("secretParamSelect.awsSecretAccessKeyLabel")}
+            <input
+              aria-label={t("secretParamSelect.awsSecretAccessKeyAria")}
+              type="password"
+              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              value={field("awsSecretAccessKey")}
+              onChange={(e) => setFieldValue("awsSecretAccessKey", e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs">
+            {t("secretParamSelect.endpointUrlLabel")}
+            <input
+              aria-label={t("secretParamSelect.endpointUrlAria")}
+              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              value={field("endpointUrl")}
+              onChange={(e) => setFieldValue("endpointUrl", e.target.value)}
+            />
+          </label>
+        </>
+      )}
+      {kind === "azure_blob_credentials" && (
+        <>
+          <label className="flex flex-col gap-1 text-xs">
+            {t("secretParamSelect.accountNameLabel")}
+            <input
+              aria-label={t("secretParamSelect.accountNameAria")}
+              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              value={field("accountName")}
+              onChange={(e) => setFieldValue("accountName", e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs">
+            {t("secretParamSelect.accountKeyLabel")}
+            <input
+              aria-label={t("secretParamSelect.accountKeyAria")}
+              type="password"
+              className="h-8 rounded border border-rule bg-surface px-2 text-ink"
+              value={field("accountKey")}
+              onChange={(e) => setFieldValue("accountKey", e.target.value)}
+            />
+          </label>
+        </>
+      )}
+      {kind === "gcs_credentials" && (
+        <label className="flex flex-col gap-1 text-xs">
+          {t("secretParamSelect.serviceAccountInfoLabel")}
+          <textarea
+            aria-label={t("secretParamSelect.serviceAccountInfoAria")}
+            className="h-24 rounded border border-rule bg-surface px-2 py-1 text-ink"
+            value={field("serviceAccountInfo")}
+            onChange={(e) => setFieldValue("serviceAccountInfo", e.target.value)}
           />
         </label>
       )}

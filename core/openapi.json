@@ -522,6 +522,31 @@
         "title": "AttachmentRead",
         "type": "object"
       },
+      "AzureBlobCredentialsPayload": {
+        "description": "Identifiants d'acc\u00e8s \u00e0 un compte Azure Blob Storage pour\n`reader.connector.blob` (Task 15, Vague 2 \u00a76.1).\n\nChamps align\u00e9s sur le constructeur r\u00e9el de\n`dlt.common.configuration.specs.azure_credentials.AzureCredentialsWithoutDefaults`\n(`azure_storage_account_name`/`azure_storage_account_key`, v\u00e9rifi\u00e9 par\nintrospection du paquet `dlt` install\u00e9) : ce module construit un\n`AzureCredentialsWithoutDefaults(...)` \u00e0 partir de ces 2 champs \u2014 c'est\ncette classe qui produit ensuite les kwargs adlfs r\u00e9els\n(`.to_adlfs_credentials()` \u2192 `account_name`/`account_key`).",
+        "properties": {
+          "accountKey": {
+            "title": "Accountkey",
+            "type": "string"
+          },
+          "accountName": {
+            "title": "Accountname",
+            "type": "string"
+          },
+          "kind": {
+            "const": "azure_blob_credentials",
+            "default": "azure_blob_credentials",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountName",
+          "accountKey"
+        ],
+        "title": "AzureBlobCredentialsPayload",
+        "type": "object"
+      },
       "BaseMap": {
         "properties": {
           "style": {
@@ -577,6 +602,26 @@
           "token"
         ],
         "title": "BearerTokenPayload",
+        "type": "object"
+      },
+      "BigQueryDsnPayload": {
+        "description": "DSN SQLAlchemy complet vers Google BigQuery, forme\n`bigquery://project/dataset?credentials_base64=<JSON compte de service\nencod\u00e9 en base64>` \u2014 v\u00e9rifi\u00e9e directement contre le code source r\u00e9el de\n`sqlalchemy-bigquery` (googleapis/python-bigquery-sqlalchemy, modules\n`parse_url.py`/`base.py`/`_helpers.py`, pas seulement son README, pi\u00e8ge\nCLAUDE.md n\u00b03), pas contre sa documentation. Pas de `credentials_path` :\nun chemin de fichier sur disque ne survivrait pas au trajet secret\nchiffr\u00e9 -> cha\u00eene opaque -> DSN (design GAP-16 \u00a712/Vague 2 \u00a76.1) \u2014\n`credentials_base64` embarque le JSON du compte de service int\u00e9gralement\ndans la cha\u00eene de connexion, round-trippable comme n'importe quel autre\nDSN opaque de ce module. Comme postgres_dsn/snowflake_dsn : le c\u0153ur ne\nparse ni ne valide ce DSN, il le passe tel quel \u00e0 sa.create_engine().\n\nDiff\u00e9rence de comportement v\u00e9rifi\u00e9e empiriquement par rapport \u00e0\npostgres_dsn/snowflake_dsn : `sa.create_engine()` n'est PAS totalement\nparesseux pour ce dialecte \u2014 il construit localement un objet\n`google.auth.service_account.Credentials` (et un client BigQuery) d\u00e8s\nl'appel, sans y faire pour autant le moindre appel r\u00e9seau tant qu'un\nJSON de compte de service bien form\u00e9 (champs `client_email`/\n`token_uri`/`private_key` pr\u00e9sents, cl\u00e9 RSA syntaxiquement valide) lui\nest fourni ; un JSON malform\u00e9 y \u00e9choue *localement* avant tout appel\nr\u00e9seau.\n\nMise en garde distincte de postgres_dsn/snowflake_dsn : le mot de passe\nd'un DSN Postgres/Snowflake est masqu\u00e9 par `str(url)` de SQLAlchemy\n(`URL.__str__` conna\u00eet le champ password) \u2014 `credentials_base64`, lui,\nest un param\u00e8tre de requ\u00eate ordinaire aux yeux de SQLAlchemy et n'est\nJAMAIS masqu\u00e9 par cette m\u00e9thode. Aucun code de ce d\u00e9p\u00f4t n'appelle\n`str(engine.url)`/`str(engine)` sur un engine bigquery (v\u00e9rifi\u00e9 par\ngrep, 2026-09-21) ; \u00e0 ne jamais introduire pour ce DSN pr\u00e9cis sans\nmasquage explicite au pr\u00e9alable.",
+        "properties": {
+          "dsn": {
+            "title": "Dsn",
+            "type": "string"
+          },
+          "kind": {
+            "const": "bigquery_dsn",
+            "default": "bigquery_dsn",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dsn"
+        ],
+        "title": "BigQueryDsnPayload",
         "type": "object"
       },
       "Body_create_map_icon_v1_map_icons_post": {
@@ -1936,6 +1981,27 @@
           "label"
         ],
         "title": "FrequencyCatalogEntry",
+        "type": "object"
+      },
+      "GcsCredentialsPayload": {
+        "description": "Compte de service Google Cloud Storage (JSON coll\u00e9 tel quel, tous ses\nchamps standard \u2014 `type`/`project_id`/`private_key`/`client_email`/...)\npour `reader.connector.blob` (Task 15, Vague 2 \u00a76.1).\n\nCe module ne mappe pas champ \u00e0 champ : il passe `json.dumps(serviceAccountInfo)`\n\u00e0 `GcpServiceAccountCredentials.parse_native_representation()` \u2014 v\u00e9rifi\u00e9\nempiriquement que cette m\u00e9thode ignore silencieusement les champs du JSON\nnon repris par le dataclass (`client_id`, `auth_provider_x509_cert_url`,\n`universe_domain`, etc., pi\u00e8ge CLAUDE.md n\u00b03 : pas suppos\u00e9, test\u00e9), donc\nun JSON de compte de service copi\u00e9-coll\u00e9 tel quel depuis la console GCP\nfonctionne sans filtrage manuel.",
+        "properties": {
+          "kind": {
+            "const": "gcs_credentials",
+            "default": "gcs_credentials",
+            "title": "Kind",
+            "type": "string"
+          },
+          "serviceAccountInfo": {
+            "additionalProperties": true,
+            "title": "Serviceaccountinfo",
+            "type": "object"
+          }
+        },
+        "required": [
+          "serviceAccountInfo"
+        ],
+        "title": "GcsCredentialsPayload",
         "type": "object"
       },
       "GroupRead": {
@@ -3349,6 +3415,26 @@
         "title": "MetadataCatalog",
         "type": "object"
       },
+      "MssqlDsnPayload": {
+        "description": "DSN SQLAlchemy complet vers Microsoft SQL Server, forme\n`mssql+pymssql://user:pass@host:port/dbname` (v\u00e9rifi\u00e9e directement\ncontre le module source r\u00e9el `sqlalchemy/dialects/mssql/pymssql.py` du\nd\u00e9p\u00f4t sqlalchemy/sqlalchemy, docstring `:connectstring:` +\nl'exemple `\"mssql+pymssql://user:pass@host/db\"` du docstring de\n`sqlalchemy/dialects/mssql/base.py`, pas seulement la doc publi\u00e9e \u2014\npi\u00e8ge CLAUDE.md n\u00b03). Driver retenu : `pymssql` (pur Python, s'appuie\nsur FreeTDS embarqu\u00e9 dans ses wheels officielles) plut\u00f4t que `pyodbc`\n(n\u00e9cessiterait `unixodbc` + un driver ODBC syst\u00e8me sur l'image du\nworker) \u2014 aucune limitation bloquante trouv\u00e9e qui imposerait pyodbc.\nComme postgres_dsn/snowflake_dsn/bigquery_dsn : le c\u0153ur ne parse ni ne\nvalide ce DSN, il le passe tel quel \u00e0 sa.create_engine() ; comme\npostgres_dsn/snowflake_dsn (et contrairement \u00e0 bigquery_dsn),\nsa.create_engine() reste paresseux pour ce dialecte \u2014 aucun appel\nr\u00e9seau avant .connect(), et le mot de passe est masqu\u00e9 par\n`str(engine.url)`.\n\nLimitation document\u00e9e \u00e0 conna\u00eetre avant d'\u00e9crire `query` (analogue \u00e0 la\nr\u00e9serve SAMPLE/TOP/MINUS de SnowflakeDsnPayload, mais dans l'autre sens) :\n`query` est valid\u00e9e SELECT-only en la parsant avec le dialecte SQL de\nDuckDB (app.pipelines.connector_runtime), pas le T-SQL r\u00e9el. `TOP n`\nn'est pas reconnu par le parseur DuckDB et est donc rejet\u00e9 ici, alors\nqu'il serait valide sur un vrai SQL Server \u2014 \u00e0 reformuler en\n`ORDER BY ... OFFSET n ROWS FETCH NEXT m ROWS ONLY`. Un identifiant entre\ncrochets `[col]` (syntaxe T-SQL propri\u00e9taire) passe la validation DuckDB\ntant qu'il ne contient ni espace ni caract\u00e8re sp\u00e9cial (`[id]` accept\u00e9,\n`[my column]` rejet\u00e9 \u2014 v\u00e9rifi\u00e9 empiriquement contre le vrai parseur, pas\nsuppos\u00e9) ; reformuler en guillemets doubles (`\"my column\"`) si besoin\nd'un identifiant \u00e0 espace. \u00c0 l'inverse, `LIMIT n` est accept\u00e9 ici (syntaxe DuckDB valide)\nmais n'est PAS du T-SQL valide \u2014 SQL Server ne conna\u00eet pas la clause\nLIMIT \u2014 et une requ\u00eate qui passe cette validation peut donc \u00e9chouer\nc\u00f4t\u00e9 serveur avec une erreur explicite au moment de l'ex\u00e9cution.",
+        "properties": {
+          "dsn": {
+            "title": "Dsn",
+            "type": "string"
+          },
+          "kind": {
+            "const": "mssql_dsn",
+            "default": "mssql_dsn",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dsn"
+        ],
+        "title": "MssqlDsnPayload",
+        "type": "object"
+      },
       "NotificationPage": {
         "properties": {
           "notifications": {
@@ -3515,6 +3601,26 @@
           "clientSecret"
         ],
         "title": "OAuth2ClientCredentialsPayload",
+        "type": "object"
+      },
+      "OracleDsnPayload": {
+        "description": "DSN SQLAlchemy complet vers Oracle Database, forme\n`oracle+oracledb://user:pass@hostname:port[/dbname][?service_name=<service>]`\n(v\u00e9rifi\u00e9e directement contre le module source r\u00e9el\n`sqlalchemy/dialects/oracle/oracledb.py` du d\u00e9p\u00f4t sqlalchemy/sqlalchemy \u2014\ndocstring `:connectstring:` en t\u00eate de module \u2014, pas seulement la doc\npubli\u00e9e, pi\u00e8ge CLAUDE.md n\u00b03). Driver retenu : `python-oracledb` (le\ndriver officiel qui remplace cx_Oracle), en mode **thin** \u2014 pur Python,\naucune biblioth\u00e8que cliente Oracle native \u00e0 installer sur l'image du\nworker. V\u00e9rifi\u00e9 empiriquement (pas seulement lu dans la doc) : le mode\nthin est celui utilis\u00e9 par d\u00e9faut par `sa.create_engine()` pour ce\ndialecte \u2014 `OracleDialect_oracledb.__init__` (code source r\u00e9el) n'appelle\n`oracledb.init_oracle_client()` (qui bascule en mode thick) que si\n`thick_mode` est explicitement vrai ; par d\u00e9faut (`thick_mode=None`),\naucun appel de ce type n'a lieu, et `oracledb.is_thin_mode()` renvoie\n`True` sans configuration apr\u00e8s un simple `sa.create_engine(...)` sans\nconnexion. Ce module n'a donc besoin d'aucune initialisation\nsuppl\u00e9mentaire dans `materialize_oracle_connector`.\n\nComme postgres_dsn/snowflake_dsn/mssql_dsn (et contrairement \u00e0\nbigquery_dsn) : le c\u0153ur ne parse ni ne valide ce DSN, il le passe tel\nquel \u00e0 sa.create_engine() ; sa.create_engine() reste paresseux pour ce\ndialecte \u2014 v\u00e9rifi\u00e9 empiriquement (aucun appel r\u00e9seau avant .connect(),\nretour en configuration locale seulement) \u2014 et le mot de passe est\nmasqu\u00e9 par `str(engine.url)`.\n\n`query` est valid\u00e9e SELECT-only en la parsant avec le dialecte SQL de\nDuckDB (app.pipelines.connector_runtime), pas le vrai SQL Oracle (PL/SQL)\n\u2014 m\u00eame heuristique de d\u00e9fense en profondeur que les autres DSN de ce\nmodule, m\u00eames limites potentielles non v\u00e9rifi\u00e9es ici (ex. `ROWNUM`/\n`FETCH FIRST n ROWS ONLY`, pseudo-colonnes Oracle) : une requ\u00eate accept\u00e9e\nici peut malgr\u00e9 tout \u00e9chouer c\u00f4t\u00e9 serveur avec une erreur explicite.",
+        "properties": {
+          "dsn": {
+            "title": "Dsn",
+            "type": "string"
+          },
+          "kind": {
+            "const": "oracle_dsn",
+            "default": "oracle_dsn",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dsn"
+        ],
+        "title": "OracleDsnPayload",
         "type": "object"
       },
       "OwnerFacet": {
@@ -4293,6 +4399,42 @@
         "title": "RollbackRequest",
         "type": "object"
       },
+      "S3CredentialsPayload": {
+        "description": "Identifiants d'acc\u00e8s \u00e0 un bucket S3 (ou compatible S3 \u2014 MinIO, etc. via\n`endpointUrl`) pour `reader.connector.blob` (Task 15, Vague 2 \u00a76.1).\n\nChamps align\u00e9s \u2014 pas devin\u00e9s \u2014 sur le constructeur r\u00e9el de\n`dlt.common.configuration.specs.aws_credentials.AwsCredentials`\n(`aws_access_key_id`/`aws_secret_access_key`/`endpoint_url`, v\u00e9rifi\u00e9 par\nintrospection du paquet `dlt` install\u00e9, pi\u00e8ge CLAUDE.md n\u00b03) : ce module\nconstruit un `AwsCredentials(...)` directement \u00e0 partir de ces 3 champs\net le passe tel quel \u00e0 `dlt.sources.filesystem.filesystem(credentials=)` \u2014\nc'est CETTE classe, jamais ce payload, qui sait produire les kwargs r\u00e9els\nde s3fs (`.to_s3fs_credentials()` \u2192 `key`/`secret`/`endpoint_url`).",
+        "properties": {
+          "awsAccessKeyId": {
+            "title": "Awsaccesskeyid",
+            "type": "string"
+          },
+          "awsSecretAccessKey": {
+            "title": "Awssecretaccesskey",
+            "type": "string"
+          },
+          "endpointUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpointurl"
+          },
+          "kind": {
+            "const": "s3_credentials",
+            "default": "s3_credentials",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "awsAccessKeyId",
+          "awsSecretAccessKey"
+        ],
+        "title": "S3CredentialsPayload",
+        "type": "object"
+      },
       "SearchBody": {
         "properties": {
           "bbox": {
@@ -4381,10 +4523,16 @@
             "discriminator": {
               "mapping": {
                 "api_key": "#/components/schemas/ApiKeyPayload",
+                "azure_blob_credentials": "#/components/schemas/AzureBlobCredentialsPayload",
                 "basic_auth": "#/components/schemas/BasicAuthPayload",
                 "bearer_token": "#/components/schemas/BearerTokenPayload",
+                "bigquery_dsn": "#/components/schemas/BigQueryDsnPayload",
+                "gcs_credentials": "#/components/schemas/GcsCredentialsPayload",
+                "mssql_dsn": "#/components/schemas/MssqlDsnPayload",
                 "oauth2_client_credentials": "#/components/schemas/OAuth2ClientCredentialsPayload",
+                "oracle_dsn": "#/components/schemas/OracleDsnPayload",
                 "postgres_dsn": "#/components/schemas/PostgresDsnPayload",
+                "s3_credentials": "#/components/schemas/S3CredentialsPayload",
                 "smtp": "#/components/schemas/SmtpCredentialsPayload",
                 "snowflake_dsn": "#/components/schemas/SnowflakeDsnPayload"
               },
@@ -4411,6 +4559,24 @@
               },
               {
                 "$ref": "#/components/schemas/SnowflakeDsnPayload"
+              },
+              {
+                "$ref": "#/components/schemas/BigQueryDsnPayload"
+              },
+              {
+                "$ref": "#/components/schemas/MssqlDsnPayload"
+              },
+              {
+                "$ref": "#/components/schemas/OracleDsnPayload"
+              },
+              {
+                "$ref": "#/components/schemas/S3CredentialsPayload"
+              },
+              {
+                "$ref": "#/components/schemas/AzureBlobCredentialsPayload"
+              },
+              {
+                "$ref": "#/components/schemas/GcsCredentialsPayload"
               }
             ],
             "title": "Payload"

@@ -3,6 +3,7 @@ import csv
 import dataclasses
 import io
 import json
+import random
 
 import geopandas as gpd
 import pytest
@@ -202,6 +203,61 @@ def test_preview_rejects_writer_node_as_up_to(tmp_path, monkeypatch):
         )
 
 
+def test_preview_rejects_unknown_transform_op(tmp_path, monkeypatch):
+    # I5, revue finale du retrait QGIS : OPERATIONS[node.op] levait un
+    # KeyError brut sur un op retiré/inconnu (ex. un nœud transform.qgis
+    # hérité après upgrade) au lieu du PipelineRuntimeError que le CHANGELOG
+    # promet — ce qui faisait rendre un 500 côté aperçu au lieu d'un 400.
+    _write_partition(tmp_path, rows=[_row(1, "Nord", 10)])
+    monkeypatch.setattr(
+        runtime,
+        "_table_info_for_collection",
+        lambda session, collection_id: _table_info_for(collection_id),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {"id": "t1", "kind": "transform", "op": "transform.qgis", "params": {}},
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
+    with pytest.raises(runtime.PipelineRuntimeError, match="transform.qgis"):
+        runtime.preview_pipeline(
+            session=None,
+            payload=payload,
+            tenant_id="t1",
+            user=None,
+            up_to="t1",
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
+            base_uri=str(tmp_path),
+        )
+
+
 def test_preview_pipeline_serializes_geometry(tmp_path, monkeypatch):
     # Régression finding 1 (revue finale SP-15a) : preview_pipeline renvoyait
     # la géométrie en WKB (bytes) — jsonable_encoder (route FastAPI) plantait
@@ -385,6 +441,176 @@ def test_write_export_csv_geometry_as_geojson_string(tmp_path, monkeypatch):
     geometry_cell = data_row[header.index("geometry")]
     parsed_geometry = json.loads(geometry_cell)  # doit être une chaîne GeoJSON valide
     assert parsed_geometry == {"type": "Point", "coordinates": [1.5, 45.5]}
+
+
+def test_run_pipeline_transform_triangulate_end_to_end(tmp_path, monkeypatch):
+    # Task 24 : pipeline à 2 nœuds reader.collection -> transform.triangulate -> writer.export,
+    # même patron que test_write_export_geojson_serializes_geometry (pas de postgis-test requis,
+    # session=None + s3_client=_FakeS3()) — vérifie que le dispatch générique `elif
+    # contract.execute is not None` de _execute_transform_chain (Step 8) est bien atteint pour
+    # une vraie op `execute` de bout en bout, pas seulement au niveau execute.py.
+    _write_partition(
+        tmp_path,
+        rows=[
+            _row(1, "Nord", 10, x=0.0, y=0.0),
+            _row(2, "Sud", 5, x=4.0, y=0.0),
+            _row(3, "Est", 8, x=2.0, y=4.0),
+            _row(4, "Ouest", 3, x=1.0, y=1.0),
+        ],
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_table_info_for_collection",
+        lambda session, collection_id: _table_info_for(collection_id),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "t1",
+                    "kind": "transform",
+                    "op": "transform.triangulate",
+                    "params": {},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "geojson", "key": "out.geojson"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t1"},
+                {"id": "e2", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
+    fake_s3 = _FakeS3()
+
+    stats = runtime.run_pipeline(
+        None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+        s3_client=fake_s3,
+        exports_bucket="exports",
+    )
+
+    assert any(stat.op == "transform.triangulate" and stat.rowCount >= 2 for stat in stats)
+    body = fake_s3.calls[0]["Body"]
+    parsed = json.loads(body)
+    assert parsed["type"] == "FeatureCollection"
+    assert len(parsed["features"]) >= 2  # au moins 2 triangles pour 4 points non colinéaires
+    for feature in parsed["features"]:
+        assert feature["geometry"]["type"] == "Polygon"
+
+
+def test_run_pipeline_sort_order_survives_to_directly_connected_writer(tmp_path, monkeypatch):
+    """Falsification empirique (design §3.3, piège CLAUDE.md n°7 : une mesure de
+    durée ne prouve rien sur le fond, il faut recouvrir le mécanisme réel — ici,
+    exécuter à une échelle qui déclenche le parallélisme réel de DuckDB, pas se
+    fier à une intuition sur un échantillon minuscule). DuckDB tourne avec
+    threads=nproc par défaut (16 sur cette machine, vérifié empiriquement) ;
+    20 000 lignes est une échelle suffisante pour que le scanner parallèle du
+    Parquet et l'opérateur ORDER BY travaillent réellement sur plusieurs
+    threads, pas une intuition. Ce test couvre le cas d'un writer DIRECTEMENT
+    connecté au nœud transform.sort (reader.collection -> transform.sort ->
+    writer.export, aucun nœud intermédiaire) — le seul cas pour lequel le
+    design (§3.3) promet un ordre garanti ; au-delà, c'est explicitement
+    best-effort et non couvert ici."""
+    ROW_COUNT = 20_000
+    shuffled_pops = list(range(ROW_COUNT))
+    random.Random(42).shuffle(shuffled_pops)  # entrée délibérément non triée
+    rows = [
+        _row(i, "Nord", pop, x=float(i % 200), y=float(i // 200))
+        for i, pop in enumerate(shuffled_pops)
+    ]
+    _write_partition(tmp_path, rows=rows)
+    monkeypatch.setattr(
+        runtime,
+        "_table_info_for_collection",
+        lambda session, collection_id: _table_info_for(collection_id),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "villes"},
+                },
+                {
+                    "id": "s1",
+                    "kind": "transform",
+                    "op": "transform.sort",
+                    "params": {"by": [{"column": "pop", "direction": "asc"}]},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "sorted.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "s1"},
+                {"id": "e2", "from": "s1", "to": "w1"},
+            ],
+        }
+    )
+    fake_s3 = _FakeS3()
+
+    stats = runtime.run_pipeline(
+        None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+        s3_client=fake_s3,
+        exports_bucket="exports",
+    )
+
+    assert any(stat.op == "transform.sort" and stat.rowCount == ROW_COUNT for stat in stats)
+    body = fake_s3.calls[0]["Body"].decode("utf-8")
+    reader = csv.reader(io.StringIO(body))
+    header = next(reader)
+    pop_index = header.index("pop")
+    observed = [int(row[pop_index]) for row in reader]
+    assert len(observed) == ROW_COUNT  # falsification de forme : aucune ligne perdue
+    # Falsification du fond (design §3.3) : à 20 000 lignes, avec DuckDB en
+    # parallélisme réel (16 threads par défaut ici), l'ordre de
+    # transform.sort survit-il jusqu'au writer.export DIRECTEMENT connecté ?
+    # Réponse mesurée, jamais supposée — voir le rapport de tâche pour le
+    # résultat effectif et sa discussion.
+    assert observed == sorted(observed)
 
 
 @pytest.mark.postgis
@@ -1849,531 +2075,6 @@ def test_use_case_3_incidents_near_schools_by_commune(pg_engine, monkeypatch, tm
         )
 
 
-def test_execute_qgis_transform_raises_clean_error_without_worker_url(tmp_path, monkeypatch):
-    """No QGIS_WORKER_URL configured (profile 'etl' not enabled) must fail
-    the run cleanly, never crash on a connection error."""
-    from app.configs.schemas import PipelinePayload
-
-    monkeypatch.setattr(
-        runtime,
-        "_require_readable_collection_id",
-        lambda session, *, tenant_id, user, collection_id: collection_id,
-    )
-    monkeypatch.setattr(
-        runtime, "_table_info_for_collection", lambda session, cid: _table_info_for(cid)
-    )
-    _write_partition(tmp_path, rows=[_row(1, "Nord", 1, x=2.35, y=48.85)])
-
-    payload = PipelinePayload.model_validate(
-        {
-            "nodes": [
-                {
-                    "id": "r1",
-                    "kind": "reader",
-                    "op": "reader.collection",
-                    "params": {"collectionId": "villes"},
-                },
-                {
-                    "id": "t1",
-                    "kind": "transform",
-                    "op": "transform.qgis",
-                    "params": {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
-                },
-                {
-                    "id": "w1",
-                    "kind": "writer",
-                    "op": "writer.export",
-                    "params": {"format": "csv", "key": "o.csv"},
-                },
-            ],
-            "edges": [
-                {"id": "e1", "from": "r1", "to": "t1"},
-                {"id": "e2", "from": "t1", "to": "w1"},
-            ],
-        }
-    )
-    with pytest.raises(runtime.PipelineRuntimeError, match="QGIS_WORKER_URL"):
-        runtime.preview_pipeline(
-            session=None,
-            payload=payload,
-            tenant_id="t1",
-            user=None,
-            up_to="t1",
-            endpoint_url="http://localhost:9000",
-            access_key="x",
-            secret_key="y",
-            base_uri=str(tmp_path),
-        )
-
-
-def test_materialize_qgis_output_renames_non_geometry_named_column(tmp_path):
-    """Regression for final review Finding 1: the geometry column DuckDB/GDAL
-    write to a GPKG is NOT guaranteed to be named "geometry" — DuckDB's own
-    COPY ... TO ... WITH (FORMAT GDAL, DRIVER 'GPKG', ...) already names it
-    "geom" (verified directly below), exactly the situation
-    _execute_qgis_transform must survive when the sidecar's qgis_process
-    writes out.gpkg. _materialize_qgis_output must expose it as "geometry"
-    regardless, same guarantee _materialize_reader already gives readers."""
-    conn = runtime.open_connection(
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y"
-    )
-    conn.execute("CREATE TEMP TABLE src AS SELECT 1 AS id, ST_Point(3.0, 4.0) AS geometry")
-    out_path = str(tmp_path / "out.gpkg")
-    conn.execute(
-        f"COPY (SELECT * FROM src) TO '{out_path}' "
-        "WITH (FORMAT GDAL, DRIVER 'GPKG', SRS 'EPSG:4326')"
-    )
-    # Sanity check on the fixture itself: confirms the premise of Finding 1 —
-    # the round-tripped file really has no "geometry"-named column, only
-    # "geom", before _materialize_qgis_output ever touches it.
-    raw_cols = {
-        d[0] for d in conn.execute(f"SELECT * FROM ST_Read('{out_path}') LIMIT 0").description
-    }
-    assert "geom" in raw_cols and "geometry" not in raw_cols
-
-    runtime._materialize_qgis_output(
-        conn,
-        out_path=out_path,
-        view_name="materialized",
-        algorithm_id="native:centroids",
-    )
-    cols = {d[0] for d in conn.execute("SELECT * FROM materialized LIMIT 0").description}
-    assert "geometry" in cols
-    assert "geom" not in cols
-    row = conn.execute("SELECT id, ST_AsText(geometry) FROM materialized").fetchone()
-    assert row == (1, "POINT (3 4)")
-
-
-def test_materialize_qgis_output_raises_clean_error_without_geometry_column(tmp_path):
-    """A sidecar output with no geometry-typed column at all (degenerate case:
-    an algorithm whose OUTPUT isn't a vector layer) must surface as a clear
-    PipelineRuntimeError, never a silent KeyError/empty result — Finding 1
-    explicitly rules out weakening this constraint."""
-    conn = runtime.open_connection(
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y"
-    )
-    out_path = tmp_path / "no_geom.csv"
-    out_path.write_text("id,label\n1,a\n")
-    out_path = str(out_path)
-    with pytest.raises(runtime.PipelineRuntimeError, match="aucune colonne géométrie"):
-        runtime._materialize_qgis_output(
-            conn,
-            out_path=out_path,
-            view_name="materialized",
-            algorithm_id="native:centroids",
-        )
-
-
-class _FakeQgisWorkerResponse:
-    """Stand-in pour httpx.Response : capture juste status_code/.json()/.text,
-    même esprit que _FakeS3 plus haut — pas de vrai sidecar HTTP nécessaire
-    pour exercer les chemins d'erreur de _execute_qgis_transform."""
-
-    def __init__(self, status_code: int, json_body: dict | None = None, text: str = ""):
-        self.status_code = status_code
-        self._json_body = json_body
-        self.text = text
-
-    def json(self):
-        if self._json_body is None:
-            raise json.JSONDecodeError("no json body", "", 0)
-        return self._json_body
-
-
-def _make_qgis_input_connection():
-    conn = runtime.open_connection(
-        endpoint_url="http://localhost:9000", access_key="x", secret_key="y"
-    )
-    conn.execute("CREATE TEMP TABLE input_view AS SELECT 1 AS id, ST_Point(1.0, 2.0) AS geometry")
-    return conn
-
-
-def test_execute_qgis_transform_cleans_scratch_dir_on_sidecar_error(tmp_path, monkeypatch):
-    """Regression for final review Finding 2: shutil.rmtree used to run only
-    on the success path — a non-200 sidecar response raised before ever
-    reaching cleanup, leaving in.gpkg behind in the shared scratch volume
-    forever. The try/finally must remove scratch_dir even when the sidecar
-    itself reports an error."""
-    from app.configs.schemas import PipelineNode
-
-    monkeypatch.setattr(runtime, "_QGIS_SCRATCH_ROOT", str(tmp_path))
-    monkeypatch.setattr(
-        runtime.httpx,
-        "post",
-        lambda *a, **k: _FakeQgisWorkerResponse(502, json_body={"error": "qgis_process a échoué"}),
-    )
-    conn = _make_qgis_input_connection()
-    node = PipelineNode(
-        id="t1",
-        kind="transform",
-        op="transform.qgis",
-        params={"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
-    )
-    with pytest.raises(runtime.PipelineRuntimeError, match="qgis_process a échoué"):
-        runtime._execute_qgis_transform(
-            conn,
-            node,
-            input_view="input_view",
-            input_srid=4326,
-            qgis_worker_url="http://fake-qgis-worker",
-            qgis_worker_timeout_seconds=5,
-            scratch_run_id="run1",
-        )
-    assert not (tmp_path / "run1" / "t1").exists()
-
-
-def test_execute_qgis_transform_raises_clean_error_on_non_json_error_body(tmp_path, monkeypatch):
-    """Regression for final review Finding 4: a non-200 response whose body
-    isn't valid JSON (e.g. a proxy/gateway error page) must still surface as
-    a clean PipelineRuntimeError carrying response.text, never crash the run
-    on the .json() call itself with an unhandled JSONDecodeError."""
-    from app.configs.schemas import PipelineNode
-
-    monkeypatch.setattr(runtime, "_QGIS_SCRATCH_ROOT", str(tmp_path))
-    monkeypatch.setattr(
-        runtime.httpx,
-        "post",
-        lambda *a, **k: _FakeQgisWorkerResponse(
-            502, json_body=None, text="<html>Bad Gateway</html>"
-        ),
-    )
-    conn = _make_qgis_input_connection()
-    node = PipelineNode(
-        id="t1",
-        kind="transform",
-        op="transform.qgis",
-        params={"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
-    )
-    with pytest.raises(runtime.PipelineRuntimeError, match="Bad Gateway"):
-        runtime._execute_qgis_transform(
-            conn,
-            node,
-            input_view="input_view",
-            input_srid=4326,
-            qgis_worker_url="http://fake-qgis-worker",
-            qgis_worker_timeout_seconds=5,
-            scratch_run_id="run2",
-        )
-
-
-def test_execute_qgis_transform_writes_input_after_a_real_lock_down(tmp_path, monkeypatch):
-    """Regression, found running the 5 @pytest.mark.qgis tests for real for
-    the first time (M14/REV-095) : every other test in this file builds its
-    connection via _make_qgis_input_connection(), which never calls
-    _lock_down() — so none of them ever exercised the real interaction
-    between _prepare()'s SET enable_external_access=false and
-    _execute_qgis_transform's COPY (...) TO '{in_path}' write. Against a real
-    locked-down connection, that COPY raised a DuckDB PermissionException
-    ("file system operations are disabled by configuration"): every real
-    pipeline using transform.qgis was broken. Also covers the sibling bug:
-    "fid" is the row-id column the GeoPackage spec mandates on every .gpkg a
-    real qgis_process writes (even native:dissolve's, which preserves no
-    source id) — only a schema-validating writer (writer.collection, not
-    writer.export) rejects it, which is why it stayed invisible too."""
-    from app.configs.schemas import PipelineNode
-
-    monkeypatch.setattr(runtime, "_QGIS_SCRATCH_ROOT", str(tmp_path))
-    conn = _make_qgis_input_connection()
-    runtime._lock_down(conn)  # the real lockdown every other test here skips
-
-    def _fake_post(url, *, json, timeout):
-        out_path = json["inputs"]["OUTPUT"]
-        # Simule ce qu'un vrai sidecar qgis-worker écrit sur le volume
-        # scratch partagé, sur une connexion DuckDB séparée, non verrouillée
-        # — comme le process QGIS réel, hors de portée de la connexion
-        # `conn` du pipeline. "fid" n'est jamais fourni explicitement : GDAL
-        # l'ajoute lui-même (vérifié empiriquement) dès qu'on écrit un GPKG
-        # via COPY ... FORMAT GDAL, exactement ce qu'un writer.collection
-        # verrait d'un vrai qgis_process.
-        writer_conn = runtime.open_connection(
-            endpoint_url="http://localhost:9000", access_key="x", secret_key="y"
-        )
-        writer_conn.execute(
-            "COPY (SELECT 'a' AS region, ST_Point(1.0, 2.0) AS geom) "
-            f"TO '{out_path}' WITH (FORMAT GDAL, DRIVER 'GPKG')"
-        )
-        return _FakeQgisWorkerResponse(200, json_body={"results": {"OUTPUT": out_path}})
-
-    monkeypatch.setattr(runtime.httpx, "post", _fake_post)
-    node = PipelineNode(
-        id="t1",
-        kind="transform",
-        op="transform.qgis",
-        params={"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
-    )
-    runtime._execute_qgis_transform(
-        conn,
-        node,
-        input_view="input_view",
-        input_srid=4326,
-        qgis_worker_url="http://fake-qgis-worker",
-        qgis_worker_timeout_seconds=5,
-        scratch_run_id="run3",
-    )
-    cols = [d[0] for d in conn.execute("SELECT * FROM node_t1 LIMIT 0").description]
-    assert "fid" not in cols
-    assert "region" in cols
-    assert "geometry" in cols
-
-
-@pytest.mark.qgis
-def test_execute_qgis_transform_computes_centroids(tmp_path, monkeypatch, qgis_worker_url):
-    """reader.collection (2 polygons) -> transform.qgis(native:centroids) ->
-    preview: real sidecar round-trip, real DuckDB COPY/ST_Read (design §6).
-    Requires /scratch to be the SAME directory the qgis-worker container in
-    Task 4 Step 5 has bind-mounted at /scratch — this test writes via
-    DuckDB's COPY (inside this Python process, on the host), the sidecar
-    reads the identical path from inside its container."""
-    from shapely.geometry import Polygon
-
-    from app.configs.schemas import PipelinePayload
-
-    monkeypatch.setattr(
-        runtime,
-        "_require_readable_collection_id",
-        lambda session, *, tenant_id, user, collection_id: collection_id,
-    )
-    polygons_info = dataclasses.replace(
-        TABLE_INFO,
-        table_name="polygons",
-        geometry_type="Polygon",
-        columns=[ColumnInfo(name="region", type="string", required=True)],
-    )
-    monkeypatch.setattr(runtime, "_table_info_for_collection", lambda session, cid: polygons_info)
-
-    _write_partition(
-        tmp_path,
-        collection_id="polygons",
-        rows=[
-            {
-                "id": 1,
-                "region": "a",
-                "_op": "insert",
-                "_lsn": 1,
-                "_ts": 1.0,
-                "geometry": Polygon([(0, 0), (0, 2), (2, 2), (2, 0)]),
-            },
-            {
-                "id": 2,
-                "region": "b",
-                "_op": "insert",
-                "_lsn": 1,
-                "_ts": 1.0,
-                "geometry": Polygon([(10, 10), (10, 12), (12, 12), (12, 10)]),
-            },
-        ],
-    )
-
-    payload = PipelinePayload.model_validate(
-        {
-            "nodes": [
-                {
-                    "id": "r1",
-                    "kind": "reader",
-                    "op": "reader.collection",
-                    "params": {"collectionId": "polygons"},
-                },
-                {
-                    "id": "t1",
-                    "kind": "transform",
-                    "op": "transform.qgis",
-                    "params": {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
-                },
-                {
-                    "id": "w1",
-                    "kind": "writer",
-                    "op": "writer.export",
-                    "params": {"format": "csv", "key": "o.csv"},
-                },
-            ],
-            "edges": [
-                {"id": "e1", "from": "r1", "to": "t1"},
-                {"id": "e2", "from": "t1", "to": "w1"},
-            ],
-        }
-    )
-    rows = runtime.preview_pipeline(
-        session=None,
-        payload=payload,
-        tenant_id="t1",
-        user=None,
-        up_to="t1",
-        endpoint_url="http://localhost:9000",
-        access_key="x",
-        secret_key="y",
-        base_uri=str(tmp_path),
-        qgis_worker_url=qgis_worker_url,
-    )
-    assert len(rows) == 2
-    centroids = sorted(
-        (row["geometry"]["coordinates"][0], row["geometry"]["coordinates"][1]) for row in rows
-    )
-    assert centroids == [(1.0, 1.0), (11.0, 11.0)]
-
-
-@pytest.mark.postgis
-@pytest.mark.qgis
-def test_transform_qgis_end_to_end_dissolve_then_write(
-    pg_engine, monkeypatch, tmp_path, qgis_worker_url
-):
-    """reader.collection (2 adjacent polygons, same region) ->
-    transform.qgis(native:dissolve) -> writer.collection: full run_pipeline,
-    real Postgres write, real sidecar round-trip. Two squares sharing an
-    edge dissolve (grouped by "region", both "a") into one polygon feature —
-    proves the qgis dispatch composes with the pre-existing writer.collection
-    path unchanged (design §6, 'no fusion to break, node-by-node as before')."""
-    from shapely.geometry import Polygon
-
-    from app.configs.schemas import PipelinePayload
-
-    Base.metadata.create_all(pg_engine)
-    Session = make_session_factory(pg_engine)
-    with Session() as s:
-        tenant = get_or_create_default_tenant(s)
-        user = get_or_create_user(
-            s,
-            tenant_id=tenant.id,
-            oidc_sub="a",
-            username="alice",
-            email=None,
-            first_name="",
-            last_name="",
-        )
-        s.execute(
-            text(
-                "INSERT INTO collections (id, tenant_id, owner_id, table_name, title, "
-                "description, pk_column, geometry_column, is_public, editable, "
-                "created_at, updated_at) "
-                "VALUES ('dissolved_out', :t, :o, 'dissolved_out', 'Dissolved', "
-                "'', 'id', 'geometry', false, true, now(), now())"
-            ),
-            {"t": tenant.id, "o": user.id},
-        )
-        s.execute(
-            text(
-                # geometry(MultiPolygon, 4326), PAS geometry(Polygon, 4326) : verified
-                # against a real qgis_process run during plan-writing that
-                # native:dissolve always outputs MultiPolygon (even for a single
-                # dissolved group of 1 feature) — ogrinfo on the real output showed
-                # "Geometry: Multi Polygon". Using Polygon here would make
-                # validate_feature reject every row ("expected Polygon").
-                "CREATE TABLE dissolved_out (id SERIAL PRIMARY KEY, tenant_id VARCHAR, "
-                "region VARCHAR, geometry geometry(MultiPolygon, 4326))"
-            )
-        )
-        apply_collection_ddl(s, "dissolved_out")
-        s.commit()
-
-        polygons_info = dataclasses.replace(
-            TABLE_INFO,
-            table_name="polygons_in",
-            geometry_type="Polygon",
-            srid=4326,
-            columns=[ColumnInfo(name="region", type="string", required=True)],
-        )
-        out_info = dataclasses.replace(
-            # geometry_type="MultiPolygon" (not "Polygon") — see the CREATE
-            # TABLE comment above: native:dissolve's real output type, verified.
-            TABLE_INFO,
-            table_name="dissolved_out",
-            geometry_type="MultiPolygon",
-            srid=4326,
-            columns=[ColumnInfo(name="region", type="string", required=True)],
-        )
-
-        def _table_info(session, collection_id):
-            return out_info if collection_id == "dissolved_out" else polygons_info
-
-        monkeypatch.setattr(runtime, "_table_info_for_collection", _table_info)
-        monkeypatch.setattr(
-            runtime,
-            "_require_readable_collection_id",
-            lambda session, *, tenant_id, user, collection_id: collection_id,
-        )
-
-        _write_partition(
-            tmp_path,
-            tenant_id=tenant.id,
-            collection_id="polygons_in",
-            rows=[
-                {
-                    "id": 1,
-                    "region": "a",
-                    "_op": "insert",
-                    "_lsn": 1,
-                    "_ts": 1.0,
-                    "geometry": Polygon([(0, 0), (0, 2), (1, 2), (1, 0)]),
-                },
-                {
-                    "id": 2,
-                    "region": "a",
-                    "_op": "insert",
-                    "_lsn": 1,
-                    "_ts": 1.0,
-                    "geometry": Polygon([(1, 0), (1, 2), (2, 2), (2, 0)]),
-                },
-            ],
-        )
-
-        payload = PipelinePayload.model_validate(
-            {
-                "nodes": [
-                    {
-                        "id": "r1",
-                        "kind": "reader",
-                        "op": "reader.collection",
-                        "params": {"collectionId": "polygons_in"},
-                    },
-                    {
-                        "id": "t1",
-                        "kind": "transform",
-                        "op": "transform.qgis",
-                        "params": {
-                            "algorithmId": "native:dissolve",
-                            "params": {"FIELD": "region", "SEPARATE_DISJOINT": False},
-                        },
-                    },
-                    {
-                        "id": "w1",
-                        "kind": "writer",
-                        "op": "writer.collection",
-                        "params": {"collectionId": "dissolved_out"},
-                    },
-                ],
-                "edges": [
-                    {"id": "e1", "from": "r1", "to": "t1"},
-                    {"id": "e2", "from": "t1", "to": "w1"},
-                ],
-            }
-        )
-        stats = runtime.run_pipeline(
-            s,
-            payload=payload,
-            tenant_id=tenant.id,
-            user=user,
-            endpoint_url="http://localhost:9000",
-            access_key="x",
-            secret_key="y",
-            base_uri=str(tmp_path),
-            qgis_worker_url=qgis_worker_url,
-        )
-        s.commit()
-
-        rows = s.execute(text("SELECT region FROM dissolved_out")).fetchall()
-        assert len(rows) == 1
-        assert rows[0][0] == "a"
-        assert any(stat.op == "writer.collection" and stat.rowCount == 1 for stat in stats)
-
-    with pg_engine.begin() as conn:
-        conn.execute(
-            text(
-                "DROP TABLE dissolved_out; "
-                "TRUNCATE items, configs, config_revisions, collections, "
-                "audit_log, users, tenants CASCADE"
-            )
-        )
-
-
 def test_preview_reader_connector_rest_feeds_downstream_filter(tmp_path, monkeypatch, httpserver):
     from app.pipelines import egress as pipelines_egress
 
@@ -2923,6 +2624,110 @@ def test_preview_join_via_secondary_edge_matches_with_collection_id(tmp_path, mo
     assert len(rows) == 1
     assert rows[0]["id"] == 1
     assert rows[0]["region"] == "Nord"  # from r1 — proves the join actually matched on id=1
+
+
+def test_preview_detect_changes_resolves_columns_after_upstream_rename(tmp_path, monkeypatch):
+    # Falsification (design §4) : la colonne "region" du flux primaire est
+    # renommée en "area_name" par un transform.bulkRenameAttributes EN AMONT
+    # de transform.detectChanges, sur le canevas — le flux secondaire (une
+    # autre collection) garde, lui, "region". Le nœud detectChanges ne
+    # nomme jamais "region"/"area_name" dans ses params (seulement
+    # keyColumns=["id"] et statusColumn) : si le mécanisme needs_columns
+    # résolvait les colonnes depuis un schéma figé au moment de la
+    # préparation du reader (avant le renommage), plutôt que par un DESCRIBE
+    # de la vue immédiatement en amont au moment de la compilation,
+    # transform.detectChanges référencerait `t.region` — une colonne qui
+    # n'existe plus dans la vue renommée — et l'exécution échouerait
+    # (Binder Error) au lieu de s'adapter.
+    _write_partition(
+        tmp_path,
+        collection_id="before_coll",
+        rows=[
+            _row(1, "Nord", 10, x=1.0, y=45.0),
+            _row(2, "Sud", 5, x=2.0, y=46.0),
+            _row(3, "Est", 20, x=3.0, y=47.0),
+        ],
+    )
+    _write_partition(
+        tmp_path,
+        collection_id="after_coll",
+        rows=[
+            _row(1, "Nord", 10, x=1.0, y=45.0),  # inchangé
+            _row(2, "Ouest", 99, x=2.0, y=46.0),  # pop modifié (5 -> 99)
+            _row(4, "X", 1, x=9.0, y=9.0),  # nouveau
+        ],
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_table_info_for_collection",
+        lambda session, collection_id: _table_info_srid(collection_id, 4326),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_require_readable_collection_id",
+        lambda session, *, tenant_id, user, collection_id: collection_id,
+    )
+    from app.configs.schemas import PipelinePayload
+
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {
+                    "id": "r1",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "before_coll"},
+                },
+                {
+                    "id": "t0",
+                    "kind": "transform",
+                    "op": "transform.bulkRenameAttributes",
+                    "params": {"pattern": "^region$", "replacement": "area_name"},
+                },
+                {
+                    "id": "r2",
+                    "kind": "reader",
+                    "op": "reader.collection",
+                    "params": {"collectionId": "after_coll"},
+                },
+                {
+                    "id": "t1",
+                    "kind": "transform",
+                    "op": "transform.detectChanges",
+                    "params": {"keyColumns": ["id"], "statusColumn": "status"},
+                },
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.export",
+                    "params": {"format": "csv", "key": "o.csv"},
+                },
+            ],
+            "edges": [
+                {"id": "e1", "from": "r1", "to": "t0"},
+                {"id": "e2", "from": "t0", "to": "t1"},
+                {"id": "e3", "from": "r2", "to": "t1", "role": "secondary"},
+                {"id": "e4", "from": "t1", "to": "w1"},
+            ],
+        }
+    )
+
+    rows = runtime.preview_pipeline(
+        session=None,
+        payload=payload,
+        tenant_id="t1",
+        user=None,
+        up_to="t1",
+        endpoint_url="http://localhost:9000",
+        access_key="x",
+        secret_key="y",
+        base_uri=str(tmp_path),
+    )
+    status_by_id = {r["id"]: r["status"] for r in rows}
+    assert status_by_id == {1: "unchanged", 2: "updated", 3: "deleted", 4: "inserted"}
+    # La colonne renommée ne doit apparaître nulle part dans la sortie —
+    # transform.detectChanges ne projette que les clés + le statut.
+    assert set(rows[0].keys()) == {"id", "status"}
 
 
 def test_execute_transform_chain_invokes_on_node_complete_per_node(tmp_path, monkeypatch):

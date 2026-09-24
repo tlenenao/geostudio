@@ -59,13 +59,27 @@ def test_pipelines_routes_absent_when_disabled(monkeypatch):
     assert client.get("/v1/pipelines/does-not-exist/webhook-tokens").status_code == 404
 
 
-def test_get_pipelines_ops_returns_all_thirty_four(monkeypatch):
+def test_get_pipelines_ops_returns_all_fifty_one(monkeypatch):
     client = _make_app(monkeypatch, etl_enabled=True)
     response = client.get("/v1/pipelines/ops")
     assert response.status_code == 200
     body = response.json()
     # 19 op existantes (cf. design OperationContract) + 15 op vague 1 (géométrie/coordonnées/SRID,
-    # cf. design vague 1 transformers DuckDB) = 34 total.
+    # cf. design vague 1 transformers DuckDB) + 11 op vague 2 (schéma/cardinalité,
+    # cf. design vague 2 transformers DuckDB) + 4 lecteurs BigQuery/MSSQL/Oracle/Blob
+    # (Vague 2 §6.1, Task 12/13/14/15) + 4 op de retrait QGIS (Task 18/19/20 :
+    # centroid/convexHull/simplify/boundingGeometry) + 4 op de retrait QGIS
+    # (Task 21/22/24/25 : transform.snapToLayer, transform.resolveOverlaps,
+    # transform.triangulate, transform.densify) + 1 op de retrait QGIS (Task 26 :
+    # transform.minimumBoundingCircle) - transform.qgis lui-même, retiré (Task 28) =
+    # 57 total exposées par la route. Les 9 op de retrait QGIS couvrent 10 lignes
+    # FME (transform.triangulate mappe TINGenerator ET SurfaceModeller) ; Clipper
+    # et Dissolver sont 2 lignes FME distinctes, sans rapport avec ce compte de 9,
+    # dont la reclassification (composition d'op vs. rester qgis_frozen) reste une
+    # décision ouverte de Task 27 Step 3-4, pas encore tranchée ici — cf. plan
+    # Task 27.
+    # (reader.file/writer.file restent hors catalogue tant que
+    # CORE_PIPELINE_FILE_IO_ENABLED est éteint : registre brut à 59, route à 57).
     assert set(body) == {
         "reader.collection",
         "transform.filter",
@@ -78,13 +92,16 @@ def test_get_pipelines_ops_returns_all_thirty_four(monkeypatch):
         "transform.intersection",
         "transform.countWithin",
         "transform.h3Aggregate",
-        "transform.qgis",
         "writer.collection",
         "writer.export",
         "writer.dataset",
         "reader.connector.rest",
         "reader.connector.postgres",
         "reader.connector.snowflake",
+        "reader.connector.bigquery",
+        "reader.connector.mssql",
+        "reader.connector.blob",
+        "reader.connector.oracle",
         "transform.merge",
         "transform.swapCoordinates",
         "transform.translateGeometry",
@@ -101,12 +118,35 @@ def test_get_pipelines_ops_returns_all_thirty_four(monkeypatch):
         "transform.setSrid",
         "transform.reprojectAttribute",
         "transform.formatCoordinates",
+        "transform.bulkRemoveAttributes",
+        "transform.bulkRenameAttributes",
+        "transform.scanSchema",
+        "transform.explodeList",
+        "transform.explodeGeometry",
+        "transform.exposeAttributes",
+        "transform.validateAttributes",
+        "transform.sort",
+        "transform.detectChanges",
+        "transform.mergeChildren",
+        "transform.mapSchema",
+        "transform.centroid",
+        "transform.convexHull",
+        "transform.simplify",
+        "transform.boundingGeometry",
+        "transform.snapToLayer",
+        "transform.resolveOverlaps",
+        "transform.triangulate",
+        "transform.densify",
+        "transform.minimumBoundingCircle",
     }
     for op in (
         "transform.join",
         "transform.intersection",
         "transform.countWithin",
         "transform.merge",
+        "transform.detectChanges",
+        "transform.mergeChildren",
+        "transform.snapToLayer",
     ):
         assert body[op]["acceptsSecondaryInput"] is True
     assert body["reader.collection"]["acceptsSecondaryInput"] is False
@@ -646,21 +686,6 @@ def test_list_pipeline_runs_accepts_limit_and_offset(monkeypatch):
 
     resp2 = client.get(f"/v1/pipelines/{item_id}/runs?limit=2&offset=4")
     assert len(resp2.json()) == 1
-
-
-def test_get_qgis_algorithms_returns_full_allowlist(monkeypatch):
-    client = _make_app(monkeypatch, etl_enabled=True)
-    response = client.get("/v1/pipelines/ops/qgis-algorithms")
-    assert response.status_code == 200
-    body = response.json()
-    assert len(body) == 50
-    assert "native:centroids" in body
-    assert "ALL_PARTS" in body["native:centroids"]["parameters"]
-
-
-def test_get_qgis_algorithms_absent_when_etl_disabled(monkeypatch):
-    client = _make_app(monkeypatch, etl_enabled=False)
-    assert client.get("/v1/pipelines/ops/qgis-algorithms").status_code == 404
 
 
 def test_next_run_route_computes_the_next_occurrence(monkeypatch):

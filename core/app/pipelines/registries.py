@@ -6,13 +6,14 @@ repris de app.harvest.connectors.__init__ (`_REGISTRY: dict[str,
 HarvestConnector]` + `get_connector(source_type)`), seul registre
 préexistant du dépôt.
 
-Les transforms non-QGIS restent dans app.pipelines.compiler (déjà un
-dispatcher fonctionnel pur, testé isolément) : ce module ne couvre que les 3
-readers et les 3 writers. transform.qgis (_execute_qgis_transform,
-_lock_down) N'EST PAS déplacé dans un registre par cette étape (spec SP-43
-§2.1) : c'est le seul transform avec un effet de bord (I/O + réseau vers le
-sidecar qgis-worker) — laissé inline dans runtime.py, avec sa branche
-`if node.op == "transform.qgis":` actuelle dans _execute_transform_chain().
+Les transforms restent dans app.pipelines.compiler (déjà un dispatcher
+fonctionnel pur, testé isolément) : ce module ne couvre que les readers et
+les writers. transform.qgis (_execute_qgis_transform, sa branche
+`if node.op == "transform.qgis":` dans _execute_transform_chain()) n'a
+jamais été déplacé dans un registre par cette étape (spec SP-43 §2.1) —
+c'était le seul transform avec un effet de bord (I/O + réseau vers le
+sidecar qgis-worker) ; le moteur a été retiré (Task 28 du volet 3 de
+retrait du sidecar QGIS), la question ne se pose donc plus.
 
 Les fonctions référencées ci-dessous restent DÉFINIES dans
 app.pipelines.runtime, jamais dupliquées ici : plusieurs tests
@@ -36,8 +37,9 @@ tout premier appel de l'une de ces deux fonctions (donc après que
 app.pipelines.runtime a fini de charger, quel que soit ce qui a déclenché
 ce premier import), app.pipelines.runtime est déjà entièrement défini :
 _read_collection, _read_connector_rest, _read_connector_postgres,
-_read_connector_snowflake, _read_file, _write_collection, _write_export,
-_write_dataset et _write_file existent tous en tant
+_read_connector_snowflake, _read_connector_bigquery, _read_connector_mssql,
+_read_connector_oracle, _read_connector_blob, _read_file, _write_collection,
+_write_export, _write_dataset et _write_file existent tous en tant
 qu'attributs du module au moment où ce fichier-ci y accède ci-dessous."""
 
 from collections.abc import Callable
@@ -49,6 +51,10 @@ READERS: dict[str, Callable] = {
     "reader.connector.rest": _runtime._read_connector_rest,
     "reader.connector.postgres": _runtime._read_connector_postgres,
     "reader.connector.snowflake": _runtime._read_connector_snowflake,
+    "reader.connector.bigquery": _runtime._read_connector_bigquery,
+    "reader.connector.mssql": _runtime._read_connector_mssql,
+    "reader.connector.oracle": _runtime._read_connector_oracle,
+    "reader.connector.blob": _runtime._read_connector_blob,
     "reader.file": _runtime._read_file,
 }
 

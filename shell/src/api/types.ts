@@ -715,7 +715,18 @@ export type SecretPayload =
       useTls: boolean;
       fromAddress: string;
     }
-  | { kind: "snowflake_dsn"; dsn: string };
+  | { kind: "snowflake_dsn"; dsn: string }
+  | { kind: "bigquery_dsn"; dsn: string }
+  | { kind: "mssql_dsn"; dsn: string }
+  | { kind: "oracle_dsn"; dsn: string }
+  | {
+      kind: "s3_credentials";
+      awsAccessKeyId: string;
+      awsSecretAccessKey: string;
+      endpointUrl?: string;
+    }
+  | { kind: "azure_blob_credentials"; accountName: string; accountKey: string }
+  | { kind: "gcs_credentials"; serviceAccountInfo: Record<string, unknown> };
 
 export type RenderMode = "edit" | "preview" | "runtime";
 

@@ -26,19 +26,34 @@ from pydantic import BaseModel
 
 from app.auth.dependency import is_pipeline_file_io_enabled
 from app.pipelines import compiler as _compiler
+from app.pipelines.ops import execute as _execute
 from app.pipelines.ops.schemas import (
     ReaderCollectionParams,
+    ReaderConnectorBigQueryParams,
+    ReaderConnectorBlobParams,
+    ReaderConnectorMssqlParams,
+    ReaderConnectorOracleParams,
     ReaderConnectorPostgresParams,
     ReaderConnectorRestParams,
     ReaderConnectorSnowflakeParams,
     ReaderFileParams,
     TransformAggregateParams,
+    TransformBoundingGeometryParams,
     TransformBufferParams,
+    TransformBulkRemoveAttributesParams,
+    TransformBulkRenameAttributesParams,
+    TransformCentroidParams,
     TransformConcatCoordinatesParams,
+    TransformConvexHullParams,
     TransformCountVerticesParams,
     TransformCountWithinParams,
     TransformCreateGeometryParams,
+    TransformDensifyParams,
     TransformDeriveParams,
+    TransformDetectChangesParams,
+    TransformExplodeGeometryParams,
+    TransformExplodeListParams,
+    TransformExposeAttributesParams,
     TransformExtractCoordinatesParams,
     TransformExtractDimensionParams,
     TransformExtractElevationParams,
@@ -48,17 +63,26 @@ from app.pipelines.ops.schemas import (
     TransformH3AggregateParams,
     TransformIntersectionParams,
     TransformJoinParams,
+    TransformMapSchemaParams,
+    TransformMergeChildrenParams,
     TransformMergeParams,
-    TransformQgisParams,
+    TransformMinimumBoundingCircleParams,
     TransformReprojectAttributeParams,
     TransformReprojectParams,
+    TransformResolveOverlapsParams,
     TransformRotateGeometryParams,
     TransformRoundCoordinatesParams,
     TransformScaleGeometryParams,
+    TransformScanSchemaParams,
     TransformSelectParams,
     TransformSetSridParams,
+    TransformSimplifyParams,
+    TransformSnapToLayerParams,
+    TransformSortParams,
     TransformSwapCoordinatesParams,
     TransformTranslateGeometryParams,
+    TransformTriangulateParams,
+    TransformValidateAttributesParams,
     WriterCollectionParams,
     WriterDatasetParams,
     WriterExportParams,
@@ -76,6 +100,17 @@ class OperationContract:
     engine_license: str | None = None
     is_copyleft: bool = False
     execution_model: Literal["in_process", "sidecar"] = "in_process"
+    # Vague 2 (design docs/superpowers/specs/2026-09-20-vague2-transformers-duckdb-design.md
+    # §3.1) : quand True, compile_transform_sql résout input_columns/join_columns via un
+    # DESCRIBE (app.pipelines.runtime) avant d'appeler `compile` — extension chirurgicale,
+    # jamais de connexion DuckDB dans ce module lui-même.
+    needs_columns: bool = False
+    # Design docs/superpowers/specs/2026-09-20-vague2-transformers-duckdb-design.md §7.2 :
+    # mutuellement exclusif avec `compile` — un op "transform" a l'un ou l'autre, jamais les
+    # deux, jamais aucun des deux. Signature : (conn, *, input_view, view_name, params) -> None,
+    # matérialise `view_name` lui-même (contrairement à `compile`, qui retourne une simple
+    # chaîne SQL exécutée par l'appelant).
+    execute: Callable[..., None] | None = None
     # Piège Python latent : un `def` nu donné ici en défaut (au lieu de `None`)
     # deviendrait un attribut de classe et serait lié comme méthode (self/le
     # contrat injecté en premier argument), pas un simple callable — inoffensif
@@ -202,15 +237,29 @@ OPERATIONS: dict[str, OperationContract] = {
         compile=_compiler._compile_h3_aggregate,
         output_srid=_compiler._output_srid_h3_aggregate,
     ),
-    "transform.qgis": OperationContract(
-        op="transform.qgis",
+    "transform.bulkRemoveAttributes": OperationContract(
+        op="transform.bulkRemoveAttributes",
         kind="transform",
-        params_schema=TransformQgisParams,
-        engine="qgis",
-        engine_license="GPL-2.0-or-later (QGIS)",
-        is_copyleft=True,
-        execution_model="sidecar",
-        output_srid=_compiler._output_srid_qgis,
+        params_schema=TransformBulkRemoveAttributesParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_bulk_remove_attributes,
+    ),
+    "transform.bulkRenameAttributes": OperationContract(
+        op="transform.bulkRenameAttributes",
+        kind="transform",
+        params_schema=TransformBulkRenameAttributesParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_bulk_rename_attributes,
+    ),
+    "transform.scanSchema": OperationContract(
+        op="transform.scanSchema",
+        kind="transform",
+        params_schema=TransformScanSchemaParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_scan_schema,
     ),
     "writer.collection": OperationContract(
         op="writer.collection",
@@ -241,6 +290,34 @@ OPERATIONS: dict[str, OperationContract] = {
         op="reader.connector.snowflake",
         kind="reader",
         params_schema=ReaderConnectorSnowflakeParams,
+    ),
+    "reader.connector.bigquery": OperationContract(
+        op="reader.connector.bigquery",
+        kind="reader",
+        params_schema=ReaderConnectorBigQueryParams,
+    ),
+    "reader.connector.mssql": OperationContract(
+        op="reader.connector.mssql",
+        kind="reader",
+        params_schema=ReaderConnectorMssqlParams,
+    ),
+    "reader.connector.oracle": OperationContract(
+        op="reader.connector.oracle",
+        kind="reader",
+        params_schema=ReaderConnectorOracleParams,
+    ),
+    "reader.connector.blob": OperationContract(
+        op="reader.connector.blob",
+        kind="reader",
+        params_schema=ReaderConnectorBlobParams,
+        # Écart au brief de Task 15 (même écart, même rationale que Task
+        # 12/13/14) : aucun des 6 autres readers déjà livrés
+        # (rest/postgres/snowflake/bigquery/mssql/oracle) ne pose
+        # `engine`/`engine_license` sur son OperationContract — ces deux
+        # champs ne sont utilisés que par les transforms DuckDB dans ce
+        # registre (vérifié par grep sur ce module, aucune autre occurrence
+        # de `engine_license` dans app.pipelines). Rester cohérent avec les 6
+        # lecteurs existants plutôt qu'introduire une exception isolée.
     ),
     "transform.merge": OperationContract(
         op="transform.merge",
@@ -373,6 +450,149 @@ OPERATIONS: dict[str, OperationContract] = {
         engine_license="MIT (DuckDB)",
         compile=_compiler._compile_format_coordinates,
     ),
+    "transform.explodeList": OperationContract(
+        op="transform.explodeList",
+        kind="transform",
+        params_schema=TransformExplodeListParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_explode_list,
+    ),
+    "transform.explodeGeometry": OperationContract(
+        op="transform.explodeGeometry",
+        kind="transform",
+        params_schema=TransformExplodeGeometryParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_explode_geometry,
+    ),
+    "transform.centroid": OperationContract(
+        op="transform.centroid",
+        kind="transform",
+        params_schema=TransformCentroidParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_centroid,
+    ),
+    "transform.convexHull": OperationContract(
+        op="transform.convexHull",
+        kind="transform",
+        params_schema=TransformConvexHullParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_convex_hull,
+    ),
+    "transform.simplify": OperationContract(
+        op="transform.simplify",
+        kind="transform",
+        params_schema=TransformSimplifyParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_simplify,
+    ),
+    "transform.boundingGeometry": OperationContract(
+        op="transform.boundingGeometry",
+        kind="transform",
+        params_schema=TransformBoundingGeometryParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_bounding_geometry,
+    ),
+    "transform.exposeAttributes": OperationContract(
+        op="transform.exposeAttributes",
+        kind="transform",
+        params_schema=TransformExposeAttributesParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_expose_attributes,
+    ),
+    "transform.validateAttributes": OperationContract(
+        op="transform.validateAttributes",
+        kind="transform",
+        params_schema=TransformValidateAttributesParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_validate_attributes,
+    ),
+    "transform.sort": OperationContract(
+        op="transform.sort",
+        kind="transform",
+        params_schema=TransformSortParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_sort,
+    ),
+    "transform.detectChanges": OperationContract(
+        op="transform.detectChanges",
+        kind="transform",
+        params_schema=TransformDetectChangesParams,
+        accepts_secondary_input=True,
+        needs_columns=True,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_detect_changes,
+    ),
+    "transform.mergeChildren": OperationContract(
+        op="transform.mergeChildren",
+        kind="transform",
+        params_schema=TransformMergeChildrenParams,
+        accepts_secondary_input=True,
+        needs_columns=True,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_merge_children,
+    ),
+    "transform.mapSchema": OperationContract(
+        op="transform.mapSchema",
+        kind="transform",
+        params_schema=TransformMapSchemaParams,
+        needs_columns=True,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_map_schema,
+    ),
+    "transform.snapToLayer": OperationContract(
+        op="transform.snapToLayer",
+        kind="transform",
+        params_schema=TransformSnapToLayerParams,
+        accepts_secondary_input=True,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_snap_to_layer,
+        output_srid=_compiler._output_srid_reconcile_join,
+    ),
+    "transform.resolveOverlaps": OperationContract(
+        op="transform.resolveOverlaps",
+        kind="transform",
+        params_schema=TransformResolveOverlapsParams,
+        engine="duckdb",
+        engine_license="MIT (DuckDB)",
+        compile=_compiler._compile_resolve_overlaps,
+    ),
+    "transform.triangulate": OperationContract(
+        op="transform.triangulate",
+        kind="transform",
+        params_schema=TransformTriangulateParams,
+        engine="duckdb",
+        engine_license="BSD-3-Clause (Shapely)",
+        execute=_execute._execute_triangulate,
+    ),
+    "transform.densify": OperationContract(
+        op="transform.densify",
+        kind="transform",
+        params_schema=TransformDensifyParams,
+        engine="duckdb",
+        engine_license="BSD-3-Clause (Shapely)",
+        execute=_execute._execute_densify,
+    ),
+    "transform.minimumBoundingCircle": OperationContract(
+        op="transform.minimumBoundingCircle",
+        kind="transform",
+        params_schema=TransformMinimumBoundingCircleParams,
+        engine="duckdb",
+        engine_license="BSD-3-Clause (Shapely)",
+        execute=_execute._execute_minimum_bounding_circle,
+    ),
     "reader.file": OperationContract(
         op="reader.file",
         kind="reader",
@@ -410,7 +630,7 @@ def _user_facing_description(description: str) -> str:
 
     Correctif revue finale GAP-16 (Important I2) : `model_json_schema()`
     reprend tel quel le docstring Python complet d'une classe de params dans
-    sa clé `description` — pour 5 op (les connecteurs + transform.qgis/
+    sa clé `description` — pour plusieurs op (les connecteurs +
     transform.merge), ce docstring contient du jargon développeur (noms de
     classes, chemins de module, renvois "design §n"/"SPnn") qui n'a rien à
     faire dans le tooltip de palette lu par

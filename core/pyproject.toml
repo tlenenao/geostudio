@@ -39,6 +39,81 @@ dependencies = [
                        # résolution de dépendances. Apache-2.0, comme sa
                        # dépendance transitive snowflake-connector-python
                        # (vérifiées toutes deux sur PyPI).
+    "sqlalchemy-bigquery>=1.17,<2",  # Vague 2 §6.1 : reader.connector.bigquery —
+                       # dialecte SQLAlchemy pour Google BigQuery, résolu
+                       # automatiquement par sa.create_engine("bigquery://...")
+                       # via les entry points du paquet (aucun import
+                       # explicite requis dans ce dépôt), même patron que
+                       # snowflake-sqlalchemy ci-dessus. Authentification par
+                       # compte de service passée inline dans le DSN via le
+                       # paramètre de requête `credentials_base64` (JSON du
+                       # compte de service encodé en base64) — jamais un
+                       # `credentials_path` sur disque, qui ne survivrait pas
+                       # au trajet secret chiffré -> chaîne opaque -> DSN
+                       # (vérifié contre sqlalchemy_bigquery/parse_url.py et
+                       # base.py du dépôt googleapis/python-bigquery-sqlalchemy
+                       # réel, pas seulement le README). MIT, vérifiée sur
+                       # PyPI (classifiers).
+    "pymssql>=2.3,<3",  # Vague 2 §6.1 : reader.connector.mssql — driver DBAPI
+                       # pur Python (FreeTDS statiquement embarqué dans ses
+                       # wheels officielles) pour Microsoft SQL Server, préféré
+                       # à pyodbc (nécessiterait unixodbc + un driver ODBC
+                       # système sur l'image du worker) faute de limitation
+                       # bloquante trouvée. Contrairement à
+                       # snowflake-sqlalchemy/sqlalchemy-bigquery ci-dessus :
+                       # le dialecte SQLAlchemy "mssql+pymssql" est intégré à
+                       # SQLAlchemy elle-même (dialects/mssql/pymssql.py, pas
+                       # un entry point tiers) — ce paquet ne fournit que le
+                       # driver DBAPI importé en interne par ce dialecte.
+                       # LGPL-2.1, vérifiée sur PyPI (classifiers réels,
+                       # pas supposée).
+    "oracledb>=2.0,<27",  # Vague 2 §6.1 : reader.connector.oracle — driver
+                       # DBAPI officiel Oracle (remplace cx_Oracle), utilisé
+                       # en mode thin (pur Python, aucune bibliothèque
+                       # cliente Oracle native requise) par défaut — vérifié
+                       # empiriquement contre le code source réel du
+                       # dialecte SQLAlchemy intégré "oracle+oracledb"
+                       # (sqlalchemy/dialects/oracle/oracledb.py) : ce
+                       # paquet ne fournit que le driver DBAPI importé en
+                       # interne par ce dialecte, même patron que pymssql
+                       # ci-dessus (pas un dialecte tiers à entry points
+                       # comme snowflake-sqlalchemy/sqlalchemy-bigquery).
+                       # Borne haute délibérée : le projet a adopté un
+                       # schéma de version proche du calendaire (26.0.0 au
+                       # moment de cet ajout, après les séries 1.x/2.x/3.x/
+                       # 4.x — vérifié contre le changelog amont réel,
+                       # doc/src/release_notes.rst, pas déduit d'un tri
+                       # lexicographique de numéros de version) — `<27`
+                       # évite une bascule silencieuse vers une prochaine
+                       # série majeure non vérifiée, plutôt qu'une borne
+                       # `<3` qui serait déjà fausse aujourd'hui.
+                       # License-Expression PyPI réelle (pas supposée) :
+                       # "UPL-1.0 OR Apache-2.0" (double licence, vérifiée
+                       # via importlib.metadata) — Apache-2.0 retenue.
+    "s3fs>=2024.10,<2026",  # Task 15 (Vague 2 §6.1) : reader.connector.blob (S3) —
+                       # implémentation fsspec pour S3/compatible-S3 consommée
+                       # par la source `filesystem` de dlt (dlt.sources.filesystem,
+                       # déjà présente dans le paquet `dlt` de base, aucun extra
+                       # requis — vérifié empiriquement : `dlt.sources.filesystem`
+                       # s'importe sans lui). Le pipeline dlt reçoit un objet
+                       # `AwsCredentials` typé (dlt.common.configuration.specs)
+                       # dont `to_s3fs_credentials()` produit les kwargs s3fs
+                       # réels (`key`/`secret`/`endpoint_url`, vérifié
+                       # empiriquement) — ce module ne construit jamais lui-même
+                       # de dict de kwargs s3fs. BSD-3-Clause, vérifiée sur PyPI
+                       # (classifiers réels).
+    "adlfs>=2024.7,<2026",  # Task 15 : reader.connector.blob (Azure Blob) —
+                       # implémentation fsspec pour Azure Blob Storage ;
+                       # `AzureCredentialsWithoutDefaults.to_adlfs_credentials()`
+                       # produit les kwargs adlfs réels (`account_name`/
+                       # `account_key`, vérifié empiriquement). BSD-3-Clause,
+                       # vérifiée sur PyPI (classifiers réels).
+    "gcsfs>=2024.10,<2026",  # Task 15 : reader.connector.blob (GCS) —
+                       # implémentation fsspec pour Google Cloud Storage ;
+                       # `GcpServiceAccountCredentials.to_gcs_credentials()`
+                       # produit les kwargs gcsfs réels (`project`/`token`,
+                       # vérifié empiriquement). BSD-3-Clause, vérifiée sur PyPI
+                       # (classifiers réels).
     "psycopg[binary]>=3.1",
     "psycopg2-binary>=2.9",  # SP-11a : seul driver Python avec support du protocole
                              # de réplication logique (psycopg v3 ne l'expose pas) ;
@@ -146,8 +221,7 @@ filterwarnings = [
 ]
 markers = [
     "postgis: nécessite un PostGIS réel (CORE_TEST_DATABASE_URL) ; skippé sinon",
-    "qgis: nécessite un sidecar qgis-worker réel (CORE_TEST_QGIS_WORKER_URL) ; skippé sinon",
-    "snowflake: nécessite un compte Snowflake réel (CORE_TEST_SNOWFLAKE_DSN) ; skippé sinon — JAMAIS câblé en CI (service cloud propriétaire, pas de sidecar auto-hébergeable équivalent au qgis-worker) ; manuel uniquement",
+    "snowflake: nécessite un compte Snowflake réel (CORE_TEST_SNOWFLAKE_DSN) ; skippé sinon — JAMAIS câblé en CI (service cloud propriétaire, pas de sidecar auto-hébergeable équivalent) ; manuel uniquement",
     "playwright: nécessite le binaire Chromium (playwright install --with-deps chromium) ; skippé sinon",
     "docker: nécessite un démon Docker réel (build local de l'image, jamais un pull) ; skippé sinon",
 ]

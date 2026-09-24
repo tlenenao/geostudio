@@ -486,8 +486,6 @@ services:
       CORE_BASE_URL: ${CORE_BASE_URL:-http://localhost:8200}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_SERVICE_NAME: geostudio-worker
-      QGIS_WORKER_URL: http://qgis-worker:8000
-      QGIS_WORKER_TIMEOUT_SECONDS: "600"
       CORE_APPEXPORT_ENABLED: ${CORE_APPEXPORT_ENABLED:-false}
       APPEXPORT_RUNTIME_DIR: /export-runtime
       S3_APPEXPORTS_BUCKET: geostudio-appexports
@@ -556,40 +554,6 @@ services:
     volumes:
       - appexport-runtime:/export-runtime
     networks: [gis-net]
-
-  # Sidecar QGIS Processing étage 2 (SP-15d, arbitrage A39 — GPL en
-  # sous-processus isolé, cœur Apache-2.0 intact). Profil `etl` : un
-  # `docker compose up` par défaut ne le démarre pas, même porte que
-  # CORE_ETL_ENABLED. Aucune credential DB, aucun accès réseau externe —
-  # ne voit que le volume scratch partagé avec `worker` (garde
-  # anti-confused-deputy, patron SP-6a).
-  qgis-worker:
-    build: ./deploy/qgis-worker
-    profiles: ["etl"]
-    environment:
-      QT_QPA_PLATFORM: offscreen
-    volumes:
-      - etl-scratch:/scratch
-    networks: [gis-net]
-    restart: unless-stopped
-    # Pas un worker procrastinate (`command` absent : l'image lance
-    # server.py, un serveur http.server minimal appelé en synchrone par
-    # pipelines/runtime.py — pas une file de jobs), donc pas de mécanisme de
-    # reclaim comparable à worker/export-worker ici (GAP-76, SP-49).
-    # server.py n'expose que `do_POST` (aucune route de vivacité HTTP,
-    # confirmé par lecture directe de deploy/qgis-worker/server.py) — ajouter
-    # une route au sidecar QGIS sort du périmètre fiabilité des jobs pour
-    # entrer dans le périmètre du composant le plus risqué du dépôt (spec
-    # SP-43 §5 Étape 9). Healthcheck de process a minima : avant ce
-    # correctif, aucune sonde du tout n'existait (confirmé, vérifié réel
-    # contre l'image construite localement — `pgrep -f server.py` matche le
-    # process CMD `python3 /app/server.py`).
-    healthcheck:
-      test: ["CMD", "pgrep", "-f", "server.py"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
 
   # Worker d'export Playwright (SP-17a, A25) — image dédiée (Chromium +
   # dépendances système), séparée du worker partagé pour ne pas l'alourdir

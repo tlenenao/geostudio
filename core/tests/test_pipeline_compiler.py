@@ -127,6 +127,39 @@ def test_compile_unknown_transform_op_raises():
         compile_transform_sql("reader.collection", {"collectionId": "x"}, input_view="base")
 
 
+def test_compile_bulk_remove_attributes(conn):
+    sql = compile_transform_sql(
+        "transform.bulkRemoveAttributes",
+        {"pattern": "^pop$"},
+        input_view="base",
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    cols = [d[0] for d in conn.execute("SELECT * FROM out LIMIT 0").description]
+    assert cols == ["id", "region"]
+
+
+def test_compile_bulk_rename_attributes(conn):
+    sql = compile_transform_sql(
+        "transform.bulkRenameAttributes",
+        {"pattern": "^(pop)$", "replacement": r"\1_count"},
+        input_view="base",
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    cols = [d[0] for d in conn.execute("SELECT * FROM out LIMIT 0").description]
+    assert sorted(cols) == ["id", "pop_count", "region"]
+
+
+def test_compile_bulk_rename_attributes_escapes_single_quotes(conn):
+    sql = compile_transform_sql(
+        "transform.bulkRenameAttributes",
+        {"pattern": "^(pop)$", "replacement": "it's_\\1"},
+        input_view="base",
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    cols = [d[0] for d in conn.execute("SELECT * FROM out LIMIT 0").description]
+    assert "it's_pop" in cols
+
+
 @pytest.fixture()
 def conn_spatial():
     c = duckdb.connect(":memory:")
@@ -332,36 +365,6 @@ def test_transform_output_srid_h3_aggregate_requires_4326():
     )
 
 
-def test_transform_output_srid_qgis_passes_through_by_default():
-    srid = compiler.transform_output_srid(
-        "transform.qgis",
-        {"algorithmId": "native:centroids", "params": {"ALL_PARTS": False}},
-        input_srid=4326,
-    )
-    assert srid == 4326
-
-
-def test_transform_output_srid_qgis_uses_explicit_output_srid():
-    # gdal:warpreproject's real schema (Task 1) requires DATA_TYPE/
-    # MULTITHREADING/RESAMPLING too — TARGET_CRS itself is optional, but
-    # included here for realism (this IS the reprojection param).
-    srid = compiler.transform_output_srid(
-        "transform.qgis",
-        {
-            "algorithmId": "gdal:warpreproject",
-            "params": {
-                "TARGET_CRS": "EPSG:2154",
-                "DATA_TYPE": 0,
-                "MULTITHREADING": False,
-                "RESAMPLING": 0,
-            },
-            "outputSrid": "EPSG:2154",
-        },
-        input_srid=4326,
-    )
-    assert srid == 2154
-
-
 def test_secondary_predecessor_id_returns_none_without_secondary_edge():
     edges = [_edge("e1", "r1", "t1")]
     assert compiler.secondary_predecessor_id("t1", edges) is None
@@ -405,6 +408,134 @@ def test_compile_merge(conn):
     assert rows == [(1, "Nord", 10), (2, "Sud", 5), (3, "Nord", 20), (10, None, 99)]
 
 
+def test_compile_detect_changes_marks_inserted_deleted_updated_unchanged(conn):
+    conn.execute("CREATE TABLE before_t (id INTEGER, region VARCHAR)")
+    conn.execute("INSERT INTO before_t VALUES (1, 'Nord'), (2, 'Sud'), (3, 'Est')")
+    conn.execute("CREATE TABLE after_t (id INTEGER, region VARCHAR)")
+    conn.execute("INSERT INTO after_t VALUES (1, 'Nord'), (2, 'Ouest'), (4, 'Sud')")
+    sql = compile_transform_sql(
+        "transform.detectChanges",
+        {"keyColumns": ["id"], "statusColumn": "status"},
+        input_view="before_t",
+        join_view="after_t",
+        input_columns=["id", "region"],
+        join_columns=["id", "region"],
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    out_rows = conn.execute("SELECT * FROM out ORDER BY id NULLS LAST").fetchall()
+    rows = dict((row[0], row[-1]) for row in out_rows)
+    # id=1 inchangé, id=2 modifié (region différente), id=3 supprimé, id=4 ajouté
+    assert rows[1] == "unchanged"
+    assert rows[2] == "updated"
+    assert rows[3] == "deleted"
+    assert rows[4] == "inserted"
+
+
+def test_compile_detect_changes_without_join_view_raises():
+    with pytest.raises(AssertionError):
+        compile_transform_sql(
+            "transform.detectChanges",
+            {"keyColumns": ["id"], "statusColumn": "status"},
+            input_view="before_t",
+        )
+
+
+def test_compile_merge_children_packs_matching_rows_into_a_struct_list(conn):
+    conn.execute("CREATE TABLE parents (id INTEGER, name VARCHAR)")
+    conn.execute("INSERT INTO parents VALUES (1, 'A'), (2, 'B')")
+    conn.execute("CREATE TABLE children (parentId INTEGER, label VARCHAR)")
+    conn.execute("INSERT INTO children VALUES (1, 'c1'), (1, 'c2'), (2, 'c3')")
+    sql = compile_transform_sql(
+        "transform.mergeChildren",
+        {"parentOn": "id", "childOn": "parentId", "childrenColumn": "children"},
+        input_view="parents",
+        join_view="children",
+        input_columns=["id", "name"],
+        join_columns=["parentId", "label"],
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn.execute("SELECT id, name, children FROM out WHERE id = 1").fetchone()
+    assert row[0:2] == (1, "A")
+    assert len(row[2]) == 2
+    assert {c["label"] for c in row[2]} == {"c1", "c2"}
+
+
+def test_compile_merge_children_preserves_multiple_parent_columns(conn):
+    conn.execute("CREATE TABLE parents (id INTEGER, name VARCHAR, category VARCHAR)")
+    conn.execute("INSERT INTO parents VALUES (1, 'A', 'x'), (2, 'B', 'y')")
+    conn.execute("CREATE TABLE children (parentId INTEGER, label VARCHAR, qty INTEGER)")
+    conn.execute("INSERT INTO children VALUES (1, 'c1', 10), (1, 'c2', 20), (2, 'c3', 30)")
+    sql = compile_transform_sql(
+        "transform.mergeChildren",
+        {"parentOn": "id", "childOn": "parentId", "childrenColumn": "children"},
+        input_view="parents",
+        join_view="children",
+        input_columns=["id", "name", "category"],
+        join_columns=["parentId", "label", "qty"],
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = {
+        r[0]: r for r in conn.execute("SELECT id, name, category, children FROM out").fetchall()
+    }
+    assert rows[1][0:3] == (1, "A", "x")
+    assert len(rows[1][3]) == 2
+    assert rows[2][0:3] == (2, "B", "y")
+    assert len(rows[2][3]) == 1
+
+
+def test_compile_merge_children_yields_empty_list_for_unmatched_parents(conn):
+    conn.execute("CREATE TABLE parents (id INTEGER, name VARCHAR)")
+    conn.execute("INSERT INTO parents VALUES (1, 'A'), (2, 'B'), (3, 'C')")
+    conn.execute("CREATE TABLE children (parentId INTEGER, label VARCHAR)")
+    conn.execute("INSERT INTO children VALUES (1, 'c1')")
+    sql = compile_transform_sql(
+        "transform.mergeChildren",
+        {"parentOn": "id", "childOn": "parentId", "childrenColumn": "children"},
+        input_view="parents",
+        join_view="children",
+        input_columns=["id", "name"],
+        join_columns=["parentId", "label"],
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn.execute("SELECT children FROM out WHERE id = 3").fetchone()
+    assert row[0] == []
+
+
+def test_compile_merge_children_without_join_view_raises():
+    with pytest.raises(AssertionError):
+        compile_transform_sql(
+            "transform.mergeChildren",
+            {"parentOn": "id", "childOn": "parentId", "childrenColumn": "children"},
+            input_view="parents",
+        )
+
+
+def test_compile_map_schema_fills_missing_target_columns_with_null(conn):
+    sql = compile_transform_sql(
+        "transform.mapSchema",
+        {"targetColumns": ["id", "region", "elevation"]},
+        input_view="base",
+        input_columns=["id", "region", "pop"],
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    cols = [d[0] for d in conn.execute("SELECT * FROM out LIMIT 0").description]
+    assert cols == ["id", "region", "elevation"]
+    row = conn.execute("SELECT elevation FROM out LIMIT 1").fetchone()
+    assert row == (None,)
+
+
+def test_compile_map_schema_drops_source_columns_not_in_target_list(conn):
+    sql = compile_transform_sql(
+        "transform.mapSchema",
+        {"targetColumns": ["id"]},
+        input_view="base",
+        input_columns=["id", "region", "pop"],
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    cols = [d[0] for d in conn.execute("SELECT * FROM out LIMIT 0").description]
+    assert cols == ["id"]
+
+
 def test_compile_merge_without_join_view_raises():
     with pytest.raises(AssertionError):
         compile_transform_sql("transform.merge", {}, input_view="base")
@@ -424,6 +555,26 @@ def test_transform_output_srid_merge_passes_on_match():
     srid = compiler.transform_output_srid(
         "transform.merge",
         {},
+        input_srid=4326,
+        join_srid=4326,
+    )
+    assert srid == 4326
+
+
+def test_transform_output_srid_snap_to_layer_raises_on_mismatch():
+    with pytest.raises(ValueError, match="transform.reproject"):
+        compiler.transform_output_srid(
+            "transform.snapToLayer",
+            {"tolerance": 0.01},
+            input_srid=4326,
+            join_srid=3857,
+        )
+
+
+def test_transform_output_srid_snap_to_layer_passes_on_match():
+    srid = compiler.transform_output_srid(
+        "transform.snapToLayer",
+        {"tolerance": 0.01},
         input_srid=4326,
         join_srid=4326,
     )
@@ -720,3 +871,204 @@ def test_compile_format_coordinates_dms_carries_seconds_rounding_into_minutes(co
     conn_spatial.execute(f"CREATE TEMP VIEW out2 AS {sql}")
     row = conn_spatial.execute("SELECT latText FROM out2").fetchone()
     assert row == ("49°0'0.00\"",)
+
+
+def test_compile_scan_schema(conn):
+    sql = compile_transform_sql("transform.scanSchema", {}, input_view="base")
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn.execute("SELECT column_name, column_type FROM out ORDER BY column_name").fetchall()
+    assert rows == [
+        ("id", "INTEGER"),
+        ("pop", "INTEGER"),
+        ("region", "VARCHAR"),
+    ]
+
+
+def test_compile_explode_list_multiplies_rows(conn):
+    conn.execute("CREATE TABLE with_list (id INTEGER, tags VARCHAR[])")
+    conn.execute("INSERT INTO with_list VALUES (1, ['a', 'b', 'c']), (2, ['x'])")
+    sql = compile_transform_sql("transform.explodeList", {"column": "tags"}, input_view="with_list")
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn.execute("SELECT id, tags FROM out ORDER BY id, tags").fetchall()
+    assert rows == [(1, "a"), (1, "b"), (1, "c"), (2, "x")]
+
+
+def test_compile_explode_geometry_dumps_multipoint(conn_spatial):
+    conn_spatial.execute("CREATE TABLE multi (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO multi VALUES (1, ST_GeomFromText('MULTIPOINT (0 0, 1 1, 2 2)'))"
+    )
+    sql = compile_transform_sql("transform.explodeGeometry", {}, input_view="multi")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn_spatial.execute(
+        "SELECT id, ST_AsText(geometry) FROM out ORDER BY ST_AsText(geometry)"
+    ).fetchall()
+    assert rows == [
+        (1, "POINT (0 0)"),
+        (1, "POINT (1 1)"),
+        (1, "POINT (2 2)"),
+    ]
+
+
+def test_compile_explode_geometry_on_single_part_geometry_is_a_noop_on_row_count(conn_spatial):
+    sql = compile_transform_sql("transform.explodeGeometry", {}, input_view="base")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    count = conn_spatial.execute("SELECT count(*) FROM out").fetchone()[0]
+    assert count == 2  # falsification : un point simple ne se dédouble pas
+
+
+def test_compile_expose_attributes_expands_struct_fields(conn):
+    conn.execute("CREATE TABLE nested (id INTEGER, payload STRUCT(a INTEGER, b VARCHAR))")
+    conn.execute("INSERT INTO nested VALUES (1, {'a': 10, 'b': 'x'})")
+    sql = compile_transform_sql(
+        "transform.exposeAttributes", {"column": "payload"}, input_view="nested"
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn.execute("SELECT id, a, b FROM out").fetchone()
+    assert row == (1, 10, "x")
+
+
+def test_compile_validate_attributes_checks_non_null_columns(conn):
+    conn.execute("CREATE TABLE nullable (id INTEGER, region VARCHAR)")
+    conn.execute("INSERT INTO nullable VALUES (1, 'Nord'), (2, NULL)")
+    sql = compile_transform_sql(
+        "transform.validateAttributes",
+        {"nonNullColumns": ["region"], "nonNullResultColumn": "isValid"},
+        input_view="nullable",
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn.execute("SELECT id, isValid FROM out ORDER BY id").fetchall()
+    assert rows == [(1, True), (2, False)]
+
+
+def test_compile_validate_attributes_checks_uniqueness(conn):
+    conn.execute("CREATE TABLE dupes (id INTEGER, region VARCHAR)")
+    conn.execute("INSERT INTO dupes VALUES (1, 'Nord'), (2, 'Nord'), (3, 'Sud')")
+    sql = compile_transform_sql(
+        "transform.validateAttributes",
+        {"uniqueColumns": ["region"], "uniqueResultColumn": "isUnique"},
+        input_view="dupes",
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn.execute("SELECT id, isUnique FROM out ORDER BY id").fetchall()
+    assert rows == [(1, False), (2, False), (3, True)]
+
+
+def test_compile_validate_attributes_requires_at_least_one_check():
+    with pytest.raises(Exception, match="at least one"):
+        compile_transform_sql("transform.validateAttributes", {}, input_view="base")
+
+
+def test_compile_sort_by_single_column_ascending(conn):
+    sql = compile_transform_sql(
+        "transform.sort", {"by": [{"column": "pop", "direction": "asc"}]}, input_view="base"
+    )
+    conn.execute(f"CREATE TEMP VIEW out AS {sql}")
+    rows = conn.execute("SELECT pop FROM out").fetchall()
+    assert rows == [(5,), (10,), (20,)]
+
+
+def test_compile_sort_by_spatial_hilbert(conn_spatial):
+    sql = compile_transform_sql("transform.sort", {"bySpatialHilbert": True}, input_view="base")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    count = conn_spatial.execute("SELECT count(*) FROM out").fetchone()[0]
+    assert count == 2  # falsification de forme : la requête s'exécute et ne perd aucune ligne
+
+
+def test_compile_sort_requires_at_least_one_sort_key():
+    with pytest.raises(Exception, match="at least one"):
+        compile_transform_sql("transform.sort", {}, input_view="base")
+
+
+def test_compile_centroid(conn_spatial):
+    conn_spatial.execute("CREATE TABLE poly (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO poly VALUES (1, ST_GeomFromText('POLYGON ((0 0, 4 0, 4 4, 0 4, 0 0))'))"
+    )
+    sql = compile_transform_sql("transform.centroid", {}, input_view="poly")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT ST_AsText(geometry) FROM out").fetchone()
+    assert row == ("POINT (2 2)",)
+
+
+def test_compile_convex_hull(conn_spatial):
+    conn_spatial.execute("CREATE TABLE pts (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO pts VALUES (1, ST_GeomFromText('MULTIPOINT (0 0, 4 0, 4 4, 0 4, 2 2)'))"
+    )
+    sql = compile_transform_sql("transform.convexHull", {}, input_view="pts")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT ST_NPoints(geometry) FROM out").fetchone()
+    assert row == (5,)  # 4 coins du carré + retour au premier point (anneau fermé)
+
+
+def test_compile_simplify_reduces_vertex_count(conn_spatial):
+    conn_spatial.execute("CREATE TABLE line (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO line VALUES (1, ST_GeomFromText('LINESTRING (0 0, 1 0.01, 2 0, 3 0.01, 4 0)'))"
+    )
+    sql = compile_transform_sql("transform.simplify", {"tolerance": 0.1}, input_view="line")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT ST_NPoints(geometry) FROM out").fetchone()
+    assert row[0] < 5
+
+
+def test_compile_simplify_preserve_topology_true_by_default(conn_spatial):
+    sql = compile_transform_sql("transform.simplify", {"tolerance": 0.1}, input_view="base")
+    assert "ST_SimplifyPreserveTopology" in sql
+
+
+def test_compile_bounding_geometry_envelope(conn_spatial):
+    conn_spatial.execute("CREATE TABLE pts (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO pts VALUES (1, ST_GeomFromText('MULTIPOINT (0 0, 4 0, 4 4, 0 4)'))"
+    )
+    sql = compile_transform_sql(
+        "transform.boundingGeometry", {"mode": "envelope"}, input_view="pts"
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT ST_Area(geometry) FROM out").fetchone()
+    assert row == (16.0,)
+
+
+def test_compile_bounding_geometry_oriented_rectangle(conn_spatial):
+    sql = compile_transform_sql(
+        "transform.boundingGeometry", {"mode": "orientedRectangle"}, input_view="base"
+    )
+    assert "ST_MinimumRotatedRectangle" in sql
+
+
+def test_compile_snap_to_layer(conn_spatial):
+    conn_spatial.execute("CREATE TABLE ref (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute("INSERT INTO ref VALUES (1, ST_GeomFromText('POINT (3.0005 45.0005)'))")
+    sql = compile_transform_sql(
+        "transform.snapToLayer",
+        {"tolerance": 0.01},
+        input_view="base",
+        join_view="ref",
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    row = conn_spatial.execute("SELECT ST_AsText(geometry) FROM out WHERE id = 1").fetchone()
+    assert row == ("POINT (3.0005 45.0005)",)
+
+
+def test_compile_snap_to_layer_without_join_view_raises():
+    with pytest.raises(AssertionError):
+        compile_transform_sql(
+            "transform.snapToLayer",
+            {"tolerance": 0.01},
+            input_view="base",
+        )
+
+
+def test_compile_resolve_overlaps_splits_into_disjoint_and_shared_parts(conn_spatial):
+    conn_spatial.execute("CREATE TABLE overlapping (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO overlapping VALUES "
+        "(1, ST_GeomFromText('POLYGON ((0 0, 2 0, 2 2, 0 2, 0 0))')), "
+        "(2, ST_GeomFromText('POLYGON ((1 1, 3 1, 3 3, 1 3, 1 1))'))"
+    )
+    sql = compile_transform_sql("transform.resolveOverlaps", {}, input_view="overlapping")
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    count = conn_spatial.execute("SELECT count(*) FROM out").fetchone()[0]
+    assert count == 3  # 2 parties disjointes + 1 partie commune

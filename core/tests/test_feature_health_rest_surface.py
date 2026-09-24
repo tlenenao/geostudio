@@ -51,7 +51,7 @@ def _feature(**overrides) -> Feature:
 
 
 def test_index_finds_every_declared_route():
-    assert len(index_rest_routes(REPO)) == 148
+    assert len(index_rest_routes(REPO)) == 147
 
 
 def test_every_openapi_operation_is_resolved_by_the_index():
@@ -70,10 +70,10 @@ def test_flagged_routes_are_indexed_although_absent_from_openapi():
     """`scripts/export_openapi.py` appelle `create_app()` flags éteints : les 7
     routeurs conditionnels de `main.py` ne figurent pas dans `openapi.json`.
     Un inventaire qui n'aurait dérivé ses surfaces que d'`openapi.json`
-    ignorerait 27 routes réelles — dont tout le domaine Automatisation."""
+    ignorerait 26 routes réelles — dont tout le domaine Automatisation."""
     indexed = {(fact.method, fact.path) for fact in index_rest_routes(REPO)}
     flagged = sorted(indexed - _openapi_operations())
-    assert len(flagged) == 27
+    assert len(flagged) == 26
     assert ("GET", "/v1/pipelines/{item_id}/runs") in flagged
 
 
@@ -114,13 +114,13 @@ def test_public_by_design_routes_carry_no_guard():
     `app/features/routes.py::conformance` (OGC Features) et
     `app/stac/routes.py::conformance` (OGC STAC) portent le même nom depuis
     SP-6/SP-12a — un décompte par nom seul les confond en une seule entrée
-    (16 au lieu de 17), écart trouvé en exécutant (piège CLAUDE.md n°3),
-    corrigé ici plutôt que dans le résolveur AST (les 17 routes distinctes
+    (15 au lieu de 16), écart trouvé en exécutant (piège CLAUDE.md n°3),
+    corrigé ici plutôt que dans le résolveur AST (les 16 routes distinctes
     sont bien retrouvées, cf. `index_rest_routes`)."""
     facts = [f for f in index_rest_routes(REPO) if not f.guards and f.auth == "none"]
     unguarded = {f.function for f in facts}
     assert {"public_sitemap", "public_robots", "get_public_item", "conformance"} <= unguarded
-    assert len({(f.module, f.function) for f in facts}) == 17
+    assert len({(f.module, f.function) for f in facts}) == 16
 
 
 def test_surface_id_is_method_space_path():
@@ -139,7 +139,7 @@ def test_surface_id_is_method_space_path():
 def test_rest_surface_ids_feeds_the_reachability_facts():
     ids = rest_surface_ids(index_rest_routes(REPO))
     assert "GET /v1/items" in ids
-    assert len(ids) == 148
+    assert len(ids) == 147
 
 
 def _fact(function, guards, auth):

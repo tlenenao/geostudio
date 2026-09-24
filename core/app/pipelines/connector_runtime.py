@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Matérialisation dlt des deux op reader.connector.* (design SP-15f §3) —
+"""Matérialisation dlt des op reader.connector.* (design SP-15f §3 ; 5 op à
+ce jour — rest/postgres/snowflake/bigquery/mssql/oracle, cf. GAP-16 et Vague 2
+§6.1) —
 chaque appel exécute un vrai pipeline dlt vers un fichier DuckDB scratch
 dédié, l'ATTACH en lecture seule dans la connexion du runtime, sélectionne
 la table racine "records" en TEMP TABLE, puis nettoie (finally). Aucun état
@@ -13,13 +15,21 @@ import os
 # téléphoner à l'extérieur par variable d'environnement oubliée.
 os.environ.setdefault("RUNTIME__DLTHUB_TELEMETRY", "false")
 
+import json
 import shutil
 import tempfile
 import uuid
 from typing import Protocol
+from urllib.parse import urlsplit
 
 import dlt
 import sqlalchemy as sa
+from dlt.common.configuration.specs import (
+    AwsCredentials,
+    AzureCredentialsWithoutDefaults,
+    GcpServiceAccountCredentials,
+)
+from dlt.sources.filesystem import filesystem, read_csv, read_jsonl, read_parquet
 from dlt.sources.helpers.rest_client import RESTClient
 from dlt.sources.helpers.rest_client.auth import (
     APIKeyAuth,
@@ -38,6 +48,10 @@ from sqlalchemy.orm import Session
 from app.analytics.sql_sandbox import SqlSandboxError, parse_ast, validate_select_only
 from app.pipelines.egress import EgressBlockedError, build_guarded_session
 from app.pipelines.ops.schemas import (
+    ReaderConnectorBigQueryParams,
+    ReaderConnectorBlobParams,
+    ReaderConnectorMssqlParams,
+    ReaderConnectorOracleParams,
     ReaderConnectorPostgresParams,
     ReaderConnectorRestParams,
     ReaderConnectorSnowflakeParams,
@@ -46,6 +60,19 @@ from app.secrets import repository as secrets_repo
 from app.secrets.schemas import SecretPayload
 
 _REST_SECRET_KINDS = {"api_key", "bearer_token", "basic_auth", "oauth2_client_credentials"}
+
+# reader.connector.blob (Task 15) : fournisseur résolu depuis le schéma d'URL
+# de `params.path` — "az" et "gs" sont les protocoles fsspec canoniques
+# enregistrés respectivement par adlfs/gcsfs (vérifié par introspection de
+# `fsspec.registry.known_implementations`, piège CLAUDE.md n°3 : adlfs
+# s'enregistre aussi sous "abfs"/"abfss"/"adl", non couverts ici par choix,
+# un seul alias par fournisseur).
+_BLOB_SCHEME_KINDS = {
+    "s3": "s3_credentials",
+    "az": "azure_blob_credentials",
+    "gs": "gcs_credentials",
+}
+_BLOB_READERS = {"csv": read_csv, "jsonl": read_jsonl, "parquet": read_parquet}
 
 
 class SecretResolver(Protocol):
@@ -317,6 +344,56 @@ def materialize_postgres_connector(
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
 
 
+def materialize_mssql_connector(
+    conn,
+    *,
+    secret_resolver: SecretResolver | None,
+    node_id: str,
+    params: ReaderConnectorMssqlParams,
+    view_name: str,
+) -> None:
+    # Pendant exact de materialize_postgres_connector/
+    # materialize_snowflake_connector (Vague 2 §6.1) — même heuristique
+    # SELECT-only, même défense en profondeur documentée : `params.query`
+    # cible Microsoft SQL Server (T-SQL) mais est parsée avec le dialecte
+    # SQL de DuckDB, pas le T-SQL réel (même limite documentée, dans
+    # l'autre sens que Snowflake, cf. ReaderConnectorMssqlParams).
+    try:
+        validate_select_only(parse_ast(conn, params.query))
+    except SqlSandboxError as exc:
+        raise ConnectorRuntimeError(f"reader.connector.mssql query rejected: {exc}") from exc
+
+    payload = _resolve_secret(secret_resolver, params.secretName)
+    if payload.kind != "mssql_dsn":
+        raise ConnectorRuntimeError(
+            f"secret has kind '{payload.kind}', not usable by reader.connector.mssql "
+            "(expected mssql_dsn)"
+        )
+
+    @dlt.resource(name="records", write_disposition="replace")
+    def _records():
+        # Aucun import de pymssql ici : contrairement à
+        # snowflake-sqlalchemy/sqlalchemy-bigquery (dialectes tiers
+        # enregistrés via leurs propres entry points), le dialecte
+        # "mssql+pymssql" est intégré à SQLAlchemy elle-même
+        # (sqlalchemy/dialects/mssql/pymssql.py, vérifié contre le code
+        # source réel) — sa.create_engine() se charge d'importer pymssql en
+        # interne (`MSDialect_pymssql.import_dbapi`), le paquet n'a besoin
+        # que d'être installé. Comme postgres/snowflake (et contrairement à
+        # bigquery) : sa.create_engine() reste paresseux pour ce dialecte,
+        # aucun appel réseau avant .connect() (vérifié empiriquement, cf.
+        # MssqlDsnPayload).
+        engine = sa.create_engine(payload.dsn)
+        try:
+            with engine.connect() as db_conn:
+                rows = db_conn.execution_options(yield_per=1000).exec_driver_sql(params.query)
+                yield from (dict(row._mapping) for row in rows)
+        finally:
+            engine.dispose()
+
+    _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
+
+
 def materialize_snowflake_connector(
     conn,
     *,
@@ -357,3 +434,174 @@ def materialize_snowflake_connector(
             engine.dispose()
 
     _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
+
+
+def materialize_oracle_connector(
+    conn,
+    *,
+    secret_resolver: SecretResolver | None,
+    node_id: str,
+    params: ReaderConnectorOracleParams,
+    view_name: str,
+) -> None:
+    # Pendant exact de materialize_postgres_connector/materialize_snowflake_connector/
+    # materialize_mssql_connector (Vague 2 §6.1) — même heuristique
+    # SELECT-only, même défense en profondeur documentée : `params.query`
+    # cible Oracle Database (PL/SQL) mais est parsée avec le dialecte SQL de
+    # DuckDB, pas le vrai SQL Oracle (cf. ReaderConnectorOracleParams).
+    try:
+        validate_select_only(parse_ast(conn, params.query))
+    except SqlSandboxError as exc:
+        raise ConnectorRuntimeError(f"reader.connector.oracle query rejected: {exc}") from exc
+
+    payload = _resolve_secret(secret_resolver, params.secretName)
+    if payload.kind != "oracle_dsn":
+        raise ConnectorRuntimeError(
+            f"secret has kind '{payload.kind}', not usable by reader.connector.oracle "
+            "(expected oracle_dsn)"
+        )
+
+    @dlt.resource(name="records", write_disposition="replace")
+    def _records():
+        # Aucun import explicite de oracledb ici : comme pour
+        # "mssql+pymssql", le dialecte "oracle+oracledb" est intégré à
+        # SQLAlchemy elle-même (sqlalchemy/dialects/oracle/oracledb.py,
+        # vérifié contre le code source réel) — sa.create_engine() importe
+        # oracledb en interne (`OracleDialect_oracledb.import_dbapi`), le
+        # paquet n'a besoin que d'être installé. Mode thin (pur Python) par
+        # défaut, aucune initialisation supplémentaire requise (cf.
+        # OracleDsnPayload, vérifié empiriquement). Comme postgres/snowflake/
+        # mssql (et contrairement à bigquery) : sa.create_engine() reste
+        # paresseux pour ce dialecte, aucun appel réseau avant .connect()
+        # (vérifié empiriquement).
+        engine = sa.create_engine(payload.dsn)
+        try:
+            with engine.connect() as db_conn:
+                rows = db_conn.execution_options(yield_per=1000).exec_driver_sql(params.query)
+                yield from (dict(row._mapping) for row in rows)
+        finally:
+            engine.dispose()
+
+    _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
+
+
+def materialize_bigquery_connector(
+    conn,
+    *,
+    secret_resolver: SecretResolver | None,
+    node_id: str,
+    params: ReaderConnectorBigQueryParams,
+    view_name: str,
+) -> None:
+    # Pendant exact de materialize_postgres_connector/materialize_snowflake_connector
+    # (Vague 2 §6.1) — même heuristique SELECT-only, même défense en
+    # profondeur documentée : `params.query` cible BigQuery (GoogleSQL) mais
+    # est parsée avec le dialecte SQL de DuckDB, pas GoogleSQL (même limite
+    # documentée que pour Snowflake, cf. ReaderConnectorBigQueryParams).
+    try:
+        validate_select_only(parse_ast(conn, params.query))
+    except SqlSandboxError as exc:
+        raise ConnectorRuntimeError(f"reader.connector.bigquery query rejected: {exc}") from exc
+
+    payload = _resolve_secret(secret_resolver, params.secretName)
+    if payload.kind != "bigquery_dsn":
+        raise ConnectorRuntimeError(
+            f"secret has kind '{payload.kind}', not usable by reader.connector.bigquery "
+            "(expected bigquery_dsn)"
+        )
+
+    @dlt.resource(name="records", write_disposition="replace")
+    def _records():
+        # Aucun import de sqlalchemy_bigquery : le paquet s'enregistre comme
+        # dialecte SQLAlchemy via ses entry points au moment de
+        # l'installation (vérifié empiriquement contre le setup.py réel du
+        # paquet, design Vague 2 §6.1) — même patron que "postgresql"/
+        # "snowflake" ci-dessus, jamais importé explicitement non plus.
+        # Différence vérifiée empiriquement par rapport à postgres/snowflake
+        # (cf. BigQueryDsnPayload) : cet appel construit localement un
+        # client BigQuery/des Credentials à partir du JSON de compte de
+        # service embarqué dans le DSN (`credentials_base64`) — aucun appel
+        # réseau tant que .connect()/l'exécution de la requête n'a pas lieu,
+        # mais un JSON de compte de service malformé y échoue ici plutôt
+        # qu'à l'exécution de la requête.
+        engine = sa.create_engine(payload.dsn)
+        try:
+            with engine.connect() as db_conn:
+                rows = db_conn.execution_options(yield_per=1000).exec_driver_sql(params.query)
+                yield from (dict(row._mapping) for row in rows)
+        finally:
+            engine.dispose()
+
+    _run_dlt_and_attach(conn, _records, node_id=node_id, view_name=view_name)
+
+
+def materialize_blob_connector(
+    conn,
+    *,
+    secret_resolver: SecretResolver | None,
+    node_id: str,
+    params: ReaderConnectorBlobParams,
+    view_name: str,
+) -> None:
+    """reader.connector.blob (Task 15, Vague 2 §6.1) — pendant structurel des
+    autres `materialize_*_connector` (même signature, même
+    `_run_dlt_and_attach` final) mais mécaniquement différent : pas de
+    requête SQL ni de dialecte SQLAlchemy, la source dlt `filesystem`
+    (fsspec) déjà présente dans le paquet `dlt` de base.
+
+    Le fournisseur est déduit du schéma d'URL de `params.path` (vérifié par
+    `urlsplit`, pas par un simple `str.startswith` sur un préfixe littéral).
+    Le secret doit être du kind attendu pour ce schéma, sinon rejet avant
+    toute extraction — même patron défensif que les autres readers.
+
+    `params.path` est découpé en un `bucket_url` racine (schéma + bucket
+    seuls) et un `file_glob` (le reste du chemin) : vérifié empiriquement
+    (cf. docstring de ReaderConnectorBlobParams) que
+    `filesystem(bucket_url=<chemin complet du fichier>)` ne retourne
+    silencieusement aucune ligne — seule la combinaison bucket_url-racine +
+    file_glob-littéral sélectionne effectivement le fichier visé, y compris
+    sous plusieurs niveaux de préfixe (vérifié avec un `file_glob` contenant
+    lui-même un `/`)."""
+    payload = _resolve_secret(secret_resolver, params.secretName)
+    parsed = urlsplit(params.path)
+    expected_kind = _BLOB_SCHEME_KINDS.get(parsed.scheme)
+    if expected_kind is None:
+        raise ConnectorRuntimeError(
+            f"reader.connector.blob: unsupported path scheme in '{params.path}' "
+            f"(expected one of {sorted(f'{s}://' for s in _BLOB_SCHEME_KINDS)})"
+        )
+    if payload.kind != expected_kind:
+        raise ConnectorRuntimeError(
+            f"secret has kind '{payload.kind}', not usable for this path scheme "
+            f"(expected {expected_kind})"
+        )
+
+    if payload.kind == "s3_credentials":
+        credentials = AwsCredentials(
+            aws_access_key_id=payload.awsAccessKeyId,
+            aws_secret_access_key=payload.awsSecretAccessKey,
+            endpoint_url=payload.endpointUrl,
+        )
+    elif payload.kind == "azure_blob_credentials":
+        credentials = AzureCredentialsWithoutDefaults(
+            azure_storage_account_name=payload.accountName,
+            azure_storage_account_key=payload.accountKey,
+        )
+    else:
+        credentials = GcpServiceAccountCredentials()
+        # parse_native_representation accepte une chaîne JSON de compte de
+        # service et ignore silencieusement les champs qu'elle ne reprend
+        # pas dans son dataclass — vérifié empiriquement (cf. docstring de
+        # GcsCredentialsPayload), donc un JSON collé tel quel depuis la
+        # console GCP fonctionne sans filtrage manuel côté cœur.
+        credentials.parse_native_representation(json.dumps(payload.serviceAccountInfo))
+
+    bucket_url = f"{parsed.scheme}://{parsed.netloc}"
+    file_glob = parsed.path.lstrip("/")
+    resource = (
+        filesystem(bucket_url=bucket_url, credentials=credentials, file_glob=file_glob)
+        | _BLOB_READERS[params.format]()
+    )
+    resource.apply_hints(table_name="records", write_disposition="replace")
+
+    _run_dlt_and_attach(conn, resource, node_id=node_id, view_name=view_name)

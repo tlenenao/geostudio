@@ -162,7 +162,7 @@ def release_matrix() -> list[dict]:
 
 
 def test_build_and_push_matrix_lives_in_the_reusable_workflow():
-    """§2 de la spec 2026-09-19 : la matrice des 9 images doit vivre dans un
+    """§2 de la spec 2026-09-19 : la matrice des 8 images doit vivre dans un
     SEUL fichier (`_build-and-push.yml`, réutilisable par `release.yml` ET
     par le futur `publish-edge.yml`) — jamais recopiée, sous peine de
     dériver silencieusement entre les deux (classe de bug déjà payée sur ce
@@ -186,7 +186,6 @@ def test_build_and_push_matrix_lives_in_the_reusable_workflow():
         "geostudio-titiler",
         "geostudio-appexport-standalone",
         "geostudio-export-worker",
-        "geostudio-qgis-worker",
         "geostudio-appexport-runtime-builder",
         "geostudio-backup",
     }, f"matrice inattendue : {images}"
@@ -242,8 +241,8 @@ def test_postgis_dockerfile_restores_the_extension_bootstrap_the_old_base_did():
     propre /docker-entrypoint-initdb.d/10_postgis.sh. `postgres:16-bookworm`
     n'a AUCUN script de ce genre — installer les paquets PGDG rend
     l'extension disponible, jamais créée. Sans ce script, tout `docker run`
-    nu de cette image (CI core/core-qgis/stac-conformance, release.yml
-    test-gate + test-gate-arm64, scripts/run-qgis-tests.sh) démarre avec un
+    nu de cette image (CI core/stac-conformance, release.yml
+    test-gate + test-gate-arm64) démarre avec un
     Postgres nu, pas un PostGIS (confirmé empiriquement :
     `type "geometry" does not exist` sur une image fraîchement construite
     avant ce correctif)."""
@@ -710,27 +709,23 @@ def test_release_gate_starts_postgres_like_ci():
     )
 
 
-def test_release_matrix_declares_multiarch_platforms_except_qgis_worker():
+def test_release_matrix_declares_multiarch_platforms_for_every_image():
     """Portage arm64 : chaque entrée de la matrice build-and-push doit
-    déclarer `platforms: linux/amd64,linux/arm64` — sauf
-    `geostudio-qgis-worker` (base qgis/qgis:release-3_34 mono-arch amd64,
-    image 11 Go), qui doit rester `linux/amd64` seul. Sans ce garde-fou, un
+    déclarer `platforms: linux/amd64,linux/arm64`. Sans ce garde-fou, un
     futur ajout d'entrée de matrice pourrait silencieusement omettre
     `platforms:` (docker/build-push-action retombe alors sur l'arch native
-    du runner seule, amd64)."""
+    du runner seule, amd64). L'ancienne exception mono-arch
+    (`geostudio-qgis-worker`, base qgis/qgis:release-3_34) a disparu avec
+    le retrait du sidecar QGIS — plus aucune image de la matrice n'est
+    mono-arch."""
     matrix = release_matrix()
     missing = [e["image"] for e in matrix if not e.get("platforms")]
     assert not missing, f"entrées de matrice sans `platforms:` : {missing}"
     by_image = {e["image"]: e["platforms"] for e in matrix}
-    qgis = by_image.pop("geostudio-qgis-worker", None)
-    assert qgis == "linux/amd64", (
-        "geostudio-qgis-worker doit rester linux/amd64 seul (base "
-        f"mono-arch), trouvé : {qgis!r}"
-    )
     not_multiarch = {
         img: plats for img, plats in by_image.items() if plats != "linux/amd64,linux/arm64"
     }
-    assert not not_multiarch, f"entrées non multi-arch (hors qgis-worker) : {not_multiarch}"
+    assert not not_multiarch, f"entrées non multi-arch : {not_multiarch}"
 
 
 def test_build_and_push_needs_both_test_gates():
@@ -777,37 +772,6 @@ def test_release_gate_arm64_starts_postgres_like_ci():
     assert not missing, (
         "release.yml (test-gate-arm64) démarre Postgres sans les réglages "
         f"que ci.yml (core) lui donne : {sorted(missing)}."
-    )
-
-
-def test_ci_actually_runs_the_qgis_marked_tests():
-    """Les 5 tests `@pytest.mark.qgis` skippent SILENCIEUSEMENT dès que
-    CORE_TEST_QGIS_WORKER_URL est absent (tests/conftest.py) — un skip ne
-    rougit aucune CI. Ils ont ainsi dormi de SP-15d (2026-08-06) à SP-44
-    (2026-09-05), où leur première exécution réelle a trouvé DEUX bugs de
-    production (`_lock_down()` bloquait le COPY du sidecar ; `fid` GeoPackage
-    non filtré). Ce test interdit le retour à cet état : si le job disparaît,
-    ou cesse de fournir l'une des deux variables, la CI rougit au lieu de
-    reprendre le skip.
-
-    Ne vérifie que le câblage déclaré, jamais l'exécution — c'est le parti de
-    tout ce fichier."""
-    doc = yaml.safe_load(CI.read_text())
-    job = doc["jobs"].get("core-qgis")
-    assert job is not None, (
-        "ci.yml n'a plus de job `core-qgis` : les 5 tests @pytest.mark.qgis "
-        "sont redevenus silencieusement skippés en CI."
-    )
-    env = job.get("env", {})
-    for var in ("CORE_TEST_QGIS_WORKER_URL", "CORE_TEST_QGIS_SCRATCH_DIR"):
-        assert env.get(var), (
-            f"ci.yml (core-qgis) ne fournit pas {var} — les fixtures de "
-            "tests/conftest.py skippent alors les 5 tests sans rien signaler."
-        )
-    runs = " ".join(st.get("run", "") for st in job["steps"])
-    assert "-m qgis" in runs, (
-        "ci.yml (core-qgis) ne sélectionne plus les tests marqués qgis "
-        "(`pytest -m qgis`)."
     )
 
 
@@ -1024,18 +988,21 @@ def test_unpinned_reason_accepts_own_image_behind_substitution():
 
 
 # Revue finale SP-26 (C1) : core/Dockerfile (service `worker`, même image que
-# `core`) et deploy/qgis-worker/Dockerfile se passent des fichiers via le
-# volume nommé `etl-scratch:/scratch` (docker-compose.yml) —
-# core/app/pipelines/runtime.py y écrit `in.gpkg` comme l'utilisateur `app`,
-# le sidecar QGIS y écrit `out.gpkg` comme l'utilisateur `qgis`. Ces deux
-# tests figent statiquement le correctif (vérifié empiriquement en session :
-# build réel des deux images, `id -u` comparé, écriture croisée réussie dans
-# les deux ordres de démarrage possibles) pour qu'une future modification de
-# l'un des deux Dockerfiles ne fasse pas diverger silencieusement les uid, ou
-# ne retire pas la création de /scratch.
+# `core`) écrit/lit des fichiers dans le volume nommé `etl-scratch:/scratch`
+# (docker-compose.yml) via l'utilisateur `app`. Seul
+# `core/app/terrain3d/jobs.py` (`_TERRAIN3D_SCRATCH_ROOT = "/scratch"`, ligne
+# 29) dépend structurellement de ce chemin en dur — `core/app/pipelines/
+# runtime.py` (reader.file/writer.file) n'y touche pas : ses répertoires
+# autorisés (`extra_allowed_dirs`) sont des chemins arbitraires fournis par
+# l'auteur du pipeline, jamais `/scratch` (vérifié contre `_prepare()`/
+# `_lock_down()`, revue Task 29 du retrait qgis-worker, 2026-09-23). Le
+# sidecar QGIS qui partageait autrefois ce volume (uid convergent avec
+# `app`, garde anti-PermissionError) a été retiré en entier (même Task 29) :
+# la convergence d'uid entre deux Dockerfiles n'a plus d'objet, seul le test
+# ci-dessous (création/chown de /scratch dans core/Dockerfile lui-même,
+# pour terrain3d) reste pertinent.
 
 CORE_DOCKERFILE = REPO / "core" / "Dockerfile"
-QGIS_DOCKERFILE = REPO / "deploy" / "qgis-worker" / "Dockerfile"
 
 
 def _useradd_uid(dockerfile: pathlib.Path) -> str | None:
@@ -1043,35 +1010,20 @@ def _useradd_uid(dockerfile: pathlib.Path) -> str | None:
     return match.group(1) if match else None
 
 
-def test_core_and_qgis_worker_pin_the_same_scratch_uid():
-    core_uid = _useradd_uid(CORE_DOCKERFILE)
-    qgis_uid = _useradd_uid(QGIS_DOCKERFILE)
-    assert core_uid is not None, "core/Dockerfile doit fixer un --uid explicite pour `app`"
-    assert qgis_uid is not None, (
-        "deploy/qgis-worker/Dockerfile doit fixer un --uid explicite pour `qgis`"
-    )
-    assert core_uid == qgis_uid, (
-        f"uid divergents entre core/Dockerfile (app={core_uid}) et "
-        f"deploy/qgis-worker/Dockerfile (qgis={qgis_uid}) — le partage de "
-        "fichiers via etl-scratch échouera en PermissionError selon l'ordre "
-        "de démarrage des conteneurs."
-    )
-
-
 SCRATCH_DOCKERFILES = [
     pytest.param(CORE_DOCKERFILE, "app", id="core"),
-    pytest.param(QGIS_DOCKERFILE, "qgis", id="qgis-worker"),
 ]
 
 
 @pytest.mark.parametrize("dockerfile,user_name", SCRATCH_DOCKERFILES)
 def test_dockerfile_creates_and_chowns_scratch_before_switching_user(dockerfile, user_name):
-    """Généralisé en revue finale SP-26 round 2 (M2) : à l'origine, seul
-    core/Dockerfile était épinglé ici — deploy/qgis-worker/Dockerfile porte
-    exactement le même mkdir+chown de /scratch, tout aussi structurant pour
-    le partage `etl-scratch` (test_core_and_qgis_worker_pin_the_same_scratch_uid
-    juste au-dessus vérifie que les DEUX uid convergent, mais rien ne
-    vérifiait jusqu'ici que le mkdir+chown de qgis-worker existe encore)."""
+    """core/Dockerfile doit créer et chown `/scratch` (volume `etl-scratch`)
+    avant de passer à l'utilisateur non-root, sans quoi la conversion
+    terrain3D (`app/terrain3d/jobs.py`, `_TERRAIN3D_SCRATCH_ROOT = "/scratch"`
+    en dur) échouerait en PermissionError. `reader.file`/`writer.file`
+    (`app/pipelines/runtime.py`) n'en dépendent pas : leurs répertoires
+    autorisés sont fournis par l'auteur du pipeline (`extra_allowed_dirs`),
+    jamais `/scratch` par défaut."""
     text = dockerfile.read_text()
     mkdir_pos = text.find("mkdir -p /scratch")
     user_pos = text.find(f"\nUSER {user_name}")

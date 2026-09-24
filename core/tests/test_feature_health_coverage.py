@@ -85,13 +85,13 @@ def test_deployability_rules_map_infra_paths_to_test_functions():
 
 
 def test_deployability_rules_follow_a_chain_of_divisions_not_just_one_hop():
-    """`QGIS_DOCKERFILE = REPO / "deploy" / "qgis-worker" / "Dockerfile"`
-    (core/tests/test_deployability.py) est une chaîne à 3 segments — un
-    détecteur limité à un seul saut la manque entièrement (vérifié avant ce
-    correctif : `deployability_rules()` ne renvoyait aucune règle pour ce
-    chemin malgré un test réel qui l'exerce)."""
+    """`POSTGIS_DOCKERFILE = REPO / "deploy" / "postgis" / "Dockerfile"`
+    (core/tests/test_deployability.py, ligne 79) est une chaîne à 3 segments —
+    un détecteur limité à un seul saut la manque entièrement. Utilisée par un
+    test réel de ce même fichier
+    (`test_postgis_dockerfile_uses_multiarch_base_with_pgdg_packages`)."""
     rules = deployability_rules(REPO)
-    assert "deploy/qgis-worker/Dockerfile" in rules
+    assert "deploy/postgis/Dockerfile" in rules
 
 
 def test_deployability_rules_scan_test_files_beyond_test_deployability_py():
@@ -103,12 +103,13 @@ def test_deployability_rules_scan_test_files_beyond_test_deployability_py():
 
 
 def test_deployability_rules_fall_back_to_a_literal_path_reference():
-    """`deploy/qgis-worker/server.py` n'est jamais nommé par une constante
-    `REPO / "..."` (`core/tests/test_qgis_worker_server_handler.py` le
-    référence via un chemin construit dynamiquement) — seule sa mention
-    littérale dans le docstring du module le rend détectable."""
+    """`deploy/backup/test_retention.py` n'est jamais nommé par une constante
+    `REPO / "..."` où que ce soit dans `core/tests/` — seule sa mention
+    littérale dans le docstring de `core/tests/test_restore_script.py`
+    ("deploy/backup/test_retention.py ne l'est pas [ramassé par la CI]")
+    le rend détectable par le mécanisme de repli."""
     rules = deployability_rules(REPO)
-    assert "deploy/qgis-worker/server.py" in rules
+    assert "deploy/backup/test_retention.py" in rules
 
 
 def test_score_uses_the_line_rate_of_each_proof_file():

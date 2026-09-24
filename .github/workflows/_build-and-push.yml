@@ -26,10 +26,10 @@ jobs:
       packages: write
       security-events: write
     strategy:
-      # Sans ceci, un échec sur une seule des neuf legs (par ex. disque ou
-      # timeout sur geostudio-qgis-worker, 11.1 Go, ou geostudio-export-worker,
-      # 3.14 Go) annule les huit autres avant publication — dont core/shell/
-      # postgis, qui n'ont eux-mêmes aucune raison d'échouer.
+      # Sans ceci, un échec sur une seule des huit legs (par ex. disque ou
+      # timeout sur geostudio-export-worker, 3.14 Go) annule les sept autres
+      # avant publication — dont core/shell/postgis, qui n'ont eux-mêmes
+      # aucune raison d'échouer.
       fail-fast: false
       matrix:
         include:
@@ -57,12 +57,6 @@ jobs:
             context: ./core
             dockerfile: ../deploy/export-worker/Dockerfile
             platforms: linux/amd64,linux/arm64
-          - image: geostudio-qgis-worker
-            context: ./deploy/qgis-worker
-            dockerfile: Dockerfile
-            # Base qgis/qgis:release-3_34 mono-arch (probable amd64 seul),
-            # image 11 Go — hors périmètre du portage arm64.
-            platforms: linux/amd64
           - image: geostudio-appexport-runtime-builder
             context: .
             dockerfile: deploy/appexport-runtime-builder/Dockerfile

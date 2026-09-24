@@ -11,12 +11,21 @@ chaînes de caractères, testable en pur."""
 from app.configs.schemas import PipelineEdge, PipelineNode
 from app.pipelines.ops.schemas import (
     TransformAggregateParams,
+    TransformBoundingGeometryParams,
     TransformBufferParams,
+    TransformBulkRemoveAttributesParams,
+    TransformBulkRenameAttributesParams,
+    TransformCentroidParams,
     TransformConcatCoordinatesParams,
+    TransformConvexHullParams,
     TransformCountVerticesParams,
     TransformCountWithinParams,
     TransformCreateGeometryParams,
     TransformDeriveParams,
+    TransformDetectChangesParams,
+    TransformExplodeGeometryParams,
+    TransformExplodeListParams,
+    TransformExposeAttributesParams,
     TransformExtractCoordinatesParams,
     TransformExtractDimensionParams,
     TransformExtractElevationParams,
@@ -26,17 +35,24 @@ from app.pipelines.ops.schemas import (
     TransformH3AggregateParams,
     TransformIntersectionParams,
     TransformJoinParams,
+    TransformMapSchemaParams,
+    TransformMergeChildrenParams,
     TransformMergeParams,
-    TransformQgisParams,
     TransformReprojectAttributeParams,
     TransformReprojectParams,
+    TransformResolveOverlapsParams,
     TransformRotateGeometryParams,
     TransformRoundCoordinatesParams,
     TransformScaleGeometryParams,
+    TransformScanSchemaParams,
     TransformSelectParams,
     TransformSetSridParams,
+    TransformSimplifyParams,
+    TransformSnapToLayerParams,
+    TransformSortParams,
     TransformSwapCoordinatesParams,
     TransformTranslateGeometryParams,
+    TransformValidateAttributesParams,
 )
 
 
@@ -492,6 +508,292 @@ def _compile_format_coordinates(
     return f"SELECT *, ({expr}) AS {_qi(p.targetColumn)} FROM {_qi(input_view)}"
 
 
+def _compile_bulk_remove_attributes(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformBulkRemoveAttributesParams.model_validate(params)
+    escaped = p.pattern.replace("'", "''")
+    return f"SELECT COLUMNS(c -> NOT regexp_matches(c, '{escaped}')) FROM {_qi(input_view)}"
+
+
+def _compile_bulk_rename_attributes(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformBulkRenameAttributesParams.model_validate(params)
+    escaped_pattern = p.pattern.replace("'", "''")
+    escaped_replacement = p.replacement.replace("'", "''")
+    return (
+        f"SELECT COLUMNS(c -> NOT regexp_matches(c, '{escaped_pattern}')), "
+        f"COLUMNS('{escaped_pattern}') AS '{escaped_replacement}' "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_scan_schema(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    TransformScanSchemaParams.model_validate(params)  # forme seulement, aucun champ
+    return f"SELECT column_name, column_type FROM (DESCRIBE {_qi(input_view)})"
+
+
+def _compile_explode_list(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformExplodeListParams.model_validate(params)
+    col = _qi(p.column)
+    return f"SELECT * EXCLUDE ({col}), UNNEST({col}) AS {col} FROM {_qi(input_view)}"
+
+
+def _compile_explode_geometry(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    TransformExplodeGeometryParams.model_validate(params)  # forme seulement, aucun champ
+    return (
+        f"SELECT * EXCLUDE (geometry), unnest(ST_Dump(geometry)).geom AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_centroid(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    TransformCentroidParams.model_validate(params)  # forme seulement, aucun champ
+    return f"SELECT * EXCLUDE (geometry), ST_Centroid(geometry) AS geometry FROM {_qi(input_view)}"
+
+
+def _compile_convex_hull(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    TransformConvexHullParams.model_validate(params)  # forme seulement, aucun champ
+    return (
+        f"SELECT * EXCLUDE (geometry), ST_ConvexHull(geometry) AS geometry FROM {_qi(input_view)}"
+    )
+
+
+def _compile_simplify(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformSimplifyParams.model_validate(params)
+    fn = "ST_SimplifyPreserveTopology" if p.preserveTopology else "ST_Simplify"
+    return (
+        f"SELECT * EXCLUDE (geometry), {fn}(geometry, {p.tolerance}) AS geometry "
+        f"FROM {_qi(input_view)}"
+    )
+
+
+def _compile_bounding_geometry(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformBoundingGeometryParams.model_validate(params)
+    fn = "ST_Envelope" if p.mode == "envelope" else "ST_MinimumRotatedRectangle"
+    return f"SELECT * EXCLUDE (geometry), {fn}(geometry) AS geometry FROM {_qi(input_view)}"
+
+
+def _compile_expose_attributes(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformExposeAttributesParams.model_validate(params)
+    col = _qi(p.column)
+    return f"SELECT * EXCLUDE ({col}), {col}.* FROM {_qi(input_view)}"
+
+
+def _compile_validate_attributes(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformValidateAttributesParams.model_validate(params)
+    extra_cols = []
+    if p.nonNullColumns and p.nonNullResultColumn:
+        checks = " AND ".join(f"{_qi(c)} IS NOT NULL" for c in p.nonNullColumns)
+        extra_cols.append(f"({checks}) AS {_qi(p.nonNullResultColumn)}")
+    if p.uniqueColumns and p.uniqueResultColumn:
+        partition = ", ".join(_qi(c) for c in p.uniqueColumns)
+        extra_cols.append(
+            f"(COUNT(*) OVER (PARTITION BY {partition}) = 1) AS {_qi(p.uniqueResultColumn)}"
+        )
+    return f"SELECT *, {', '.join(extra_cols)} FROM {_qi(input_view)}"
+
+
+def _compile_sort(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformSortParams.model_validate(params)
+    order_parts = []
+    if p.bySpatialHilbert:
+        # ST_Hilbert(geom GEOMETRY, bounds BOX_2D) -> UINTEGER (signature
+        # vérifiée empiriquement contre un DuckDB spatial réel, v1.5.5 :
+        # duckdb_functions() liste bien un overload (GEOMETRY, BOX_2D), comme
+        # supposé au design). Mais ST_Extent_Agg(geometry) renvoie une
+        # GEOMETRY (l'enveloppe convexe/rectangle en géométrie), PAS un
+        # BOX_2D — il faut la repasser par ST_Extent() pour obtenir le type
+        # BOX_2D attendu par ce second paramètre (écart réel au texte du
+        # brief, qui supposait ST_Extent_Agg directement utilisable comme
+        # bounds).
+        order_parts.append(
+            f"ST_Hilbert(geometry, (SELECT ST_Extent(ST_Extent_Agg(geometry)) "
+            f"FROM {_qi(input_view)}))"
+        )
+    order_parts += [f"{_qi(k.column)} {k.direction.upper()}" for k in p.by]
+    return f"SELECT * FROM {_qi(input_view)} ORDER BY {', '.join(order_parts)}"
+
+
+def _compile_detect_changes(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
+) -> str:
+    p = TransformDetectChangesParams.model_validate(params)
+    assert join_view is not None, "transform.detectChanges requires join_view"
+    assert input_columns is not None and join_columns is not None
+    common_cols = [c for c in input_columns if c in join_columns and c not in p.keyColumns]
+    key_join = " AND ".join(f"t.{_qi(k)} = o.{_qi(k)}" for k in p.keyColumns)
+    key_select = ", ".join(f"COALESCE(t.{_qi(k)}, o.{_qi(k)}) AS {_qi(k)}" for k in p.keyColumns)
+    if common_cols:
+        diff_expr = " OR ".join(f"t.{_qi(c)} IS DISTINCT FROM o.{_qi(c)}" for c in common_cols)
+    else:
+        diff_expr = "FALSE"
+    status_expr = (
+        f"CASE "
+        f"WHEN t.{_qi(p.keyColumns[0])} IS NULL THEN 'inserted' "
+        f"WHEN o.{_qi(p.keyColumns[0])} IS NULL THEN 'deleted' "
+        f"WHEN {diff_expr} THEN 'updated' "
+        f"ELSE 'unchanged' END"
+    )
+    return (
+        f"SELECT {key_select}, ({status_expr}) AS {_qi(p.statusColumn)} "
+        f"FROM {_qi(input_view)} t FULL OUTER JOIN {_qi(join_view)} o ON {key_join}"
+    )
+
+
+def _compile_merge_children(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
+) -> str:
+    p = TransformMergeChildrenParams.model_validate(params)
+    assert join_view is not None, "transform.mergeChildren requires join_view"
+    assert join_columns is not None
+    child_cols = [c for c in join_columns if c != p.childOn]
+    struct_fields = ", ".join(f"{_qi(c)} := o.{_qi(c)}" for c in child_cols)
+    # FILTER + COALESCE(..., []) : sans ça, un LEFT JOIN sans correspondance produit une
+    # ligne o.* toute NULL que `list(struct_pack(...))` agrège en [{...: NULL}] au lieu
+    # d'une liste vide — vérifié empiriquement contre un DuckDB réel (v1.5.5).
+    children_expr = (
+        f"COALESCE(list(struct_pack({struct_fields})) "
+        f"FILTER (WHERE o.{_qi(p.childOn)} IS NOT NULL), [])"
+    )
+    return (
+        f"SELECT t.*, {children_expr} AS {_qi(p.childrenColumn)} "
+        f"FROM {_qi(input_view)} t LEFT JOIN {_qi(join_view)} o "
+        f"ON t.{_qi(p.parentOn)} = o.{_qi(p.childOn)} GROUP BY ALL"
+    )
+
+
+def _compile_map_schema(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
+) -> str:
+    p = TransformMapSchemaParams.model_validate(params)
+    assert input_columns is not None
+    select_parts = [
+        f"{_qi(c)}" if c in input_columns else f"NULL AS {_qi(c)}" for c in p.targetColumns
+    ]
+    return f"SELECT {', '.join(select_parts)} FROM {_qi(input_view)}"
+
+
+def _compile_snap_to_layer(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    p = TransformSnapToLayerParams.model_validate(params)
+    assert join_view is not None, "transform.snapToLayer requires join_view"
+    return (
+        f"SELECT t.* EXCLUDE (geometry), "
+        f"ST_Snap(t.geometry, o.geometry, {p.tolerance}) AS geometry "
+        f"FROM {_qi(input_view)} t, {_qi(join_view)} o"
+    )
+
+
+def _compile_resolve_overlaps(
+    params: dict,
+    *,
+    input_view: str,
+    join_view: str | None = None,
+    input_srid: int | None = None,
+) -> str:
+    TransformResolveOverlapsParams.model_validate(params)  # forme seulement, aucun champ
+    return (
+        f"WITH agg AS (SELECT list(geometry) AS geoms FROM {_qi(input_view)}), "
+        f"noded AS (SELECT ST_Node(ST_Collect(geoms)) AS n FROM agg), "
+        f"edges AS (SELECT UNNEST(ST_Dump(n)).geom AS g FROM noded), "
+        f"edge_list AS (SELECT list(g) AS glist FROM edges) "
+        f"SELECT UNNEST(ST_Dump(ST_Polygonize(glist))).geom AS geometry FROM edge_list"
+    )
+
+
 def compile_transform_sql(
     op: str,
     params: dict,
@@ -499,15 +801,19 @@ def compile_transform_sql(
     input_view: str,
     join_view: str | None = None,
     input_srid: int | None = None,
+    input_columns: list[str] | None = None,
+    join_columns: list[str] | None = None,
 ) -> str:
     from app.pipelines.ops.contracts import OPERATIONS
 
     contract = OPERATIONS.get(op)
     if contract is None or contract.compile is None:
         raise ValueError(f"'{op}' is not a transform op")
-    return contract.compile(
-        params, input_view=input_view, join_view=join_view, input_srid=input_srid
-    )
+    kwargs: dict = {"input_view": input_view, "join_view": join_view, "input_srid": input_srid}
+    if contract.needs_columns:
+        kwargs["input_columns"] = input_columns
+        kwargs["join_columns"] = join_columns
+    return contract.compile(params, **kwargs)
 
 
 def _output_srid_reproject(
@@ -550,17 +856,6 @@ def _output_srid_h3_aggregate(
             "— insert transform.reproject first"
         )
     return 4326
-
-
-def _output_srid_qgis(
-    params: dict,
-    *,
-    op: str,
-    input_srid: int,
-    join_srid: int | None = None,
-) -> int:
-    p = TransformQgisParams.model_validate(params)
-    return int(p.outputSrid.rsplit(":", 1)[1]) if p.outputSrid is not None else input_srid
 
 
 def _output_srid_set_srid(

@@ -29,6 +29,9 @@ _COLLECTION_PARAM_FIELD = {
     "transform.intersection": "withCollectionId",
     "transform.countWithin": "withCollectionId",
     "transform.merge": "withCollectionId",
+    "transform.detectChanges": "withCollectionId",
+    "transform.mergeChildren": "withCollectionId",
+    "transform.snapToLayer": "withCollectionId",
     "writer.collection": "collectionId",
     "writer.dataset": "collectionId",
 }

@@ -578,6 +578,274 @@ def test_materialize_snowflake_connector_round_trips_query(
     assert rows == [(1, "Nord"), (2, "Sud")]
 
 
+from app.pipelines.ops.schemas import ReaderConnectorBigQueryParams  # noqa: E402
+
+# Clé RSA jetable générée localement pour ce fichier de test uniquement
+# (jamais associée à un vrai compte de service Google) — nécessaire car
+# sa.create_engine() pour le dialecte "bigquery" n'est PAS totalement
+# paresseux comme pour postgres/snowflake : il construit localement un objet
+# google.auth.service_account.Credentials à partir du JSON embarqué dans
+# `credentials_base64`, ce qui exige une clé syntaxiquement valide (vérifié
+# empiriquement : un JSON avec une clé absente/mal formée échoue ici, avant
+# tout appel réseau, cf. BigQueryDsnPayload).
+_FAKE_SERVICE_ACCOUNT_RSA_PEM = """-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCzr+PZqf6u837c
+j+igCwaoMBhlnWDEuHMSmOLH/cDkZdV6R+p2RZSQ00ZSBCMpLL/EyDqcE2wjilUr
+ySpLTjbw27xXnBoFw9MZH2iuIF366EnBAKg50foQSZPMZZFso1jFvYvSrsbYMNOp
+NdrLtQ25YpXAj/mogwUX1ToJTaDBvel7QrXAcdhRA0CURgD91DtU+l6VRh3CrvP6
+GyT7KtExILLMlE5eq3TVHSy48E8/BuVdLNBdSOEqOjJXYP/m3/m7jeqG07tfA3wB
+ps9BtP9CqGq/urd2oz1mhz10I9PhM7my5bgiOLHZBvg1ptXnAH33kAh7wN8zcVnk
+JHl8UWoHAgMBAAECggEAPp82EU2lbON/eu7Ma7pr/4GDfyZx6x09PWX64ygUaYTz
++UHG/KETPcXj5AF9H4Rw8Ou3QV2jel9jf3cEPmpry1VJNl840nmEwGSp3sV4+1Cp
+I5JPDpeXRsXdtIZRQENNVNzSNgKjWgTqPzZ9ojDfL5SkDBAhOhEvXTb6mvNq6xnm
+Y64hcTwTDxyoG5Qos6sss53Vv5J+igyjtD1yG3CJXyuTKPGDjdudSQYVYvzQBeVr
+OJzri0B1va1KaFEhmusv7y4NT+XFmpJcbFcNM0RifbbAZEpLeQ1br7B6IMzxvOIw
+DZdfHiEdccRBd7QkHBKvDbkJuCDxOGm0gG2BoCP6wQKBgQDsvX4TwfZpljD3CKYN
+z1QMgIxE71EY8yc8bKpfpCoaCfGE7DB01DC+LGFKrQEdoZsaoZdkItUQDru3QPqw
+qIzN7UC+VZxDUcvRXcl0CEtk9nhHtyKTFVX4ZI2jUD0/jCoF6OABIHXddgZNN5b2
+oqBp43GiFKI5himdBYBmwilwWwKBgQDCTivfPnFXeGGVlKIkxQIyQC6CxHD1yQnZ
+b9Zh45JH+A21C0nLvT2GdLBsZCRsIyTDT/s8+MVnJD9ap571LBGXpicxanq/VU9w
+jN7z/cQaI7vzBwozlgRRJVjO8J8WD2mAUpeM+x+BaYd9wXlHMGSdzYyybXTNYmAS
+el7Tt6wcxQKBgD5xRL3lXR9AdC3UZCgkVWDuzxCnptZT3Dd92fpcDJbNpJyQx78o
+8KpYflj6BN9R7t05XfsVjOktWaneQ8Ew0+LE/1y0rAC9pGrWt/oY7fn1YIhZ746o
+BAL+UrWOxnjqeXMRl3P0oeIF7WeUkAcBohoL2b8MfjV6A6Pc/Z8c+10dAoGAKqSb
+TkhW+Zpq2Dghia5O+BZL3tkb7WUsqzK3Ow6FuRPAdl4+2N70VMDhQziLIcxoshCo
+k84JDMTQvqWQ5j/AsKZ/bYHv5HPllk7kU2n7Er2K7yA5Ze7jjaeDoQ7/6wiA3+/A
+YOlwFafCW6ANbMk7G8LTwQjynGydpxCCJTbnJ/0CgYEAkBsMsYzGFA3dax2SjEuu
+kzSMd5CNRnSUIEvkEtwtuFWwVSBp+EmEuL/j67+XdJ1V9/hVh8QsriWVlr3gbS5F
+ObcY9WWAl9CwLRlBjp2QKQRzbg1P1608gcqA3ePi7/psTO332q3YBR1nYe7s7VRV
+orLyAE2SpSrRYUkemuAJaoA=
+-----END PRIVATE KEY-----
+"""
+
+
+def _bigquery_dsn() -> str:
+    import base64
+    import json
+
+    info = {
+        "type": "service_account",
+        "project_id": "sp15f-test-project",
+        "private_key_id": "abc123",
+        "private_key": _FAKE_SERVICE_ACCOUNT_RSA_PEM,
+        "client_email": "sp15f-test@sp15f-test-project.iam.gserviceaccount.com",
+        "client_id": "123456789",
+        "token_uri": "https://oauth2.googleapis.com/token",
+    }
+    encoded = base64.b64encode(json.dumps(info).encode()).decode()
+    return f"bigquery://sp15f-test-project/sp15f_dataset?credentials_base64={encoded}"
+
+
+def test_materialize_bigquery_connector_rejects_non_select(conn, session, tenant):
+    params = ReaderConnectorBigQueryParams(secretName="does-not-matter", query="DELETE FROM towns")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
+        connector_runtime.materialize_bigquery_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="bq1",
+            params=params,
+            view_name="node_bq1",
+        )
+
+
+def test_materialize_bigquery_connector_wrong_secret_kind_raises(conn, session, tenant, user):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="bearer-secret",
+        kind="bearer_token",
+        payload={"kind": "bearer_token", "token": "tok"},
+    )
+    params = ReaderConnectorBigQueryParams(secretName="bearer-secret", query="SELECT 1")
+    with pytest.raises(
+        connector_runtime.ConnectorRuntimeError, match="not usable by reader.connector.bigquery"
+    ):
+        connector_runtime.materialize_bigquery_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="bq2",
+            params=params,
+            view_name="node_bq2",
+        )
+
+
+def test_materialize_bigquery_connector_missing_secret_raises(conn, session, tenant):
+    params = ReaderConnectorBigQueryParams(secretName="does-not-exist", query="SELECT 1")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
+        connector_runtime.materialize_bigquery_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="bq3",
+            params=params,
+            view_name="node_bq3",
+        )
+
+
+def test_bigquery_dialect_resolves_without_network_given_well_formed_credentials():
+    # Vérifie la forme du DSN (BigQueryDsnPayload) sans se connecter à un
+    # vrai projet BigQuery. Contrairement à
+    # test_snowflake_dialect_resolves_lazily_without_network, sa.create_engine()
+    # n'est PAS totalement paresseux pour ce dialecte : il construit
+    # localement des Credentials à partir du JSON de compte de service
+    # embarqué dans `credentials_base64` — d'où l'usage d'une clé RSA
+    # syntaxiquement valide (bien que jetable) plutôt que d'un texte
+    # arbitraire, sans quoi cet appel échouerait localement avant même
+    # d'atteindre ce test. Aucun appel réseau n'a lieu ici (pas de
+    # .connect()) — vérifié empiriquement (design Vague 2 §6.1).
+    import sqlalchemy as sa
+
+    engine = sa.create_engine(_bigquery_dsn())
+    try:
+        assert engine.dialect.name == "bigquery"
+    finally:
+        engine.dispose()
+
+
+from app.pipelines.ops.schemas import ReaderConnectorMssqlParams  # noqa: E402
+
+
+def test_materialize_mssql_connector_rejects_non_select(conn, session, tenant):
+    params = ReaderConnectorMssqlParams(secretName="does-not-matter", query="DELETE FROM towns")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
+        connector_runtime.materialize_mssql_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="ms1",
+            params=params,
+            view_name="node_ms1",
+        )
+
+
+def test_materialize_mssql_connector_wrong_secret_kind_raises(conn, session, tenant, user):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="bearer-secret",
+        kind="bearer_token",
+        payload={"kind": "bearer_token", "token": "tok"},
+    )
+    params = ReaderConnectorMssqlParams(secretName="bearer-secret", query="SELECT 1")
+    with pytest.raises(
+        connector_runtime.ConnectorRuntimeError, match="not usable by reader.connector.mssql"
+    ):
+        connector_runtime.materialize_mssql_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="ms2",
+            params=params,
+            view_name="node_ms2",
+        )
+
+
+def test_materialize_mssql_connector_missing_secret_raises(conn, session, tenant):
+    params = ReaderConnectorMssqlParams(secretName="does-not-exist", query="SELECT 1")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
+        connector_runtime.materialize_mssql_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="ms3",
+            params=params,
+            view_name="node_ms3",
+        )
+
+
+def test_mssql_dialect_resolves_lazily_without_network():
+    # Vérifie la forme du DSN (Vague 2 §6.1) sans se connecter à un vrai
+    # serveur : comme pour postgres/snowflake (et contrairement à bigquery,
+    # cf. ci-dessus), sa.create_engine() pour le dialecte "mssql+pymssql"
+    # est paresseux — aucun appel réseau avant .connect(). Ce test
+    # échouerait si pymssql n'était pas installé, ou si le DSN n'était pas
+    # de la forme attendue (mssql+pymssql://user:pass@host:port/dbname,
+    # cf. ReaderConnectorMssqlParams).
+    import sqlalchemy as sa
+
+    engine = sa.create_engine("mssql+pymssql://u:s3cr3t-pass@myhost:1433/mydb")
+    try:
+        assert engine.dialect.name == "mssql"
+        assert engine.dialect.driver == "pymssql"
+        assert "s3cr3t-pass" not in str(engine.url)  # le mot de passe est masqué par défaut
+    finally:
+        engine.dispose()
+
+
+from app.pipelines.ops.schemas import ReaderConnectorOracleParams  # noqa: E402
+
+
+def test_materialize_oracle_connector_rejects_non_select(conn, session, tenant):
+    params = ReaderConnectorOracleParams(secretName="does-not-matter", query="DELETE FROM towns")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="query rejected"):
+        connector_runtime.materialize_oracle_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="ora1",
+            params=params,
+            view_name="node_ora1",
+        )
+
+
+def test_materialize_oracle_connector_wrong_secret_kind_raises(conn, session, tenant, user):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="bearer-secret",
+        kind="bearer_token",
+        payload={"kind": "bearer_token", "token": "tok"},
+    )
+    params = ReaderConnectorOracleParams(secretName="bearer-secret", query="SELECT 1")
+    with pytest.raises(
+        connector_runtime.ConnectorRuntimeError, match="not usable by reader.connector.oracle"
+    ):
+        connector_runtime.materialize_oracle_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="ora2",
+            params=params,
+            view_name="node_ora2",
+        )
+
+
+def test_materialize_oracle_connector_missing_secret_raises(conn, session, tenant):
+    params = ReaderConnectorOracleParams(secretName="does-not-exist", query="SELECT 1")
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
+        connector_runtime.materialize_oracle_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="ora3",
+            params=params,
+            view_name="node_ora3",
+        )
+
+
+def test_oracle_dialect_resolves_lazily_in_thin_mode_without_network():
+    # Vérifie la forme du DSN (Vague 2 §6.1) sans se connecter à un vrai
+    # serveur : comme pour postgres/snowflake/mssql (et contrairement à
+    # bigquery, cf. ci-dessus), sa.create_engine() pour le dialecte
+    # "oracle+oracledb" est paresseux — aucun appel réseau avant .connect()
+    # (vérifié empiriquement : retour immédiat, aucune exception). Vérifie
+    # aussi que le mode thin (pur Python, sans client Oracle natif) est bien
+    # celui utilisé par défaut, sans appel explicite à
+    # oracledb.init_oracle_client() ni thick_mode=True — vérifié
+    # empiriquement contre oracledb.is_thin_mode() (True par défaut avant
+    # toute connexion, cf. ReaderConnectorOracleParams/OracleDsnPayload pour
+    # la vérification contre le code source réel du dialecte SQLAlchemy).
+    import oracledb
+    import sqlalchemy as sa
+
+    engine = sa.create_engine(
+        "oracle+oracledb://scott:s3cr3t-pass@myhost:1521/?service_name=orclpdb1"
+    )
+    try:
+        assert engine.dialect.name == "oracle"
+        assert engine.dialect.driver == "oracledb"
+        assert "s3cr3t-pass" not in str(engine.url)  # le mot de passe est masqué par défaut
+        assert oracledb.is_thin_mode() is True
+    finally:
+        engine.dispose()
+
+
 def test_postgres_secret_resolver_get_returns_payload(session, tenant, user):
     _create_secret(
         session,
@@ -623,3 +891,242 @@ def test_postgres_secret_resolver_get_does_not_mask_backend_failure_as_not_found
     message = str(exc_info.value)
     assert "not found" not in message
     assert "CORE_SECRETS_MASTER_KEY" in message
+
+
+from dlt.common.configuration.specs import (  # noqa: E402
+    AwsCredentials,
+    AzureCredentialsWithoutDefaults,
+    GcpServiceAccountCredentials,
+)
+
+from app.pipelines.ops.schemas import ReaderConnectorBlobParams  # noqa: E402
+
+
+def test_materialize_blob_connector_rejects_wrong_secret_kind(conn):
+    class _FakeResolver:
+        def get(self, name):
+            from app.secrets.schemas import PostgresDsnPayload
+
+            return PostgresDsnPayload(dsn="postgresql://x")
+
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="s3_credentials"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=_FakeResolver(),
+            node_id="n1",
+            params=ReaderConnectorBlobParams(
+                secretName="s1", path="s3://bucket/data.csv", format="csv"
+            ),
+            view_name="out",
+        )
+
+
+def test_materialize_blob_connector_unsupported_scheme_raises(conn, session, tenant, user):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="s3-secret",
+        kind="s3_credentials",
+        payload={
+            "kind": "s3_credentials",
+            "awsAccessKeyId": "AKIA",
+            "awsSecretAccessKey": "secret",
+        },
+    )
+    params = ReaderConnectorBlobParams(
+        secretName="s3-secret", path="ftp://host/data.csv", format="csv"
+    )
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="unsupported path scheme"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="b1",
+            params=params,
+            view_name="node_b1",
+        )
+
+
+def test_materialize_blob_connector_missing_secret_raises(conn, session, tenant):
+    params = ReaderConnectorBlobParams(
+        secretName="does-not-exist", path="s3://bucket/data.csv", format="csv"
+    )
+    with pytest.raises(connector_runtime.ConnectorRuntimeError, match="not found"):
+        connector_runtime.materialize_blob_connector(
+            conn,
+            secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+            node_id="b2",
+            params=params,
+            view_name="node_b2",
+        )
+
+
+class _FakeBlobResource:
+    """Point à l'endroit exact où intercepter la matérialisation blob sans
+    infra cloud réelle : `connector_runtime.filesystem(...)` (jamais appelé
+    contre un vrai S3/Azure/GCS dans ce module de test — pas d'infra
+    disponible en CI, cf. brief Task 15 Step 2) puis `| reader()` puis
+    `.apply_hints(...)`. `_run_dlt_and_attach` est monkeypatché séparément
+    pour ne jamais réellement lancer dlt.pipeline().run() contre ce faux
+    objet."""
+
+    def __or__(self, other):
+        return self
+
+    def apply_hints(self, **kwargs):
+        pass
+
+
+def _patch_blob_internals(monkeypatch, captured):
+    def _fake_filesystem(*, bucket_url, credentials=None, file_glob="*"):
+        captured["bucket_url"] = bucket_url
+        captured["credentials"] = credentials
+        captured["file_glob"] = file_glob
+        return _FakeBlobResource()
+
+    def _fake_reader_factory(name):
+        def _reader():
+            captured["reader"] = name
+            return _FakeBlobResource()
+
+        return _reader
+
+    monkeypatch.setattr(connector_runtime, "filesystem", _fake_filesystem)
+    monkeypatch.setattr(connector_runtime, "read_csv", _fake_reader_factory("csv"))
+    monkeypatch.setattr(connector_runtime, "read_jsonl", _fake_reader_factory("jsonl"))
+    monkeypatch.setattr(connector_runtime, "read_parquet", _fake_reader_factory("parquet"))
+    monkeypatch.setattr(
+        connector_runtime,
+        "_BLOB_READERS",
+        {
+            "csv": connector_runtime.read_csv,
+            "jsonl": connector_runtime.read_jsonl,
+            "parquet": connector_runtime.read_parquet,
+        },
+    )
+    monkeypatch.setattr(connector_runtime, "_run_dlt_and_attach", lambda *a, **k: None)
+
+
+def test_materialize_blob_connector_builds_aws_credentials_and_splits_path(
+    monkeypatch, conn, session, tenant, user
+):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="s3-secret",
+        kind="s3_credentials",
+        payload={
+            "kind": "s3_credentials",
+            "awsAccessKeyId": "AKIA123",
+            "awsSecretAccessKey": "shh",
+            "endpointUrl": "http://minio.local:9000",
+        },
+    )
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+
+    params = ReaderConnectorBlobParams(
+        secretName="s3-secret", path="s3://bucket/prefix/data.csv", format="csv"
+    )
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        node_id="b3",
+        params=params,
+        view_name="node_b3",
+    )
+
+    assert captured["bucket_url"] == "s3://bucket"
+    assert captured["file_glob"] == "prefix/data.csv"
+    assert captured["reader"] == "csv"
+    creds = captured["credentials"]
+    assert isinstance(creds, AwsCredentials)
+    assert creds.aws_access_key_id == "AKIA123"
+    assert creds.aws_secret_access_key == "shh"
+    assert creds.endpoint_url == "http://minio.local:9000"
+
+
+def test_materialize_blob_connector_builds_azure_credentials(
+    monkeypatch, conn, session, tenant, user
+):
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="azure-secret",
+        kind="azure_blob_credentials",
+        payload={
+            "kind": "azure_blob_credentials",
+            "accountName": "myaccount",
+            "accountKey": "base64key==",
+        },
+    )
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+
+    params = ReaderConnectorBlobParams(
+        secretName="azure-secret", path="az://container/nested/data.jsonl", format="jsonl"
+    )
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        node_id="b4",
+        params=params,
+        view_name="node_b4",
+    )
+
+    assert captured["bucket_url"] == "az://container"
+    assert captured["file_glob"] == "nested/data.jsonl"
+    assert captured["reader"] == "jsonl"
+    creds = captured["credentials"]
+    assert isinstance(creds, AzureCredentialsWithoutDefaults)
+    assert creds.azure_storage_account_name == "myaccount"
+    assert creds.azure_storage_account_key == "base64key=="
+
+
+def test_materialize_blob_connector_builds_gcs_credentials(
+    monkeypatch, conn, session, tenant, user
+):
+    service_account_info = {
+        "type": "service_account",
+        "project_id": "proj1",
+        "private_key_id": "kid1",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n",
+        "client_email": "x@proj1.iam.gserviceaccount.com",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        # champ hors dataclass GcpServiceAccountCredentials, présent dans un
+        # vrai JSON de compte de service GCP — doit être ignoré sans erreur
+        # (vérifié empiriquement, cf. GcsCredentialsPayload).
+        "universe_domain": "googleapis.com",
+    }
+    _create_secret(
+        session,
+        tenant,
+        user,
+        name="gcs-secret",
+        kind="gcs_credentials",
+        payload={"kind": "gcs_credentials", "serviceAccountInfo": service_account_info},
+    )
+    captured: dict = {}
+    _patch_blob_internals(monkeypatch, captured)
+
+    params = ReaderConnectorBlobParams(
+        secretName="gcs-secret", path="gs://bucket/data.parquet", format="parquet"
+    )
+    connector_runtime.materialize_blob_connector(
+        conn,
+        secret_resolver=connector_runtime.PostgresSecretResolver(session, tenant.id),
+        node_id="b5",
+        params=params,
+        view_name="node_b5",
+    )
+
+    assert captured["bucket_url"] == "gs://bucket"
+    assert captured["file_glob"] == "data.parquet"
+    assert captured["reader"] == "parquet"
+    creds = captured["credentials"]
+    assert isinstance(creds, GcpServiceAccountCredentials)
+    assert creds.project_id == "proj1"
+    assert creds.client_email == "x@proj1.iam.gserviceaccount.com"

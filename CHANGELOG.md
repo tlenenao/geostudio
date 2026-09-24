@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Breaking: the `transform.qgis` pipeline operation and its
+  `deploy/qgis-worker/` sidecar have been removed entirely** (GPL-2.0-or-later
+  licensing concern — GeoStudio's engine policy requires MIT/BSD/Apache/EDL).
+  Removed: the QGIS Processing execution path in `core/app/pipelines/`, the
+  `qgis-worker` container and its `docker-compose.yml` wiring (`etl` profile,
+  shared `etl-scratch` volume entry), the `core-qgis` CI job, and the
+  `geostudio-qgis-worker` published image. The 50-algorithm allowlist
+  (`core/app/pipelines/ops/qgis_algorithms.{py,json}`) is kept as a
+  historical FME↔QGIS reference table — no row in the coverage matrix
+  currently validates against it (the 7 raster rows below are
+  `capability_removed`, not `qgis_frozen`) — and nothing in the pipeline
+  runtime executes against it.
+  **There is no automatic migration.** Any existing pipeline with a
+  `transform.qgis` node will fail to load/run after upgrading
+  (`OPERATIONS.get("transform.qgis")` returns `None`). 12 of the 19 FME
+  transformers this engine used to cover now have a drop-in GeoStudio
+  operation; the other 7 (all raster) have no replacement in this release.
+  Manual migration table (old `algorithmId` → new op, or none):
+
+  | FME transformer | old QGIS `algorithmId` | replacement |
+  |---|---|---|
+  | CenterPointReplacer | `native:centroids` | `transform.centroid` |
+  | HullReplacer | `native:convexhull` | `transform.convexHull` |
+  | Generalizer | `native:simplifygeometries` | `transform.simplify` |
+  | BoundingBoxReplacer | `qgis:minimumboundinggeometry` | `transform.boundingGeometry` |
+  | Snapper | `native:snapgeometries` | `transform.snapToLayer` |
+  | AreaOnAreaOverlayer | `native:union` | `transform.resolveOverlaps` |
+  | TINGenerator | `native:delaunaytriangulation` | `transform.triangulate` |
+  | SurfaceModeller | `native:delaunaytriangulation` | `transform.triangulate` |
+  | Densifier | `native:densifygeometriesgivenaninterval` | `transform.densify` |
+  | MinimumSpanningCircleReplacer | `qgis:minimumboundinggeometry` | `transform.minimumBoundingCircle` |
+  | Clipper | `native:clip` | `transform.intersection` (`outputGeometry: "intersection"`, equivalent to FME's `Inside` port) |
+  | Dissolver | `native:dissolve` | `transform.aggregate` + `ST_Union_Agg` |
+  | RasterResampler | `gdal:warpreproject` | *(none — raster unsupported)* |
+  | RasterHillshader | `native:hillshade` | *(none)* |
+  | RasterSlopeCalculator | `native:slope` | *(none)* |
+  | RasterAspectCalculator | `native:aspect` | *(none)* |
+  | RasterToPolygonCoercer | `gdal:polygonize` | *(none)* |
+  | DEMGenerator | `qgis:tininterpolation` | *(none)* |
+  | ContourGenerator | `gdal:contour` | *(none)* |
+
+  Pipeline authors relying on one of the 7 raster QGIS algorithms have no
+  migration path in this release — raster support does not exist anywhere in
+  the pipeline engine (architectural gap, not a technical one; see
+  `docs/superpowers/specs/2026-09-20-vague2-transformers-duckdb-design.md`
+  §8.6 and §7.5).
+
 ## [0.1.0] - 2026-07-16
 
 Retroactive entry covering everything shipped since the fork from

@@ -97,6 +97,60 @@ test("un nouveau secret créé est immédiatement sélectionné", async () => {
   });
 });
 
+test("un secret bigquery_dsn créé est immédiatement sélectionné (Vague 2, GAP-16)", async () => {
+  const createSecret = vi.fn().mockResolvedValue({
+    id: "s10",
+    name: "warehouse-bq",
+    kind: "bigquery_dsn",
+    createdAt: "",
+    updatedAt: "",
+  });
+  const { onChange } = renderSelect({ kindFilter: "bigquery_dsn" }, { createSecret });
+  await userEvent.click(screen.getByText("Créer un secret"));
+  await userEvent.type(screen.getByLabelText("Nom"), "warehouse-bq");
+  await userEvent.type(
+    screen.getByLabelText("DSN"),
+    "bigquery://project/dataset?credentials_base64=abc",
+  );
+  await userEvent.click(screen.getByText("Créer"));
+
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith("warehouse-bq"));
+  expect(createSecret).toHaveBeenCalledWith({
+    name: "warehouse-bq",
+    payload: {
+      kind: "bigquery_dsn",
+      dsn: "bigquery://project/dataset?credentials_base64=abc",
+    },
+  });
+});
+
+test("un secret s3_credentials créé est immédiatement sélectionné (Vague 2, reader.connector.blob)", async () => {
+  const createSecret = vi.fn().mockResolvedValue({
+    id: "s11",
+    name: "s3-prod",
+    kind: "s3_credentials",
+    createdAt: "",
+    updatedAt: "",
+  });
+  const { onChange } = renderSelect({ kindFilter: "s3_credentials" }, { createSecret });
+  await userEvent.click(screen.getByText("Créer un secret"));
+  await userEvent.type(screen.getByLabelText("Nom"), "s3-prod");
+  await userEvent.type(screen.getByLabelText("Access key ID"), "AKIA123");
+  await userEvent.type(screen.getByLabelText("Secret access key"), "sekret");
+  await userEvent.click(screen.getByText("Créer"));
+
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith("s3-prod"));
+  expect(createSecret).toHaveBeenCalledWith({
+    name: "s3-prod",
+    payload: {
+      kind: "s3_credentials",
+      awsAccessKeyId: "AKIA123",
+      awsSecretAccessKey: "sekret",
+      endpointUrl: undefined,
+    },
+  });
+});
+
 test("un secret snowflake_dsn créé est immédiatement sélectionné", async () => {
   const createSecret = vi.fn().mockResolvedValue({
     id: "s9",
