@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useCreatePipeline,
+  useInstanceInfo,
   useItem,
   usePipelineConfig,
   usePipelineOps,
@@ -56,6 +57,8 @@ export function PipelineBuilderPage({
   const { username } = useAuth();
   const client = useItemClient();
   const opsQuery = usePipelineOps();
+  const instanceQuery = useInstanceInfo();
+  const etlEnabled = instanceQuery.data?.etlEnabled === true;
   const configQuery = usePipelineConfig(pk ?? "", { enabled: pk !== null });
   const itemQuery = useItem(pk ?? "", { enabled: pk !== null });
   const createPipeline = useCreatePipeline();
@@ -138,6 +141,14 @@ export function PipelineBuilderPage({
         {t("pipelineBuilder.notFound")}
       </p>
     );
+  // D09 : CORE_ETL_ENABLED=false → les routes pipeline ne sont pas montées
+  // côté cœur (core/app/pipelines/routes.py), opsQuery termine en erreur
+  // (404) et !opsQuery.data reste vrai pour toujours sans cette garde —
+  // spinner infini. Vérifier le flag AVANT d'attendre opsQuery, pas après :
+  // tant que instanceQuery lui-même charge, ne rien affirmer sur etlEnabled.
+  if (!instanceQuery.isLoading && !etlEnabled) {
+    return <p className="text-sm text-ink-2">{t("pipelineBuilder.etlDisabled")}</p>;
+  }
   if (opsQuery.isLoading || !opsQuery.data) return <p role="status">{t("common.loading")}</p>;
   if (draft === null) return <p role="status">{t("common.loading")}</p>;
 

@@ -119,6 +119,24 @@ function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}) {
     listCollections: () => Promise.resolve([]),
     getPipelineRuns: vi.fn().mockResolvedValue([]),
     getItem: vi.fn().mockResolvedValue(OWNED_PIPELINE_ITEM),
+    // D09 : la garde ajoutée sur PipelineBuilderPage lit useInstanceInfo(),
+    // dont le repli par défaut (ItemClient de test sans getInstanceInfo)
+    // est etlEnabled: false (cf. useInstanceInfo() dans items.hooks.ts) —
+    // sans ce mock par défaut, TOUS les tests existants de ce fichier
+    // afficheraient désormais le message de désactivation au lieu du
+    // builder. Seul le test D09 ci-dessous le surcharge à etlEnabled: false.
+    getInstanceInfo: () =>
+      Promise.resolve({
+        readOnly: false,
+        etlEnabled: true,
+        exportEnabled: false,
+        appExportEnabled: false,
+        tileset3dEnabled: false,
+        terrain3dEnabled: false,
+        copilotEnabled: false,
+        adminToolsEnabled: false,
+        quotasEnabled: false,
+      }),
     ...overrides,
   };
   render(
@@ -137,6 +155,35 @@ test("unsaved mode: Enregistrer is disabled on an empty graph", async () => {
   renderPage(null);
   await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
   expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+});
+
+// D09 : sans la garde ajoutée sur useInstanceInfo(), opsQuery termine en
+// erreur (404, routes non montées par core/app/pipelines/routes.py quand
+// CORE_ETL_ENABLED=false) et `!opsQuery.data` reste vrai pour toujours —
+// spinner infini sur `t("common.loading")` (piège trouvé par lecture du
+// code, pas seulement en le lançant contre une vraie instance désactivée).
+test("unsaved mode: affiche un message de désactivation au lieu du spinner infini quand CORE_ETL_ENABLED est faux (D09)", async () => {
+  renderPage(null, {
+    getInstanceInfo: () =>
+      Promise.resolve({
+        readOnly: false,
+        etlEnabled: false,
+        exportEnabled: false,
+        appExportEnabled: false,
+        tileset3dEnabled: false,
+        terrain3dEnabled: false,
+        copilotEnabled: false,
+        adminToolsEnabled: false,
+        quotasEnabled: false,
+      }),
+    // Simule des routes pipeline non montées côté cœur : jamais résolu,
+    // pour prouver que la garde D09 n'attend pas opsQuery.
+    getPipelineOps: () => new Promise(() => {}),
+  });
+  expect(
+    await screen.findByText("Non activé sur cette instance (CORE_ETL_ENABLED)."),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("Chargement…")).not.toBeInTheDocument();
 });
 
 test("unsaved mode: Aperçu and Exécuter are absent (no pipelineId yet)", async () => {

@@ -487,6 +487,7 @@ export const fr = {
   "mapEditor.inspectLabel": "Inspecter",
 
   // PipelineBuilderPage
+  "pipelineBuilder.etlDisabled": "Non activé sur cette instance (CORE_ETL_ENABLED).",
   "pipelineBuilder.notFound": "Pipeline introuvable.",
   "pipelineBuilder.stepsLabel": "Étapes",
   "pipelineBuilder.defaultTitle": "Pipeline",
