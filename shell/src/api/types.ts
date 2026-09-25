@@ -35,6 +35,9 @@ export type Item = {
   keywords?: string[];
   license: string;
   language: string;
+  // D18 : emprise spatiale de l'item (SP-55), consommée par l'auto-cadrage
+  // de l'éditeur de carte autonome (MapEditorPage) — cf. `fitBounds`.
+  bbox?: [number, number, number, number] | null;
   permissions: ItemPermissions;
 };
 

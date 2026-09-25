@@ -1542,6 +1542,7 @@ export const fr = {
   "cameraControls.bearingLabel": "Orientation (bearing) — {bearing}°",
   "cameraControls.bearingAria": "Orientation de la caméra",
   "cameraControls.resetButton": "Réinitialiser en 2D",
+  "mapEditor.fitToDataButton": "Ajuster à l'emprise des données",
 
   // TerrainPanel (map)
   "terrainPanel.heading": "Terrain 3D",
