@@ -593,7 +593,9 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   carte sur l'emprise des données (éditeur + widget), widget carte
   multi-couches (raster/deck/tiles3d additionnels), suppression de
   secret (UI+MCP), réouverture d'un pipeline wizard vers son éditeur
-  d'origine. Ferme REV-201 à REV-206.
+  d'origine. Ferme REV-201 à REV-206 et REV-249 (D18, auto-cadrage —
+  revue finale a trouvé et corrigé 1 Critical : l'auto-cadrage ne se
+  déclenchait en réalité jamais en production).
 
 ### Conventions tranchées (2026-09-01)
 
