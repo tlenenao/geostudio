@@ -162,7 +162,7 @@ jobs:
       - name: SBOM
         if: inputs.run_scans
         continue-on-error: true
-        uses: anchore/sbom-action@v0.24.0
+        uses: anchore/sbom-action@v0.24.2
         with:
           image: ghcr.io/tlenenao/${{ matrix.image }}:${{ inputs.image_tag }}
           artifact-name: ${{ matrix.image }}-sbom.spdx.json
