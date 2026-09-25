@@ -242,10 +242,20 @@ const SCREENS: Array<{
   {
     name: "Automatisation",
     path: "/pipelines/new",
-    before: (p) =>
-      p.route("https://core.test/v1/pipelines/ops", async (route) => {
+    before: async (p) => {
+      // D09 (2026-09-24) : PipelineBuilderPage n'affiche plus jamais le
+      // canevas tant que GET /v1/instance n'a pas résolu etlEnabled à true
+      // (sinon message "non activé sur cette instance", plus jamais le
+      // spinner infini) — sans cette surcharge, le mock par défaut
+      // (`{ readOnly: false }`, sans `etlEnabled`) fait échouer l'ancre
+      // ci-dessous en permanence. Même patron que a11y-audit.spec.ts.
+      await p.route("https://core.test/v1/instance", async (route) => {
+        await route.fulfill({ json: { readOnly: false, etlEnabled: true } });
+      });
+      await p.route("https://core.test/v1/pipelines/ops", async (route) => {
         await route.fulfill({ json: AUTOMATISATION_OPS_CATALOG });
-      }),
+      });
+    },
     // Le mock ci-dessus fait quitter à la page son état "Chargement…" (cf.
     // commentaire sur AUTOMATISATION_OPS_CATALOG), condition nécessaire
     // pour atteindre la grille TriptychLayout et l'exercer réellement —

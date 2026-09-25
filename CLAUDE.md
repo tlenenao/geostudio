@@ -587,6 +587,13 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   Catalogue exposé (`GET /pipelines/ops`) à 57 op, brut à 59. **Rupture pour
   tout déploiement existant utilisant `transform.qgis`**, aucune migration
   automatique (cf. `CHANGELOG.md`).
+- **Vague A diagnostic UI/UX (7 SP)** — découvrabilité `/bookmarks`/
+  `/analytics/sql`, édition d'item Site, garde `automation.manage` +
+  message d'indisponibilité sur la création de pipeline, auto-cadrage
+  carte sur l'emprise des données (éditeur + widget), widget carte
+  multi-couches (raster/deck/tiles3d additionnels), suppression de
+  secret (UI+MCP), réouverture d'un pipeline wizard vers son éditeur
+  d'origine. Ferme REV-201 à REV-206.
 
 ### Conventions tranchées (2026-09-01)
 

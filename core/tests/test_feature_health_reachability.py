@@ -68,21 +68,20 @@ def test_route_prefix_cuts_at_the_first_parameter(route, expected):
     assert route_prefix(route) == expected
 
 
-def test_bookmarks_has_no_inbound_link():
-    """GAP-80. Un utilisateur peut créer un signet (`useCreateBookmark`,
-    `pages/AppRuntimePage.tsx`) et n'a ensuite aucun moyen de le retrouver."""
+def test_bookmarks_has_an_inbound_link():
+    """GAP-80, fermé par le plan `2026-09-24-vague-a-bloquants-decouvrabilite.md`
+    (commit `de52497f`) : `CatalogPage.tsx` porte désormais un `<Link
+    to="/bookmarks">` réel quand le catalogue est sur le type `bookmark`."""
     inbound = collect_shell_inbound(REPO, declared_shell_routes(REPO))
-    assert inbound["/bookmarks"] == ()
+    assert "shell/src/pages/CatalogPage.tsx" in inbound["/bookmarks"]
 
 
-def test_sql_lab_has_no_inbound_link():
-    """Même classe que GAP-80, trouvée en écrivant ce plan : la barre de
-    domaines pointe `analytics` vers `/?type=bookmark`
-    (`shell/src/shell/chrome/domainRoutes.ts:21`) et plus vers `/analytics/sql`.
-    Les seules occurrences du littéral sont un commentaire, des tests, et
-    l'URL REST `${coreUrl}/analytics/sql` — jamais un lien."""
+def test_sql_lab_has_an_inbound_link():
+    """Même classe que GAP-80, fermée par le même plan (commit `de52497f`) :
+    `CatalogPage.tsx` porte désormais un `<Link to="/analytics/sql">` réel,
+    affiché quand l'utilisateur porte `analytics.sql_lab.access`."""
     inbound = collect_shell_inbound(REPO, declared_shell_routes(REPO))
-    assert inbound["/analytics/sql"] == ()
+    assert "shell/src/pages/CatalogPage.tsx" in inbound["/analytics/sql"]
 
 
 def test_admin_collections_has_an_inbound_link():
@@ -110,10 +109,19 @@ def test_i18n_catalog_is_never_an_inbound_link():
 
 
 def test_score_is_zero_for_a_shell_surface_without_inbound_link():
-    facts = collect_reachability_facts(REPO, rest_paths=frozenset(), mcp_tools=frozenset())
-    score = score_reachability(_feature(shell=("/bookmarks",)), facts)
+    """Facts synthétiques (pas le dépôt réel, cf. `/bookmarks`/`/analytics/sql`
+    désormais atteignables depuis le plan `2026-09-24-vague-a-
+    bloquants-decouvrabilite.md`) : ce test vérifie le calcul de
+    `score_reachability`, pas un fait du dépôt à un instant donné."""
+    facts = ReachabilityFacts(
+        shell_routes=("/orphan",),
+        shell_inbound={"/orphan": ()},
+        rest_paths=frozenset(),
+        mcp_tools=frozenset(),
+    )
+    score = score_reachability(_feature(shell=("/orphan",)), facts)
     assert score.value == 0.0
-    assert score.evidence["/bookmarks"] == "aucun lien entrant"
+    assert score.evidence["/orphan"] == "aucun lien entrant"
 
 
 def test_score_is_hundred_for_a_shell_surface_with_an_inbound_link():

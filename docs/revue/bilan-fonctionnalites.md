@@ -1,8 +1,8 @@
 # Bilan de fonctionnalités — GeoStudio
 
-**Généré le 2026-09-24** par `uv run python scripts/feature_health_cli.py --repo .. --write`. **Ne pas éditer à la main** : ce fichier est regénéré à chaque clôture de SP.
+**Généré le 2026-09-25** par `uv run python scripts/feature_health_cli.py --repo .. --write`. **Ne pas éditer à la main** : ce fichier est regénéré à chaque clôture de SP.
 
-308 fonctionnalités — santé médiane 98.8 sur 308 mesurables.
+308 fonctionnalités — santé médiane 98.9 sur 308 mesurables.
 
 La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** est déclarée (spec §4). Les deux ne sont jamais moyennées. Le tri est `priorité × (100 − santé)`.
 
@@ -34,7 +34,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | 27 | **Carte** | 98.8 |
 | 2 | **Cartes** | 98.6 |
 | 5 | **Cartographie** | 97.5 |
-| 5 | **Catalogue** | 91.2 |
+| 5 | **Catalogue** | 98.9 |
 | 10 | **Catalogue/Items** | 98.7 |
 | 1 | **Catalogue/Métadonnées** | 100.0 |
 | 4 | **Catalogue/Portails publics** | 98.2 |
@@ -53,7 +53,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | 6 | **Déploiement** | 100.0 |
 | 3 | **Export statique** | 100.0 |
 | 3 | **Extensibilité** | 98.5 |
-| 10 | **Features (OGC API)** | 99.0 |
+| 10 | **Features (OGC API)** | 99.1 |
 | 11 | **Fédération des données** | 97.2 |
 | 1 | **Gouvernance/Licences** | 100.0 |
 | 1 | **Interne** | 38.7 |
@@ -83,7 +83,6 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 |---|---|---|---|---|---|---|---|---|---|
 | Interne | Galerie interne de composants du kit UI | `interne-galerie-interne-de-composants-du-kit-ui` | 38.7 | = | basse (amorcée) | 30.0 | 0.0 | — | 100.0 |
 | Builder — Widgets | Widget Table (tri, pagination, cross-filter, action setFilter) | `builder-widgets-widget-table-tri-pagination-cross-filter-action-setfilter` | 90.5 | = | haute (amorcée) | 84.2 | — | — | 100.0 |
-| Catalogue | Catalogue (recherche, filtre type, filtre portée, pagination) | `catalogue-catalogue-recherche-filtre-type-filtre-portee-pagination` | 90.6 | = | haute (amorcée) | 97.2 | 75.0 | — | 100.0 |
 | Builder — Widgets | Widget Carte (symbologie, popup, cross-filter, actions flyTo/highlight) | `builder-widgets-widget-carte-symbologie-popup-cross-filter-actions-flyto-highlig` | 91.4 | = | haute (amorcée) | 85.7 | — | — | 100.0 |
 | Automatisation | Importer un fichier géospatial (GeoJSON/CSV/GeoPackage/Shapefile zippé) comme nouvelle collection | `automatisation-importer-un-fichier-geospatial-geojson-csv-geopackage-shapefile-z` | 91.8 | = | haute (amorcée) | 93.5 | 100.0 | 75.0 | 100.0 |
 | Administration | Administration des collections | `administration-administration-des-collections` | 92.0 | = | haute (amorcée) | 80.0 | 100.0 | — | 100.0 |
@@ -184,7 +183,6 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Plateforme IA | Décrire un rapport planifié sans le déclencher (agent MCP) | `plateforme-ia-decrire-un-rapport-planifie-sans-le-declencher-agent-mcp` | 97.0 | = | moyenne (amorcée) | 92.6 | 100.0 | — | 100.0 |
 | Fédération des données | API STAC native (landing, conformance, collections, items, recherche cross-collection) | `federation-des-donnees-api-stac-native-landing-conformance-collections-items-rec` | 97.0 | = | moyenne (amorcée) | 90.1 | 100.0 | 100.0 | 100.0 |
 | Builder — Widgets | Comparaison de periode sur le widget Graphique (lignes/aires) | `builder-widgets-comparaison-de-periode-sur-le-widget-graphique-lignes-aires` | 97.2 | = | moyenne (amorcée) | 95.3 | — | — | 100.0 |
-| Features (OGC API) | SQL Lab : requête SQL en lecture seule sandboxée sur les collections visibles | `features-ogc-api-sql-lab-requete-sql-en-lecture-seule-sandboxee-sur-les-collecti` | 97.2 | = | moyenne (amorcée) | 97.7 | 91.7 | 100.0 | 100.0 |
 | Automatisation | Lancer l'exécution d'un pipeline à la demande | `automatisation-lancer-l-execution-d-un-pipeline-a-la-demande` | 98.2 | = | haute (amorcée) | 93.9 | 100.0 | 100.0 | 100.0 |
 | Features (OGC API) | Filtrer les features par intersection géométrique exacte (ST_Intersects) | `features-ogc-api-filtrer-les-features-par-intersection-geometrique-exacte-st-int` | 97.5 | = | moyenne (amorcée) | 93.7 | 100.0 | — | 100.0 |
 | Builder — Analytique globale | Bandeau des filtres de contexte actifs avec effacement individuel/global | `builder-analytique-globale-bandeau-des-filtres-de-contexte-actifs-avec-effacemen` | 97.5 | = | moyenne (amorcée) | 95.8 | — | — | 100.0 |
@@ -214,6 +212,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Collections | Supprimer une collection | `collections-supprimer-une-collection` | 98.2 | = | moyenne (amorcée) | 94.1 | 100.0 | 100.0 | 100.0 |
 | Builder — Export d'app | Export d'app en trois modes (Statique/Connecte/Autoporte) | `builder-export-d-app-export-d-app-en-trois-modes-statique-connecte-autoporte` | 98.8 | = | haute (amorcée) | 97.1 | 100.0 | — | 100.0 |
 | Apps & sites | Capturer une miniature depuis le canevas de l'app | `apps-sites-capturer-une-miniature-depuis-le-canevas-de-l-app` | 98.2 | = | moyenne (amorcée) | 95.6 | 100.0 | — | 100.0 |
+| Catalogue | Catalogue (recherche, filtre type, filtre portée, pagination) | `catalogue-catalogue-recherche-filtre-type-filtre-portee-pagination` | 98.9 | +8.3 | haute (amorcée) | 97.2 | 100.0 | — | 100.0 |
 | Carte | Ajout d'une couche par URL GeoJSON externe | `carte-ajout-d-une-couche-par-url-geojson-externe` | 98.9 | = | haute (amorcée) | 98.2 | — | — | 100.0 |
 | Builder — Donnees | Panneau des sources de donnees (features/statistics/static) | `builder-donnees-panneau-des-sources-de-donnees-features-statistics-static` | 99.0 | = | haute (amorcée) | 98.3 | — | — | 100.0 |
 | Automatisation | Consulter l'historique des évaluations d'une règle d'alerte | `automatisation-consulter-l-historique-des-evaluations-d-une-regle-d-alerte` | 98.5 | = | moyenne (amorcée) | 94.9 | 100.0 | 100.0 | 100.0 |
@@ -259,6 +258,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Fédération des données | Créer un Dataset de plateforme à partir d'un Feature Service ArcGIS déjà moissonné (source live, sans copie) | `federation-des-donnees-creer-un-dataset-de-plateforme-a-partir-d-un-feature-serv` | 99.3 | = | moyenne (amorcée) | 98.8 | — | — | 100.0 |
 | Automatisation | Choisir sa préférence de notification (toutes / échecs seulement / aucune) | `automatisation-choisir-sa-preference-de-notification-toutes-echecs-seulement-auc` | 99.3 | = | moyenne (amorcée) | 97.6 | 100.0 | 100.0 | 100.0 |
 | Automatisation | Être notifié dans une cloche persistante du shell des jobs en échec/succès (ingestion, pipeline, export, export d'app, rapport) | `automatisation-etre-notifie-dans-une-cloche-persistante-du-shell-des-jobs-en-ech` | 99.3 | = | moyenne (amorcée) | 97.6 | 100.0 | 100.0 | 100.0 |
+| Features (OGC API) | SQL Lab : requête SQL en lecture seule sandboxée sur les collections visibles | `features-ogc-api-sql-lab-requete-sql-en-lecture-seule-sandboxee-sur-les-collecti` | 99.3 | +2.1 | moyenne (amorcée) | 97.7 | 100.0 | 100.0 | 100.0 |
 | Features (OGC API) | Tuiles vectorielles MVT servies par le cœur (avec RLS) | `features-ogc-api-tuiles-vectorielles-mvt-servies-par-le-cur-avec-rls` | 99.6 | = | haute (amorcée) | 98.7 | 100.0 | 100.0 | 100.0 |
 | Automatisation | Créer et lancer un pipeline par l'IA (agent MCP) | `automatisation-creer-et-lancer-un-pipeline-par-l-ia-agent-mcp` | 99.4 | = | moyenne (amorcée) | 98.5 | 100.0 | — | 100.0 |
 | Conformité | Mesurer l'usage de stockage et de ressources d'un tenant | `conformite-mesurer-l-usage-de-stockage-et-de-ressources-d-un-tenant` | 98.9 | = | basse | 96.4 | 100.0 | 100.0 | 100.0 |
