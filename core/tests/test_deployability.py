@@ -79,6 +79,7 @@ KEYCLOAK_REALM_JSON = REPO / "deploy/keycloak/geostudio-realm.json"
 POSTGIS_DOCKERFILE = REPO / "deploy" / "postgis" / "Dockerfile"
 POSTGIS_INITDB_SCRIPT = REPO / "deploy" / "postgis" / "10_postgis.sh"
 TITILER_DOCKERFILE = REPO / "deploy" / "titiler" / "Dockerfile"
+MINIO_DOCKERFILE = REPO / "deploy" / "minio" / "Dockerfile"
 
 # Préfixe des images que nous publions nous-mêmes.
 OWN_IMAGE_RE = re.compile(r"ghcr\.io/[^/]+/(geostudio-[a-z0-9-]+)")
@@ -288,6 +289,50 @@ def test_titiler_dockerfile_pins_the_currently_deployed_version():
         "titiler.application==0.18.4",
     ):
         assert package in text, f"deploy/titiler/Dockerfile doit épingler {package}"
+
+
+def test_minio_dockerfile_builds_from_pinned_agpl_source_not_broken_upstream_recipes():
+    """quay.io/minio/minio (401 sur TOUS les tags, sur quay.io ET Docker
+    Hub, vérifié le 2026-09-25) est totalement injoignable en pull anonyme
+    — la propre distribution binaire de MinIO (dl.min.io) répond aussi 410
+    Gone (même rupture que celle déjà rencontrée sur `mc`, cf.
+    deploy/backup/Dockerfile). La cible `make docker` de l'amont est
+    elle-même cassée : son Dockerfile top-level fait `FROM
+    minio/minio:latest` (circulaire — dépend du dépôt verrouillé) et son
+    Dockerfile.release télécharge depuis dl.min.io (mort). Seule la cible
+    Makefile `build` (un simple `go build` d'un module Go pur, sans
+    dépendance à un registre) reste reproductible — c'est elle que ce
+    Dockerfile doit reproduire, jamais `make docker`."""
+    text = MINIO_DOCKERFILE.read_text()
+    assert "github.com/minio/minio" in text, (
+        "deploy/minio/Dockerfile doit cloner les sources officielles "
+        "(github.com/minio/minio), pas une image binaire tierce."
+    )
+    assert re.search(r"RELEASE\.\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z", text), (
+        "deploy/minio/Dockerfile doit épingler un tag RELEASE.* précis, "
+        "jamais une branche mouvante (main/master/latest)."
+    )
+    assert "dl.min.io" not in text, (
+        "dl.min.io ne sert plus de binaire MinIO exploitable (410 Gone) — "
+        "et y repointer a déjà cassé deploy/backup/Dockerfile une première "
+        "fois (le remplacement /aistor/ sert une licence Enterprise, pas "
+        "AGPL). Ne jamais y revenir."
+    )
+    assert "FROM minio/minio" not in text, (
+        "le Dockerfile top-level de l'amont (FROM minio/minio:latest) est "
+        "circulaire : il dépend du dépôt d'image verrouillé que ce "
+        "Dockerfile a justement pour but de remplacer."
+    )
+    assert "-tags kqueue" in text and "go build" in text, (
+        "deploy/minio/Dockerfile doit reproduire la cible `build` du "
+        "Makefile amont (go build -tags kqueue ...), pas make docker."
+    )
+    assert "MINIO_RELEASE=RELEASE" in text, (
+        "sans la variable d'environnement MINIO_RELEASE=RELEASE au moment "
+        "du go build, minio --version affiche DEVELOPMENT.<tag> au lieu de "
+        "RELEASE.<tag> — cosmétique mais trompeur en diagnostic d'incident "
+        "(vérifié empiriquement en préparant ce plan)."
+    )
 
 
 def test_every_build_service_has_a_released_image():
