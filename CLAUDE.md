@@ -596,6 +596,13 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   d'origine. Ferme REV-201 à REV-206 et REV-249 (D18, auto-cadrage —
   revue finale a trouvé et corrigé 1 Critical : l'auto-cadrage ne se
   déclenchait en réalité jamais en production).
+- **Reconstruction de l'image MinIO depuis les sources AGPL** — remplace
+  `quay.io/minio/minio` (verrouillé en pull anonyme sur quay.io **et**
+  Docker Hub, 401/pull access denied sur tous les tags, vérifié le
+  2026-09-25) par `deploy/minio/Dockerfile` (build multi-stage
+  `golang:1.24-bookworm` → `debian:bookworm-slim`, reproduit la cible
+  `build` du Makefile amont, `RELEASE.2025-10-15T17-29-55Z`), publié
+  `ghcr.io/tlenenao/geostudio-minio` (8 → 9 images) ; ferme `REV-194`.
 
 ### Conventions tranchées (2026-09-01)
 
@@ -663,6 +670,11 @@ recoller le détail que le backlog porte déjà :
   couverture de connecteurs comme différenciateur face à FME —
   `OperationContract` envisagé pour `core/app/pipelines/`, pas encore
   lancé.
+- `REV-194` (dérive MinIO vers l'offre commerciale) close par la
+  **reconstruction de l'image MinIO depuis les sources AGPL** : ce n'était
+  plus une simple veille, `quay.io/minio/minio` ET `minio/minio` (Docker
+  Hub) sont devenus totalement injoignables en pull anonyme (vérifié le
+  2026-09-25).
 
 ### Suivis non bloquants — ce qu'il faut savoir avant de toucher la stack
 

@@ -26,10 +26,10 @@ jobs:
       packages: write
       security-events: write
     strategy:
-      # Sans ceci, un échec sur une seule des huit legs (par ex. disque ou
-      # timeout sur geostudio-export-worker, 3.14 Go) annule les sept autres
-      # avant publication — dont core/shell/postgis, qui n'ont eux-mêmes
-      # aucune raison d'échouer.
+      # Sans ceci, un échec sur une seule des neuf legs (par ex. disque ou
+      # timeout sur geostudio-export-worker, 3.14 Go) annule les huit
+      # autres avant publication — dont core/shell/postgis, qui n'ont
+      # eux-mêmes aucune raison d'échouer.
       fail-fast: false
       matrix:
         include:
@@ -63,6 +63,10 @@ jobs:
             platforms: linux/amd64,linux/arm64
           - image: geostudio-backup
             context: ./deploy/backup
+            dockerfile: Dockerfile
+            platforms: linux/amd64,linux/arm64
+          - image: geostudio-minio
+            context: ./deploy/minio
             dockerfile: Dockerfile
             platforms: linux/amd64,linux/arm64
     steps:

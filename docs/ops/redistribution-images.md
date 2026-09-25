@@ -1,15 +1,16 @@
 # Redistribution des images publiées
 
-GeoStudio publie 8 images sur `ghcr.io/tlenenao/` à chaque tag `v*`
+GeoStudio publie 9 images sur `ghcr.io/tlenenao/` à chaque tag `v*`
 (cf. `.github/workflows/release.yml`) : `geostudio-core`, `geostudio-shell`,
 `geostudio-postgis`, `geostudio-appexport-standalone`,
 `geostudio-export-worker`, `geostudio-qgis-worker`,
-`geostudio-appexport-runtime-builder`, `geostudio-backup`.
+`geostudio-appexport-runtime-builder`, `geostudio-backup`, `geostudio-minio`.
 
-**Trois d'entre elles distribuent du logiciel copyleft fort (GPL/réseau)** :
+**Quatre d'entre elles distribuent du logiciel copyleft fort (GPL/réseau)** :
 `geostudio-qgis-worker` (GPL — QGIS + GRASS), `geostudio-postgis` (GPL —
-PostGIS) et `geostudio-backup` (AGPL — le client MinIO `mc`) ; voir les
-trois sections dédiées ci-dessous. Une version précédente de ce document
+PostGIS), `geostudio-backup` (AGPL — le client MinIO `mc`) et
+`geostudio-minio` (AGPL — le serveur MinIO lui-même) ; voir les quatre
+sections dédiées ci-dessous. Une version précédente de ce document
 affirmait que « sept d'entre elles ne contiennent que du code GeoStudio
 (Apache-2.0) et des dépendances permissives » — c'était faux pour
 `geostudio-postgis` (jamais vérifié) et pour `geostudio-backup` (jamais
@@ -52,7 +53,7 @@ techno — plutôt que de supprimer l'étiquette par ligne et de compter sur
 le seul paragraphe global, pour qu'un lecteur qui ne lit que le tableau
 voie la réserve sans devoir remonter au texte.
 
-## Vérification des 8 images (checklist appliquée le 2026-08-21)
+## Vérification des 9 images (checklist appliquée le 2026-08-21)
 
 | Image | Base(s) | Ajouts notables du Dockerfile | Licence(s) établie(s) | Statut |
 |---|---|---|---|---|
@@ -63,7 +64,8 @@ voie la réserve sans devoir remonter au texte.
 | `geostudio-export-worker` | `python:3.12-slim` | **Même liste complète que `geostudio-core`** (`uv pip install --system --no-cache -r pyproject.toml` — littéralement le même fichier, donc les mêmes 36 dépendances directes, y compris `psycopg`/`psycopg2-binary`) + binaires Chromium/FFmpeg téléchargés par `playwright install --with-deps chromium` | Playwright lui-même permissif (Apache-2.0 [^playwright]) ; **licence du binaire Chromium/FFmpeg embarqué non établie avec confiance** — Chromium agrège des centaines de composants tiers sous licences hétérogènes et aucun `THIRD_PARTY_NOTICES` consolidé n'a été trouvé en un temps raisonnable ; **+ LGPL `psycopg`/`psycopg2-binary` héritées de `core/pyproject.toml`**, même réserve que `geostudio-core` | **Non tranché** (Chromium/FFmpeg, cf. note ci-dessous) **+ réserve LGPL** (voir section dédiée) |
 | `geostudio-qgis-worker` | `qgis/qgis:release-3_34` | GRASS (`grassprovider` activé) | **GPL-2.0-or-later** (QGIS + GRASS) | **Copyleft — section dédiée existante** |
 | `geostudio-appexport-runtime-builder` | `node:20-slim` (image finale, pas un étage jeté — c'est un conteneur one-shot dont la sortie est un volume, pas un runtime servi) | code GeoStudio (Apache-2.0) ; dépendances npm non auditées une à une | Permissif à ce niveau (npm non exhaustif) | OK, avec réserve |
-| `geostudio-backup` | `alpine:3.20` | `postgresql16-client`, `age`, `curl`, `jq`, `bash`, `tzdata`, `python3` (apk) + binaire `mc` (MinIO Client) téléchargé depuis `dl.min.io` — détail complet par composant : `/LICENSE-BACKUP.md`, embarquée dans l'image | **AGPL-3.0-or-later** (`mc`) + permissif pour le reste | **Copyleft — section dédiée, notice embarquée** |
+| `geostudio-backup` | `alpine:3.20` | `postgresql16-client`, `age`, `curl`, `jq`, `bash`, `tzdata`, `python3` (apk) + binaire `mc` (MinIO Client) téléchargé depuis les GitHub Releases de `minio/mc` (portage arm64, 2026-09-17 — `dl.min.io` répond 410 Gone) — détail complet par composant : `/LICENSE-BACKUP.md`, embarquée dans l'image | **AGPL-3.0-or-later** (`mc`) + permissif pour le reste | **Copyleft — section dédiée, notice embarquée** |
+| `geostudio-minio` | `golang:1.24-bookworm` (étage de build, jeté) + `debian:bookworm-slim` (étage final) | Binaire `minio` compilé depuis les sources officielles AGPL (`github.com/minio/minio`, cible `build` du Makefile amont) ; `ca-certificates`, `curl` (apt) — détail complet par composant : `/LICENSE-MINIO.md`, embarquée dans l'image | **AGPL-3.0-or-later** (serveur MinIO, exposé comme service réseau — contrairement à `mc` dans `geostudio-backup`, invoqué en sous-processus) + permissif pour le reste | **Copyleft réseau — section dédiée ci-dessous** |
 
 [^python]: <https://docs.python.org/3/license.html> ; <https://spdx.org/licenses/PSF-2.0.html>
 [^duckdb-ext]: `httpfs`/`spatial` MIT — <https://github.com/duckdb/duckdb-httpfs>, <https://github.com/duckdb/duckdb-spatial>
@@ -164,7 +166,7 @@ donner accès aux sources) est de fait déjà satisfaite : le paquet est
 public, inchangé, et remplaçable par l'utilisateur final sans recompiler
 quoi que ce soit (`pip install psycopg==<version>` suffit). Ceci reste une
 analyse d'ingénieur, non une revue juridique formelle — même réserve que
-pour les trois sections GPL/AGPL de ce document.
+pour les quatre sections GPL/AGPL de ce document.
 
 **Point ouvert (2026-08-21, non bloquant) : aucune notice ni label OCI
 n'est embarqué dans `geostudio-core` ni `geostudio-export-worker` pour ce
@@ -282,6 +284,26 @@ pas un commit/tag précis correspondant au binaire embarqué), documentée
 dans `/LICENSE-BACKUP.md` mais délibérément non corrigée dans cette
 passe : épingler la version changerait le contenu réel de l'image et
 nécessiterait sa propre vérification.
+
+## `geostudio-minio` — contient de l'AGPL, exposé comme service réseau
+
+Cette image (`deploy/minio/Dockerfile`) recompile le serveur MinIO
+lui-même depuis ses sources officielles (`github.com/minio/minio`, tag
+`RELEASE.2025-10-15T17-29-55Z`), après que `quay.io/minio/minio` et
+`minio/minio` (Docker Hub) ont tous deux été verrouillés en pull anonyme
+(401/pull access denied, vérifié le 2026-09-25 — escalade de REV-194).
+
+**Différence structurante avec `geostudio-backup` (`mc`)** : `mc` est un
+binaire invoqué en sous-processus, jamais exposé sur le réseau par
+GeoStudio ; le serveur MinIO packagé ici **est** le service réseau AGPL
+lui-même, déployé et exposé (port 9000, API S3) aux autres services du
+stack. La clause réseau de l'AGPL (§13) s'applique donc directement à ce
+déploiement. Elle est satisfaite parce que le binaire n'est pas modifié
+(recompilation à l'identique, aucun patch) et que le code source à la
+version exacte exécutée est déjà public au tag ci-dessus — offre de
+source par référence, pratique usuelle non revue par un juriste. Détail
+complet, y compris la réserve si ce Dockerfile venait à appliquer un jour
+un patch : `deploy/minio/LICENSE-MINIO.md`, embarquée dans l'image.
 
 ## Avant d'ajouter une image à la matrice de release
 

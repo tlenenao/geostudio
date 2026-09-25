@@ -79,6 +79,7 @@ KEYCLOAK_REALM_JSON = REPO / "deploy/keycloak/geostudio-realm.json"
 POSTGIS_DOCKERFILE = REPO / "deploy" / "postgis" / "Dockerfile"
 POSTGIS_INITDB_SCRIPT = REPO / "deploy" / "postgis" / "10_postgis.sh"
 TITILER_DOCKERFILE = REPO / "deploy" / "titiler" / "Dockerfile"
+MINIO_DOCKERFILE = REPO / "deploy" / "minio" / "Dockerfile"
 
 # Préfixe des images que nous publions nous-mêmes.
 OWN_IMAGE_RE = re.compile(r"ghcr\.io/[^/]+/(geostudio-[a-z0-9-]+)")
@@ -162,11 +163,11 @@ def release_matrix() -> list[dict]:
 
 
 def test_build_and_push_matrix_lives_in_the_reusable_workflow():
-    """§2 de la spec 2026-09-19 : la matrice des 8 images doit vivre dans un
+    """§2 de la spec 2026-09-19 : la matrice des 9 images doit vivre dans un
     SEUL fichier (`_build-and-push.yml`, réutilisable par `release.yml` ET
-    par le futur `publish-edge.yml`) — jamais recopiée, sous peine de
-    dériver silencieusement entre les deux (classe de bug déjà payée sur ce
-    dépôt, cf. CLAUDE.md piège n°2)."""
+    par `publish-edge.yml`) — jamais recopiée, sous peine de dériver
+    silencieusement entre les deux (classe de bug déjà payée sur ce dépôt,
+    cf. CLAUDE.md piège n°2)."""
     assert BUILD_AND_PUSH.exists(), (
         "attendu : .github/workflows/_build-and-push.yml (workflow réutilisable)"
     )
@@ -188,6 +189,7 @@ def test_build_and_push_matrix_lives_in_the_reusable_workflow():
         "geostudio-export-worker",
         "geostudio-appexport-runtime-builder",
         "geostudio-backup",
+        "geostudio-minio",
     }, f"matrice inattendue : {images}"
 
 
@@ -288,6 +290,58 @@ def test_titiler_dockerfile_pins_the_currently_deployed_version():
         "titiler.application==0.18.4",
     ):
         assert package in text, f"deploy/titiler/Dockerfile doit épingler {package}"
+
+
+def test_minio_dockerfile_builds_from_pinned_agpl_source_not_broken_upstream_recipes():
+    """quay.io/minio/minio (401 sur TOUS les tags, sur quay.io ET Docker
+    Hub, vérifié le 2026-09-25) est totalement injoignable en pull anonyme
+    — la propre distribution binaire de MinIO (dl.min.io) répond aussi 410
+    Gone (même rupture que celle déjà rencontrée sur `mc`, cf.
+    deploy/backup/Dockerfile). La cible `make docker` de l'amont est
+    elle-même cassée : son Dockerfile top-level fait `FROM
+    minio/minio:latest` (circulaire — dépend du dépôt verrouillé) et son
+    Dockerfile.release télécharge depuis dl.min.io (mort). Seule la cible
+    Makefile `build` (un simple `go build` d'un module Go pur, sans
+    dépendance à un registre) reste reproductible — c'est elle que ce
+    Dockerfile doit reproduire, jamais `make docker`."""
+    text = MINIO_DOCKERFILE.read_text()
+    assert "github.com/minio/minio" in text, (
+        "deploy/minio/Dockerfile doit cloner les sources officielles "
+        "(github.com/minio/minio), pas une image binaire tierce."
+    )
+    assert re.search(r"RELEASE\.\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z", text), (
+        "deploy/minio/Dockerfile doit épingler un tag RELEASE.* précis, "
+        "jamais une branche mouvante (main/master/latest)."
+    )
+    assert "dl.min.io" not in text, (
+        "dl.min.io ne sert plus de binaire MinIO exploitable (410 Gone) — "
+        "et y repointer a déjà cassé deploy/backup/Dockerfile une première "
+        "fois (le remplacement /aistor/ sert une licence Enterprise, pas "
+        "AGPL). Ne jamais y revenir."
+    )
+    assert "FROM minio/minio" not in text, (
+        "le Dockerfile top-level de l'amont (FROM minio/minio:latest) est "
+        "circulaire : il dépend du dépôt d'image verrouillé que ce "
+        "Dockerfile a justement pour but de remplacer."
+    )
+    assert "-tags kqueue" in text and "go build" in text, (
+        "deploy/minio/Dockerfile doit reproduire la cible `build` du "
+        "Makefile amont (go build -tags kqueue ...), pas make docker."
+    )
+    # L'assertion faible `"MINIO_RELEASE=RELEASE" in text` est satisfaite par
+    # la seule ligne ARG MINIO_RELEASE=RELEASE.2025-10-15T... (préfixe littéral),
+    # donc ne détecterait pas une régression qui supprimerait les deux
+    # occurrences réelles du bloc RUN. Vérifier les deux contextes distincts :
+    # (1) avant CGO_ENABLED=0 et (2) avant `go run buildscripts/gen-ldflags.go`.
+    assert re.search(r"MINIO_RELEASE=RELEASE\s+CGO_ENABLED", text), (
+        "le bloc RUN doit positionner MINIO_RELEASE=RELEASE avant CGO_ENABLED "
+        "pour que minio --version affiche RELEASE.<tag> (pas DEVELOPMENT.<tag>)"
+    )
+    assert re.search(r"MINIO_RELEASE=RELEASE\s+go run", text), (
+        "le bloc RUN doit positionner MINIO_RELEASE=RELEASE avant "
+        "`go run buildscripts/gen-ldflags.go` (le compilateur émet-il le ldflags "
+        "avec le préfixe RELEASE? vérifié empiriquement en préparant ce plan)."
+    )
 
 
 def test_every_build_service_has_a_released_image():
@@ -775,6 +829,24 @@ def test_release_gate_arm64_starts_postgres_like_ci():
     )
 
 
+def test_release_gate_arm64_smoke_tests_minio_health():
+    """Miroir de test_release_gate_arm64_runs_on_native_arm_runner pour
+    minio : le binaire recompilé (Task 1, deploy/minio/Dockerfile) doit
+    démarrer réellement sur du matériel arm64 natif, pas seulement passer
+    docker buildx sous QEMU."""
+    doc = yaml.safe_load(RELEASE.read_text())
+    job = doc["jobs"]["test-gate-arm64"]
+    runs = " ".join(st.get("run", "") for st in job["steps"])
+    assert "deploy/minio" in runs, (
+        "test-gate-arm64 doit builder ./deploy/minio (aucune étape ne le "
+        "référence)."
+    )
+    assert "minio/health/live" in runs, (
+        "test-gate-arm64 n'a pas de fumée minio (aucune étape n'appelle "
+        "/minio/health/live)."
+    )
+
+
 # Buckets volontairement hors sauvegarde, avec la raison. `exports` et
 # `appexports` ne contiennent que des artefacts régénérables : un PDF de
 # rapport ou un bundle d'app se re-demande en un clic.
@@ -903,7 +975,7 @@ def test_images_are_pinned():
     )
 
 
-# Les neuf références d'images tierces réellement présentes dans les deux
+# Les huit références d'images tierces réellement présentes dans les deux
 # compose, recopiées telles quelles. Le durcissement du regex flottant est
 # la seule chose qui pourrait les rejeter à tort : aucune n'est du semver
 # canonique (`RELEASE.2025-…`, `1.22.1-p0`), et le chemin de registre
@@ -912,7 +984,6 @@ def test_images_are_pinned():
 @pytest.mark.parametrize(
     "image",
     [
-        "minio/minio:RELEASE.2025-09-07T16-13-09Z",
         "edoburu/pgbouncer:1.22.1-p0",
         "ghcr.io/maplibre/martin:v0.18.0",
         "ghcr.io/developmentseed/titiler:0.18.4",
