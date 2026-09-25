@@ -82,14 +82,15 @@ services:
   # ─── Stockage objet ────────────────────────────────────
 
   minio:
-    # Pin explicite (SP-21) : cette ligne était sans tag, donc `latest` —
-    # le stockage objet de toutes les données du produit changeait de
-    # version à chaque pull.
-    # Registre quay.io (2026-09-12) : minio/minio a disparu de Docker Hub
-    # (« pull access denied », y compris en local, tout tag confondu — plus
-    # un simple rate-limit) ; MinIO publie désormais sur quay.io sous le
-    # même namespace/tag. Vérifié par un pull réel avant ce changement.
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # Image tierce verrouillée en pull anonyme sur les DEUX registres
+    # publics testés (2026-09-25) : quay.io/minio/minio (401 sur tous les
+    # tags, y compris celui pinné ci-avant) et minio/minio sur Docker Hub
+    # (« pull access denied », déjà connu depuis 2026-09-12). Ce n'est
+    # plus une simple dérive de distribution (cf. REV-194) : plus aucun
+    # registre public ne sert cette image. Reconstruite depuis les
+    # sources AGPL-3.0 officielles (github.com/minio/minio) — voir
+    # deploy/minio/Dockerfile.
+    build: ./deploy/minio
     environment:
       MINIO_ROOT_USER: ${MINIO_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}

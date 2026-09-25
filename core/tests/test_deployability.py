@@ -975,7 +975,7 @@ def test_images_are_pinned():
     )
 
 
-# Les neuf références d'images tierces réellement présentes dans les deux
+# Les huit références d'images tierces réellement présentes dans les deux
 # compose, recopiées telles quelles. Le durcissement du regex flottant est
 # la seule chose qui pourrait les rejeter à tort : aucune n'est du semver
 # canonique (`RELEASE.2025-…`, `1.22.1-p0`), et le chemin de registre
@@ -984,7 +984,6 @@ def test_images_are_pinned():
 @pytest.mark.parametrize(
     "image",
     [
-        "minio/minio:RELEASE.2025-09-07T16-13-09Z",
         "edoburu/pgbouncer:1.22.1-p0",
         "ghcr.io/maplibre/martin:v0.18.0",
         "ghcr.io/developmentseed/titiler:0.18.4",

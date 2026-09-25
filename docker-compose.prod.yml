@@ -27,6 +27,8 @@ services:
     restart: unless-stopped
 
   minio:
+    image: ghcr.io/tlenenao/geostudio-minio:${GEOSTUDIO_VERSION:-latest}
+    build: !reset null
     restart: unless-stopped
     ports: !reset []
 
