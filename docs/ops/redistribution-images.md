@@ -6,10 +6,11 @@ GeoStudio publie 9 images sur `ghcr.io/tlenenao/` à chaque tag `v*`
 `geostudio-export-worker`, `geostudio-qgis-worker`,
 `geostudio-appexport-runtime-builder`, `geostudio-backup`, `geostudio-minio`.
 
-**Trois d'entre elles distribuent du logiciel copyleft fort (GPL/réseau)** :
+**Quatre d'entre elles distribuent du logiciel copyleft fort (GPL/réseau)** :
 `geostudio-qgis-worker` (GPL — QGIS + GRASS), `geostudio-postgis` (GPL —
-PostGIS) et `geostudio-backup` (AGPL — le client MinIO `mc`) ; voir les
-trois sections dédiées ci-dessous. Une version précédente de ce document
+PostGIS), `geostudio-backup` (AGPL — le client MinIO `mc`) et
+`geostudio-minio` (AGPL — le serveur MinIO lui-même) ; voir les quatre
+sections dédiées ci-dessous. Une version précédente de ce document
 affirmait que « sept d'entre elles ne contiennent que du code GeoStudio
 (Apache-2.0) et des dépendances permissives » — c'était faux pour
 `geostudio-postgis` (jamais vérifié) et pour `geostudio-backup` (jamais
@@ -165,7 +166,7 @@ donner accès aux sources) est de fait déjà satisfaite : le paquet est
 public, inchangé, et remplaçable par l'utilisateur final sans recompiler
 quoi que ce soit (`pip install psycopg==<version>` suffit). Ceci reste une
 analyse d'ingénieur, non une revue juridique formelle — même réserve que
-pour les trois sections GPL/AGPL de ce document.
+pour les quatre sections GPL/AGPL de ce document.
 
 **Point ouvert (2026-08-21, non bloquant) : aucune notice ni label OCI
 n'est embarqué dans `geostudio-core` ni `geostudio-export-worker` pour ce

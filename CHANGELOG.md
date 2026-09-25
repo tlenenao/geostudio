@@ -56,6 +56,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/superpowers/specs/2026-09-20-vague2-transformers-duckdb-design.md`
   §8.6 and §7.5).
 
+### Changed
+
+- **`geostudio-minio`'s image source changed from a pulled third-party image
+  to a from-source AGPL rebuild**: `quay.io/minio/minio` and `minio/minio`
+  (Docker Hub) are both locked out of anonymous pull on every tag (401/pull
+  access denied, verified 2026-09-25), so `deploy/minio/Dockerfile` now
+  compiles the MinIO server from its official sources
+  (`github.com/minio/minio`) instead. The bundled MinIO server version moves
+  from `RELEASE.2025-09-07T16-13-09Z` to `RELEASE.2025-10-15T17-29-55Z` — a
+  one-way upgrade, since MinIO does not support downgrading a data volume
+  once it has been started against a newer release, though this specific
+  version gap has no known data-format concern. Existing production
+  deployments pulling `ghcr.io/tlenenao/geostudio-minio:${GEOSTUDIO_VERSION}`
+  will get "manifest unknown" until a new `v*` release tag is cut that
+  includes this 9th published image (the same situation already exists for
+  `geostudio-titiler`, not a new problem introduced here, but worth calling
+  out for MinIO specifically since it is a newly published image).
+
 ## [0.1.0] - 2026-07-16
 
 Retroactive entry covering everything shipped since the fork from

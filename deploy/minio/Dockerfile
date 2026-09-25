@@ -9,7 +9,7 @@
 # Dockerfile reproduit, PAS `make docker`.
 ARG MINIO_RELEASE=RELEASE.2025-10-15T17-29-55Z
 
-FROM golang:1.24-bookworm AS build
+FROM --platform=$BUILDPLATFORM golang:1.24-bookworm AS build
 ARG MINIO_RELEASE
 ARG TARGETARCH
 WORKDIR /src
