@@ -81,3 +81,14 @@ paths = [
 regexes = [
   '''^ci-stac-validator$''',
 ]
+
+[[allowlists]]
+description = "Faux positif `private-key` sur `_FAKE_SERVICE_ACCOUNT_RSA_PEM` (core/tests/test_pipeline_connector_runtime.py, Vague 2 lecteurs DuckDB, commit 2f01f3d1) : clé RSA jetable générée localement pour ce fichier de test uniquement, jamais associée à un vrai compte de service Google — nécessaire car sa.create_engine() pour le dialecte \"bigquery\" construit localement un objet google.auth.service_account.Credentials à partir du JSON embarqué, ce qui exige une clé syntaxiquement valide. Bloc séparé et `condition = \"AND\"` (même patron que les blocs ci-dessus) : sans eux, `paths` seul exempterait `private-key` sur tout ce fichier, y compris une vraie clé qui y serait collée plus tard."
+targetRules = ["private-key"]
+condition = "AND"
+paths = [
+  '''^core/tests/test_pipeline_connector_runtime\.py$''',
+]
+regexes = [
+  '''MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCzr''',
+]
