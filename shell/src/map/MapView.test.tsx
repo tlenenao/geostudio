@@ -525,6 +525,21 @@ test("only calls onReady once even if 'idle' fires again (map.once semantics)", 
   expect(onReady).toHaveBeenCalledTimes(1);
 });
 
+test("fitBounds calls the underlying MapLibre fitBounds with the given bbox", () => {
+  const ref = createRef<MapViewHandle>();
+  render(<MapView ref={ref} config={config} />);
+  ref.current?.fitBounds([1, 10, 3, 20], { padding: 40, maxZoom: 14 });
+  const map = mapInstances[0];
+  expect(map.fitBoundsArgs).toHaveLength(1);
+  expect(map.fitBoundsArgs[0]).toEqual({
+    bounds: [
+      [1, 10],
+      [3, 20],
+    ],
+    opts: { padding: 40, maxZoom: 14 },
+  });
+});
+
 test("detaches the old layer's click handler when config.layers replaces it", () => {
   const onFeatureClick = vi.fn();
   const first: MapConfig = {

@@ -23,3 +23,26 @@ export function bboxFromGeometry(geometry: unknown): [number, number, number, nu
   if (!isFinite(acc[0])) return null;
   return acc;
 }
+
+// Union bbox de plusieurs features — remplace le calcul dupliqué de
+// builder/pipeline/PipelinePreviewMap.tsx (collectCoordinates/computeBounds),
+// factorisé ici pour SP-A4 (D18) qui a besoin du même calcul côté éditeur
+// de carte et widget carte. Réutilise walk() : bboxFromGeometry gère déjà
+// une géométrie unique, il suffit d'accumuler sur toutes les features.
+export function bboxFromFeatureCollection(
+  features: GeoJSON.Feature[],
+): [number, number, number, number] | null {
+  const acc: [number, number, number, number] = [Infinity, Infinity, -Infinity, -Infinity];
+  let found = false;
+  for (const f of features) {
+    if (!f.geometry) continue;
+    const bbox = bboxFromGeometry(f.geometry);
+    if (!bbox) continue;
+    found = true;
+    if (bbox[0] < acc[0]) acc[0] = bbox[0];
+    if (bbox[1] < acc[1]) acc[1] = bbox[1];
+    if (bbox[2] > acc[2]) acc[2] = bbox[2];
+    if (bbox[3] > acc[3]) acc[3] = bbox[3];
+  }
+  return found ? acc : null;
+}
