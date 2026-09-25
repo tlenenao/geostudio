@@ -32,7 +32,7 @@ jobs:
       - name: Smoke test du binaire gelé
         run: uv run python scripts/pipeline_sidecar_freeze_smoke.py dist/pipeline-sidecar.exe
       - name: Upload artefact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pipeline-sidecar-windows
           path: core/dist/pipeline-sidecar.exe
