@@ -977,6 +977,7 @@ export const fr = {
   "widgetMap.layerTitle": "Données",
   "widgetMap.loadingFallback": "Carte…",
   "widgetMap.sampleFieldUnavailable": "sampleDataSourceField indisponible",
+  "widgetMap.additionalLayersHeading": "Couches additionnelles",
 
   // Widget Modale (modal.tsx)
   "widgetModal.paletteLabel": "Modale",

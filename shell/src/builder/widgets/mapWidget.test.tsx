@@ -217,7 +217,12 @@ test("choosing Jenks from the widget's PropsPanel surfaces a real client error i
       },
     },
     onChange,
-    clientOverrides: { sampleDataSourceField },
+    // Task 9 (D13) monte désormais aussi LayerPicker dans ce PropsPanel, qui
+    // interroge listLayerSources : sans mock, sa requête échoue et pose son
+    // propre role="alert" ("Impossible de charger les sources de couches."),
+    // rendant `findByRole("alert")` ambigu (plusieurs correspondances) — un
+    // deuxième client sans rapport avec ce que ce test vérifie.
+    clientOverrides: { sampleDataSourceField, listLayerSources: vi.fn().mockResolvedValue([]) },
   });
   await userEvent.click(screen.getByRole("button", { name: "Recalculer les classes" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("boom");
@@ -1035,4 +1040,72 @@ test("map widget carries collectionId/pkColumn from ctx.data onto the feature la
   const layer = lastMapConfig().layers[0] as { collectionId?: string; pkColumn?: string };
   expect(layer.collectionId).toBe("parcs");
   expect(layer.pkColumn).toBe("id");
+});
+
+test("le widget carte fusionne la couche feature liée à la DataSource avec les couches additionnelles de props.layers (D13)", async () => {
+  const Map = getWidget("map")!.Component;
+  const ctx = {
+    mode: "runtime",
+    data: state({ url: "https://fs/parcs/items.json", records: [{ id: 1, properties: {} }] }),
+  } as WidgetContext;
+  render(
+    withClient(
+      <Map
+        props={{
+          dataSourceId: "ds-1",
+          layers: [
+            {
+              id: "raster-1",
+              title: "Ortho",
+              visible: true,
+              kind: "raster",
+              tilesUrl: "https://x/{z}/{x}/{y}.png",
+            },
+          ],
+        }}
+        ctx={ctx}
+      />,
+    ),
+  );
+  await screen.findByTestId("mapview");
+  expect(lastMapConfig().layers).toHaveLength(2);
+  expect(lastMapConfig().layers[0].kind).toBe("feature");
+  expect(lastMapConfig().layers[1]).toMatchObject({ id: "raster-1", kind: "raster" });
+});
+
+// La brief de cette tâche décrivait un bouton générique "Ajouter une couche"
+// suivi d'un choix de type puis d'une saisie d'URL de tuiles — ce flux
+// n'existe pas dans LayerPicker.tsx (vérifié contre `LayerPicker.test.tsx` et
+// `LayerPicker.tsx` eux-mêmes, piège n°3 de CLAUDE.md). Le seul chemin réel
+// pour obtenir une couche `raster` est de choisir une source externe listée
+// par `listLayerSources` (cf. test "emits a raster MapLayer for an external
+// source" de LayerPicker.test.tsx) — repris ici tel quel, via
+// `clientOverrides.listLayerSources`.
+test("le PropsPanel du widget carte permet d'ajouter une couche raster via LayerPicker (D13)", async () => {
+  const onChange = vi.fn();
+  const listLayerSources = vi.fn().mockResolvedValue([
+    {
+      id: "ext-ortho",
+      title: "Orthophoto (WMS)",
+      service: "external",
+      kind: "raster",
+      tilesUrl: "https://ows.example.com/wms?...&bbox={bbox-epsg-3857}",
+    },
+  ]);
+  renderPropsPanel({
+    props: { dataSourceId: "ds-1", layers: [] },
+    onChange,
+    dataSources: [
+      { id: "ds-1", type: "features", label: "Source", datasetId: "d1", layer: "col-1" },
+    ],
+    clientOverrides: { listLayerSources },
+  });
+  await userEvent.click(await screen.findByRole("button", { name: /Orthophoto \(WMS\)/ }));
+  await waitFor(() =>
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        layers: expect.arrayContaining([expect.objectContaining({ kind: "raster" })]),
+      }),
+    ),
+  );
 });
