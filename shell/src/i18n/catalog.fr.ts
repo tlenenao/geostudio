@@ -1231,6 +1231,11 @@ export const fr = {
   "secretParamSelect.serviceAccountInfoInvalid": "JSON invalide.",
   "secretParamSelect.cancelButton": "Annuler",
   "secretParamSelect.createButton": "Créer",
+  "secretParamSelect.deleteButton": "Supprimer {name}",
+  "secretParamSelect.deleteConfirmTitle": "Supprimer ce secret ?",
+  "secretParamSelect.deleteConfirmMessage":
+    "Cette action est irréversible. Tout pipeline référençant ce secret échouera à sa prochaine exécution.",
+  "secretParamSelect.deleteConfirmButton": "Supprimer",
 
   // ExportPanel (builder/print)
   "exportPanel.stillRunning": "Export toujours en cours, réessayer plus tard.",
