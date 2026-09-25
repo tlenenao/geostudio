@@ -327,11 +327,19 @@ def test_minio_dockerfile_builds_from_pinned_agpl_source_not_broken_upstream_rec
         "deploy/minio/Dockerfile doit reproduire la cible `build` du "
         "Makefile amont (go build -tags kqueue ...), pas make docker."
     )
-    assert "MINIO_RELEASE=RELEASE" in text, (
-        "sans la variable d'environnement MINIO_RELEASE=RELEASE au moment "
-        "du go build, minio --version affiche DEVELOPMENT.<tag> au lieu de "
-        "RELEASE.<tag> — cosmétique mais trompeur en diagnostic d'incident "
-        "(vérifié empiriquement en préparant ce plan)."
+    # L'assertion faible `"MINIO_RELEASE=RELEASE" in text` est satisfaite par
+    # la seule ligne ARG MINIO_RELEASE=RELEASE.2025-10-15T... (préfixe littéral),
+    # donc ne détecterait pas une régression qui supprimerait les deux
+    # occurrences réelles du bloc RUN. Vérifier les deux contextes distincts :
+    # (1) avant CGO_ENABLED=0 et (2) avant `go run buildscripts/gen-ldflags.go`.
+    assert re.search(r"MINIO_RELEASE=RELEASE\s+CGO_ENABLED", text), (
+        "le bloc RUN doit positionner MINIO_RELEASE=RELEASE avant CGO_ENABLED "
+        "pour que minio --version affiche RELEASE.<tag> (pas DEVELOPMENT.<tag>)"
+    )
+    assert re.search(r"MINIO_RELEASE=RELEASE\s+go run", text), (
+        "le bloc RUN doit positionner MINIO_RELEASE=RELEASE avant "
+        "`go run buildscripts/gen-ldflags.go` (le compilateur émet-il le ldflags "
+        "avec le préfixe RELEASE? vérifié empiriquement en préparant ce plan)."
     )
 
 
