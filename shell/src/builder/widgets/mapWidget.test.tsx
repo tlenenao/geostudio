@@ -15,6 +15,7 @@ import { ExplorerProvider } from "../ExplorerContext";
 
 const flyToSpy = vi.fn();
 const highlightSpy = vi.fn();
+const fitBoundsSpy = vi.fn();
 let lastConfig: MapConfig | null = null;
 
 vi.mock("../../map/MapView", () => ({
@@ -43,10 +44,14 @@ vi.mock("../../map/MapView", () => ({
         themeColors?: unknown;
         interactiveTools?: boolean;
       },
-      ref: React.Ref<{ flyTo: unknown; highlight: unknown }>,
+      ref: React.Ref<{ flyTo: unknown; highlight: unknown; fitBounds: unknown }>,
     ) => {
       lastConfig = config;
-      useImperativeHandle(ref, () => ({ flyTo: flyToSpy, highlight: highlightSpy }));
+      useImperativeHandle(ref, () => ({
+        flyTo: flyToSpy,
+        highlight: highlightSpy,
+        fitBounds: fitBoundsSpy,
+      }));
       const layer = config.layers[0];
 
       const url = layer && "url" in layer ? ((layer as any).url ?? "") : "";
@@ -89,6 +94,7 @@ beforeEach(() => {
   registerBuiltinWidgets();
   flyToSpy.mockClear();
   highlightSpy.mockClear();
+  fitBoundsSpy.mockClear();
   lastConfig = null;
 });
 const state = (over: Partial<DataSourceState> = {}): DataSourceState => ({
@@ -993,6 +999,26 @@ test("le widget carte fournit le chargeur d'icônes personnalisées à MapView",
     ),
   );
   expect(await screen.findByText(/loader:function/)).toBeInTheDocument();
+});
+
+test("ajuste automatiquement la vue à l'emprise des enregistrements chargés (D18)", async () => {
+  fitBoundsSpy.mockClear();
+  const Map = getWidget("map")!.Component;
+  const data = state({
+    url: "https://fs/parcs/items.json",
+    records: [
+      { id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 10] } },
+      { id: 2, properties: {}, geometry: { type: "Point", coordinates: [3, 20] } },
+    ],
+  });
+  render(
+    withClient(
+      <Map props={{ dataSourceId: "d" }} ctx={{ mode: "runtime", data } as WidgetContext} />,
+    ),
+  );
+  await screen.findByTestId("mapview");
+  await waitFor(() => expect(fitBoundsSpy).toHaveBeenCalledTimes(1));
+  expect(fitBoundsSpy).toHaveBeenCalledWith([1, 10, 3, 20]);
 });
 
 test("map widget carries collectionId/pkColumn from ctx.data onto the feature layer (SP-40)", () => {

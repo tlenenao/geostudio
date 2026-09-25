@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { lazy, Suspense, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
@@ -21,6 +21,7 @@ import { MapSymbologyEditor } from "../../map/MapSymbologyEditor";
 import { BasemapSelect } from "../../map/BasemapSelect";
 import { TerrainPanel } from "../../map/TerrainPanel";
 import { CameraControls } from "../../map/CameraControls";
+import { bboxFromFeatureCollection } from "../../lib/geometryBbox";
 import { t } from "../../i18n";
 
 const MapView = lazy(() => import("../../map/MapView").then((m) => ({ default: m.MapView })));
@@ -283,6 +284,7 @@ export function registerMapWidget(): void {
     Component: ({ props, ctx }) => {
       const handle = useRef<MapViewHandle>(null);
       const client = useItemClient();
+      const lastFittedUrl = useRef<string | null>(null);
       const setExtent = useSetExtent();
       const setCrossFilter = useSetCrossFilter();
       useBusAction(ctx.bus, ctx.widgetId, "flyTo", (payload) => {
@@ -292,9 +294,25 @@ export function registerMapWidget(): void {
       useBusAction(ctx.bus, ctx.widgetId, "highlight", (payload) => {
         handle.current?.highlight(geometryFromPayload(payload));
       });
+      const url = ctx.data?.url;
+      const records = ctx.data?.records;
+      useEffect(() => {
+        if (!url || !records || records.length === 0) return;
+        if (lastFittedUrl.current === url) return;
+        const features: GeoJSON.Feature[] = records
+          .filter((r) => r.geometry)
+          .map((r) => ({
+            type: "Feature",
+            properties: {},
+            geometry: r.geometry as GeoJSON.Geometry,
+          }));
+        const bbox = bboxFromFeatureCollection(features);
+        if (!bbox) return;
+        lastFittedUrl.current = url;
+        handle.current?.fitBounds(bbox);
+      }, [url, records]);
 
       if (ctx.data?.error) return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
-      const url = ctx.data?.url;
 
       const symbology = props.symbology as LayerSymbology | undefined;
       const geometryKind = detectGeometryKind(ctx.data?.records?.[0]?.geometry);
