@@ -207,23 +207,21 @@ test("unsaved mode: affiche un message de désactivation au lieu du spinner infi
 // n'apparaît avant qu'instanceQuery ait résolu.
 test("unsaved mode: n'affiche jamais le builder tant que /v1/instance n'a pas résolu, même si opsQuery a déjà résolu (D09 race)", async () => {
   let resolveInstance!: (info: InstanceInfo) => void;
+  let opsSettled = false;
   renderPage(null, {
-    getPipelineOps: () => Promise.resolve(CATALOG),
+    getPipelineOps: () => Promise.resolve(CATALOG).then((v) => ((opsSettled = true), v)),
     getInstanceInfo: () =>
       new Promise<InstanceInfo>((resolve) => {
         resolveInstance = resolve;
       }),
   });
 
-  // Laisse opsQuery résoudre pendant qu'instanceQuery reste en attente. Une
-  // seule tick de setTimeout(0) s'est avérée insuffisante à coup sûr (React
-  // Query traverse plusieurs microtasks internes avant de notifier le
-  // composant) — mesuré en pratique flaky sur 1 tick, fiable sur 10.
-  await act(async () => {
-    for (let i = 0; i < 10; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-  });
+  // On attend l'état réel de la promesse de getPipelineOps (opsSettled),
+  // jamais un nombre de ticks arbitraire : getInstanceInfo reste
+  // délibérément non résolue, donc opsSettled passant à true prouve que
+  // opsQuery a bel et bien résolu avant instanceQuery — la course que ce
+  // test vise à reproduire, constatée plutôt que supposée.
+  await waitFor(() => expect(opsSettled).toBe(true));
   expect(screen.queryByText("reader.collection")).not.toBeInTheDocument();
   expect(
     screen.queryByText("Non activé sur cette instance (CORE_ETL_ENABLED)."),
