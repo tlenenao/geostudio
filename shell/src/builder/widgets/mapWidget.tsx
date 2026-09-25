@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
@@ -302,7 +302,18 @@ export function registerMapWidget(): void {
     Component: ({ props, ctx }) => {
       const handle = useRef<MapViewHandle>(null);
       const client = useItemClient();
-      const lastFittedUrl = useRef<string | null>(null);
+      // I1 (revue finale) : keyed sur l'id de source de données du widget,
+      // pas sur l'URL brute — SP-A4 (auto-cadrage) et SP-A29 (contexte
+      // d'emprise, `reactsToExtent`) bouclaient sinon : `onViewChange` →
+      // `setExtent` → un dataset `reactsToExtent` change d'URL (bbox injecté)
+      // → `lastFittedUrl` ne correspond plus → nouveau `fitBounds` → nouveau
+      // `moveend` → boucle. L'identité du dataset lié à ce widget ne change
+      // pas quand seule l'URL de fetch varie pour cette raison.
+      const lastFittedDataSourceId = useRef<string | null>(null);
+      // C1 (revue finale) : cf. commentaire jumeau sur MapEditorPage.tsx —
+      // `onReady` (MapView.tsx) est le seul signal fiable que `handle.current`
+      // est non-null, y compris pendant que le chunk lazy de MapView charge.
+      const [mapReady, setMapReady] = useState(false);
       const setExtent = useSetExtent();
       const setCrossFilter = useSetCrossFilter();
       useBusAction(ctx.bus, ctx.widgetId, "flyTo", (payload) => {
@@ -314,9 +325,11 @@ export function registerMapWidget(): void {
       });
       const url = ctx.data?.url;
       const records = ctx.data?.records;
+      const dataSourceId = String(props.dataSourceId ?? "");
       useEffect(() => {
+        if (!mapReady) return;
         if (!url || !records || records.length === 0) return;
-        if (lastFittedUrl.current === url) return;
+        if (lastFittedDataSourceId.current === dataSourceId) return;
         const features: GeoJSON.Feature[] = records
           .filter((r) => r.geometry)
           .map((r) => ({
@@ -326,9 +339,11 @@ export function registerMapWidget(): void {
           }));
         const bbox = bboxFromFeatureCollection(features);
         if (!bbox) return;
-        lastFittedUrl.current = url;
-        handle.current?.fitBounds(bbox);
-      }, [url, records]);
+        const view = handle.current;
+        if (!view) return;
+        lastFittedDataSourceId.current = dataSourceId;
+        view.fitBounds(bbox);
+      }, [url, records, mapReady, dataSourceId]);
 
       if (ctx.data?.error) return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
 
@@ -398,6 +413,7 @@ export function registerMapWidget(): void {
               getCoreUrl={client.getCoreUrl}
               getShareLinkToken={client.getShareLinkToken}
               loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
+              onReady={() => setMapReady(true)}
               onViewChange={(v) => {
                 ctx.bus?.emit(ctx.widgetId ?? "", "extentChanged", v);
                 setExtent(v.bbox);

@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { CollectionAdmin, ItemClient, PipelinePayload } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
+import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 import { VisualQueryWizardPage } from "./VisualQueryWizardPage";
 import {
   compileVisualQueryToPipeline,
@@ -98,10 +99,15 @@ function renderWizard(overrides: Partial<ItemClient> = {}) {
   const client: Partial<ItemClient> = {
     listCollections: () => Promise.resolve(COLLECTIONS),
     getCollectionSchema: () => Promise.resolve(BASE_SCHEMA),
+    // I2 (revue finale) : la garde ajoutée sur VisualQueryWizardPage lit
+    // useInstanceInfo() — sans ce mock par défaut à etlEnabled: true, TOUS
+    // les tests existants de ce fichier qui cliquent Créer/Mettre à jour
+    // verraient désormais le bouton verrouillé, jamais le vrai comportement
+    // qu'ils testent. Même patron que PipelineBuilderPage.test.tsx (D09).
     getInstanceInfo: () =>
       Promise.resolve({
         readOnly: false,
-        etlEnabled: false,
+        etlEnabled: true,
         exportEnabled: false,
         appExportEnabled: false,
         tileset3dEnabled: false,
@@ -191,10 +197,11 @@ function renderWizardEdit(overrides: Partial<ItemClient> = {}) {
   const client: Partial<ItemClient> = {
     listCollections: () => Promise.resolve(COLLECTIONS),
     getCollectionSchema: () => Promise.resolve(BASE_SCHEMA),
+    // I2 (revue finale) : même raison que renderWizard ci-dessus.
     getInstanceInfo: () =>
       Promise.resolve({
         readOnly: false,
-        etlEnabled: false,
+        etlEnabled: true,
         exportEnabled: false,
         appExportEnabled: false,
         tileset3dEnabled: false,
@@ -204,6 +211,12 @@ function renderWizardEdit(overrides: Partial<ItemClient> = {}) {
         quotasEnabled: false,
       }),
     getPipelineConfig: vi.fn().mockResolvedValue(EXISTING_PIPELINE),
+    // I2 (revue finale) : `getItem` sert désormais aussi la nouvelle
+    // `itemQuery` (permission d'écriture sur le pipeline édité) — sans
+    // `permissions`, `hasPermission` refuse par défaut (repli volontaire,
+    // cf. auth/permissions.ts) et verrouillerait TOUS les tests de ce mode
+    // édition qui cliquent "Mettre à jour". Seul le test I2 ci-dessous
+    // surcharge ce mock pour vérifier le cas verrouillé.
     getItem: vi.fn().mockResolvedValue({
       pk: "dataset-1",
       resourceType: "dataset",
@@ -211,6 +224,7 @@ function renderWizardEdit(overrides: Partial<ItemClient> = {}) {
       abstract: "",
       owner: "alice",
       thumbnailUrl: null,
+      permissions: OWNER_PERMISSIONS,
       date: "",
       configId: "cfg-1",
       isPublished: false,
@@ -432,6 +446,70 @@ describe("VisualQueryWizardPage", () => {
 });
 
 describe("VisualQueryWizardPage — mode édition (Modifier la requête, fix I3)", () => {
+  // I2 de la revue finale : contrairement à PipelineBuilderPage.tsx, ce
+  // wizard n'avait aucune garde readOnly — un utilisateur sans droit
+  // d'écriture sur le pipeline édité pouvait remplir tout le formulaire et
+  // ne découvrir l'échec qu'à la soumission finale (le serveur refuse déjà,
+  // donc pas de trou de sécurité, mais le même anti-pattern D03 corrigé
+  // ailleurs par ce même plan).
+  test("I2 : ouvrir une requête existante sans droit d'écriture désactive Mettre à jour et affiche le message", async () => {
+    renderWizardEdit({
+      getItem: vi.fn().mockResolvedValue({
+        pk: "dataset-1",
+        resourceType: "dataset",
+        title: "Ma requête existante",
+        abstract: "",
+        owner: "alice",
+        thumbnailUrl: null,
+        permissions: READ_ONLY_PERMISSIONS,
+        date: "",
+        configId: "cfg-1",
+        isPublished: false,
+      }),
+    });
+    await screen.findByText("Modifier la requête");
+    await waitFor(() =>
+      expect(screen.getByLabelText("Collection de base")).toHaveValue("incidents"),
+    );
+    // Attend que le titre soit pré-rempli (existingDatasetItemQuery résolu) :
+    // sans cette attente, le bouton est trivialement désactivé dès le
+    // premier rendu (titre vide) et l'assertion ci-dessous ne prouverait
+    // rien sur la garde readOnly elle-même (re-review de la revue finale).
+    await screen.findByDisplayValue("Ma requête existante");
+    const button = await screen.findByRole("button", { name: "Mettre à jour" });
+    expect(button).toBeDisabled();
+    expect(
+      screen.getByText("Modification réservée aux éditeurs de cet élément."),
+    ).toBeInTheDocument();
+  });
+
+  test("I2 : instance sans etlEnabled désactive Mettre à jour et affiche le message", async () => {
+    renderWizardEdit({
+      getInstanceInfo: () =>
+        Promise.resolve({
+          readOnly: false,
+          etlEnabled: false,
+          exportEnabled: false,
+          appExportEnabled: false,
+          tileset3dEnabled: false,
+          terrain3dEnabled: false,
+          copilotEnabled: false,
+          adminToolsEnabled: false,
+          quotasEnabled: false,
+        }),
+    });
+    await screen.findByText("Modifier la requête");
+    await waitFor(() =>
+      expect(screen.getByLabelText("Collection de base")).toHaveValue("incidents"),
+    );
+    await screen.findByDisplayValue("Ma requête existante");
+    const button = await screen.findByRole("button", { name: "Mettre à jour" });
+    expect(button).toBeDisabled();
+    expect(
+      screen.getByText("Non activé sur cette instance (CORE_ETL_ENABLED)."),
+    ).toBeInTheDocument();
+  });
+
   test("« Mettre à jour » réutilise le pipeline/collection/dataset existants au lieu d'en recréer trois", async () => {
     const client = renderWizardEdit();
 

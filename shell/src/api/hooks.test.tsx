@@ -308,6 +308,35 @@ test("useSaveMap saves a map config", async () => {
   expect(client.saveMapConfig).toHaveBeenCalledWith("77", cfg);
 });
 
+// I4 de la revue finale : `ItemRead.bbox` (recalculé côté serveur à chaque
+// sauvegarde, core/app/configs/bbox.py) vit sous la clé ["item", pk], jamais
+// invalidée par useSaveMap — seule ["map", pk] l'était. Sans ce fix, le bbox
+// reste périmé dans le cache client, et l'auto-cadrage D18 n'a rien de neuf
+// à ajuster juste après "nouvelle carte → ajouter une couche → enregistrer".
+// Même patron d'assertion que useCreateReportSchedule ci-dessus
+// (invalidateQueries lui-même, pas seulement l'appel au client).
+test("useSaveMap invalidates both the map config and the item queries (I4)", async () => {
+  const client = { saveMapConfig: vi.fn().mockResolvedValue(undefined) } as unknown as ItemClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+  function wrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <ItemClientProvider client={client}>{children}</ItemClientProvider>
+      </QueryClientProvider>
+    );
+  }
+  const { result } = renderHook(() => useSaveMap("77"), { wrapper });
+  const cfg = {
+    basemap: { style: "s" },
+    view: { center: [0, 0] as [number, number], zoom: 1 },
+    layers: [],
+  };
+  await result.current.mutateAsync(cfg);
+  expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["map", "77"] });
+  expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["item", "77"] });
+});
+
 test("useAppConfig loads an app config", async () => {
   const cfg = {
     kind: "app",

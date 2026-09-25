@@ -427,6 +427,28 @@ test("the Pipeline option is absent when etlEnabled is true but automation.manag
   expect(screen.queryByRole("option", { name: /Requête visuelle/i })).not.toBeInTheDocument();
 });
 
+// I3 de la revue finale : la requête visuelle crée aussi une collection et un
+// item dataset (data.manage), en plus du pipeline (automation.manage) — un
+// rôle n'ayant que automation.manage ne doit voir que "Pipeline", jamais
+// "Requête visuelle" (qui échouerait à mi-course sur createEmptyCollection).
+test("l'option Requête visuelle est absente sans data.manage, même avec automation.manage ET etlEnabled (I3)", async () => {
+  server.use(
+    http.get("https://core.test/v1/instance", () =>
+      HttpResponse.json({ readOnly: false, etlEnabled: true }),
+    ),
+  );
+  render(
+    <Harness
+      queryClient={makeQueryClient(CREATOR_ME.privileges.filter((p) => p !== "data.manage"))}
+    >
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  expect(await screen.findByRole("option", { name: "Pipeline" })).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: /Requête visuelle/i })).not.toBeInTheDocument();
+});
+
 test("matrice rôle×flag : l'option Pipeline n'est visible que si automation.manage ET etlEnabled sont réunis (filet D03)", async () => {
   const ROLE_PRIVILEGES: Record<string, string[]> = {
     administrateur: [

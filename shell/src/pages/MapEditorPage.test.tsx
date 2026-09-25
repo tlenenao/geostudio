@@ -342,6 +342,12 @@ test("ajuste automatiquement la vue à l'emprise des données quand la vue est e
     listLayerSources: vi.fn().mockResolvedValue([]),
   });
   await screen.findAllByText("Couche A");
+  // C1 (revue finale) : l'auto-cadrage n'agit plus tant que MapView n'a pas
+  // signalé `onReady` (idle) — même patron que le test export-ready
+  // ci-dessus (ligne ~241) : sans ce `fire("idle")`, `mapReady` reste faux
+  // et l'effet D18 ne s'exécute jamais jusqu'au bout.
+  await waitFor(() => expect(mapInstances[0]).toBeDefined());
+  mapInstances[0].fire("idle");
   await waitFor(() => expect(mapInstances[0]?.fitBoundsArgs).toHaveLength(1));
   expect(mapInstances[0].fitBoundsArgs[0]).toMatchObject({
     bounds: [

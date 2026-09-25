@@ -72,6 +72,14 @@ export function NewItemButton() {
   // manquant MASQUE, une capacité coupée VERROUILLE").
   const canCreatePipeline =
     (privileges === undefined || privileges.includes("automation.manage")) && etlEnabled;
+  // I3 (revue finale) : la requête visuelle crée aussi une collection
+  // (`createEmptyCollection` -> DATA_MANAGE) et un item dataset
+  // (`createDatasetItem` -> data.manage) en plus du pipeline — un rôle
+  // n'ayant que automation.manage voit alors "Requête visuelle", remplit le
+  // formulaire, et échoue à mi-course sur `createEmptyCollection`. Le
+  // pipeline DAG nu (option "pipeline" ci-dessous) ne crée rien via ce
+  // formulaire (navigation pure) et reste gaté sur automation.manage seul.
+  const canCreateVisualQuery = canCreatePipeline && canCreateDataset;
   const hasAnyCreatableKind = canCreateApp || canCreateMap || canCreateDataset || canCreatePipeline;
 
   // Slug auto-suivi du titre tant que l'utilisateur ne l'a pas édité lui-même.
@@ -89,19 +97,36 @@ export function NewItemButton() {
       ((kind === "app" || kind === "dashboard" || kind === "site") && canCreateApp) ||
       (kind === "map" && canCreateMap) ||
       (kind === "dataset" && canCreateDataset) ||
-      ((kind === "pipeline" || kind === "visual-query") && canCreatePipeline);
+      (kind === "pipeline" && canCreatePipeline) ||
+      (kind === "visual-query" && canCreateVisualQuery);
     if (stillAllowed) return;
+    // I3 (revue finale) : le repli visait "visual-query" dès que
+    // canCreatePipeline était vrai — mais cette option n'est plus rendue
+    // (ci-dessous) quand canCreateVisualQuery est faux (automation.manage
+    // seul, sans data.manage), ce qui aurait laissé le <select> contrôlé
+    // pointer vers une <option> absente (le piège même que ce commentaire de
+    // bloc décrit). "pipeline" reste rendu dans ce cas.
     const fallback: Kind | undefined = canCreateApp
       ? "app"
       : canCreateMap
         ? "map"
         : canCreateDataset
           ? "dataset"
-          : canCreatePipeline
+          : canCreateVisualQuery
             ? "visual-query"
-            : undefined;
+            : canCreatePipeline
+              ? "pipeline"
+              : undefined;
     if (fallback) setKind(fallback);
-  }, [privileges, kind, canCreateApp, canCreateMap, canCreateDataset, canCreatePipeline]);
+  }, [
+    privileges,
+    kind,
+    canCreateApp,
+    canCreateMap,
+    canCreateDataset,
+    canCreatePipeline,
+    canCreateVisualQuery,
+  ]);
 
   if (!hasAnyCreatableKind) return null;
 
@@ -211,7 +236,7 @@ export function NewItemButton() {
               {canCreateDataset && (
                 <option value="dataset">{t("newItem.datasetSharedOption")}</option>
               )}
-              {canCreatePipeline && (
+              {canCreateVisualQuery && (
                 <option value="visual-query">{t("newItem.datasetVisualQueryOption")}</option>
               )}
               {canCreatePipeline && <option value="pipeline">{t("newItem.pipelineOption")}</option>}
