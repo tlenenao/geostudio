@@ -60,6 +60,10 @@ vi.mock("../pages/PipelineBuilderPage", () => ({
   PipelineBuilderPage: ({ pk }: { pk: string | null }) => <div>pipeline-builder-{pk}</div>,
 }));
 
+vi.mock("../pages/VisualQueryWizardPage", () => ({
+  VisualQueryWizardPage: () => <div>visual-query-wizard</div>,
+}));
+
 vi.mock("../pages/ReportEditPage", () => ({
   ReportEditPage: ({ pk }: { pk: string | null }) => <div>report-edit-{pk}</div>,
 }));
@@ -375,6 +379,88 @@ test("opening a pipeline navigates to its editor, not a generic app editor", asy
         total: 1,
         page: 1,
         pageSize: 12,
+      }),
+    ),
+  );
+  wrap(<AppRoutes />);
+  await userEvent.click((await screen.findAllByRole("button", { name: /ouvrir/i }))[0]);
+  expect(await screen.findByText("pipeline-builder-pl-1")).toBeInTheDocument();
+});
+
+test("opening a wizard-shaped pipeline navigates to the visual query wizard (D58)", async () => {
+  server.use(
+    http.get("https://core.test/v1/items", () =>
+      HttpResponse.json({
+        items: [
+          {
+            pk: "pl-2",
+            resourceType: "pipeline",
+            title: "Pipeline wizard",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: "cfg-2",
+            isPublished: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 12,
+      }),
+    ),
+    http.get("https://core.test/v1/configs/by-item/pl-2", () =>
+      HttpResponse.json({
+        config: {
+          pipeline: {
+            nodes: [
+              { id: "r1", kind: "reader", op: "reader.collection", params: { collectionId: "c1" } },
+              { id: "w1", kind: "writer", op: "writer.dataset", params: {} },
+            ],
+            edges: [{ from: "r1", to: "w1" }],
+          },
+        },
+      }),
+    ),
+  );
+  wrap(<AppRoutes />);
+  await userEvent.click((await screen.findAllByRole("button", { name: /ouvrir/i }))[0]);
+  expect(await screen.findByText("visual-query-wizard")).toBeInTheDocument();
+});
+
+test("opening a hand-edited pipeline still navigates to the full DAG editor (D58, non-régression)", async () => {
+  server.use(
+    http.get("https://core.test/v1/items", () =>
+      HttpResponse.json({
+        items: [
+          {
+            pk: "pl-1",
+            resourceType: "pipeline",
+            title: "Pipeline DAG",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: "cfg-1",
+            isPublished: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 12,
+      }),
+    ),
+    http.get("https://core.test/v1/configs/by-item/pl-1", () =>
+      HttpResponse.json({
+        config: {
+          pipeline: {
+            nodes: [
+              { id: "r1", kind: "reader", op: "reader.connector.rest", params: {} },
+              { id: "w1", kind: "writer", op: "writer.dataset", params: {} },
+            ],
+            edges: [{ from: "r1", to: "w1" }],
+          },
+        },
       }),
     ),
   );

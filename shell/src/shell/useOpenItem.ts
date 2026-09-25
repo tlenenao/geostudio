@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useItemClient } from "../api/ItemClientProvider";
 import { encodeAnalyticsContext } from "../lib/analyticsContextUrl";
+import { resolvePipelineEditorPath } from "./resolvePipelineEditorPath";
 import type { ResourceType } from "../api/types";
 
 // Shared by CatalogRoute (general catalog) and BookmarksRoute ("Mes vues"):
@@ -40,7 +41,8 @@ export function useOpenItem() {
       return;
     }
     if (type === "pipeline") {
-      navigate(`/pipelines/${pk}/edit`);
+      const path = await resolvePipelineEditorPath(client, pk);
+      navigate(path);
       return;
     }
     if (type === "report") {
