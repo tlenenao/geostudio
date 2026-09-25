@@ -143,6 +143,19 @@ jobs:
           curl -sf http://127.0.0.1:8000/healthz
           docker rm -f ci-titiler
 
+      - name: Build + smoke-test minio (arm64)
+        run: |
+          docker build -t geostudio-minio-ci:latest ./deploy/minio
+          docker run -d --name ci-minio \
+            -e MINIO_ROOT_USER=geostudio -e MINIO_ROOT_PASSWORD=geostudio123 \
+            -p 9000:9000 geostudio-minio-ci:latest server /data --console-address ":9001"
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:9000/minio/health/live && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:9000/minio/health/live
+          docker rm -f ci-minio
+
   build-and-push:
     needs: [test-gate, test-gate-arm64]
     uses: ./.github/workflows/_build-and-push.yml
@@ -170,7 +183,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
-      - name: Vérifie que les 8 images existent sous ce tag
+      - name: Vérifie que les 9 images existent sous ce tag
         working-directory: core
         env:
           # Sans authentification, "jamais publiée" et "publiée mais

@@ -163,11 +163,11 @@ def release_matrix() -> list[dict]:
 
 
 def test_build_and_push_matrix_lives_in_the_reusable_workflow():
-    """§2 de la spec 2026-09-19 : la matrice des 8 images doit vivre dans un
+    """§2 de la spec 2026-09-19 : la matrice des 9 images doit vivre dans un
     SEUL fichier (`_build-and-push.yml`, réutilisable par `release.yml` ET
-    par le futur `publish-edge.yml`) — jamais recopiée, sous peine de
-    dériver silencieusement entre les deux (classe de bug déjà payée sur ce
-    dépôt, cf. CLAUDE.md piège n°2)."""
+    par `publish-edge.yml`) — jamais recopiée, sous peine de dériver
+    silencieusement entre les deux (classe de bug déjà payée sur ce dépôt,
+    cf. CLAUDE.md piège n°2)."""
     assert BUILD_AND_PUSH.exists(), (
         "attendu : .github/workflows/_build-and-push.yml (workflow réutilisable)"
     )
@@ -189,6 +189,7 @@ def test_build_and_push_matrix_lives_in_the_reusable_workflow():
         "geostudio-export-worker",
         "geostudio-appexport-runtime-builder",
         "geostudio-backup",
+        "geostudio-minio",
     }, f"matrice inattendue : {images}"
 
 
@@ -825,6 +826,24 @@ def test_release_gate_arm64_starts_postgres_like_ci():
     assert not missing, (
         "release.yml (test-gate-arm64) démarre Postgres sans les réglages "
         f"que ci.yml (core) lui donne : {sorted(missing)}."
+    )
+
+
+def test_release_gate_arm64_smoke_tests_minio_health():
+    """Miroir de test_release_gate_arm64_runs_on_native_arm_runner pour
+    minio : le binaire recompilé (Task 1, deploy/minio/Dockerfile) doit
+    démarrer réellement sur du matériel arm64 natif, pas seulement passer
+    docker buildx sous QEMU."""
+    doc = yaml.safe_load(RELEASE.read_text())
+    job = doc["jobs"]["test-gate-arm64"]
+    runs = " ".join(st.get("run", "") for st in job["steps"])
+    assert "deploy/minio" in runs, (
+        "test-gate-arm64 doit builder ./deploy/minio (aucune étape ne le "
+        "référence)."
+    )
+    assert "minio/health/live" in runs, (
+        "test-gate-arm64 n'a pas de fumée minio (aucune étape n'appelle "
+        "/minio/health/live)."
     )
 
 
