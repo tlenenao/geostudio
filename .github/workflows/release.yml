@@ -65,7 +65,7 @@ jobs:
         # miss deterministically, while the same test passes cleanly when
         # `shell` runs alone.
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
 
