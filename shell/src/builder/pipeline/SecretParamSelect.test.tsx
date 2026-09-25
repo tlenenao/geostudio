@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import type { ItemClient, SecretSummary } from "../../api/types";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
+import { t } from "../../i18n";
 import { SecretParamSelect } from "./SecretParamSelect";
 
 const SECRETS: SecretSummary[] = [
@@ -176,4 +177,38 @@ test("un secret snowflake_dsn créé est immédiatement sélectionné", async ()
       dsn: "snowflake://u:p@myaccount/mydb/myschema?warehouse=wh1",
     },
   });
+});
+
+test("supprime un secret après confirmation (D05)", async () => {
+  const remaining: SecretSummary[] = [...SECRETS];
+  const deleteSecret = vi.fn((id: string) => {
+    const idx = remaining.findIndex((s) => s.id === id);
+    if (idx >= 0) remaining.splice(idx, 1);
+    return Promise.resolve();
+  });
+  renderSelect(
+    {},
+    {
+      listSecrets: () => Promise.resolve(remaining),
+      deleteSecret,
+    },
+  );
+  await screen.findByRole("option", { name: "arcgis" });
+
+  // Annulation : le secret reste.
+  await userEvent.click(screen.getByRole("button", { name: /supprimer.*arcgis/i }));
+  await screen.findByRole("dialog");
+  await userEvent.click(screen.getByRole("button", { name: t("confirmDialog.cancel") }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "arcgis" })).toBeInTheDocument();
+  expect(deleteSecret).not.toHaveBeenCalled();
+
+  // Confirmation : le secret disparaît.
+  await userEvent.click(screen.getByRole("button", { name: /supprimer.*arcgis/i }));
+  await userEvent.click(await screen.findByRole("button", { name: /^supprimer$/i }));
+  await waitFor(() =>
+    expect(screen.queryByRole("option", { name: "arcgis" })).not.toBeInTheDocument(),
+  );
+  expect(deleteSecret).toHaveBeenCalledWith("s1");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });

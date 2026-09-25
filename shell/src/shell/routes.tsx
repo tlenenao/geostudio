@@ -6,6 +6,8 @@ import { RequirePrivilege } from "../auth/RequirePrivilege";
 import { AppLayout } from "./AppLayout";
 import { t } from "../i18n";
 import { useOpenItem } from "./useOpenItem";
+import { resolvePipelineEditorPath } from "./resolvePipelineEditorPath";
+import { useItemClient } from "../api/ItemClientProvider";
 
 // Découpage par route (Task 8, SP-60/GAP-68) : chaque page lourde part dans
 // son propre chunk, chargé seulement quand sa route est visitée — le chunk
@@ -109,21 +111,24 @@ function BookmarksRoute() {
 function ItemDetailRoute() {
   const { pk } = useParams();
   const navigate = useNavigate();
+  const client = useItemClient();
   return (
     <ItemDetailPage
       pk={pk!}
       onDeleted={() => navigate("/")}
-      onOpenEditor={(type) =>
+      onOpenEditor={(type) => {
+        if (type === "pipeline") {
+          void resolvePipelineEditorPath(client, pk!).then((path) => navigate(path));
+          return;
+        }
         navigate(
           type === "map"
             ? `/maps/${pk}`
             : type === "dataset"
               ? `/datasets/${pk}/edit`
-              : type === "pipeline"
-                ? `/pipelines/${pk}/edit`
-                : `/apps/${pk}/edit`,
-        )
-      }
+              : `/apps/${pk}/edit`,
+        );
+      }}
     />
   );
 }

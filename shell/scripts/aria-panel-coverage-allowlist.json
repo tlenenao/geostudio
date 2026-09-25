@@ -1,7 +1,7 @@
 [
   {
     "file": "src/builder/pipeline/SecretParamSelect.tsx",
-    "line": 42,
+    "line": 59,
     "reason": "Pré-existant : le bouton \"Créer un secret\" ouvre SecretCreateForm en ligne (creating && <SecretCreateForm/>) sans aria-expanded/aria-controls. Dette REV-088 (CLAUDE.md : jamais posé rétroactivement) — pas corrigé par ce script d'outillage."
   },
   {

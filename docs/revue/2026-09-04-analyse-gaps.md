@@ -84,7 +84,12 @@ second volet n'est pas fermable par du code et reste ouvert tel quel.
 
 ## État des 83 gaps — trois parties distinctes (mise à jour 2026-09-16)
 
-**62 fermés, 5 partiels, 16 ouverts** (total 83 — 79 gaps de la revue initiale + GAP-80/81/82/83 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
+**64 fermés, 5 partiels, 14 ouverts** (total 83 — 79 gaps de la revue initiale + GAP-80/81/82/83 trouvés depuis). Chaque ligne a été vérifiée dans le code, pas recopiée d'un récit (piège n°12) ; voir encadré « correction post-passe » ci-dessus pour l'historique de cette vérification.
+
+**Mise à jour du 2026-09-25** : GAP-80/GAP-81 fermés par le plan
+`docs/superpowers/plans/2026-09-24-vague-a-bloquants-decouvrabilite.md`
+(commits `de52497f`/`4f411029`) — voir les entrées `GAP-80`/`GAP-81` de la
+table « ✅ Fermé » ci-dessous pour le détail.
 
 **Mise à jour du 2026-09-20** : GAP-83 fermé par le plan
 `docs/superpowers/plans/2026-09-20-cloture-rev-190-191-192-193.md` — voir
@@ -96,7 +101,7 @@ securite-colonne.md` (16 tâches, spec `docs/superpowers/specs/2026-09-06-
 gap22-securite-colonne-design.md`) — voir l'entrée `GAP-22` de la table
 « ✅ Fermé » ci-dessous pour le détail.
 
-### ✅ Fermé (62)
+### ✅ Fermé (64)
 
 | GAP | Fermé par / statut détaillé |
 |---|---|
@@ -161,6 +166,8 @@ gap22-securite-colonne-design.md`) — voir l'entrée `GAP-22` de la table
 | GAP-77 | SP-45 — revérifié ce jour contre `origin/main`/`origin/dev`/tag `v0.1.0` d'origin (voir encadré ci-dessus, fausse alerte locale écartée) |
 | GAP-78 | SP-45 (`secret_scanning`/`dependabot_security_updates` enabled) |
 | GAP-79 | SP-45 (`restart:` sur `traefik`, vérifié absent d'aucune contre-mention dans `docker-compose.yml`) |
+| GAP-80 | Plan `docs/superpowers/plans/2026-09-24-vague-a-bloquants-decouvrabilite.md` (commit `de52497f`, filet anti-régression `4f411029`) — `CatalogPage.tsx` porte désormais un lien réel vers `/bookmarks` (D01, pas de REV propre — couvert directement par ce GAP) |
+| GAP-81 | Plan `docs/superpowers/plans/2026-09-24-vague-a-bloquants-decouvrabilite.md` (commit `de52497f`, filet anti-régression `4f411029`) — `CatalogPage.tsx` porte désormais un lien réel vers `/analytics/sql` (D01, pas de REV propre — couvert directement par ce GAP) |
 | GAP-83 | Plan `docs/superpowers/plans/2026-09-20-cloture-rev-190-191-192-193.md` (commits `3ce0dc4c`/`947e9d23`/`2c3ce82a`/`841ce85f`/`9f56757c`/`e3defcfa`/`116bcae3`) — support de bout en bout de la variante liste/array sur `FieldType` (introspection, validation, écriture/lecture, tuiles MVT, schéma JSON, `POST /collections/empty`, exclusion côté formulaire/wizard shell). Voir `REV-191` |
 
 ### 🟡 Partiel (5)
@@ -173,7 +180,7 @@ gap22-securite-colonne-design.md`) — voir l'entrée `GAP-22` de la table
 | GAP-70 | SP-59 ferme le script de restauration (`deploy/backup/restore.sh`, vérifié présent) et la parité des 7 buckets ; la vérification OIDC réelle reste non rejouée (REV-164, limite d'environnement) |
 | GAP-72 | SP-48 ferme `img-src`/`connect-src` en enforcing (`CORE_CSP_MODE`, vérifié dans `docker-compose.yml`/`security/jobs.py`) ; `script-src` widgets d'extension tiers reste une décision produit ouverte (`traefik_render.py:29`, toujours `'self'` en dur, gardé par 2 tests intentionnels) |
 
-### 🔴 Ouvert / non implémenté (16)
+### 🔴 Ouvert / non implémenté (14)
 
 | GAP | Manque |
 |---|---|
@@ -190,19 +197,18 @@ gap22-securite-colonne-design.md`) — voir l'entrée `GAP-22` de la table
 | GAP-34 | Décision produit non tranchée (implémenter le rendu ou retirer du schéma) |
 | GAP-37 | `scripts/generate-pmtiles.sh` toujours orphelin |
 | GAP-55 | Éditeur d'actions narratif toujours limité à un payload de centrage carte |
-| GAP-80 | `/bookmarks` (`shell/src/shell/routes.tsx:315`) inatteignable — aucun lien ne pointe vers cette route, `useCreateBookmark` livré par SP-14m sans jamais pouvoir relire le signet créé (cf. addendum ci-dessous) |
-| GAP-81 | `/analytics/sql` (`shell/src/pages/SqlLabPage.tsx`) inatteignable — aucun lien du shell ne pointe vers cette route (cf. addendum ci-dessous pour le détail du câblage de navigation en cause) |
 | GAP-82 | `app/features/routes.py` appelle `get_readable_collection()` à 6 sites (`list_features`, `aggregate_features`, `export_collection_aggregate`, `export_collection_items`, `get_single_feature`, `_get_writable`) sans jamais passer `can_manage_collections=has_privilege(...)`, contrairement à `collections/routes.py`/`stac/routes.py`/`dcat/routes.py` — un porteur du seul `admin.collections.manage` reçoit un 404 en lisant des features via l'API OGC sur une collection qu'il peut pourtant administrer ailleurs. Trouvé par la Task 10 du plan GAP-22 (2026-09-13, test bout-en-bout §5.3), sans rapport avec le masquage de colonne lui-même — contourné côté fixture de test uniquement (`isPublic: true`), aucun code de production touché, hors périmètre délibéré de ce plan. Voir `REV-185`. |
 
-Répartition par référentiel des 16 ouverts (GAP-17/19/22 fermés depuis,
+Répartition par référentiel des 14 ouverts (GAP-17/19/22 fermés depuis,
 retirés du décompte de référentiel 2 ; GAP-82 ajouté le 2026-09-13, trouvé
 par la Task 10 du plan GAP-22 ; GAP-83, ajouté le 2026-09-16, fermé le
-2026-09-20) : 6 items isolés du référentiel 1
-(GAP-04/08/10/34/37/55 — chantiers non lancés ou décisions produit non
-tranchées), 7 du référentiel 2 (GAP-18/20/21/23/25/26/27, benchmark
-concurrentiel — aucune décision produit prise, non vérifiables dans le code
-de GeoStudio), et GAP-80/81/82 (navigation manquante + propagation de
-privilège manquante, mécaniques, coût 1-2 j-h chacun).
+2026-09-20 ; GAP-80/81, ajoutés le 2026-09-06, fermés le 2026-09-25 par le
+plan `2026-09-24-vague-a-bloquants-decouvrabilite.md`) : 6 items isolés du
+référentiel 1 (GAP-04/08/10/34/37/55 — chantiers non lancés ou décisions
+produit non tranchées), 7 du référentiel 2 (GAP-18/20/21/23/25/26/27,
+benchmark concurrentiel — aucune décision produit prise, non vérifiables
+dans le code de GeoStudio), et GAP-82 (propagation de privilège manquante,
+mécanique, coût 1-2 j-h).
 
 ---
 
@@ -530,7 +536,9 @@ patron (lien réel depuis un écran pertinent, pas de garde de privilège
 nécessaire ici puisque `/bookmarks` n'en a aucune côté route).
 
 - **Coût estimé** : 1-2 (mécanique, même patron que SP-46).
-- **État** : ouvert.
+- **État** : fermé (plan `docs/superpowers/plans/2026-09-24-vague-a-bloquants-decouvrabilite.md`,
+  commit `de52497f` — `CatalogPage.tsx` porte un lien réel vers
+  `/bookmarks` ; filet anti-régression `4f411029`).
 
 ### GAP-81 — `/analytics/sql` inatteignable (même classe que GAP-30/32/39/67/80)
 
@@ -545,4 +553,6 @@ l'URL à la main. Même mécanisme que SP-46 (GAP-30/32/39/67) et GAP-80
 depuis un écran pertinent du domaine Analytique).
 
 - **Coût estimé** : 1-2 (mécanique, même patron que SP-46).
-- **État** : ouvert.
+- **État** : fermé (plan `docs/superpowers/plans/2026-09-24-vague-a-bloquants-decouvrabilite.md`,
+  commit `de52497f` — `CatalogPage.tsx` porte un lien réel vers
+  `/analytics/sql` ; filet anti-régression `4f411029`).

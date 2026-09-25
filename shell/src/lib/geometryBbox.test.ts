@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
-import { bboxFromGeometry } from "./geometryBbox";
+import { bboxFromFeatureCollection, bboxFromGeometry } from "./geometryBbox";
 
 test("returns a degenerate bbox for a Point", () => {
   expect(bboxFromGeometry({ type: "Point", coordinates: [2.4, 46.6] })).toEqual([
@@ -55,4 +55,19 @@ test("returns null for undefined, null, or a non-geometry value", () => {
   expect(bboxFromGeometry(undefined)).toBeNull();
   expect(bboxFromGeometry(null)).toBeNull();
   expect(bboxFromGeometry({ foo: "bar" })).toBeNull();
+});
+
+test("bboxFromFeatureCollection computes the union bbox of several features", () => {
+  const features: GeoJSON.Feature[] = [
+    { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [1, 10] } },
+    { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [3, 20] } },
+  ];
+  expect(bboxFromFeatureCollection(features)).toEqual([1, 10, 3, 20]);
+});
+
+test("bboxFromFeatureCollection returns null when no feature has a geometry", () => {
+  const features: GeoJSON.Feature[] = [
+    { type: "Feature", properties: {}, geometry: null as unknown as GeoJSON.Geometry },
+  ];
+  expect(bboxFromFeatureCollection(features)).toBeNull();
 });

@@ -96,6 +96,10 @@ export type MapViewHandle = {
     bearing?: number;
   }) => void;
   highlight: (geometry: unknown | null) => void;
+  fitBounds: (
+    bbox: [number, number, number, number],
+    opts?: { padding?: number; maxZoom?: number },
+  ) => void;
 };
 
 // Une couche tuilée était jusqu'ici ajoutée en "fill" quel que soit son
@@ -1358,6 +1362,15 @@ export const MapView = forwardRef<
           geometry
             ? { type: "Feature", geometry, properties: {} }
             : { type: "FeatureCollection", features: [] },
+        );
+      },
+      fitBounds: (bbox, opts) => {
+        mapRef.current?.fitBounds(
+          [
+            [bbox[0], bbox[1]],
+            [bbox[2], bbox[3]],
+          ],
+          opts,
         );
       },
     }),

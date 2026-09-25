@@ -6,49 +6,9 @@ import "../../map/maplibreWorkerSetup";
 import { DEFAULT_BASEMAP } from "../../map/basemaps";
 import { t } from "../../i18n";
 import type { MessageKey } from "../../i18n";
+import { bboxFromFeatureCollection } from "../../lib/geometryBbox";
 
 const SOURCE_ID = "pipeline-preview";
-
-function collectCoordinates(geometry: GeoJSON.Geometry): [number, number][] {
-  switch (geometry.type) {
-    case "Point":
-      return [geometry.coordinates as [number, number]];
-    case "MultiPoint":
-    case "LineString":
-      return geometry.coordinates as [number, number][];
-    case "MultiLineString":
-    case "Polygon":
-      return (geometry.coordinates as [number, number][][]).flat();
-    case "MultiPolygon":
-      return (geometry.coordinates as [number, number][][][]).flat(2);
-    case "GeometryCollection":
-      return geometry.geometries.flatMap(collectCoordinates);
-    default:
-      return [];
-  }
-}
-
-function computeBounds(features: GeoJSON.Feature[]): [[number, number], [number, number]] | null {
-  let minLng = Infinity,
-    minLat = Infinity,
-    maxLng = -Infinity,
-    maxLat = -Infinity;
-  for (const f of features) {
-    if (!f.geometry) continue;
-    for (const [lng, lat] of collectCoordinates(f.geometry)) {
-      minLng = Math.min(minLng, lng);
-      maxLng = Math.max(maxLng, lng);
-      minLat = Math.min(minLat, lat);
-      maxLat = Math.max(maxLat, lat);
-    }
-  }
-  return minLng === Infinity
-    ? null
-    : [
-        [minLng, minLat],
-        [maxLng, maxLat],
-      ];
-}
 
 function presentGeometryKinds(
   rows: Record<string, unknown>[],
@@ -145,8 +105,16 @@ export function PipelinePreviewMap({
       map.on("click", `${SOURCE_ID}-fill`, handleClick);
       map.on("click", `${SOURCE_ID}-line`, handleClick);
       map.on("click", `${SOURCE_ID}-circle`, handleClick);
-      const bounds = computeBounds(features);
-      if (bounds) map.fitBounds(bounds, { padding: 20, maxZoom: 16 });
+      const bbox = bboxFromFeatureCollection(features);
+      if (bbox) {
+        map.fitBounds(
+          [
+            [bbox[0], bbox[1]],
+            [bbox[2], bbox[3]],
+          ],
+          { padding: 20, maxZoom: 16 },
+        );
+      }
     });
     return () => {
       mapRef.current = null;

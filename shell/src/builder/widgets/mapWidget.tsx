@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { lazy, Suspense, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
@@ -21,7 +21,10 @@ import { MapSymbologyEditor } from "../../map/MapSymbologyEditor";
 import { BasemapSelect } from "../../map/BasemapSelect";
 import { TerrainPanel } from "../../map/TerrainPanel";
 import { CameraControls } from "../../map/CameraControls";
+import { bboxFromFeatureCollection } from "../../lib/geometryBbox";
 import { t } from "../../i18n";
+import { LayersPanel } from "../../map/LayersPanel";
+import type { MapLayer } from "../../api/types";
 
 const MapView = lazy(() => import("../../map/MapView").then((m) => ({ default: m.MapView })));
 const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
@@ -162,7 +165,7 @@ export function registerMapWidget(): void {
   registerWidget({
     type: "map",
     label: t("widgetMap.paletteLabel"),
-    defaultProps: { dataSourceId: "" },
+    defaultProps: { dataSourceId: "", layers: [] },
     defaultSize: { w: 6, h: 6 },
     configSchema: [
       {
@@ -277,12 +280,40 @@ export function registerMapWidget(): void {
             attachmentFields={attachmentFields}
             onChange={(popup) => onChange({ ...props, popup })}
           />
+          {/* LayersPanel embarque déjà son propre LayerPicker (source de
+              recherche + formulaires tiles3d/deck/URL GeoJSON, cf.
+              LayersPanel.tsx:421) pour ajouter à la liste qu'on lui passe —
+              même patron que MapEditorPage.tsx:161. Un second <LayerPicker />
+              autonome à côté produirait deux listes de sources identiques
+              (constaté en test : deux boutons "Orthophoto (WMS)" dans la
+              même liste). */}
+          <div className="flex flex-col gap-2 border-t border-rule pt-2">
+            <h3 className="text-xs font-semibold uppercase text-ink-2">
+              {t("widgetMap.additionalLayersHeading")}
+            </h3>
+            <LayersPanel
+              layers={(props.layers as MapLayer[] | undefined) ?? []}
+              onChange={(layers) => onChange({ ...props, layers })}
+            />
+          </div>
         </div>
       );
     },
     Component: ({ props, ctx }) => {
       const handle = useRef<MapViewHandle>(null);
       const client = useItemClient();
+      // I1 (revue finale) : keyed sur l'id de source de données du widget,
+      // pas sur l'URL brute — SP-A4 (auto-cadrage) et SP-A29 (contexte
+      // d'emprise, `reactsToExtent`) bouclaient sinon : `onViewChange` →
+      // `setExtent` → un dataset `reactsToExtent` change d'URL (bbox injecté)
+      // → `lastFittedUrl` ne correspond plus → nouveau `fitBounds` → nouveau
+      // `moveend` → boucle. L'identité du dataset lié à ce widget ne change
+      // pas quand seule l'URL de fetch varie pour cette raison.
+      const lastFittedDataSourceId = useRef<string | null>(null);
+      // C1 (revue finale) : cf. commentaire jumeau sur MapEditorPage.tsx —
+      // `onReady` (MapView.tsx) est le seul signal fiable que `handle.current`
+      // est non-null, y compris pendant que le chunk lazy de MapView charge.
+      const [mapReady, setMapReady] = useState(false);
       const setExtent = useSetExtent();
       const setCrossFilter = useSetCrossFilter();
       useBusAction(ctx.bus, ctx.widgetId, "flyTo", (payload) => {
@@ -292,9 +323,29 @@ export function registerMapWidget(): void {
       useBusAction(ctx.bus, ctx.widgetId, "highlight", (payload) => {
         handle.current?.highlight(geometryFromPayload(payload));
       });
+      const url = ctx.data?.url;
+      const records = ctx.data?.records;
+      const dataSourceId = String(props.dataSourceId ?? "");
+      useEffect(() => {
+        if (!mapReady) return;
+        if (!url || !records || records.length === 0) return;
+        if (lastFittedDataSourceId.current === dataSourceId) return;
+        const features: GeoJSON.Feature[] = records
+          .filter((r) => r.geometry)
+          .map((r) => ({
+            type: "Feature",
+            properties: {},
+            geometry: r.geometry as GeoJSON.Geometry,
+          }));
+        const bbox = bboxFromFeatureCollection(features);
+        if (!bbox) return;
+        const view = handle.current;
+        if (!view) return;
+        lastFittedDataSourceId.current = dataSourceId;
+        view.fitBounds(bbox);
+      }, [url, records, mapReady, dataSourceId]);
 
       if (ctx.data?.error) return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
-      const url = ctx.data?.url;
 
       const symbology = props.symbology as LayerSymbology | undefined;
       const geometryKind = detectGeometryKind(ctx.data?.records?.[0]?.geometry);
@@ -322,22 +373,25 @@ export function registerMapWidget(): void {
           pitch: Number(props.cameraPitch ?? 0),
           bearing: Number(props.cameraBearing ?? 0),
         },
-        layers: url
-          ? [
-              {
-                id: `ds-${String(props.dataSourceId)}`,
-                title: t("widgetMap.layerTitle"),
-                visible: true,
-                kind: "feature",
-                url,
-                renderAs,
-                ...(symbology ? { symbology } : {}),
-                popup: props.popup as PopupConfig | undefined,
-                collectionId: ctx.data?.collectionId,
-                pkColumn: ctx.data?.pkColumn,
-              },
-            ]
-          : [],
+        layers: [
+          ...(url
+            ? [
+                {
+                  id: `ds-${String(props.dataSourceId)}`,
+                  title: t("widgetMap.layerTitle"),
+                  visible: true,
+                  kind: "feature" as const,
+                  url,
+                  renderAs,
+                  ...(symbology ? { symbology } : {}),
+                  popup: props.popup as PopupConfig | undefined,
+                  collectionId: ctx.data?.collectionId,
+                  pkColumn: ctx.data?.pkColumn,
+                },
+              ]
+            : []),
+          ...((props.layers as MapLayer[] | undefined) ?? []),
+        ],
       };
       return (
         <div className="relative h-full">
@@ -359,6 +413,7 @@ export function registerMapWidget(): void {
               getCoreUrl={client.getCoreUrl}
               getShareLinkToken={client.getShareLinkToken}
               loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
+              onReady={() => setMapReady(true)}
               onViewChange={(v) => {
                 ctx.bus?.emit(ctx.widgetId ?? "", "extentChanged", v);
                 setExtent(v.bbox);

@@ -113,7 +113,9 @@ export function ItemDetailPage({
                 {t("itemDetail.ownerLabel", { owner: item.owner })}
               </p>
               <p className="text-sm text-ink">{item.abstract}</p>
-              {["map", "app", "dashboard", "dataset", "pipeline"].includes(item.resourceType) ? (
+              {["map", "app", "dashboard", "dataset", "pipeline", "site"].includes(
+                item.resourceType,
+              ) ? (
                 <Button className="w-fit" onClick={() => onOpenEditor?.(item.resourceType)}>
                   {t("itemDetail.openEditor")}
                 </Button>

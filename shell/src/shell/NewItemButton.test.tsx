@@ -46,7 +46,14 @@ const CREATOR_ME = {
   email: "alice@example.com",
   tenantId: "t1",
   role: { id: "role-creator", name: "Créateur", slug: "creator" },
-  privileges: ["catalog.manage", "maps.manage", "data.view", "data.manage", "apps.manage"],
+  privileges: [
+    "catalog.manage",
+    "maps.manage",
+    "data.view",
+    "data.manage",
+    "apps.manage",
+    "automation.manage",
+  ],
   version: "0.1.0",
   tenantSlug: "demo",
 };
@@ -58,8 +65,13 @@ function makeQueryClient(privileges: string[] = CREATOR_ME.privileges) {
   return queryClient;
 }
 
-function Harness({ children }: { children: ReactNode }) {
-  const queryClient = makeQueryClient();
+function Harness({
+  children,
+  queryClient = makeQueryClient(),
+}: {
+  children: ReactNode;
+  queryClient?: QueryClient;
+}) {
   const client = createItemClient({
     coreUrl: "https://core.test",
     getToken: () => "t",
@@ -395,6 +407,98 @@ test("the Pipeline option is present when etlEnabled is true", async () => {
   );
   await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
   expect(await screen.findByRole("option", { name: "Pipeline" })).toBeInTheDocument();
+});
+
+test("the Pipeline option is absent when etlEnabled is true but automation.manage is missing (D03)", async () => {
+  server.use(
+    http.get("https://core.test/v1/instance", () =>
+      HttpResponse.json({ readOnly: false, etlEnabled: true }),
+    ),
+  );
+  render(
+    <Harness
+      queryClient={makeQueryClient(CREATOR_ME.privileges.filter((p) => p !== "automation.manage"))}
+    >
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  expect(screen.queryByRole("option", { name: "Pipeline" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: /Requête visuelle/i })).not.toBeInTheDocument();
+});
+
+// I3 de la revue finale : la requête visuelle crée aussi une collection et un
+// item dataset (data.manage), en plus du pipeline (automation.manage) — un
+// rôle n'ayant que automation.manage ne doit voir que "Pipeline", jamais
+// "Requête visuelle" (qui échouerait à mi-course sur createEmptyCollection).
+test("l'option Requête visuelle est absente sans data.manage, même avec automation.manage ET etlEnabled (I3)", async () => {
+  server.use(
+    http.get("https://core.test/v1/instance", () =>
+      HttpResponse.json({ readOnly: false, etlEnabled: true }),
+    ),
+  );
+  render(
+    <Harness
+      queryClient={makeQueryClient(CREATOR_ME.privileges.filter((p) => p !== "data.manage"))}
+    >
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  expect(await screen.findByRole("option", { name: "Pipeline" })).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: /Requête visuelle/i })).not.toBeInTheDocument();
+});
+
+test("matrice rôle×flag : l'option Pipeline n'est visible que si automation.manage ET etlEnabled sont réunis (filet D03)", async () => {
+  const ROLE_PRIVILEGES: Record<string, string[]> = {
+    administrateur: [
+      "catalog.manage",
+      "maps.manage",
+      "data.manage",
+      "apps.manage",
+      "automation.manage",
+    ],
+    createur: ["maps.manage", "data.manage", "apps.manage", "automation.manage"],
+    analyste: ["data.view", "analytics.view"],
+    lecteur: [],
+  };
+  for (const [role, privileges] of Object.entries(ROLE_PRIVILEGES)) {
+    for (const etlEnabled of [true, false]) {
+      server.use(
+        http.get("https://core.test/v1/instance", () =>
+          HttpResponse.json({ readOnly: false, etlEnabled }),
+        ),
+      );
+      const queryClient = makeQueryClient(privileges);
+      const { unmount } = render(
+        <Harness queryClient={queryClient}>
+          <NewItemButton />
+        </Harness>,
+      );
+      // `canCreatePipeline` dépend de useInstanceInfo() (fetch MSW réel,
+      // async) en plus de useMe() (seedé synchrone). Sans attendre que la
+      // query "instance" ait résolu, `etlEnabled` vaut toujours `false` au
+      // moment de cette assertion — la matrice ne discriminerait alors
+      // jamais vieille logique (etlEnabled seul) et nouvelle logique
+      // (automation.manage && etlEnabled). Cf. NewItemButton.test.tsx D03.
+      await waitFor(() => expect(queryClient.getQueryState(["instance"])?.status).toBe("success"));
+      const trigger = screen.queryByRole("button", { name: "Nouveau" });
+      const expectPipelineVisible = privileges.includes("automation.manage") && etlEnabled;
+      if (trigger) {
+        await userEvent.click(trigger);
+        const option = screen.queryByRole("option", { name: "Pipeline" });
+        expect(
+          option !== null,
+          `role=${role} etlEnabled=${etlEnabled} : présence attendue=${expectPipelineVisible}`,
+        ).toBe(expectPipelineVisible);
+      } else {
+        // Bouton absent (0 kind créable) : l'option Pipeline n'est a fortiori
+        // jamais visible, cohérent avec expectPipelineVisible=false ici.
+        expect(expectPipelineVisible).toBe(false);
+      }
+      unmount();
+    }
+  }
 });
 
 test("selecting Pipeline only asks for a title, and navigates to /pipelines/new with the title in route state, without calling the create API", async () => {

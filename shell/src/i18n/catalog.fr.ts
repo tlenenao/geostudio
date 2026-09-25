@@ -98,6 +98,8 @@ export const fr = {
   "catalog.searchLabel": "Rechercher",
   "catalog.typeLabel": "Type",
   "catalog.scheduledReportsLink": "Rapports planifiés →",
+  "catalog.bookmarksLink": "Signets →",
+  "catalog.sqlLabLink": "SQL Lab →",
   "catalog.scopeLabel": "Portée",
   "catalog.sortByLabel": "Trier par",
   "catalog.ownerLabel": "Propriétaire",
@@ -485,6 +487,7 @@ export const fr = {
   "mapEditor.inspectLabel": "Inspecter",
 
   // PipelineBuilderPage
+  "pipelineBuilder.etlDisabled": "Non activé sur cette instance (CORE_ETL_ENABLED).",
   "pipelineBuilder.notFound": "Pipeline introuvable.",
   "pipelineBuilder.stepsLabel": "Étapes",
   "pipelineBuilder.defaultTitle": "Pipeline",
@@ -974,6 +977,7 @@ export const fr = {
   "widgetMap.layerTitle": "Données",
   "widgetMap.loadingFallback": "Carte…",
   "widgetMap.sampleFieldUnavailable": "sampleDataSourceField indisponible",
+  "widgetMap.additionalLayersHeading": "Couches additionnelles",
 
   // Widget Modale (modal.tsx)
   "widgetModal.paletteLabel": "Modale",
@@ -1227,6 +1231,11 @@ export const fr = {
   "secretParamSelect.serviceAccountInfoInvalid": "JSON invalide.",
   "secretParamSelect.cancelButton": "Annuler",
   "secretParamSelect.createButton": "Créer",
+  "secretParamSelect.deleteButton": "Supprimer {name}",
+  "secretParamSelect.deleteConfirmTitle": "Supprimer ce secret ?",
+  "secretParamSelect.deleteConfirmMessage":
+    "Cette action est irréversible. Tout pipeline référençant ce secret échouera à sa prochaine exécution.",
+  "secretParamSelect.deleteConfirmButton": "Supprimer",
 
   // ExportPanel (builder/print)
   "exportPanel.stillRunning": "Export toujours en cours, réessayer plus tard.",
@@ -1539,6 +1548,7 @@ export const fr = {
   "cameraControls.bearingLabel": "Orientation (bearing) — {bearing}°",
   "cameraControls.bearingAria": "Orientation de la caméra",
   "cameraControls.resetButton": "Réinitialiser en 2D",
+  "mapEditor.fitToDataButton": "Ajuster à l'emprise des données",
 
   // TerrainPanel (map)
   "terrainPanel.heading": "Terrain 3D",

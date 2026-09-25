@@ -334,3 +334,36 @@ test("SP-42, revue finale (point 2, Critical) : affiche une erreur si l'item ne 
   });
   expect(await screen.findByRole("alert")).toHaveTextContent(/carte introuvable/i);
 });
+
+test("ajuste automatiquement la vue à l'emprise des données quand la vue est encore la valeur par défaut (D18)", async () => {
+  renderEditor({
+    getItem: vi.fn().mockResolvedValue({ ...OWNED_MAP_ITEM, bbox: [1, 10, 3, 20] }),
+    getMapConfig: vi.fn().mockResolvedValue(config), // view: { center: [2.4, 46.6], zoom: 5 }
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findAllByText("Couche A");
+  // C1 (revue finale) : l'auto-cadrage n'agit plus tant que MapView n'a pas
+  // signalé `onReady` (idle) — même patron que le test export-ready
+  // ci-dessus (ligne ~241) : sans ce `fire("idle")`, `mapReady` reste faux
+  // et l'effet D18 ne s'exécute jamais jusqu'au bout.
+  await waitFor(() => expect(mapInstances[0]).toBeDefined());
+  mapInstances[0].fire("idle");
+  await waitFor(() => expect(mapInstances[0]?.fitBoundsArgs).toHaveLength(1));
+  expect(mapInstances[0].fitBoundsArgs[0]).toMatchObject({
+    bounds: [
+      [1, 10],
+      [3, 20],
+    ],
+  });
+});
+
+test("ne réajuste pas la vue quand elle diffère déjà de la valeur par défaut (vue sauvegardée par l'utilisateur, D18)", async () => {
+  renderEditor({
+    getItem: vi.fn().mockResolvedValue({ ...OWNED_MAP_ITEM, bbox: [1, 10, 3, 20] }),
+    getMapConfig: vi.fn().mockResolvedValue({ ...config, view: { center: [5, 5], zoom: 9 } }),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findAllByText("Couche A");
+  await waitFor(() => expect(mapInstances).toHaveLength(1));
+  expect(mapInstances[0].fitBoundsArgs).toHaveLength(0);
+});

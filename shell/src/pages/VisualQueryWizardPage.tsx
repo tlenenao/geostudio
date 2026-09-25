@@ -4,9 +4,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../auth/useAuth";
 import { useItemClient } from "../api/ItemClientProvider";
-import { useCollectionsAdmin, usePipelineConfig, useInstanceInfo } from "../api/hooks";
+import { useCollectionsAdmin, useInstanceInfo, useItem, usePipelineConfig } from "../api/hooks";
 import type { CollectionSchema, PipelineRefreshPolicy } from "../api/types";
 import { RESOURCE_TYPE_LABELS } from "../api/resourceTypes";
+import { hasPermission } from "../auth/permissions";
 import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Panel } from "../ui/kit/Panel";
@@ -53,8 +54,19 @@ export function VisualQueryWizardPage({
   const existingPipelineQuery = usePipelineConfig(pipelinePk ?? "", {
     enabled: pipelinePk !== null,
   });
+  // I2 (revue finale) : contrairement à son jumeau PipelineBuilderPage.tsx
+  // (readOnly/etlEnabled, mêmes noms), ce wizard n'avait aucune garde
+  // lecture-seule/capacité — un utilisateur sans droit d'écriture sur un
+  // pipeline existant, ou une instance avec CORE_ETL_ENABLED éteint,
+  // pouvait remplir tout le formulaire et ne découvrir l'échec qu'à la
+  // soumission finale (le serveur refuse déjà via
+  // `_require_etl_enabled_for_pipeline`, donc pas de trou de sécurité — mais
+  // le même anti-pattern D03 que Task 4/5 ont corrigé ailleurs).
+  const itemQuery = useItem(pipelinePk ?? "", { enabled: pipelinePk !== null });
+  const readOnly = pipelinePk !== null && !hasPermission(itemQuery.data, "write");
   const instanceQuery = useInstanceInfo();
   const copilotEnabled = instanceQuery.data?.copilotEnabled === true;
+  const etlEnabled = instanceQuery.data?.etlEnabled === true;
 
   const [title, setTitle] = useState(initialTitle ?? "");
   const [baseCollectionId, setBaseCollectionId] = useState("");
@@ -529,7 +541,9 @@ export function VisualQueryWizardPage({
                     !joinValid ||
                     !summaryValid ||
                     (pipelinePk !== null && !existingOutput) ||
-                    outputSchemaMismatch
+                    outputSchemaMismatch ||
+                    readOnly ||
+                    !etlEnabled
                   }
                   onClick={() => void handleCreate()}
                 >
@@ -537,6 +551,10 @@ export function VisualQueryWizardPage({
                     ? t("visualQuery.updateButton")
                     : t("visualQuery.createButton")}
                 </Button>
+                {readOnly && <p className="text-xs text-ink-2">{t("locked.needWrite")}</p>}
+                {!etlEnabled && (
+                  <p className="text-xs text-ink-2">{t("pipelineBuilder.etlDisabled")}</p>
+                )}
               </div>
             </div>
           ),

@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { forwardRef, useImperativeHandle } from "react";
+import { forwardRef, useEffect, useImperativeHandle } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { WidgetContext } from "../registry";
 import type { DataSourceState, ItemClient, MapConfig, Theme } from "../../api/types";
@@ -15,6 +15,7 @@ import { ExplorerProvider } from "../ExplorerContext";
 
 const flyToSpy = vi.fn();
 const highlightSpy = vi.fn();
+const fitBoundsSpy = vi.fn();
 let lastConfig: MapConfig | null = null;
 
 vi.mock("../../map/MapView", () => ({
@@ -27,6 +28,7 @@ vi.mock("../../map/MapView", () => ({
         loadCustomIcon,
         themeColors,
         interactiveTools,
+        onReady,
       }: {
         config: MapConfig;
         onViewChange?: (v: {
@@ -42,11 +44,23 @@ vi.mock("../../map/MapView", () => ({
         loadCustomIcon?: (iconId: string) => Promise<Blob>;
         themeColors?: unknown;
         interactiveTools?: boolean;
+        onReady?: () => void;
       },
-      ref: React.Ref<{ flyTo: unknown; highlight: unknown }>,
+      ref: React.Ref<{ flyTo: unknown; highlight: unknown; fitBounds: unknown }>,
     ) => {
       lastConfig = config;
-      useImperativeHandle(ref, () => ({ flyTo: flyToSpy, highlight: highlightSpy }));
+      useImperativeHandle(ref, () => ({
+        flyTo: flyToSpy,
+        highlight: highlightSpy,
+        fitBounds: fitBoundsSpy,
+      }));
+      // C1 (revue finale) : le vrai MapView ne signale « prêt » qu'une fois
+      // idle — cette doublure de test le simule en appelant `onReady` dès son
+      // montage (après que le ref ci-dessus soit posé), plutôt que de
+      // reproduire toute la mécanique idle/tileset de MapView.tsx.
+      useEffect(() => {
+        onReady?.();
+      }, [onReady]);
       const layer = config.layers[0];
 
       const url = layer && "url" in layer ? ((layer as any).url ?? "") : "";
@@ -89,6 +103,7 @@ beforeEach(() => {
   registerBuiltinWidgets();
   flyToSpy.mockClear();
   highlightSpy.mockClear();
+  fitBoundsSpy.mockClear();
   lastConfig = null;
 });
 const state = (over: Partial<DataSourceState> = {}): DataSourceState => ({
@@ -211,7 +226,12 @@ test("choosing Jenks from the widget's PropsPanel surfaces a real client error i
       },
     },
     onChange,
-    clientOverrides: { sampleDataSourceField },
+    // Task 9 (D13) monte désormais aussi LayerPicker dans ce PropsPanel, qui
+    // interroge listLayerSources : sans mock, sa requête échoue et pose son
+    // propre role="alert" ("Impossible de charger les sources de couches."),
+    // rendant `findByRole("alert")` ambigu (plusieurs correspondances) — un
+    // deuxième client sans rapport avec ce que ce test vérifie.
+    clientOverrides: { sampleDataSourceField, listLayerSources: vi.fn().mockResolvedValue([]) },
   });
   await userEvent.click(screen.getByRole("button", { name: "Recalculer les classes" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("boom");
@@ -995,6 +1015,75 @@ test("le widget carte fournit le chargeur d'icônes personnalisées à MapView",
   expect(await screen.findByText(/loader:function/)).toBeInTheDocument();
 });
 
+test("ajuste automatiquement la vue à l'emprise des enregistrements chargés (D18)", async () => {
+  fitBoundsSpy.mockClear();
+  const Map = getWidget("map")!.Component;
+  const data = state({
+    url: "https://fs/parcs/items.json",
+    records: [
+      { id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 10] } },
+      { id: 2, properties: {}, geometry: { type: "Point", coordinates: [3, 20] } },
+    ],
+  });
+  render(
+    withClient(
+      <Map props={{ dataSourceId: "d" }} ctx={{ mode: "runtime", data } as WidgetContext} />,
+    ),
+  );
+  await screen.findByTestId("mapview");
+  await waitFor(() => expect(fitBoundsSpy).toHaveBeenCalledTimes(1));
+  expect(fitBoundsSpy).toHaveBeenCalledWith([1, 10, 3, 20]);
+});
+
+// I1 de la revue finale : SP-A4 (auto-cadrage) et SP-A29 (contexte
+// d'emprise, `reactsToExtent`) pouvaient boucler — `onViewChange` →
+// `setExtent` → un dataset `reactsToExtent` injecte un paramètre bbox dans
+// son URL de fetch → l'ancien code (keyed sur l'URL brute) voyait un
+// "nouveau" dataset et rappelait `fitBounds` → nouveau `moveend` → boucle.
+// Ce test simule ce même widget recevant une nouvelle URL (bbox injecté par
+// le contexte d'emprise) pour le même `dataSourceId`, après le premier
+// ajustement, et vérifie que `fitBounds` n'est pas rappelé.
+test("ne réajuste pas la vue quand seule l'URL change (contexte d'emprise), même dataSourceId (I1)", async () => {
+  fitBoundsSpy.mockClear();
+  const Map = getWidget("map")!.Component;
+  const initialData = state({
+    url: "https://fs/parcs/items.json",
+    records: [
+      { id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 10] } },
+      { id: 2, properties: {}, geometry: { type: "Point", coordinates: [3, 20] } },
+    ],
+  });
+  const { rerender } = render(
+    withClient(
+      <Map
+        props={{ dataSourceId: "d" }}
+        ctx={{ mode: "runtime", data: initialData } as WidgetContext}
+      />,
+    ),
+  );
+  await screen.findByTestId("mapview");
+  await waitFor(() => expect(fitBoundsSpy).toHaveBeenCalledTimes(1));
+
+  // Même dataset (`dataSourceId: "d"`), mais l'URL change — comme le ferait
+  // le contexte d'emprise en injectant un paramètre bbox dans le fetch —
+  // avec des enregistrements légèrement différents (une valeur plausible
+  // pour un re-fetch filtré par emprise).
+  const extentShiftedData = state({
+    url: "https://fs/parcs/items.json?bbox=1,10,3,20",
+    records: [{ id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 10] } }],
+  });
+  rerender(
+    withClient(
+      <Map
+        props={{ dataSourceId: "d" }}
+        ctx={{ mode: "runtime", data: extentShiftedData } as WidgetContext}
+      />,
+    ),
+  );
+  await screen.findByText(/url:https:\/\/fs\/parcs\/items\.json\?bbox=1,10,3,20/);
+  expect(fitBoundsSpy).toHaveBeenCalledTimes(1);
+});
+
 test("map widget carries collectionId/pkColumn from ctx.data onto the feature layer (SP-40)", () => {
   renderWidget({
     props: { dataSourceId: "ds1" },
@@ -1009,4 +1098,72 @@ test("map widget carries collectionId/pkColumn from ctx.data onto the feature la
   const layer = lastMapConfig().layers[0] as { collectionId?: string; pkColumn?: string };
   expect(layer.collectionId).toBe("parcs");
   expect(layer.pkColumn).toBe("id");
+});
+
+test("le widget carte fusionne la couche feature liée à la DataSource avec les couches additionnelles de props.layers (D13)", async () => {
+  const Map = getWidget("map")!.Component;
+  const ctx = {
+    mode: "runtime",
+    data: state({ url: "https://fs/parcs/items.json", records: [{ id: 1, properties: {} }] }),
+  } as WidgetContext;
+  render(
+    withClient(
+      <Map
+        props={{
+          dataSourceId: "ds-1",
+          layers: [
+            {
+              id: "raster-1",
+              title: "Ortho",
+              visible: true,
+              kind: "raster",
+              tilesUrl: "https://x/{z}/{x}/{y}.png",
+            },
+          ],
+        }}
+        ctx={ctx}
+      />,
+    ),
+  );
+  await screen.findByTestId("mapview");
+  expect(lastMapConfig().layers).toHaveLength(2);
+  expect(lastMapConfig().layers[0].kind).toBe("feature");
+  expect(lastMapConfig().layers[1]).toMatchObject({ id: "raster-1", kind: "raster" });
+});
+
+// La brief de cette tâche décrivait un bouton générique "Ajouter une couche"
+// suivi d'un choix de type puis d'une saisie d'URL de tuiles — ce flux
+// n'existe pas dans LayerPicker.tsx (vérifié contre `LayerPicker.test.tsx` et
+// `LayerPicker.tsx` eux-mêmes, piège n°3 de CLAUDE.md). Le seul chemin réel
+// pour obtenir une couche `raster` est de choisir une source externe listée
+// par `listLayerSources` (cf. test "emits a raster MapLayer for an external
+// source" de LayerPicker.test.tsx) — repris ici tel quel, via
+// `clientOverrides.listLayerSources`.
+test("le PropsPanel du widget carte permet d'ajouter une couche raster via LayerPicker (D13)", async () => {
+  const onChange = vi.fn();
+  const listLayerSources = vi.fn().mockResolvedValue([
+    {
+      id: "ext-ortho",
+      title: "Orthophoto (WMS)",
+      service: "external",
+      kind: "raster",
+      tilesUrl: "https://ows.example.com/wms?...&bbox={bbox-epsg-3857}",
+    },
+  ]);
+  renderPropsPanel({
+    props: { dataSourceId: "ds-1", layers: [] },
+    onChange,
+    dataSources: [
+      { id: "ds-1", type: "features", label: "Source", datasetId: "d1", layer: "col-1" },
+    ],
+    clientOverrides: { listLayerSources },
+  });
+  await userEvent.click(await screen.findByRole("button", { name: /Orthophoto \(WMS\)/ }));
+  await waitFor(() =>
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        layers: expect.arrayContaining([expect.objectContaining({ kind: "raster" })]),
+      }),
+    ),
+  );
 });

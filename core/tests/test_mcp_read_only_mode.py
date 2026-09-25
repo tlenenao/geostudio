@@ -118,7 +118,7 @@ def call_tool_raw(test_client, name: str, arguments: dict) -> dict:
     return payload["result"]
 
 
-def test_read_only_tools_constant_matches_the_ten_write_tools(monkeypatch):
+def test_read_only_tools_constant_matches_the_eleven_write_tools(monkeypatch):
     # SP-42, revue des lots de correctifs 2/3bis (point 5, Minor causé par
     # nos propres correctifs) : cette constante (et cette assertion)
     # figeaient "six write tools" alors que create_pipeline et run_pipeline
@@ -127,7 +127,9 @@ def test_read_only_tools_constant_matches_the_ten_write_tools(monkeypatch):
     # sur ce dépôt (SP-30g, SP-30i). SP-54 Tâche 6 : create_group/
     # add_group_member rejoignent la liste — même piège explicitement évité
     # cette fois (create_group/add_group_member ajoutés ici en même temps
-    # que leur garde is_read_only_mode(), pas après coup).
+    # que leur garde is_read_only_mode(), pas après coup). Tâche 11 (SP-A6,
+    # D05) : delete_secret ajouté de même, garde posée au point de
+    # définition, liste mise à jour dans le même geste.
     #
     # REV-008 : READ_ONLY_TOOLS n'est plus un ensemble littéral — c'est
     # WRITE_TOOL_NAMES (app/mcp/tools/write_tools.py), peuplé par le
@@ -157,6 +159,7 @@ def test_read_only_tools_constant_matches_the_ten_write_tools(monkeypatch):
         "run_pipeline",
         "create_group",
         "add_group_member",
+        "delete_secret",
     }
 
 

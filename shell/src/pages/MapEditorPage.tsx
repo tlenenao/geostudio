@@ -42,6 +42,15 @@ export function MapEditorPage({ pk }: { pk: string }) {
   const readOnly = !hasPermission(itemQuery.data, "write");
   const [draft, setDraft] = useState<MapConfig | null>(null);
   const mapViewRef = useRef<MapViewHandle>(null);
+  const hasAutoFitted = useRef(false);
+  // C1 (revue finale) : `onReady` (MapView.tsx:1017-1033/1063) ne se
+  // déclenche qu'une fois la carte réellement prête (idle) — c'est le seul
+  // signal fiable que `mapViewRef.current` est non-null, y compris quand le
+  // chunk lazy de MapView n'a pas encore fini de charger. Sans lui, l'effet
+  // d'auto-cadrage ci-dessous pouvait poser `hasAutoFitted.current = true`
+  // avant même que `fitBounds` ait pu s'exécuter (no-op via `?.`), et ne se
+  // redéclenchait jamais une fois le chunk chargé.
+  const [mapReady, setMapReady] = useState(false);
   const isExportRender = useIsExportRender();
   const instanceQuery = useInstanceInfo();
   const exportEnabled = instanceQuery.data?.exportEnabled === true;
@@ -49,6 +58,26 @@ export function MapEditorPage({ pk }: { pk: string }) {
   useEffect(() => {
     if (query.data) setDraft(query.data);
   }, [query.data]);
+
+  // D18 : n'auto-cadrer que si la vue est encore la valeur par défaut
+  // littérale posée à la création (layers.ts:43) — jamais écraser un
+  // cadrage que l'utilisateur a explicitement enregistré. Le bouton manuel
+  // "Ajuster à l'emprise des données" (ci-dessous) reste la voie pour
+  // re-déclencher l'ajustement dans les autres cas.
+  useEffect(() => {
+    if (hasAutoFitted.current) return;
+    if (!mapReady) return;
+    if (!draft) return;
+    const isDefaultView =
+      draft.view.center[0] === 2.4 && draft.view.center[1] === 46.6 && draft.view.zoom === 5;
+    if (!isDefaultView) return;
+    const bbox = itemQuery.data?.bbox;
+    if (!bbox) return;
+    const view = mapViewRef.current;
+    if (!view) return;
+    hasAutoFitted.current = true;
+    view.fitBounds(bbox);
+  }, [draft, itemQuery.data?.bbox, mapReady]);
 
   // `draft` lags one render behind a successful load (it is synced in the
   // effect above), so keep showing the loader during that gap instead of
@@ -101,7 +130,10 @@ export function MapEditorPage({ pk }: { pk: string }) {
         <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
           <MapView
             config={draft}
-            onReady={markExportReady}
+            onReady={() => {
+              markExportReady();
+              setMapReady(true);
+            }}
             hideLegend
             getAuthToken={client.getAuthToken}
             getCoreUrl={client.getCoreUrl}
@@ -154,6 +186,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
                   ref={mapViewRef}
                   config={draft}
                   onViewChange={setView}
+                  onReady={() => setMapReady(true)}
                   interactiveTools
                   getAuthToken={client.getAuthToken}
                   getCoreUrl={client.getCoreUrl}
@@ -175,6 +208,18 @@ export function MapEditorPage({ pk }: { pk: string }) {
                 bearing={draft.view.bearing ?? 0}
                 onChange={setCamera}
               />
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                disabled={!itemQuery.data?.bbox}
+                onClick={() => {
+                  const bbox = itemQuery.data?.bbox;
+                  if (bbox) mapViewRef.current?.fitBounds(bbox);
+                }}
+              >
+                {t("mapEditor.fitToDataButton")}
+              </Button>
               <PrintLayoutPanel value={draft.printLayout ?? null} onChange={setPrintLayout} />
               <ConfigHistoryPanel
                 pk={pk}

@@ -7255,3 +7255,89 @@ surface déjà livrée.
   format --check`/`lint-imports` verts. `cd shell && npm run test`
   255 fichiers / 2358 tests passés ; `npm run build` (tsc --noEmit + vite
   build) réussi.
+
+- **Vague A diagnostic UI/UX** — clos 2026-09-25, plan
+  `docs/superpowers/plans/2026-09-24-vague-a-bloquants-decouvrabilite.md`
+  (spec jumelle datée), 13 tâches en subagent-driven-development sur `dev`,
+  sans worktree. Ferme `REV-201` à `REV-206` (D02 lien Site cassé, D03
+  garde `automation.manage` + message d'indisponibilité sur la création de
+  pipeline, D09 filet rôle×flag, D05 suppression de secret UI+MCP, D58
+  réouverture pipeline wizard-shaped, D13 widget carte multi-couches) et
+  `REV-249` (D18, auto-cadrage carte sur l'emprise des données, impact 9 —
+  le plus élevé du diagnostic — omis à tort de la clôture initiale de
+  Task 13 dont le brief ne citait que `REV-201`–`REV-206`, corrigé lors de
+  la clôture du fix wave ci-dessous). Chaque tâche a eu son brief +
+  correction de contexte pré-vérifiée (piège CLAUDE.md n°3 systématique :
+  Tasks 10/11/12/13 avaient chacune au moins une affirmation de brief
+  fausse sur l'infrastructure de test réelle — fixtures inventées,
+  chemin de requête erroné, schéma JSONL halluciné — corrigée avant
+  dispatch plutôt que découverte par l'implémenteur). Task 13 (clôture) a
+  fait tourner les suites complètes et trouvé 3 régressions croisées
+  invisibles à toute revue par tâche (piège n°4/n°6) : assertions de
+  reachability périmées depuis Task 2, canari de comptage d'outils MCP
+  jamais relevé après Task 11, mock e2e `etlEnabled` manquant cassé par la
+  garde D09 de Task 3.
+
+  **Revue finale de branche (opus, 16 commits) : 1 Critical + 4 Important,
+  aucun trouvé par les 13 revues par tâche.** Le plus grave (**C1**) :
+  `MapEditorPage.tsx` et `mapWidget.tsx` chargent `MapView` en `lazy()` ;
+  leur effet d'auto-cadrage D18 posait son indicateur « déjà ajusté »
+  avant même de vérifier que le ref `MapView` était non-`null` — au
+  premier rendu, le chunk `lazy()` n'est pas encore chargé, `fitBounds`
+  ne s'exécutait donc jamais (no-op silencieux via `?.`), l'indicateur
+  restait posé, rien ne redéclenchait l'effet une fois le chunk prêt.
+  **La fonctionnalité phare de SP-A4 ne fonctionnait donc jamais en
+  production**, alors que les tests associés passaient (piège n°7/n°10
+  exactement : ces tests ne passaient que parce qu'un test antérieur du
+  même fichier avait déjà résolu la promesse `lazy()` — la reviewer l'a
+  prouvé par falsification, en isolant les tests D18 et en constatant leur
+  échec seuls). 4 Important : (I1) boucle de rétroaction entre
+  l'auto-cadrage et le contexte d'emprise SP-A29 (`reactsToExtent`) sur le
+  widget carte ; (I2) `VisualQueryWizardPage.tsx` (nouvelle destination de
+  D58) sans garde `readOnly`/`etlEnabled`, contrairement à sa jumelle
+  `PipelineBuilderPage.tsx` — pas de trou de sécurité (le serveur refuse
+  déjà) mais anti-pattern D03 réintroduit par la composition SP-A3+SP-A7 ;
+  (I3) `NewItemButton.tsx` gate `visual-query` sur `automation.manage`
+  seul alors que le flux de création a aussi besoin de `data.manage` ;
+  (I4) `useSaveMap` n'invalidait jamais `["item", pk]` (qui porte `bbox`,
+  recalculé serveur à la sauvegarde), donc même une fois C1 corrigé,
+  l'auto-cadrage n'aurait rien eu de neuf à ajuster juste après
+  « nouvelle carte → ajouter une couche → enregistrer » sans rechargement
+  complet.
+
+  **Fix wave** (un seul subagent, dispatché avec les 5 findings complets
+  plutôt qu'un correctif par trouvaille, conformément à la règle du skill
+  subagent-driven-development) : C1 corrigé via l'`onReady` déjà exposé
+  par `MapView.tsx` (jusqu'ici consommé par `MapEditorPage.tsx` pour un
+  autre usage, jamais câblé par `mapWidget.tsx`) pilotant un état
+  `mapReady` gardant l'effet, et l'indicateur « déjà ajusté » n'est plus
+  posé qu'après confirmation que le ref est non-`null`. I1 corrigé en
+  keyant l'indicateur sur `dataSourceId` (identité stable du widget) au
+  lieu de l'URL de fetch brute. I2/I3/I4 corrigés selon le patron déjà en
+  place sur leurs jumeaux respectifs. Falsification individuelle exécutée
+  pour les 5 (défaut réintroduit temporairement, test rouge confirmé, puis
+  restauré et revert) — pas seulement « la suite passe ».
+
+  **Re-revue du fix wave (opus, indépendante) :** correctifs de
+  production tous confirmés corrects par relecture directe + falsification
+  propre à la re-review, mais 2 défauts trouvés dans le fix wave
+  lui-même : `prettier --check` cassé sur 2 fichiers de test (mécanique,
+  corrigé) et le nouveau test I2 ne prouvait rien (le bouton était déjà
+  désactivé au premier rendu pour une raison sans rapport — titre encore
+  vide — donc retirer la garde `readOnly` ne faisait pas échouer le test)
+  — corrigé en attendant `getByDisplayValue` du titre pré-rempli avant
+  d'asserter, avec un 2e test dédié au cas `etlEnabled: false`
+  manquant ; les deux falsifiés à nouveau (retrait temporaire de la garde
+  → test rouge confirmé → restauration → vert). 2 Minor non bloquants
+  documentés en suivi plutôt que corrigés dans ce fix wave : `REV-250`
+  (les tests D18 ne détectent la régression C1 qu'exécutés isolément, pas
+  en suite complète — le chunk `lazy()` est déjà résolu par un test
+  antérieur du même fichier) et `REV-251` (`VisualQueryWizardPage.tsx`
+  n'a pas le garde `itemQuery.isLoading`/`isError` que porte
+  `PipelineBuilderPage.tsx` avant de conclure `readOnly` — mode d'échec
+  sûr mais message trompeur pendant le chargement).
+
+  Suite complète rejouée après le 2e round : `cd shell && npm test --
+  --run` 257 fichiers / 2388 tests passés, `npx tsc --noEmit` 0 erreur,
+  `prettier --check`/`eslint` verts sur les 10 fichiers touchés par le fix
+  wave.

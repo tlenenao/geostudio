@@ -99,6 +99,30 @@ test("shows 'Ouvrir dans l'éditeur' for a pipeline item and calls onOpenEditor(
   expect(onOpenEditor).toHaveBeenCalledWith("pipeline");
 });
 
+test("shows 'Ouvrir dans l'éditeur' for a site item and calls onOpenEditor('site')", async () => {
+  server.use(
+    http.get("https://core.test/v1/items/7", () =>
+      HttpResponse.json({
+        pk: "7",
+        resourceType: "site",
+        title: "Item 7",
+        abstract: "Abstract 7",
+        owner: "alice",
+        thumbnailUrl: null,
+        date: "2026-01-01T00:00:00Z",
+        configId: null,
+        isPublished: false,
+      }),
+    ),
+  );
+  const onOpenEditor = vi.fn();
+  render(<ItemDetailPage pk="7" onOpenEditor={onOpenEditor} />, { wrapper });
+  const button = await screen.findByRole("button", { name: /éditeur/i });
+  expect(button).not.toBeDisabled();
+  await userEvent.click(button);
+  expect(onOpenEditor).toHaveBeenCalledWith("site");
+});
+
 test("affiche le formulaire d'édition quand l'URL porte ?panel=edit", async () => {
   render(<ItemDetailPage pk="1" />, {
     wrapper: ({ children }) => wrapperWithInitialSearch("/items/1?panel=edit", children),

@@ -4,7 +4,13 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { Item, ItemClient, PipelineOpsCatalog, PipelinePayload } from "../api/types";
+import type {
+  InstanceInfo,
+  Item,
+  ItemClient,
+  PipelineOpsCatalog,
+  PipelinePayload,
+} from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 import { PipelineBuilderPage } from "./PipelineBuilderPage";
@@ -119,6 +125,24 @@ function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}) {
     listCollections: () => Promise.resolve([]),
     getPipelineRuns: vi.fn().mockResolvedValue([]),
     getItem: vi.fn().mockResolvedValue(OWNED_PIPELINE_ITEM),
+    // D09 : la garde ajoutée sur PipelineBuilderPage lit useInstanceInfo(),
+    // dont le repli par défaut (ItemClient de test sans getInstanceInfo)
+    // est etlEnabled: false (cf. useInstanceInfo() dans items.hooks.ts) —
+    // sans ce mock par défaut, TOUS les tests existants de ce fichier
+    // afficheraient désormais le message de désactivation au lieu du
+    // builder. Seul le test D09 ci-dessous le surcharge à etlEnabled: false.
+    getInstanceInfo: () =>
+      Promise.resolve({
+        readOnly: false,
+        etlEnabled: true,
+        exportEnabled: false,
+        appExportEnabled: false,
+        tileset3dEnabled: false,
+        terrain3dEnabled: false,
+        copilotEnabled: false,
+        adminToolsEnabled: false,
+        quotasEnabled: false,
+      }),
     ...overrides,
   };
   render(
@@ -137,6 +161,90 @@ test("unsaved mode: Enregistrer is disabled on an empty graph", async () => {
   renderPage(null);
   await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
   expect(screen.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+});
+
+// D09 : sans la garde ajoutée sur useInstanceInfo(), opsQuery termine en
+// erreur (404, routes non montées par core/app/pipelines/routes.py quand
+// CORE_ETL_ENABLED=false) et `!opsQuery.data` reste vrai pour toujours —
+// spinner infini sur `t("common.loading")` (piège trouvé par lecture du
+// code, pas seulement en le lançant contre une vraie instance désactivée).
+test("unsaved mode: affiche un message de désactivation au lieu du spinner infini quand CORE_ETL_ENABLED est faux (D09)", async () => {
+  renderPage(null, {
+    getInstanceInfo: () =>
+      Promise.resolve({
+        readOnly: false,
+        etlEnabled: false,
+        exportEnabled: false,
+        appExportEnabled: false,
+        tileset3dEnabled: false,
+        terrain3dEnabled: false,
+        copilotEnabled: false,
+        adminToolsEnabled: false,
+        quotasEnabled: false,
+      }),
+    // Simule des routes pipeline non montées côté cœur : jamais résolu,
+    // pour prouver que la garde D09 n'attend pas opsQuery.
+    getPipelineOps: () => new Promise(() => {}),
+  });
+  expect(
+    await screen.findByText("Non activé sur cette instance (CORE_ETL_ENABLED)."),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("Chargement…")).not.toBeInTheDocument();
+});
+
+// D09, revue finale (Important) : la garde ci-dessus ne masque le message de
+// désactivation QUE tant que instanceQuery charge — elle ne masque pas le
+// BUILDER complet pendant ce même intervalle. instanceQuery (/v1/instance) et
+// opsQuery (/v1/pipelines/ops) sont deux requêtes indépendantes sans garantie
+// d'ordre : si opsQuery résout avant instanceQuery, les deux gardes
+// s'esquivent (`!instanceQuery.isLoading && !etlEnabled` est faux tant que
+// isLoading est vrai ; `opsQuery.isLoading || !opsQuery.data` est faux car
+// les données sont déjà là) et le builder interactif s'affiche sur une
+// instance où ETL est en réalité désactivé — avant de basculer vers le
+// message de désactivation une fois instanceQuery résolu. Ce test résout
+// opsQuery immédiatement mais retient la résolution de getInstanceInfo pour
+// prouver que rien d'interactif (ni le builder, ni son spinner générique)
+// n'apparaît avant qu'instanceQuery ait résolu.
+test("unsaved mode: n'affiche jamais le builder tant que /v1/instance n'a pas résolu, même si opsQuery a déjà résolu (D09 race)", async () => {
+  let resolveInstance!: (info: InstanceInfo) => void;
+  let opsSettled = false;
+  renderPage(null, {
+    getPipelineOps: () => Promise.resolve(CATALOG).then((v) => ((opsSettled = true), v)),
+    getInstanceInfo: () =>
+      new Promise<InstanceInfo>((resolve) => {
+        resolveInstance = resolve;
+      }),
+  });
+
+  // On attend l'état réel de la promesse de getPipelineOps (opsSettled),
+  // jamais un nombre de ticks arbitraire : getInstanceInfo reste
+  // délibérément non résolue, donc opsSettled passant à true prouve que
+  // opsQuery a bel et bien résolu avant instanceQuery — la course que ce
+  // test vise à reproduire, constatée plutôt que supposée.
+  await waitFor(() => expect(opsSettled).toBe(true));
+  expect(screen.queryByText("reader.collection")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Non activé sur cette instance (CORE_ETL_ENABLED)."),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("Chargement…");
+
+  await act(async () => {
+    resolveInstance({
+      readOnly: false,
+      etlEnabled: false,
+      exportEnabled: false,
+      appExportEnabled: false,
+      tileset3dEnabled: false,
+      terrain3dEnabled: false,
+      copilotEnabled: false,
+      adminToolsEnabled: false,
+      quotasEnabled: false,
+    });
+  });
+  expect(
+    await screen.findByText("Non activé sur cette instance (CORE_ETL_ENABLED)."),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("reader.collection")).not.toBeInTheDocument();
 });
 
 test("unsaved mode: Aperçu and Exécuter are absent (no pipelineId yet)", async () => {
