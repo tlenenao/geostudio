@@ -141,13 +141,27 @@ export function PipelineBuilderPage({
         {t("pipelineBuilder.notFound")}
       </p>
     );
+  // D09, revue finale (Important) : instanceQuery (/v1/instance) et opsQuery
+  // (/v1/pipelines/ops) sont deux requêtes indépendantes sans garantie
+  // d'ordre. Le garde ci-dessous ne doit AFFIRMER quoi que ce soit sur
+  // etlEnabled qu'une fois instanceQuery résolu — mais il ne suffit pas non
+  // plus de laisser passer le rendu tant qu'il charge : si opsQuery résout
+  // avant instanceQuery, rien ne bloquait alors le builder interactif de
+  // s'afficher sur une instance où ETL est en réalité désactivé, avant de
+  // basculer vers le message de désactivation une fois instanceQuery résolu
+  // à son tour. Attendre explicitement instanceQuery avant même de regarder
+  // opsQuery ferme cette fenêtre.
+  if (instanceQuery.isLoading) return <p role="status">{t("common.loading")}</p>;
   // D09 : CORE_ETL_ENABLED=false → les routes pipeline ne sont pas montées
   // côté cœur (core/app/pipelines/routes.py), opsQuery termine en erreur
   // (404) et !opsQuery.data reste vrai pour toujours sans cette garde —
-  // spinner infini. Vérifier le flag AVANT d'attendre opsQuery, pas après :
-  // tant que instanceQuery lui-même charge, ne rien affirmer sur etlEnabled.
-  if (!instanceQuery.isLoading && !etlEnabled) {
-    return <p className="text-sm text-ink-2">{t("pipelineBuilder.etlDisabled")}</p>;
+  // spinner infini.
+  if (!etlEnabled) {
+    return (
+      <p role="status" className="text-sm text-ink-2">
+        {t("pipelineBuilder.etlDisabled")}
+      </p>
+    );
   }
   if (opsQuery.isLoading || !opsQuery.data) return <p role="status">{t("common.loading")}</p>;
   if (draft === null) return <p role="status">{t("common.loading")}</p>;
