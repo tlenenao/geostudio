@@ -21,6 +21,7 @@ from app.mcp.tools import (
     pipelines,
     query_generation,
     reports,
+    secrets,
     sharing,
 )
 from app.mcp.tools.write_tools import WRITE_TOOL_NAMES
@@ -46,6 +47,7 @@ def register_tools(server: FastMCP, session_factory) -> None:
         reports,
         sharing,
         attachments,
+        secrets,
     ):
         module.register(server, session_factory)
 
