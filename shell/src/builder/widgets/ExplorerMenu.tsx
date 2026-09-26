@@ -120,7 +120,7 @@ export function ExplorerMenu({
       {exportError && (
         <p
           role="alert"
-          className="mt-1 whitespace-normal rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] px-2 py-1 text-xs text-red-600 shadow-sm"
+          className="mt-1 whitespace-normal rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] px-2 py-1 text-xs text-danger shadow-sm"
         >
           {exportError}
         </p>

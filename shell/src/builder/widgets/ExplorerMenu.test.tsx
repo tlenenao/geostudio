@@ -7,6 +7,7 @@ import { ExplorerProvider, useExplorerTarget } from "../ExplorerContext";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { DataSource, ItemClient } from "../../api/types";
 import { ApiError } from "../../api/ApiError";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 // REV-079 : `vi.spyOn` (au lieu de `vi.stubGlobal("URL", { ...URL, ... })`)
 // laisse le constructeur `URL` intact — un `{ ...URL }` produit un objet
@@ -183,7 +184,7 @@ test("a failed export surfaces an inline error message instead of failing silent
     query: { groupBy: "region" },
   };
 
-  render(
+  const { container } = render(
     <ItemClientProvider client={client}>
       <ExplorerProvider enabled>
         <ExplorerMenu
@@ -201,6 +202,9 @@ test("a failed export surfaces an inline error message instead of failing silent
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Trop d'entités : affinez vos filtres.",
   );
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 test("SP-B5 : une ApiError (status réel, requestBlob) mappe aussi le message d'accès refusé", async () => {

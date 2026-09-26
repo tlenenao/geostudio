@@ -141,7 +141,7 @@ export function ExplorerDrawer() {
         {!datasetQuery.isLoading &&
           !recordsQuery.isLoading &&
           (datasetQuery.isError || recordsQuery.isError) && (
-            <p className="text-red-600">{t("common.dataError")}</p>
+            <p className="text-danger">{t("common.dataError")}</p>
           )}
         {!datasetQuery.isLoading &&
           !recordsQuery.isLoading &&

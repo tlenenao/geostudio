@@ -23,7 +23,7 @@ export function registerRichSectionWidget(): void {
           {t("widgetRichSection.markdownConfig")}
           <textarea
             aria-label={t("widgetRichSection.markdownConfig")}
-            className="rounded-md border border-slate-300 p-2 font-mono text-xs"
+            className="rounded-md border border-rule p-2 font-mono text-xs"
             rows={8}
             value={String(props.markdown ?? "")}
             onChange={(e) => onChange({ ...props, markdown: e.target.value })}

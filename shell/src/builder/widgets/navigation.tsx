@@ -22,7 +22,7 @@ export function registerNavigationWidget(): void {
           {t("widgetNavigation.orientationText")}
           <select
             aria-label={t("widgetNavigation.orientationLabel")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.direction ?? "horizontal")}
             onChange={(e) => onChange({ ...props, direction: e.target.value })}
           >

@@ -8,6 +8,7 @@ import { makeGeneratedPropsPanel } from "./generatedPropsPanel";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { WcWidgetManifest } from "./manifest";
 import type { DataSource, ItemClient } from "../../api/types";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 // DataSourceSelect (used when a manifest prop is of type "dataSource") reads
 // the item client via useItems, even when its query is disabled — so any
@@ -58,7 +59,12 @@ const manifest: WcWidgetManifest = {
 
 test("renders one field per manifest prop, typed accordingly", () => {
   const Panel = makeGeneratedPropsPanel(manifest);
-  render(<Panel props={{ initial: 3, title: "X", loud: true }} onChange={() => {}} />);
+  const { container } = render(
+    <Panel props={{ initial: 3, title: "X", loud: true }} onChange={() => {}} />,
+  );
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   expect(screen.getByLabelText("Valeur initiale")).toHaveAttribute("type", "number");
   expect(screen.getByLabelText("Valeur initiale")).toHaveValue(3);
   expect(screen.getByLabelText("Titre")).toHaveAttribute("type", "text");

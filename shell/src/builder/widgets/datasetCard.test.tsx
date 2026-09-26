@@ -7,6 +7,7 @@ import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { CollectionAdmin, DataSource, ItemClient } from "../../api/types";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -73,14 +74,14 @@ function renderPanel(props: Record<string, unknown>, dataSources: DataSource[] =
   const onChange = vi.fn();
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const Panel = getWidget("datasetCard")!.PropsPanel!;
-  render(
+  const { container } = render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={{} as unknown as ItemClient}>
         <Panel props={props} dataSources={dataSources} onChange={onChange} />
       </ItemClientProvider>
     </QueryClientProvider>,
   );
-  return onChange;
+  return { onChange, container };
 }
 
 test("PropsPanel binds a features data source", async () => {
@@ -91,19 +92,22 @@ test("PropsPanel binds a features data source", async () => {
     layer: "parcs",
     query: {},
   };
-  const onChange = renderPanel({}, [source]);
+  const { onChange, container } = renderPanel({}, [source]);
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   await userEvent.selectOptions(screen.getByLabelText("Source de données"), "ds1");
   expect(onChange).toHaveBeenCalledWith({ dataSourceId: "ds1" });
 });
 
 test("PropsPanel edits the optional title override", async () => {
-  const onChange = renderPanel({});
+  const { onChange } = renderPanel({});
   await userEvent.type(screen.getByLabelText("Titre (optionnel)"), "x");
   expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ title: "x" });
 });
 
 test("PropsPanel toggles the download buttons checkbox", async () => {
-  const onChange = renderPanel({ showDownload: true });
+  const { onChange } = renderPanel({ showDownload: true });
   await userEvent.click(screen.getByLabelText("Afficher le téléchargement"));
   expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ showDownload: false });
 });

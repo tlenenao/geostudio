@@ -29,14 +29,14 @@ export class AppErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.failed) {
       return (
-        <div className="flex h-screen flex-col items-center justify-center gap-4 bg-slate-50 text-center">
-          <p className="text-lg font-medium text-slate-800">Une erreur est survenue.</p>
-          <p className="text-sm text-slate-500">
+        <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background text-center">
+          <p className="text-lg font-medium text-ink">Une erreur est survenue.</p>
+          <p className="text-sm text-ink-3">
             Rechargez la page ; si le problème persiste, contactez votre administrateur.
           </p>
           <button
             type="button"
-            className="rounded bg-slate-800 px-4 py-2 text-sm text-white"
+            className="rounded bg-ink px-4 py-2 text-sm text-surface"
             onClick={() => window.location.reload()}
           >
             Recharger

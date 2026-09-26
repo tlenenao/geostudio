@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -13,7 +14,10 @@ beforeEach(() => {
 test("PropsPanel edits the markdown source", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("richSection")!.PropsPanel!;
-  render(<Panel props={{}} dataSources={[]} onChange={onChange} />);
+  const { container } = render(<Panel props={{}} dataSources={[]} onChange={onChange} />);
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   await userEvent.type(screen.getByLabelText("Markdown"), "#");
   expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ markdown: "#" });
 });

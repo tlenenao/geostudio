@@ -14,7 +14,7 @@ export function Locked({ reason, children }: { reason: string; children: ReactNo
   return (
     <fieldset disabled role="group" aria-describedby={reasonId} className="contents">
       {children}
-      <span id={reasonId} className="block px-3 py-1 text-xs text-slate-500">
+      <span id={reasonId} className="block px-3 py-1 text-xs text-ink-3">
         {reason}
       </span>
     </fieldset>

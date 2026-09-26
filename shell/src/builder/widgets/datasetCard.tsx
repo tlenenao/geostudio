@@ -39,7 +39,7 @@ export function registerDatasetCardWidget(): void {
           {t("widgetDatasetCard.titleOptional")}
           <input
             aria-label={t("widgetDatasetCard.titleOptional")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.title ?? "")}
             onChange={(e) => onChange({ ...props, title: e.target.value })}
           />

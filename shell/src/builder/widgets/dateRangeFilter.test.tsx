@@ -6,6 +6,7 @@ import { _resetRegistry, getWidget } from "../registry";
 import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsContext";
 import { registerDateRangeFilterWidget } from "./dateRangeFilter";
 import type { WidgetContext } from "../registry";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -34,6 +35,14 @@ test("sets the time range when both dates are filled, only when interactions is 
   await userEvent.type(screen.getByLabelText("Date de début"), "2026-01-01");
   await userEvent.type(screen.getByLabelText("Date de fin"), "2026-02-01");
   expect(await screen.findByText("timeRange:2026-01-01..2026-02-01")).toBeInTheDocument();
+});
+
+test("PropsPanel's label field has no hardcoded palette color", () => {
+  const Panel = getWidget("dateRangeFilter")!.PropsPanel!;
+  const { container } = render(<Panel props={{}} dataSources={[]} onChange={() => {}} />);
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 test("is a no-op when interactions is manual", async () => {
