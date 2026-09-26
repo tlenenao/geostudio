@@ -9,6 +9,8 @@ import { ItemActions } from "../shell/ItemActions";
 import { Input } from "../ui/kit/Input";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
+import { EmptyState } from "../ui/kit/EmptyState";
+import { NewItemButton } from "../shell/NewItemButton";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
 import { CatalogSpatialFilter, type Bbox } from "./CatalogSpatialFilter";
@@ -265,9 +267,41 @@ export function CatalogPage({
                   </Button>
                 </div>
               )}
-              {query.isSuccess && query.data.items.length === 0 && (
-                <p className="text-sm text-ink-3">{t("catalog.empty")}</p>
-              )}
+              {query.isSuccess &&
+                query.data.items.length === 0 &&
+                (() => {
+                  const hasActiveFilter =
+                    q.length > 0 ||
+                    ownerFilter.length > 0 ||
+                    selectedKeywords.length > 0 ||
+                    spatialBbox !== null;
+                  if (hasActiveFilter) {
+                    return (
+                      <EmptyState
+                        title={t("catalog.emptyFilteredTitle")}
+                        description={t("catalog.emptyFilteredDescription")}
+                        action={
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setSearchParams({});
+                              setSpatialBbox(null);
+                            }}
+                          >
+                            {t("catalog.resetFilters")}
+                          </Button>
+                        }
+                      />
+                    );
+                  }
+                  return (
+                    <EmptyState
+                      title={t("catalog.emptyNoFilterTitle")}
+                      description={t("catalog.emptyNoFilterDescription")}
+                      action={<NewItemButton />}
+                    />
+                  );
+                })()}
               {query.isSuccess && query.data.items.length > 0 && (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {query.data.items.map((item) => (

@@ -11,6 +11,9 @@ import { CatalogPage } from "./CatalogPage";
 import { mapInstances } from "../test/MockMaplibreMap";
 
 vi.mock("../shell/ItemActions", () => ({ ItemActions: () => <span>actions</span> }));
+vi.mock("../shell/NewItemButton", () => ({
+  NewItemButton: () => <button>Nouveau</button>,
+}));
 
 // CatalogPage monte désormais CatalogSpatialFilter (SP-55, GAP-06), qui
 // instancie une vraie carte MapLibre — jsdom n'a pas de WebGL (piège
@@ -450,6 +453,58 @@ test("openError affiche le message d'échec d'ouverture dans le volet Catalogue"
     wrapper,
   });
   expect(screen.getByRole("alert")).toHaveTextContent("Échec de l'ouverture de l'élément.");
+});
+
+test("propose de créer un item quand le catalogue est vide sans filtre", async () => {
+  server.use(
+    http.get("https://core.test/v1/items", () =>
+      HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 }),
+    ),
+    http.get("https://core.test/v1/items/facets", () =>
+      HttpResponse.json({ owners: [], keywords: [] }),
+    ),
+  );
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
+  expect(await screen.findByText("Aucun élément pour l'instant")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Nouveau" })).toBeInTheDocument();
+});
+
+test("propose de réinitialiser les filtres quand la recherche ne trouve rien", async () => {
+  server.use(
+    http.get("https://core.test/v1/items", ({ request }) => {
+      const url = new URL(request.url);
+      const q = url.searchParams.get("q");
+      if (q === "zzz-introuvable") {
+        return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
+      }
+      return HttpResponse.json({
+        items: [
+          {
+            pk: "1",
+            resourceType: "app",
+            title: "Alpha",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: null,
+            isPublished: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 12,
+      });
+    }),
+    http.get("https://core.test/v1/items/facets", () =>
+      HttpResponse.json({ owners: [], keywords: [] }),
+    ),
+  );
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
+  await screen.findByText("Alpha");
+  await userEvent.type(screen.getByLabelText("Rechercher"), "zzz-introuvable");
+  expect(await screen.findByText("Aucun résultat")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Réinitialiser les filtres" })).toBeInTheDocument();
 });
 
 test("suit ?type= quand il change après une navigation (DomainBar) sans remonter la page", async () => {

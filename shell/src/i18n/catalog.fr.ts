@@ -106,7 +106,12 @@ export const fr = {
   "catalog.keywordsLabel": "Mots-clés",
   "catalog.spatialSearchLabel": "Recherche spatiale",
   "catalog.loadError": "Erreur de chargement.",
-  "catalog.empty": "Aucun élément.",
+  "catalog.emptyFilteredDescription": "Aucun élément ne correspond à ces filtres.",
+  "catalog.emptyFilteredTitle": "Aucun résultat",
+  "catalog.emptyNoFilterDescription":
+    "Créez votre première carte, appli ou jeu de données pour commencer.",
+  "catalog.emptyNoFilterTitle": "Aucun élément pour l'instant",
+  "catalog.resetFilters": "Réinitialiser les filtres",
   "catalog.summaryLabel": "Résumé",
   "catalog.searchResultLabel": "Recherche",
   "catalog.spatialExtentLabel": "Emprise spatiale",
