@@ -13,6 +13,7 @@ import type { Variable } from "../../api/types";
 import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { VariablesProvider } from "../VariablesContext";
 import { registerBuiltinWidgets } from "./index";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -25,7 +26,7 @@ test("PropsPanel lists the app's variables by name", () => {
     { id: "v2", name: "message", type: "string", initialValue: "" },
   ];
   const Panel = getWidget("variableInput")!.PropsPanel;
-  render(
+  const { container } = render(
     <Panel
       props={{ variableId: "", label: "" }}
       dataSources={[]}
@@ -33,6 +34,9 @@ test("PropsPanel lists the app's variables by name", () => {
       variables={variables}
     />,
   );
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   const select = screen.getByLabelText("Variable liée");
   expect(screen.getByRole("option", { name: "seuil" })).toBeInTheDocument();
   expect(screen.getByRole("option", { name: "message" })).toBeInTheDocument();

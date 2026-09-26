@@ -7,7 +7,9 @@ import { useSetFilter } from "../DataContext";
 import { useSetCrossFilter } from "../AnalyticsContext";
 import { evaluateExpression } from "../expr";
 import type { DataRecord } from "../../api/types";
+import type { WidgetContext } from "../registry";
 import { ExplorerMenu } from "./ExplorerMenu";
+import { DataTable } from "../../ui/kit/DataTable";
 import { t } from "../../i18n";
 
 type CalculatedColumn = { label: string; expr: string };
@@ -15,6 +17,42 @@ type TableColumn = string | CalculatedColumn;
 
 function isCalculatedColumn(c: TableColumn): c is CalculatedColumn {
   return typeof c === "object" && c !== null;
+}
+
+function columnKey(c: TableColumn): string {
+  return isCalculatedColumn(c) ? c.label : c;
+}
+function columnLabel(c: TableColumn): string {
+  return isCalculatedColumn(c) ? c.label : c;
+}
+function cellValue(
+  c: TableColumn,
+  r: DataRecord,
+  ctx: Pick<WidgetContext, "variables" | "user">,
+): string {
+  if (!isCalculatedColumn(c)) return String(r.properties[c] ?? "");
+  const value = evaluateExpression(c.expr, {
+    vars: ctx.variables ?? {},
+    record: r.properties,
+    user: ctx.user ?? { name: "" },
+  });
+  return value === undefined || value === null ? "" : String(value);
+}
+
+/**
+ * Adapte les colonnes du widget table (clé de champ simple ou colonne
+ * calculée CEL) vers la forme attendue par `DataTable` — privé au fichier,
+ * pas de nouvelle interface publique.
+ */
+function toDataTableColumns(
+  columns: TableColumn[],
+  ctx: Pick<WidgetContext, "variables" | "user">,
+): { key: string; label: string; render: (row: DataRecord) => string }[] {
+  return columns.map((c) => ({
+    key: columnKey(c),
+    label: columnLabel(c),
+    render: (row: DataRecord) => cellValue(c, row, ctx),
+  }));
 }
 
 function firstField(records: DataRecord[]): string | undefined {
@@ -44,7 +82,7 @@ export function registerDataWidgets(): void {
           {t("widgetData.titleField")}
           <input
             aria-label={t("widgetData.titleField")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.titleField ?? "")}
             onChange={(e) => onChange({ ...props, titleField: e.target.value })}
           />
@@ -61,7 +99,7 @@ export function registerDataWidgets(): void {
       const data = ctx.data;
       if (!data || data.loading)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
-      if (data.error) return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
+      if (data.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;
       if (data.records.length === 0)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.noData")}</p>;
       const field = String(props.titleField || firstField(data.records) || "");
@@ -162,7 +200,7 @@ export function registerDataWidgets(): void {
             {t("widgetData.columnsLabel")}
             <input
               aria-label={t("widgetData.columnsAria")}
-              className="h-9 rounded-md border border-slate-300 px-2"
+              className="h-9 rounded-md border border-rule px-2"
               value={plainColumns.join(",")}
               onChange={(e) =>
                 setPlainColumns(
@@ -175,12 +213,12 @@ export function registerDataWidgets(): void {
             />
           </label>
           {calculatedColumns.map((col, i) => (
-            <div key={i} className="flex flex-col gap-1 rounded border border-slate-200 p-2">
+            <div key={i} className="flex flex-col gap-1 rounded border border-rule p-2">
               <label className="flex flex-col gap-1">
                 {t("widgetData.calcColumnLabelText")}
                 <input
                   aria-label={t("widgetData.calcColumnLabelAria", { n: i + 1 })}
-                  className="h-9 rounded-md border border-slate-300 px-2"
+                  className="h-9 rounded-md border border-rule px-2"
                   value={col.label}
                   onChange={(e) => updateCalculatedColumn(i, { label: e.target.value })}
                 />
@@ -189,14 +227,14 @@ export function registerDataWidgets(): void {
                 {t("widgetData.calcColumnExprText")}
                 <input
                   aria-label={t("widgetData.calcColumnExprAria", { n: i + 1 })}
-                  className="h-9 rounded-md border border-slate-300 px-2 font-mono"
+                  className="h-9 rounded-md border border-rule px-2 font-mono"
                   value={col.expr}
                   onChange={(e) => updateCalculatedColumn(i, { expr: e.target.value })}
                 />
               </label>
               <button
                 type="button"
-                className="self-start text-xs text-red-600 underline"
+                className="self-start text-xs text-danger underline"
                 onClick={() => removeCalculatedColumn(i)}
               >
                 {t("widgetData.removeCalcColumn")}
@@ -205,7 +243,7 @@ export function registerDataWidgets(): void {
           ))}
           <button
             type="button"
-            className="self-start rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+            className="self-start rounded border border-rule px-2 py-1 text-xs hover:bg-sunken"
             onClick={addCalculatedColumn}
           >
             {t("widgetData.addCalcColumn")}
@@ -226,29 +264,17 @@ export function registerDataWidgets(): void {
       const data = ctx.data;
       if (!data || data.loading)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
-      if (data.error) return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
+      if (data.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;
       if (data.records.length === 0)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.noData")}</p>;
       const rawColumns = (props.columns as TableColumn[] | undefined) ?? [];
       const columns: TableColumn[] = rawColumns.length
         ? rawColumns
         : Object.keys(data.records[0]?.properties ?? {});
-
-      function columnKey(c: TableColumn): string {
-        return isCalculatedColumn(c) ? c.label : c;
-      }
-      function columnLabel(c: TableColumn): string {
-        return isCalculatedColumn(c) ? c.label : c;
-      }
-      function cellValue(c: TableColumn, r: DataRecord): string {
-        if (!isCalculatedColumn(c)) return String(r.properties[c] ?? "");
-        const value = evaluateExpression(c.expr, {
-          vars: ctx.variables ?? {},
-          record: r.properties,
-          user: ctx.user ?? { name: "" },
-        });
-        return value === undefined || value === null ? "" : String(value);
-      }
+      // Seules les colonnes de champ simple sont triables — inchangé de
+      // l'implémentation manuelle précédente, où seul le <th> d'une colonne
+      // non calculée portait un onClick vers toggleSort.
+      const sortableKeys = new Set(columns.filter((c): c is string => !isCalculatedColumn(c)));
 
       const sorted = [...data.records];
       if (sortCol) {
@@ -266,6 +292,7 @@ export function registerDataWidgets(): void {
       const shown = sorted.slice(current * pageSize, current * pageSize + pageSize);
 
       function toggleSort(c: string) {
+        if (!sortableKeys.has(c)) return;
         if (sortCol === c) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
         else {
           setSortCol(c);
@@ -296,46 +323,15 @@ export function registerDataWidgets(): void {
             resolvedSource={data.resolvedSource}
             hasGeometry={data.hasGeometry}
           />
-          <table className="w-full text-left text-[var(--gs-color-text)]">
-            <thead>
-              <tr>
-                {columns.map((c) => {
-                  const key = columnKey(c);
-                  return (
-                    <th key={key} className="border-b border-[var(--gs-color-border)] p-1">
-                      {isCalculatedColumn(c) ? (
-                        <span className="font-medium">{columnLabel(c)}</span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="flex items-center gap-1 font-medium"
-                          onClick={() => toggleSort(key)}
-                        >
-                          {columnLabel(c)}
-                          {sortCol === key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
-                        </button>
-                      )}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((r) => (
-                <tr
-                  key={String(r.id)}
-                  className="cursor-pointer hover:bg-[var(--gs-color-surface)]"
-                  onClick={() => selectRecord(r)}
-                >
-                  {columns.map((c) => (
-                    <td key={columnKey(c)} className="border-b border-[var(--gs-color-border)] p-1">
-                      {cellValue(c, r)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            columns={toDataTableColumns(columns, ctx)}
+            rows={shown}
+            getRowId={(r) => String(r.id)}
+            sortKey={sortCol ?? undefined}
+            sortDirection={sortDir}
+            onSortChange={toggleSort}
+            onRowClick={selectRecord}
+          />
           {pageCount > 1 && (
             <div className="mt-auto flex items-center justify-between pt-1 text-[10px] text-[var(--gs-color-muted)]">
               <button

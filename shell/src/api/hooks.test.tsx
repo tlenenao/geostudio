@@ -2,10 +2,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import * as ToastPrimitive from "@radix-ui/react-toast";
 import { http, HttpResponse } from "msw";
 import { server } from "../test/msw/server";
 import { createItemClient } from "./itemClient";
 import { ItemClientProvider } from "./ItemClientProvider";
+import { ToastProvider } from "../ui/kit/ToastProvider";
 import type { ItemClient } from "./types";
 import {
   useAppConfig,
@@ -41,9 +43,14 @@ function wrapper({ children }: { children: ReactNode }) {
     getToken: () => "test-token",
   });
   return (
-    <QueryClientProvider client={queryClient}>
-      <ItemClientProvider client={client}>{children}</ItemClientProvider>
-    </QueryClientProvider>
+    <ToastPrimitive.Provider>
+      <QueryClientProvider client={queryClient}>
+        <ItemClientProvider client={client}>
+          <ToastProvider>{children}</ToastProvider>
+        </ItemClientProvider>
+      </QueryClientProvider>
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>
   );
 }
 
@@ -209,9 +216,14 @@ function makeWrapper(client: ItemClient) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <QueryClientProvider client={queryClient}>
-        <ItemClientProvider client={client}>{children}</ItemClientProvider>
-      </QueryClientProvider>
+      <ToastPrimitive.Provider>
+        <QueryClientProvider client={queryClient}>
+          <ItemClientProvider client={client}>
+            <ToastProvider>{children}</ToastProvider>
+          </ItemClientProvider>
+        </QueryClientProvider>
+        <ToastPrimitive.Viewport />
+      </ToastPrimitive.Provider>
     );
   };
 }
@@ -268,9 +280,14 @@ test("useCreateReportSchedule crée un rapport planifié et invalide items", asy
   const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
   function reportWrapper({ children }: { children: ReactNode }) {
     return (
-      <QueryClientProvider client={queryClient}>
-        <ItemClientProvider client={client}>{children}</ItemClientProvider>
-      </QueryClientProvider>
+      <ToastPrimitive.Provider>
+        <QueryClientProvider client={queryClient}>
+          <ItemClientProvider client={client}>
+            <ToastProvider>{children}</ToastProvider>
+          </ItemClientProvider>
+        </QueryClientProvider>
+        <ToastPrimitive.Viewport />
+      </ToastPrimitive.Provider>
     );
   }
   const { result } = renderHook(() => useCreateReportSchedule(), { wrapper: reportWrapper });
@@ -321,9 +338,14 @@ test("useSaveMap invalidates both the map config and the item queries (I4)", asy
   const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
   function wrapper({ children }: { children: ReactNode }) {
     return (
-      <QueryClientProvider client={queryClient}>
-        <ItemClientProvider client={client}>{children}</ItemClientProvider>
-      </QueryClientProvider>
+      <ToastPrimitive.Provider>
+        <QueryClientProvider client={queryClient}>
+          <ItemClientProvider client={client}>
+            <ToastProvider>{children}</ToastProvider>
+          </ItemClientProvider>
+        </QueryClientProvider>
+        <ToastPrimitive.Viewport />
+      </ToastPrimitive.Provider>
     );
   }
   const { result } = renderHook(() => useSaveMap("77"), { wrapper });

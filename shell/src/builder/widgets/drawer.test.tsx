@@ -6,6 +6,7 @@ import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ActionBus } from "../ActionBus";
 import type { AuthState } from "../../auth/useAuth";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 const authState: AuthState = {
   isLoading: false,
@@ -31,7 +32,7 @@ test("closed by default, opens on the open action, closes on Escape and backdrop
   const bus = new ActionBus();
   bus.configure([{ id: "m1", from: "trigger", event: "clicked", to: "drawer1", action: "open" }]);
   const Drawer = getWidget("drawer")!.Component;
-  render(
+  const { container } = render(
     <Drawer
       props={{
         title: "Filtres",
@@ -45,13 +46,16 @@ test("closed by default, opens on the open action, closes on Escape and backdrop
   bus.emit("trigger", "clicked");
   expect(await screen.findByRole("dialog", { name: "Filtres" })).toBeInTheDocument();
   expect(screen.getByText("Corps")).toBeInTheDocument();
+  // SP-B12c : le tiroir ouvert (scrim + panneau) n'a pas de couleur
+  // Tailwind codée en dur.
+  expectTokenizedClasses(container);
   await userEvent.keyboard("{Escape}");
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 test("edit mode shows a static badge and never opens", () => {
   const Drawer = getWidget("drawer")!.Component;
-  render(
+  const { container } = render(
     <Drawer
       props={{ title: "Filtres", items: [], side: "right" }}
       ctx={{ mode: "edit" } as WidgetContext}
@@ -59,18 +63,20 @@ test("edit mode shows a static badge and never opens", () => {
   );
   expect(screen.getByText("Tiroir : Filtres")).toBeInTheDocument();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expectTokenizedClasses(container);
 });
 
 test("PropsPanel edits the title and the side", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("drawer")!.PropsPanel;
-  render(
+  const { container } = render(
     <Panel
       props={{ title: "Filtres", items: [], side: "right" }}
       dataSources={[]}
       onChange={onChange}
     />,
   );
+  expectTokenizedClasses(container);
   await userEvent.selectOptions(screen.getByLabelText("Côté du tiroir"), "left");
   expect(onChange.mock.calls.at(-1)![0].side).toBe("left");
 });

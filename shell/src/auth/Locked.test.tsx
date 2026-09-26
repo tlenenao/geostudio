@@ -2,10 +2,11 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Locked } from "./Locked";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 describe("Locked", () => {
   it("affiche la raison et rend le contenu inopérant", () => {
-    render(
+    const { container } = render(
       <Locked reason="Écriture réservée aux éditeurs de cet élément.">
         <button>Modifier</button>
       </Locked>,
@@ -13,6 +14,9 @@ describe("Locked", () => {
     const button = screen.getByRole("button", { name: "Modifier" });
     expect(button).toBeDisabled();
     expect(screen.getByText("Écriture réservée aux éditeurs de cet élément.")).toBeVisible();
+    // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+    // --gs-* à la place.
+    expectTokenizedClasses(container);
   });
 
   it("relie la raison au contenu pour les lecteurs d'écran", () => {

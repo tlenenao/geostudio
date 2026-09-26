@@ -30,10 +30,13 @@ import { genEdgeId, hasIncomingEdge, topologicalOrder, wouldCreateCycle } from "
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 import { t } from "../../i18n";
 
+// SP-B12c : pas de token catégoriel à 3 valeurs dans tokens.css — ok/warn/
+// accent réutilisés ici pour leur distinction visuelle (vert/ambre/teal),
+// pas pour leur sens sémantique de statut.
 const KIND_COLOR: Record<PipelineNode["kind"], string> = {
-  reader: "border-emerald-500 bg-emerald-50",
-  transform: "border-amber-500 bg-amber-50",
-  writer: "border-sky-500 bg-sky-50",
+  reader: "border-ok bg-ok-soft",
+  transform: "border-warn bg-warn-soft",
+  writer: "border-accent bg-accent-soft",
 };
 
 // Bagage porté par le `data` de chaque nœud React Flow (SP-15g) — étend
@@ -80,7 +83,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
       {node.nodeStat && (
         <span
           role="status"
-          className="absolute -right-2 -top-2 rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] text-white"
+          className="absolute -right-2 -top-2 rounded-full bg-ok px-1.5 py-0.5 text-[10px] text-surface"
         >
           {node.nodeStat.rowCount ?? "?"}
         </span>

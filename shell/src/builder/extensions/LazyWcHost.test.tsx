@@ -5,6 +5,7 @@ import { makeLazyWcHost } from "./LazyWcHost";
 import { _resetModuleCache } from "./moduleCache";
 import type { ExtensionManifest } from "../../api/types";
 import type { WidgetContext } from "../registry";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 afterEach(cleanup);
 beforeEach(() => _resetModuleCache());
@@ -32,12 +33,14 @@ test("shows a loading placeholder, then delegates to WcHost once the module reso
   const ctx = { mode: "runtime" } as WidgetContext;
   const { container } = render(<LazyWcHost props={{}} ctx={ctx} />);
   expect(screen.getByText("Chargement…")).toBeInTheDocument();
+  expectTokenizedClasses(container);
   await waitFor(() => expect(container.querySelector("test-lazy-ready-widget")).not.toBeNull());
 });
 
 test("shows an error placeholder when the module import rejects", async () => {
   const LazyWcHost = makeLazyWcHost(errorManifest);
   const ctx = { mode: "runtime" } as WidgetContext;
-  render(<LazyWcHost props={{}} ctx={ctx} />);
+  const { container } = render(<LazyWcHost props={{}} ctx={ctx} />);
   expect(await screen.findByText("Extension indisponible")).toBeInTheDocument();
+  expectTokenizedClasses(container);
 });

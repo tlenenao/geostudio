@@ -41,11 +41,11 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function Harness() {
+function Harness({ initialEntries }: { initialEntries?: string[] } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client = createItemClient({ coreUrl: "https://core.test", getToken: () => "t" });
   return (
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries ?? ["/"]}>
       <QueryClientProvider client={queryClient}>
         <ItemClientProvider client={client}>
           <SqlLabPage />
@@ -129,6 +129,28 @@ test("enregistre l'historique au succès et recharge une requête passée au cli
   });
   await userEvent.click(historyButton);
   expect(textarea).toHaveValue("select id from x");
+});
+
+test("restaure la requête sélectionnée dans l'historique via l'URL", async () => {
+  localStorage.setItem(
+    "geostudio.sqlLab.history",
+    JSON.stringify([
+      { id: "h1", sql: "select 2", executedAt: "2026-09-26T00:00:00Z", status: "ok", rowCount: 1 },
+    ]),
+  );
+  render(<Harness initialEntries={["/analytics/sql?historyId=h1"]} />);
+  expect(await screen.findByRole("textbox", { name: /requête/i })).toHaveValue("select 2");
+});
+
+test("ignore un historyId inconnu dans l'URL sans planter, et laisse le SQL inchangé", async () => {
+  localStorage.setItem(
+    "geostudio.sqlLab.history",
+    JSON.stringify([
+      { id: "h1", sql: "select 2", executedAt: "2026-09-26T00:00:00Z", status: "ok", rowCount: 1 },
+    ]),
+  );
+  render(<Harness initialEntries={["/analytics/sql?historyId=inconnu"]} />);
+  expect(await screen.findByRole("textbox", { name: /requête/i })).toHaveValue("");
 });
 
 test("affiche un état vide dans l'onglet Historique tant qu'aucune requête n'a été exécutée", async () => {

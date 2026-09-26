@@ -57,6 +57,14 @@ function Harness() {
   );
 }
 
+test("shows the shared LoadingState (role=status, spinner) while /v1/extensions is in flight", () => {
+  server.use(http.get("https://core.test/v1/extensions", () => new Promise(() => {})));
+  render(<Harness />);
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
+});
+
 test("lists extensions (including disabled) and toggles enabled via PATCH", async () => {
   let patchedBody: unknown;
   server.use(

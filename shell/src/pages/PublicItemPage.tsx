@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useItemClient } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 registerBuiltinWidgets();
 
@@ -15,12 +16,12 @@ export function PublicItemPage({ pk }: { pk: string }) {
   });
 
   if (configQuery.isLoading) {
-    return <p role="status">Chargement…</p>;
+    return <LoadingState />;
   }
   if (configQuery.isError || !configQuery.data) {
     return (
       <div className="p-8 text-center">
-        <p role="alert" className="text-sm text-slate-600">
+        <p role="alert" className="text-sm text-ink-2">
           Page introuvable.
         </p>
       </div>

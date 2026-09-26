@@ -7,9 +7,9 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-slate-900 text-white hover:bg-slate-800",
-        outline: "border border-slate-300 bg-white hover:bg-slate-100",
-        ghost: "hover:bg-slate-100",
+        default: "bg-accent text-surface hover:bg-accent-ink",
+        outline: "border border-rule bg-surface hover:bg-sunken",
+        ghost: "hover:bg-sunken",
       },
       size: { default: "h-9 px-4 py-2", sm: "h-8 px-3", icon: "h-9 w-9" },
     },

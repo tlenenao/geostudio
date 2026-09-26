@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -11,7 +11,9 @@ import type { CollectionSchema, DataSource, ItemClient } from "../../api/types";
 import type { WidgetContext } from "../registry";
 import { ActionBus } from "../ActionBus";
 import { FeatureValidationError } from "../../api/itemClient";
+import { t } from "../../i18n";
 import type { FormField } from "./form";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -69,14 +71,14 @@ function renderPanel(
     );
   }
 
-  render(
+  const { container } = render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
         <Wrapper />
       </ItemClientProvider>
     </QueryClientProvider>,
   );
-  return { onChange, client };
+  return { onChange, client, container };
 }
 
 test("form widget is registered with submitted/failed events and reset/loadRecord actions", () => {
@@ -92,14 +94,28 @@ test("form widget is registered with submitted/failed events and reset/loadRecor
   });
 });
 
+test("props panel shows the shared LoadingState (role=status, spinner) while the schema is in flight", () => {
+  renderPanel(
+    { dataSourceId: "ds1", fields: [], submitLabel: "Enregistrer", geometryType: null },
+    vi.fn(),
+    { getCollectionSchema: vi.fn(() => new Promise<CollectionSchema>(() => {})) },
+  );
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement du schéma…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
+});
+
 test("props panel offers a button to load fields once the schema resolves", async () => {
-  const { onChange } = renderPanel({
+  const { onChange, container } = renderPanel({
     dataSourceId: "ds1",
     fields: [],
     submitLabel: "Enregistrer",
     geometryType: null,
   });
   const button = await screen.findByRole("button", { name: "Charger les champs du schéma" });
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   await userEvent.click(button);
   expect(onChange).toHaveBeenCalledWith({
     dataSourceId: "ds1",
@@ -137,7 +153,7 @@ test("props panel offers a button to load fields once the schema resolves", asyn
 });
 
 test("props panel hides the load button once fields are already loaded", () => {
-  renderPanel({
+  const { container } = renderPanel({
     dataSourceId: "ds1",
     fields: [
       { name: "titre", type: "string", label: "Titre", order: 0, hidden: false, required: true },
@@ -148,6 +164,9 @@ test("props panel hides the load button once fields are already loaded", () => {
   expect(
     screen.queryByRole("button", { name: "Charger les champs du schéma" }),
   ).not.toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place (couvre FieldOverrides).
+  expectTokenizedClasses(container);
 });
 
 test("props panel shows an error when the schema fails to load", async () => {
@@ -321,7 +340,7 @@ function renderForm(fields: FormField[] = visibleFields, ctx: Partial<WidgetCont
   const client = { createFeature: vi.fn().mockResolvedValue({ id: 1 }) } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const Form = getWidget("form")!.Component;
-  render(
+  const { container } = render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
         <Form
@@ -331,6 +350,7 @@ function renderForm(fields: FormField[] = visibleFields, ctx: Partial<WidgetCont
       </ItemClientProvider>
     </QueryClientProvider>,
   );
+  return { container };
 }
 
 test("form renders visible fields ordered, skipping hidden ones", () => {
@@ -348,10 +368,41 @@ test("form shows a required error after blurring an empty required field", async
   expect(await screen.findByRole("alert")).toHaveTextContent("Champ requis");
 });
 
+test("associe le message d'erreur au champ via aria-describedby (SP-B8)", async () => {
+  renderForm();
+  const titre = screen.getByLabelText("Titre");
+  await userEvent.click(titre);
+  await userEvent.tab();
+  await screen.findByRole("alert");
+  expect(titre).toHaveAttribute("aria-invalid", "true");
+  const describedBy = titre.getAttribute("aria-describedby");
+  expect(describedBy).toBeTruthy();
+  const errorEl = document.getElementById(describedBy!);
+  expect(errorEl).toHaveTextContent("Champ requis");
+  expect(errorEl).toHaveAttribute("role", "alert");
+});
+
+test("un champ valide n'a pas aria-invalid (SP-B8)", () => {
+  renderForm();
+  expect(screen.getByLabelText("Titre")).not.toHaveAttribute("aria-invalid");
+  expect(screen.getByLabelText("Gravité")).not.toHaveAttribute("aria-invalid");
+});
+
 test("form blocks submit and surfaces one error per invalid required field", async () => {
   renderForm();
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   expect(screen.getAllByRole("alert")).toHaveLength(2); // titre + gravite, tous deux requis et vides
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place. Le conteneur entier n'est pas testable via
+  // expectTokenizedClasses ici : le bouton "Enregistrer" voisin porte
+  // volontairement text-white (couleur "primary" de l'app auteur).
+  expect(screen.getByRole("button", { name: "Réinitialiser" })).toHaveClass("border-rule");
+  // fieldInputCls (form.tsx) n'était couvert par aucune assertion directe
+  // (trouvé en revue de la Tâche 31) : vérifier ici, sur le champ "Titre"
+  // (rendu via le chemin par défaut string), que la classe est bien
+  // tokenisée et non la couleur littérale d'origine.
+  expect(screen.getByLabelText("Titre")).toHaveClass("border-rule");
+  expect(screen.getByLabelText("Titre").className).not.toMatch(/\bborder-slate-\d{2,3}\b/);
 });
 
 test("form validates a numeric field against its min bound", async () => {
@@ -409,7 +460,7 @@ function renderConnectedForm({
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
   const Form = getWidget("form")!.Component;
-  render(
+  const { container } = render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
         <Form
@@ -426,7 +477,7 @@ function renderConnectedForm({
       </ItemClientProvider>
     </QueryClientProvider>,
   );
-  return { client, invalidateSpy };
+  return { client, invalidateSpy, container };
 }
 
 test("a valid submit calls createFeature with the bound collection and properties", async () => {
@@ -610,6 +661,11 @@ test("loadRecord pre-fills the form from the selected record's properties", asyn
   await waitFor(() => expect(screen.getByLabelText("Titre")).toHaveValue("Fuite existante"));
   expect(screen.getByLabelText("Gravité")).toHaveValue("moyenne");
   expect(screen.getByText(/Modification de l'enregistrement #7/)).toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place. Le conteneur entier n'est pas testable via
+  // expectTokenizedClasses ici : le bouton "Enregistrer" voisin porte
+  // volontairement text-white (couleur "primary" de l'app auteur).
+  expect(screen.getByRole("button", { name: "Supprimer" })).toHaveClass("text-danger");
 });
 
 test("loadRecord pre-fills longitude/latitude for a Point geometry", async () => {
@@ -732,8 +788,7 @@ test("updating a record resubmits a hidden field's original value unchanged", as
   );
 });
 
-test("Supprimer calls deleteFeature after confirmation, invalidates, and exits edit mode", async () => {
-  vi.spyOn(window, "confirm").mockReturnValue(true);
+test("Supprimer demande confirmation via ConfirmDialog, appelle deleteFeature, invalide, et sort du mode édition", async () => {
   const bus = new ActionBus();
   bus.configure([
     { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
@@ -746,6 +801,9 @@ test("Supprimer calls deleteFeature after confirmation, invalidates, and exits e
   });
   await screen.findByText(/Modification de l'enregistrement #7/);
   await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
+  const dialog = screen.getByRole("dialog");
+  expect(client.deleteFeature).not.toHaveBeenCalled();
+  await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
   await waitFor(() => expect(client.deleteFeature).toHaveBeenCalledWith("incidents", "7"));
   expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["datasource"] });
   expect(screen.queryByText(/Modification de l'enregistrement/)).not.toBeInTheDocument();
@@ -823,7 +881,6 @@ test("updating a non-Point record resubmits its original geometry unchanged", as
 });
 
 test("Supprimer does nothing when the confirmation is declined", async () => {
-  vi.spyOn(window, "confirm").mockReturnValue(false);
   const bus = new ActionBus();
   bus.configure([
     { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
@@ -836,8 +893,11 @@ test("Supprimer does nothing when the confirmation is declined", async () => {
   });
   await screen.findByText(/Modification de l'enregistrement #7/);
   await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
+  const dialog = screen.getByRole("dialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: t("confirmDialog.cancel") }));
   expect(client.deleteFeature).not.toHaveBeenCalled();
   expect(screen.getByText(/Modification de l'enregistrement #7/)).toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 test("hides the write buttons once the collection permission resolves to canWrite=false", async () => {
@@ -927,7 +987,10 @@ test("désactive le champ attachment tant que l'entité n'est pas enregistrée",
   expect(screen.queryByLabelText(/ajouter des fichiers/i)).not.toBeInTheDocument();
 });
 
-test("supprime une pièce jointe au clic sur Supprimer", async () => {
+test("demande confirmation via ConfirmDialog avant de supprimer une pièce jointe", async () => {
+  // Gap réel (pas une migration de window.confirm) : avant ce correctif,
+  // handleDelete appelait client.deleteAttachment directement, sans aucune
+  // confirmation.
   const bus = new ActionBus();
   bus.configure([
     { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
@@ -955,7 +1018,46 @@ test("supprime une pièce jointe au clic sur Supprimer", async () => {
   bus.emit("table1", "itemSelected", { id: 7, properties: {} });
   await screen.findByText("a.jpg");
   await userEvent.click(screen.getByRole("button", { name: /supprimer a\.jpg/i }));
+  expect(deleteAttachment).not.toHaveBeenCalled();
+  const dialog = screen.getByRole("dialog");
+  expect(dialog).toHaveTextContent(t("widgetForm.confirmDeleteAttachment", { filename: "a.jpg" }));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
   expect(deleteAttachment).toHaveBeenCalledWith("incidents", "7", "att1");
+});
+
+test("décliner la confirmation ne supprime pas la pièce jointe", async () => {
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
+  const listAttachments = vi.fn().mockResolvedValue([
+    {
+      id: "att1",
+      fieldKey: "photos",
+      filename: "a.jpg",
+      contentType: "image/jpeg",
+      byteSize: 10,
+      createdAt: "2026-01-01",
+    },
+  ]);
+  const deleteAttachment = vi.fn().mockResolvedValue(undefined);
+  const downloadAttachment = vi
+    .fn()
+    .mockResolvedValue({ blob: new Blob(["x"]), filename: "a.jpg" });
+  renderConnectedForm({
+    fields: attachmentFields,
+    client: { listAttachments, deleteAttachment, downloadAttachment },
+    bus,
+    widgetId: "form1",
+  });
+  bus.emit("table1", "itemSelected", { id: 7, properties: {} });
+  await screen.findByText("a.jpg");
+  await userEvent.click(screen.getByRole("button", { name: /supprimer a\.jpg/i }));
+  const dialog = screen.getByRole("dialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: t("confirmDialog.cancel") }));
+  expect(deleteAttachment).not.toHaveBeenCalled();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByText("a.jpg")).toBeInTheDocument();
 });
 
 test("un champ attachment marqué requis ne bloque jamais la soumission (revue finale, I4)", async () => {

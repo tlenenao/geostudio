@@ -10,6 +10,7 @@ import { ItemClientProvider } from "../api/ItemClientProvider";
 import { _resetRegistry, getWidget, registerWidget } from "./registry";
 import { registerBuiltinWidgets } from "./widgets";
 import { LayoutEditor } from "./LayoutEditor";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 // WidgetHost (mounted by GridCanvas for each item) calls useAuth(), which
 // requires an <AuthProvider> ancestor outside of tests. Mocked the same way
@@ -46,9 +47,13 @@ beforeEach(() => {
 
 test("adds a widget from the palette, positioned below existing items, and selects it", async () => {
   const onChange = vi.fn();
-  render(<LayoutEditor items={[]} onChange={onChange} dataSources={[]} breakpoint="lg" />, {
-    wrapper,
-  });
+  const { container } = render(
+    <LayoutEditor items={[]} onChange={onChange} dataSources={[]} breakpoint="lg" />,
+    { wrapper },
+  );
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   await userEvent.click(screen.getByRole("button", { name: "Texte" }));
   expect(onChange).toHaveBeenCalledTimes(1);
   const items = onChange.mock.calls[0][0] as WidgetItem[];

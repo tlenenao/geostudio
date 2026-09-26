@@ -2,8 +2,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { createMemoryRouter, Link, RouterProvider, useParams } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import * as ToastPrimitive from "@radix-ui/react-toast";
 import type {
   InstanceInfo,
   Item,
@@ -12,8 +13,10 @@ import type {
   PipelinePayload,
 } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
+import { ToastProvider } from "../ui/kit/ToastProvider";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 import { PipelineBuilderPage } from "./PipelineBuilderPage";
+import { t } from "../i18n";
 
 // PipelineBuilderPage renders PipelineNodeInspector -> PipelinePreviewPanel, which can mount
 // PipelinePreviewMap (SP-15g Task 16) -> maplibre-gl. jsdom lacks URL.createObjectURL, which
@@ -118,7 +121,11 @@ const OWNED_PIPELINE_ITEM: Item = {
   language: "fr",
 };
 
-function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}) {
+// `route` : chemin (avec éventuelle chaîne de requête) que voit
+// useUrlSyncedState via useSearchParams (SP-B9c, même patron que la Tâche
+// 17 sur AppBuilderPage.test.tsx) — défaut "/" sans paramètre, donc tous
+// les tests existants de ce fichier (écrits avant SP-B9c) restent inchangés.
+function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}, route = "/") {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client: Partial<ItemClient> = {
     getPipelineOps: () => Promise.resolve(CATALOG),
@@ -145,16 +152,135 @@ function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}) {
       }),
     ...overrides,
   };
-  render(
-    <MemoryRouter>
+  const router = createMemoryRouter(
+    [
+      {
+        path: "*",
+        element: (
+          <QueryClientProvider client={qc}>
+            <ItemClientProvider client={client as ItemClient}>
+              <ToastProvider>
+                <PipelineBuilderPage pk={pk} initialTitle="Nettoyer villes" />
+              </ToastProvider>
+            </ItemClientProvider>
+          </QueryClientProvider>
+        ),
+      },
+    ],
+    { initialEntries: [route] },
+  );
+  const { unmount } = render(
+    <ToastPrimitive.Provider>
+      <RouterProvider router={router} />
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>,
+  );
+  return { client, unmount };
+}
+
+// Harnais dédié aux tests de garde de navigation (SP-B6d, même patron que
+// Task 27/MapEditorPage) : un lien factice vers une autre page suffit, le
+// chrome réel (AppLayout/TopBar) est hors périmètre de ce fichier.
+function renderPageWithNavigation(
+  pk: string | null,
+  overrides: Partial<ItemClient> = {},
+  route = "/",
+) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client: Partial<ItemClient> = {
+    getPipelineOps: () => Promise.resolve(CATALOG),
+    listCollections: () => Promise.resolve([]),
+    getPipelineRuns: vi.fn().mockResolvedValue([]),
+    getItem: vi.fn().mockResolvedValue(OWNED_PIPELINE_ITEM),
+    getInstanceInfo: () =>
+      Promise.resolve({
+        readOnly: false,
+        etlEnabled: true,
+        exportEnabled: false,
+        appExportEnabled: false,
+        tileset3dEnabled: false,
+        terrain3dEnabled: false,
+        copilotEnabled: false,
+        adminToolsEnabled: false,
+        quotasEnabled: false,
+      }),
+    ...overrides,
+  };
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: (
+          <QueryClientProvider client={qc}>
+            <ItemClientProvider client={client as ItemClient}>
+              <ToastProvider>
+                <Link to="/autre">Autre page</Link>
+                <PipelineBuilderPage pk={pk} initialTitle="Nettoyer villes" />
+              </ToastProvider>
+            </ItemClientProvider>
+          </QueryClientProvider>
+        ),
+      },
+      { path: "/autre", element: <p>Autre page ouverte</p> },
+    ],
+    { initialEntries: [route] },
+  );
+  return render(
+    <ToastPrimitive.Provider>
+      <RouterProvider router={router} />
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>,
+  );
+}
+
+// Harnais pour le round-trip réel de création (SP-B6d) : mêmes routes que
+// shell/src/shell/routes.tsx (`/pipelines/new` -> pk=null,
+// `/pipelines/:pk/edit` -> pk réel) pour vérifier que la redirection interne
+// post-création (onSave, pk === null) n'est pas bloquée par la garde.
+function renderNewPipelineRoutes(overrides: Partial<ItemClient> = {}) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client: Partial<ItemClient> = {
+    getPipelineOps: () => Promise.resolve(CATALOG),
+    listCollections: () => Promise.resolve([]),
+    getPipelineRuns: vi.fn().mockResolvedValue([]),
+    getItem: vi.fn().mockResolvedValue(OWNED_PIPELINE_ITEM),
+    getInstanceInfo: () =>
+      Promise.resolve({
+        readOnly: false,
+        etlEnabled: true,
+        exportEnabled: false,
+        appExportEnabled: false,
+        tileset3dEnabled: false,
+        terrain3dEnabled: false,
+        copilotEnabled: false,
+        adminToolsEnabled: false,
+        quotasEnabled: false,
+      }),
+    ...overrides,
+  };
+  function EditRoute() {
+    const { pk } = useParams();
+    return <PipelineBuilderPage pk={pk!} />;
+  }
+  const router = createMemoryRouter(
+    [
+      { path: "/pipelines/new", element: <PipelineBuilderPage pk={null} /> },
+      { path: "/pipelines/:pk/edit", element: <EditRoute /> },
+    ],
+    { initialEntries: ["/pipelines/new"] },
+  );
+  return render(
+    <ToastPrimitive.Provider>
       <QueryClientProvider client={qc}>
         <ItemClientProvider client={client as ItemClient}>
-          <PipelineBuilderPage pk={pk} initialTitle="Nettoyer villes" />
+          <ToastProvider>
+            <RouterProvider router={router} />
+          </ToastProvider>
         </ItemClientProvider>
       </QueryClientProvider>
-    </MemoryRouter>,
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>,
   );
-  return { client };
 }
 
 test("unsaved mode: Enregistrer is disabled on an empty graph", async () => {
@@ -766,4 +892,360 @@ test("persisted mode: saving includes notes added on the canvas", async () => {
       }),
     ),
   );
+});
+
+// Revue finale, follow-up (f8169238) : `totalNodes={draft.nodes.length}` était
+// passé sans condition à PipelineRunPanel, y compris quand `draft` a divergé
+// de la config sauvegardée (isDraftStale, déjà calculé pour
+// PipelinePreviewPanel ci-dessus mais jamais réutilisé ici). `runPipeline`
+// exécute toujours la DERNIÈRE config sauvegardée, jamais le brouillon — donc
+// un brouillon avec des nœuds ajoutés/supprimés sans sauvegarde affichait une
+// progression N/M fausse par rapport au run réellement en cours.
+test("persisted mode: masque la progression N/M nœuds quand le brouillon a des nœuds non sauvegardés", async () => {
+  const payload: PipelinePayload = {
+    nodes: [
+      {
+        id: "r1",
+        kind: "reader",
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: { collectionId: "villes" },
+        title: "Villes",
+      },
+      {
+        id: "w1",
+        kind: "writer",
+        op: "writer.collection",
+        x: 300,
+        y: 0,
+        params: { collectionId: "villes_propres" },
+        title: "Écriture",
+      },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+  };
+  renderPage("p-1", {
+    getPipelineConfig: () => Promise.resolve(payload),
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-1",
+        status: "running",
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: null,
+        error: null,
+        nodeStats: { r1: { nodeId: "r1", op: "reader.collection", rowCount: 10 } },
+      },
+    ]),
+  });
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  // Ajoute un nœud au brouillon sans sauvegarder : draft.nodes.length (3)
+  // diverge maintenant de configQuery.data.nodes.length (2), isDraftStale
+  // devient vrai.
+  await userEvent.click(screen.getByRole("button", { name: "reader.collection" }));
+  await waitFor(() => expect(screen.getAllByText("reader.collection").length).toBeGreaterThan(1));
+  await waitFor(() => expect(screen.getByText("En cours")).toBeInTheDocument());
+  expect(screen.queryByText(/\/ \d+ nœuds/)).not.toBeInTheDocument();
+});
+
+test("persisted mode: affiche la progression N/M nœuds quand le brouillon n'a pas divergé de la config sauvegardée", async () => {
+  const payload: PipelinePayload = {
+    nodes: [
+      {
+        id: "r1",
+        kind: "reader",
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: { collectionId: "villes" },
+        title: "Villes",
+      },
+      {
+        id: "w1",
+        kind: "writer",
+        op: "writer.collection",
+        x: 300,
+        y: 0,
+        params: { collectionId: "villes_propres" },
+        title: "Écriture",
+      },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+  };
+  renderPage("p-1", {
+    getPipelineConfig: () => Promise.resolve(payload),
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-1",
+        status: "running",
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: null,
+        error: null,
+        nodeStats: { r1: { nodeId: "r1", op: "reader.collection", rowCount: 10 } },
+      },
+    ]),
+  });
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText("En cours")).toBeInTheDocument());
+  expect(screen.getByText("1 / 2 nœuds")).toBeInTheDocument();
+});
+
+// Revue finale Vague B, I4 : la condition de masquage reposait sur
+// `isDraftStale` (comparaison de RÉFÉRENCE avec configQuery.data), qui ne
+// redevient jamais fausse après une sauvegarde — le refetch qui suit
+// renvoie un nouvel objet. La progression N/M disparaissait donc pour le
+// reste de la session dans le parcours normal éditer → enregistrer → lancer.
+test("persisted mode: réaffiche la progression N/M nœuds après une sauvegarde", async () => {
+  const saved: PipelinePayload = {
+    nodes: [
+      {
+        id: "r1",
+        kind: "reader",
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: { collectionId: "villes" },
+        title: "Villes",
+      },
+      {
+        id: "f1",
+        kind: "transform",
+        op: "transform.filter",
+        x: 150,
+        y: 0,
+        params: { expr: "pop > 0" },
+        title: "Filtre",
+      },
+      {
+        id: "w1",
+        kind: "writer",
+        op: "writer.collection",
+        x: 300,
+        y: 0,
+        params: { collectionId: "villes_propres" },
+        title: "Écriture",
+      },
+    ],
+    edges: [
+      { id: "e1", from: "r1", to: "f1" },
+      { id: "e2", from: "f1", to: "w1" },
+    ],
+  };
+  let current = saved;
+  // Chaque lecture renvoie un NOUVEL objet (comme un vrai refetch réseau).
+  const getPipelineConfig = vi.fn(() => Promise.resolve(structuredClone(current)));
+  const savePipelineConfig = vi.fn((_pk: string, payload: PipelinePayload) => {
+    current = payload;
+    return Promise.resolve(undefined);
+  });
+  renderPage(
+    "p-1",
+    {
+      getPipelineConfig,
+      savePipelineConfig,
+      getPipelineRuns: vi.fn().mockResolvedValue([
+        {
+          id: "run-1",
+          status: "running",
+          startedAt: "2026-08-06T10:00:00Z",
+          finishedAt: null,
+          error: null,
+          nodeStats: { r1: { nodeId: "r1", op: "reader.collection", rowCount: 10 } },
+        },
+      ]),
+    },
+    "/?node=f1",
+  );
+  await waitFor(() => expect(screen.getByText("1 / 3 nœuds")).toBeInTheDocument());
+  // Édition réelle (le brouillon devient « non sauvegardé ») : progression masquée.
+  await userEvent.type(await screen.findByLabelText("expr"), "0");
+  await waitFor(() => expect(screen.queryByText(/\/ \d+ nœuds/)).not.toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(savePipelineConfig).toHaveBeenCalled());
+  // Le refetch post-sauvegarde a bien eu lieu (nouvelle référence d'objet).
+  await waitFor(() => expect(getPipelineConfig.mock.calls.length).toBeGreaterThan(1));
+  expect(await screen.findByText("1 / 3 nœuds")).toBeInTheDocument();
+});
+
+// SP-B9c : `selectedNodeId` passe de useState à useUrlSyncedState (Tâche 16),
+// même patron que la Tâche 17 sur AppBuilderPage (`?selected=`). La classe
+// "ring-2 ring-accent" posée par PipelineCanvas.tsx (PipelineNodeBox, prop
+// `selected`) sur le conteneur direct du titre du nœud est la seule preuve
+// DOM que CE nœud précis est le nœud sélectionné (pas seulement "un nœud
+// est sélectionné quelque part") — nécessaire ici parce que "Nœud
+// sélectionné" seul n'identifie pas lequel des deux nœuds du payload est
+// visé.
+const TWO_NODE_PAYLOAD: PipelinePayload = {
+  nodes: [
+    {
+      id: "r1",
+      kind: "reader",
+      op: "reader.collection",
+      x: 0,
+      y: 0,
+      params: { collectionId: "villes" },
+      title: "Villes",
+    },
+    {
+      id: "w1",
+      kind: "writer",
+      op: "writer.collection",
+      x: 300,
+      y: 0,
+      params: { collectionId: "villes_propres" },
+      title: "Écriture",
+    },
+  ],
+  edges: [{ id: "e1", from: "r1", to: "w1" }],
+};
+
+function isHighlighted(label: string): boolean {
+  const box = screen.getByText(label).closest("div.relative");
+  return (box?.className ?? "").includes("ring-2");
+}
+
+test("restaure le nœud sélectionné depuis l'URL après un remount (simule un rechargement)", async () => {
+  const { unmount } = renderPage(
+    "p-1",
+    { getPipelineConfig: () => Promise.resolve(TWO_NODE_PAYLOAD) },
+    "/pipelines/p-1/edit?node=r1",
+  );
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  expect(screen.getByText("Nœud sélectionné")).toBeInTheDocument();
+  expect(isHighlighted("Villes")).toBe(true);
+  expect(isHighlighted("Écriture")).toBe(false);
+  unmount();
+
+  // Remonte depuis zéro (nouveau QueryClient, nouveau MemoryRouter) avec la
+  // même URL : si la sélection ne survivait que dans un useState local, ce
+  // second rendu partirait de `null`. Prouve qu'elle est bien portée par
+  // l'URL, pas par un état React qui aurait par coïncidence survécu.
+  renderPage(
+    "p-1",
+    { getPipelineConfig: () => Promise.resolve(TWO_NODE_PAYLOAD) },
+    "/pipelines/p-1/edit?node=r1",
+  );
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  expect(screen.getByText("Nœud sélectionné")).toBeInTheDocument();
+  expect(isHighlighted("Villes")).toBe(true);
+  expect(isHighlighted("Écriture")).toBe(false);
+});
+
+// Gap signalé par le relecteur de la Tâche 16 (cast non vérifié de la
+// valeur brute de l'URL) : PipelineBuilderPage.tsx a déjà un garde-fou
+// équivalent à celui trouvé sur AppBuilderPage (Tâche 17, findings
+// C2/M2) — `const selectedNode = draft.nodes.find((n) => n.id ===
+// selectedNodeId) ?? null;` (ligne ~184) ne retient `selectedNode` que
+// s'il désigne un nœud qui existe réellement dans `draft.nodes` ; tout le
+// reste du composant (inspecteur, panneau d'aperçu) est gardé derrière
+// `selectedNode && …`, et PipelineCanvas ne met en évidence que les nœuds
+// dont l'id réel correspond — un id inconnu ne correspond simplement à
+// aucun nœud rendu. Ce test vérifie que ce garde-fou tient quand la valeur
+// suspecte vient de l'URL (id de nœud qui n'a jamais existé), sans qu'il
+// ait fallu ajouter de nouvelle logique de repli.
+test("un id de nœud inconnu dans l'URL n'affiche aucune sélection et ne casse rien (garde-fou pré-existant)", async () => {
+  renderPage(
+    "p-1",
+    { getPipelineConfig: () => Promise.resolve(TWO_NODE_PAYLOAD) },
+    "/pipelines/p-1/edit?node=nœud-fantôme-jamais-vu",
+  );
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  expect(screen.queryByText("Nœud sélectionné")).not.toBeInTheDocument();
+  expect(isHighlighted("Villes")).toBe(false);
+  expect(isHighlighted("Écriture")).toBe(false);
+
+  // Reste utilisable ensuite : une sélection réelle par clic fonctionne
+  // normalement, l'id fantôme de l'URL n'a rien verrouillé.
+  fireEvent.click(screen.getByText("Villes"));
+  await waitFor(() => expect(screen.getByText("Nœud sélectionné")).toBeInTheDocument());
+  expect(isHighlighted("Villes")).toBe(true);
+});
+
+test("bloque la navigation après une modification non enregistrée du pipeline (SP-B6d)", async () => {
+  renderPageWithNavigation("p-1", { getPipelineConfig: () => Promise.resolve(TWO_NODE_PAYLOAD) });
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une zone" }));
+
+  await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
+
+  expect(await screen.findByRole("dialog")).toHaveTextContent(
+    t("navigation.unsavedChangesMessage"),
+  );
+});
+
+test("ne bloque pas la navigation juste après une sauvegarde réussie (SP-B6d)", async () => {
+  const savePipelineConfig = vi.fn().mockResolvedValue(undefined);
+  renderPageWithNavigation("p-1", {
+    getPipelineConfig: () => Promise.resolve(TWO_NODE_PAYLOAD),
+    savePipelineConfig,
+  });
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une zone" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(savePipelineConfig).toHaveBeenCalled());
+
+  await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
+  expect(await screen.findByText("Autre page ouverte")).toBeInTheDocument();
+});
+
+// SP-B6d, risque signalé au brief : sélectionner un nœud (selectedNodeId,
+// SP-B9c) navigue via useUrlSyncedState -> setSearchParams, même pathname —
+// ne doit jamais déclencher la garde, même brouillon non enregistré.
+test("sélectionner un nœud (URL interne, même pathname) ne déclenche pas la garde même brouillon non enregistré", async () => {
+  renderPageWithNavigation("p-1", { getPipelineConfig: () => Promise.resolve(TWO_NODE_PAYLOAD) });
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une zone" }));
+
+  fireEvent.click(screen.getByText("Villes"));
+
+  await waitFor(() => expect(screen.getByText("Nœud sélectionné")).toBeInTheDocument());
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+// SP-B6d, risque explicitement signalé au brief : le round-trip réel de
+// création (/pipelines/new -> Enregistrer -> redirection interne vers
+// /pipelines/{pk}/edit, un changement de pathname RÉEL) exécute
+// `setHasUnsavedChanges(false)` puis `navigate(...)` de façon synchrone dans
+// le même callback — vérifié empiriquement plutôt que supposé sûr, car nul
+// autre éditeur de ce lot n'a ce patron (redirection interne juste après un
+// succès de sauvegarde).
+// Catalogue minimal (aucun champ requis) : un unique clic sur chaque bouton
+// suffit à obtenir un graphe valide (≥1 source + ≥1 écriture, aucune arête
+// requise hors acceptsSecondaryInput) — ce test porte sur la garde de
+// navigation, pas sur la mécanique de validation de graphe.
+const MINIMAL_CATALOG: PipelineOpsCatalog = {
+  "reader.x": { kind: "reader", paramsSchema: { properties: {} } },
+  "writer.x": { kind: "writer", paramsSchema: { properties: {} } },
+};
+
+test("le round-trip de création (pk=null -> Enregistrer -> redirection) n'affiche pas la boîte de confirmation (SP-B6d)", async () => {
+  const createPipelineItem = vi.fn().mockResolvedValue({
+    pk: "new-1",
+    resourceType: "pipeline",
+    title: "Nettoyer villes",
+    abstract: "",
+    owner: "alice",
+    thumbnailUrl: null,
+    date: "2026-01-01",
+    configId: "cfg-new-1",
+    isPublished: false,
+    keywords: [],
+    permissions: OWNER_PERMISSIONS,
+    license: "",
+    language: "fr",
+  } satisfies Item);
+  renderNewPipelineRoutes({
+    createPipelineItem,
+    getPipelineOps: () => Promise.resolve(MINIMAL_CATALOG),
+  });
+
+  await waitFor(() => expect(screen.getByText("reader.x")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "reader.x" }));
+  await userEvent.click(screen.getByRole("button", { name: "writer.x" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+  await waitFor(() => expect(createPipelineItem).toHaveBeenCalled());
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });

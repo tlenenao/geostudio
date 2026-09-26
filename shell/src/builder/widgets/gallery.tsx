@@ -4,9 +4,10 @@ import { registerWidget } from "../registry";
 import { useItemClient } from "../../api/ItemClientProvider";
 import type { ResourceType } from "../../api/types";
 import { t } from "../../i18n";
+import { LoadingState } from "../../ui/kit/LoadingState";
 
 const labelCls = "flex flex-col gap-1";
-const inputCls = "h-9 rounded-md border border-slate-300 px-2";
+const inputCls = "h-9 rounded-md border border-rule px-2";
 
 const RESOURCE_TYPES: [string, string][] = [
   ["", t("widgetGallery.typeAll")],
@@ -97,11 +98,11 @@ export function registerGalleryWidget(): void {
       });
 
       if (query.isLoading) {
-        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+        return <LoadingState />;
       }
       if (query.isError) {
         return (
-          <p role="alert" className="text-xs text-red-600">
+          <p role="alert" className="text-xs text-danger">
             {t("widgetGallery.loadError")}
           </p>
         );

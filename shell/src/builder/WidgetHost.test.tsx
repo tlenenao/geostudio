@@ -5,6 +5,7 @@ import { registerWidget, _resetRegistry } from "./registry";
 import { WidgetHost } from "./WidgetHost";
 import type { WidgetItem } from "../api/types";
 import type { AuthState } from "../auth/useAuth";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 const authState: AuthState = {
   isLoading: false,
@@ -44,8 +45,11 @@ test("renders the registered widget", () => {
 });
 
 test("shows a fallback for an unknown widget type", () => {
-  render(<WidgetHost item={item("nope")} mode="runtime" />);
+  const { container } = render(<WidgetHost item={item("nope")} mode="runtime" />);
   expect(screen.getByText(/widget inconnu/i)).toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 test("isolates a widget that throws during render", () => {
@@ -60,8 +64,11 @@ test("isolates a widget that throws during render", () => {
       throw new Error("boom");
     },
   });
-  render(<WidgetHost item={item("boom")} mode="runtime" />);
+  const { container } = render(<WidgetHost item={item("boom")} mode="runtime" />);
   expect(screen.getByText(/erreur du widget/i)).toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 test("hides a widget in runtime mode when visibleWhen evaluates to false", () => {

@@ -12,6 +12,7 @@ import { ActionBus } from "../ActionBus";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsContext";
 import { ExplorerProvider } from "../ExplorerContext";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 const flyToSpy = vi.fn();
 const highlightSpy = vi.fn();
@@ -413,6 +414,19 @@ test("map widget builds a feature layer from the bound source url", async () => 
   const view = await screen.findByTestId("mapview");
   expect(view).toHaveTextContent("layers:1");
   expect(view).toHaveTextContent("url:https://fs/parcs/items.json");
+});
+
+test("SP-B12c : le message d'erreur n'a pas de couleur Tailwind codée en dur", () => {
+  const Map = getWidget("map")!.Component;
+  const { container } = render(
+    withClient(
+      <Map
+        props={{ dataSourceId: "d" }}
+        ctx={{ mode: "runtime", data: state({ error: true }) } as WidgetContext}
+      />,
+    ),
+  );
+  expectTokenizedClasses(container);
 });
 
 test("map widget renders an empty map when no source is bound", async () => {
@@ -960,6 +974,37 @@ test("shows a classed stroke legend entry from a data-driven stroke color", asyn
   );
   expect(await screen.findByText("0.0 – 10.0")).toBeInTheDocument();
   expect(screen.getByText("10.0 – 20.0")).toBeInTheDocument();
+});
+
+test("SP-B12c : la légende de taille (points) n'a pas de couleur Tailwind codée en dur", async () => {
+  const Map = getWidget("map")!.Component;
+  render(
+    withClient(
+      <Map
+        props={{
+          dataSourceId: "d",
+          symbology: {
+            size: { field: "montant", domain: { min: 5, max: 25 }, computedAt: "" },
+          },
+        }}
+        ctx={
+          {
+            mode: "runtime",
+            data: state({
+              url: "https://fs/points/items.json",
+              records: [
+                { id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 2] } },
+              ],
+            }),
+          } as WidgetContext
+        }
+      />,
+    ),
+  );
+  const entry = await screen.findByText("5 – 25");
+  const legend = entry.closest("div.absolute.bottom-2.right-2") as HTMLElement;
+  expect(legend).not.toBeNull();
+  expectTokenizedClasses(legend);
 });
 
 test("shows an icon legend entry per mapped value", async () => {

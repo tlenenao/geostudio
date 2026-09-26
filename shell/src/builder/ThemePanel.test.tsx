@@ -5,9 +5,13 @@ import { expect, test, vi } from "vitest";
 import type { Theme } from "../api/types";
 import { ThemePanel } from "./ThemePanel";
 import { DEFAULT_THEME_COLORS, DEFAULT_FONT, DEFAULT_RADIUS, DEFAULT_SPACE } from "./theme";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 test("prefills every control from theme defaults when the theme is empty", () => {
-  render(<ThemePanel theme={{}} onChange={vi.fn()} />);
+  const { container } = render(<ThemePanel theme={{}} onChange={vi.fn()} />);
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   expect(screen.getByLabelText("Couleur primaire")).toHaveValue(DEFAULT_THEME_COLORS.primary);
   expect(screen.getByLabelText("Couleur de fond")).toHaveValue(DEFAULT_THEME_COLORS.background);
   expect(screen.getByLabelText("Couleur de surface")).toHaveValue(DEFAULT_THEME_COLORS.surface);

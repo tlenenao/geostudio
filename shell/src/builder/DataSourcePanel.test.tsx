@@ -4,10 +4,14 @@ import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import type { DataSource } from "../api/types";
 import { DataSourcePanel } from "./DataSourcePanel";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 test("adds a data source", async () => {
   const onChange = vi.fn();
-  render(<DataSourcePanel sources={[]} onChange={onChange} />);
+  const { container } = render(<DataSourcePanel sources={[]} onChange={onChange} />);
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   await userEvent.click(screen.getByRole("button", { name: "Ajouter une source" }));
   const next = onChange.mock.calls[0][0] as DataSource[];
   expect(next).toHaveLength(1);
@@ -94,7 +98,7 @@ test("promoting a features source calls onPromote and then shows it as shared", 
   const sources: DataSource[] = [
     { id: "s1", type: "features", service: "core", layer: "parcs", query: {} },
   ];
-  const { rerender } = render(
+  const { rerender, container } = render(
     <DataSourcePanel
       sources={sources}
       onChange={onChange}
@@ -118,6 +122,9 @@ test("promoting a features source calls onPromote and then shows it as shared", 
   expect(
     screen.queryByRole("button", { name: "Promouvoir en dataset partagé s1" }),
   ).not.toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 test("a comma-separated group-by becomes a string array; a single field stays a string", async () => {
@@ -335,7 +342,7 @@ test("editing a record's JSON on blur commits valid JSON, rejects invalid JSON w
     layer: "",
     query: { records: [{ id: "r1", properties: {} }] },
   };
-  render(<DataSourcePanel sources={[source]} onChange={onChange} />);
+  const { container } = render(<DataSourcePanel sources={[source]} onChange={onChange} />);
   const area = screen.getByLabelText(/Propriétés de l'enregistrement r1/);
   // userEvent.type interprète les accolades littérales comme des modificateurs
   // de touche (cf. sa doc "special characters") — fireEvent.change évite
@@ -350,6 +357,9 @@ test("editing a record's JSON on blur commits valid JSON, rejects invalid JSON w
   fireEvent.change(area, { target: { value: "{not json" } });
   fireEvent.blur(area);
   expect(await screen.findByRole("alert")).toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 test("removing a record drops it from query.records", async () => {

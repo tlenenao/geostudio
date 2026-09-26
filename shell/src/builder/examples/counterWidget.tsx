@@ -16,7 +16,7 @@ export function registerCounterExampleWidget(): void {
         <input
           aria-label="Valeur initiale"
           type="number"
-          className="h-9 rounded-md border border-slate-300 px-2"
+          className="h-9 rounded-md border border-rule px-2"
           value={String(props.initial ?? 0)}
           onChange={(e) => onChange({ ...props, initial: Number(e.target.value) })}
         />
@@ -35,7 +35,7 @@ export function registerCounterExampleWidget(): void {
           <span className="text-2xl font-semibold">{count}</span>
           <button
             type="button"
-            className="rounded-md border border-slate-300 px-2 py-1 text-sm hover:bg-slate-100"
+            className="rounded-md border border-rule px-2 py-1 text-sm hover:bg-sunken"
             onClick={increment}
           >
             +1

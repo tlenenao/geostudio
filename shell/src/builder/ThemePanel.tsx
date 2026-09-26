@@ -57,7 +57,7 @@ export function ThemePanel({
         {t("themePanel.fontLabel")}
         <select
           aria-label={t("themePanel.fontLabel")}
-          className="h-9 rounded-md border border-slate-300 px-2"
+          className="h-9 rounded-md border border-rule px-2"
           value={theme.font ?? DEFAULT_FONT}
           onChange={(e) => onChange({ ...theme, font: e.target.value })}
         >
@@ -72,7 +72,7 @@ export function ThemePanel({
         {t("themePanel.radiusFieldLabel")}
         <select
           aria-label={t("themePanel.radiusFieldLabel")}
-          className="h-9 rounded-md border border-slate-300 px-2"
+          className="h-9 rounded-md border border-rule px-2"
           value={theme.radius ?? DEFAULT_RADIUS}
           onChange={(e) => onChange({ ...theme, radius: e.target.value })}
         >
@@ -87,7 +87,7 @@ export function ThemePanel({
         {t("themePanel.spaceLabel")}
         <select
           aria-label={t("themePanel.spaceLabel")}
-          className="h-9 rounded-md border border-slate-300 px-2"
+          className="h-9 rounded-md border border-rule px-2"
           value={theme.space ?? DEFAULT_SPACE}
           onChange={(e) => onChange({ ...theme, space: e.target.value })}
         >

@@ -71,7 +71,7 @@ export function GridCanvas({
                 <button
                   type="button"
                   aria-label={`Déplacer widget-${item.id} à gauche`}
-                  className="bg-blue-500 px-1 text-xs text-white"
+                  className="bg-accent px-1 text-xs text-surface"
                   onClick={(e) => {
                     e.stopPropagation();
                     onMoveItem(item.id, -1, 0);
@@ -82,7 +82,7 @@ export function GridCanvas({
                 <button
                   type="button"
                   aria-label={`Déplacer widget-${item.id} à droite`}
-                  className="bg-blue-500 px-1 text-xs text-white"
+                  className="bg-accent px-1 text-xs text-surface"
                   onClick={(e) => {
                     e.stopPropagation();
                     onMoveItem(item.id, 1, 0);
@@ -93,7 +93,7 @@ export function GridCanvas({
                 <button
                   type="button"
                   aria-label={`Déplacer widget-${item.id} en bas`}
-                  className="bg-blue-500 px-1 text-xs text-white"
+                  className="bg-accent px-1 text-xs text-surface"
                   onClick={(e) => {
                     e.stopPropagation();
                     onMoveItem(item.id, 0, 1);
@@ -104,7 +104,7 @@ export function GridCanvas({
                 <button
                   type="button"
                   aria-label={`Déplacer widget-${item.id} en haut`}
-                  className="bg-blue-500 px-1 text-xs text-white"
+                  className="bg-accent px-1 text-xs text-surface"
                   onClick={(e) => {
                     e.stopPropagation();
                     onMoveItem(item.id, 0, -1);
@@ -115,7 +115,7 @@ export function GridCanvas({
                 <button
                   type="button"
                   aria-label={`Supprimer widget-${item.id}`}
-                  className="bg-red-600 px-1 text-xs text-white"
+                  className="bg-danger px-1 text-xs text-surface"
                   onClick={(e) => {
                     e.stopPropagation();
                     onRemoveItem(item.id);

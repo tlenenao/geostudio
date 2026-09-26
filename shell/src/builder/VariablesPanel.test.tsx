@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import type { Variable } from "../api/types";
 import { VariablesPanel } from "./VariablesPanel";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 test("adds a variable with an empty initial value", async () => {
   const onChange = vi.fn();
@@ -36,7 +37,10 @@ test("edits a variable's initial value", async () => {
 test("removes a variable", async () => {
   const onChange = vi.fn();
   const variables: Variable[] = [{ id: "v1", name: "message", initialValue: "" }];
-  render(<VariablesPanel variables={variables} onChange={onChange} />);
+  const { container } = render(<VariablesPanel variables={variables} onChange={onChange} />);
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   await userEvent.click(screen.getByRole("button", { name: "Retirer la variable v1" }));
   expect(onChange).toHaveBeenCalledWith([]);
 });

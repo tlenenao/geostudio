@@ -1,6 +1,7 @@
 // shell/src/pages/ReportEditPage.tsx
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import {
   useCreateReportSchedule,
@@ -19,6 +20,7 @@ import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { ReportScheduleEditor } from "../builder/report/ReportScheduleEditor";
 import { ReportRunPanel } from "../builder/report/ReportRunPanel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
 
 function defaultPayload(bookmarkItemId: string): ReportSchedulePayload {
@@ -62,6 +64,18 @@ export function ReportEditPage({
     defaultPayload(initialBookmarkItemId ?? ""),
   );
   const [saveError, setSaveError] = useState<string | null>(null);
+  // SP-B6d : même patron que MapEditorPage (Tâche 27) — `updateDraft`
+  // centralise toute mutation du brouillon issue d'une action utilisateur ;
+  // l'effet de synchronisation initiale ci-dessous passe volontairement par
+  // le `setDraft` brut pour ne pas marquer le brouillon sale au chargement
+  // (ni pour la valeur initiale de useState, brouillon vierge d'un rapport
+  // pas encore créé).
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const updateDraft: typeof setDraft = (next) => {
+    setHasUnsavedChanges(true);
+    setDraft(next);
+  };
+  const { ConfirmLeaveDialog } = useDirtyGuard(hasUnsavedChanges);
 
   useEffect(() => {
     if (pk !== null && configQuery.data) setDraft(configQuery.data);
@@ -93,10 +107,21 @@ export function ReportEditPage({
           owner: username ?? "",
           report: draft,
         });
+        // SP-B6d : même précaution que PipelineBuilderPage.tsx (vérifiée
+        // empiriquement là-bas) — la redirection vers /reports/{pk}/edit
+        // qui suit est une navigation interne réelle (pathname différent).
+        // Un simple `setHasUnsavedChanges(false)` synchrone ne suffit pas :
+        // le blocker de react-router-dom est ré-enregistré via un effet
+        // passif (`useEffect`), pas encore exécuté au moment où `navigate()`
+        // s'exécute dans la continuation synchrone du même callback async.
+        // `flushSync` force le rendu ET les effets en attente avant l'appel
+        // à `navigate()`.
+        flushSync(() => setHasUnsavedChanges(false));
         navigate(`/reports/${item.pk}/edit`, { replace: true });
         return;
       }
       await saveReport.mutateAsync(draft);
+      setHasUnsavedChanges(false);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : t("actions.saveFailed"));
     }
@@ -135,7 +160,7 @@ export function ReportEditPage({
               </h2>
               <ReportScheduleEditor
                 value={draft}
-                onChange={setDraft}
+                onChange={updateDraft}
                 bookmarkLabel={draft.bookmarkItemId}
               />
             </div>
@@ -151,7 +176,7 @@ export function ReportEditPage({
                 <ConfigHistoryPanel
                   pk={pk}
                   currentVersion={null}
-                  onRestored={async () => setDraft(await client.getReportScheduleConfig(pk))}
+                  onRestored={async () => updateDraft(await client.getReportScheduleConfig(pk))}
                 />
               )}
               <div className="flex flex-col gap-2 border-t border-rule pt-3">
@@ -174,6 +199,7 @@ export function ReportEditPage({
           ),
         }}
       />
+      <ConfirmLeaveDialog />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import type { AuthState } from "./useAuth";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 const authState: AuthState = {
   isLoading: false,
@@ -57,10 +58,13 @@ test("renders children when authenticated", () => {
 test("renders an error and does not signIn when auth errored", () => {
   authState.isAuthenticated = false;
   authState.error = "boom";
-  renderAt("/", <div>secret</div>);
+  const { container } = renderAt("/", <div>secret</div>);
   expect(screen.getByRole("alert")).toBeInTheDocument();
   expect(authState.signIn).not.toHaveBeenCalled();
   expect(screen.queryByText("secret")).not.toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 it("renders children without triggering signIn when exportToken is present, even though not authenticated", () => {

@@ -173,6 +173,33 @@ def test_a_dense_tile_is_truncated_to_the_feature_cap(pg_app, monkeypatch):
     assert sum(1 for t in (b"Alpha", b"Bravo", b"Charlie") if t in r.content) == 2
 
 
+def test_a_truncated_tile_carries_the_truncation_header(pg_app, monkeypatch):
+    """SP-B10b : le shell (Tâche 14) a besoin de savoir qu'une tuile a été
+    tronquée par MAX_TILE_FEATURES pour avertir l'utilisateur — sans décoder
+    le protobuf MVT, un en-tête HTTP dédié."""
+    from app.features import tiles as tiles_module
+
+    client, _, _ = pg_app
+    monkeypatch.setattr(tiles_module, "MAX_TILE_FEATURES", 2)
+    for titre in ("Alpha", "Bravo", "Charlie"):
+        _insert(client, titre)
+    r = client.get(TILE_PATH)
+    assert r.status_code == 200
+    assert r.headers.get("X-Tile-Truncated") == "true"
+
+
+def test_a_non_truncated_tile_has_no_truncation_header(pg_app, monkeypatch):
+    from app.features import tiles as tiles_module
+
+    client, _, _ = pg_app
+    monkeypatch.setattr(tiles_module, "MAX_TILE_FEATURES", 50)
+    for titre in ("Alpha", "Bravo", "Charlie"):
+        _insert(client, titre)
+    r = client.get(TILE_PATH)
+    assert r.status_code == 200
+    assert "X-Tile-Truncated" not in r.headers
+
+
 def test_a_tile_request_sets_a_transaction_local_statement_timeout(pg_app):
     """La borne de durée est réellement en vigueur côté serveur pendant la
     requête, et ne survit pas à la transaction (sinon elle fuirait sur la

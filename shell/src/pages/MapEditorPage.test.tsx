@@ -2,13 +2,17 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import * as ToastPrimitive from "@radix-ui/react-toast";
+import { createMemoryRouter, Link, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Item, ItemClient, MapConfig } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
+import { ToastProvider } from "../ui/kit/ToastProvider";
 import { mapInstances } from "../test/MockMaplibreMap";
 import { overlayInstances } from "../test/MockDeckgl";
+import { t } from "../i18n";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 vi.mock("maplibre-gl", async () => {
   const { MockMap } = await import("../test/MockMaplibreMap");
@@ -94,22 +98,85 @@ const OWNED_MAP_ITEM: Item = {
   language: "fr",
 };
 
+// SP-B6c : `useDirtyGuard` (Tâche 26) s'appuie sur `useBlocker`, qui exige un
+// data router (`createMemoryRouter`/`RouterProvider`) — un `<MemoryRouter>`
+// déclaratif (React Router "component router") fait lever `useBlocker` à
+// l'exécution. Route unique "/maps/:pk", ignorée par `MapEditorPage` (le
+// `pk` réel vient toujours de la prop, comme avant) — seule la query string
+// (`?exportRender=1`) compte pour `useIsExportRender`, qui lit
+// `location.search`, indépendant du matching de route.
 function renderEditor(client: Partial<ItemClient>, initialEntries: string[] = ["/maps/77"]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const merged: Partial<ItemClient> = {
     getItem: vi.fn().mockResolvedValue(OWNED_MAP_ITEM),
     ...client,
   };
+  const router = createMemoryRouter([{ path: "/maps/:pk", element: <MapEditorPage pk="77" /> }], {
+    initialEntries,
+  });
   return render(
-    <QueryClientProvider client={qc}>
-      <ItemClientProvider client={merged as ItemClient}>
-        <MemoryRouter initialEntries={initialEntries}>
-          <MapEditorPage pk="77" />
-        </MemoryRouter>
-      </ItemClientProvider>
-    </QueryClientProvider>,
+    <ToastPrimitive.Provider>
+      <QueryClientProvider client={qc}>
+        <ItemClientProvider client={merged as ItemClient}>
+          <ToastProvider>
+            <RouterProvider router={router} />
+          </ToastProvider>
+        </ItemClientProvider>
+      </QueryClientProvider>
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>,
   );
 }
+
+// Harnais dédié aux tests de garde de navigation (Tâche 27) : le lien "Retour
+// au catalogue" fait normalement partie du chrome (AppLayout/TopBar), hors
+// périmètre de ce fichier qui monte `MapEditorPage` isolément — un lien
+// factice suffit à prouver que le blocker engage bien la navigation, quelle
+// que soit son origine réelle dans l'app.
+function renderEditorWithNavigation(client: Partial<ItemClient>) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const merged: Partial<ItemClient> = {
+    getItem: vi.fn().mockResolvedValue(OWNED_MAP_ITEM),
+    ...client,
+  };
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/maps/:pk",
+        element: (
+          <>
+            <Link to="/">Retour au catalogue</Link>
+            <MapEditorPage pk="77" />
+          </>
+        ),
+      },
+      { path: "/", element: <p>Catalogue</p> },
+    ],
+    { initialEntries: ["/maps/77"] },
+  );
+  return render(
+    <ToastPrimitive.Provider>
+      <QueryClientProvider client={qc}>
+        <ItemClientProvider client={merged as ItemClient}>
+          <ToastProvider>
+            <RouterProvider router={router} />
+          </ToastProvider>
+        </ItemClientProvider>
+      </QueryClientProvider>
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>,
+  );
+}
+
+test("SP-B12c : le repli de chargement de la carte n'a pas de couleur Tailwind codée en dur", async () => {
+  renderEditor({
+    getMapConfig: vi.fn().mockResolvedValue(config),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  const fallback = await screen.findByText("Carte…");
+  expectTokenizedClasses(fallback.parentElement ?? fallback);
+  await waitFor(() => expect(mapInstances[0]).toBeDefined());
+});
 
 test("loads the config and saves edits", async () => {
   const saveMapConfig = vi.fn().mockResolvedValue(undefined);
@@ -366,4 +433,32 @@ test("ne réajuste pas la vue quand elle diffère déjà de la valeur par défau
   await screen.findAllByText("Couche A");
   await waitFor(() => expect(mapInstances).toHaveLength(1));
   expect(mapInstances[0].fitBoundsArgs).toHaveLength(0);
+});
+
+test("bloque la navigation après une modification non enregistrée de la carte (SP-B6c)", async () => {
+  renderEditorWithNavigation({
+    getMapConfig: vi.fn().mockResolvedValue(config),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findAllByText("Couche A");
+  await userEvent.click(screen.getByLabelText("Activer le terrain 3D"));
+  await userEvent.click(screen.getByRole("link", { name: "Retour au catalogue" }));
+  expect(await screen.findByRole("dialog")).toHaveTextContent(
+    t("navigation.unsavedChangesMessage"),
+  );
+});
+
+test("ne bloque pas la navigation juste après une sauvegarde réussie (SP-B6c)", async () => {
+  const saveMapConfig = vi.fn().mockResolvedValue(undefined);
+  renderEditorWithNavigation({
+    getMapConfig: vi.fn().mockResolvedValue(config),
+    saveMapConfig,
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findAllByText("Couche A");
+  await userEvent.click(screen.getByLabelText("Activer le terrain 3D"));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveMapConfig).toHaveBeenCalled());
+  await userEvent.click(screen.getByRole("link", { name: "Retour au catalogue" }));
+  expect(await screen.findByText("Catalogue")).toBeInTheDocument();
 });

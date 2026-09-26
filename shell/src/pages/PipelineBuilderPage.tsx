@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import { useUrlSyncedState } from "../lib/useUrlSyncedState";
 import {
   useCreatePipeline,
   useInstanceInfo,
@@ -38,6 +40,7 @@ import { PipelineWebhookTrigger } from "../builder/pipeline/PipelineWebhookTrigg
 import { genNodeId, genNoteId, insertNodeOnEdge } from "../builder/pipeline/graphOps";
 import { isPipelineValid, validatePipelineGraphLocally } from "../builder/pipeline/validation";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
 
 const EMPTY_PAYLOAD: PipelinePayload = { nodes: [], edges: [] };
@@ -77,9 +80,53 @@ export function PipelineBuilderPage({
 
   const { draft, setDraft, seedDraft, resetDraft, undo, redo, canUndo, canRedo } =
     useUndoableDraft<PipelinePayload>();
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  // SP-B9c : sélection synchronisée à l'URL (`?node=`) pour survivre à un
+  // rechargement — même signature que useState<string|null>, tous les
+  // sites d'appel (onSelectNode={setSelectedNodeId}) passent déjà des
+  // valeurs directes. La validation d'une valeur lue depuis l'URL (id de
+  // nœud inconnu/périmé) n'est pas dans le hook générique lui-même — cf.
+  // `selectedNode` plus bas, qui ne retient la sélection que si elle
+  // désigne un nœud existant dans `draft.nodes` (sinon `null`), et tout ce
+  // qui en dépend (inspecteur, aperçu, mise en évidence sur le canevas) est
+  // déjà gardé derrière ce résultat — même patron que l'`activePage` de
+  // AppBuilderPage.tsx (Tâche 17, findings C2/M2), tient identiquement pour
+  // une valeur d'URL périmée/invalide.
+  const [selectedNodeId, setSelectedNodeId] = useUrlSyncedState<string>("node", null);
   const [latestRun, setLatestRun] = useState<PipelineRun | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // SP-B6d : investigation — `isDraftStale` (ci-dessous, plus loin dans ce
+  // composant) calcule déjà "le brouillon diffère-t-il du dernier état
+  // sauvegardé", mais par comparaison de RÉFÉRENCE avec `configQuery.data`,
+  // jamais réinitialisée après une sauvegarde réussie (aucun code ne
+  // reseed/re-pointe `draft` sur le nouvel objet renvoyé par le refetch —
+  // `seedDraft` a son propre garde interne qui le rend no-op une fois
+  // `draftRef.current` non nul). Reprendre `isDraftStale` telle quelle pour
+  // la garde de navigation aurait donc rouvert la boîte de confirmation à
+  // chaque navigation APRÈS une sauvegarde pourtant réussie — exactement le
+  // comportement que Task 27/MapEditorPage teste explicitement comme
+  // interdit. Second écart : `isDraftStale` vaut toujours `false` quand
+  // `pk === null` (configQuery est `enabled: false`, `configQuery.data` reste
+  // `undefined`), donc un tout nouveau pipeline avec des nœuds ajoutés mais
+  // jamais sauvegardé ne serait jamais signalé "sale" — trou de garde pour
+  // le cas `/pipelines/new`. Les deux écarts feraient regresser un
+  // consommateur réel (le run-progress) si on les corrigeait dans
+  // `isDraftStale` elle-même (dont c'est un rôle différent : "le run affiché
+  // correspond-il au brouillon actuel", pas "y a-t-il quelque chose à
+  // perdre en quittant"). Décision : mécanisme dédié, séparé, même patron
+  // que MapEditorPage/DatasetEditPage/AppBuilderPage — remis à `false`
+  // explicitement dans `onSave` ci-dessous, jamais dérivé d'une comparaison
+  // de référence avec `configQuery.data`. `isDraftStale` reste intouchée.
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const hasSeededRef = useRef(false);
+  useEffect(() => {
+    if (draft === null) return;
+    if (!hasSeededRef.current) {
+      hasSeededRef.current = true;
+      return;
+    }
+    setHasUnsavedChanges(true);
+  }, [draft]);
+  const { ConfirmLeaveDialog } = useDirtyGuard(hasUnsavedChanges);
 
   useEffect(() => {
     if (pk === null) {
@@ -173,6 +220,11 @@ export function PipelineBuilderPage({
   // function boundary. Capturing it in a freshly-declared, non-nullable
   // const sidesteps that instead of asserting `draft!` at each read site.
   const currentDraft: PipelinePayload = draft;
+  // Staleness de l'aperçu (PipelinePreviewPanel) uniquement. La progression
+  // N/M nœuds de PipelineRunPanel se masque sur `hasUnsavedChanges`, pas ici :
+  // cette comparaison de référence ne redevient jamais fausse après une
+  // sauvegarde (revue finale Vague B, I4).
+  const isDraftStale = configQuery.data !== undefined && configQuery.data !== draft;
   const validation = validatePipelineGraphLocally(draft.nodes, draft.edges, catalog);
   const valid = isPipelineValid(validation);
   const selectedNode = draft.nodes.find((n) => n.id === selectedNodeId) ?? null;
@@ -248,10 +300,26 @@ export function PipelineBuilderPage({
           owner: username ?? "",
           pipeline: currentDraft,
         });
+        // SP-B6d : la redirection vers /pipelines/{pk}/edit qui suit est une
+        // navigation interne réelle (pathname différent), que useDirtyGuard
+        // bloquerait comme n'importe quelle autre si hasUnsavedChanges
+        // restait vrai au moment de l'appel à navigate(). Un simple
+        // `setHasUnsavedChanges(false)` suivi synchrone de `navigate(...)`
+        // ne suffit PAS (vérifié empiriquement, pas seulement supposé) : le
+        // blocker de react-router-dom est ré-enregistré via un effet passif
+        // (`useEffect`, jamais `useLayoutEffect` — cf. useBlocker dans
+        // react-router), qui n'a pas encore tourné au moment où `navigate()`
+        // s'exécute dans la continuation synchrone du même callback async.
+        // `flushSync` force le rendu ET les effets en attente à se
+        // terminer avant que `navigate()` ne soit appelé, pour que le
+        // blocker réellement enregistré côté routeur reflète déjà
+        // `hasUnsavedChanges === false`.
+        flushSync(() => setHasUnsavedChanges(false));
         navigate(`/pipelines/${item.pk}/edit`, { replace: true });
         return;
       }
       await savePipeline.mutateAsync(currentDraft);
+      setHasUnsavedChanges(false);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : t("actions.saveFailed"));
     }
@@ -348,7 +416,7 @@ export function PipelineBuilderPage({
                       pipelineId={pk}
                       nodeId={selectedNode.id}
                       draft={draft}
-                      isDraftStale={configQuery.data !== undefined && configQuery.data !== draft}
+                      isDraftStale={isDraftStale}
                     />
                   )}
                 </>
@@ -358,7 +426,15 @@ export function PipelineBuilderPage({
                   <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
                     {t("pipelineBuilder.executionLabel")}
                   </p>
-                  <PipelineRunPanel pipelineId={pk} onLatestRunChange={setLatestRun} />
+                  <PipelineRunPanel
+                    pipelineId={pk}
+                    onLatestRunChange={setLatestRun}
+                    // hasUnsavedChanges, pas isDraftStale : cette dernière
+                    // compare par référence à configQuery.data et ne redevient
+                    // jamais fausse après une sauvegarde (le refetch renvoie un
+                    // nouvel objet) — revue finale Vague B, I4.
+                    totalNodes={hasUnsavedChanges ? undefined : draft.nodes.length}
+                  />
                 </>
               )}
               {pk !== null && (
@@ -407,6 +483,7 @@ export function PipelineBuilderPage({
           ),
         }}
       />
+      <ConfirmLeaveDialog />
     </div>
   );
 }

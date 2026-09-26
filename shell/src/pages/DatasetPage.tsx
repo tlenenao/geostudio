@@ -74,7 +74,7 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
   if (query.isError || !query.data) {
     return (
       <div className="p-8 text-center">
-        <p role="alert" className="text-sm text-slate-600">
+        <p role="alert" className="text-sm text-ink-2">
           {t("datasetPage.notFound")}
         </p>
       </div>
@@ -84,9 +84,9 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
   return (
     <div className="flex h-full w-full flex-col gap-4 p-6">
       <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-bold text-slate-900">{col.title}</h1>
-        <p className="text-sm text-slate-600">{col.description}</p>
-        <p className="text-xs text-slate-500">
+        <h1 className="text-xl font-bold text-ink">{col.title}</h1>
+        <p className="text-sm text-ink-2">{col.description}</p>
+        <p className="text-xs text-ink-3">
           {t("datasetPage.featureCount", { n: col.featureCount ?? 0 })}
         </p>
       </header>

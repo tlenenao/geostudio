@@ -5,6 +5,7 @@ import { DataSourceSelect } from "../DataSourceSelect";
 import { DatasetDownloadButtons } from "../DatasetDownloadButtons";
 import { useItemClient } from "../../api/ItemClientProvider";
 import { t } from "../../i18n";
+import { LoadingState } from "../../ui/kit/LoadingState";
 
 export function registerDatasetCardWidget(): void {
   registerWidget({
@@ -38,7 +39,7 @@ export function registerDatasetCardWidget(): void {
           {t("widgetDatasetCard.titleOptional")}
           <input
             aria-label={t("widgetDatasetCard.titleOptional")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.title ?? "")}
             onChange={(e) => onChange({ ...props, title: e.target.value })}
           />
@@ -69,7 +70,7 @@ export function registerDatasetCardWidget(): void {
         );
       }
       if (query.isLoading) {
-        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+        return <LoadingState />;
       }
       if (query.isError || !query.data) {
         return (

@@ -65,7 +65,7 @@ export function LayoutEditor({
   return (
     <div className="flex flex-col gap-2">
       <WidgetPalette onAdd={addWidget} exclude={NESTED_EXCLUDE} />
-      <div className="h-48 overflow-auto border border-slate-200">
+      <div className="h-48 overflow-auto border border-rule">
         <GridCanvas
           items={items}
           breakpoint={breakpoint}

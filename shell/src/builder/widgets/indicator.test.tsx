@@ -9,6 +9,7 @@ import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { AnalyticsContextProvider } from "../AnalyticsContext";
 import type { WidgetContext } from "../registry";
 import type { DataSourceState, ItemClient } from "../../api/types";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 vi.mock("../EChart", () => ({
   EChart: ({ option }: { option: { series?: unknown } }) => {
@@ -43,7 +44,7 @@ function renderIndicator(
     ...client,
   } as unknown as ItemClient;
   const Ind = getWidget("indicator")!.Component;
-  render(
+  const { container } = render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={fullClient}>
         <AnalyticsContextProvider
@@ -55,7 +56,7 @@ function renderIndicator(
       </ItemClientProvider>
     </QueryClientProvider>,
   );
-  return { client: fullClient };
+  return { client: fullClient, container };
 }
 
 test("indicator counts records by default (unchanged, no new props)", () => {
@@ -74,6 +75,42 @@ test("indicator counts records by default (unchanged, no new props)", () => {
   expect(screen.getByText("2")).toBeInTheDocument();
   expect(client.getDatasetConfig).not.toHaveBeenCalled();
   expect(client.queryDataSource).not.toHaveBeenCalled();
+});
+
+test("SP-B12c : le panneau de propriétés n'a pas de couleur Tailwind codée en dur", () => {
+  const PropsPanel = getWidget("indicator")!.PropsPanel!;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = { queryDataSource: vi.fn() } as unknown as ItemClient;
+  const { container } = render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <PropsPanel
+          props={{ dataSourceId: "", label: "", agg: "count", field: "" }}
+          onChange={vi.fn()}
+          dataSources={[]}
+        />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  expectTokenizedClasses(container);
+});
+
+test("SP-B12c : le message d'erreur n'a pas de couleur Tailwind codée en dur", () => {
+  const { container } = renderIndicator(
+    { dataSourceId: "d", label: "Total" },
+    { data: state({ error: true }) },
+  );
+  expectTokenizedClasses(container);
+});
+
+test("shows the shared LoadingState (role=status, spinner) while the data source is loading", () => {
+  renderIndicator(
+    { dataSourceId: "d", label: "Total", agg: "count" },
+    { data: state({ loading: true }) },
+  );
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
 });
 
 test("indicator sums a field when agg=sum (unchanged, no new props)", () => {
@@ -323,7 +360,7 @@ test("shows a sparkline mini-chart when sparkline is true and time context is ac
 });
 
 test("shows a critical pastille when criticalWhen evaluates truthy against the displayed value", async () => {
-  renderIndicator(
+  const { container } = renderIndicator(
     { label: "Total", agg: "count", criticalWhen: "record.value > 1" },
     {
       variables: {},
@@ -337,10 +374,11 @@ test("shows a critical pastille when criticalWhen evaluates truthy against the d
     },
   );
   expect(await screen.findByLabelText("Seuil critique atteint")).toBeInTheDocument();
+  expectTokenizedClasses(container);
 });
 
 test("shows a warning pastille when only warningWhen evaluates truthy", async () => {
-  renderIndicator(
+  const { container } = renderIndicator(
     {
       label: "Total",
       agg: "count",
@@ -358,6 +396,7 @@ test("shows a warning pastille when only warningWhen evaluates truthy", async ()
   );
   expect(await screen.findByLabelText("Seuil d'alerte atteint")).toBeInTheDocument();
   expect(screen.queryByLabelText("Seuil critique atteint")).not.toBeInTheDocument();
+  expectTokenizedClasses(container);
 });
 
 test("shows no pastille when threshold expressions are absent", () => {

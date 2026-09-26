@@ -18,6 +18,7 @@ import type {
 } from "../types";
 import type { ItemClientBase } from "../base";
 import { getTemplate } from "../../builder/templates";
+import { ApiError } from "../ApiError";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
 
 type ItemsMethods = Pick<
@@ -201,7 +202,11 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
       try {
         await request<void>("POST", `/groups/${groupId}/members`, { userId });
       } catch (err) {
-        if (err instanceof Error && err.message.includes("404")) {
+        // SP-B5 : request() jette désormais une ApiError typée — son
+        // .message porte le `detail` RFC 7807 réel du cœur (ex. "group or
+        // user not found"), qui ne contient plus la sous-chaîne "404"
+        // qu'un ancien Error générique portait. .status se lit directement.
+        if (err instanceof ApiError && err.status === 404) {
           throw new Error(
             "Ce groupe n'existe pas, ou vous n'en êtes pas le créateur — seul le créateur d'un groupe peut y ajouter un membre.",
           );

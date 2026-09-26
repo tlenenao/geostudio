@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useCollectionsAdmin, useInstanceInfo } from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
-import { appendSqlHistory, readSqlHistory, type SqlHistoryEntry } from "../lib/sqlLabHistory";
+import {
+  appendSqlHistory,
+  findSqlHistoryEntry,
+  readSqlHistory,
+  type SqlHistoryEntry,
+} from "../lib/sqlLabHistory";
+import { useUrlSyncedState } from "../lib/useUrlSyncedState";
 import { SqlLabCopilotPanel } from "../builder/copilot/SqlLabCopilotPanel";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
@@ -19,6 +25,7 @@ export function SqlLabPage() {
   const [sql, setSql] = useState("");
   const [result, setResult] = useState<SqlResult | null>(null);
   const [history, setHistory] = useState<SqlHistoryEntry[]>(() => readSqlHistory());
+  const [historyId, setHistoryId] = useUrlSyncedState<string>("historyId", null);
   const instanceQuery = useInstanceInfo();
   const copilotEnabled = instanceQuery.data?.copilotEnabled === true;
   // Seule consommatrice : le panneau copilote (I1, revue finale de branche
@@ -27,6 +34,19 @@ export function SqlLabPage() {
   // copilote est éteint. `GET /collections` est déjà la source de la liste
   // pour VisualQueryWizardPage (même hook), aucun nouveau chemin d'accès.
   const collectionsQuery = useCollectionsAdmin({ enabled: copilotEnabled });
+
+  // SP-B9d : restaure la requête sélectionnée dans l'historique depuis
+  // l'URL (?historyId=…) — au montage et à chaque changement externe de
+  // l'URL (navigation, partage de lien). Un `historyId` inconnu ou périmé
+  // (localStorage vidé entre-temps) ne fait rien : le `sql` déjà présent
+  // dans l'éditeur reste inchangé.
+  useEffect(() => {
+    if (!historyId) return;
+    const entry = findSqlHistoryEntry(historyId);
+    if (entry) {
+      setSql(entry.sql);
+    }
+  }, [historyId]);
 
   const run = useMutation({
     mutationFn: (query: string) => client.runAnalyticsSql(query),
@@ -135,14 +155,17 @@ export function SqlLabPage() {
                 <EmptyState title={t("sqlLab.emptyHistory")} />
               ) : (
                 <ul className="flex flex-col gap-1">
-                  {history.map((entry, i) => (
-                    <li key={i} className="flex items-center gap-2 text-xs">
+                  {history.map((entry) => (
+                    <li key={entry.id} className="flex items-center gap-2 text-xs">
                       <span aria-hidden="true">{entry.status === "error" ? "✕" : "✓"}</span>
                       <button
                         type="button"
                         aria-label={t("sqlLab.reloadQueryAria", { sql: entry.sql })}
                         className="text-left font-mono text-ink-2 hover:underline"
-                        onClick={() => setSql(entry.sql)}
+                        onClick={() => {
+                          setSql(entry.sql);
+                          setHistoryId(entry.id);
+                        }}
                       >
                         {entry.sql}
                       </button>

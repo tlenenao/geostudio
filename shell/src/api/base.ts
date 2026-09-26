@@ -8,6 +8,71 @@ import type {
   MapLayer,
   PopupConfig,
 } from "./types";
+import { CoreUnreachableError } from "./CoreUnreachableError";
+import { ApiError } from "./ApiError";
+
+// SP-B7 : borne toute requête cœur à 15s et convertit un fetch qui rejette
+// (réseau coupé, timeout, DNS, etc.) en CoreUnreachableError — distingué
+// d'une vraie erreur serveur (réponse HTTP non-ok, gérée par chaque appelant
+// individuellement) pour que ConnectivityBanner puisse réagir spécifiquement
+// à une injoignabilité, pas à n'importe quel échec de requête.
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+// `timeoutMs` : surcharge ponctuelle pour les appels réputés longs côté
+// cœur (ex. copilotTurn, domains/apps.ts) — tous les autres gardent 15s.
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit = {},
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<Response> {
+  try {
+    return await fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (err) {
+    throw new CoreUnreachableError(err);
+  }
+}
+
+// AbortSignal.timeout() couvre tout le cycle de vie du fetch, lecture du
+// corps comprise : un timeout qui tombe pendant res.json()/res.blob() rejette
+// en DOMException AbortError HORS du try/catch de fetchWithTimeout. On le
+// convertit en CoreUnreachableError (sinon ConnectivityBanner ne réagit pas) ;
+// toute autre erreur (JSON invalide…) est relancée telle quelle.
+async function readBody<T>(read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new CoreUnreachableError(err);
+    }
+    throw err;
+  }
+}
+
+// SP-B5 : le cœur répond en RFC 7807 (`application/problem+json`,
+// `title`+`detail`) sur toute erreur HTTP, et porte un en-tête `Retry-After`
+// (secondes) sur un 429 (`rate_limit_guard`, `core/app/main.py`). Partagé
+// entre `request()` et `requestBlob()` : les deux jettent aujourd'hui une
+// `Error` générique sur `!res.ok`, jetant ces champs. `res.clone()` est
+// nécessaire car le corps ne se lit qu'une fois — un appelant qui a déjà lu
+// `res` (aucun cas actuel) casserait sinon.
+async function parseErrorResponse(res: Response): Promise<ApiError> {
+  let title: string | undefined;
+  let detail: string | undefined;
+  try {
+    const problem = (await res.clone().json()) as { title?: unknown; detail?: unknown };
+    if (typeof problem.title === "string") title = problem.title;
+    if (typeof problem.detail === "string") detail = problem.detail;
+  } catch {
+    // Corps absent ou non-JSON (ex. 500 sans body) : ApiError retombe sur
+    // son message générique plutôt que de faire échouer la gestion d'erreur.
+  }
+  const retryAfterHeader = res.headers.get("Retry-After");
+  const retryAfter =
+    res.status === 429 && retryAfterHeader !== null && !Number.isNaN(Number(retryAfterHeader))
+      ? Number(retryAfterHeader)
+      : undefined;
+  return new ApiError(res.status, { title, detail, retryAfter });
+}
 
 // RawMapLayer/toFrontLayer vivent ici (et non dans domains/layers.ts) pour
 // éviter un cycle itemClient.ts <-> domains/layers.ts : itemClient.ts
@@ -118,7 +183,7 @@ export type ItemClientBase = {
   coreUrl: string;
   getToken: () => string | undefined;
   getShareLinkToken?: () => string | undefined;
-  request<T>(method: string, path: string, body?: unknown): Promise<T>;
+  request<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T>;
   resolveDataset(pk: string): Promise<ResolvedDataset>;
   datasetCache: Map<string, ResolvedDataset>;
   // GAP-65 (2/3) : pk === undefined vide tout le cache, sinon une seule
@@ -159,16 +224,16 @@ export async function requestBlob(
   if (token) headers.Authorization = `Bearer ${token}`;
   else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  const res = await fetch(`${coreUrl}${path}`, {
+  const res = await fetchWithTimeout(`${coreUrl}${path}`, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`Request failed: ${res.status} ${method} ${path}`);
+  if (!res.ok) throw await parseErrorResponse(res);
   const disposition = res.headers.get("Content-Disposition") ?? "";
   const match = /filename="([^"]+)"/.exec(disposition);
   const filename = match ? match[1] : "export";
-  const blob = await res.blob();
+  const blob = await readBody(() => res.blob());
   return { blob, filename };
 }
 
@@ -187,23 +252,32 @@ export function createBase(opts: {
   const coreUrl = `${opts.coreUrl}/v1`;
   const { getToken, getShareLinkToken } = opts;
 
-  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async function request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    timeoutMs?: number,
+  ): Promise<T> {
     const token = getToken();
     const shareToken = getShareLinkToken?.();
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
     if (shareToken) headers["X-Share-Link-Token"] = shareToken;
     if (body !== undefined) headers["Content-Type"] = "application/json";
-    const res = await fetch(`${coreUrl}${path}`, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    const res = await fetchWithTimeout(
+      `${coreUrl}${path}`,
+      {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      },
+      timeoutMs,
+    );
     if (!res.ok) {
-      throw new Error(`Request failed: ${res.status} ${method} ${path}`);
+      throw await parseErrorResponse(res);
     }
     if (res.status === 204) return undefined as T;
-    return (await res.json()) as T;
+    return readBody(() => res.json() as Promise<T>);
   }
 
   const datasetCache = new Map<string, ResolvedDataset>();
@@ -268,7 +342,7 @@ export function createBase(opts: {
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
     if (shareToken) headers["X-Share-Link-Token"] = shareToken;
-    const res = await fetch(url, { headers });
+    const res = await fetchWithTimeout(url, { headers });
     if (!res.ok) throw new Error(`Request failed: ${res.status} features`);
     const data = (await res.json()) as {
       features?: {
@@ -287,7 +361,7 @@ export function createBase(opts: {
   async function fetchCoreCollections(q?: string): Promise<LayerSource[]> {
     const token = getToken();
     const query = q ? `?q=${encodeURIComponent(q)}` : "";
-    const res = await fetch(`${coreUrl}/collections${query}`, {
+    const res = await fetchWithTimeout(`${coreUrl}/collections${query}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error(`Request failed: ${res.status} /collections`);
@@ -317,7 +391,7 @@ export function createBase(opts: {
   async function fetchExternalRasterSources(q?: string): Promise<LayerSource[]> {
     const token = getToken();
     const query = q ? `?q=${encodeURIComponent(q)}` : "";
-    const res = await fetch(`${coreUrl}/harvest/layers${query}`, {
+    const res = await fetchWithTimeout(`${coreUrl}/harvest/layers${query}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error(`Request failed: ${res.status} /harvest/layers`);
@@ -337,7 +411,7 @@ export function createBase(opts: {
     const query = new URLSearchParams({ type: "tileset3d", pageSize: "200" });
     if (q) query.set("q", q);
     const token = getToken();
-    const res = await fetch(`${coreUrl}/items?${query.toString()}`, {
+    const res = await fetchWithTimeout(`${coreUrl}/items?${query.toString()}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error(`Request failed: ${res.status} /items`);
@@ -355,7 +429,7 @@ export function createBase(opts: {
     const query = new URLSearchParams({ type: "terrain3d", pageSize: "200" });
     if (q) query.set("q", q);
     const token = getToken();
-    const res = await fetch(`${coreUrl}/items?${query.toString()}`, {
+    const res = await fetchWithTimeout(`${coreUrl}/items?${query.toString()}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error(`Request failed: ${res.status} /items`);

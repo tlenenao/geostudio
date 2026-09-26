@@ -61,19 +61,16 @@ export function VariablesPanel({
       {variables.map((v) => {
         const type = v.type ?? "string";
         return (
-          <li
-            key={v.id}
-            className="flex items-center gap-1 rounded border border-slate-200 p-1 text-xs"
-          >
+          <li key={v.id} className="flex items-center gap-1 rounded border border-rule p-1 text-xs">
             <input
               aria-label={t("variablesPanel.renameAria", { id: v.id })}
-              className="w-16 rounded border border-slate-300 px-1"
+              className="w-16 rounded border border-rule px-1"
               defaultValue={v.name}
               onChange={(e) => rename(v.id, e.target.value)}
             />
             <select
               aria-label={t("variablesPanel.typeAria", { id: v.id })}
-              className="rounded border border-slate-300 px-1"
+              className="rounded border border-rule px-1"
               value={type}
               onChange={(e) => setType(v.id, e.target.value as VariableType)}
             >
@@ -86,7 +83,7 @@ export function VariablesPanel({
             {type === "string" && (
               <input
                 aria-label={t("variablesPanel.initialValueAria", { id: v.id })}
-                className="w-16 rounded border border-slate-300 px-1"
+                className="w-16 rounded border border-rule px-1"
                 defaultValue={String(v.initialValue ?? "")}
                 onChange={(e) => setInitialValue(v.id, e.target.value)}
               />
@@ -95,7 +92,7 @@ export function VariablesPanel({
               <input
                 aria-label={t("variablesPanel.initialValueAria", { id: v.id })}
                 type="number"
-                className="w-16 rounded border border-slate-300 px-1"
+                className="w-16 rounded border border-rule px-1"
                 defaultValue={Number(v.initialValue ?? 0)}
                 onChange={(e) => setInitialValue(v.id, Number(e.target.value))}
               />
@@ -112,7 +109,7 @@ export function VariablesPanel({
               <input
                 aria-label={t("variablesPanel.initialValueAria", { id: v.id })}
                 type="date"
-                className="rounded border border-slate-300 px-1"
+                className="rounded border border-rule px-1"
                 defaultValue={String(v.initialValue ?? "")}
                 onChange={(e) => setInitialValue(v.id, e.target.value)}
               />
@@ -123,7 +120,7 @@ export function VariablesPanel({
             <button
               type="button"
               aria-label={t("variablesPanel.removeAria", { id: v.id })}
-              className="text-red-600"
+              className="text-danger"
               onClick={() => remove(v.id)}
             >
               ✕
@@ -134,7 +131,7 @@ export function VariablesPanel({
       <li>
         <button
           type="button"
-          className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-100"
+          className="rounded border border-rule px-2 py-1 hover:bg-sunken"
           onClick={addVariable}
         >
           {t("variablesPanel.addButton")}

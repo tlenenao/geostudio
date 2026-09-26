@@ -22,6 +22,7 @@ import {
 import { ExplorerMenu } from "./ExplorerMenu";
 import type { DataRecord, DataSource, DatasetConfig } from "../../api/types";
 import { t } from "../../i18n";
+import { LoadingState } from "../../ui/kit/LoadingState";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
 
@@ -50,7 +51,7 @@ const AXIS_TYPES: [string, string][] = [
 ];
 
 const labelCls = "flex flex-col gap-1";
-const inputCls = "h-9 rounded-md border border-slate-300 px-2";
+const inputCls = "h-9 rounded-md border border-rule px-2";
 
 function toComparePoints(records: DataRecord[] | undefined, timeField: string): ComparePoint[] {
   return (records ?? []).map((r) => ({
@@ -213,7 +214,7 @@ export function registerChartWidget(): void {
                   <button
                     type="button"
                     aria-label={t("widgetChart.removeLevel", { n: i + 1 })}
-                    className="text-xs text-red-600"
+                    className="text-xs text-danger"
                     onClick={() => setEncodings({ levels: levels.filter((_, j) => j !== i) })}
                   >
                     ✕
@@ -223,7 +224,7 @@ export function registerChartWidget(): void {
               {levels.length < 3 && (
                 <button
                   type="button"
-                  className="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-100"
+                  className="rounded border border-rule px-2 py-0.5 text-xs hover:bg-sunken"
                   onClick={() => setEncodings({ levels: [...levels, ""] })}
                 >
                   {t("widgetChart.addLevel")}
@@ -335,7 +336,7 @@ export function registerChartWidget(): void {
             {t("widgetChart.advancedOption")}
             <textarea
               aria-label={t("widgetChart.advancedOption")}
-              className="rounded-md border border-slate-300 p-2 font-mono text-xs"
+              className="rounded-md border border-rule p-2 font-mono text-xs"
               rows={4}
               placeholder='{"color":["#f00"]}'
               value={String(props.advancedOption ?? "")}
@@ -423,10 +424,9 @@ export function registerChartWidget(): void {
       });
 
       if (compareActive) {
-        if (currentQuery.isLoading || referenceQuery.isLoading)
-          return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+        if (currentQuery.isLoading || referenceQuery.isLoading) return <LoadingState />;
         if (currentQuery.isError || referenceQuery.isError)
-          return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
+          return <p className="text-xs text-danger">{t("common.dataError")}</p>;
         const timeField = (dataset as DatasetConfig).timeField as string;
         const option = buildCompareOption(
           props as unknown as ChartProps,
@@ -455,7 +455,7 @@ export function registerChartWidget(): void {
 
       if (!data || data.loading)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
-      if (data.error) return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
+      if (data.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;
       if (data.records.length === 0)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.noData")}</p>;
       const option = buildOption(props as unknown as ChartProps, data.records);

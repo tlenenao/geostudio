@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import type { CollectionSchema, ItemClient } from "../api/types";
 import { DatasetDownloadButtons } from "./DatasetDownloadButtons";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 const schema: CollectionSchema = {
   collection: "parcs",
@@ -22,14 +23,14 @@ function renderButtons(featureCount: number | null, clientOverrides: Partial<Ite
     ...clientOverrides,
   } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  const view = render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
         <DatasetDownloadButtons collectionId="parcs" featureCount={featureCount} />
       </ItemClientProvider>
     </QueryClientProvider>,
   );
-  return client;
+  return { client, ...view };
 }
 
 beforeEach(() => {
@@ -80,7 +81,7 @@ test("disables the CSV button for an unknown feature count without showing the t
 });
 
 test("clicking the CSV button fetches records via the client and triggers a download", async () => {
-  const client = renderButtons(1, {
+  const { client } = renderButtons(1, {
     queryDataSource: vi
       .fn()
       .mockResolvedValue([{ id: 1, properties: { nom: "X" }, geometry: null }]),
@@ -88,4 +89,28 @@ test("clicking the CSV button fetches records via the client and triggers a down
   const button = await screen.findByRole("button", { name: "Télécharger CSV" });
   await userEvent.click(button);
   await vi.waitFor(() => expect(client.queryDataSource).toHaveBeenCalled());
+});
+
+// SP-B12b: pas de couleur Tailwind de palette codée en dur. `container`
+// (pas un des deux éléments cliquables directement) : `Element.innerHTML`
+// ne reflète que le balisage des ENFANTS d'un élément, jamais ses propres
+// attributs — vérifié par falsification (cf. rapport de tâche) que checker
+// un des deux éléments directement passait vacuously même sans correctif.
+// Un seul rendu couvre les 6 occurrences liées au lien + bouton
+// (border-slate-300/text-slate-700/hover:bg-slate-100 ×2) ; la 7e
+// (text-slate-500, message "trop volumineux") a son propre test ci-dessous
+// car elle n'apparaît que dans l'état au-dessus du plafond.
+test("link and CSV button use semantic tokens, not literal Tailwind colors (SP-B12b)", async () => {
+  const { container } = renderButtons(2);
+  await screen.findByRole("link", { name: "Télécharger GeoJSON" });
+  await screen.findByRole("button", { name: "Télécharger CSV" });
+  expectTokenizedClasses(container);
+});
+
+test("too-large message uses semantic tokens, not literal Tailwind colors (SP-B12b)", async () => {
+  const { container } = renderButtons(10001);
+  await screen.findByText(
+    /trop volumineux pour l'export CSV navigateur — export serveur à venir \(SP-15\)/,
+  );
+  expectTokenizedClasses(container);
 });

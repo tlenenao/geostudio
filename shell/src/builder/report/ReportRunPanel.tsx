@@ -4,15 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/ItemClientProvider";
 import type { ReportRunStatus } from "../../api/types";
 import { t } from "../../i18n";
+import { jobStatusLabel } from "../../lib/jobStatusLabel";
 import { Button } from "../../ui/kit/Button";
-
-const STATUS_LABEL: Record<ReportRunStatus["status"], string> = {
-  pending: t("reportRun.statusPending"),
-  running: t("reportRun.statusRunning"),
-  done: t("reportRun.statusDone"),
-  error: t("reportRun.statusError"),
-  unknown: t("reportRun.statusUnknown"),
-};
 
 // Rythmes de sondage. PipelineRunPanel s'arrête net dès que le run quitte
 // queued/running ; ici un run peut apparaître à tout moment (le cron de
@@ -86,7 +79,7 @@ export function ReportRunPanel({ reportId }: { reportId: string }) {
       <ul className="flex flex-col gap-1">
         {runs.map((run) => (
           <li key={run.id} className="flex items-center gap-2 text-sm">
-            <span>{STATUS_LABEL[run.status]}</span>
+            <span>{jobStatusLabel(run.status)}</span>
             <span className="text-ink-2">{new Date(run.createdAt).toLocaleString()}</span>
             {run.resultUrl && (
               <a

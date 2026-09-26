@@ -541,3 +541,56 @@ test("sous viewport étroit, affiche trois onglets Catalogue/Moissonnage/Détail
   const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
   expect(activeTab).toHaveTextContent("Moissonnage");
 });
+
+test("cliquer l'en-tête URL trie les sources par URL (DataTable, Tâche 21)", async () => {
+  server.use(
+    http.get("https://core.test/v1/harvest/sources", () =>
+      HttpResponse.json({
+        sources: [
+          {
+            id: "src-b",
+            type: "stac",
+            url: "https://b",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: null,
+            lastError: null,
+          },
+          {
+            id: "src-a",
+            type: "stac",
+            url: "https://a",
+            mode: "reference",
+            enabled: true,
+            intervalMinutes: null,
+            lastRunAt: null,
+            lastStatus: null,
+            lastError: null,
+          },
+        ],
+      }),
+    ),
+  );
+
+  render(<Harness />);
+  await screen.findByText("https://b");
+  const rowsBefore = screen.getAllByRole("row").slice(1);
+  expect(within(rowsBefore[0]).getByText("https://b")).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("columnheader", { name: "URL" }));
+
+  const rowsAfter = screen.getAllByRole("row").slice(1);
+  expect(within(rowsAfter[0]).getByText("https://a")).toBeInTheDocument();
+  expect(within(rowsAfter[1]).getByText("https://b")).toBeInTheDocument();
+});
+
+test("affiche un état vide quand aucune source de moissonnage n'existe", async () => {
+  server.use(
+    http.get("https://core.test/v1/harvest/sources", () => HttpResponse.json({ sources: [] })),
+  );
+  render(<Harness />);
+  expect(await screen.findByText("Aucune source de moissonnage configurée")).toBeInTheDocument();
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+});

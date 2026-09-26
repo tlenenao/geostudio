@@ -172,7 +172,10 @@ test("un utilisateur non-technicien construit, enregistre puis exécute un pipel
   await expect(page).toHaveURL(/\/pipelines\/pipe-1\/edit$/);
 
   await page.getByRole("button", { name: "Exécuter" }).click();
-  await expect(page.getByText("succeeded")).toBeVisible({ timeout: 10_000 });
+  // SP-B10 (Vague B) a introduit jobStatusLabel : le statut brut de l'API
+  // ("succeeded") est désormais toujours rendu via son libellé traduit
+  // ("Terminé"), jamais affiché tel quel.
+  await expect(page.getByText("Terminé")).toBeVisible({ timeout: 10_000 });
 });
 
 test("un utilisateur relie une seconde source sur la poignée secondaire d'un transform.join", async ({

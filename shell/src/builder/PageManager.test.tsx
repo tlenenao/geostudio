@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import type { Page } from "../api/types";
 import { PageManager } from "./PageManager";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 const emptyLayout = { type: "grid" as const, breakpoints: {}, items: [] };
 
@@ -58,9 +59,12 @@ test("reorders pages with the move buttons", async () => {
     { id: "p1", name: "A", layout: emptyLayout },
     { id: "p2", name: "B", layout: emptyLayout },
   ];
-  render(
+  const { container } = render(
     <PageManager pages={pages} activePageId="p1" onChange={onChange} onSelectPage={vi.fn()} />,
   );
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   await userEvent.click(screen.getByRole("button", { name: "Descendre la page p1" }));
   const next = onChange.mock.calls[0][0] as Page[];
   expect(next.map((p) => p.id)).toEqual(["p2", "p1"]);

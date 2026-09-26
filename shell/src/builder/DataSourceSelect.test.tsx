@@ -11,6 +11,7 @@ import type { DataSource } from "../api/types";
 import { server } from "../test/msw/server";
 import { DataSourceSelect } from "./DataSourceSelect";
 import { DataSourcesEditProvider } from "./DataSourcesEditContext";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({
@@ -34,7 +35,13 @@ const sources: DataSource[] = [
 
 test("selects a data source and emits its id", async () => {
   const onChange = vi.fn();
-  render(<DataSourceSelect value="" dataSources={sources} onChange={onChange} />, { wrapper });
+  const { container } = render(
+    <DataSourceSelect value="" dataSources={sources} onChange={onChange} />,
+    { wrapper },
+  );
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   await userEvent.selectOptions(screen.getByLabelText("Source de données"), "ds2");
   expect(onChange).toHaveBeenCalledWith("ds2");
 });

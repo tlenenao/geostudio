@@ -23,7 +23,7 @@ export function registerDateRangeFilterWidget(): void {
         {t("widgetDateRangeFilter.labelConfig")}
         <input
           aria-label={t("widgetDateRangeFilter.labelAria")}
-          className="h-9 rounded-md border border-slate-300 px-2"
+          className="h-9 rounded-md border border-rule px-2"
           value={String(props.label ?? "")}
           onChange={(e) => onChange({ ...props, label: e.target.value })}
         />

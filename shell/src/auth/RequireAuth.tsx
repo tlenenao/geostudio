@@ -34,7 +34,7 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   }
   if (error) {
     return (
-      <div role="alert" className="p-8 text-sm text-red-600">
+      <div role="alert" className="p-8 text-sm text-danger">
         Échec de la connexion : {error}{" "}
         <button className="underline" onClick={signIn}>
           {t("common.retry")}

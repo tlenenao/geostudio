@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useItemClient } from "../api/ItemClientProvider";
 import type { MapLayer } from "../api/types";
@@ -10,6 +10,7 @@ import {
   makeStatQueryFn,
 } from "./geojsonIntrospect";
 import { LayerPicker } from "./LayerPicker";
+import { isHostedCollectionUrl } from "./hostedCoreUrl";
 import { MapSymbologyEditor } from "./MapSymbologyEditor";
 import { PopupEditor } from "./PopupEditor";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
@@ -216,6 +217,62 @@ export function LayersPanel({
   layers: MapLayer[];
   onChange: (layers: MapLayer[]) => void;
 }) {
+  const client = useItemClient();
+  const [truncatedLayerIds, setTruncatedLayerIds] = useState<Set<string>>(new Set());
+  const vectorLayers = layers.filter(
+    (l): l is Extract<MapLayer, { kind: "vector" }> => l.kind === "vector",
+  );
+  // Clé dérivée (id+tilesUrl) plutôt que `layers` en dépendance directe :
+  // `layers` change de référence à chaque onChange du panneau (bascule de
+  // visibilité, réordonnancement, opacité...), ce qui redéclencherait la
+  // sonde réseau sur des changements sans rapport avec l'ensemble des
+  // couches vecteur réellement affichées.
+  const vectorLayersKey = vectorLayers.map((l) => `${l.id}::${l.tilesUrl}`).join("|");
+
+  useEffect(() => {
+    if (vectorLayers.length === 0) {
+      setTruncatedLayerIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      vectorLayers.map(async (layer) => {
+        // MapLibre ne remonte pas les en-têtes de réponse au code
+        // applicatif pour une source `vector` déclarative — sonde
+        // ponctuelle sur la tuile racine plutôt qu'un suivi temps réel de
+        // chaque tuile réellement affichée (scope restreint, cf. spec).
+        const rootUrl = layer.tilesUrl.replace("{z}/{x}/{y}", "0/0/0");
+        // `?.()` obligatoire (patron déjà suivi par listCustomIcons plus haut
+        // dans ce fichier) : plusieurs tests de ce composant (et de ses
+        // hôtes, MapEditorPage/mapWidget) rendent LayersPanel avec un
+        // ItemClient PARTIEL, sans `getAuthToken`.
+        // Jeton attaché UNIQUEMENT si la tuile est réellement servie par le
+        // cœur (même origine + chemin /collections/, cf. hostedCoreUrl.ts) :
+        // une couche vecteur externe (URL libre saisie par l'auteur) ne doit
+        // jamais recevoir le jeton de session (revue finale Vague B, C2).
+        // getCoreUrl absent => « non hébergé », jamais l'inverse.
+        const token = isHostedCollectionUrl(rootUrl, client.getCoreUrl?.())
+          ? client.getAuthToken?.()
+          : undefined;
+        try {
+          const res = await fetch(rootUrl, {
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          });
+          return [layer.id, res.headers.get("X-Tile-Truncated") === "true"] as const;
+        } catch {
+          return [layer.id, false] as const;
+        }
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      setTruncatedLayerIds(new Set(results.filter(([, truncated]) => truncated).map(([id]) => id)));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vectorLayersKey, client]);
+
   function toggle(id: string) {
     onChange(layers.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l)));
   }
@@ -241,6 +298,14 @@ export function LayersPanel({
             // largeur 0 à la place (SP-36).
           >
             <span className="flex-1 truncate">{layer.title}</span>
+            {layer.kind === "vector" && truncatedLayerIds.has(layer.id) && (
+              <span
+                className="rounded bg-warn-soft px-1.5 py-0.5 text-xs text-warn"
+                title={t("layersPanel.truncatedBadge")}
+              >
+                {t("layersPanel.truncatedBadge")}
+              </span>
+            )}
             <button
               type="button"
               aria-label={t("layersPanel.moveUpAria", { title: layer.title })}

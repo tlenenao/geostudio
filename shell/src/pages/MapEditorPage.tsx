@@ -21,6 +21,7 @@ import { Button } from "../ui/kit/Button";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useIsExportRender } from "../shell/useIsExportRender";
 import { markExportReady } from "../shell/exportReady";
+import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
 
 export function MapEditorPage({ pk }: { pk: string }) {
@@ -41,6 +42,22 @@ export function MapEditorPage({ pk }: { pk: string }) {
   // effectivement résolu.
   const readOnly = !hasPermission(itemQuery.data, "write");
   const [draft, setDraft] = useState<MapConfig | null>(null);
+  // SP-B6c : dérivé localement, pas comparé au serveur (design retenu au
+  // brief) — mis à `true` par `updateDraft` (wrapper unique autour de
+  // `setDraft`, utilisé sur tous les points de mutation du brouillon
+  // ci-dessous), remis à `false` dans l'`onSuccess` de la sauvegarde. La
+  // synchronisation initiale depuis `query.data` (effet ci-dessous) passe
+  // volontairement par le `setDraft` brut : ce n'est pas une modification de
+  // l'utilisateur, et le même effet se redéclenche après une sauvegarde
+  // réussie (invalidation de la query), ce qui re-marquerait le brouillon
+  // sale immédiatement après l'avoir marqué propre si on passait par
+  // `updateDraft` ici.
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const updateDraft: typeof setDraft = (next) => {
+    setHasUnsavedChanges(true);
+    setDraft(next);
+  };
+  const { ConfirmLeaveDialog } = useDirtyGuard(hasUnsavedChanges);
   const mapViewRef = useRef<MapViewHandle>(null);
   const hasAutoFitted = useRef(false);
   // C1 (revue finale) : `onReady` (MapView.tsx:1017-1033/1063) ne se
@@ -91,23 +108,23 @@ export function MapEditorPage({ pk }: { pk: string }) {
       </p>
     );
 
-  const setLayers = (layers: MapLayer[]) => setDraft({ ...draft, layers });
-  const setStyle = (style: string) => setDraft({ ...draft, basemap: { style } });
+  const setLayers = (layers: MapLayer[]) => updateDraft({ ...draft, layers });
+  const setStyle = (style: string) => updateDraft({ ...draft, basemap: { style } });
   const setView = (view: {
     center: [number, number];
     zoom: number;
     pitch: number;
     bearing: number;
-  }) => setDraft((d) => (d ? { ...d, view } : d));
+  }) => updateDraft((d) => (d ? { ...d, view } : d));
   function setPrintLayout(printLayout: PrintLayoutConfig | null) {
-    setDraft((d) => (d ? { ...d, printLayout } : d));
+    updateDraft((d) => (d ? { ...d, printLayout } : d));
   }
   function setTerrain(terrain: MapTerrainConfig | null) {
-    setDraft((d) => (d ? { ...d, terrain } : d));
+    updateDraft((d) => (d ? { ...d, terrain } : d));
   }
   const currentDraft = draft;
   function setCamera(next: { pitch: number; bearing: number }) {
-    setDraft((d) => (d ? { ...d, view: { ...d.view, ...next } } : d));
+    updateDraft((d) => (d ? { ...d, view: { ...d.view, ...next } } : d));
     mapViewRef.current?.flyTo({
       center: currentDraft.view.center,
       zoom: currentDraft.view.zoom,
@@ -121,13 +138,13 @@ export function MapEditorPage({ pk }: { pk: string }) {
   // triptyque chrome. Ready signal = MapLibre "idle" (map.once), relayed via
   // MapView's onReady. showScaleBar/showNorthArrow were removed entirely
   // from the schema (REV-128) — never rendered, authorable-but-inert.
-  // bg-white/90 stays hardcoded here on purpose (a print artifact meant to
+  // gs-raw-color-ok: bg-white/90 stays hardcoded here on purpose (a print artifact meant to
   // look like paper, not UI chrome — spec §2.2, the map itself also always
   // stays light regardless of ambiance).
   if (isExportRender) {
     return (
       <div className="relative h-full w-full">
-        <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
+        <Suspense fallback={<div className="text-xs text-ink-3">Carte…</div>}>
           <MapView
             config={draft}
             onReady={() => {
@@ -141,11 +158,13 @@ export function MapEditorPage({ pk }: { pk: string }) {
           />
         </Suspense>
         {draft.printLayout?.title && (
+          // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
           <div className="absolute left-2 top-2 rounded bg-white/90 px-2 py-1 text-sm font-medium">
             {draft.printLayout.title}
           </div>
         )}
         {draft.printLayout?.showLegend && (
+          // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
           <ul className="absolute bottom-2 left-2 rounded bg-white/90 px-2 py-1 text-xs">
             {draft.layers
               .filter((l) => l.visible)
@@ -155,6 +174,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
           </ul>
         )}
         {draft.printLayout?.cartouche && (
+          // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
           <div className="absolute bottom-2 right-2 rounded bg-white/90 px-2 py-1 text-xs">
             {draft.printLayout.cartouche}
           </div>
@@ -181,7 +201,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
           label: t("mapEditor.mapLabel"),
           content: (
             <div className="relative h-full w-full">
-              <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
+              <Suspense fallback={<div className="text-xs text-ink-3">Carte…</div>}>
                 <MapView
                   ref={mapViewRef}
                   config={draft}
@@ -224,14 +244,14 @@ export function MapEditorPage({ pk }: { pk: string }) {
               <ConfigHistoryPanel
                 pk={pk}
                 currentVersion={null}
-                onRestored={async () => setDraft(await client.getMapConfig(pk))}
+                onRestored={async () => updateDraft(await client.getMapConfig(pk))}
               />
               {exportEnabled && <ExportPanel itemId={pk} />}
               <Button
                 size="sm"
                 className="w-fit"
                 disabled={save.isPending || readOnly}
-                onClick={() => save.mutate(draft)}
+                onClick={() => save.mutate(draft, { onSuccess: () => setHasUnsavedChanges(false) })}
               >
                 {t("common.save")}
               </Button>
@@ -245,6 +265,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
           ),
         }}
       />
+      <ConfirmLeaveDialog />
     </div>
   );
 }

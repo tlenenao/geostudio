@@ -10,7 +10,7 @@ import { t } from "../../i18n";
 
 type DrawerProps = { title: string; items: WidgetItem[]; side: "left" | "right" };
 
-const inputCls = "h-9 rounded-md border border-slate-300 px-2 text-sm";
+const inputCls = "h-9 rounded-md border border-rule px-2 text-sm";
 
 export function registerDrawerWidget(): void {
   registerWidget({
@@ -75,7 +75,7 @@ export function registerDrawerWidget(): void {
 
       if (ctx.mode === "edit") {
         return (
-          <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-ink-2">
+          <div className="flex h-full items-center justify-center bg-sunken text-xs text-ink-2">
             {t("widgetDrawer.editPreview", { title })}
           </div>
         );
@@ -86,14 +86,14 @@ export function registerDrawerWidget(): void {
       return (
         <div className="fixed inset-0 z-50">
           <div
-            className="absolute inset-0 bg-black/40"
+            className="absolute inset-0 bg-ink/40"
             aria-hidden="true"
             onClick={() => setOpen(false)}
           />
           <div
             role="dialog"
             aria-label={title}
-            className={`absolute top-0 ${sideCls} h-full w-96 overflow-auto bg-white p-4 shadow-lg`}
+            className={`absolute top-0 ${sideCls} h-full w-96 overflow-auto bg-surface p-4 shadow-lg`}
           >
             <h2 className="mb-4 text-lg font-semibold">{title}</h2>
             <div className="h-[calc(100%-2rem)]">

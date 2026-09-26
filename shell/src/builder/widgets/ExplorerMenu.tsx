@@ -4,6 +4,7 @@ import { useExplorerEnabled, useOpenExplorer } from "../ExplorerContext";
 import { useOptionalItemClient } from "../../api/ItemClientProvider";
 import type { DataSource } from "../../api/types";
 import { t } from "../../i18n";
+import { ApiError } from "../../api/ApiError";
 
 const AGGREGATE_FORMATS = ["csv", "xlsx"];
 const ITEMS_FORMATS_WITH_GEOMETRY = ["csv", "xlsx", "geojson", "gpkg"];
@@ -14,16 +15,22 @@ function formatsFor(source: DataSource, hasGeometry: boolean): string[] {
   return hasGeometry ? ITEMS_FORMATS_WITH_GEOMETRY : ITEMS_FORMATS_WITHOUT_GEOMETRY;
 }
 
-// requestBlob (itemClient.ts) throws a bare `Error("Request failed: <status> ...")`
-// with no French-language mapping — parse the status back out of the message
-// rather than changing itemClient's error-throwing shape.
+// SP-B5 : requestBlob (base.ts) jette désormais une ApiError typée
+// (status/title/detail) plutôt qu'une Error générique — .status se lit
+// directement. Le repli par expression régulière reste nécessaire pour les
+// tests qui mockent exportDataSource() directement avec une Error brute
+// ("Request failed: <status> ...") sans traverser requestBlob.
 function exportErrorMessage(err: unknown): string {
-  const message = err instanceof Error ? err.message : "";
-  const match = /^Request failed: (\d{3})\b/.exec(message);
-  const status = match ? Number(match[1]) : null;
+  const status = err instanceof ApiError ? err.status : legacyStatus(err);
   if (status === 413) return t("explorerMenu.tooManyEntities");
   if (status === 403) return t("explorerMenu.accessDenied");
   return t("explorerMenu.exportFailed");
+}
+
+function legacyStatus(err: unknown): number | null {
+  const message = err instanceof Error ? err.message : "";
+  const match = /^Request failed: (\d{3})\b/.exec(message);
+  return match ? Number(match[1]) : null;
 }
 
 export function ExplorerMenu({
@@ -113,7 +120,7 @@ export function ExplorerMenu({
       {exportError && (
         <p
           role="alert"
-          className="mt-1 whitespace-normal rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] px-2 py-1 text-xs text-red-600 shadow-sm"
+          className="mt-1 whitespace-normal rounded border border-[var(--gs-color-border)] bg-[var(--gs-color-background)] px-2 py-1 text-xs text-danger shadow-sm"
         >
           {exportError}
         </p>

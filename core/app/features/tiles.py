@@ -94,7 +94,11 @@ def build_mvt_sql(quote: Callable[[str], str], info: TableInfo) -> str:
     props = ", ".join(_projection(name) for name in mvt_property_columns(info))
     props_clause = f", {props}" if props else ""
     return (
-        "SELECT ST_AsMVT(tile, :layer, :extent, 'geom', :fid) FROM ("
+        # count(*) sur la même requête agrégée : le nombre de géométries
+        # effectivement matérialisées dans la tuile (donc après le WHERE
+        # tile.geom IS NOT NULL externe), pour détecter une troncature sans
+        # décoder le protobuf en sortie.
+        "SELECT ST_AsMVT(tile, :layer, :extent, 'geom', :fid), count(*) FROM ("
         f"SELECT ST_AsMVTGeom(ST_Transform({geom}, 3857), "
         "ST_TileEnvelope(:z, :x, :y), :extent, :buffer, true) AS geom"
         f"{props_clause} "
@@ -158,7 +162,7 @@ def get_collection_tile(
     # jamais d'un WHERE applicatif.
     with rls(session, col.tenant_id, masked=masked):
         apply_tile_statement_timeout(session)
-        tile = session.execute(
+        row = session.execute(
             text(sql),
             {
                 "z": z,
@@ -171,12 +175,16 @@ def get_collection_tile(
                 "fid": mvt_feature_id_column(info),
                 "max_features": MAX_TILE_FEATURES,
             },
-        ).scalar()
-    if not tile:
+        ).first()
+    if row is None or not row[0]:
         return Response(status_code=204)
+    tile, feature_count = row[0], row[1]
     visibility = "public" if col.is_public else "private"
+    headers = {"Cache-Control": f"{visibility}, max-age=300"}
+    if feature_count == MAX_TILE_FEATURES:
+        headers["X-Tile-Truncated"] = "true"
     return Response(
         content=bytes(tile),
         media_type=MVT_MEDIA_TYPE,
-        headers={"Cache-Control": f"{visibility}, max-age=300"},
+        headers=headers,
     )

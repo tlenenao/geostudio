@@ -16,6 +16,7 @@ import {
 } from "../../lib/comparisonWindow";
 import type { DataSource, DataSourceState, DatasetConfig } from "../../api/types";
 import { t } from "../../i18n";
+import { LoadingState } from "../../ui/kit/LoadingState";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
 
@@ -260,7 +261,7 @@ export function registerIndicatorWidget(): void {
           {t("widgetIndicator.labelConfig")}
           <input
             aria-label={t("widgetIndicator.labelAria")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.label ?? "")}
             onChange={(e) => onChange({ ...props, label: e.target.value })}
           />
@@ -269,7 +270,7 @@ export function registerIndicatorWidget(): void {
           {t("widgetIndicator.aggConfig")}
           <select
             aria-label={t("widgetIndicator.aggConfig")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.agg ?? "count")}
             onChange={(e) => onChange({ ...props, agg: e.target.value })}
           >
@@ -281,7 +282,7 @@ export function registerIndicatorWidget(): void {
           {t("widgetIndicator.fieldLabel")}
           <input
             aria-label={t("widgetIndicator.fieldAria")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.field ?? "")}
             onChange={(e) => onChange({ ...props, field: e.target.value })}
           />
@@ -290,7 +291,7 @@ export function registerIndicatorWidget(): void {
           {t("widgetIndicator.compareToLabel")}
           <select
             aria-label={t("widgetIndicator.compareToLabel")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.referencePeriod ?? "")}
             onChange={(e) => onChange({ ...props, referencePeriod: e.target.value || undefined })}
           >
@@ -312,7 +313,7 @@ export function registerIndicatorWidget(): void {
           {t("widgetIndicator.criticalThreshold")}
           <input
             aria-label={t("widgetIndicator.criticalThreshold")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.criticalWhen ?? "")}
             onChange={(e) => onChange({ ...props, criticalWhen: e.target.value })}
           />
@@ -321,7 +322,7 @@ export function registerIndicatorWidget(): void {
           {t("widgetIndicator.warningThreshold")}
           <input
             aria-label={t("widgetIndicator.warningThreshold")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.warningWhen ?? "")}
             onChange={(e) => onChange({ ...props, warningWhen: e.target.value })}
           />
@@ -346,9 +347,8 @@ export function registerIndicatorWidget(): void {
         field,
       );
 
-      if (!data || data.loading || comparison.loading)
-        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
-      if (data.error) return <p className="text-xs text-red-600">{t("widgetIndicator.error")}</p>;
+      if (!data || data.loading || comparison.loading) return <LoadingState />;
+      if (data.error) return <p className="text-xs text-danger">{t("widgetIndicator.error")}</p>;
 
       const flatValue = resolveFlatValue(data, agg, field);
       const value =
@@ -389,7 +389,7 @@ export function registerIndicatorWidget(): void {
                     ? t("widgetIndicator.criticalReached")
                     : t("widgetIndicator.warningReached")
                 }
-                className={`h-2.5 w-2.5 rounded-full ${level === "critical" ? "bg-red-600" : "bg-orange-500"}`}
+                className={`h-2.5 w-2.5 rounded-full ${level === "critical" ? "bg-danger" : "bg-warn"}`}
               />
             )}
           </div>

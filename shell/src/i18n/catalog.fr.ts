@@ -106,7 +106,12 @@ export const fr = {
   "catalog.keywordsLabel": "Mots-clés",
   "catalog.spatialSearchLabel": "Recherche spatiale",
   "catalog.loadError": "Erreur de chargement.",
-  "catalog.empty": "Aucun élément.",
+  "catalog.emptyFilteredDescription": "Aucun élément ne correspond à ces filtres.",
+  "catalog.emptyFilteredTitle": "Aucun résultat",
+  "catalog.emptyNoFilterDescription":
+    "Créez votre première carte, appli ou jeu de données pour commencer.",
+  "catalog.emptyNoFilterTitle": "Aucun élément pour l'instant",
+  "catalog.resetFilters": "Réinitialiser les filtres",
   "catalog.summaryLabel": "Résumé",
   "catalog.searchResultLabel": "Recherche",
   "catalog.spatialExtentLabel": "Emprise spatiale",
@@ -127,6 +132,16 @@ export const fr = {
 
   // Toast
   "toast.close": "Fermer la notification",
+  "toast.providerMissing": "useToast doit être utilisé sous ToastProvider",
+  "toast.mapSaved": "Carte enregistrée",
+  "toast.datasetSaved": "Données enregistrées",
+  "toast.appSaved": "Application enregistrée",
+  "toast.pipelineCreated": "Pipeline créé",
+  "toast.pipelineSaved": "Pipeline enregistré",
+  "toast.webhookTokenCreated": "Jeton de webhook créé",
+  "toast.webhookTokenRevoked": "Jeton de webhook révoqué",
+  "toast.reportScheduleCreated": "Rapport planifié créé",
+  "toast.reportScheduleSaved": "Rapport planifié enregistré",
 
   // ConfirmDialog
   "confirmDialog.cancel": "Annuler",
@@ -203,6 +218,7 @@ export const fr = {
   "roles.privilege.unknown": "Privilège inconnu",
   "roles.loadError": "Échec du chargement des rôles.",
   "roles.deleteError": "Échec de la suppression.",
+  "roles.empty": "Aucun rôle personnalisé pour l'instant",
   "roles.columnName": "Nom",
   "roles.columnPrivileges": "Privilèges",
   "roles.detail": "Détail",
@@ -345,6 +361,7 @@ export const fr = {
   // GET /collections tronque silencieusement au-delà de sa limite par
   // défaut sans ce bouton.
   "collectionsAdmin.loadMore": "Charger plus",
+  "collectionsAdmin.empty": "Aucune collection pour l'instant",
 
   // ComplianceAdminPage
   "compliance.title": "Conformité",
@@ -417,6 +434,7 @@ export const fr = {
   "harvest.deleteTitle": "Supprimer la source",
   "harvest.deleteMessage":
     "Supprimer la source « {url} » ? Les items/collections déjà produits survivent.",
+  "harvest.empty": "Aucune source de moissonnage configurée",
 
   // ItemDetailPage
   "itemDetail.notFound": "Élément introuvable.",
@@ -532,6 +550,7 @@ export const fr = {
   "usersAdmin.detail": "Détail",
   "usersAdmin.demotionProtectionText":
     "Le dernier titulaire de la gestion des rôles et des utilisateurs ne peut pas être rétrogradé : la tentative échoue pour préserver au moins un compte capable d'administrer le tenant.",
+  "usersAdmin.empty": "Aucun utilisateur ne correspond à cette recherche",
 
   // VisualQueryWizardPage
   "visualQuery.pipelineFailedError": "L'exécution du pipeline a échoué.",
@@ -702,6 +721,8 @@ export const fr = {
   "newItem.invalidSlugMessage": "Slug invalide (minuscules, chiffres, tirets).",
   "newItem.createFailed": "Échec de la création.",
   "newItem.createButton": "Créer",
+  // SP-B5 : {seconds} interpolé depuis ApiError.retryAfter (429, Retry-After).
+  "errors.retryAfter": "Réessayez dans {seconds} s.",
 
   // RegisterCollectionPanel / Tileset3DUploadButton
   "tileset3d.newButton": "Nouveau tileset 3D",
@@ -882,7 +903,10 @@ export const fr = {
   "widgetForm.maxLengthError": "{maxLength} caractères maximum",
   "widgetForm.invalidFormat": "Format invalide",
   "widgetForm.invalidValue": "Valeur invalide",
+  "widgetForm.confirmDeleteTitle": "Supprimer l'enregistrement",
   "widgetForm.confirmDelete": "Supprimer cet enregistrement ?",
+  "widgetForm.confirmDeleteAttachmentTitle": "Supprimer la pièce jointe",
+  "widgetForm.confirmDeleteAttachment": "Supprimer la pièce jointe « {filename} » ?",
   "widgetForm.longitude": "Longitude",
   "widgetForm.latitude": "Latitude",
   "widgetForm.editingRecord": "Modification de l'enregistrement #{id}",
@@ -1115,9 +1139,9 @@ export const fr = {
   "pipelinePreviewMap.legendLine": "Ligne",
   "pipelinePreviewMap.legendPoint": "Point",
 
-  // PipelineRunPanel (builder/pipeline)
-  "pipelineRun.statusQueued": "En attente",
-  "pipelineRun.statusRunning": "En cours",
+  // PipelineRunPanel (builder/pipeline) — statuts de run traduits via
+  // jobStatusLabel (SP-B10a, shell/src/lib/jobStatusLabel.ts), plus les
+  // clés jobStatus.* plus bas dans ce fichier.
   "pipelineRun.loadRunsFailed": "Impossible de charger l'historique des exécutions.",
   "pipelineRun.runFailed": "Échec du lancement du pipeline.",
   "pipelineRun.running": "Exécution…",
@@ -1129,6 +1153,11 @@ export const fr = {
   "pipelineRun.detailAria": "Détail du run {id}",
   "pipelineRun.showDetail": "Détail",
   "pipelineRun.hideDetail": "Masquer le détail",
+  // Progression grossière par nœud (SP-B10d) : `completed` compte les entrées
+  // de nodeStats déjà écrites pendant l'exécution (append_node_stat,
+  // core/app/pipelines/repository.py), `total` vient de la définition
+  // courante du pipeline (nombre de nœuds), pas d'un champ de run côté cœur.
+  "pipelineRun.nodeProgress": "{completed} / {total} nœuds",
 
   // PipelineWebhookTrigger (builder/pipeline)
   "pipelineWebhook.heading": "Déclenchement par webhook",
@@ -1260,12 +1289,9 @@ export const fr = {
   "printLayout.cartoucheLabel": "Cartouche",
   "printLayout.cartoucheAria": "Cartouche",
 
-  // ReportRunPanel (builder/report)
-  "reportRun.statusPending": "En attente",
-  "reportRun.statusRunning": "En cours",
-  "reportRun.statusDone": "Terminé",
-  "reportRun.statusError": "Échec",
-  "reportRun.statusUnknown": "Inconnu",
+  // ReportRunPanel (builder/report) — statuts de run traduits via
+  // jobStatusLabel (SP-B10a, shell/src/lib/jobStatusLabel.ts), plus les
+  // clés jobStatus.* plus bas dans ce fichier.
   "reportRun.heading": "Historique des exécutions",
   "reportRun.loadRunsFailed": "Impossible de charger l'historique des exécutions.",
   "reportRun.empty": "Aucune exécution pour l'instant.",
@@ -1388,6 +1414,7 @@ export const fr = {
   "configHistory.versionLabel": "Version {version} — {date}",
   "configHistory.currentLabel": "(courante)",
   "configHistory.restoreButton": "Restaurer",
+  "configHistory.confirmTitle": "Restaurer cette version ?",
   "configHistory.confirmMessage":
     "Restaurer la version {version} ? Les modifications non enregistrées seront perdues.",
 
@@ -1639,6 +1666,7 @@ export const fr = {
   "layersPanel.opacityLabel": "Opacité — {percent}%",
   "layersPanel.opacityAria": "Opacité",
   "layersPanel.emptyText": "Aucune couche.",
+  "layersPanel.truncatedBadge": "Tuile tronquée (trop d'entités)",
   "layersPanel.addLayerHeading": "Ajouter une couche",
 
   // MapMeasureSketchToolbar (map)
@@ -1709,8 +1737,10 @@ export const fr = {
   "mapSymbology.iconForValueText": "Icône pour « {value} »",
   "mapSymbology.customIconsHeading": "Bibliothèque du tenant",
   "mapSymbology.deleteIconAria": "Supprimer l'icône {title}",
+  "mapSymbology.deleteIconConfirmTitle": "Supprimer cette icône ?",
   "mapSymbology.deleteIconConfirm":
     "Cette icône est peut-être utilisée par des cartes existantes ; la supprimer la fera disparaître sans avertissement sur ces cartes. Supprimer « {title} » ?",
+  "mapSymbology.deleteIconConfirmLabel": "Supprimer",
   "mapSymbology.uploadIconLabel": "Ajouter une icône au tenant (PNG ou SVG)",
   "mapSymbology.removeIconsButton": "Retirer les icônes",
   "mapSymbology.addLabelButton": "Ajouter une étiquette",
@@ -1749,4 +1779,29 @@ export const fr = {
   // ThumbnailUpload (ui) — REV-177 : extension du détecteur i18n à src/ui/
   "thumbnailUpload.notAnImageError": "Le fichier doit être une image.",
   "thumbnailUpload.tooLargeError": "L'image dépasse 2 Mo.",
+
+  // ConnectivityBanner (SP-B7) — bannière globale sur injoignabilité du cœur
+  "connectivity.unreachable": "Connexion au serveur perdue — nouvelle tentative en cours…",
+
+  // jobStatusLabel (SP-B10a) — vocabulaire d'état de job partagé entre
+  // PipelineRunPanel et ReportRunPanel (deux énumérations réelles distinctes,
+  // cf. commentaire de shell/src/lib/jobStatusLabel.ts) : "queued"/"pending",
+  // "succeeded"/"done" et "failed"/"error" sont des synonymes qui reçoivent le
+  // même libellé. "cancelled" n'est émis par aucune API à ce jour.
+  "jobStatus.pending": "En attente",
+  "jobStatus.queued": "En attente",
+  "jobStatus.running": "En cours",
+  "jobStatus.succeeded": "Terminé",
+  "jobStatus.done": "Terminé",
+  "jobStatus.failed": "Échoué",
+  "jobStatus.error": "Échoué",
+  "jobStatus.cancelled": "Annulé",
+  "jobStatus.unknown": "Inconnu",
+
+  // useDirtyGuard (SP-B6b) — garde de navigation in-app sur brouillon non
+  // enregistré (Tâche 26), consommée par les éditeurs des Tâches 27-28.
+  "navigation.unsavedChangesTitle": "Modifications non enregistrées",
+  "navigation.unsavedChangesMessage":
+    "Vous avez des modifications non enregistrées. Voulez-vous vraiment quitter cette page ?",
+  "navigation.leaveAnyway": "Quitter sans enregistrer",
 } as const;

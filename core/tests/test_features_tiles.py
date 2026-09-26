@@ -194,7 +194,10 @@ class _RecordingSession:
         from types import SimpleNamespace
 
         self.calls.append((str(statement), params))
-        return SimpleNamespace(scalar=lambda: b"\x1a\x02")
+        # get_collection_tile lit désormais 2 colonnes (tuile, count(*)) via
+        # .first() — la 2e valeur n'est pas MAX_TILE_FEATURES ici, ces tests
+        # ne portent pas sur la troncature (cf. test_features_tiles_postgis.py).
+        return SimpleNamespace(first=lambda: (b"\x1a\x02", 1))
 
 
 def _recording_client(monkeypatch):

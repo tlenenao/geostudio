@@ -12,6 +12,7 @@ import { OWNER_PERMISSIONS } from "../auth/permissions";
 import { EXTENT_DEBOUNCE_MS, useAnalyticsContext } from "../builder/AnalyticsContext";
 import { decodeAnalyticsContext, encodeAnalyticsContext } from "../lib/analyticsContextUrl";
 import { getWidget, registerWidget } from "../builder/registry";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 const authState: AuthState = {
   isLoading: false,
@@ -530,4 +531,78 @@ test("saving a view captures the current analytics context and posts a bookmark"
       crossFilter: {},
     }),
   );
+});
+
+// SP-B12a: tokenisation des couleurs Tailwind littérales. baseElement (pas
+// container) est indispensable ici — le Dialog (Radix Portal) rend son
+// contenu dans document.body, hors de `container` (piège n°10 CLAUDE.md,
+// SP-29b : un test qui vérifiait `container` au lieu de `baseElement` ne
+// vérifiait en réalité rien sur le contenu porté).
+test("access-denied message uses semantic tokens, not literal Tailwind colors (SP-B12a)", async () => {
+  const { baseElement } = renderRuntime({
+    getItem: vi.fn().mockRejectedValue(new Error("403")),
+    getAppConfig: vi.fn().mockResolvedValue(config),
+  });
+  await screen.findByRole("alert");
+  expectTokenizedClasses(baseElement);
+});
+
+test("config-not-found message uses semantic tokens, not literal Tailwind colors (SP-B12a)", async () => {
+  const { baseElement } = renderRuntime({
+    getItem: vi.fn().mockResolvedValue(okItem),
+    getAppConfig: vi.fn().mockRejectedValue(new Error("404")),
+  });
+  await screen.findByRole("alert");
+  expectTokenizedClasses(baseElement);
+});
+
+// Layout délibérément vide (aucun widget) : le seul but est de déclencher la
+// barre d'actions (interactions:"auto") sans embarquer un widget tiers
+// (ex. dateRangeFilter, src/builder/widgets/dateRangeFilter.tsx:26) qui porte
+// déjà sa propre classe Tailwind littérale préexistante, hors périmètre de
+// cette tâche — ne pas la laisser faire échouer ce test pour une raison
+// étrangère à AppRuntimePage.tsx.
+const tokenCheckConfig: AppConfig = {
+  kind: "app",
+  theme: {},
+  dataSources: [],
+  messages: [],
+  interactions: "auto",
+  layout: emptyLayout,
+  pages: [{ id: "page-1", name: "Accueil", layout: emptyLayout }],
+};
+
+test("action-bar border and save-failed alert use semantic tokens, not literal Tailwind colors (SP-B12a)", async () => {
+  const { baseElement } = renderRuntime({
+    getItem: vi.fn().mockResolvedValue(okItem),
+    getAppConfig: vi.fn().mockResolvedValue(tokenCheckConfig),
+    createBookmarkItem: vi.fn().mockRejectedValue(new Error("save failed")),
+  });
+  const saveViewButton = await screen.findByRole("button", { name: "Enregistrer la vue" });
+  // `Button` (../ui/button.tsx) was out-of-scope for SP-B12a/b (it still
+  // hardcoded bg-slate-900/border-slate-300/etc by default) — fixed since by
+  // SP-B12c, so the whole action-bar subtree can now be scanned instead of
+  // just the div's own className.
+  const actionBar = saveViewButton.closest("div") as HTMLElement;
+  expect(actionBar.className).toContain("border-rule");
+  expect(actionBar.className).not.toMatch(/\bborder-slate-\d+\b/);
+  expectTokenizedClasses(actionBar);
+
+  await userEvent.click(saveViewButton);
+  // Le dialogue (Radix Portal, hors `container`) porte `Input` (../ui/input.tsx)
+  // et deux `Button` — les trois désormais tokenisés (SP-B12c) : vérifiable en
+  // un coup sur baseElement plutôt qu'un className ciblé par élément.
+  await screen.findByLabelText("Nom de la vue");
+  expectTokenizedClasses(baseElement);
+  await userEvent.type(screen.getByLabelText("Nom de la vue"), "Ma vue");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  const saveFailedAlert = await screen.findByRole("alert");
+  // NOT expectTokenizedClasses(saveFailedAlert): this <p> is a leaf (text
+  // content only, no descendants), so Element.innerHTML never reflects an
+  // element's OWN attributes — only its children's serialization. Calling
+  // the helper on a leaf node is vacuously true regardless of its actual
+  // class (found in Task 30's review of this task, SP-B12b). Assert on
+  // className directly instead, same pattern as the action-bar check above.
+  expect(saveFailedAlert.className).toContain("text-danger");
+  expect(saveFailedAlert.className).not.toMatch(/\bred-\d{2,3}\b/);
 });

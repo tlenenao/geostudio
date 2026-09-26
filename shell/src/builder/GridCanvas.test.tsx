@@ -5,6 +5,7 @@ import { expect, test, vi } from "vitest";
 import type { WidgetItem } from "../api/types";
 import { GridCanvas } from "./GridCanvas";
 import { posFor } from "./grid";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 const items: WidgetItem[] = [
   { id: "a", widget: "text", x: 0, y: 0, w: 4, h: 2, props: {} },
@@ -49,9 +50,12 @@ test("the move handle nudges the item by one cell", async () => {
 
 test("the remove button removes the selected item", async () => {
   const onRemoveItem = vi.fn();
-  renderCanvas({ selectedId: "a", onRemoveItem });
+  const { container } = renderCanvas({ selectedId: "a", onRemoveItem });
   await userEvent.click(screen.getByRole("button", { name: "Supprimer widget-a" }));
   expect(onRemoveItem).toHaveBeenCalledWith("a");
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 test("positions items at the active breakpoint and exposes data hooks", () => {

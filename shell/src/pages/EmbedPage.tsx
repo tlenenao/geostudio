@@ -60,7 +60,7 @@ function EmbedAppRenderer({ itemId }: { itemId: string }) {
   }
   if (query.isError || !query.data) {
     return (
-      <p role="alert" className="text-sm text-red-600">
+      <p role="alert" className="text-sm text-danger">
         {t("appRuntime.notFound")}
       </p>
     );
@@ -84,14 +84,14 @@ export function EmbedPage({ token }: { token: string }) {
   }
   if (linkQuery.isError || !linkQuery.data) {
     return (
-      <p role="alert" className="p-4 text-sm text-red-600">
+      <p role="alert" className="p-4 text-sm text-danger">
         {t("embed.linkExpiredOrRevoked")}
       </p>
     );
   }
   if (!EMBEDDABLE_RESOURCE_TYPES.has(linkQuery.data.resourceType)) {
     return (
-      <p role="alert" className="p-4 text-sm text-red-600">
+      <p role="alert" className="p-4 text-sm text-danger">
         {t("embed.notEmbeddable")}
       </p>
     );

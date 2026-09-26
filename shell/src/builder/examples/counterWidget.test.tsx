@@ -5,6 +5,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { ActionBus } from "../ActionBus";
 import { registerCounterExampleWidget } from "./counterWidget";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -51,6 +52,22 @@ test("declares a reset action that resets to the initial value", async () => {
     bus.emit("emitter", "go");
   });
   expect(screen.getByText("3")).toBeInTheDocument();
+});
+
+test("SP-B12c : le composant et le panneau de propriétés n'ont pas de couleur Tailwind codée en dur", () => {
+  const Counter = getWidget("example.counter")!.Component;
+  const { container: componentContainer } = render(
+    <Counter props={{ initial: 0 }} ctx={{ mode: "runtime" } as WidgetContext} />,
+  );
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(componentContainer);
+
+  const PropsPanel = getWidget("example.counter")!.PropsPanel!;
+  const { container: panelContainer } = render(
+    <PropsPanel props={{ initial: 0 }} dataSources={[]} onChange={() => {}} />,
+  );
+  expectTokenizedClasses(panelContainer);
 });
 
 test("declares the events/actions the ActionsPanel needs to wire it", () => {

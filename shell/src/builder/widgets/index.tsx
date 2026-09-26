@@ -76,7 +76,7 @@ export function registerBuiltinWidgets(): void {
           {t("widgetIndex.textConfig")}
           <textarea
             aria-label={t("widgetIndex.textAria")}
-            className="rounded-md border border-slate-300 p-2 text-sm"
+            className="rounded-md border border-rule p-2 text-sm"
             value={String(props.text ?? "")}
             onChange={(e) => onChange({ ...props, text: e.target.value })}
           />
@@ -111,7 +111,7 @@ export function registerBuiltinWidgets(): void {
           {t("widgetIndex.urlConfig")}
           <input
             aria-label={t("widgetIndex.urlAria")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.src ?? "")}
             onChange={(e) => onChange({ ...props, src: e.target.value })}
           />
@@ -120,7 +120,7 @@ export function registerBuiltinWidgets(): void {
           {t("widgetIndex.altConfig")}
           <input
             aria-label={t("widgetIndex.altConfig")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.alt ?? "")}
             onChange={(e) => onChange({ ...props, alt: e.target.value })}
           />
@@ -135,7 +135,7 @@ export function registerBuiltinWidgets(): void {
           alt={String(props.alt ?? "")}
         />
       ) : (
-        <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-ink-2">
+        <div className="flex h-full items-center justify-center bg-sunken text-xs text-ink-2">
           {t("widgetIndex.imagePaletteLabel")}
         </div>
       ),
@@ -157,7 +157,7 @@ export function registerBuiltinWidgets(): void {
           {t("widgetIndex.labelConfig")}
           <input
             aria-label={t("widgetIndex.labelAria")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.label ?? "")}
             onChange={(e) => onChange({ ...props, label: e.target.value })}
           />
@@ -166,7 +166,7 @@ export function registerBuiltinWidgets(): void {
           {t("widgetIndex.hrefConfig")}
           <input
             aria-label={t("widgetIndex.hrefAria")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.href ?? "")}
             onChange={(e) => onChange({ ...props, href: e.target.value })}
           />
@@ -174,9 +174,14 @@ export function registerBuiltinWidgets(): void {
       </div>
     ),
     Component: ({ props, ctx }) => (
+      // gs-raw-color-ok (SP-B12c grounding) : text-white reste ici volontairement — cette
+      // classe est le contraste fixe d'un bouton dont le fond est la
+      // couleur "primary" de l'app auteur (bg-[var(--gs-color-primary)],
+      // arbitraire par app, pas l'ambiance studio) ; même convention que
+      // form.tsx (bouton d'envoi) et tabs.tsx (onglet actif).
       <button
         type="button"
-        className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white"
+        className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white" // gs-raw-color-ok: cf. commentaire ci-dessus
         onClick={() => {
           ctx.bus?.emit(ctx.widgetId ?? "", "clicked", { widgetId: ctx.widgetId });
           const href = String(props.href ?? "");

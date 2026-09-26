@@ -4,6 +4,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { registerWidget, getWidget, listWidgets, _resetRegistry } from "./registry";
 import { registerBuiltinWidgets } from "./widgets";
 import type { WidgetContext } from "./registry";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 const ctx = { mode: "runtime" } as WidgetContext;
 
@@ -38,6 +39,30 @@ test("builtin widgets render their props", () => {
   const Image = getWidget("image")!.Component;
   render(<Image props={{ src: "http://x/y.png", alt: "Y" }} ctx={ctx} />);
   expect(screen.getByRole("img", { name: "Y" })).toHaveAttribute("src", "http://x/y.png");
+});
+
+test("SP-B12c : les widgets natifs image/bouton n'ont pas de couleur Tailwind codée en dur", () => {
+  registerBuiltinWidgets();
+
+  // Le widget "image" sans src rend son état vide (placeholder discret).
+  const Image = getWidget("image")!.Component;
+  const { container: imageContainer } = render(<Image props={{ src: "", alt: "" }} ctx={ctx} />);
+  expect(screen.getByText(/Image/)).toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(imageContainer);
+
+  const ImagePanel = getWidget("image")!.PropsPanel!;
+  const { container: imagePanelContainer } = render(
+    <ImagePanel props={{ src: "", alt: "" }} dataSources={[]} onChange={() => {}} />,
+  );
+  expectTokenizedClasses(imagePanelContainer);
+
+  const ButtonPanel = getWidget("button")!.PropsPanel!;
+  const { container: buttonPanelContainer } = render(
+    <ButtonPanel props={{ label: "", href: "" }} dataSources={[]} onChange={() => {}} />,
+  );
+  expectTokenizedClasses(buttonPanelContainer);
 });
 
 test("registerWidget warns when a type is overwritten, but still overwrites it", () => {

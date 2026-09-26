@@ -2,12 +2,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
+import * as ToastPrimitive from "@radix-ui/react-toast";
+import { createMemoryRouter, Link, RouterProvider, useParams } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { CollectionSchema, DatasetConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
+import { ToastProvider } from "../ui/kit/ToastProvider";
 import { DatasetEditPage } from "./DatasetEditPage";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
+import { t } from "../i18n";
 
 const item: Item = {
   pk: "ds-1",
@@ -77,26 +80,74 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// SP-B6d : `useDirtyGuard` (Tâche 26) s'appuie sur `useBlocker`, qui exige un
+// data router (`createMemoryRouter`/`RouterProvider`) — un `<MemoryRouter>`
+// déclaratif fait lever `useBlocker` à l'exécution (cf. Tâche 27).
 function renderPage(client: Partial<ItemClient>) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const merged: Partial<ItemClient> = {
     listAlertRulesForDataset: vi.fn().mockResolvedValue([]),
     ...client,
   };
+  const router = createMemoryRouter(
+    [
+      { path: "/", element: <DatasetEditPage pk="ds-1" /> },
+      {
+        path: "/datasets/visual-query/:pipelinePk/edit",
+        element: <VisualQueryEditProbe />,
+      },
+    ],
+    { initialEntries: ["/"] },
+  );
   return render(
-    <QueryClientProvider client={qc}>
-      <ItemClientProvider client={merged as ItemClient}>
-        <MemoryRouter initialEntries={["/"]}>
-          <Routes>
-            <Route path="/" element={<DatasetEditPage pk="ds-1" />} />
-            <Route
-              path="/datasets/visual-query/:pipelinePk/edit"
-              element={<VisualQueryEditProbe />}
-            />
-          </Routes>
-        </MemoryRouter>
-      </ItemClientProvider>
-    </QueryClientProvider>,
+    <ToastPrimitive.Provider>
+      <QueryClientProvider client={qc}>
+        <ItemClientProvider client={merged as ItemClient}>
+          <ToastProvider>
+            <RouterProvider router={router} />
+          </ToastProvider>
+        </ItemClientProvider>
+      </QueryClientProvider>
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>,
+  );
+}
+
+// Harnais dédié aux tests de garde de navigation (SP-B6d, même patron que
+// Task 27/MapEditorPage) : un lien factice suffit, le chrome réel
+// (AppLayout/TopBar) est hors périmètre de ce fichier.
+function renderPageWithNavigation(client: Partial<ItemClient>) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const merged: Partial<ItemClient> = {
+    listAlertRulesForDataset: vi.fn().mockResolvedValue([]),
+    ...client,
+  };
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: (
+          <>
+            <Link to="/autre">Autre page</Link>
+            <DatasetEditPage pk="ds-1" />
+          </>
+        ),
+      },
+      { path: "/autre", element: <p>Autre page ouverte</p> },
+    ],
+    { initialEntries: ["/"] },
+  );
+  return render(
+    <ToastPrimitive.Provider>
+      <QueryClientProvider client={qc}>
+        <ItemClientProvider client={merged as ItemClient}>
+          <ToastProvider>
+            <RouterProvider router={router} />
+          </ToastProvider>
+        </ItemClientProvider>
+      </QueryClientProvider>
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>,
   );
 }
 
@@ -333,6 +384,18 @@ test("hides the button when sourcePipelineId is absent (dataset created by hand)
   expect(screen.queryByRole("button", { name: "Modifier la requête" })).not.toBeInTheDocument();
 });
 
+test("affiche le LoadingState partagé (role=status, spinner) pendant la résolution du schéma", async () => {
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn(() => new Promise<CollectionSchema>(() => {})),
+  });
+  await screen.findByText("Colonnes");
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement du schéma…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
+});
+
 test("affiche le panneau d'historique", async () => {
   renderPage({
     getItem: vi.fn().mockResolvedValue(item),
@@ -367,4 +430,36 @@ test("SP-42/F-shell-pages-04 : verrouille Enregistrer quand permissions.write es
   expect(
     screen.getByText("Modification réservée aux éditeurs de cet élément."),
   ).toBeInTheDocument();
+});
+
+test("bloque la navigation après une modification non enregistrée des colonnes (SP-B6d)", async () => {
+  renderPageWithNavigation({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn().mockResolvedValue(schema),
+  });
+
+  await userEvent.type(await screen.findByLabelText("Libellé de nom"), "Nom du parc");
+  await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
+
+  expect(await screen.findByRole("dialog")).toHaveTextContent(
+    t("navigation.unsavedChangesMessage"),
+  );
+});
+
+test("ne bloque pas la navigation juste après une sauvegarde réussie des colonnes (SP-B6d)", async () => {
+  const saveDatasetConfig = vi.fn().mockResolvedValue(undefined);
+  renderPageWithNavigation({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn().mockResolvedValue(schema),
+    saveDatasetConfig,
+  });
+
+  await userEvent.type(await screen.findByLabelText("Libellé de nom"), "Nom du parc");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer les colonnes" }));
+  await waitFor(() => expect(saveDatasetConfig).toHaveBeenCalled());
+
+  await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
+  expect(await screen.findByText("Autre page ouverte")).toBeInTheDocument();
 });

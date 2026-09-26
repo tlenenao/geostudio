@@ -6,8 +6,9 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
-import type { Item, ItemClient } from "../../api/types";
+import type { Item, ItemClient, ItemPage } from "../../api/types";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -50,7 +51,10 @@ const publishedItem: Item = {
 test("PropsPanel edits the type, tag, limit and columns", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("gallery")!.PropsPanel!;
-  render(<Panel props={{}} dataSources={[]} onChange={onChange} />);
+  const { container } = render(<Panel props={{}} dataSources={[]} onChange={onChange} />);
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 
   await userEvent.selectOptions(screen.getByLabelText("Type d'élément"), "app");
   expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ type: "app" });
@@ -75,6 +79,13 @@ test("gallery calls listPublicItems with the author's fixed filter props", () =>
   });
 });
 
+test("gallery shows the shared LoadingState (role=status, spinner) while the fetch is in flight", () => {
+  renderGallery({}, { listPublicItems: vi.fn(() => new Promise<ItemPage>(() => {})) });
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
+});
+
 test("gallery renders a grid of published items, each linking to its public page", async () => {
   renderGallery(
     {},
@@ -96,5 +107,8 @@ test("gallery shows an empty state when there are no published items", async () 
 
 test("gallery shows an error state when the fetch fails", async () => {
   renderGallery({}, { listPublicItems: vi.fn().mockRejectedValue(new Error("fail")) });
-  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  const alert = await screen.findByRole("alert");
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(alert.parentElement ?? alert);
 });

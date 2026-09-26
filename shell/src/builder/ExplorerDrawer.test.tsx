@@ -9,6 +9,7 @@ import { ExplorerProvider, useOpenExplorer } from "./ExplorerContext";
 import { AnalyticsContextProvider, useSetCrossFilter } from "./AnalyticsContext";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import type { DatasetConfig, DataRecord, ItemClient } from "../api/types";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 const highlightSpy = vi.fn();
 
@@ -56,7 +57,7 @@ function renderDrawer(
     .mockReturnValue("https://core.test/collections/col-1/items?region=Nord");
   const client = { getDatasetConfig, queryDataSource, featuresUrl } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  const { container } = render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
         <AnalyticsContextProvider interactions="auto">
@@ -69,7 +70,7 @@ function renderDrawer(
       </ItemClientProvider>
     </QueryClientProvider>,
   );
-  return { queryDataSource, featuresUrl };
+  return { queryDataSource, featuresUrl, container };
 }
 
 beforeEach(() => {
@@ -189,7 +190,9 @@ test("shows the loading state while the dataset config is still in flight, not t
   const getDatasetConfig = vi.fn().mockReturnValue(datasetPromise);
   renderDrawer({ getDatasetConfig, queryDataSource: vi.fn().mockResolvedValue([]) });
   await userEvent.click(screen.getByText("open"));
-  expect(await screen.findByText("Chargement…")).toBeInTheDocument();
+  const status = await screen.findByRole("status");
+  expect(status).toHaveTextContent("Chargement…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
   expect(screen.queryByText("Aucune entité")).not.toBeInTheDocument();
   resolveDataset({ source: "collection", collectionId: "col-1", columns: {} });
   expect(await screen.findByText("Aucune entité")).toBeInTheDocument();
@@ -197,10 +200,16 @@ test("shows the loading state while the dataset config is still in flight, not t
 
 test("shows the error state when the dataset config fetch rejects", async () => {
   const getDatasetConfig = vi.fn().mockRejectedValue(new Error("boom"));
-  renderDrawer({ getDatasetConfig, queryDataSource: vi.fn().mockResolvedValue([]) });
+  const { container } = renderDrawer({
+    getDatasetConfig,
+    queryDataSource: vi.fn().mockResolvedValue([]),
+  });
   await userEvent.click(screen.getByText("open"));
   expect(await screen.findByText("Erreur de données")).toBeInTheDocument();
   expect(screen.queryByText("Aucune entité")).not.toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 test("closing via Escape clears the target", async () => {

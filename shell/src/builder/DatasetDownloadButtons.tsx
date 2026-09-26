@@ -4,9 +4,14 @@ import { useItemClient } from "../api/ItemClientProvider";
 import { csvAvailable, csvTooLarge, downloadCsv, geojsonDownloadUrl } from "../lib/datasetDownload";
 import { t } from "../i18n";
 
-// Plain slate styling (not --gs-* theme vars): this component is reused both
-// inside a themed AppRenderer (DatasetCard widget) and outside any theme root
-// (DatasetPage's chrome) — see SP-16c plan Task 5 notes.
+// Tokens sémantiques --gs-* globaux (tokens.css, importé sans condition
+// par index.css) — pas les variables --gs-color-* propres au Theme d'une
+// app (builder/theme.ts, posées uniquement sur le conteneur racine
+// d'AppRenderer). Ce composant est réutilisé à la fois dans un
+// AppRenderer thémé (widget DatasetCard) et hors de toute racine de thème
+// (chrome de DatasetPage) : ces deux jeux de variables sont distincts et
+// ne se recouvrent pas, donc les tokens sémantiques du studio (text-ink-2,
+// border-rule, bg-sunken…) résolvent correctement dans les deux contextes.
 export function DatasetDownloadButtons({
   collectionId,
   featureCount,
@@ -24,7 +29,7 @@ export function DatasetDownloadButtons({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <a
-        className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 no-underline hover:bg-slate-100"
+        className="rounded-md border border-rule px-3 py-1.5 text-xs font-medium text-ink-2 no-underline hover:bg-sunken"
         href={geojsonDownloadUrl(client, collectionId)}
         download={`${collectionId}.geojson`}
       >
@@ -32,7 +37,7 @@ export function DatasetDownloadButtons({
       </a>
       <button
         type="button"
-        className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-md border border-rule px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-sunken disabled:cursor-not-allowed disabled:opacity-50"
         disabled={!available || !schemaQuery.data}
         onClick={() => {
           if (!schemaQuery.data || featureCount === null) return;
@@ -42,7 +47,7 @@ export function DatasetDownloadButtons({
         {t("datasetDownload.csvButton")}
       </button>
       {csvTooLarge(featureCount) && (
-        <p className="w-full text-[10px] text-slate-500">{t("datasetDownload.tooLarge")}</p>
+        <p className="w-full text-[10px] text-ink-3">{t("datasetDownload.tooLarge")}</p>
       )}
     </div>
   );

@@ -177,3 +177,36 @@ test("un rôle prédéfini ne propose ni éditer ni supprimer", async () => {
   expect(within(cell).queryByRole("button", { name: /éditer/i })).not.toBeInTheDocument();
   expect(within(cell).queryByRole("button", { name: /supprimer/i })).not.toBeInTheDocument();
 });
+
+test("cliquer l'en-tête Nom trie les rôles par nom (DataTable, Tâche 21)", async () => {
+  server.use(
+    http.get("https://core.test/v1/roles/catalog", () => HttpResponse.json(CATALOG)),
+    http.get("https://core.test/v1/roles", () =>
+      HttpResponse.json([
+        { id: "role-2", name: "Zoulou", slug: "zoulou", isBuiltIn: false, privileges: [] },
+        { id: "role-1", name: "Alpha", slug: "alpha", isBuiltIn: false, privileges: [] },
+      ]),
+    ),
+  );
+
+  render(<Harness />);
+  await screen.findByText("Zoulou");
+  const rowsBefore = screen.getAllByRole("row").slice(1);
+  expect(within(rowsBefore[0]).getByText("Zoulou")).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("columnheader", { name: "Nom" }));
+
+  const rowsAfter = screen.getAllByRole("row").slice(1);
+  expect(within(rowsAfter[0]).getByText("Alpha")).toBeInTheDocument();
+  expect(within(rowsAfter[1]).getByText("Zoulou")).toBeInTheDocument();
+});
+
+test("affiche un état vide quand aucun rôle personnalisé n'existe", async () => {
+  server.use(
+    http.get("https://core.test/v1/roles/catalog", () => HttpResponse.json(CATALOG)),
+    http.get("https://core.test/v1/roles", () => HttpResponse.json([])),
+  );
+  render(<Harness />);
+  expect(await screen.findByText("Aucun rôle personnalisé pour l'instant")).toBeInTheDocument();
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+});

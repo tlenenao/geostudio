@@ -5,11 +5,19 @@ import type { PipelinePayload } from "../../api/types";
 import { t } from "../../i18n";
 import { Badge } from "../../ui/kit/Badge";
 import { Button } from "../../ui/kit/Button";
+import { DataTable } from "../../ui/kit/DataTable";
+import { LoadingState } from "../../ui/kit/LoadingState";
 import { PipelinePreviewMap } from "./PipelinePreviewMap";
 
 const PAGE_SIZE = 20;
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}/;
+
+// A preview row keeps its original (pre-sort) index alongside the raw data —
+// `selectedIndex` tracks that original index so a row selected before a sort
+// or a page change still points at the same feature (unchanged from the
+// pre-DataTable implementation).
+type IndexedRow = { row: Record<string, unknown>; i: number };
 
 function compareCells(a: unknown, b: unknown): number {
   if (typeof a === "number" && typeof b === "number") return a - b;
@@ -62,7 +70,7 @@ export function PipelinePreviewPanel({
   }, [rows, sortColumn, sortDirection]);
 
   if (nodeId === null) return null;
-  if (previewQuery.isLoading) return <p role="status">{t("pipelinePreview.loading")}</p>;
+  if (previewQuery.isLoading) return <LoadingState label={t("pipelinePreview.loading")} />;
   if (previewQuery.isError)
     return (
       <p role="alert" className="text-sm text-danger">
@@ -90,6 +98,28 @@ export function PipelinePreviewPanel({
           const cmp = compareCells(a.row[sortColumn], b.row[sortColumn]);
           return sortDirection === "asc" ? cmp : -cmp;
         });
+  const pageRows = sortedRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  const dataTableColumns = columns.map((c) => ({
+    key: c,
+    label: c,
+    render: (item: IndexedRow) =>
+      c === "geometry" ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedIndex(item.i);
+            setView("map");
+          }}
+          className="text-accent underline"
+        >
+          {t("pipelinePreview.viewOnMap")}
+        </button>
+      ) : (
+        formatCell(item.row[c])
+      ),
+  }));
 
   return (
     <div className="flex flex-col gap-2">
@@ -124,75 +154,16 @@ export function PipelinePreviewPanel({
         />
       ) : (
         <>
-          <table className="w-full text-xs">
-            <thead>
-              <tr>
-                {columns.map((c) => (
-                  <th
-                    key={c}
-                    tabIndex={0}
-                    className="cursor-pointer p-1 text-left"
-                    onClick={() => toggleSort(c)}
-                    onKeyDown={(e) => {
-                      if (e.target !== e.currentTarget) return;
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        toggleSort(c);
-                      }
-                    }}
-                    aria-sort={
-                      sortColumn === c
-                        ? sortDirection === "desc"
-                          ? "descending"
-                          : "ascending"
-                        : "none"
-                    }
-                  >
-                    {c}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sortedRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(({ row, i }) => (
-                <tr
-                  key={i}
-                  tabIndex={0}
-                  onClick={() => setSelectedIndex(i)}
-                  onKeyDown={(e) => {
-                    if (e.target !== e.currentTarget) return;
-                    if (e.key === "Enter" || e.key === " ") {
-                      if (e.key === " ") e.preventDefault();
-                      setSelectedIndex(i);
-                    }
-                  }}
-                  className={`cursor-pointer border-t border-rule ${i === selectedIndex ? "bg-sunken" : ""}`}
-                >
-                  {columns.map((c) =>
-                    c === "geometry" ? (
-                      <td key={c} className="p-1">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedIndex(i);
-                            setView("map");
-                          }}
-                          className="text-accent underline"
-                        >
-                          {t("pipelinePreview.viewOnMap")}
-                        </button>
-                      </td>
-                    ) : (
-                      <td key={c} className="p-1">
-                        {formatCell(row[c])}
-                      </td>
-                    ),
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            columns={dataTableColumns}
+            rows={pageRows}
+            getRowId={(item) => String(item.i)}
+            getRowClassName={(item) => (item.i === selectedIndex ? "bg-sunken" : undefined)}
+            sortKey={sortColumn ?? undefined}
+            sortDirection={sortDirection}
+            onSortChange={toggleSort}
+            onRowClick={(item) => setSelectedIndex(item.i)}
+          />
           {rows.length > 0 && (
             <div className="flex items-center gap-2 text-xs">
               <Button

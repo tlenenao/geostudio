@@ -3,15 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/hooks";
 import type { PipelineRun } from "../../api/types";
 import { t } from "../../i18n";
+import { jobStatusLabel } from "../../lib/jobStatusLabel";
 import { Button } from "../../ui/kit/Button";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
-
-const STATUS_LABEL: Record<PipelineRun["status"], string> = {
-  queued: t("pipelineRun.statusQueued"),
-  running: t("pipelineRun.statusRunning"),
-  succeeded: "succeeded",
-  failed: "failed",
-};
 
 // GET /pipelines/{id}/runs pagine déjà côté cœur (limit/offset, SP-50) mais ce
 // panneau tronquait silencieusement l'historique à la limite par défaut du
@@ -29,14 +23,30 @@ function formatDuration(startedAt: string | null, finishedAt: string | null): st
   return `${minutes} min ${seconds} s`;
 }
 
-function RunRow({ run }: { run: PipelineRun }) {
+// SP-B10d : pas de champ completed_nodes/total_nodes exposé par le cœur sur
+// l'objet de run (RunStatus, core/app/pipelines/routes.py) — nodeStats est en
+// revanche déjà rempli nœud par nœud PENDANT l'exécution (append_node_stat,
+// core/app/pipelines/repository.py, commentaire SP-15g §3.5), donc
+// Object.keys(run.nodeStats).length est un décompte réel de nœuds terminés,
+// pas une valeur inventée. Le total (M) n'existe que côté définition du
+// pipeline (PipelinePayload.nodes), jamais sur le run : `totalNodes` est donc
+// une prop optionnelle fournie par l'appelant qui connaît cette définition
+// (PipelineBuilderPage, via `draft.nodes.length`) plutôt qu'un champ lu sur
+// `run`.
+function RunRow({ run, totalNodes }: { run: PipelineRun; totalNodes?: number }) {
   const [open, setOpen] = useState(false);
   const detail = usePanelTrigger(open);
   const nodeEntries = Object.values(run.nodeStats);
+  const showNodeProgress = run.status === "running" && totalNodes !== undefined && totalNodes > 0;
   return (
     <li className="border-t border-rule pt-1">
       <div className="flex items-center gap-2">
-        <span>{STATUS_LABEL[run.status]}</span>
+        <span>{jobStatusLabel(run.status)}</span>
+        {showNodeProgress && (
+          <span className="text-ink-2">
+            {t("pipelineRun.nodeProgress", { completed: nodeEntries.length, total: totalNodes })}
+          </span>
+        )}
         {run.startedAt && (
           <span className="text-ink-2">{new Date(run.startedAt).toLocaleString("fr-FR")}</span>
         )}
@@ -80,9 +90,15 @@ function RunRow({ run }: { run: PipelineRun }) {
 export function PipelineRunPanel({
   pipelineId,
   onLatestRunChange,
+  totalNodes,
 }: {
   pipelineId: string;
   onLatestRunChange?: (run: PipelineRun | null) => void;
+  // Nombre de nœuds de la définition courante du pipeline (cf. commentaire
+  // sur RunRow) : optionnel, omis par les appelants qui ne l'ont pas sous la
+  // main (ex. VisualQueryWizardPage) — la progression N/M ne s'affiche
+  // simplement pas dans ce cas, additif.
+  totalNodes?: number;
 }) {
   const client = useItemClient();
   const [runs, setRuns] = useState<PipelineRun[]>([]);
@@ -174,7 +190,7 @@ export function PipelineRunPanel({
       )}
       <ul className="flex flex-col gap-1 text-xs">
         {runs.map((run) => (
-          <RunRow key={run.id} run={run} />
+          <RunRow key={run.id} run={run} totalNodes={totalNodes} />
         ))}
       </ul>
       {runs.length >= limit && (

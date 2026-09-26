@@ -10,6 +10,7 @@ import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsConte
 import { ExplorerProvider } from "../ExplorerContext";
 import type { WidgetContext } from "../registry";
 import type { DataSourceState, ItemClient } from "../../api/types";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -61,13 +62,16 @@ test("PropsPanel edits the rows and columns encodings", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("pivot")!.PropsPanel;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  const { container } = render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={{} as unknown as ItemClient}>
         <Panel props={{}} dataSources={[]} onChange={onChange} />
       </ItemClientProvider>
     </QueryClientProvider>,
   );
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   await userEvent.type(screen.getByLabelText("Champ lignes"), "r");
   expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ encodings: { rows: "r" } }));
   await userEvent.type(screen.getByLabelText("Champ colonnes"), "c");
@@ -78,7 +82,7 @@ test("PropsPanel edits the rows and columns encodings", async () => {
 
 test("shows loading, error and empty states", () => {
   const Pivot = getWidget("pivot")!.Component;
-  const { rerender } = render(
+  const { rerender, container } = render(
     <Pivot props={{}} ctx={{ mode: "runtime", data: state({ loading: true }) } as WidgetContext} />,
   );
   expect(screen.getByText(/chargement/i)).toBeInTheDocument();
@@ -86,6 +90,9 @@ test("shows loading, error and empty states", () => {
     <Pivot props={{}} ctx={{ mode: "runtime", data: state({ error: true }) } as WidgetContext} />,
   );
   expect(screen.getByText(/erreur/i)).toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   rerender(<Pivot props={{}} ctx={{ mode: "runtime", data: state() } as WidgetContext} />);
   expect(screen.getByText(/aucune donnée/i)).toBeInTheDocument();
 });

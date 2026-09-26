@@ -8,6 +8,7 @@ import { ItemClientProvider } from "../api/ItemClientProvider";
 import { SitePublicPage } from "./SitePublicPage";
 import type { AuthState } from "../auth/useAuth";
 import { READ_ONLY_PERMISSIONS } from "../auth/permissions";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 const authState: AuthState = {
   isLoading: false,
@@ -96,9 +97,19 @@ test("SP-55 : pose document.title/meta description/canonical une fois le site ch
   );
 });
 
+test("shows the shared LoadingState (role=status, spinner) while the item is in flight", () => {
+  renderSite({
+    getItemBySlug: vi.fn(() => new Promise<Item>(() => {})),
+    getPublicAppConfig: vi.fn().mockResolvedValue(config),
+  });
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
+});
+
 test("404: shows a not-found message without leaking whether the slug exists, and never fetches the config", async () => {
   const getPublicAppConfig = vi.fn().mockResolvedValue(config);
-  renderSite(
+  const { container } = renderSite(
     {
       getItemBySlug: vi.fn().mockRejectedValue(new Error("404")),
       getPublicAppConfig,
@@ -108,4 +119,10 @@ test("404: shows a not-found message without leaking whether the slug exists, an
   expect(await screen.findByRole("alert")).toHaveTextContent(/introuvable/i);
   expect(screen.getByRole("alert")).not.toHaveTextContent(/nexiste-pas/i);
   expect(getPublicAppConfig).not.toHaveBeenCalled();
+  // SP-B12b: pas de couleur Tailwind de palette codée en dur. `container`
+  // (pas l'élément role="alert" lui-même) : `Element.innerHTML` ne reflète
+  // que le balisage des ENFANTS d'un élément, jamais ses propres attributs
+  // — vérifié par falsification (cf. rapport de tâche) que checker le <p>
+  // directement passait vacuously même sans correctif.
+  expectTokenizedClasses(container);
 });

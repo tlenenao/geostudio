@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUndoableDraft } from "../builder/useUndoableDraft";
+import { useUrlSyncedState } from "../lib/useUrlSyncedState";
 import { toBlob } from "html-to-image";
 import {
   useAppConfig,
@@ -40,6 +41,7 @@ import { pruneMessagesForIds } from "../builder/actionMessages";
 import { Button } from "../ui/kit/Button";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useAuth } from "../auth/useAuth";
+import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
 
 registerBuiltinWidgets();
@@ -72,10 +74,49 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const mainRef = useRef<HTMLElement>(null);
   const { draft, setDraft, seedDraft, resetDraft, undo, redo, canUndo, canRedo } =
     useUndoableDraft<AppConfig>();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // SP-B9b : page active et sélection synchronisées à l'URL
+  // (`?page=`/`?selected=`) pour survivre à un rechargement — même
+  // signature que useState<string|null>, tous les sites d'appel
+  // (setActivePageId/setSelectedId) passent déjà des valeurs directes,
+  // jamais la forme fonctionnelle. La validation d'une valeur lue depuis
+  // l'URL (id de page/sélection inconnu ou périmé) n'est pas dans le hook
+  // générique lui-même — cf. `activePage` plus bas, qui ne retient
+  // `activePageId` que s'il désigne une page existante du draft courant
+  // (sinon retombe sur la première page), et l'effet de réconciliation de
+  // `selectedId` juste après (SP-19, findings C2/M2 — déjà écrits pour
+  // absorber une dérive de la pile undo, tiennent identiquement pour une
+  // valeur d'URL périmée/invalide).
+  const [selectedId, setSelectedId] = useUrlSyncedState<string>("selected", null);
   const [mode, setMode] = useState<RenderMode>("edit");
   const [breakpoint, setBreakpoint] = useState<Breakpoint>("lg");
-  const [activePageId, setActivePageId] = useState<string | null>(null);
+  const [activePageId, setActivePageId] = useUrlSyncedState<string>("page", null);
+  // SP-B6d : `setDraft` (useUndoableDraft) est LE seul entonnoir de toute
+  // mutation du brouillon (cf. commentaire d'en-tête de useUndoableDraft.ts,
+  // vérifié contre le code réel) — y compris quand il est passé directement
+  // en prop à un enfant (`onChange={setDraft}` sur AppRenderer,
+  // `setDraft={setDraft}` sur CopilotPanel) sans passer par une des
+  // fonctions locales ci-dessous. Centraliser via un wrapper de chaque site
+  // d'appel manquerait ces deux-là ; observer les changements de référence
+  // de `draft` lui-même couvre les deux sans exception. La première
+  // transition (null -> valeur, le seedDraft du chargement initial) est
+  // ignorée via `hasSeededRef` — ce n'est pas une édition utilisateur. Une
+  // restauration d'historique (resetDraft) marque bien sale : elle ne fait
+  // que remplacer le brouillon local, il faut toujours cliquer Enregistrer
+  // pour la persister réellement (même doctrine que MapEditorPage, Tâche
+  // 27). Un refetch de query après sauvegarde ne re-déclenche pas seedDraft
+  // (son propre garde interne : draftRef.current n'est plus null), donc pas
+  // de redirtification immédiate après un succès de sauvegarde.
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const hasSeededRef = useRef(false);
+  useEffect(() => {
+    if (draft === null) return;
+    if (!hasSeededRef.current) {
+      hasSeededRef.current = true;
+      return;
+    }
+    setHasUnsavedChanges(true);
+  }, [draft]);
+  const { ConfirmLeaveDialog } = useDirtyGuard(hasUnsavedChanges);
 
   const extensionsQuery = useActiveExtensions();
   const [extensionsRegistered, setExtensionsRegistered] = useState(false);
@@ -155,7 +196,14 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     if (selectedId && activeLayout && !activeLayout.items.some((i) => i.id === selectedId)) {
       setSelectedId(null);
     }
-  }, [selectedId, activeLayout]);
+    // setSelectedId : depuis SP-B9b, ce n'est plus le setter de useState (que
+    // exhaustive-deps sait reconnaître comme stable implicitement) mais celui
+    // de useUrlSyncedState, mémorisé via useCallback([paramName,
+    // setSearchParams]) — référentiellement stable en pratique (paramName
+    // est un littéral, setSearchParams l'est par react-router-dom), mais le
+    // lint ne le sait pas pour un hook maison : listé explicitement plutôt
+    // que supprimé par une règle désactivée.
+  }, [selectedId, activeLayout, setSelectedId]);
 
   if (query.isLoading || itemQuery.isLoading || !extensionsRegistered || (!draft && !query.isError))
     return <p role="status">{t("common.loading")}</p>;
@@ -520,7 +568,9 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     size="sm"
                     className="w-fit"
                     disabled={save.isPending || expressionErrors.length > 0 || readOnly}
-                    onClick={() => save.mutate(draft)}
+                    onClick={() =>
+                      save.mutate(draft, { onSuccess: () => setHasUnsavedChanges(false) })
+                    }
                   >
                     {t("appBuilder.save")}
                   </Button>
@@ -545,6 +595,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
           }}
         />
       </div>
+      <ConfirmLeaveDialog />
     </DataSourcesEditProvider>
   );
 }

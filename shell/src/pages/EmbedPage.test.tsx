@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 import { vi } from "vitest";
 import { server } from "../test/msw/server";
 import { enableMockAuth } from "../auth/useAuth";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 // EmbedPage.tsx appelle loadConfig() (comme App.tsx) au chargement du
 // module, hors de tout composant — dans l'app réelle, ces variables
@@ -32,7 +33,10 @@ enableMockAuth();
 const { EmbedPage } = await import("./EmbedPage");
 
 function renderWithClient(token: string) {
-  const queryClient = new QueryClient();
+  // retry:false — sinon la nouvelle query "config-by-item" en échec
+  // (SP-B12b) retente 3 fois avec backoff avant de passer isError, et le
+  // findByText ci-dessous timeoute en attendant toujours "Chargement…".
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <EmbedPage token={token} />
@@ -51,8 +55,19 @@ test("shows an explicit message for a non app/dashboard resource type", async ()
       }),
     ),
   );
-  renderWithClient("tok-map");
+  const { container } = renderWithClient("tok-map");
   expect(await screen.findByText(/ne peut pas être intégré/i)).toBeInTheDocument();
+  // SP-B12b: pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place. `container` (pas l'élément role="alert" lui-même) :
+  // `Element.innerHTML` ne reflète que le balisage des ENFANTS d'un
+  // élément, jamais ses propres attributs — appeler
+  // `expectTokenizedClasses` directement sur le <p> (une feuille texte
+  // seul) est donc vacuously vrai, quel que soit son `className` (vérifié
+  // par falsification ci-dessous : ça passait déjà avant tout correctif).
+  // `container` est le parent qui rend le <p> comme un de ses descendants,
+  // donc son innerHTML inclut bien la balise ouvrante du <p> et son
+  // `className`.
+  expectTokenizedClasses(container);
 });
 
 test("shows an explicit message for an invalid or expired token", async () => {
@@ -61,8 +76,28 @@ test("shows an explicit message for an invalid or expired token", async () => {
       HttpResponse.json({ detail: "invalid or expired share link" }, { status: 401 }),
     ),
   );
-  renderWithClient("bad");
+  const { container } = renderWithClient("bad");
   expect(await screen.findByText(/expiré ou révoqué/i)).toBeInTheDocument();
+  expectTokenizedClasses(container);
+});
+
+test("shows an explicit message when the app config itself fails to load (SP-B12b)", async () => {
+  server.use(
+    http.get("https://core.test/v1/share-links/tok-app-fail", () =>
+      HttpResponse.json({
+        itemId: "app-fail",
+        title: "App cassée",
+        resourceType: "app",
+        expiresAt: "2026-10-01",
+      }),
+    ),
+    http.get("https://core.test/v1/configs/by-item/app-fail", () =>
+      HttpResponse.json({ detail: "not found" }, { status: 404 }),
+    ),
+  );
+  const { container } = renderWithClient("tok-app-fail");
+  expect(await screen.findByText("Application introuvable.")).toBeInTheDocument();
+  expectTokenizedClasses(container);
 });
 
 test("renders the App via AppRenderer for a valid app token, sending only the share-link header", async () => {

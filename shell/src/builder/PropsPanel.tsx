@@ -37,12 +37,12 @@ export function PropsPanel({
         {t("propsPanel.visibleWhenLabel")}
         <textarea
           aria-label={t("propsPanel.visibleWhenAria")}
-          className="rounded-md border border-slate-300 p-2 font-mono text-xs"
+          className="rounded-md border border-rule p-2 font-mono text-xs"
           value={visibleWhen}
           onChange={(e) => onVisibleWhenChange(e.target.value)}
         />
         {error && (
-          <span role="alert" className="text-xs text-red-600">
+          <span role="alert" className="text-xs text-danger">
             {error}
           </span>
         )}

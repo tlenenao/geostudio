@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "../ItemClientProvider";
+import { useToast } from "../../ui/kit/ToastProvider";
+import { t } from "../../i18n";
 import type { PipelinePayload } from "../types";
 
 export function usePipelineConfig(pk: string, options?: { enabled?: boolean }) {
@@ -15,11 +17,13 @@ export function usePipelineConfig(pk: string, options?: { enabled?: boolean }) {
 export function useCreatePipeline() {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   return useMutation({
     mutationFn: (input: { title: string; owner: string; pipeline: PipelinePayload }) =>
       client.createPipelineItem(input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["items"] });
+      showToast(t("toast.pipelineCreated"));
     },
   });
 }
@@ -27,10 +31,12 @@ export function useCreatePipeline() {
 export function useSavePipeline(pk: string) {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   return useMutation({
     mutationFn: (payload: PipelinePayload) => client.savePipelineConfig(pk, payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["pipeline", pk] });
+      showToast(t("toast.pipelineSaved"));
     },
   });
 }
@@ -77,10 +83,12 @@ export function usePipelineWebhookTokens(pk: string) {
 export function useCreatePipelineWebhookToken(pk: string) {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   return useMutation({
     mutationFn: () => client.createPipelineWebhookToken(pk),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["pipeline-webhook-tokens", pk] });
+      showToast(t("toast.webhookTokenCreated"));
     },
   });
 }
@@ -88,10 +96,12 @@ export function useCreatePipelineWebhookToken(pk: string) {
 export function useRevokePipelineWebhookToken(pk: string) {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   return useMutation({
     mutationFn: (tokenId: string) => client.revokePipelineWebhookToken(pk, tokenId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["pipeline-webhook-tokens", pk] });
+      showToast(t("toast.webhookTokenRevoked"));
     },
   });
 }

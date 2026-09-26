@@ -72,7 +72,7 @@ export function makeGeneratedPropsPanel(manifest: WcWidgetManifest) {
                 <input
                   type={p.type === "number" ? "number" : "text"}
                   aria-label={p.label}
-                  className="h-9 rounded-md border border-slate-300 px-2"
+                  className="h-9 rounded-md border border-rule px-2"
                   value={String(props[p.name] ?? "")}
                   onChange={(e) =>
                     onChange({

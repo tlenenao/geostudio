@@ -25,7 +25,7 @@ function resolvesOnThisPage(items: WidgetItem[], variables: Variable[], id: stri
   return items.some((i) => i.id === id);
 }
 
-const selectCls = "h-8 rounded border border-slate-300 bg-white text-xs";
+const selectCls = "h-8 rounded border border-rule bg-surface text-xs";
 
 export function ActionsPanel({
   items,
@@ -76,10 +76,7 @@ export function ActionsPanel({
           const when = m.when ?? "";
           const error = when ? validateExpression(when) : null;
           return (
-            <li
-              key={m.id}
-              className="flex flex-col gap-1 rounded border border-slate-200 p-1 text-xs"
-            >
+            <li key={m.id} className="flex flex-col gap-1 rounded border border-rule p-1 text-xs">
               <div className="flex items-center justify-between">
                 <span>
                   {widgetLabel(items, variables, m.from)}.{m.event} →{" "}
@@ -88,7 +85,7 @@ export function ActionsPanel({
                 <button
                   type="button"
                   aria-label={t("actionsPanel.removeAria", { id: m.id })}
-                  className="text-red-600"
+                  className="text-danger"
                   onClick={() => remove(m.id)}
                 >
                   ✕
@@ -97,12 +94,12 @@ export function ActionsPanel({
               <input
                 aria-label={t("actionsPanel.conditionAria", { id: m.id })}
                 placeholder={t("actionsPanel.conditionPlaceholder")}
-                className="h-7 rounded border border-slate-300 px-1 font-mono"
+                className="h-7 rounded border border-rule px-1 font-mono"
                 value={when}
                 onChange={(e) => updateWhen(m.id, e.target.value)}
               />
               {error && (
-                <span role="alert" className="text-red-600">
+                <span role="alert" className="text-danger">
                   {error}
                 </span>
               )}
@@ -180,7 +177,7 @@ export function ActionsPanel({
       </select>
       <button
         type="button"
-        className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-100"
+        className="rounded border border-rule px-2 py-1 text-sm hover:bg-sunken"
         onClick={add}
       >
         {t("actionsPanel.addButton")}

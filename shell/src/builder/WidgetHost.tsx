@@ -23,7 +23,7 @@ class WidgetErrorBoundary extends Component<{ children: ReactNode }, { failed: b
   render() {
     if (this.state.failed) {
       return (
-        <div className="flex h-full items-center justify-center bg-red-50 text-xs text-red-600">
+        <div className="flex h-full items-center justify-center bg-danger-soft text-xs text-danger">
           {t("widgetHost.crashedFallback")}
         </div>
       );
@@ -58,7 +58,7 @@ export function WidgetHost({
   const def = getWidget(item.widget);
   if (!def) {
     return (
-      <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-ink-2">
+      <div className="flex h-full items-center justify-center bg-sunken text-xs text-ink-2">
         {t("widgetHost.unknownWidget", { widget: item.widget })}
       </div>
     );

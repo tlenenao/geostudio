@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMe, useUsageSummary, useUsageTasks } from "../api/hooks";
+import type { UsageTask } from "../api/types";
 import { Button } from "../ui/kit/Button";
+import { DataTable } from "../ui/kit/DataTable";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { Panel } from "../ui/kit/Panel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
@@ -43,10 +45,40 @@ export function UsagePage() {
   const tasksQuery = useUsageTasks({ page, pageSize: PAGE_SIZE });
   const sameTenantAll = meQuery.data?.privileges.includes("tasks.view_all") === true;
   const summaryQuery = useUsageSummary({}, { enabled: sameTenantAll });
+  const [sortKey, setSortKey] = useState<string | undefined>(undefined);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   const totalPages = tasksQuery.data
     ? Math.max(1, Math.ceil(tasksQuery.data.total / PAGE_SIZE))
     : 1;
+
+  function handleSortChange(key: string) {
+    if (key === sortKey) {
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDirection("asc");
+    }
+  }
+
+  const sortedTasks = useMemo(() => {
+    const rows = tasksQuery.data?.tasks ?? [];
+    if (!sortKey) return rows;
+    return [...rows].sort((a, b) => {
+      let cmp: number;
+      switch (sortKey) {
+        case "resource":
+          cmp = `${a.objectType}/${a.objectId}`.localeCompare(`${b.objectType}/${b.objectId}`);
+          break;
+        case "date":
+          cmp = a.createdAt.localeCompare(b.createdAt);
+          break;
+        default:
+          cmp = actionLabel(a.action).localeCompare(actionLabel(b.action));
+      }
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+  }, [tasksQuery.data, sortKey, sortDirection]);
 
   return (
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
@@ -80,26 +112,32 @@ export function UsagePage() {
                 )}
                 {tasksQuery.data && tasksQuery.data.total > 0 && (
                   <>
-                    <table className="w-full text-left text-sm">
-                      <thead>
-                        <tr className="border-b border-rule">
-                          <th className="py-2 text-ink">{t("usage.columnAction")}</th>
-                          <th className="py-2 text-ink">{t("usage.columnResource")}</th>
-                          <th className="py-2 text-ink">{t("usage.columnDate")}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {tasksQuery.data.tasks.map((task) => (
-                          <tr key={task.id} className="border-b border-rule-2">
-                            <td className="py-2 text-ink">{actionLabel(task.action)}</td>
-                            <td className="py-2 text-ink">
-                              {task.objectType}/{task.objectId}
-                            </td>
-                            <td className="py-2 text-ink-2">{task.createdAt}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <DataTable
+                      columns={[
+                        {
+                          key: "action",
+                          label: t("usage.columnAction"),
+                          render: (task: UsageTask) => actionLabel(task.action),
+                        },
+                        {
+                          key: "resource",
+                          label: t("usage.columnResource"),
+                          render: (task: UsageTask) => `${task.objectType}/${task.objectId}`,
+                        },
+                        {
+                          key: "date",
+                          label: t("usage.columnDate"),
+                          render: (task: UsageTask) => (
+                            <span className="text-ink-2">{task.createdAt}</span>
+                          ),
+                        },
+                      ]}
+                      rows={sortedTasks}
+                      getRowId={(task) => String(task.id)}
+                      sortKey={sortKey}
+                      sortDirection={sortDirection}
+                      onSortChange={handleSortChange}
+                    />
                     <div className="flex items-center gap-3">
                       <Button
                         size="sm"

@@ -37,7 +37,7 @@ test("shows the run history from getPipelineRuns on mount", async () => {
       },
     ]),
   });
-  await waitFor(() => expect(screen.getByText("succeeded")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText("Terminé")).toBeInTheDocument());
 });
 
 test("clicking Exécuter runs the pipeline then polls until the run leaves queued/running", async () => {
@@ -58,7 +58,7 @@ test("clicking Exécuter runs the pipeline then polls until the run leaves queue
   });
   renderPanel({ getPipelineRuns });
   await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
-  await waitFor(() => expect(screen.getByText("succeeded")).toBeInTheDocument(), { timeout: 5000 });
+  await waitFor(() => expect(screen.getByText("Terminé")).toBeInTheDocument(), { timeout: 5000 });
   expect(call).toBeGreaterThanOrEqual(2);
 });
 
@@ -76,6 +76,9 @@ test("a failed run shows its error message", async () => {
     ]),
   });
   await waitFor(() => expect(screen.getByText("collection introuvable")).toBeInTheDocument());
+  // Avant le correctif SP-B10a, STATUS_LABEL.failed valait le littéral
+  // anglais non traduit "failed" au lieu d'être rendu via jobStatusLabel.
+  expect(screen.getByText("Échoué")).toBeInTheDocument();
 });
 
 test("if runPipeline itself fails, the button re-enables and shows an error instead of staying stuck", async () => {
@@ -186,7 +189,7 @@ test("un bouton « Charger plus » apparaît quand la page est pleine et agrandi
 
 test("le bouton « Charger plus » n'apparaît pas quand la page renvoyée est incomplète", async () => {
   renderPanel({ getPipelineRuns: vi.fn().mockResolvedValue([runFixture("run-0")]) });
-  await waitFor(() => expect(screen.getByText("succeeded")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText("Terminé")).toBeInTheDocument());
   expect(screen.queryByRole("button", { name: "Charger plus" })).not.toBeInTheDocument();
 });
 
@@ -223,7 +226,7 @@ test("expanding a run shows its per-node row counts", async () => {
       },
     ]),
   });
-  await waitFor(() => expect(screen.getByText("succeeded")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText("Terminé")).toBeInTheDocument());
   expect(screen.queryByText("reader.collection : 42")).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Détail du run run-0" }));
   expect(screen.getByText("reader.collection : 42")).toBeInTheDocument();
@@ -260,11 +263,59 @@ test("shows a computed duration and a localized date for a finished run", async 
       },
     ]),
   });
-  await waitFor(() => expect(screen.getByText("succeeded")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText("Terminé")).toBeInTheDocument());
   expect(screen.getByText("5 s")).toBeInTheDocument();
   expect(
     screen.getByText(new Date("2026-08-06T10:00:00.000Z").toLocaleString("fr-FR")),
   ).toBeInTheDocument();
+});
+
+test("affiche la progression N/M nœuds pendant une exécution en cours quand totalNodes est fourni", async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client: Partial<ItemClient> = {
+    runPipeline: vi.fn().mockResolvedValue({ runId: "run-1" }),
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-1",
+        status: "running",
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: null,
+        error: null,
+        nodeStats: {
+          r1: { nodeId: "r1", op: "reader.collection", rowCount: 10 },
+          t1: { nodeId: "t1", op: "transform.rename", rowCount: 10 },
+        },
+      },
+    ]),
+  };
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client as ItemClient}>
+        <PipelineRunPanel pipelineId="p-1" totalNodes={5} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByText("En cours")).toBeInTheDocument());
+  expect(screen.getByText("2 / 5 nœuds")).toBeInTheDocument();
+});
+
+test("ne montre pas de progression N/M une fois le run terminé, même si totalNodes est fourni", async () => {
+  renderPanel({
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-0",
+        status: "succeeded",
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: "2026-08-06T10:00:02Z",
+        error: null,
+        nodeStats: {
+          r1: { nodeId: "r1", op: "reader.collection", rowCount: 10 },
+        },
+      },
+    ]),
+  });
+  await waitFor(() => expect(screen.getByText("Terminé")).toBeInTheDocument());
+  expect(screen.queryByText(/\/ \d+ nœuds/)).not.toBeInTheDocument();
 });
 
 test("shows no duration for a run still in progress", async () => {

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 export type SqlHistoryEntry = {
+  id: string;
   sql: string;
   executedAt: string;
   status: "ok" | "error";
@@ -20,8 +21,9 @@ export function readSqlHistory(): SqlHistoryEntry[] {
   }
 }
 
-export function appendSqlHistory(entry: SqlHistoryEntry): SqlHistoryEntry[] {
-  const next = [entry, ...readSqlHistory()].slice(0, MAX_ENTRIES);
+export function appendSqlHistory(entry: Omit<SqlHistoryEntry, "id">): SqlHistoryEntry[] {
+  const withId: SqlHistoryEntry = { ...entry, id: crypto.randomUUID() };
+  const next = [withId, ...readSqlHistory()].slice(0, MAX_ENTRIES);
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {
@@ -30,4 +32,8 @@ export function appendSqlHistory(entry: SqlHistoryEntry): SqlHistoryEntry[] {
     // elle-même n'est pas affectée.
   }
   return next;
+}
+
+export function findSqlHistoryEntry(id: string): SqlHistoryEntry | undefined {
+  return readSqlHistory().find((entry) => entry.id === id);
 }

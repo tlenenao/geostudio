@@ -10,6 +10,8 @@ import { FeatureValidationError } from "../../api/itemClient";
 import type { CollectionSchema, DataRecord, DataSource } from "../../api/types";
 import type { WidgetContext } from "../registry";
 import { t } from "../../i18n";
+import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
+import { LoadingState } from "../../ui/kit/LoadingState";
 
 export type FormField = {
   name: string;
@@ -38,7 +40,7 @@ function fieldsFromSchema(schema: CollectionSchema): FormField[] {
   }));
 }
 
-const overrideInputCls = "h-8 w-full rounded border border-slate-300 px-2 text-xs";
+const overrideInputCls = "h-8 w-full rounded border border-rule px-2 text-xs";
 
 function FieldOverrides({
   fields,
@@ -79,7 +81,7 @@ function FieldOverrides({
             if (dragIndex !== null) reorder(dragIndex, i);
             dragIndex = null;
           }}
-          className="flex cursor-move flex-col gap-1 rounded border border-slate-200 p-1.5"
+          className="flex cursor-move flex-col gap-1 rounded border border-rule p-1.5"
         >
           <div className="flex flex-wrap items-center gap-1">
             <span className="text-[10px] text-ink-2" aria-hidden="true">
@@ -179,17 +181,17 @@ function FormPropsPanel({
         onChange={(id) => onChange({ ...props, dataSourceId: id, fields: [], geometryType: null })}
       />
       {collectionId !== "" && schemaQuery.isLoading && (
-        <p className="text-xs text-[var(--gs-color-muted)]">{t("widgetForm.loadingSchema")}</p>
+        <LoadingState label={t("widgetForm.loadingSchema")} />
       )}
       {collectionId !== "" && schemaQuery.isError && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-xs text-danger">
           {t("widgetForm.schemaNotFound", { collectionId })}
         </p>
       )}
       {collectionId !== "" && schemaQuery.data && fields.length === 0 && (
         <button
           type="button"
-          className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+          className="rounded border border-rule px-2 py-1 text-xs hover:bg-sunken"
           onClick={() =>
             onChange({
               ...props,
@@ -238,7 +240,7 @@ function validateField(field: FormField, value: unknown): string | null {
   return null;
 }
 
-const fieldInputCls = "h-9 rounded-md border border-slate-300 px-2 text-sm";
+const fieldInputCls = "h-9 rounded-md border border-rule px-2 text-sm";
 
 function AttachmentFieldInput({
   collectionId,
@@ -258,6 +260,7 @@ function AttachmentFieldInput({
     enabled: fid !== null,
   });
   const [uploading, setUploading] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   async function handleFiles(files: FileList | null) {
     if (!files || fid === null) return;
@@ -327,13 +330,27 @@ function AttachmentFieldInput({
               type="button"
               aria-label={t("widgetForm.deleteAttachmentAria", { filename: a.filename })}
               className="text-danger underline"
-              onClick={() => void handleDelete(a.id)}
+              onClick={() => setPendingDeleteId(a.id)}
             >
               {t("widgetForm.delete")}
             </button>
           </li>
         ))}
       </ul>
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        title={t("widgetForm.confirmDeleteAttachmentTitle")}
+        message={t("widgetForm.confirmDeleteAttachment", {
+          filename: (query.data ?? []).find((a) => a.id === pendingDeleteId)?.filename ?? "",
+        })}
+        confirmLabel={t("widgetForm.delete")}
+        onCancel={() => setPendingDeleteId(null)}
+        onConfirm={() => {
+          const id = pendingDeleteId;
+          setPendingDeleteId(null);
+          if (id !== null) void handleDelete(id);
+        }}
+      />
       <input
         type="file"
         multiple
@@ -353,6 +370,7 @@ function FieldInput({
   collectionId,
   fid,
   client,
+  error,
 }: {
   field: FormField;
   value: unknown;
@@ -361,7 +379,12 @@ function FieldInput({
   collectionId: string;
   fid: string | null;
   client: ReturnType<typeof useItemClient>;
+  error: string | null;
 }) {
+  const fieldId = `field-${field.name}`;
+  const errorId = `field-${field.name}-error`;
+  const errorProps = error ? { "aria-invalid": "true" as const, "aria-describedby": errorId } : {};
+
   if (field.type === "attachment") {
     return (
       <AttachmentFieldInput
@@ -375,58 +398,68 @@ function FieldInput({
   if (field.type === "boolean") {
     return (
       <input
+        id={fieldId}
         type="checkbox"
         aria-label={field.label}
         checked={Boolean(value)}
         onChange={(e) => onChange(e.target.checked)}
         onBlur={onBlur}
+        {...errorProps}
       />
     );
   }
   if (field.type === "integer" || field.type === "number") {
     return (
       <input
+        id={fieldId}
         type="number"
         aria-label={field.label}
         className={fieldInputCls}
         value={value === undefined ? "" : String(value)}
         onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
         onBlur={onBlur}
+        {...errorProps}
       />
     );
   }
   if (field.type === "date") {
     return (
       <input
+        id={fieldId}
         type="date"
         aria-label={field.label}
         className={fieldInputCls}
         value={String(value ?? "")}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
+        {...errorProps}
       />
     );
   }
   if (field.type === "datetime") {
     return (
       <input
+        id={fieldId}
         type="datetime-local"
         aria-label={field.label}
         className={fieldInputCls}
         value={String(value ?? "")}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
+        {...errorProps}
       />
     );
   }
   if (field.type === "enum") {
     return (
       <select
+        id={fieldId}
         aria-label={field.label}
         className={fieldInputCls}
         value={String(value ?? "")}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
+        {...errorProps}
       >
         <option value=""></option>
         {(field.values ?? []).map((v) => (
@@ -439,12 +472,14 @@ function FieldInput({
   }
   return (
     <input
+      id={fieldId}
       type="text"
       aria-label={field.label}
       className={fieldInputCls}
       value={String(value ?? "")}
       onChange={(e) => onChange(e.target.value)}
       onBlur={onBlur}
+      {...errorProps}
     />
   );
 }
@@ -467,6 +502,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [genericError, setGenericError] = useState(false);
   const [editingId, setEditingId] = useState<string | number | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const collectionId = ctx.data?.layer ?? "";
   const permissionQuery = useQuery({
@@ -509,7 +545,6 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
 
   async function handleDelete() {
     if (editingId === null) return;
-    if (!window.confirm(t("widgetForm.confirmDelete"))) return;
     try {
       await remove.mutateAsync();
       void queryClient.invalidateQueries({ queryKey: ["datasource"] });
@@ -625,9 +660,10 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             collectionId={collectionId}
             fid={editingId === null ? null : String(editingId)}
             client={client}
+            error={errorFor(f)}
           />
           {errorFor(f) && (
-            <span role="alert" className="text-xs text-red-600">
+            <span id={`field-${f.name}-error`} role="alert" className="text-xs text-danger">
               {errorFor(f)}
             </span>
           )}
@@ -668,35 +704,49 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           {canWrite && (
             <button
               type="button"
-              className="ml-2 text-xs text-red-600 underline"
+              className="ml-2 text-xs text-danger underline"
               disabled={remove.isPending}
-              onClick={() => void handleDelete()}
+              onClick={() => setConfirmingDelete(true)}
             >
               {t("widgetForm.delete")}
             </button>
           )}
         </p>
       )}
+      <ConfirmDialog
+        open={confirmingDelete}
+        title={t("widgetForm.confirmDeleteTitle")}
+        message={t("widgetForm.confirmDelete")}
+        confirmLabel={t("widgetForm.delete")}
+        pending={remove.isPending}
+        onCancel={() => setConfirmingDelete(false)}
+        onConfirm={() => {
+          setConfirmingDelete(false);
+          void handleDelete();
+        }}
+      />
       <div className="mt-auto flex items-center gap-2">
         {canWrite && (
+          // gs-raw-color-ok (SP-B12c grounding) : text-white reste ici volontairement, même
+          // convention que widgets/index.tsx (bouton) et tabs.tsx (onglet actif).
           <button
             type="submit"
             disabled={write.isPending}
-            className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white disabled:opacity-50" // gs-raw-color-ok: cf. commentaire ci-dessus
           >
             {String(props.submitLabel ?? t("widgetForm.submitDefault"))}
           </button>
         )}
         <button
           type="button"
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+          className="rounded border border-rule px-3 py-1.5 text-sm"
           onClick={resetTo}
         >
           {t("widgetForm.reset")}
         </button>
       </div>
       {genericError && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-xs text-danger">
           {t("widgetForm.saveFailed")}
         </p>
       )}

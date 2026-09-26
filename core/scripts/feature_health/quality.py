@@ -6,7 +6,7 @@ ailleurs, gratuits à lire, et discriminants par module ou par fichier :
 - `mypy --strict` ne couvre que 6 modules sur 42 (`.github/workflows/ci.yml`) ;
 - chaque exemption `ignore_imports` de `core/pyproject.toml` nomme une arête
   précise, avec sa justification ;
-- 10 fichiers de `shell/src` portent un `eslint-disable` ;
+- 13 fichiers de `shell/src` portent un `eslint-disable` ;
 - 7 portent un `@ts-expect-error` ou un `: any`.
 
 Ces reprises **n'entrent pas dans la santé** : sinon ajouter une exemption

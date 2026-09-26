@@ -17,6 +17,11 @@ type AppsMethods = Pick<
   "getAppConfig" | "getPublicAppConfig" | "saveAppConfig" | "copilotTurn" | "getAppConfigSchema"
 >;
 
+// Le cœur accorde jusqu'à 30s à un tour de copilote (TURN_TIMEOUT_SECONDS,
+// core/app/copilot/routes.py) : 30s + 5s de marge, au lieu des 15s par défaut
+// de fetchWithTimeout (base.ts) qui coupaient un tour encore en cours.
+export const COPILOT_TURN_TIMEOUT_MS = 35_000;
+
 export function createAppsMethods(base: ItemClientBase): AppsMethods {
   const { request } = base;
   return {
@@ -98,7 +103,12 @@ export function createAppsMethods(base: ItemClientBase): AppsMethods {
     },
 
     async copilotTurn(itemId, payload): Promise<CopilotTurnResult> {
-      return request<CopilotTurnResult>("POST", "/copilot/turn", { itemId, ...payload });
+      return request<CopilotTurnResult>(
+        "POST",
+        "/copilot/turn",
+        { itemId, ...payload },
+        COPILOT_TURN_TIMEOUT_MS,
+      );
     },
 
     async getAppConfigSchema(): Promise<Record<string, unknown>> {

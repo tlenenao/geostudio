@@ -170,3 +170,41 @@ test("le volet Détail explique l'invariant anti-lockout", async () => {
     screen.getByText(/dernier titulaire de la gestion des rôles et des utilisateurs/i),
   ).toBeInTheDocument();
 });
+
+test("cliquer l'en-tête Nom d'utilisateur trie les utilisateurs (DataTable, Tâche 21)", async () => {
+  server.use(
+    http.get("https://core.test/v1/roles", () => HttpResponse.json(ROLES)),
+    http.get("https://core.test/v1/users", () =>
+      HttpResponse.json({
+        users: [
+          { id: "u2", username: "bob", roleSlug: "reader" },
+          { id: "u1", username: "alice", roleSlug: "admin" },
+        ],
+        total: 2,
+      }),
+    ),
+  );
+
+  render(<Harness />);
+  await screen.findByText("bob");
+  const rowsBefore = screen.getAllByRole("row").slice(1);
+  expect(within(rowsBefore[0]).getByText("bob")).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("columnheader", { name: "Nom d'utilisateur" }));
+
+  const rowsAfter = screen.getAllByRole("row").slice(1);
+  expect(within(rowsAfter[0]).getByText("alice")).toBeInTheDocument();
+  expect(within(rowsAfter[1]).getByText("bob")).toBeInTheDocument();
+});
+
+test("affiche un état vide quand aucun utilisateur ne correspond à la recherche", async () => {
+  server.use(
+    http.get("https://core.test/v1/roles", () => HttpResponse.json(ROLES)),
+    http.get("https://core.test/v1/users", () => HttpResponse.json({ users: [], total: 0 })),
+  );
+  render(<Harness />);
+  expect(
+    await screen.findByText("Aucun utilisateur ne correspond à cette recherche"),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+});

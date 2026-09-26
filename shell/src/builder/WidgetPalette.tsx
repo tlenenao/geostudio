@@ -16,7 +16,7 @@ export function WidgetPalette({
           <li key={def.type}>
             <button
               type="button"
-              className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-left text-sm hover:bg-slate-100"
+              className="w-full rounded-md border border-rule px-2 py-1.5 text-left text-sm hover:bg-sunken"
               onClick={() => onAdd(def.type)}
             >
               {def.label}

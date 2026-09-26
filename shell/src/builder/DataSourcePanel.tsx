@@ -41,8 +41,8 @@ function groupByDisplayValue(groupBy: unknown): string {
   return Array.isArray(groupBy) ? groupBy.join(",") : String(groupBy ?? "");
 }
 
-const inputCls = "h-8 w-full rounded border border-slate-300 px-2 text-xs";
-const selectCls = "h-8 w-full rounded border border-slate-300 text-xs";
+const inputCls = "h-8 w-full rounded border border-rule px-2 text-xs";
+const selectCls = "h-8 w-full rounded border border-rule text-xs";
 
 function StaticRecordRow({
   record,
@@ -65,11 +65,11 @@ function StaticRecordRow({
     }
   }
   return (
-    <div className="flex flex-col gap-1 rounded border border-slate-200 p-1">
+    <div className="flex flex-col gap-1 rounded border border-rule p-1">
       <div className="flex items-center gap-1">
         <textarea
           aria-label={t("dataSourcePanel.recordPropertiesAria", { id: record.id })}
-          className="h-16 flex-1 rounded border border-slate-300 p-1 font-mono text-xs"
+          className="h-16 flex-1 rounded border border-rule p-1 font-mono text-xs"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onBlur={commit}
@@ -77,14 +77,14 @@ function StaticRecordRow({
         <button
           type="button"
           aria-label={t("dataSourcePanel.removeRecordAria", { id: record.id })}
-          className="text-xs text-red-600"
+          className="text-xs text-danger"
           onClick={onRemove}
         >
           ✕
         </button>
       </div>
       {error && (
-        <span role="alert" className="text-xs text-red-600">
+        <span role="alert" className="text-xs text-danger">
           {error}
         </span>
       )}
@@ -130,11 +130,11 @@ export function DataSourcePanel({
     <div className="flex flex-col gap-2">
       <ul className="flex flex-col gap-2">
         {sources.map((s) => (
-          <li key={s.id} className="rounded border border-slate-200 p-2 text-sm">
+          <li key={s.id} className="rounded border border-rule p-2 text-sm">
             <div className="flex items-center justify-between">
               <select
                 aria-label={t("dataSourcePanel.typeAria", { id: s.id })}
-                className="h-8 rounded border border-slate-300 text-xs"
+                className="h-8 rounded border border-rule text-xs"
                 value={s.type}
                 onChange={(e) => patch(s.id, { type: e.target.value as DataSource["type"] })}
               >
@@ -145,7 +145,7 @@ export function DataSourcePanel({
               <button
                 type="button"
                 aria-label={t("dataSourcePanel.removeSourceAria", { label: s.layer || s.id })}
-                className="text-xs text-red-600"
+                className="text-xs text-danger"
                 onClick={() => remove(s.id)}
               >
                 ✕
@@ -163,14 +163,12 @@ export function DataSourcePanel({
             {s.type === "features" &&
               onPromote &&
               (s.datasetId ? (
-                <p className="mt-1 text-xs text-emerald-700">
-                  {t("dataSourcePanel.sharedDatasetActive")}
-                </p>
+                <p className="mt-1 text-xs text-ok">{t("dataSourcePanel.sharedDatasetActive")}</p>
               ) : (
                 <button
                   type="button"
                   aria-label={t("dataSourcePanel.promoteAria", { id: s.id })}
-                  className="mt-1 rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-100 disabled:opacity-50"
+                  className="mt-1 rounded border border-rule px-2 py-0.5 text-xs hover:bg-sunken disabled:opacity-50"
                   disabled={!s.layer || promotingId === s.id}
                   onClick={() => onPromote(s.id)}
                 >
@@ -336,7 +334,7 @@ export function DataSourcePanel({
                             n: mi + 1,
                             id: s.id,
                           })}
-                          className="text-xs text-red-600"
+                          className="text-xs text-danger"
                           onClick={() =>
                             setMeasures(
                               s,
@@ -353,7 +351,7 @@ export function DataSourcePanel({
                 <button
                   type="button"
                   aria-label={t("dataSourcePanel.addMeasureAria", { id: s.id })}
-                  className="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-100"
+                  className="rounded border border-rule px-2 py-0.5 text-xs hover:bg-sunken"
                   onClick={() => setMeasures(s, [...measuresOf(s), { agg: "sum", field: "" }])}
                 >
                   {t("dataSourcePanel.addMeasureButton")}
@@ -384,7 +382,7 @@ export function DataSourcePanel({
                 )}
                 <button
                   type="button"
-                  className="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-100"
+                  className="rounded border border-rule px-2 py-0.5 text-xs hover:bg-sunken"
                   onClick={() =>
                     patchQuery(s.id, {
                       records: [
@@ -408,7 +406,7 @@ export function DataSourcePanel({
       </ul>
       <button
         type="button"
-        className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-100"
+        className="rounded border border-rule px-2 py-1 text-sm hover:bg-sunken"
         onClick={add}
       >
         {t("dataSourcePanel.addSourceButton")}

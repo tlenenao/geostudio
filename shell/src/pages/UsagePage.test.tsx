@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { http, HttpResponse } from "msw";
@@ -113,6 +114,47 @@ test("état vide : aucune tâche récente affiche un message, pas une table vide
   render(<Harness />);
   await screen.findByText("Aucune tâche récente.");
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
+});
+
+test("cliquer l'en-tête Action trie les tâches par libellé (DataTable, Tâche 22)", async () => {
+  mockMe(["tasks.view"]);
+  server.use(
+    http.get("https://core.test/v1/usage/tasks", () =>
+      HttpResponse.json({
+        tasks: [
+          {
+            id: 1,
+            actorId: "u1",
+            action: "report.run",
+            objectType: "report",
+            objectId: "r1",
+            createdAt: "2026-09-01T00:00:00Z",
+          },
+          {
+            id: 2,
+            actorId: "u1",
+            action: "alert.evaluate",
+            objectType: "alert",
+            objectId: "al1",
+            createdAt: "2026-09-02T00:00:00Z",
+          },
+        ],
+        total: 2,
+        page: 1,
+        pageSize: 50,
+      }),
+    ),
+  );
+  render(<Harness />);
+  await screen.findByText("Génération de rapport");
+  const rowsBefore = screen.getAllByRole("row").slice(1);
+  expect(within(rowsBefore[0]).getByText("Génération de rapport")).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("columnheader", { name: "Action" }));
+
+  const rowsAfter = screen.getAllByRole("row").slice(1);
+  expect(within(rowsAfter[0]).getByText("Évaluation d'alerte")).toBeInTheDocument();
+  expect(within(rowsAfter[1]).getByText("Génération de rapport")).toBeInTheDocument();
 });
 
 test("le libellé français de l'action est affiché, pas la clé technique brute", async () => {
