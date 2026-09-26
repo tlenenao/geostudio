@@ -82,7 +82,7 @@ export function registerDataWidgets(): void {
           {t("widgetData.titleField")}
           <input
             aria-label={t("widgetData.titleField")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.titleField ?? "")}
             onChange={(e) => onChange({ ...props, titleField: e.target.value })}
           />
@@ -200,7 +200,7 @@ export function registerDataWidgets(): void {
             {t("widgetData.columnsLabel")}
             <input
               aria-label={t("widgetData.columnsAria")}
-              className="h-9 rounded-md border border-slate-300 px-2"
+              className="h-9 rounded-md border border-rule px-2"
               value={plainColumns.join(",")}
               onChange={(e) =>
                 setPlainColumns(
@@ -213,12 +213,12 @@ export function registerDataWidgets(): void {
             />
           </label>
           {calculatedColumns.map((col, i) => (
-            <div key={i} className="flex flex-col gap-1 rounded border border-slate-200 p-2">
+            <div key={i} className="flex flex-col gap-1 rounded border border-rule p-2">
               <label className="flex flex-col gap-1">
                 {t("widgetData.calcColumnLabelText")}
                 <input
                   aria-label={t("widgetData.calcColumnLabelAria", { n: i + 1 })}
-                  className="h-9 rounded-md border border-slate-300 px-2"
+                  className="h-9 rounded-md border border-rule px-2"
                   value={col.label}
                   onChange={(e) => updateCalculatedColumn(i, { label: e.target.value })}
                 />
@@ -227,7 +227,7 @@ export function registerDataWidgets(): void {
                 {t("widgetData.calcColumnExprText")}
                 <input
                   aria-label={t("widgetData.calcColumnExprAria", { n: i + 1 })}
-                  className="h-9 rounded-md border border-slate-300 px-2 font-mono"
+                  className="h-9 rounded-md border border-rule px-2 font-mono"
                   value={col.expr}
                   onChange={(e) => updateCalculatedColumn(i, { expr: e.target.value })}
                 />
@@ -243,7 +243,7 @@ export function registerDataWidgets(): void {
           ))}
           <button
             type="button"
-            className="self-start rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+            className="self-start rounded border border-rule px-2 py-1 text-xs hover:bg-sunken"
             onClick={addCalculatedColumn}
           >
             {t("widgetData.addCalcColumn")}

@@ -8,6 +8,7 @@ import { server } from "../test/msw/server";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import type { AuthState } from "../auth/useAuth";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 const authState: AuthState = {
   isLoading: false,
@@ -106,12 +107,15 @@ test("shows the read-only demo banner when the instance is in read-only mode", a
       }),
     ),
   );
-  renderLayout();
+  const { container } = renderLayout();
   expect(
     await screen.findByText(
       "Mode démo — lecture seule, les modifications ne sont pas enregistrées.",
     ),
   ).toBeInTheDocument();
+  // SP-B12c : la bannière de mode démo n'a pas de couleur Tailwind codée en
+  // dur.
+  expectTokenizedClasses(container);
 });
 
 test("hides the read-only demo banner by default", async () => {

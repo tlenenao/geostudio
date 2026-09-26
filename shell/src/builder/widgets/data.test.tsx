@@ -13,6 +13,7 @@ import type { ReactElement } from "react";
 import type { WidgetContext } from "../registry";
 import type { DataSourceState, ItemClient, DataSource } from "../../api/types";
 import { ExplorerProvider } from "../ExplorerContext";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -301,13 +302,38 @@ function renderWithItemClient(ui: ReactElement) {
 test("table PropsPanel adds a calculated column without disturbing existing plain columns", async () => {
   const Table = getWidget("table")!;
   const onChange = vi.fn();
-  renderWithItemClient(
+  const { container } = renderWithItemClient(
     <Table.PropsPanel props={{ columns: ["nom"] }} onChange={onChange} dataSources={[]} />,
   );
+  expectTokenizedClasses(container);
   await userEvent.click(screen.getByRole("button", { name: "Ajouter une colonne calculée" }));
   expect(onChange).toHaveBeenCalledWith({
     columns: ["nom", { label: "Nouvelle colonne", expr: "" }],
   });
+});
+
+test("SP-B12c : le panneau de propriétés de la liste n'a pas de couleur Tailwind codée en dur", () => {
+  const List = getWidget("list")!;
+  const { container } = renderWithItemClient(
+    <List.PropsPanel
+      props={{ dataSourceId: "", titleField: "" }}
+      onChange={vi.fn()}
+      dataSources={[]}
+    />,
+  );
+  expectTokenizedClasses(container);
+});
+
+test("SP-B12c : le panneau de propriétés de la table avec une colonne calculée n'a pas de couleur Tailwind codée en dur", () => {
+  const Table = getWidget("table")!;
+  const { container } = renderWithItemClient(
+    <Table.PropsPanel
+      props={{ columns: ["nom", { label: "Calc", expr: "1 + 1" }] }}
+      onChange={vi.fn()}
+      dataSources={[]}
+    />,
+  );
+  expectTokenizedClasses(container);
 });
 
 function CrossFilterProbe({ datasetId }: { datasetId: string }) {

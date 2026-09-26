@@ -88,11 +88,11 @@ function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
       {legend.size && (
         <div className="flex items-end gap-2">
           <span
-            className="rounded-full bg-slate-500"
+            className="rounded-full bg-ink-3"
             style={{ width: legend.size.radiusMin, height: legend.size.radiusMin }}
           />
           <span
-            className="rounded-full bg-slate-500"
+            className="rounded-full bg-ink-3"
             style={{ width: legend.size.radiusMax, height: legend.size.radiusMax }}
           />
           <span>
@@ -345,7 +345,7 @@ export function registerMapWidget(): void {
         view.fitBounds(bbox);
       }, [url, records, mapReady, dataSourceId]);
 
-      if (ctx.data?.error) return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
+      if (ctx.data?.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;
 
       const symbology = props.symbology as LayerSymbology | undefined;
       const geometryKind = detectGeometryKind(ctx.data?.records?.[0]?.geometry);

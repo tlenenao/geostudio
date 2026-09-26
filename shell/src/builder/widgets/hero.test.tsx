@@ -6,6 +6,7 @@ import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ActionBus } from "../ActionBus";
 import { isSafeHref } from "./hero";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -96,6 +97,14 @@ test("hero cta click with a javascript: ctaHref does not open a window", async (
 
 test("isSafeHref rejects an unparseable href", () => {
   expect(isSafeHref("http://[::1")).toBe(false);
+});
+
+test("SP-B12c : le panneau de propriétés n'a pas de couleur Tailwind codée en dur", () => {
+  const PropsPanel = getWidget("hero")!.PropsPanel!;
+  const { container } = render(
+    <PropsPanel props={{ title: "Bienvenue" }} onChange={vi.fn()} dataSources={[]} />,
+  );
+  expectTokenizedClasses(container);
 });
 
 test("hero PropsPanel edits title, subtitle, background image, cta label and href", async () => {
