@@ -132,6 +132,7 @@ export const fr = {
 
   // Toast
   "toast.close": "Fermer la notification",
+  "toast.providerMissing": "useToast doit être utilisé sous ToastProvider",
   "toast.mapSaved": "Carte enregistrée",
   "toast.datasetSaved": "Données enregistrées",
   "toast.appSaved": "Application enregistrée",

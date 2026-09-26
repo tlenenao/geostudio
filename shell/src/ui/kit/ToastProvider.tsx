@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import * as ToastPrimitive from "@radix-ui/react-toast";
+import { t } from "../../i18n";
 
 type ToastVariant = "success" | "error";
 type ToastEntry = { id: string; message: string; variant: ToastVariant };
@@ -14,7 +15,7 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 export function useToast(): ToastContextValue {
   const ctx = useContext(ToastContext);
   if (!ctx) {
-    throw new Error("useToast doit être utilisé sous ToastProvider");
+    throw new Error(t("toast.providerMissing"));
   }
   return ctx;
 }
