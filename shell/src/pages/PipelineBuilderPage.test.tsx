@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import * as ToastPrimitive from "@radix-ui/react-toast";
 import type {
   InstanceInfo,
   Item,
@@ -12,6 +13,7 @@ import type {
   PipelinePayload,
 } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
+import { ToastProvider } from "../ui/kit/ToastProvider";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 import { PipelineBuilderPage } from "./PipelineBuilderPage";
 
@@ -146,13 +148,18 @@ function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}) {
     ...overrides,
   };
   render(
-    <MemoryRouter>
-      <QueryClientProvider client={qc}>
-        <ItemClientProvider client={client as ItemClient}>
-          <PipelineBuilderPage pk={pk} initialTitle="Nettoyer villes" />
-        </ItemClientProvider>
-      </QueryClientProvider>
-    </MemoryRouter>,
+    <ToastPrimitive.Provider>
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ItemClientProvider client={client as ItemClient}>
+            <ToastProvider>
+              <PipelineBuilderPage pk={pk} initialTitle="Nettoyer villes" />
+            </ToastProvider>
+          </ItemClientProvider>
+        </QueryClientProvider>
+      </MemoryRouter>
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>,
   );
   return { client };
 }

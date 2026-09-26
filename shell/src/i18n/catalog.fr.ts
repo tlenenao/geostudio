@@ -135,6 +135,12 @@ export const fr = {
   "toast.mapSaved": "Carte enregistrée",
   "toast.datasetSaved": "Données enregistrées",
   "toast.appSaved": "Application enregistrée",
+  "toast.pipelineCreated": "Pipeline créé",
+  "toast.pipelineSaved": "Pipeline enregistré",
+  "toast.webhookTokenCreated": "Jeton de webhook créé",
+  "toast.webhookTokenRevoked": "Jeton de webhook révoqué",
+  "toast.reportScheduleCreated": "Rapport planifié créé",
+  "toast.reportScheduleSaved": "Rapport planifié enregistré",
 
   // ConfirmDialog
   "confirmDialog.cancel": "Annuler",

@@ -280,9 +280,14 @@ test("useCreateReportSchedule crée un rapport planifié et invalide items", asy
   const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
   function reportWrapper({ children }: { children: ReactNode }) {
     return (
-      <QueryClientProvider client={queryClient}>
-        <ItemClientProvider client={client}>{children}</ItemClientProvider>
-      </QueryClientProvider>
+      <ToastPrimitive.Provider>
+        <QueryClientProvider client={queryClient}>
+          <ItemClientProvider client={client}>
+            <ToastProvider>{children}</ToastProvider>
+          </ItemClientProvider>
+        </QueryClientProvider>
+        <ToastPrimitive.Viewport />
+      </ToastPrimitive.Provider>
     );
   }
   const { result } = renderHook(() => useCreateReportSchedule(), { wrapper: reportWrapper });

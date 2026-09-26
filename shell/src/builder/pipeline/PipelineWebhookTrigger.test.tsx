@@ -2,8 +2,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
+import * as ToastPrimitive from "@radix-ui/react-toast";
 import type { ItemClient, PipelineWebhookToken } from "../../api/types";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
+import { ToastProvider } from "../../ui/kit/ToastProvider";
 import { PipelineWebhookTrigger } from "./PipelineWebhookTrigger";
 
 function renderTrigger(clientOverrides: Partial<ItemClient> = {}) {
@@ -13,11 +15,16 @@ function renderTrigger(clientOverrides: Partial<ItemClient> = {}) {
     ...clientOverrides,
   };
   return render(
-    <QueryClientProvider client={qc}>
-      <ItemClientProvider client={client as ItemClient}>
-        <PipelineWebhookTrigger pipelineId="p1" />
-      </ItemClientProvider>
-    </QueryClientProvider>,
+    <ToastPrimitive.Provider>
+      <QueryClientProvider client={qc}>
+        <ItemClientProvider client={client as ItemClient}>
+          <ToastProvider>
+            <PipelineWebhookTrigger pipelineId="p1" />
+          </ToastProvider>
+        </ItemClientProvider>
+      </QueryClientProvider>
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>,
   );
 }
 
