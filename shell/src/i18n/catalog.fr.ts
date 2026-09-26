@@ -1660,6 +1660,7 @@ export const fr = {
   "layersPanel.opacityLabel": "Opacité — {percent}%",
   "layersPanel.opacityAria": "Opacité",
   "layersPanel.emptyText": "Aucune couche.",
+  "layersPanel.truncatedBadge": "Tuile tronquée (trop d'entités)",
   "layersPanel.addLayerHeading": "Ajouter une couche",
 
   // MapMeasureSketchToolbar (map)

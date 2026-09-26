@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ItemClient, MapLayer } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
+import { t } from "../i18n";
 import { LayersPanel } from "./LayersPanel";
 
 // LayersPanel est un composant contrôlé pur (comme PopupEditor/
@@ -361,4 +362,64 @@ test("a feature layer whose GeoJSON fails to load still shows a symbology editor
   };
   renderPanel([featureLayer], onChange);
   expect(await screen.findByLabelText("Champ couleur")).toHaveValue("");
+});
+
+// SP-B10c (Task 14) : MapLibre ne remonte pas les en-têtes de réponse au code
+// applicatif pour une source `vector` déclarative — sonde ponctuelle sur la
+// tuile racine (0/0/0.mvt) de chaque couche vecteur au montage, cf. brief.
+const vectorLayer: MapLayer = {
+  id: "l1",
+  title: "Communes",
+  visible: true,
+  kind: "vector",
+  tilesUrl: "https://core.test/collections/communes/tiles/{z}/{x}/{y}.mvt",
+  sourceLayer: "communes",
+  collectionId: "communes",
+};
+
+// `getAuthToken` : ItemClient partiel dédié à ces deux tests, pour vérifier
+// que le jeton est bien propagé sur la requête de sonde (patron
+// `?.()`/ItemClient partiel déjà suivi par le reste de ce fichier).
+function renderPanelWithAuthToken(current: MapLayer[], onChange: (l: MapLayer[]) => void) {
+  const client = {
+    listLayerSources: vi.fn().mockResolvedValue([]),
+    getCollectionSchema: vi.fn().mockResolvedValue({ fields: [] }),
+    getAuthToken: () => "mock-token",
+  } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <LayersPanel layers={current} onChange={onChange} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+}
+
+test("affiche un badge de troncature quand la tuile racine répond X-Tile-Truncated", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(new Uint8Array(), {
+        status: 200,
+        headers: { "X-Tile-Truncated": "true" },
+      }),
+    ),
+  );
+  renderPanelWithAuthToken([vectorLayer], vi.fn());
+  expect(await screen.findByText(t("layersPanel.truncatedBadge"))).toBeInTheDocument();
+  expect(fetch).toHaveBeenCalledWith(
+    "https://core.test/collections/communes/tiles/0/0/0.mvt",
+    expect.objectContaining({ headers: { Authorization: "Bearer mock-token" } }),
+  );
+});
+
+test("n'affiche aucun badge quand la tuile n'est pas tronquée", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(new Uint8Array(), { status: 200 })),
+  );
+  renderPanelWithAuthToken([vectorLayer], vi.fn());
+  await waitFor(() => expect(fetch).toHaveBeenCalled());
+  expect(screen.queryByText(t("layersPanel.truncatedBadge"))).not.toBeInTheDocument();
 });
