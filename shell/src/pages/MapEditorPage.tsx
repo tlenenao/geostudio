@@ -138,7 +138,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
   // triptyque chrome. Ready signal = MapLibre "idle" (map.once), relayed via
   // MapView's onReady. showScaleBar/showNorthArrow were removed entirely
   // from the schema (REV-128) — never rendered, authorable-but-inert.
-  // bg-white/90 stays hardcoded here on purpose (a print artifact meant to
+  // gs-raw-color-ok: bg-white/90 stays hardcoded here on purpose (a print artifact meant to
   // look like paper, not UI chrome — spec §2.2, the map itself also always
   // stays light regardless of ambiance).
   if (isExportRender) {
@@ -158,11 +158,13 @@ export function MapEditorPage({ pk }: { pk: string }) {
           />
         </Suspense>
         {draft.printLayout?.title && (
+          // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
           <div className="absolute left-2 top-2 rounded bg-white/90 px-2 py-1 text-sm font-medium">
             {draft.printLayout.title}
           </div>
         )}
         {draft.printLayout?.showLegend && (
+          // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
           <ul className="absolute bottom-2 left-2 rounded bg-white/90 px-2 py-1 text-xs">
             {draft.layers
               .filter((l) => l.visible)
@@ -172,6 +174,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
           </ul>
         )}
         {draft.printLayout?.cartouche && (
+          // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
           <div className="absolute bottom-2 right-2 rounded bg-white/90 px-2 py-1 text-xs">
             {draft.printLayout.cartouche}
           </div>

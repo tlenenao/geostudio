@@ -190,16 +190,18 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
           silently dropped for app/dashboard exports. showScaleBar/
           showNorthArrow were removed entirely from the schema (REV-128) —
           never rendered, authorable-but-inert either way.
-          bg-white/90 stays hardcoded here on purpose, same rationale as
+          gs-raw-color-ok: bg-white/90 stays hardcoded here on purpose, same rationale as
           MapEditorPage (SP-B12a grounding): a print artifact meant to look
           like paper, not UI chrome — it must stay light regardless of
           ambiance, so it is deliberately NOT a --gs-* token. */}
       {isExportRender && query.data.printLayout?.title && (
+        // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
         <div className="absolute left-2 top-2 rounded bg-white/90 px-2 py-1 text-sm font-medium">
           {query.data.printLayout.title}
         </div>
       )}
       {isExportRender && query.data.printLayout?.cartouche && (
+        // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
         <div className="absolute bottom-2 right-2 rounded bg-white/90 px-2 py-1 text-xs">
           {query.data.printLayout.cartouche}
         </div>

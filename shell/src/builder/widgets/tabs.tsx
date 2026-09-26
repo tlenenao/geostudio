@@ -170,14 +170,14 @@ export function registerTabsWidget(): void {
         <div className="flex h-full flex-col">
           <div className="flex gap-1 border-b border-[var(--gs-color-border)] p-1 text-xs">
             {tabs.map((t) => (
-              // SP-B12c grounding : text-white reste ici volontairement, même
+              // gs-raw-color-ok (SP-B12c grounding) : text-white reste ici volontairement, même
               // convention que widgets/index.tsx (bouton) et form.tsx (bouton
               // d'envoi) — le fond de l'onglet actif est la couleur "primary"
               // de l'app auteur.
               <button
                 key={t.id}
                 type="button"
-                className={`rounded px-2 py-1 ${t.id === active.id ? "bg-[var(--gs-color-primary)] text-white" : ""}`}
+                className={`rounded px-2 py-1 ${t.id === active.id ? "bg-[var(--gs-color-primary)] text-white" : ""}`} // gs-raw-color-ok: cf. commentaire ci-dessus
                 onClick={() => setActiveId(t.id)}
               >
                 {t.label}

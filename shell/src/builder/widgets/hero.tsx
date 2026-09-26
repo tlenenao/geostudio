@@ -114,12 +114,12 @@ export function registerHeroWidget(): void {
       const align = props.align === "center" ? "items-center text-center" : "items-start text-left";
       const backgroundImageUrl = props.backgroundImageUrl ? String(props.backgroundImageUrl) : "";
       return (
-        // SP-B12c grounding : text-white reste ici volontairement — le fond
+        // gs-raw-color-ok (SP-B12c grounding) : text-white reste ici volontairement — le fond
         // est soit une image fournie par l'auteur, soit la couleur "primary"
         // de son thème d'app (arbitraire, jamais l'ambiance studio) : le
         // texte doit rester lisible dans les deux cas.
         <div
-          className={`flex h-full w-full flex-col justify-center gap-3 rounded-[var(--gs-radius)] p-8 text-white ${align}`}
+          className={`flex h-full w-full flex-col justify-center gap-3 rounded-[var(--gs-radius)] p-8 text-white ${align}`} // gs-raw-color-ok: cf. commentaire ci-dessus
           style={
             backgroundImageUrl
               ? {
@@ -133,11 +133,11 @@ export function registerHeroWidget(): void {
           <h1 className="text-3xl font-bold">{String(props.title ?? "")}</h1>
           {props.subtitle ? <p className="text-lg">{String(props.subtitle)}</p> : null}
           {props.ctaLabel ? (
-            // SP-B12c grounding : bg-white reste ici volontairement — contraste
+            // gs-raw-color-ok (SP-B12c grounding) : bg-white reste ici volontairement — contraste
             // fixe pour un bouton lu sur le même fond variable que ci-dessus.
             <button
               type="button"
-              className="mt-2 w-fit rounded-[var(--gs-radius)] bg-white px-4 py-2 text-sm font-medium text-[var(--gs-color-primary)]"
+              className="mt-2 w-fit rounded-[var(--gs-radius)] bg-white px-4 py-2 text-sm font-medium text-[var(--gs-color-primary)]" // gs-raw-color-ok: cf. commentaire ci-dessus
               onClick={() => {
                 ctx.bus?.emit(ctx.widgetId ?? "", "cta", { widgetId: ctx.widgetId });
                 const href = String(props.ctaHref ?? "");

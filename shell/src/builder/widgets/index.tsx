@@ -174,14 +174,14 @@ export function registerBuiltinWidgets(): void {
       </div>
     ),
     Component: ({ props, ctx }) => (
-      // SP-B12c grounding : text-white reste ici volontairement — cette
+      // gs-raw-color-ok (SP-B12c grounding) : text-white reste ici volontairement — cette
       // classe est le contraste fixe d'un bouton dont le fond est la
       // couleur "primary" de l'app auteur (bg-[var(--gs-color-primary)],
       // arbitraire par app, pas l'ambiance studio) ; même convention que
       // form.tsx (bouton d'envoi) et tabs.tsx (onglet actif).
       <button
         type="button"
-        className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white"
+        className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white" // gs-raw-color-ok: cf. commentaire ci-dessus
         onClick={() => {
           ctx.bus?.emit(ctx.widgetId ?? "", "clicked", { widgetId: ctx.widgetId });
           const href = String(props.href ?? "");

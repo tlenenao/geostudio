@@ -727,12 +727,12 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       />
       <div className="mt-auto flex items-center gap-2">
         {canWrite && (
-          // SP-B12c grounding : text-white reste ici volontairement, même
+          // gs-raw-color-ok (SP-B12c grounding) : text-white reste ici volontairement, même
           // convention que widgets/index.tsx (bouton) et tabs.tsx (onglet actif).
           <button
             type="submit"
             disabled={write.isPending}
-            className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            className="rounded-[var(--gs-radius)] bg-[var(--gs-color-primary)] px-3 py-1.5 text-sm text-white disabled:opacity-50" // gs-raw-color-ok: cf. commentaire ci-dessus
           >
             {String(props.submitLabel ?? t("widgetForm.submitDefault"))}
           </button>
