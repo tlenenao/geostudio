@@ -1152,6 +1152,11 @@ export const fr = {
   "pipelineRun.detailAria": "Détail du run {id}",
   "pipelineRun.showDetail": "Détail",
   "pipelineRun.hideDetail": "Masquer le détail",
+  // Progression grossière par nœud (SP-B10d) : `completed` compte les entrées
+  // de nodeStats déjà écrites pendant l'exécution (append_node_stat,
+  // core/app/pipelines/repository.py), `total` vient de la définition
+  // courante du pipeline (nombre de nœuds), pas d'un champ de run côté cœur.
+  "pipelineRun.nodeProgress": "{completed} / {total} nœuds",
 
   // PipelineWebhookTrigger (builder/pipeline)
   "pipelineWebhook.heading": "Déclenchement par webhook",

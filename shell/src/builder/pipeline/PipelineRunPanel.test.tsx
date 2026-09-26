@@ -270,6 +270,54 @@ test("shows a computed duration and a localized date for a finished run", async 
   ).toBeInTheDocument();
 });
 
+test("affiche la progression N/M nœuds pendant une exécution en cours quand totalNodes est fourni", async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client: Partial<ItemClient> = {
+    runPipeline: vi.fn().mockResolvedValue({ runId: "run-1" }),
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-1",
+        status: "running",
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: null,
+        error: null,
+        nodeStats: {
+          r1: { nodeId: "r1", op: "reader.collection", rowCount: 10 },
+          t1: { nodeId: "t1", op: "transform.rename", rowCount: 10 },
+        },
+      },
+    ]),
+  };
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client as ItemClient}>
+        <PipelineRunPanel pipelineId="p-1" totalNodes={5} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByText("En cours")).toBeInTheDocument());
+  expect(screen.getByText("2 / 5 nœuds")).toBeInTheDocument();
+});
+
+test("ne montre pas de progression N/M une fois le run terminé, même si totalNodes est fourni", async () => {
+  renderPanel({
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-0",
+        status: "succeeded",
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: "2026-08-06T10:00:02Z",
+        error: null,
+        nodeStats: {
+          r1: { nodeId: "r1", op: "reader.collection", rowCount: 10 },
+        },
+      },
+    ]),
+  });
+  await waitFor(() => expect(screen.getByText("Terminé")).toBeInTheDocument());
+  expect(screen.queryByText(/\/ \d+ nœuds/)).not.toBeInTheDocument();
+});
+
 test("shows no duration for a run still in progress", async () => {
   renderPanel({
     getPipelineRuns: vi.fn().mockResolvedValue([

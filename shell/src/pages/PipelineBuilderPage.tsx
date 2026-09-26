@@ -358,7 +358,11 @@ export function PipelineBuilderPage({
                   <p className="mb-1 mt-3 text-xs font-medium text-ink-2">
                     {t("pipelineBuilder.executionLabel")}
                   </p>
-                  <PipelineRunPanel pipelineId={pk} onLatestRunChange={setLatestRun} />
+                  <PipelineRunPanel
+                    pipelineId={pk}
+                    onLatestRunChange={setLatestRun}
+                    totalNodes={draft.nodes.length}
+                  />
                 </>
               )}
               {pk !== null && (
