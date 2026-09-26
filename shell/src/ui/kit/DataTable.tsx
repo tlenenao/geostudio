@@ -8,6 +8,7 @@ export function DataTable<T>({
   rows,
   getRowId,
   getRowLabel,
+  getRowClassName,
   selectedIds,
   onSelectedIdsChange,
   sortKey,
@@ -19,6 +20,8 @@ export function DataTable<T>({
   rows: T[];
   getRowId: (row: T) => string;
   getRowLabel?: (row: T) => string;
+  /** Optional per-row class name (e.g. to highlight a selected row). */
+  getRowClassName?: (row: T) => string | undefined;
   selectedIds?: Set<string>;
   onSelectedIdsChange?: (ids: Set<string>) => void;
   sortKey?: string;
@@ -74,7 +77,24 @@ export function DataTable<T>({
           return (
             <Table.Row
               key={id}
+              className={getRowClassName?.(row)}
+              tabIndex={onRowClick ? 0 : undefined}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
+              onKeyDown={
+                onRowClick
+                  ? (e) => {
+                      // Guard against nested interactive elements (a button
+                      // or checkbox in a rendered cell) re-triggering the
+                      // row-level activation when their own keydown bubbles
+                      // up — mirrors the sortable-header guard above.
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        if (e.key === " ") e.preventDefault();
+                        onRowClick(row);
+                      }
+                    }
+                  : undefined
+              }
               style={onRowClick ? { cursor: "pointer" } : undefined}
             >
               {selectable && (

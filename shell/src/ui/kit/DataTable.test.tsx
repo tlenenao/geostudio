@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { DataTable } from "./DataTable";
@@ -107,4 +107,66 @@ test("appelle onRowClick au clic sur une ligne", async () => {
   );
   await userEvent.click(screen.getAllByRole("row")[1]);
   expect(onRowClick).toHaveBeenCalledWith(ROWS[0]);
+});
+
+test("appelle onRowClick sur Entrée quand une ligne est focus (pipeline builder, Tâche 23)", () => {
+  const onRowClick = vi.fn();
+  render(
+    <DataTable columns={COLUMNS} rows={ROWS} getRowId={(r) => r.id} onRowClick={onRowClick} />,
+  );
+  const row = screen.getAllByRole("row")[1];
+  row.focus();
+  fireEvent.keyDown(row, { key: "Enter" });
+  expect(onRowClick).toHaveBeenCalledWith(ROWS[0]);
+});
+
+test("un Espace sur un bouton imbriqué n'est pas intercepté par la ligne (pipeline builder, Tâche 23)", async () => {
+  const onRowClick = vi.fn();
+  const onButtonClick = vi.fn();
+  const columnsWithButton = [
+    {
+      key: "name",
+      label: "Nom",
+      render: (r: Row) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onButtonClick(r);
+          }}
+        >
+          {r.name}
+        </button>
+      ),
+    },
+    { key: "kind", label: "Type", render: (r: Row) => r.kind },
+  ];
+  render(
+    <DataTable
+      columns={columnsWithButton}
+      rows={ROWS}
+      getRowId={(r) => r.id}
+      onRowClick={onRowClick}
+    />,
+  );
+  const user = userEvent.setup();
+  const button = screen.getByRole("button", { name: "Carte topo" });
+  button.focus();
+  await user.keyboard(" ");
+  expect(onButtonClick).toHaveBeenCalledWith(ROWS[0]);
+  expect(onRowClick).not.toHaveBeenCalled();
+});
+
+test("getRowClassName ajoute la classe fournie sur la ligne concernée (pipeline builder, Tâche 23)", () => {
+  render(
+    <DataTable
+      columns={COLUMNS}
+      rows={ROWS}
+      getRowId={(r) => r.id}
+      getRowClassName={(r) => (r.id === "2" ? "bg-sunken" : undefined)}
+    />,
+  );
+  const rows = screen.getAllByRole("row");
+  expect(rows[1]).not.toHaveClass("bg-sunken");
+  expect(rows[2]).toHaveClass("bg-sunken");
 });
