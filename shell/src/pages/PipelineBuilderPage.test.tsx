@@ -990,6 +990,83 @@ test("persisted mode: affiche la progression N/M nœuds quand le brouillon n'a p
   expect(screen.getByText("1 / 2 nœuds")).toBeInTheDocument();
 });
 
+// Revue finale Vague B, I4 : la condition de masquage reposait sur
+// `isDraftStale` (comparaison de RÉFÉRENCE avec configQuery.data), qui ne
+// redevient jamais fausse après une sauvegarde — le refetch qui suit
+// renvoie un nouvel objet. La progression N/M disparaissait donc pour le
+// reste de la session dans le parcours normal éditer → enregistrer → lancer.
+test("persisted mode: réaffiche la progression N/M nœuds après une sauvegarde", async () => {
+  const saved: PipelinePayload = {
+    nodes: [
+      {
+        id: "r1",
+        kind: "reader",
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: { collectionId: "villes" },
+        title: "Villes",
+      },
+      {
+        id: "f1",
+        kind: "transform",
+        op: "transform.filter",
+        x: 150,
+        y: 0,
+        params: { expr: "pop > 0" },
+        title: "Filtre",
+      },
+      {
+        id: "w1",
+        kind: "writer",
+        op: "writer.collection",
+        x: 300,
+        y: 0,
+        params: { collectionId: "villes_propres" },
+        title: "Écriture",
+      },
+    ],
+    edges: [
+      { id: "e1", from: "r1", to: "f1" },
+      { id: "e2", from: "f1", to: "w1" },
+    ],
+  };
+  let current = saved;
+  // Chaque lecture renvoie un NOUVEL objet (comme un vrai refetch réseau).
+  const getPipelineConfig = vi.fn(() => Promise.resolve(structuredClone(current)));
+  const savePipelineConfig = vi.fn((_pk: string, payload: PipelinePayload) => {
+    current = payload;
+    return Promise.resolve(undefined);
+  });
+  renderPage(
+    "p-1",
+    {
+      getPipelineConfig,
+      savePipelineConfig,
+      getPipelineRuns: vi.fn().mockResolvedValue([
+        {
+          id: "run-1",
+          status: "running",
+          startedAt: "2026-08-06T10:00:00Z",
+          finishedAt: null,
+          error: null,
+          nodeStats: { r1: { nodeId: "r1", op: "reader.collection", rowCount: 10 } },
+        },
+      ]),
+    },
+    "/?node=f1",
+  );
+  await waitFor(() => expect(screen.getByText("1 / 3 nœuds")).toBeInTheDocument());
+  // Édition réelle (le brouillon devient « non sauvegardé ») : progression masquée.
+  await userEvent.type(await screen.findByLabelText("expr"), "0");
+  await waitFor(() => expect(screen.queryByText(/\/ \d+ nœuds/)).not.toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(savePipelineConfig).toHaveBeenCalled());
+  // Le refetch post-sauvegarde a bien eu lieu (nouvelle référence d'objet).
+  await waitFor(() => expect(getPipelineConfig.mock.calls.length).toBeGreaterThan(1));
+  expect(await screen.findByText("1 / 3 nœuds")).toBeInTheDocument();
+});
+
 // SP-B9c : `selectedNodeId` passe de useState à useUrlSyncedState (Tâche 16),
 // même patron que la Tâche 17 sur AppBuilderPage (`?selected=`). La classe
 // "ring-2 ring-accent" posée par PipelineCanvas.tsx (PipelineNodeBox, prop

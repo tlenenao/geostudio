@@ -220,11 +220,10 @@ export function PipelineBuilderPage({
   // function boundary. Capturing it in a freshly-declared, non-nullable
   // const sidesteps that instead of asserting `draft!` at each read site.
   const currentDraft: PipelinePayload = draft;
-  // Suivi finding revue (f8169238) : réutilisé pour masquer aussi la
-  // progression N/M nœuds de PipelineRunPanel — `runPipeline` exécute
-  // toujours la dernière config SAUVEGARDÉE, jamais ce brouillon, donc
-  // `draft.nodes.length` n'est un total fiable pour le run affiché que
-  // lorsque le brouillon n'a pas divergé de `configQuery.data`.
+  // Staleness de l'aperçu (PipelinePreviewPanel) uniquement. La progression
+  // N/M nœuds de PipelineRunPanel se masque sur `hasUnsavedChanges`, pas ici :
+  // cette comparaison de référence ne redevient jamais fausse après une
+  // sauvegarde (revue finale Vague B, I4).
   const isDraftStale = configQuery.data !== undefined && configQuery.data !== draft;
   const validation = validatePipelineGraphLocally(draft.nodes, draft.edges, catalog);
   const valid = isPipelineValid(validation);
@@ -430,7 +429,11 @@ export function PipelineBuilderPage({
                   <PipelineRunPanel
                     pipelineId={pk}
                     onLatestRunChange={setLatestRun}
-                    totalNodes={isDraftStale ? undefined : draft.nodes.length}
+                    // hasUnsavedChanges, pas isDraftStale : cette dernière
+                    // compare par référence à configQuery.data et ne redevient
+                    // jamais fausse après une sauvegarde (le refetch renvoie un
+                    // nouvel objet) — revue finale Vague B, I4.
+                    totalNodes={hasUnsavedChanges ? undefined : draft.nodes.length}
                   />
                 </>
               )}
