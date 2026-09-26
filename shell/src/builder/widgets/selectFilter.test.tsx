@@ -65,6 +65,13 @@ test("shows a discreet message when not bound to a dataset source", () => {
   expect(queryDataSource).not.toHaveBeenCalled();
 });
 
+test("shows the shared LoadingState (role=status, spinner) while the options query is in flight", () => {
+  renderSelect({}, vi.fn().mockReturnValue(new Promise(() => {})));
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
+});
+
 test("fetches distinct values via a groupBy statistics query and renders one checkbox per value", async () => {
   const queryDataSource = vi.fn().mockResolvedValue([
     { id: "Nord", properties: { region: "Nord", value: 3 } },

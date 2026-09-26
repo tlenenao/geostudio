@@ -5,6 +5,7 @@ import { DataSourceSelect } from "../DataSourceSelect";
 import { useItemClient } from "../../api/ItemClientProvider";
 import { useAnalyticsContext, useClearCrossFilter, useSetCrossFilter } from "../AnalyticsContext";
 import { t } from "../../i18n";
+import { LoadingState } from "../../ui/kit/LoadingState";
 
 type Bounds = { min: number; max: number };
 
@@ -92,8 +93,7 @@ export function registerSliderFilterWidget(): void {
           <p className="text-xs text-[var(--gs-color-muted)]">{t("widgetSliderFilter.unbound")}</p>
         );
       }
-      if (query.isLoading)
-        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+      if (query.isLoading) return <LoadingState />;
       if (query.isError || !query.data) {
         return (
           <p role="alert" className="text-xs text-[var(--gs-color-muted)]">

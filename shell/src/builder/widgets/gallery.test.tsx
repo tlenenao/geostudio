@@ -6,7 +6,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
-import type { Item, ItemClient } from "../../api/types";
+import type { Item, ItemClient, ItemPage } from "../../api/types";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
 
 beforeEach(() => {
@@ -73,6 +73,13 @@ test("gallery calls listPublicItems with the author's fixed filter props", () =>
     page: 1,
     pageSize: 6,
   });
+});
+
+test("gallery shows the shared LoadingState (role=status, spinner) while the fetch is in flight", () => {
+  renderGallery({}, { listPublicItems: vi.fn(() => new Promise<ItemPage>(() => {})) });
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
 });
 
 test("gallery renders a grid of published items, each linking to its public page", async () => {

@@ -440,7 +440,9 @@ test("compare mode shows a loading state while the current/reference windows are
     { getDatasetConfig, queryDataSource },
     { from: "2026-01-01", to: "2026-01-02" },
   );
-  expect(await screen.findByText(/chargement/i)).toBeInTheDocument();
+  const status = await screen.findByRole("status");
+  expect(status).toHaveTextContent(/chargement/i);
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
   expect(screen.queryByTestId("echart")).not.toBeInTheDocument();
 });
 

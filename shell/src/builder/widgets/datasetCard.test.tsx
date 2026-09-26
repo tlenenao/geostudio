@@ -113,6 +113,16 @@ test("shows a discreet message when no data source is bound", () => {
   expect(screen.getByText(/Aucune source de données/)).toBeInTheDocument();
 });
 
+test("shows the shared LoadingState (role=status, spinner) while the collection is in flight", () => {
+  renderCard(
+    { dataSourceId: "ds1" },
+    { getCollection: vi.fn(() => new Promise<CollectionAdmin>(() => {})) },
+  );
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
+});
+
 test("renders title, description, feature count, and a link to the dataset page", async () => {
   renderCard({ dataSourceId: "ds1", showDownload: true });
   expect(await screen.findByText("Parcs")).toBeInTheDocument();

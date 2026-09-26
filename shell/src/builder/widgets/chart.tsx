@@ -22,6 +22,7 @@ import {
 import { ExplorerMenu } from "./ExplorerMenu";
 import type { DataRecord, DataSource, DatasetConfig } from "../../api/types";
 import { t } from "../../i18n";
+import { LoadingState } from "../../ui/kit/LoadingState";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
 
@@ -423,8 +424,7 @@ export function registerChartWidget(): void {
       });
 
       if (compareActive) {
-        if (currentQuery.isLoading || referenceQuery.isLoading)
-          return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+        if (currentQuery.isLoading || referenceQuery.isLoading) return <LoadingState />;
         if (currentQuery.isError || referenceQuery.isError)
           return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
         const timeField = (dataset as DatasetConfig).timeField as string;

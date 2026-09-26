@@ -51,6 +51,13 @@ function renderSlider(queryDataSource = vi.fn()) {
   );
 }
 
+test("shows the shared LoadingState (role=status, spinner) while the bounds query is in flight", () => {
+  renderSlider(vi.fn().mockReturnValue(new Promise(() => {})));
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
+});
+
 test("shows a discreet message when not bound to a dataset source", () => {
   const queryDataSource = vi.fn();
   const client = { queryDataSource } as unknown as ItemClient;

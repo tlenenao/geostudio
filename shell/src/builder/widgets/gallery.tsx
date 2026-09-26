@@ -4,6 +4,7 @@ import { registerWidget } from "../registry";
 import { useItemClient } from "../../api/ItemClientProvider";
 import type { ResourceType } from "../../api/types";
 import { t } from "../../i18n";
+import { LoadingState } from "../../ui/kit/LoadingState";
 
 const labelCls = "flex flex-col gap-1";
 const inputCls = "h-9 rounded-md border border-slate-300 px-2";
@@ -97,7 +98,7 @@ export function registerGalleryWidget(): void {
       });
 
       if (query.isLoading) {
-        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+        return <LoadingState />;
       }
       if (query.isError) {
         return (
