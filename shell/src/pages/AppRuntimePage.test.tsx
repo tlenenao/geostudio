@@ -594,8 +594,12 @@ test("action-bar border and save-failed alert use semantic tokens, not literal T
   await userEvent.type(screen.getByLabelText("Nom de la vue"), "Ma vue");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   const saveFailedAlert = await screen.findByRole("alert");
-  // Safe to use the shared helper directly here: this <p> is a leaf (text
-  // content only, no descendants), so its innerHTML cannot contain another
-  // component's classes.
-  expectTokenizedClasses(saveFailedAlert);
+  // NOT expectTokenizedClasses(saveFailedAlert): this <p> is a leaf (text
+  // content only, no descendants), so Element.innerHTML never reflects an
+  // element's OWN attributes — only its children's serialization. Calling
+  // the helper on a leaf node is vacuously true regardless of its actual
+  // class (found in Task 30's review of this task, SP-B12b). Assert on
+  // className directly instead, same pattern as the action-bar check above.
+  expect(saveFailedAlert.className).toContain("text-danger");
+  expect(saveFailedAlert.className).not.toMatch(/\bred-\d{2,3}\b/);
 });
