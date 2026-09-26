@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useCollectionsAdmin, useDeleteCollection, useInstanceInfo } from "../api/hooks";
 import type { CollectionAdmin } from "../api/types";
 import { Gate } from "../auth/Gate";
 import { Locked } from "../auth/Locked";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { DataTable } from "../ui/kit/DataTable";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { CollectionSharePanel } from "../shell/CollectionSharePanel";
@@ -39,6 +40,45 @@ export function CollectionsAdminPage() {
   const [deleting, setDeleting] = useState<CollectionAdmin | null>(null);
   const editPanel = usePanelTrigger(editing !== null);
   const sharingPanel = usePanelTrigger(sharing !== null);
+  const [sortKey, setSortKey] = useState<string | undefined>(undefined);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  function handleSortChange(key: string) {
+    if (key === sortKey) {
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDirection("asc");
+    }
+  }
+
+  const sortedCollections = useMemo(() => {
+    const rows = collectionsQuery.data ?? [];
+    if (!sortKey) return rows;
+    return [...rows].sort((a, b) => {
+      let cmp: number;
+      switch (sortKey) {
+        case "tableName":
+          cmp = a.tableName.localeCompare(b.tableName);
+          break;
+        case "isPublic":
+          cmp = Number(a.isPublic) - Number(b.isPublic);
+          break;
+        case "editable":
+          cmp = Number(a.editable) - Number(b.editable);
+          break;
+        case "featureCount":
+          cmp = (a.featureCount ?? -1) - (b.featureCount ?? -1);
+          break;
+        case "owner":
+          cmp = (a.owner ?? "").localeCompare(b.owner ?? "");
+          break;
+        default:
+          cmp = a.title.localeCompare(b.title);
+      }
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+  }, [collectionsQuery.data, sortKey, sortDirection]);
 
   async function confirmDelete() {
     if (!deleting) return;
@@ -118,32 +158,47 @@ export function CollectionsAdminPage() {
                 <EmptyState title={t("collectionsAdmin.empty")} />
               )}
               {collectionsQuery.data && collectionsQuery.data.length > 0 && (
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-rule">
-                      <th className="py-2 text-ink">{t("collectionsAdmin.columnTitle")}</th>
-                      <th className="py-2 text-ink">{t("collectionsAdmin.columnTable")}</th>
-                      <th className="py-2 text-ink">{t("collectionsAdmin.columnPublic")}</th>
-                      <th className="py-2 text-ink">{t("collectionsAdmin.columnEditable")}</th>
-                      <th className="py-2 text-ink">{t("collectionsAdmin.columnFeatureCount")}</th>
-                      <th className="py-2 text-ink">{t("collectionsAdmin.columnOwner")}</th>
-                      <th className="py-2 text-ink">{t("collectionsAdmin.columnActions")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {collectionsQuery.data.map((col) => (
-                      <tr key={col.id} className="border-b border-rule-2">
-                        <td className="py-2 text-ink">{col.title}</td>
-                        <td className="py-2 text-xs text-ink-2">{col.tableName}</td>
-                        <td className="py-2 text-ink">
-                          {col.isPublic ? t("collectionsAdmin.yes") : t("collectionsAdmin.no")}
-                        </td>
-                        <td className="py-2 text-ink">
-                          {col.editable ? t("collectionsAdmin.yes") : t("collectionsAdmin.no")}
-                        </td>
-                        <td className="py-2 text-ink">{col.featureCount ?? "—"}</td>
-                        <td className="py-2 text-ink">{col.owner ?? "—"}</td>
-                        <td className="py-2 flex gap-2">
+                <DataTable
+                  columns={[
+                    {
+                      key: "title",
+                      label: t("collectionsAdmin.columnTitle"),
+                      render: (col: CollectionAdmin) => col.title,
+                    },
+                    {
+                      key: "tableName",
+                      label: t("collectionsAdmin.columnTable"),
+                      render: (col: CollectionAdmin) => (
+                        <span className="text-xs text-ink-2">{col.tableName}</span>
+                      ),
+                    },
+                    {
+                      key: "isPublic",
+                      label: t("collectionsAdmin.columnPublic"),
+                      render: (col: CollectionAdmin) =>
+                        col.isPublic ? t("collectionsAdmin.yes") : t("collectionsAdmin.no"),
+                    },
+                    {
+                      key: "editable",
+                      label: t("collectionsAdmin.columnEditable"),
+                      render: (col: CollectionAdmin) =>
+                        col.editable ? t("collectionsAdmin.yes") : t("collectionsAdmin.no"),
+                    },
+                    {
+                      key: "featureCount",
+                      label: t("collectionsAdmin.columnFeatureCount"),
+                      render: (col: CollectionAdmin) => col.featureCount ?? "—",
+                    },
+                    {
+                      key: "owner",
+                      label: t("collectionsAdmin.columnOwner"),
+                      render: (col: CollectionAdmin) => col.owner ?? "—",
+                    },
+                    {
+                      key: "actions",
+                      label: t("collectionsAdmin.columnActions"),
+                      render: (col: CollectionAdmin) => (
+                        <div className="flex gap-2">
                           {/* REV-089 : les quatre actions mutantes de la ligne
                               masquées sous !readOnly (doctrine tranchée,
                               alignée sur HarvestSourcesAdminPage) — s'ajoute
@@ -215,11 +270,16 @@ export function CollectionsAdminPage() {
                               </Button>
                             </>
                           )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                      ),
+                    },
+                  ]}
+                  rows={sortedCollections}
+                  getRowId={(col) => col.id}
+                  sortKey={sortKey}
+                  sortDirection={sortDirection}
+                  onSortChange={handleSortChange}
+                />
               )}
               {collectionsQuery.data && collectionsQuery.data.length >= limit && (
                 <Button

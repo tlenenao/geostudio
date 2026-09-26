@@ -533,6 +533,26 @@ test("le bouton « Charger plus » n'apparaît pas quand la page renvoyée est i
   expect(screen.queryByRole("button", { name: "Charger plus" })).not.toBeInTheDocument();
 });
 
+test("cliquer l'en-tête Titre trie les collections par titre (DataTable, Tâche 22)", async () => {
+  const zoulou: CollectionAdminFixture = { ...INCIDENTS, id: "b", title: "Zoulou" };
+  const alpha: CollectionAdminFixture = { ...INCIDENTS, id: "a", title: "Alpha" };
+  server.use(
+    http.get("https://core.test/v1/collections", () =>
+      HttpResponse.json({ collections: [zoulou, alpha] }),
+    ),
+  );
+  render(<Harness />);
+  await screen.findByText("Zoulou");
+  const rowsBefore = screen.getAllByRole("row").slice(1);
+  expect(within(rowsBefore[0]).getByText("Zoulou")).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("columnheader", { name: "Titre" }));
+
+  const rowsAfter = screen.getAllByRole("row").slice(1);
+  expect(within(rowsAfter[0]).getByText("Alpha")).toBeInTheDocument();
+  expect(within(rowsAfter[1]).getByText("Zoulou")).toBeInTheDocument();
+});
+
 test("affiche un état vide quand aucune collection n'existe", async () => {
   server.use(
     http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
