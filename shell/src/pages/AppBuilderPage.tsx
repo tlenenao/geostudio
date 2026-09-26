@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUndoableDraft } from "../builder/useUndoableDraft";
+import { useUrlSyncedState } from "../lib/useUrlSyncedState";
 import { toBlob } from "html-to-image";
 import {
   useAppConfig,
@@ -72,10 +73,22 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const mainRef = useRef<HTMLElement>(null);
   const { draft, setDraft, seedDraft, resetDraft, undo, redo, canUndo, canRedo } =
     useUndoableDraft<AppConfig>();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // SP-B9b : page active et sélection synchronisées à l'URL
+  // (`?page=`/`?selected=`) pour survivre à un rechargement — même
+  // signature que useState<string|null>, tous les sites d'appel
+  // (setActivePageId/setSelectedId) passent déjà des valeurs directes,
+  // jamais la forme fonctionnelle. La validation d'une valeur lue depuis
+  // l'URL (id de page/sélection inconnu ou périmé) n'est pas dans le hook
+  // générique lui-même — cf. `activePage` plus bas, qui ne retient
+  // `activePageId` que s'il désigne une page existante du draft courant
+  // (sinon retombe sur la première page), et l'effet de réconciliation de
+  // `selectedId` juste après (SP-19, findings C2/M2 — déjà écrits pour
+  // absorber une dérive de la pile undo, tiennent identiquement pour une
+  // valeur d'URL périmée/invalide).
+  const [selectedId, setSelectedId] = useUrlSyncedState<string>("selected", null);
   const [mode, setMode] = useState<RenderMode>("edit");
   const [breakpoint, setBreakpoint] = useState<Breakpoint>("lg");
-  const [activePageId, setActivePageId] = useState<string | null>(null);
+  const [activePageId, setActivePageId] = useUrlSyncedState<string>("page", null);
 
   const extensionsQuery = useActiveExtensions();
   const [extensionsRegistered, setExtensionsRegistered] = useState(false);
@@ -155,7 +168,14 @@ export function AppBuilderPage({ pk }: { pk: string }) {
     if (selectedId && activeLayout && !activeLayout.items.some((i) => i.id === selectedId)) {
       setSelectedId(null);
     }
-  }, [selectedId, activeLayout]);
+    // setSelectedId : depuis SP-B9b, ce n'est plus le setter de useState (que
+    // exhaustive-deps sait reconnaître comme stable implicitement) mais celui
+    // de useUrlSyncedState, mémorisé via useCallback([paramName,
+    // setSearchParams]) — référentiellement stable en pratique (paramName
+    // est un littéral, setSearchParams l'est par react-router-dom), mais le
+    // lint ne le sait pas pour un hook maison : listé explicitement plutôt
+    // que supprimé par une règle désactivée.
+  }, [selectedId, activeLayout, setSelectedId]);
 
   if (query.isLoading || itemQuery.isLoading || !extensionsRegistered || (!draft && !query.isError))
     return <p role="status">{t("common.loading")}</p>;

@@ -4,6 +4,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as ToastPrimitive from "@radix-ui/react-toast";
 import { useState } from "react";
+import { MemoryRouter, useSearchParams } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { AppConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
@@ -82,23 +83,40 @@ const OWNED_APP_ITEM: Item = {
   language: "fr",
 };
 
-function renderPage(client: Partial<ItemClient>) {
+// Sonde discrète de l'état réel de l'URL (via le même useSearchParams que
+// useUrlSyncedState) : sert à vérifier que la réconciliation d'un
+// `selectedId`/`activePageId` périmé (SP-19 findings C2/M2) se répercute
+// vraiment sur l'URL elle-même, pas seulement sur l'affichage — un test qui
+// ne regarderait que le DOM ne distinguerait pas "corrigé" de "jamais lu".
+function SearchParamsProbe() {
+  const [params] = useSearchParams();
+  return <span data-testid="url-search">{params.toString()}</span>;
+}
+
+// `route` : chemin (avec éventuelle chaîne de requête) que voit
+// useUrlSyncedState via useSearchParams. Par défaut "/", sans paramètre —
+// tous les tests existants (écrits avant SP-B9b) ne portent aucune
+// affirmation sur l'URL et restent inchangés.
+function renderPage(client: Partial<ItemClient>, route = "/") {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const merged: Partial<ItemClient> = {
     getItem: vi.fn().mockResolvedValue(OWNED_APP_ITEM),
     ...client,
   };
   return render(
-    <ToastPrimitive.Provider>
-      <QueryClientProvider client={qc}>
-        <ItemClientProvider client={merged as ItemClient}>
-          <ToastProvider>
-            <AppBuilderPage pk="5" />
-          </ToastProvider>
-        </ItemClientProvider>
-      </QueryClientProvider>
-      <ToastPrimitive.Viewport />
-    </ToastPrimitive.Provider>,
+    <MemoryRouter initialEntries={[route]}>
+      <ToastPrimitive.Provider>
+        <QueryClientProvider client={qc}>
+          <ItemClientProvider client={merged as ItemClient}>
+            <ToastProvider>
+              <AppBuilderPage pk="5" />
+            </ToastProvider>
+          </ItemClientProvider>
+        </QueryClientProvider>
+        <ToastPrimitive.Viewport />
+        <SearchParamsProbe />
+      </ToastPrimitive.Provider>
+    </MemoryRouter>,
   );
 }
 
@@ -779,4 +797,130 @@ test("SP-42, revue finale (point 2, Critical) : reste en chargement tant que l'i
   });
   const saveButton = await screen.findByRole("button", { name: "Enregistrer" });
   expect(saveButton).toBeEnabled();
+});
+
+// SP-B9b : activePageId/selectedId passent de useState à useUrlSyncedState
+// (Tâche 16). Fixture à deux pages explicites, ids connus ("page-1"/
+// "page-2") — les deux tests de ce lot en dépendent pour cibler une page
+// précise depuis l'URL sans passer par "Ajouter une page" (qui génère un id
+// via un vrai crypto.randomUUID(), non prévisible en test).
+const twoPagesConfig: AppConfig = {
+  kind: "app",
+  theme: {},
+  dataSources: [],
+  messages: [],
+  layout: { type: "grid", breakpoints: {}, items: [] },
+  pages: [
+    { id: "page-1", name: "Page 1", layout: { type: "grid", breakpoints: {}, items: [] } },
+    { id: "page-2", name: "Page 2", layout: { type: "grid", breakpoints: {}, items: [] } },
+  ],
+};
+
+test("conserve la page active dans l'URL après un remount (simule un rechargement)", async () => {
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  const { unmount } = renderPage(
+    { getAppConfig: vi.fn().mockResolvedValue(twoPagesConfig), saveAppConfig },
+    "/?page=page-2",
+  );
+  await screen.findByRole("button", { name: "Texte" });
+  unmount();
+
+  renderPage(
+    { getAppConfig: vi.fn().mockResolvedValue(twoPagesConfig), saveAppConfig },
+    "/?page=page-2",
+  );
+  // Si la page active n'avait pas survécu au remount, ce clic ajouterait le
+  // widget sur page-1 (page par défaut) au lieu de page-2.
+  await userEvent.click(await screen.findByRole("button", { name: "Texte" }));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
+  expect(saved.pages![0].layout.items).toHaveLength(0); // page-1 non touchée
+  expect(saved.pages![1].layout.items).toHaveLength(1); // atterrit sur page-2
+});
+
+// Gap signalé par le relecteur de la Tâche 16 : useUrlSyncedState fait un
+// cast non vérifié de la chaîne brute de l'URL vers T, sans validation
+// runtime. AppBuilderPage a déjà (SP-19, finding C2) un garde-fou qui ne
+// fait jamais confiance à `activePageId` brut : `activePage` (la valeur
+// réellement utilisée partout ailleurs dans le composant) ne le retient que
+// s'il désigne une page qui existe dans le draft courant, sinon retombe sur
+// la première page. Ce test vérifie que ce garde-fou tient quand la valeur
+// suspecte vient de l'URL (un id de page qui n'a jamais existé), pas
+// seulement d'une dérive de la pile undo — et surtout qu'aucune édition
+// n'est perdue silencieusement (setPageLayout no-op sur un pageId inconnu,
+// même finding C2).
+test("un id de page inconnu dans l'URL retombe sur la première page sans perdre l'édition", async () => {
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPage(
+    {
+      getAppConfig: vi.fn().mockResolvedValue(twoPagesConfig),
+      saveAppConfig,
+      // listConfigRevisions non fourni ailleurs dans ce fichier lève un
+      // alert() sans rapport (ConfigHistoryPanel) qui aurait fait échouer
+      // une assertion générique "aucun alert" — mocké ici pour isoler le
+      // seul comportement sous test (l'id de page fantôme de l'URL).
+      listConfigRevisions: vi.fn().mockResolvedValue([]),
+    },
+    "/?page=page-fantome-jamais-vue",
+  );
+  await userEvent.click(await screen.findByRole("button", { name: "Texte" }));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+  const saved = saveAppConfig.mock.calls[0][1] as AppConfig;
+  expect(saved.pages![0].layout.items).toHaveLength(1); // retombé sur page-1
+  expect(saved.pages![1].layout.items).toHaveLength(0);
+});
+
+test("restaure le widget sélectionné depuis l'URL", async () => {
+  const withTwoWidgets: AppConfig = {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [
+        { id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } },
+        { id: "w2", widget: "text", x: 4, y: 0, w: 4, h: 2, props: { text: "Yo" } },
+      ],
+    },
+  };
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(withTwoWidgets) }, "/?selected=w2");
+  // "Supprimer widget-X" (GridCanvas) ne s'affiche que pour l'item sélectionné.
+  expect(await screen.findByRole("button", { name: "Supprimer widget-w2" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Supprimer widget-w1" })).not.toBeInTheDocument();
+});
+
+// Contrepartie sélection du test de page fantôme ci-dessus : un id de
+// sélection inconnu dans l'URL ne doit ni planter ni verrouiller le
+// builder dans un état cassé — aucune sélection ne s'affiche, et l'app
+// reste utilisable normalement ensuite (sélectionner un widget réel
+// fonctionne comme si l'URL n'avait rien annoncé).
+test("un id de sélection inconnu dans l'URL n'affiche aucune sélection et reste utilisable", async () => {
+  const withItem: AppConfig = {
+    kind: "app",
+    theme: {},
+    dataSources: [],
+    messages: [],
+    layout: {
+      type: "grid",
+      breakpoints: {},
+      items: [{ id: "w1", widget: "text", x: 0, y: 0, w: 4, h: 2, props: { text: "Hi" } }],
+    },
+  };
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(withItem) }, "/?selected=widget-fantome");
+  await screen.findByRole("button", { name: "Sélectionner widget-w1" });
+  expect(screen.queryByRole("button", { name: /^Supprimer widget-/ })).not.toBeInTheDocument();
+  // La réconciliation (SP-19, finding M2) ne se contente pas de masquer la
+  // sélection périmée à l'écran : elle efface aussi le paramètre "selected"
+  // de l'URL — sinon un permalink partagé continuerait de pointer vers un
+  // widget fantôme indéfiniment.
+  await waitFor(() => expect(screen.getByTestId("url-search").textContent).toBe(""));
+
+  await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-w1" }));
+  expect(screen.getByRole("button", { name: "Supprimer widget-w1" })).toBeInTheDocument();
 });
