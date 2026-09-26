@@ -3,15 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { useItemClient } from "../../api/hooks";
 import type { PipelineRun } from "../../api/types";
 import { t } from "../../i18n";
+import { jobStatusLabel } from "../../lib/jobStatusLabel";
 import { Button } from "../../ui/kit/Button";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
-
-const STATUS_LABEL: Record<PipelineRun["status"], string> = {
-  queued: t("pipelineRun.statusQueued"),
-  running: t("pipelineRun.statusRunning"),
-  succeeded: "succeeded",
-  failed: "failed",
-};
 
 // GET /pipelines/{id}/runs pagine déjà côté cœur (limit/offset, SP-50) mais ce
 // panneau tronquait silencieusement l'historique à la limite par défaut du
@@ -36,7 +30,7 @@ function RunRow({ run }: { run: PipelineRun }) {
   return (
     <li className="border-t border-rule pt-1">
       <div className="flex items-center gap-2">
-        <span>{STATUS_LABEL[run.status]}</span>
+        <span>{jobStatusLabel(run.status)}</span>
         {run.startedAt && (
           <span className="text-ink-2">{new Date(run.startedAt).toLocaleString("fr-FR")}</span>
         )}

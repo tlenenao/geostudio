@@ -1138,9 +1138,9 @@ export const fr = {
   "pipelinePreviewMap.legendLine": "Ligne",
   "pipelinePreviewMap.legendPoint": "Point",
 
-  // PipelineRunPanel (builder/pipeline)
-  "pipelineRun.statusQueued": "En attente",
-  "pipelineRun.statusRunning": "En cours",
+  // PipelineRunPanel (builder/pipeline) — statuts de run traduits via
+  // jobStatusLabel (SP-B10a, shell/src/lib/jobStatusLabel.ts), plus les
+  // clés jobStatus.* plus bas dans ce fichier.
   "pipelineRun.loadRunsFailed": "Impossible de charger l'historique des exécutions.",
   "pipelineRun.runFailed": "Échec du lancement du pipeline.",
   "pipelineRun.running": "Exécution…",
@@ -1283,12 +1283,9 @@ export const fr = {
   "printLayout.cartoucheLabel": "Cartouche",
   "printLayout.cartoucheAria": "Cartouche",
 
-  // ReportRunPanel (builder/report)
-  "reportRun.statusPending": "En attente",
-  "reportRun.statusRunning": "En cours",
-  "reportRun.statusDone": "Terminé",
-  "reportRun.statusError": "Échec",
-  "reportRun.statusUnknown": "Inconnu",
+  // ReportRunPanel (builder/report) — statuts de run traduits via
+  // jobStatusLabel (SP-B10a, shell/src/lib/jobStatusLabel.ts), plus les
+  // clés jobStatus.* plus bas dans ce fichier.
   "reportRun.heading": "Historique des exécutions",
   "reportRun.loadRunsFailed": "Impossible de charger l'historique des exécutions.",
   "reportRun.empty": "Aucune exécution pour l'instant.",
@@ -1778,4 +1775,19 @@ export const fr = {
 
   // ConnectivityBanner (SP-B7) — bannière globale sur injoignabilité du cœur
   "connectivity.unreachable": "Connexion au serveur perdue — nouvelle tentative en cours…",
+
+  // jobStatusLabel (SP-B10a) — vocabulaire d'état de job partagé entre
+  // PipelineRunPanel et ReportRunPanel (deux énumérations réelles distinctes,
+  // cf. commentaire de shell/src/lib/jobStatusLabel.ts) : "queued"/"pending",
+  // "succeeded"/"done" et "failed"/"error" sont des synonymes qui reçoivent le
+  // même libellé. "cancelled" n'est émis par aucune API à ce jour.
+  "jobStatus.pending": "En attente",
+  "jobStatus.queued": "En attente",
+  "jobStatus.running": "En cours",
+  "jobStatus.succeeded": "Terminé",
+  "jobStatus.done": "Terminé",
+  "jobStatus.failed": "Échoué",
+  "jobStatus.error": "Échoué",
+  "jobStatus.cancelled": "Annulé",
+  "jobStatus.unknown": "Inconnu",
 } as const;
