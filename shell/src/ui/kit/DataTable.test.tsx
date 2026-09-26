@@ -81,3 +81,30 @@ test("colonne 0 rendant un ReactNode : aria-label générique, pas '[object Obje
   await userEvent.click(checkbox);
   expect(onSelectedIdsChange).toHaveBeenCalledWith(new Set(["1"]));
 });
+
+test("trie au clavier (Entrée) sur un en-tête de colonne triable", async () => {
+  const onSortChange = vi.fn();
+  render(
+    <DataTable
+      columns={COLUMNS}
+      rows={ROWS}
+      getRowId={(r) => r.id}
+      sortKey="name"
+      sortDirection="asc"
+      onSortChange={onSortChange}
+    />,
+  );
+  const header = screen.getByRole("columnheader", { name: /Nom/i });
+  header.focus();
+  await userEvent.keyboard("{Enter}");
+  expect(onSortChange).toHaveBeenCalledWith("name");
+});
+
+test("appelle onRowClick au clic sur une ligne", async () => {
+  const onRowClick = vi.fn();
+  render(
+    <DataTable columns={COLUMNS} rows={ROWS} getRowId={(r) => r.id} onRowClick={onRowClick} />,
+  );
+  await userEvent.click(screen.getAllByRole("row")[1]);
+  expect(onRowClick).toHaveBeenCalledWith(ROWS[0]);
+});
