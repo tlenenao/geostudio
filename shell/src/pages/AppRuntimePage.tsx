@@ -142,14 +142,14 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   }
   if (itemQuery.isError) {
     return (
-      <p role="alert" className="text-sm text-red-600">
+      <p role="alert" className="text-sm text-danger">
         {t("appRuntime.accessDenied")}
       </p>
     );
   }
   if (query.isError || !query.data) {
     return (
-      <p role="alert" className="text-sm text-red-600">
+      <p role="alert" className="text-sm text-danger">
         {t("appRuntime.notFound")}
       </p>
     );
@@ -164,7 +164,7 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   return (
     <div className="relative flex h-full w-full flex-col">
       {showActionBar && (
-        <div className="flex justify-end gap-2 border-b border-slate-200 p-2">
+        <div className="flex justify-end gap-2 border-b border-rule p-2">
           {exportEnabled && <ExportPanel itemId={pk} />}
           {query.data.interactions === "auto" && (
             <Button size="sm" variant="outline" onClick={() => setSaveDialogOpen(true)}>
@@ -189,7 +189,11 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
           title/cartouche overlay markup so PrintLayout authoring isn't
           silently dropped for app/dashboard exports. showScaleBar/
           showNorthArrow were removed entirely from the schema (REV-128) —
-          never rendered, authorable-but-inert either way. */}
+          never rendered, authorable-but-inert either way.
+          bg-white/90 stays hardcoded here on purpose, same rationale as
+          MapEditorPage (SP-B12a grounding): a print artifact meant to look
+          like paper, not UI chrome — it must stay light regardless of
+          ambiance, so it is deliberately NOT a --gs-* token. */}
       {isExportRender && query.data.printLayout?.title && (
         <div className="absolute left-2 top-2 rounded bg-white/90 px-2 py-1 text-sm font-medium">
           {query.data.printLayout.title}
@@ -215,7 +219,7 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
             />
           </label>
           {createBookmark.isError && (
-            <p role="alert" className="text-sm text-red-600">
+            <p role="alert" className="text-sm text-danger">
               {t("actions.saveFailed")}
             </p>
           )}

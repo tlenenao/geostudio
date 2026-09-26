@@ -12,6 +12,7 @@ import { OWNER_PERMISSIONS } from "../auth/permissions";
 import { EXTENT_DEBOUNCE_MS, useAnalyticsContext } from "../builder/AnalyticsContext";
 import { decodeAnalyticsContext, encodeAnalyticsContext } from "../lib/analyticsContextUrl";
 import { getWidget, registerWidget } from "../builder/registry";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 const authState: AuthState = {
   isLoading: false,
@@ -530,4 +531,71 @@ test("saving a view captures the current analytics context and posts a bookmark"
       crossFilter: {},
     }),
   );
+});
+
+// SP-B12a: tokenisation des couleurs Tailwind littérales. baseElement (pas
+// container) est indispensable ici — le Dialog (Radix Portal) rend son
+// contenu dans document.body, hors de `container` (piège n°10 CLAUDE.md,
+// SP-29b : un test qui vérifiait `container` au lieu de `baseElement` ne
+// vérifiait en réalité rien sur le contenu porté).
+test("access-denied message uses semantic tokens, not literal Tailwind colors (SP-B12a)", async () => {
+  const { baseElement } = renderRuntime({
+    getItem: vi.fn().mockRejectedValue(new Error("403")),
+    getAppConfig: vi.fn().mockResolvedValue(config),
+  });
+  await screen.findByRole("alert");
+  expectTokenizedClasses(baseElement);
+});
+
+test("config-not-found message uses semantic tokens, not literal Tailwind colors (SP-B12a)", async () => {
+  const { baseElement } = renderRuntime({
+    getItem: vi.fn().mockResolvedValue(okItem),
+    getAppConfig: vi.fn().mockRejectedValue(new Error("404")),
+  });
+  await screen.findByRole("alert");
+  expectTokenizedClasses(baseElement);
+});
+
+// Layout délibérément vide (aucun widget) : le seul but est de déclencher la
+// barre d'actions (interactions:"auto") sans embarquer un widget tiers
+// (ex. dateRangeFilter, src/builder/widgets/dateRangeFilter.tsx:26) qui porte
+// déjà sa propre classe Tailwind littérale préexistante, hors périmètre de
+// cette tâche — ne pas la laisser faire échouer ce test pour une raison
+// étrangère à AppRuntimePage.tsx.
+const tokenCheckConfig: AppConfig = {
+  kind: "app",
+  theme: {},
+  dataSources: [],
+  messages: [],
+  interactions: "auto",
+  layout: emptyLayout,
+  pages: [{ id: "page-1", name: "Accueil", layout: emptyLayout }],
+};
+
+test("action-bar border and save-failed alert use semantic tokens, not literal Tailwind colors (SP-B12a)", async () => {
+  renderRuntime({
+    getItem: vi.fn().mockResolvedValue(okItem),
+    getAppConfig: vi.fn().mockResolvedValue(tokenCheckConfig),
+    createBookmarkItem: vi.fn().mockRejectedValue(new Error("save failed")),
+  });
+  const saveViewButton = await screen.findByRole("button", { name: "Enregistrer la vue" });
+  // Own className of the action-bar div only — NOT expectTokenizedClasses on
+  // its subtree: that div wraps `Button` (../ui/button.tsx), a *different*,
+  // out-of-scope file that still hardcodes bg-slate-900/border-slate-300/etc
+  // by default (confirmed by debugging a false failure while writing this
+  // test). Scanning innerHTML here would flag that unrelated, pre-existing
+  // file's classes as if they were AppRuntimePage.tsx's own — this task only
+  // covers the 6 occurrences the brief's grep enumerates in this file.
+  const actionBar = saveViewButton.closest("div") as HTMLElement;
+  expect(actionBar.className).toContain("border-rule");
+  expect(actionBar.className).not.toMatch(/\bborder-slate-\d+\b/);
+
+  await userEvent.click(saveViewButton);
+  await userEvent.type(screen.getByLabelText("Nom de la vue"), "Ma vue");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  const saveFailedAlert = await screen.findByRole("alert");
+  // Safe to use the shared helper directly here: this <p> is a leaf (text
+  // content only, no descendants), so its innerHTML cannot contain another
+  // component's classes.
+  expectTokenizedClasses(saveFailedAlert);
 });
