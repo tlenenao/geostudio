@@ -9,8 +9,12 @@ test("restaurer une version antérieure depuis le builder d'app", async ({ page 
   await expect(page.getByText("Historique")).toBeVisible();
   await expect(page.getByText(/Version 2/)).toBeVisible();
 
-  page.once("dialog", (d) => void d.accept());
+  // SP-B2 (Vague B, commit 78f9b4a8) a remplacé le window.confirm() natif de
+  // ConfigHistoryPanel par un ConfirmDialog du kit : le premier clic ouvre la
+  // boîte de dialogue (accessible), le second confirme réellement la
+  // restauration.
   await page.getByRole("button", { name: "Restaurer" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Restaurer" }).click();
 
   // La config rechargée après rollback est celle de la version 1 : son
   // widget porte un titre différent de celui de la version courante.
