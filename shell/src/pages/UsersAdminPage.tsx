@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRoles, useUpdateUserRole, useUsers } from "../api/hooks";
+import type { UserSummary } from "../api/types";
 import { Button } from "../ui/kit/Button";
+import { DataTable } from "../ui/kit/DataTable";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { Input } from "../ui/kit/Input";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
@@ -19,10 +21,36 @@ export function UsersAdminPage() {
   const usersQuery = useUsers({ page, pageSize: PAGE_SIZE, q: q || undefined });
   const rolesQuery = useRoles();
   const updateUserRole = useUpdateUserRole();
+  const [sortKey, setSortKey] = useState<string | undefined>(undefined);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   const totalPages = usersQuery.data
     ? Math.max(1, Math.ceil(usersQuery.data.total / PAGE_SIZE))
     : 1;
+
+  function handleSortChange(key: string) {
+    if (key === sortKey) {
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDirection("asc");
+    }
+  }
+
+  const sortedUsers = useMemo(() => {
+    const rows = usersQuery.data?.users ?? [];
+    if (!sortKey) return rows;
+    const roles = rolesQuery.data ?? [];
+    const roleNameFor = (user: UserSummary) =>
+      roles.find((r) => r.slug === user.roleSlug)?.name ?? "";
+    return [...rows].sort((a, b) => {
+      const cmp =
+        sortKey === "role"
+          ? roleNameFor(a).localeCompare(roleNameFor(b))
+          : a.username.localeCompare(b.username);
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+  }, [usersQuery.data, rolesQuery.data, sortKey, sortDirection]);
 
   async function handleRoleChange(userId: string, roleId: string) {
     // Ne touche que l'erreur de CETTE ligne : changer le rôle de la ligne B
@@ -79,21 +107,21 @@ export function UsersAdminPage() {
                 <EmptyState title={t("usersAdmin.empty")} />
               )}
               {usersQuery.data && rolesQuery.data && usersQuery.data.users.length > 0 && (
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-rule">
-                      <th className="py-2 text-ink">{t("usersAdmin.usernameColumn")}</th>
-                      <th className="py-2 text-ink">{t("usersAdmin.roleColumn")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {usersQuery.data.users.map((u) => {
-                      const currentRole = rolesQuery.data.find((r) => r.slug === u.roleSlug);
-                      const pending = pendingUserId === u.id;
-                      return (
-                        <tr key={u.id} className="border-b border-rule-2">
-                          <td className="py-2 text-ink">{u.username}</td>
-                          <td className="py-2">
+                <DataTable
+                  columns={[
+                    {
+                      key: "username",
+                      label: t("usersAdmin.usernameColumn"),
+                      render: (u: UserSummary) => u.username,
+                    },
+                    {
+                      key: "role",
+                      label: t("usersAdmin.roleColumn"),
+                      render: (u: UserSummary) => {
+                        const currentRole = rolesQuery.data!.find((r) => r.slug === u.roleSlug);
+                        const pending = pendingUserId === u.id;
+                        return (
+                          <>
                             <select
                               aria-label={t("usersAdmin.roleAria", { username: u.username })}
                               className="h-9 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
@@ -101,7 +129,7 @@ export function UsersAdminPage() {
                               disabled={pending}
                               onChange={(e) => void handleRoleChange(u.id, e.target.value)}
                             >
-                              {rolesQuery.data.map((role) => (
+                              {rolesQuery.data!.map((role) => (
                                 <option key={role.id} value={role.id}>
                                   {role.name}
                                 </option>
@@ -112,12 +140,17 @@ export function UsersAdminPage() {
                                 {rowError.message}
                               </p>
                             )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          </>
+                        );
+                      },
+                    },
+                  ]}
+                  rows={sortedUsers}
+                  getRowId={(u) => u.id}
+                  sortKey={sortKey}
+                  sortDirection={sortDirection}
+                  onSortChange={handleSortChange}
+                />
               )}
               <div className="mt-auto flex items-center gap-3">
                 <Button

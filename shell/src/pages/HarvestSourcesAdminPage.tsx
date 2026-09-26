@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   useDeleteHarvestSource,
   useHarvestSources,
@@ -9,6 +9,7 @@ import {
 import type { HarvestSource } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { DataTable } from "../ui/kit/DataTable";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { CreateHarvestSourcePanel } from "../shell/CreateHarvestSourcePanel";
@@ -28,6 +29,42 @@ export function HarvestSourcesAdminPage() {
   const [deleting, setDeleting] = useState<HarvestSource | null>(null);
   const createPanel = usePanelTrigger(creating);
   const editPanel = usePanelTrigger(editing !== null);
+  const [sortKey, setSortKey] = useState<string | undefined>(undefined);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  function handleSortChange(key: string) {
+    if (key === sortKey) {
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDirection("asc");
+    }
+  }
+
+  const sortedSources = useMemo(() => {
+    const rows = sourcesQuery.data ?? [];
+    if (!sortKey) return rows;
+    return [...rows].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "type":
+          cmp = a.type.localeCompare(b.type);
+          break;
+        case "mode":
+          cmp = a.mode.localeCompare(b.mode);
+          break;
+        case "enabled":
+          cmp = Number(a.enabled) - Number(b.enabled);
+          break;
+        case "lastStatus":
+          cmp = (a.lastStatus ?? "").localeCompare(b.lastStatus ?? "");
+          break;
+        default:
+          cmp = a.url.localeCompare(b.url);
+      }
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+  }, [sourcesQuery.data, sortKey, sortDirection]);
 
   async function confirmDelete() {
     if (!deleting) return;
@@ -89,66 +126,81 @@ export function HarvestSourcesAdminPage() {
                 <EmptyState title={t("harvest.empty")} />
               )}
               {sourcesQuery.data && sourcesQuery.data.length > 0 && (
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-rule">
-                      <th className="py-2 text-ink">{t("catalog.typeLabel")}</th>
-                      <th className="py-2 text-ink">{t("harvest.columnUrl")}</th>
-                      <th className="py-2 text-ink">{t("harvest.columnMode")}</th>
-                      <th className="py-2 text-ink">{t("extensions.columnActive")}</th>
-                      <th className="py-2 text-ink">{t("harvest.columnLastStatus")}</th>
-                      <th className="py-2 text-ink">{t("collectionsAdmin.columnActions")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sourcesQuery.data.map((source) => (
-                      <tr key={source.id} className="border-b border-rule-2">
-                        <td className="py-2 text-ink">{source.type}</td>
-                        <td className="py-2 text-xs text-ink-2">{source.url}</td>
-                        <td className="py-2 text-ink">{source.mode}</td>
-                        <td className="py-2 text-ink">
-                          {source.enabled ? t("collectionsAdmin.yes") : t("collectionsAdmin.no")}
-                        </td>
-                        <td className="py-2 text-ink">{source.lastStatus ?? "—"}</td>
-                        <td className="py-2 flex gap-2">
-                          {!readOnly && (
-                            <>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => runSource.mutate(source.id)}
-                              >
-                                {t("harvest.runNow")}
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                aria-controls={editPanel.panelId}
-                                aria-expanded={editing?.id === source.id}
-                                onClick={() => {
-                                  setCreating(false);
-                                  setEditing(source);
-                                }}
-                              >
-                                {t("collectionsAdmin.edit")}
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setDeleting(source)}
-                              >
-                                {t("actions.delete")}
-                              </Button>
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <DataTable
+                  columns={[
+                    {
+                      key: "type",
+                      label: t("catalog.typeLabel"),
+                      render: (source: HarvestSource) => source.type,
+                    },
+                    {
+                      key: "url",
+                      label: t("harvest.columnUrl"),
+                      render: (source: HarvestSource) => (
+                        <span className="text-xs text-ink-2">{source.url}</span>
+                      ),
+                    },
+                    {
+                      key: "mode",
+                      label: t("harvest.columnMode"),
+                      render: (source: HarvestSource) => source.mode,
+                    },
+                    {
+                      key: "enabled",
+                      label: t("extensions.columnActive"),
+                      render: (source: HarvestSource) =>
+                        source.enabled ? t("collectionsAdmin.yes") : t("collectionsAdmin.no"),
+                    },
+                    {
+                      key: "lastStatus",
+                      label: t("harvest.columnLastStatus"),
+                      render: (source: HarvestSource) => source.lastStatus ?? "—",
+                    },
+                    {
+                      key: "actions",
+                      label: t("collectionsAdmin.columnActions"),
+                      render: (source: HarvestSource) =>
+                        !readOnly && (
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => runSource.mutate(source.id)}
+                            >
+                              {t("harvest.runNow")}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              aria-controls={editPanel.panelId}
+                              aria-expanded={editing?.id === source.id}
+                              onClick={() => {
+                                setCreating(false);
+                                setEditing(source);
+                              }}
+                            >
+                              {t("collectionsAdmin.edit")}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setDeleting(source)}
+                            >
+                              {t("actions.delete")}
+                            </Button>
+                          </div>
+                        ),
+                    },
+                  ]}
+                  rows={sortedSources}
+                  getRowId={(source) => source.id}
+                  sortKey={sortKey}
+                  sortDirection={sortDirection}
+                  onSortChange={handleSortChange}
+                />
               )}
             </div>
           ),

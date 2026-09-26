@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useDeleteRole, useRoles } from "../api/hooks";
 import type { Role } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { DataTable } from "../ui/kit/DataTable";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { CreateRolePanel } from "../shell/CreateRolePanel";
@@ -19,6 +20,29 @@ export function RolesAdminPage() {
   const [editing, setEditing] = useState<Role | null>(null);
   const [deleting, setDeleting] = useState<Role | null>(null);
   const editPanel = usePanelTrigger(editing !== null);
+  const [sortKey, setSortKey] = useState<string | undefined>(undefined);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  function handleSortChange(key: string) {
+    if (key === sortKey) {
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDirection("asc");
+    }
+  }
+
+  const sortedRoles = useMemo(() => {
+    const rows = rolesQuery.data ?? [];
+    if (!sortKey) return rows;
+    return [...rows].sort((a, b) => {
+      const cmp =
+        sortKey === "privilegeCount"
+          ? a.privileges.length - b.privileges.length
+          : a.name.localeCompare(b.name);
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+  }, [rolesQuery.data, sortKey, sortDirection]);
 
   async function confirmDelete() {
     if (!deleting) return;
@@ -71,57 +95,66 @@ export function RolesAdminPage() {
                 <EmptyState title={t("roles.empty")} />
               )}
               {rolesQuery.data && rolesQuery.data.length > 0 && (
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-rule">
-                      <th className="py-2 text-ink">{t("roles.columnName")}</th>
-                      <th className="py-2 text-ink">{t("roles.columnPrivileges")}</th>
-                      <th className="py-2 text-ink">{t("collectionsAdmin.columnActions")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rolesQuery.data.map((role) => (
-                      <tr key={role.id} className="border-b border-rule-2">
-                        <td className="py-2 text-ink">
+                <DataTable
+                  columns={[
+                    {
+                      key: "name",
+                      label: t("roles.columnName"),
+                      render: (role: Role) => (
+                        <>
                           {role.name}
                           {role.isBuiltIn && (
                             <span className="ml-2 text-xs text-ink-2">
                               ({t("roles.builtInBadge")})
                             </span>
                           )}
-                        </td>
-                        <td className="py-2 text-xs text-ink-2">{role.privileges.length}</td>
-                        <td className="py-2 flex gap-2">
-                          {!role.isBuiltIn && (
-                            <>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                aria-controls={editPanel.panelId}
-                                aria-expanded={editing?.id === role.id}
-                                onClick={() => {
-                                  setCreating(false);
-                                  setEditing(role);
-                                }}
-                              >
-                                {t("collectionsAdmin.edit")}
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setDeleting(role)}
-                              >
-                                {t("actions.delete")}
-                              </Button>
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </>
+                      ),
+                    },
+                    {
+                      key: "privilegeCount",
+                      label: t("roles.columnPrivileges"),
+                      render: (role: Role) => (
+                        <span className="text-xs text-ink-2">{role.privileges.length}</span>
+                      ),
+                    },
+                    {
+                      key: "actions",
+                      label: t("collectionsAdmin.columnActions"),
+                      render: (role: Role) =>
+                        !role.isBuiltIn && (
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              aria-controls={editPanel.panelId}
+                              aria-expanded={editing?.id === role.id}
+                              onClick={() => {
+                                setCreating(false);
+                                setEditing(role);
+                              }}
+                            >
+                              {t("collectionsAdmin.edit")}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setDeleting(role)}
+                            >
+                              {t("actions.delete")}
+                            </Button>
+                          </div>
+                        ),
+                    },
+                  ]}
+                  rows={sortedRoles}
+                  getRowId={(role) => role.id}
+                  sortKey={sortKey}
+                  sortDirection={sortDirection}
+                  onSortChange={handleSortChange}
+                />
               )}
             </div>
           ),
