@@ -21,7 +21,7 @@ export function PublicItemPage({ pk }: { pk: string }) {
   if (configQuery.isError || !configQuery.data) {
     return (
       <div className="p-8 text-center">
-        <p role="alert" className="text-sm text-slate-600">
+        <p role="alert" className="text-sm text-ink-2">
           Page introuvable.
         </p>
       </div>

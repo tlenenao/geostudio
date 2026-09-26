@@ -7,6 +7,7 @@ import type { AppConfig, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { PublicItemPage } from "./PublicItemPage";
 import type { AuthState } from "../auth/useAuth";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 const authState: AuthState = {
   isLoading: false,
@@ -60,7 +61,16 @@ test("shows the shared LoadingState (role=status, spinner) while the config is i
 });
 
 test("404: shows a not-found message without leaking whether the item exists", async () => {
-  renderPage({ getPublicAppConfig: vi.fn().mockRejectedValue(new Error("404")) }, "does-not-exist");
+  const { container } = renderPage(
+    { getPublicAppConfig: vi.fn().mockRejectedValue(new Error("404")) },
+    "does-not-exist",
+  );
   expect(await screen.findByRole("alert")).toHaveTextContent(/introuvable/i);
   expect(screen.getByRole("alert")).not.toHaveTextContent(/does-not-exist/i);
+  // SP-B12b: pas de couleur Tailwind de palette codée en dur. `container`
+  // (pas l'élément role="alert" lui-même) : `Element.innerHTML` ne reflète
+  // que le balisage des ENFANTS d'un élément, jamais ses propres attributs
+  // — vérifié par falsification (cf. rapport de tâche) que checker le <p>
+  // directement passait vacuously même sans correctif.
+  expectTokenizedClasses(container);
 });
