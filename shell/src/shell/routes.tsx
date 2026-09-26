@@ -19,6 +19,7 @@ import { t } from "../i18n";
 import { useOpenItem } from "./useOpenItem";
 import { resolvePipelineEditorPath } from "./resolvePipelineEditorPath";
 import { useItemClient } from "../api/ItemClientProvider";
+import { AppErrorFallback } from "../AppErrorBoundary";
 
 // Découpage par route (Task 8, SP-60/GAP-68) : chaque page lourde part dans
 // son propre chunk, chargé seulement quand sa route est visitée — le chunk
@@ -390,6 +391,10 @@ export function createAppRouter(options?: { initialEntries?: string[] }) {
           <Outlet />
         </Suspense>
       }
+      // Sans errorElement, le data router rend son propre écran d'erreur
+      // anglais (pile d'appels comprise) et AppErrorBoundary n'est jamais
+      // atteint — revue finale Vague B, I1.
+      errorElement={<AppErrorFallback />}
     >
       {routeElements()}
     </Route>,

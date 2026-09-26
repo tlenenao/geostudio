@@ -34,8 +34,13 @@ vi.mock("../auth/useAuth", () => ({ useAuth: () => authState }));
 // AppLayout + Suspense) et charge AppBuilderPage en lazy() — même patron que
 // routes.test.tsx pour cette route. Le contenu réel d'AppBuilderPage n'a rien
 // à faire ici (déjà testé ailleurs) : seul compte que le routeur y mène.
+// `pk === "boom"` fait lever la page au rendu : sert au test de l'errorElement
+// racine (revue finale Vague B, I1) sans ajouter de route factice.
 vi.mock("../pages/AppBuilderPage", () => ({
-  AppBuilderPage: ({ pk }: { pk: string }) => <div>app-builder-{pk}</div>,
+  AppBuilderPage: ({ pk }: { pk: string }) => {
+    if (pk === "boom") throw new Error("rendu cassé");
+    return <div>app-builder-{pk}</div>;
+  },
 }));
 
 // jsdom n'implémente pas window.matchMedia (cf. routes.test.tsx / CLAUDE.md
@@ -112,4 +117,18 @@ test("createAppRouter() without initialEntries takes the createBrowserRouter bra
     subscribe: expect.any(Function),
   });
   expect(router.routes.length).toBeGreaterThan(0);
+});
+
+// Régression I1 (revue finale Vague B) : sans errorElement sur la route
+// racine, le data router attrape l'erreur de rendu lui-même et affiche son
+// écran anglais par défaut (« Unexpected Application Error! » + pile) —
+// AppErrorBoundary (App.tsx), hors du routeur, ne la voit jamais.
+test("une erreur de rendu d'une page affiche le repli français, pas l'écran par défaut de react-router", async () => {
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  const router = createAppRouter({ initialEntries: ["/apps/boom/edit"] });
+  renderRouter(router);
+  expect(await screen.findByText("Une erreur est survenue.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Recharger" })).toBeInTheDocument();
+  expect(screen.queryByText("Unexpected Application Error!")).not.toBeInTheDocument();
+  consoleError.mockRestore();
 });

@@ -9,6 +9,31 @@ interface State {
   failed: boolean;
 }
 
+// Écran de repli partagé entre AppErrorBoundary (ci-dessous) et
+// l'`errorElement` de la route racine du data router (createAppRouter,
+// shell/routes.tsx) : un data router installe sa propre frontière d'erreur
+// autour du contenu routé, donc sans errorElement une erreur de rendu d'une
+// page n'atteint JAMAIS AppErrorBoundary et affiche l'écran anglais par
+// défaut de react-router (message + pile d'appels, même en production) —
+// revue finale Vague B, I1.
+export function AppErrorFallback() {
+  return (
+    <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background text-center">
+      <p className="text-lg font-medium text-ink">Une erreur est survenue.</p>
+      <p className="text-sm text-ink-3">
+        Rechargez la page ; si le problème persiste, contactez votre administrateur.
+      </p>
+      <button
+        type="button"
+        className="rounded bg-ink px-4 py-2 text-sm text-surface"
+        onClick={() => window.location.reload()}
+      >
+        Recharger
+      </button>
+    </div>
+  );
+}
+
 // Distinct de WidgetErrorBoundary (builder/WidgetHost.tsx), qui isole un
 // widget individuel — celui-ci est au niveau racine de l'app (App.tsx) et
 // attrape tout ce qui n'est PAS un widget : chrome du builder, pages,
@@ -27,23 +52,7 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   render() {
-    if (this.state.failed) {
-      return (
-        <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background text-center">
-          <p className="text-lg font-medium text-ink">Une erreur est survenue.</p>
-          <p className="text-sm text-ink-3">
-            Rechargez la page ; si le problème persiste, contactez votre administrateur.
-          </p>
-          <button
-            type="button"
-            className="rounded bg-ink px-4 py-2 text-sm text-surface"
-            onClick={() => window.location.reload()}
-          >
-            Recharger
-          </button>
-        </div>
-      );
-    }
+    if (this.state.failed) return <AppErrorFallback />;
     return this.props.children;
   }
 }
