@@ -18,11 +18,33 @@ import { ApiError } from "./ApiError";
 // à une injoignabilité, pas à n'importe quel échec de requête.
 const DEFAULT_TIMEOUT_MS = 15_000;
 
-async function fetchWithTimeout(input: string, init: RequestInit = {}): Promise<Response> {
+// `timeoutMs` : surcharge ponctuelle pour les appels réputés longs côté
+// cœur (ex. copilotTurn, domains/apps.ts) — tous les autres gardent 15s.
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit = {},
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<Response> {
   try {
-    return await fetch(input, { ...init, signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) });
+    return await fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) });
   } catch (err) {
     throw new CoreUnreachableError(err);
+  }
+}
+
+// AbortSignal.timeout() couvre tout le cycle de vie du fetch, lecture du
+// corps comprise : un timeout qui tombe pendant res.json()/res.blob() rejette
+// en DOMException AbortError HORS du try/catch de fetchWithTimeout. On le
+// convertit en CoreUnreachableError (sinon ConnectivityBanner ne réagit pas) ;
+// toute autre erreur (JSON invalide…) est relancée telle quelle.
+async function readBody<T>(read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new CoreUnreachableError(err);
+    }
+    throw err;
   }
 }
 
@@ -161,7 +183,7 @@ export type ItemClientBase = {
   coreUrl: string;
   getToken: () => string | undefined;
   getShareLinkToken?: () => string | undefined;
-  request<T>(method: string, path: string, body?: unknown): Promise<T>;
+  request<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T>;
   resolveDataset(pk: string): Promise<ResolvedDataset>;
   datasetCache: Map<string, ResolvedDataset>;
   // GAP-65 (2/3) : pk === undefined vide tout le cache, sinon une seule
@@ -211,7 +233,7 @@ export async function requestBlob(
   const disposition = res.headers.get("Content-Disposition") ?? "";
   const match = /filename="([^"]+)"/.exec(disposition);
   const filename = match ? match[1] : "export";
-  const blob = await res.blob();
+  const blob = await readBody(() => res.blob());
   return { blob, filename };
 }
 
@@ -230,23 +252,32 @@ export function createBase(opts: {
   const coreUrl = `${opts.coreUrl}/v1`;
   const { getToken, getShareLinkToken } = opts;
 
-  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async function request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    timeoutMs?: number,
+  ): Promise<T> {
     const token = getToken();
     const shareToken = getShareLinkToken?.();
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
     if (shareToken) headers["X-Share-Link-Token"] = shareToken;
     if (body !== undefined) headers["Content-Type"] = "application/json";
-    const res = await fetchWithTimeout(`${coreUrl}${path}`, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    const res = await fetchWithTimeout(
+      `${coreUrl}${path}`,
+      {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      },
+      timeoutMs,
+    );
     if (!res.ok) {
       throw await parseErrorResponse(res);
     }
     if (res.status === 204) return undefined as T;
-    return (await res.json()) as T;
+    return readBody(() => res.json() as Promise<T>);
   }
 
   const datasetCache = new Map<string, ResolvedDataset>();
