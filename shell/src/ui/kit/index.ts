@@ -41,6 +41,7 @@ export { Drawer } from "./Drawer";
 export { Badge } from "./Badge";
 export { Chip } from "./Chip";
 export { Toast } from "./Toast";
+export { ToastProvider, useToast } from "./ToastProvider";
 export { Skeleton } from "./Skeleton";
 export { Spinner } from "./Spinner";
 export { Progress } from "./Progress";

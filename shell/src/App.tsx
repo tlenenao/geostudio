@@ -13,6 +13,7 @@ import { createItemClient } from "./api/itemClient";
 import { ItemClientProvider } from "./api/ItemClientProvider";
 import { AppRoutes } from "./shell/routes";
 import { AppErrorBoundary } from "./AppErrorBoundary";
+import { ToastProvider } from "./ui/kit";
 
 const runtimeEnv = (window as unknown as { __GEOSTUDIO_ENV__?: Record<string, string | undefined> })
   .__GEOSTUDIO_ENV__;
@@ -44,17 +45,19 @@ function AppShell() {
 export default function App() {
   return (
     <ToastPrimitive.Provider>
-      <TooltipPrimitive.Provider>
-        <AppErrorBoundary>
-          <AuthProvider config={config}>
-            <QueryClientProvider client={queryClient}>
-              <ConfigProvider config={config}>
-                <AppShell />
-              </ConfigProvider>
-            </QueryClientProvider>
-          </AuthProvider>
-        </AppErrorBoundary>
-      </TooltipPrimitive.Provider>
+      <ToastProvider>
+        <TooltipPrimitive.Provider>
+          <AppErrorBoundary>
+            <AuthProvider config={config}>
+              <QueryClientProvider client={queryClient}>
+                <ConfigProvider config={config}>
+                  <AppShell />
+                </ConfigProvider>
+              </QueryClientProvider>
+            </AuthProvider>
+          </AppErrorBoundary>
+        </TooltipPrimitive.Provider>
+      </ToastProvider>
       <ToastPrimitive.Viewport className="fixed bottom-4 right-4 z-[100] flex w-80 flex-col gap-2 outline-none" />
     </ToastPrimitive.Provider>
   );
