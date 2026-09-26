@@ -16,6 +16,7 @@ import {
 } from "../../lib/comparisonWindow";
 import type { DataSource, DataSourceState, DatasetConfig } from "../../api/types";
 import { t } from "../../i18n";
+import { LoadingState } from "../../ui/kit/LoadingState";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
 
@@ -346,8 +347,7 @@ export function registerIndicatorWidget(): void {
         field,
       );
 
-      if (!data || data.loading || comparison.loading)
-        return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
+      if (!data || data.loading || comparison.loading) return <LoadingState />;
       if (data.error) return <p className="text-xs text-red-600">{t("widgetIndicator.error")}</p>;
 
       const flatValue = resolveFlatValue(data, agg, field);

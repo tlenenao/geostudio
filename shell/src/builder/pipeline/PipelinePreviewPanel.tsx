@@ -5,6 +5,7 @@ import type { PipelinePayload } from "../../api/types";
 import { t } from "../../i18n";
 import { Badge } from "../../ui/kit/Badge";
 import { Button } from "../../ui/kit/Button";
+import { LoadingState } from "../../ui/kit/LoadingState";
 import { PipelinePreviewMap } from "./PipelinePreviewMap";
 
 const PAGE_SIZE = 20;
@@ -62,7 +63,7 @@ export function PipelinePreviewPanel({
   }, [rows, sortColumn, sortDirection]);
 
   if (nodeId === null) return null;
-  if (previewQuery.isLoading) return <p role="status">{t("pipelinePreview.loading")}</p>;
+  if (previewQuery.isLoading) return <LoadingState label={t("pipelinePreview.loading")} />;
   if (previewQuery.isError)
     return (
       <p role="alert" className="text-sm text-danger">

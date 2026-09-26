@@ -43,6 +43,13 @@ test("fetches the preview for the given node and renders it as a table", async (
   expect(previewPipeline).toHaveBeenCalledWith("p-1", "r1", undefined);
 });
 
+test("shows the shared LoadingState (role=status, spinner) while the preview is in flight", () => {
+  renderPanel(vi.fn(() => new Promise(() => {})));
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement de l'aperçu…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
+});
+
 test("shows nothing when no node is selected", () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client: Partial<ItemClient> = { previewPipeline: vi.fn() };

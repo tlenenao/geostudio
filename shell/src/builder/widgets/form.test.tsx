@@ -93,6 +93,17 @@ test("form widget is registered with submitted/failed events and reset/loadRecor
   });
 });
 
+test("props panel shows the shared LoadingState (role=status, spinner) while the schema is in flight", () => {
+  renderPanel(
+    { dataSourceId: "ds1", fields: [], submitLabel: "Enregistrer", geometryType: null },
+    vi.fn(),
+    { getCollectionSchema: vi.fn(() => new Promise<CollectionSchema>(() => {})) },
+  );
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement du schéma…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
+});
+
 test("props panel offers a button to load fields once the schema resolves", async () => {
   const { onChange } = renderPanel({
     dataSourceId: "ds1",

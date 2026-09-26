@@ -11,6 +11,7 @@ import type { CollectionSchema, DataRecord, DataSource } from "../../api/types";
 import type { WidgetContext } from "../registry";
 import { t } from "../../i18n";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
+import { LoadingState } from "../../ui/kit/LoadingState";
 
 export type FormField = {
   name: string;
@@ -180,7 +181,7 @@ function FormPropsPanel({
         onChange={(id) => onChange({ ...props, dataSourceId: id, fields: [], geometryType: null })}
       />
       {collectionId !== "" && schemaQuery.isLoading && (
-        <p className="text-xs text-[var(--gs-color-muted)]">{t("widgetForm.loadingSchema")}</p>
+        <LoadingState label={t("widgetForm.loadingSchema")} />
       )}
       {collectionId !== "" && schemaQuery.isError && (
         <p role="alert" className="text-xs text-danger">

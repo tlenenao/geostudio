@@ -76,6 +76,16 @@ test("indicator counts records by default (unchanged, no new props)", () => {
   expect(client.queryDataSource).not.toHaveBeenCalled();
 });
 
+test("shows the shared LoadingState (role=status, spinner) while the data source is loading", () => {
+  renderIndicator(
+    { dataSourceId: "d", label: "Total", agg: "count" },
+    { data: state({ loading: true }) },
+  );
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
+});
+
 test("indicator sums a field when agg=sum (unchanged, no new props)", () => {
   renderIndicator(
     { dataSourceId: "d", agg: "sum", field: "pop" },
