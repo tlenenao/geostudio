@@ -41,7 +41,7 @@ export function registerSliderFilterWidget(): void {
           {t("widgetSliderFilter.fieldConfig")}
           <input
             aria-label={t("widgetSliderFilter.fieldAria")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.field ?? "")}
             onChange={(e) => onChange({ ...props, field: e.target.value })}
           />
@@ -50,7 +50,7 @@ export function registerSliderFilterWidget(): void {
           {t("widgetSliderFilter.labelConfig")}
           <input
             aria-label={t("widgetSliderFilter.labelAria")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.label ?? "")}
             onChange={(e) => onChange({ ...props, label: e.target.value })}
           />

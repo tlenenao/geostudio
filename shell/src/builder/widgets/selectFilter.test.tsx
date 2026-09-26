@@ -8,6 +8,7 @@ import { registerSelectFilterWidget } from "./selectFilter";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsContext";
 import type { ItemClient } from "../../api/types";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -121,7 +122,7 @@ test("PropsPanel edits dataSourceId, field and label", async () => {
   const PropsPanel = getWidget("selectFilter")!.PropsPanel!;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client = { queryDataSource: vi.fn() } as unknown as ItemClient;
-  render(
+  const { container } = render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
         <PropsPanel
@@ -134,6 +135,9 @@ test("PropsPanel edits dataSourceId, field and label", async () => {
       </ItemClientProvider>
     </QueryClientProvider>,
   );
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   await userEvent.selectOptions(screen.getByRole("combobox"), "src-1");
   expect(onChange).toHaveBeenLastCalledWith({ dataSourceId: "src-1", field: "", label: "" });
   await userEvent.type(screen.getByLabelText("Champ"), "region");

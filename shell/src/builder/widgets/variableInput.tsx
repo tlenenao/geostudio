@@ -80,7 +80,7 @@ export function registerVariableInputWidget(): void {
             {t("widgetVariableInput.variableConfig")}
             <select
               aria-label={t("widgetVariableInput.variableAria")}
-              className="h-9 rounded-md border border-slate-300 px-2"
+              className="h-9 rounded-md border border-rule px-2"
               value={variableId}
               onChange={(e) => onChange({ variableId: e.target.value, label })}
             >
@@ -98,7 +98,7 @@ export function registerVariableInputWidget(): void {
             {t("widgetVariableInput.labelConfig")}
             <input
               aria-label={t("widgetVariableInput.labelAria")}
-              className="h-9 rounded-md border border-slate-300 px-2"
+              className="h-9 rounded-md border border-rule px-2"
               value={label}
               onChange={(e) => onChange({ variableId, label: e.target.value })}
             />

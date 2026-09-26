@@ -11,6 +11,7 @@ import {
   useClearCrossFilter,
 } from "../AnalyticsContext";
 import type { ItemClient } from "../../api/types";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -126,6 +127,26 @@ test("shows the error message (not a perpetual loading message) when the bounds 
   renderSlider(queryDataSource);
   expect(await screen.findByRole("alert")).toHaveTextContent("Impossible de charger les bornes");
   expect(screen.queryByText("Chargement…")).not.toBeInTheDocument();
+});
+
+test("SP-B12c : le panneau de propriétés n'a pas de couleur Tailwind codée en dur", () => {
+  const PropsPanel = getWidget("sliderFilter")!.PropsPanel!;
+  const client = { queryDataSource: vi.fn() } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { container } = render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <PropsPanel
+          props={{ dataSourceId: "", field: "", label: "" }}
+          onChange={vi.fn()}
+          dataSources={[]}
+        />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 test("resets the displayed range to the full bounds when the cross-filter is cleared externally", async () => {

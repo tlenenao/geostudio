@@ -6,6 +6,7 @@ import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import { ActionBus } from "../ActionBus";
 import type { AuthState } from "../../auth/useAuth";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 const authState: AuthState = {
   isLoading: false,
@@ -69,15 +70,23 @@ test("closes on the close action too", async () => {
 
 test("edit mode shows a static badge and never opens", () => {
   const Modal = getWidget("modal")!.Component;
-  render(<Modal props={{ title: "Détail", items: [] }} ctx={{ mode: "edit" } as WidgetContext} />);
+  const { container } = render(
+    <Modal props={{ title: "Détail", items: [] }} ctx={{ mode: "edit" } as WidgetContext} />,
+  );
   expect(screen.getByText("Modale : Détail")).toBeInTheDocument();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 test("PropsPanel edits the title and the wide flag", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("modal")!.PropsPanel;
-  render(<Panel props={{ title: "Détail", items: [] }} dataSources={[]} onChange={onChange} />);
+  const { container } = render(
+    <Panel props={{ title: "Détail", items: [] }} dataSources={[]} onChange={onChange} />,
+  );
+  expectTokenizedClasses(container);
   await userEvent.type(screen.getByLabelText("Titre de la modale"), "!");
   expect(onChange.mock.calls.at(-1)![0].title).toBe("Détail!");
   await userEvent.click(screen.getByLabelText("Modale large"));

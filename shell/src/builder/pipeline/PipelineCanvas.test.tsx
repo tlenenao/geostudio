@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { PipelineEdge, PipelineNode, PipelineOpsCatalog } from "../../api/types";
 import { PipelineCanvas } from "./PipelineCanvas";
 import { expectAriaWired } from "../../test/expectAriaWired";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 // @xyflow/react appelle ResizeObserver sans garde — stub local à ce fichier
 // uniquement, même patron que EChart.test.tsx (cf. plan Global Constraints).
@@ -113,6 +114,41 @@ test("clicking a node calls onSelectNode with its id", () => {
   );
   fireEvent.click(screen.getByText("Villes"));
   expect(onSelectNode).toHaveBeenCalledWith("r1");
+});
+
+test("SP-B12c : les 3 natures de nœud et le badge de résultat n'ont pas de couleur Tailwind codée en dur", () => {
+  const nodesWithTransform: PipelineNode[] = [
+    ...NODES,
+    {
+      id: "t1",
+      kind: "transform",
+      op: "transform.rename",
+      x: 150,
+      y: 0,
+      params: {},
+      title: "Renommer",
+    },
+  ];
+  const { container } = render(
+    <PipelineCanvas
+      nodes={nodesWithTransform}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+      notes={[]}
+      onNotesChange={vi.fn()}
+      nodeStats={{ r1: { nodeId: "r1", op: "reader.collection", rowCount: 42 } }}
+    />,
+  );
+  expect(screen.getByText("Renommer")).toBeInTheDocument();
+  expect(screen.getByText("42")).toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 test("the edge's insert button is present and triggers onInsertOnEdge with the edge id and a chosen op", () => {

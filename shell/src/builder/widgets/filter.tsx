@@ -19,7 +19,7 @@ export function registerFilterWidget(): void {
           {t("widgetFilter.fieldConfig")}
           <input
             aria-label={t("widgetFilter.fieldConfig")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.field ?? "")}
             onChange={(e) => onChange({ ...props, field: e.target.value })}
           />
@@ -28,7 +28,7 @@ export function registerFilterWidget(): void {
           {t("widgetFilter.labelConfig")}
           <input
             aria-label={t("widgetFilter.labelAria")}
-            className="h-9 rounded-md border border-slate-300 px-2"
+            className="h-9 rounded-md border border-rule px-2"
             value={String(props.label ?? "")}
             onChange={(e) => onChange({ ...props, label: e.target.value })}
           />

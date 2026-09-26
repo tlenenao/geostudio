@@ -11,7 +11,7 @@ import { t } from "../../i18n";
 
 type ModalProps = { title: string; items: WidgetItem[]; wide?: boolean };
 
-const inputCls = "h-9 rounded-md border border-slate-300 px-2 text-sm";
+const inputCls = "h-9 rounded-md border border-rule px-2 text-sm";
 
 export function registerModalWidget(): void {
   registerWidget({
@@ -63,7 +63,7 @@ export function registerModalWidget(): void {
 
       if (ctx.mode === "edit") {
         return (
-          <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-ink-2">
+          <div className="flex h-full items-center justify-center bg-sunken text-xs text-ink-2">
             {t("widgetModal.editPreview", { title })}
           </div>
         );
