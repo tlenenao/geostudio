@@ -397,6 +397,12 @@ test("form blocks submit and surfaces one error per invalid required field", asy
   // expectTokenizedClasses ici : le bouton "Enregistrer" voisin porte
   // volontairement text-white (couleur "primary" de l'app auteur).
   expect(screen.getByRole("button", { name: "Réinitialiser" })).toHaveClass("border-rule");
+  // fieldInputCls (form.tsx) n'était couvert par aucune assertion directe
+  // (trouvé en revue de la Tâche 31) : vérifier ici, sur le champ "Titre"
+  // (rendu via le chemin par défaut string), que la classe est bien
+  // tokenisée et non la couleur littérale d'origine.
+  expect(screen.getByLabelText("Titre")).toHaveClass("border-rule");
+  expect(screen.getByLabelText("Titre").className).not.toMatch(/\bborder-slate-\d{2,3}\b/);
 });
 
 test("form validates a numeric field against its min bound", async () => {
