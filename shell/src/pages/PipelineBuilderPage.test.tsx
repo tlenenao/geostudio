@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { createMemoryRouter, Link, RouterProvider, useParams } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import * as ToastPrimitive from "@radix-ui/react-toast";
 import type {
@@ -16,6 +16,7 @@ import { ItemClientProvider } from "../api/ItemClientProvider";
 import { ToastProvider } from "../ui/kit/ToastProvider";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 import { PipelineBuilderPage } from "./PipelineBuilderPage";
+import { t } from "../i18n";
 
 // PipelineBuilderPage renders PipelineNodeInspector -> PipelinePreviewPanel, which can mount
 // PipelinePreviewMap (SP-15g Task 16) -> maplibre-gl. jsdom lacks URL.createObjectURL, which
@@ -151,21 +152,135 @@ function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}, rout
       }),
     ...overrides,
   };
+  const router = createMemoryRouter(
+    [
+      {
+        path: "*",
+        element: (
+          <QueryClientProvider client={qc}>
+            <ItemClientProvider client={client as ItemClient}>
+              <ToastProvider>
+                <PipelineBuilderPage pk={pk} initialTitle="Nettoyer villes" />
+              </ToastProvider>
+            </ItemClientProvider>
+          </QueryClientProvider>
+        ),
+      },
+    ],
+    { initialEntries: [route] },
+  );
   const { unmount } = render(
     <ToastPrimitive.Provider>
-      <MemoryRouter initialEntries={[route]}>
-        <QueryClientProvider client={qc}>
-          <ItemClientProvider client={client as ItemClient}>
-            <ToastProvider>
-              <PipelineBuilderPage pk={pk} initialTitle="Nettoyer villes" />
-            </ToastProvider>
-          </ItemClientProvider>
-        </QueryClientProvider>
-      </MemoryRouter>
+      <RouterProvider router={router} />
       <ToastPrimitive.Viewport />
     </ToastPrimitive.Provider>,
   );
   return { client, unmount };
+}
+
+// Harnais dédié aux tests de garde de navigation (SP-B6d, même patron que
+// Task 27/MapEditorPage) : un lien factice vers une autre page suffit, le
+// chrome réel (AppLayout/TopBar) est hors périmètre de ce fichier.
+function renderPageWithNavigation(
+  pk: string | null,
+  overrides: Partial<ItemClient> = {},
+  route = "/",
+) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client: Partial<ItemClient> = {
+    getPipelineOps: () => Promise.resolve(CATALOG),
+    listCollections: () => Promise.resolve([]),
+    getPipelineRuns: vi.fn().mockResolvedValue([]),
+    getItem: vi.fn().mockResolvedValue(OWNED_PIPELINE_ITEM),
+    getInstanceInfo: () =>
+      Promise.resolve({
+        readOnly: false,
+        etlEnabled: true,
+        exportEnabled: false,
+        appExportEnabled: false,
+        tileset3dEnabled: false,
+        terrain3dEnabled: false,
+        copilotEnabled: false,
+        adminToolsEnabled: false,
+        quotasEnabled: false,
+      }),
+    ...overrides,
+  };
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: (
+          <QueryClientProvider client={qc}>
+            <ItemClientProvider client={client as ItemClient}>
+              <ToastProvider>
+                <Link to="/autre">Autre page</Link>
+                <PipelineBuilderPage pk={pk} initialTitle="Nettoyer villes" />
+              </ToastProvider>
+            </ItemClientProvider>
+          </QueryClientProvider>
+        ),
+      },
+      { path: "/autre", element: <p>Autre page ouverte</p> },
+    ],
+    { initialEntries: [route] },
+  );
+  return render(
+    <ToastPrimitive.Provider>
+      <RouterProvider router={router} />
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>,
+  );
+}
+
+// Harnais pour le round-trip réel de création (SP-B6d) : mêmes routes que
+// shell/src/shell/routes.tsx (`/pipelines/new` -> pk=null,
+// `/pipelines/:pk/edit` -> pk réel) pour vérifier que la redirection interne
+// post-création (onSave, pk === null) n'est pas bloquée par la garde.
+function renderNewPipelineRoutes(overrides: Partial<ItemClient> = {}) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client: Partial<ItemClient> = {
+    getPipelineOps: () => Promise.resolve(CATALOG),
+    listCollections: () => Promise.resolve([]),
+    getPipelineRuns: vi.fn().mockResolvedValue([]),
+    getItem: vi.fn().mockResolvedValue(OWNED_PIPELINE_ITEM),
+    getInstanceInfo: () =>
+      Promise.resolve({
+        readOnly: false,
+        etlEnabled: true,
+        exportEnabled: false,
+        appExportEnabled: false,
+        tileset3dEnabled: false,
+        terrain3dEnabled: false,
+        copilotEnabled: false,
+        adminToolsEnabled: false,
+        quotasEnabled: false,
+      }),
+    ...overrides,
+  };
+  function EditRoute() {
+    const { pk } = useParams();
+    return <PipelineBuilderPage pk={pk!} />;
+  }
+  const router = createMemoryRouter(
+    [
+      { path: "/pipelines/new", element: <PipelineBuilderPage pk={null} /> },
+      { path: "/pipelines/:pk/edit", element: <EditRoute /> },
+    ],
+    { initialEntries: ["/pipelines/new"] },
+  );
+  return render(
+    <ToastPrimitive.Provider>
+      <QueryClientProvider client={qc}>
+        <ItemClientProvider client={client as ItemClient}>
+          <ToastProvider>
+            <RouterProvider router={router} />
+          </ToastProvider>
+        </ItemClientProvider>
+      </QueryClientProvider>
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>,
+  );
 }
 
 test("unsaved mode: Enregistrer is disabled on an empty graph", async () => {
@@ -967,4 +1082,93 @@ test("un id de nœud inconnu dans l'URL n'affiche aucune sélection et ne casse 
   fireEvent.click(screen.getByText("Villes"));
   await waitFor(() => expect(screen.getByText("Nœud sélectionné")).toBeInTheDocument());
   expect(isHighlighted("Villes")).toBe(true);
+});
+
+test("bloque la navigation après une modification non enregistrée du pipeline (SP-B6d)", async () => {
+  renderPageWithNavigation("p-1", { getPipelineConfig: () => Promise.resolve(TWO_NODE_PAYLOAD) });
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une zone" }));
+
+  await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
+
+  expect(await screen.findByRole("dialog")).toHaveTextContent(
+    t("navigation.unsavedChangesMessage"),
+  );
+});
+
+test("ne bloque pas la navigation juste après une sauvegarde réussie (SP-B6d)", async () => {
+  const savePipelineConfig = vi.fn().mockResolvedValue(undefined);
+  renderPageWithNavigation("p-1", {
+    getPipelineConfig: () => Promise.resolve(TWO_NODE_PAYLOAD),
+    savePipelineConfig,
+  });
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une zone" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(savePipelineConfig).toHaveBeenCalled());
+
+  await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
+  expect(await screen.findByText("Autre page ouverte")).toBeInTheDocument();
+});
+
+// SP-B6d, risque signalé au brief : sélectionner un nœud (selectedNodeId,
+// SP-B9c) navigue via useUrlSyncedState -> setSearchParams, même pathname —
+// ne doit jamais déclencher la garde, même brouillon non enregistré.
+test("sélectionner un nœud (URL interne, même pathname) ne déclenche pas la garde même brouillon non enregistré", async () => {
+  renderPageWithNavigation("p-1", { getPipelineConfig: () => Promise.resolve(TWO_NODE_PAYLOAD) });
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "Ajouter une zone" }));
+
+  fireEvent.click(screen.getByText("Villes"));
+
+  await waitFor(() => expect(screen.getByText("Nœud sélectionné")).toBeInTheDocument());
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+// SP-B6d, risque explicitement signalé au brief : le round-trip réel de
+// création (/pipelines/new -> Enregistrer -> redirection interne vers
+// /pipelines/{pk}/edit, un changement de pathname RÉEL) exécute
+// `setHasUnsavedChanges(false)` puis `navigate(...)` de façon synchrone dans
+// le même callback — vérifié empiriquement plutôt que supposé sûr, car nul
+// autre éditeur de ce lot n'a ce patron (redirection interne juste après un
+// succès de sauvegarde).
+// Catalogue minimal (aucun champ requis) : un unique clic sur chaque bouton
+// suffit à obtenir un graphe valide (≥1 source + ≥1 écriture, aucune arête
+// requise hors acceptsSecondaryInput) — ce test porte sur la garde de
+// navigation, pas sur la mécanique de validation de graphe.
+const MINIMAL_CATALOG: PipelineOpsCatalog = {
+  "reader.x": { kind: "reader", paramsSchema: { properties: {} } },
+  "writer.x": { kind: "writer", paramsSchema: { properties: {} } },
+};
+
+test("le round-trip de création (pk=null -> Enregistrer -> redirection) n'affiche pas la boîte de confirmation (SP-B6d)", async () => {
+  const createPipelineItem = vi.fn().mockResolvedValue({
+    pk: "new-1",
+    resourceType: "pipeline",
+    title: "Nettoyer villes",
+    abstract: "",
+    owner: "alice",
+    thumbnailUrl: null,
+    date: "2026-01-01",
+    configId: "cfg-new-1",
+    isPublished: false,
+    keywords: [],
+    permissions: OWNER_PERMISSIONS,
+    license: "",
+    language: "fr",
+  } satisfies Item);
+  renderNewPipelineRoutes({
+    createPipelineItem,
+    getPipelineOps: () => Promise.resolve(MINIMAL_CATALOG),
+  });
+
+  await waitFor(() => expect(screen.getByText("reader.x")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "reader.x" }));
+  await userEvent.click(screen.getByRole("button", { name: "writer.x" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Enregistrer" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+  await waitFor(() => expect(createPipelineItem).toHaveBeenCalled());
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
