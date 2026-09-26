@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useUrlSyncedState } from "../lib/useUrlSyncedState";
 import {
   useCreatePipeline,
   useInstanceInfo,
@@ -77,7 +78,18 @@ export function PipelineBuilderPage({
 
   const { draft, setDraft, seedDraft, resetDraft, undo, redo, canUndo, canRedo } =
     useUndoableDraft<PipelinePayload>();
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  // SP-B9c : sélection synchronisée à l'URL (`?node=`) pour survivre à un
+  // rechargement — même signature que useState<string|null>, tous les
+  // sites d'appel (onSelectNode={setSelectedNodeId}) passent déjà des
+  // valeurs directes. La validation d'une valeur lue depuis l'URL (id de
+  // nœud inconnu/périmé) n'est pas dans le hook générique lui-même — cf.
+  // `selectedNode` plus bas, qui ne retient la sélection que si elle
+  // désigne un nœud existant dans `draft.nodes` (sinon `null`), et tout ce
+  // qui en dépend (inspecteur, aperçu, mise en évidence sur le canevas) est
+  // déjà gardé derrière ce résultat — même patron que l'`activePage` de
+  // AppBuilderPage.tsx (Tâche 17, findings C2/M2), tient identiquement pour
+  // une valeur d'URL périmée/invalide.
+  const [selectedNodeId, setSelectedNodeId] = useUrlSyncedState<string>("node", null);
   const [latestRun, setLatestRun] = useState<PipelineRun | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 

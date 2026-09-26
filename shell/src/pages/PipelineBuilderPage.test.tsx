@@ -120,7 +120,11 @@ const OWNED_PIPELINE_ITEM: Item = {
   language: "fr",
 };
 
-function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}) {
+// `route` : chemin (avec éventuelle chaîne de requête) que voit
+// useUrlSyncedState via useSearchParams (SP-B9c, même patron que la Tâche
+// 17 sur AppBuilderPage.test.tsx) — défaut "/" sans paramètre, donc tous
+// les tests existants de ce fichier (écrits avant SP-B9c) restent inchangés.
+function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}, route = "/") {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client: Partial<ItemClient> = {
     getPipelineOps: () => Promise.resolve(CATALOG),
@@ -147,9 +151,9 @@ function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}) {
       }),
     ...overrides,
   };
-  render(
+  const { unmount } = render(
     <ToastPrimitive.Provider>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[route]}>
         <QueryClientProvider client={qc}>
           <ItemClientProvider client={client as ItemClient}>
             <ToastProvider>
@@ -161,7 +165,7 @@ function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}) {
       <ToastPrimitive.Viewport />
     </ToastPrimitive.Provider>,
   );
-  return { client };
+  return { client, unmount };
 }
 
 test("unsaved mode: Enregistrer is disabled on an empty graph", async () => {
@@ -869,4 +873,98 @@ test("persisted mode: affiche la progression N/M nœuds quand le brouillon n'a p
   await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
   await waitFor(() => expect(screen.getByText("En cours")).toBeInTheDocument());
   expect(screen.getByText("1 / 2 nœuds")).toBeInTheDocument();
+});
+
+// SP-B9c : `selectedNodeId` passe de useState à useUrlSyncedState (Tâche 16),
+// même patron que la Tâche 17 sur AppBuilderPage (`?selected=`). La classe
+// "ring-2 ring-accent" posée par PipelineCanvas.tsx (PipelineNodeBox, prop
+// `selected`) sur le conteneur direct du titre du nœud est la seule preuve
+// DOM que CE nœud précis est le nœud sélectionné (pas seulement "un nœud
+// est sélectionné quelque part") — nécessaire ici parce que "Nœud
+// sélectionné" seul n'identifie pas lequel des deux nœuds du payload est
+// visé.
+const TWO_NODE_PAYLOAD: PipelinePayload = {
+  nodes: [
+    {
+      id: "r1",
+      kind: "reader",
+      op: "reader.collection",
+      x: 0,
+      y: 0,
+      params: { collectionId: "villes" },
+      title: "Villes",
+    },
+    {
+      id: "w1",
+      kind: "writer",
+      op: "writer.collection",
+      x: 300,
+      y: 0,
+      params: { collectionId: "villes_propres" },
+      title: "Écriture",
+    },
+  ],
+  edges: [{ id: "e1", from: "r1", to: "w1" }],
+};
+
+function isHighlighted(label: string): boolean {
+  const box = screen.getByText(label).closest("div.relative");
+  return (box?.className ?? "").includes("ring-2");
+}
+
+test("restaure le nœud sélectionné depuis l'URL après un remount (simule un rechargement)", async () => {
+  const { unmount } = renderPage(
+    "p-1",
+    { getPipelineConfig: () => Promise.resolve(TWO_NODE_PAYLOAD) },
+    "/pipelines/p-1/edit?node=r1",
+  );
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  expect(screen.getByText("Nœud sélectionné")).toBeInTheDocument();
+  expect(isHighlighted("Villes")).toBe(true);
+  expect(isHighlighted("Écriture")).toBe(false);
+  unmount();
+
+  // Remonte depuis zéro (nouveau QueryClient, nouveau MemoryRouter) avec la
+  // même URL : si la sélection ne survivait que dans un useState local, ce
+  // second rendu partirait de `null`. Prouve qu'elle est bien portée par
+  // l'URL, pas par un état React qui aurait par coïncidence survécu.
+  renderPage(
+    "p-1",
+    { getPipelineConfig: () => Promise.resolve(TWO_NODE_PAYLOAD) },
+    "/pipelines/p-1/edit?node=r1",
+  );
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  expect(screen.getByText("Nœud sélectionné")).toBeInTheDocument();
+  expect(isHighlighted("Villes")).toBe(true);
+  expect(isHighlighted("Écriture")).toBe(false);
+});
+
+// Gap signalé par le relecteur de la Tâche 16 (cast non vérifié de la
+// valeur brute de l'URL) : PipelineBuilderPage.tsx a déjà un garde-fou
+// équivalent à celui trouvé sur AppBuilderPage (Tâche 17, findings
+// C2/M2) — `const selectedNode = draft.nodes.find((n) => n.id ===
+// selectedNodeId) ?? null;` (ligne ~184) ne retient `selectedNode` que
+// s'il désigne un nœud qui existe réellement dans `draft.nodes` ; tout le
+// reste du composant (inspecteur, panneau d'aperçu) est gardé derrière
+// `selectedNode && …`, et PipelineCanvas ne met en évidence que les nœuds
+// dont l'id réel correspond — un id inconnu ne correspond simplement à
+// aucun nœud rendu. Ce test vérifie que ce garde-fou tient quand la valeur
+// suspecte vient de l'URL (id de nœud qui n'a jamais existé), sans qu'il
+// ait fallu ajouter de nouvelle logique de repli.
+test("un id de nœud inconnu dans l'URL n'affiche aucune sélection et ne casse rien (garde-fou pré-existant)", async () => {
+  renderPage(
+    "p-1",
+    { getPipelineConfig: () => Promise.resolve(TWO_NODE_PAYLOAD) },
+    "/pipelines/p-1/edit?node=nœud-fantôme-jamais-vu",
+  );
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  expect(screen.queryByText("Nœud sélectionné")).not.toBeInTheDocument();
+  expect(isHighlighted("Villes")).toBe(false);
+  expect(isHighlighted("Écriture")).toBe(false);
+
+  // Reste utilisable ensuite : une sélection réelle par clic fonctionne
+  // normalement, l'id fantôme de l'URL n'a rien verrouillé.
+  fireEvent.click(screen.getByText("Villes"));
+  await waitFor(() => expect(screen.getByText("Nœud sélectionné")).toBeInTheDocument());
+  expect(isHighlighted("Villes")).toBe(true);
 });
