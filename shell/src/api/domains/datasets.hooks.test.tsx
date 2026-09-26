@@ -32,8 +32,9 @@ describe("useSaveDataset", () => {
 
     const { result } = renderHook(() => useSaveDataset("dataset-1"), { wrapper });
     const fakeDatasetConfig = {
+      source: "collection" as const,
       collectionId: "test-collection",
-      visibleColumns: [],
+      columns: {},
     };
 
     await act(async () => {
