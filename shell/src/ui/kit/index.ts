@@ -46,6 +46,7 @@ export { Skeleton } from "./Skeleton";
 export { Spinner } from "./Spinner";
 export { Progress } from "./Progress";
 export { EmptyState } from "./EmptyState";
+export { LoadingState } from "./LoadingState";
 export { Banner } from "./Banner";
 export { Avatar } from "./Avatar";
 export { Kbd } from "./Kbd";
