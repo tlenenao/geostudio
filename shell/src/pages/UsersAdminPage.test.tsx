@@ -170,3 +170,15 @@ test("le volet Détail explique l'invariant anti-lockout", async () => {
     screen.getByText(/dernier titulaire de la gestion des rôles et des utilisateurs/i),
   ).toBeInTheDocument();
 });
+
+test("affiche un état vide quand aucun utilisateur ne correspond à la recherche", async () => {
+  server.use(
+    http.get("https://core.test/v1/roles", () => HttpResponse.json(ROLES)),
+    http.get("https://core.test/v1/users", () => HttpResponse.json({ users: [], total: 0 })),
+  );
+  render(<Harness />);
+  expect(
+    await screen.findByText("Aucun utilisateur ne correspond à cette recherche"),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+});

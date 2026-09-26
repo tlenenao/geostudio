@@ -541,3 +541,12 @@ test("sous viewport étroit, affiche trois onglets Catalogue/Moissonnage/Détail
   const activeTab = tabs.find((t) => t.getAttribute("aria-selected") === "true");
   expect(activeTab).toHaveTextContent("Moissonnage");
 });
+
+test("affiche un état vide quand aucune source de moissonnage n'existe", async () => {
+  server.use(
+    http.get("https://core.test/v1/harvest/sources", () => HttpResponse.json({ sources: [] })),
+  );
+  render(<Harness />);
+  expect(await screen.findByText("Aucune source de moissonnage configurée")).toBeInTheDocument();
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+});

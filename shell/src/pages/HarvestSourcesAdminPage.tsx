@@ -9,6 +9,7 @@ import {
 import type { HarvestSource } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { EmptyState } from "../ui/kit/EmptyState";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { CreateHarvestSourcePanel } from "../shell/CreateHarvestSourcePanel";
 import { EditHarvestSourcePanel } from "../shell/EditHarvestSourcePanel";
@@ -84,7 +85,10 @@ export function HarvestSourcesAdminPage() {
                   {t("harvest.deleteError")}
                 </p>
               )}
-              {sourcesQuery.data && (
+              {sourcesQuery.data && sourcesQuery.data.length === 0 && (
+                <EmptyState title={t("harvestAdmin.empty")} />
+              )}
+              {sourcesQuery.data && sourcesQuery.data.length > 0 && (
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-rule">

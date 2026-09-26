@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRoles, useUpdateUserRole, useUsers } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
+import { EmptyState } from "../ui/kit/EmptyState";
 import { Input } from "../ui/kit/Input";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
@@ -74,7 +75,10 @@ export function UsersAdminPage() {
                   {t("usersAdmin.rolesLoadError")}
                 </p>
               )}
-              {usersQuery.data && rolesQuery.data && (
+              {usersQuery.data && rolesQuery.data && usersQuery.data.users.length === 0 && (
+                <EmptyState title={t("usersAdmin.empty")} />
+              )}
+              {usersQuery.data && rolesQuery.data && usersQuery.data.users.length > 0 && (
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-rule">

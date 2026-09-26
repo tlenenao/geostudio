@@ -177,3 +177,13 @@ test("un rôle prédéfini ne propose ni éditer ni supprimer", async () => {
   expect(within(cell).queryByRole("button", { name: /éditer/i })).not.toBeInTheDocument();
   expect(within(cell).queryByRole("button", { name: /supprimer/i })).not.toBeInTheDocument();
 });
+
+test("affiche un état vide quand aucun rôle personnalisé n'existe", async () => {
+  server.use(
+    http.get("https://core.test/v1/roles/catalog", () => HttpResponse.json(CATALOG)),
+    http.get("https://core.test/v1/roles", () => HttpResponse.json([])),
+  );
+  render(<Harness />);
+  expect(await screen.findByText("Aucun rôle personnalisé pour l'instant")).toBeInTheDocument();
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+});

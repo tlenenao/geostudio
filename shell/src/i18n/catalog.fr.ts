@@ -211,6 +211,7 @@ export const fr = {
   "roles.columnName": "Nom",
   "roles.columnPrivileges": "Privilèges",
   "roles.detail": "Détail",
+  "rolesAdmin.empty": "Aucun rôle personnalisé pour l'instant",
 
   // AdminExtensionsPage
   "extensions.title": "Extensions",
@@ -350,6 +351,7 @@ export const fr = {
   // GET /collections tronque silencieusement au-delà de sa limite par
   // défaut sans ce bouton.
   "collectionsAdmin.loadMore": "Charger plus",
+  "collectionsAdmin.empty": "Aucune collection pour l'instant",
 
   // ComplianceAdminPage
   "compliance.title": "Conformité",
@@ -422,6 +424,7 @@ export const fr = {
   "harvest.deleteTitle": "Supprimer la source",
   "harvest.deleteMessage":
     "Supprimer la source « {url} » ? Les items/collections déjà produits survivent.",
+  "harvestAdmin.empty": "Aucune source de moissonnage configurée",
 
   // ItemDetailPage
   "itemDetail.notFound": "Élément introuvable.",
@@ -537,6 +540,7 @@ export const fr = {
   "usersAdmin.detail": "Détail",
   "usersAdmin.demotionProtectionText":
     "Le dernier titulaire de la gestion des rôles et des utilisateurs ne peut pas être rétrogradé : la tentative échoue pour préserver au moins un compte capable d'administrer le tenant.",
+  "usersAdmin.empty": "Aucun utilisateur ne correspond à cette recherche",
 
   // VisualQueryWizardPage
   "visualQuery.pipelineFailedError": "L'exécution du pipeline a échoué.",

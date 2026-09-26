@@ -532,3 +532,12 @@ test("le bouton « Charger plus » n'apparaît pas quand la page renvoyée est i
   await screen.findByText("Incidents");
   expect(screen.queryByRole("button", { name: "Charger plus" })).not.toBeInTheDocument();
 });
+
+test("affiche un état vide quand aucune collection n'existe", async () => {
+  server.use(
+    http.get("https://core.test/v1/collections", () => HttpResponse.json({ collections: [] })),
+  );
+  render(<Harness />);
+  expect(await screen.findByText("Aucune collection pour l'instant")).toBeInTheDocument();
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+});

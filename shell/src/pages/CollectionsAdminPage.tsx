@@ -6,6 +6,7 @@ import { Gate } from "../auth/Gate";
 import { Locked } from "../auth/Locked";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { EmptyState } from "../ui/kit/EmptyState";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { CollectionSharePanel } from "../shell/CollectionSharePanel";
 import { EditCollectionPanel } from "../shell/EditCollectionPanel";
@@ -113,7 +114,10 @@ export function CollectionsAdminPage() {
                   {t("collectionsAdmin.deleteError")}
                 </p>
               )}
-              {collectionsQuery.data && (
+              {collectionsQuery.data && collectionsQuery.data.length === 0 && (
+                <EmptyState title={t("collectionsAdmin.empty")} />
+              )}
+              {collectionsQuery.data && collectionsQuery.data.length > 0 && (
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-rule">

@@ -4,6 +4,7 @@ import { useDeleteRole, useRoles } from "../api/hooks";
 import type { Role } from "../api/types";
 import { Button } from "../ui/kit/Button";
 import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
+import { EmptyState } from "../ui/kit/EmptyState";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { CreateRolePanel } from "../shell/CreateRolePanel";
 import { EditRolePanel } from "../shell/EditRolePanel";
@@ -66,7 +67,10 @@ export function RolesAdminPage() {
                   {t("roles.deleteError")}
                 </p>
               )}
-              {rolesQuery.data && (
+              {rolesQuery.data && rolesQuery.data.length === 0 && (
+                <EmptyState title={t("rolesAdmin.empty")} />
+              )}
+              {rolesQuery.data && rolesQuery.data.length > 0 && (
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-rule">
