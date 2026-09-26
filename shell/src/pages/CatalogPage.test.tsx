@@ -507,6 +507,93 @@ test("propose de réinitialiser les filtres quand la recherche ne trouve rien", 
   expect(screen.getByRole("button", { name: "Réinitialiser les filtres" })).toBeInTheDocument();
 });
 
+test("affiche l'état vide filtré (pas 'catalogue vide') quand la portée sélectionnée n'a aucun résultat", async () => {
+  server.use(
+    http.get("https://core.test/v1/me", () =>
+      HttpResponse.json({
+        id: "u1",
+        username: "alice",
+        tenantId: "t1",
+        role: { id: "r1", name: "Analyste", slug: "analyst" },
+        privileges: [],
+        version: "0.1.0",
+        tenantSlug: "demo",
+      }),
+    ),
+    http.get("https://core.test/v1/items", ({ request }) => {
+      const url = new URL(request.url);
+      if (url.searchParams.get("scope") === "mine") {
+        return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
+      }
+      return HttpResponse.json({
+        items: [
+          {
+            pk: "1",
+            resourceType: "app",
+            title: "Alpha",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: null,
+            isPublished: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 12,
+      });
+    }),
+    http.get("https://core.test/v1/items/facets", () =>
+      HttpResponse.json({ owners: [], keywords: [] }),
+    ),
+  );
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
+  await screen.findByText("Alpha");
+  await userEvent.selectOptions(screen.getByLabelText("Portée"), "mine");
+  expect(await screen.findByText("Aucun résultat")).toBeInTheDocument();
+  expect(screen.queryByText("Aucun élément pour l'instant")).not.toBeInTheDocument();
+});
+
+test("réinitialiser les filtres vide la recherche et réaffiche les éléments", async () => {
+  server.use(
+    http.get("https://core.test/v1/items", ({ request }) => {
+      const url = new URL(request.url);
+      if (url.searchParams.get("q") === "zzz-introuvable") {
+        return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
+      }
+      return HttpResponse.json({
+        items: [
+          {
+            pk: "1",
+            resourceType: "app",
+            title: "Alpha",
+            abstract: "",
+            owner: "alice",
+            thumbnailUrl: null,
+            date: "",
+            configId: null,
+            isPublished: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 12,
+      });
+    }),
+    http.get("https://core.test/v1/items/facets", () =>
+      HttpResponse.json({ owners: [], keywords: [] }),
+    ),
+  );
+  render(<CatalogPage onOpenItem={() => {}} />, { wrapper });
+  await screen.findByText("Alpha");
+  await userEvent.type(screen.getByLabelText("Rechercher"), "zzz-introuvable");
+  await screen.findByText("Aucun résultat");
+  await userEvent.click(screen.getByRole("button", { name: "Réinitialiser les filtres" }));
+  await waitFor(() => expect(screen.getByLabelText("Rechercher")).toHaveValue(""));
+  expect(await screen.findByText("Alpha")).toBeInTheDocument();
+});
+
 test("suit ?type= quand il change après une navigation (DomainBar) sans remonter la page", async () => {
   // Régression : CatalogPage lisait ?type= dans un useState initializer, donc
   // une navigation vers la même page montée (Cartes -> Données via DomainBar)

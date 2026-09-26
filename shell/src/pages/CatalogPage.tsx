@@ -272,6 +272,8 @@ export function CatalogPage({
                 (() => {
                   const hasActiveFilter =
                     q.length > 0 ||
+                    (!fixedType && type !== "") ||
+                    scope !== "all" ||
                     ownerFilter.length > 0 ||
                     selectedKeywords.length > 0 ||
                     spatialBbox !== null;
@@ -285,7 +287,12 @@ export function CatalogPage({
                             variant="outline"
                             onClick={() => {
                               setSearchParams({});
+                              setQ("");
+                              setOwnerFilter("");
+                              setSelectedKeywords([]);
+                              setScope("all");
                               setSpatialBbox(null);
+                              setPage(1);
                             }}
                           >
                             {t("catalog.resetFilters")}
