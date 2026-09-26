@@ -183,7 +183,7 @@ function FormPropsPanel({
         <p className="text-xs text-[var(--gs-color-muted)]">{t("widgetForm.loadingSchema")}</p>
       )}
       {collectionId !== "" && schemaQuery.isError && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-xs text-danger">
           {t("widgetForm.schemaNotFound", { collectionId })}
         </p>
       )}
@@ -369,6 +369,7 @@ function FieldInput({
   collectionId,
   fid,
   client,
+  error,
 }: {
   field: FormField;
   value: unknown;
@@ -377,7 +378,12 @@ function FieldInput({
   collectionId: string;
   fid: string | null;
   client: ReturnType<typeof useItemClient>;
+  error: string | null;
 }) {
+  const fieldId = `field-${field.name}`;
+  const errorId = `field-${field.name}-error`;
+  const errorProps = error ? { "aria-invalid": "true" as const, "aria-describedby": errorId } : {};
+
   if (field.type === "attachment") {
     return (
       <AttachmentFieldInput
@@ -391,58 +397,68 @@ function FieldInput({
   if (field.type === "boolean") {
     return (
       <input
+        id={fieldId}
         type="checkbox"
         aria-label={field.label}
         checked={Boolean(value)}
         onChange={(e) => onChange(e.target.checked)}
         onBlur={onBlur}
+        {...errorProps}
       />
     );
   }
   if (field.type === "integer" || field.type === "number") {
     return (
       <input
+        id={fieldId}
         type="number"
         aria-label={field.label}
         className={fieldInputCls}
         value={value === undefined ? "" : String(value)}
         onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
         onBlur={onBlur}
+        {...errorProps}
       />
     );
   }
   if (field.type === "date") {
     return (
       <input
+        id={fieldId}
         type="date"
         aria-label={field.label}
         className={fieldInputCls}
         value={String(value ?? "")}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
+        {...errorProps}
       />
     );
   }
   if (field.type === "datetime") {
     return (
       <input
+        id={fieldId}
         type="datetime-local"
         aria-label={field.label}
         className={fieldInputCls}
         value={String(value ?? "")}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
+        {...errorProps}
       />
     );
   }
   if (field.type === "enum") {
     return (
       <select
+        id={fieldId}
         aria-label={field.label}
         className={fieldInputCls}
         value={String(value ?? "")}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
+        {...errorProps}
       >
         <option value=""></option>
         {(field.values ?? []).map((v) => (
@@ -455,12 +471,14 @@ function FieldInput({
   }
   return (
     <input
+      id={fieldId}
       type="text"
       aria-label={field.label}
       className={fieldInputCls}
       value={String(value ?? "")}
       onChange={(e) => onChange(e.target.value)}
       onBlur={onBlur}
+      {...errorProps}
     />
   );
 }
@@ -641,9 +659,10 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
             collectionId={collectionId}
             fid={editingId === null ? null : String(editingId)}
             client={client}
+            error={errorFor(f)}
           />
           {errorFor(f) && (
-            <span role="alert" className="text-xs text-red-600">
+            <span id={`field-${f.name}-error`} role="alert" className="text-xs text-danger">
               {errorFor(f)}
             </span>
           )}
@@ -724,7 +743,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
         </button>
       </div>
       {genericError && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-xs text-danger">
           {t("widgetForm.saveFailed")}
         </p>
       )}

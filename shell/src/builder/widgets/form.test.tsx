@@ -349,6 +349,26 @@ test("form shows a required error after blurring an empty required field", async
   expect(await screen.findByRole("alert")).toHaveTextContent("Champ requis");
 });
 
+test("associe le message d'erreur au champ via aria-describedby (SP-B8)", async () => {
+  renderForm();
+  const titre = screen.getByLabelText("Titre");
+  await userEvent.click(titre);
+  await userEvent.tab();
+  await screen.findByRole("alert");
+  expect(titre).toHaveAttribute("aria-invalid", "true");
+  const describedBy = titre.getAttribute("aria-describedby");
+  expect(describedBy).toBeTruthy();
+  const errorEl = document.getElementById(describedBy!);
+  expect(errorEl).toHaveTextContent("Champ requis");
+  expect(errorEl).toHaveAttribute("role", "alert");
+});
+
+test("un champ valide n'a pas aria-invalid (SP-B8)", () => {
+  renderForm();
+  expect(screen.getByLabelText("Titre")).not.toHaveAttribute("aria-invalid");
+  expect(screen.getByLabelText("Gravité")).not.toHaveAttribute("aria-invalid");
+});
+
 test("form blocks submit and surfaces one error per invalid required field", async () => {
   renderForm();
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
