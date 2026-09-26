@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter } from "react-router-dom";
+import { RouterProvider } from "react-router-dom";
 import { useMemo } from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as ToastPrimitive from "@radix-ui/react-toast";
@@ -11,7 +11,7 @@ import { useAuth } from "./auth/useAuth";
 import { buildExportAwareToken } from "./auth/exportAwareToken";
 import { createItemClient } from "./api/itemClient";
 import { ItemClientProvider } from "./api/ItemClientProvider";
-import { AppRoutes } from "./shell/routes";
+import { createAppRouter } from "./shell/routes";
 import { AppErrorBoundary } from "./AppErrorBoundary";
 import { ToastProvider } from "./ui/kit";
 import { ConnectivityBanner } from "./shell/ConnectivityBanner";
@@ -33,6 +33,12 @@ const config = loadConfig(
 // de l'environnement de test).
 export const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } });
 
+// Data router (Task 25/SP-B6a) : créé une seule fois au niveau module, comme
+// queryClient ci-dessus — jamais recréé aux rendus de AppShell, sinon chaque
+// re-render de AppShell (ex: getAccessToken qui change) réinitialiserait la
+// navigation. Nécessaire pour useBlocker (Task 26, data router uniquement).
+const router = createAppRouter();
+
 function AppShell() {
   const { getAccessToken } = useAuth();
   const client = useMemo(
@@ -45,9 +51,7 @@ function AppShell() {
   );
   return (
     <ItemClientProvider client={client}>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <RouterProvider router={router} />
     </ItemClientProvider>
   );
 }

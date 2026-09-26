@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 import { lazy, Suspense } from "react";
-import { Routes, Route, Outlet, useNavigate, useParams, useLocation } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  Outlet,
+  useNavigate,
+  useParams,
+  useLocation,
+  createBrowserRouter,
+  createMemoryRouter,
+  createRoutesFromElements,
+  type RouteObject,
+} from "react-router-dom";
 import { RequireAuth } from "../auth/RequireAuth";
 import { RequirePrivilege } from "../auth/RequirePrivilege";
 import { AppLayout } from "./AppLayout";
@@ -229,132 +240,161 @@ function ProtectedLayout() {
   );
 }
 
+// Arbre de routes partagé entre AppRoutes() (component router, via
+// createRoutesFromElements) et createAppRouter() (data router, via
+// createBrowserRouter/createMemoryRouter) — Task 25/SP-B6a. Copié tel quel
+// depuis l'ancien corps de AppRoutes(), aucun chemin/élément changé.
+function routeElements() {
+  return (
+    <>
+      <Route element={<ProtectedLayout />}>
+        <Route path="/" element={<CatalogRoute />} />
+        <Route path="/items/:pk" element={<ItemDetailRoute />} />
+        <Route path="/bookmarks" element={<BookmarksRoute />} />
+        <Route path="/maps/:pk" element={<MapEditorRoute />} />
+        <Route path="/apps/:pk/edit" element={<AppBuilderRoute />} />
+        <Route path="/datasets/:pk/edit" element={<DatasetEditRoute />} />
+        <Route path="/pipelines/new" element={<PipelineNewRoute />} />
+        <Route path="/pipelines/:pk/edit" element={<PipelineEditRoute />} />
+        <Route path="/datasets/visual-query/new" element={<VisualQueryWizardNewRoute />} />
+        <Route
+          path="/datasets/visual-query/:pipelinePk/edit"
+          element={<VisualQueryWizardEditRoute />}
+        />
+        <Route path="/reports" element={<ReportsRoute />} />
+        <Route path="/reports/new" element={<ReportNewRoute />} />
+        <Route path="/reports/:pk/edit" element={<ReportEditRoute />} />
+        <Route
+          path="/analytics/sql"
+          element={
+            <RequirePrivilege
+              privilege="analytics.sql_lab.access"
+              deniedMessage={t("routes.analystOnly")}
+            >
+              <SqlLabPage />
+            </RequirePrivilege>
+          }
+        />
+        <Route
+          path="/admin/extensions"
+          element={
+            <RequirePrivilege
+              privilege="admin.extensions.manage"
+              deniedMessage={t("routes.adminOnly")}
+            >
+              <AdminExtensionsPage />
+            </RequirePrivilege>
+          }
+        />
+        <Route
+          path="/admin/collections"
+          element={
+            <RequirePrivilege
+              privilege="admin.collections.manage"
+              deniedMessage={t("routes.adminOnly")}
+            >
+              <CollectionsAdminPage />
+            </RequirePrivilege>
+          }
+        />
+        <Route
+          path="/admin/harvest"
+          element={
+            <RequirePrivilege
+              privilege="admin.harvest.manage"
+              deniedMessage={t("routes.adminOnly")}
+            >
+              <HarvestSourcesAdminPage />
+            </RequirePrivilege>
+          }
+        />
+        <Route
+          path="/admin/roles"
+          element={
+            <RequirePrivilege privilege="admin.roles.manage" deniedMessage={t("routes.rolesOnly")}>
+              <RolesAdminPage />
+            </RequirePrivilege>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <RequirePrivilege privilege="admin.users.manage" deniedMessage={t("routes.usersOnly")}>
+              <UsersAdminPage />
+            </RequirePrivilege>
+          }
+        />
+        <Route
+          path="/admin/compliance"
+          element={
+            <RequirePrivilege
+              privilege="compliance.manage"
+              deniedMessage={t("routes.complianceOnly")}
+            >
+              <ComplianceAdminPage />
+            </RequirePrivilege>
+          }
+        />
+        <Route
+          path="/admin/infrastructure"
+          element={
+            <RequirePrivilege
+              privilege="settings.instance.manage"
+              deniedMessage={t("routes.adminOnly")}
+            >
+              <AdminInfrastructurePage />
+            </RequirePrivilege>
+          }
+        />
+        <Route path="/internal/kit-gallery" element={<KitGalleryPage />} />
+        <Route
+          path="/tasks"
+          element={
+            <RequirePrivilege privilege="tasks.view" deniedMessage={t("routes.tasksOnly")}>
+              <UsagePage />
+            </RequirePrivilege>
+          }
+        />
+        <Route path="/settings" element={<SettingsPage />} />
+      </Route>
+      <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
+      <Route path="/embed/:token" element={<EmbedRoute />} />
+      <Route path="/sites/:slug" element={<SitePublicRoute />} />
+      <Route path="/public/items/:pk" element={<PublicItemRoute />} />
+      <Route path="/public/datasets/:collectionId" element={<DatasetRoute />} />
+    </>
+  );
+}
+
 export function AppRoutes() {
   return (
     <Suspense fallback={<p role="status">Chargement…</p>}>
-      <Routes>
-        <Route element={<ProtectedLayout />}>
-          <Route path="/" element={<CatalogRoute />} />
-          <Route path="/items/:pk" element={<ItemDetailRoute />} />
-          <Route path="/bookmarks" element={<BookmarksRoute />} />
-          <Route path="/maps/:pk" element={<MapEditorRoute />} />
-          <Route path="/apps/:pk/edit" element={<AppBuilderRoute />} />
-          <Route path="/datasets/:pk/edit" element={<DatasetEditRoute />} />
-          <Route path="/pipelines/new" element={<PipelineNewRoute />} />
-          <Route path="/pipelines/:pk/edit" element={<PipelineEditRoute />} />
-          <Route path="/datasets/visual-query/new" element={<VisualQueryWizardNewRoute />} />
-          <Route
-            path="/datasets/visual-query/:pipelinePk/edit"
-            element={<VisualQueryWizardEditRoute />}
-          />
-          <Route path="/reports" element={<ReportsRoute />} />
-          <Route path="/reports/new" element={<ReportNewRoute />} />
-          <Route path="/reports/:pk/edit" element={<ReportEditRoute />} />
-          <Route
-            path="/analytics/sql"
-            element={
-              <RequirePrivilege
-                privilege="analytics.sql_lab.access"
-                deniedMessage={t("routes.analystOnly")}
-              >
-                <SqlLabPage />
-              </RequirePrivilege>
-            }
-          />
-          <Route
-            path="/admin/extensions"
-            element={
-              <RequirePrivilege
-                privilege="admin.extensions.manage"
-                deniedMessage={t("routes.adminOnly")}
-              >
-                <AdminExtensionsPage />
-              </RequirePrivilege>
-            }
-          />
-          <Route
-            path="/admin/collections"
-            element={
-              <RequirePrivilege
-                privilege="admin.collections.manage"
-                deniedMessage={t("routes.adminOnly")}
-              >
-                <CollectionsAdminPage />
-              </RequirePrivilege>
-            }
-          />
-          <Route
-            path="/admin/harvest"
-            element={
-              <RequirePrivilege
-                privilege="admin.harvest.manage"
-                deniedMessage={t("routes.adminOnly")}
-              >
-                <HarvestSourcesAdminPage />
-              </RequirePrivilege>
-            }
-          />
-          <Route
-            path="/admin/roles"
-            element={
-              <RequirePrivilege
-                privilege="admin.roles.manage"
-                deniedMessage={t("routes.rolesOnly")}
-              >
-                <RolesAdminPage />
-              </RequirePrivilege>
-            }
-          />
-          <Route
-            path="/admin/users"
-            element={
-              <RequirePrivilege
-                privilege="admin.users.manage"
-                deniedMessage={t("routes.usersOnly")}
-              >
-                <UsersAdminPage />
-              </RequirePrivilege>
-            }
-          />
-          <Route
-            path="/admin/compliance"
-            element={
-              <RequirePrivilege
-                privilege="compliance.manage"
-                deniedMessage={t("routes.complianceOnly")}
-              >
-                <ComplianceAdminPage />
-              </RequirePrivilege>
-            }
-          />
-          <Route
-            path="/admin/infrastructure"
-            element={
-              <RequirePrivilege
-                privilege="settings.instance.manage"
-                deniedMessage={t("routes.adminOnly")}
-              >
-                <AdminInfrastructurePage />
-              </RequirePrivilege>
-            }
-          />
-          <Route path="/internal/kit-gallery" element={<KitGalleryPage />} />
-          <Route
-            path="/tasks"
-            element={
-              <RequirePrivilege privilege="tasks.view" deniedMessage={t("routes.tasksOnly")}>
-                <UsagePage />
-              </RequirePrivilege>
-            }
-          />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Route>
-        <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
-        <Route path="/embed/:token" element={<EmbedRoute />} />
-        <Route path="/sites/:slug" element={<SitePublicRoute />} />
-        <Route path="/public/items/:pk" element={<PublicItemRoute />} />
-        <Route path="/public/datasets/:collectionId" element={<DatasetRoute />} />
-      </Routes>
+      <Routes>{routeElements()}</Routes>
     </Suspense>
   );
+}
+
+// Data router de production (Task 25/SP-B6a) — nécessaire pour useBlocker
+// (Task 26). `options.initialEntries` bascule sur createMemoryRouter pour
+// les tests (sans naviguer le vrai navigateur) ; omis, createBrowserRouter
+// (production, App.tsx). Le Suspense englobant l'Outlet couvre les 4 routes
+// hors ProtectedLayout (qui ont chacune leurs propres pages lazy) — même
+// rôle que le Suspense au sommet de AppRoutes() pour le component router ;
+// ProtectedLayout garde son propre Suspense interne pour ses routes lazy,
+// inchangé.
+export function createAppRouter(options?: { initialEntries?: string[] }) {
+  const routes: RouteObject[] = createRoutesFromElements(
+    <Route
+      element={
+        <Suspense fallback={<p role="status">Chargement…</p>}>
+          <Outlet />
+        </Suspense>
+      }
+    >
+      {routeElements()}
+    </Route>,
+  );
+  return options?.initialEntries
+    ? createMemoryRouter(routes, { initialEntries: options.initialEntries })
+    : createBrowserRouter(routes);
 }
