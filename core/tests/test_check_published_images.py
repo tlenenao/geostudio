@@ -19,7 +19,7 @@ from scripts.check_published_images import (  # noqa: E402
 )
 
 
-def test_release_images_lists_the_eight_matrix_images():
+def test_release_images_lists_the_nine_matrix_images():
     images = release_images()
     assert images == [
         "geostudio-core",
@@ -30,6 +30,7 @@ def test_release_images_lists_the_eight_matrix_images():
         "geostudio-export-worker",
         "geostudio-appexport-runtime-builder",
         "geostudio-backup",
+        "geostudio-minio",
     ]
 
 
