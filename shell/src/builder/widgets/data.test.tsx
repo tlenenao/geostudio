@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, expect, test, vi } from "vitest";
@@ -153,12 +153,15 @@ test("table sorts rows when a column header is clicked", async () => {
     }),
   } as WidgetContext;
   render(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
-  await userEvent.click(screen.getByRole("button", { name: /nom/ }));
+  const header = screen.getByRole("columnheader", { name: /nom/ });
+  await userEvent.click(header);
   let cells = screen.getAllByRole("cell");
   expect(cells[0]).toHaveTextContent("A"); // ascending
-  await userEvent.click(screen.getByRole("button", { name: /nom/ }));
+  expect(header).toHaveAttribute("aria-sort", "ascending");
+  await userEvent.click(header);
   cells = screen.getAllByRole("cell");
   expect(cells[0]).toHaveTextContent("C"); // descending
+  expect(header).toHaveAttribute("aria-sort", "descending");
 });
 
 test("table paginates with a configured page size", async () => {
@@ -186,15 +189,20 @@ test("list item uses the theme border/surface/text tokens", () => {
   );
 });
 
-test("table cells and headers use the theme border/text tokens", () => {
+test("table uses the shared DataTable's semantic theme tokens", () => {
+  // Depuis la migration sur DataTable (Tâche 24, SP-B11e), le thème n'est
+  // plus porté par des classes littérales `var(--gs-color-*)` posées ici,
+  // mais par les tokens déjà sémantiques du composant partagé
+  // (`ui/kit/Table.tsx` : "text-ink", "border-rule-2") — plus de couleur
+  // Tailwind brute, mais un vocabulaire de tokens différent.
   const Table = getWidget("table")!.Component;
   const ctx = {
     mode: "runtime",
     data: state({ records: [{ id: 1, properties: { nom: "A" } }] }),
   } as WidgetContext;
   render(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
-  expect(screen.getByRole("cell", { name: "A" })).toHaveClass("border-[var(--gs-color-border)]");
-  expect(screen.getByRole("table")).toHaveClass("text-[var(--gs-color-text)]");
+  expect(screen.getByRole("table")).toHaveClass("text-ink");
+  expect(screen.getAllByRole("row")[1]).toHaveClass("border-rule-2");
 });
 
 test("table emits itemSelected with the clicked row", async () => {
@@ -241,7 +249,7 @@ test("table renders a calculated column evaluated per row against record and var
   expect(cells[3]).toHaveTextContent("false"); // ligne 2 : gravite != seuil
 });
 
-test("a calculated column header has no sort button", () => {
+test("a calculated column header has no sort button and stays unsortable", async () => {
   const Table = getWidget("table")!.Component;
   const ctx = {
     mode: "runtime",
@@ -251,7 +259,33 @@ test("a calculated column header has no sort button", () => {
     <Table props={{ dataSourceId: "d", columns: [{ label: "Calc", expr: "1 + 1" }] }} ctx={ctx} />,
   );
   expect(screen.queryByRole("button", { name: /Calc/ })).not.toBeInTheDocument();
-  expect(screen.getByText("Calc")).toBeInTheDocument();
+  const header = screen.getByRole("columnheader", { name: "Calc" });
+  expect(header).toHaveAttribute("aria-sort", "none");
+  // DataTable appelle onSortChange uniformément pour tout en-tête cliqué ;
+  // toggleSort ignore les clés hors sortableKeys (colonnes calculées) —
+  // vérifier que le clic ne bascule pas aria-sort, pas seulement l'absence
+  // de bouton.
+  await userEvent.click(header);
+  expect(header).toHaveAttribute("aria-sort", "none");
+});
+
+test("table row selection is keyboard operable (Enter) after the DataTable migration", () => {
+  const bus = new ActionBus();
+  const handler = vi.fn();
+  bus.register("map1", "flyTo", handler);
+  bus.configure([{ id: "m", from: "table1", event: "itemSelected", to: "map1", action: "flyTo" }]);
+  const Table = getWidget("table")!.Component;
+  const ctx = {
+    mode: "runtime",
+    bus,
+    widgetId: "table1",
+    data: state({ records: [{ id: 1, properties: { nom: "Parc A" } }] }),
+  } as WidgetContext;
+  render(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
+  const row = screen.getAllByRole("row")[1];
+  row.focus();
+  fireEvent.keyDown(row, { key: "Enter" });
+  expect(handler).toHaveBeenCalledWith({ id: 1, properties: { nom: "Parc A" } });
 });
 
 function renderWithItemClient(ui: ReactElement) {
