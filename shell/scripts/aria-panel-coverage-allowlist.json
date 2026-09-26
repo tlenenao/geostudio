@@ -6,8 +6,8 @@
   },
   {
     "file": "src/builder/widgets/ExplorerMenu.tsx",
-    "line": 79,
-    "reason": "Pré-existant : le bouton \"⋮\" ouvre/ferme un menu déroulant en ligne (menuOpen && <div>...) via un onClick ternaire (menuOpen ? closeMenu() : setMenuOpen(true)), sans aria-expanded/aria-controls. Dette REV-088."
+    "line": 86,
+    "reason": "Pré-existant : le bouton \"⋮\" ouvre/ferme un menu déroulant en ligne (menuOpen && <div>...) via un onClick ternaire (menuOpen ? closeMenu() : setMenuOpen(true)), sans aria-expanded/aria-controls. Dette REV-088 (ligne décalée de 79 à 86 par les tâches de tokenisation Tailwind de Vague B, aucun changement du déclencheur lui-même — vérifié en clôture de Vague B)."
   },
   {
     "file": "src/map/MapSymbologyEditor.tsx",
@@ -16,8 +16,8 @@
   },
   {
     "file": "src/builder/widgets/form.tsx",
-    "line": 685,
-    "reason": "Faux positif de l'heuristique : setConfirmingDelete(true) ouvre <ConfirmDialog> (boîte de dialogue modale) avant la suppression d'un enregistrement — pas un panneau en ligne (tâche 3 SP-B2)."
+    "line": 705,
+    "reason": "Faux positif de l'heuristique : setConfirmingDelete(true) ouvre <ConfirmDialog> (boîte de dialogue modale) avant la suppression d'un enregistrement — pas un panneau en ligne (tâche 3 SP-B2 ; ligne décalée de 685 à 705 par des tâches de Vague B ultérieures, aucun changement du déclencheur lui-même — vérifié en clôture de Vague B)."
   },
   {
     "file": "src/pages/AppRuntimePage.tsx",
@@ -26,8 +26,8 @@
   },
   {
     "file": "src/pages/CollectionsAdminPage.tsx",
-    "line": 75,
-    "reason": "Pré-existant : setRegistering(true) ouvre RegisterCollectionPanel en ligne (registering && <RegisterCollectionPanel/>) sans aria-expanded/aria-controls, alors que ce même fichier câble déjà usePanelTrigger() pour ses panneaux editing/sharing voisins. Dette REV-088."
+    "line": 116,
+    "reason": "Pré-existant : setRegistering(true) ouvre RegisterCollectionPanel en ligne (registering && <RegisterCollectionPanel/>) sans aria-expanded/aria-controls, alors que ce même fichier câble déjà usePanelTrigger() pour ses panneaux editing/sharing voisins. Dette REV-088 (ligne décalée de 75 à 116 par la migration DataTable de Vague B, aucun changement du déclencheur lui-même — vérifié en clôture de Vague B)."
   },
   {
     "file": "src/pages/KitGalleryPage.tsx",
@@ -46,8 +46,8 @@
   },
   {
     "file": "src/pages/RolesAdminPage.tsx",
-    "line": 48,
-    "reason": "Pré-existant : setCreating(true) ouvre CreateRolePanel en ligne (creating && <CreateRolePanel/>) sans aria-expanded/aria-controls, alors que ce même fichier câble déjà usePanelTrigger() pour son panneau editPanel voisin (par ligne de rôle). Dette REV-088."
+    "line": 73,
+    "reason": "Pré-existant : setCreating(true) ouvre CreateRolePanel en ligne (creating && <CreateRolePanel/>) sans aria-expanded/aria-controls, alors que ce même fichier câble déjà usePanelTrigger() pour son panneau editPanel voisin (par ligne de rôle). Dette REV-088 (ligne décalée de 48 à 73 par la migration DataTable de Vague B, aucun changement du déclencheur lui-même — vérifié en clôture de Vague B)."
   },
   {
     "file": "src/shell/Tileset3DUploadButton.tsx",
