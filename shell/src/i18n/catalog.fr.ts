@@ -1796,4 +1796,11 @@ export const fr = {
   "jobStatus.error": "Échoué",
   "jobStatus.cancelled": "Annulé",
   "jobStatus.unknown": "Inconnu",
+
+  // useDirtyGuard (SP-B6b) — garde de navigation in-app sur brouillon non
+  // enregistré (Tâche 26), consommée par les éditeurs des Tâches 27-28.
+  "navigation.unsavedChangesTitle": "Modifications non enregistrées",
+  "navigation.unsavedChangesMessage":
+    "Vous avez des modifications non enregistrées. Voulez-vous vraiment quitter cette page ?",
+  "navigation.leaveAnyway": "Quitter sans enregistrer",
 } as const;
