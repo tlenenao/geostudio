@@ -17,6 +17,7 @@ import { hasPermission } from "../auth/permissions";
 import { MetadataForm } from "../ui/MetadataForm";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
+import { LoadingState } from "../ui/kit/LoadingState";
 import { CrossFilterLinkEditor } from "../builder/CrossFilterLinkEditor";
 import { AlertRuleEditor } from "../builder/AlertRuleEditor";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
@@ -183,7 +184,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                 <p className="mb-1 text-xs font-medium text-ink-2">
                   {t("datasetEdit.columnsLabel")}
                 </p>
-                {schemaQuery.isLoading && <p role="status">{t("datasetEdit.schemaLoading")}</p>}
+                {schemaQuery.isLoading && <LoadingState label={t("datasetEdit.schemaLoading")} />}
                 {schemaQuery.isError && (
                   <p role="alert" className="text-sm text-danger">
                     {t("datasetEdit.sourceNotFound")}

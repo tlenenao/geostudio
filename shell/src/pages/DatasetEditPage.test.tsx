@@ -340,6 +340,18 @@ test("hides the button when sourcePipelineId is absent (dataset created by hand)
   expect(screen.queryByRole("button", { name: "Modifier la requête" })).not.toBeInTheDocument();
 });
 
+test("affiche le LoadingState partagé (role=status, spinner) pendant la résolution du schéma", async () => {
+  renderPage({
+    getItem: vi.fn().mockResolvedValue(item),
+    getDatasetConfig: vi.fn().mockResolvedValue(datasetConfig),
+    getCollectionSchema: vi.fn(() => new Promise<CollectionSchema>(() => {})),
+  });
+  await screen.findByText("Colonnes");
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement du schéma…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
+});
+
 test("affiche le panneau d'historique", async () => {
   renderPage({
     getItem: vi.fn().mockResolvedValue(item),

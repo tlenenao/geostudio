@@ -189,7 +189,9 @@ test("shows the loading state while the dataset config is still in flight, not t
   const getDatasetConfig = vi.fn().mockReturnValue(datasetPromise);
   renderDrawer({ getDatasetConfig, queryDataSource: vi.fn().mockResolvedValue([]) });
   await userEvent.click(screen.getByText("open"));
-  expect(await screen.findByText("Chargement…")).toBeInTheDocument();
+  const status = await screen.findByRole("status");
+  expect(status).toHaveTextContent("Chargement…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
   expect(screen.queryByText("Aucune entité")).not.toBeInTheDocument();
   resolveDataset({ source: "collection", collectionId: "col-1", columns: {} });
   expect(await screen.findByText("Aucune entité")).toBeInTheDocument();

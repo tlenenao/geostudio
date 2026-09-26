@@ -52,6 +52,13 @@ test("200: renders the published item's runtime layout via AppRenderer", async (
   expect(screen.queryByText(/introuvable/i)).not.toBeInTheDocument();
 });
 
+test("shows the shared LoadingState (role=status, spinner) while the config is in flight", () => {
+  renderPage({ getPublicAppConfig: vi.fn(() => new Promise<AppConfig>(() => {})) });
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
+});
+
 test("404: shows a not-found message without leaking whether the item exists", async () => {
   renderPage({ getPublicAppConfig: vi.fn().mockRejectedValue(new Error("404")) }, "does-not-exist");
   expect(await screen.findByRole("alert")).toHaveTextContent(/introuvable/i);

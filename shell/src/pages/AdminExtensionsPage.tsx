@@ -3,6 +3,7 @@ import { useAllExtensions, useInstanceInfo, useSetExtensionEnabled } from "../ap
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 export function AdminExtensionsPage() {
   const extensionsQuery = useAllExtensions();
@@ -24,7 +25,7 @@ export function AdminExtensionsPage() {
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
               <h1 className="text-lg font-bold text-ink">{t("extensions.title")}</h1>
-              {extensionsQuery.isLoading && <p role="status">{t("extensions.loading")}</p>}
+              {extensionsQuery.isLoading && <LoadingState />}
               {extensionsQuery.isError && (
                 <p role="alert" className="text-sm text-danger">
                   {t("extensions.loadError")}

@@ -4,6 +4,7 @@ import { useItemClient } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { useDocumentMeta } from "../shell/useDocumentMeta";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 registerBuiltinWidgets();
 
@@ -37,7 +38,7 @@ export function SitePublicPage({ slug }: { slug: string }) {
   });
 
   if (itemQuery.isLoading || (itemQuery.isSuccess && configQuery.isLoading)) {
-    return <p role="status">Chargement…</p>;
+    return <LoadingState />;
   }
   if (itemQuery.isError || configQuery.isError || !configQuery.data) {
     return (

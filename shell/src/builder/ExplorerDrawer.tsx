@@ -8,6 +8,7 @@ import { derivePatch } from "../lib/analyticsPatch";
 import type { DataRecord, DataSource, MapConfig } from "../api/types";
 import type { MapViewHandle } from "../map/MapView";
 import { t } from "../i18n";
+import { LoadingState } from "../ui/kit/LoadingState";
 
 const MapView = lazy(() => import("../map/MapView").then((m) => ({ default: m.MapView })));
 const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
@@ -136,9 +137,7 @@ export function ExplorerDrawer() {
         </Suspense>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-auto p-2 text-xs">
-        {(datasetQuery.isLoading || recordsQuery.isLoading) && (
-          <p className="text-[var(--gs-color-muted)]">{t("common.loading")}</p>
-        )}
+        {(datasetQuery.isLoading || recordsQuery.isLoading) && <LoadingState />}
         {!datasetQuery.isLoading &&
           !recordsQuery.isLoading &&
           (datasetQuery.isError || recordsQuery.isError) && (

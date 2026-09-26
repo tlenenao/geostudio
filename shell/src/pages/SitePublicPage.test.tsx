@@ -96,6 +96,16 @@ test("SP-55 : pose document.title/meta description/canonical une fois le site ch
   );
 });
 
+test("shows the shared LoadingState (role=status, spinner) while the item is in flight", () => {
+  renderSite({
+    getItemBySlug: vi.fn(() => new Promise<Item>(() => {})),
+    getPublicAppConfig: vi.fn().mockResolvedValue(config),
+  });
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Chargement…");
+  expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
+});
+
 test("404: shows a not-found message without leaking whether the slug exists, and never fetches the config", async () => {
   const getPublicAppConfig = vi.fn().mockResolvedValue(config);
   renderSite(
