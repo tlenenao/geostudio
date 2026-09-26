@@ -80,7 +80,15 @@ test("createAppRouter({ initialEntries }) resolves an out-of-layout route (/publ
   // réellement cette route hors-layout et que son Suspense/lazy() résout.
   const router = createAppRouter({ initialEntries: ["/public/items/99"] });
   renderRouter(router);
-  expect(await screen.findByRole("alert")).toHaveTextContent("Page introuvable.");
+  // Timeout relevé (défaut RTL 1000ms -> 5000ms, même patron que
+  // PipelineRunPanel.test.tsx/ExportPanel.test.tsx/AppExportPanel.test.tsx) :
+  // le lazy() de PublicItemPage entraîne tout AppRenderer/registerBuiltinWidgets
+  // (grossi par la Vague B), mesuré à ~1020-1090ms sur ce poste — juste au-delà
+  // du défaut, pas une régression fonctionnelle mais une marge de test épuisée
+  // par la croissance organique du graphe de modules.
+  expect(await screen.findByRole("alert", {}, { timeout: 5000 })).toHaveTextContent(
+    "Page introuvable.",
+  );
 });
 
 test("createAppRouter() without initialEntries takes the createBrowserRouter branch without throwing", () => {
