@@ -10,6 +10,7 @@ import {
   makeStatQueryFn,
 } from "./geojsonIntrospect";
 import { LayerPicker } from "./LayerPicker";
+import { isHostedCollectionUrl } from "./hostedCoreUrl";
 import { MapSymbologyEditor } from "./MapSymbologyEditor";
 import { PopupEditor } from "./PopupEditor";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
@@ -245,7 +246,14 @@ export function LayersPanel({
         // dans ce fichier) : plusieurs tests de ce composant (et de ses
         // hôtes, MapEditorPage/mapWidget) rendent LayersPanel avec un
         // ItemClient PARTIEL, sans `getAuthToken`.
-        const token = client.getAuthToken?.();
+        // Jeton attaché UNIQUEMENT si la tuile est réellement servie par le
+        // cœur (même origine + chemin /collections/, cf. hostedCoreUrl.ts) :
+        // une couche vecteur externe (URL libre saisie par l'auteur) ne doit
+        // jamais recevoir le jeton de session (revue finale Vague B, C2).
+        // getCoreUrl absent => « non hébergé », jamais l'inverse.
+        const token = isHostedCollectionUrl(rootUrl, client.getCoreUrl?.())
+          ? client.getAuthToken?.()
+          : undefined;
         try {
           const res = await fetch(rootUrl, {
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,

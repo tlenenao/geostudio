@@ -385,6 +385,7 @@ function renderPanelWithAuthToken(current: MapLayer[], onChange: (l: MapLayer[])
     listLayerSources: vi.fn().mockResolvedValue([]),
     getCollectionSchema: vi.fn().mockResolvedValue({ fields: [] }),
     getAuthToken: () => "mock-token",
+    getCoreUrl: () => "https://core.test",
   } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -412,6 +413,35 @@ test("affiche un badge de troncature quand la tuile racine répond X-Tile-Trunca
     "https://core.test/collections/communes/tiles/0/0/0.mvt",
     expect.objectContaining({ headers: { Authorization: "Bearer mock-token" } }),
   );
+});
+
+// Régression C2 (revue finale Vague B) : la sonde attachait le jeton OIDC à
+// TOUTE couche vecteur, y compris une URL externe choisie par l'auteur de la
+// carte — fuite du jeton de session vers une origine tierce.
+test("n'attache le jeton qu'aux tuiles servies par le cœur, jamais à une origine tierce", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(new Response(new Uint8Array(), { status: 200 }))),
+  );
+  const externalLayer: MapLayer = {
+    id: "l2",
+    title: "Externe",
+    visible: true,
+    kind: "vector",
+    tilesUrl: "https://attacker.example/collections/x/tiles/{z}/{x}/{y}.mvt",
+    sourceLayer: "x",
+  };
+  renderPanelWithAuthToken([vectorLayer, externalLayer], vi.fn());
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  expect(fetch).toHaveBeenCalledWith(
+    "https://core.test/collections/communes/tiles/0/0/0.mvt",
+    expect.objectContaining({ headers: { Authorization: "Bearer mock-token" } }),
+  );
+  expect(fetch).toHaveBeenCalledWith("https://attacker.example/collections/x/tiles/0/0/0.mvt", {
+    headers: undefined,
+  });
 });
 
 test("n'affiche aucun badge quand la tuile n'est pas tronquée", async () => {
