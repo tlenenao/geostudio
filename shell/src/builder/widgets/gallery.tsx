@@ -7,7 +7,7 @@ import { t } from "../../i18n";
 import { LoadingState } from "../../ui/kit/LoadingState";
 
 const labelCls = "flex flex-col gap-1";
-const inputCls = "h-9 rounded-md border border-slate-300 px-2";
+const inputCls = "h-9 rounded-md border border-rule px-2";
 
 const RESOURCE_TYPES: [string, string][] = [
   ["", t("widgetGallery.typeAll")],
@@ -102,7 +102,7 @@ export function registerGalleryWidget(): void {
       }
       if (query.isError) {
         return (
-          <p role="alert" className="text-xs text-red-600">
+          <p role="alert" className="text-xs text-danger">
             {t("widgetGallery.loadError")}
           </p>
         );

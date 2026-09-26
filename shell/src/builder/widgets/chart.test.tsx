@@ -11,6 +11,7 @@ import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsConte
 import type { WidgetContext } from "../registry";
 import type { DataSource, DataSourceState, ItemClient } from "../../api/types";
 import { ExplorerProvider } from "../ExplorerContext";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 vi.mock("../EChart", () => ({
   EChart: ({
@@ -80,7 +81,7 @@ test("renders an ECharts panel with one series per column", async () => {
 });
 
 test("shows loading, error and empty states", () => {
-  const { rerender } = render(
+  const { rerender, container } = render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
@@ -114,6 +115,9 @@ test("shows loading, error and empty states", () => {
     </QueryClientProvider>,
   );
   expect(screen.getByText(/erreur/i)).toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   rerender(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
@@ -189,7 +193,7 @@ test("PropsPanel edits and removes an existing hierarchy level", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("chart")!.PropsPanel;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  const { container } = render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={{} as unknown as ItemClient}>
         <Panel
@@ -200,6 +204,9 @@ test("PropsPanel edits and removes an existing hierarchy level", async () => {
       </ItemClientProvider>
     </QueryClientProvider>,
   );
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   await userEvent.type(screen.getByLabelText("Niveau 1"), "x");
   expect(onChange).toHaveBeenLastCalledWith(
     expect.objectContaining({ encodings: { levels: ["regionx"] } }),

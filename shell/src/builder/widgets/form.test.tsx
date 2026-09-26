@@ -13,6 +13,7 @@ import { ActionBus } from "../ActionBus";
 import { FeatureValidationError } from "../../api/itemClient";
 import { t } from "../../i18n";
 import type { FormField } from "./form";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -70,14 +71,14 @@ function renderPanel(
     );
   }
 
-  render(
+  const { container } = render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
         <Wrapper />
       </ItemClientProvider>
     </QueryClientProvider>,
   );
-  return { onChange, client };
+  return { onChange, client, container };
 }
 
 test("form widget is registered with submitted/failed events and reset/loadRecord actions", () => {
@@ -105,13 +106,16 @@ test("props panel shows the shared LoadingState (role=status, spinner) while the
 });
 
 test("props panel offers a button to load fields once the schema resolves", async () => {
-  const { onChange } = renderPanel({
+  const { onChange, container } = renderPanel({
     dataSourceId: "ds1",
     fields: [],
     submitLabel: "Enregistrer",
     geometryType: null,
   });
   const button = await screen.findByRole("button", { name: "Charger les champs du schéma" });
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   await userEvent.click(button);
   expect(onChange).toHaveBeenCalledWith({
     dataSourceId: "ds1",
@@ -149,7 +153,7 @@ test("props panel offers a button to load fields once the schema resolves", asyn
 });
 
 test("props panel hides the load button once fields are already loaded", () => {
-  renderPanel({
+  const { container } = renderPanel({
     dataSourceId: "ds1",
     fields: [
       { name: "titre", type: "string", label: "Titre", order: 0, hidden: false, required: true },
@@ -160,6 +164,9 @@ test("props panel hides the load button once fields are already loaded", () => {
   expect(
     screen.queryByRole("button", { name: "Charger les champs du schéma" }),
   ).not.toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place (couvre FieldOverrides).
+  expectTokenizedClasses(container);
 });
 
 test("props panel shows an error when the schema fails to load", async () => {
@@ -333,7 +340,7 @@ function renderForm(fields: FormField[] = visibleFields, ctx: Partial<WidgetCont
   const client = { createFeature: vi.fn().mockResolvedValue({ id: 1 }) } as unknown as ItemClient;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const Form = getWidget("form")!.Component;
-  render(
+  const { container } = render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
         <Form
@@ -343,6 +350,7 @@ function renderForm(fields: FormField[] = visibleFields, ctx: Partial<WidgetCont
       </ItemClientProvider>
     </QueryClientProvider>,
   );
+  return { container };
 }
 
 test("form renders visible fields ordered, skipping hidden ones", () => {
@@ -384,6 +392,11 @@ test("form blocks submit and surfaces one error per invalid required field", asy
   renderForm();
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   expect(screen.getAllByRole("alert")).toHaveLength(2); // titre + gravite, tous deux requis et vides
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place. Le conteneur entier n'est pas testable via
+  // expectTokenizedClasses ici : le bouton "Enregistrer" voisin porte
+  // volontairement text-white (couleur "primary" de l'app auteur).
+  expect(screen.getByRole("button", { name: "Réinitialiser" })).toHaveClass("border-rule");
 });
 
 test("form validates a numeric field against its min bound", async () => {
@@ -441,7 +454,7 @@ function renderConnectedForm({
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
   const Form = getWidget("form")!.Component;
-  render(
+  const { container } = render(
     <QueryClientProvider client={qc}>
       <ItemClientProvider client={client}>
         <Form
@@ -458,7 +471,7 @@ function renderConnectedForm({
       </ItemClientProvider>
     </QueryClientProvider>,
   );
-  return { client, invalidateSpy };
+  return { client, invalidateSpy, container };
 }
 
 test("a valid submit calls createFeature with the bound collection and properties", async () => {
@@ -642,6 +655,11 @@ test("loadRecord pre-fills the form from the selected record's properties", asyn
   await waitFor(() => expect(screen.getByLabelText("Titre")).toHaveValue("Fuite existante"));
   expect(screen.getByLabelText("Gravité")).toHaveValue("moyenne");
   expect(screen.getByText(/Modification de l'enregistrement #7/)).toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place. Le conteneur entier n'est pas testable via
+  // expectTokenizedClasses ici : le bouton "Enregistrer" voisin porte
+  // volontairement text-white (couleur "primary" de l'app auteur).
+  expect(screen.getByRole("button", { name: "Supprimer" })).toHaveClass("text-danger");
 });
 
 test("loadRecord pre-fills longitude/latitude for a Point geometry", async () => {

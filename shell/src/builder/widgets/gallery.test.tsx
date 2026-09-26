@@ -8,6 +8,7 @@ import { registerBuiltinWidgets } from "./index";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { Item, ItemClient, ItemPage } from "../../api/types";
 import { OWNER_PERMISSIONS } from "../../auth/permissions";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -50,7 +51,10 @@ const publishedItem: Item = {
 test("PropsPanel edits the type, tag, limit and columns", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("gallery")!.PropsPanel!;
-  render(<Panel props={{}} dataSources={[]} onChange={onChange} />);
+  const { container } = render(<Panel props={{}} dataSources={[]} onChange={onChange} />);
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 
   await userEvent.selectOptions(screen.getByLabelText("Type d'élément"), "app");
   expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ type: "app" });
@@ -103,5 +107,8 @@ test("gallery shows an empty state when there are no published items", async () 
 
 test("gallery shows an error state when the fetch fails", async () => {
   renderGallery({}, { listPublicItems: vi.fn().mockRejectedValue(new Error("fail")) });
-  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  const alert = await screen.findByRole("alert");
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(alert.parentElement ?? alert);
 });

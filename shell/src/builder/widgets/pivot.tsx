@@ -7,7 +7,7 @@ import { ExplorerMenu } from "./ExplorerMenu";
 import { t } from "../../i18n";
 
 const labelCls = "flex flex-col gap-1";
-const inputCls = "h-9 rounded-md border border-slate-300 px-2";
+const inputCls = "h-9 rounded-md border border-rule px-2";
 const thCls = "border-b border-[var(--gs-color-border)] p-1";
 
 type PivotEncodings = { rows?: string; columns?: string };
@@ -84,7 +84,7 @@ export function registerPivotWidget(): void {
 
       if (!data || data.loading)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
-      if (data.error) return <p className="text-xs text-red-600">{t("common.dataError")}</p>;
+      if (data.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;
       if (data.records.length === 0)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.noData")}</p>;
 

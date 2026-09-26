@@ -10,7 +10,7 @@ import { t } from "../../i18n";
 type Tab = { id: string; label: string; items: WidgetItem[] };
 type TabsProps = { tabs: Tab[] };
 
-const inputCls = "h-9 rounded-md border border-slate-300 px-2 text-sm";
+const inputCls = "h-9 rounded-md border border-rule px-2 text-sm";
 
 export function registerTabsWidget(): void {
   registerWidget({
@@ -93,7 +93,7 @@ export function registerTabsWidget(): void {
                   type="button"
                   aria-label={t("widgetTabs.removeTabAria", { label: tab.label })}
                   disabled={tabs.length <= 1}
-                  className="text-xs text-red-600 disabled:opacity-30"
+                  className="text-xs text-danger disabled:opacity-30"
                   onClick={() => removeTab(tab.id)}
                 >
                   {t("widgetTabs.removeTab")}
@@ -126,7 +126,7 @@ export function registerTabsWidget(): void {
 
       if (!active) {
         return (
-          <div className="flex h-full items-center justify-center bg-slate-100 text-xs text-ink-2">
+          <div className="flex h-full items-center justify-center bg-sunken text-xs text-ink-2">
             {t("widgetTabs.noTab")}
           </div>
         );
@@ -170,6 +170,10 @@ export function registerTabsWidget(): void {
         <div className="flex h-full flex-col">
           <div className="flex gap-1 border-b border-[var(--gs-color-border)] p-1 text-xs">
             {tabs.map((t) => (
+              // SP-B12c grounding : text-white reste ici volontairement, même
+              // convention que widgets/index.tsx (bouton) et form.tsx (bouton
+              // d'envoi) — le fond de l'onglet actif est la couleur "primary"
+              // de l'app auteur.
               <button
                 key={t.id}
                 type="button"

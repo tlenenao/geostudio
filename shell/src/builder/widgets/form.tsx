@@ -40,7 +40,7 @@ function fieldsFromSchema(schema: CollectionSchema): FormField[] {
   }));
 }
 
-const overrideInputCls = "h-8 w-full rounded border border-slate-300 px-2 text-xs";
+const overrideInputCls = "h-8 w-full rounded border border-rule px-2 text-xs";
 
 function FieldOverrides({
   fields,
@@ -81,7 +81,7 @@ function FieldOverrides({
             if (dragIndex !== null) reorder(dragIndex, i);
             dragIndex = null;
           }}
-          className="flex cursor-move flex-col gap-1 rounded border border-slate-200 p-1.5"
+          className="flex cursor-move flex-col gap-1 rounded border border-rule p-1.5"
         >
           <div className="flex flex-wrap items-center gap-1">
             <span className="text-[10px] text-ink-2" aria-hidden="true">
@@ -191,7 +191,7 @@ function FormPropsPanel({
       {collectionId !== "" && schemaQuery.data && fields.length === 0 && (
         <button
           type="button"
-          className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+          className="rounded border border-rule px-2 py-1 text-xs hover:bg-sunken"
           onClick={() =>
             onChange({
               ...props,
@@ -240,7 +240,7 @@ function validateField(field: FormField, value: unknown): string | null {
   return null;
 }
 
-const fieldInputCls = "h-9 rounded-md border border-slate-300 px-2 text-sm";
+const fieldInputCls = "h-9 rounded-md border border-rule px-2 text-sm";
 
 function AttachmentFieldInput({
   collectionId,
@@ -704,7 +704,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           {canWrite && (
             <button
               type="button"
-              className="ml-2 text-xs text-red-600 underline"
+              className="ml-2 text-xs text-danger underline"
               disabled={remove.isPending}
               onClick={() => setConfirmingDelete(true)}
             >
@@ -727,6 +727,8 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       />
       <div className="mt-auto flex items-center gap-2">
         {canWrite && (
+          // SP-B12c grounding : text-white reste ici volontairement, même
+          // convention que widgets/index.tsx (bouton) et tabs.tsx (onglet actif).
           <button
             type="submit"
             disabled={write.isPending}
@@ -737,7 +739,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
         )}
         <button
           type="button"
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+          className="rounded border border-rule px-3 py-1.5 text-sm"
           onClick={resetTo}
         >
           {t("widgetForm.reset")}

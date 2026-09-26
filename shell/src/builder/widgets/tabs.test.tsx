@@ -10,6 +10,7 @@ import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { _resetRegistry, getWidget, type WidgetContext } from "../registry";
 import { registerBuiltinWidgets } from "./index";
 import type { WidgetItem } from "../../api/types";
+import { expectTokenizedClasses } from "../../ui/kit/testUtils";
 
 // WidgetHost (mounted by GridCanvas, directly or via the nested LayoutEditor)
 // calls useAuth(), which requires an <AuthProvider> ancestor outside of
@@ -128,13 +129,16 @@ test("edit mode renders the active tab's real content, not an empty band", () =>
 test("PropsPanel adds a tab, selects it, and edits its label", async () => {
   const onChange = vi.fn();
   const Panel = getWidget("tabs")!.PropsPanel;
-  render(
+  const { container } = render(
     <Panel
       props={{ tabs: [{ id: "t1", label: "Onglet 1", items: [] }] }}
       dataSources={[]}
       onChange={onChange}
     />,
   );
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   await userEvent.click(screen.getByRole("button", { name: "Ajouter un onglet" }));
   const tabs = onChange.mock.calls.at(-1)![0].tabs;
   expect(tabs).toHaveLength(2);
@@ -171,6 +175,9 @@ test("PropsPanel removes a tab and re-selects the first remaining one", async ()
       onChange={onChange}
     />,
   );
+  expect(screen.getByRole("button", { name: "Supprimer l'onglet Onglet 1" })).toHaveClass(
+    "text-danger",
+  );
   await userEvent.click(screen.getByRole("button", { name: "Supprimer l'onglet Onglet 1" }));
   const tabs = onChange.mock.calls.at(-1)![0].tabs;
   expect(tabs.map((t: { label: string }) => t.label)).toEqual(["Onglet 2"]);
@@ -198,8 +205,13 @@ test("PropsPanel reorders tabs with the up button", async () => {
 
 test("Component shows a placeholder when there are no tabs at all", () => {
   const Tabs = getWidget("tabs")!.Component;
-  render(<Tabs props={{ tabs: [] }} ctx={{ mode: "runtime" } as WidgetContext} />);
+  const { container } = render(
+    <Tabs props={{ tabs: [] }} ctx={{ mode: "runtime" } as WidgetContext} />,
+  );
   expect(screen.getByText("Aucun onglet")).toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 test("PropsPanel refuses to remove the last remaining tab", async () => {
