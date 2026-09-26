@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { createMemoryRouter, Link, RouterProvider, useParams } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import * as ToastPrimitive from "@radix-ui/react-toast";
 import type { Item, ItemClient, ReportSchedulePayload } from "../api/types";
@@ -10,6 +10,7 @@ import { ItemClientProvider } from "../api/ItemClientProvider";
 import { ToastProvider } from "../ui/kit/ToastProvider";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
 import { ReportEditPage } from "./ReportEditPage";
+import { t } from "../i18n";
 
 // ReportEditPage calls useAuth() for `username` on create — same mock as
 // PipelineBuilderPage.test.tsx, needed because the real hook calls
@@ -68,27 +69,112 @@ const item: Item = {
   language: "fr",
 };
 
+// SP-B6d : `useDirtyGuard` (Tâche 26) s'appuie sur `useBlocker`, qui exige un
+// data router (`createMemoryRouter`/`RouterProvider`) — un `<MemoryRouter>`
+// déclaratif fait lever `useBlocker` à l'exécution (cf. Tâche 27). Route
+// wildcard "*" : ce fichier ne fait jamais varier le pathname vu par
+// ReportEditPage lui-même (seul le pk prop change).
 function renderPage(pk: string | null, overrides: Partial<ItemClient> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const client: Partial<ItemClient> = {
     getReportRuns: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
+  const router = createMemoryRouter(
+    [
+      {
+        path: "*",
+        element: (
+          <QueryClientProvider client={qc}>
+            <ItemClientProvider client={client as ItemClient}>
+              <ToastProvider>
+                <ReportEditPage pk={pk} initialBookmarkItemId="bm-1" />
+              </ToastProvider>
+            </ItemClientProvider>
+          </QueryClientProvider>
+        ),
+      },
+    ],
+    { initialEntries: ["/"] },
+  );
   render(
     <ToastPrimitive.Provider>
-      <MemoryRouter>
-        <QueryClientProvider client={qc}>
-          <ItemClientProvider client={client as ItemClient}>
-            <ToastProvider>
-              <ReportEditPage pk={pk} initialBookmarkItemId="bm-1" />
-            </ToastProvider>
-          </ItemClientProvider>
-        </QueryClientProvider>
-      </MemoryRouter>
+      <RouterProvider router={router} />
       <ToastPrimitive.Viewport />
     </ToastPrimitive.Provider>,
   );
   return { client };
+}
+
+// Harnais dédié aux tests de garde de navigation (SP-B6d, même patron que
+// Task 27/MapEditorPage) : un lien factice vers une autre page suffit, le
+// chrome réel (AppLayout/TopBar) est hors périmètre de ce fichier.
+function renderPageWithNavigation(pk: string | null, overrides: Partial<ItemClient> = {}) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client: Partial<ItemClient> = {
+    getReportRuns: vi.fn().mockResolvedValue([]),
+    ...overrides,
+  };
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: (
+          <QueryClientProvider client={qc}>
+            <ItemClientProvider client={client as ItemClient}>
+              <ToastProvider>
+                <Link to="/autre">Autre page</Link>
+                <ReportEditPage pk={pk} initialBookmarkItemId="bm-1" />
+              </ToastProvider>
+            </ItemClientProvider>
+          </QueryClientProvider>
+        ),
+      },
+      { path: "/autre", element: <p>Autre page ouverte</p> },
+    ],
+    { initialEntries: ["/"] },
+  );
+  return render(
+    <ToastPrimitive.Provider>
+      <RouterProvider router={router} />
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>,
+  );
+}
+
+// Harnais pour le round-trip réel de création (SP-B6d) : mêmes routes que
+// shell/src/shell/routes.tsx (`/reports/new` -> pk=null, `/reports/:pk/edit`
+// -> pk réel) pour vérifier que la redirection interne post-création
+// (onSave, pk === null) n'est pas bloquée par la garde.
+function renderNewReportRoutes(overrides: Partial<ItemClient> = {}) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client: Partial<ItemClient> = {
+    getReportRuns: vi.fn().mockResolvedValue([]),
+    ...overrides,
+  };
+  function EditRoute() {
+    const { pk } = useParams();
+    return <ReportEditPage pk={pk!} />;
+  }
+  const router = createMemoryRouter(
+    [
+      { path: "/reports/new", element: <ReportEditPage pk={null} initialBookmarkItemId="bm-1" /> },
+      { path: "/reports/:pk/edit", element: <EditRoute /> },
+    ],
+    { initialEntries: ["/reports/new"] },
+  );
+  return render(
+    <ToastPrimitive.Provider>
+      <QueryClientProvider client={qc}>
+        <ItemClientProvider client={client as ItemClient}>
+          <ToastProvider>
+            <RouterProvider router={router} />
+          </ToastProvider>
+        </ItemClientProvider>
+      </QueryClientProvider>
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>,
+  );
 }
 
 test("persisted mode: affiche le panneau d'historique et la fiche Catalogue", async () => {
@@ -256,4 +342,65 @@ test("persisted mode: un échec de sauvegarde affiche le message d'erreur sans n
   });
   await userEvent.click(await screen.findByRole("button", { name: "Enregistrer" }));
   expect(await screen.findByText("network down")).toBeInTheDocument();
+});
+
+test("bloque la navigation après une modification non enregistrée du rapport (SP-B6d)", async () => {
+  const payload: ReportSchedulePayload = {
+    bookmarkItemId: "bm-1",
+    refreshPolicy: { enabled: true, cron: "0 8 * * MON" },
+    channels: [{ kind: "webhook", url: "" }],
+  };
+  renderPageWithNavigation("r-1", {
+    getItem: vi.fn().mockResolvedValue(item),
+    getReportScheduleConfig: () => Promise.resolve(payload),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+  });
+
+  await userEvent.type(await screen.findByLabelText("URL du webhook"), "https://x");
+  await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
+
+  expect(await screen.findByRole("dialog")).toHaveTextContent(
+    t("navigation.unsavedChangesMessage"),
+  );
+});
+
+test("ne bloque pas la navigation juste après une sauvegarde réussie (SP-B6d)", async () => {
+  const payload: ReportSchedulePayload = {
+    bookmarkItemId: "bm-1",
+    refreshPolicy: { enabled: true, cron: "0 8 * * MON" },
+    channels: [{ kind: "webhook", url: "" }],
+  };
+  const saveReportScheduleConfig = vi.fn().mockResolvedValue(undefined);
+  renderPageWithNavigation("r-1", {
+    getItem: vi.fn().mockResolvedValue(item),
+    getReportScheduleConfig: () => Promise.resolve(payload),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
+    saveReportScheduleConfig,
+  });
+
+  await userEvent.type(await screen.findByLabelText("URL du webhook"), "https://x");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveReportScheduleConfig).toHaveBeenCalled());
+
+  await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
+  expect(await screen.findByText("Autre page ouverte")).toBeInTheDocument();
+});
+
+// SP-B6d, même précaution que PipelineBuilderPage : le round-trip réel de
+// création (/reports/new -> Enregistrer -> redirection interne vers
+// /reports/{pk}/edit, un changement de pathname RÉEL) exécute
+// `setHasUnsavedChanges(false)` puis `navigate(...)` de façon synchrone dans
+// le même callback — vérifié empiriquement, pas seulement supposé sûr.
+test("le round-trip de création (pk=null -> Enregistrer -> redirection) n'affiche pas la boîte de confirmation (SP-B6d)", async () => {
+  const createReportScheduleItem = vi.fn().mockResolvedValue({ pk: "r-new" });
+  renderNewReportRoutes({ createReportScheduleItem });
+
+  await waitFor(() =>
+    expect(screen.getByRole("heading", { name: "Programmer un rapport" })).toBeInTheDocument(),
+  );
+  await userEvent.type(screen.getByLabelText("URL du webhook"), "https://x");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+  await waitFor(() => expect(createReportScheduleItem).toHaveBeenCalledTimes(1));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
