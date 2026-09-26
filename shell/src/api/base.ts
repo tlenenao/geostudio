@@ -9,6 +9,7 @@ import type {
   PopupConfig,
 } from "./types";
 import { CoreUnreachableError } from "./CoreUnreachableError";
+import { ApiError } from "./ApiError";
 
 // SP-B7 : borne toute requête cœur à 15s et convertit un fetch qui rejette
 // (réseau coupé, timeout, DNS, etc.) en CoreUnreachableError — distingué
@@ -23,6 +24,32 @@ async function fetchWithTimeout(input: string, init: RequestInit = {}): Promise<
   } catch (err) {
     throw new CoreUnreachableError(err);
   }
+}
+
+// SP-B5 : le cœur répond en RFC 7807 (`application/problem+json`,
+// `title`+`detail`) sur toute erreur HTTP, et porte un en-tête `Retry-After`
+// (secondes) sur un 429 (`rate_limit_guard`, `core/app/main.py`). Partagé
+// entre `request()` et `requestBlob()` : les deux jettent aujourd'hui une
+// `Error` générique sur `!res.ok`, jetant ces champs. `res.clone()` est
+// nécessaire car le corps ne se lit qu'une fois — un appelant qui a déjà lu
+// `res` (aucun cas actuel) casserait sinon.
+async function parseErrorResponse(res: Response): Promise<ApiError> {
+  let title: string | undefined;
+  let detail: string | undefined;
+  try {
+    const problem = (await res.clone().json()) as { title?: unknown; detail?: unknown };
+    if (typeof problem.title === "string") title = problem.title;
+    if (typeof problem.detail === "string") detail = problem.detail;
+  } catch {
+    // Corps absent ou non-JSON (ex. 500 sans body) : ApiError retombe sur
+    // son message générique plutôt que de faire échouer la gestion d'erreur.
+  }
+  const retryAfterHeader = res.headers.get("Retry-After");
+  const retryAfter =
+    res.status === 429 && retryAfterHeader !== null && !Number.isNaN(Number(retryAfterHeader))
+      ? Number(retryAfterHeader)
+      : undefined;
+  return new ApiError(res.status, { title, detail, retryAfter });
 }
 
 // RawMapLayer/toFrontLayer vivent ici (et non dans domains/layers.ts) pour
@@ -180,7 +207,7 @@ export async function requestBlob(
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`Request failed: ${res.status} ${method} ${path}`);
+  if (!res.ok) throw await parseErrorResponse(res);
   const disposition = res.headers.get("Content-Disposition") ?? "";
   const match = /filename="([^"]+)"/.exec(disposition);
   const filename = match ? match[1] : "export";
@@ -216,7 +243,7 @@ export function createBase(opts: {
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {
-      throw new Error(`Request failed: ${res.status} ${method} ${path}`);
+      throw await parseErrorResponse(res);
     }
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;

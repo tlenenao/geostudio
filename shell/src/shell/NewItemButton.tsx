@@ -18,6 +18,7 @@ import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { TEMPLATES } from "../builder/templates";
 import { isValidSlug, slugify } from "../lib/slug";
 import { t } from "../i18n";
+import { ApiError } from "../api/ApiError";
 
 type Kind = "app" | "dashboard" | "map" | "site" | "dataset" | "pipeline" | "visual-query";
 
@@ -337,11 +338,26 @@ export function NewItemButton() {
               )}
             </label>
           )}
-          {(create.isError || createMap.isError || createDataset.isError) && (
-            <p role="alert" className="text-sm text-danger">
-              {t("newItem.createFailed")}
-            </p>
-          )}
+          {(create.isError || createMap.isError || createDataset.isError) &&
+            (() => {
+              // SP-B5 : une seule des trois mutations est en vol à la fois
+              // (kind sélectionne la branche empruntée par submit()) — le
+              // premier ?? non-undefined est donc toujours celle qui a échoué.
+              const activeError = create.error ?? createMap.error ?? createDataset.error;
+              return (
+                <p role="alert" className="text-sm text-danger">
+                  {activeError instanceof ApiError && activeError.status === 429
+                    ? `${activeError.detail ?? t("newItem.createFailed")} ${
+                        activeError.retryAfter !== undefined
+                          ? t("errors.retryAfter", { seconds: activeError.retryAfter })
+                          : ""
+                      }`.trim()
+                    : activeError instanceof ApiError && activeError.detail
+                      ? activeError.detail
+                      : t("newItem.createFailed")}
+                </p>
+              );
+            })()}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={close} disabled={busy}>
               {t("confirmDialog.cancel")}

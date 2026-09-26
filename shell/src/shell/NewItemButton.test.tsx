@@ -172,6 +172,67 @@ test("shows an alert and stays on the page when creation fails", async () => {
   expect(screen.queryByText(/^app-builder-/)).not.toBeInTheDocument();
 });
 
+test("SP-B5 : affiche le detail RFC 7807 du cœur sur un échec structuré", async () => {
+  server.use(
+    http.post(
+      "https://core.test/v1/configs",
+      () =>
+        new HttpResponse(
+          JSON.stringify({
+            type: "about:blank",
+            title: "Conflict",
+            status: 409,
+            detail: "quota d'items du tenant dépassé : 1/1",
+          }),
+          { status: 409, headers: { "content-type": "application/problem+json" } },
+        ),
+    ),
+  );
+  render(
+    <Harness>
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await userEvent.type(screen.getByLabelText("Titre"), "Carte en trop");
+  await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+  await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+    "quota d'items du tenant dépassé : 1/1",
+  );
+});
+
+test("SP-B5 : affiche le compte à rebours de relance sur un 429", async () => {
+  server.use(
+    http.post(
+      "https://core.test/v1/configs",
+      () =>
+        new HttpResponse(
+          JSON.stringify({
+            type: "about:blank",
+            title: "Too Many Requests",
+            status: 429,
+            detail: "rate limit exceeded for items",
+          }),
+          {
+            status: 429,
+            headers: { "content-type": "application/problem+json", "Retry-After": "60" },
+          },
+        ),
+    ),
+  );
+  render(
+    <Harness>
+      <NewItemButton />
+    </Harness>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nouveau" }));
+  await userEvent.type(screen.getByLabelText("Titre"), "Carte en trop");
+  await userEvent.click(screen.getByRole("button", { name: "Créer" }));
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("rate limit exceeded for items");
+  expect(alert).toHaveTextContent("Réessayez dans 60 s.");
+});
+
 test("shows a Modèle select for app/dashboard, filtered by the current type", async () => {
   render(
     <Harness>

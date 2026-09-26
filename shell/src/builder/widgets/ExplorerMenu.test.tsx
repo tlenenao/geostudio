@@ -6,6 +6,7 @@ import { ExplorerMenu } from "./ExplorerMenu";
 import { ExplorerProvider, useExplorerTarget } from "../ExplorerContext";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { DataSource, ItemClient } from "../../api/types";
+import { ApiError } from "../../api/ApiError";
 
 // REV-079 : `vi.spyOn` (au lieu de `vi.stubGlobal("URL", { ...URL, ... })`)
 // laisse le constructeur `URL` intact — un `{ ...URL }` produit un objet
@@ -200,6 +201,35 @@ test("a failed export surfaces an inline error message instead of failing silent
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Trop d'entités : affinez vos filtres.",
   );
+});
+
+test("SP-B5 : une ApiError (status réel, requestBlob) mappe aussi le message d'accès refusé", async () => {
+  const exportDataSource = vi.fn().mockRejectedValue(new ApiError(403, { detail: "forbidden" }));
+  const client = { exportDataSource } as unknown as ItemClient;
+  const source: DataSource = {
+    id: "s1",
+    type: "statistics",
+    service: "core",
+    layer: "parcs",
+    query: { groupBy: "region" },
+  };
+
+  render(
+    <ItemClientProvider client={client}>
+      <ExplorerProvider enabled>
+        <ExplorerMenu
+          datasetId="ds1"
+          dataSourceId="s1"
+          resolvedSource={source}
+          hasGeometry={false}
+        />
+      </ExplorerProvider>
+    </ItemClientProvider>,
+  );
+  await userEvent.click(screen.getByLabelText("Explorer"));
+  await userEvent.click(screen.getByLabelText("Exporter en CSV"));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("Accès refusé.");
 });
 
 test("no export entries when resolvedSource is absent (backward compatible with existing callers)", async () => {

@@ -720,6 +720,8 @@ export const fr = {
   "newItem.invalidSlugMessage": "Slug invalide (minuscules, chiffres, tirets).",
   "newItem.createFailed": "Échec de la création.",
   "newItem.createButton": "Créer",
+  // SP-B5 : {seconds} interpolé depuis ApiError.retryAfter (429, Retry-After).
+  "errors.retryAfter": "Réessayez dans {seconds} s.",
 
   // RegisterCollectionPanel / Tileset3DUploadButton
   "tileset3d.newButton": "Nouveau tileset 3D",
