@@ -208,10 +208,10 @@ export const fr = {
   "roles.privilege.unknown": "Privilège inconnu",
   "roles.loadError": "Échec du chargement des rôles.",
   "roles.deleteError": "Échec de la suppression.",
+  "roles.empty": "Aucun rôle personnalisé pour l'instant",
   "roles.columnName": "Nom",
   "roles.columnPrivileges": "Privilèges",
   "roles.detail": "Détail",
-  "rolesAdmin.empty": "Aucun rôle personnalisé pour l'instant",
 
   // AdminExtensionsPage
   "extensions.title": "Extensions",
@@ -424,7 +424,7 @@ export const fr = {
   "harvest.deleteTitle": "Supprimer la source",
   "harvest.deleteMessage":
     "Supprimer la source « {url} » ? Les items/collections déjà produits survivent.",
-  "harvestAdmin.empty": "Aucune source de moissonnage configurée",
+  "harvest.empty": "Aucune source de moissonnage configurée",
 
   // ItemDetailPage
   "itemDetail.notFound": "Élément introuvable.",

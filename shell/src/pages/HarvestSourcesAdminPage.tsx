@@ -86,7 +86,7 @@ export function HarvestSourcesAdminPage() {
                 </p>
               )}
               {sourcesQuery.data && sourcesQuery.data.length === 0 && (
-                <EmptyState title={t("harvestAdmin.empty")} />
+                <EmptyState title={t("harvest.empty")} />
               )}
               {sourcesQuery.data && sourcesQuery.data.length > 0 && (
                 <table className="w-full text-left text-sm">

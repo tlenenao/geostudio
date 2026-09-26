@@ -68,7 +68,7 @@ export function RolesAdminPage() {
                 </p>
               )}
               {rolesQuery.data && rolesQuery.data.length === 0 && (
-                <EmptyState title={t("rolesAdmin.empty")} />
+                <EmptyState title={t("roles.empty")} />
               )}
               {rolesQuery.data && rolesQuery.data.length > 0 && (
                 <table className="w-full text-left text-sm">
