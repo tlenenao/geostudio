@@ -603,6 +603,17 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   `golang:1.24-bookworm` → `debian:bookworm-slim`, reproduit la cible
   `build` du Makefile amont, `RELEASE.2025-10-15T17-29-55Z`), publié
   `ghcr.io/tlenenao/geostudio-minio` (8 → 9 images) ; ferme `REV-194`.
+- **Vague B états système et cohérence** — 12 chantiers (SP-B1→SP-B12) :
+  états vides catalogue/admin, `ConfirmDialog` sur 4 sites de
+  suppression, notifications de succès (`ToastProvider`), résilience
+  réseau (timeout 15s, `CoreUnreachableError`, bannière de
+  connectivité), `ApiError` porte le detail RFC 7807 jusqu'à l'UI,
+  accessibilité des erreurs de formulaire, `LoadingState` uniforme,
+  lisibilité des jobs (libellés traduits, badge de troncature MVT),
+  état UI synchronisé à l'URL (`useUrlSyncedState`), tableaux
+  accessibles/cliquables (`DataTable`), garde de navigation sur
+  brouillon non enregistré (migration `createBrowserRouter`), dernières
+  couleurs Tailwind brutes tokenisées + garde-fou CI.
 
 ### Conventions tranchées (2026-09-01)
 
