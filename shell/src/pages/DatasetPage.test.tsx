@@ -7,6 +7,7 @@ import type { AppConfig, CollectionAdmin, ItemClient, WidgetItem } from "../api/
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { DatasetPage } from "./DatasetPage";
 import type { AuthState } from "../auth/useAuth";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 const authState: AuthState = {
   isLoading: false,
@@ -72,7 +73,7 @@ function renderPage(client: Partial<ItemClient>, collectionId = "parcs") {
 }
 
 test("200: renders the collection's chrome, download buttons, and the AppRenderer preview", async () => {
-  renderPage({
+  const { container } = renderPage({
     getCollection: vi.fn().mockResolvedValue(collection),
     getCollectionSchema: vi
       .fn()
@@ -84,12 +85,19 @@ test("200: renders the collection's chrome, download buttons, and the AppRendere
   expect(screen.getByText("Parcs publics")).toBeInTheDocument();
   expect(screen.getByText(/2 entités/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Télécharger GeoJSON" })).toBeInTheDocument();
+  // SP-B12c : le chrome de la page (titre, description, compteur) n'a pas de
+  // couleur Tailwind codée en dur.
+  expectTokenizedClasses(container);
 });
 
 test("404: shows a not-found message without leaking whether the collection exists", async () => {
-  renderPage({ getCollection: vi.fn().mockRejectedValue(new Error("404")) }, "private-x");
+  const { container } = renderPage(
+    { getCollection: vi.fn().mockRejectedValue(new Error("404")) },
+    "private-x",
+  );
   expect(await screen.findByRole("alert")).toHaveTextContent(/introuvable/i);
   expect(screen.getByRole("alert")).not.toHaveTextContent(/private-x/i);
+  expectTokenizedClasses(container);
 });
 
 test("dérive attachmentField du premier champ attachment déclaré sur la collection et le passe au widget carte (SP-40)", async () => {

@@ -573,24 +573,27 @@ const tokenCheckConfig: AppConfig = {
 };
 
 test("action-bar border and save-failed alert use semantic tokens, not literal Tailwind colors (SP-B12a)", async () => {
-  renderRuntime({
+  const { baseElement } = renderRuntime({
     getItem: vi.fn().mockResolvedValue(okItem),
     getAppConfig: vi.fn().mockResolvedValue(tokenCheckConfig),
     createBookmarkItem: vi.fn().mockRejectedValue(new Error("save failed")),
   });
   const saveViewButton = await screen.findByRole("button", { name: "Enregistrer la vue" });
-  // Own className of the action-bar div only — NOT expectTokenizedClasses on
-  // its subtree: that div wraps `Button` (../ui/button.tsx), a *different*,
-  // out-of-scope file that still hardcodes bg-slate-900/border-slate-300/etc
-  // by default (confirmed by debugging a false failure while writing this
-  // test). Scanning innerHTML here would flag that unrelated, pre-existing
-  // file's classes as if they were AppRuntimePage.tsx's own — this task only
-  // covers the 6 occurrences the brief's grep enumerates in this file.
+  // `Button` (../ui/button.tsx) was out-of-scope for SP-B12a/b (it still
+  // hardcoded bg-slate-900/border-slate-300/etc by default) — fixed since by
+  // SP-B12c, so the whole action-bar subtree can now be scanned instead of
+  // just the div's own className.
   const actionBar = saveViewButton.closest("div") as HTMLElement;
   expect(actionBar.className).toContain("border-rule");
   expect(actionBar.className).not.toMatch(/\bborder-slate-\d+\b/);
+  expectTokenizedClasses(actionBar);
 
   await userEvent.click(saveViewButton);
+  // Le dialogue (Radix Portal, hors `container`) porte `Input` (../ui/input.tsx)
+  // et deux `Button` — les trois désormais tokenisés (SP-B12c) : vérifiable en
+  // un coup sur baseElement plutôt qu'un className ciblé par élément.
+  await screen.findByLabelText("Nom de la vue");
+  expectTokenizedClasses(baseElement);
   await userEvent.type(screen.getByLabelText("Nom de la vue"), "Ma vue");
   await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
   const saveFailedAlert = await screen.findByRole("alert");

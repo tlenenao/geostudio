@@ -12,6 +12,7 @@ import { ToastProvider } from "../ui/kit/ToastProvider";
 import { mapInstances } from "../test/MockMaplibreMap";
 import { overlayInstances } from "../test/MockDeckgl";
 import { t } from "../i18n";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 vi.mock("maplibre-gl", async () => {
   const { MockMap } = await import("../test/MockMaplibreMap");
@@ -166,6 +167,16 @@ function renderEditorWithNavigation(client: Partial<ItemClient>) {
     </ToastPrimitive.Provider>,
   );
 }
+
+test("SP-B12c : le repli de chargement de la carte n'a pas de couleur Tailwind codée en dur", async () => {
+  renderEditor({
+    getMapConfig: vi.fn().mockResolvedValue(config),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  const fallback = await screen.findByText("Carte…");
+  expectTokenizedClasses(fallback.parentElement ?? fallback);
+  await waitFor(() => expect(mapInstances[0]).toBeDefined());
+});
 
 test("loads the config and saves edits", async () => {
   const saveMapConfig = vi.fn().mockResolvedValue(undefined);

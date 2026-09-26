@@ -144,7 +144,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
   if (isExportRender) {
     return (
       <div className="relative h-full w-full">
-        <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
+        <Suspense fallback={<div className="text-xs text-ink-3">Carte…</div>}>
           <MapView
             config={draft}
             onReady={() => {
@@ -198,7 +198,7 @@ export function MapEditorPage({ pk }: { pk: string }) {
           label: t("mapEditor.mapLabel"),
           content: (
             <div className="relative h-full w-full">
-              <Suspense fallback={<div className="text-xs text-slate-400">Carte…</div>}>
+              <Suspense fallback={<div className="text-xs text-ink-3">Carte…</div>}>
                 <MapView
                   ref={mapViewRef}
                   config={draft}
