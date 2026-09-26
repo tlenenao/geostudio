@@ -73,8 +73,13 @@ function walk(dir, root, out = []) {
 
 /**
  * Retourne les lignes de `file` qui portent une couleur Tailwind
- * littérale sans pragma `gs-raw-color-ok` (sur la ligne elle-même ou
- * la ligne précédente).
+ * littérale sans pragma `gs-raw-color-ok` (sur la ligne elle-même, ou
+ * sur la ligne précédente SI ET SEULEMENT SI celle-ci, une fois
+ * retirée des espaces en bordure, est un commentaire pur — commence par
+ * `//` et ne porte que ça. Sans cette contrainte, un pragma en fin de
+ * ligne sur une ligne qui contient AUSSI l'offense qu'il documente
+ * "fuit" à tort sur la ligne suivante, non liée — cf. commentaire de
+ * couverture de pragma en tête de fichier).
  */
 function findOffenders(file) {
   const content = readFileSync(file, "utf8");
@@ -84,7 +89,9 @@ function findOffenders(file) {
     if (!RAW_COLOR_RE.test(line)) return;
     const coveredBySameLine = PRAGMA_RE.test(line);
     const prevLine = index > 0 ? lines[index - 1] : "";
-    const coveredByPrecedingLine = PRAGMA_RE.test(prevLine);
+    const prevLineTrimmed = prevLine.trim();
+    const coveredByPrecedingLine =
+      prevLineTrimmed.startsWith("//") && PRAGMA_RE.test(prevLineTrimmed);
     if (coveredBySameLine || coveredByPrecedingLine) return;
     offenders.push(`${file}:${index + 1}: ${line.trim()}`);
   });
