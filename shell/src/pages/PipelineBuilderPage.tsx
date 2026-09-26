@@ -173,6 +173,12 @@ export function PipelineBuilderPage({
   // function boundary. Capturing it in a freshly-declared, non-nullable
   // const sidesteps that instead of asserting `draft!` at each read site.
   const currentDraft: PipelinePayload = draft;
+  // Suivi finding revue (f8169238) : réutilisé pour masquer aussi la
+  // progression N/M nœuds de PipelineRunPanel — `runPipeline` exécute
+  // toujours la dernière config SAUVEGARDÉE, jamais ce brouillon, donc
+  // `draft.nodes.length` n'est un total fiable pour le run affiché que
+  // lorsque le brouillon n'a pas divergé de `configQuery.data`.
+  const isDraftStale = configQuery.data !== undefined && configQuery.data !== draft;
   const validation = validatePipelineGraphLocally(draft.nodes, draft.edges, catalog);
   const valid = isPipelineValid(validation);
   const selectedNode = draft.nodes.find((n) => n.id === selectedNodeId) ?? null;
@@ -348,7 +354,7 @@ export function PipelineBuilderPage({
                       pipelineId={pk}
                       nodeId={selectedNode.id}
                       draft={draft}
-                      isDraftStale={configQuery.data !== undefined && configQuery.data !== draft}
+                      isDraftStale={isDraftStale}
                     />
                   )}
                 </>
@@ -361,7 +367,7 @@ export function PipelineBuilderPage({
                   <PipelineRunPanel
                     pipelineId={pk}
                     onLatestRunChange={setLatestRun}
-                    totalNodes={draft.nodes.length}
+                    totalNodes={isDraftStale ? undefined : draft.nodes.length}
                   />
                 </>
               )}

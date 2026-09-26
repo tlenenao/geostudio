@@ -774,3 +774,99 @@ test("persisted mode: saving includes notes added on the canvas", async () => {
     ),
   );
 });
+
+// Revue finale, follow-up (f8169238) : `totalNodes={draft.nodes.length}` était
+// passé sans condition à PipelineRunPanel, y compris quand `draft` a divergé
+// de la config sauvegardée (isDraftStale, déjà calculé pour
+// PipelinePreviewPanel ci-dessus mais jamais réutilisé ici). `runPipeline`
+// exécute toujours la DERNIÈRE config sauvegardée, jamais le brouillon — donc
+// un brouillon avec des nœuds ajoutés/supprimés sans sauvegarde affichait une
+// progression N/M fausse par rapport au run réellement en cours.
+test("persisted mode: masque la progression N/M nœuds quand le brouillon a des nœuds non sauvegardés", async () => {
+  const payload: PipelinePayload = {
+    nodes: [
+      {
+        id: "r1",
+        kind: "reader",
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: { collectionId: "villes" },
+        title: "Villes",
+      },
+      {
+        id: "w1",
+        kind: "writer",
+        op: "writer.collection",
+        x: 300,
+        y: 0,
+        params: { collectionId: "villes_propres" },
+        title: "Écriture",
+      },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+  };
+  renderPage("p-1", {
+    getPipelineConfig: () => Promise.resolve(payload),
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-1",
+        status: "running",
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: null,
+        error: null,
+        nodeStats: { r1: { nodeId: "r1", op: "reader.collection", rowCount: 10 } },
+      },
+    ]),
+  });
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  // Ajoute un nœud au brouillon sans sauvegarder : draft.nodes.length (3)
+  // diverge maintenant de configQuery.data.nodes.length (2), isDraftStale
+  // devient vrai.
+  await userEvent.click(screen.getByRole("button", { name: "reader.collection" }));
+  await waitFor(() => expect(screen.getAllByText("reader.collection").length).toBeGreaterThan(1));
+  await waitFor(() => expect(screen.getByText("En cours")).toBeInTheDocument());
+  expect(screen.queryByText(/\/ \d+ nœuds/)).not.toBeInTheDocument();
+});
+
+test("persisted mode: affiche la progression N/M nœuds quand le brouillon n'a pas divergé de la config sauvegardée", async () => {
+  const payload: PipelinePayload = {
+    nodes: [
+      {
+        id: "r1",
+        kind: "reader",
+        op: "reader.collection",
+        x: 0,
+        y: 0,
+        params: { collectionId: "villes" },
+        title: "Villes",
+      },
+      {
+        id: "w1",
+        kind: "writer",
+        op: "writer.collection",
+        x: 300,
+        y: 0,
+        params: { collectionId: "villes_propres" },
+        title: "Écriture",
+      },
+    ],
+    edges: [{ id: "e1", from: "r1", to: "w1" }],
+  };
+  renderPage("p-1", {
+    getPipelineConfig: () => Promise.resolve(payload),
+    getPipelineRuns: vi.fn().mockResolvedValue([
+      {
+        id: "run-1",
+        status: "running",
+        startedAt: "2026-08-06T10:00:00Z",
+        finishedAt: null,
+        error: null,
+        nodeStats: { r1: { nodeId: "r1", op: "reader.collection", rowCount: 10 } },
+      },
+    ]),
+  });
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText("En cours")).toBeInTheDocument());
+  expect(screen.getByText("1 / 2 nœuds")).toBeInTheDocument();
+});
