@@ -6,6 +6,7 @@ import { NavigationPanel } from "./NavigationPanel";
 import { _resetRegistry } from "./registry";
 import { registerBuiltinWidgets } from "./widgets";
 import type { Page } from "../api/types";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -82,7 +83,7 @@ test("removes an existing onEnter message", async () => {
       },
     ],
   };
-  render(
+  const { container } = render(
     <NavigationPanel
       navigationMode="story"
       onNavigationModeChange={vi.fn()}
@@ -90,6 +91,9 @@ test("removes an existing onEnter message", async () => {
       onPageChange={onPageChange}
     />,
   );
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   await userEvent.click(screen.getByRole("button", { name: /Retirer l'action oe1/ }));
   const updated = onPageChange.mock.calls[0][0] as Page;
   expect(updated.onEnter).toHaveLength(0);
@@ -110,7 +114,7 @@ test("shows an inline error for an invalid when condition", async () => {
       },
     ],
   };
-  render(
+  const { container } = render(
     <NavigationPanel
       navigationMode="story"
       onNavigationModeChange={vi.fn()}
@@ -119,6 +123,9 @@ test("shows an inline error for an invalid when condition", async () => {
     />,
   );
   expect(screen.getByRole("alert")).toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 test("rejects adding onEnter when longitude is blank", async () => {

@@ -44,7 +44,7 @@ export function PageManager({
       {pages.map((p, i) => (
         <li
           key={p.id}
-          className={`flex items-center gap-1 rounded border p-1 text-xs ${p.id === activePageId ? "border-blue-500" : "border-slate-200"}`}
+          className={`flex items-center gap-1 rounded border p-1 text-xs ${p.id === activePageId ? "border-accent" : "border-rule"}`}
         >
           <button
             type="button"
@@ -56,7 +56,7 @@ export function PageManager({
           </button>
           <input
             aria-label={t("pageManager.renameAria", { id: p.id })}
-            className="w-16 rounded border border-slate-300 px-1"
+            className="w-16 rounded border border-rule px-1"
             value={p.name}
             onChange={(e) => rename(p.id, e.target.value)}
           />
@@ -82,7 +82,7 @@ export function PageManager({
             type="button"
             aria-label={t("pageManager.removeAria", { id: p.id })}
             disabled={pages.length <= 1}
-            className="text-red-600 disabled:opacity-30"
+            className="text-danger disabled:opacity-30"
             onClick={() => remove(p.id)}
           >
             ✕
@@ -92,7 +92,7 @@ export function PageManager({
       <li>
         <button
           type="button"
-          className="rounded border border-slate-300 px-2 py-1 hover:bg-slate-100"
+          className="rounded border border-rule px-2 py-1 hover:bg-sunken"
           onClick={addPage}
         >
           {t("pageManager.addButton")}

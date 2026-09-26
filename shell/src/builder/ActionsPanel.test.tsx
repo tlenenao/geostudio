@@ -6,6 +6,7 @@ import type { ActionMessage, Variable, WidgetItem } from "../api/types";
 import { _resetRegistry } from "./registry";
 import { registerBuiltinWidgets } from "./widgets";
 import { ActionsPanel } from "./ActionsPanel";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -35,7 +36,12 @@ test("removes a message", async () => {
   const messages: ActionMessage[] = [
     { id: "m1", from: "f1", event: "changed", to: "l1", action: "setFilter" },
   ];
-  render(<ActionsPanel items={items} messages={messages} onChange={onChange} />);
+  const { container } = render(
+    <ActionsPanel items={items} messages={messages} onChange={onChange} />,
+  );
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
   await userEvent.click(screen.getByRole("button", { name: "Retirer l'action m1" }));
   expect(onChange).toHaveBeenCalledWith([]);
 });
@@ -81,8 +87,13 @@ test("shows a validation error for an invalid message condition", () => {
   const messages: ActionMessage[] = [
     { id: "m1", from: "f1", event: "changed", to: "l1", action: "setFilter", when: "vars.x ==" },
   ];
-  render(<ActionsPanel items={items} messages={messages} onChange={vi.fn()} />);
+  const { container } = render(
+    <ActionsPanel items={items} messages={messages} onChange={vi.fn()} />,
+  );
   expect(screen.getByRole("alert")).toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 test("shows no validation error for a valid message condition", () => {

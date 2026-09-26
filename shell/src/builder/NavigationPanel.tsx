@@ -5,7 +5,7 @@ import { getWidget } from "./registry";
 import { validateExpression } from "./expr";
 import { t } from "../i18n";
 
-const selectCls = "h-8 rounded border border-slate-300 bg-white text-xs";
+const selectCls = "h-8 rounded border border-rule bg-surface text-xs";
 
 function widgetLabel(items: WidgetItem[], id: string): string {
   const it = items.find((i) => i.id === id);
@@ -102,7 +102,7 @@ export function NavigationPanel({
               return (
                 <li
                   key={m.id}
-                  className="flex flex-col gap-1 rounded border border-slate-200 p-1 text-xs"
+                  className="flex flex-col gap-1 rounded border border-rule p-1 text-xs"
                 >
                   <div className="flex items-center justify-between">
                     <span>
@@ -112,7 +112,7 @@ export function NavigationPanel({
                     <button
                       type="button"
                       aria-label={t("navigationPanel.removeActionAria", { id: m.id })}
-                      className="text-red-600"
+                      className="text-danger"
                       onClick={() => remove(m.id)}
                     >
                       ✕
@@ -121,12 +121,12 @@ export function NavigationPanel({
                   <input
                     aria-label={t("navigationPanel.conditionAria", { id: m.id })}
                     placeholder={t("actionsPanel.conditionPlaceholder")}
-                    className="h-7 rounded border border-slate-300 px-1 font-mono"
+                    className="h-7 rounded border border-rule px-1 font-mono"
                     value={when}
                     onChange={(e) => updateWhen(m.id, e.target.value)}
                   />
                   {error && (
-                    <span role="alert" className="text-red-600">
+                    <span role="alert" className="text-danger">
                       {error}
                     </span>
                   )}
@@ -173,14 +173,14 @@ export function NavigationPanel({
               <input
                 aria-label={t("widgetForm.longitude")}
                 placeholder={t("widgetForm.longitude")}
-                className="h-8 w-1/2 rounded border border-slate-300 px-1 text-xs"
+                className="h-8 w-1/2 rounded border border-rule px-1 text-xs"
                 value={lon}
                 onChange={(e) => setLon(e.target.value)}
               />
               <input
                 aria-label={t("widgetForm.latitude")}
                 placeholder={t("widgetForm.latitude")}
-                className="h-8 w-1/2 rounded border border-slate-300 px-1 text-xs"
+                className="h-8 w-1/2 rounded border border-rule px-1 text-xs"
                 value={lat}
                 onChange={(e) => setLat(e.target.value)}
               />
@@ -188,7 +188,7 @@ export function NavigationPanel({
           )}
           <button
             type="button"
-            className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-100"
+            className="rounded border border-rule px-2 py-1 text-sm hover:bg-sunken"
             onClick={add}
           >
             {t("navigationPanel.addToChapterButton")}

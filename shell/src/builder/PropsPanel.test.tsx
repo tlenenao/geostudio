@@ -9,6 +9,7 @@ import { registerBuiltinWidgets } from "./widgets";
 import { PropsPanel } from "./PropsPanel";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import type { ItemClient, WidgetItem } from "../api/types";
+import { expectTokenizedClasses } from "../ui/kit/testUtils";
 
 beforeEach(() => {
   _resetRegistry();
@@ -82,7 +83,7 @@ test("shows no validation error for a valid visibleWhen", () => {
 
 test("shows a validation error for an invalid visibleWhen", () => {
   const itemWithInvalidExpr = { ...item, visibleWhen: "vars.x ==" };
-  render(
+  const { container } = render(
     <PropsPanel
       item={itemWithInvalidExpr}
       dataSources={[]}
@@ -92,6 +93,9 @@ test("shows a validation error for an invalid visibleWhen", () => {
     { wrapper },
   );
   expect(screen.getByRole("alert")).toBeInTheDocument();
+  // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
+  // --gs-* à la place.
+  expectTokenizedClasses(container);
 });
 
 test("passes theme through to the widget's PropsPanel", () => {
