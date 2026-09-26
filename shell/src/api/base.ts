@@ -8,6 +8,22 @@ import type {
   MapLayer,
   PopupConfig,
 } from "./types";
+import { CoreUnreachableError } from "./CoreUnreachableError";
+
+// SP-B7 : borne toute requête cœur à 15s et convertit un fetch qui rejette
+// (réseau coupé, timeout, DNS, etc.) en CoreUnreachableError — distingué
+// d'une vraie erreur serveur (réponse HTTP non-ok, gérée par chaque appelant
+// individuellement) pour que ConnectivityBanner puisse réagir spécifiquement
+// à une injoignabilité, pas à n'importe quel échec de requête.
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+async function fetchWithTimeout(input: string, init: RequestInit = {}): Promise<Response> {
+  try {
+    return await fetch(input, { ...init, signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) });
+  } catch (err) {
+    throw new CoreUnreachableError(err);
+  }
+}
 
 // RawMapLayer/toFrontLayer vivent ici (et non dans domains/layers.ts) pour
 // éviter un cycle itemClient.ts <-> domains/layers.ts : itemClient.ts
@@ -159,7 +175,7 @@ export async function requestBlob(
   if (token) headers.Authorization = `Bearer ${token}`;
   else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  const res = await fetch(`${coreUrl}${path}`, {
+  const res = await fetchWithTimeout(`${coreUrl}${path}`, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -194,7 +210,7 @@ export function createBase(opts: {
     if (token) headers.Authorization = `Bearer ${token}`;
     if (shareToken) headers["X-Share-Link-Token"] = shareToken;
     if (body !== undefined) headers["Content-Type"] = "application/json";
-    const res = await fetch(`${coreUrl}${path}`, {
+    const res = await fetchWithTimeout(`${coreUrl}${path}`, {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -268,7 +284,7 @@ export function createBase(opts: {
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
     if (shareToken) headers["X-Share-Link-Token"] = shareToken;
-    const res = await fetch(url, { headers });
+    const res = await fetchWithTimeout(url, { headers });
     if (!res.ok) throw new Error(`Request failed: ${res.status} features`);
     const data = (await res.json()) as {
       features?: {
@@ -287,7 +303,7 @@ export function createBase(opts: {
   async function fetchCoreCollections(q?: string): Promise<LayerSource[]> {
     const token = getToken();
     const query = q ? `?q=${encodeURIComponent(q)}` : "";
-    const res = await fetch(`${coreUrl}/collections${query}`, {
+    const res = await fetchWithTimeout(`${coreUrl}/collections${query}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error(`Request failed: ${res.status} /collections`);
@@ -317,7 +333,7 @@ export function createBase(opts: {
   async function fetchExternalRasterSources(q?: string): Promise<LayerSource[]> {
     const token = getToken();
     const query = q ? `?q=${encodeURIComponent(q)}` : "";
-    const res = await fetch(`${coreUrl}/harvest/layers${query}`, {
+    const res = await fetchWithTimeout(`${coreUrl}/harvest/layers${query}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error(`Request failed: ${res.status} /harvest/layers`);
@@ -337,7 +353,7 @@ export function createBase(opts: {
     const query = new URLSearchParams({ type: "tileset3d", pageSize: "200" });
     if (q) query.set("q", q);
     const token = getToken();
-    const res = await fetch(`${coreUrl}/items?${query.toString()}`, {
+    const res = await fetchWithTimeout(`${coreUrl}/items?${query.toString()}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error(`Request failed: ${res.status} /items`);
@@ -355,7 +371,7 @@ export function createBase(opts: {
     const query = new URLSearchParams({ type: "terrain3d", pageSize: "200" });
     if (q) query.set("q", q);
     const token = getToken();
-    const res = await fetch(`${coreUrl}/items?${query.toString()}`, {
+    const res = await fetchWithTimeout(`${coreUrl}/items?${query.toString()}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error(`Request failed: ${res.status} /items`);

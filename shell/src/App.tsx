@@ -14,6 +14,7 @@ import { ItemClientProvider } from "./api/ItemClientProvider";
 import { AppRoutes } from "./shell/routes";
 import { AppErrorBoundary } from "./AppErrorBoundary";
 import { ToastProvider } from "./ui/kit";
+import { ConnectivityBanner } from "./shell/ConnectivityBanner";
 
 const runtimeEnv = (window as unknown as { __GEOSTUDIO_ENV__?: Record<string, string | undefined> })
   .__GEOSTUDIO_ENV__;
@@ -21,7 +22,16 @@ const config = loadConfig(
   import.meta.env as unknown as Record<string, string | undefined>,
   runtimeEnv,
 );
-const queryClient = new QueryClient();
+// SP-B7 (étape 6) : borne le retry par défaut de React Query à 1 (2 appels
+// fetch au total) au lieu de 3 (4 appels, backoff exponentiel) — sans ce
+// réglage, le timeout de 15s de fetchWithTimeout (base.ts) se multiplierait
+// par le retry par défaut avant qu'une query ne se stabilise en erreur,
+// retardant l'apparition de ConnectivityBanner de ~45s+ sur une vraie panne
+// cœur. Exporté (plutôt que privé au module) pour être testable
+// directement depuis App.test.tsx sans avoir à monter <App /> en entier
+// (ce qui nécessiterait des variables d'environnement de config absentes
+// de l'environnement de test).
+export const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } });
 
 function AppShell() {
   const { getAccessToken } = useAuth();
@@ -51,6 +61,7 @@ export default function App() {
             <AuthProvider config={config}>
               <QueryClientProvider client={queryClient}>
                 <ConfigProvider config={config}>
+                  <ConnectivityBanner />
                   <AppShell />
                 </ConfigProvider>
               </QueryClientProvider>

@@ -1773,4 +1773,7 @@ export const fr = {
   // ThumbnailUpload (ui) — REV-177 : extension du détecteur i18n à src/ui/
   "thumbnailUpload.notAnImageError": "Le fichier doit être une image.",
   "thumbnailUpload.tooLargeError": "L'image dépasse 2 Mo.",
+
+  // ConnectivityBanner (SP-B7) — bannière globale sur injoignabilité du cœur
+  "connectivity.unreachable": "Connexion au serveur perdue — nouvelle tentative en cours…",
 } as const;
