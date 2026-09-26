@@ -2,11 +2,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import * as ToastPrimitive from "@radix-ui/react-toast";
 import { useState } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { AppConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
+import { ToastProvider } from "../ui/kit/ToastProvider";
 import { getWidget, registerWidget } from "../builder/registry";
 import { AppBuilderPage } from "./AppBuilderPage";
 import type { AuthState } from "../auth/useAuth";
@@ -87,11 +89,16 @@ function renderPage(client: Partial<ItemClient>) {
     ...client,
   };
   return render(
-    <QueryClientProvider client={qc}>
-      <ItemClientProvider client={merged as ItemClient}>
-        <AppBuilderPage pk="5" />
-      </ItemClientProvider>
-    </QueryClientProvider>,
+    <ToastPrimitive.Provider>
+      <QueryClientProvider client={qc}>
+        <ItemClientProvider client={merged as ItemClient}>
+          <ToastProvider>
+            <AppBuilderPage pk="5" />
+          </ToastProvider>
+        </ItemClientProvider>
+      </QueryClientProvider>
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>,
   );
 }
 

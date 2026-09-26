@@ -132,6 +132,9 @@ export const fr = {
 
   // Toast
   "toast.close": "Fermer la notification",
+  "toast.mapSaved": "Carte enregistrée",
+  "toast.datasetSaved": "Données enregistrées",
+  "toast.appSaved": "Application enregistrée",
 
   // ConfirmDialog
   "confirmDialog.cancel": "Annuler",

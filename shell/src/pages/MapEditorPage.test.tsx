@@ -2,11 +2,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import * as ToastPrimitive from "@radix-ui/react-toast";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Item, ItemClient, MapConfig } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
+import { ToastProvider } from "../ui/kit/ToastProvider";
 import { mapInstances } from "../test/MockMaplibreMap";
 import { overlayInstances } from "../test/MockDeckgl";
 
@@ -101,13 +103,18 @@ function renderEditor(client: Partial<ItemClient>, initialEntries: string[] = ["
     ...client,
   };
   return render(
-    <QueryClientProvider client={qc}>
-      <ItemClientProvider client={merged as ItemClient}>
-        <MemoryRouter initialEntries={initialEntries}>
-          <MapEditorPage pk="77" />
-        </MemoryRouter>
-      </ItemClientProvider>
-    </QueryClientProvider>,
+    <ToastPrimitive.Provider>
+      <QueryClientProvider client={qc}>
+        <ItemClientProvider client={merged as ItemClient}>
+          <ToastProvider>
+            <MemoryRouter initialEntries={initialEntries}>
+              <MapEditorPage pk="77" />
+            </MemoryRouter>
+          </ToastProvider>
+        </ItemClientProvider>
+      </QueryClientProvider>
+      <ToastPrimitive.Viewport />
+    </ToastPrimitive.Provider>,
   );
 }
 

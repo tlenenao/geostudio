@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "../ItemClientProvider";
+import { useToast } from "../../ui/kit/ToastProvider";
+import { t } from "../../i18n";
 import type { CreateDatasetInput, DatasetConfig } from "../types";
 
 // GAP-22 : `getCollectionSchema` (client.getCollectionSchema, ce même
@@ -42,10 +44,12 @@ export function useDatasetConfig(pk: string, options?: { enabled?: boolean }) {
 export function useSaveDataset(pk: string) {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   return useMutation({
     mutationFn: (config: DatasetConfig) => client.saveDatasetConfig(pk, config),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["dataset", pk] });
+      showToast(t("toast.datasetSaved"));
     },
   });
 }

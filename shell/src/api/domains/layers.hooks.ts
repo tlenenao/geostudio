@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useItemClient as useItemClientInternal } from "../ItemClientProvider";
+import { useToast } from "../../ui/kit/ToastProvider";
+import { t } from "../../i18n";
 import type { MapConfig } from "../types";
 
 export function useLayerSources(options?: { enabled?: boolean; q?: string }) {
@@ -44,6 +46,7 @@ export function useMapConfig(pk: string, options?: { enabled?: boolean }) {
 export function useSaveMap(pk: string) {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   return useMutation({
     mutationFn: (config: MapConfig) => client.saveMapConfig(pk, config),
     onSuccess: () => {
@@ -56,6 +59,7 @@ export function useSaveMap(pk: string) {
       // alors rien de neuf à ajuster juste après "nouvelle carte → ajouter
       // une couche → enregistrer".
       void queryClient.invalidateQueries({ queryKey: ["item", pk] });
+      showToast(t("toast.mapSaved"));
     },
   });
 }
