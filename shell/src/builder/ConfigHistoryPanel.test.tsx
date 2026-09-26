@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, expect, test, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 import { ConfigHistoryPanel } from "./ConfigHistoryPanel";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import type { ItemClient } from "../api/types";
+import { t } from "../i18n";
 
 // Le panneau invalide le cache react-query de sa config après restauration :
 // il lui faut donc un QueryClientProvider, comme à ses cinq points de montage
@@ -24,10 +25,6 @@ function renderPanel(
   );
   return onRestored;
 }
-
-beforeEach(() => {
-  vi.spyOn(window, "confirm").mockReturnValue(true);
-});
 
 test("liste les versions, la plus récente en tête, et marque la courante", async () => {
   renderPanel({
@@ -58,7 +55,7 @@ test("un historique vide le dit explicitement", async () => {
   expect(await screen.findByText(/aucune version/i)).toBeInTheDocument();
 });
 
-test("restaurer demande confirmation, appelle le client puis prévient le parent", async () => {
+test("restaurer demande confirmation via ConfirmDialog, appelle le client puis prévient le parent", async () => {
   const rollbackConfig = vi.fn().mockResolvedValue(undefined);
   const listConfigRevisions = vi.fn().mockResolvedValue([
     { version: 1, createdAt: "2026-08-01T10:00:00" },
@@ -68,7 +65,13 @@ test("restaurer demande confirmation, appelle le client puis prévient le parent
 
   await userEvent.click(await screen.findByRole("button", { name: /restaurer/i }));
 
-  expect(window.confirm).toHaveBeenCalled();
+  const dialog = screen.getByRole("dialog");
+  expect(dialog).toHaveTextContent(t("configHistory.confirmMessage", { version: 1 }));
+  expect(rollbackConfig).not.toHaveBeenCalled();
+  await userEvent.click(
+    within(dialog).getByRole("button", { name: t("configHistory.restoreButton") }),
+  );
+
   expect(rollbackConfig).toHaveBeenCalledWith("app-1", 1);
   await waitFor(() => expect(onRestored).toHaveBeenCalled());
   // La liste est rechargée après restauration.
@@ -76,7 +79,6 @@ test("restaurer demande confirmation, appelle le client puis prévient le parent
 });
 
 test("annuler la confirmation ne restaure rien", async () => {
-  vi.spyOn(window, "confirm").mockReturnValue(false);
   const rollbackConfig = vi.fn();
   renderPanel({
     listConfigRevisions: vi.fn().mockResolvedValue([
@@ -87,8 +89,11 @@ test("annuler la confirmation ne restaure rien", async () => {
   });
 
   await userEvent.click(await screen.findByRole("button", { name: /restaurer/i }));
+  const dialog = screen.getByRole("dialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: t("confirmDialog.cancel") }));
 
   expect(rollbackConfig).not.toHaveBeenCalled();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 test("un échec de restauration est affiché", async () => {
@@ -101,6 +106,10 @@ test("un échec de restauration est affiché", async () => {
   });
 
   await userEvent.click(await screen.findByRole("button", { name: /restaurer/i }));
+  const dialog = screen.getByRole("dialog");
+  await userEvent.click(
+    within(dialog).getByRole("button", { name: t("configHistory.restoreButton") }),
+  );
 
   expect(await screen.findByRole("alert")).toHaveTextContent(/impossible de restaurer/i);
 });
@@ -137,6 +146,10 @@ test("restaurer invalide le cache de la config, quelle que soit la page qui mont
   );
 
   await userEvent.click(await screen.findByRole("button", { name: /restaurer/i }));
+  const dialog = screen.getByRole("dialog");
+  await userEvent.click(
+    within(dialog).getByRole("button", { name: t("configHistory.restoreButton") }),
+  );
 
   for (const key of keys) {
     await waitFor(() => expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true));

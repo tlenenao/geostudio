@@ -11,8 +11,13 @@
   },
   {
     "file": "src/map/MapSymbologyEditor.tsx",
-    "line": 564,
-    "reason": "Pré-existant : le bouton \"Ajouter des icônes\" ouvre la grille de sélection d'icône en ligne ((icon || iconDraft) && <div>...) sans aria-expanded/aria-controls. Dette REV-088."
+    "line": 566,
+    "reason": "Pré-existant : le bouton \"Ajouter des icônes\" ouvre la grille de sélection d'icône en ligne ((icon || iconDraft) && <div>...) sans aria-expanded/aria-controls. Dette REV-088 (ligne décalée de 564 à 566 par l'ajout de ConfirmDialog/pendingIconId, tâche 3 SP-B2)."
+  },
+  {
+    "file": "src/builder/widgets/form.tsx",
+    "line": 685,
+    "reason": "Faux positif de l'heuristique : setConfirmingDelete(true) ouvre <ConfirmDialog> (boîte de dialogue modale) avant la suppression d'un enregistrement — pas un panneau en ligne (tâche 3 SP-B2)."
   },
   {
     "file": "src/pages/AppRuntimePage.tsx",

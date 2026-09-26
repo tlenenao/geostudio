@@ -891,7 +891,10 @@ export const fr = {
   "widgetForm.maxLengthError": "{maxLength} caractères maximum",
   "widgetForm.invalidFormat": "Format invalide",
   "widgetForm.invalidValue": "Valeur invalide",
+  "widgetForm.confirmDeleteTitle": "Supprimer l'enregistrement",
   "widgetForm.confirmDelete": "Supprimer cet enregistrement ?",
+  "widgetForm.confirmDeleteAttachmentTitle": "Supprimer la pièce jointe",
+  "widgetForm.confirmDeleteAttachment": "Supprimer la pièce jointe « {filename} » ?",
   "widgetForm.longitude": "Longitude",
   "widgetForm.latitude": "Latitude",
   "widgetForm.editingRecord": "Modification de l'enregistrement #{id}",
@@ -1397,6 +1400,7 @@ export const fr = {
   "configHistory.versionLabel": "Version {version} — {date}",
   "configHistory.currentLabel": "(courante)",
   "configHistory.restoreButton": "Restaurer",
+  "configHistory.confirmTitle": "Restaurer cette version ?",
   "configHistory.confirmMessage":
     "Restaurer la version {version} ? Les modifications non enregistrées seront perdues.",
 
@@ -1718,8 +1722,10 @@ export const fr = {
   "mapSymbology.iconForValueText": "Icône pour « {value} »",
   "mapSymbology.customIconsHeading": "Bibliothèque du tenant",
   "mapSymbology.deleteIconAria": "Supprimer l'icône {title}",
+  "mapSymbology.deleteIconConfirmTitle": "Supprimer cette icône ?",
   "mapSymbology.deleteIconConfirm":
     "Cette icône est peut-être utilisée par des cartes existantes ; la supprimer la fera disparaître sans avertissement sur ces cartes. Supprimer « {title} » ?",
+  "mapSymbology.deleteIconConfirmLabel": "Supprimer",
   "mapSymbology.uploadIconLabel": "Ajouter une icône au tenant (PNG ou SVG)",
   "mapSymbology.removeIconsButton": "Retirer les icônes",
   "mapSymbology.addLabelButton": "Ajouter une étiquette",

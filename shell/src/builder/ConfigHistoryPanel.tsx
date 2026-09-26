@@ -15,6 +15,7 @@ import { useItemClient } from "../api/ItemClientProvider";
 import type { ConfigRevisionInfo } from "../api/types";
 import { t } from "../i18n";
 import { Button } from "../ui/kit/Button";
+import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -36,6 +37,7 @@ export function ConfigHistoryPanel({
   const [loadError, setLoadError] = useState(false);
   const [restoreError, setRestoreError] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pendingVersion, setPendingVersion] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -63,7 +65,6 @@ export function ConfigHistoryPanel({
     // modifié : aucun des cinq éditeurs ne porte de drapeau « sale », et une
     // confirmation n'est jamais fausse devant une écriture serveur
     // (spec SP-23 §3.4).
-    if (!window.confirm(t("configHistory.confirmMessage", { version }))) return;
     setBusy(true);
     setRestoreError(false);
     try {
@@ -126,7 +127,7 @@ export function ConfigHistoryPanel({
                 size="sm"
                 variant="outline"
                 disabled={busy}
-                onClick={() => void restore(r.version)}
+                onClick={() => setPendingVersion(r.version)}
               >
                 {t("configHistory.restoreButton")}
               </Button>
@@ -134,6 +135,19 @@ export function ConfigHistoryPanel({
           </li>
         ))}
       </ul>
+      <ConfirmDialog
+        open={pendingVersion !== null}
+        title={t("configHistory.confirmTitle")}
+        message={t("configHistory.confirmMessage", { version: pendingVersion ?? 0 })}
+        confirmLabel={t("configHistory.restoreButton")}
+        pending={busy}
+        onConfirm={() => {
+          const version = pendingVersion;
+          setPendingVersion(null);
+          if (version !== null) void restore(version);
+        }}
+        onCancel={() => setPendingVersion(null)}
+      />
     </div>
   );
 }

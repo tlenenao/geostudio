@@ -683,7 +683,6 @@ test("affiche le panneau d'historique", async () => {
 // undo — la pile ne peut pas défaire une écriture serveur (Task 15,
 // useUndoableDraft.resetDraft).
 test("restaurer une version recharge le brouillon et vide l'undo", async () => {
-  vi.spyOn(window, "confirm").mockReturnValue(true);
   const restoredConfig: AppConfig = {
     kind: "app",
     theme: {},
@@ -706,6 +705,8 @@ test("restaurer une version recharge le brouillon et vide l'undo", async () => {
   await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeEnabled());
 
   await userEvent.click(await screen.findByRole("button", { name: /restaurer/i }));
+  const dialog = screen.getByRole("dialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: /restaurer/i }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled());
 });
 

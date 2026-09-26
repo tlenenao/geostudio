@@ -10,6 +10,7 @@ import { FeatureValidationError } from "../../api/itemClient";
 import type { CollectionSchema, DataRecord, DataSource } from "../../api/types";
 import type { WidgetContext } from "../registry";
 import { t } from "../../i18n";
+import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
 
 export type FormField = {
   name: string;
@@ -258,6 +259,7 @@ function AttachmentFieldInput({
     enabled: fid !== null,
   });
   const [uploading, setUploading] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   async function handleFiles(files: FileList | null) {
     if (!files || fid === null) return;
@@ -327,13 +329,27 @@ function AttachmentFieldInput({
               type="button"
               aria-label={t("widgetForm.deleteAttachmentAria", { filename: a.filename })}
               className="text-danger underline"
-              onClick={() => void handleDelete(a.id)}
+              onClick={() => setPendingDeleteId(a.id)}
             >
               {t("widgetForm.delete")}
             </button>
           </li>
         ))}
       </ul>
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        title={t("widgetForm.confirmDeleteAttachmentTitle")}
+        message={t("widgetForm.confirmDeleteAttachment", {
+          filename: (query.data ?? []).find((a) => a.id === pendingDeleteId)?.filename ?? "",
+        })}
+        confirmLabel={t("widgetForm.delete")}
+        onCancel={() => setPendingDeleteId(null)}
+        onConfirm={() => {
+          const id = pendingDeleteId;
+          setPendingDeleteId(null);
+          if (id !== null) void handleDelete(id);
+        }}
+      />
       <input
         type="file"
         multiple
@@ -467,6 +483,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [genericError, setGenericError] = useState(false);
   const [editingId, setEditingId] = useState<string | number | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const collectionId = ctx.data?.layer ?? "";
   const permissionQuery = useQuery({
@@ -509,7 +526,6 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
 
   async function handleDelete() {
     if (editingId === null) return;
-    if (!window.confirm(t("widgetForm.confirmDelete"))) return;
     try {
       await remove.mutateAsync();
       void queryClient.invalidateQueries({ queryKey: ["datasource"] });
@@ -670,13 +686,25 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
               type="button"
               className="ml-2 text-xs text-red-600 underline"
               disabled={remove.isPending}
-              onClick={() => void handleDelete()}
+              onClick={() => setConfirmingDelete(true)}
             >
               {t("widgetForm.delete")}
             </button>
           )}
         </p>
       )}
+      <ConfirmDialog
+        open={confirmingDelete}
+        title={t("widgetForm.confirmDeleteTitle")}
+        message={t("widgetForm.confirmDelete")}
+        confirmLabel={t("widgetForm.delete")}
+        pending={remove.isPending}
+        onCancel={() => setConfirmingDelete(false)}
+        onConfirm={() => {
+          setConfirmingDelete(false);
+          void handleDelete();
+        }}
+      />
       <div className="mt-auto flex items-center gap-2">
         {canWrite && (
           <button

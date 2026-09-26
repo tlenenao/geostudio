@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -11,6 +11,7 @@ import type { CollectionSchema, DataSource, ItemClient } from "../../api/types";
 import type { WidgetContext } from "../registry";
 import { ActionBus } from "../ActionBus";
 import { FeatureValidationError } from "../../api/itemClient";
+import { t } from "../../i18n";
 import type { FormField } from "./form";
 
 beforeEach(() => {
@@ -732,8 +733,7 @@ test("updating a record resubmits a hidden field's original value unchanged", as
   );
 });
 
-test("Supprimer calls deleteFeature after confirmation, invalidates, and exits edit mode", async () => {
-  vi.spyOn(window, "confirm").mockReturnValue(true);
+test("Supprimer demande confirmation via ConfirmDialog, appelle deleteFeature, invalide, et sort du mode édition", async () => {
   const bus = new ActionBus();
   bus.configure([
     { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
@@ -746,6 +746,9 @@ test("Supprimer calls deleteFeature after confirmation, invalidates, and exits e
   });
   await screen.findByText(/Modification de l'enregistrement #7/);
   await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
+  const dialog = screen.getByRole("dialog");
+  expect(client.deleteFeature).not.toHaveBeenCalled();
+  await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
   await waitFor(() => expect(client.deleteFeature).toHaveBeenCalledWith("incidents", "7"));
   expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["datasource"] });
   expect(screen.queryByText(/Modification de l'enregistrement/)).not.toBeInTheDocument();
@@ -823,7 +826,6 @@ test("updating a non-Point record resubmits its original geometry unchanged", as
 });
 
 test("Supprimer does nothing when the confirmation is declined", async () => {
-  vi.spyOn(window, "confirm").mockReturnValue(false);
   const bus = new ActionBus();
   bus.configure([
     { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
@@ -836,8 +838,11 @@ test("Supprimer does nothing when the confirmation is declined", async () => {
   });
   await screen.findByText(/Modification de l'enregistrement #7/);
   await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
+  const dialog = screen.getByRole("dialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: t("confirmDialog.cancel") }));
   expect(client.deleteFeature).not.toHaveBeenCalled();
   expect(screen.getByText(/Modification de l'enregistrement #7/)).toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 test("hides the write buttons once the collection permission resolves to canWrite=false", async () => {
@@ -927,7 +932,10 @@ test("désactive le champ attachment tant que l'entité n'est pas enregistrée",
   expect(screen.queryByLabelText(/ajouter des fichiers/i)).not.toBeInTheDocument();
 });
 
-test("supprime une pièce jointe au clic sur Supprimer", async () => {
+test("demande confirmation via ConfirmDialog avant de supprimer une pièce jointe", async () => {
+  // Gap réel (pas une migration de window.confirm) : avant ce correctif,
+  // handleDelete appelait client.deleteAttachment directement, sans aucune
+  // confirmation.
   const bus = new ActionBus();
   bus.configure([
     { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
@@ -955,7 +963,46 @@ test("supprime une pièce jointe au clic sur Supprimer", async () => {
   bus.emit("table1", "itemSelected", { id: 7, properties: {} });
   await screen.findByText("a.jpg");
   await userEvent.click(screen.getByRole("button", { name: /supprimer a\.jpg/i }));
+  expect(deleteAttachment).not.toHaveBeenCalled();
+  const dialog = screen.getByRole("dialog");
+  expect(dialog).toHaveTextContent(t("widgetForm.confirmDeleteAttachment", { filename: "a.jpg" }));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Supprimer" }));
   expect(deleteAttachment).toHaveBeenCalledWith("incidents", "7", "att1");
+});
+
+test("décliner la confirmation ne supprime pas la pièce jointe", async () => {
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
+  const listAttachments = vi.fn().mockResolvedValue([
+    {
+      id: "att1",
+      fieldKey: "photos",
+      filename: "a.jpg",
+      contentType: "image/jpeg",
+      byteSize: 10,
+      createdAt: "2026-01-01",
+    },
+  ]);
+  const deleteAttachment = vi.fn().mockResolvedValue(undefined);
+  const downloadAttachment = vi
+    .fn()
+    .mockResolvedValue({ blob: new Blob(["x"]), filename: "a.jpg" });
+  renderConnectedForm({
+    fields: attachmentFields,
+    client: { listAttachments, deleteAttachment, downloadAttachment },
+    bus,
+    widgetId: "form1",
+  });
+  bus.emit("table1", "itemSelected", { id: 7, properties: {} });
+  await screen.findByText("a.jpg");
+  await userEvent.click(screen.getByRole("button", { name: /supprimer a\.jpg/i }));
+  const dialog = screen.getByRole("dialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: t("confirmDialog.cancel") }));
+  expect(deleteAttachment).not.toHaveBeenCalled();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByText("a.jpg")).toBeInTheDocument();
 });
 
 test("un champ attachment marqué requis ne bloque jamais la soumission (revue finale, I4)", async () => {

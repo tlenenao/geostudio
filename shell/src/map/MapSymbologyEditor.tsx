@@ -12,6 +12,7 @@ import {
 } from "../builder/widgets/mapSymbology";
 import { LUCIDE_ICONS, type IconCategory } from "../builder/widgets/iconLibrary";
 import { Button } from "../ui/kit/Button";
+import { ConfirmDialog } from "../ui/kit/ConfirmDialog";
 import { FieldClassificationPicker, type ClassifiedEncoding } from "./FieldClassificationPicker";
 import { labelCls, inputCls } from "./formFieldStyles";
 import type { ThemeColors } from "../api/types";
@@ -229,6 +230,7 @@ export function MapSymbologyEditor({
   const [iconBusy, setIconBusy] = useState(false);
   const [iconError, setIconError] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState<string | null>(null);
+  const [pendingIconId, setPendingIconId] = useState<string | null>(null);
   const [customIcons, setCustomIcons] = useState<{ id: string; title: string; category: string }[]>(
     [],
   );
@@ -681,37 +683,18 @@ export function MapSymbologyEditor({
                             type="button"
                             aria-label={t("mapSymbology.deleteIconAria", { title: ci.title })}
                             className="text-[10px] text-danger underline"
-                            onClick={() => {
-                              // Fix I3 (Part B) de la revue finale SP-27 : le cœur ne fait
-                              // AUCUN comptage de références — supprimer une icône laisse
-                              // toute entrée `symbology.icon.mapping` qui la référençait
-                              // encore (`{source: "custom", id}`) pointer dans le vide.
-                              // `loadIconImages`/`fetchMapIconBlob` avalent alors le 404
-                              // dans un `console.warn` (MapView.tsx) : la catégorie
-                              // affectée perd silencieusement son icône sur TOUTE carte qui
-                              // l'utilisait, sans rien qui l'explique dans cet éditeur. Un
-                              // comptage de références ou une tombe côté cœur est hors
-                              // périmètre de ce correctif (suivi non bloquant) — seule cette
-                              // confirmation, qui nomme la conséquence, est demandée ici.
-                              if (
-                                !window.confirm(
-                                  t("mapSymbology.deleteIconConfirm", { title: ci.title }),
-                                )
-                              )
-                                return;
-                              // Fix I3 (Part A) : même convention d'erreur que le champ
-                              // d'import juste en dessous — sans elle, un échec (404,
-                              // réseau, session révoquée) devenait une rejection non gérée
-                              // et l'icône restait affichée comme si de rien n'était.
-                              setIconError(null);
-                              void deleteCustomIcon(ci.id)
-                                .then(() =>
-                                  setCustomIcons((prev) => prev.filter((c) => c.id !== ci.id)),
-                                )
-                                .catch((err) =>
-                                  setIconError(err instanceof Error ? err.message : String(err)),
-                                );
-                            }}
+                            // Fix I3 (Part B) de la revue finale SP-27 : le cœur ne fait
+                            // AUCUN comptage de références — supprimer une icône laisse
+                            // toute entrée `symbology.icon.mapping` qui la référençait
+                            // encore (`{source: "custom", id}`) pointer dans le vide.
+                            // `loadIconImages`/`fetchMapIconBlob` avalent alors le 404
+                            // dans un `console.warn` (MapView.tsx) : la catégorie
+                            // affectée perd silencieusement son icône sur TOUTE carte qui
+                            // l'utilisait, sans rien qui l'explique dans cet éditeur. Un
+                            // comptage de références ou une tombe côté cœur est hors
+                            // périmètre de ce correctif (suivi non bloquant) — seule cette
+                            // confirmation, qui nomme la conséquence, est demandée ici.
+                            onClick={() => setPendingIconId(ci.id)}
                           >
                             ×
                           </button>
@@ -838,6 +821,30 @@ export function MapSymbologyEditor({
             {t("mapSymbology.removeLabelButton")}
           </button>
         </div>
+      )}
+      {deleteCustomIcon && (
+        <ConfirmDialog
+          open={pendingIconId !== null}
+          title={t("mapSymbology.deleteIconConfirmTitle")}
+          message={t("mapSymbology.deleteIconConfirm", {
+            title: customIcons.find((c) => c.id === pendingIconId)?.title ?? "",
+          })}
+          confirmLabel={t("mapSymbology.deleteIconConfirmLabel")}
+          onCancel={() => setPendingIconId(null)}
+          onConfirm={() => {
+            const iconId = pendingIconId;
+            setPendingIconId(null);
+            if (iconId === null) return;
+            // Fix I3 (Part A) : même convention d'erreur que le champ
+            // d'import juste en dessous — sans elle, un échec (404,
+            // réseau, session révoquée) devenait une rejection non gérée
+            // et l'icône restait affichée comme si de rien n'était.
+            setIconError(null);
+            void deleteCustomIcon(iconId)
+              .then(() => setCustomIcons((prev) => prev.filter((c) => c.id !== iconId)))
+              .catch((err) => setIconError(err instanceof Error ? err.message : String(err)));
+          }}
+        />
       )}
     </div>
   );
