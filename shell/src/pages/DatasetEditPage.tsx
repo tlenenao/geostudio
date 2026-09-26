@@ -22,6 +22,7 @@ import { CrossFilterLinkEditor } from "../builder/CrossFilterLinkEditor";
 import { AlertRuleEditor } from "../builder/AlertRuleEditor";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
+import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
 
 export function DatasetEditPage({ pk }: { pk: string }) {
@@ -35,6 +36,16 @@ export function DatasetEditPage({ pk }: { pk: string }) {
   const [draft, setDraft] = useState<DatasetConfig | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
+  // SP-B6d : même patron que MapEditorPage (Tâche 27) — `updateDraft`
+  // centralise toute mutation du brouillon issue d'une action utilisateur ;
+  // l'effet de synchronisation initiale ci-dessous passe volontairement par
+  // le `setDraft` brut pour ne pas marquer le brouillon sale au chargement.
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const updateDraft: typeof setDraft = (next) => {
+    setHasUnsavedChanges(true);
+    setDraft(next);
+  };
+  const { ConfirmLeaveDialog } = useDirtyGuard(hasUnsavedChanges);
 
   useEffect(() => {
     if (configQuery.data) setDraft((d) => d ?? configQuery.data);
@@ -68,7 +79,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
   const readOnly = !hasPermission(item, "write");
 
   function setColumn(name: string, patch: DatasetColumnMeta) {
-    setDraft((d) =>
+    updateDraft((d) =>
       d ? { ...d, columns: { ...d.columns, [name]: { ...d.columns[name], ...patch } } } : d,
     );
   }
@@ -78,7 +89,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
     .map((d) => ({ pk: d.pk, title: d.title }));
 
   function addCrossFilterLink() {
-    setDraft((d) =>
+    updateDraft((d) =>
       d
         ? {
             ...d,
@@ -91,7 +102,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
     );
   }
   function updateCrossFilterLink(index: number, next: CrossFilterLink) {
-    setDraft((d) => {
+    updateDraft((d) => {
       if (!d) return d;
       const links = [...(d.crossFilterLinks ?? [])];
       links[index] = next;
@@ -99,7 +110,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
     });
   }
   function removeCrossFilterLink(index: number) {
-    setDraft((d) => {
+    updateDraft((d) => {
       if (!d) return d;
       const links = (d.crossFilterLinks ?? []).filter((_, i) => i !== index);
       return { ...d, crossFilterLinks: links };
@@ -240,7 +251,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                     className="h-8 w-full rounded border border-rule bg-surface px-2 text-xs text-ink"
                     value={draft.timeField ?? ""}
                     onChange={(e) =>
-                      setDraft((d) => (d ? { ...d, timeField: e.target.value || null } : d))
+                      updateDraft((d) => (d ? { ...d, timeField: e.target.value || null } : d))
                     }
                   >
                     <option value="">{t("datasetEdit.noneOption")}</option>
@@ -257,7 +268,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                     aria-label={t("datasetEdit.reactsToExtentLabel")}
                     checked={Boolean(draft.reactsToExtent)}
                     onChange={(e) =>
-                      setDraft((d) => (d ? { ...d, reactsToExtent: e.target.checked } : d))
+                      updateDraft((d) => (d ? { ...d, reactsToExtent: e.target.checked } : d))
                     }
                   />
                   {t("datasetEdit.reactsToExtentLabel")}
@@ -321,7 +332,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
               <ConfigHistoryPanel
                 pk={pk}
                 currentVersion={null}
-                onRestored={async () => setDraft(await client.getDatasetConfig(pk))}
+                onRestored={async () => updateDraft(await client.getDatasetConfig(pk))}
               />
               {draft.sourcePipelineId && (
                 <Button
@@ -338,7 +349,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                 size="sm"
                 className="w-fit"
                 disabled={save.isPending || readOnly}
-                onClick={() => save.mutate(draft)}
+                onClick={() => save.mutate(draft, { onSuccess: () => setHasUnsavedChanges(false) })}
               >
                 {t("datasetEdit.saveColumns")}
               </Button>
@@ -352,6 +363,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
           ),
         }}
       />
+      <ConfirmLeaveDialog />
     </div>
   );
 }
