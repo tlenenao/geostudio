@@ -41,6 +41,7 @@ import { pruneMessagesForIds } from "../builder/actionMessages";
 import { Button } from "../ui/kit/Button";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useAuth } from "../auth/useAuth";
+import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
 
 registerBuiltinWidgets();
@@ -89,6 +90,33 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const [mode, setMode] = useState<RenderMode>("edit");
   const [breakpoint, setBreakpoint] = useState<Breakpoint>("lg");
   const [activePageId, setActivePageId] = useUrlSyncedState<string>("page", null);
+  // SP-B6d : `setDraft` (useUndoableDraft) est LE seul entonnoir de toute
+  // mutation du brouillon (cf. commentaire d'en-tête de useUndoableDraft.ts,
+  // vérifié contre le code réel) — y compris quand il est passé directement
+  // en prop à un enfant (`onChange={setDraft}` sur AppRenderer,
+  // `setDraft={setDraft}` sur CopilotPanel) sans passer par une des
+  // fonctions locales ci-dessous. Centraliser via un wrapper de chaque site
+  // d'appel manquerait ces deux-là ; observer les changements de référence
+  // de `draft` lui-même couvre les deux sans exception. La première
+  // transition (null -> valeur, le seedDraft du chargement initial) est
+  // ignorée via `hasSeededRef` — ce n'est pas une édition utilisateur. Une
+  // restauration d'historique (resetDraft) marque bien sale : elle ne fait
+  // que remplacer le brouillon local, il faut toujours cliquer Enregistrer
+  // pour la persister réellement (même doctrine que MapEditorPage, Tâche
+  // 27). Un refetch de query après sauvegarde ne re-déclenche pas seedDraft
+  // (son propre garde interne : draftRef.current n'est plus null), donc pas
+  // de redirtification immédiate après un succès de sauvegarde.
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const hasSeededRef = useRef(false);
+  useEffect(() => {
+    if (draft === null) return;
+    if (!hasSeededRef.current) {
+      hasSeededRef.current = true;
+      return;
+    }
+    setHasUnsavedChanges(true);
+  }, [draft]);
+  const { ConfirmLeaveDialog } = useDirtyGuard(hasUnsavedChanges);
 
   const extensionsQuery = useActiveExtensions();
   const [extensionsRegistered, setExtensionsRegistered] = useState(false);
@@ -540,7 +568,9 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                     size="sm"
                     className="w-fit"
                     disabled={save.isPending || expressionErrors.length > 0 || readOnly}
-                    onClick={() => save.mutate(draft)}
+                    onClick={() =>
+                      save.mutate(draft, { onSuccess: () => setHasUnsavedChanges(false) })
+                    }
                   >
                     {t("appBuilder.save")}
                   </Button>
@@ -565,6 +595,7 @@ export function AppBuilderPage({ pk }: { pk: string }) {
           }}
         />
       </div>
+      <ConfirmLeaveDialog />
     </DataSourcesEditProvider>
   );
 }

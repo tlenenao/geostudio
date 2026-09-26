@@ -4,7 +4,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as ToastPrimitive from "@radix-ui/react-toast";
 import { useState } from "react";
-import { MemoryRouter, useSearchParams } from "react-router-dom";
+import { createMemoryRouter, Link, RouterProvider, useSearchParams } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { AppConfig, Item, ItemClient } from "../api/types";
 import { ItemClientProvider } from "../api/ItemClientProvider";
@@ -13,6 +13,7 @@ import { ToastProvider } from "../ui/kit/ToastProvider";
 import { getWidget, registerWidget } from "../builder/registry";
 import { AppBuilderPage } from "./AppBuilderPage";
 import type { AuthState } from "../auth/useAuth";
+import { t } from "../i18n";
 
 const authState: AuthState = {
   isLoading: false,
@@ -97,27 +98,75 @@ function SearchParamsProbe() {
 // useUrlSyncedState via useSearchParams. Par défaut "/", sans paramètre —
 // tous les tests existants (écrits avant SP-B9b) ne portent aucune
 // affirmation sur l'URL et restent inchangés.
+//
+// SP-B6d : `useDirtyGuard` (Tâche 26) s'appuie sur `useBlocker`, qui exige un
+// data router (`createMemoryRouter`/`RouterProvider`) — un `<MemoryRouter>`
+// déclaratif fait lever `useBlocker` à l'exécution (cf. Tâche 27). Seule la
+// query string varie entre les appels existants (jamais le pathname) : une
+// unique route "/" suffit à tous les couvrir.
 function renderPage(client: Partial<ItemClient>, route = "/") {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const merged: Partial<ItemClient> = {
     getItem: vi.fn().mockResolvedValue(OWNED_APP_ITEM),
     ...client,
   };
-  return render(
-    <MemoryRouter initialEntries={[route]}>
-      <ToastPrimitive.Provider>
-        <QueryClientProvider client={qc}>
-          <ItemClientProvider client={merged as ItemClient}>
-            <ToastProvider>
-              <AppBuilderPage pk="5" />
-            </ToastProvider>
-          </ItemClientProvider>
-        </QueryClientProvider>
-        <ToastPrimitive.Viewport />
-        <SearchParamsProbe />
-      </ToastPrimitive.Provider>
-    </MemoryRouter>,
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: (
+          <ToastPrimitive.Provider>
+            <QueryClientProvider client={qc}>
+              <ItemClientProvider client={merged as ItemClient}>
+                <ToastProvider>
+                  <AppBuilderPage pk="5" />
+                </ToastProvider>
+              </ItemClientProvider>
+            </QueryClientProvider>
+            <ToastPrimitive.Viewport />
+            <SearchParamsProbe />
+          </ToastPrimitive.Provider>
+        ),
+      },
+    ],
+    { initialEntries: [route] },
   );
+  return render(<RouterProvider router={router} />);
+}
+
+// Harnais dédié aux tests de garde de navigation (SP-B6d, même patron que
+// Task 27/MapEditorPage) : un lien factice vers une autre page suffit, le
+// chrome réel (AppLayout/TopBar) est hors périmètre de ce fichier.
+function renderPageWithNavigation(client: Partial<ItemClient>, route = "/") {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const merged: Partial<ItemClient> = {
+    getItem: vi.fn().mockResolvedValue(OWNED_APP_ITEM),
+    ...client,
+  };
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: (
+          <ToastPrimitive.Provider>
+            <QueryClientProvider client={qc}>
+              <ItemClientProvider client={merged as ItemClient}>
+                <ToastProvider>
+                  <Link to="/autre">Autre page</Link>
+                  <AppBuilderPage pk="5" />
+                </ToastProvider>
+              </ItemClientProvider>
+            </QueryClientProvider>
+            <ToastPrimitive.Viewport />
+            <SearchParamsProbe />
+          </ToastPrimitive.Provider>
+        ),
+      },
+      { path: "/autre", element: <p>Autre page ouverte</p> },
+    ],
+    { initialEntries: [route] },
+  );
+  return render(<RouterProvider router={router} />);
 }
 
 test("adds a widget from the palette and saves the config", async () => {
@@ -923,4 +972,41 @@ test("un id de sélection inconnu dans l'URL n'affiche aucune sélection et rest
 
   await userEvent.click(screen.getByRole("button", { name: "Sélectionner widget-w1" }));
   expect(screen.getByRole("button", { name: "Supprimer widget-w1" })).toBeInTheDocument();
+});
+
+test("bloque la navigation après une modification non enregistrée du builder (SP-B6d)", async () => {
+  renderPageWithNavigation({ getAppConfig: vi.fn().mockResolvedValue(config) });
+  await userEvent.click(await screen.findByRole("button", { name: "Texte" }));
+  await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
+
+  expect(await screen.findByRole("dialog")).toHaveTextContent(
+    t("navigation.unsavedChangesMessage"),
+  );
+});
+
+test("ne bloque pas la navigation juste après une sauvegarde réussie (SP-B6d)", async () => {
+  const saveAppConfig = vi.fn().mockResolvedValue(undefined);
+  renderPageWithNavigation({ getAppConfig: vi.fn().mockResolvedValue(config), saveAppConfig });
+  await userEvent.click(await screen.findByRole("button", { name: "Texte" }));
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(saveAppConfig).toHaveBeenCalled());
+
+  await userEvent.click(screen.getByRole("link", { name: "Autre page" }));
+  expect(await screen.findByText("Autre page ouverte")).toBeInTheDocument();
+});
+
+// SP-B6d, risque signalé au brief : `useUrlSyncedState` (activePageId/
+// selectedId, Tâche 16/17) navigue via `setSearchParams` — même pathname,
+// query différente. Le prédicat de useDirtyGuard/useBlocker ne bloque que
+// sur un pathname différent : changer d'onglet de page à l'intérieur du
+// builder ne doit donc jamais déclencher la boîte de confirmation, même
+// brouillon non enregistré.
+test("changer d'onglet de page (URL interne, même pathname) ne déclenche pas la garde même brouillon non enregistré", async () => {
+  renderPageWithNavigation({ getAppConfig: vi.fn().mockResolvedValue(twoPagesConfig) });
+  await userEvent.click(await screen.findByRole("button", { name: "Texte" }));
+
+  await userEvent.click(screen.getByRole("button", { name: "Ouvrir la page page-2" }));
+
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.getByTestId("url-search").textContent).toContain("page-2"));
 });
