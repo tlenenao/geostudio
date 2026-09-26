@@ -13,7 +13,9 @@ import { createItemClient } from "./api/itemClient";
 import { ItemClientProvider } from "./api/ItemClientProvider";
 import { createAppRouter } from "./shell/routes";
 import { AppErrorBoundary } from "./AppErrorBoundary";
-import { ToastProvider } from "./ui/kit";
+// Import direct (pas le barrel ui/kit) : le barrel tire les ~40 primitives du
+// kit dans le chunk initial (revue finale Vague B, REV-253).
+import { ToastProvider } from "./ui/kit/ToastProvider";
 import { ConnectivityBanner } from "./shell/ConnectivityBanner";
 
 const runtimeEnv = (window as unknown as { __GEOSTUDIO_ENV__?: Record<string, string | undefined> })
