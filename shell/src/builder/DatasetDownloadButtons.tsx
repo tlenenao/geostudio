@@ -47,7 +47,7 @@ export function DatasetDownloadButtons({
         {t("datasetDownload.csvButton")}
       </button>
       {csvTooLarge(featureCount) && (
-        <p className="w-full text-[10px] text-ink-3">{t("datasetDownload.tooLarge")}</p>
+        <p className="w-full text-xs text-ink-3">{t("datasetDownload.tooLarge")}</p>
       )}
     </div>
   );

@@ -85,9 +85,7 @@ export function PipelinePalette({ onAdd }: { onAdd?: (op: string) => void }) {
                       <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-2" />
                       <span className="flex flex-col">
                         <span>{op}</span>
-                        {description && (
-                          <span className="text-[10px] text-ink-2">{description}</span>
-                        )}
+                        {description && <span className="text-xs text-ink-2">{description}</span>}
                       </span>
                     </button>
                   </li>
@@ -133,7 +131,7 @@ export function PipelinePalette({ onAdd }: { onAdd?: (op: string) => void }) {
                     <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-2" />
                     <span className="flex flex-col">
                       <span>{op}</span>
-                      {description && <span className="text-[10px] text-ink-2">{description}</span>}
+                      {description && <span className="text-xs text-ink-2">{description}</span>}
                     </span>
                   </button>
                 </li>

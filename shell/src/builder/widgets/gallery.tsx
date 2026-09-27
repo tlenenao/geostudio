@@ -135,7 +135,7 @@ export function registerGalleryWidget(): void {
                     {(item.keywords ?? []).map((k) => (
                       <span
                         key={k}
-                        className="rounded-full bg-[var(--gs-color-background)] px-2 py-0.5 text-[10px] text-[var(--gs-color-muted)]"
+                        className="rounded-full bg-[var(--gs-color-background)] px-2 py-0.5 text-xs text-[var(--gs-color-muted)]"
                       >
                         {k}
                       </span>

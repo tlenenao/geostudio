@@ -138,7 +138,7 @@ export function PipelinePreviewMap({
     <div className="flex flex-col gap-1">
       <div ref={containerRef} data-testid="pipeline-preview-map" style={{ height: 300 }} />
       {kinds.size > 0 && (
-        <div className="flex gap-3 text-[10px] text-ink-2">
+        <div className="flex gap-3 text-xs text-ink-2">
           {LEGEND_ENTRIES.filter((e) => kinds.has(e.kind)).map((e) => (
             <span key={e.kind} className="flex items-center gap-1">
               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: e.color }} />

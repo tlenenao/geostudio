@@ -84,7 +84,7 @@ function FieldOverrides({
           className="flex cursor-move flex-col gap-1 rounded border border-rule p-1.5"
         >
           <div className="flex flex-wrap items-center gap-1">
-            <span className="text-[10px] text-ink-2" aria-hidden="true">
+            <span className="text-xs text-ink-2" aria-hidden="true">
               ⠿
             </span>
             <button
@@ -111,7 +111,7 @@ function FieldOverrides({
               value={f.label}
               onChange={(e) => patch(f.name, { label: e.target.value })}
             />
-            <label className="flex items-center gap-1 whitespace-nowrap text-[10px]">
+            <label className="flex items-center gap-1 whitespace-nowrap text-xs">
               <input
                 type="checkbox"
                 aria-label={t("widgetForm.hideFieldAria", { name: f.name })}
@@ -121,7 +121,7 @@ function FieldOverrides({
               {t("widgetForm.hiddenToggle")}
             </label>
             {f.type !== "unsupported" && f.type !== "attachment" && f.type !== "list" && (
-              <label className="flex items-center gap-1 whitespace-nowrap text-[10px]">
+              <label className="flex items-center gap-1 whitespace-nowrap text-xs">
                 <input
                   type="checkbox"
                   aria-label={t("widgetForm.requireFieldAria", { name: f.name })}

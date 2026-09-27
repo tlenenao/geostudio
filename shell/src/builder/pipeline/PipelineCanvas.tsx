@@ -69,13 +69,13 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
         />
       )}
       <div className="font-medium">{node.title ?? node.op}</div>
-      <div className="text-[10px] text-ink-2">{node.op}</div>
+      <div className="text-xs text-ink-2">{node.op}</div>
       <Handle type="source" position={Position.Right} />
       {node.errorCount > 0 && (
         <span
           role="status"
           aria-label={t("pipelineCanvas.nodeErrorAria", { count: node.errorCount })}
-          className="absolute -left-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[10px] text-surface"
+          className="absolute -left-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-2xs text-surface"
         >
           !
         </span>
@@ -83,7 +83,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
       {node.nodeStat && (
         <span
           role="status"
-          className="absolute -right-2 -top-2 rounded-full bg-ok px-1.5 py-0.5 text-[10px] text-surface"
+          className="absolute -right-2 -top-2 rounded-full bg-ok px-1.5 py-0.5 text-2xs text-surface"
         >
           {node.nodeStat.rowCount ?? "?"}
         </span>
@@ -98,7 +98,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
       <button
         type="button"
         aria-label={t("pipelineCanvas.deleteNodeAria", { title: node.title ?? node.op })}
-        className="absolute -bottom-2 -right-2 flex h-4 w-4 items-center justify-center rounded-full border border-rule bg-surface text-[10px] leading-none text-ink-2 hover:bg-sunken hover:text-danger"
+        className="absolute -bottom-2 -right-2 flex h-4 w-4 items-center justify-center rounded-full border border-rule bg-surface text-2xs leading-none text-ink-2 hover:bg-sunken hover:text-danger"
         onClick={(e) => {
           e.stopPropagation();
           node.onDelete(node.id);
@@ -110,7 +110,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
         type="button"
         aria-label={t("pipelineCanvas.startConnectAria", { title: node.title ?? node.op })}
         aria-pressed={node.isConnectingSource}
-        className="absolute -bottom-2 -left-2 flex h-4 w-4 items-center justify-center rounded-full border border-rule bg-surface text-[10px] leading-none text-ink-2 hover:bg-sunken"
+        className="absolute -bottom-2 -left-2 flex h-4 w-4 items-center justify-center rounded-full border border-rule bg-surface text-2xs leading-none text-ink-2 hover:bg-sunken"
         onClick={(e) => {
           e.stopPropagation();
           node.onStartConnect(node.id);

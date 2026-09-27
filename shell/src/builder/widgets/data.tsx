@@ -333,7 +333,7 @@ export function registerDataWidgets(): void {
             onRowClick={selectRecord}
           />
           {pageCount > 1 && (
-            <div className="mt-auto flex items-center justify-between pt-1 text-[10px] text-[var(--gs-color-muted)]">
+            <div className="mt-auto flex items-center justify-between pt-1 text-xs text-[var(--gs-color-muted)]">
               <button
                 type="button"
                 className="rounded border border-[var(--gs-color-border)] px-1 disabled:opacity-40"

@@ -91,7 +91,7 @@ export function NavigationPanel({
 
       {navigationMode === "story" && (
         <>
-          <p className="text-[10px] text-ink-2">
+          <p className="text-xs text-ink-2">
             {t("navigationPanel.enterActionsHeading", { name: page.name })}
           </p>
           <ul className="flex flex-col gap-1">

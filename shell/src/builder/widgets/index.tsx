@@ -86,7 +86,7 @@ export function registerBuiltinWidgets(): void {
           dataSources={dataSources}
           onChange={(id) => onChange({ ...props, dataSourceId: id })}
         />
-        <p className="text-[10px] text-ink-2">{t("widgetIndex.interpolationHelp")}</p>
+        <p className="text-xs text-ink-2">{t("widgetIndex.interpolationHelp")}</p>
       </div>
     ),
     Component: ({ props, ctx }) => {

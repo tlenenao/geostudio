@@ -241,7 +241,7 @@ export function PipelineNodeInspector({
       {requiredEntries.length > 0 && (
         <div className="flex flex-col gap-2">
           {optionalEntries.length > 0 && (
-            <h4 className="text-[10px] font-semibold uppercase text-ink-2">
+            <h4 className="text-xs font-semibold uppercase text-ink-2">
               {t("pipelineNodeInspector.requiredSection")}
             </h4>
           )}
@@ -251,7 +251,7 @@ export function PipelineNodeInspector({
       {optionalEntries.length > 0 && (
         <div className="flex flex-col gap-2">
           {requiredEntries.length > 0 && (
-            <h4 className="text-[10px] font-semibold uppercase text-ink-2">
+            <h4 className="text-xs font-semibold uppercase text-ink-2">
               {t("pipelineNodeInspector.optionalSection")}
             </h4>
           )}
