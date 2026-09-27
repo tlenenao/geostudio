@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useEffect, useRef } from "react";
 import type { AttachmentSummary } from "../api/types";
 import type { PopupContent } from "./popupContent";
 import { t } from "../i18n";
@@ -37,8 +38,29 @@ export function MapPopup({
   // pour qu'ils ne puissent plus diverger sur ce cas.
   const hasHtml = Boolean(content.html);
   const empty = !hasHtml && content.rows.length === 0 && !content.title;
+
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // D41 : composant présentationnel sans Radix (positionné en x/y absolus
+  // sur une feature carte, coexiste avec l'interaction carte derrière) —
+  // pas de FocusScope automatique. Gère lui-même Échap et le focus initial
+  // au montage : premier élément focusable réel (bouton Fermer en
+  // pratique, toujours en tête du DOM). Pas de restauration de focus à la
+  // fermeture : le déclencheur est un clic sur une feature carte, une
+  // cible de restauration ambiguë (hors périmètre D41, cf. spec SP-C1).
+  useEffect(() => {
+    containerRef.current?.querySelector<HTMLElement>("button, a, [tabindex]")?.focus();
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- volontairement au montage seul (cf. commentaire ci-dessus)
+  }, []);
+
   return (
     <div
+      ref={containerRef}
       role="dialog"
       aria-label={t("mapPopup.attributesAria")}
       className="absolute z-20 max-h-64 max-w-xs -translate-x-1/2 -translate-y-full overflow-auto rounded-md bg-surface p-2 text-xs text-ink shadow-lg"
