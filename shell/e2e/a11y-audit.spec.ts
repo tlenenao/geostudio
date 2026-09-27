@@ -666,4 +666,112 @@ test.describe("audit d'accessibilité (axe-core)", () => {
     await expect(page.getByRole("heading", { name: "Parcs" })).toBeVisible();
     await runAxeAudit(page, "DatasetRoute");
   });
+
+  test("VisualQueryWizardEditPage (assistant Filtrer→Joindre→Résumer, mode édition)", async ({
+    page,
+  }) => {
+    await mockCore(page);
+    await page.route("https://core.test/v1/instance", async (route) => {
+      await route.fulfill({ json: { readOnly: false, etlEnabled: true } });
+    });
+    await page.route("https://core.test/v1/collections*", async (route) => {
+      await route.fulfill({
+        json: {
+          collections: [
+            mockCollection({ id: "villes", title: "Villes", tableName: "villes" }),
+            mockCollection({
+              id: "villes-out",
+              title: "Villes filtrées (sortie)",
+              tableName: "villes_out",
+            }),
+          ],
+        },
+      });
+    });
+    await page.route("https://core.test/v1/collections/villes/schema", async (route) => {
+      await route.fulfill({
+        json: {
+          collection: "villes",
+          pk: "id",
+          geometry: null,
+          fields: [{ name: "nom", type: "string" }],
+        },
+      });
+    });
+    await page.route("https://core.test/v1/collections/villes-out/schema", async (route) => {
+      await route.fulfill({
+        json: {
+          collection: "villes-out",
+          pk: "id",
+          geometry: null,
+          fields: [{ name: "nom", type: "string" }],
+        },
+      });
+    });
+    // Pipeline minimal décompilable par decompilePipelineToWizardState :
+    // exactement 1 reader.collection -> 1 writer.dataset, un seul lien
+    // direct entre les deux (aucun filtre/jointure/résumé — la fonction ne
+    // les exige pas, elle boucle simplement sur les arêtes sortantes).
+    await page.route("https://core.test/v1/configs/by-item/pipe-vq-1", async (route) => {
+      await route.fulfill({
+        json: {
+          id: "cfg-pipe-vq-1",
+          itemId: "pipe-vq-1",
+          kind: "pipeline",
+          config: {
+            kind: "pipeline",
+            pipeline: {
+              nodes: [
+                {
+                  id: "r1",
+                  kind: "reader",
+                  op: "reader.collection",
+                  x: 0,
+                  y: 0,
+                  params: { collectionId: "villes" },
+                  title: "reader.collection",
+                },
+                {
+                  id: "w1",
+                  kind: "writer",
+                  op: "writer.dataset",
+                  x: 300,
+                  y: 0,
+                  params: { collectionId: "villes-out", datasetId: "dataset-vq-1" },
+                  title: "writer.dataset",
+                },
+              ],
+              edges: [{ id: "e1", from: "r1", to: "w1" }],
+            },
+          },
+        },
+      });
+    });
+    // Item du dataset de sortie — préremplit le champ Titre et le panneau
+    // "browse" (type + date de modification). itemQuery(pipelinePk) n'a pas
+    // besoin d'un mock dédié : le filet générique "/items/{id}" de
+    // mockCore() renvoie déjà permissions.write=true pour tout id non
+    // explicitement mocké.
+    await page.route("https://core.test/v1/items/dataset-vq-1", async (route) => {
+      await route.fulfill({
+        json: {
+          pk: "dataset-vq-1",
+          resourceType: "dataset",
+          title: "Villes filtrées",
+          abstract: "",
+          owner: "mockuser",
+          thumbnailUrl: null,
+          date: "2026-01-01",
+          configId: null,
+          isPublished: false,
+          keywords: [],
+          permissions: { read: true, write: true, delete: true, share: true },
+          updatedAt: "2026-01-02T00:00:00Z",
+        },
+      });
+    });
+    await page.goto("/datasets/visual-query/pipe-vq-1/edit");
+    await expect(page.getByRole("heading", { name: "Modifier la requête" })).toBeVisible();
+    await runAxeAudit(page, "VisualQueryWizardEditPage");
+  });
 });
