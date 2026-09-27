@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { Item, ResourceType } from "../api/types";
-import { RESOURCE_TYPE_LABELS } from "../api/resourceTypes";
-import { Button } from "./kit/Button";
-import { Panel } from "./kit/Panel";
+import type { Item, ResourceType } from "../../api/types";
+import { RESOURCE_TYPE_LABELS } from "../../api/resourceTypes";
+import { Button } from "./Button";
+import { Panel } from "./Panel";
 
 export function ItemCard({
   item,

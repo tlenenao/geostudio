@@ -2,9 +2,9 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
-import type { Item } from "../api/types";
+import type { Item } from "../../api/types";
 import { ItemCard } from "./ItemCard";
-import { OWNER_PERMISSIONS } from "../auth/permissions";
+import { OWNER_PERMISSIONS } from "../../auth/permissions";
 
 const item: Item = {
   pk: "42",

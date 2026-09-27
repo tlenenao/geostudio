@@ -4,7 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useItemFacets, useItems, useMe } from "../api/hooks";
 import type { ItemScope, ItemSort, ResourceType } from "../api/types";
 import { RESOURCE_TYPE_LABELS, RESOURCE_TYPE_ORDER } from "../api/resourceTypes";
-import { ItemCard } from "../ui/ItemCard";
+import { ItemCard } from "../ui/kit/ItemCard";
 import { ItemActions } from "../shell/ItemActions";
 import { Input } from "../ui/kit/Input";
 import { Button } from "../ui/kit/Button";
