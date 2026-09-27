@@ -438,11 +438,35 @@ test("re-applies deck layers when config.layers changes", () => {
   expect(overlay.props.layers[0].deckType).toBe("ColumnLayer");
 });
 
+function mockMatchMedia(matches: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  );
+}
+
 test("exposes an imperative flyTo that drives the map", () => {
+  mockMatchMedia(false);
   const ref = createRef<MapViewHandle>();
   render(<MapView ref={ref} config={config} />);
   ref.current!.flyTo({ center: [5, 6], zoom: 12 });
   expect(mapInstances[0].flyToArgs).toContainEqual({ center: [5, 6], zoom: 12 });
+});
+
+test("D42 : bascule sur jumpTo (jamais flyTo) quand le visiteur préfère un mouvement réduit", () => {
+  mockMatchMedia(true);
+  const ref = createRef<MapViewHandle>();
+  render(<MapView ref={ref} config={config} />);
+  const map = mapInstances[0];
+  const flyToSpy = vi.spyOn(map, "flyTo");
+  const jumpToSpy = vi.spyOn(map, "jumpTo");
+  ref.current!.flyTo({ center: [5, 6], zoom: 12 });
+  expect(jumpToSpy).toHaveBeenCalledWith({ center: [5, 6], zoom: 12 });
+  expect(flyToSpy).not.toHaveBeenCalled();
 });
 
 test("highlight sets the highlight source data and clears it on null", () => {

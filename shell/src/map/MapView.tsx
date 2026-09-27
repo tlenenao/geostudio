@@ -1299,8 +1299,16 @@ export const MapView = forwardRef<
         // `flyTo`'s scenic arc stays the default the rest of the time
         // (searched-location and explorer navigation, the other two
         // MapViewHandle.flyTo call sites, never touch terrain state).
-        if (mapRef.current?.getTerrain()) {
-          mapRef.current.jumpTo(opts);
+        //
+        // D42 (Vague C, SP-C2) : même bascule vers jumpTo, motif différent
+        // — un visiteur ayant activé prefers-reduced-motion ne doit jamais
+        // recevoir l'arc animé de flyTo. Interrogé à chaque appel (jamais
+        // mis en cache dans un state/ref) : un changement de préférence
+        // système en cours de session doit être respecté au prochain
+        // flyTo, pas seulement à celui qui suit le montage.
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (mapRef.current?.getTerrain() || reducedMotion) {
+          mapRef.current?.jumpTo(opts);
         } else {
           mapRef.current?.flyTo(opts);
         }
