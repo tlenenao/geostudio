@@ -87,6 +87,24 @@ function FieldOverrides({
             <span className="text-[10px] text-ink-2" aria-hidden="true">
               ⠿
             </span>
+            <button
+              type="button"
+              className="rounded border border-rule px-1 text-xs disabled:opacity-50"
+              aria-label={t("widgetForm.moveFieldUpAria", { name: f.name })}
+              disabled={i === 0}
+              onClick={() => reorder(i, i - 1)}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              className="rounded border border-rule px-1 text-xs disabled:opacity-50"
+              aria-label={t("widgetForm.moveFieldDownAria", { name: f.name })}
+              disabled={i === sorted.length - 1}
+              onClick={() => reorder(i, i + 1)}
+            >
+              ↓
+            </button>
             <input
               aria-label={t("widgetForm.fieldLabelAria", { name: f.name })}
               className={overrideInputCls}

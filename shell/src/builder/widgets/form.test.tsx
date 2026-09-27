@@ -1130,3 +1130,32 @@ test("D32 : le <form> porte noValidate (garde contre le court-circuit de la vali
   const { container } = renderForm();
   expect(container.querySelector("form")).toHaveAttribute("novalidate");
 });
+
+test("D34 : le bouton Descendre réordonne le champ vers le bas (clavier-accessible)", async () => {
+  const { onChange } = renderPanel({
+    dataSourceId: "ds1",
+    fields: loadedFields,
+    submitLabel: "Enregistrer",
+    geometryType: "Point",
+  });
+  await userEvent.click(await screen.findByRole("button", { name: "Descendre titre" }));
+  const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0];
+  expect(lastCall.fields.map((f: { name: string; order: number }) => [f.name, f.order])).toEqual([
+    ["gravite", 0],
+    ["titre", 1],
+    ["nb_victimes", 2],
+  ]);
+});
+
+test("D34 : le bouton Monter du premier champ et Descendre du dernier sont désactivés", async () => {
+  renderPanel({
+    dataSourceId: "ds1",
+    fields: loadedFields,
+    submitLabel: "Enregistrer",
+    geometryType: "Point",
+  });
+  expect(await screen.findByRole("button", { name: "Monter titre" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Descendre nb_victimes" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Monter nb_victimes" })).not.toBeDisabled();
+  expect(screen.getByRole("button", { name: "Descendre titre" })).not.toBeDisabled();
+});

@@ -886,6 +886,8 @@ export const fr = {
   "widgetForm.fieldLabelAria": "Label du champ {name}",
   "widgetForm.hideFieldAria": "Masquer {name}",
   "widgetForm.requireFieldAria": "Requis {name}",
+  "widgetForm.moveFieldUpAria": "Monter {name}",
+  "widgetForm.moveFieldDownAria": "Descendre {name}",
   "widgetForm.minFieldAria": "Min {name}",
   "widgetForm.maxFieldAria": "Max {name}",
   "widgetForm.patternFieldAria": "Motif {name}",
