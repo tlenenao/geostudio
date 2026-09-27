@@ -394,14 +394,16 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                 <div className="flex flex-wrap items-center gap-2 border-b border-rule p-2">
                   <Button
                     size="sm"
-                    variant={mode === "edit" ? "default" : "outline"}
+                    variant="outline"
+                    className={mode === "edit" ? "bg-sunken" : undefined}
                     onClick={() => setMode("edit")}
                   >
                     {t("appBuilder.editMode")}
                   </Button>
                   <Button
                     size="sm"
-                    variant={mode === "preview" ? "default" : "outline"}
+                    variant="outline"
+                    className={mode === "preview" ? "bg-sunken" : undefined}
                     onClick={() => setMode("preview")}
                   >
                     {t("appBuilder.previewMode")}
@@ -419,7 +421,8 @@ export function AppBuilderPage({ pk }: { pk: string }) {
                       <Button
                         key={bp}
                         size="sm"
-                        variant={breakpoint === bp ? "default" : "outline"}
+                        variant="outline"
+                        className={breakpoint === bp ? "bg-sunken" : undefined}
                         aria-label={t("appBuilder.editBreakpointAria", { bp })}
                         onClick={() => setBreakpoint(bp)}
                       >
