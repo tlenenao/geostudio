@@ -1159,3 +1159,44 @@ test("D34 : le bouton Monter du premier champ et Descendre du dernier sont désa
   expect(screen.getByRole("button", { name: "Monter nb_victimes" })).not.toBeDisabled();
   expect(screen.getByRole("button", { name: "Descendre titre" })).not.toBeDisabled();
 });
+
+const allTypesFields: FormField[] = [
+  { name: "actif", type: "boolean", label: "Actif", order: 0, hidden: false, required: true },
+  {
+    name: "date_debut",
+    type: "date",
+    label: "Date de début",
+    order: 1,
+    hidden: false,
+    required: true,
+  },
+  {
+    name: "horodatage",
+    type: "datetime",
+    label: "Horodatage",
+    order: 2,
+    hidden: false,
+    required: true,
+  },
+  {
+    name: "gravite",
+    type: "enum",
+    label: "Gravité",
+    order: 3,
+    hidden: false,
+    required: true,
+    values: ["faible", "haute"],
+  },
+  { name: "titre", type: "string", label: "Titre", order: 4, hidden: false, required: true },
+  { name: "nb", type: "integer", label: "Nombre", order: 5, hidden: false, required: false },
+];
+
+test("filet : aria-required posé sur les 6 branches non-attachment de FieldInput, selon le schéma", () => {
+  renderForm(allTypesFields);
+  expect(screen.getByLabelText("Actif")).toHaveAttribute("aria-required", "true");
+  expect(screen.getByLabelText("Date de début")).toHaveAttribute("aria-required", "true");
+  expect(screen.getByLabelText("Horodatage")).toHaveAttribute("aria-required", "true");
+  expect(screen.getByLabelText("Gravité")).toHaveAttribute("aria-required", "true");
+  expect(screen.getByLabelText("Titre")).toHaveAttribute("aria-required", "true");
+  expect(screen.getByLabelText("Nombre")).not.toHaveAttribute("aria-required");
+});
