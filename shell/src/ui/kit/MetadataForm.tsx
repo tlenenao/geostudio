@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { t } from "../i18n";
-import { Button } from "./kit/Button";
-import { Input } from "./kit/Input";
-import { Select } from "./kit/Select";
+import { t } from "../../i18n";
+import { Button } from "./Button";
+import { Input } from "./Input";
+import { Select } from "./Select";
 
 const UNSET = "unset";
 

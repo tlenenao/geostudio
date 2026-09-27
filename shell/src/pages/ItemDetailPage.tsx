@@ -4,8 +4,8 @@ import { useItem, useMetadataCatalog, useUpdateItem, useUploadThumbnail } from "
 import { RESOURCE_TYPE_LABELS } from "../api/resourceTypes";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
-import { MetadataForm } from "../ui/MetadataForm";
-import { ThumbnailUpload } from "../ui/ThumbnailUpload";
+import { MetadataForm } from "../ui/kit/MetadataForm";
+import { ThumbnailUpload } from "../ui/kit/ThumbnailUpload";
 import { ShareForm } from "../shell/ShareForm";
 import { ItemActions } from "../shell/ItemActions";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
