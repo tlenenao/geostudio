@@ -1119,3 +1119,14 @@ test("un champ list n'apparaît ni dans le rendu ni dans la soumission du formul
   renderForm(listFields);
   expect(screen.queryByLabelText("Tags")).not.toBeInTheDocument();
 });
+
+test("D32 : un champ requis (texte) porte aria-required, un champ non requis ne le porte pas", () => {
+  renderForm();
+  expect(screen.getByLabelText("Titre")).toHaveAttribute("aria-required", "true");
+  expect(screen.getByLabelText("Victimes")).not.toHaveAttribute("aria-required");
+});
+
+test("D32 : le <form> porte noValidate (garde contre le court-circuit de la validation navigateur native)", () => {
+  const { container } = renderForm();
+  expect(container.querySelector("form")).toHaveAttribute("novalidate");
+});

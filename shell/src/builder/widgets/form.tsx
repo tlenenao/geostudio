@@ -384,6 +384,13 @@ function FieldInput({
   const fieldId = `field-${field.name}`;
   const errorId = `field-${field.name}-error`;
   const errorProps = error ? { "aria-invalid": "true" as const, "aria-describedby": errorId } : {};
+  // D32 : `aria-required` seul (jamais l'attribut natif `required`) —
+  // annonce le caractère requis aux lecteurs d'écran sans réactiver la
+  // validation navigateur native, qui court-circuiterait le flux
+  // touched/validateField existant et, pour la branche boolean,
+  // forcerait `checked=true` alors que `false` explicite est une valeur
+  // valide (validateField, ligne 221).
+  const requiredProps = field.required ? { "aria-required": "true" as const } : {};
 
   if (field.type === "attachment") {
     return (
@@ -405,6 +412,7 @@ function FieldInput({
         onChange={(e) => onChange(e.target.checked)}
         onBlur={onBlur}
         {...errorProps}
+        {...requiredProps}
       />
     );
   }
@@ -419,6 +427,7 @@ function FieldInput({
         onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
         onBlur={onBlur}
         {...errorProps}
+        {...requiredProps}
       />
     );
   }
@@ -433,6 +442,7 @@ function FieldInput({
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         {...errorProps}
+        {...requiredProps}
       />
     );
   }
@@ -447,6 +457,7 @@ function FieldInput({
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         {...errorProps}
+        {...requiredProps}
       />
     );
   }
@@ -460,6 +471,7 @@ function FieldInput({
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         {...errorProps}
+        {...requiredProps}
       >
         <option value=""></option>
         {(field.values ?? []).map((v) => (
@@ -480,6 +492,7 @@ function FieldInput({
       onChange={(e) => onChange(e.target.value)}
       onBlur={onBlur}
       {...errorProps}
+      {...requiredProps}
     />
   );
 }
@@ -647,6 +660,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     <form
       className="flex h-full flex-col gap-2 overflow-auto text-sm"
       onSubmit={(e) => void handleSubmit(e)}
+      noValidate
     >
       {fields.map((f) => (
         <label key={f.name} className="flex flex-col gap-1">
