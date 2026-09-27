@@ -194,6 +194,8 @@
   --color-map-water: var(--gs-map-water);
   --color-map-road: var(--gs-map-road);
 
+  --text-2xs: 0.6875rem;
+
   --font-ui: "Archivo Variable", "Helvetica Neue", Arial, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
   --font-prose: "Source Serif 4 Variable", Georgia, "Times New Roman", serif;
