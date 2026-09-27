@@ -579,19 +579,21 @@ test("action-bar border and save-failed alert use semantic tokens, not literal T
     createBookmarkItem: vi.fn().mockRejectedValue(new Error("save failed")),
   });
   const saveViewButton = await screen.findByRole("button", { name: "Enregistrer la vue" });
-  // `Button` (../ui/button.tsx) was out-of-scope for SP-B12a/b (it still
-  // hardcoded bg-slate-900/border-slate-300/etc by default) — fixed since by
-  // SP-B12c, so the whole action-bar subtree can now be scanned instead of
-  // just the div's own className.
+  // `Button` (../ui/kit/Button.tsx since SP-C3/D10, previously ../ui/button.tsx)
+  // was out-of-scope for SP-B12a/b (it still hardcoded bg-slate-900/
+  // border-slate-300/etc by default) — fixed since by SP-B12c, so the whole
+  // action-bar subtree can now be scanned instead of just the div's own
+  // className.
   const actionBar = saveViewButton.closest("div") as HTMLElement;
   expect(actionBar.className).toContain("border-rule");
   expect(actionBar.className).not.toMatch(/\bborder-slate-\d+\b/);
   expectTokenizedClasses(actionBar);
 
   await userEvent.click(saveViewButton);
-  // Le dialogue (Radix Portal, hors `container`) porte `Input` (../ui/input.tsx)
-  // et deux `Button` — les trois désormais tokenisés (SP-B12c) : vérifiable en
-  // un coup sur baseElement plutôt qu'un className ciblé par élément.
+  // Le dialogue (Radix Portal, hors `container`) porte `Input`
+  // (../ui/kit/Input.tsx since SP-C3/D10, previously ../ui/input.tsx) et deux
+  // `Button` — les trois désormais tokenisés (SP-B12c) : vérifiable en un
+  // coup sur baseElement plutôt qu'un className ciblé par élément.
   await screen.findByLabelText("Nom de la vue");
   expectTokenizedClasses(baseElement);
   await userEvent.type(screen.getByLabelText("Nom de la vue"), "Ma vue");
