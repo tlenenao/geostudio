@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { expect, test, vi } from "vitest";
 import { Drawer } from "./Drawer";
 import { expectTokenizedClasses } from "./testUtils";
@@ -51,4 +52,27 @@ test("Échap appelle onOpenChange(false)", async () => {
   );
   await userEvent.keyboard("{Escape}");
   expect(onOpenChange).toHaveBeenCalledWith(false);
+});
+
+test("D48 : le focus revient sur le déclencheur externe après une fermeture au clavier (Échap) — filet de non-régression", async () => {
+  function Harness() {
+    const [open, setOpen] = useState(false);
+    return (
+      <>
+        <button type="button" onClick={() => setOpen(true)}>
+          Ouvrir
+        </button>
+        <Drawer open={open} onOpenChange={setOpen} title="Explorateur">
+          <p>Contenu</p>
+        </Drawer>
+      </>
+    );
+  }
+  render(<Harness />);
+  const trigger = screen.getByRole("button", { name: "Ouvrir" });
+  await userEvent.click(trigger);
+  expect(screen.getByRole("dialog", { name: "Explorateur" })).toBeInTheDocument();
+  await userEvent.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(document.activeElement).toBe(trigger);
 });
