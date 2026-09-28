@@ -24,6 +24,35 @@ enableMockAuth();
 // en afterEach dès son introduction (même patron que ReportEditPage.test.tsx
 // et PipelineBuilderPage.test.tsx) — SqlLabPage ne rendait pas
 // TriptychLayout avant ce plan, ce stub est nouveau dans ce fichier.
+// jsdom n'implémente ni Range.prototype.getClientRects ni
+// Range.prototype.getBoundingClientRect (piège n°10 CLAUDE.md, même classe
+// que ResizeObserver/hasPointerCapture/scrollIntoView/PointerEvent) —
+// CodeMirror 6 les appelle pour mesurer le texte à chaque rendu. Sans ce
+// polyfill minimal, local à ce fichier de test, toute assertion après un
+// rendu de <CodeMirror> lève une TypeError asynchrone (rAF de mesure).
+if (!Range.prototype.getClientRects) {
+  Range.prototype.getClientRects = function () {
+    return [] as unknown as DOMRectList;
+  };
+}
+if (!Range.prototype.getBoundingClientRect) {
+  Range.prototype.getBoundingClientRect = function () {
+    return {
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      toJSON() {
+        return this;
+      },
+    } as DOMRect;
+  };
+}
+
 function stubMatchMedia(matches: boolean) {
   vi.stubGlobal(
     "matchMedia",
@@ -71,7 +100,7 @@ test("exécute une requête et affiche le tableau de résultat", async () => {
     }),
   );
   render(<Harness />);
-  const textarea = await screen.findByLabelText("Requête SQL");
+  const textarea = await screen.findByRole("textbox", { name: "Requête SQL" });
   await userEvent.type(textarea, "select nom, surface from parcs");
   await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
   expect(await screen.findByRole("columnheader", { name: "nom" })).toBeInTheDocument();
@@ -87,7 +116,7 @@ test("affiche l'avis de troncature quand le résultat a été plafonné", async 
     ),
   );
   render(<Harness />);
-  const textarea = await screen.findByLabelText("Requête SQL");
+  const textarea = await screen.findByRole("textbox", { name: "Requête SQL" });
   await userEvent.type(textarea, "select id from x");
   await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
   expect(await screen.findByText("Résultat tronqué aux 1 premières lignes.")).toBeInTheDocument();
@@ -105,11 +134,14 @@ test("affiche le message d'erreur du serveur et conserve le texte SQL en cas d'�
     ),
   );
   render(<Harness />);
-  const textarea = await screen.findByLabelText("Requête SQL");
+  const textarea = await screen.findByRole("textbox", { name: "Requête SQL" });
   await userEvent.type(textarea, "select * fro x");
   await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Parser Error: syntax error");
-  expect(textarea).toHaveValue("select * fro x");
+  // `textarea` est un div contenteditable (CodeMirror) : `toHaveValue` ne
+  // s'applique qu'aux éléments de formulaire natifs (input/textarea/select),
+  // le contenu se lit via `textContent` — vérifié empiriquement.
+  expect(textarea).toHaveTextContent("select * fro x");
 });
 
 test("affiche la ligne et l'extrait SQL quand le message DuckDB porte une position", async () => {
@@ -131,7 +163,7 @@ test("affiche la ligne et l'extrait SQL quand le message DuckDB porte une positi
     ),
   );
   render(<Harness />);
-  const textarea = await screen.findByLabelText("Requête SQL");
+  const textarea = await screen.findByRole("textbox", { name: "Requête SQL" });
   await userEvent.type(textarea, "select * fro x");
   await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
   const alert = await screen.findByRole("alert");
@@ -148,7 +180,7 @@ test("enregistre l'historique au succès et recharge une requête passée au cli
     ),
   );
   render(<Harness />);
-  const textarea = await screen.findByLabelText("Requête SQL");
+  const textarea = await screen.findByRole("textbox", { name: "Requête SQL" });
   await userEvent.type(textarea, "select id from x");
   await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
   await screen.findByRole("columnheader", { name: "id" });
@@ -157,7 +189,7 @@ test("enregistre l'historique au succès et recharge une requête passée au cli
     name: "Recharger la requête : select id from x",
   });
   await userEvent.click(historyButton);
-  expect(textarea).toHaveValue("select id from x");
+  expect(textarea).toHaveTextContent("select id from x");
 });
 
 test("restaure la requête sélectionnée dans l'historique via l'URL", async () => {
@@ -168,7 +200,7 @@ test("restaure la requête sélectionnée dans l'historique via l'URL", async ()
     ]),
   );
   render(<Harness initialEntries={["/analytics/sql?historyId=h1"]} />);
-  expect(await screen.findByRole("textbox", { name: /requête/i })).toHaveValue("select 2");
+  expect(await screen.findByRole("textbox", { name: /requête/i })).toHaveTextContent("select 2");
 });
 
 test("ignore un historyId inconnu dans l'URL sans planter, et laisse le SQL inchangé", async () => {
@@ -179,12 +211,14 @@ test("ignore un historyId inconnu dans l'URL sans planter, et laisse le SQL inch
     ]),
   );
   render(<Harness initialEntries={["/analytics/sql?historyId=inconnu"]} />);
-  expect(await screen.findByRole("textbox", { name: /requête/i })).toHaveValue("");
+  // `toHaveTextContent("")` matcherait n'importe quel contenu (sous-chaîne
+  // vide toujours incluse) : comparer le textContent brut à la place.
+  expect((await screen.findByRole("textbox", { name: /requête/i })).textContent).toBe("");
 });
 
 test("affiche un état vide dans l'onglet Historique tant qu'aucune requête n'a été exécutée", async () => {
   render(<Harness />);
-  await screen.findByLabelText("Requête SQL");
+  await screen.findByRole("textbox", { name: "Requête SQL" });
   expect(screen.getByText("Aucune requête exécutée pour l'instant.")).toBeInTheDocument();
 });
 
@@ -199,7 +233,7 @@ test("sous viewport étroit, affiche trois onglets Catalogue/Requête/Historique
 
 test("n'affiche pas le panneau copilote quand copilotEnabled est faux (défaut du handler /instance)", async () => {
   render(<Harness />);
-  await screen.findByLabelText("Requête SQL");
+  await screen.findByRole("textbox", { name: "Requête SQL" });
   expect(screen.queryByLabelText("Message au copilote")).not.toBeInTheDocument();
 });
 
@@ -250,7 +284,7 @@ test("affiche le panneau copilote et insère le brouillon SQL généré sans l'e
   render(<Harness />);
   await userEvent.type(await screen.findByLabelText("Message au copilote"), "une requête simple");
   await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
-  expect(await screen.findByLabelText("Requête SQL")).toHaveValue("select 1");
+  expect(await screen.findByRole("textbox", { name: "Requête SQL" })).toHaveTextContent("select 1");
   expect(executed).toBe(false);
 });
 

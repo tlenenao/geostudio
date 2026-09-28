@@ -3,6 +3,12 @@ import { HelpCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import CodeMirror from "@uiw/react-codemirror";
+// Alias `sqlLang` : le fichier a déjà une variable d'état locale `sql` (le
+// texte de la requête) — l'import du snippet du brief, nommé `sql` sans
+// alias, entre en collision de nom avec elle.
+import { sql as sqlLang, SQLite } from "@codemirror/lang-sql";
+import { EditorView } from "@codemirror/view";
 import { useCollectionsAdmin, useInstanceInfo } from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
 import {
@@ -33,12 +39,10 @@ export function SqlLabPage() {
   const [historyId, setHistoryId] = useUrlSyncedState<string>("historyId", null);
   const instanceQuery = useInstanceInfo();
   const copilotEnabled = instanceQuery.data?.copilotEnabled === true;
-  // Seule consommatrice : le panneau copilote (I1, revue finale de branche
-  // GAP-17) — d'où le `enabled` aligné sur `copilotEnabled`, pour ne pas
-  // ajouter un aller-retour réseau à une page qui n'en avait aucun quand le
-  // copilote est éteint. `GET /collections` est déjà la source de la liste
-  // pour VisualQueryWizardPage (même hook), aucun nouveau chemin d'accès.
-  const collectionsQuery = useCollectionsAdmin({ enabled: copilotEnabled });
+  // D54 (Vague C) : la liste des collections alimente désormais aussi
+  // l'autocomplétion SQL (Tâche 26, D54b), plus seulement le panneau
+  // copilote — appel inconditionnel.
+  const collectionsQuery = useCollectionsAdmin();
 
   // SP-B9d : restaure la requête sélectionnée dans l'historique depuis
   // l'URL (?historyId=…) — au montage et à chaque changement externe de
@@ -109,15 +113,28 @@ export function SqlLabPage() {
                   {t("sqlLab.helpBody")}
                 </Popover>
               </div>
-              <label className="flex flex-col gap-1 text-sm text-ink">
-                {t("sqlLab.sqlQueryLabel")}
-                <textarea
-                  aria-label={t("sqlLab.sqlQueryLabel")}
-                  className="h-32 rounded-md border border-rule bg-surface p-2 font-mono text-xs text-ink"
+              <div className="flex flex-col gap-1 text-sm text-ink">
+                <span>{t("sqlLab.sqlQueryLabel")}</span>
+                <CodeMirror
                   value={sql}
-                  onChange={(e) => setSql(e.target.value)}
+                  height="8rem"
+                  extensions={[
+                    sqlLang({ dialect: SQLite }),
+                    // `aria-label` passé directement à <CodeMirror> atterrit
+                    // sur le conteneur englobant, pas sur le
+                    // `role="textbox"` (div `.cm-content` contenteditable)
+                    // que les tests (et les lecteurs d'écran) interrogent —
+                    // vérifié empiriquement (piège n°3 CLAUDE.md). Seul
+                    // `EditorView.contentAttributes` pose l'attribut sur le
+                    // bon élément.
+                    EditorView.contentAttributes.of({
+                      "aria-label": t("sqlLab.sqlQueryLabel"),
+                    }),
+                  ]}
+                  onChange={(value) => setSql(value)}
+                  className="rounded-md border border-rule text-xs"
                 />
-              </label>
+              </div>
               <Button
                 size="sm"
                 className="w-fit"
