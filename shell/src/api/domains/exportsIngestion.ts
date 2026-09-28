@@ -8,7 +8,7 @@ import type {
   ItemClient,
 } from "../types";
 import type { ItemClientBase } from "../base";
-import { SqlQueryError } from "../base";
+import { SqlQueryError, parseErrorResponse } from "../base";
 
 async function requestAnalyticsSql(
   coreUrl: string,
@@ -29,7 +29,7 @@ async function requestAnalyticsSql(
     throw new SqlQueryError(data?.errors?.[0]?.message ?? "Requête SQL invalide.");
   }
   if (!res.ok) {
-    throw new Error(`Request failed: ${res.status} POST /analytics/sql`);
+    throw await parseErrorResponse(res);
   }
   return (await res.json()) as { columns: string[]; rows: unknown[][]; truncated: boolean };
 }

@@ -3114,13 +3114,17 @@ test("runAnalyticsSql throws SqlQueryError with the server message on 400", asyn
   expect((err as SqlQueryError).message).toBe("Binder Error: table 'x' does not exist");
 });
 
-test("runAnalyticsSql throws a plain Error on 403 (non-analyst)", async () => {
+test("runAnalyticsSql throws an ApiError on 403 (non-analyst)", async () => {
   server.use(
     http.post("https://core.test/v1/analytics/sql", () =>
       HttpResponse.json({ detail: "analyst role required" }, { status: 403 }),
     ),
   );
-  await expect(makeClient().runAnalyticsSql("select 1")).rejects.toThrow(/403/);
+  await expect(makeClient().runAnalyticsSql("select 1")).rejects.toMatchObject({
+    name: "ApiError",
+    status: 403,
+    detail: "analyst role required",
+  });
 });
 
 test("createPipelineItem posts a pipeline payload and returns a pipeline Item", async () => {
