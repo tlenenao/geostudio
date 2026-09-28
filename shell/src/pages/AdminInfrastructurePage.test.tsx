@@ -64,6 +64,29 @@ test("masque les trois boutons protégés quand la capacité est désactivée, g
   expect(screen.queryByRole("button", { name: "Martin" })).not.toBeInTheDocument();
 });
 
+test("affiche l'utilisation avec les plafonds configurés", async () => {
+  server.use(
+    http.get("https://core.test/v1/instance", () =>
+      HttpResponse.json({ adminToolsEnabled: false }),
+    ),
+    http.get("https://core.test/v1/admin/usage", () =>
+      HttpResponse.json({
+        itemCount: 12,
+        collectionCount: 3,
+        userCount: 5,
+        storageBytes: 2_000_000,
+        maxItems: 100,
+        maxCollections: null,
+        maxStorageBytes: null,
+      }),
+    ),
+  );
+  render(<Harness />);
+  expect(await screen.findByText("Éléments : 12 / 100")).toBeInTheDocument();
+  expect(screen.getByText(/Collections : 3/)).toBeInTheDocument();
+  expect(screen.getByText(/pas de limite configurée/)).toBeInTheDocument();
+});
+
 test("cliquer sur Martin appelle launch et ouvre l'URL retournée dans un nouvel onglet", async () => {
   const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
   server.use(

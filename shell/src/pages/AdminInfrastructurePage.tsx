@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { AdminToolName } from "../api/types";
-import { useInstanceInfo, useLaunchAdminTool } from "../api/hooks";
+import { useInstanceInfo, useLaunchAdminTool, useQuotaUsage } from "../api/hooks";
 import { Button } from "../ui/kit/Button";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
@@ -20,6 +20,13 @@ export function AdminInfrastructurePage() {
   const instanceQuery = useInstanceInfo();
   const launch = useLaunchAdminTool();
   const adminToolsEnabled = instanceQuery.data?.adminToolsEnabled === true;
+  const usageQuery = useQuotaUsage();
+  const usage = usageQuery.data;
+
+  function formatBytes(bytes: number): string {
+    const mb = bytes / (1024 * 1024);
+    return mb >= 1024 ? `${(mb / 1024).toFixed(1)} Go` : `${mb.toFixed(1)} Mo`;
+  }
 
   return (
     <div className="-m-6 flex flex-1 flex-col overflow-hidden">
@@ -77,6 +84,35 @@ export function AdminInfrastructurePage() {
                 </a>{" "}
                 {t("infrastructure.minioNote")}
               </p>
+              {usage && (
+                <div className="flex flex-col gap-1 text-sm text-ink-2">
+                  <p className="font-medium text-ink">{t("infrastructure.usageHeading")}</p>
+                  <p>
+                    {usage.maxItems === null
+                      ? t("infrastructure.usageItems", { count: usage.itemCount })
+                      : t("infrastructure.usageItemsWithLimit", {
+                          count: usage.itemCount,
+                          limit: usage.maxItems,
+                        })}
+                  </p>
+                  <p>
+                    {usage.maxCollections === null
+                      ? t("infrastructure.usageCollections", { count: usage.collectionCount })
+                      : t("infrastructure.usageCollectionsWithLimit", {
+                          count: usage.collectionCount,
+                          limit: usage.maxCollections,
+                        })}
+                  </p>
+                  <p>
+                    {usage.maxStorageBytes === null
+                      ? `${t("infrastructure.usageStorage", { size: formatBytes(usage.storageBytes) })} (${t("infrastructure.usageNoLimit")})`
+                      : t("infrastructure.usageStorageWithLimit", {
+                          size: formatBytes(usage.storageBytes),
+                          limitSize: formatBytes(usage.maxStorageBytes),
+                        })}
+                  </p>
+                </div>
+              )}
               {launch.isError && (
                 <p role="alert" className="text-sm text-danger">
                   {t("infrastructure.launchError")}

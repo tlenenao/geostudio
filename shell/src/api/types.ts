@@ -149,6 +149,16 @@ export type UsageSummary = {
   windowEnd: string;
 };
 
+export type QuotaUsage = {
+  itemCount: number;
+  collectionCount: number;
+  userCount: number;
+  storageBytes: number;
+  maxItems: number | null;
+  maxCollections: number | null;
+  maxStorageBytes: number | null;
+};
+
 export type PrivilegeCatalogEntry = {
   privilege: string;
   domain: string;
@@ -442,6 +452,7 @@ export interface ItemClient {
     limit?: number;
   }): Promise<UsageSummary>;
   getInstanceInfo(): Promise<InstanceInfo>;
+  getQuotaUsage(): Promise<QuotaUsage>;
   copilotTurn(
     itemId: string | undefined,
     payload: {

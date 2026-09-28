@@ -286,6 +286,14 @@ export const fr = {
     "— accès direct, non protégé par ce garde-fou ; fonctionne seulement si le port 9001 est exposé sur cet hôte.",
   "infrastructure.launchError": "Échec de l'ouverture de l'outil.",
   "infrastructure.detail": "Détail",
+  "infrastructure.usageHeading": "Utilisation",
+  "infrastructure.usageItems": "Éléments : {count}",
+  "infrastructure.usageItemsWithLimit": "Éléments : {count} / {limit}",
+  "infrastructure.usageCollections": "Collections : {count}",
+  "infrastructure.usageCollectionsWithLimit": "Collections : {count} / {limit}",
+  "infrastructure.usageStorage": "Stockage : {size}",
+  "infrastructure.usageStorageWithLimit": "Stockage : {size} / {limitSize}",
+  "infrastructure.usageNoLimit": "pas de limite configurée",
 
   // Motif partagé : indicateur de chargement générique (role="status").
   "common.loading": "Chargement…",

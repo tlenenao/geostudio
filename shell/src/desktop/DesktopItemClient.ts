@@ -213,6 +213,9 @@ export function createDesktopItemClient(connection: {
     async getInstanceInfo(..._args: unknown[]) {
       return unsupported();
     },
+    async getQuotaUsage(..._args: unknown[]) {
+      return unsupported();
+    },
     async createConfigItem(..._args: unknown[]) {
       return unsupported();
     },
