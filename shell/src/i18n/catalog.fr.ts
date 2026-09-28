@@ -117,6 +117,12 @@ export const fr = {
   "catalog.spatialExtentLabel": "Emprise spatiale",
   "catalog.spatialDrawAria": "Dessiner un rectangle de recherche spatiale",
 
+  // Palette de commandes ⌘K (D07, SP-C4/Task 21)
+  "commandPalette.title": "Palette de commandes",
+  "commandPalette.searchAria": "Rechercher une action",
+  "commandPalette.newItemAction": "Nouvel élément",
+  "commandPalette.triggerLabel": "Rechercher",
+
   // Motif partagé : bouton générique d'effacement d'un filtre/champ.
   "common.clear": "Effacer",
 

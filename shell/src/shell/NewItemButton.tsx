@@ -209,7 +209,12 @@ export function NewItemButton() {
 
   return (
     <>
-      <Button size="sm" {...drawerPanel.triggerProps} onClick={() => setOpen(true)}>
+      <Button
+        id="new-item-trigger"
+        size="sm"
+        {...drawerPanel.triggerProps}
+        onClick={() => setOpen(true)}
+      >
         {t("newItem.button")}
       </Button>
       <Drawer
