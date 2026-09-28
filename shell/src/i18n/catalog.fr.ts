@@ -1038,6 +1038,12 @@ export const fr = {
   "widgetMap.loadingFallback": "Carte…",
   "widgetMap.sampleFieldUnavailable": "sampleDataSourceField indisponible",
   "widgetMap.additionalLayersHeading": "Couches additionnelles",
+  "widgetMap.defaultCenterLngLabel": "Longitude",
+  "widgetMap.defaultCenterLngAria": "Longitude par défaut",
+  "widgetMap.defaultCenterLatLabel": "Latitude",
+  "widgetMap.defaultCenterLatAria": "Latitude par défaut",
+  "widgetMap.defaultZoomLabel": "Zoom",
+  "widgetMap.defaultZoomAria": "Niveau de zoom par défaut",
 
   // Widget Modale (modal.tsx)
   "widgetModal.paletteLabel": "Modale",

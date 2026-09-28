@@ -182,14 +182,14 @@ export function registerMapWidget(): void {
       const dataSourceId = String(props.dataSourceId ?? "");
       const dataSource = dataSources.find((d) => d.id === dataSourceId);
       const datasetId = dataSource?.datasetId;
-      // Résout le schéma pour offrir les champs `attachment` déclarés sur la
-      // collection au sélecteur « Pièces jointes » de PopupEditor (revue
-      // finale de branche, I6) — même source d'id de collection que
+      // Résout le schéma de la collection liée — même source d'id que
       // runStatistics juste en dessous (dataSource.layer, patron
-      // FormPropsPanel). N'étend PAS availableFields de MapSymbologyEditor
-      // (toujours [], limitation documentée et volontairement non élargie
-      // ici, cf. commentaire jenksAvailable/sampleField ci-dessous) — hors
-      // périmètre de ce correctif.
+      // FormPropsPanel). Sert désormais aux DEUX sélecteurs : les champs
+      // `attachment` pour le sélecteur « Pièces jointes » de PopupEditor
+      // (revue finale de branche, I6), et tous les autres champs pour
+      // `availableFields` de MapSymbologyEditor/PopupEditor (D11, SP-C6) —
+      // un `availableFields={[]}` codé en dur empêchait jusqu'ici toute
+      // configuration de symbologie/popup par champ depuis ce PropsPanel.
       const collectionId = dataSource?.layer ?? "";
       const schemaQuery = useQuery({
         queryKey: ["collection-schema", collectionId],
@@ -198,6 +198,9 @@ export function registerMapWidget(): void {
       });
       const attachmentFields =
         schemaQuery.data?.fields.filter((f) => f.type === "attachment").map((f) => f.name) ?? [];
+      const availableFields =
+        schemaQuery.data?.fields.filter((f) => f.type !== "attachment").map((f) => f.name) ?? [];
+      const center = props.center as [number, number] | undefined;
       return (
         <div className="flex flex-col gap-2 text-sm">
           <DataSourceSelect
@@ -220,9 +223,55 @@ export function registerMapWidget(): void {
               onChange({ ...props, cameraPitch: pitch, cameraBearing: bearing })
             }
           />
+          {/* D12 (SP-C6/Tâche 34) : la vue par défaut (centre/zoom) du
+              Component runtime était un littéral en dur ([2.4, 46.6], zoom
+              5) — aucune app ne pouvait cadrer sa carte par défaut ailleurs
+              qu'en France métropolitaine. */}
+          <div className="flex gap-2">
+            <label className="flex flex-col gap-1 text-xs">
+              {t("widgetMap.defaultCenterLngLabel")}
+              <input
+                type="number"
+                aria-label={t("widgetMap.defaultCenterLngAria")}
+                className="h-9 rounded-md border border-rule px-2 text-sm"
+                value={Number(center?.[0] ?? 2.4)}
+                onChange={(e) =>
+                  onChange({
+                    ...props,
+                    center: [Number(e.target.value), center?.[1] ?? 46.6],
+                  })
+                }
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              {t("widgetMap.defaultCenterLatLabel")}
+              <input
+                type="number"
+                aria-label={t("widgetMap.defaultCenterLatAria")}
+                className="h-9 rounded-md border border-rule px-2 text-sm"
+                value={Number(center?.[1] ?? 46.6)}
+                onChange={(e) =>
+                  onChange({
+                    ...props,
+                    center: [center?.[0] ?? 2.4, Number(e.target.value)],
+                  })
+                }
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              {t("widgetMap.defaultZoomLabel")}
+              <input
+                type="number"
+                aria-label={t("widgetMap.defaultZoomAria")}
+                className="h-9 rounded-md border border-rule px-2 text-sm"
+                value={Number(props.zoom ?? 5)}
+                onChange={(e) => onChange({ ...props, zoom: Number(e.target.value) })}
+              />
+            </label>
+          </div>
           <MapSymbologyEditor
             value={props.symbology as LayerSymbology | undefined}
-            availableFields={[]} // PropsPanel has no schema (registry.ts) — same PopupEditor precedent
+            availableFields={availableFields}
             themeColors={theme?.colors}
             runStatistics={(query) =>
               client.queryDataSource({
@@ -276,7 +325,7 @@ export function registerMapWidget(): void {
           />
           <PopupEditor
             value={props.popup as PopupConfig | undefined}
-            availableFields={[]}
+            availableFields={availableFields}
             attachmentFields={attachmentFields}
             onChange={(popup) => onChange({ ...props, popup })}
           />
@@ -368,8 +417,8 @@ export function registerMapWidget(): void {
         basemap: { style: String(props.basemapStyle ?? DEFAULT_STYLE) },
         terrain: (props.terrain as MapTerrainConfig | null) ?? null,
         view: {
-          center: [2.4, 46.6],
-          zoom: 5,
+          center: (props.center as [number, number] | undefined) ?? [2.4, 46.6],
+          zoom: Number(props.zoom ?? 5),
           pitch: Number(props.cameraPitch ?? 0),
           bearing: Number(props.cameraBearing ?? 0),
         },
