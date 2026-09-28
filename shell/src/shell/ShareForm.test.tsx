@@ -197,6 +197,62 @@ test("shows an embed snippet with the shell origin after creating a share link",
   expect(await screen.findByText(/tok-42/)).toBeInTheDocument();
 });
 
+test("copie le lien de partage dans le presse-papiers", async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.assign(navigator, { clipboard: { writeText } });
+  server.use(
+    http.get("https://core.test/v1/items/7/share-links", () => HttpResponse.json([])),
+    http.post("https://core.test/v1/items/7/share-links", () =>
+      HttpResponse.json(
+        {
+          url: "https://core.test/share-links/eyJ...",
+          expiresAt: "2026-10-05T00:00:00",
+          token: "tok-42",
+        },
+        { status: 201 },
+      ),
+    ),
+  );
+  render(
+    <Harness>
+      <ShareForm item={item} onDone={vi.fn()} />
+    </Harness>,
+  );
+  await screen.findByRole("checkbox", { name: "Groupe Équipe B" });
+  await userEvent.click(screen.getByRole("button", { name: "Créer un lien" }));
+  await screen.findByText(/eyJ\.\.\./);
+  await userEvent.click(screen.getByRole("button", { name: "Copier le lien" }));
+  expect(writeText).toHaveBeenCalledWith("https://core.test/share-links/eyJ...");
+});
+
+test("copie le snippet embed dans le presse-papiers", async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.assign(navigator, { clipboard: { writeText } });
+  server.use(
+    http.get("https://core.test/v1/items/7/share-links", () => HttpResponse.json([])),
+    http.post("https://core.test/v1/items/7/share-links", () =>
+      HttpResponse.json(
+        {
+          url: "https://core.test/share-links/eyJ...",
+          expiresAt: "2026-10-05T00:00:00",
+          token: "tok-42",
+        },
+        { status: 201 },
+      ),
+    ),
+  );
+  render(
+    <Harness>
+      <ShareForm item={item} onDone={vi.fn()} />
+    </Harness>,
+  );
+  await screen.findByRole("checkbox", { name: "Groupe Équipe B" });
+  await userEvent.click(screen.getByRole("button", { name: "Créer un lien" }));
+  await screen.findByText(/tok-42/);
+  await userEvent.click(screen.getByRole("button", { name: "Copier le code d'intégration" }));
+  expect(writeText).toHaveBeenCalledWith(expect.stringContaining("/embed/tok-42"));
+});
+
 test("liste les liens de partage existants et permet de les révoquer", async () => {
   let revoked = false;
   server.use(

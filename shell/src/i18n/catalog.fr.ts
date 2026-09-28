@@ -644,6 +644,9 @@ export const fr = {
   "shareForm.linkCreatedPrefix": "Lien créé : ",
   "shareForm.embedTitle": "Intégrer",
   "shareForm.embedSnippetAria": "Extrait de code à intégrer (iframe)",
+  "shareForm.copyLinkAria": "Copier le lien",
+  "shareForm.copyEmbedAria": "Copier le code d'intégration",
+  "shareForm.copiedFeedback": "Copié !",
 
   // CreateHarvestSourcePanel / EditHarvestSourcePanel (domaine harvest.*
   // déjà posé par HarvestSourcesAdminPage)
