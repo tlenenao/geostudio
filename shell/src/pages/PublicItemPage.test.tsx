@@ -95,6 +95,42 @@ test("shows the shared LoadingState (role=status, spinner) while the config is i
   expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull();
 });
 
+test("fenêtre de titre obsolète : ne déclenche getPublicAppConfig qu'après le succès de getItem, même si getItem résout après getPublicAppConfig aurait pu répondre", async () => {
+  let resolveItem!: (value: Item) => void;
+  const itemPromise = new Promise<Item>((resolve) => {
+    resolveItem = resolve;
+  });
+  const getPublicAppConfig = vi.fn().mockResolvedValue(config);
+  renderPage({
+    getItem: vi.fn(() => itemPromise),
+    getPublicAppConfig,
+  });
+
+  // itemQuery est encore en vol : le repli doit rester affiché, et
+  // configQuery — dont dépend le contenu visible — ne doit pas être
+  // déclenchée tant que itemQuery n'a pas réussi. `findByRole` (au lieu
+  // d'une assertion synchrone juste après `render`) laisse les effets
+  // React Query se propager, sinon l'assertion passerait vacuously même
+  // sans le correctif (queryFn appelée dans un effet, pas pendant le rendu).
+  await screen.findByRole("status");
+  expect(getPublicAppConfig).not.toHaveBeenCalled();
+  expect(document.title).toBe("GeoStudio");
+  expect(screen.queryByText("Detail de l'article")).not.toBeInTheDocument();
+
+  // getItem résout maintenant — plus tard que getPublicAppConfig n'aurait
+  // pu le faire si les deux requêtes avaient couru en parallèle (bug
+  // trouvé en revue finale de Task 28 : configQuery non gardée par
+  // itemQuery.isSuccess).
+  resolveItem(item);
+  await screen.findByText("Detail de l'article");
+
+  expect(getPublicAppConfig).toHaveBeenCalledTimes(1);
+  expect(document.title).toBe("Mon jeu de données");
+  expect(document.querySelector('meta[name="description"]')?.getAttribute("content")).toBe(
+    "Une description",
+  );
+});
+
 test("404: shows a not-found message without leaking whether the item exists", async () => {
   const { container } = renderPage(
     {
