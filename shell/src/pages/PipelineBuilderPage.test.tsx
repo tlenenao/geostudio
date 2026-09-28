@@ -1249,3 +1249,34 @@ test("le round-trip de création (pk=null -> Enregistrer -> redirection) n'affic
   await waitFor(() => expect(createPipelineItem).toHaveBeenCalled());
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
+
+// D55 : le canevas de pipeline n'appliquait pas réellement la lecture seule —
+// connecter/supprimer des nœuds restait possible (corrigé dans
+// PipelineCanvas.tsx, cf. son propre fichier de test), et Undo/Redo/Ctrl+Z
+// restaient actifs ici. `readOnly` est dérivé de `permissions.write` (ligne
+// ~82) ; ce test le prouve indépendamment de la valeur de `canUndo` : l'ajout
+// de nœud via la palette n'est PAS gardé par `readOnly` (hors périmètre de
+// cette tâche — cf. rapport), donc `canUndo` passe bien à vrai ici même en
+// lecture seule. Sans le garde `readOnly` sur les boutons/le raccourci, ce
+// test échouerait malgré l'absence de tout droit d'écriture.
+test("persisted mode: lecture seule désactive Annuler/Rétablir et rend Ctrl+Z inerte même quand canUndo est vrai (D55)", async () => {
+  renderPage("p-1", {
+    getItem: vi
+      .fn()
+      .mockResolvedValue({ ...OWNED_PIPELINE_ITEM, permissions: READ_ONLY_PERMISSIONS }),
+    getPipelineConfig: vi.fn().mockResolvedValue({ nodes: [], edges: [] }),
+  });
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "reader.collection" }));
+  await waitFor(() => expect(screen.getAllByText("reader.collection").length).toBeGreaterThan(1));
+  // Dépasse la fenêtre de coalescing de 400ms (useUndoableDraft) pour que
+  // canUndo ait le temps de passer à vrai côté hook, sans dépendre du rendu
+  // du bouton Annuler (qui, lui, doit rester désactivé — ce que ce test
+  // vérifie).
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Rétablir" })).toBeDisabled();
+  const countBefore = screen.getAllByText("reader.collection").length;
+  await userEvent.keyboard("{Control>}z{/Control}");
+  expect(screen.getAllByText("reader.collection")).toHaveLength(countBefore);
+});

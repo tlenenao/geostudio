@@ -278,6 +278,7 @@ function PipelineCanvasInner({
   nodeErrors,
   notes,
   onNotesChange,
+  readOnly,
 }: {
   nodes: PipelineNode[];
   edges: PipelineEdge[];
@@ -292,6 +293,7 @@ function PipelineCanvasInner({
   nodeErrors?: Record<string, string[]>;
   notes: PipelineCanvasNote[];
   onNotesChange: (notes: PipelineCanvasNote[]) => void;
+  readOnly?: boolean;
 }) {
   const nodeTypes = { pipelineNode: PipelineNodeBox, canvasNote: CanvasNoteBox };
   const edgeTypes = {
@@ -302,6 +304,7 @@ function PipelineCanvasInner({
 
   const onConnect: OnConnect = useCallback(
     (connection) => {
+      if (readOnly) return;
       if (!connection.source || !connection.target) return;
       const role: "primary" | "secondary" =
         connection.targetHandle === "secondary" ? "secondary" : "primary";
@@ -316,14 +319,24 @@ function PipelineCanvasInner({
       if (role === "secondary") newEdge.role = "secondary";
       onEdgesChange([...edges, newEdge]);
     },
-    [nodes, edges, onEdgesChange],
+    [nodes, edges, onEdgesChange, readOnly],
   );
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
+      // D55 : en lecture seule, `nodesDraggable={false}` (cf. <ReactFlow>
+      // plus bas) empêche déjà React Flow d'émettre des changements
+      // "position" par drag natif, et `deleteKeyCode={null}` l'empêche
+      // d'émettre des changements "remove" au clavier. Ce filtre est une
+      // seconde ligne de défense (déjà écartée dans le pire des cas testé :
+      // la suppression au clic sur le bouton × passe par `deleteNode`,
+      // jamais par ici — gardée séparément ci-dessous).
+      const effectiveChanges = readOnly
+        ? changes.filter((c) => c.type !== "remove" && c.type !== "add")
+        : changes;
       let nextNodes = nodes;
       let nextNotes = notes;
-      for (const change of changes) {
+      for (const change of effectiveChanges) {
         if (change.type === "position" && change.position) {
           const isNote = change.id.startsWith("note-");
           if (isNote) {
@@ -354,36 +367,52 @@ function PipelineCanvasInner({
       if (nextNodes !== nodes) onNodesChange(nextNodes);
       if (nextNotes !== notes) onNotesChange(nextNotes);
     },
-    [nodes, notes, onNodesChange, onNotesChange, onSelectNode],
+    [nodes, notes, onNodesChange, onNotesChange, onSelectNode, readOnly],
   );
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
+      // D55 : même raisonnement que handleNodesChange — deleteKeyCode={null}
+      // empêche déjà l'émission d'un changement "remove" au clavier en
+      // lecture seule ; ce garde explicite est la seconde ligne de défense.
+      if (readOnly) return;
       const removedIds = new Set(changes.filter((c) => c.type === "remove").map((c) => c.id));
       if (removedIds.size) onEdgesChange(edges.filter((e) => !removedIds.has(e.id)));
     },
-    [edges, onEdgesChange],
+    [edges, onEdgesChange, readOnly],
   );
 
   const deleteNode = useCallback(
     (nodeId: string) => {
+      // D55 : seul chemin réel de suppression d'un nœud (le bouton ×
+      // appelle `onDelete` = cette fonction directement — jamais via
+      // `handleNodesChange`, qui ne voit un changement "remove" que pour la
+      // suppression clavier). Sans ce garde, le filtre ci-dessus sur
+      // `handleNodesChange` ne suffit pas à couvrir D55.
+      if (readOnly) return;
       onNodesChange(nodes.filter((n) => n.id !== nodeId));
       onEdgesChange(edges.filter((e) => e.from !== nodeId && e.to !== nodeId));
     },
-    [nodes, edges, onNodesChange, onEdgesChange],
+    [nodes, edges, onNodesChange, onEdgesChange, readOnly],
   );
 
   const [connectingFromId, setConnectingFromId] = useState<string | null>(null);
 
   const completeConnection = useCallback(
     (targetId: string) => {
+      // D55 : chemin de connexion réellement exercé par le clic accessible
+      // (bouton ↝ puis clic sur le nœud cible) — c'est celui-là, pas
+      // `onConnect` (réservé au drag natif), que les tests de ce fichier
+      // exercent. Sans ce garde, `onConnect` seul ne suffit pas à fermer
+      // D55.
+      if (readOnly) return;
       if (!connectingFromId) return;
       setConnectingFromId(null);
       if (hasIncomingEdge(edges, targetId)) return;
       if (wouldCreateCycle(nodes, edges, { from: connectingFromId, to: targetId })) return;
       onEdgesChange([...edges, { id: genEdgeId(), from: connectingFromId, to: targetId }]);
     },
-    [connectingFromId, nodes, edges, onEdgesChange],
+    [readOnly, connectingFromId, nodes, edges, onEdgesChange],
   );
 
   useEffect(() => {
@@ -434,7 +463,9 @@ function PipelineCanvasInner({
             completeConnection(flowNode.id);
         }}
         onPaneClick={() => onSelectNode(null)}
-        deleteKeyCode={["Backspace", "Delete"]}
+        deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
+        nodesDraggable={!readOnly}
+        nodesConnectable={!readOnly}
       >
         <Background />
         <Controls />

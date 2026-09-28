@@ -148,13 +148,16 @@ export function PipelineBuilderPage({
         (target instanceof HTMLElement && target.isContentEditable);
       if (isTextField) return;
       if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      // D55 : Ctrl+Z restait actif en lecture seule — `readOnly` est déjà
+      // calculé plus haut (ligne ~82) à partir de `permissions.write`.
+      if (readOnly) return;
       e.preventDefault();
       if (e.shiftKey) redo();
       else undo();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [undo, redo]);
+  }, [undo, redo, readOnly]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -369,10 +372,20 @@ export function PipelineBuilderPage({
                   </Popover>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button size="sm" variant="outline" disabled={!canUndo} onClick={undo}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!canUndo || readOnly}
+                    onClick={undo}
+                  >
                     {t("pipelineBuilder.undo")}
                   </Button>
-                  <Button size="sm" variant="outline" disabled={!canRedo} onClick={redo}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!canRedo || readOnly}
+                    onClick={redo}
+                  >
                     {t("pipelineBuilder.redo")}
                   </Button>
                   <Button size="sm" variant="outline" onClick={onAddNote}>
@@ -406,6 +419,7 @@ export function PipelineBuilderPage({
                   nodeErrors={validation.nodeErrors}
                   notes={draft.notes ?? []}
                   onNotesChange={setNotes}
+                  readOnly={readOnly}
                 />
               </div>
             </div>

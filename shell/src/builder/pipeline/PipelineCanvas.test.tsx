@@ -554,6 +554,59 @@ test("clicking a note does not call onSelectNode", () => {
   expect(onSelectNode).not.toHaveBeenCalled();
 });
 
+// D55 : le canevas en lecture seule doit refuser toute mutation du graphe,
+// pas seulement désactiver le bouton Enregistrer en aval. Deux chemins
+// distincts créent une arête dans ce fichier — le drag natif (`onConnect`,
+// jamais exercé par un test existant, cf. commentaire plus bas) et le clic
+// accessible (`onStartConnect` + `completeConnection`, le seul déjà couvert
+// par un test de ce fichier) — les deux doivent être gardés.
+test("readOnly empêche la création d'une arête via l'affordance de connexion cliquée", () => {
+  const onEdgesChange = vi.fn();
+  const nodes: PipelineNode[] = [
+    { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: {}, title: "R" },
+    { id: "t1", kind: "transform", op: "transform.filter", x: 300, y: 0, params: {}, title: "T" },
+  ];
+  render(
+    <PipelineCanvas
+      readOnly
+      nodes={nodes}
+      edges={[]}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={onEdgesChange}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+      notes={[]}
+      onNotesChange={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Connecter depuis R" }));
+  fireEvent.click(screen.getByText("T"));
+  expect(onEdgesChange).not.toHaveBeenCalled();
+});
+
+test("readOnly empêche la suppression d'un nœud via son bouton de suppression", () => {
+  const onNodesChange = vi.fn();
+  render(
+    <PipelineCanvas
+      readOnly
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={onNodesChange}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+      notes={[]}
+      onNotesChange={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Supprimer Villes" }));
+  expect(onNodesChange).not.toHaveBeenCalled();
+});
+
 test("clicking the connect affordance on a node, then clicking a note, does not create an edge", () => {
   const onEdgesChange = vi.fn();
   const nodes: PipelineNode[] = [
