@@ -4863,6 +4863,39 @@
             "title": "Itemcount",
             "type": "integer"
           },
+          "maxCollections": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxcollections"
+          },
+          "maxItems": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxitems"
+          },
+          "maxStorageBytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxstoragebytes"
+          },
           "storageBytes": {
             "title": "Storagebytes",
             "type": "integer"
@@ -4876,7 +4909,10 @@
           "itemCount",
           "collectionCount",
           "userCount",
-          "storageBytes"
+          "storageBytes",
+          "maxItems",
+          "maxCollections",
+          "maxStorageBytes"
         ],
         "title": "UsageSnapshotResponse",
         "type": "object"

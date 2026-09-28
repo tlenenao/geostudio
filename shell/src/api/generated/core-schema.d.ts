@@ -3421,6 +3421,12 @@ export interface components {
             collectionCount: number;
             /** Itemcount */
             itemCount: number;
+            /** Maxcollections */
+            maxCollections: number | null;
+            /** Maxitems */
+            maxItems: number | null;
+            /** Maxstoragebytes */
+            maxStorageBytes: number | null;
             /** Storagebytes */
             storageBytes: number;
             /** Usercount */
