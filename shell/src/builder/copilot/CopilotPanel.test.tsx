@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { enableMockAuth } from "../../auth/useAuth";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import type { AppConfig, ItemClient } from "../../api/types";
+import { readCopilotHistory } from "../../lib/copilotHistory";
 import { applyClientOp } from "./applyClientOp";
 import { CopilotPanel } from "./CopilotPanel";
 
@@ -39,6 +40,43 @@ function renderPanel(
 }
 
 describe("CopilotPanel", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("persists a successful exchange in the copilot history", async () => {
+    const setDraft = vi.fn();
+    const copilotTurn = vi.fn().mockResolvedValue({
+      reply: "J'ai ajouté un indicateur.",
+      clientOps: [{ op: "addWidget", args: { type: "text" } }],
+    });
+    renderPanel({ copilotTurn }, setDraft);
+
+    await userEvent.type(screen.getByLabelText("Message au copilote"), "Ajoute un widget texte");
+    await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+
+    await waitFor(() => expect(readCopilotHistory()).toHaveLength(1));
+    expect(readCopilotHistory()[0]).toMatchObject({
+      message: "Ajoute un widget texte",
+      opsCount: 1,
+      status: "ok",
+    });
+  });
+
+  it("persists a failed exchange in the copilot history", async () => {
+    const setDraft = vi.fn();
+    const copilotTurn = vi.fn().mockRejectedValue(new Error("network"));
+    renderPanel({ copilotTurn }, setDraft);
+
+    await userEvent.type(screen.getByLabelText("Message au copilote"), "Explique ce dataset");
+    await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
+
+    await waitFor(() => expect(readCopilotHistory()).toHaveLength(1));
+    expect(readCopilotHistory()[0]).toMatchObject({
+      message: "Explique ce dataset",
+      opsCount: 0,
+      status: "error",
+    });
+  });
+
   it("sends a message and shows the reply, without changing the draft when there are no clientOps", async () => {
     const setDraft = vi.fn();
     const copilotTurn = vi
