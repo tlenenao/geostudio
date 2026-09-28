@@ -13,6 +13,8 @@ import {
 } from "../lib/sqlLabHistory";
 import { useUrlSyncedState } from "../lib/useUrlSyncedState";
 import { SqlLabCopilotPanel } from "../builder/copilot/SqlLabCopilotPanel";
+import { parseDuckDbError } from "../lib/parseDuckDbError";
+import { Banner } from "../ui/kit/Banner";
 import { Button } from "../ui/kit/Button";
 import { IconButton } from "../ui/kit/IconButton";
 import { Popover } from "../ui/kit/Popover";
@@ -124,11 +126,22 @@ export function SqlLabPage() {
               >
                 {t("sqlLab.runButton")}
               </Button>
-              {run.isError && (
-                <p role="alert" className="text-sm text-danger">
-                  {(run.error as Error).message}
-                </p>
-              )}
+              {run.isError &&
+                (() => {
+                  const parsed = parseDuckDbError((run.error as Error).message);
+                  return (
+                    <Banner variant="danger">
+                      {parsed.category && <p className="font-semibold">{parsed.category}</p>}
+                      <p>{parsed.message}</p>
+                      {parsed.line !== null && (
+                        <p className="mt-1 font-mono text-xs">
+                          {t("sqlLab.errorLineLabel", { line: parsed.line })}
+                          {parsed.sqlSnippet}
+                        </p>
+                      )}
+                    </Banner>
+                  );
+                })()}
               {result && (
                 <div>
                   <table className="w-full text-left text-sm">

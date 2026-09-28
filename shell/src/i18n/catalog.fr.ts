@@ -560,6 +560,7 @@ export const fr = {
   "sqlLab.truncatedMessage": "Résultat tronqué aux {n} premières lignes.",
   "sqlLab.historyLabel": "Historique",
   "sqlLab.emptyHistory": "Aucune requête exécutée pour l'instant.",
+  "sqlLab.errorLineLabel": "Ligne {line} : ",
   "sqlLab.reloadQueryAria": "Recharger la requête : {sql}",
 
   // UsersAdminPage

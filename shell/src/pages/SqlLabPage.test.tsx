@@ -112,6 +112,35 @@ test("affiche le message d'erreur du serveur et conserve le texte SQL en cas d'�
   expect(textarea).toHaveValue("select * fro x");
 });
 
+test("affiche la ligne et l'extrait SQL quand le message DuckDB porte une position", async () => {
+  server.use(
+    http.post("https://core.test/v1/analytics/sql", () =>
+      HttpResponse.json(
+        {
+          errors: [
+            {
+              field: "sql",
+              code: "sql_error",
+              message:
+                'Parser Error: syntax error at or near "fro"\n\nLINE 1: select * fro x\n                ^',
+            },
+          ],
+        },
+        { status: 400 },
+      ),
+    ),
+  );
+  render(<Harness />);
+  const textarea = await screen.findByLabelText("Requête SQL");
+  await userEvent.type(textarea, "select * fro x");
+  await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("Parser Error");
+  expect(alert).toHaveTextContent('syntax error at or near "fro"');
+  expect(alert).toHaveTextContent("Ligne 1");
+  expect(alert).toHaveTextContent("select * fro x");
+});
+
 test("enregistre l'historique au succès et recharge une requête passée au clic", async () => {
   server.use(
     http.post("https://core.test/v1/analytics/sql", () =>
