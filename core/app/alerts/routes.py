@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.alerts import jobs as alerts_jobs
 from app.alerts import repository as alerts_repo
 from app.auth.dependency import get_current_user
 from app.configs import repository as configs_repo
@@ -65,6 +66,35 @@ def _require_alert_read_access(session: Session, *, user: User, item_id: str) ->
     facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
     if facts is None or not can(session, user_id=user.id, action="read", item=facts):
         raise HTTPException(status_code=404, detail="alert rule not found")
+
+
+def _require_alert_write_access(session: Session, *, user: User, item_id: str) -> None:
+    facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
+    if facts is None or not can(session, user_id=user.id, action="write", item=facts):
+        raise HTTPException(status_code=404, detail="alert rule not found")
+
+
+class EvaluateAlertResponse(BaseModel):
+    evaluationId: str
+
+
+@router.post("/alerts/{item_id}/evaluate", response_model=EvaluateAlertResponse, status_code=202)
+def evaluate_alert_now(
+    item_id: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> EvaluateAlertResponse:
+    # D04 (SP-C6, Tâche 39) : déclenchement manuel d'une évaluation, en plus
+    # du balayage périodique (app.alerts.jobs.sweep_alert_rules_task). Garde
+    # d'écriture (pas seulement lecture) car cette action consomme des
+    # ressources (job procrastinate + notifications de canal potentielles).
+    _require_alert_write_access(session, user=user, item_id=item_id)
+    evaluation = alerts_repo.create_evaluation(
+        session, tenant_id=user.tenant_id, alert_rule_item_id=item_id
+    )
+    session.commit()
+    alerts_jobs.evaluate_alert_task.defer(evaluation_id=evaluation.id, tenant_id=user.tenant_id)
+    return EvaluateAlertResponse(evaluationId=evaluation.id)
 
 
 @router.get("/alerts/{item_id}/evaluations", response_model=list[EvaluationStatus])

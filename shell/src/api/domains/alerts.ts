@@ -17,6 +17,7 @@ type AlertsMethods = Pick<
   | "saveAlertRuleConfig"
   | "listAlertRulesForDataset"
   | "getAlertEvaluations"
+  | "evaluateAlertRule"
 >;
 
 export function createAlertsMethods(base: ItemClientBase): AlertsMethods {
@@ -84,6 +85,10 @@ export function createAlertsMethods(base: ItemClientBase): AlertsMethods {
         "GET",
         `/alerts/${alertItemId}/evaluations${qs ? `?${qs}` : ""}`,
       );
+    },
+
+    async evaluateAlertRule(itemId: string): Promise<{ evaluationId: string }> {
+      return request<{ evaluationId: string }>("POST", `/alerts/${itemId}/evaluate`);
     },
   };
 }

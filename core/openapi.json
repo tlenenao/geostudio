@@ -1650,6 +1650,19 @@
         "title": "EmptyCollectionCreate",
         "type": "object"
       },
+      "EvaluateAlertResponse": {
+        "properties": {
+          "evaluationId": {
+            "title": "Evaluationid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evaluationId"
+        ],
+        "title": "EvaluateAlertResponse",
+        "type": "object"
+      },
       "EvaluationStatus": {
         "properties": {
           "createdAt": {
@@ -5226,6 +5239,55 @@
           }
         },
         "summary": "Get Usage"
+      }
+    },
+    "/v1/alerts/{item_id}/evaluate": {
+      "post": {
+        "operationId": "evaluate_alert_now_v1_alerts__item_id__evaluate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluateAlertResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evaluate Alert Now"
       }
     },
     "/v1/alerts/{item_id}/evaluations": {

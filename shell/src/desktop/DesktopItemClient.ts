@@ -360,6 +360,9 @@ export function createDesktopItemClient(connection: {
     async getAlertEvaluations(..._args: unknown[]) {
       return unsupported();
     },
+    async evaluateAlertRule(..._args: unknown[]) {
+      return unsupported();
+    },
     async createReportScheduleItem(..._args: unknown[]) {
       return unsupported();
     },

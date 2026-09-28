@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from fastapi.testclient import TestClient
 
+from app.alerts import jobs as alerts_jobs
 from app.alerts import repository as alerts_repo
 from app.configs import repository as configs_repo
 from app.configs.schemas import BuilderConfig
@@ -121,3 +122,21 @@ def test_get_alert_evaluations_404s_for_an_unknown_rule(monkeypatch, tmp_path):
     client, *_ = _setup(monkeypatch, tmp_path)
     resp = client.get("/v1/alerts/does-not-exist/evaluations")
     assert resp.status_code == 404
+
+
+def test_evaluate_alert_now_404s_for_an_unknown_rule(monkeypatch, tmp_path):
+    client, *_ = _setup(monkeypatch, tmp_path)
+    resp = client.post("/v1/alerts/does-not-exist/evaluate")
+    assert resp.status_code == 404
+
+
+def test_evaluate_alert_now_defers_evaluation_and_returns_202(monkeypatch, tmp_path):
+    client, _dataset_item_id, rule_item_id = _setup(monkeypatch, tmp_path)
+    deferred: list[dict] = []
+    monkeypatch.setattr(alerts_jobs.evaluate_alert_task, "defer", lambda **kw: deferred.append(kw))
+    resp = client.post(f"/v1/alerts/{rule_item_id}/evaluate")
+    assert resp.status_code == 202
+    body = resp.json()
+    assert "evaluationId" in body
+    assert len(deferred) == 1
+    assert deferred[0]["evaluation_id"] == body["evaluationId"]

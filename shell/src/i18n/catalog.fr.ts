@@ -1453,6 +1453,7 @@ export const fr = {
   "alertRule.createButton": "Créer la règle",
   "alertRule.createError": "Échec de la création de la règle.",
   "alertRule.loadMore": "Charger plus",
+  "alertRule.evaluateNowButton": "Exécuter maintenant",
 
   // AnalyticsContextIndicator (builder)
   "analyticsContext.periodLabel": "Période : {from} → {to}",

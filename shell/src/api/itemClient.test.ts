@@ -3447,6 +3447,19 @@ test("getAlertEvaluations relaie limit/offset en paramètres de requête", async
   await makeClient().getAlertEvaluations("a-1", { limit: 50, offset: 50 });
 });
 
+test("evaluateAlertRule calls POST /alerts/{id}/evaluate", async () => {
+  let method: string | undefined;
+  server.use(
+    http.post("https://core.test/v1/alerts/a-1/evaluate", ({ request }) => {
+      method = request.method;
+      return HttpResponse.json({ evaluationId: "e1" }, { status: 202 });
+    }),
+  );
+  const result = await makeClient().evaluateAlertRule("a-1");
+  expect(method).toBe("POST");
+  expect(result).toEqual({ evaluationId: "e1" });
+});
+
 test("getReportRuns calls GET /reports/{id}/runs", async () => {
   const runs = [
     {
