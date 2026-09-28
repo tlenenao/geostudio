@@ -265,11 +265,13 @@ function AttachmentFieldInput({
   fid,
   fieldKey,
   client,
+  labelledBy,
 }: {
   collectionId: string;
   fid: string | null;
   fieldKey: string;
   client: ReturnType<typeof useItemClient>;
+  labelledBy: string;
 }) {
   const queryClient = useQueryClient();
   const query = useQuery({
@@ -335,7 +337,7 @@ function AttachmentFieldInput({
 
   return (
     <div className="flex flex-col gap-1">
-      <ul className="flex flex-col gap-1">
+      <ul className="flex flex-col gap-1" aria-labelledby={labelledBy}>
         {(query.data ?? []).map((a) => (
           <li key={a.id} className="flex items-center gap-2 text-xs">
             <button
@@ -396,18 +398,12 @@ function FieldInput({
   value,
   onChange,
   onBlur,
-  collectionId,
-  fid,
-  client,
   error,
 }: {
   field: FormField;
   value: unknown;
   onChange: (v: unknown) => void;
   onBlur: () => void;
-  collectionId: string;
-  fid: string | null;
-  client: ReturnType<typeof useItemClient>;
   error: string | null;
 }) {
   const fieldId = `field-${field.name}`;
@@ -421,16 +417,10 @@ function FieldInput({
   // valide (validateField, ligne 221).
   const requiredProps = field.required ? { "aria-required": "true" as const } : {};
 
-  if (field.type === "attachment") {
-    return (
-      <AttachmentFieldInput
-        collectionId={collectionId}
-        fid={fid}
-        fieldKey={field.name}
-        client={client}
-      />
-    );
-  }
+  // La branche `attachment` est traitée à part par l'appelant (form.tsx,
+  // fields.map) : AttachmentFieldInput y est rendu directement, avec son
+  // propre <span id> de label relié par aria-labelledby (D38) — FieldInput
+  // n'est donc jamais appelé pour ce type.
   if (field.type === "boolean") {
     return (
       <input
@@ -691,27 +681,40 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       onSubmit={(e) => void handleSubmit(e)}
       noValidate
     >
-      {fields.map((f) => (
-        <label key={f.name} className="flex flex-col gap-1">
-          {f.label}
-          {f.required ? " *" : ""}
-          <FieldInput
-            field={f}
-            value={values[f.name]}
-            onChange={(v) => setValues((old) => ({ ...old, [f.name]: v }))}
-            onBlur={() => setTouched((t) => ({ ...t, [f.name]: true }))}
-            collectionId={collectionId}
-            fid={editingId === null ? null : String(editingId)}
-            client={client}
-            error={errorFor(f)}
-          />
-          {errorFor(f) && (
-            <span id={`field-${f.name}-error`} role="alert" className="text-xs text-danger">
-              {errorFor(f)}
+      {fields.map((f) =>
+        f.type === "attachment" ? (
+          <div key={f.name} className="flex flex-col gap-1">
+            <span id={`field-${f.name}-label`}>
+              {f.label}
+              {f.required ? " *" : ""}
             </span>
-          )}
-        </label>
-      ))}
+            <AttachmentFieldInput
+              collectionId={collectionId}
+              fid={editingId === null ? null : String(editingId)}
+              fieldKey={f.name}
+              client={client}
+              labelledBy={`field-${f.name}-label`}
+            />
+          </div>
+        ) : (
+          <label key={f.name} className="flex flex-col gap-1">
+            {f.label}
+            {f.required ? " *" : ""}
+            <FieldInput
+              field={f}
+              value={values[f.name]}
+              onChange={(v) => setValues((old) => ({ ...old, [f.name]: v }))}
+              onBlur={() => setTouched((t) => ({ ...t, [f.name]: true }))}
+              error={errorFor(f)}
+            />
+            {errorFor(f) && (
+              <span id={`field-${f.name}-error`} role="alert" className="text-xs text-danger">
+                {errorFor(f)}
+              </span>
+            )}
+          </label>
+        ),
+      )}
       {geometryType === "Point" && (
         <div className="flex gap-2">
           <label className="flex flex-1 flex-col gap-1">

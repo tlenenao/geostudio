@@ -979,6 +979,30 @@ test("affiche la liste des pièces jointes existantes pour un champ attachment",
   expect(await screen.findByText("a.jpg")).toBeInTheDocument();
 });
 
+test("le label d'un champ pièce jointe n'est pas un <label> englobant (D38)", async () => {
+  // D38 : le texte de label ne doit plus envelopper les contrôles internes
+  // (bouton d'ajout, liste de pièces jointes) — un lecteur d'écran le
+  // répétait sinon sur chaque contrôle. Le texte devient un <span id>
+  // relié à la liste via aria-labelledby/role="list".
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
+  const listAttachments = vi.fn().mockResolvedValue([]);
+  renderConnectedForm({
+    fields: attachmentFields,
+    client: { listAttachments },
+    bus,
+    widgetId: "form1",
+  });
+  bus.emit("table1", "itemSelected", { id: 7, properties: {} });
+  await screen.findByText(/Modification de l'enregistrement #7/);
+  const labelText = await screen.findByText("Photos");
+  expect(labelText.tagName).not.toBe("LABEL");
+  const list = await screen.findByRole("list", { name: "Photos" });
+  expect(list).toBeInTheDocument();
+});
+
 test("affiche un statut par fichier pendant l'upload de plusieurs fichiers", async () => {
   const bus = new ActionBus();
   bus.configure([
