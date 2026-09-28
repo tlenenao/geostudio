@@ -277,14 +277,14 @@ function AttachmentFieldInput({
     queryFn: () => client.listAttachments(collectionId, fid!, fieldKey),
     enabled: fid !== null,
   });
-  const [uploading, setUploading] = useState(false);
+  const [fileStatus, setFileStatus] = useState<Record<string, "uploading" | "done" | "error">>({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   async function handleFiles(files: FileList | null) {
     if (!files || fid === null) return;
-    setUploading(true);
-    try {
-      for (const file of Array.from(files)) {
+    for (const file of Array.from(files)) {
+      setFileStatus((s) => ({ ...s, [file.name]: "uploading" }));
+      try {
         const { uploadUrl, key } = await client.presignAttachmentUpload(collectionId, fid, {
           fieldKey,
           filename: file.name,
@@ -301,13 +301,15 @@ function AttachmentFieldInput({
           filename: file.name,
           contentType: file.type || "application/octet-stream",
         });
+        setFileStatus((s) => ({ ...s, [file.name]: "done" }));
+      } catch (err) {
+        console.error("AttachmentFieldInput: upload failed", err);
+        setFileStatus((s) => ({ ...s, [file.name]: "error" }));
       }
-      void queryClient.invalidateQueries({
-        queryKey: ["attachments", collectionId, fid, fieldKey],
-      });
-    } finally {
-      setUploading(false);
     }
+    void queryClient.invalidateQueries({
+      queryKey: ["attachments", collectionId, fid, fieldKey],
+    });
   }
 
   async function handleDelete(attachmentId: string) {
@@ -373,9 +375,18 @@ function AttachmentFieldInput({
         type="file"
         multiple
         aria-label={t("widgetForm.addFilesAria")}
-        disabled={uploading}
+        disabled={Object.values(fileStatus).some((s) => s === "uploading")}
         onChange={(e) => void handleFiles(e.target.files)}
       />
+      {Object.entries(fileStatus)
+        .filter(([, status]) => status !== "done")
+        .map(([filename, status]) => (
+          <p key={filename} className="text-xs text-ink-2">
+            {status === "uploading"
+              ? t("widgetForm.attachmentUploading", { filename })
+              : t("widgetForm.attachmentError", { filename })}
+          </p>
+        ))}
     </div>
   );
 }

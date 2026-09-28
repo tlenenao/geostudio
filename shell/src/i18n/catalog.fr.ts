@@ -941,6 +941,8 @@ export const fr = {
   "widgetForm.confirmDelete": "Supprimer cet enregistrement ?",
   "widgetForm.confirmDeleteAttachmentTitle": "Supprimer la pièce jointe",
   "widgetForm.confirmDeleteAttachment": "Supprimer la pièce jointe « {filename} » ?",
+  "widgetForm.attachmentUploading": "Envoi de {filename}…",
+  "widgetForm.attachmentError": "Échec de l'envoi de {filename}",
   "widgetForm.longitude": "Longitude",
   "widgetForm.latitude": "Latitude",
   "widgetForm.editingRecord": "Modification de l'enregistrement #{id}",

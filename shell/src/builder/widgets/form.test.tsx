@@ -979,6 +979,54 @@ test("affiche la liste des pièces jointes existantes pour un champ attachment",
   expect(await screen.findByText("a.jpg")).toBeInTheDocument();
 });
 
+test("affiche un statut par fichier pendant l'upload de plusieurs fichiers", async () => {
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
+  const listAttachments = vi.fn().mockResolvedValue([]);
+  const presignResolvers: Array<(v: { uploadUrl: string; key: string }) => void> = [];
+  const presignAttachmentUpload = vi.fn().mockImplementation(
+    () =>
+      new Promise<{ uploadUrl: string; key: string }>((resolve) => {
+        presignResolvers.push(resolve);
+      }),
+  );
+  const confirmAttachmentUpload = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+  renderConnectedForm({
+    fields: attachmentFields,
+    client: { listAttachments, presignAttachmentUpload, confirmAttachmentUpload },
+    bus,
+    widgetId: "form1",
+  });
+  bus.emit("table1", "itemSelected", { id: 7, properties: {} });
+  const input = await screen.findByLabelText(t("widgetForm.addFilesAria"));
+  const file1 = new File(["a"], "a.txt");
+  const file2 = new File(["b"], "b.txt");
+  await userEvent.upload(input, [file1, file2]);
+  expect(
+    screen.getByText(t("widgetForm.attachmentUploading", { filename: "a.txt" })),
+  ).toBeInTheDocument();
+  // Boucle séquentielle (for...of + await) : le second fichier n'a pas encore
+  // démarré tant que le premier n'a pas résolu son presign.
+  expect(presignResolvers).toHaveLength(1);
+  presignResolvers[0]({ uploadUrl: "https://example.test/upload", key: "k1" });
+  await waitFor(() => expect(presignResolvers).toHaveLength(2));
+  presignResolvers[1]({ uploadUrl: "https://example.test/upload", key: "k2" });
+  await waitFor(() =>
+    expect(
+      screen.queryByText(t("widgetForm.attachmentUploading", { filename: "a.txt" })),
+    ).not.toBeInTheDocument(),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByText(t("widgetForm.attachmentUploading", { filename: "b.txt" })),
+    ).not.toBeInTheDocument(),
+  );
+  expect(confirmAttachmentUpload).toHaveBeenCalledTimes(2);
+});
+
 test("désactive le champ attachment tant que l'entité n'est pas enregistrée", () => {
   renderForm(attachmentFields);
   expect(
