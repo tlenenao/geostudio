@@ -12,7 +12,7 @@ import { Panel } from "../ui/kit/Panel";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { NewItemButton } from "../shell/NewItemButton";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
-import { t } from "../i18n";
+import { plural, t } from "../i18n";
 import { CatalogSpatialFilter, type Bbox } from "./CatalogSpatialFilter";
 
 const PAGE_SIZE = 12;
@@ -351,7 +351,10 @@ export function CatalogPage({
           content: (
             <Panel className="m-3 flex flex-col gap-2 text-sm">
               <p className="font-medium text-ink">
-                {t("catalog.count", { n: query.data?.total ?? 0 })}
+                {(() => {
+                  const n = query.data?.total ?? 0;
+                  return t(plural(n, "catalog.countOne", "catalog.countMany"), { n });
+                })()}
               </p>
               <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs text-ink-2">
                 <dt>{t("catalog.searchResultLabel")}</dt>

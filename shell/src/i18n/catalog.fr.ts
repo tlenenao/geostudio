@@ -84,7 +84,8 @@ export const fr = {
     "Ce journal reflète les actions déclenchées (audit_log), pas un statut de job en temps réel.",
 
   // Catalogue
-  "catalog.count": "{n} éléments",
+  "catalog.countOne": "{n} élément",
+  "catalog.countMany": "{n} éléments",
   "catalog.allOption": "Tous",
   "catalog.scopeMine": "Mes éléments",
   "catalog.scopeShared": "Partagés avec moi",
@@ -436,7 +437,8 @@ export const fr = {
 
   // DatasetPage
   "datasetPage.notFound": "Jeu de données introuvable.",
-  "datasetPage.featureCount": "{n} entités",
+  "datasetPage.featureCountOne": "{n} entité",
+  "datasetPage.featureCountMany": "{n} entités",
 
   // HarvestSourcesAdminPage
   "harvest.title": "Moissonnage",
@@ -712,7 +714,8 @@ export const fr = {
   "importFile.lonColumn": "Colonne longitude",
   "importFile.continueButton": "Continuer",
   "importFile.layerColumn": "Couche à importer",
-  "importFile.layerOptionTemplate": "{name} ({count} entités)",
+  "importFile.layerOptionTemplateOne": "{name} ({count} entité)",
+  "importFile.layerOptionTemplateMany": "{name} ({count} entités)",
   "importFile.geometryModeLegend": "Géométrie",
   "importFile.geometryModeLatLon": "Colonnes latitude/longitude",
   "importFile.geometryModeWkt": "Colonne WKT unique",
@@ -870,7 +873,8 @@ export const fr = {
   "widgetDatasetCard.noSource": "Aucune source de données sélectionnée",
   "widgetDatasetCard.notFound": "Jeu de données introuvable",
   "widgetDatasetCard.viewLink": "Voir le jeu de données",
-  "widgetDatasetCard.featureCount": "{n} entités",
+  "widgetDatasetCard.featureCountOne": "{n} entité",
+  "widgetDatasetCard.featureCountMany": "{n} entités",
 
   // Widget Plage de dates (dateRangeFilter.tsx)
   "widgetDateRangeFilter.paletteLabel": "Plage de dates",
@@ -1659,7 +1663,8 @@ export const fr = {
   "layerPicker.loadingSources": "Chargement des sources…",
   "layerPicker.loadError": "Impossible de charger les sources de couches.",
   "layerPicker.emptyText": "Aucune source disponible.",
-  "layerPicker.featureCountTemplate": "{n} entités",
+  "layerPicker.featureCountTemplateOne": "{n} entité",
+  "layerPicker.featureCountTemplateMany": "{n} entités",
   "layerPicker.addTileset3dHeading": "Ajouter un tileset 3D par URL",
   "layerPicker.tileset3dTitleAria": "Titre du tileset 3D",
   "layerPicker.titlePlaceholder": "Titre",

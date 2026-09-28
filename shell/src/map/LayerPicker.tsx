@@ -6,7 +6,7 @@ import type { LayerSource, MapLayer } from "../api/types";
 import { detectGeometryKind, renderAsFor } from "../builder/widgets/mapSymbology";
 import { fetchFeatureCollection } from "./geojsonIntrospect";
 import { Button } from "../ui/kit/Button";
-import { t } from "../i18n";
+import { plural, t } from "../i18n";
 
 function toMapLayer(source: LayerSource): MapLayer {
   const id = crypto.randomUUID();
@@ -150,7 +150,14 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
                 <span className="ml-2 text-xs text-ink-3">{source.kind}</span>
                 {typeof source.featureCount === "number" && (
                   <span className="ml-2 text-xs text-ink-3">
-                    {t("layerPicker.featureCountTemplate", { n: source.featureCount })}
+                    {t(
+                      plural(
+                        source.featureCount,
+                        "layerPicker.featureCountTemplateOne",
+                        "layerPicker.featureCountTemplateMany",
+                      ),
+                      { n: source.featureCount },
+                    )}
                   </span>
                 )}
               </button>

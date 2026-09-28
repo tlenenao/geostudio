@@ -4,7 +4,7 @@ import { registerWidget } from "../registry";
 import { DataSourceSelect } from "../DataSourceSelect";
 import { DatasetDownloadButtons } from "../DatasetDownloadButtons";
 import { useItemClient } from "../../api/ItemClientProvider";
-import { t } from "../../i18n";
+import { plural, t } from "../../i18n";
 import { LoadingState } from "../../ui/kit/LoadingState";
 
 export function registerDatasetCardWidget(): void {
@@ -88,7 +88,17 @@ export function registerDatasetCardWidget(): void {
           </h3>
           <p className="text-xs text-[var(--gs-color-muted)]">{col.description}</p>
           <p className="text-xs text-[var(--gs-color-muted)]">
-            {t("widgetDatasetCard.featureCount", { n: col.featureCount ?? 0 })}
+            {(() => {
+              const n = col.featureCount ?? 0;
+              return t(
+                plural(
+                  n,
+                  "widgetDatasetCard.featureCountOne",
+                  "widgetDatasetCard.featureCountMany",
+                ),
+                { n },
+              );
+            })()}
           </p>
           <a
             className="text-sm font-medium text-[var(--gs-color-primary)] underline"

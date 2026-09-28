@@ -3,16 +3,31 @@ import { useQuery } from "@tanstack/react-query";
 import { useItemClient } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
+import { useDocumentMeta } from "../shell/useDocumentMeta";
 import { LoadingState } from "../ui/kit/LoadingState";
 
 registerBuiltinWidgets();
 
 export function PublicItemPage({ pk }: { pk: string }) {
   const client = useItemClient();
+  const itemQuery = useQuery({
+    queryKey: ["public-item", pk],
+    queryFn: () => client.getItem(pk),
+    retry: false,
+  });
   const configQuery = useQuery({
     queryKey: ["public-item-config", pk],
     queryFn: () => client.getPublicAppConfig(pk),
     retry: false,
+  });
+
+  // Complète (ne remplace pas) le chemin robot rendu côté serveur — utile
+  // pour l'onglet navigateur d'un humain et pour Googlebot, même patron que
+  // SitePublicPage.tsx (SP-55 §3.4, GAP-07).
+  useDocumentMeta({
+    title: itemQuery.data?.title ?? "GeoStudio",
+    description: itemQuery.data?.abstract ?? "",
+    canonicalUrl: `${window.location.origin}/public/items/${pk}`,
   });
 
   if (configQuery.isLoading) {
