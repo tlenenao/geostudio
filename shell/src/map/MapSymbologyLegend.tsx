@@ -5,9 +5,31 @@
 import type { LegendSpec } from "../builder/widgets/mapSymbology";
 import { t } from "../i18n";
 
-export function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
+// Correctif revue Tâche 35 : `mapWidget.tsx` monte toujours une seule
+// instance directement dans son propre conteneur `relative`, donc l'ancrage
+// `absolute` en dur ci-dessous (coin bas-droit) est correct pour ce seul
+// appelant ("floating", défaut inchangé). `MapEditorPage.tsx` peut en
+// revanche monter plusieurs instances (une par couche vecteur visible avec
+// symbologie) dans son propre conteneur déjà positionné et empilé en
+// `flex-col` — un `absolute` par enfant les ferait tous se superposer au
+// même point (sorti du flux, `gap`/`flex-col` du parent ignorés) au lieu de
+// s'empiler. `variant="static"` retire cet ancrage propre pour laisser le
+// parent gérer position ET empilement.
+export function MapSymbologyLegend({
+  legend,
+  variant = "floating",
+}: {
+  legend: LegendSpec;
+  variant?: "floating" | "static";
+}) {
   return (
-    <div className="absolute bottom-2 right-2 z-10 flex flex-col gap-2 rounded-md bg-surface/90 p-2 text-xs text-ink shadow">
+    <div
+      className={
+        variant === "floating"
+          ? "absolute bottom-2 right-2 z-10 flex flex-col gap-2 rounded-md bg-surface/90 p-2 text-xs text-ink shadow"
+          : "flex flex-col gap-2 rounded-md bg-surface/90 p-2 text-xs text-ink shadow"
+      }
+    >
       {legend.color?.kind === "categorical" && (
         <ul>
           {legend.color.entries.map((e) => (

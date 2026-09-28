@@ -215,7 +215,22 @@ export function MapEditorPage({ pk }: { pk: string }) {
                   loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
                 />
               </Suspense>
-              <div className="pointer-events-none absolute bottom-2 left-2 z-10 flex flex-col gap-2">
+              {/* Correctif revue Tâche 35 : `MapView` affiche déjà, dans ce même
+                  conteneur `relative`, `MapLegend` ancrée `bottom-2 left-2`
+                  (noms de couches, actif ici car `hideLegend` n'est passé que
+                  sur le chemin export). Ce bloc doit donc occuper un coin
+                  distinct — bas-droite, cohérent avec l'unique instance de
+                  `MapSymbologyLegend` déjà auto-positionnée à cet endroit
+                  dans `mapWidget.tsx` — plutôt que reprendre bas-gauche, qui
+                  superposait exactement les deux légendes. `variant="static"`
+                  sur chaque enfant retire son propre `absolute` (qui, sorti
+                  du flux, ignorait de toute façon le `flex-col`/`gap` de ce
+                  conteneur et aurait empilé plusieurs couches au même point)
+                  pour laisser ce conteneur gérer position et empilement. */}
+              <div
+                data-testid="map-symbology-legend-panel"
+                className="pointer-events-none absolute bottom-2 right-2 z-10 flex flex-col gap-2"
+              >
                 {draft.layers
                   .filter(
                     (l): l is Extract<MapLayer, { kind: "vector" }> =>
@@ -233,7 +248,9 @@ export function MapEditorPage({ pk }: { pk: string }) {
                       palette,
                       { stroke, icon: l.symbology.icon },
                     );
-                    return legend ? <MapSymbologyLegend key={l.id} legend={legend} /> : null;
+                    return legend ? (
+                      <MapSymbologyLegend key={l.id} legend={legend} variant="static" />
+                    ) : null;
                   })}
               </div>
             </div>
