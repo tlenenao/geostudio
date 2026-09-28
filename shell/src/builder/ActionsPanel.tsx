@@ -4,6 +4,7 @@ import type { ActionMessage, Variable, WidgetItem } from "../api/types";
 import { t } from "../i18n";
 import { getWidget } from "./registry";
 import { validateExpression } from "./expr";
+import { formatCelError } from "./celError";
 
 function widgetLabel(items: WidgetItem[], variables: Variable[], id: string): string {
   if (id.startsWith("var:")) {
@@ -99,8 +100,8 @@ export function ActionsPanel({
                 onChange={(e) => updateWhen(m.id, e.target.value)}
               />
               {error && (
-                <span role="alert" className="text-danger">
-                  {error}
+                <span role="alert" className="whitespace-pre-line text-danger">
+                  {formatCelError(error)}
                 </span>
               )}
             </li>

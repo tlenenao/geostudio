@@ -3,6 +3,7 @@ import { HelpCircle } from "lucide-react";
 import type { DataSource, Theme, Variable, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
 import { validateExpression } from "./expr";
+import { formatCelError } from "./celError";
 import { IconButton } from "../ui/kit/IconButton";
 import { Popover } from "../ui/kit/Popover";
 import { t } from "../i18n";
@@ -59,8 +60,8 @@ export function PropsPanel({
           onChange={(e) => onVisibleWhenChange(e.target.value)}
         />
         {error && (
-          <span role="alert" className="text-xs text-danger">
-            {error}
+          <span role="alert" className="whitespace-pre-line text-xs text-danger">
+            {formatCelError(error)}
           </span>
         )}
       </label>

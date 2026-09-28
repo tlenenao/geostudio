@@ -93,7 +93,9 @@ test("shows a validation error for an invalid visibleWhen", () => {
     />,
     { wrapper },
   );
-  expect(screen.getByRole("alert")).toBeInTheDocument();
+  // D35 : le message brut de cel-js est préfixé « • » (formatCelError),
+  // pas affiché tel quel.
+  expect(screen.getByRole("alert")).toHaveTextContent("•");
   // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
   // --gs-* à la place.
   expectTokenizedClasses(container);

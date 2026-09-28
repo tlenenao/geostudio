@@ -2,6 +2,7 @@
 import { useId, useState } from "react";
 import type { PopupConfig, PopupField } from "../api/types";
 import { validateExpression } from "../builder/expr";
+import { formatCelError } from "../builder/celError";
 import { closingBrace } from "./popupTemplate";
 import { Button } from "../ui/kit/Button";
 import { labelCls, inputCls } from "./formFieldStyles";
@@ -28,7 +29,7 @@ function templateError(template: string): string | null {
     const close = closingBrace(template, open);
     if (close === -1) return t("popupEditor.unclosedExpressionError");
     const err = validateExpression(template.slice(open + 2, close).trim());
-    if (err) return t("popupEditor.invalidExpressionError", { err });
+    if (err) return t("popupEditor.invalidExpressionError", { err: formatCelError(err) });
     i = close + 1;
   }
   return null;
@@ -214,7 +215,7 @@ export function PopupEditor({
         </label>
       )}
       {error && (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="whitespace-pre-line text-xs text-danger">
           {error}
         </p>
       )}

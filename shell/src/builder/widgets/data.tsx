@@ -6,7 +6,9 @@ import { useBusAction } from "../ActionBusContext";
 import { useSetFilter } from "../DataContext";
 import { useSetCrossFilter } from "../AnalyticsContext";
 import { evaluateExpression } from "../expr";
-import type { DataRecord } from "../../api/types";
+import { formatFieldValue } from "../fieldFormat";
+import { useCollectionSchema } from "../../api/domains/datasets.hooks";
+import type { CollectionFieldType, DataRecord } from "../../api/types";
 import type { WidgetContext } from "../registry";
 import { ExplorerMenu } from "./ExplorerMenu";
 import { DataTable } from "../../ui/kit/DataTable";
@@ -29,8 +31,13 @@ function cellValue(
   c: TableColumn,
   r: DataRecord,
   ctx: Pick<WidgetContext, "variables" | "user">,
+  fieldTypes: Map<string, CollectionFieldType>,
 ): string {
-  if (!isCalculatedColumn(c)) return String(r.properties[c] ?? "");
+  // Une colonne calculée CEL (`isCalculatedColumn`) est un résultat
+  // d'expression, sans type de champ connu — seul un nom de champ simple a
+  // un type dans le schéma de la collection, donc seul lui passe par
+  // `formatFieldValue` (D35, Vague C, SP-C6).
+  if (!isCalculatedColumn(c)) return formatFieldValue(r.properties[c], fieldTypes.get(c));
   const value = evaluateExpression(c.expr, {
     vars: ctx.variables ?? {},
     record: r.properties,
@@ -47,11 +54,12 @@ function cellValue(
 function toDataTableColumns(
   columns: TableColumn[],
   ctx: Pick<WidgetContext, "variables" | "user">,
+  fieldTypes: Map<string, CollectionFieldType>,
 ): { key: string; label: string; render: (row: DataRecord) => string }[] {
   return columns.map((c) => ({
     key: columnKey(c),
     label: columnLabel(c),
-    render: (row: DataRecord) => cellValue(c, row, ctx),
+    render: (row: DataRecord) => cellValue(c, row, ctx, fieldTypes),
   }));
 }
 
@@ -262,6 +270,17 @@ export function registerDataWidgets(): void {
       const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
       const [page, setPage] = useState(0);
       const data = ctx.data;
+      // D35 (Vague C, SP-C6) : formatage fr-FR des valeurs de champ simple —
+      // le hook partagé déjà posé par EditCollectionPanel.tsx (GAP-22), pas
+      // un `useQuery` en ligne de plus. Hors de tout `return` conditionnel
+      // (règle des Hooks) : appelé même sans dataset lié, désactivé alors
+      // par `enabled`.
+      const schemaQuery = useCollectionSchema(data?.collectionId ?? "", {
+        enabled: Boolean(data?.collectionId),
+      });
+      const fieldTypes = new Map(
+        (schemaQuery.data?.fields ?? []).map((f) => [f.name, f.type] as const),
+      );
       if (!data || data.loading)
         return <p className="text-xs text-[var(--gs-color-muted)]">{t("common.loading")}</p>;
       if (data.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;
@@ -324,7 +343,7 @@ export function registerDataWidgets(): void {
             hasGeometry={data.hasGeometry}
           />
           <DataTable
-            columns={toDataTableColumns(columns, ctx)}
+            columns={toDataTableColumns(columns, ctx, fieldTypes)}
             rows={shown}
             getRowId={(r) => String(r.id)}
             sortKey={sortCol ?? undefined}

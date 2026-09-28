@@ -1,20 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { PopupConfig } from "../api/types";
+import type { CollectionSchemaField, PopupConfig } from "../api/types";
 import { renderPopupTemplate, stringifyObject } from "./popupTemplate";
+import { formatFieldValue } from "../builder/fieldFormat";
 
 export type PopupRow = { label: string; value: string };
 export type PopupContent = { title: string | null; rows: PopupRow[]; html: string | null };
 
 const EMPTY = "—";
-
-// Durcissement identique à `stringify()` de popupTemplate.ts (cf. son
-// commentaire) : un popup doit se dégrader, jamais planter la carte, même
-// sur une valeur non sérialisable (structure circulaire, `toJSON` qui lève).
-function display(value: unknown): string {
-  if (value === null || value === undefined) return EMPTY;
-  if (typeof value === "object") return stringifyObject(value);
-  return String(value);
-}
 
 // Résolution d'un PopupConfig contre les propriétés de l'entité cliquée.
 // Deux modes exclusifs : gabarit (s'il est non vide) ou liste de champs.
@@ -25,10 +17,27 @@ function display(value: unknown): string {
 // montage réel n'avait de quoi la remplir (ni variables ni contexte d'app
 // dans MapEditorPage, ni ExprContext de l'ActionBus exposé par mapWidget ou
 // ExplorerDrawer). Le seul vocabulaire d'un gabarit de popup est `record.*`.
+//
+// D35 (Vague C, SP-C6) : le formatage fr-FR (`formatFieldValue`) ne
+// s'applique qu'au mode `fields` ci-dessous — jamais au gabarit libre
+// `template` (`renderPopupTemplate`), hors périmètre de cette tâche
+// (décision de scope documentée dans le plan SP-C6).
 export function resolvePopupContent(
   config: PopupConfig | undefined,
   properties: Record<string, unknown>,
+  schema?: CollectionSchemaField[],
 ): PopupContent {
+  const fieldTypes = new Map((schema ?? []).map((f) => [f.name, f.type] as const));
+  // Durcissement identique à `stringify()` de popupTemplate.ts (cf. son
+  // commentaire) : un popup doit se dégrader, jamais planter la carte, même
+  // sur une valeur non sérialisable (structure circulaire, `toJSON` qui
+  // lève). `fieldName` absent (ex. appel interne sans nom de champ connu) :
+  // comportement `String(value)` historique via `formatFieldValue`.
+  function display(value: unknown, fieldName?: string): string {
+    if (value === null || value === undefined) return EMPTY;
+    if (typeof value === "object") return stringifyObject(value);
+    return fieldName ? formatFieldValue(value, fieldTypes.get(fieldName)) : String(value);
+  }
   const template = config?.template?.trim();
   if (template) {
     return {
@@ -49,11 +58,11 @@ export function resolvePopupContent(
   return {
     title:
       config?.titleField && config.titleField in properties
-        ? display(properties[config.titleField])
+        ? display(properties[config.titleField], config.titleField)
         : null,
     rows: names
       .filter((n) => n !== config?.titleField)
-      .map((n) => ({ label: labels.get(n) || n, value: display(properties[n]) })),
+      .map((n) => ({ label: labels.get(n) || n, value: display(properties[n], n) })),
     html: null,
   };
 }
