@@ -4,6 +4,8 @@ import { useInstanceInfo, useItem, useMapConfig, useSaveMap } from "../api/hooks
 import { useItemClient } from "../api/ItemClientProvider";
 import type { MapConfig, MapLayer, MapTerrainConfig, PrintLayoutConfig } from "../api/types";
 import { hasPermission } from "../auth/permissions";
+import { buildLegend, symbologyToPaintInputs } from "../builder/widgets/mapSymbology";
+import { MapSymbologyLegend } from "../map/MapSymbologyLegend";
 import type { MapViewHandle } from "../map/MapView";
 // Lazy, comme mapWidget.tsx/ExplorerDrawer.tsx : un import statique ici
 // neutralisait leur propre lazy() de MapView (Rollup ne peut isoler un
@@ -213,6 +215,27 @@ export function MapEditorPage({ pk }: { pk: string }) {
                   loadCustomIcon={(iconId) => client.fetchMapIconBlob(iconId)}
                 />
               </Suspense>
+              <div className="pointer-events-none absolute bottom-2 left-2 z-10 flex flex-col gap-2">
+                {draft.layers
+                  .filter(
+                    (l): l is Extract<MapLayer, { kind: "vector" }> =>
+                      l.kind === "vector" && l.visible,
+                  )
+                  .map((l) => {
+                    if (!l.symbology) return null;
+                    const { encodings, colorDomain, sizeDomain, palette, stroke } =
+                      symbologyToPaintInputs(l.symbology, undefined);
+                    const legend = buildLegend(
+                      encodings,
+                      colorDomain,
+                      sizeDomain,
+                      l.geometryKind ?? "polygon",
+                      palette,
+                      { stroke, icon: l.symbology.icon },
+                    );
+                    return legend ? <MapSymbologyLegend key={l.id} legend={legend} /> : null;
+                  })}
+              </div>
             </div>
           ),
         }}

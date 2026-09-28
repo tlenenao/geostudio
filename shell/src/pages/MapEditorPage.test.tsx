@@ -435,6 +435,36 @@ test("ne réajuste pas la vue quand elle diffère déjà de la valeur par défau
   expect(mapInstances[0].fitBoundsArgs).toHaveLength(0);
 });
 
+test("affiche la légende de symbologie de chaque couche vecteur visible (D15)", async () => {
+  renderEditor({
+    getMapConfig: vi.fn().mockResolvedValue({
+      ...config,
+      layers: [
+        {
+          id: "v1",
+          title: "Zones",
+          visible: true,
+          kind: "vector",
+          tilesUrl: "https://core/tiles/{z}/{x}/{y}",
+          sourceLayer: "zones",
+          geometryKind: "polygon",
+          symbology: {
+            color: {
+              field: "type",
+              mode: "categorical",
+              palette: "categorical-a",
+              domain: { kind: "categorical", values: ["Résidentiel", "Commercial"] },
+              computedAt: "2026-09-27T10:00:00Z",
+            },
+          },
+        },
+      ],
+    }),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  expect(await screen.findByText("Résidentiel")).toBeInTheDocument();
+});
+
 test("bloque la navigation après une modification non enregistrée de la carte (SP-B6c)", async () => {
   renderEditorWithNavigation({
     getMapConfig: vi.fn().mockResolvedValue(config),
