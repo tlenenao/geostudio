@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAppConfig, useInstanceInfo, useItem } from "../api/hooks";
 import { AppRenderer } from "../builder/AppRenderer";
 import { EXTENT_DEBOUNCE_MS, type AnalyticsContextState } from "../builder/AnalyticsContext";
+import { getPageLayout } from "../builder/pages";
+import type { MapLayer } from "../api/types";
 import { decodeAnalyticsContext, encodeAnalyticsContext } from "../lib/analyticsContextUrl";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { registerCounterExampleWidget } from "../builder/examples/counterWidget";
@@ -161,6 +163,17 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   // that hid it on most apps/dashboards. The interactions-gated "Enregistrer
   // la vue" button keeps its own independent gate.
   const showActionBar = !isExportRender && (exportEnabled || query.data.interactions === "auto");
+  // Finition SP-B12/D14 (cf. plan SP-C3) : une app/dashboard n'a pas de
+  // `layers` de premier niveau comme MapConfig — ses couches vivent dans les
+  // widgets "map" de la page actuellement affichée. `pageId` est absent sur
+  // la route racine `/apps/:pk` (config mono-page) : dans ce cas
+  // `query.data.layout` EST déjà la page unique (invariant documenté dans
+  // builder/pages.ts).
+  const legendLayout = pageId ? getPageLayout(query.data, pageId) : query.data.layout;
+  const legendLayers: MapLayer[] = legendLayout.items
+    .filter((item) => item.widget === "map")
+    .flatMap((item) => (item.props.layers as MapLayer[] | undefined) ?? [])
+    .filter((layer) => layer.visible);
   return (
     <div className="relative flex h-full w-full flex-col">
       {showActionBar && (
@@ -199,6 +212,14 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
         <div className="absolute left-2 top-2 rounded bg-white/90 px-2 py-1 text-sm font-medium">
           {query.data.printLayout.title}
         </div>
+      )}
+      {isExportRender && query.data.printLayout?.showLegend && legendLayers.length > 0 && (
+        // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
+        <ul className="absolute bottom-2 left-2 rounded bg-white/90 px-2 py-1 text-xs">
+          {legendLayers.map((layer) => (
+            <li key={layer.id}>{layer.title}</li>
+          ))}
+        </ul>
       )}
       {isExportRender && query.data.printLayout?.cartouche && (
         // gs-raw-color-ok: bg-white/90, cf. commentaire plus haut
