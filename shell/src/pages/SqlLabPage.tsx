@@ -35,6 +35,11 @@ export function SqlLabPage() {
   const client = useItemClient();
   const [sql, setSql] = useState("");
   const [result, setResult] = useState<SqlResult | null>(null);
+  // D54b (Vague C, Tâche 26) : autocomplétion de colonnes lazy — dès qu'un
+  // id de collection connu apparaît dans le texte SQL, on récupère son
+  // schéma en arrière-plan et on l'accumule pour nourrir l'extension
+  // `sql({schema})` de CodeMirror.
+  const [schemaByCollection, setSchemaByCollection] = useState<Record<string, string[]>>({});
   const [history, setHistory] = useState<SqlHistoryEntry[]>(() => readSqlHistory());
   const [historyId, setHistoryId] = useUrlSyncedState<string>("historyId", null);
   const instanceQuery = useInstanceInfo();
@@ -56,6 +61,38 @@ export function SqlLabPage() {
       setSql(entry.sql);
     }
   }, [historyId]);
+
+  // D54b : détection lazy des collections référencées dans le texte SQL,
+  // fetch de leur schéma une seule fois chacune (accumulation dans
+  // schemaByCollection, jamais re-fetché une fois connu).
+  const knownCollectionIds = (collectionsQuery.data ?? []).map((c) => c.id);
+  useEffect(() => {
+    const referenced = knownCollectionIds.filter(
+      (id) => sql.includes(id) && !(id in schemaByCollection),
+    );
+    if (referenced.length === 0) return;
+    let cancelled = false;
+    // `void` : patron déjà suivi par LayersPanel.tsx pour un effet
+    // fire-and-forget (contrainte @typescript-eslint/no-floating-promises).
+    void Promise.all(
+      referenced.map((id) =>
+        client.getCollectionSchema(id).then((schema) => [id, schema] as const),
+      ),
+    ).then((pairs) => {
+      if (cancelled) return;
+      setSchemaByCollection((prev) => {
+        const next = { ...prev };
+        for (const [id, schema] of pairs) {
+          next[id] = schema.fields.map((f) => f.name);
+        }
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- knownCollectionIds recalculé chaque rendu depuis collectionsQuery.data, l'inclure re-déclencherait l'effet inutilement à chaque frappe
+  }, [sql]);
 
   const run = useMutation({
     mutationFn: (query: string) => client.runAnalyticsSql(query),
@@ -119,7 +156,7 @@ export function SqlLabPage() {
                   value={sql}
                   height="8rem"
                   extensions={[
-                    sqlLang({ dialect: SQLite }),
+                    sqlLang({ dialect: SQLite, schema: schemaByCollection }),
                     // `aria-label` passé directement à <CodeMirror> atterrit
                     // sur le conteneur englobant, pas sur le
                     // `role="textbox"` (div `.cm-content` contenteditable)

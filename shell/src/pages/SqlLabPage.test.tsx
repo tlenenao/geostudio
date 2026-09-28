@@ -263,6 +263,36 @@ function mockCollectionsList() {
   );
 }
 
+test("propose les colonnes de la collection référencée dans la requête", async () => {
+  // Pas de patron `Set<string>`/`fetched` pré-existant dans
+  // shell/src/pages/*.test.tsx (grep vérifié, piège n°3 CLAUDE.md) : repli
+  // autorisé par le brief — un traqueur local rempli par le handler MSW,
+  // même famille que `let posted`/`payload`/`executed` déjà utilisés plus
+  // haut dans ce fichier pour vérifier "un appel réseau a bien eu lieu"
+  // sans dépendre du rendu du popup natif de complétion CodeMirror (non
+  // fiable en jsdom).
+  const fetchedSchemaIds = new Set<string>();
+  server.use(
+    mockCollectionsList(),
+    http.get("https://core.test/v1/collections/parcs/schema", () => {
+      fetchedSchemaIds.add("parcs");
+      return HttpResponse.json({
+        collection: "parcs",
+        pk: "id",
+        geometry: { column: "geom", type: "Point", srid: 4326 },
+        fields: [
+          { name: "nom", type: "text", required: true },
+          { name: "surface", type: "number", required: false },
+        ],
+      });
+    }),
+  );
+  render(<Harness />);
+  const editor = await screen.findByRole("textbox", { name: "Requête SQL" });
+  await userEvent.type(editor, "select nom from parcs");
+  await waitFor(() => expect(fetchedSchemaIds.has("parcs")).toBe(true));
+});
+
 test("affiche le panneau copilote et insère le brouillon SQL généré sans l'exécuter", async () => {
   let executed = false;
   server.use(
