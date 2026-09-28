@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useMemo, useRef, useState } from "react";
+import { HelpCircle } from "lucide-react";
 import { useUndoableDraft } from "../builder/useUndoableDraft";
 import { useUrlSyncedState } from "../lib/useUrlSyncedState";
 import { toBlob } from "html-to-image";
@@ -39,6 +40,8 @@ import { getPages, getPageLayout, setPageLayout } from "../builder/pages";
 import { getConfigExpressionErrors } from "../builder/configExpressionErrors";
 import { pruneMessagesForIds } from "../builder/actionMessages";
 import { Button } from "../ui/kit/Button";
+import { IconButton } from "../ui/kit/IconButton";
+import { Popover } from "../ui/kit/Popover";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
 import { useAuth } from "../auth/useAuth";
 import { useDirtyGuard } from "../lib/useDirtyGuard";
@@ -465,8 +468,20 @@ export function AppBuilderPage({ pk }: { pk: string }) {
             label: t("appBuilder.propertiesLabel"),
             content: (
               <aside className="flex flex-col gap-1 p-2">
-                <p className="mb-1 text-xs font-medium text-ink-2">
+                <p className="mb-1 flex items-center gap-1 text-xs font-medium text-ink-2">
                   {t("appBuilder.propertiesLabel")}
+                  <Popover
+                    aria-label={t("appBuilder.propertiesHelpAria")}
+                    trigger={
+                      <IconButton
+                        icon={<HelpCircle size={14} />}
+                        aria-label={t("appBuilder.propertiesHelpAria")}
+                        size="sm"
+                      />
+                    }
+                  >
+                    {t("appBuilder.propertiesHelpBody")}
+                  </Popover>
                 </p>
                 <PropsPanel
                   key={selected?.id ?? "none"}

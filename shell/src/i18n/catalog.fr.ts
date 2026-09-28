@@ -323,6 +323,9 @@ export const fr = {
   "appBuilder.captureThumbnail": "Capturer une miniature",
   "appBuilder.captureError": "Échec de la capture.",
   "appBuilder.propertiesLabel": "Propriétés",
+  "appBuilder.propertiesHelpAria": "Aide sur les propriétés du widget",
+  "appBuilder.propertiesHelpBody":
+    "Réglages visuels et de données du widget sélectionné sur le canevas. Rien de sélectionné : ce panneau reste vide.",
   "appBuilder.dataSourcesLabel": "Sources de données",
   "appBuilder.promoteError": "Échec de la promotion.",
   "appBuilder.actionsLabel": "Actions",
@@ -532,6 +535,9 @@ export const fr = {
   "pipelineBuilder.scheduleLabel": "Planification",
   "pipelineBuilder.saveDisabledReason":
     "Le graphe contient des erreurs à corriger avant l'enregistrement.",
+  "pipelineBuilder.helpAria": "Aide sur le pipeline",
+  "pipelineBuilder.helpBody":
+    "Chaque nœud transforme les données du précédent. Connectez-les dans l'ordre d'exécution, puis planifiez ou exécutez le pipeline depuis l'onglet Exécutions.",
 
   // PipelineNodeInspector
   "pipelineNodeInspector.requiredSection": "Paramètres requis",
@@ -544,6 +550,10 @@ export const fr = {
   "reportEdit.editHeading": "Modifier le rapport planifié",
 
   // SqlLabPage
+  "sqlLab.heading": "SQL Lab",
+  "sqlLab.helpAria": "Aide sur SQL Lab",
+  "sqlLab.helpBody":
+    "Requêtes SQL en lecture seule sur les jeux de données exposés (DuckDB). Le résultat est tronqué au-delà d'un certain nombre de lignes.",
   "sqlLab.queryLabel": "Requête",
   "sqlLab.sqlQueryLabel": "Requête SQL",
   "sqlLab.runButton": "Exécuter",
@@ -1540,6 +1550,9 @@ export const fr = {
   "propsPanel.unknownWidget": "Widget inconnu : {widget}",
   "propsPanel.visibleWhenLabel": "Condition d'affichage",
   "propsPanel.visibleWhenAria": "Condition d'affichage (visibleWhen)",
+  "propsPanel.visibleWhenHelpAria": "Aide sur la condition d'affichage",
+  "propsPanel.visibleWhenHelpBody":
+    "Expression CEL évaluée avec les variables de l'app : le widget n'est visible que si elle est vraie. Laisser vide pour toujours afficher.",
 
   // ThemePanel (builder)
   "themePanel.fontSystem": "Système",

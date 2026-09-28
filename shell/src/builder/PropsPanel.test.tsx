@@ -10,6 +10,7 @@ import { PropsPanel } from "./PropsPanel";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import type { ItemClient, WidgetItem } from "../api/types";
 import { expectTokenizedClasses } from "../ui/kit/testUtils";
+import { t } from "../i18n";
 
 beforeEach(() => {
   _resetRegistry();
@@ -96,6 +97,16 @@ test("shows a validation error for an invalid visibleWhen", () => {
   // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
   // --gs-* à la place.
   expectTokenizedClasses(container);
+});
+
+test("propose une aide contextuelle sur la condition d'affichage CEL", async () => {
+  render(
+    <PropsPanel item={item} dataSources={[]} onChange={vi.fn()} onVisibleWhenChange={vi.fn()} />,
+    { wrapper },
+  );
+  const helpButton = screen.getByRole("button", { name: t("propsPanel.visibleWhenHelpAria") });
+  await userEvent.click(helpButton);
+  expect(await screen.findByText(t("propsPanel.visibleWhenHelpBody"))).toBeInTheDocument();
 });
 
 test("passes theme through to the widget's PropsPanel", () => {

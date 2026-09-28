@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { HelpCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -13,6 +14,8 @@ import {
 import { useUrlSyncedState } from "../lib/useUrlSyncedState";
 import { SqlLabCopilotPanel } from "../builder/copilot/SqlLabCopilotPanel";
 import { Button } from "../ui/kit/Button";
+import { IconButton } from "../ui/kit/IconButton";
+import { Popover } from "../ui/kit/Popover";
 import { Panel } from "../ui/kit/Panel";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
@@ -89,7 +92,21 @@ export function SqlLabPage() {
           label: t("sqlLab.queryLabel"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h1 className="text-lg font-bold text-ink">SQL Lab</h1>
+              <div className="flex items-center gap-1.5">
+                <h1 className="text-lg font-bold text-ink">{t("sqlLab.heading")}</h1>
+                <Popover
+                  aria-label={t("sqlLab.helpAria")}
+                  trigger={
+                    <IconButton
+                      icon={<HelpCircle size={14} />}
+                      aria-label={t("sqlLab.helpAria")}
+                      size="sm"
+                    />
+                  }
+                >
+                  {t("sqlLab.helpBody")}
+                </Popover>
+              </div>
               <label className="flex flex-col gap-1 text-sm text-ink">
                 {t("sqlLab.sqlQueryLabel")}
                 <textarea

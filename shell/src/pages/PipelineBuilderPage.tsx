@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { HelpCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useNavigate } from "react-router-dom";
@@ -24,6 +25,8 @@ import type {
 import { hasPermission } from "../auth/permissions";
 import { Banner } from "../ui/kit/Banner";
 import { Button } from "../ui/kit/Button";
+import { IconButton } from "../ui/kit/IconButton";
+import { Popover } from "../ui/kit/Popover";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { useUndoableDraft } from "../builder/useUndoableDraft";
 import { PipelineCanvas } from "../builder/pipeline/PipelineCanvas";
@@ -348,9 +351,23 @@ export function PipelineBuilderPage({
           content: (
             <div className="flex h-full flex-col overflow-hidden">
               <div className="flex items-center justify-between border-b border-rule p-2">
-                <h2 className="text-lg font-semibold text-ink">
-                  {initialTitle ?? t("pipelineBuilder.defaultTitle")}
-                </h2>
+                <div className="flex items-center gap-1.5">
+                  <h2 className="text-lg font-semibold text-ink">
+                    {initialTitle ?? t("pipelineBuilder.defaultTitle")}
+                  </h2>
+                  <Popover
+                    aria-label={t("pipelineBuilder.helpAria")}
+                    trigger={
+                      <IconButton
+                        icon={<HelpCircle size={14} />}
+                        aria-label={t("pipelineBuilder.helpAria")}
+                        size="sm"
+                      />
+                    }
+                  >
+                    {t("pipelineBuilder.helpBody")}
+                  </Popover>
+                </div>
                 <div className="flex items-center gap-1">
                   <Button size="sm" variant="outline" disabled={!canUndo} onClick={undo}>
                     {t("pipelineBuilder.undo")}
