@@ -101,6 +101,14 @@ test("shows a validation error for an invalid visibleWhen", () => {
   expectTokenizedClasses(container);
 });
 
+// Même précédent que shell/src/ui/kit/Popover.test.tsx (Task 31, portes de
+// qualité) : le repositionnement Popper (@floating-ui/react-dom) sous jsdom
+// coûte assez cher (getComputedStyle/getBoundingClientRect répétés) pour
+// dépasser par intermittence le testTimeout par défaut du dépôt (5000ms)
+// sous couverture v8 + suite complète. Reproduit 3 fois de suite en
+// clôture de Vague C (`npm run test -- --coverage`, 280 fichiers), jamais
+// en lançant ce fichier seul. Relevé local à ce test, pas touché à
+// vitest.config.ts.
 test("propose une aide contextuelle sur la condition d'affichage CEL", async () => {
   render(
     <PropsPanel item={item} dataSources={[]} onChange={vi.fn()} onVisibleWhenChange={vi.fn()} />,
@@ -109,7 +117,7 @@ test("propose une aide contextuelle sur la condition d'affichage CEL", async () 
   const helpButton = screen.getByRole("button", { name: t("propsPanel.visibleWhenHelpAria") });
   await userEvent.click(helpButton);
   expect(await screen.findByText(t("propsPanel.visibleWhenHelpBody"))).toBeInTheDocument();
-});
+}, 45000);
 
 test("passes theme through to the widget's PropsPanel", () => {
   const receivedThemes: (unknown | undefined)[] = [];

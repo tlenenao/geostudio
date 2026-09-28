@@ -7341,3 +7341,186 @@ surface déjà livrée.
   --run` 257 fichiers / 2388 tests passés, `npx tsc --noEmit` 0 erreur,
   `prettier --check`/`eslint` verts sur les 10 fichiers touchés par le fix
   wave.
+
+- **Vague C polish, a11y AA, perf perçue, onboarding** — clos 2026-09-29,
+  plan/spec jumeaux
+  `docs/superpowers/plans/2026-09-27-vague-c-polish-a11y-onboarding.md` /
+  `docs/superpowers/specs/2026-09-27-vague-c-polish-a11y-onboarding-design.md`,
+  40 tâches en subagent-driven-development sur `dev`, sans worktree. 27
+  D-codes du diagnostic UI/UX fermés (SP-C1→SP-C6) :
+
+  **SP-C1 (Tâches 1-5, D32 a11y clavier/focus)** — formulaire, popup
+  carte, `Drawer`, réordonnancement de champs. Task 3 a trouvé un vrai bug
+  `Drawer` : `onCloseAutoFocus` par défaut de Radix ne fait rien puisque
+  `Drawer` ne rend jamais de `DialogPrimitive.Trigger` (son déclencheur
+  est externe) — le diagnostic D48 d'origine supposait à tort que Radix
+  restaurait le focus sans `Trigger` ; corrigé par capture/restauration
+  explicite de l'élément préalablement focus, vérifié par falsification +
+  inspection directe des sources Radix. Task 5 : dérive d'attribution de
+  commit trouvée (trailer « Claude Haiku 4.5 » au lieu du mandat « Claude
+  Sonnet 5 »), corrigée mécaniquement par le contrôleur (reset + cherry-pick
+  -n, contenu vérifié identique par diff).
+
+  **SP-C2 (Tâches 6-10, D41 filet d'audit a11y + D42 reduced-motion)** —
+  Task 6 : le filet de couverture (11 routes attendues) trouve un
+  faux-négatif pré-existant dans sa propre regex (`/apps/:pk/:pageId?`
+  matche accidentellement un `goto` non lié), documenté comme quirk connu
+  plutôt que corrigé (hors périmètre). Tasks 7-8 ferment D43 : 28/28 tests
+  Playwright a11y-audit verts, zéro violation axe-core réelle trouvée.
+  Task 9 : règle CSS globale `prefers-reduced-motion`. Task 10 : le brief
+  citait un fichier E2E inexistant (`e2e/map-3d.spec.ts`), substitué par
+  `terrain3d-hosting.spec.ts` — piège CLAUDE.md n°3 (texte de brief faux
+  sur une interface, ici un chemin de fichier).
+
+  **SP-C3 (Tâches 11-17, D46/D47/D10 design system + finition
+  SP-B12/D14)** — Task 11 : token `--text-2xs`, script
+  `check-arbitrary-text-size.mjs`, 24 lignes/14 fichiers détectées. Task
+  12 : les 24 remaps appliqués, script câblé dans `npm run lint`. Task 13 :
+  le test suggéré par le brief lui-même avait un vrai défaut (faux-positif
+  sur la variante `outline`), corrigé par l'implémenteur avant même la
+  revue. Tasks 14-16 : relocalisation `ItemCard`/`MetadataForm`/
+  `ThumbnailUpload` vers `ui/kit/` — incident `.superpowers/sdd/` :
+  rapport de Task 16 trouvé périmé (collision de chemin avec un plan
+  antérieur non lié), reconstitué par le contrôleur depuis le commit réel.
+  Task 17 (finition `printLayout.showLegend`, SP-B12/D14) :
+  `DONE_WITH_CONCERNS` — correction du décompte de violations
+  `lint:aria-panel` pré-existantes (11, pas 1, comme cru jusqu'ici) ;
+  incident auto-infligé du contrôleur (`git stash pop` réflexe sur arbre
+  propre a rejoué un stash périmé sans rapport), récupéré proprement par
+  `git checkout HEAD --` sans perte.
+
+  **SP-C4 (Tâches 18-22, D08 quotas + D07 palette ⌘K + D49 aide
+  contextuelle)** — Task 18-19 : schéma `UsageSnapshotResponse`
+  (maxItems/maxCollections/maxStorageBytes) + régénération OpenAPI/TS.
+  Task 20 : 3 déviations confirmées (patron de test MSW réel au lieu de
+  l'hypothèse du brief, donnée de test du brief elle-même incapable de
+  déclencher le cas testé — corrigée —, stubs `unsupported()` nécessaires
+  sur Desktop/StaticItemClient). Task 21 : palette de commandes câblée, 4
+  déviations toutes vérifiées **par falsification** (bug réel dans le
+  test suggéré par le brief lui-même — `navigateMock` jamais réinitialisé
+  —, `autoFocus` rejeté par `jsx-a11y/no-autofocus` nécessitant
+  `forwardRef` sur `Input.tsx`). Task 22 : aide contextuelle sur 4 sites,
+  zéro finding.
+
+  **SP-C5 (Tâches 23-27, D51 erreurs DuckDB lisibles + D54 CodeMirror)** —
+  Task 23 : `parseDuckDbError`/`Banner`, arithmétique de colonne résolue
+  empiriquement. Task 24 : `ApiError` sur `runAnalyticsSql`, plus un fix
+  hors-brief d'une assertion `itemClient.test.ts` devenue obsolète
+  (confirmé être un renforcement, pas une régression). Task 25 :
+  CodeMirror remplace le textarea, 5 déviations toutes vérifiées par
+  exécution réelle (aria-label via `EditorView.contentAttributes.of`,
+  `toHaveValue` incompatible contenteditable, flake pré-existant
+  `PropsPanel.test.tsx` reproduit mais classé à tort hors du diff de cette
+  tâche — cf. clôture Tâche 40 ci-dessous, le vrai correctif attendait le
+  même traitement `testTimeout` que ses 7 jumeaux). Task 26 :
+  autocomplétion de colonnes, 1 Important non bloquant **signalé
+  explicitement pour la revue finale de branche** : l'effet `[sql]`-only
+  (prescrit verbatim par le brief) laisse une fenêtre de staleness étroite
+  si une requête est restaurée programmatiquement avant résolution du
+  schéma — non corrigé ici (caractéristique du brief, pas un défaut de
+  tâche). Task 27 : budget de bundle confirmé (692,3/695 Ko), aucun commit
+  nécessaire.
+
+  **SP-C6 (Tâches 28-39, finitions transverses)** — Task 28 (D50 pluriel
+  fr + méta `PublicItemPage`) : 1 Important trouvé et corrigé en 2e round
+  (`configQuery` pouvait rendre un titre périmé si `itemQuery` échouait
+  indépendamment). Task 29 (D52 copier lien/embed) : 2 Minor (cleanup
+  `setTimeout`, IIFE). Task 30 (D35 erreurs CEL + fr-FR) : fr-FR câblé sur
+  widget table et popup carte (mode `fields` seulement, mode `template`
+  hors périmètre assumé), 2 Minor. Task 31 (D36 statut par fichier upload
+  pièce jointe) : `catch {}` muet du brief remplacé par un `console.error`
+  conforme à la convention du dépôt. Task 32 (D38 label ambigu) :
+  branche morte de `FieldInput` retirée au passage. Task 33 (D39
+  placeholders `SecretParamSelect`) : écart 23→21 confirmé légitime (2
+  champs sont des `<select>`, sans `placeholder` en HTML) — non documenté
+  explicitement par l'implémenteur (piège CLAUDE.md n°12, sans impact).
+  Task 34 (D11+D12 widget carte) : champs disponibles réels + vue par
+  défaut configurable (Longitude/Latitude/Zoom). Task 35 (D15 légende de
+  symbologie carte standalone) : 1 Important trouvé et corrigé (la
+  nouvelle légende se superposait exactement à `MapLegend` déjà rendue) —
+  un 2e bug (légendes multiples se superposant entre elles) trouvé et
+  corrigé au même passage, jamais signalé par la première revue. Task 36
+  (D16 audit tactile carte) : le test a révélé un bug bien plus large que
+  prévu — un défaut de layout CSS dans `TriptychLayout.tsx` (composant
+  partagé) rendait toute la carte non tapable sous 899px, pas seulement
+  une cible trop petite ; corrigé (`grid` au lieu de `flex`), risque de
+  régression sur les ~18 autres consommateurs de `TriptychLayout` réfuté
+  **empiriquement sur l'app réelle** (`AppLayout.tsx` racine en
+  `min-h-screen`, jamais `h-screen`). Task 37 (D55 lecture seule pipeline)
+  : le brief supposait à tort les points d'entrée réels des mutateurs de
+  nœuds/arêtes — élargi à 5 sites réels + props natives `@xyflow/react` ;
+  **3 trous réels signalés pour la revue finale, non corrigés (hors
+  fichiers autorisés par ce brief)** : ajout de nœud par palette/drop
+  toujours possible en lecture seule, insertion de transformation sur
+  arête toujours possible, planification cron + libellé de zone annotée
+  non gardés. Task 38 (D56 historique copilote) : zéro finding. Task 39
+  (D04 déclenchement manuel d'évaluation d'alerte) : zéro finding sur son
+  propre périmètre ; a re-confirmé (via un second `git stash` indépendant)
+  l'échec pré-existant `test_quality_facts_read_the_real_repository`
+  (`eslint_disabled` : 13 attendu vs 15 réel) comme « pré-existant et sans
+  rapport avec cette vague » — **classification corrigée à la clôture
+  (Tâche 40, REV-255)** : 2 des 15 fichiers sont en réalité des ajouts
+  légitimes de cette même vague (`MapPopup.tsx` Tâche 2, `SqlLabPage.tsx`
+  Tâche 26), le décompte figé du test n'ayant simplement jamais été
+  remonté — même classe mécanique que le golden-count `147→148` de cette
+  même Tâche 39 sur les routes REST, non appliquée ici par omission.
+
+  **Tâche 40 (clôture)** — suite shell (`npx vitest run --coverage`) :
+  280 fichiers / 2589 tests, exit 0 ; couverture 89,33 % lignes/82,86 %
+  branches/85,96 % fonctions/91,53 % statements (seuils 87,7/81,0/80,6/
+  89,8 — tous franchis). `npm run build` : `tsc --noEmit` propre, bundle
+  692,3/695 Ko (inchangé depuis Task 27). Suite E2E complète
+  (`VITE_AUTH_MODE=mock npm run e2e`, 198 tests/4 skip) : 4 échecs
+  **réels et reproductibles** trouvés et corrigés (REV-256) : 3 sites
+  `toHaveValue`→`toHaveText` sur SQL Lab (`e2e/sql-lab.spec.ts` ×2,
+  `e2e/copilot-sql-lab.spec.ts` ×1, cassés par le CodeMirror de la Tâche
+  25, dont seuls les unit tests avaient été mis à jour) et 1
+  resserrement de regex sur `e2e/map-symbology.spec.ts` (×2 assertions,
+  collision avec la nouvelle légende de la Tâche 35) ; suite verte
+  ensuite, puis **3 exécutions complètes locales successives**
+  (sans `CI=true` : `retries:0`, 8 workers) ont chacune produit 1 échec
+  supplémentaire **distinct** à chaque fois
+  (`analytics-context.spec.ts` « no domain query » SP-14h, puis
+  `export.spec.ts` « exporter une carte en PDF », puis
+  `pipeline-builder.spec.ts` « construit un pipeline visuellement » —
+  jamais le même test deux fois), chacun vert à 100 % en isolation
+  immédiatement après. Diagnostic confirmé par une 4e exécution complète
+  sous `CI=true` (retries:2, 4 workers — configuration réelle de
+  `ci.yml`) : **entièrement verte** (194 passed/4 skipped/0 échec net,
+  plusieurs retries absorbés) — classe de flake de contention sous
+  charge parallèle complète (WSL2, RAM contrainte — même famille que le
+  flake shell full-suite déjà documenté par Vague 2/REV-200), sans
+  impact sur le filet CI réel ; documentée en `REV-258`, fermée sans
+  correctif de code (informationnel).
+  Suite cœur (`uv run pytest --cov=app`) : 3288 passed / 3 skipped / 1
+  failed — le seul échec est `test_quality_facts_read_the_real_repository`
+  (cf. REV-255/256 ci-dessus), laissé en l'état par consigne explicite du
+  contrôleur (hors périmètre de cette vague, correctif mécanique
+  documenté mais non appliqué) ; `ruff`/`ruff format`/`lint-imports`/
+  `mypy --strict` (6 modules) tous propres. Diff OpenAPI/TS vide (déjà
+  régénéré aux Tâches 19/39). `feature_health_cli.py --check` a d'abord
+  échoué (`cartes-rendu-export-headless-chrome-masque-pour-capture-
+  playwright` : santé 85,0 < plancher 89,9) — la Tâche 21 avait ajouté à
+  `AppLayout.tsx` (fichier-preuve unique de cette fonctionnalité sans
+  rapport) un écouteur clavier ⌘K jamais exercé par aucun test (ni
+  `CommandPalette.test.tsx`, qui rend le composant `open` déjà vrai, ni
+  `TopBar.test.tsx`, qui mocke `onOpenPalette`) ; corrigé (REV-257) par un
+  nouveau test d'intégration clavier dans `AppLayout.test.tsx`, vérifié
+  par falsification, `--check` repasse vert (santé médiane 99,1 ≥ 96,0).
+  `--write` régénère le bilan (308 fonctionnalités). Incident
+  d'environnement local trouvé et corrigé en cours de route (sans rapport
+  avec le code de la vague) : `/tmp/pytest-of-lenen` root-owned par un
+  conteneur Docker antérieur (piège CLAUDE.md n°9, déjà vécu le
+  2026-09-06) faisait échouer TOUT test cœur consommant la fixture
+  `tmp_path` (~15 % de la suite en erreur, pas en échec) — contourné sans
+  sudo via un `TMPDIR` dédié, aucun nettoyage destructif du répertoire
+  root-owned. `pre-commit run --all-files` : 6 hooks passent (ruff check,
+  ruff format, import-linter, eslint, prettier, taille de CLAUDE.md — le
+  brief en attendait 5 ; le 6e, `check_claude_md_size.py`, a été ajouté au
+  jeu de hooks après la dernière vérification de ce chiffre, sans
+  incidence). Fichiers de clôture committés au-delà de la liste littérale
+  du brief : le plan de la vague lui-même
+  (`docs/superpowers/plans/2026-09-27-vague-c-polish-a11y-onboarding.md`,
+  resté non tracké depuis son écriture), `docs/revue/2026-09-04-backlog.md`
+  (REV-255/256/257) et `docs/revue/historique-sante.jsonl` (sous-produit
+  de `--write`), en plus des 5 fichiers de correctifs E2E/unit ci-dessus.

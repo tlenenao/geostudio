@@ -614,6 +614,16 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
   accessibles/cliquables (`DataTable`), garde de navigation sur
   brouillon non enregistré (migration `createBrowserRouter`), dernières
   couleurs Tailwind brutes tokenisées + garde-fou CI.
+- **Vague C polish, a11y AA, perf perçue, onboarding** — 6 chantiers
+  (SP-C1→SP-C6, 27 défauts D-codes) : a11y clavier/focus (formulaire,
+  popup carte, `Drawer`, réordonnancement de champs), filet de couverture
+  d'audit a11y automatisé + respect de `prefers-reduced-motion`,
+  cohérence visuelle (tokens de taille de texte, segmented-control,
+  dernières pages `ui/*` legacy migrées), onboarding (palette de
+  commandes ⌘K, aide contextuelle, quotas visibles), éditeur CodeMirror +
+  erreurs DuckDB lisibles sur SQL Lab, finitions transverses (pluriel
+  grammatical fr, widget carte, pipeline en lecture seule, historique du
+  copilote, déclenchement manuel d'une évaluation d'alerte).
 
 ### Conventions tranchées (2026-09-01)
 
