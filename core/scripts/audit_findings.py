@@ -78,8 +78,11 @@ class Finding(BaseModel):
 
     @model_validator(mode="after")
     def _rules(self) -> Finding:
-        if self.kind != "feature" and not self.locations:
-            raise ValueError("locations est obligatoire sauf pour kind=feature")
+        doc_read_gap = self.kind == "gap" and self.evidence.type == "doc-read"
+        if self.kind != "feature" and not doc_read_gap and not self.locations:
+            raise ValueError(
+                "locations est obligatoire (sauf kind=feature, ou kind=gap avec evidence doc-read)"
+            )
         if self.confidence == "verified":
             if self.evidence.type not in EXECUTED_EVIDENCE:
                 msg = "verified exige une evidence exécutée (playwright-run/command-output)"

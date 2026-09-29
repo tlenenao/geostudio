@@ -58,6 +58,36 @@ def test_feature_may_have_no_location(repo: Path) -> None:
     assert af.validate_lines(lines(f), "j03", repo) == []
 
 
+def test_gap_with_doc_read_may_have_no_location(repo: Path) -> None:
+    f = make(
+        kind="gap",
+        locations=[],
+        confidence="probable",
+        evidence={"type": "doc-read", "ref": "docs/vision/x.md"},
+    )
+    assert af.validate_lines(lines(f), "j03", repo) == []
+
+
+def test_gap_with_code_read_still_requires_location(repo: Path) -> None:
+    f = make(
+        kind="gap",
+        locations=[],
+        confidence="probable",
+        evidence={"type": "code-read", "ref": "src/a.py"},
+    )
+    assert any("locations" in e for e in af.validate_lines(lines(f), "j03", repo))
+
+
+def test_bug_with_doc_read_still_requires_location(repo: Path) -> None:
+    f = make(
+        kind="bug",
+        locations=[],
+        confidence="probable",
+        evidence={"type": "doc-read", "ref": "docs/x.md"},
+    )
+    assert any("locations" in e for e in af.validate_lines(lines(f), "j03", repo))
+
+
 def test_verified_requires_executed_evidence(repo: Path) -> None:
     f = make(evidence={"type": "code-read", "ref": "src/a.py"})
     errs = af.validate_lines(lines(f), "j03", repo)
