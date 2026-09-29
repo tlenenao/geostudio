@@ -17,6 +17,7 @@ type AlertsMethods = Pick<
   | "saveAlertRuleConfig"
   | "listAlertRulesForDataset"
   | "getAlertEvaluations"
+  | "evaluateAlertRule"
 >;
 
 export function createAlertsMethods(base: ItemClientBase): AlertsMethods {
@@ -83,6 +84,16 @@ export function createAlertsMethods(base: ItemClientBase): AlertsMethods {
       return request<AlertEvaluation[]>(
         "GET",
         `/alerts/${alertItemId}/evaluations${qs ? `?${qs}` : ""}`,
+      );
+    },
+
+    async evaluateAlertRule(itemId: string): Promise<{ evaluationId: string; created: boolean }> {
+      // `created` (revue finale Vague C, point 4c) : `false` quand une
+      // évaluation "pending" récente existait déjà et a été réutilisée
+      // telle quelle (aucun second job déféré côté cœur).
+      return request<{ evaluationId: string; created: boolean }>(
+        "POST",
+        `/alerts/${itemId}/evaluate`,
       );
     },
   };

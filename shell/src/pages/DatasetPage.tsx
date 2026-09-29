@@ -5,7 +5,7 @@ import { AppRenderer } from "../builder/AppRenderer";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { DatasetDownloadButtons } from "../builder/DatasetDownloadButtons";
 import type { AppConfig } from "../api/types";
-import { t } from "../i18n";
+import { plural, t } from "../i18n";
 
 registerBuiltinWidgets();
 
@@ -87,7 +87,12 @@ export function DatasetPage({ collectionId }: { collectionId: string }) {
         <h1 className="text-xl font-bold text-ink">{col.title}</h1>
         <p className="text-sm text-ink-2">{col.description}</p>
         <p className="text-xs text-ink-3">
-          {t("datasetPage.featureCount", { n: col.featureCount ?? 0 })}
+          {(() => {
+            const n = col.featureCount ?? 0;
+            return t(plural(n, "datasetPage.featureCountOne", "datasetPage.featureCountMany"), {
+              n,
+            });
+          })()}
         </p>
       </header>
       <DatasetDownloadButtons collectionId={collectionId} featureCount={col.featureCount} />

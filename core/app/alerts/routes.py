@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.alerts import repository as alerts_repo
+from app.alerts.service import evaluate_alert_now_service
 from app.auth.dependency import get_current_user
 from app.configs import repository as configs_repo
 from app.db import get_session
@@ -65,6 +66,33 @@ def _require_alert_read_access(session: Session, *, user: User, item_id: str) ->
     facts = items_repo.get_access_facts(session, tenant_id=user.tenant_id, item_id=item_id)
     if facts is None or not can(session, user_id=user.id, action="read", item=facts):
         raise HTTPException(status_code=404, detail="alert rule not found")
+
+
+class EvaluateAlertResponse(BaseModel):
+    evaluationId: str
+    # Revue finale Vague C (point 4c) : `False` quand une évaluation
+    # "pending" récente existait déjà et a été réutilisée telle quelle
+    # (aucun second job déféré) — même fenêtre de déduplication que le
+    # balayage périodique (app.alerts.repository._PENDING_RECLAIM_MINUTES).
+    # Champ additif : un client qui l'ignore garde le comportement d'avant.
+    created: bool = True
+
+
+@router.post("/alerts/{item_id}/evaluate", response_model=EvaluateAlertResponse, status_code=202)
+def evaluate_alert_now(
+    item_id: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> EvaluateAlertResponse:
+    # D04 (SP-C6, Tâche 39) : déclenchement manuel d'une évaluation, en plus
+    # du balayage périodique (app.alerts.jobs.sweep_alert_rules_task).
+    # Revue finale Vague C (point 4) : la séquence (garde `config.kind`,
+    # garde d'écriture, dédoublonnage d'une évaluation pending récente) est
+    # désormais partagée avec le tool MCP run_alert_rule via
+    # evaluate_alert_now_service (app.alerts.service) — les deux surfaces
+    # divergeaient avant cette extraction (cf. docstring du module).
+    evaluation_id, created = evaluate_alert_now_service(session, user=user, item_id=item_id)
+    return EvaluateAlertResponse(evaluationId=evaluation_id, created=created)
 
 
 @router.get("/alerts/{item_id}/evaluations", response_model=list[EvaluationStatus])

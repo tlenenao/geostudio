@@ -24,6 +24,35 @@ enableMockAuth();
 // en afterEach dès son introduction (même patron que ReportEditPage.test.tsx
 // et PipelineBuilderPage.test.tsx) — SqlLabPage ne rendait pas
 // TriptychLayout avant ce plan, ce stub est nouveau dans ce fichier.
+// jsdom n'implémente ni Range.prototype.getClientRects ni
+// Range.prototype.getBoundingClientRect (piège n°10 CLAUDE.md, même classe
+// que ResizeObserver/hasPointerCapture/scrollIntoView/PointerEvent) —
+// CodeMirror 6 les appelle pour mesurer le texte à chaque rendu. Sans ce
+// polyfill minimal, local à ce fichier de test, toute assertion après un
+// rendu de <CodeMirror> lève une TypeError asynchrone (rAF de mesure).
+if (!Range.prototype.getClientRects) {
+  Range.prototype.getClientRects = function () {
+    return [] as unknown as DOMRectList;
+  };
+}
+if (!Range.prototype.getBoundingClientRect) {
+  Range.prototype.getBoundingClientRect = function () {
+    return {
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      toJSON() {
+        return this;
+      },
+    } as DOMRect;
+  };
+}
+
 function stubMatchMedia(matches: boolean) {
   vi.stubGlobal(
     "matchMedia",
@@ -71,7 +100,7 @@ test("exécute une requête et affiche le tableau de résultat", async () => {
     }),
   );
   render(<Harness />);
-  const textarea = await screen.findByLabelText("Requête SQL");
+  const textarea = await screen.findByRole("textbox", { name: "Requête SQL" });
   await userEvent.type(textarea, "select nom, surface from parcs");
   await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
   expect(await screen.findByRole("columnheader", { name: "nom" })).toBeInTheDocument();
@@ -87,7 +116,7 @@ test("affiche l'avis de troncature quand le résultat a été plafonné", async 
     ),
   );
   render(<Harness />);
-  const textarea = await screen.findByLabelText("Requête SQL");
+  const textarea = await screen.findByRole("textbox", { name: "Requête SQL" });
   await userEvent.type(textarea, "select id from x");
   await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
   expect(await screen.findByText("Résultat tronqué aux 1 premières lignes.")).toBeInTheDocument();
@@ -105,11 +134,43 @@ test("affiche le message d'erreur du serveur et conserve le texte SQL en cas d'�
     ),
   );
   render(<Harness />);
-  const textarea = await screen.findByLabelText("Requête SQL");
+  const textarea = await screen.findByRole("textbox", { name: "Requête SQL" });
   await userEvent.type(textarea, "select * fro x");
   await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Parser Error: syntax error");
-  expect(textarea).toHaveValue("select * fro x");
+  // `textarea` est un div contenteditable (CodeMirror) : `toHaveValue` ne
+  // s'applique qu'aux éléments de formulaire natifs (input/textarea/select),
+  // le contenu se lit via `textContent` — vérifié empiriquement.
+  expect(textarea).toHaveTextContent("select * fro x");
+});
+
+test("affiche la ligne et l'extrait SQL quand le message DuckDB porte une position", async () => {
+  server.use(
+    http.post("https://core.test/v1/analytics/sql", () =>
+      HttpResponse.json(
+        {
+          errors: [
+            {
+              field: "sql",
+              code: "sql_error",
+              message:
+                'Parser Error: syntax error at or near "fro"\n\nLINE 1: select * fro x\n                ^',
+            },
+          ],
+        },
+        { status: 400 },
+      ),
+    ),
+  );
+  render(<Harness />);
+  const textarea = await screen.findByRole("textbox", { name: "Requête SQL" });
+  await userEvent.type(textarea, "select * fro x");
+  await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("Parser Error");
+  expect(alert).toHaveTextContent('syntax error at or near "fro"');
+  expect(alert).toHaveTextContent("Ligne 1");
+  expect(alert).toHaveTextContent("select * fro x");
 });
 
 test("enregistre l'historique au succès et recharge une requête passée au clic", async () => {
@@ -119,7 +180,7 @@ test("enregistre l'historique au succès et recharge une requête passée au cli
     ),
   );
   render(<Harness />);
-  const textarea = await screen.findByLabelText("Requête SQL");
+  const textarea = await screen.findByRole("textbox", { name: "Requête SQL" });
   await userEvent.type(textarea, "select id from x");
   await userEvent.click(screen.getByRole("button", { name: "Exécuter" }));
   await screen.findByRole("columnheader", { name: "id" });
@@ -128,7 +189,7 @@ test("enregistre l'historique au succès et recharge une requête passée au cli
     name: "Recharger la requête : select id from x",
   });
   await userEvent.click(historyButton);
-  expect(textarea).toHaveValue("select id from x");
+  expect(textarea).toHaveTextContent("select id from x");
 });
 
 test("restaure la requête sélectionnée dans l'historique via l'URL", async () => {
@@ -139,7 +200,7 @@ test("restaure la requête sélectionnée dans l'historique via l'URL", async ()
     ]),
   );
   render(<Harness initialEntries={["/analytics/sql?historyId=h1"]} />);
-  expect(await screen.findByRole("textbox", { name: /requête/i })).toHaveValue("select 2");
+  expect(await screen.findByRole("textbox", { name: /requête/i })).toHaveTextContent("select 2");
 });
 
 test("ignore un historyId inconnu dans l'URL sans planter, et laisse le SQL inchangé", async () => {
@@ -150,12 +211,14 @@ test("ignore un historyId inconnu dans l'URL sans planter, et laisse le SQL inch
     ]),
   );
   render(<Harness initialEntries={["/analytics/sql?historyId=inconnu"]} />);
-  expect(await screen.findByRole("textbox", { name: /requête/i })).toHaveValue("");
+  // `toHaveTextContent("")` matcherait n'importe quel contenu (sous-chaîne
+  // vide toujours incluse) : comparer le textContent brut à la place.
+  expect((await screen.findByRole("textbox", { name: /requête/i })).textContent).toBe("");
 });
 
 test("affiche un état vide dans l'onglet Historique tant qu'aucune requête n'a été exécutée", async () => {
   render(<Harness />);
-  await screen.findByLabelText("Requête SQL");
+  await screen.findByRole("textbox", { name: "Requête SQL" });
   expect(screen.getByText("Aucune requête exécutée pour l'instant.")).toBeInTheDocument();
 });
 
@@ -170,7 +233,7 @@ test("sous viewport étroit, affiche trois onglets Catalogue/Requête/Historique
 
 test("n'affiche pas le panneau copilote quand copilotEnabled est faux (défaut du handler /instance)", async () => {
   render(<Harness />);
-  await screen.findByLabelText("Requête SQL");
+  await screen.findByRole("textbox", { name: "Requête SQL" });
   expect(screen.queryByLabelText("Message au copilote")).not.toBeInTheDocument();
 });
 
@@ -200,6 +263,131 @@ function mockCollectionsList() {
   );
 }
 
+test("propose les colonnes de la collection référencée dans la requête", async () => {
+  // Pas de patron `Set<string>`/`fetched` pré-existant dans
+  // shell/src/pages/*.test.tsx (grep vérifié, piège n°3 CLAUDE.md) : repli
+  // autorisé par le brief — un traqueur local rempli par le handler MSW,
+  // même famille que `let posted`/`payload`/`executed` déjà utilisés plus
+  // haut dans ce fichier pour vérifier "un appel réseau a bien eu lieu"
+  // sans dépendre du rendu du popup natif de complétion CodeMirror (non
+  // fiable en jsdom).
+  const fetchedSchemaIds = new Set<string>();
+  server.use(
+    mockCollectionsList(),
+    http.get("https://core.test/v1/collections/parcs/schema", () => {
+      fetchedSchemaIds.add("parcs");
+      return HttpResponse.json({
+        collection: "parcs",
+        pk: "id",
+        geometry: { column: "geom", type: "Point", srid: 4326 },
+        fields: [
+          { name: "nom", type: "text", required: true },
+          { name: "surface", type: "number", required: false },
+        ],
+      });
+    }),
+  );
+  render(<Harness />);
+  const editor = await screen.findByRole("textbox", { name: "Requête SQL" });
+  await userEvent.type(editor, "select nom from parcs");
+  await waitFor(() => expect(fetchedSchemaIds.has("parcs")).toBe(true));
+});
+
+// Revue finale Vague C (point 7) : le `Promise.all` de l'effet
+// d'autocomplétion (D54b) perdait TOUT le lot dès qu'une seule collection
+// référencée échouait — aucun `.catch()`. Pire, l'id en échec ne rentrait
+// jamais dans `schemaByCollection` : à la frappe suivante, il était
+// reconsidéré "jamais tenté" et refetché en boucle. Ce test référence 2
+// collections dans le SQL, l'une dont le schéma répond en erreur : vérifie
+// que (a) l'autre continue de charger normalement et (b) la collection en
+// échec n'est interrogée qu'une seule fois malgré 2 frappes supplémentaires
+// après le premier échec (pas de boucle de re-fetch).
+test("un échec de schéma sur une collection référencée n'empêche pas les autres de charger, et ne boucle pas (point 7)", async () => {
+  let parcsFetchCount = 0;
+  let batimentsFetchCount = 0;
+  server.use(
+    http.get("https://core.test/v1/collections", () =>
+      HttpResponse.json({
+        collections: [
+          {
+            id: "parcs",
+            title: "Parcs urbains",
+            description: "",
+            tableName: "parcs",
+            isPublic: false,
+            editable: true,
+            geometryType: "Point",
+            srid: 4326,
+            pkColumn: "id",
+            permissions: { read: true, write: true, delete: true, share: true },
+            featureCount: 3,
+            owner: "alice",
+            attachmentFields: [],
+          },
+          {
+            id: "batiments",
+            title: "Bâtiments",
+            description: "",
+            tableName: "batiments",
+            isPublic: false,
+            editable: true,
+            geometryType: "Polygon",
+            srid: 4326,
+            pkColumn: "id",
+            permissions: { read: true, write: true, delete: true, share: true },
+            featureCount: 1,
+            owner: "alice",
+            attachmentFields: [],
+          },
+        ],
+        numberMatched: 2,
+        numberReturned: 2,
+      }),
+    ),
+    http.get("https://core.test/v1/collections/parcs/schema", () => {
+      parcsFetchCount += 1;
+      return HttpResponse.json({
+        collection: "parcs",
+        pk: "id",
+        geometry: { column: "geom", type: "Point", srid: 4326 },
+        fields: [{ name: "nom", type: "text", required: true }],
+      });
+    }),
+    http.get("https://core.test/v1/collections/batiments/schema", () => {
+      batimentsFetchCount += 1;
+      return HttpResponse.json({ detail: "erreur serveur" }, { status: 500 });
+    }),
+  );
+  const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  render(<Harness />);
+  const editor = await screen.findByRole("textbox", { name: "Requête SQL" });
+  await userEvent.type(editor, "select nom from parcs join batiments");
+  // La collection saine a bien fini par être interrogée malgré l'échec de
+  // l'autre dans le même lot (au moins une fois — la frappe caractère par
+  // caractère peut légitimement déclencher plus d'une tentative concurrente
+  // avant que l'état ne se stabilise, hors périmètre de ce correctif).
+  await waitFor(() => expect(parcsFetchCount).toBeGreaterThanOrEqual(1));
+  await waitFor(() => expect(batimentsFetchCount).toBeGreaterThanOrEqual(1));
+  await waitFor(() =>
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("batiments"), expect.anything()),
+  );
+  // Snapshot une fois l'état stabilisé (aucune requête en vol restante) :
+  // deux frappes de plus ne doivent PLUS jamais rappeler ces schémas, ni la
+  // collection saine (déjà connue) ni celle en échec (dont l'échec est
+  // désormais mémorisé) — si le correctif n'était pas là, "batiments"
+  // (jamais entré dans schemaByCollection) serait reconsidérée "jamais
+  // tentée" et refetchée à chaque frappe.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const settledParcsCount = parcsFetchCount;
+  const settledBatimentsCount = batimentsFetchCount;
+  await userEvent.type(editor, " x");
+  await userEvent.type(editor, "y");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(parcsFetchCount).toBe(settledParcsCount);
+  expect(batimentsFetchCount).toBe(settledBatimentsCount);
+  warnSpy.mockRestore();
+});
+
 test("affiche le panneau copilote et insère le brouillon SQL généré sans l'exécuter", async () => {
   let executed = false;
   server.use(
@@ -221,7 +409,7 @@ test("affiche le panneau copilote et insère le brouillon SQL généré sans l'e
   render(<Harness />);
   await userEvent.type(await screen.findByLabelText("Message au copilote"), "une requête simple");
   await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
-  expect(await screen.findByLabelText("Requête SQL")).toHaveValue("select 1");
+  expect(await screen.findByRole("textbox", { name: "Requête SQL" })).toHaveTextContent("select 1");
   expect(executed).toBe(false);
 });
 

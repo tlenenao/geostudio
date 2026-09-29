@@ -435,6 +435,88 @@ test("ne réajuste pas la vue quand elle diffère déjà de la valeur par défau
   expect(mapInstances[0].fitBoundsArgs).toHaveLength(0);
 });
 
+test("affiche la légende de symbologie de chaque couche vecteur visible (D15)", async () => {
+  renderEditor({
+    getMapConfig: vi.fn().mockResolvedValue({
+      ...config,
+      layers: [
+        {
+          id: "v1",
+          title: "Zones",
+          visible: true,
+          kind: "vector",
+          tilesUrl: "https://core/tiles/{z}/{x}/{y}",
+          sourceLayer: "zones",
+          geometryKind: "polygon",
+          symbology: {
+            color: {
+              field: "type",
+              mode: "categorical",
+              palette: "categorical-a",
+              domain: { kind: "categorical", values: ["Résidentiel", "Commercial"] },
+              computedAt: "2026-09-27T10:00:00Z",
+            },
+          },
+        },
+      ],
+    }),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  expect(await screen.findByText("Résidentiel")).toBeInTheDocument();
+});
+
+test("la légende de symbologie ne recouvre pas la légende des noms de couches (revue Tâche 35)", async () => {
+  const { container } = renderEditor({
+    getMapConfig: vi.fn().mockResolvedValue({
+      ...config,
+      layers: [
+        {
+          id: "v1",
+          title: "Zones",
+          visible: true,
+          kind: "vector",
+          tilesUrl: "https://core/tiles/{z}/{x}/{y}",
+          sourceLayer: "zones",
+          geometryKind: "polygon",
+          symbology: {
+            color: {
+              field: "type",
+              mode: "categorical",
+              palette: "categorical-a",
+              domain: { kind: "categorical", values: ["Résidentiel", "Commercial"] },
+              computedAt: "2026-09-27T10:00:00Z",
+            },
+          },
+        },
+      ],
+    }),
+    listLayerSources: vi.fn().mockResolvedValue([]),
+  });
+  await screen.findByText("Résidentiel");
+  // MapLegend (dans MapView, derrière Suspense) peut monter après la légende
+  // de symbologie (rendue par MapEditorPage lui-même, pas de Suspense) — même
+  // sync point qu'ailleurs dans ce fichier ("Layer name appears in both
+  // LayersPanel and MapLegend; use findAllByText as sync point").
+  // `MapView` est chargée en lazy (Suspense) : "Zones" apparaît d'abord dans
+  // `LayersPanel` (pas de Suspense), pas une preuve que `MapView`/`MapLegend`
+  // ont déjà monté. Sync réel utilisé ailleurs dans ce fichier : attendre
+  // l'instance MapLibre mockée créée par `MapView` une fois résolue.
+  await waitFor(() => expect(mapInstances).toHaveLength(1));
+
+  // MapView affiche déjà MapLegend (noms de couches) ancrée bottom-2 left-2
+  // dans ce même conteneur (MapLegend.tsx) — hideLegend n'est passé que sur
+  // le chemin export, pas ici. Le panneau de légendes de symbologie doit donc
+  // occuper un coin distinct, pas le même point d'ancrage (défaut trouvé en
+  // revue Tâche 35 : les deux se superposaient exactement en bottom-2 left-2).
+  const layerNameLegend = container.querySelector("ul.absolute");
+  expect(layerNameLegend).not.toBeNull();
+  expect(layerNameLegend).toHaveClass("bottom-2", "left-2");
+
+  const symbologyPanel = screen.getByTestId("map-symbology-legend-panel");
+  expect(symbologyPanel).not.toHaveClass("left-2");
+  expect(symbologyPanel).toHaveClass("bottom-2", "right-2");
+});
+
 test("bloque la navigation après une modification non enregistrée de la carte (SP-B6c)", async () => {
   renderEditorWithNavigation({
     getMapConfig: vi.fn().mockResolvedValue(config),

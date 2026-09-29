@@ -1,8 +1,8 @@
 [
   {
     "file": "src/builder/pipeline/SecretParamSelect.tsx",
-    "line": 59,
-    "reason": "Pré-existant : le bouton \"Créer un secret\" ouvre SecretCreateForm en ligne (creating && <SecretCreateForm/>) sans aria-expanded/aria-controls. Dette REV-088 (CLAUDE.md : jamais posé rétroactivement) — pas corrigé par ce script d'outillage."
+    "line": 69,
+    "reason": "Pré-existant : le bouton \"Créer un secret\" ouvre SecretCreateForm en ligne (creating && <SecretCreateForm/>) sans aria-expanded/aria-controls. Dette REV-088 (CLAUDE.md : jamais posé rétroactivement) — pas corrigé par ce script d'outillage. Ligne décalée de 59 à 69 par les tâches Vague C sur ce fichier (placeholders de champ, garde lecture seule D55), aucun changement du déclencheur lui-même — vérifié en clôture de Vague C."
   },
   {
     "file": "src/builder/widgets/ExplorerMenu.tsx",
@@ -16,13 +16,13 @@
   },
   {
     "file": "src/builder/widgets/form.tsx",
-    "line": 705,
-    "reason": "Faux positif de l'heuristique : setConfirmingDelete(true) ouvre <ConfirmDialog> (boîte de dialogue modale) avant la suppression d'un enregistrement — pas un panneau en ligne (tâche 3 SP-B2 ; ligne décalée de 685 à 705 par des tâches de Vague B ultérieures, aucun changement du déclencheur lui-même — vérifié en clôture de Vague B)."
+    "line": 751,
+    "reason": "Faux positif de l'heuristique : setConfirmingDelete(true) ouvre <ConfirmDialog> (boîte de dialogue modale) avant la suppression d'un enregistrement — pas un panneau en ligne (tâche 3 SP-B2 ; ligne décalée de 685 à 705 par des tâches de Vague B, puis 705 à 751 par les tâches Vague C sur le champ pièce jointe et aria-required, aucun changement du déclencheur lui-même — vérifié en clôture de Vague B puis Vague C)."
   },
   {
     "file": "src/pages/AppRuntimePage.tsx",
-    "line": 170,
-    "reason": "Faux positif de l'heuristique : setSaveDialogOpen(true) ouvre <Dialog> (ui/kit/Dialog, role=\"dialog\", boîte modale) — pas un panneau en ligne, la convention CLAUDE.md ne s'applique pas à ce patron."
+    "line": 183,
+    "reason": "Faux positif de l'heuristique : setSaveDialogOpen(true) ouvre <Dialog> (ui/kit/Dialog, role=\"dialog\", boîte modale) — pas un panneau en ligne, la convention CLAUDE.md ne s'applique pas à ce patron. Ligne décalée de 170 à 183 par les tâches Vague C sur ce fichier (câblage printLayout.showLegend, migration ui/kit), aucun changement du déclencheur lui-même — vérifié en clôture de Vague C."
   },
   {
     "file": "src/pages/CollectionsAdminPage.tsx",

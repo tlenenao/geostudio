@@ -554,6 +554,118 @@ test("clicking a note does not call onSelectNode", () => {
   expect(onSelectNode).not.toHaveBeenCalled();
 });
 
+// D55 : le canevas en lecture seule doit refuser toute mutation du graphe,
+// pas seulement désactiver le bouton Enregistrer en aval. Deux chemins
+// distincts créent une arête dans ce fichier — le drag natif (`onConnect`,
+// jamais exercé par un test existant, cf. commentaire plus bas) et le clic
+// accessible (`onStartConnect` + `completeConnection`, le seul déjà couvert
+// par un test de ce fichier) — les deux doivent être gardés.
+test("readOnly empêche la création d'une arête via l'affordance de connexion cliquée", () => {
+  const onEdgesChange = vi.fn();
+  const nodes: PipelineNode[] = [
+    { id: "r1", kind: "reader", op: "reader.collection", x: 0, y: 0, params: {}, title: "R" },
+    { id: "t1", kind: "transform", op: "transform.filter", x: 300, y: 0, params: {}, title: "T" },
+  ];
+  render(
+    <PipelineCanvas
+      readOnly
+      nodes={nodes}
+      edges={[]}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={onEdgesChange}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+      notes={[]}
+      onNotesChange={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Connecter depuis R" }));
+  fireEvent.click(screen.getByText("T"));
+  expect(onEdgesChange).not.toHaveBeenCalled();
+});
+
+test("readOnly empêche la suppression d'un nœud via son bouton de suppression", () => {
+  const onNodesChange = vi.fn();
+  render(
+    <PipelineCanvas
+      readOnly
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={onNodesChange}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+      notes={[]}
+      onNotesChange={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Supprimer Villes" }));
+  expect(onNodesChange).not.toHaveBeenCalled();
+});
+
+// Revue finale Vague C (point 2, D55) : l'affordance "+" d'insertion sur
+// une arête n'avait elle-même aucun garde `readOnly` — seul le handler
+// côté PipelineBuilderPage.tsx (onInsertOnEdge) était visé par le finding,
+// mais laisser le bouton actif/le menu ouvrable est la même illusion
+// silencieuse que pour les autres contrôles de ce fichier.
+test("readOnly désactive le bouton d'insertion sur une arête et n'ouvre pas son menu", () => {
+  const onInsertOnEdge = vi.fn();
+  const catalog: PipelineOpsCatalog = {
+    "transform.filter": { kind: "transform", paramsSchema: { properties: {} } },
+  };
+  render(
+    <PipelineCanvas
+      readOnly
+      nodes={NODES}
+      edges={EDGES}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={onInsertOnEdge}
+      opsCatalog={catalog}
+      notes={[]}
+      onNotesChange={vi.fn()}
+    />,
+  );
+  const insertButton = screen.getByRole("button", { name: "Insérer une étape sur cette arête" });
+  expect(insertButton).toBeDisabled();
+  fireEvent.click(insertButton);
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  expect(onInsertOnEdge).not.toHaveBeenCalled();
+});
+
+// Revue finale Vague C (point 2, D55) : l'étiquette d'une zone annotée
+// (CanvasNoteBox) mutait directement `onNotesChange` sans jamais passer
+// par `handleNodesChange`/`handleEdgesChange` (déjà gardés) — chemin
+// distinct, garde distinct.
+test("readOnly désactive l'étiquette d'une zone annotée et empêche sa modification", () => {
+  const onNotesChange = vi.fn();
+  render(
+    <PipelineCanvas
+      readOnly
+      nodes={[]}
+      edges={[]}
+      selectedNodeId={null}
+      onSelectNode={vi.fn()}
+      onNodesChange={vi.fn()}
+      onEdgesChange={vi.fn()}
+      onInsertOnEdge={vi.fn()}
+      opsCatalog={{}}
+      notes={[{ id: "note-1", label: "Étape 1", x: 0, y: 0, width: 200, height: 120 }]}
+      onNotesChange={onNotesChange}
+    />,
+  );
+  const noteInput = screen.getByLabelText("Étiquette de la zone");
+  expect(noteInput).toBeDisabled();
+  fireEvent.change(noteInput, { target: { value: "Modifié" } });
+  expect(onNotesChange).not.toHaveBeenCalled();
+});
+
 test("clicking the connect affordance on a node, then clicking a note, does not create an edge", () => {
   const onEdgesChange = vi.fn();
   const nodes: PipelineNode[] = [

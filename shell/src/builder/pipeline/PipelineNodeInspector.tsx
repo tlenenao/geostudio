@@ -15,10 +15,12 @@ function KeyValueField({
   name,
   value,
   onChange,
+  readOnly,
 }: {
   name: string;
   value: Record<string, string | null>;
   onChange: (next: Record<string, string | null>) => void;
+  readOnly?: boolean;
 }) {
   const rows = Object.entries(value);
   return (
@@ -30,6 +32,7 @@ function KeyValueField({
             aria-label={`${name} clé ${i + 1}`}
             className="h-8 w-1/2 rounded border border-rule bg-surface px-2 text-xs text-ink"
             value={key}
+            disabled={readOnly}
             onChange={(e) => {
               const next = Object.fromEntries(rows);
               delete next[key];
@@ -41,6 +44,7 @@ function KeyValueField({
             aria-label={`${name} valeur ${i + 1}`}
             className="h-8 w-1/2 rounded border border-rule bg-surface px-2 text-xs text-ink"
             value={val ?? ""}
+            disabled={readOnly}
             onChange={(e) => {
               const next = Object.fromEntries(rows);
               next[key] = e.target.value === "" ? null : e.target.value;
@@ -49,13 +53,15 @@ function KeyValueField({
           />
         </div>
       ))}
-      <button
-        type="button"
-        className="w-fit text-xs text-accent hover:underline"
-        onClick={() => onChange({ ...value, "": "" })}
-      >
-        Ajouter {name}
-      </button>
+      {!readOnly && (
+        <button
+          type="button"
+          className="w-fit text-xs text-accent hover:underline"
+          onClick={() => onChange({ ...value, "": "" })}
+        >
+          Ajouter {name}
+        </button>
+      )}
     </div>
   );
 }
@@ -64,10 +70,12 @@ function StringListField({
   name,
   value,
   onChange,
+  readOnly,
 }: {
   name: string;
   value: string[];
   onChange: (next: string[]) => void;
+  readOnly?: boolean;
 }) {
   return (
     <label className="flex flex-col gap-1 text-xs">
@@ -76,6 +84,7 @@ function StringListField({
         aria-label={name}
         className="h-8 rounded border border-rule bg-surface px-2 text-ink"
         defaultValue={value.join(", ")}
+        disabled={readOnly}
         onChange={(e) =>
           onChange(
             e.target.value
@@ -94,11 +103,18 @@ export function PipelineNodeInspector({
   opEntry,
   errors,
   onChange,
+  readOnly = false,
 }: {
   node: PipelineNode;
   opEntry: PipelineOpEntry;
   errors: string[];
   onChange: (params: Record<string, unknown>) => void;
+  // Revue finale Vague C (point 2, D55) : sans ceci, les champs restaient
+  // éditables (localement, dans `params`) même pour un utilisateur en
+  // lecture seule — le garde côté appelant (updateSelectedNodeParams,
+  // PipelineBuilderPage.tsx) empêche la persistance mais pas l'illusion
+  // d'un champ modifiable qui oublie silencieusement la saisie.
+  readOnly?: boolean;
 }) {
   const [params, setParams] = useState(node.params);
 
@@ -107,6 +123,7 @@ export function PipelineNodeInspector({
   }, [node.params]);
 
   function setField(name: string, value: unknown) {
+    if (readOnly) return;
     const newParams = { ...params, [name]: value };
     setParams(newParams);
     onChange(newParams);
@@ -140,6 +157,7 @@ export function PipelineNodeInspector({
           value={String(params[name] ?? "")}
           variant={node.kind === "writer" ? "writable" : "readable"}
           onChange={(id) => setField(name, id)}
+          disabled={readOnly}
         />
       );
     }
@@ -150,6 +168,7 @@ export function PipelineNodeInspector({
           ariaLabel={name}
           value={String(params[name] ?? "")}
           onChange={(v) => setField(name, v)}
+          disabled={readOnly}
         />
       );
     }
@@ -162,6 +181,7 @@ export function PipelineNodeInspector({
             className="h-9 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
             value={String(params[name] ?? prop.default ?? "")}
             onChange={(e) => setField(name, e.target.value)}
+            disabled={readOnly}
           >
             {prop.enum.map((v) => (
               <option key={v} value={v}>
@@ -180,6 +200,7 @@ export function PipelineNodeInspector({
             aria-label={name}
             checked={Boolean(params[name])}
             onChange={(e) => setField(name, e.target.checked)}
+            disabled={readOnly}
           />
           {name}
         </label>
@@ -192,6 +213,7 @@ export function PipelineNodeInspector({
           name={name}
           value={(params[name] as string[] | undefined) ?? []}
           onChange={(v) => setField(name, v)}
+          readOnly={readOnly}
         />
       );
     }
@@ -202,6 +224,7 @@ export function PipelineNodeInspector({
           name={name}
           value={(params[name] as Record<string, string | null> | undefined) ?? {}}
           onChange={(v) => setField(name, v)}
+          readOnly={readOnly}
         />
       );
     }
@@ -221,6 +244,7 @@ export function PipelineNodeInspector({
                 : e.target.value,
             )
           }
+          disabled={readOnly}
         />
       </label>
     );
@@ -241,7 +265,7 @@ export function PipelineNodeInspector({
       {requiredEntries.length > 0 && (
         <div className="flex flex-col gap-2">
           {optionalEntries.length > 0 && (
-            <h4 className="text-[10px] font-semibold uppercase text-ink-2">
+            <h4 className="text-xs font-semibold uppercase text-ink-2">
               {t("pipelineNodeInspector.requiredSection")}
             </h4>
           )}
@@ -251,7 +275,7 @@ export function PipelineNodeInspector({
       {optionalEntries.length > 0 && (
         <div className="flex flex-col gap-2">
           {requiredEntries.length > 0 && (
-            <h4 className="text-[10px] font-semibold uppercase text-ink-2">
+            <h4 className="text-xs font-semibold uppercase text-ink-2">
               {t("pipelineNodeInspector.optionalSection")}
             </h4>
           )}

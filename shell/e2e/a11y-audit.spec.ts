@@ -493,4 +493,285 @@ test.describe("audit d'accessibilité (axe-core)", () => {
     await expect(page.getByRole("heading", { name: "Moissonnage" })).toBeVisible();
     await runAxeAudit(page, "HarvestSourcesAdminPage");
   });
+
+  // --- Tâche 7/SP-C2 (D43) : routes jusqu'ici non auditées, fixture triviale
+  // (déjà mockée ailleurs par mockCore()/mocks.ts, ou réutilisant une
+  // fixture d'une autre spec E2E telle quelle). -----------------------------
+
+  test("BookmarksRoute (CatalogPage filtré sur les signets, état vide)", async ({ page }) => {
+    await mockCore(page);
+    await page.goto("/bookmarks");
+    await expect(page.getByText("Aucun élément pour l'instant")).toBeVisible();
+    await runAxeAudit(page, "BookmarksRoute");
+  });
+
+  test("ReportsRoute (CatalogPage filtré sur les rapports, état vide)", async ({ page }) => {
+    await mockCore(page);
+    await page.goto("/reports");
+    await expect(page.getByText("Aucun élément pour l'instant")).toBeVisible();
+    await runAxeAudit(page, "ReportsRoute");
+  });
+
+  test("PipelineNewRoute (brouillon de pipeline vierge)", async ({ page }) => {
+    await mockCore(page);
+    // Même patron que le test "PipelineBuilderPage" plus haut dans ce
+    // fichier : /instance et /pipelines/ops doivent répondre avant que le
+    // garde etlEnabled ne laisse passer le rendu (sinon spinner infini,
+    // cf. le commentaire "D09" de PipelineBuilderPage.tsx).
+    await page.route("https://core.test/v1/instance", async (route) => {
+      await route.fulfill({ json: { readOnly: false, etlEnabled: true } });
+    });
+    await page.route("https://core.test/v1/pipelines/ops", async (route) => {
+      await route.fulfill({
+        json: {
+          "reader.collection": {
+            kind: "reader",
+            paramsSchema: {
+              properties: { collectionId: { type: "string", format: "collection-id" } },
+              required: ["collectionId"],
+            },
+          },
+          "writer.collection": {
+            kind: "writer",
+            paramsSchema: {
+              properties: { collectionId: { type: "string", format: "collection-id" } },
+              required: ["collectionId"],
+            },
+          },
+        },
+      });
+    });
+    await page.goto("/pipelines/new");
+    await expect(page.getByRole("heading", { name: "Pipeline" })).toBeVisible();
+    await runAxeAudit(page, "PipelineNewRoute");
+  });
+
+  test("ReportNewRoute (brouillon de rapport planifié vierge)", async ({ page }) => {
+    await mockCore(page);
+    // pk === null : ReportEditPage ne fait aucune requête conditionnelle à
+    // un item/config existant (garde `enabled: pk !== null`) — mockCore()
+    // seul suffit.
+    await page.goto("/reports/new");
+    await expect(page.getByRole("heading", { name: "Programmer un rapport" })).toBeVisible();
+    await runAxeAudit(page, "ReportNewRoute");
+  });
+
+  test("ComplianceAdminPage (famille Administration — conformité RGPD)", async ({ page }) => {
+    await mockCore(page);
+    // Même profil que compliance-admin.spec.ts : compliance.manage n'est
+    // porté par aucun rôle prédéfini, y compris Administrateur (SP-58) —
+    // ajouté explicitement au profil admin de test.
+    await mockMe(page, { ...ADMIN_ME, privileges: [...ADMIN_ME.privileges, "compliance.manage"] });
+    await page.goto("/admin/compliance");
+    await expect(page.getByText("Purger toutes les données du tenant")).toBeVisible();
+    await runAxeAudit(page, "ComplianceAdminPage");
+  });
+
+  test("SettingsPage (Paramètres, profil courant)", async ({ page }) => {
+    await mockCore(page);
+    // Seule route que mockCore() ne fournit pas par défaut pour cette page
+    // (settings-page.spec.ts la mocke explicitement, elle aussi).
+    await page.route("https://core.test/v1/notifications/preference", async (route) => {
+      await route.fulfill({ json: { value: "all" } });
+    });
+    await page.goto("/settings");
+    await expect(page.getByRole("link", { name: "Général →" })).toBeVisible();
+    await runAxeAudit(page, "SettingsPage");
+  });
+
+  test("AppRuntimeRoute (App publiée en mode exécution, hors édition)", async ({ page }) => {
+    await mockCore(page);
+    // Item "1" (Alpha, resourceType app) porte déjà APP_CONFIG_V2 par
+    // défaut dans mocks.ts (le même fixture que le test "AppBuilderPage"
+    // plus haut, en lecture-exécution plutôt qu'en édition) — zéro mock
+    // nouveau, comme anticipé par la spec.
+    await page.goto("/apps/1");
+    await expect(page.getByText("Titre version 2")).toBeVisible();
+    await runAxeAudit(page, "AppRuntimeRoute");
+  });
+
+  test("EmbedRoute (App intégrée via un jeton de partage invité)", async ({ page }) => {
+    // Repris tel quel du premier test de embed.spec.ts (pas de mockCore() :
+    // EmbedPage n'authentifie jamais, elle ne parle qu'au jeton de partage).
+    await page.route("**/v1/share-links/*", async (route) => {
+      await route.fulfill({
+        json: {
+          itemId: "app-1",
+          title: "App de démo",
+          resourceType: "app",
+          expiresAt: "2099-01-01",
+        },
+      });
+    });
+    await page.route("**/v1/configs/by-item/app-1*", async (route) => {
+      await route.fulfill({
+        json: {
+          config: {
+            kind: "app",
+            theme: {},
+            dataSources: [
+              { id: "ds1", type: "features", service: "core", layer: "incidents", query: {} },
+            ],
+            messages: [],
+            layout: {
+              type: "grid",
+              items: [
+                {
+                  id: "w1",
+                  widget: "table",
+                  x: 0,
+                  y: 0,
+                  w: 4,
+                  h: 4,
+                  props: { dataSourceId: "ds1" },
+                },
+              ],
+            },
+          },
+        },
+      });
+    });
+    await page.route("**/v1/collections/incidents/schema*", async (route) => {
+      await route.fulfill({
+        json: { collection: "incidents", pk: "id", geometry: null, fields: [] },
+      });
+    });
+    await page.route("**/v1/collections/incidents/items*", async (route) => {
+      await route.fulfill({
+        json: { type: "FeatureCollection", features: [], numberMatched: 0, numberReturned: 0 },
+      });
+    });
+    await page.goto("/embed/e2e-audit-embed-token");
+    await expect(page.locator("body")).not.toContainText("Chargement");
+    await runAxeAudit(page, "EmbedRoute");
+  });
+
+  test("PublicItemRoute (item publié consulté en anonyme)", async ({ page }) => {
+    await mockCore(page);
+    // Item "8" (GALLERY_ITEM, config texte "Detail de l'article") est déjà
+    // mocké par défaut dans mocks.ts pour le parcours Gallery → vignette →
+    // PublicItemPage (SP-16b) — PublicItemPage n'appelle que
+    // getPublicAppConfig(pk), déjà satisfait.
+    await page.goto("/public/items/8");
+    await expect(page.getByText("Detail de l'article")).toBeVisible();
+    await runAxeAudit(page, "PublicItemRoute");
+  });
+
+  test("DatasetRoute (fiche dataset publique, consultation anonyme)", async ({ page }) => {
+    await mockCore(page);
+    // "parcs" est déjà publique par défaut dans mocks.ts (collection +
+    // schema + items), réutilisée telle quelle par
+    // sites-portal-dataset.spec.ts pour ce même chemin.
+    await page.goto("/public/datasets/parcs");
+    await expect(page.getByRole("heading", { name: "Parcs" })).toBeVisible();
+    await runAxeAudit(page, "DatasetRoute");
+  });
+
+  test("VisualQueryWizardEditPage (assistant Filtrer→Joindre→Résumer, mode édition)", async ({
+    page,
+  }) => {
+    await mockCore(page);
+    await page.route("https://core.test/v1/instance", async (route) => {
+      await route.fulfill({ json: { readOnly: false, etlEnabled: true } });
+    });
+    await page.route("https://core.test/v1/collections*", async (route) => {
+      await route.fulfill({
+        json: {
+          collections: [
+            mockCollection({ id: "villes", title: "Villes", tableName: "villes" }),
+            mockCollection({
+              id: "villes-out",
+              title: "Villes filtrées (sortie)",
+              tableName: "villes_out",
+            }),
+          ],
+        },
+      });
+    });
+    await page.route("https://core.test/v1/collections/villes/schema", async (route) => {
+      await route.fulfill({
+        json: {
+          collection: "villes",
+          pk: "id",
+          geometry: null,
+          fields: [{ name: "nom", type: "string" }],
+        },
+      });
+    });
+    await page.route("https://core.test/v1/collections/villes-out/schema", async (route) => {
+      await route.fulfill({
+        json: {
+          collection: "villes-out",
+          pk: "id",
+          geometry: null,
+          fields: [{ name: "nom", type: "string" }],
+        },
+      });
+    });
+    // Pipeline minimal décompilable par decompilePipelineToWizardState :
+    // exactement 1 reader.collection -> 1 writer.dataset, un seul lien
+    // direct entre les deux (aucun filtre/jointure/résumé — la fonction ne
+    // les exige pas, elle boucle simplement sur les arêtes sortantes).
+    await page.route("https://core.test/v1/configs/by-item/pipe-vq-1", async (route) => {
+      await route.fulfill({
+        json: {
+          id: "cfg-pipe-vq-1",
+          itemId: "pipe-vq-1",
+          kind: "pipeline",
+          config: {
+            kind: "pipeline",
+            pipeline: {
+              nodes: [
+                {
+                  id: "r1",
+                  kind: "reader",
+                  op: "reader.collection",
+                  x: 0,
+                  y: 0,
+                  params: { collectionId: "villes" },
+                  title: "reader.collection",
+                },
+                {
+                  id: "w1",
+                  kind: "writer",
+                  op: "writer.dataset",
+                  x: 300,
+                  y: 0,
+                  params: { collectionId: "villes-out", datasetId: "dataset-vq-1" },
+                  title: "writer.dataset",
+                },
+              ],
+              edges: [{ id: "e1", from: "r1", to: "w1" }],
+            },
+          },
+        },
+      });
+    });
+    // Item du dataset de sortie — préremplit le champ Titre et le panneau
+    // "browse" (type + date de modification). itemQuery(pipelinePk) n'a pas
+    // besoin d'un mock dédié : le filet générique "/items/{id}" de
+    // mockCore() renvoie déjà permissions.write=true pour tout id non
+    // explicitement mocké.
+    await page.route("https://core.test/v1/items/dataset-vq-1", async (route) => {
+      await route.fulfill({
+        json: {
+          pk: "dataset-vq-1",
+          resourceType: "dataset",
+          title: "Villes filtrées",
+          abstract: "",
+          owner: "mockuser",
+          thumbnailUrl: null,
+          date: "2026-01-01",
+          configId: null,
+          isPublished: false,
+          keywords: [],
+          permissions: { read: true, write: true, delete: true, share: true },
+          updatedAt: "2026-01-02T00:00:00Z",
+        },
+      });
+    });
+    await page.goto("/datasets/visual-query/pipe-vq-1/edit");
+    await expect(page.getByRole("heading", { name: "Modifier la requête" })).toBeVisible();
+    await runAxeAudit(page, "VisualQueryWizardEditPage");
+  });
 });

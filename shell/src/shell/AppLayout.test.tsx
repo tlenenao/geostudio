@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { http, HttpResponse } from "msw";
@@ -122,4 +123,21 @@ test("hides the read-only demo banner by default", async () => {
   renderLayout();
   await screen.findByText("GeoStudio");
   expect(screen.queryByText(/Mode démo/)).not.toBeInTheDocument();
+});
+
+// D07 (Task 21) : le montage paresseux de CommandPalette et l'écouteur
+// clavier Ctrl/Cmd+K vivent dans AppLayout lui-même — non couverts par
+// CommandPalette.test.tsx (qui rend le composant directement, `open` déjà
+// vrai) ni par TopBar.test.tsx (qui mocke `onOpenPalette`). Sans ce test,
+// la vraie intégration clavier n'était exercée par rien — trouvé en
+// clôture de Vague C (Tâche 40) via le plancher de santé de fonctionnalité
+// (`cartes-rendu-export-headless...` partage `AppLayout.tsx` comme seule
+// preuve, sa couverture de lignes a baissé sous le plancher moyenne-priorité
+// à cause des branches ⌘K jamais exercées).
+test("Ctrl/Cmd+K ouvre la palette de commandes (montage paresseux)", async () => {
+  renderLayout();
+  await screen.findByText("GeoStudio");
+  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  await userEvent.keyboard("{Control>}k{/Control}");
+  expect(await screen.findByRole("combobox")).toBeInTheDocument();
 });

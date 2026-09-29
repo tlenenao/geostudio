@@ -3114,13 +3114,17 @@ test("runAnalyticsSql throws SqlQueryError with the server message on 400", asyn
   expect((err as SqlQueryError).message).toBe("Binder Error: table 'x' does not exist");
 });
 
-test("runAnalyticsSql throws a plain Error on 403 (non-analyst)", async () => {
+test("runAnalyticsSql throws an ApiError on 403 (non-analyst)", async () => {
   server.use(
     http.post("https://core.test/v1/analytics/sql", () =>
       HttpResponse.json({ detail: "analyst role required" }, { status: 403 }),
     ),
   );
-  await expect(makeClient().runAnalyticsSql("select 1")).rejects.toThrow(/403/);
+  await expect(makeClient().runAnalyticsSql("select 1")).rejects.toMatchObject({
+    name: "ApiError",
+    status: 403,
+    detail: "analyst role required",
+  });
 });
 
 test("createPipelineItem posts a pipeline payload and returns a pipeline Item", async () => {
@@ -3441,6 +3445,19 @@ test("getAlertEvaluations relaie limit/offset en paramètres de requête", async
     }),
   );
   await makeClient().getAlertEvaluations("a-1", { limit: 50, offset: 50 });
+});
+
+test("evaluateAlertRule calls POST /alerts/{id}/evaluate", async () => {
+  let method: string | undefined;
+  server.use(
+    http.post("https://core.test/v1/alerts/a-1/evaluate", ({ request }) => {
+      method = request.method;
+      return HttpResponse.json({ evaluationId: "e1" }, { status: 202 });
+    }),
+  );
+  const result = await makeClient().evaluateAlertRule("a-1");
+  expect(method).toBe("POST");
+  expect(result).toEqual({ evaluationId: "e1" });
 });
 
 test("getReportRuns calls GET /reports/{id}/runs", async () => {

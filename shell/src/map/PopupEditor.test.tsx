@@ -132,7 +132,10 @@ test("an invalid placeholder is reported without blocking typing", async () => {
       onChange={() => {}}
     />,
   );
+  // D35 : le message brut de cel-js embarqué dans la phrase traduite est
+  // préfixé « • » (formatCelError), pas affiché tel quel.
   expect(screen.getByRole("alert")).toHaveTextContent("Expression invalide");
+  expect(screen.getByRole("alert")).toHaveTextContent("•");
 });
 
 test("an unclosed placeholder is reported", () => {

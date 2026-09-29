@@ -37,7 +37,10 @@ test("copilot on SQL Lab: generated SQL is inserted as a draft, never auto-execu
   await page.getByLabel("Message au copilote").fill("les titres des incidents");
   await page.getByRole("button", { name: "Envoyer" }).click();
 
-  await expect(page.getByLabel("Requête SQL")).toHaveValue("SELECT titre FROM incidents");
+  // Tâche 25 (D54a) a remplacé le <textarea> par un éditeur CodeMirror
+  // (div contenteditable, role="textbox") : `toHaveValue` ne s'applique
+  // qu'à un élément de formulaire réel, `toHaveText` lit le texte rendu.
+  await expect(page.getByLabel("Requête SQL")).toHaveText("SELECT titre FROM incidents");
   // Point d'arrêt humain : rien n'a exécuté la requête tant que l'utilisateur
   // n'a pas cliqué sur Exécuter.
   expect(executed).toBe(false);

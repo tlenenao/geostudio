@@ -212,3 +212,31 @@ test("supprime un secret après confirmation (D05)", async () => {
   expect(deleteSecret).toHaveBeenCalledWith("s1");
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
+
+test("le champ dsn a un placeholder d'exemple", async () => {
+  const createSecret = vi.fn().mockResolvedValue({
+    id: "s3",
+    name: "postgres-prod",
+    kind: "postgres_dsn",
+    createdAt: "",
+    updatedAt: "",
+  });
+  renderSelect({ kindFilter: "postgres_dsn" }, { createSecret });
+  await userEvent.click(screen.getByText("Créer un secret"));
+  const dsnInput = screen.getByLabelText(t("secretParamSelect.dsnAria"));
+  expect(dsnInput).toHaveAttribute("placeholder", "postgresql://user:pass@host:5432/db");
+});
+
+test("le champ host SMTP a un placeholder d'exemple", async () => {
+  const createSecret = vi.fn().mockResolvedValue({
+    id: "s3",
+    name: "smtp-prod",
+    kind: "smtp",
+    createdAt: "",
+    updatedAt: "",
+  });
+  renderSelect({ kindFilter: "smtp" }, { createSecret });
+  await userEvent.click(screen.getByText("Créer un secret"));
+  const hostInput = screen.getByLabelText(t("secretParamSelect.hostAria"));
+  expect(hostInput).toHaveAttribute("placeholder", "smtp.example.com");
+});

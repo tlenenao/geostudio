@@ -17,6 +17,7 @@
 // échouer.
 import { useEffect, useRef } from "react";
 import type { AppConfig, CopilotClientOp } from "../../api/types";
+import { appendCopilotHistory } from "../../lib/copilotHistory";
 import { applyClientOp, type RawClientOp } from "./applyClientOp";
 import { buildClientToolSchemas } from "./clientTools";
 import { CopilotChat } from "./CopilotChat";
@@ -64,6 +65,7 @@ export function CopilotPanel({
       clientTools={buildClientToolSchemas()}
       opLabels={OP_LABELS}
       onClientOps={handleClientOps}
+      onExchange={(entry) => appendCopilotHistory(entry)}
     />
   );
 }

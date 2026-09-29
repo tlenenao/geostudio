@@ -69,13 +69,13 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
         />
       )}
       <div className="font-medium">{node.title ?? node.op}</div>
-      <div className="text-[10px] text-ink-2">{node.op}</div>
+      <div className="text-xs text-ink-2">{node.op}</div>
       <Handle type="source" position={Position.Right} />
       {node.errorCount > 0 && (
         <span
           role="status"
           aria-label={t("pipelineCanvas.nodeErrorAria", { count: node.errorCount })}
-          className="absolute -left-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[10px] text-surface"
+          className="absolute -left-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-2xs text-surface"
         >
           !
         </span>
@@ -83,7 +83,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
       {node.nodeStat && (
         <span
           role="status"
-          className="absolute -right-2 -top-2 rounded-full bg-ok px-1.5 py-0.5 text-[10px] text-surface"
+          className="absolute -right-2 -top-2 rounded-full bg-ok px-1.5 py-0.5 text-2xs text-surface"
         >
           {node.nodeStat.rowCount ?? "?"}
         </span>
@@ -98,7 +98,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
       <button
         type="button"
         aria-label={t("pipelineCanvas.deleteNodeAria", { title: node.title ?? node.op })}
-        className="absolute -bottom-2 -right-2 flex h-4 w-4 items-center justify-center rounded-full border border-rule bg-surface text-[10px] leading-none text-ink-2 hover:bg-sunken hover:text-danger"
+        className="absolute -bottom-2 -right-2 flex h-4 w-4 items-center justify-center rounded-full border border-rule bg-surface text-2xs leading-none text-ink-2 hover:bg-sunken hover:text-danger"
         onClick={(e) => {
           e.stopPropagation();
           node.onDelete(node.id);
@@ -110,7 +110,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
         type="button"
         aria-label={t("pipelineCanvas.startConnectAria", { title: node.title ?? node.op })}
         aria-pressed={node.isConnectingSource}
-        className="absolute -bottom-2 -left-2 flex h-4 w-4 items-center justify-center rounded-full border border-rule bg-surface text-[10px] leading-none text-ink-2 hover:bg-sunken"
+        className="absolute -bottom-2 -left-2 flex h-4 w-4 items-center justify-center rounded-full border border-rule bg-surface text-2xs leading-none text-ink-2 hover:bg-sunken"
         onClick={(e) => {
           e.stopPropagation();
           node.onStartConnect(node.id);
@@ -124,6 +124,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
 
 type CanvasNoteData = PipelineCanvasNote & {
   onLabelChange: (id: string, label: string) => void;
+  readOnly?: boolean;
 };
 
 function CanvasNoteBox({ data }: NodeProps) {
@@ -138,6 +139,7 @@ function CanvasNoteBox({ data }: NodeProps) {
         className="w-full bg-transparent text-xs font-medium text-ink-2 outline-none"
         value={note.label}
         onChange={(e) => note.onLabelChange(note.id, e.target.value)}
+        disabled={note.readOnly}
       />
     </div>
   );
@@ -146,11 +148,12 @@ function CanvasNoteBox({ data }: NodeProps) {
 function toFlowNoteNode(
   n: PipelineCanvasNote,
   onLabelChange: (id: string, label: string) => void,
+  readOnly?: boolean,
 ): Node {
   return {
     id: n.id,
     position: { x: n.x, y: n.y },
-    data: { ...n, onLabelChange } as unknown as Record<string, unknown>,
+    data: { ...n, onLabelChange, readOnly } as unknown as Record<string, unknown>,
     type: "canvasNote",
     zIndex: -1,
   };
@@ -165,7 +168,12 @@ function InsertOnEdgeButton({
   data,
   onInsert,
   opsCatalog,
-}: EdgeProps & { onInsert: (edgeId: string, op: string) => void; opsCatalog: PipelineOpsCatalog }) {
+  readOnly,
+}: EdgeProps & {
+  onInsert: (edgeId: string, op: string) => void;
+  opsCatalog: PipelineOpsCatalog;
+  readOnly?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const insertMenu = usePanelTrigger(open);
   const [edgePath, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY });
@@ -197,10 +205,11 @@ function InsertOnEdgeButton({
             aria-controls={insertMenu.triggerProps["aria-controls"]}
             className="h-5 w-5 rounded-full border border-rule bg-surface text-xs leading-none hover:bg-sunken"
             onClick={() => setOpen((o) => !o)}
+            disabled={readOnly}
           >
             +
           </button>
-          {open && (
+          {open && !readOnly && (
             // role="menu" conservé (plus spécifique que role="region" du
             // hook générique) — seul l'id du panneau est câblé ici, cf.
             // consigne explicite du brief pour ce site.
@@ -278,6 +287,7 @@ function PipelineCanvasInner({
   nodeErrors,
   notes,
   onNotesChange,
+  readOnly,
 }: {
   nodes: PipelineNode[];
   edges: PipelineEdge[];
@@ -292,16 +302,23 @@ function PipelineCanvasInner({
   nodeErrors?: Record<string, string[]>;
   notes: PipelineCanvasNote[];
   onNotesChange: (notes: PipelineCanvasNote[]) => void;
+  readOnly?: boolean;
 }) {
   const nodeTypes = { pipelineNode: PipelineNodeBox, canvasNote: CanvasNoteBox };
   const edgeTypes = {
     insertable: (props: EdgeProps) => (
-      <InsertOnEdgeButton {...props} onInsert={onInsertOnEdge} opsCatalog={opsCatalog} />
+      <InsertOnEdgeButton
+        {...props}
+        onInsert={onInsertOnEdge}
+        opsCatalog={opsCatalog}
+        readOnly={readOnly}
+      />
     ),
   };
 
   const onConnect: OnConnect = useCallback(
     (connection) => {
+      if (readOnly) return;
       if (!connection.source || !connection.target) return;
       const role: "primary" | "secondary" =
         connection.targetHandle === "secondary" ? "secondary" : "primary";
@@ -316,14 +333,24 @@ function PipelineCanvasInner({
       if (role === "secondary") newEdge.role = "secondary";
       onEdgesChange([...edges, newEdge]);
     },
-    [nodes, edges, onEdgesChange],
+    [nodes, edges, onEdgesChange, readOnly],
   );
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
+      // D55 : en lecture seule, `nodesDraggable={false}` (cf. <ReactFlow>
+      // plus bas) empêche déjà React Flow d'émettre des changements
+      // "position" par drag natif, et `deleteKeyCode={null}` l'empêche
+      // d'émettre des changements "remove" au clavier. Ce filtre est une
+      // seconde ligne de défense (déjà écartée dans le pire des cas testé :
+      // la suppression au clic sur le bouton × passe par `deleteNode`,
+      // jamais par ici — gardée séparément ci-dessous).
+      const effectiveChanges = readOnly
+        ? changes.filter((c) => c.type !== "remove" && c.type !== "add")
+        : changes;
       let nextNodes = nodes;
       let nextNotes = notes;
-      for (const change of changes) {
+      for (const change of effectiveChanges) {
         if (change.type === "position" && change.position) {
           const isNote = change.id.startsWith("note-");
           if (isNote) {
@@ -354,36 +381,52 @@ function PipelineCanvasInner({
       if (nextNodes !== nodes) onNodesChange(nextNodes);
       if (nextNotes !== notes) onNotesChange(nextNotes);
     },
-    [nodes, notes, onNodesChange, onNotesChange, onSelectNode],
+    [nodes, notes, onNodesChange, onNotesChange, onSelectNode, readOnly],
   );
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
+      // D55 : même raisonnement que handleNodesChange — deleteKeyCode={null}
+      // empêche déjà l'émission d'un changement "remove" au clavier en
+      // lecture seule ; ce garde explicite est la seconde ligne de défense.
+      if (readOnly) return;
       const removedIds = new Set(changes.filter((c) => c.type === "remove").map((c) => c.id));
       if (removedIds.size) onEdgesChange(edges.filter((e) => !removedIds.has(e.id)));
     },
-    [edges, onEdgesChange],
+    [edges, onEdgesChange, readOnly],
   );
 
   const deleteNode = useCallback(
     (nodeId: string) => {
+      // D55 : seul chemin réel de suppression d'un nœud (le bouton ×
+      // appelle `onDelete` = cette fonction directement — jamais via
+      // `handleNodesChange`, qui ne voit un changement "remove" que pour la
+      // suppression clavier). Sans ce garde, le filtre ci-dessus sur
+      // `handleNodesChange` ne suffit pas à couvrir D55.
+      if (readOnly) return;
       onNodesChange(nodes.filter((n) => n.id !== nodeId));
       onEdgesChange(edges.filter((e) => e.from !== nodeId && e.to !== nodeId));
     },
-    [nodes, edges, onNodesChange, onEdgesChange],
+    [nodes, edges, onNodesChange, onEdgesChange, readOnly],
   );
 
   const [connectingFromId, setConnectingFromId] = useState<string | null>(null);
 
   const completeConnection = useCallback(
     (targetId: string) => {
+      // D55 : chemin de connexion réellement exercé par le clic accessible
+      // (bouton ↝ puis clic sur le nœud cible) — c'est celui-là, pas
+      // `onConnect` (réservé au drag natif), que les tests de ce fichier
+      // exercent. Sans ce garde, `onConnect` seul ne suffit pas à fermer
+      // D55.
+      if (readOnly) return;
       if (!connectingFromId) return;
       setConnectingFromId(null);
       if (hasIncomingEdge(edges, targetId)) return;
       if (wouldCreateCycle(nodes, edges, { from: connectingFromId, to: targetId })) return;
       onEdgesChange([...edges, { id: genEdgeId(), from: connectingFromId, to: targetId }]);
     },
-    [connectingFromId, nodes, edges, onEdgesChange],
+    [readOnly, connectingFromId, nodes, edges, onEdgesChange],
   );
 
   useEffect(() => {
@@ -414,8 +457,18 @@ function PipelineCanvasInner({
             }),
           ),
           ...notes.map((n) =>
-            toFlowNoteNode(n, (id, label) =>
-              onNotesChange(notes.map((x) => (x.id === id ? { ...x, label } : x))),
+            toFlowNoteNode(
+              n,
+              (id, label) => {
+                // D55, revue finale Vague C (point 2) : chemin direct
+                // (l'input de la zone annotée n'émet aucun NodeChange géré
+                // par handleNodesChange plus haut) — sans ce garde,
+                // `disabled` sur l'input seul ne suffirait pas à couvrir un
+                // événement forcé (ex. testing-library, extension tierce).
+                if (readOnly) return;
+                onNotesChange(notes.map((x) => (x.id === id ? { ...x, label } : x)));
+              },
+              readOnly,
             ),
           ),
         ]}
@@ -434,7 +487,9 @@ function PipelineCanvasInner({
             completeConnection(flowNode.id);
         }}
         onPaneClick={() => onSelectNode(null)}
-        deleteKeyCode={["Backspace", "Delete"]}
+        deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
+        nodesDraggable={!readOnly}
+        nodesConnectable={!readOnly}
       >
         <Background />
         <Controls />

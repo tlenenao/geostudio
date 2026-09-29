@@ -9,7 +9,11 @@ import { t, type MessageKey } from "../../i18n";
 // seul point d'entrée toujours visible — "Général" (vers /settings) n'exige
 // aucun privilège, les sept entrées admin gardent leur filtrage inchangé.
 // Même doctrine que capabilities.ts : un privilège manquant MASQUE le lien.
-const SETTINGS_LINKS: readonly { to: string; labelKey: MessageKey; privilege?: string }[] = [
+export const SETTINGS_LINKS: readonly {
+  to: string;
+  labelKey: MessageKey;
+  privilege?: string;
+}[] = [
   { to: "/settings", labelKey: "settingsNav.linkGeneral" },
   {
     to: "/admin/extensions",

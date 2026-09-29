@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/alerts/{item_id}/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Evaluate Alert Now */
+        post: operations["evaluate_alert_now_v1_alerts__item_id__evaluate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/alerts/{item_id}/evaluations": {
         parameters: {
             query?: never;
@@ -2224,6 +2241,16 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** EvaluateAlertResponse */
+        EvaluateAlertResponse: {
+            /**
+             * Created
+             * @default true
+             */
+            created: boolean;
+            /** Evaluationid */
+            evaluationId: string;
+        };
         /** EvaluationStatus */
         EvaluationStatus: {
             /** Createdat */
@@ -3421,6 +3448,12 @@ export interface components {
             collectionCount: number;
             /** Itemcount */
             itemCount: number;
+            /** Maxcollections */
+            maxCollections: number | null;
+            /** Maxitems */
+            maxItems: number | null;
+            /** Maxstoragebytes */
+            maxStorageBytes: number | null;
             /** Storagebytes */
             storageBytes: number;
             /** Usercount */
@@ -3572,6 +3605,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UsageSnapshotResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evaluate_alert_now_v1_alerts__item_id__evaluate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluateAlertResponse"];
                 };
             };
             /** @description Validation Error */

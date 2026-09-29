@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -438,11 +438,35 @@ test("re-applies deck layers when config.layers changes", () => {
   expect(overlay.props.layers[0].deckType).toBe("ColumnLayer");
 });
 
+function mockMatchMedia(matches: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  );
+}
+
 test("exposes an imperative flyTo that drives the map", () => {
+  mockMatchMedia(false);
   const ref = createRef<MapViewHandle>();
   render(<MapView ref={ref} config={config} />);
   ref.current!.flyTo({ center: [5, 6], zoom: 12 });
   expect(mapInstances[0].flyToArgs).toContainEqual({ center: [5, 6], zoom: 12 });
+});
+
+test("D42 : bascule sur jumpTo (jamais flyTo) quand le visiteur préfère un mouvement réduit", () => {
+  mockMatchMedia(true);
+  const ref = createRef<MapViewHandle>();
+  render(<MapView ref={ref} config={config} />);
+  const map = mapInstances[0];
+  const flyToSpy = vi.spyOn(map, "flyTo");
+  const jumpToSpy = vi.spyOn(map, "jumpTo");
+  ref.current!.flyTo({ center: [5, 6], zoom: 12 });
+  expect(jumpToSpy).toHaveBeenCalledWith({ center: [5, 6], zoom: 12 });
+  expect(flyToSpy).not.toHaveBeenCalled();
 });
 
 test("highlight sets the highlight source data and clears it on null", () => {
@@ -1375,6 +1399,73 @@ test("the popup closes when its layer keeps its id but loses its popup config", 
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
+test("D35 (Vague C, SP-C6) : a `fields` popup formats a numeric value fr-FR using the collection's schema", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      collection: "communes",
+      pk: "id",
+      geometry: null,
+      fields: [{ name: "population", type: "number", required: false }],
+    }),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(
+    <MapView
+      config={tiled({ geometryKind: "polygon", popup: { fields: [{ name: "population" }] } })}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "communes", {
+      features: [{ id: 7, properties: { population: 14000 } }],
+      lngLat: { lng: 12, lat: 34 },
+    }),
+  );
+  expect(fetchMock).toHaveBeenCalledWith("http://core.test/collections/communes/schema", {
+    headers: {},
+  });
+  // `findByText`/`getByText` normalisent l'espace fine insécable (U+202F,
+  // séparateur de milliers fr-FR) en espace normale lors de la
+  // comparaison — comparé au `textContent` brut à la place pour ne pas
+  // fausser l'assertion elle-même (piège découvert en écrivant ce test).
+  await waitFor(() => {
+    expect(screen.getByRole("dialog").textContent).toContain(
+      new Intl.NumberFormat("fr-FR").format(14000),
+    );
+  });
+  expect(screen.getByRole("dialog").textContent).not.toContain("14000");
+});
+
+test("D35 : a `template` popup is never formatted fr-FR, even when a schema is available", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      collection: "communes",
+      pk: "id",
+      geometry: null,
+      fields: [{ name: "population", type: "number", required: false }],
+    }),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(
+    <MapView
+      config={tiled({
+        geometryKind: "polygon",
+        popup: { template: "${record.population}" },
+      })}
+      getCoreUrl={() => "http://core.test"}
+    />,
+  );
+  act(() =>
+    mapInstances[0].fireOnLayer("click", "communes", {
+      features: [{ id: 7, properties: { population: 14000 } }],
+      lngLat: { lng: 12, lat: 34 },
+    }),
+  );
+  expect(screen.getByRole("dialog").textContent).toContain("14000");
+});
+
 test("a template popup renders its sanitized html", () => {
   render(
     <MapView
@@ -1493,7 +1584,13 @@ test("fetches and shows the entity's attachments when the layer's popup declares
 });
 
 test("does not fetch the entity's attachments when the popup does not declare an attachmentField", () => {
-  const fetchMock = vi.fn();
+  // D35 (Vague C, SP-C6) : depuis l'ajout du fetch de schéma (formatage
+  // fr-FR des popups en mode `fields`), un clic sur une entité déclenche
+  // TOUJOURS une requête `/schema` pour une couche vector/feature à
+  // collectionId — `fetchMock` doit donc résoudre, et l'assertion se
+  // resserre sur l'absence spécifique d'un appel `/attachments`, pas sur
+  // l'absence de tout appel réseau.
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ fields: [] }) });
   vi.stubGlobal("fetch", fetchMock);
   render(
     <MapView
@@ -1508,7 +1605,10 @@ test("does not fetch the entity's attachments when the popup does not declare an
       lngLat: { lng: 12, lat: 34 },
     }),
   );
-  expect(fetchMock).not.toHaveBeenCalled();
+  expect(fetchMock).not.toHaveBeenCalledWith(
+    expect.stringContaining("/attachments"),
+    expect.anything(),
+  );
 });
 
 test("does not fetch attachments for a feature layer even when attachmentField is configured", () => {
@@ -1580,7 +1680,10 @@ test("fetches attachments for a feature layer that carries a resolvable collecti
 });
 
 test("does not fetch attachments when the clicked feature has no value for the layer's pkColumn", () => {
-  const fetchMock = vi.fn();
+  // D35 (Vague C, SP-C6) : cf. commentaire de la même déviation sur le test
+  // "does not fetch the entity's attachments…" ci-dessus — le fetch de
+  // schéma ne dépend pas de `fid`, seulement de `collectionId`.
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ fields: [] }) });
   vi.stubGlobal("fetch", fetchMock);
   render(
     <MapView
@@ -1603,7 +1706,10 @@ test("does not fetch attachments when the clicked feature has no value for the l
       lngLat: { lng: 12, lat: 34 },
     }),
   );
-  expect(fetchMock).not.toHaveBeenCalled();
+  expect(fetchMock).not.toHaveBeenCalledWith(
+    expect.stringContaining("/attachments"),
+    expect.anything(),
+  );
 });
 
 test("fetches attachments using the feature's top-level id when properties omits the integer pkColumn (ST_AsMVT feature_id, SP-40 Task 20)", async () => {

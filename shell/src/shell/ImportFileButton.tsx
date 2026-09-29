@@ -6,7 +6,7 @@ import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { Drawer } from "../ui/kit/Drawer";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
-import { t } from "../i18n";
+import { plural, t } from "../i18n";
 
 type Phase = "form" | "uploading" | "selecting-layer" | "selecting-geometry" | "polling" | "error";
 type LayerInfo = { name: string; featureCount: number; geometryType: string };
@@ -470,7 +470,14 @@ export function ImportFileButton() {
                 <option value="">—</option>
                 {layers.map((l) => (
                   <option key={l.name} value={l.name}>
-                    {t("importFile.layerOptionTemplate", { name: l.name, count: l.featureCount })}
+                    {t(
+                      plural(
+                        l.featureCount,
+                        "importFile.layerOptionTemplateOne",
+                        "importFile.layerOptionTemplateMany",
+                      ),
+                      { name: l.name, count: l.featureCount },
+                    )}
                   </option>
                 ))}
               </select>

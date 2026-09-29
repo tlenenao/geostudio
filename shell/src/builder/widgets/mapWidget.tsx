@@ -12,7 +12,8 @@ import {
   renderAsFor,
   symbologyToPaintInputs,
 } from "./mapSymbology";
-import type { LayerSymbology, LegendSpec } from "./mapSymbology";
+import type { LayerSymbology } from "./mapSymbology";
+import { MapSymbologyLegend } from "../../map/MapSymbologyLegend";
 import type { MapConfig, MapTerrainConfig, PopupConfig } from "../../api/types";
 import type { MapViewHandle } from "../../map/MapView";
 import { ExplorerMenu } from "./ExplorerMenu";
@@ -43,124 +44,6 @@ function geometryFromPayload(p: unknown): unknown | null {
   return (p as { geometry?: unknown } | undefined)?.geometry ?? null;
 }
 
-function MapSymbologyLegend({ legend }: { legend: LegendSpec }) {
-  return (
-    <div className="absolute bottom-2 right-2 z-10 flex flex-col gap-2 rounded-md bg-surface/90 p-2 text-xs text-ink shadow">
-      {legend.color?.kind === "categorical" && (
-        <ul>
-          {legend.color.entries.map((e) => (
-            <li key={e.value} className="flex items-center gap-1">
-              <span
-                className="inline-block h-3 w-3 rounded-sm"
-                style={{ backgroundColor: e.color }}
-              />
-              {e.value}
-            </li>
-          ))}
-        </ul>
-      )}
-      {legend.color?.kind === "classed" && (
-        <ul>
-          {legend.color.classes.map((c, i) => (
-            <li key={i} className="flex items-center gap-1">
-              <span
-                className="inline-block h-3 w-3 rounded-sm"
-                style={{ backgroundColor: c.color }}
-              />
-              {c.from.toFixed(1)} – {c.to.toFixed(1)}
-            </li>
-          ))}
-        </ul>
-      )}
-      {legend.color?.kind === "numeric" && (
-        <div>
-          <div
-            className="h-2 w-24 rounded"
-            style={{
-              background: `linear-gradient(to right, ${legend.color.colorLow}, ${legend.color.colorHigh})`,
-            }}
-          />
-          <span>
-            {legend.color.min} – {legend.color.max}
-          </span>
-        </div>
-      )}
-      {legend.size && (
-        <div className="flex items-end gap-2">
-          <span
-            className="rounded-full bg-ink-3"
-            style={{ width: legend.size.radiusMin, height: legend.size.radiusMin }}
-          />
-          <span
-            className="rounded-full bg-ink-3"
-            style={{ width: legend.size.radiusMax, height: legend.size.radiusMax }}
-          />
-          <span>
-            {legend.size.min} – {legend.size.max}
-          </span>
-        </div>
-      )}
-      {legend.stroke?.kind === "categorical" && (
-        <ul aria-label={t("widgetMap.strokeLegendAria")}>
-          {legend.stroke.entries.map((e) => (
-            <li key={e.value} className="flex items-center gap-1">
-              <span
-                className="inline-block h-3 w-3 rounded-sm border-2"
-                style={{ borderColor: e.color }}
-              />
-              {e.value}
-            </li>
-          ))}
-        </ul>
-      )}
-      {/* Fix I2 de la revue finale SP-27 : un contour classé/continu se
-          compile correctement (buildMapPaint, expression step/interpolate
-          sur fill-outline-color) depuis que Task 5 a rendu le sélecteur de
-          couleur de contour symétrique du remplissage, mais la légende ne
-          savait décrire que le cas catégoriel — miroir exact des blocs
-          legend.color juste au-dessus. */}
-      {legend.stroke?.kind === "classed" && (
-        <ul aria-label={t("widgetMap.strokeLegendAria")}>
-          {legend.stroke.classes.map((c, i) => (
-            <li key={i} className="flex items-center gap-1">
-              <span
-                className="inline-block h-3 w-3 rounded-sm border-2"
-                style={{ borderColor: c.color }}
-              />
-              {c.from.toFixed(1)} – {c.to.toFixed(1)}
-            </li>
-          ))}
-        </ul>
-      )}
-      {legend.stroke?.kind === "numeric" && (
-        <div aria-label={t("widgetMap.strokeLegendAria")}>
-          <div
-            className="h-2 w-24 rounded border-2"
-            style={{
-              background: `linear-gradient(to right, ${legend.stroke.colorLow}, ${legend.stroke.colorHigh})`,
-            }}
-          />
-          <span>
-            {legend.stroke.min} – {legend.stroke.max}
-          </span>
-        </div>
-      )}
-      {legend.icon && (
-        <ul aria-label={t("widgetMap.iconLegendAria")}>
-          {legend.icon.entries.map((e) => (
-            <li key={e.value} className="flex items-center gap-1">
-              <span aria-hidden="true" className="text-base">
-                ◈
-              </span>
-              {e.value}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 export function registerMapWidget(): void {
   registerWidget({
     type: "map",
@@ -182,14 +65,14 @@ export function registerMapWidget(): void {
       const dataSourceId = String(props.dataSourceId ?? "");
       const dataSource = dataSources.find((d) => d.id === dataSourceId);
       const datasetId = dataSource?.datasetId;
-      // Résout le schéma pour offrir les champs `attachment` déclarés sur la
-      // collection au sélecteur « Pièces jointes » de PopupEditor (revue
-      // finale de branche, I6) — même source d'id de collection que
+      // Résout le schéma de la collection liée — même source d'id que
       // runStatistics juste en dessous (dataSource.layer, patron
-      // FormPropsPanel). N'étend PAS availableFields de MapSymbologyEditor
-      // (toujours [], limitation documentée et volontairement non élargie
-      // ici, cf. commentaire jenksAvailable/sampleField ci-dessous) — hors
-      // périmètre de ce correctif.
+      // FormPropsPanel). Sert désormais aux DEUX sélecteurs : les champs
+      // `attachment` pour le sélecteur « Pièces jointes » de PopupEditor
+      // (revue finale de branche, I6), et tous les autres champs pour
+      // `availableFields` de MapSymbologyEditor/PopupEditor (D11, SP-C6) —
+      // un `availableFields={[]}` codé en dur empêchait jusqu'ici toute
+      // configuration de symbologie/popup par champ depuis ce PropsPanel.
       const collectionId = dataSource?.layer ?? "";
       const schemaQuery = useQuery({
         queryKey: ["collection-schema", collectionId],
@@ -198,6 +81,9 @@ export function registerMapWidget(): void {
       });
       const attachmentFields =
         schemaQuery.data?.fields.filter((f) => f.type === "attachment").map((f) => f.name) ?? [];
+      const availableFields =
+        schemaQuery.data?.fields.filter((f) => f.type !== "attachment").map((f) => f.name) ?? [];
+      const center = props.center as [number, number] | undefined;
       return (
         <div className="flex flex-col gap-2 text-sm">
           <DataSourceSelect
@@ -220,9 +106,55 @@ export function registerMapWidget(): void {
               onChange({ ...props, cameraPitch: pitch, cameraBearing: bearing })
             }
           />
+          {/* D12 (SP-C6/Tâche 34) : la vue par défaut (centre/zoom) du
+              Component runtime était un littéral en dur ([2.4, 46.6], zoom
+              5) — aucune app ne pouvait cadrer sa carte par défaut ailleurs
+              qu'en France métropolitaine. */}
+          <div className="flex gap-2">
+            <label className="flex flex-col gap-1 text-xs">
+              {t("widgetMap.defaultCenterLngLabel")}
+              <input
+                type="number"
+                aria-label={t("widgetMap.defaultCenterLngAria")}
+                className="h-9 rounded-md border border-rule px-2 text-sm"
+                value={Number(center?.[0] ?? 2.4)}
+                onChange={(e) =>
+                  onChange({
+                    ...props,
+                    center: [Number(e.target.value), center?.[1] ?? 46.6],
+                  })
+                }
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              {t("widgetMap.defaultCenterLatLabel")}
+              <input
+                type="number"
+                aria-label={t("widgetMap.defaultCenterLatAria")}
+                className="h-9 rounded-md border border-rule px-2 text-sm"
+                value={Number(center?.[1] ?? 46.6)}
+                onChange={(e) =>
+                  onChange({
+                    ...props,
+                    center: [center?.[0] ?? 2.4, Number(e.target.value)],
+                  })
+                }
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              {t("widgetMap.defaultZoomLabel")}
+              <input
+                type="number"
+                aria-label={t("widgetMap.defaultZoomAria")}
+                className="h-9 rounded-md border border-rule px-2 text-sm"
+                value={Number(props.zoom ?? 5)}
+                onChange={(e) => onChange({ ...props, zoom: Number(e.target.value) })}
+              />
+            </label>
+          </div>
           <MapSymbologyEditor
             value={props.symbology as LayerSymbology | undefined}
-            availableFields={[]} // PropsPanel has no schema (registry.ts) — same PopupEditor precedent
+            availableFields={availableFields}
             themeColors={theme?.colors}
             runStatistics={(query) =>
               client.queryDataSource({
@@ -276,7 +208,7 @@ export function registerMapWidget(): void {
           />
           <PopupEditor
             value={props.popup as PopupConfig | undefined}
-            availableFields={[]}
+            availableFields={availableFields}
             attachmentFields={attachmentFields}
             onChange={(popup) => onChange({ ...props, popup })}
           />
@@ -326,7 +258,19 @@ export function registerMapWidget(): void {
       const url = ctx.data?.url;
       const records = ctx.data?.records;
       const dataSourceId = String(props.dataSourceId ?? "");
+      // Revue finale Vague C (point 6) : le cadrage automatique (D18, Vague
+      // A) écrasait systématiquement le centre/zoom par défaut choisi par
+      // l'auteur (D12, Task 34, ci-dessus dans PropsPanel) dès qu'un jeu de
+      // données avec géométrie était lié — le cas normal. Un centre/zoom
+      // n'est présent dans `props` QUE si l'auteur a explicitement modifié
+      // au moins un des deux champs (les valeurs par défaut affichées dans
+      // les <input> ci-dessus, [2.4, 46.6] et 5, ne sont écrites dans props
+      // qu'au premier changement) — absent = jamais réglé, présent = intention
+      // explicite de piloter la vue manuellement, qui doit primer sur
+      // l'auto-cadrage.
+      const authorSetView = props.center !== undefined || props.zoom !== undefined;
       useEffect(() => {
+        if (authorSetView) return;
         if (!mapReady) return;
         if (!url || !records || records.length === 0) return;
         if (lastFittedDataSourceId.current === dataSourceId) return;
@@ -343,7 +287,7 @@ export function registerMapWidget(): void {
         if (!view) return;
         lastFittedDataSourceId.current = dataSourceId;
         view.fitBounds(bbox);
-      }, [url, records, mapReady, dataSourceId]);
+      }, [url, records, mapReady, dataSourceId, authorSetView]);
 
       if (ctx.data?.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;
 
@@ -368,8 +312,8 @@ export function registerMapWidget(): void {
         basemap: { style: String(props.basemapStyle ?? DEFAULT_STYLE) },
         terrain: (props.terrain as MapTerrainConfig | null) ?? null,
         view: {
-          center: [2.4, 46.6],
-          zoom: 5,
+          center: (props.center as [number, number] | undefined) ?? [2.4, 46.6],
+          zoom: Number(props.zoom ?? 5),
           pitch: Number(props.cameraPitch ?? 0),
           bearing: Number(props.cameraBearing ?? 0),
         },

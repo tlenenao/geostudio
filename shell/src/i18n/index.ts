@@ -21,6 +21,14 @@ export function t(key: MessageKey, params?: Record<string, string | number>): st
 }
 
 /**
+ * Sélectionne la clé de message accordée en nombre (français : singulier à
+ * n=1, pluriel sinon — y compris à n=0, contrairement à l'anglais).
+ */
+export function plural(n: number, one: MessageKey, many: MessageKey): MessageKey {
+  return n === 1 ? one : many;
+}
+
+/**
  * Résout une clé de message dont la provenance n'est pas garantie par le
  * compilateur (ex. `labelKey` renvoyé par `GET /roles/catalog`) vers une
  * clé réelle du catalogue, avec repli explicite sur `fallback` plutôt qu'un

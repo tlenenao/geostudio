@@ -195,7 +195,7 @@ export function ExplorerDrawer() {
           </table>
         )}
         {pageCount > 1 && (
-          <div className="mt-auto flex items-center justify-between pt-2 text-[10px] text-[var(--gs-color-muted)]">
+          <div className="mt-auto flex items-center justify-between pt-2 text-xs text-[var(--gs-color-muted)]">
             <button
               type="button"
               aria-label={t("explorerDrawer.prevPageAria")}

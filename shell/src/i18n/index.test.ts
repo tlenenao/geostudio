@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
-import { resolveMessageKey, t } from "./index";
+import { plural, resolveMessageKey, t } from "./index";
 import { fr } from "./catalog.fr";
 
 describe("t", () => {
@@ -20,8 +20,10 @@ describe("t", () => {
     expect(t("actions.deleteMessage", {})).toContain("{title}");
   });
 
-  it("accepte un nombre comme paramètre", () => {
-    expect(t("catalog.count", { n: 68 })).toBe("68 éléments");
+  it("plural choisit le singulier à n=1, le pluriel sinon", () => {
+    expect(t(plural(1, "catalog.countOne", "catalog.countMany"), { n: 1 })).toBe("1 élément");
+    expect(t(plural(0, "catalog.countOne", "catalog.countMany"), { n: 0 })).toBe("0 éléments");
+    expect(t(plural(68, "catalog.countOne", "catalog.countMany"), { n: 68 })).toBe("68 éléments");
   });
 
   it("rejette une clé inconnue à la compilation ; à l'exécution, sans validation, t() renvoie undefined", () => {

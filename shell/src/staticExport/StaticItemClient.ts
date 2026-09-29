@@ -93,6 +93,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
     async getInstanceInfo(..._args: unknown[]) {
       return unsupported();
     },
+    async getQuotaUsage(..._args: unknown[]) {
+      return unsupported();
+    },
     async createConfigItem(..._args: unknown[]) {
       return unsupported();
     },
@@ -265,6 +268,9 @@ export function createStaticItemClient(config: AppConfig): ItemClient {
       return unsupported();
     },
     async getAlertEvaluations(..._args: unknown[]) {
+      return unsupported();
+    },
+    async evaluateAlertRule(..._args: unknown[]) {
       return unsupported();
     },
     async createReportScheduleItem(..._args: unknown[]) {

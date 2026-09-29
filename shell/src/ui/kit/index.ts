@@ -50,3 +50,6 @@ export { LoadingState } from "./LoadingState";
 export { Banner } from "./Banner";
 export { Avatar } from "./Avatar";
 export { Kbd } from "./Kbd";
+export { ItemCard } from "./ItemCard";
+export { MetadataForm } from "./MetadataForm";
+export { ThumbnailUpload } from "./ThumbnailUpload";

@@ -84,7 +84,8 @@ export const fr = {
     "Ce journal reflète les actions déclenchées (audit_log), pas un statut de job en temps réel.",
 
   // Catalogue
-  "catalog.count": "{n} éléments",
+  "catalog.countOne": "{n} élément",
+  "catalog.countMany": "{n} éléments",
   "catalog.allOption": "Tous",
   "catalog.scopeMine": "Mes éléments",
   "catalog.scopeShared": "Partagés avec moi",
@@ -116,6 +117,12 @@ export const fr = {
   "catalog.searchResultLabel": "Recherche",
   "catalog.spatialExtentLabel": "Emprise spatiale",
   "catalog.spatialDrawAria": "Dessiner un rectangle de recherche spatiale",
+
+  // Palette de commandes ⌘K (D07, SP-C4/Task 21)
+  "commandPalette.title": "Palette de commandes",
+  "commandPalette.searchAria": "Rechercher une action",
+  "commandPalette.newItemAction": "Nouvel élément",
+  "commandPalette.triggerLabel": "Rechercher",
 
   // Motif partagé : bouton générique d'effacement d'un filtre/champ.
   "common.clear": "Effacer",
@@ -286,6 +293,14 @@ export const fr = {
     "— accès direct, non protégé par ce garde-fou ; fonctionne seulement si le port 9001 est exposé sur cet hôte.",
   "infrastructure.launchError": "Échec de l'ouverture de l'outil.",
   "infrastructure.detail": "Détail",
+  "infrastructure.usageHeading": "Utilisation",
+  "infrastructure.usageItems": "Éléments : {count}",
+  "infrastructure.usageItemsWithLimit": "Éléments : {count} / {limit}",
+  "infrastructure.usageCollections": "Collections : {count}",
+  "infrastructure.usageCollectionsWithLimit": "Collections : {count} / {limit}",
+  "infrastructure.usageStorage": "Stockage : {size}",
+  "infrastructure.usageStorageWithLimit": "Stockage : {size} / {limitSize}",
+  "infrastructure.usageNoLimit": "pas de limite configurée",
 
   // Motif partagé : indicateur de chargement générique (role="status").
   "common.loading": "Chargement…",
@@ -309,6 +324,9 @@ export const fr = {
   "appBuilder.captureThumbnail": "Capturer une miniature",
   "appBuilder.captureError": "Échec de la capture.",
   "appBuilder.propertiesLabel": "Propriétés",
+  "appBuilder.propertiesHelpAria": "Aide sur les propriétés du widget",
+  "appBuilder.propertiesHelpBody":
+    "Réglages visuels et de données du widget sélectionné sur le canevas. Rien de sélectionné : ce panneau reste vide.",
   "appBuilder.dataSourcesLabel": "Sources de données",
   "appBuilder.promoteError": "Échec de la promotion.",
   "appBuilder.actionsLabel": "Actions",
@@ -419,7 +437,8 @@ export const fr = {
 
   // DatasetPage
   "datasetPage.notFound": "Jeu de données introuvable.",
-  "datasetPage.featureCount": "{n} entités",
+  "datasetPage.featureCountOne": "{n} entité",
+  "datasetPage.featureCountMany": "{n} entités",
 
   // HarvestSourcesAdminPage
   "harvest.title": "Moissonnage",
@@ -518,6 +537,9 @@ export const fr = {
   "pipelineBuilder.scheduleLabel": "Planification",
   "pipelineBuilder.saveDisabledReason":
     "Le graphe contient des erreurs à corriger avant l'enregistrement.",
+  "pipelineBuilder.helpAria": "Aide sur le pipeline",
+  "pipelineBuilder.helpBody":
+    "Chaque nœud transforme les données du précédent. Connectez-les dans l'ordre d'exécution, puis planifiez ou exécutez le pipeline depuis l'onglet Exécutions.",
 
   // PipelineNodeInspector
   "pipelineNodeInspector.requiredSection": "Paramètres requis",
@@ -530,12 +552,17 @@ export const fr = {
   "reportEdit.editHeading": "Modifier le rapport planifié",
 
   // SqlLabPage
+  "sqlLab.heading": "SQL Lab",
+  "sqlLab.helpAria": "Aide sur SQL Lab",
+  "sqlLab.helpBody":
+    "Requêtes SQL en lecture seule sur les jeux de données exposés (DuckDB). Le résultat est tronqué au-delà d'un certain nombre de lignes.",
   "sqlLab.queryLabel": "Requête",
   "sqlLab.sqlQueryLabel": "Requête SQL",
   "sqlLab.runButton": "Exécuter",
   "sqlLab.truncatedMessage": "Résultat tronqué aux {n} premières lignes.",
   "sqlLab.historyLabel": "Historique",
   "sqlLab.emptyHistory": "Aucune requête exécutée pour l'instant.",
+  "sqlLab.errorLineLabel": "Ligne {line} : ",
   "sqlLab.reloadQueryAria": "Recharger la requête : {sql}",
 
   // UsersAdminPage
@@ -617,6 +644,9 @@ export const fr = {
   "shareForm.linkCreatedPrefix": "Lien créé : ",
   "shareForm.embedTitle": "Intégrer",
   "shareForm.embedSnippetAria": "Extrait de code à intégrer (iframe)",
+  "shareForm.copyLinkAria": "Copier le lien",
+  "shareForm.copyEmbedAria": "Copier le code d'intégration",
+  "shareForm.copiedFeedback": "Copié !",
 
   // CreateHarvestSourcePanel / EditHarvestSourcePanel (domaine harvest.*
   // déjà posé par HarvestSourcesAdminPage)
@@ -687,7 +717,8 @@ export const fr = {
   "importFile.lonColumn": "Colonne longitude",
   "importFile.continueButton": "Continuer",
   "importFile.layerColumn": "Couche à importer",
-  "importFile.layerOptionTemplate": "{name} ({count} entités)",
+  "importFile.layerOptionTemplateOne": "{name} ({count} entité)",
+  "importFile.layerOptionTemplateMany": "{name} ({count} entités)",
   "importFile.geometryModeLegend": "Géométrie",
   "importFile.geometryModeLatLon": "Colonnes latitude/longitude",
   "importFile.geometryModeWkt": "Colonne WKT unique",
@@ -845,7 +876,8 @@ export const fr = {
   "widgetDatasetCard.noSource": "Aucune source de données sélectionnée",
   "widgetDatasetCard.notFound": "Jeu de données introuvable",
   "widgetDatasetCard.viewLink": "Voir le jeu de données",
-  "widgetDatasetCard.featureCount": "{n} entités",
+  "widgetDatasetCard.featureCountOne": "{n} entité",
+  "widgetDatasetCard.featureCountMany": "{n} entités",
 
   // Widget Plage de dates (dateRangeFilter.tsx)
   "widgetDateRangeFilter.paletteLabel": "Plage de dates",
@@ -886,6 +918,8 @@ export const fr = {
   "widgetForm.fieldLabelAria": "Label du champ {name}",
   "widgetForm.hideFieldAria": "Masquer {name}",
   "widgetForm.requireFieldAria": "Requis {name}",
+  "widgetForm.moveFieldUpAria": "Monter {name}",
+  "widgetForm.moveFieldDownAria": "Descendre {name}",
   "widgetForm.minFieldAria": "Min {name}",
   "widgetForm.maxFieldAria": "Max {name}",
   "widgetForm.patternFieldAria": "Motif {name}",
@@ -907,6 +941,8 @@ export const fr = {
   "widgetForm.confirmDelete": "Supprimer cet enregistrement ?",
   "widgetForm.confirmDeleteAttachmentTitle": "Supprimer la pièce jointe",
   "widgetForm.confirmDeleteAttachment": "Supprimer la pièce jointe « {filename} » ?",
+  "widgetForm.attachmentUploading": "Envoi de {filename}…",
+  "widgetForm.attachmentError": "Échec de l'envoi de {filename}",
   "widgetForm.longitude": "Longitude",
   "widgetForm.latitude": "Latitude",
   "widgetForm.editingRecord": "Modification de l'enregistrement #{id}",
@@ -1002,6 +1038,12 @@ export const fr = {
   "widgetMap.loadingFallback": "Carte…",
   "widgetMap.sampleFieldUnavailable": "sampleDataSourceField indisponible",
   "widgetMap.additionalLayersHeading": "Couches additionnelles",
+  "widgetMap.defaultCenterLngLabel": "Longitude",
+  "widgetMap.defaultCenterLngAria": "Longitude par défaut",
+  "widgetMap.defaultCenterLatLabel": "Latitude",
+  "widgetMap.defaultCenterLatAria": "Latitude par défaut",
+  "widgetMap.defaultZoomLabel": "Zoom",
+  "widgetMap.defaultZoomAria": "Niveau de zoom par défaut",
 
   // Widget Modale (modal.tsx)
   "widgetModal.paletteLabel": "Modale",
@@ -1215,6 +1257,7 @@ export const fr = {
   "secretParamSelect.createFailed": "Échec de la création du secret.",
   "secretParamSelect.nameLabel": "Nom",
   "secretParamSelect.nameAria": "Nom",
+  "secretParamSelect.namePlaceholder": "mon-secret",
   "secretParamSelect.typeLabel": "Type",
   "secretParamSelect.typeAria": "Type de secret",
   "secretParamSelect.locationLabel": "Emplacement",
@@ -1223,40 +1266,58 @@ export const fr = {
   "secretParamSelect.locationQueryOption": "Paramètre d'URL",
   "secretParamSelect.keyLabel": "Clé",
   "secretParamSelect.keyAria": "Clé",
+  "secretParamSelect.keyPlaceholder": "X-Api-Key",
   "secretParamSelect.valueLabel": "Valeur",
   "secretParamSelect.valueAria": "Valeur",
+  "secretParamSelect.valuePlaceholder": "sk_live_…",
   "secretParamSelect.tokenLabel": "Jeton",
   "secretParamSelect.tokenAria": "Jeton",
+  "secretParamSelect.tokenPlaceholder": "eyJhbGciOi…",
   "secretParamSelect.usernameLabel": "Nom d'utilisateur",
   "secretParamSelect.usernameAria": "Nom d'utilisateur",
+  "secretParamSelect.usernamePlaceholder": "utilisateur",
   "secretParamSelect.passwordLabel": "Mot de passe",
   "secretParamSelect.passwordAria": "Mot de passe",
+  "secretParamSelect.passwordPlaceholder": "••••••••",
   "secretParamSelect.tokenUrlLabel": "URL du jeton",
   "secretParamSelect.tokenUrlAria": "URL du jeton",
+  "secretParamSelect.tokenUrlPlaceholder": "https://auth.example.com/oauth/token",
   "secretParamSelect.clientIdLabel": "Client ID",
   "secretParamSelect.clientIdAria": "Client ID",
+  "secretParamSelect.clientIdPlaceholder": "client-id",
   "secretParamSelect.clientSecretLabel": "Client Secret",
   "secretParamSelect.clientSecretAria": "Client Secret",
+  "secretParamSelect.clientSecretPlaceholder": "client-secret",
   "secretParamSelect.dsnLabel": "DSN",
   "secretParamSelect.dsnAria": "DSN",
+  "secretParamSelect.dsnPlaceholder": "postgresql://user:pass@host:5432/db",
   "secretParamSelect.hostLabel": "Hôte",
   "secretParamSelect.hostAria": "Hôte",
+  "secretParamSelect.hostPlaceholder": "smtp.example.com",
   "secretParamSelect.portLabel": "Port",
   "secretParamSelect.portAria": "Port",
+  "secretParamSelect.portPlaceholder": "587",
   "secretParamSelect.fromAddressLabel": "Adresse d'expédition",
   "secretParamSelect.fromAddressAria": "Adresse d'expédition",
+  "secretParamSelect.fromAddressPlaceholder": "no-reply@example.com",
   "secretParamSelect.awsAccessKeyIdLabel": "Access key ID",
   "secretParamSelect.awsAccessKeyIdAria": "Access key ID",
+  "secretParamSelect.awsAccessKeyIdPlaceholder": "AKIAIOSFODNN7EXAMPLE",
   "secretParamSelect.awsSecretAccessKeyLabel": "Secret access key",
   "secretParamSelect.awsSecretAccessKeyAria": "Secret access key",
+  "secretParamSelect.awsSecretAccessKeyPlaceholder": "wJalrXUtnFEMI/K7MDENG…",
   "secretParamSelect.endpointUrlLabel": "URL du point de terminaison (optionnel)",
   "secretParamSelect.endpointUrlAria": "URL du point de terminaison",
+  "secretParamSelect.endpointUrlPlaceholder": "https://s3.eu-west-1.amazonaws.com",
   "secretParamSelect.accountNameLabel": "Nom du compte",
   "secretParamSelect.accountNameAria": "Nom du compte",
+  "secretParamSelect.accountNamePlaceholder": "moncompte",
   "secretParamSelect.accountKeyLabel": "Clé du compte",
   "secretParamSelect.accountKeyAria": "Clé du compte",
+  "secretParamSelect.accountKeyPlaceholder": "clé de compte Azure",
   "secretParamSelect.serviceAccountInfoLabel": "JSON du compte de service",
   "secretParamSelect.serviceAccountInfoAria": "JSON du compte de service",
+  "secretParamSelect.serviceAccountInfoPlaceholder": '{"type": "service_account", …}',
   "secretParamSelect.serviceAccountInfoInvalid": "JSON invalide.",
   "secretParamSelect.cancelButton": "Annuler",
   "secretParamSelect.createButton": "Créer",
@@ -1392,6 +1453,7 @@ export const fr = {
   "alertRule.createButton": "Créer la règle",
   "alertRule.createError": "Échec de la création de la règle.",
   "alertRule.loadMore": "Charger plus",
+  "alertRule.evaluateNowButton": "Exécuter maintenant",
 
   // AnalyticsContextIndicator (builder)
   "analyticsContext.periodLabel": "Période : {from} → {to}",
@@ -1524,6 +1586,9 @@ export const fr = {
   "propsPanel.unknownWidget": "Widget inconnu : {widget}",
   "propsPanel.visibleWhenLabel": "Condition d'affichage",
   "propsPanel.visibleWhenAria": "Condition d'affichage (visibleWhen)",
+  "propsPanel.visibleWhenHelpAria": "Aide sur la condition d'affichage",
+  "propsPanel.visibleWhenHelpBody":
+    "Expression CEL évaluée avec les variables de l'app : le widget n'est visible que si elle est vraie. Laisser vide pour toujours afficher.",
 
   // ThemePanel (builder)
   "themePanel.fontSystem": "Système",
@@ -1629,7 +1694,8 @@ export const fr = {
   "layerPicker.loadingSources": "Chargement des sources…",
   "layerPicker.loadError": "Impossible de charger les sources de couches.",
   "layerPicker.emptyText": "Aucune source disponible.",
-  "layerPicker.featureCountTemplate": "{n} entités",
+  "layerPicker.featureCountTemplateOne": "{n} entité",
+  "layerPicker.featureCountTemplateMany": "{n} entités",
   "layerPicker.addTileset3dHeading": "Ajouter un tileset 3D par URL",
   "layerPicker.tileset3dTitleAria": "Titre du tileset 3D",
   "layerPicker.titlePlaceholder": "Titre",

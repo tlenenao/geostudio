@@ -194,6 +194,8 @@
   --color-map-water: var(--gs-map-water);
   --color-map-road: var(--gs-map-road);
 
+  --text-2xs: 0.6875rem;
+
   --font-ui: "Archivo Variable", "Helvetica Neue", Arial, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
   --font-prose: "Source Serif 4 Variable", Georgia, "Times New Roman", serif;
@@ -205,4 +207,26 @@
   --shadow-sm: var(--gs-shadow-sm);
   --shadow-md: var(--gs-shadow-md);
   --shadow-lg: var(--gs-shadow-lg);
+}
+
+/* D42 (Vague C, SP-C2) : neutralise globalement animations/transitions pour
+ * tout visiteur ayant activé "réduire les animations" côté système —
+ * couvre les 7 sites `animate-*`/`transition-transform` du dépôt
+ * (PipelineCanvas.tsx, LoadingState.tsx, Skeleton.tsx, Spinner.tsx,
+ * Switch.tsx, Tree.tsx, Progress.tsx) sans modifier un seul de ces
+ * fichiers — la cascade CSS suffit. Aucun Dialog/Drawer/Toast/Popover/Menu/
+ * Select/Combobox/Tooltip n'a de transition d'ouverture à exempter (vérifié,
+ * grep sur ui/kit/).
+ *
+ * Insuffisant pour la carte : maplibre-gl `flyTo`/`fitBounds` sont pilotés
+ * en JS, invisibles à une media query CSS — cf. MapView.tsx, bascule dédiée
+ * sur `window.matchMedia`.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

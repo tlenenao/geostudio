@@ -13,6 +13,7 @@ import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsContext";
 import { ExplorerProvider } from "../ExplorerContext";
 import { expectTokenizedClasses } from "../../ui/kit/testUtils";
+import { t } from "../../i18n";
 
 const flyToSpy = vi.fn();
 const highlightSpy = vi.fn();
@@ -355,6 +356,74 @@ test("Component transmet la caméra à la vue (GAP-52/camera)", async () => {
   await screen.findByTestId("mapview");
   expect(lastMapConfig().view.pitch).toBe(45);
   expect(lastMapConfig().view.bearing).toBe(90);
+});
+
+// D11 (SP-C6/Tâche 34) : `availableFields` passé à MapSymbologyEditor était
+// codé en dur à `[]` (cf. l'ancien commentaire à cet endroit) — aucune app ne
+// pouvait configurer une symbologie par champ depuis le builder. Le champ
+// couleur de MapSymbologyEditor a toujours son label "Champ couleur" et son
+// `list={`${listId}-fields`}` (FieldClassificationPicker.tsx) même quand
+// `availableFields` est vide (assertion à la ligne 19 de
+// MapSymbologyEditor.test.tsx) : on lit donc le vrai <datalist> résolu par
+// son id plutôt que d'introduire un nouveau mécanisme de capture de props.
+test("MapSymbologyEditor reçoit les champs non-attachment du schéma réel (D11)", async () => {
+  const getCollectionSchema = vi.fn().mockResolvedValue({
+    collection: "incidents",
+    pk: "id",
+    geometry: null,
+    fields: [
+      { name: "pop", type: "number", required: false },
+      { name: "photo", type: "attachment", required: false, label: "Photo" },
+    ],
+  });
+  renderPropsPanel({
+    props: { dataSourceId: "ds1" },
+    onChange: vi.fn(),
+    dataSources: [{ id: "ds1", type: "features", service: "core", layer: "incidents", query: {} }],
+    clientOverrides: { getCollectionSchema },
+  });
+  const colorFieldInput = screen.getByLabelText("Champ couleur");
+  await waitFor(() => {
+    const listId = colorFieldInput.getAttribute("list")!;
+    const datalist = document.getElementById(listId) as HTMLDataListElement;
+    expect(Array.from(datalist.options).map((o) => o.value)).toEqual(["pop"]);
+  });
+});
+
+// D12 (SP-C6/Tâche 34) : la vue par défaut (centre/zoom) était un littéral
+// en dur (`[2.4, 46.6]`, zoom 5) dans le Component runtime — aucune app ne
+// pouvait cadrer sa carte par défaut ailleurs qu'en France métropolitaine.
+// Note d'exécution (déviation du pseudo-code du brief) : le brief proposait
+// `userEvent.clear()` puis `userEvent.type()`, mais ce champ est un input
+// contrôlé (`value={Number(props.zoom ?? 5)}`) dont ce test ne fait pas
+// boucler `onChange` vers `props` (patron déjà établi par les tests voisins
+// "GAP-52/camera" ci-dessus, qui utilisent `fireEvent.change` pour la même
+// raison) : taper caractère par caractère produirait des valeurs
+// intermédiaires parasites (l'input revient à sa valeur contrôlée entre
+// deux frappes). Un seul `fireEvent.change` reproduit le patron du fichier
+// et vérifie la même propriété (le champ alimente bien `zoom`).
+test("le PropsPanel expose des champs longitude/latitude/zoom qui alimentent la vue par défaut (D12)", () => {
+  const onChange = vi.fn();
+  renderPropsPanel({ props: { dataSourceId: "", center: [1, 2], zoom: 8 }, onChange });
+  fireEvent.change(screen.getByLabelText(t("widgetMap.defaultZoomAria")), {
+    target: { value: "10" },
+  });
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ zoom: 10 }));
+  fireEvent.change(screen.getByLabelText(t("widgetMap.defaultCenterLngAria")), {
+    target: { value: "7.75" },
+  });
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ center: [7.75, 2] }));
+  fireEvent.change(screen.getByLabelText(t("widgetMap.defaultCenterLatAria")), {
+    target: { value: "48.58" },
+  });
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ center: [1, 48.58] }));
+});
+
+test("Component lit props.center/props.zoom pour la vue par défaut au lieu du littéral en dur (D12)", async () => {
+  renderWidget({ props: { dataSourceId: "ds1", center: [7.75, 48.58], zoom: 11 } });
+  await screen.findByTestId("mapview");
+  expect(lastMapConfig().view.center).toEqual([7.75, 48.58]);
+  expect(lastMapConfig().view.zoom).toBe(11);
 });
 
 test("recompute works for a plain collection-backed source (no datasetId), via dataSource.layer", async () => {
@@ -1127,6 +1196,77 @@ test("ne réajuste pas la vue quand seule l'URL change (contexte d'emprise), mê
   );
   await screen.findByText(/url:https:\/\/fs\/parcs\/items\.json\?bbox=1,10,3,20/);
   expect(fitBoundsSpy).toHaveBeenCalledTimes(1);
+});
+
+// Revue finale Vague C (point 6) : l'auto-cadrage (D18, test ci-dessus)
+// écrasait systématiquement un centre/zoom par défaut explicitement réglé
+// par l'auteur (D12) — `fitBounds` était toujours rappelé dès qu'un jeu de
+// données avec géométrie était lié, rendant les champs longitude/
+// latitude/zoom du PropsPanel sans effet visible dans le cas normal.
+//
+// `await screen.findByTestId("mapview")` seul ne suffit PAS à prouver
+// l'absence d'appel : le <div data-testid="mapview"> apparaît dès le tout
+// premier rendu (avant même que la doublure de MapView (lignes 23-101)
+// n'appelle `onReady`), donc `findByTestId` se résout immédiatement, avant
+// que l'effet dépendant de `mapReady` n'ait eu l'occasion de tourner une
+// seconde fois. Vérifié par falsification : sans ce tick supplémentaire,
+// retirer la garde ne faisait PAS échouer ce test précis (le seul, parmi
+// les 2 ci-dessous, où l'ordre d'exécution du test filtré laissait
+// `mapReady` à `false` jusqu'à la fin) — un flush de tick vide via `act`
+// force React à traiter la cascade onReady → setMapReady(true) → effet
+// avant l'assertion.
+async function settleMapReadyEffects(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+test("n'ajuste pas automatiquement la vue quand l'auteur a réglé un centre par défaut (point 6, D12 vs D18)", async () => {
+  fitBoundsSpy.mockClear();
+  const Map = getWidget("map")!.Component;
+  const data = state({
+    url: "https://fs/parcs/items.json",
+    records: [
+      { id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 10] } },
+      { id: 2, properties: {}, geometry: { type: "Point", coordinates: [3, 20] } },
+    ],
+  });
+  render(
+    withClient(
+      <Map
+        props={{ dataSourceId: "d", center: [7.75, 48.58] }}
+        ctx={{ mode: "runtime", data } as WidgetContext}
+      />,
+    ),
+  );
+  await screen.findByTestId("mapview");
+  await settleMapReadyEffects();
+  expect(lastMapConfig().view.center).toEqual([7.75, 48.58]);
+  expect(fitBoundsSpy).not.toHaveBeenCalled();
+});
+
+test("n'ajuste pas automatiquement la vue quand l'auteur a réglé un zoom par défaut (point 6, D12 vs D18)", async () => {
+  fitBoundsSpy.mockClear();
+  const Map = getWidget("map")!.Component;
+  const data = state({
+    url: "https://fs/parcs/items.json",
+    records: [
+      { id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 10] } },
+      { id: 2, properties: {}, geometry: { type: "Point", coordinates: [3, 20] } },
+    ],
+  });
+  render(
+    withClient(
+      <Map
+        props={{ dataSourceId: "d", zoom: 11 }}
+        ctx={{ mode: "runtime", data } as WidgetContext}
+      />,
+    ),
+  );
+  await screen.findByTestId("mapview");
+  await settleMapReadyEffects();
+  expect(lastMapConfig().view.zoom).toBe(11);
+  expect(fitBoundsSpy).not.toHaveBeenCalled();
 });
 
 test("map widget carries collectionId/pkColumn from ctx.data onto the feature layer (SP-40)", () => {

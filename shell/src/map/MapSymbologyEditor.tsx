@@ -641,7 +641,7 @@ export function MapSymbologyEditor({
                 ] as IconCategory[]
               ).map((category) => (
                 <div key={category} className="flex flex-col gap-1">
-                  <h4 className="text-[10px] uppercase text-ink-3">{category}</h4>
+                  <h4 className="text-xs uppercase text-ink-3">{category}</h4>
                   <div className="flex flex-wrap gap-1">
                     {LUCIDE_ICONS.filter((li) => li.category === category).map((li) => (
                       <button
@@ -665,7 +665,7 @@ export function MapSymbologyEditor({
               ))}
               {customIcons.length > 0 && (
                 <div className="flex flex-col gap-1">
-                  <h4 className="text-[10px] uppercase text-ink-3">
+                  <h4 className="text-xs uppercase text-ink-3">
                     {t("mapSymbology.customIconsHeading")}
                   </h4>
                   <div className="flex flex-wrap gap-1">
@@ -682,7 +682,7 @@ export function MapSymbologyEditor({
                           <button
                             type="button"
                             aria-label={t("mapSymbology.deleteIconAria", { title: ci.title })}
-                            className="text-[10px] text-danger underline"
+                            className="text-xs text-danger underline"
                             // Fix I3 (Part B) de la revue finale SP-27 : le cœur ne fait
                             // AUCUN comptage de références — supprimer une icône laisse
                             // toute entrée `symbology.icon.mapping` qui la référençait

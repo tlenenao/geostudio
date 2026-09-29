@@ -84,16 +84,34 @@ function FieldOverrides({
           className="flex cursor-move flex-col gap-1 rounded border border-rule p-1.5"
         >
           <div className="flex flex-wrap items-center gap-1">
-            <span className="text-[10px] text-ink-2" aria-hidden="true">
+            <span className="text-xs text-ink-2" aria-hidden="true">
               ⠿
             </span>
+            <button
+              type="button"
+              className="rounded border border-rule px-1 text-xs disabled:opacity-50"
+              aria-label={t("widgetForm.moveFieldUpAria", { name: f.name })}
+              disabled={i === 0}
+              onClick={() => reorder(i, i - 1)}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              className="rounded border border-rule px-1 text-xs disabled:opacity-50"
+              aria-label={t("widgetForm.moveFieldDownAria", { name: f.name })}
+              disabled={i === sorted.length - 1}
+              onClick={() => reorder(i, i + 1)}
+            >
+              ↓
+            </button>
             <input
               aria-label={t("widgetForm.fieldLabelAria", { name: f.name })}
               className={overrideInputCls}
               value={f.label}
               onChange={(e) => patch(f.name, { label: e.target.value })}
             />
-            <label className="flex items-center gap-1 whitespace-nowrap text-[10px]">
+            <label className="flex items-center gap-1 whitespace-nowrap text-xs">
               <input
                 type="checkbox"
                 aria-label={t("widgetForm.hideFieldAria", { name: f.name })}
@@ -103,7 +121,7 @@ function FieldOverrides({
               {t("widgetForm.hiddenToggle")}
             </label>
             {f.type !== "unsupported" && f.type !== "attachment" && f.type !== "list" && (
-              <label className="flex items-center gap-1 whitespace-nowrap text-[10px]">
+              <label className="flex items-center gap-1 whitespace-nowrap text-xs">
                 <input
                   type="checkbox"
                   aria-label={t("widgetForm.requireFieldAria", { name: f.name })}
@@ -247,11 +265,13 @@ function AttachmentFieldInput({
   fid,
   fieldKey,
   client,
+  labelledBy,
 }: {
   collectionId: string;
   fid: string | null;
   fieldKey: string;
   client: ReturnType<typeof useItemClient>;
+  labelledBy: string;
 }) {
   const queryClient = useQueryClient();
   const query = useQuery({
@@ -259,14 +279,14 @@ function AttachmentFieldInput({
     queryFn: () => client.listAttachments(collectionId, fid!, fieldKey),
     enabled: fid !== null,
   });
-  const [uploading, setUploading] = useState(false);
+  const [fileStatus, setFileStatus] = useState<Record<string, "uploading" | "done" | "error">>({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   async function handleFiles(files: FileList | null) {
     if (!files || fid === null) return;
-    setUploading(true);
-    try {
-      for (const file of Array.from(files)) {
+    for (const file of Array.from(files)) {
+      setFileStatus((s) => ({ ...s, [file.name]: "uploading" }));
+      try {
         const { uploadUrl, key } = await client.presignAttachmentUpload(collectionId, fid, {
           fieldKey,
           filename: file.name,
@@ -283,13 +303,15 @@ function AttachmentFieldInput({
           filename: file.name,
           contentType: file.type || "application/octet-stream",
         });
+        setFileStatus((s) => ({ ...s, [file.name]: "done" }));
+      } catch (err) {
+        console.error("AttachmentFieldInput: upload failed", err);
+        setFileStatus((s) => ({ ...s, [file.name]: "error" }));
       }
-      void queryClient.invalidateQueries({
-        queryKey: ["attachments", collectionId, fid, fieldKey],
-      });
-    } finally {
-      setUploading(false);
     }
+    void queryClient.invalidateQueries({
+      queryKey: ["attachments", collectionId, fid, fieldKey],
+    });
   }
 
   async function handleDelete(attachmentId: string) {
@@ -315,7 +337,7 @@ function AttachmentFieldInput({
 
   return (
     <div className="flex flex-col gap-1">
-      <ul className="flex flex-col gap-1">
+      <ul className="flex flex-col gap-1" aria-labelledby={labelledBy}>
         {(query.data ?? []).map((a) => (
           <li key={a.id} className="flex items-center gap-2 text-xs">
             <button
@@ -355,9 +377,18 @@ function AttachmentFieldInput({
         type="file"
         multiple
         aria-label={t("widgetForm.addFilesAria")}
-        disabled={uploading}
+        disabled={Object.values(fileStatus).some((s) => s === "uploading")}
         onChange={(e) => void handleFiles(e.target.files)}
       />
+      {Object.entries(fileStatus)
+        .filter(([, status]) => status !== "done")
+        .map(([filename, status]) => (
+          <p key={filename} className="text-xs text-ink-2">
+            {status === "uploading"
+              ? t("widgetForm.attachmentUploading", { filename })
+              : t("widgetForm.attachmentError", { filename })}
+          </p>
+        ))}
     </div>
   );
 }
@@ -367,34 +398,29 @@ function FieldInput({
   value,
   onChange,
   onBlur,
-  collectionId,
-  fid,
-  client,
   error,
 }: {
   field: FormField;
   value: unknown;
   onChange: (v: unknown) => void;
   onBlur: () => void;
-  collectionId: string;
-  fid: string | null;
-  client: ReturnType<typeof useItemClient>;
   error: string | null;
 }) {
   const fieldId = `field-${field.name}`;
   const errorId = `field-${field.name}-error`;
   const errorProps = error ? { "aria-invalid": "true" as const, "aria-describedby": errorId } : {};
+  // D32 : `aria-required` seul (jamais l'attribut natif `required`) —
+  // annonce le caractère requis aux lecteurs d'écran sans réactiver la
+  // validation navigateur native, qui court-circuiterait le flux
+  // touched/validateField existant et, pour la branche boolean,
+  // forcerait `checked=true` alors que `false` explicite est une valeur
+  // valide (validateField, ligne 221).
+  const requiredProps = field.required ? { "aria-required": "true" as const } : {};
 
-  if (field.type === "attachment") {
-    return (
-      <AttachmentFieldInput
-        collectionId={collectionId}
-        fid={fid}
-        fieldKey={field.name}
-        client={client}
-      />
-    );
-  }
+  // La branche `attachment` est traitée à part par l'appelant (form.tsx,
+  // fields.map) : AttachmentFieldInput y est rendu directement, avec son
+  // propre <span id> de label relié par aria-labelledby (D38) — FieldInput
+  // n'est donc jamais appelé pour ce type.
   if (field.type === "boolean") {
     return (
       <input
@@ -405,6 +431,7 @@ function FieldInput({
         onChange={(e) => onChange(e.target.checked)}
         onBlur={onBlur}
         {...errorProps}
+        {...requiredProps}
       />
     );
   }
@@ -419,6 +446,7 @@ function FieldInput({
         onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
         onBlur={onBlur}
         {...errorProps}
+        {...requiredProps}
       />
     );
   }
@@ -433,6 +461,7 @@ function FieldInput({
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         {...errorProps}
+        {...requiredProps}
       />
     );
   }
@@ -447,6 +476,7 @@ function FieldInput({
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         {...errorProps}
+        {...requiredProps}
       />
     );
   }
@@ -460,6 +490,7 @@ function FieldInput({
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         {...errorProps}
+        {...requiredProps}
       >
         <option value=""></option>
         {(field.values ?? []).map((v) => (
@@ -480,6 +511,7 @@ function FieldInput({
       onChange={(e) => onChange(e.target.value)}
       onBlur={onBlur}
       {...errorProps}
+      {...requiredProps}
     />
   );
 }
@@ -647,28 +679,42 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     <form
       className="flex h-full flex-col gap-2 overflow-auto text-sm"
       onSubmit={(e) => void handleSubmit(e)}
+      noValidate
     >
-      {fields.map((f) => (
-        <label key={f.name} className="flex flex-col gap-1">
-          {f.label}
-          {f.required ? " *" : ""}
-          <FieldInput
-            field={f}
-            value={values[f.name]}
-            onChange={(v) => setValues((old) => ({ ...old, [f.name]: v }))}
-            onBlur={() => setTouched((t) => ({ ...t, [f.name]: true }))}
-            collectionId={collectionId}
-            fid={editingId === null ? null : String(editingId)}
-            client={client}
-            error={errorFor(f)}
-          />
-          {errorFor(f) && (
-            <span id={`field-${f.name}-error`} role="alert" className="text-xs text-danger">
-              {errorFor(f)}
+      {fields.map((f) =>
+        f.type === "attachment" ? (
+          <div key={f.name} className="flex flex-col gap-1">
+            <span id={`field-${f.name}-label`}>
+              {f.label}
+              {f.required ? " *" : ""}
             </span>
-          )}
-        </label>
-      ))}
+            <AttachmentFieldInput
+              collectionId={collectionId}
+              fid={editingId === null ? null : String(editingId)}
+              fieldKey={f.name}
+              client={client}
+              labelledBy={`field-${f.name}-label`}
+            />
+          </div>
+        ) : (
+          <label key={f.name} className="flex flex-col gap-1">
+            {f.label}
+            {f.required ? " *" : ""}
+            <FieldInput
+              field={f}
+              value={values[f.name]}
+              onChange={(v) => setValues((old) => ({ ...old, [f.name]: v }))}
+              onBlur={() => setTouched((t) => ({ ...t, [f.name]: true }))}
+              error={errorFor(f)}
+            />
+            {errorFor(f) && (
+              <span id={`field-${f.name}-error`} role="alert" className="text-xs text-danger">
+                {errorFor(f)}
+              </span>
+            )}
+          </label>
+        ),
+      )}
       {geometryType === "Point" && (
         <div className="flex gap-2">
           <label className="flex flex-1 flex-col gap-1">

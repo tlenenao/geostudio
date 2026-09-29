@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "../../lib/utils";
+import { useFocusRestoreOnClose } from "./useFocusRestoreOnClose";
 
 export function Drawer({
   open,
@@ -21,12 +22,17 @@ export function Drawer({
   id?: string;
   children: React.ReactNode;
 }) {
+  // D48 : cf. useFocusRestoreOnClose.ts pour le pourquoi (pas de
+  // DialogPrimitive.Trigger ici, donc rien ne restaure le focus sans lui).
+  const onCloseAutoFocus = useFocusRestoreOnClose(open);
+
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-ink/40" />
         <DialogPrimitive.Content
           id={id}
+          onCloseAutoFocus={onCloseAutoFocus}
           className={cn(
             "fixed top-0 z-50 h-full w-full max-w-sm overflow-y-auto border-rule bg-raised p-4 shadow-lg",
             side === "right" ? "right-0 border-l" : "left-0 border-r",

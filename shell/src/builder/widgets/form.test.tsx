@@ -979,6 +979,78 @@ test("affiche la liste des pièces jointes existantes pour un champ attachment",
   expect(await screen.findByText("a.jpg")).toBeInTheDocument();
 });
 
+test("le label d'un champ pièce jointe n'est pas un <label> englobant (D38)", async () => {
+  // D38 : le texte de label ne doit plus envelopper les contrôles internes
+  // (bouton d'ajout, liste de pièces jointes) — un lecteur d'écran le
+  // répétait sinon sur chaque contrôle. Le texte devient un <span id>
+  // relié à la liste via aria-labelledby/role="list".
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
+  const listAttachments = vi.fn().mockResolvedValue([]);
+  renderConnectedForm({
+    fields: attachmentFields,
+    client: { listAttachments },
+    bus,
+    widgetId: "form1",
+  });
+  bus.emit("table1", "itemSelected", { id: 7, properties: {} });
+  await screen.findByText(/Modification de l'enregistrement #7/);
+  const labelText = await screen.findByText("Photos");
+  expect(labelText.tagName).not.toBe("LABEL");
+  const list = await screen.findByRole("list", { name: "Photos" });
+  expect(list).toBeInTheDocument();
+});
+
+test("affiche un statut par fichier pendant l'upload de plusieurs fichiers", async () => {
+  const bus = new ActionBus();
+  bus.configure([
+    { id: "m", from: "table1", event: "itemSelected", to: "form1", action: "loadRecord" },
+  ]);
+  const listAttachments = vi.fn().mockResolvedValue([]);
+  const presignResolvers: Array<(v: { uploadUrl: string; key: string }) => void> = [];
+  const presignAttachmentUpload = vi.fn().mockImplementation(
+    () =>
+      new Promise<{ uploadUrl: string; key: string }>((resolve) => {
+        presignResolvers.push(resolve);
+      }),
+  );
+  const confirmAttachmentUpload = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+  renderConnectedForm({
+    fields: attachmentFields,
+    client: { listAttachments, presignAttachmentUpload, confirmAttachmentUpload },
+    bus,
+    widgetId: "form1",
+  });
+  bus.emit("table1", "itemSelected", { id: 7, properties: {} });
+  const input = await screen.findByLabelText(t("widgetForm.addFilesAria"));
+  const file1 = new File(["a"], "a.txt");
+  const file2 = new File(["b"], "b.txt");
+  await userEvent.upload(input, [file1, file2]);
+  expect(
+    screen.getByText(t("widgetForm.attachmentUploading", { filename: "a.txt" })),
+  ).toBeInTheDocument();
+  // Boucle séquentielle (for...of + await) : le second fichier n'a pas encore
+  // démarré tant que le premier n'a pas résolu son presign.
+  expect(presignResolvers).toHaveLength(1);
+  presignResolvers[0]({ uploadUrl: "https://example.test/upload", key: "k1" });
+  await waitFor(() => expect(presignResolvers).toHaveLength(2));
+  presignResolvers[1]({ uploadUrl: "https://example.test/upload", key: "k2" });
+  await waitFor(() =>
+    expect(
+      screen.queryByText(t("widgetForm.attachmentUploading", { filename: "a.txt" })),
+    ).not.toBeInTheDocument(),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByText(t("widgetForm.attachmentUploading", { filename: "b.txt" })),
+    ).not.toBeInTheDocument(),
+  );
+  expect(confirmAttachmentUpload).toHaveBeenCalledTimes(2);
+});
+
 test("désactive le champ attachment tant que l'entité n'est pas enregistrée", () => {
   renderForm(attachmentFields);
   expect(
@@ -1118,4 +1190,85 @@ const listFields: FormField[] = [
 test("un champ list n'apparaît ni dans le rendu ni dans la soumission du formulaire", async () => {
   renderForm(listFields);
   expect(screen.queryByLabelText("Tags")).not.toBeInTheDocument();
+});
+
+test("D32 : un champ requis (texte) porte aria-required, un champ non requis ne le porte pas", () => {
+  renderForm();
+  expect(screen.getByLabelText("Titre")).toHaveAttribute("aria-required", "true");
+  expect(screen.getByLabelText("Victimes")).not.toHaveAttribute("aria-required");
+});
+
+test("D32 : le <form> porte noValidate (garde contre le court-circuit de la validation navigateur native)", () => {
+  const { container } = renderForm();
+  expect(container.querySelector("form")).toHaveAttribute("novalidate");
+});
+
+test("D34 : le bouton Descendre réordonne le champ vers le bas (clavier-accessible)", async () => {
+  const { onChange } = renderPanel({
+    dataSourceId: "ds1",
+    fields: loadedFields,
+    submitLabel: "Enregistrer",
+    geometryType: "Point",
+  });
+  await userEvent.click(await screen.findByRole("button", { name: "Descendre titre" }));
+  const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0];
+  expect(lastCall.fields.map((f: { name: string; order: number }) => [f.name, f.order])).toEqual([
+    ["gravite", 0],
+    ["titre", 1],
+    ["nb_victimes", 2],
+  ]);
+});
+
+test("D34 : le bouton Monter du premier champ et Descendre du dernier sont désactivés", async () => {
+  renderPanel({
+    dataSourceId: "ds1",
+    fields: loadedFields,
+    submitLabel: "Enregistrer",
+    geometryType: "Point",
+  });
+  expect(await screen.findByRole("button", { name: "Monter titre" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Descendre nb_victimes" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Monter nb_victimes" })).not.toBeDisabled();
+  expect(screen.getByRole("button", { name: "Descendre titre" })).not.toBeDisabled();
+});
+
+const allTypesFields: FormField[] = [
+  { name: "actif", type: "boolean", label: "Actif", order: 0, hidden: false, required: true },
+  {
+    name: "date_debut",
+    type: "date",
+    label: "Date de début",
+    order: 1,
+    hidden: false,
+    required: true,
+  },
+  {
+    name: "horodatage",
+    type: "datetime",
+    label: "Horodatage",
+    order: 2,
+    hidden: false,
+    required: true,
+  },
+  {
+    name: "gravite",
+    type: "enum",
+    label: "Gravité",
+    order: 3,
+    hidden: false,
+    required: true,
+    values: ["faible", "haute"],
+  },
+  { name: "titre", type: "string", label: "Titre", order: 4, hidden: false, required: true },
+  { name: "nb", type: "integer", label: "Nombre", order: 5, hidden: false, required: false },
+];
+
+test("filet : aria-required posé sur les 6 branches non-attachment de FieldInput, selon le schéma", () => {
+  renderForm(allTypesFields);
+  expect(screen.getByLabelText("Actif")).toHaveAttribute("aria-required", "true");
+  expect(screen.getByLabelText("Date de début")).toHaveAttribute("aria-required", "true");
+  expect(screen.getByLabelText("Horodatage")).toHaveAttribute("aria-required", "true");
+  expect(screen.getByLabelText("Gravité")).toHaveAttribute("aria-required", "true");
+  expect(screen.getByLabelText("Titre")).toHaveAttribute("aria-required", "true");
+  expect(screen.getByLabelText("Nombre")).not.toHaveAttribute("aria-required");
 });

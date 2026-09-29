@@ -37,7 +37,7 @@ function renderBar() {
     <QueryClientProvider client={queryClient}>
       <ItemClientProvider client={client}>
         <MemoryRouter>
-          <TopBar tileset3dEnabled={false} />
+          <TopBar tileset3dEnabled={false} onOpenPalette={vi.fn()} />
         </MemoryRouter>
       </ItemClientProvider>
     </QueryClientProvider>,

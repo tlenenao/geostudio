@@ -95,3 +95,29 @@ test("n'affiche pas la section Pièces jointes quand attachments est vide ou abs
   render(<MapPopup content={{ title: "X", rows: [], html: null }} x={0} y={0} onClose={vi.fn()} />);
   expect(screen.queryByText("Pièces jointes")).not.toBeInTheDocument();
 });
+
+test("D41 : Échap ferme la popup", async () => {
+  const onClose = vi.fn();
+  render(
+    <MapPopup
+      content={{ title: "Tulle", rows: [{ label: "Habitants", value: "14000" }], html: null }}
+      x={0}
+      y={0}
+      onClose={onClose}
+    />,
+  );
+  await userEvent.keyboard("{Escape}");
+  expect(onClose).toHaveBeenCalledOnce();
+});
+
+test("D41 : le focus est posé sur le premier élément interactif (bouton Fermer) au montage", () => {
+  render(
+    <MapPopup
+      content={{ title: "Tulle", rows: [{ label: "Habitants", value: "14000" }], html: null }}
+      x={0}
+      y={0}
+      onClose={() => {}}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Fermer" })).toHaveFocus();
+});

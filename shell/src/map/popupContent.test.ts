@@ -81,3 +81,34 @@ test("a template can still reference record.* without any external context", () 
   expect(c.html).toContain("Tulle");
   expect(c.html).toContain("14000");
 });
+
+test("D35 : a `fields` row value is formatted fr-FR per the collection schema's field type", () => {
+  const c = resolvePopupContent({ fields: [{ name: "population" }] }, props, [
+    { name: "population", type: "number", required: false },
+  ]);
+  expect(c.rows).toEqual([
+    { label: "population", value: new Intl.NumberFormat("fr-FR").format(14000) },
+  ]);
+});
+
+test("D35 : the titleField row is also formatted per the schema", () => {
+  const c = resolvePopupContent({ titleField: "population", fields: [] }, props, [
+    { name: "population", type: "number", required: false },
+  ]);
+  expect(c.title).toBe(new Intl.NumberFormat("fr-FR").format(14000));
+});
+
+test("D35 : without a schema, formatting falls back to the historical String(value)", () => {
+  const c = resolvePopupContent({ fields: [{ name: "population" }] }, props);
+  expect(c.rows).toEqual([{ label: "population", value: "14000" }]);
+});
+
+test("D35 : the `template` mode is never formatted, even with a schema in hand", () => {
+  // Décision de scope explicite du plan SP-C6 : seul le mode `fields` est
+  // formaté fr-FR, jamais le gabarit libre.
+  const c = resolvePopupContent({ template: "${record.population}" }, props, [
+    { name: "population", type: "number", required: false },
+  ]);
+  expect(c.html).toContain("14000");
+  expect(c.html).not.toContain(new Intl.NumberFormat("fr-FR").format(14000));
+});

@@ -213,6 +213,9 @@ export function createDesktopItemClient(connection: {
     async getInstanceInfo(..._args: unknown[]) {
       return unsupported();
     },
+    async getQuotaUsage(..._args: unknown[]) {
+      return unsupported();
+    },
     async createConfigItem(..._args: unknown[]) {
       return unsupported();
     },
@@ -355,6 +358,9 @@ export function createDesktopItemClient(connection: {
       return unsupported();
     },
     async getAlertEvaluations(..._args: unknown[]) {
+      return unsupported();
+    },
+    async evaluateAlertRule(..._args: unknown[]) {
       return unsupported();
     },
     async createReportScheduleItem(..._args: unknown[]) {

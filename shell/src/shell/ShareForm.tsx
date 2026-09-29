@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from "react";
+import { Check, Copy } from "lucide-react";
 import {
   useAddGroupMember,
   useCreateGroup,
@@ -16,6 +17,25 @@ import { t } from "../i18n";
 
 const MAX_SHARE_LINK_TTL_DAYS = 30;
 
+// D52 : copie dans le presse-papiers pour le lien de partage et le snippet
+// embed. `navigator.clipboard.writeText` requiert un contexte sécurisé
+// (HTTPS ou localhost) — repli sur `execCommand("copy")` (dépréciée mais
+// toujours fonctionnelle) sinon.
+async function copyToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const el = document.createElement("textarea");
+  el.value = text;
+  el.style.position = "fixed";
+  el.style.opacity = "0";
+  document.body.appendChild(el);
+  el.select();
+  document.execCommand("copy");
+  document.body.removeChild(el);
+}
+
 // GAP-12 (chantier 4.23) : section distincte du partage groupe/rôle plat
 // ci-dessus — un lien de partage est présenté à un tiers externe, révocable
 // à tout moment. La consommation anonyme du lien (côté visiteur sans
@@ -28,6 +48,13 @@ function ShareLinksPanel({ itemId }: { itemId: string }) {
   const [ttlDays, setTtlDays] = useState(7);
   const [lastCreatedUrl, setLastCreatedUrl] = useState<string | null>(null);
   const [lastCreatedToken, setLastCreatedToken] = useState<string | null>(null);
+  const [copiedField, setCopiedField] = useState<"link" | "embed" | null>(null);
+
+  function handleCopy(field: "link" | "embed", text: string) {
+    void copyToClipboard(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  }
 
   async function handleCreate() {
     createLink.reset();
@@ -114,22 +141,54 @@ function ShareLinksPanel({ itemId }: { itemId: string }) {
         </p>
       )}
       {lastCreatedUrl && (
-        <p className="text-xs text-ink">
+        <p className="flex items-center gap-1 text-xs text-ink">
           {t("shareForm.linkCreatedPrefix")}
           <span className="break-all">{lastCreatedUrl}</span>
+          <button
+            type="button"
+            aria-label={t("shareForm.copyLinkAria")}
+            className="text-ink-2 hover:text-ink"
+            onClick={() => handleCopy("link", lastCreatedUrl)}
+          >
+            {copiedField === "link" ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+          {copiedField === "link" && (
+            <span aria-live="polite" className="text-ink-2">
+              {t("shareForm.copiedFeedback")}
+            </span>
+          )}
         </p>
       )}
-      {lastCreatedToken && (
-        <div className="flex flex-col gap-1 border-t border-rule pt-2">
-          <p className="text-xs font-medium text-ink-2">{t("shareForm.embedTitle")}</p>
-          <textarea
-            readOnly
-            aria-label={t("shareForm.embedSnippetAria")}
-            className="h-20 w-full rounded-md border border-rule bg-surface p-2 font-mono text-xs text-ink"
-            value={`<iframe src="${window.location.origin}/embed/${lastCreatedToken}" width="100%" height="600" style="border:0" loading="lazy"></iframe>`}
-          />
-        </div>
-      )}
+      {lastCreatedToken &&
+        (() => {
+          const embedSnippet = `<iframe src="${window.location.origin}/embed/${lastCreatedToken}" width="100%" height="600" style="border:0" loading="lazy"></iframe>`;
+          return (
+            <div className="flex flex-col gap-1 border-t border-rule pt-2">
+              <p className="flex items-center gap-1 text-xs font-medium text-ink-2">
+                {t("shareForm.embedTitle")}
+                <button
+                  type="button"
+                  aria-label={t("shareForm.copyEmbedAria")}
+                  className="text-ink-2 hover:text-ink"
+                  onClick={() => handleCopy("embed", embedSnippet)}
+                >
+                  {copiedField === "embed" ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+                {copiedField === "embed" && (
+                  <span aria-live="polite" className="font-normal">
+                    {t("shareForm.copiedFeedback")}
+                  </span>
+                )}
+              </p>
+              <textarea
+                readOnly
+                aria-label={t("shareForm.embedSnippetAria")}
+                className="h-20 w-full rounded-md border border-rule bg-surface p-2 font-mono text-xs text-ink"
+                value={embedSnippet}
+              />
+            </div>
+          );
+        })()}
     </div>
   );
 }

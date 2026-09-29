@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { useAlertEvaluations, useAlertRulesForDataset, useCreateAlertRule } from "../api/hooks";
+import {
+  useAlertEvaluations,
+  useAlertRulesForDataset,
+  useCreateAlertRule,
+  useEvaluateAlertRule,
+} from "../api/hooks";
 import type { AlertChannel, AlertRuleSummary } from "../api/types";
 import { t } from "../i18n";
 import { PipelineScheduleEditor } from "./pipeline/PipelineScheduleEditor";
@@ -20,15 +25,27 @@ const EVALUATIONS_PAGE_SIZE = 100;
 function AlertRuleRow({ rule }: { rule: AlertRuleSummary }) {
   const [limit, setLimit] = useState(EVALUATIONS_PAGE_SIZE);
   const evaluationsQuery = useAlertEvaluations(rule.itemId, { limit });
+  const evaluateNow = useEvaluateAlertRule();
   const evaluations = evaluationsQuery.data ?? [];
   const latest = evaluations[0];
   return (
     <div className="flex flex-col gap-1 border-t border-rule py-1 text-xs">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <span>{rule.title}</span>
-        <span className={latest?.state === "firing" ? "font-semibold text-danger" : "text-ink-2"}>
-          {latest ? latest.state : "—"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={latest?.state === "firing" ? "font-semibold text-danger" : "text-ink-2"}>
+            {latest ? latest.state : "—"}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={evaluateNow.isPending}
+            onClick={() => evaluateNow.mutate(rule.itemId)}
+          >
+            {t("alertRule.evaluateNowButton")}
+          </Button>
+        </div>
       </div>
       {evaluations.length >= limit && (
         <Button

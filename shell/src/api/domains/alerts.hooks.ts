@@ -38,6 +38,17 @@ export function useAlertEvaluations(
   });
 }
 
+export function useEvaluateAlertRule() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (alertItemId: string) => client.evaluateAlertRule(alertItemId),
+    onSuccess: (_result, alertItemId) => {
+      void queryClient.invalidateQueries({ queryKey: ["alert-evaluations", alertItemId] });
+    },
+  });
+}
+
 export function useCreateAlertRule() {
   const client = useItemClientInternal();
   const queryClient = useQueryClient();

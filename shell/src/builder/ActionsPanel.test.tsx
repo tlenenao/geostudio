@@ -90,7 +90,9 @@ test("shows a validation error for an invalid message condition", () => {
   const { container } = render(
     <ActionsPanel items={items} messages={messages} onChange={vi.fn()} />,
   );
-  expect(screen.getByRole("alert")).toBeInTheDocument();
+  // D35 : le message brut de cel-js est préfixé « • » (formatCelError),
+  // pas affiché tel quel.
+  expect(screen.getByRole("alert")).toHaveTextContent("•");
   // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
   // --gs-* à la place.
   expectTokenizedClasses(container);

@@ -22,6 +22,7 @@ export function CopilotChat({
   clientTools,
   opLabels,
   onClientOps,
+  onExchange,
 }: {
   itemId?: string;
   surface: CopilotSurface;
@@ -34,6 +35,9 @@ export function CopilotChat({
   // n'a rien à abandonner) garde le comportement historique — tout est
   // annoncé comme appliqué.
   onClientOps: (ops: CopilotClientOp[]) => boolean[] | void;
+  // Callback optionnel (D56, historique persistant) : un appelant qui ne
+  // le passe pas garde son comportement actuel inchangé.
+  onExchange?: (entry: { message: string; opsCount: number; status: "ok" | "error" }) => void;
 }) {
   const client = useItemClient();
   const getMcpToken = useMcpToken();
@@ -83,8 +87,10 @@ export function CopilotChat({
       } else {
         setLastOpsSummary([]);
       }
+      onExchange?.({ message, opsCount: result.clientOps.length, status: "ok" });
     } catch {
       setError(t("copilot.requestFailed"));
+      onExchange?.({ message, opsCount: 0, status: "error" });
     } finally {
       setSending(false);
     }

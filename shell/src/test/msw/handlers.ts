@@ -32,6 +32,13 @@ export const handlers = [
   // useItemFacets() sans mocker explicitement cette route (CatalogPage,
   // SP-55 Tâche 3).
   http.get(`${CORE}/items/facets`, () => HttpResponse.json({ owners: [], keywords: [] })),
+  // D54a (Vague C, Tâche 25) : handler par défaut pour useCollectionsAdmin(),
+  // désormais appelé inconditionnellement par SqlLabPage. Un test qui mocke
+  // déjà /collections explicitement (server.use(...)) voit sa réponse en
+  // priorité, comportement MSW standard.
+  http.get(`${CORE}/collections`, () =>
+    HttpResponse.json({ collections: [], numberMatched: 0, numberReturned: 0 }),
+  ),
   http.get(`${CORE}/items/:pk`, ({ params }) => {
     if (params.pk === "404") return new HttpResponse(null, { status: 404 });
     return HttpResponse.json(item(String(params.pk)));

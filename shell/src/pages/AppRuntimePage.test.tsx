@@ -100,6 +100,21 @@ if (!getWidget("__ctx_probe__")) {
   });
 }
 
+// Stub le vrai widget "map" (mapWidget.tsx, qui lazy-charge MapView/
+// maplibre-gl — poids inutile pour des tests qui n'exercent que le
+// câblage de printLayout.showLegend dans AppRuntimePage.tsx, pas le rendu
+// de la carte elle-même). registerWidget() écrase l'entrée du registre
+// (registry.ts:47-50, avertit puis remplace) — sûr ici, aucun test de ce
+// fichier n'exerce le vrai widget carte.
+registerWidget({
+  type: "map",
+  label: "map (stub de test)",
+  defaultProps: { layers: [] },
+  defaultSize: { w: 4, h: 4 },
+  PropsPanel: () => null,
+  Component: () => <div data-testid="map-widget-stub" />,
+});
+
 const okItem: Item = {
   pk: "9",
   resourceType: "app",
@@ -494,6 +509,80 @@ test("the printLayout overlay does not render outside of exportRender", async ()
   expect(screen.queryByText("GeoStudio — confidentiel")).not.toBeInTheDocument();
 });
 
+// Finition SP-B12/D14 : showLegend n'avait jamais été câblé côté
+// app/dashboard (seul MapEditorPage.tsx le faisait) malgré CLAUDE.md
+// marquant SP-B12 clos — cf. plan SP-C3, décision de scope.
+const legendLayout = {
+  type: "grid" as const,
+  breakpoints: {},
+  items: [
+    {
+      id: "m1",
+      widget: "map",
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 4,
+      props: {
+        layers: [
+          { id: "l1", title: "Parcelles", visible: true, kind: "raster", tilesUrl: "https://x" },
+          {
+            id: "l2",
+            title: "Hors périmètre",
+            visible: false,
+            kind: "raster",
+            tilesUrl: "https://x",
+          },
+        ],
+      },
+    },
+  ],
+};
+const legendConfig: AppConfig = {
+  kind: "app",
+  theme: {},
+  dataSources: [],
+  messages: [],
+  layout: legendLayout,
+  pages: [{ id: "page-1", name: "Accueil", layout: legendLayout }],
+  printLayout: { showLegend: true },
+};
+
+test("exportRender=1 renders the printLayout legend overlay listing the page's visible map layers (finition SP-B12/D14)", async () => {
+  renderRuntime(
+    {
+      getItem: vi.fn().mockResolvedValue(okItem),
+      getAppConfig: vi.fn().mockResolvedValue(legendConfig),
+    },
+    ["/apps/9/page-1?exportRender=1"],
+  );
+  expect(await screen.findByText("Parcelles")).toBeInTheDocument();
+  expect(screen.queryByText("Hors périmètre")).not.toBeInTheDocument();
+});
+
+test("the legend overlay does not render when showLegend is false, even during export", async () => {
+  renderRuntime(
+    {
+      getItem: vi.fn().mockResolvedValue(okItem),
+      getAppConfig: vi
+        .fn()
+        .mockResolvedValue({ ...legendConfig, printLayout: { showLegend: false } }),
+    },
+    ["/apps/9/page-1?exportRender=1"],
+  );
+  await screen.findByTestId("map-widget-stub");
+  expect(screen.queryByText("Parcelles")).not.toBeInTheDocument();
+});
+
+test("the legend overlay does not render outside of exportRender even when showLegend is true", async () => {
+  renderRuntime({
+    getItem: vi.fn().mockResolvedValue(okItem),
+    getAppConfig: vi.fn().mockResolvedValue(legendConfig),
+  });
+  await screen.findByTestId("map-widget-stub");
+  expect(screen.queryByText("Parcelles")).not.toBeInTheDocument();
+});
+
 test("saving a view captures the current analytics context and posts a bookmark", async () => {
   const createBookmarkItem = vi.fn().mockResolvedValue({
     pk: "bm-1",
@@ -579,19 +668,21 @@ test("action-bar border and save-failed alert use semantic tokens, not literal T
     createBookmarkItem: vi.fn().mockRejectedValue(new Error("save failed")),
   });
   const saveViewButton = await screen.findByRole("button", { name: "Enregistrer la vue" });
-  // `Button` (../ui/button.tsx) was out-of-scope for SP-B12a/b (it still
-  // hardcoded bg-slate-900/border-slate-300/etc by default) — fixed since by
-  // SP-B12c, so the whole action-bar subtree can now be scanned instead of
-  // just the div's own className.
+  // `Button` (../ui/kit/Button.tsx since SP-C3/D10, previously ../ui/button.tsx)
+  // was out-of-scope for SP-B12a/b (it still hardcoded bg-slate-900/
+  // border-slate-300/etc by default) — fixed since by SP-B12c, so the whole
+  // action-bar subtree can now be scanned instead of just the div's own
+  // className.
   const actionBar = saveViewButton.closest("div") as HTMLElement;
   expect(actionBar.className).toContain("border-rule");
   expect(actionBar.className).not.toMatch(/\bborder-slate-\d+\b/);
   expectTokenizedClasses(actionBar);
 
   await userEvent.click(saveViewButton);
-  // Le dialogue (Radix Portal, hors `container`) porte `Input` (../ui/input.tsx)
-  // et deux `Button` — les trois désormais tokenisés (SP-B12c) : vérifiable en
-  // un coup sur baseElement plutôt qu'un className ciblé par élément.
+  // Le dialogue (Radix Portal, hors `container`) porte `Input`
+  // (../ui/kit/Input.tsx since SP-C3/D10, previously ../ui/input.tsx) et deux
+  // `Button` — les trois désormais tokenisés (SP-B12c) : vérifiable en un
+  // coup sur baseElement plutôt qu'un className ciblé par élément.
   await screen.findByLabelText("Nom de la vue");
   expectTokenizedClasses(baseElement);
   await userEvent.type(screen.getByLabelText("Nom de la vue"), "Ma vue");

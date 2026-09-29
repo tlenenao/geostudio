@@ -14,7 +14,7 @@ import { useItemClient } from "../api/ItemClientProvider";
 import type { CrossFilterLink, DatasetColumnMeta, DatasetConfig } from "../api/types";
 import { mergeDatasetSchema } from "../lib/datasetSchema";
 import { hasPermission } from "../auth/permissions";
-import { MetadataForm } from "../ui/MetadataForm";
+import { MetadataForm } from "../ui/kit/MetadataForm";
 import { Button } from "../ui/kit/Button";
 import { Panel } from "../ui/kit/Panel";
 import { LoadingState } from "../ui/kit/LoadingState";

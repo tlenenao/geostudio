@@ -141,3 +141,11 @@ describe("contraste WCAG AA (texte normal, seuil 4.5)", () => {
     }
   });
 });
+
+describe("réduction de mouvement (D42, prefers-reduced-motion)", () => {
+  it("neutralise globalement animations et transitions quand le visiteur préfère un mouvement réduit", () => {
+    const mediaBlock = block("@media (prefers-reduced-motion: reduce)");
+    expect(mediaBlock).toMatch(/animation-duration:\s*0\.01ms\s*!important/);
+    expect(mediaBlock).toMatch(/transition-duration:\s*0\.01ms\s*!important/);
+  });
+});

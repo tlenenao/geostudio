@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
+import { HelpCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import CodeMirror from "@uiw/react-codemirror";
+// Alias `sqlLang` : le fichier a déjà une variable d'état locale `sql` (le
+// texte de la requête) — l'import du snippet du brief, nommé `sql` sans
+// alias, entre en collision de nom avec elle.
+import { sql as sqlLang, SQLite } from "@codemirror/lang-sql";
+import { EditorView } from "@codemirror/view";
 import { useCollectionsAdmin, useInstanceInfo } from "../api/hooks";
 import { useItemClient } from "../api/ItemClientProvider";
 import {
@@ -12,7 +19,11 @@ import {
 } from "../lib/sqlLabHistory";
 import { useUrlSyncedState } from "../lib/useUrlSyncedState";
 import { SqlLabCopilotPanel } from "../builder/copilot/SqlLabCopilotPanel";
+import { parseDuckDbError } from "../lib/parseDuckDbError";
+import { Banner } from "../ui/kit/Banner";
 import { Button } from "../ui/kit/Button";
+import { IconButton } from "../ui/kit/IconButton";
+import { Popover } from "../ui/kit/Popover";
 import { Panel } from "../ui/kit/Panel";
 import { EmptyState } from "../ui/kit/EmptyState";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
@@ -24,16 +35,19 @@ export function SqlLabPage() {
   const client = useItemClient();
   const [sql, setSql] = useState("");
   const [result, setResult] = useState<SqlResult | null>(null);
+  // D54b (Vague C, Tâche 26) : autocomplétion de colonnes lazy — dès qu'un
+  // id de collection connu apparaît dans le texte SQL, on récupère son
+  // schéma en arrière-plan et on l'accumule pour nourrir l'extension
+  // `sql({schema})` de CodeMirror.
+  const [schemaByCollection, setSchemaByCollection] = useState<Record<string, string[]>>({});
   const [history, setHistory] = useState<SqlHistoryEntry[]>(() => readSqlHistory());
   const [historyId, setHistoryId] = useUrlSyncedState<string>("historyId", null);
   const instanceQuery = useInstanceInfo();
   const copilotEnabled = instanceQuery.data?.copilotEnabled === true;
-  // Seule consommatrice : le panneau copilote (I1, revue finale de branche
-  // GAP-17) — d'où le `enabled` aligné sur `copilotEnabled`, pour ne pas
-  // ajouter un aller-retour réseau à une page qui n'en avait aucun quand le
-  // copilote est éteint. `GET /collections` est déjà la source de la liste
-  // pour VisualQueryWizardPage (même hook), aucun nouveau chemin d'accès.
-  const collectionsQuery = useCollectionsAdmin({ enabled: copilotEnabled });
+  // D54 (Vague C) : la liste des collections alimente désormais aussi
+  // l'autocomplétion SQL (Tâche 26, D54b), plus seulement le panneau
+  // copilote — appel inconditionnel.
+  const collectionsQuery = useCollectionsAdmin();
 
   // SP-B9d : restaure la requête sélectionnée dans l'historique depuis
   // l'URL (?historyId=…) — au montage et à chaque changement externe de
@@ -47,6 +61,63 @@ export function SqlLabPage() {
       setSql(entry.sql);
     }
   }, [historyId]);
+
+  // D54b : détection lazy des collections référencées dans le texte SQL,
+  // fetch de leur schéma une seule fois chacune (accumulation dans
+  // schemaByCollection, jamais re-fetché une fois connu).
+  const knownCollectionIds = (collectionsQuery.data ?? []).map((c) => c.id);
+  useEffect(() => {
+    const referenced = knownCollectionIds.filter(
+      (id) => sql.includes(id) && !(id in schemaByCollection),
+    );
+    if (referenced.length === 0) return;
+    let cancelled = false;
+    // `void` : patron déjà suivi par LayersPanel.tsx pour un effet
+    // fire-and-forget (contrainte @typescript-eslint/no-floating-promises).
+    //
+    // Revue finale Vague C (point 7) : `Promise.all` faisait perdre TOUT le
+    // lot dès qu'une seule collection référencée échouait à résoudre son
+    // schéma (id périmé, droit de lecture retiré entre-temps…) — aucune
+    // `.catch()`, la promesse rejetait, `setSchemaByCollection` n'était
+    // jamais appelé, pas même pour les collections qui avaient réussi. Pire :
+    // comme l'id en échec n'entrait jamais dans `schemaByCollection`, la
+    // condition `!(id in schemaByCollection)` ci-dessus le considérait
+    // encore "jamais tenté" à l'effet suivant — chaque frappe relançait un
+    // nouveau fetch voué au même échec, en boucle. `Promise.allSettled`
+    // laisse les succès entrer dans l'état ; un échec est mémorisé avec un
+    // schéma vide (`[]`, jamais pire qu'aucune autocomplétion) pour sortir
+    // définitivement de la liste des ids "à essayer" et casser la boucle,
+    // et journalisé individuellement (mêmes conventions que labelSource.ts/
+    // MapView.tsx pour un échec de fond non bloquant).
+    void Promise.allSettled(
+      referenced.map((id) =>
+        client.getCollectionSchema(id).then((schema) => [id, schema] as const),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      setSchemaByCollection((prev) => {
+        const next = { ...prev };
+        results.forEach((outcome, i) => {
+          const id = referenced[i];
+          if (outcome.status === "fulfilled") {
+            const [, schema] = outcome.value;
+            next[id] = schema.fields.map((f) => f.name);
+          } else {
+            console.warn(
+              `SqlLabPage: échec de récupération du schéma de la collection "${id}" (autocomplétion désactivée pour elle)`,
+              outcome.reason,
+            );
+            next[id] = [];
+          }
+        });
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- knownCollectionIds recalculé chaque rendu depuis collectionsQuery.data, l'inclure re-déclencherait l'effet inutilement à chaque frappe
+  }, [sql]);
 
   const run = useMutation({
     mutationFn: (query: string) => client.runAnalyticsSql(query),
@@ -89,16 +160,43 @@ export function SqlLabPage() {
           label: t("sqlLab.queryLabel"),
           content: (
             <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
-              <h1 className="text-lg font-bold text-ink">SQL Lab</h1>
-              <label className="flex flex-col gap-1 text-sm text-ink">
-                {t("sqlLab.sqlQueryLabel")}
-                <textarea
-                  aria-label={t("sqlLab.sqlQueryLabel")}
-                  className="h-32 rounded-md border border-rule bg-surface p-2 font-mono text-xs text-ink"
+              <div className="flex items-center gap-1.5">
+                <h1 className="text-lg font-bold text-ink">{t("sqlLab.heading")}</h1>
+                <Popover
+                  aria-label={t("sqlLab.helpAria")}
+                  trigger={
+                    <IconButton
+                      icon={<HelpCircle size={14} />}
+                      aria-label={t("sqlLab.helpAria")}
+                      size="sm"
+                    />
+                  }
+                >
+                  {t("sqlLab.helpBody")}
+                </Popover>
+              </div>
+              <div className="flex flex-col gap-1 text-sm text-ink">
+                <span>{t("sqlLab.sqlQueryLabel")}</span>
+                <CodeMirror
                   value={sql}
-                  onChange={(e) => setSql(e.target.value)}
+                  height="8rem"
+                  extensions={[
+                    sqlLang({ dialect: SQLite, schema: schemaByCollection }),
+                    // `aria-label` passé directement à <CodeMirror> atterrit
+                    // sur le conteneur englobant, pas sur le
+                    // `role="textbox"` (div `.cm-content` contenteditable)
+                    // que les tests (et les lecteurs d'écran) interrogent —
+                    // vérifié empiriquement (piège n°3 CLAUDE.md). Seul
+                    // `EditorView.contentAttributes` pose l'attribut sur le
+                    // bon élément.
+                    EditorView.contentAttributes.of({
+                      "aria-label": t("sqlLab.sqlQueryLabel"),
+                    }),
+                  ]}
+                  onChange={(value) => setSql(value)}
+                  className="rounded-md border border-rule text-xs"
                 />
-              </label>
+              </div>
               <Button
                 size="sm"
                 className="w-fit"
@@ -107,11 +205,22 @@ export function SqlLabPage() {
               >
                 {t("sqlLab.runButton")}
               </Button>
-              {run.isError && (
-                <p role="alert" className="text-sm text-danger">
-                  {(run.error as Error).message}
-                </p>
-              )}
+              {run.isError &&
+                (() => {
+                  const parsed = parseDuckDbError((run.error as Error).message);
+                  return (
+                    <Banner variant="danger">
+                      {parsed.category && <p className="font-semibold">{parsed.category}</p>}
+                      <p>{parsed.message}</p>
+                      {parsed.line !== null && (
+                        <p className="mt-1 font-mono text-xs">
+                          {t("sqlLab.errorLineLabel", { line: parsed.line })}
+                          {parsed.sqlSnippet}
+                        </p>
+                      )}
+                    </Banner>
+                  );
+                })()}
               {result && (
                 <div>
                   <table className="w-full text-left text-sm">

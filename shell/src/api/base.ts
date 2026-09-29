@@ -55,7 +55,7 @@ async function readBody<T>(read: () => Promise<T>): Promise<T> {
 // `Error` générique sur `!res.ok`, jetant ces champs. `res.clone()` est
 // nécessaire car le corps ne se lit qu'une fois — un appelant qui a déjà lu
 // `res` (aucun cas actuel) casserait sinon.
-async function parseErrorResponse(res: Response): Promise<ApiError> {
+export async function parseErrorResponse(res: Response): Promise<ApiError> {
   let title: string | undefined;
   let detail: string | undefined;
   try {

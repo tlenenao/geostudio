@@ -10,6 +10,7 @@ import { PropsPanel } from "./PropsPanel";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import type { ItemClient, WidgetItem } from "../api/types";
 import { expectTokenizedClasses } from "../ui/kit/testUtils";
+import { t } from "../i18n";
 
 beforeEach(() => {
   _resetRegistry();
@@ -92,11 +93,31 @@ test("shows a validation error for an invalid visibleWhen", () => {
     />,
     { wrapper },
   );
-  expect(screen.getByRole("alert")).toBeInTheDocument();
+  // D35 : le message brut de cel-js est préfixé « • » (formatCelError),
+  // pas affiché tel quel.
+  expect(screen.getByRole("alert")).toHaveTextContent("•");
   // SP-B12c : pas de couleur Tailwind de palette codée en dur — un token
   // --gs-* à la place.
   expectTokenizedClasses(container);
 });
+
+// Même précédent que shell/src/ui/kit/Popover.test.tsx (Task 31, portes de
+// qualité) : le repositionnement Popper (@floating-ui/react-dom) sous jsdom
+// coûte assez cher (getComputedStyle/getBoundingClientRect répétés) pour
+// dépasser par intermittence le testTimeout par défaut du dépôt (5000ms)
+// sous couverture v8 + suite complète. Reproduit 3 fois de suite en
+// clôture de Vague C (`npm run test -- --coverage`, 280 fichiers), jamais
+// en lançant ce fichier seul. Relevé local à ce test, pas touché à
+// vitest.config.ts.
+test("propose une aide contextuelle sur la condition d'affichage CEL", async () => {
+  render(
+    <PropsPanel item={item} dataSources={[]} onChange={vi.fn()} onVisibleWhenChange={vi.fn()} />,
+    { wrapper },
+  );
+  const helpButton = screen.getByRole("button", { name: t("propsPanel.visibleWhenHelpAria") });
+  await userEvent.click(helpButton);
+  expect(await screen.findByText(t("propsPanel.visibleWhenHelpBody"))).toBeInTheDocument();
+}, 45000);
 
 test("passes theme through to the widget's PropsPanel", () => {
   const receivedThemes: (unknown | undefined)[] = [];

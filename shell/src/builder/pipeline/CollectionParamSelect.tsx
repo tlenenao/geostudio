@@ -13,11 +13,13 @@ export function CollectionParamSelect({
   onChange,
   variant,
   ariaLabel,
+  disabled,
 }: {
   value: string;
   onChange: (collectionId: string) => void;
   variant: "readable" | "writable";
   ariaLabel: string;
+  disabled?: boolean;
 }) {
   const collectionsQuery = useCollectionsAdmin();
   const options = (collectionsQuery.data ?? []).filter(
@@ -30,6 +32,7 @@ export function CollectionParamSelect({
       className="h-9 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
     >
       <option value="">Choisir…</option>
       {options.map((c) => (

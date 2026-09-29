@@ -17,7 +17,15 @@ import { HeatmapLayer, HexagonLayer } from "@deck.gl/aggregation-layers";
 import { ColumnLayer } from "@deck.gl/layers";
 import { Tile3DLayer } from "@deck.gl/geo-layers";
 import { Tiles3DLoader } from "@loaders.gl/3d-tiles";
-import type { AttachmentSummary, DataRecord, MapConfig, MapLayer, ThemeColors } from "../api/types";
+import type {
+  AttachmentSummary,
+  CollectionSchema,
+  CollectionSchemaField,
+  DataRecord,
+  MapConfig,
+  MapLayer,
+  ThemeColors,
+} from "../api/types";
 import { MapLegend } from "./MapLegend";
 import { MapMeasureSketchToolbar } from "./MapMeasureSketchToolbar";
 import { MapPopup } from "./MapPopup";
@@ -949,6 +957,13 @@ export const MapView = forwardRef<
   // directement depuis `popup` — ce n'est pas une projection pure de l'état
   // déjà là, mais le résultat d'un appel réseau asynchrone.
   const [popupAttachments, setPopupAttachments] = useState<AttachmentSummary[]>([]);
+  // Schéma de la collection de la couche du popup actif (D35, Vague C,
+  // SP-C6) : formatage fr-FR des valeurs en mode `fields` seulement. Repli
+  // assumé du plan (§ Step 5) : résolu au clic pour la seule couche
+  // concernée, pas préchargé pour toutes les couches visibles — un cache
+  // par couche multiplierait les requêtes pour un gain non mesuré, cf.
+  // rapport de tâche.
+  const [popupSchema, setPopupSchema] = useState<CollectionSchemaField[]>([]);
   // Un `useRef` assigné dans un effet ne provoque AUCUN rendu : la barre
   // d'outils conditionnée à `mapRef.current` ne se monterait jamais au
   // premier rendu. On garde donc l'instance dans un état, posé depuis le
@@ -1299,8 +1314,16 @@ export const MapView = forwardRef<
         // `flyTo`'s scenic arc stays the default the rest of the time
         // (searched-location and explorer navigation, the other two
         // MapViewHandle.flyTo call sites, never touch terrain state).
-        if (mapRef.current?.getTerrain()) {
-          mapRef.current.jumpTo(opts);
+        //
+        // D42 (Vague C, SP-C2) : même bascule vers jumpTo, motif différent
+        // — un visiteur ayant activé prefers-reduced-motion ne doit jamais
+        // recevoir l'arc animé de flyTo. Interrogé à chaque appel (jamais
+        // mis en cache dans un state/ref) : un changement de préférence
+        // système en cours de session doit être respecté au prochain
+        // flyTo, pas seulement à celui qui suit le montage.
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (mapRef.current?.getTerrain() || reducedMotion) {
+          mapRef.current?.jumpTo(opts);
         } else {
           mapRef.current?.flyTo(opts);
         }
@@ -1371,6 +1394,39 @@ export const MapView = forwardRef<
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [popup?.layerId, popup?.fid, popupConfig?.attachmentField]);
 
+  // Schéma de la collection de la couche du popup actif (D35, Vague C,
+  // SP-C6) : même patron fetch NU que l'effet de pièces jointes ci-dessus,
+  // pour la même raison (composant utilisable hors ItemClientProvider).
+  // Résolu par `popup.layerId` seul (le schéma d'une collection ne dépend
+  // pas de l'entité cliquée), pas préchargé pour les autres couches.
+  useEffect(() => {
+    setPopupSchema([]);
+    if (!popup) return;
+    if (!popupLayer || (popupLayer.kind !== "vector" && popupLayer.kind !== "feature")) return;
+    if (!popupLayer.collectionId) return;
+    const coreUrl = getCoreUrlRef.current?.();
+    if (!coreUrl) return;
+    const token = getAuthTokenRef.current?.();
+    const shareToken = getShareLinkTokenRef.current?.();
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
+    const url = `${coreUrl}/collections/${popupLayer.collectionId}/schema`;
+    let cancelled = false;
+    fetch(url, { headers })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: CollectionSchema | null) => {
+        if (!cancelled) setPopupSchema(data?.fields ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setPopupSchema([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [popup?.layerId]);
+
   async function downloadPopupAttachment(attachmentId: string, filename: string) {
     if (
       !popupLayer ||
@@ -1405,7 +1461,7 @@ export const MapView = forwardRef<
       {!hideLegend && <MapLegend layers={config.layers} />}
       {popup && popupPoint && !toolsActive && (
         <MapPopup
-          content={resolvePopupContent(popupConfig, popup.properties)}
+          content={resolvePopupContent(popupConfig, popup.properties, popupSchema)}
           x={popupPoint.x}
           y={popupPoint.y}
           onClose={() => setPopup(null)}

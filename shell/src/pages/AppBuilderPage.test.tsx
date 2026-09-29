@@ -1010,3 +1010,29 @@ test("changer d'onglet de page (URL interne, même pathname) ne déclenche pas l
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   await waitFor(() => expect(screen.getByTestId("url-search").textContent).toContain("page-2"));
 });
+
+test("D47 : le toggle Édition/Aperçu et les boutons de largeur d'écran ne sont jamais bg-accent plein", async () => {
+  renderPage({ getAppConfig: vi.fn().mockResolvedValue(config) });
+  const editButton = await screen.findByRole("button", { name: t("appBuilder.editMode") });
+  const previewButton = screen.getByRole("button", { name: t("appBuilder.previewMode") });
+  const lgButton = screen.getByRole("button", {
+    name: t("appBuilder.editBreakpointAria", { bp: "lg" }),
+  });
+  const saveButton = screen.getByRole("button", { name: t("appBuilder.save") });
+
+  // État initial : mode "edit" et breakpoint "lg" actifs par défaut.
+  expect(editButton.className).not.toMatch(/(^|\s)bg-accent(\s|$)/);
+  expect(editButton.className).toMatch(/(^|\s)bg-sunken(\s|$)/);
+  expect(previewButton.className).not.toMatch(/(^|\s)bg-accent(\s|$)/);
+  expect(previewButton.className).not.toMatch(/(^|\s)bg-sunken(\s|$)/);
+  expect(lgButton.className).not.toMatch(/(^|\s)bg-accent(\s|$)/);
+  expect(lgButton.className).toMatch(/(^|\s)bg-sunken(\s|$)/);
+
+  // Enregistrer reste le seul bg-accent plein légitime de cet écran.
+  expect(saveButton.className).toMatch(/(^|\s)bg-accent(\s|$)/);
+
+  await userEvent.click(previewButton);
+  expect(previewButton.className).toMatch(/(^|\s)bg-sunken(\s|$)/);
+  expect(editButton.className).not.toMatch(/(^|\s)bg-sunken(\s|$)/);
+  expect(previewButton.className).not.toMatch(/(^|\s)bg-accent(\s|$)/);
+});

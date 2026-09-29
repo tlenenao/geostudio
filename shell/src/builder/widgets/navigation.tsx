@@ -30,7 +30,7 @@ export function registerNavigationWidget(): void {
             <option value="vertical">{t("widgetNavigation.vertical")}</option>
           </select>
         </label>
-        <p className="text-[10px] text-ink-2">{t("widgetNavigation.autoPagesHelp")}</p>
+        <p className="text-xs text-ink-2">{t("widgetNavigation.autoPagesHelp")}</p>
       </div>
     ),
     Component: ({ props, ctx }) => {

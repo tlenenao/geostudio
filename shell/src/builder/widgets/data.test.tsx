@@ -59,7 +59,9 @@ test("table renders headers from columns and a cell per column", () => {
     mode: "runtime",
     data: state({ records: [{ id: 1, properties: { nom: "A", ville: "X" } }] }),
   } as WidgetContext;
-  render(<Table props={{ dataSourceId: "d", columns: ["nom", "ville"] }} ctx={ctx} />);
+  renderWithItemClient(
+    <Table props={{ dataSourceId: "d", columns: ["nom", "ville"] }} ctx={ctx} />,
+  );
   expect(screen.getByRole("columnheader", { name: "nom" })).toBeInTheDocument();
   expect(screen.getByRole("cell", { name: "A" })).toBeInTheDocument();
   expect(screen.getByRole("cell", { name: "X" })).toBeInTheDocument();
@@ -153,7 +155,7 @@ test("table sorts rows when a column header is clicked", async () => {
       ],
     }),
   } as WidgetContext;
-  render(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
+  renderWithItemClient(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
   const header = screen.getByRole("columnheader", { name: /nom/ });
   await userEvent.click(header);
   let cells = screen.getAllByRole("cell");
@@ -169,11 +171,49 @@ test("table paginates with a configured page size", async () => {
   const Table = getWidget("table")!.Component;
   const records = [1, 2, 3].map((n) => ({ id: n, properties: { nom: `N${n}` } }));
   const ctx = { mode: "runtime", data: state({ records }) } as WidgetContext;
-  render(<Table props={{ dataSourceId: "d", columns: ["nom"], pageSize: 2 }} ctx={ctx} />);
+  renderWithItemClient(
+    <Table props={{ dataSourceId: "d", columns: ["nom"], pageSize: 2 }} ctx={ctx} />,
+  );
   expect(screen.getAllByRole("row")).toHaveLength(3); // header + 2 data rows
   expect(screen.queryByText("N3")).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
   expect(screen.getByRole("cell", { name: "N3" })).toBeInTheDocument();
+});
+
+test("table cell of a plain field is formatted per its collection schema type (fr-FR)", async () => {
+  // D35 (Vague C, SP-C6) : une colonne de champ simple liée à une
+  // collection dont le schéma déclare `type: "number"` doit passer par
+  // `formatFieldValue` (fr-FR), pas `String(value)` brut — seul le vrai
+  // chemin (résolution du schéma via `useCollectionSchema`, jusqu'au rendu
+  // de la cellule) prouve le câblage, pas un test unitaire de
+  // `formatFieldValue` seul.
+  const Table = getWidget("table")!.Component;
+  const client = {
+    getCollectionSchema: vi.fn().mockResolvedValue({
+      collection: "parcs",
+      pk: "id",
+      geometry: null,
+      fields: [{ name: "population", type: "number", required: false }],
+    }),
+  } as unknown as ItemClient;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const ctx = {
+    mode: "runtime",
+    data: state({
+      collectionId: "parcs",
+      records: [{ id: 1, properties: { population: 1234.5 } }],
+    }),
+  } as WidgetContext;
+  render(
+    <QueryClientProvider client={qc}>
+      <ItemClientProvider client={client}>
+        <Table props={{ dataSourceId: "d", columns: ["population"] }} ctx={ctx} />
+      </ItemClientProvider>
+    </QueryClientProvider>,
+  );
+  expect(
+    await screen.findByRole("cell", { name: new Intl.NumberFormat("fr-FR").format(1234.5) }),
+  ).toBeInTheDocument();
 });
 
 test("list item uses the theme border/surface/text tokens", () => {
@@ -201,7 +241,7 @@ test("table uses the shared DataTable's semantic theme tokens", () => {
     mode: "runtime",
     data: state({ records: [{ id: 1, properties: { nom: "A" } }] }),
   } as WidgetContext;
-  render(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
+  renderWithItemClient(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
   expect(screen.getByRole("table")).toHaveClass("text-ink");
   expect(screen.getAllByRole("row")[1]).toHaveClass("border-rule-2");
 });
@@ -218,7 +258,7 @@ test("table emits itemSelected with the clicked row", async () => {
     widgetId: "table1",
     data: state({ records: [{ id: 1, properties: { nom: "Parc A" } }] }),
   } as WidgetContext;
-  render(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
+  renderWithItemClient(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
   await userEvent.click(screen.getByRole("cell", { name: "Parc A" }));
   expect(handler).toHaveBeenCalledWith({ id: 1, properties: { nom: "Parc A" } });
 });
@@ -235,7 +275,7 @@ test("table renders a calculated column evaluated per row against record and var
       ],
     }),
   } as WidgetContext;
-  render(
+  renderWithItemClient(
     <Table
       props={{
         dataSourceId: "d",
@@ -256,7 +296,7 @@ test("a calculated column header has no sort button and stays unsortable", async
     mode: "runtime",
     data: state({ records: [{ id: 1, properties: { nom: "A" } }] }),
   } as WidgetContext;
-  render(
+  renderWithItemClient(
     <Table props={{ dataSourceId: "d", columns: [{ label: "Calc", expr: "1 + 1" }] }} ctx={ctx} />,
   );
   expect(screen.queryByRole("button", { name: /Calc/ })).not.toBeInTheDocument();
@@ -282,7 +322,7 @@ test("table row selection is keyboard operable (Enter) after the DataTable migra
     widgetId: "table1",
     data: state({ records: [{ id: 1, properties: { nom: "Parc A" } }] }),
   } as WidgetContext;
-  render(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
+  renderWithItemClient(<Table props={{ dataSourceId: "d", columns: ["nom"] }} ctx={ctx} />);
   const row = screen.getAllByRole("row")[1];
   row.focus();
   fireEvent.keyDown(row, { key: "Enter" });
@@ -358,7 +398,7 @@ test("table row click sets the cross-filter by pkColumn when dataset-bound and i
     datasetId: "dataset-1",
     pkColumn: "id",
   };
-  render(
+  renderWithItemClient(
     <AnalyticsContextProvider interactions="auto">
       <Table props={{ dataSourceId: "src-1" }} ctx={{ mode: "runtime", data } as WidgetContext} />
       <CrossFilterProbe datasetId="dataset-1" />
@@ -379,7 +419,7 @@ test("table row click forwards the record's geometry to the cross-filter entry w
     datasetId: "dataset-1",
     pkColumn: "id",
   };
-  render(
+  renderWithItemClient(
     <AnalyticsContextProvider interactions="auto">
       <Table props={{ dataSourceId: "src-1" }} ctx={{ mode: "runtime", data } as WidgetContext} />
       <CrossFilterProbe datasetId="dataset-1" />
@@ -455,7 +495,7 @@ test("table shows an explorer menu when bound to a dataset and interactions are 
     mode: "runtime",
     data: state({ datasetId: "ds1", records: [{ id: 1, properties: { nom: "Parc A" } }] }),
   } as WidgetContext;
-  render(
+  renderWithItemClient(
     <ExplorerProvider enabled>
       <Table props={{ dataSourceId: "src1", columns: ["nom"] }} ctx={ctx} />
     </ExplorerProvider>,

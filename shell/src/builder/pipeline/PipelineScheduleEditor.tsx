@@ -77,9 +77,16 @@ export function compileCron(form: ScheduleForm): string {
 export function PipelineScheduleEditor({
   value,
   onChange,
+  readOnly = false,
 }: {
   value: PipelineRefreshPolicy | null;
   onChange: (next: PipelineRefreshPolicy | null) => void;
+  // Revue finale Vague C (point 2, D55) : sans ce prop, la planification
+  // restait entièrement éditable pour un utilisateur en lecture seule —
+  // PipelineBuilderPage.tsx garde déjà son propre `setRefreshPolicy`
+  // (seconde ligne de défense), mais les contrôles eux-mêmes doivent aussi
+  // refléter l'état verrouillé.
+  readOnly?: boolean;
 }) {
   const enabled = value?.enabled ?? false;
   const cron = value?.cron ?? "*/15 * * * *";
@@ -91,9 +98,11 @@ export function PipelineScheduleEditor({
   }, [cron]);
 
   function setEnabled(next: boolean) {
+    if (readOnly) return;
     onChange({ enabled: next, cron });
   }
   function handleSetForm(next: ScheduleForm) {
+    if (readOnly) return;
     setForm(next);
     onChange({ enabled, cron: compileCron(next) });
   }
@@ -106,6 +115,7 @@ export function PipelineScheduleEditor({
           aria-label={t("pipelineSchedule.autoSchedulingAria")}
           checked={enabled}
           onChange={(e) => setEnabled(e.target.checked)}
+          disabled={readOnly}
         />
         {t("pipelineSchedule.autoSchedulingLabel")}
       </label>
@@ -125,6 +135,7 @@ export function PipelineScheduleEditor({
                   handleSetForm({ mode: "weekly", day: "1", time: "02:00" });
                 else handleSetForm({ mode: "advanced", raw: cron });
               }}
+              disabled={readOnly}
             >
               <option value="interval">{t("pipelineSchedule.modeInterval")}</option>
               <option value="daily">{t("pipelineSchedule.modeDaily")}</option>
@@ -149,6 +160,7 @@ export function PipelineScheduleEditor({
                 className="h-8 rounded border border-rule bg-surface px-2 text-ink"
                 value={form.minutes}
                 onChange={(e) => handleSetForm({ mode: "interval", minutes: e.target.value })}
+                disabled={readOnly}
               />
             </label>
           )}
@@ -161,6 +173,7 @@ export function PipelineScheduleEditor({
                 className="h-8 rounded border border-rule bg-surface px-2 text-ink"
                 value={form.time}
                 onChange={(e) => handleSetForm({ mode: "daily", time: e.target.value })}
+                disabled={readOnly}
               />
             </label>
           )}
@@ -175,6 +188,7 @@ export function PipelineScheduleEditor({
                   onChange={(e) =>
                     handleSetForm({ mode: "weekly", day: e.target.value, time: form.time })
                   }
+                  disabled={readOnly}
                 >
                   {dayLabels().map((label, i) => (
                     <option key={label} value={i}>
@@ -193,6 +207,7 @@ export function PipelineScheduleEditor({
                   onChange={(e) =>
                     handleSetForm({ mode: "weekly", day: form.day, time: e.target.value })
                   }
+                  disabled={readOnly}
                 />
               </label>
             </>
@@ -205,6 +220,7 @@ export function PipelineScheduleEditor({
                 className="h-8 rounded border border-rule bg-surface px-2 font-mono text-ink"
                 value={form.raw}
                 onChange={(e) => handleSetForm({ mode: "advanced", raw: e.target.value })}
+                disabled={readOnly}
               />
               {!ADVANCED_CRON_RE.test(form.raw) && (
                 <p role="alert" className="text-danger">

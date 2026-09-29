@@ -14,7 +14,12 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependency import get_current_user
 from app.db import get_session
-from app.quotas.service import usage_for_tenant
+from app.quotas.service import (
+    max_collections_per_tenant,
+    max_items_per_tenant,
+    max_storage_bytes_per_tenant,
+    usage_for_tenant,
+)
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
 from app.users.models import User
@@ -31,6 +36,9 @@ class UsageSnapshotResponse(BaseModel):
     collectionCount: int
     userCount: int
     storageBytes: int
+    maxItems: int | None
+    maxCollections: int | None
+    maxStorageBytes: int | None
 
 
 @router.get("/admin/usage", response_model=UsageSnapshotResponse)
@@ -51,4 +59,7 @@ def get_usage(
         collectionCount=snapshot.collection_count,
         userCount=snapshot.user_count,
         storageBytes=snapshot.storage_bytes,
+        maxItems=max_items_per_tenant(),
+        maxCollections=max_collections_per_tenant(),
+        maxStorageBytes=max_storage_bytes_per_tenant(),
     )

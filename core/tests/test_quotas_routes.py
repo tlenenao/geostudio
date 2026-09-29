@@ -74,9 +74,41 @@ def test_get_usage_returns_snapshot_shape_for_privileged_admin(env):
     resp = client.get("/v1/admin/usage")
     assert resp.status_code == 200
     body = resp.json()
-    assert set(body) == {"itemCount", "collectionCount", "userCount", "storageBytes"}
+    assert set(body) == {
+        "itemCount",
+        "collectionCount",
+        "userCount",
+        "storageBytes",
+        "maxItems",
+        "maxCollections",
+        "maxStorageBytes",
+    }
     # 2 utilisateurs déjà créés par le fixture (admin + regular).
     assert body["userCount"] == 2
     assert body["itemCount"] == 0
     assert body["collectionCount"] == 0
     assert body["storageBytes"] == 0
+
+
+def test_get_usage_includes_configured_limits(env, monkeypatch):
+    app, client, admin, _regular = env
+    _as(app, admin)
+    monkeypatch.setenv("CORE_QUOTA_MAX_ITEMS_PER_TENANT", "500")
+    monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000000")
+    resp = client.get("/v1/admin/usage")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["maxItems"] == 500
+    assert body["maxCollections"] is None
+    assert body["maxStorageBytes"] == 1000000
+
+
+def test_get_usage_limits_are_null_when_unconfigured(env):
+    app, client, admin, _regular = env
+    _as(app, admin)
+    resp = client.get("/v1/admin/usage")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["maxItems"] is None
+    assert body["maxCollections"] is None
+    assert body["maxStorageBytes"] is None

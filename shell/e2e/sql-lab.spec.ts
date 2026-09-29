@@ -38,7 +38,10 @@ test("un analyste exécute une requête SQL, voit le résultat, et recharge une 
   await page
     .getByRole("button", { name: "Recharger la requête : select nom, surface from parcs" })
     .click();
-  await expect(page.getByLabel("Requête SQL")).toHaveValue("select nom, surface from parcs");
+  // Tâche 25 (D54a) a remplacé le <textarea> par un éditeur CodeMirror (div
+  // contenteditable, role="textbox") : `toHaveValue` ne s'applique qu'à un
+  // élément de formulaire réel, `toHaveText` lit le texte rendu.
+  await expect(page.getByLabel("Requête SQL")).toHaveText("select nom, surface from parcs");
 });
 
 test("une erreur SQL affiche le message du serveur et conserve le texte dans l'éditeur", async ({
@@ -59,7 +62,8 @@ test("une erreur SQL affiche le message du serveur et conserve le texte dans l'�
   await page.getByLabel("Requête SQL").fill("select * fro parcs");
   await page.getByRole("button", { name: "Exécuter" }).click();
   await expect(page.getByRole("alert")).toHaveText("Parser Error: syntax error");
-  await expect(page.getByLabel("Requête SQL")).toHaveValue("select * fro parcs");
+  // Tâche 25 (D54a) : idem, contenteditable — `toHaveText`, pas `toHaveValue`.
+  await expect(page.getByLabel("Requête SQL")).toHaveText("select * fro parcs");
 });
 
 test("un utilisateur non-analyste ne voit pas le lien SQL Lab et reçoit un message d'accès refusé", async ({

@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { ActionMessage, Page, WidgetItem } from "../api/types";
 import { getWidget } from "./registry";
 import { validateExpression } from "./expr";
+import { formatCelError } from "./celError";
 import { t } from "../i18n";
 
 const selectCls = "h-8 rounded border border-rule bg-surface text-xs";
@@ -91,7 +92,7 @@ export function NavigationPanel({
 
       {navigationMode === "story" && (
         <>
-          <p className="text-[10px] text-ink-2">
+          <p className="text-xs text-ink-2">
             {t("navigationPanel.enterActionsHeading", { name: page.name })}
           </p>
           <ul className="flex flex-col gap-1">
@@ -126,8 +127,8 @@ export function NavigationPanel({
                     onChange={(e) => updateWhen(m.id, e.target.value)}
                   />
                   {error && (
-                    <span role="alert" className="text-danger">
-                      {error}
+                    <span role="alert" className="whitespace-pre-line text-danger">
+                      {formatCelError(error)}
                     </span>
                   )}
                 </li>

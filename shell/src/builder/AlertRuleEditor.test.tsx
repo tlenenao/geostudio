@@ -179,6 +179,20 @@ test("n'affiche pas de bouton Charger plus quand la page d'évaluations n'est pa
   expect(screen.queryByRole("button", { name: "Charger plus" })).not.toBeInTheDocument();
 });
 
+test("le bouton Exécuter maintenant déclenche une évaluation", async () => {
+  const listAlertRulesForDataset = vi
+    .fn()
+    .mockResolvedValue([{ itemId: "rule-1", title: "High counts" }] satisfies AlertRuleSummary[]);
+  const getAlertEvaluations = vi.fn().mockResolvedValue([]);
+  const evaluateAlertRule = vi.fn().mockResolvedValue({ evaluationId: "e1" });
+  renderWithClient({ listAlertRulesForDataset, getAlertEvaluations, evaluateAlertRule });
+
+  await screen.findByText("High counts");
+  await userEvent.click(screen.getByRole("button", { name: "Exécuter maintenant" }));
+
+  await waitFor(() => expect(evaluateAlertRule).toHaveBeenCalledWith("rule-1"));
+});
+
 test("shows a save error inline instead of failing silently", async () => {
   const listAlertRulesForDataset = vi.fn().mockResolvedValue([]);
   const createAlertRuleItem = vi.fn().mockRejectedValue(new Error("Request failed: 422"));

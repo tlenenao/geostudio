@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { HelpCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useNavigate } from "react-router-dom";
@@ -24,6 +25,8 @@ import type {
 import { hasPermission } from "../auth/permissions";
 import { Banner } from "../ui/kit/Banner";
 import { Button } from "../ui/kit/Button";
+import { IconButton } from "../ui/kit/IconButton";
+import { Popover } from "../ui/kit/Popover";
 import { ConfigHistoryPanel } from "../builder/ConfigHistoryPanel";
 import { useUndoableDraft } from "../builder/useUndoableDraft";
 import { PipelineCanvas } from "../builder/pipeline/PipelineCanvas";
@@ -44,6 +47,25 @@ import { useDirtyGuard } from "../lib/useDirtyGuard";
 import { t } from "../i18n";
 
 const EMPTY_PAYLOAD: PipelinePayload = { nodes: [], edges: [] };
+
+// Revue finale Vague C (point 7, D55) : logique pure du raccourci
+// Ctrl/Cmd+Z, extraite de l'écouteur `keydown` ci-dessous pour être testable
+// directement — la couverture précédente ne pouvait plus jamais amener
+// `canUndo` à vrai en lecture seule (tous les points de mutation sont
+// désormais gardés), donc un test bout-en-bout qui retirait `if (readOnly)
+// return` continuait de passer sans rien détecter. Ce test-ci appelle la
+// fonction directement avec `readOnly: true` et un état où `canUndo` serait
+// normalement vrai en écriture, sans passer par le DOM.
+export function decideUndoRedoShortcut(
+  e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey">,
+  isTextField: boolean,
+  readOnly: boolean,
+): "undo" | "redo" | null {
+  if (isTextField) return null;
+  if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return null;
+  if (readOnly) return null;
+  return e.shiftKey ? "redo" : "undo";
+}
 
 // pk === null : brouillon local (/pipelines/new, design SP-15b §2.2) —
 // rien n'est persisté avant le premier "Enregistrer" (choix de session : le
@@ -143,15 +165,21 @@ export function PipelineBuilderPage({
         target instanceof HTMLInputElement ||
         target instanceof HTMLTextAreaElement ||
         (target instanceof HTMLElement && target.isContentEditable);
-      if (isTextField) return;
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      // D55 : Ctrl+Z restait actif en lecture seule — `readOnly` est déjà
+      // calculé plus haut (ligne ~82) à partir de `permissions.write`.
+      // Décision déléguée à `decideUndoRedoShortcut` (module scope, testée
+      // directement) plutôt qu'inline, pour que la garde `readOnly` reste
+      // couverte même une fois que plus aucun chemin ne peut amener
+      // `canUndo` à vrai en lecture seule via l'UI.
+      const action = decideUndoRedoShortcut(e, isTextField, readOnly);
+      if (action === null) return;
       e.preventDefault();
-      if (e.shiftKey) redo();
+      if (action === "redo") redo();
       else undo();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [undo, redo]);
+  }, [undo, redo, readOnly]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -236,12 +264,21 @@ export function PipelineBuilderPage({
     setDraft((d) => (d ? { ...d, edges } : d));
   }
   function setRefreshPolicy(refreshPolicy: PipelineRefreshPolicy | null) {
+    // Revue finale Vague C (point 2, D55) : PipelineScheduleEditor reçoit
+    // aussi `readOnly` (ci-dessous) pour désactiver ses propres contrôles,
+    // même patron de double garde que updateSelectedNodeParams ci-dessus.
+    if (readOnly) return;
     setDraft((d) => (d ? { ...d, refreshPolicy } : d));
   }
   function setNotes(notes: PipelineCanvasNote[]) {
     setDraft((d) => (d ? { ...d, notes } : d));
   }
   function onAddNote() {
+    // Revue finale Vague C (point 2, D55) : garde manquant — le bouton
+    // "Ajouter une zone" restait actif en lecture seule (cf. `disabled`
+    // posé plus bas sur le bouton lui-même, seconde ligne de défense, même
+    // patron que deleteNode/completeConnection dans PipelineCanvas.tsx).
+    if (readOnly) return;
     setNotes([
       ...(currentDraft.notes ?? []),
       {
@@ -255,6 +292,14 @@ export function PipelineBuilderPage({
     ]);
   }
   function updateSelectedNodeParams(params: Record<string, unknown>) {
+    // Revue finale Vague C (point 2, D55) : sans ce garde, les paramètres
+    // du nœud sélectionné restaient éditables (persistés dans le brouillon
+    // local) même en lecture seule — PipelineNodeInspector reçoit aussi
+    // `readOnly` (ci-dessous) pour désactiver ses propres contrôles, mais
+    // ce garde reste la vraie frontière : sans lui, un onChange forcé
+    // (ex. testing-library, extension tierce) muterait quand même le
+    // brouillon.
+    if (readOnly) return;
     if (!selectedNode) return;
     setDraft((d) =>
       d
@@ -263,6 +308,13 @@ export function PipelineBuilderPage({
     );
   }
   function onInsertOnEdge(edgeId: string, op: string) {
+    // Revue finale Vague C (point 2, D55) : `PipelineCanvas.tsx` (`InsertOnEdgeButton`)
+    // désactive déjà l'affordance "+" sur une arête en lecture seule
+    // (`disabled={readOnly}` + le menu n'ouvre pas), mais ce garde reste
+    // le point de passage réel : sans lui, un appel direct à ce handler
+    // (ex. testing-library, extension tierce contournant l'UI) muterait
+    // quand même le brouillon.
+    if (readOnly) return;
     const kind = catalog[op]?.kind ?? "transform";
     const result = insertNodeOnEdge(currentDraft.nodes, currentDraft.edges, edgeId, {
       id: genNodeId(),
@@ -276,6 +328,12 @@ export function PipelineBuilderPage({
     setDraft((d) => (d ? { ...d, ...result } : d));
   }
   function onDropOnCanvas(op: string, position: { x: number; y: number }) {
+    // Revue finale Vague C (point 2, D55) : couvre à la fois le drop natif
+    // (onDrop de la racine, plus bas) et le clic palette (onAddViaPalette,
+    // qui délègue ici) — les deux chemins d'ajout de nœud étaient jusqu'ici
+    // hors périmètre du garde `readOnly` (documenté comme tel par le test
+    // D55 pré-existant, désormais mis à jour en conséquence).
+    if (readOnly) return;
     const kind = catalog[op]?.kind ?? "transform";
     setNodes([
       ...currentDraft.nodes,
@@ -348,17 +406,41 @@ export function PipelineBuilderPage({
           content: (
             <div className="flex h-full flex-col overflow-hidden">
               <div className="flex items-center justify-between border-b border-rule p-2">
-                <h2 className="text-lg font-semibold text-ink">
-                  {initialTitle ?? t("pipelineBuilder.defaultTitle")}
-                </h2>
+                <div className="flex items-center gap-1.5">
+                  <h2 className="text-lg font-semibold text-ink">
+                    {initialTitle ?? t("pipelineBuilder.defaultTitle")}
+                  </h2>
+                  <Popover
+                    aria-label={t("pipelineBuilder.helpAria")}
+                    trigger={
+                      <IconButton
+                        icon={<HelpCircle size={14} />}
+                        aria-label={t("pipelineBuilder.helpAria")}
+                        size="sm"
+                      />
+                    }
+                  >
+                    {t("pipelineBuilder.helpBody")}
+                  </Popover>
+                </div>
                 <div className="flex items-center gap-1">
-                  <Button size="sm" variant="outline" disabled={!canUndo} onClick={undo}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!canUndo || readOnly}
+                    onClick={undo}
+                  >
                     {t("pipelineBuilder.undo")}
                   </Button>
-                  <Button size="sm" variant="outline" disabled={!canRedo} onClick={redo}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!canRedo || readOnly}
+                    onClick={redo}
+                  >
                     {t("pipelineBuilder.redo")}
                   </Button>
-                  <Button size="sm" variant="outline" onClick={onAddNote}>
+                  <Button size="sm" variant="outline" onClick={onAddNote} disabled={readOnly}>
                     {t("pipelineBuilder.addNoteButton")}
                   </Button>
                 </div>
@@ -389,6 +471,7 @@ export function PipelineBuilderPage({
                   nodeErrors={validation.nodeErrors}
                   notes={draft.notes ?? []}
                   onNotesChange={setNotes}
+                  readOnly={readOnly}
                 />
               </div>
             </div>
@@ -410,6 +493,7 @@ export function PipelineBuilderPage({
                     opEntry={catalog[selectedNode.op]}
                     errors={validation.nodeErrors[selectedNode.id] ?? []}
                     onChange={updateSelectedNodeParams}
+                    readOnly={readOnly}
                   />
                   {pk !== null && !readOnly && (
                     <PipelinePreviewPanel
@@ -445,6 +529,7 @@ export function PipelineBuilderPage({
                   <PipelineScheduleEditor
                     value={draft.refreshPolicy ?? null}
                     onChange={setRefreshPolicy}
+                    readOnly={readOnly}
                   />
                   <PipelineWebhookTrigger pipelineId={pk} />
                 </>
