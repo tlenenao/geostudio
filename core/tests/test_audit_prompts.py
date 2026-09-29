@@ -88,3 +88,10 @@ def test_committed_prompts_are_in_sync_with_generator(agents: list[dict]) -> Non
             f"Run: cd core && PYTHONPATH=. uv run python scripts/audit_prompts.py render "
             f"--out ../docs/revue/audit-2026-09-29/prompts"
         )
+
+
+def test_k01_prompt_carries_plan_consolide_exception(agents: list[dict]) -> None:
+    by_id = {a["id"]: a for a in agents}
+    text = ap.render_prompt(by_id["k01"], TEMPLATE.read_text())
+    assert "Exception à la règle 1" in text
+    assert "PLAN-CONSOLIDE.md" in text
