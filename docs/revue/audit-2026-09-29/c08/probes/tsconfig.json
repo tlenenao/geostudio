@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../shell/tsconfig.json",
+  "compilerOptions": { "types": [], "baseUrl": "../../../../../shell", "noUnusedLocals": false, "noEmit": true },
+  "include": ["ts_drift.ts"]
+}
