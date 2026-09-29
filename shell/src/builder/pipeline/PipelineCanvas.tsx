@@ -124,6 +124,7 @@ function PipelineNodeBox({ data, selected }: NodeProps) {
 
 type CanvasNoteData = PipelineCanvasNote & {
   onLabelChange: (id: string, label: string) => void;
+  readOnly?: boolean;
 };
 
 function CanvasNoteBox({ data }: NodeProps) {
@@ -138,6 +139,7 @@ function CanvasNoteBox({ data }: NodeProps) {
         className="w-full bg-transparent text-xs font-medium text-ink-2 outline-none"
         value={note.label}
         onChange={(e) => note.onLabelChange(note.id, e.target.value)}
+        disabled={note.readOnly}
       />
     </div>
   );
@@ -146,11 +148,12 @@ function CanvasNoteBox({ data }: NodeProps) {
 function toFlowNoteNode(
   n: PipelineCanvasNote,
   onLabelChange: (id: string, label: string) => void,
+  readOnly?: boolean,
 ): Node {
   return {
     id: n.id,
     position: { x: n.x, y: n.y },
-    data: { ...n, onLabelChange } as unknown as Record<string, unknown>,
+    data: { ...n, onLabelChange, readOnly } as unknown as Record<string, unknown>,
     type: "canvasNote",
     zIndex: -1,
   };
@@ -165,7 +168,12 @@ function InsertOnEdgeButton({
   data,
   onInsert,
   opsCatalog,
-}: EdgeProps & { onInsert: (edgeId: string, op: string) => void; opsCatalog: PipelineOpsCatalog }) {
+  readOnly,
+}: EdgeProps & {
+  onInsert: (edgeId: string, op: string) => void;
+  opsCatalog: PipelineOpsCatalog;
+  readOnly?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const insertMenu = usePanelTrigger(open);
   const [edgePath, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY });
@@ -197,10 +205,11 @@ function InsertOnEdgeButton({
             aria-controls={insertMenu.triggerProps["aria-controls"]}
             className="h-5 w-5 rounded-full border border-rule bg-surface text-xs leading-none hover:bg-sunken"
             onClick={() => setOpen((o) => !o)}
+            disabled={readOnly}
           >
             +
           </button>
-          {open && (
+          {open && !readOnly && (
             // role="menu" conservé (plus spécifique que role="region" du
             // hook générique) — seul l'id du panneau est câblé ici, cf.
             // consigne explicite du brief pour ce site.
@@ -298,7 +307,12 @@ function PipelineCanvasInner({
   const nodeTypes = { pipelineNode: PipelineNodeBox, canvasNote: CanvasNoteBox };
   const edgeTypes = {
     insertable: (props: EdgeProps) => (
-      <InsertOnEdgeButton {...props} onInsert={onInsertOnEdge} opsCatalog={opsCatalog} />
+      <InsertOnEdgeButton
+        {...props}
+        onInsert={onInsertOnEdge}
+        opsCatalog={opsCatalog}
+        readOnly={readOnly}
+      />
     ),
   };
 
@@ -443,8 +457,18 @@ function PipelineCanvasInner({
             }),
           ),
           ...notes.map((n) =>
-            toFlowNoteNode(n, (id, label) =>
-              onNotesChange(notes.map((x) => (x.id === id ? { ...x, label } : x))),
+            toFlowNoteNode(
+              n,
+              (id, label) => {
+                // D55, revue finale Vague C (point 2) : chemin direct
+                // (l'input de la zone annotée n'émet aucun NodeChange géré
+                // par handleNodesChange plus haut) — sans ce garde,
+                // `disabled` sur l'input seul ne suffirait pas à couvrir un
+                // événement forcé (ex. testing-library, extension tierce).
+                if (readOnly) return;
+                onNotesChange(notes.map((x) => (x.id === id ? { ...x, label } : x)));
+              },
+              readOnly,
             ),
           ),
         ]}

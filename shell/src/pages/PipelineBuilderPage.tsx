@@ -242,12 +242,21 @@ export function PipelineBuilderPage({
     setDraft((d) => (d ? { ...d, edges } : d));
   }
   function setRefreshPolicy(refreshPolicy: PipelineRefreshPolicy | null) {
+    // Revue finale Vague C (point 2, D55) : PipelineScheduleEditor reçoit
+    // aussi `readOnly` (ci-dessous) pour désactiver ses propres contrôles,
+    // même patron de double garde que updateSelectedNodeParams ci-dessus.
+    if (readOnly) return;
     setDraft((d) => (d ? { ...d, refreshPolicy } : d));
   }
   function setNotes(notes: PipelineCanvasNote[]) {
     setDraft((d) => (d ? { ...d, notes } : d));
   }
   function onAddNote() {
+    // Revue finale Vague C (point 2, D55) : garde manquant — le bouton
+    // "Ajouter une zone" restait actif en lecture seule (cf. `disabled`
+    // posé plus bas sur le bouton lui-même, seconde ligne de défense, même
+    // patron que deleteNode/completeConnection dans PipelineCanvas.tsx).
+    if (readOnly) return;
     setNotes([
       ...(currentDraft.notes ?? []),
       {
@@ -261,6 +270,14 @@ export function PipelineBuilderPage({
     ]);
   }
   function updateSelectedNodeParams(params: Record<string, unknown>) {
+    // Revue finale Vague C (point 2, D55) : sans ce garde, les paramètres
+    // du nœud sélectionné restaient éditables (persistés dans le brouillon
+    // local) même en lecture seule — PipelineNodeInspector reçoit aussi
+    // `readOnly` (ci-dessous) pour désactiver ses propres contrôles, mais
+    // ce garde reste la vraie frontière : sans lui, un onChange forcé
+    // (ex. testing-library, extension tierce) muterait quand même le
+    // brouillon.
+    if (readOnly) return;
     if (!selectedNode) return;
     setDraft((d) =>
       d
@@ -269,6 +286,11 @@ export function PipelineBuilderPage({
     );
   }
   function onInsertOnEdge(edgeId: string, op: string) {
+    // Revue finale Vague C (point 2, D55) : l'affordance "+" sur une arête
+    // (PipelineCanvas.tsx, InsertOnEdgeButton) n'a elle-même aucun garde
+    // `readOnly` — la barrière est ici, au seul site qui mute réellement
+    // le brouillon.
+    if (readOnly) return;
     const kind = catalog[op]?.kind ?? "transform";
     const result = insertNodeOnEdge(currentDraft.nodes, currentDraft.edges, edgeId, {
       id: genNodeId(),
@@ -282,6 +304,12 @@ export function PipelineBuilderPage({
     setDraft((d) => (d ? { ...d, ...result } : d));
   }
   function onDropOnCanvas(op: string, position: { x: number; y: number }) {
+    // Revue finale Vague C (point 2, D55) : couvre à la fois le drop natif
+    // (onDrop de la racine, plus bas) et le clic palette (onAddViaPalette,
+    // qui délègue ici) — les deux chemins d'ajout de nœud étaient jusqu'ici
+    // hors périmètre du garde `readOnly` (documenté comme tel par le test
+    // D55 pré-existant, désormais mis à jour en conséquence).
+    if (readOnly) return;
     const kind = catalog[op]?.kind ?? "transform";
     setNodes([
       ...currentDraft.nodes,
@@ -388,7 +416,7 @@ export function PipelineBuilderPage({
                   >
                     {t("pipelineBuilder.redo")}
                   </Button>
-                  <Button size="sm" variant="outline" onClick={onAddNote}>
+                  <Button size="sm" variant="outline" onClick={onAddNote} disabled={readOnly}>
                     {t("pipelineBuilder.addNoteButton")}
                   </Button>
                 </div>
@@ -441,6 +469,7 @@ export function PipelineBuilderPage({
                     opEntry={catalog[selectedNode.op]}
                     errors={validation.nodeErrors[selectedNode.id] ?? []}
                     onChange={updateSelectedNodeParams}
+                    readOnly={readOnly}
                   />
                   {pk !== null && !readOnly && (
                     <PipelinePreviewPanel
@@ -476,6 +505,7 @@ export function PipelineBuilderPage({
                   <PipelineScheduleEditor
                     value={draft.refreshPolicy ?? null}
                     onChange={setRefreshPolicy}
+                    readOnly={readOnly}
                   />
                   <PipelineWebhookTrigger pipelineId={pk} />
                 </>

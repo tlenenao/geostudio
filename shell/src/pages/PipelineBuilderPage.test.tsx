@@ -1254,12 +1254,24 @@ test("le round-trip de création (pk=null -> Enregistrer -> redirection) n'affic
 // connecter/supprimer des nœuds restait possible (corrigé dans
 // PipelineCanvas.tsx, cf. son propre fichier de test), et Undo/Redo/Ctrl+Z
 // restaient actifs ici. `readOnly` est dérivé de `permissions.write` (ligne
-// ~82) ; ce test le prouve indépendamment de la valeur de `canUndo` : l'ajout
-// de nœud via la palette n'est PAS gardé par `readOnly` (hors périmètre de
-// cette tâche — cf. rapport), donc `canUndo` passe bien à vrai ici même en
-// lecture seule. Sans le garde `readOnly` sur les boutons/le raccourci, ce
-// test échouerait malgré l'absence de tout droit d'écriture.
-test("persisted mode: lecture seule désactive Annuler/Rétablir et rend Ctrl+Z inerte même quand canUndo est vrai (D55)", async () => {
+// ~82).
+//
+// Revue finale Vague C (point 2) : ce test affirmait auparavant que l'ajout
+// de nœud via la palette n'était PAS gardé par `readOnly` ("hors périmètre
+// de cette tâche") et s'en servait pour amener `canUndo` à vrai, afin de
+// prouver que Annuler/Rétablir/Ctrl+Z restent désactivés/inertes MÊME
+// quand `canUndo` l'est. Ce trou est désormais fermé (onDropOnCanvas garde
+// `readOnly` — cf. PipelineBuilderPage.tsx), donc `canUndo` ne peut plus
+// jamais devenir vrai en lecture seule : la prémisse du test a changé, il a
+// été réécrit en conséquence. `recordUse(op)` (PipelinePalette.tsx) reste
+// hors de ce garde par construction (c'est un historique de clics purement
+// local, jamais persisté dans le brouillon) — la palette affiche donc bien
+// une deuxième occurrence du texte de l'op ("Récemment utilisés"), mais
+// jamais les deux occurrences supplémentaires qu'un nœud réellement ajouté
+// produirait (titre + libellé d'op sur le canevas, cf. le test "unsaved
+// mode: clicking a palette entry adds a node to the canvas" plus haut, qui
+// prouve que 4 occurrences == nœud ajouté).
+test("persisted mode: lecture seule empêche l'ajout de nœud via la palette et garde Annuler/Rétablir désactivés (D55)", async () => {
   renderPage("p-1", {
     getItem: vi
       .fn()
@@ -1267,16 +1279,69 @@ test("persisted mode: lecture seule désactive Annuler/Rétablir et rend Ctrl+Z 
     getPipelineConfig: vi.fn().mockResolvedValue({ nodes: [], edges: [] }),
   });
   await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  expect(screen.getAllByText("reader.collection")).toHaveLength(1);
   await userEvent.click(screen.getByRole("button", { name: "reader.collection" }));
-  await waitFor(() => expect(screen.getAllByText("reader.collection").length).toBeGreaterThan(1));
-  // Dépasse la fenêtre de coalescing de 400ms (useUndoableDraft) pour que
-  // canUndo ait le temps de passer à vrai côté hook, sans dépendre du rendu
-  // du bouton Annuler (qui, lui, doit rester désactivé — ce que ce test
-  // vérifie).
+  // recordUse() seul fait passer le compte à 2 (palette + "Récemment
+  // utilisés") — jamais à 4, qui prouverait qu'un nœud a été ajouté au
+  // canevas malgré la lecture seule.
+  await waitFor(() => expect(screen.getAllByText("reader.collection")).toHaveLength(2));
+  // Dépasse la fenêtre de coalescing de 400ms (useUndoableDraft) : même
+  // après ce délai, canUndo reste faux puisqu'aucune mutation du brouillon
+  // n'a eu lieu.
   await new Promise((resolve) => setTimeout(resolve, 450));
+  expect(screen.getAllByText("reader.collection")).toHaveLength(2);
   expect(screen.getByRole("button", { name: "Annuler" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Rétablir" })).toBeDisabled();
-  const countBefore = screen.getAllByText("reader.collection").length;
   await userEvent.keyboard("{Control>}z{/Control}");
-  expect(screen.getAllByText("reader.collection")).toHaveLength(countBefore);
+  expect(screen.getAllByText("reader.collection")).toHaveLength(2);
+});
+
+// Revue finale Vague C (point 2, D55) : nouveaux points de mutation fermés
+// dans ce lot — root onDrop/onDropOnCanvas (ci-dessus, via la palette),
+// onInsertOnEdge, le bouton "Ajouter une zone", PipelineNodeInspector.onChange
+// et PipelineScheduleEditor sont désormais tous gardés par `readOnly`.
+test("persisted mode: lecture seule désactive le bouton Ajouter une zone (D55)", async () => {
+  renderPage("p-1", {
+    getItem: vi
+      .fn()
+      .mockResolvedValue({ ...OWNED_PIPELINE_ITEM, permissions: READ_ONLY_PERMISSIONS }),
+    getPipelineConfig: vi.fn().mockResolvedValue({ nodes: [], edges: [] }),
+  });
+  await waitFor(() => expect(screen.getByText("reader.collection")).toBeInTheDocument());
+  const addNoteButton = screen.getByRole("button", { name: "Ajouter une zone" });
+  expect(addNoteButton).toBeDisabled();
+  await userEvent.click(addNoteButton);
+  expect(screen.queryByLabelText("Étiquette de la zone")).not.toBeInTheDocument();
+});
+
+// Revue finale Vague C (point 2, D55) : PipelineNodeInspector reçoit
+// désormais `readOnly` — ses contrôles doivent être désactivés, pas
+// seulement leur `onChange` neutralisé côté PipelineBuilderPage
+// (updateSelectedNodeParams), sans quoi un champ resterait visuellement
+// modifiable pour un utilisateur en lecture seule (illusion silencieuse).
+test("persisted mode: lecture seule désactive les paramètres du nœud sélectionné (D55)", async () => {
+  renderPage("p-1", {
+    getItem: vi
+      .fn()
+      .mockResolvedValue({ ...OWNED_PIPELINE_ITEM, permissions: READ_ONLY_PERMISSIONS }),
+    getPipelineConfig: vi.fn().mockResolvedValue(TWO_NODE_PAYLOAD),
+  });
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  fireEvent.click(screen.getByText("Villes"));
+  await waitFor(() => expect(screen.getByText("Nœud sélectionné")).toBeInTheDocument());
+  expect(screen.getByLabelText("collectionId")).toBeDisabled();
+});
+
+// Revue finale Vague C (point 2, D55) : PipelineScheduleEditor reçoit
+// désormais `readOnly` — la case "Planification automatique" doit rester
+// désactivée pour un utilisateur en lecture seule.
+test("persisted mode: lecture seule désactive la case de planification automatique (D55)", async () => {
+  renderPage("p-1", {
+    getItem: vi
+      .fn()
+      .mockResolvedValue({ ...OWNED_PIPELINE_ITEM, permissions: READ_ONLY_PERMISSIONS }),
+    getPipelineConfig: vi.fn().mockResolvedValue(TWO_NODE_PAYLOAD),
+  });
+  await waitFor(() => expect(screen.getByText("Villes")).toBeInTheDocument());
+  expect(screen.getByLabelText("Planification automatique")).toBeDisabled();
 });

@@ -14,11 +14,18 @@ export function SecretParamSelect({
   onChange,
   ariaLabel,
   kindFilter,
+  disabled,
 }: {
   value: string;
   onChange: (name: string) => void;
   ariaLabel: string;
   kindFilter?: SecretPayload["kind"];
+  // Revue finale Vague C (point 2, D55) : PipelineNodeInspector propage
+  // `readOnly` jusqu'ici. Désactive aussi la création/suppression de secret
+  // depuis cet inspecteur (pas seulement la sélection de valeur) — une
+  // mutation globale de secret déclenchée depuis un pipeline en lecture
+  // seule serait tout aussi surprenante que muter le nœud lui-même.
+  disabled?: boolean;
 }) {
   const secretsQuery = useListSecrets();
   const createSecret = useCreateSecret();
@@ -34,6 +41,7 @@ export function SecretParamSelect({
         className="h-9 rounded-md border border-rule bg-surface px-2 text-sm text-ink"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
       >
         <option value="">{t("secretParamSelect.choose")}</option>
         {options.map((s) => (
@@ -42,27 +50,31 @@ export function SecretParamSelect({
           </option>
         ))}
       </select>
-      <ul className="flex flex-col gap-1">
-        {options.map((s) => (
-          <li key={s.id} className="flex items-center justify-between gap-2 text-xs text-ink-2">
-            <span>{s.name}</span>
-            <button
-              type="button"
-              className="text-danger hover:underline"
-              onClick={() => setPendingDeleteId(s.id)}
-            >
-              {t("secretParamSelect.deleteButton", { name: s.name })}
-            </button>
-          </li>
-        ))}
-      </ul>
-      <button
-        type="button"
-        className="w-fit text-xs text-accent hover:underline"
-        onClick={() => setCreating(true)}
-      >
-        {t("secretParamSelect.createSecretButton")}
-      </button>
+      {!disabled && (
+        <>
+          <ul className="flex flex-col gap-1">
+            {options.map((s) => (
+              <li key={s.id} className="flex items-center justify-between gap-2 text-xs text-ink-2">
+                <span>{s.name}</span>
+                <button
+                  type="button"
+                  className="text-danger hover:underline"
+                  onClick={() => setPendingDeleteId(s.id)}
+                >
+                  {t("secretParamSelect.deleteButton", { name: s.name })}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="w-fit text-xs text-accent hover:underline"
+            onClick={() => setCreating(true)}
+          >
+            {t("secretParamSelect.createSecretButton")}
+          </button>
+        </>
+      )}
       {creating && (
         <SecretCreateForm
           kindFilter={kindFilter}
