@@ -5,14 +5,20 @@ Spec : `docs/superpowers/specs/2026-09-29-audit-multi-agents-design.md`. Plan va
 ## Pré-requis (une fois)
 
 1. `docker compose up -d` : 11 services healthy ; `docker inspect geostudio-worker-1 --format '{{.RestartCount}}'` stable.
-2. `scripts/audit/seed-personas.sh`, puis `stack-reset.sh snapshot` (voir Task 5 du plan).
+2. Bootstrap des personas et snapshot de référence (exécuté **une seule fois** au début de la vague 2) :
+   - `scripts/audit/stack-reset.sh snapshot` (créer le snapshot de base ; échoue sur machine vierge avec « aucun snapshot », c'est normal)
+   - `scripts/audit/seed-personas.sh` (crée les 4 personas Keycloak)
+   - `scripts/audit/stack-reset.sh reset --auth oidc` (reset avec OIDC prêt)
+   - Premier login de chaque persona pour initialiser les sessions
+   - `scripts/audit/seed-personas.sh --set-roles` (assigne les rôles aux personas)
+   - `scripts/audit/stack-reset.sh snapshot` (sauvegarde définitive)
 3. `cd core && PYTHONPATH=. uv run python scripts/audit_prompts.py render --out ../docs/revue/audit-2026-09-29/prompts`.
 
 ## Pré-requis techniques (Chromium cross-origin)
 
 Chromium se lance avec `--disable-web-security` car le shell (:8300) appelle le cœur (:8200) sans CORS.
-Cela figure dans les prompts rendus (ENV_BY_MODE). Vérifier dans les specs Playwright que l'option
-est bien appliquée lors du lancement du navigateur.
+L'option est déjà configurée dans le fichier partagé `shell/playwright.journeys.config.ts` (clé `launchOptions.args`).
+Les agents ne doivent **jamais** surcharger cette option dans leurs specs.
 
 ## Ordre d'exécution
 
@@ -30,18 +36,10 @@ Playwright (2, 3) sont strictement séquentiels.
 ## Cycle d'un agent Playwright (A/B)
 
 1. `scripts/audit/stack-reset.sh reset --auth <mode de l'agent>`
-2. Pour agents oidc : la snapshot doit inclure les personas avec rôles. Exécuter une seule fois par session :
-   - `scripts/audit/seed-personas.sh` → crée les personas
-   - `scripts/audit/stack-reset.sh snapshot` → sauvegarde l'état
-   - `scripts/audit/stack-reset.sh reset --auth oidc` → reset avec OIDC prêt
-   - Premier login de chaque persona pour initialiser les sessions
-   - `scripts/audit/seed-personas.sh --set-roles` → assigne les rôles
-   - `scripts/audit/stack-reset.sh snapshot` → sauvegarde définitive
-   - Snapshot à `.audit-snapshot` est valide.
-3. Worktree éphémère : branche `audit/<id>` (voir `superpowers:using-git-worktrees`).
-4. Dispatcher l'agent avec `docs/revue/audit-2026-09-29/prompts/<id>.md`.
-5. À la fin : `cd core && PYTHONPATH=. uv run python scripts/audit_findings.py validate ../docs/revue/audit-2026-09-29/<id> --repo-root ..` ; si rouge, renvoyer l'erreur à l'agent.
-6. Fusionner la branche dans `dev`, supprimer le worktree et la branche.
+2. Worktree éphémère : branche `audit/<id>` (voir `superpowers:using-git-worktrees`).
+3. Dispatcher l'agent avec `docs/revue/audit-2026-09-29/prompts/<id>.md`.
+4. À la fin : `cd core && PYTHONPATH=. uv run python scripts/audit_findings.py validate ../docs/revue/audit-2026-09-29/<id> --repo-root ..` ; si rouge, renvoyer l'erreur à l'agent.
+5. Fusionner la branche dans `dev`, supprimer le worktree et la branche.
 
 ## Après la vague 3
 

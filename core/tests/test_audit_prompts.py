@@ -69,3 +69,22 @@ def test_env_block_matches_mode(agents: list[dict]) -> None:
 def test_cli_renders_one_file_per_agent(tmp_path: Path) -> None:
     assert ap.main(["render", "--out", str(tmp_path)]) == 0
     assert len(list(tmp_path.glob("*.md"))) == 29
+
+
+def test_committed_prompts_are_in_sync_with_generator(agents: list[dict]) -> None:
+    """Verify that each committed prompt file matches the current generator output."""
+    template = TEMPLATE.read_text(encoding="utf-8")
+    prompts_dir = REPO / "docs/revue/audit-2026-09-29/prompts"
+
+    for agent in agents:
+        prompt_file = prompts_dir / f"{agent['id']}.md"
+        assert prompt_file.exists(), f"Missing prompt file: {prompt_file}"
+
+        committed_content = prompt_file.read_text(encoding="utf-8")
+        rendered_content = ap.render_prompt(agent, template)
+
+        assert committed_content == rendered_content, (
+            f"Prompt {agent['id']} is out of sync. "
+            f"Run: cd core && PYTHONPATH=. uv run python scripts/audit_prompts.py render "
+            f"--out ../docs/revue/audit-2026-09-29/prompts"
+        )
