@@ -16,9 +16,13 @@ B=geostudio-uploads
 
 psql_q() { docker compose exec -T -e PGPASSWORD="$PG_PASSWORD" postgis psql -h localhost -U gis -d gis -tAc "$1" 2>/dev/null; }
 mc_q() {
-  docker run --rm --network "$NET" -e U="$MINIO_USER" -e P="$MINIO_PASSWORD" --entrypoint sh minio/mc -c \
+  docker run --rm --network "$NET" --user "$(id -u):$(id -g)" -e MC_CONFIG_DIR=/tmp/mc -e U="$MINIO_USER" -e P="$MINIO_PASSWORD" --entrypoint sh minio/mc -c \
     "mc alias set l http://minio:9000 \"\$U\" \"\$P\" >/dev/null && $1"
 }
+
+# nettoyage AVANT le snapshot (reprise après un run interrompu)
+psql_q "DROP TABLE IF EXISTS audit_reset_marker" >/dev/null
+mc_q "mc rm --force l/$B/audit-reset-marker.txt" >/dev/null 2>&1 || true
 
 scripts/audit/stack-reset.sh snapshot
 
@@ -34,6 +38,7 @@ scripts/audit/stack-reset.sh reset --auth mock
 if mc_q "mc stat l/$B/audit-reset-marker.txt" >/dev/null 2>&1; then
   echo "FAIL: le marqueur MinIO a survécu au reset"; exit 1
 fi
+mc_q "mc ls l/$B" >/dev/null || { echo "FAIL: bucket $B illisible après reset (restauration MinIO cassée)"; exit 1; }
 [ "$(docker inspect "$(docker compose ps -q worker)" --format '{{.RestartCount}}')" -le 1 ] \
   || echo "AVERTISSEMENT: worker redémarré plusieurs fois après reset (vérifier Task 1)"
 echo "OK: reset restaure Postgres et MinIO, stack healthy"
