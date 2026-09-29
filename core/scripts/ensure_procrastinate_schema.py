@@ -17,6 +17,8 @@ import procrastinate
 from sqlalchemy import create_engine
 from sqlalchemy import inspect as sa_inspect
 
+from app.jobs import CONNECTION_KWARGS
+
 
 def schema_is_applied(conninfo: str) -> bool:
     engine = create_engine(conninfo)
@@ -31,7 +33,11 @@ def main() -> None:
     if schema_is_applied(database_url):
         print("procrastinate: schéma déjà appliqué, rien à faire.")
         return
-    app = procrastinate.App(connector=procrastinate.PsycopgConnector(conninfo=database_url))
+    app = procrastinate.App(
+        connector=procrastinate.PsycopgConnector(
+            conninfo=database_url, kwargs=dict(CONNECTION_KWARGS)
+        )
+    )
     with app.open():
         app.schema_manager.apply_schema()
     print("procrastinate: schéma appliqué.")

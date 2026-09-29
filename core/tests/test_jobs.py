@@ -68,3 +68,15 @@ def test_import_paths_registers_all_domain_tasks():
     assert "app.cdc.jobs.run_compaction_cycle_task" in task_names
     assert "app.harvest.jobs.run_harvest_task" in task_names
     assert "app.security.jobs.refresh_csp_dynamic_conf_task" in task_names
+
+
+def test_procrastinate_connector_disables_psycopg_autoprepare():
+    """Le worker tourne derrière PgBouncer en POOL_MODE=transaction : sans
+    prepare_threshold=None, psycopg3 nomme des statements côté serveur
+    (`_pg3_N`) qui entrent en collision d'un backend à l'autre
+    (DuplicatePreparedStatement) — observé le 2026-09-29 : 26 redémarrages
+    du service worker, un toutes les 1-2 minutes. Même correctif que
+    app/db.py pour le moteur SQLAlchemy."""
+    assert jobs.CONNECTION_KWARGS == {"prepare_threshold": None}
+    pool_args = jobs.app.connector._pool_args  # type: ignore[attr-defined]
+    assert pool_args["kwargs"] == {"prepare_threshold": None}
