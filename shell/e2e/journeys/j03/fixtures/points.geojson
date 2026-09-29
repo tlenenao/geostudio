@@ -1,0 +1,65 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "nom": "P0", "cat": "a", "val": 0, "pop": 0.0 },
+      "geometry": { "type": "Point", "coordinates": [2.0, 46.0] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "nom": "P1", "cat": "b", "val": 10, "pop": 1000.5 },
+      "geometry": { "type": "Point", "coordinates": [2.1, 46.05] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "nom": "P2", "cat": "c", "val": 20, "pop": 2001.0 },
+      "geometry": { "type": "Point", "coordinates": [2.2, 46.1] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "nom": "P3", "cat": "a", "val": 30, "pop": 3001.5 },
+      "geometry": { "type": "Point", "coordinates": [2.3, 46.15] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "nom": "P4", "cat": "b", "val": 40, "pop": 4002.0 },
+      "geometry": { "type": "Point", "coordinates": [2.4, 46.2] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "nom": "P5", "cat": "c", "val": 50, "pop": 5002.5 },
+      "geometry": { "type": "Point", "coordinates": [2.5, 46.25] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "nom": "P6", "cat": "a", "val": 60, "pop": 6003.0 },
+      "geometry": { "type": "Point", "coordinates": [2.6, 46.3] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "nom": "P7", "cat": "b", "val": 70, "pop": 7003.5 },
+      "geometry": { "type": "Point", "coordinates": [2.7, 46.35] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "nom": "P8", "cat": "c", "val": 80, "pop": 8004.0 },
+      "geometry": { "type": "Point", "coordinates": [2.8, 46.4] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "nom": "P9", "cat": "a", "val": 90, "pop": 9004.5 },
+      "geometry": { "type": "Point", "coordinates": [2.9, 46.45] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "nom": "P10", "cat": "b", "val": 100, "pop": 10005.0 },
+      "geometry": { "type": "Point", "coordinates": [3.0, 46.5] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "nom": "P11", "cat": "c", "val": 110, "pop": 11005.5 },
+      "geometry": { "type": "Point", "coordinates": [3.1, 46.55] }
+    }
+  ]
+}
