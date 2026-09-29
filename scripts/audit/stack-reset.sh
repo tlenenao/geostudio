@@ -82,6 +82,12 @@ cmd_reset() {
     || { echo "[audit] alembic_version absent après restauration" >&2; exit 1; }
   [ "${ver:-0}" -ge 1 ] || { echo "[audit] alembic_version vide après restauration" >&2; exit 1; }
   echo "[audit] pg_restore OK (alembic_version: $ver ligne)"
+  # Le dump restaure `REVOKE USAGE ON SCHEMA public FROM PUBLIC` : les rôles
+  # gis_rls/gis_rls_masked perdent alors l'accès au schéma et toute lecture RLS
+  # répond 500 (« permission denied for schema public », trouvé par j01-004,
+  # confirmé : 500 avant, 200 après le GRANT). Rétabli ici pour l'audit.
+  psql_admin "GRANT USAGE ON SCHEMA public TO PUBLIC" >/dev/null \
+    || { echo "[audit] échec du GRANT USAGE sur public" >&2; exit 1; }
   for b in "${BUCKETS[@]}"; do
     [ -d "$SNAP/minio/$b" ] || continue
     mc_run "mc mb --ignore-existing l/$b >/dev/null && mc mirror --overwrite --remove --quiet /snap/$b l/$b"
