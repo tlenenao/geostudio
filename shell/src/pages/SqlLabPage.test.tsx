@@ -293,6 +293,101 @@ test("propose les colonnes de la collection référencée dans la requête", asy
   await waitFor(() => expect(fetchedSchemaIds.has("parcs")).toBe(true));
 });
 
+// Revue finale Vague C (point 7) : le `Promise.all` de l'effet
+// d'autocomplétion (D54b) perdait TOUT le lot dès qu'une seule collection
+// référencée échouait — aucun `.catch()`. Pire, l'id en échec ne rentrait
+// jamais dans `schemaByCollection` : à la frappe suivante, il était
+// reconsidéré "jamais tenté" et refetché en boucle. Ce test référence 2
+// collections dans le SQL, l'une dont le schéma répond en erreur : vérifie
+// que (a) l'autre continue de charger normalement et (b) la collection en
+// échec n'est interrogée qu'une seule fois malgré 2 frappes supplémentaires
+// après le premier échec (pas de boucle de re-fetch).
+test("un échec de schéma sur une collection référencée n'empêche pas les autres de charger, et ne boucle pas (point 7)", async () => {
+  let parcsFetchCount = 0;
+  let batimentsFetchCount = 0;
+  server.use(
+    http.get("https://core.test/v1/collections", () =>
+      HttpResponse.json({
+        collections: [
+          {
+            id: "parcs",
+            title: "Parcs urbains",
+            description: "",
+            tableName: "parcs",
+            isPublic: false,
+            editable: true,
+            geometryType: "Point",
+            srid: 4326,
+            pkColumn: "id",
+            permissions: { read: true, write: true, delete: true, share: true },
+            featureCount: 3,
+            owner: "alice",
+            attachmentFields: [],
+          },
+          {
+            id: "batiments",
+            title: "Bâtiments",
+            description: "",
+            tableName: "batiments",
+            isPublic: false,
+            editable: true,
+            geometryType: "Polygon",
+            srid: 4326,
+            pkColumn: "id",
+            permissions: { read: true, write: true, delete: true, share: true },
+            featureCount: 1,
+            owner: "alice",
+            attachmentFields: [],
+          },
+        ],
+        numberMatched: 2,
+        numberReturned: 2,
+      }),
+    ),
+    http.get("https://core.test/v1/collections/parcs/schema", () => {
+      parcsFetchCount += 1;
+      return HttpResponse.json({
+        collection: "parcs",
+        pk: "id",
+        geometry: { column: "geom", type: "Point", srid: 4326 },
+        fields: [{ name: "nom", type: "text", required: true }],
+      });
+    }),
+    http.get("https://core.test/v1/collections/batiments/schema", () => {
+      batimentsFetchCount += 1;
+      return HttpResponse.json({ detail: "erreur serveur" }, { status: 500 });
+    }),
+  );
+  const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  render(<Harness />);
+  const editor = await screen.findByRole("textbox", { name: "Requête SQL" });
+  await userEvent.type(editor, "select nom from parcs join batiments");
+  // La collection saine a bien fini par être interrogée malgré l'échec de
+  // l'autre dans le même lot (au moins une fois — la frappe caractère par
+  // caractère peut légitimement déclencher plus d'une tentative concurrente
+  // avant que l'état ne se stabilise, hors périmètre de ce correctif).
+  await waitFor(() => expect(parcsFetchCount).toBeGreaterThanOrEqual(1));
+  await waitFor(() => expect(batimentsFetchCount).toBeGreaterThanOrEqual(1));
+  await waitFor(() =>
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("batiments"), expect.anything()),
+  );
+  // Snapshot une fois l'état stabilisé (aucune requête en vol restante) :
+  // deux frappes de plus ne doivent PLUS jamais rappeler ces schémas, ni la
+  // collection saine (déjà connue) ni celle en échec (dont l'échec est
+  // désormais mémorisé) — si le correctif n'était pas là, "batiments"
+  // (jamais entré dans schemaByCollection) serait reconsidérée "jamais
+  // tentée" et refetchée à chaque frappe.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const settledParcsCount = parcsFetchCount;
+  const settledBatimentsCount = batimentsFetchCount;
+  await userEvent.type(editor, " x");
+  await userEvent.type(editor, "y");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(parcsFetchCount).toBe(settledParcsCount);
+  expect(batimentsFetchCount).toBe(settledBatimentsCount);
+  warnSpy.mockRestore();
+});
+
 test("affiche le panneau copilote et insère le brouillon SQL généré sans l'exécuter", async () => {
   let executed = false;
   server.use(

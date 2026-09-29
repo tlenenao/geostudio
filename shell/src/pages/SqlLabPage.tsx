@@ -74,17 +74,42 @@ export function SqlLabPage() {
     let cancelled = false;
     // `void` : patron déjà suivi par LayersPanel.tsx pour un effet
     // fire-and-forget (contrainte @typescript-eslint/no-floating-promises).
-    void Promise.all(
+    //
+    // Revue finale Vague C (point 7) : `Promise.all` faisait perdre TOUT le
+    // lot dès qu'une seule collection référencée échouait à résoudre son
+    // schéma (id périmé, droit de lecture retiré entre-temps…) — aucune
+    // `.catch()`, la promesse rejetait, `setSchemaByCollection` n'était
+    // jamais appelé, pas même pour les collections qui avaient réussi. Pire :
+    // comme l'id en échec n'entrait jamais dans `schemaByCollection`, la
+    // condition `!(id in schemaByCollection)` ci-dessus le considérait
+    // encore "jamais tenté" à l'effet suivant — chaque frappe relançait un
+    // nouveau fetch voué au même échec, en boucle. `Promise.allSettled`
+    // laisse les succès entrer dans l'état ; un échec est mémorisé avec un
+    // schéma vide (`[]`, jamais pire qu'aucune autocomplétion) pour sortir
+    // définitivement de la liste des ids "à essayer" et casser la boucle,
+    // et journalisé individuellement (mêmes conventions que labelSource.ts/
+    // MapView.tsx pour un échec de fond non bloquant).
+    void Promise.allSettled(
       referenced.map((id) =>
         client.getCollectionSchema(id).then((schema) => [id, schema] as const),
       ),
-    ).then((pairs) => {
+    ).then((results) => {
       if (cancelled) return;
       setSchemaByCollection((prev) => {
         const next = { ...prev };
-        for (const [id, schema] of pairs) {
-          next[id] = schema.fields.map((f) => f.name);
-        }
+        results.forEach((outcome, i) => {
+          const id = referenced[i];
+          if (outcome.status === "fulfilled") {
+            const [, schema] = outcome.value;
+            next[id] = schema.fields.map((f) => f.name);
+          } else {
+            console.warn(
+              `SqlLabPage: échec de récupération du schéma de la collection "${id}" (autocomplétion désactivée pour elle)`,
+              outcome.reason,
+            );
+            next[id] = [];
+          }
+        });
         return next;
       });
     });
