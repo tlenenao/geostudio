@@ -97,7 +97,10 @@ def test_quality_facts_read_the_real_repository():
     assert "app/auth" in facts.mypy_strict_modules
     assert len(facts.mypy_strict_modules) == 6
     assert any("->" in exemption for exemption in facts.layer_exemptions)
-    assert len(facts.eslint_disabled) == 13
+    # 15 depuis la Vague C (revue finale, point 1) : MapPopup.tsx (Tâche 2)
+    # et SqlLabPage.tsx (Tâche 26) ajoutent chacun un eslint-disable
+    # légitime, portant le compte réel de 13 à 15. Ferme REV-255.
+    assert len(facts.eslint_disabled) == 15
     assert len(facts.typing_escapes) == 7
 
 
