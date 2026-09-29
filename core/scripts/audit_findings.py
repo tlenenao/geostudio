@@ -131,7 +131,10 @@ def validate_lines(text: str, agent_id: str, repo_root: Path) -> list[str]:
             errors.append(f"ligne {n}: id dupliqué {finding.id}")
         seen.add(finding.id)
         for loc in finding.locations:
-            target = repo_root / loc.file
+            target = (repo_root / loc.file).resolve()
+            if not target.is_relative_to(repo_root.resolve()):
+                errors.append(f"ligne {n}: chemin hors du dépôt {loc.file}")
+                continue
             if not target.is_file():
                 errors.append(f"ligne {n}: fichier introuvable {loc.file}")
                 continue
@@ -180,6 +183,10 @@ def dedup(agent_dirs: list[Path]) -> list[dict[str, object]]:
         out: dict[str, Any] = winner.model_dump()
         out["merged_from"] = sorted(m.id for m in rest)
         out["agents"] = sorted({agent_of(m.id) for m in members})
+        out["merged_details"] = [
+            {"id": m.id, "observed": m.observed, "proposed_fix": m.proposed_fix}
+            for m in sorted(rest, key=lambda m: m.id)
+        ]
         merged.append(out)
     merged.sort(key=lambda o: (SEVERITY_ORDER[o["severity"]], o["id"]))
     return merged
@@ -200,12 +207,18 @@ def _cmd_validate(dirs: list[Path], repo_root: Path) -> int:
 
 
 def _cmd_dedup(root: Path, out: Path, repo_root: Path) -> int:
-    dirs = sorted(p for p in root.iterdir() if (p / "findings.jsonl").is_file())
+    subdirs = [p for p in root.iterdir() if p.is_dir() and p.name != "prompts"]
+    missing = sorted(p.name for p in subdirs if not (p / "findings.jsonl").is_file())
+    if missing:
+        print(f"dedup refusé : findings.jsonl manquant pour {', '.join(missing)}")
+        return 1
+    dirs = sorted(subdirs)
     if _cmd_validate(dirs, repo_root) != 0:
         print("dedup refusé : corriger d'abord les rapports non conformes")
         return 1
     merged = dedup(dirs)
-    out.write_text("\n".join(json.dumps(o, ensure_ascii=False) for o in merged) + "\n")
+    body = "\n".join(json.dumps(o, ensure_ascii=False) for o in merged)
+    out.write_text(body + "\n" if merged else "")
     print(f"{len(merged)} finding(s) après dédoublonnage → {out}")
     return 0
 

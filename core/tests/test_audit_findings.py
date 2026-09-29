@@ -156,3 +156,56 @@ def test_cli_dedup_writes_jsonl(repo: Path) -> None:
     out = repo / "merged.jsonl"
     assert af.main(["dedup", str(repo / "out"), "--out", str(out), "--repo-root", str(repo)]) == 0
     assert json.loads(out.read_text().splitlines()[0])["id"] == "j03-001"
+
+
+def test_dedup_merged_member_content_survives(repo: Path) -> None:
+    a = _agent_dir(repo, "j03", make(id="j03-001", observed="texte perdu ?", proposed_fix="fix A"))
+    b = _agent_dir(repo, "t01", make(id="t01-001", severity="S1", journey="transverse"))
+    merged = af.dedup([a, b])
+    assert merged[0]["merged_details"] == [
+        {"id": "j03-001", "observed": "texte perdu ?", "proposed_fix": "fix A"}
+    ]
+
+
+def test_dedup_key_without_location_uses_journey_and_observed(repo: Path) -> None:
+    feat = {"kind": "feature", "locations": [], "confidence": "probable"}
+    feat["evidence"] = {"type": "code-read", "ref": "x"}
+    a = _agent_dir(repo, "j03", make(id="j03-001", observed="Manque X", **feat))
+    b = _agent_dir(repo, "j04", make(id="j04-001", observed=" manque x ", **feat))
+    c = _agent_dir(repo, "j05", make(id="j05-001", observed="autre chose", **feat))
+    assert len(af.dedup([a, b])) == 1
+    assert len(af.dedup([a, c])) == 2
+    other_journey = _agent_dir(
+        repo, "j06", make(id="j06-001", observed="Manque X", journey="z", **feat)
+    )
+    assert len(af.dedup([a, other_journey])) == 2
+
+
+def test_location_path_escape_rejected(
+    repo: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    outside = tmp_path_factory.mktemp("outside") / "secret.txt"
+    outside.write_text("a\nb\nc\n")
+    for bad in (str(outside), "../" + outside.parent.name + "/secret.txt", "src/../../x"):
+        loc = [{"file": bad, "line_start": 1, "line_end": 1, "symbol": "f"}]
+        errs = af.validate_lines(lines(make(locations=loc)), "j03", repo / "src")
+        assert any("hors du dépôt" in e for e in errs), bad
+
+
+def test_dedup_zero_findings_writes_empty_file(repo: Path) -> None:
+    _agent_dir(repo, "j03")
+    out = repo / "merged.jsonl"
+    assert af.main(["dedup", str(repo / "out"), "--out", str(out), "--repo-root", str(repo)]) == 0
+    assert out.read_text() == ""
+
+
+def test_dedup_fails_when_an_agent_dir_has_no_findings(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _agent_dir(repo, "j03", make())
+    (repo / "out" / "j04").mkdir()
+    (repo / "out" / "prompts").mkdir()
+    out = repo / "merged.jsonl"
+    assert af.main(["dedup", str(repo / "out"), "--out", str(out), "--repo-root", str(repo)]) == 1
+    assert "j04" in capsys.readouterr().out
+    assert not out.exists()
