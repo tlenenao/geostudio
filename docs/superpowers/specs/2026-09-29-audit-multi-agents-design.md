@@ -23,7 +23,7 @@ Entrée « déjà connu » : `docs/revue/2026-09-29-audit-pre-release.md` (audit
 
 ## 3. Format commun
 
-Par agent : `findings.jsonl` (une ligne = un finding) et `resume.md` (périmètre couvert/non couvert, méthode). Validateur : `scripts/audit/validate_findings.py`, rejette tout fichier non conforme ; l'agent corrige avant de terminer.
+Par agent : `findings.jsonl` (une ligne = un finding) et `resume.md` (périmètre couvert/non couvert, méthode). Validateur : `core/scripts/audit_findings.py`, rejette tout fichier non conforme ; l'agent corrige avant de terminer.
 
 | Champ | Valeurs / contenu |
 |---|---|
@@ -58,19 +58,24 @@ Le validateur dédoublonne par `(file, symbol)` et fusionne les recoupements.
 
 ## 5. Exécution sur stack réelle
 
-- Nouveau `shell/playwright.journeys.config.ts` : baseURL `http://localhost:8300`, `workers: 3`, pas de mock réseau. La suite mockée actuelle (166 tests) reste intacte.
-- **Un tenant par agent** : fixture partagée `shell/e2e/journeys/_fixtures/tenant.ts` qui crée tenant + utilisateurs par rôle, et purge via `purge_tenant` en teardown. Auth OIDC réel (Keycloak) pour les parcours de rôles (admin, partage, permissions) ; `CORE_AUTH_MODE=mock` (dev seulement) ailleurs.
-- **Plafond 3 agents Playwright en parallèle** (RAM ~12 Go, Chromium). Agents C en parallèle sans limite pratique.
-- **Injection de fautes** (500, réseau coupé, quota, `docker stop` ciblé) dans un projet Playwright séparé, en série.
-- **Isolation git** : agents A/B sur branche `audit/<agent-id>` en worktree éphémère (supprimé dès fusion, règle CLAUDE.md) ; ledgers nommés `.superpowers/sdd/audit-*`.
+**Amendement du 2026-09-29 (vérification du code réel, piège n°3)** : l'isolation « un tenant par agent » est impossible ici. `get_or_create_default_tenant` (core/app/tenants/repository.py) n'expose qu'un tenant `default` ; aucune route n'en crée ; `purge_tenant` sur `default` effacerait toute l'instance. Décision de Tanguy : **agents Playwright séquentiels, reset de base entre chaque agent**.
+
+- Nouveau `shell/playwright.journeys.config.ts` : baseURL `http://localhost:8300`, `workers: 1`, `fullyParallel: false`, pas de mock réseau. La suite mockée actuelle (166 tests) reste intacte.
+- **Reset** (`scripts/audit/stack-reset.sh`) : snapshot `pg_dump -Fc` de la base `gis` (qui contient aussi Keycloak) + miroir des 7 buckets MinIO ; `reset` arrête core/worker/cdc-worker/keycloak/shell, restaure (même voie que `deploy/backup/restore.sh`, SP-59), redémarre. Un agent A/B = un cycle reset → parcours → rapport.
+- **Deux modes d'auth** sans rebuild (env runtime du shell, `VITE_AUTH_MODE`) : `mock` (utilisateur admin unique `mockuser`) et `oidc` (Keycloak : `alice`, `bob`, plus les personas de rôle semées par `seed-personas.sh`).
+- **Agents A/B séquentiels ; agents C (lecture seule) et D en parallèle** de ce fil, sans toucher à la stack.
+- **Injection de fautes** (500, réseau coupé, quota, `docker stop` ciblé) : projet Playwright séparé, agent résilience seulement.
+- **Isolation git** : agents A/B sur branche `audit/<agent-id>` en worktree éphémère (supprimé dès fusion) ; ledgers `.superpowers/sdd/audit-*`.
 - **Sort des tests** : passe → suite de régression `e2e/journeys/` ; révèle un bug → `test.fixme` + ID du finding ; instable → `@audit-flaky`.
 
 ## 6. Vague 0 (avant tout lancement d'agent)
 
-1. Diagnostic du `worker` (redémarré ~1 min avant relevé, cf. notes SP-10b) : stable, sinon parcours import/pipeline faussés.
-2. `scripts/audit/validate_findings.py` + schéma JSON + tests.
-3. `playwright.journeys.config.ts` + fixture tenant + un parcours témoin qui prouve le cycle création/purge.
-4. Gabarit de prompt commun (format, règles de preuve, périmètre, interdiction d'écrire hors dossiers) ; 1 prompt par agent, **présentés à Tanguy avant lancement**.
+1. Worker : `prepared statement "_pg3_0" already exists` toutes les 1-2 min (26 redémarrages relevés), corrigé en premier.
+2. `core/scripts/audit_findings.py` (validateur + dédoublonnage) + tests.
+3. `scripts/audit/stack-reset.sh` (snapshot/reset) + preuve par marqueur.
+4. `playwright.journeys.config.ts` + fixtures + parcours témoin.
+5. Personas Keycloak par rôle (`seed-personas.sh`).
+6. Gabarit de prompt + `agents.yml` + générateur ; prompts rendus **présentés à Tanguy avant lancement**.
 
 ## 7. Consolidation
 
@@ -78,7 +83,7 @@ Le validateur dédoublonne par `(file, symbol)` et fusionne les recoupements.
 
 ## 8. Risques
 
-- Stack partagée : collisions malgré les tenants (tables globales, `alembic_version`) → les agents signalent, ne « corrigent » pas l'environnement.
+- Reset de base : le slot de réplication logique du cdc-worker peut se désynchroniser après restauration → cdc-worker arrêté pendant le reset, vérifié par la preuve par marqueur.
 - Worker instable → traité en vague 0.
 - Volume de findings : budget de tests par agent, pas de plafond de findings ; dédoublonnage par script.
 - Coût : ~27 agents + vérificateur ; lancement par vagues, arrêt possible entre vagues.
