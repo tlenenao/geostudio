@@ -11,6 +11,12 @@ export default defineConfig({
     baseURL: process.env.SHELL_URL ?? "http://localhost:8300",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
+    // Le shell (:8300) appelle le cœur (:8200) en cross-origin, or le cœur n'a
+    // aucun middleware CORS pour l'API générale (le déploiement réel passe par
+    // Traefik en same-origin sous /api, indisponible sur localhost). On coupe
+    // donc la sécurité web de Chromium pour ces parcours d'audit, plutôt que
+    // de simuler du CORS par page.route.
+    launchOptions: { args: ["--disable-web-security"] },
   },
   workers: 1,
   fullyParallel: false,

@@ -20,8 +20,18 @@ export async function loginOidc(page: Page, persona: PersonaName): Promise<void>
   await page.waitForURL(/\/realms\/geostudio\/protocol\/openid-connect\/auth/);
   await page.fill('input[name="username"]', username);
   await page.fill('input[name="password"]', password);
+  // Le waiter est enregistré avant la soumission : un login qui atteint le
+  // shell sans atteindre le cœur doit échouer bruyamment.
+  const me = page.waitForResponse(
+    (r) => r.url() === `${CORE_URL}/v1/me` && r.request().method() === "GET" && r.ok(),
+    { timeout: 30_000 },
+  );
   await page.click('input[type="submit"], button[type="submit"]');
-  await page.waitForURL(`${SHELL_URL}/**`);
+  // Retour sur l'origine du shell (jamais une URL Keycloak). Le shell garde
+  // ?code=&state= dans l'URL après l'échange : on ne les exclut donc pas, la
+  // preuve que le callback a abouti est la réponse 2xx de /v1/me ci-dessous.
+  await page.waitForURL((url) => url.origin === new URL(SHELL_URL).origin);
+  await me;
 }
 
 // Préfixe unique pour tout objet qu'un agent crée (traçabilité dans les logs

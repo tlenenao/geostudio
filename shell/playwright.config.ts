@@ -14,7 +14,7 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testIgnore: [/map-touch\.spec\.ts/, /journeys\//],
+      testIgnore: [/map-touch\.spec\.ts/, /e2e\/journeys\//],
     },
     {
       name: "mobile-touch",

@@ -8,8 +8,15 @@ test.describe("témoin stack réelle (auth mock)", () => {
     const health = await request.get(`${CORE_URL}/health`);
     expect(health.ok()).toBeTruthy();
 
+    // Anti faux positif : le cœur doit répondre 2xx sur /v1/ et la bannière de
+    // perte de connexion ne doit pas apparaître.
+    const coreOk = page.waitForResponse((r) => r.url().startsWith(`${CORE_URL}/v1/`) && r.ok(), {
+      timeout: 15_000,
+    });
     await page.goto("/");
+    await coreOk;
     await expect(page.getByText(/catalogue|catalog/i).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Connexion au serveur perdue")).not.toBeVisible();
   });
 
   test("aucune requête réseau n'est interceptée (pas de mock)", async ({ page }) => {
