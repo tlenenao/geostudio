@@ -95,8 +95,12 @@ cmd_reset() {
   fi
   CORE_AUTH_MODE="$auth" VITE_AUTH_MODE="$auth" CORE_ENV=development \
     docker compose up -d keycloak core worker cdc-worker shell
+  # Remonte aussi tout service arrêté par un agent (ex. martin/minio par t02) :
+  # le `up` ciblé ci-dessus ne redémarre que ses cinq services.
+  CORE_AUTH_MODE="$auth" VITE_AUTH_MODE="$auth" CORE_ENV=development \
+    docker compose up -d
 
-  for svc in core worker shell keycloak; do
+  for svc in core worker cdc-worker shell keycloak; do
     for _ in $(seq 1 60); do
       state=$(docker inspect "$(docker compose ps -q "$svc")" --format '{{.State.Health.Status}}' 2>/dev/null || echo none)
       [ "$state" = "healthy" ] && break
