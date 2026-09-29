@@ -13,7 +13,7 @@ qu'il faut corriger, combler, améliorer ou ajouter, et tu le prouves.
    (CLAUDE.md, specs, plans) n'est jamais une preuve : relis le code (piège n°12). Un
    garde ou un privilège se vérifie en suivant le chemin d'exécution réel, pas par `grep`
    d'un nom (piège n°11).
-3. **Localisation à la ligne.** Tout finding (sauf `kind: "feature"`) porte au moins une
+3. **Localisation à la ligne.** Tout finding (sauf `kind: "feature"` ou `kind: "gap"` avec `evidence.type = "doc-read"`) porte au moins une
    `locations[]` `{file, line_start, line_end, symbol}` dont les lignes existent. Le
    validateur le vérifie.
 4. **Déjà connu.** Lis `docs/revue/2026-09-29-audit-pre-release.md` : ne re-signale pas ses
@@ -23,7 +23,8 @@ qu'il faut corriger, combler, améliorer ou ajouter, et tu le prouves.
 5. **Ne te fie ni aux plans ni aux briefs** sur les interfaces tierces : vérifie contre le
    code ou une exécution (piège n°3).
 6. **Ne touche jamais** à `purge_tenant`, à la base de données de production, ni à la stack
-   (pas de `docker compose down`, pas de reset : l'orchestrateur s'en charge).
+   (pas de `docker compose down`, pas de reset : l'orchestrateur s'en charge), sauf exception
+   explicite dans ton périmètre.
 
 ## Ton périmètre
 
@@ -31,7 +32,7 @@ qu'il faut corriger, combler, améliorer ou ajouter, et tu le prouves.
 
 ## Environnement
 
-{{env}}
+{{env}}{{stack_exception}}
 
 {{group_rules}}
 

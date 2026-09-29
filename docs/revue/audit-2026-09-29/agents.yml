@@ -1,8 +1,10 @@
 # Catalogue des agents d'audit (spec 2026-09-29 §4). id = préfixe d'id des findings.
 # mode : mock = auth mock (mockuser admin) ; oidc = personas Keycloak ; none = pas de stack.
+# Champs optionnels : env_note (ajouté au bloc Environnement), stack_exception (dérogation à la règle 6).
 agents:
-  - {id: j01, group: A, title: "Visiteur anonyme", mode: mock, budget_tests: 30,
-     scope: ["catalogue public, recherche, facettes, tri", "site /sites/{slug}, fiche dataset publique", "embed /embed/:token", "SEO : sitemap.xml, robots.txt, aperçu social", "lien de partage à échéance (déconnecté)"]}
+  - {id: j01, group: A, title: "Visiteur anonyme", mode: oidc, budget_tests: 30,
+     env_note: "Tu es un visiteur anonyme : tu ne te connectes JAMAIS (n'appelle pas `loginOidc`, n'utilise aucun persona). En auth mock le shell serait toujours connecté en `mockuser` admin, donc l'anonymat ne s'y simule pas ; en OIDC, une page ouverte sans login est réellement anonyme. Ne teste que ce qu'un visiteur non connecté voit ou peut faire.",
+     scope: ["catalogue public, recherche, facettes, tri", "site /sites/{slug}, fiche dataset publique", "embed /embed/:token", "SEO : sitemap.xml, robots.txt, aperçu social", "lien de partage à échéance (sans jamais te connecter)"]}
   - {id: j02, group: A, title: "Lecteur connecté", mode: oidc, budget_tests: 30,
      scope: ["connexion OIDC (persona reader), recherche sémantique", "fiche dataset, carte en lecture, popups, pièces jointes", "bookmarks (création, ouverture, partage)", "notifications in-app", "ce qu'un lecteur NE doit PAS voir ni pouvoir faire"]}
   - {id: j03, group: A, title: "Créateur de carte", mode: oidc, budget_tests: 40,
@@ -30,7 +32,8 @@ agents:
   - {id: t01, group: B, title: "Accessibilité", mode: oidc, budget_tests: 40,
      scope: ["axe-core sur toutes les routes du shell (pas seulement les 9 déjà couvertes)", "parcours clavier complet : focus visible, ordre, pièges, Drawer/Dialog/Popover", "labels, erreurs de formulaire, aria-expanded/aria-controls sur panneaux", "contrastes AA en clair et sombre"]}
   - {id: t02, group: B, title: "Résilience et erreurs", mode: oidc, budget_tests: 40,
-     scope: ["401/403/404/409/422/429/500 sur chaque famille d'appel (page.route pour injecter)", "réseau coupé et retour, CoreUnreachableError, bannière de connectivité", "quotas atteints, rate limit, timeouts 15 s", "double soumission, retours arrière, onglets multiples", "docker stop ciblé d'un service (worker, martin) : dégradations visibles"]}
+     stack_exception: "Par exception à la règle 6, tu peux exécuter `docker stop` puis `docker start` sur les SEULS services `worker` et `martin` (jamais un autre service, jamais `docker compose down`, jamais de volume). Protocole écrit, pour chaque service : (1) `docker stop <service>` ; (2) observe la dégradation dans le shell/l'API ; (3) `docker start <service>` (le même) ; (4) confirme qu'il est de nouveau `healthy` (`docker compose ps <service>` affiche `(healthy)`) AVANT de passer à la suite ou de terminer. Ne laisse jamais un service arrêté en fin de session.",
+     scope: ["401/403/404/409/422/429/500 sur chaque famille d'appel (page.route pour injecter)", "réseau coupé et retour, CoreUnreachableError, bannière de connectivité", "quotas atteints, rate limit, timeouts 15 s", "double soumission, retours arrière, onglets multiples", "docker stop/start ciblé de `worker` et `martin` (protocole ci-dessus) : dégradations visibles"]}
   - {id: t03, group: B, title: "Performance perçue", mode: oidc, budget_tests: 25,
      scope: ["taille de bundle et découpage par route", "LCP/CLS sur catalogue, carte, builder (mesures réelles)", "jeux de données de 50k à 500k entités sur carte et tableau", "boucles de sondage (notifications 45 s) et fuites au démontage"]}
   - {id: t04, group: B, title: "Cohérence visuelle et i18n", mode: oidc, budget_tests: 30,
@@ -41,7 +44,7 @@ agents:
      scope: ["gestion d'erreurs, transactions, commits partiels, TOCTOU", "jobs procrastinate : idempotence, reprise, écriture best-effort séparée", "concurrence asyncio/sync, ressources non fermées", "validateurs REST vs MCP (save_app_config saute des validateurs, REV-174)"]}
   - {id: c03, group: C, title: "Migrations et données (code)", mode: none, budget_tests: 0,
      scope: ["core/alembic/versions : upgrade/downgrade sur base NON vide", "migrations sans test round-trip (0029, 0030, 0031, 0034, 0037…)", "tenant_id et audit_log sur toute écriture", "index manquants, contraintes, cascades"]}
-  - {id: c04, group: C, title: "Qualité du shell (code)", mode: oidc, budget_tests: 0,
+  - {id: c04, group: C, title: "Qualité du shell (code)", mode: none, budget_tests: 0,
      scope: ["shell/src : code mort, duplication, types lâches, any, casts", "toFrontLayer() : champs de config qui ne round-trippent pas (piège n°5)", "ItemClient comme seul sas vers le cœur", "composants > 500 lignes, hooks instables, fuites d'effets"]}
   - {id: c05, group: C, title: "Qualité des tests (code)", mode: none, budget_tests: 0,
      scope: ["tests flaky connus et candidats, mocks E2E périmés (shell/e2e/mocks.ts)", "trous de couverture par module (pytest coverage.xml, vitest)", "assertions qui ne prouvent rien (durée pour la concurrence, piège n°7)", "skips silencieux (tests postgis sans CORE_TEST_DATABASE_URL)"]}
@@ -56,6 +59,6 @@ agents:
   - {id: d01, group: D, title: "Benchmark produit", mode: none, budget_tests: 0,
      scope: ["comparer GeoStudio à Felt, ArcGIS (Online/Experience Builder), QGIS Server, Kepler.gl/CARTO, FME", "sources : docs/vision/*, inventaire-fonctionnalites.jsonl, sites publics des concurrents (WebSearch)", "produire des findings kind=feature|gap avec evidence doc-read, effort estimé, différenciateur produit (horizontal, parité connecteurs)", "ne rien proposer qui contredise les 40 arbitrages de la feuille de route §8"]}
   - {id: v01, group: V, title: "Vérificateur S1/S2", mode: oidc, budget_tests: 0,
-     scope: ["rejouer 100 % des findings S1/S2 confidence=verified par leur champ `repro`, après un reset de stack", "verdict par finding : confirmed | not-reproduced | changed, avec la sortie brute", "écrire un findings.jsonl de statut (mêmes règles de format), id préfixé v01"]}
+     scope: ["rejouer 100 % des findings S1/S2 confidence=verified par leur champ `repro`, tel quel, sur la stack déjà réinitialisée par l'orchestrateur (tu ne fais aucun reset)", "verdict par finding : confirmed | not-reproduced | changed, avec la sortie brute", "écrire un findings.jsonl de statut (mêmes règles de format), id préfixé v01"]}
   - {id: k01, group: K, title: "Consolidateur", mode: none, budget_tests: 0,
      scope: ["lire merged.jsonl (sortie de `audit_findings.py dedup`) et les verdicts de v01", "produire PLAN-CONSOLIDE.md : état des lieux par parcours, matrice de couverture, 30 tâches en 6 phases de 5, traçabilité S1/S2", "chaque tâche : findings couverts, fichiers/lignes, effort, dépendances, test d'acceptation"]}

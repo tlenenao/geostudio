@@ -25,13 +25,18 @@ Les agents ne doivent **jamais** surcharger cette option dans leurs specs.
 | Vague | Agents | Parallélisme |
 |---|---|---|
 | 1 | c01…c09, d01 (sans stack, lecture seule) | jusqu'à 4 en parallèle |
-| 2 | j01, j02, …, j13 (séquentiels ; j01 en mock, les autres en oidc) | **1 à la fois** |
-| 3 | t01…t04 (séquentiels ; t02 en dernier : `docker stop` ciblés) | **1 à la fois** |
-| 4 | v01 (rejeu 100 % des S1/S2 verified) | 1 |
+| 2 | j01, j02, …, j13 (séquentiels ; tous en oidc, j01 sans jamais se connecter) | **1 à la fois** |
+| 3 | t01…t04 (séquentiels ; t02 en dernier : `docker stop`/`start` de `worker` et `martin` seulement, exception écrite dans son prompt) | **1 à la fois** |
+| 4 | v01 (rejeu 100 % des S1/S2 verified ; un seul `reset --auth oidc` par l'orchestrateur avant, v01 ne reset jamais) | 1 |
 | 5 | k01 (consolidation) | 1 |
 
 Les vagues 1 et 2 peuvent se chevaucher (les agents C ne touchent pas la stack). Les agents
-Playwright (2, 3) sont strictement séquentiels.
+Playwright (2, 3) sont strictement séquentiels. Tous les agents Playwright (A et B) tournent en `--auth oidc` ;
+j01 (visiteur anonyme) ne se connecte jamais. Le mode mock reste supporté par l'outillage (témoin) mais aucun agent ne l'utilise.
+
+Avant la vague 4 : `scripts/audit/stack-reset.sh reset --auth oidc` (une seule fois). v01 rejoue chaque `repro` tel quel sur cette stack
+fraîche ; l'état créé par les agents précédents a disparu (reset), un `repro` qui en dépend est donc rendu `changed` avec la raison.
+Après t02 (qui arrête/relance `worker` et `martin`), le `reset` suivant remonte tous les services (`docker compose up -d`).
 
 ## Cycle d'un agent Playwright (A/B)
 

@@ -71,13 +71,18 @@ BENCH_RULES = """## Benchmark produit (ton groupe)
 
 - Pas de Playwright. Pour chaque écart, un finding `kind: "feature"` ou `"gap"` avec
   `evidence.type = "doc-read"` (URL ou chemin) et `confidence` `probable` ou `hypothesis`.
+  `locations` peut être omise pour un finding `feature` ou `gap` appuyé sur `doc-read` ; elle
+  reste obligatoire pour tout autre finding.
 - Respecte le positionnement produit horizontal et les 40 arbitrages
   (`docs/vision/2026-07-04-feuille-de-route-geostudio.md` §8)."""
 
 VERIFIER_RULES = """## Vérification (ton groupe)
 
 - Entrée : les `findings.jsonl` des agents dont la sévérité est S1 ou S2 avec
-  `confidence: "verified"`. Pour chacun, rejoue son `repro` tel quel.
+  `confidence: "verified"`. Pour chacun, rejoue son `repro` tel quel contre la stack que
+  l'orchestrateur vient de réinitialiser (`reset --auth oidc`). Tu ne fais **aucun** reset toi-même.
+  L'état créé par les agents précédents a disparu avec ce reset : un `repro` qui en dépend est
+  rapporté `changed`, avec la raison dans `observed`.
 - Sortie : un finding par verdict, `kind` = celui d'origine, `observed` = résultat du rejeu,
   `related_gap` = id du finding rejoué, titre de verdict dans `observed`
   (`confirmed`, `not-reproduced` ou `changed`), preuve brute dans `evidence.ref`."""
@@ -114,7 +119,13 @@ def render_prompt(agent: dict[str, Any], template: str) -> str:
         "mode": agent["mode"],
         "budget_tests": str(agent["budget_tests"]),
         "scope": scope,
-        "env": ENV_BY_MODE[agent["mode"]],
+        "env": ENV_BY_MODE[agent["mode"]]
+        + (f"\n\n{agent['env_note']}" if agent.get("env_note") else ""),
+        "stack_exception": (
+            f"\n\n## Exception à la règle 6\n\n{agent['stack_exception']}"
+            if agent.get("stack_exception")
+            else ""
+        ),
         "group_rules": _group_rules(agent),
     }
     out = template

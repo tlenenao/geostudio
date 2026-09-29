@@ -62,7 +62,7 @@ def test_env_block_matches_mode(agents: list[dict]) -> None:
     template = TEMPLATE.read_text()
     by_id = {a["id"]: a for a in agents}
     assert "audit-reader" in ap.render_prompt(by_id["j02"], template)
-    assert "mockuser" in ap.render_prompt(by_id["j01"], template)
+    assert "mockuser" in ap.render_prompt({**by_id["j02"], "mode": "mock"}, template)
     assert "aucune stack" in ap.render_prompt(by_id["c01"], template).lower()
 
 
@@ -95,3 +95,48 @@ def test_k01_prompt_carries_plan_consolide_exception(agents: list[dict]) -> None
     text = ap.render_prompt(by_id["k01"], TEMPLATE.read_text())
     assert "Exception à la règle 1" in text
     assert "PLAN-CONSOLIDE.md" in text
+
+
+def _prompts(agents: list[dict]) -> dict[str, str]:
+    template = TEMPLATE.read_text()
+    return {a["id"]: ap.render_prompt(a, template) for a in agents}
+
+
+def test_j01_is_oidc_and_never_logs_in(agents: list[dict]) -> None:
+    by_id = {a["id"]: a for a in agents}
+    assert by_id["j01"]["mode"] == "oidc"
+    text = _prompts(agents)["j01"]
+    assert "ne te connectes JAMAIS" in text
+    assert "loginOidc" in text and "n'appelle pas" in text
+
+
+def test_only_t02_has_stack_exception(agents: list[dict]) -> None:
+    prompts = _prompts(agents)
+    for aid, text in prompts.items():
+        has = "## Exception à la règle 6" in text
+        assert has == (aid == "t02"), aid
+    t02 = prompts["t02"]
+    assert "`worker` et `martin`" in t02 and "docker start" in t02 and "healthy" in t02
+    assert "jamais `docker compose down`" in t02
+    phrase = "sauf exception explicite dans ton périmètre"
+    assert all(phrase in " ".join(t.split()) for t in prompts.values())
+
+
+def test_c04_is_code_audit_without_stack(agents: list[dict]) -> None:
+    by_id = {a["id"]: a for a in agents}
+    assert by_id["c04"]["mode"] == "none"
+    assert "aucune stack" in _prompts(agents)["c04"].lower()
+
+
+def test_v01_rules_forbid_reset_and_handle_lost_state(agents: list[dict]) -> None:
+    text = _prompts(agents)["v01"]
+    assert "aucun** reset" in text
+    assert "`changed`" in text and "a disparu" in text
+
+
+def test_d01_may_omit_locations_for_doc_read(agents: list[dict]) -> None:
+    assert "`locations` peut être omise" in _prompts(agents)["d01"]
+
+
+def test_agents_use_no_mock_mode_in_catalogue(agents: list[dict]) -> None:
+    assert all(a["mode"] != "mock" for a in agents)
