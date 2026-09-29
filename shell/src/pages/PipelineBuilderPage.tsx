@@ -48,6 +48,25 @@ import { t } from "../i18n";
 
 const EMPTY_PAYLOAD: PipelinePayload = { nodes: [], edges: [] };
 
+// Revue finale Vague C (point 7, D55) : logique pure du raccourci
+// Ctrl/Cmd+Z, extraite de l'écouteur `keydown` ci-dessous pour être testable
+// directement — la couverture précédente ne pouvait plus jamais amener
+// `canUndo` à vrai en lecture seule (tous les points de mutation sont
+// désormais gardés), donc un test bout-en-bout qui retirait `if (readOnly)
+// return` continuait de passer sans rien détecter. Ce test-ci appelle la
+// fonction directement avec `readOnly: true` et un état où `canUndo` serait
+// normalement vrai en écriture, sans passer par le DOM.
+export function decideUndoRedoShortcut(
+  e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey">,
+  isTextField: boolean,
+  readOnly: boolean,
+): "undo" | "redo" | null {
+  if (isTextField) return null;
+  if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return null;
+  if (readOnly) return null;
+  return e.shiftKey ? "redo" : "undo";
+}
+
 // pk === null : brouillon local (/pipelines/new, design SP-15b §2.2) —
 // rien n'est persisté avant le premier "Enregistrer" (choix de session : le
 // validateur serveur exige déjà ≥1 reader/≥1 writer, donc il n'existe pas de
@@ -146,13 +165,16 @@ export function PipelineBuilderPage({
         target instanceof HTMLInputElement ||
         target instanceof HTMLTextAreaElement ||
         (target instanceof HTMLElement && target.isContentEditable);
-      if (isTextField) return;
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
       // D55 : Ctrl+Z restait actif en lecture seule — `readOnly` est déjà
       // calculé plus haut (ligne ~82) à partir de `permissions.write`.
-      if (readOnly) return;
+      // Décision déléguée à `decideUndoRedoShortcut` (module scope, testée
+      // directement) plutôt qu'inline, pour que la garde `readOnly` reste
+      // couverte même une fois que plus aucun chemin ne peut amener
+      // `canUndo` à vrai en lecture seule via l'UI.
+      const action = decideUndoRedoShortcut(e, isTextField, readOnly);
+      if (action === null) return;
       e.preventDefault();
-      if (e.shiftKey) redo();
+      if (action === "redo") redo();
       else undo();
     }
     window.addEventListener("keydown", onKeyDown);
@@ -286,10 +308,12 @@ export function PipelineBuilderPage({
     );
   }
   function onInsertOnEdge(edgeId: string, op: string) {
-    // Revue finale Vague C (point 2, D55) : l'affordance "+" sur une arête
-    // (PipelineCanvas.tsx, InsertOnEdgeButton) n'a elle-même aucun garde
-    // `readOnly` — la barrière est ici, au seul site qui mute réellement
-    // le brouillon.
+    // Revue finale Vague C (point 2, D55) : `PipelineCanvas.tsx` (`InsertOnEdgeButton`)
+    // désactive déjà l'affordance "+" sur une arête en lecture seule
+    // (`disabled={readOnly}` + le menu n'ouvre pas), mais ce garde reste
+    // le point de passage réel : sans lui, un appel direct à ce handler
+    // (ex. testing-library, extension tierce contournant l'UI) muterait
+    // quand même le brouillon.
     if (readOnly) return;
     const kind = catalog[op]?.kind ?? "transform";
     const result = insertNodeOnEdge(currentDraft.nodes, currentDraft.edges, edgeId, {

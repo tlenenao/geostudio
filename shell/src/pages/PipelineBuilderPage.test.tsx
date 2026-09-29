@@ -15,7 +15,7 @@ import type {
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { ToastProvider } from "../ui/kit/ToastProvider";
 import { OWNER_PERMISSIONS, READ_ONLY_PERMISSIONS } from "../auth/permissions";
-import { PipelineBuilderPage } from "./PipelineBuilderPage";
+import { PipelineBuilderPage, decideUndoRedoShortcut } from "./PipelineBuilderPage";
 import { t } from "../i18n";
 
 // PipelineBuilderPage renders PipelineNodeInspector -> PipelinePreviewPanel, which can mount
@@ -1294,6 +1294,30 @@ test("persisted mode: lecture seule empêche l'ajout de nœud via la palette et 
   expect(screen.getByRole("button", { name: "Rétablir" })).toBeDisabled();
   await userEvent.keyboard("{Control>}z{/Control}");
   expect(screen.getAllByText("reader.collection")).toHaveLength(2);
+});
+
+// Revue finale Vague C (point 7, D55) : le test bout-en-bout ci-dessus ne
+// peut plus amener `canUndo` à vrai en lecture seule (tous les points de
+// mutation du brouillon sont désormais gardés) — il resterait vert que la
+// garde `readOnly` de `decideUndoRedoShortcut` soit présente ou non
+// (vérifié par falsification en revue finale : 4/4 tests D55 passent avec
+// ou sans elle). Ce test-ci isole la fonction de décision et prouve
+// directement qu'elle refuse Ctrl+Z en lecture seule, indépendamment de
+// tout état `canUndo` — falsifié : retirer `if (readOnly) return null;`
+// dans `decideUndoRedoShortcut` fait échouer ce test (`"undo"` au lieu de
+// `null`), confirmé puis la garde restaurée.
+test("decideUndoRedoShortcut : Ctrl+Z ne déclenche rien en lecture seule (D55)", () => {
+  const ctrlZ = { key: "z", ctrlKey: true, metaKey: false, shiftKey: false };
+  expect(decideUndoRedoShortcut(ctrlZ, false, true)).toBeNull();
+  // Même événement, hors lecture seule : l'action est bien décidée (la
+  // garde readOnly est le seul point qui distingue les deux cas).
+  expect(decideUndoRedoShortcut(ctrlZ, false, false)).toBe("undo");
+  // Ctrl+Shift+Z : redo, toujours refusé en lecture seule.
+  const ctrlShiftZ = { key: "z", ctrlKey: true, metaKey: false, shiftKey: true };
+  expect(decideUndoRedoShortcut(ctrlShiftZ, false, true)).toBeNull();
+  expect(decideUndoRedoShortcut(ctrlShiftZ, false, false)).toBe("redo");
+  // Un champ texte reste prioritaire sur toute décision, lecture seule ou non.
+  expect(decideUndoRedoShortcut(ctrlZ, true, false)).toBeNull();
 });
 
 // Revue finale Vague C (point 2, D55) : nouveaux points de mutation fermés

@@ -91,5 +91,14 @@ beforeEach(() => {
   originalTz = process.env.TZ;
 });
 afterEach(() => {
-  process.env.TZ = originalTz;
+  // `originalTz === undefined` (cas courant : TZ jamais posé par
+  // l'environnement de test) ne doit pas réaffecter `process.env.TZ` —
+  // Node convertit toute affectation en la chaîne littérale `"undefined"`
+  // plutôt que de supprimer la variable, ce qui la laisserait posée à
+  // tort pour les fichiers de test suivants.
+  if (originalTz === undefined) {
+    delete process.env.TZ;
+  } else {
+    process.env.TZ = originalTz;
+  }
 });
