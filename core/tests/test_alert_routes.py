@@ -138,5 +138,87 @@ def test_evaluate_alert_now_defers_evaluation_and_returns_202(monkeypatch, tmp_p
     assert resp.status_code == 202
     body = resp.json()
     assert "evaluationId" in body
+    # Revue finale Vague C (point 4c) : première évaluation d'une règle,
+    # aucune "pending" préexistante à réutiliser.
+    assert body["created"] is True
     assert len(deferred) == 1
     assert deferred[0]["evaluation_id"] == body["evaluationId"]
+
+
+def test_evaluate_alert_now_404s_for_a_non_alert_item(monkeypatch, tmp_path):
+    # Revue finale Vague C (point 4a) : avant l'extraction de
+    # evaluate_alert_now_service, cette route ne vérifiait jamais
+    # `config.kind == "alert"` — n'importe quel item en écriture (ici un
+    # dataset, dont mockuser est propriétaire) pouvait créer une
+    # `alert_evaluation` et déférer un job voué à échouer. dataset_item_id a
+    # bien une config (kind="dataset") mais pas de kind="alert" : doit 404
+    # exactement comme un item inconnu.
+    client, dataset_item_id, _rule_item_id = _setup(monkeypatch, tmp_path)
+    resp = client.post(f"/v1/alerts/{dataset_item_id}/evaluate")
+    assert resp.status_code == 404
+
+
+def test_evaluate_alert_now_reuses_a_recent_pending_evaluation(monkeypatch, tmp_path):
+    # Revue finale Vague C (point 4c) : une évaluation "pending" créée par un
+    # appel précédent (manuel ou balayage périodique), plus jeune que
+    # app.alerts.repository._PENDING_RECLAIM_MINUTES, doit être réutilisée
+    # telle quelle plutôt que dupliquée — même discipline que
+    # list_due_rules côté balayage.
+    db_url = f"sqlite+pysqlite:///{tmp_path / 'alert_routes_dedup.db'}"
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("CORE_AUTH_MODE", "mock")
+    app = create_app()
+    engine = make_engine(db_url)
+    init_db(engine)
+    Session = make_session_factory(engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="mock-sub",
+            username="mockuser",
+            email=None,
+            first_name="Mock",
+            last_name="User",
+        )
+        dataset_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=user.id, resource_type="dataset", title="Dataset"
+        )
+        rule_item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=user.id, resource_type="alert", title="High counts"
+        )
+        config = BuilderConfig.model_validate(
+            {
+                "kind": "alert",
+                "alert": {
+                    "datasetItemId": dataset_item.id,
+                    "query": {"agg": "count"},
+                    "condition": {"expr": "value > 100"},
+                    "refreshPolicy": {"enabled": True, "cron": "*/5 * * * *"},
+                    "channels": [{"kind": "webhook", "url": "https://example.test/hook"}],
+                },
+            }
+        )
+        configs_repo.create_config(s, config, item_id=rule_item.id, tenant_id=tenant.id)
+        # Évaluation laissée "pending" (jamais mark_evaluated) : simule un
+        # déclenchement précédent encore en cours de traitement par le worker.
+        pending = alerts_repo.create_evaluation(
+            s, tenant_id=tenant.id, alert_rule_item_id=rule_item.id
+        )
+        s.commit()
+        rule_item_id, pending_id = rule_item.id, pending.id
+
+    client = TestClient(app)
+    client.headers["Authorization"] = "Bearer mock:alice"
+    deferred: list[dict] = []
+    monkeypatch.setattr(alerts_jobs.evaluate_alert_task, "defer", lambda **kw: deferred.append(kw))
+
+    resp = client.post(f"/v1/alerts/{rule_item_id}/evaluate")
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["evaluationId"] == pending_id
+    assert body["created"] is False
+    # Aucun second job déféré : la "pending" existante est réutilisée telle
+    # quelle, pas dupliquée.
+    assert deferred == []

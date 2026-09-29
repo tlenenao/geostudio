@@ -6,21 +6,21 @@ create_alert_rule mirrors POST /configs kind="alert" (app/alerts/routes.py
 docstring: "Create/update/delete of the rule itself are handled entirely by
 the generic /configs routes") — décalque quasi exact de
 mcp/tools/pipelines.py::create_pipeline, kind="alert" au lieu de
-"pipeline". run_alert_rule n'a aucun équivalent exact de
-POST /pipelines/{id}/run : une alerte s'exécute normalement par balayage
-périodique (sweep_alert_rules_task, app/alerts/jobs.py) jamais par une
-route REST "exécuter maintenant" — ce tool reproduit, pour une seule
-règle, exactement la séquence que le balayage fait pour toutes les
-règles dues (create_evaluation -> commit -> defer), sans repasser par le
-balayage cross-tenant. Les deux tools sont montés inconditionnellement
-(pas de garde CORE_ETL_ENABLED, comme les routes REST /alerts/*)."""
+"pipeline". run_alert_rule reprend désormais exactement la même séquence
+que POST /alerts/{item_id}/evaluate — les deux appellent
+app.alerts.service.evaluate_alert_now_service (revue finale Vague C, point
+4 : avant cette extraction, ce tool n'exigeait que "read" là où la route
+REST exigeait "write", ne vérifiait jamais `config.kind == "alert"`, et ne
+dédoublonnait pas une évaluation "pending" récente comme le fait le
+balayage périodique). Les deux tools sont montés inconditionnellement (pas
+de garde CORE_ETL_ENABLED, comme les routes REST /alerts/*)."""
 
 from fastapi import HTTPException
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
 
-from app.alerts import jobs as alerts_jobs
 from app.alerts import repository as alerts_repo
+from app.alerts.service import evaluate_alert_now_service
 from app.audit.writer import write_audit
 from app.auth.dependency import is_read_only_mode
 from app.configs import repository as configs_repo
@@ -100,28 +100,21 @@ def register(server: FastMCP, session_factory) -> None:
     async def run_alert_rule(ctx: Context, alertRuleId: str) -> dict:
         """Defer an immediate evaluation of an AlertRule — mirrors, for a
         single rule, what sweep_alert_rules_task does for all due rules.
-        No REST route equivalent exists (evaluation is periodic-only via
-        REST); this is the MCP-only manual trigger. SP-53."""
+        Same route as REST since revue finale Vague C (point 4):
+        POST /alerts/{item_id}/evaluate calls the exact same service
+        (app.alerts.service.evaluate_alert_now_service) — "write" access
+        required, `config.kind == "alert"` checked, a recent "pending"
+        evaluation deduplicated rather than re-created. SP-53."""
         access_token = get_access_token()
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, access_token)
-            config = configs_repo.get_config_by_item(session, alertRuleId)
-            if config is None or config.config.kind != "alert":
-                raise ValueError("alert rule not found")
-            facts = items_repo.get_access_facts(
-                session, tenant_id=user.tenant_id, item_id=alertRuleId
-            )
-            if facts is None or not can(session, user_id=user.id, action="read", item=facts):
-                raise ValueError("alert rule not found")
-            evaluation = alerts_repo.create_evaluation(
-                session, tenant_id=user.tenant_id, alert_rule_item_id=alertRuleId
-            )
-            # Commit avant de déférer — même raison que sweep_alert_rules_task.
-            session.commit()
-            alerts_jobs.evaluate_alert_task.defer(
-                evaluation_id=evaluation.id, tenant_id=user.tenant_id
-            )
-            return {"evaluationId": evaluation.id}
+            try:
+                evaluation_id, created = evaluate_alert_now_service(
+                    session, user=user, item_id=alertRuleId
+                )
+            except HTTPException as exc:
+                raise http_exception_to_value_error(exc) from exc
+            return {"evaluationId": evaluation_id, "created": created}
 
     @server.tool()
     async def explain_alert_rule(ctx: Context, alertRuleId: str) -> dict:

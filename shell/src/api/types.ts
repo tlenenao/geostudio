@@ -559,7 +559,7 @@ export interface ItemClient {
   saveAlertRuleConfig(pk: string, payload: AlertRulePayload): Promise<void>;
   listAlertRulesForDataset(datasetItemId: string): Promise<AlertRuleSummary[]>;
   getAlertEvaluations(alertItemId: string, params?: PageParams): Promise<AlertEvaluation[]>;
-  evaluateAlertRule(itemId: string): Promise<{ evaluationId: string }>;
+  evaluateAlertRule(itemId: string): Promise<{ evaluationId: string; created: boolean }>;
   createReportScheduleItem(input: {
     title: string;
     owner: string;

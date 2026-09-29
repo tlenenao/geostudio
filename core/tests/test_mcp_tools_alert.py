@@ -223,3 +223,41 @@ def test_run_alert_rule_404s_for_an_unreadable_rule(app_client):
             client, "run_alert_rule", {"alertRuleId": "does-not-exist"}
         )
     assert "alert rule not found" in error_text
+
+
+def test_run_alert_rule_404s_for_a_read_only_user(app_client):
+    # Revue finale Vague C (point 4b) : ce tool n'exigeait auparavant que
+    # "read" là où la route REST exigeait "write" — un utilisateur qui n'est
+    # ni propriétaire ni bénéficiaire d'un partage en écriture, mais dispose
+    # d'un accès en lecture via `item.is_public`, pouvait déclencher une
+    # évaluation. Politique désormais alignée sur REST via
+    # evaluate_alert_now_service : "write" pour les deux surfaces. mockuser
+    # (l'acteur HTTP fixe en mode CORE_AUTH_MODE=mock) n'est ici ni
+    # propriétaire de la règle ni de son dataset — seul `is_public` lui donne
+    # accès, en lecture seulement.
+    client, Session, tenant_id, user_id = app_client
+    with Session() as s:
+        other_owner = get_or_create_user(
+            s,
+            tenant_id=tenant_id,
+            oidc_sub="other-owner",
+            username="otherowner",
+            email=None,
+            first_name="Other",
+            last_name="Owner",
+        )
+        s.commit()
+        other_owner_id = other_owner.id
+
+    alert_item_id, _dataset_item_id = _seed_alert_rule(
+        Session, tenant_id=tenant_id, owner_id=other_owner_id
+    )
+    with Session() as s:
+        items_repo.set_is_public(s, tenant_id=tenant_id, item_id=alert_item_id, is_public=True)
+        s.commit()
+
+    with client:
+        error_text = call_tool_expecting_error(
+            client, "run_alert_rule", {"alertRuleId": alert_item_id}
+        )
+    assert "alert rule not found" in error_text

@@ -87,8 +87,14 @@ export function createAlertsMethods(base: ItemClientBase): AlertsMethods {
       );
     },
 
-    async evaluateAlertRule(itemId: string): Promise<{ evaluationId: string }> {
-      return request<{ evaluationId: string }>("POST", `/alerts/${itemId}/evaluate`);
+    async evaluateAlertRule(itemId: string): Promise<{ evaluationId: string; created: boolean }> {
+      // `created` (revue finale Vague C, point 4c) : `false` quand une
+      // évaluation "pending" récente existait déjà et a été réutilisée
+      // telle quelle (aucun second job déféré côté cœur).
+      return request<{ evaluationId: string; created: boolean }>(
+        "POST",
+        `/alerts/${itemId}/evaluate`,
+      );
     },
   };
 }

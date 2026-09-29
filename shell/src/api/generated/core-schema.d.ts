@@ -2243,6 +2243,11 @@ export interface components {
         };
         /** EvaluateAlertResponse */
         EvaluateAlertResponse: {
+            /**
+             * Created
+             * @default true
+             */
+            created: boolean;
             /** Evaluationid */
             evaluationId: string;
         };
