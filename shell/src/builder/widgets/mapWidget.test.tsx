@@ -1198,6 +1198,77 @@ test("ne réajuste pas la vue quand seule l'URL change (contexte d'emprise), mê
   expect(fitBoundsSpy).toHaveBeenCalledTimes(1);
 });
 
+// Revue finale Vague C (point 6) : l'auto-cadrage (D18, test ci-dessus)
+// écrasait systématiquement un centre/zoom par défaut explicitement réglé
+// par l'auteur (D12) — `fitBounds` était toujours rappelé dès qu'un jeu de
+// données avec géométrie était lié, rendant les champs longitude/
+// latitude/zoom du PropsPanel sans effet visible dans le cas normal.
+//
+// `await screen.findByTestId("mapview")` seul ne suffit PAS à prouver
+// l'absence d'appel : le <div data-testid="mapview"> apparaît dès le tout
+// premier rendu (avant même que la doublure de MapView (lignes 23-101)
+// n'appelle `onReady`), donc `findByTestId` se résout immédiatement, avant
+// que l'effet dépendant de `mapReady` n'ait eu l'occasion de tourner une
+// seconde fois. Vérifié par falsification : sans ce tick supplémentaire,
+// retirer la garde ne faisait PAS échouer ce test précis (le seul, parmi
+// les 2 ci-dessous, où l'ordre d'exécution du test filtré laissait
+// `mapReady` à `false` jusqu'à la fin) — un flush de tick vide via `act`
+// force React à traiter la cascade onReady → setMapReady(true) → effet
+// avant l'assertion.
+async function settleMapReadyEffects(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+test("n'ajuste pas automatiquement la vue quand l'auteur a réglé un centre par défaut (point 6, D12 vs D18)", async () => {
+  fitBoundsSpy.mockClear();
+  const Map = getWidget("map")!.Component;
+  const data = state({
+    url: "https://fs/parcs/items.json",
+    records: [
+      { id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 10] } },
+      { id: 2, properties: {}, geometry: { type: "Point", coordinates: [3, 20] } },
+    ],
+  });
+  render(
+    withClient(
+      <Map
+        props={{ dataSourceId: "d", center: [7.75, 48.58] }}
+        ctx={{ mode: "runtime", data } as WidgetContext}
+      />,
+    ),
+  );
+  await screen.findByTestId("mapview");
+  await settleMapReadyEffects();
+  expect(lastMapConfig().view.center).toEqual([7.75, 48.58]);
+  expect(fitBoundsSpy).not.toHaveBeenCalled();
+});
+
+test("n'ajuste pas automatiquement la vue quand l'auteur a réglé un zoom par défaut (point 6, D12 vs D18)", async () => {
+  fitBoundsSpy.mockClear();
+  const Map = getWidget("map")!.Component;
+  const data = state({
+    url: "https://fs/parcs/items.json",
+    records: [
+      { id: 1, properties: {}, geometry: { type: "Point", coordinates: [1, 10] } },
+      { id: 2, properties: {}, geometry: { type: "Point", coordinates: [3, 20] } },
+    ],
+  });
+  render(
+    withClient(
+      <Map
+        props={{ dataSourceId: "d", zoom: 11 }}
+        ctx={{ mode: "runtime", data } as WidgetContext}
+      />,
+    ),
+  );
+  await screen.findByTestId("mapview");
+  await settleMapReadyEffects();
+  expect(lastMapConfig().view.zoom).toBe(11);
+  expect(fitBoundsSpy).not.toHaveBeenCalled();
+});
+
 test("map widget carries collectionId/pkColumn from ctx.data onto the feature layer (SP-40)", () => {
   renderWidget({
     props: { dataSourceId: "ds1" },

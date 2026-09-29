@@ -258,7 +258,19 @@ export function registerMapWidget(): void {
       const url = ctx.data?.url;
       const records = ctx.data?.records;
       const dataSourceId = String(props.dataSourceId ?? "");
+      // Revue finale Vague C (point 6) : le cadrage automatique (D18, Vague
+      // A) écrasait systématiquement le centre/zoom par défaut choisi par
+      // l'auteur (D12, Task 34, ci-dessus dans PropsPanel) dès qu'un jeu de
+      // données avec géométrie était lié — le cas normal. Un centre/zoom
+      // n'est présent dans `props` QUE si l'auteur a explicitement modifié
+      // au moins un des deux champs (les valeurs par défaut affichées dans
+      // les <input> ci-dessus, [2.4, 46.6] et 5, ne sont écrites dans props
+      // qu'au premier changement) — absent = jamais réglé, présent = intention
+      // explicite de piloter la vue manuellement, qui doit primer sur
+      // l'auto-cadrage.
+      const authorSetView = props.center !== undefined || props.zoom !== undefined;
       useEffect(() => {
+        if (authorSetView) return;
         if (!mapReady) return;
         if (!url || !records || records.length === 0) return;
         if (lastFittedDataSourceId.current === dataSourceId) return;
@@ -275,7 +287,7 @@ export function registerMapWidget(): void {
         if (!view) return;
         lastFittedDataSourceId.current = dataSourceId;
         view.fitBounds(bbox);
-      }, [url, records, mapReady, dataSourceId]);
+      }, [url, records, mapReady, dataSourceId, authorSetView]);
 
       if (ctx.data?.error) return <p className="text-xs text-danger">{t("common.dataError")}</p>;
 
